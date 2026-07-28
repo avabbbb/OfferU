@@ -13,6 +13,7 @@ import { verifyWrite } from "./verifier.js";
 import { logPipelineStage } from "../shared/logger.js";
 import { isJsonStringValue, containsJsonStringFragment } from "../shared/text-utils.js";
 import { UI as UIConstants } from "../shared/constants.js";
+import { readCurrentFieldValue } from "../core/critical-plan.js";
 import { writeFeishuUDField } from "./site-writers/feishu-ud-writer.js";
 import { writeBeisenPhoenixField } from "./site-writers/beisen-phoenix-writer.js";
 import { writeMokaField } from "./site-writers/moka-writer.js";
@@ -235,6 +236,7 @@ export async function writeBatch(
     onFieldDone?: (result: WriteResult) => void;
     adapterId?: string;
     optionSelectorConfig?: OptionSelectorConfig;
+    preserveExistingValues?: boolean;
   },
 ): Promise<WriteResult[]> {
   const results: WriteResult[] = [];
@@ -253,6 +255,19 @@ export async function writeBatch(
 
     const candidate = candidates.get(field.fieldId);
     if (!candidate) continue;
+    if (options?.preserveExistingValues && readCurrentFieldValue(field)) {
+      const result: WriteResult = {
+        fieldId: field.fieldId,
+        written: false,
+        verified: false,
+        failureReason: "existing_value",
+        recovered: false,
+        recoveryPath: [],
+      };
+      results.push(result);
+      options?.onFieldDone?.(result);
+      continue;
+    }
 
     const result = await writeSingleField(
       field,

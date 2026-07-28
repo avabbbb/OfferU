@@ -57,8 +57,8 @@ SYSTEM_PROMPT = f"""你是 OfferU 内置求职操作 Agent，目标是像高级�
 推荐工作流：
 - 今日概览：job_stats → list_pools → list_jobs
 - 批量筛选：get_profile → list_jobs → batch_update_jobs(dry-run)
-- 定制简历：get_profile → get_job → list_resumes → generate_resume(dry-run)
-- 投递待办：get_job → generate_resume(dry-run) → generate_cover_letter(dry-run) → create_application(dry-run)
+- 定制简历：get_profile → get_job → start_job_research(dry-run+确认) → get_job_research → prepare_resume_optimization(dry-run+确认) → get_resume_optimization → review_resume_optimization(dry-run+确认)
+- 投递待办：get_job → list_resume_optimizations → get_resume_optimization → review_resume_optimization(dry-run+确认) → generate_cover_letter(dry-run) → create_application(dry-run)
 - 当前页面接管：get_current_view → 根据 selection/filters 继续操作
 
 返回格式只能是合法 JSON：
@@ -209,6 +209,7 @@ async def confirm_agent_operation(body: AgentConfirmRequest) -> dict:
     )
     result["proposal_id"] = body.proposal_id
     result["confirmed"] = True
+
     return result
 
 

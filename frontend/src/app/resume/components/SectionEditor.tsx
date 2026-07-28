@@ -25,10 +25,10 @@ import RichTextEditor from "./RichTextEditor";
 
 const inputStyle = {
   inputWrapper:
-    "border border-black/15 bg-[var(--surface)] shadow-[1px_1px_0_0_rgba(18,18,18,0.08)] group-data-[focus=true]:border-black/35",
-  input: "font-medium text-black placeholder:text-black/45",
-  label: "font-semibold tracking-[0.06em] text-[11px] text-black/65",
-  description: "text-black/55",
+    "border border-[var(--border-strong)]/15 bg-[var(--surface)] shadow-[1px_1px_0_0_rgba(18,18,18,0.08)] group-data-[focus=true]:border-[var(--border-strong)]/35",
+  input: "font-medium text-[var(--foreground)] placeholder:text-[var(--foreground-muted)]",
+  label: "font-semibold tracking-[0.06em] text-[11px] text-[var(--foreground-muted)]",
+  description: "text-[var(--foreground-muted)]",
   errorMessage: "font-medium text-[#D02020]",
 };
 
@@ -90,7 +90,7 @@ function DraggableListItem({ id, children }: { id: string; children: ReactNode }
         {...attributes}
         {...listeners}
         aria-label="拖拽条目排序"
-        className="absolute left-0 top-3 z-10 flex h-8 w-6 cursor-grab items-center justify-center text-black/35 active:cursor-grabbing"
+        className="absolute left-0 top-3 z-10 flex h-8 w-6 cursor-grab items-center justify-center text-[var(--foreground-muted)] active:cursor-grabbing"
       >
         <GripVertical size={13} aria-hidden="true" />
       </button>
@@ -168,14 +168,14 @@ export default function SectionEditor({
           {contentJson.map((item, i) => (
             <DraggableListItem key={itemIds[i]} id={itemIds[i]}>
         <div
-          className="bauhaus-panel-sm space-y-2.5 bg-[#F0F0F0] p-3"
+          className="bauhaus-panel-sm space-y-2.5 bg-[var(--surface-muted)] p-3"
           data-testid={`resume-item-${sectionType}-${i}`}
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <GripVertical size={12} className="cursor-grab text-black/30" />
-              <span className="font-mono text-[10px] text-black/35">#{i + 1}</span>
-              <span className="max-w-[160px] truncate text-[11px] font-semibold tracking-[0.04em] text-black/60">
+              <GripVertical size={12} className="cursor-grab text-[var(--foreground-muted)]" />
+              <span className="font-mono text-[10px] text-[var(--foreground-muted)]">#{i + 1}</span>
+              <span className="max-w-[160px] truncate text-[11px] font-semibold tracking-[0.04em] text-[var(--foreground-muted)]">
                 {sectionItemTitle(sectionType, item, i)}
               </span>
             </div>
@@ -230,7 +230,7 @@ export default function SectionEditor({
                       <Input label="GPA" variant="bordered" size="sm" value={item.gpa || ""} onValueChange={(v) => updateItem(i, "gpa", v)} classNames={inputStyle} />
                     </div>
                     <div>
-                      <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-black/55">描述</label>
+                      <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-[var(--foreground-muted)]">描述</label>
                       <RichTextEditor content={item.description || ""} onChange={(v) => updateItem(i, "description", v)} minHeight={80} placeholder="补充说明（可选）" />
                     </div>
                   </>
@@ -247,7 +247,7 @@ export default function SectionEditor({
                       <Input label="结束" variant="bordered" size="sm" value={item.endDate || ""} onValueChange={(v) => updateItem(i, "endDate", v)} classNames={inputStyle} />
                     </div>
                     <div>
-                      <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-black/55">工作描述</label>
+                      <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-[var(--foreground-muted)]">工作描述</label>
                       <RichTextEditor content={item.description || ""} onChange={(v) => updateItem(i, "description", v)} placeholder="描述你的工作职责和成果..." />
                     </div>
                   </>
@@ -264,7 +264,7 @@ export default function SectionEditor({
                       <Input label="结束" variant="bordered" size="sm" value={item.endDate || ""} onValueChange={(v) => updateItem(i, "endDate", v)} classNames={inputStyle} />
                     </div>
                     <div>
-                      <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-black/55">实习描述</label>
+                      <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-[var(--foreground-muted)]">实习描述</label>
                       <RichTextEditor content={item.description || ""} onChange={(v) => updateItem(i, "description", v)} placeholder="描述实习职责和成果..." />
                     </div>
                   </>
@@ -282,7 +282,7 @@ export default function SectionEditor({
                       <Input label="结束" variant="bordered" size="sm" value={item.endDate || ""} onValueChange={(v) => updateItem(i, "endDate", v)} classNames={inputStyle} />
                     </div>
                     <div>
-                      <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-black/55">项目描述</label>
+                      <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-[var(--foreground-muted)]">项目描述</label>
                       <RichTextEditor content={item.description || ""} onChange={(v) => updateItem(i, "description", v)} placeholder="描述项目亮点和你的贡献..." />
                     </div>
                   </>
@@ -342,7 +342,7 @@ export default function SectionEditor({
                       <Input label="获奖日期" variant="bordered" size="sm" value={item.awardedAt || ""} onValueChange={(v) => updateItem(i, "awardedAt", v)} classNames={inputStyle} />
                     </div>
                     <div>
-                      <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-black/55">获奖描述</label>
+                      <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-[var(--foreground-muted)]">获奖描述</label>
                       <RichTextEditor content={item.description || ""} onChange={(v) => updateItem(i, "description", v)} placeholder="补充奖项背景与成果..." />
                     </div>
                   </>
@@ -363,7 +363,7 @@ export default function SectionEditor({
                       <Input label="结束" variant="bordered" size="sm" value={item.endDate || ""} onValueChange={(v) => updateItem(i, "endDate", v)} classNames={inputStyle} />
                     </div>
                     <div>
-                      <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-black/55">内容</label>
+                      <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-[var(--foreground-muted)]">内容</label>
                       <RichTextEditor content={item.description || ""} onChange={(v) => updateItem(i, "description", v)} placeholder="输入个人经历内容..." />
                     </div>
                   </>
@@ -385,7 +385,7 @@ export default function SectionEditor({
         className="bauhaus-button bauhaus-button-outline !w-full !justify-center !border-dashed !px-4 !py-3 !text-[11px]"
       >
         {addButtonLabel(sectionType)}
-        <span className="ml-2 text-[10px] text-black/35">({itemCount})</span>
+        <span className="ml-2 text-[10px] text-[var(--foreground-muted)]">({itemCount})</span>
       </Button>
     </div>
   );

@@ -35,6 +35,7 @@ import {
   type HarnessAgentProposedAction,
   type HarnessAgentResponse,
 } from "@/lib/api";
+import { presentHarnessToolCall } from "@/lib/harnessToolPresentation";
 import { bauhausFieldClassNames } from "@/lib/bauhaus";
 import { useDraggableDock } from "./useDraggableDock";
 
@@ -48,18 +49,22 @@ interface DockMessage {
 const QUICK_ACTIONS = [
   {
     label: "确认身份",
+    skillId: "profile_onboarding",
     prompt: "先问我几个问题，判断我是校招/应届/实习，还是社招/跳槽",
   },
   {
     label: "校招体检",
+    skillId: "market_calibration",
     prompt: "按校招标准检查我的档案、简历、岗位和投递流程缺口",
   },
   {
     label: "每日岗位",
+    skillId: "evaluate_job",
     prompt: "今天给我推荐一个最值得投的校招/实习岗位，并说明为什么",
   },
   {
     label: "异常检测",
+    skillId: "tracker",
     prompt: "检查我的档案、岗位库、投递管理和面试日程有没有异常",
   },
 ];
@@ -99,6 +104,7 @@ export function HarnessAgentDock() {
   const [input, setInput] = useState("");
   const [pendingActions, setPendingActions] = useState<HarnessAgentProposedAction[]>([]);
   const [loading, setLoading] = useState(false);
+  const [progressText, setProgressText] = useState("正在连接 Python AgentKernel...");
   const [error, setError] = useState("");
   const [importedStage, setImportedStage] = useState<string>("unknown");
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -117,7 +123,7 @@ export function HarnessAgentDock() {
     return [...messages].reverse().find((message) => message.response)?.response;
   }, [messages]);
 
-  const latestMode = latestResponse?.mode || "ready";
+  const latestMode = latestResponse?.active_skill?.name || latestResponse?.mode || "ready";
   const latestStage = latestResponse?.user_stage || importedStage || "unknown";
 
   const refreshConversations = async () => {
@@ -133,7 +139,7 @@ export function HarnessAgentDock() {
     if (open) refreshConversations();
   }, [open]);
 
-  const sendMessage = async (text?: string, confirmedActionIds?: string[]) => {
+  const sendMessage = async (text?: string, confirmedActionIds?: string[], skillId?: string) => {
     const content = (text ?? input).trim();
     const isConfirmation = Boolean(confirmedActionIds?.length);
     if ((!content && !isConfirmation) || loading) return;
@@ -150,14 +156,23 @@ export function HarnessAgentDock() {
     setMessages(nextMessages);
     setInput("");
     setLoading(true);
+    setProgressText(isConfirmation ? "正在恢复并执行已确认的 Run..." : "正在连接 Python AgentKernel...");
     setError("");
 
     try {
-      const response = await harnessAgentApi.chat({
-        messages: toApiMessages(nextMessages),
-        confirmed_action_ids: confirmedActionIds,
-        conversation_id: conversationId,
-      });
+      const response = await harnessAgentApi.chat(
+        {
+          messages: toApiMessages(nextMessages),
+          confirmed_action_ids: confirmedActionIds,
+          conversation_id: conversationId,
+          skill_id: skillId,
+        },
+        (event, data) => {
+          if (event === "thinking") setProgressText("正在规划目标并选择工具...");
+          if (event === "skill_selected") setProgressText(`已进入${data?.name || "求职"}技能，正在执行协议...`);
+          if (event === "tool_call") setProgressText("正在读取真实数据并整理结果...");
+        }
+      );
       const assistantMessage: DockMessage = {
         id: `assistant-${Date.now()}`,
         role: "assistant",
@@ -389,7 +404,7 @@ export function HarnessAgentDock() {
           <Chip
             key={action.label}
             className="cursor-pointer border-2 border-black bg-white px-2 text-xs font-semibold text-black"
-            onClick={() => sendMessage(action.prompt)}
+            onClick={() => sendMessage(action.prompt, undefined, action.skillId)}
           >
             {action.label}
           </Chip>
@@ -440,7 +455,7 @@ export function HarnessAgentDock() {
           {loading && (
             <div className="inline-flex items-center gap-2 border-2 border-black bg-white px-3 py-2 text-sm font-medium text-black/65">
               <Loader2 size={14} className="animate-spin" />
-              正在检查档案、记忆和下一步动作...
+              {progressText}
             </div>
           )}
         </div>
@@ -665,17 +680,21 @@ function JobCardList({ jobs }: { jobs: HarnessAgentJobCard[] }) {
 function ToolCallList({ calls }: { calls: HarnessAgentResponse["tool_calls"] }) {
   return (
     <div className="space-y-2">
-      {calls.map((call, index) => (
-        <details key={`${call.tool}-${index}`} className="border border-black/25 bg-white p-2 text-xs text-black/65">
-          <summary className="flex cursor-pointer items-center gap-2 font-bold text-black">
-            <Wrench size={13} />
-            {call.tool}
-          </summary>
-          <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap bg-[#F0F0F0] p-2">
-            {previewJson(call.result)}
-          </pre>
-        </details>
-      ))}
+      {calls.map((call, index) => {
+        const presentation = presentHarnessToolCall(call);
+        return (
+          <details key={`${call.tool}-${index}`} className="border border-black/25 bg-white p-2 text-xs text-black/65">
+            <summary className="flex cursor-pointer items-center gap-2 font-bold text-black">
+              <Wrench size={13} />
+              {call.tool}
+            </summary>
+            {presentation && <p className="mt-2 border-l-4 border-[#F0C020] pl-2 font-bold leading-5 text-black">{presentation}</p>}
+            <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap bg-[#F0F0F0] p-2">
+              {previewJson(call.result)}
+            </pre>
+          </details>
+        );
+      })}
     </div>
   );
 }

@@ -75,6 +75,176 @@ class Job(Base):
     pool: Mapped[Optional["Pool"]] = relationship(back_populates="jobs")
 
 
+class ResearchDossier(Base):
+    """公司或岗位研究档案；结论必须能够回溯到一次研究运行。"""
+
+    __tablename__ = "research_dossiers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    dossier_key: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    dossier_type: Mapped[str] = mapped_column(String(20), index=True)
+    company_name: Mapped[str] = mapped_column(String(300), index=True)
+    job_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("jobs.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    parent_dossier_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("research_dossiers.id", ondelete="SET NULL"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(String(24), default="active", index=True)
+    latest_run_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    summary_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class JobResearchRun(Base):
+    """单岗位证据化研究运行；公开网失败后由显式 resume 继续。"""
+
+    __tablename__ = "job_research_runs"
+
+    run_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    job_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("jobs.id", ondelete="CASCADE"), index=True
+    )
+    company_dossier_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("research_dossiers.id", ondelete="CASCADE"), index=True
+    )
+    role_dossier_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("research_dossiers.id", ondelete="CASCADE"), index=True
+    )
+    runtime_id: Mapped[str] = mapped_column(String(40), default="codex")
+    runtime_version: Mapped[str] = mapped_column(String(120), default="")
+    status: Mapped[str] = mapped_column(String(24), default="pending", index=True)
+    review_status: Mapped[str] = mapped_column(String(24), default="pending")
+    result_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    report_markdown: Mapped[str] = mapped_column(Text, default="")
+    trace_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    error: Mapped[str] = mapped_column(Text, default="")
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class ResearchEvidenceSnapshot(Base):
+    """研究运行保存的最小来源快照，不保存页面、登录状态或完整简历。"""
+
+    __tablename__ = "research_evidence_snapshots"
+    __table_args__ = (
+        UniqueConstraint("run_id", "source_ref", name="uq_research_evidence_run_ref"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("job_research_runs.run_id", ondelete="CASCADE"), index=True
+    )
+    dossier_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("research_dossiers.id", ondelete="CASCADE"), index=True
+    )
+    source_ref: Mapped[str] = mapped_column(String(80))
+    url: Mapped[str] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(String(500), default="")
+    publisher: Mapped[str] = mapped_column(String(300), default="")
+    source_class: Mapped[str] = mapped_column(String(40), index=True)
+    published_at: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    excerpt: Mapped[str] = mapped_column(Text, default="")
+    content_hash: Mapped[str] = mapped_column(String(64), index=True)
+
+
+class ResearchFinding(Base):
+    """带证据等级的研究结论；source_refs_json 必须引用同一运行的快照。"""
+
+    __tablename__ = "research_findings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("job_research_runs.run_id", ondelete="CASCADE"), index=True
+    )
+    dossier_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("research_dossiers.id", ondelete="CASCADE"), index=True
+    )
+    finding_type: Mapped[str] = mapped_column(String(40), index=True)
+    statement: Mapped[str] = mapped_column(Text)
+    details_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    source_refs_json: Mapped[list] = mapped_column(JSON, default=list)
+    evidence_level: Mapped[str] = mapped_column(String(24), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class AuthorizedResearchSession(Base):
+    """用户手动登录的临时浏览会话；不持久化 Cookie、密码或 storage state。"""
+
+    __tablename__ = "authorized_research_sessions"
+
+    session_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    job_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("jobs.id", ondelete="CASCADE"), index=True
+    )
+    base_run_id: Mapped[Optional[str]] = mapped_column(
+        String(64),
+        ForeignKey("job_research_runs.run_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    completed_run_id: Mapped[Optional[str]] = mapped_column(
+        String(64),
+        ForeignKey("job_research_runs.run_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    platform: Mapped[str] = mapped_column(String(40), index=True)
+    initial_url: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(24), default="starting", index=True)
+    read_only_active: Mapped[bool] = mapped_column(Boolean, default=False)
+    error: Mapped[str] = mapped_column(Text, default="")
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class AuthorizedResearchCapture(Base):
+    """登录态页面上由用户选中的最小证据摘录；不保存页面、截图或身份状态。"""
+
+    __tablename__ = "authorized_research_captures"
+    __table_args__ = (
+        UniqueConstraint(
+            "session_id",
+            "content_hash",
+            name="uq_authorized_research_session_content",
+        ),
+    )
+
+    capture_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    session_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("authorized_research_sessions.session_id", ondelete="CASCADE"),
+        index=True,
+    )
+    job_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("jobs.id", ondelete="CASCADE"), index=True
+    )
+    dossier_scope: Mapped[str] = mapped_column(String(20), index=True)
+    url: Mapped[str] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(String(500), default="")
+    publisher: Mapped[str] = mapped_column(String(300), default="")
+    source_class: Mapped[str] = mapped_column(String(40), index=True)
+    published_at: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    excerpt: Mapped[str] = mapped_column(Text)
+    content_hash: Mapped[str] = mapped_column(String(64), index=True)
+    authorization_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(24), default="staged", index=True)
+    captured_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class Pool(Base):
     """岗位池：用于在已筛选岗位中按主题做分组（前端语义为文件夹）"""
 
@@ -183,12 +353,215 @@ class ProfileSection(Base):
     content_json: Mapped[dict] = mapped_column(JSON, default=dict)
     source: Mapped[str] = mapped_column(String(30), default="manual")
     confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    tier: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
     )
 
     profile: Mapped["Profile"] = relationship(back_populates="sections")
+
+
+class WorkSource(Base):
+    """使用者显式登记并授权只读同步的本地工作源。"""
+
+    __tablename__ = "work_sources"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    source_key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(220), default="")
+    source_type: Mapped[str] = mapped_column(String(32), default="directory", index=True)
+    root_path: Mapped[str] = mapped_column(Text)
+    runtime_id: Mapped[str] = mapped_column(String(40), default="codex")
+    include_patterns_json: Mapped[list] = mapped_column(JSON, default=list)
+    exclude_patterns_json: Mapped[list] = mapped_column(JSON, default=list)
+    checkpoint_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(24), default="active", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+    last_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    invalidated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class WorkSourceSyncRun(Base):
+    """工作源变化摘要运行；结果只能形成学习观察和待确认记忆提案。"""
+
+    __tablename__ = "work_source_sync_runs"
+
+    run_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    work_source_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("work_sources.id", ondelete="CASCADE"), index=True
+    )
+    runtime_id: Mapped[str] = mapped_column(String(40), default="codex")
+    runtime_version: Mapped[str] = mapped_column(String(120), default="")
+    status: Mapped[str] = mapped_column(String(24), default="pending", index=True)
+    checkpoint_before_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    checkpoint_after_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    result_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    trace_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    error: Mapped[str] = mapped_column(Text, default="")
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    observation_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("learning_observations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class EmailAccount(Base):
+    """邮箱账号元数据；原始凭据只由 credential_ref 指向系统钥匙串。"""
+
+    __tablename__ = "email_accounts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    account_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    account_key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    signal_account_ref: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    provider: Mapped[str] = mapped_column(String(24), index=True)
+    email_address: Mapped[str] = mapped_column(String(320), default="", index=True)
+    host: Mapped[str] = mapped_column(String(500), default="")
+    port: Mapped[int] = mapped_column(Integer, default=0)
+    auth_type: Mapped[str] = mapped_column(String(32), default="")
+    scopes_json: Mapped[list] = mapped_column(JSON, default=list)
+    credential_ref: Mapped[str] = mapped_column(String(160), default="")
+    sync_cursor_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    sync_enabled: Mapped[bool] = mapped_column(default=True, index=True)
+    status: Mapped[str] = mapped_column(String(24), default="active", index=True)
+    last_error: Mapped[str] = mapped_column(Text, default="")
+    last_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class EmailSyncRun(Base):
+    """一次持久化邮箱增量同步；游标只在所有消息幂等入库后推进。"""
+
+    __tablename__ = "email_sync_runs"
+
+    run_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    email_account_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("email_accounts.id", ondelete="CASCADE"), index=True
+    )
+    provider: Mapped[str] = mapped_column(String(24), index=True)
+    status: Mapped[str] = mapped_column(String(24), default="pending", index=True)
+    cursor_before_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    cursor_after_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    result_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    trace_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    error: Mapped[str] = mapped_column(Text, default="")
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class CareerSource(Base):
+    """职业模型来源：只保存可撤销来源的本地标识和最小元数据。"""
+
+    __tablename__ = "career_sources"
+    __table_args__ = (
+        UniqueConstraint("source_type", "external_id", name="uq_career_source_identity"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    source_type: Mapped[str] = mapped_column(String(60), index=True)
+    external_id: Mapped[str] = mapped_column(String(255))
+    title: Mapped[str] = mapped_column(String(300), default="")
+    locator: Mapped[str] = mapped_column(Text, default="")
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(24), default="active", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+    invalidated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class LearningObservation(Base):
+    """模块即时记录的可追溯学习信号；它本身不是职业事实。"""
+
+    __tablename__ = "learning_observations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    source_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("career_sources.id", ondelete="CASCADE"), index=True
+    )
+    observation_type: Mapped[str] = mapped_column(String(80), index=True)
+    content_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    content_hash: Mapped[str] = mapped_column(String(64), index=True)
+    idempotency_key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(24), default="active", index=True)
+    observed_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    invalidated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # memory distiller 已处理标记（LLM 提炼 memory_candidates 后回填）
+    distilled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class MemoryProposal(Base):
+    """记忆收件箱中的职业模型变更建议；审核前不得改写 Profile。"""
+
+    __tablename__ = "memory_proposals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    proposal_key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    target_tier: Mapped[str] = mapped_column(String(32), index=True)
+    section_type: Mapped[str] = mapped_column(String(60), index=True)
+    title: Mapped[str] = mapped_column(String(220), default="")
+    before_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    after_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    reason: Mapped[str] = mapped_column(Text, default="")
+    impact_json: Mapped[list] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(24), default="pending", index=True)
+    applied_profile_section_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    review_note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    invalidated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class EvidenceLink(Base):
+    """把学习观察连接到记忆提案或确认后的 Profile 条目。"""
+
+    __tablename__ = "evidence_links"
+    __table_args__ = (
+        UniqueConstraint(
+            "observation_id",
+            "target_type",
+            "target_id",
+            "relation",
+            name="uq_evidence_link_target",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    observation_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("learning_observations.id", ondelete="CASCADE"), index=True
+    )
+    target_type: Mapped[str] = mapped_column(String(40), index=True)
+    target_id: Mapped[int] = mapped_column(Integer, index=True)
+    relation: Mapped[str] = mapped_column(String(40), default="supports")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    invalidated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
 
 class ProfileChatSession(Base):
@@ -266,6 +639,9 @@ class Resume(Base):
     source_mode: Mapped[str] = mapped_column(String(30), default="manual")
     source_job_ids: Mapped[Optional[list]] = mapped_column(JSON, default=list)
     source_profile_snapshot: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    source_profile_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("profiles.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
@@ -305,12 +681,60 @@ class ResumeSection(Base):
     title: Mapped[str] = mapped_column(String(200), default="")
     visible: Mapped[bool] = mapped_column(default=True)
     content_json: Mapped[list] = mapped_column(JSON, default=list)
+    source_section_ids: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
     )
 
     resume: Mapped["Resume"] = relationship(back_populates="sections")
+
+
+class ResumeOptimizationProposal(Base):
+    """研究驱动的一岗一版简历候选稿；审核前不得创建正式 Resume。"""
+
+    __tablename__ = "resume_optimization_proposals"
+
+    proposal_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    job_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("jobs.id", ondelete="CASCADE"), index=True
+    )
+    profile_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("profiles.id", ondelete="CASCADE"), index=True
+    )
+    research_run_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("job_research_runs.run_id", ondelete="RESTRICT"), index=True
+    )
+    reference_resume_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("resumes.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    status: Mapped[str] = mapped_column(String(24), default="ready", index=True)
+    source_section_ids_json: Mapped[list] = mapped_column(JSON, default=list)
+    source_snapshot_hash: Mapped[str] = mapped_column(String(64), index=True)
+    research_snapshot_hash: Mapped[str] = mapped_column(String(64), index=True)
+    original_summary: Mapped[str] = mapped_column(Text, default="")
+    proposed_summary: Mapped[str] = mapped_column(Text, default="")
+    original_rows_json: Mapped[list] = mapped_column(JSON, default=list)
+    proposed_rows_json: Mapped[list] = mapped_column(JSON, default=list)
+    diff_json: Mapped[list] = mapped_column(JSON, default=list)
+    strategy_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    presentation_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    fact_gates_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    trace_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    review_note: Mapped[str] = mapped_column(Text, default="")
+    accepted_resume_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("resumes.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    accepted_resume_version_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("resume_versions.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
 
 class InterviewNotification(Base):
@@ -353,6 +777,10 @@ class CalendarEvent(Base):
     related_notification_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("interview_notifications.id"), nullable=True
     )
+    # 由进度信号 accept 自动创建时回链信号，防重复建事件
+    related_signal_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("external_progress_signals.id"), nullable=True
+    )
     notification: Mapped[Optional["InterviewNotification"]] = relationship(
         back_populates="calendar_events"
     )
@@ -377,6 +805,131 @@ class Application(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
     )
+
+
+class ApplicationAttempt(Base):
+    """一次投递尝试（ADR-0007：一行一次尝试）。独立于 Application 表，不污染总表。"""
+
+    __tablename__ = "application_attempts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[int] = mapped_column(Integer, ForeignKey("jobs.id"), index=True)
+    resume_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("resumes.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    resume_version_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("resume_versions.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    cover_letter: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(50), default="prepared", index=True)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+
+
+class ExternalProgressSignal(Base):
+    """邮箱、短信等授权渠道形成的最小进展证据快照。"""
+
+    __tablename__ = "external_progress_signals"
+    __table_args__ = (
+        UniqueConstraint(
+            "channel",
+            "account_ref",
+            "external_message_id",
+            name="uq_external_progress_signal_message",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    signal_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    channel: Mapped[str] = mapped_column(String(24), index=True)
+    account_ref: Mapped[str] = mapped_column(String(160), index=True)
+    external_message_id: Mapped[str] = mapped_column(String(500))
+    external_thread_id: Mapped[str] = mapped_column(String(500), default="", index=True)
+    sender: Mapped[str] = mapped_column(String(500), default="")
+    received_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
+    subject: Mapped[str] = mapped_column(String(500), default="")
+    snippet: Mapped[str] = mapped_column(Text, default="")
+    body_sha256: Mapped[str] = mapped_column(String(64), index=True)
+    classification_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(24), default="active", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ApplicationProgressCandidate(Base):
+    """外部信号提出的待确认投递关联与阶段变化。"""
+
+    __tablename__ = "application_progress_candidates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    candidate_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    signal_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("external_progress_signals.id", ondelete="CASCADE"),
+        unique=True,
+        index=True,
+    )
+    suggested_attempt_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("application_attempts.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    suggested_stage: Mapped[str] = mapped_column(String(40), default="unknown", index=True)
+    match_state: Mapped[str] = mapped_column(String(24), default="unassigned", index=True)
+    match_candidates_json: Mapped[list] = mapped_column(JSON, default=list)
+    reasons_json: Mapped[list] = mapped_column(JSON, default=list)
+    # LLM 辅助分类结果（规则分类永远保底；两者不一致时 review UI 双显）
+    llm_stage: Mapped[str] = mapped_column(String(40), default="")
+    llm_confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    llm_extracted_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(24), default="pending", index=True)
+    selected_attempt_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("application_attempts.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    selected_stage: Mapped[str] = mapped_column(String(40), default="")
+    review_note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class ApplicationStageEvent(Base):
+    """用户确认后追加的投递阶段事实；投递概览从事件派生。"""
+
+    __tablename__ = "application_stage_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    event_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    candidate_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("application_progress_candidates.id", ondelete="RESTRICT"),
+        unique=True,
+        index=True,
+    )
+    signal_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("external_progress_signals.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    application_attempt_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("application_attempts.id", ondelete="CASCADE"),
+        index=True,
+    )
+    previous_stage: Mapped[str] = mapped_column(String(40), default="prepared")
+    stage: Mapped[str] = mapped_column(String(40), index=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    source_channel: Mapped[str] = mapped_column(String(24), index=True)
+    evidence_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
 
 
 class OperationAuditLog(Base):
@@ -567,7 +1120,10 @@ class OptimizeSession(Base):
     framework_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     rows_json: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     current_section_index: Mapped[int] = mapped_column(Integer, default=0)
+    reference_resume_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("resumes.id", ondelete="SET NULL"), nullable=True)
     resume_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("resumes.id", ondelete="SET NULL"), nullable=True)
+    resume_optimization_proposal_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    research_run_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
     interview_experiences_json: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     raw_jd_json: Mapped[Optional[str]] = mapped_column(JSON, nullable=True)
     job_titles_json: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
@@ -630,3 +1186,182 @@ class SmartFillRunLog(Base):
     field_id: Mapped[str] = mapped_column(String(120), default="", index=True)
     payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
     ts: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+
+
+# =============================================
+# 简历版本管理 + 分享 + 面试练习
+# =============================================
+
+class ResumeVersion(Base):
+    """简历版本快照：每次生成/修改前自动保存快照"""
+    __tablename__ = "resume_versions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    resume_id: Mapped[int] = mapped_column(Integer, ForeignKey("resumes.id", ondelete="CASCADE"), index=True)
+    version_number: Mapped[int] = mapped_column(Integer, default=1)  # 1, 2, 3...
+    # 完整快照：包含 Resume 和 ResumeSection 的完整 JSON
+    content_snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    change_summary: Mapped[str] = mapped_column(String(500), default="")  # "基于腾讯-内容运营岗位生成"
+    created_by: Mapped[str] = mapped_column(String(100), default="system")  # system / user / ai
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+
+    resume: Mapped["Resume"] = relationship("Resume", foreign_keys=[resume_id])
+
+
+class ResumeShare(Base):
+    """简历公开分享：生成带密码保护的分享链接"""
+    __tablename__ = "resume_shares"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    resume_id: Mapped[int] = mapped_column(Integer, ForeignKey("resumes.id", ondelete="CASCADE"), index=True)
+    share_token: Mapped[str] = mapped_column(String(64), unique=True, index=True)  # 随机生成的 UUID
+    password_hash: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)  # bcrypt hash，可为空表示无密码
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)  # 过期时间，可为空表示永久
+    view_count: Mapped[int] = mapped_column(Integer, default=0)  # 访问次数统计
+    last_viewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)  # 最后访问时间
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)  # 是否启用
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    resume: Mapped["Resume"] = relationship("Resume", foreign_keys=[resume_id])
+
+
+class Interview(Base):
+    """面试练习会话：AI 模拟面试"""
+    __tablename__ = "interviews"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(300), default="未命名面试")
+    # 目标公司和岗位信息
+    target_company: Mapped[str] = mapped_column(String(300), default="")
+    target_position: Mapped[str] = mapped_column(String(300), default="")
+    target_job_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("jobs.id"), nullable=True, index=True)
+    # 关联的简历和档案
+    resume_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("resumes.id"), nullable=True, index=True)
+    profile_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("profiles.id"), nullable=True, index=True)
+    # 面试配置
+    interview_type: Mapped[str] = mapped_column(String(50), default="behavioral")  # behavioral / technical / case / mixed
+    difficulty: Mapped[str] = mapped_column(String(20), default="medium")  # easy / medium / hard
+    scoring_skill_id: Mapped[str] = mapped_column(
+        String(64), default="evidence-interview-score", index=True
+    )
+    scoring_skill_version: Mapped[int] = mapped_column(Integer, default=1)
+    model_runtime_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    data_consent_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    # 面试状态
+    status: Mapped[str] = mapped_column(String(20), default="active", index=True)  # active / completed / archived
+    # AI 生成的面试问题列表
+    questions_json: Mapped[list] = mapped_column(JSON, default=list)  # [{"question": "...", "answered": false}, ...]
+    current_question_index: Mapped[int] = mapped_column(Integer, default=0)
+    # 面试报告（完成后生成）
+    report_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # 包含总体评分、各维度分析、改进建议
+    behavior_summary_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    messages: Mapped[list["InterviewMessage"]] = relationship(
+        back_populates="interview", cascade="all, delete-orphan", order_by="InterviewMessage.created_at"
+    )
+
+
+class InterviewMessage(Base):
+    """面试对话消息：AI 提问和用户回答"""
+    __tablename__ = "interview_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    interview_id: Mapped[int] = mapped_column(Integer, ForeignKey("interviews.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(20))  # interviewer / candidate
+    content: Mapped[str] = mapped_column(Text)
+    question_index: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # AI 对候选人回答的即时评估
+    evaluation_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # {"score": 75, "strengths": [...], "improvements": [...]}
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+
+    interview: Mapped["Interview"] = relationship(back_populates="messages")
+
+
+class InterviewScoringSkill(Base):
+    """受 schema 约束的声明式内容评分 Skill；不执行任意代码。"""
+
+    __tablename__ = "interview_scoring_skills"
+    __table_args__ = (
+        UniqueConstraint(
+            "skill_id",
+            "version",
+            name="uq_interview_scoring_skill_version",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    skill_id: Mapped[str] = mapped_column(String(64), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    name: Mapped[str] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(24), default="active", index=True)
+    definition_json: Mapped[dict] = mapped_column(JSON)
+    definition_hash: Mapped[str] = mapped_column(String(64), index=True)
+    is_builtin: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), index=True
+    )
+
+
+class InterviewBehaviorEvent(Base):
+    """浏览器本地视觉模型产生的派生表达行为事件；无视频、图像或 landmarks。"""
+
+    __tablename__ = "interview_behavior_events"
+    __table_args__ = (
+        UniqueConstraint(
+            "interview_id",
+            "event_id",
+            name="uq_interview_behavior_event",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    event_id: Mapped[str] = mapped_column(String(64), index=True)
+    interview_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("interviews.id", ondelete="CASCADE"), index=True
+    )
+    event_type: Mapped[str] = mapped_column(String(60), index=True)
+    started_ms: Mapped[int] = mapped_column(Integer)
+    ended_ms: Mapped[int] = mapped_column(Integer)
+    occurrence_count: Mapped[int] = mapped_column(Integer, default=1)
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+    confidence: Mapped[float] = mapped_column(Float)
+    detector_id: Mapped[str] = mapped_column(String(80))
+    detector_version: Mapped[str] = mapped_column(String(80))
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), index=True
+    )
+
+
+class InterviewEvaluationRun(Base):
+    """可复现的内容评价运行；表达行为汇总保持独立，不参与内容总分。"""
+
+    __tablename__ = "interview_evaluation_runs"
+
+    evaluation_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    idempotency_key: Mapped[str] = mapped_column(String(96), unique=True, index=True)
+    interview_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("interviews.id", ondelete="CASCADE"), index=True
+    )
+    message_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("interview_messages.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    scope: Mapped[str] = mapped_column(String(24), index=True)
+    scoring_skill_id: Mapped[str] = mapped_column(String(64), index=True)
+    scoring_skill_version: Mapped[int] = mapped_column(Integer)
+    input_hash: Mapped[str] = mapped_column(String(64), index=True)
+    status: Mapped[str] = mapped_column(String(24), default="running", index=True)
+    content_result_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    delivery_result_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    runtime_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    error: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), index=True
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

@@ -203,20 +203,20 @@ const FALLBACK_PROVIDER_PRESETS: ProviderPreset[] = [
 
 const bauhausFieldClassNames = {
   inputWrapper:
-    "border-2 border-black bg-white shadow-[2px_2px_0_0_rgba(18,18,18,0.3)] group-data-[focus=true]:border-black hover:-translate-y-[1px]",
-  input: "font-medium text-black placeholder:text-black/45",
-  label: "font-semibold tracking-[0.06em] text-[11px] text-black/65",
-  description: "text-black/55",
+    "border border-[var(--border-strong)] bg-white shadow-[2px_2px_0_0_rgba(18,18,18,0.3)] group-data-[focus=true]:border-[var(--border-strong)] hover:-translate-y-[1px]",
+  input: "font-medium text-[var(--foreground)] placeholder:text-[var(--foreground-muted)]",
+  label: "font-semibold tracking-[0.06em] text-[11px] text-[var(--foreground-muted)]",
+  description: "text-[var(--foreground-muted)]",
   errorMessage: "font-medium text-[#D02020]",
 };
 
 const bauhausModalContentClassName =
-  "max-h-[88vh] border-2 border-black bg-[#F0F0F0] text-black shadow-[4px_4px_0_0_rgba(18,18,18,0.45)]";
+  "max-h-[88vh] border border-[var(--border-strong)] bg-[var(--surface-muted)] text-[var(--foreground)] shadow-[4px_4px_0_0_rgba(18,18,18,0.45)]";
 
 const bauhausAutocompleteInputClassNames = {
   ...bauhausFieldClassNames,
   inputWrapper:
-    "border-2 border-black bg-white shadow-[2px_2px_0_0_rgba(18,18,18,0.3)] group-data-[focus=true]:border-black",
+    "border border-[var(--border-strong)] bg-white shadow-[2px_2px_0_0_rgba(18,18,18,0.3)] group-data-[focus=true]:border-[var(--border-strong)]",
 };
 
 function normalizeProviderId(value: string): string {
@@ -380,7 +380,7 @@ function FetchModelsButton({ baseUrl, apiKey, onModelsFetched }: FetchModelsButt
         获取模型列表
       </Button>
       {message && (
-        <span className="text-xs font-medium text-black/60">{message}</span>
+        <span className="text-xs font-medium text-[var(--foreground-muted)]">{message}</span>
       )}
     </div>
   );
@@ -964,35 +964,35 @@ export default function SettingsPage() {
       className="space-y-6"
     >
       <section className="bauhaus-panel overflow-hidden bg-[var(--surface)]">
-        <div className="grid gap-6 border-b border-black/12 p-6 md:p-8 xl:grid-cols-[1.05fr_0.95fr]">
+        <div className="grid gap-6 border-b border-[var(--border-strong)]/12 p-6 md:p-8 xl:grid-cols-[1.05fr_0.95fr]">
           <div className="space-y-4">
-            <span className="bauhaus-chip bg-[#f3ead2] text-black">系统配置</span>
+            <span className="bauhaus-chip bg-[var(--surface-muted)] text-[var(--foreground)]">系统配置</span>
             <div>
-              <p className="bauhaus-label text-black/60">搜索、来源与模型</p>
+              <p className="bauhaus-label text-[var(--foreground-muted)]">搜索、来源与模型</p>
               <h1 className="mt-2 text-4xl font-bold leading-tight md:text-5xl">统一配置工作台</h1>
-              <p className="mt-3 max-w-2xl text-sm font-medium leading-relaxed text-black/72 md:text-base">
+              <p className="mt-3 max-w-2xl text-sm font-medium leading-relaxed text-[var(--foreground-muted)] md:text-base">
                 在这里配置模型供应商、搜索规则、数据源和同步策略。所有模块延续同一套 Bauhaus 视觉规范，但保持原有配置逻辑不变。
               </p>
             </div>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-1">
-            <div className="bauhaus-panel-sm bg-[#e4ece6] p-4 text-black">
-              <p className="bauhaus-label text-black/60">模型配置数</p>
+            <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4 text-[var(--foreground)]">
+              <p className="bauhaus-label text-[var(--foreground-muted)]">模型配置数</p>
               <p className="mt-2 text-4xl font-bold">{apiConfigs.length}</p>
-              <p className="mt-2 text-sm font-medium text-black/75">当前已维护的模型供应商配置数量。</p>
+              <p className="mt-2 text-sm font-medium text-[var(--foreground-muted)]">当前已维护的模型供应商配置数量。</p>
             </div>
-            <div className="bauhaus-panel-sm bg-[#f3ead2] p-4 text-black">
-              <p className="bauhaus-label text-black/60">启用来源</p>
+            <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4 text-[var(--foreground)]">
+              <p className="bauhaus-label text-[var(--foreground-muted)]">启用来源</p>
               <p className="mt-2 text-4xl font-bold">{sourcesEnabled.length}</p>
-              <p className="mt-2 text-sm font-medium text-black/75">当前启用的数据抓取来源数。</p>
+              <p className="mt-2 text-sm font-medium text-[var(--foreground-muted)]">当前启用的数据抓取来源数。</p>
             </div>
-            <div className="bauhaus-panel-sm bg-[#f7ece9] p-4 text-black">
-              <p className="bauhaus-label text-black/60">待保存</p>
+            <div className="bauhaus-panel-sm bg-[var(--status-blush)] p-4 text-[var(--foreground)]">
+              <p className="bauhaus-label text-[var(--foreground-muted)]">待保存</p>
               <p className="mt-2 text-4xl font-bold">
                 {Number(apiDirty) + Number(settingsDirty)}
               </p>
-              <p className="mt-2 text-sm font-medium text-black/75">需要提交到本地配置文件的待保存模块数。</p>
+              <p className="mt-2 text-sm font-medium text-[var(--foreground-muted)]">需要提交到本地配置文件的待保存模块数。</p>
             </div>
           </div>
         </div>
@@ -1001,21 +1001,21 @@ export default function SettingsPage() {
       <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
         <CardBody className="space-y-5 p-5 md:p-6">
           <div className="flex items-center gap-3">
-            <div className="bauhaus-panel-sm flex h-11 w-11 items-center justify-center bg-[#1040C0] text-white">
+            <div className="bauhaus-panel-sm flex h-11 w-11 items-center justify-center bg-[var(--primary-blue)] text-white">
               <Key size={18} />
             </div>
             <div>
-              <p className="bauhaus-label text-black/55">模型供应商</p>
-              <h3 className="text-2xl font-bold text-black">大模型接口管理</h3>
+              <p className="bauhaus-label text-[var(--foreground-muted)]">模型供应商</p>
+              <h3 className="text-2xl font-bold text-[var(--foreground)]">大模型接口管理</h3>
             </div>
           </div>
-          <p className="text-sm font-medium leading-relaxed text-black/65">
+          <p className="text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
             请在此处配置模型接口信息。新增、删除、编辑后，仍需点击本模块底部的“保存模型配置”完成提交。
           </p>
 
           {/* 当前生效配置摘要 (PRD §7.1 Req 4) */}
           {config?.active_llm_summary && (
-            <div className="bauhaus-panel-sm bg-[#1040C0] px-4 py-4 text-sm text-white">
+            <div className="bauhaus-panel-sm bg-[var(--primary-blue)] px-4 py-4 text-sm text-white">
               <div className="mb-1 flex items-center gap-2">
                 <div className={`h-2 w-2 rounded-full ${
                   config.active_llm_summary.source === "active_config" ? "bg-green-400" :
@@ -1025,7 +1025,7 @@ export default function SettingsPage() {
                 <Chip
                   size="sm"
                   variant="flat"
-                  className="border-2 border-black bg-white text-black"
+                  className="border border-[var(--border-strong)] bg-white text-[var(--foreground)]"
                   color={
                   config.active_llm_summary.source === "active_config" ? "success" :
                   config.active_llm_summary.source === "ollama" ? "warning" : "danger"
@@ -1046,9 +1046,9 @@ export default function SettingsPage() {
             </div>
           )}
 
-          <div className="bauhaus-panel-sm overflow-x-auto bg-[#F0F0F0]">
+          <div className="bauhaus-panel-sm overflow-x-auto bg-[var(--surface-muted)]">
             <table className="w-full min-w-[780px] text-sm">
-              <thead className="bg-[#121212] text-white">
+              <thead className="bg-[var(--foreground)] text-white">
                 <tr>
                   <th className="px-3 py-3 text-left font-semibold tracking-[0.06em]">服务商</th>
                   <th className="px-3 py-3 text-left font-semibold tracking-[0.06em]">模型名称</th>
@@ -1060,7 +1060,7 @@ export default function SettingsPage() {
               <tbody>
                 {apiConfigs.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-3 py-8 text-center font-medium text-black/55">
+                    <td colSpan={5} className="px-3 py-8 text-center font-medium text-[var(--foreground-muted)]">
                       暂无配置，请点击“新增”创建第一条配置
                     </td>
                   </tr>
@@ -1070,18 +1070,18 @@ export default function SettingsPage() {
                   return (
                     <tr
                       key={item.id}
-                      className={`cursor-pointer border-t-2 border-black/10 transition-colors ${
-                        isSelected ? "bg-[#F0C020]" : "bg-white hover:bg-[#F0F0F0]"
+                      className={`cursor-pointer border-t-2 border-[var(--border-strong)]/10 transition-colors ${
+                        isSelected ? "bg-[#F0C020]" : "bg-white hover:bg-[var(--surface-muted)]"
                       }`}
                       onClick={() => handleRowClick(item.id)}
                     >
                       <td className="px-3 py-3">
-                        <div className="font-bold text-black">{item.service_name}</div>
-                        <div className="text-[11px] font-medium tracking-[0.04em] text-black/45">{item.provider_id}</div>
+                        <div className="font-bold text-[var(--foreground)]">{item.service_name}</div>
+                        <div className="text-[11px] font-medium tracking-[0.04em] text-[var(--foreground-muted)]">{item.provider_id}</div>
                       </td>
-                      <td className="px-3 py-3 text-black/80">{item.model}</td>
-                      <td className="px-3 py-3 break-all text-black/72">{item.base_url}</td>
-                      <td className="px-3 py-3 text-black/72">{displayMaskedKey(item.api_key)}</td>
+                      <td className="px-3 py-3 text-[var(--foreground-muted)]">{item.model}</td>
+                      <td className="px-3 py-3 break-all text-[var(--foreground-muted)]">{item.base_url}</td>
+                      <td className="px-3 py-3 text-[var(--foreground-muted)]">{displayMaskedKey(item.api_key)}</td>
                       <td className="px-3 py-3 text-center">
                         <input
                           type="radio"
@@ -1138,8 +1138,8 @@ export default function SettingsPage() {
                 variant="flat"
                 className={
                   apiDirty
-                    ? "border-2 border-black bg-[#F0C020] text-black"
-                    : "border-2 border-black bg-white text-black/60"
+                    ? "border border-[var(--border-strong)] bg-[#F0C020] text-[var(--foreground)]"
+                    : "border border-[var(--border-strong)] bg-white text-[var(--foreground-muted)]"
                 }
               >
                 {apiDirty ? "有未保存改动" : "已同步"}
@@ -1162,8 +1162,8 @@ export default function SettingsPage() {
             <div
               className={`bauhaus-panel-sm px-3 py-3 text-xs font-medium ${
                 listFeedback.type === "success"
-                  ? "bg-[#F0C020] text-black"
-                  : "bg-[#D02020] text-white"
+                  ? "bg-[#F0C020] text-[var(--foreground)]"
+                  : "bg-[var(--primary-red)] text-white"
               }`}
             >
               {listFeedback.message}
@@ -1171,7 +1171,7 @@ export default function SettingsPage() {
           )}
 
           {apiSaveError && (
-            <div className="bauhaus-panel-sm flex items-center gap-2 bg-[#D02020] px-3 py-3 text-xs font-medium text-white">
+            <div className="bauhaus-panel-sm flex items-center gap-2 bg-[var(--primary-red)] px-3 py-3 text-xs font-medium text-white">
               <AlertCircle size={14} />
               <span>{apiSaveError}</span>
             </div>
@@ -1182,8 +1182,8 @@ export default function SettingsPage() {
       <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
         <CardBody className="space-y-4 p-5 md:p-6">
           <div>
-            <p className="bauhaus-label text-black/55">搜索规则</p>
-            <h3 className="mt-2 text-2xl font-bold text-black">搜索配置</h3>
+            <p className="bauhaus-label text-[var(--foreground-muted)]">搜索规则</p>
+            <h3 className="mt-2 text-2xl font-bold text-[var(--foreground)]">搜索配置</h3>
           </div>
           <Textarea
             label="搜索关键词（每行一个）"
@@ -1223,15 +1223,15 @@ export default function SettingsPage() {
       <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
         <CardBody className="space-y-4 p-5 md:p-6">
           <div>
-            <p className="bauhaus-label text-black/55">来源开关</p>
-            <h3 className="mt-2 text-2xl font-bold text-black">数据源</h3>
+            <p className="bauhaus-label text-[var(--foreground-muted)]">来源开关</p>
+            <h3 className="mt-2 text-2xl font-bold text-[var(--foreground)]">数据源</h3>
           </div>
           {dataSources.map((source) => (
-            <div key={source.name} className="bauhaus-panel-sm flex items-center justify-between gap-4 bg-[#F0F0F0] px-4 py-3">
+            <div key={source.name} className="bauhaus-panel-sm flex items-center justify-between gap-4 bg-[var(--surface-muted)] px-4 py-3">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-black">{source.label}</span>
+                <span className="text-sm font-medium text-[var(--foreground)]">{source.label}</span>
                 {!source.available && (
-                  <Chip size="sm" variant="flat" className="border-2 border-black bg-white text-[10px] text-black/55">
+                  <Chip size="sm" variant="flat" className="border border-[var(--border-strong)] bg-white text-[10px] text-[var(--foreground-muted)]">
                     即将开放
                   </Chip>
                 )}
@@ -1251,13 +1251,13 @@ export default function SettingsPage() {
       <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
         <CardBody className="space-y-4 p-5 md:p-6">
           <div>
-            <p className="bauhaus-label text-black/55">档案同步</p>
-            <h3 className="mt-2 text-2xl font-bold text-black">档案同步</h3>
+            <p className="bauhaus-label text-[var(--foreground-muted)]">档案同步</p>
+            <h3 className="mt-2 text-2xl font-bold text-[var(--foreground)]">档案同步</h3>
           </div>
-          <div className="bauhaus-panel-sm flex items-start justify-between gap-4 bg-[#F0F0F0] px-4 py-4">
+          <div className="bauhaus-panel-sm flex items-start justify-between gap-4 bg-[var(--surface-muted)] px-4 py-4">
             <div className="space-y-1">
-              <p className="text-sm font-medium text-black">档案源数据更新时，同步更新简历中已导入的对应条目</p>
-              <p className="text-xs font-medium leading-relaxed text-black/55">
+              <p className="text-sm font-medium text-[var(--foreground)]">档案源数据更新时，同步更新简历中已导入的对应条目</p>
+              <p className="text-xs font-medium leading-relaxed text-[var(--foreground-muted)]">
                 默认关闭。开启后当档案条目被编辑时，简历编辑页会提示你手动确认是否同步；档案删除永不删除简历内容。
               </p>
             </div>
@@ -1274,8 +1274,8 @@ export default function SettingsPage() {
       <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
         <CardBody className="space-y-4 p-5 md:p-6">
           <div>
-            <p className="bauhaus-label text-black/55">投递通知</p>
-            <h3 className="mt-2 text-2xl font-bold text-black">邮箱推送</h3>
+            <p className="bauhaus-label text-[var(--foreground-muted)]">投递通知</p>
+            <h3 className="mt-2 text-2xl font-bold text-[var(--foreground)]">邮箱推送</h3>
           </div>
           <Input
             label="接收邮箱"
@@ -1291,15 +1291,15 @@ export default function SettingsPage() {
       <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
         <CardBody className="space-y-4 p-5 md:p-6">
           <div className="flex items-center gap-3">
-            <div className="bauhaus-panel-sm flex h-11 w-11 items-center justify-center bg-[#F0C020] text-black">
+            <div className="bauhaus-panel-sm flex h-11 w-11 items-center justify-center bg-[#F0C020] text-[var(--foreground)]">
               <Cookie size={18} />
             </div>
             <div>
-              <p className="bauhaus-label text-black/55">爬虫权限</p>
-              <h3 className="text-2xl font-bold text-black">爬虫认证配置</h3>
+              <p className="bauhaus-label text-[var(--foreground-muted)]">爬虫权限</p>
+              <h3 className="text-2xl font-bold text-[var(--foreground)]">爬虫认证配置</h3>
             </div>
           </div>
-          <p className="text-xs font-medium leading-relaxed text-black/55">
+          <p className="text-xs font-medium leading-relaxed text-[var(--foreground-muted)]">
             部分招聘平台需要登录后的 Cookie 才能获取数据。在浏览器登录后，
             按 F12 - Network - 复制任意请求的 Cookie 字段粘贴到这里。Cookie 仅保存在本地。
           </p>
@@ -1327,7 +1327,7 @@ export default function SettingsPage() {
               <button
                 type="button"
                 onClick={() => setShowBossCookie((prev) => !prev)}
-                className="text-black/35 hover:text-black/70"
+                className="text-[var(--foreground-muted)] hover:text-[var(--foreground-muted)]"
                 aria-label={showBossCookie ? "隐藏 Cookie" : "显示 Cookie"}
                 aria-pressed={showBossCookie}
               >
@@ -1353,7 +1353,7 @@ export default function SettingsPage() {
               <button
                 type="button"
                 onClick={() => setShowZhilianCookie((prev) => !prev)}
-                className="text-black/35 hover:text-black/70"
+                className="text-[var(--foreground-muted)] hover:text-[var(--foreground-muted)]"
                 aria-label={showZhilianCookie ? "隐藏 Cookie" : "显示 Cookie"}
                 aria-pressed={showZhilianCookie}
               >
@@ -1366,14 +1366,14 @@ export default function SettingsPage() {
       </Card>
 
       {settingsSaveError && (
-        <div className="bauhaus-panel-sm flex items-center gap-2 bg-[#D02020] px-3 py-3 text-sm font-medium text-white">
+        <div className="bauhaus-panel-sm flex items-center gap-2 bg-[var(--primary-red)] px-3 py-3 text-sm font-medium text-white">
           <AlertCircle size={16} />
           <span>{settingsSaveError}</span>
         </div>
       )}
 
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-        <p className="text-xs font-medium text-black/55">
+        <p className="text-xs font-medium text-[var(--foreground-muted)]">
           此按钮仅保存搜索配置、数据源、邮箱推送与爬虫认证配置。
         </p>
         <div className="flex items-center gap-2 self-start md:self-auto">
@@ -1382,8 +1382,8 @@ export default function SettingsPage() {
             variant="flat"
             className={
               settingsDirty
-                ? "border-2 border-black bg-[#F0C020] text-black"
-                : "border-2 border-black bg-white text-black/60"
+                ? "border border-[var(--border-strong)] bg-[#F0C020] text-[var(--foreground)]"
+                : "border border-[var(--border-strong)] bg-white text-[var(--foreground-muted)]"
             }
           >
             {settingsDirty ? "有未保存改动" : "已同步"}
@@ -1403,7 +1403,7 @@ export default function SettingsPage() {
 
       <Modal isOpen={isEditorOpen} onClose={onEditorClose} size="3xl" placement="center" scrollBehavior="inside">
         <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b-2 border-black px-6 py-5 text-xl font-black tracking-[-0.06em]">
+          <ModalHeader className="border-b-2 border-[var(--border-strong)] px-6 py-5 text-xl font-black tracking-[-0.06em]">
             {editingConfigId ? "编辑模型配置" : "新增模型配置"}
           </ModalHeader>
           <ModalBody className="grid grid-cols-1 gap-4 overflow-y-auto px-6 py-6 md:grid-cols-2">
@@ -1437,7 +1437,7 @@ export default function SettingsPage() {
               selectorButtonProps={{
                 size: "sm",
                 variant: "flat",
-                className: "min-h-10 h-10 w-10 min-w-10 border-2 border-black bg-[#F0C020] text-black",
+                className: "min-h-10 h-10 w-10 min-w-10 border border-[var(--border-strong)] bg-[#F0C020] text-[var(--foreground)]",
               }}
               inputProps={{
                 classNames: bauhausAutocompleteInputClassNames,
@@ -1453,8 +1453,8 @@ export default function SettingsPage() {
               {providerSelectOptions.map((item) => (
                 <AutocompleteItem key={item.id} textValue={item.label}>
                   <div className="flex flex-col">
-                    <span className="font-medium text-black">{item.label}</span>
-                    {item.description && <span className="text-xs text-black/45">{item.description}</span>}
+                    <span className="font-medium text-[var(--foreground)]">{item.label}</span>
+                    {item.description && <span className="text-xs text-[var(--foreground-muted)]">{item.description}</span>}
                   </div>
                 </AutocompleteItem>
               ))}
@@ -1491,7 +1491,7 @@ export default function SettingsPage() {
               selectorButtonProps={{
                 size: "sm",
                 variant: "flat",
-                className: "min-h-10 h-10 w-10 min-w-10 border-2 border-black bg-[#F0C020] text-black",
+                className: "min-h-10 h-10 w-10 min-w-10 border border-[var(--border-strong)] bg-[#F0C020] text-[var(--foreground)]",
               }}
               inputProps={{
                 classNames: bauhausAutocompleteInputClassNames,
@@ -1507,8 +1507,8 @@ export default function SettingsPage() {
               {modelSelectOptions.map((item) => (
                 <AutocompleteItem key={item.id} textValue={item.label}>
                   <div className="flex flex-col">
-                    <span className="font-medium text-black">{item.label}</span>
-                    {item.description && <span className="text-xs text-black/45">{item.description}</span>}
+                    <span className="font-medium text-[var(--foreground)]">{item.label}</span>
+                    {item.description && <span className="text-xs text-[var(--foreground-muted)]">{item.description}</span>}
                   </div>
                 </AutocompleteItem>
               ))}
@@ -1531,7 +1531,7 @@ export default function SettingsPage() {
                   }
                 }}
               />
-              <span className="text-xs text-black/45">根据接口地址和密钥获取可用模型列表</span>
+              <span className="text-xs text-[var(--foreground-muted)]">根据接口地址和密钥获取可用模型列表</span>
             </div>
 
             <Autocomplete
@@ -1566,7 +1566,7 @@ export default function SettingsPage() {
               selectorButtonProps={{
                 size: "sm",
                 variant: "flat",
-                className: "min-h-10 h-10 w-10 min-w-10 border-2 border-black bg-[#F0C020] text-black",
+                className: "min-h-10 h-10 w-10 min-w-10 border border-[var(--border-strong)] bg-[#F0C020] text-[var(--foreground)]",
               }}
               inputProps={{
                 classNames: bauhausAutocompleteInputClassNames,
@@ -1582,8 +1582,8 @@ export default function SettingsPage() {
               {urlSelectOptions.map((item) => (
                 <AutocompleteItem key={item.id} textValue={item.label}>
                   <div className="flex flex-col">
-                    <span className="font-medium text-black">{item.label}</span>
-                    {item.description && <span className="text-xs text-black/45">{item.description}</span>}
+                    <span className="font-medium text-[var(--foreground)]">{item.label}</span>
+                    {item.description && <span className="text-xs text-[var(--foreground-muted)]">{item.description}</span>}
                   </div>
                 </AutocompleteItem>
               ))}
@@ -1604,7 +1604,7 @@ export default function SettingsPage() {
                 <button
                   type="button"
                   onClick={() => setShowFormApiKey((prev) => !prev)}
-                  className="text-black/35 hover:text-black/70"
+                  className="text-[var(--foreground-muted)] hover:text-[var(--foreground-muted)]"
                   aria-label={showFormApiKey ? "隐藏访问密钥" : "显示访问密钥"}
                   aria-pressed={showFormApiKey}
                 >
@@ -1617,12 +1617,12 @@ export default function SettingsPage() {
               设为当前激活配置
             </Checkbox>
 
-            <Divider className="my-1 border-black/10 md:col-span-2" />
-            <p className="text-xs font-medium text-black/55 md:col-span-2">
+            <Divider className="my-1 border-[var(--border-strong)]/10 md:col-span-2" />
+            <p className="text-xs font-medium text-[var(--foreground-muted)] md:col-span-2">
               所有字段均必填。服务名称、模型名称、接口地址均支持预设选择和手动输入。
             </p>
           </ModalBody>
-          <ModalFooter className="border-t-2 border-black px-6 py-5">
+          <ModalFooter className="border-t-2 border-[var(--border-strong)] px-6 py-5">
             <Button
               variant="light"
               className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
@@ -1642,15 +1642,15 @@ export default function SettingsPage() {
 
       <Modal isOpen={isDeleteOpen} onClose={onDeleteClose} size="sm" placement="center">
         <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b-2 border-black bg-[#F0C020] px-6 py-5 text-xl font-black tracking-[-0.06em]">
+          <ModalHeader className="border-b-2 border-[var(--border-strong)] bg-[#F0C020] px-6 py-5 text-xl font-black tracking-[-0.06em]">
             确认删除
           </ModalHeader>
           <ModalBody className="px-6 py-6">
-            <p className="text-sm font-medium leading-relaxed text-black/72">
+            <p className="text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
               确定删除当前配置“{selectedConfig?.service_name || "未命名配置"}”吗？此操作不可撤销。
             </p>
           </ModalBody>
-          <ModalFooter className="border-t-2 border-black px-6 py-5">
+          <ModalFooter className="border-t-2 border-[var(--border-strong)] px-6 py-5">
             <Button
               variant="light"
               className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"

@@ -30,7 +30,7 @@ def _build_source_profile_snapshot(profile: Profile, selected: list[ProfileSecti
     }
 
 
-async def _create_generated_resume(
+async def stage_generated_resume(
     *,
     db,
     profile: Profile,
@@ -43,7 +43,9 @@ async def _create_generated_resume(
     template_id: int | None,
     source_profile_snapshot: dict,
     rows: list[dict],
+    language: str = "zh",
 ) -> Resume:
+    """Stage a generated resume inside the caller's transaction."""
     resume = Resume(
         user_name=profile.name or "默认候选人",
         title=title,
@@ -52,26 +54,24 @@ async def _create_generated_resume(
         style_config=style_config,
         template_id=template_id,
         is_primary=False,
-        language="zh",
+        language=language or "zh",
         source_mode=source_mode,
         source_job_ids=source_job_ids,
         source_profile_snapshot=source_profile_snapshot,
+        source_profile_id=profile.id,
     )
     db.add(resume)
-    await db.flush()
 
     for row in rows:
-        db.add(
+        resume.sections.append(
             ResumeSection(
-                resume_id=resume.id,
                 section_type=row["section_type"],
                 sort_order=row["sort_order"],
                 title=row["title"],
                 visible=True,
                 content_json=row["content_json"],
+                source_section_ids=row.get("source_section_ids"),
             )
         )
-
-    await db.commit()
-    await db.refresh(resume)
+    await db.flush()
     return resume

@@ -13,7 +13,7 @@
 #   POST   /api/resume/                            创建新简历
 #   GET    /api/resume/templates                   模板列表
 #   GET    /api/resume/{id}                        获取完整简历（含所有段落）
-#   PUT    /api/resume/{id}                        更新简历主信息
+#   PUT    /api/resume/{id}                        更新简历（可选 sections 全量同步）
 #   DELETE /api/resume/{id}                        删除简历（级联删段落）
 #   POST   /api/resume/{id}/sections               添加段落
 #   PUT    /api/resume/{id}/sections/{sid}          更新段落
@@ -55,7 +55,7 @@ from app.services.application_workspace import auto_write_job_to_total
 
 router = APIRouter()
 
-FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://127.0.0.1:3000").rstrip("/")
+FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://127.0.0.1:3300").rstrip("/")
 _EXPORT_IMAGE_CACHE_TTL_SECONDS = 120
 _EXPORT_IMAGE_CACHE_MAX_ENTRIES = 8
 _export_image_cache: dict[tuple[int, str, str], tuple[float, bytes]] = {}
@@ -84,8 +84,22 @@ class ResumeCreate(BaseModel):
     source_profile_snapshot: dict = Field(default_factory=dict)
 
 
+class ResumeSectionInput(BaseModel):
+    """PUT /api/resume/{id} 体内 sections 数组的单元素。"""
+    id: Optional[int] = None
+    section_type: str
+    sort_order: int = 0
+    title: str = ""
+    visible: bool = True
+    content_json: list = Field(default_factory=list)
+
+
 class ResumeUpdate(BaseModel):
-    """更新简历的请求体（所有字段可选）"""
+    """更新简历的请求体（所有字段可选）。
+
+    传 sections 时走「按 id diff」同步：有 id 且匹配 → 更新；无 id → 新建；
+    请求中缺失的旧 section → 删除。一次 PUT 完成全量段落同步，免去多端点往返。
+    """
     user_name: Optional[str] = None
     title: Optional[str] = None
     summary: Optional[str] = None
@@ -97,6 +111,7 @@ class ResumeUpdate(BaseModel):
     source_mode: Optional[str] = None
     source_job_ids: Optional[list[int]] = None
     source_profile_snapshot: Optional[dict] = None
+    sections: Optional[list[ResumeSectionInput]] = None
 
 
 class SectionCreate(BaseModel):
@@ -396,15 +411,60 @@ async def update_resume(
     resume_id: int, data: ResumeUpdate, db: AsyncSession = Depends(get_db)
 ):
     """
-    更新简历主信息（不含段落）
+    更新简历主信息（含可选段落全量同步）。
     ─────────────────────────────────────────────
-    只更新请求体中非 None 的字段，实现 PATCH 语义。
-    段落的增删改通过独立端点操作。
+    · 顶层字段：只更新非 None 字段（PATCH 语义）。
+    · sections：传非 None 时按 id diff 同步：
+        - 有 id 且命中已有 section → 更新字段
+        - 无 id → 新建 section
+        - 已有但请求中缺失 id 的 section → 删除
+      一次 PUT 完成段落全量同步，Puck onPublish 用此一处即可。
     """
-    resume = await _get_resume_or_404(resume_id, db)
+    resume = await _get_resume_or_404(resume_id, db, load_sections=True)
     update_data = data.model_dump(exclude_none=True)
+
+    sections_in = update_data.pop("sections", None)
     for key, value in update_data.items():
         setattr(resume, key, value)
+
+    if sections_in is not None:
+        existing_map = {s.id: s for s in resume.sections}
+        seen_ids: set[int] = set()
+
+        for index, sec_in in enumerate(sections_in):
+            sec_id = sec_in.get("id")
+            section_type = sec_in["section_type"]
+            sort_order = sec_in.get("sort_order", index)
+            title = sec_in.get("title", "")
+            visible = sec_in.get("visible", True)
+            content_json = sec_in.get("content_json", [])
+
+            if sec_id is not None and sec_id in existing_map:
+                existing = existing_map[sec_id]
+                existing.section_type = section_type
+                existing.sort_order = sort_order
+                existing.title = title
+                existing.visible = visible
+                existing.content_json = content_json
+                seen_ids.add(existing.id)
+            else:
+                new_section = ResumeSection(
+                    resume_id=resume.id,
+                    section_type=section_type,
+                    sort_order=sort_order,
+                    title=title,
+                    visible=visible,
+                    content_json=content_json,
+                )
+                db.add(new_section)
+                await db.flush()
+                seen_ids.add(new_section.id)
+                existing_map[new_section.id] = new_section
+
+        for old_id, old_section in existing_map.items():
+            if old_id not in seen_ids:
+                await db.delete(old_section)
+
     await db.commit()
     await db.refresh(resume)
     fresh_resume = await _get_resume_or_404(resume.id, db, load_sections=True)
@@ -1893,6 +1953,23 @@ async def ai_apply_suggestion(
       - keyword_add: 更新技能列表
       - section_reorder: 更新段落排序
     """
+    from app.services.resume_fact_gates import validate_generated_content
+    from app.services.resume_versions import create_version_snapshot
+
+    resume = await _get_resume_or_404(resume_id, db, load_sections=True)
+    source_payload = _serialize_resume_full(resume)
+    fact_gates = validate_generated_content(source_payload, suggestion)
+    if fact_gates["status"] == "blocked":
+        raise HTTPException(
+            status_code=400,
+            detail={"message": "事实校验未通过，建议未应用", "fact_gates": fact_gates},
+        )
+    backup = await create_version_snapshot(
+        db,
+        resume,
+        change_summary="应用 AI 建议前的自动备份",
+        created_by="system",
+    )
     suggestion_type = suggestion.get("type")
 
     if suggestion_type == "bullet_rewrite":
@@ -1914,12 +1991,15 @@ async def ai_apply_suggestion(
             raise HTTPException(status_code=404, detail="Section not found")
 
         content = list(section.content_json or [])
-        if item_index < len(content):
-            content[item_index]["description"] = suggested
-            section.content_json = content
-            await db.commit()
-
-        return {"message": "Suggestion applied"}
+        if item_index >= len(content) or not isinstance(content[item_index], dict):
+            raise HTTPException(status_code=409, detail="目标条目已变化，请重新生成建议")
+        original = str(suggestion.get("original") or "").strip()
+        current = str(content[item_index].get("description") or "")
+        if original and original not in current:
+            raise HTTPException(status_code=409, detail="建议原文已变化，拒绝覆盖较新的简历内容")
+        content[item_index]["description"] = current.replace(original, str(suggested), 1) if original else suggested
+        section.content_json = content
+        message = "Suggestion applied"
 
     elif suggestion_type == "keyword_add":
         section_id = suggestion.get("section_id")
@@ -1941,11 +2021,16 @@ async def ai_apply_suggestion(
         content = list(section.content_json or [])
         # keyword_add 的 suggested 是完整的技能列表，直接替换第一个分组
         if content and isinstance(suggested, list):
+            source_lower = json.dumps(source_payload, ensure_ascii=False).lower()
+            unsupported = [str(skill) for skill in suggested if str(skill).lower() not in source_lower]
+            if unsupported:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"拒绝添加缺少简历证据的技能: {', '.join(unsupported)}",
+                )
             content[0]["items"] = suggested
             section.content_json = content
-            await db.commit()
-
-        return {"message": "Suggestion applied"}
+        message = "Suggestion applied"
 
     elif suggestion_type == "section_reorder":
         suggested_order = suggestion.get("suggested_order", [])
@@ -1959,11 +2044,17 @@ async def ai_apply_suggestion(
             section = result.scalar_one_or_none()
             if section:
                 section.sort_order = idx
-        await db.commit()
-        return {"message": "Sections reordered"}
+        message = "Sections reordered"
 
     else:
         raise HTTPException(status_code=400, detail=f"Unknown suggestion type: {suggestion_type}")
+
+    await db.commit()
+    return {
+        "message": message,
+        "backup_version_number": backup.version_number,
+        "fact_gates": fact_gates,
+    }
 
 
 @router.post("/{resume_id}/ai/apply-batch")
@@ -1985,7 +2076,22 @@ async def ai_apply_batch(
         "reorder": { "suggested_order": ["段落1", "段落2", ...] }  // 可选
       }
     """
-    resume = await _get_resume_or_404(resume_id, db)
+    from app.services.resume_fact_gates import validate_generated_content
+    from app.services.resume_versions import create_version_snapshot
+
+    resume = await _get_resume_or_404(resume_id, db, load_sections=True)
+    fact_gates = validate_generated_content(_serialize_resume_full(resume), payload.get("suggestions", []))
+    if fact_gates["status"] == "blocked":
+        raise HTTPException(
+            status_code=400,
+            detail={"message": "事实校验未通过，整批建议均未应用", "fact_gates": fact_gates},
+        )
+    backup = await create_version_snapshot(
+        db,
+        resume,
+        change_summary="批量应用 AI 建议前的自动备份",
+        created_by="system",
+    )
     applied = 0
     failed = 0
 
@@ -2051,11 +2157,19 @@ async def ai_apply_batch(
             if section:
                 section.sort_order = idx
 
+    if failed:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=f"有 {failed} 条建议无法匹配，整批建议均未应用，请重新分析",
+        )
     await db.commit()
     return {
         "message": f"已应用 {applied} 条建议" + (f"，{failed} 条未匹配" if failed else ""),
         "applied": applied,
         "failed": failed,
+        "backup_version_number": backup.version_number,
+        "fact_gates": fact_gates,
     }
 
 
@@ -2072,7 +2186,7 @@ async def ai_apply_batch(
 class BatchOptimizeRequest(BaseModel):
     """批量 AI 简历定制请求体"""
     job_ids: list[int] = Field(..., min_length=1, max_length=20)
-    auto_apply: bool = True  # 是否自动应用 AI 建议
+    auto_apply: bool = False  # 默认仅生成可审阅建议；用户必须明确开启自动写入
 
 
 @router.post("/{resume_id}/ai/batch-optimize")
@@ -2217,9 +2331,10 @@ async def ai_batch_optimize(
 
                 match_analysis = pipeline_result.get("match_analysis", {})
                 entry["ats_score"] = match_analysis.get("ats_score")
+                entry["fact_gates"] = pipeline_result.get("fact_gates", {})
 
                 # ── 自动应用建议 ──
-                if auto_apply:
+                if auto_apply and entry["fact_gates"].get("status") != "blocked":
                     applied_count = 0
 
                     content_rewrite = pipeline_result.get("content_rewrite", {})
@@ -2272,8 +2387,12 @@ async def ai_batch_optimize(
                                 section.sort_order = sort_idx
 
                     entry["suggestions_applied"] = applied_count
+                elif auto_apply:
+                    entry["status"] = "review_required"
+                    entry["error"] = "事实校验未通过，未自动应用建议"
 
-                entry["status"] = "success"
+                if entry["status"] == "pending":
+                    entry["status"] = "success"
                 await db.commit()
                 try:
                     await auto_write_job_to_total(db, job_id=job_id)
@@ -2361,10 +2480,774 @@ async def parse_resume_upload(file: UploadFile = File(...)):
     if len(file_bytes) > MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail="文件大小不能超过 10MB")
 
-    from app.services.resume_parser import parse_resume_file
+    from app.services.resume_parser import parse_resume_document
 
-    text = await parse_resume_file(file.filename, file_bytes)
-    if text is None:
+    parsed_document = await parse_resume_document(file.filename, file_bytes)
+    if parsed_document is None:
         raise HTTPException(status_code=500, detail="文件解析失败")
+    if not parsed_document.text.strip():
+        ocr_unavailable = any(
+            "ocr_unavailable" in str(warning)
+            for warning in parsed_document.warnings
+        )
+        detail = (
+            "这是扫描版 PDF，但本机 OCR 不可用；请安装 Tesseract（中文 chi_sim + 英文 eng）后重试"
+            if ocr_unavailable
+            else "未能从文件中提取文本"
+        )
+        raise HTTPException(status_code=400, detail=detail)
 
-    return {"filename": file.filename, "text": text, "length": len(text)}
+    return {
+        "filename": file.filename,
+        "text": parsed_document.text,
+        "length": len(parsed_document.text),
+        "parse_diagnostics": parsed_document.public_dict(),
+    }
+
+
+# =============================================
+# 简历版本管理 API
+# =============================================
+
+from app.models.models import ResumeVersion
+
+
+class VersionCreate(BaseModel):
+    """创建版本快照的请求体"""
+    change_summary: str = ""
+    created_by: str = "user"
+
+
+@router.post("/{resume_id}/versions")
+async def create_resume_version(
+    resume_id: int,
+    body: VersionCreate,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    手动创建简历版本快照
+    ────────────────────────────────────────────
+    用于用户主动保存版本，或在生成新简历前自动调用。
+    会保存完整的 Resume + ResumeSection 数据快照。
+    """
+    # 获取完整简历数据
+    result = await db.execute(
+        select(Resume)
+        .options(selectinload(Resume.sections))
+        .where(Resume.id == resume_id)
+    )
+    resume = result.scalar_one_or_none()
+    if not resume:
+        raise HTTPException(status_code=404, detail="简历不存在")
+
+    # 获取当前最大版本号
+    version_result = await db.execute(
+        select(ResumeVersion.version_number)
+        .where(ResumeVersion.resume_id == resume_id)
+        .order_by(ResumeVersion.version_number.desc())
+        .limit(1)
+    )
+    max_version = version_result.scalar_one_or_none()
+    next_version = (max_version or 0) + 1
+
+    # 构建完整快照
+    snapshot = {
+        "resume": {
+            "id": resume.id,
+            "user_name": resume.user_name,
+            "title": resume.title,
+            "photo_url": resume.photo_url,
+            "summary": resume.summary,
+            "contact_json": resume.contact_json,
+            "template_id": resume.template_id,
+            "style_config": resume.style_config,
+            "is_primary": resume.is_primary,
+            "language": resume.language,
+            "source_mode": resume.source_mode,
+            "source_job_ids": resume.source_job_ids,
+        },
+        "sections": [
+            {
+                "id": s.id,
+                "section_type": s.section_type,
+                "sort_order": s.sort_order,
+                "title": s.title,
+                "visible": s.visible,
+                "content_json": s.content_json,
+            }
+            for s in resume.sections
+        ]
+    }
+
+    # 创建版本记录
+    version = ResumeVersion(
+        resume_id=resume_id,
+        version_number=next_version,
+        content_snapshot=snapshot,
+        change_summary=body.change_summary or f"版本 {next_version}",
+        created_by=body.created_by,
+    )
+    db.add(version)
+    await db.commit()
+    await db.refresh(version)
+
+    return {
+        "id": version.id,
+        "resume_id": version.resume_id,
+        "version_number": version.version_number,
+        "change_summary": version.change_summary,
+        "created_by": version.created_by,
+        "created_at": version.created_at.isoformat(),
+    }
+
+
+@router.get("/{resume_id}/versions")
+async def list_resume_versions(
+    resume_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    获取简历的所有版本列表
+    ────────────────────────────────────────────
+    返回版本号、创建时间、变更摘要等元信息，不包含完整快照内容。
+    """
+    result = await db.execute(
+        select(ResumeVersion)
+        .where(ResumeVersion.resume_id == resume_id)
+        .order_by(ResumeVersion.version_number.desc())
+    )
+    versions = result.scalars().all()
+
+    return [
+        {
+            "id": v.id,
+            "resume_id": v.resume_id,
+            "version_number": v.version_number,
+            "change_summary": v.change_summary,
+            "created_by": v.created_by,
+            "created_at": v.created_at.isoformat(),
+        }
+        for v in versions
+    ]
+
+
+@router.get("/{resume_id}/versions/{version_id}")
+async def get_resume_version(
+    resume_id: int,
+    version_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    获取指定版本的完整快照内容
+    ────────────────────────────────────────────
+    用于前端预览历史版本或回滚。
+    """
+    result = await db.execute(
+        select(ResumeVersion)
+        .where(ResumeVersion.resume_id == resume_id, ResumeVersion.id == version_id)
+    )
+    version = result.scalar_one_or_none()
+    if not version:
+        raise HTTPException(status_code=404, detail="版本不存在")
+
+    return {
+        "id": version.id,
+        "resume_id": version.resume_id,
+        "version_number": version.version_number,
+        "change_summary": version.change_summary,
+        "created_by": version.created_by,
+        "created_at": version.created_at.isoformat(),
+        "content_snapshot": version.content_snapshot,
+    }
+
+
+@router.post("/{resume_id}/versions/{version_id}/restore")
+async def restore_resume_version(
+    resume_id: int,
+    version_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    回滚到指定版本
+    ────────────────────────────────────────────
+    1. 创建当前状态的版本快照（防止误操作）
+    2. 将目标版本的快照恢复到当前简历
+    3. 删除旧的 sections，插入快照中的 sections
+    """
+    # 获取目标版本
+    version_result = await db.execute(
+        select(ResumeVersion)
+        .where(ResumeVersion.resume_id == resume_id, ResumeVersion.id == version_id)
+    )
+    version = version_result.scalar_one_or_none()
+    if not version:
+        raise HTTPException(status_code=404, detail="版本不存在")
+
+    # 获取当前简历
+    resume_result = await db.execute(
+        select(Resume)
+        .options(selectinload(Resume.sections))
+        .where(Resume.id == resume_id)
+    )
+    resume = resume_result.scalar_one_or_none()
+    if not resume:
+        raise HTTPException(status_code=404, detail="简历不存在")
+
+    # 1. 先保存当前状态为新版本（防止误操作）
+    current_snapshot = {
+        "resume": {
+            "id": resume.id,
+            "user_name": resume.user_name,
+            "title": resume.title,
+            "photo_url": resume.photo_url,
+            "summary": resume.summary,
+            "contact_json": resume.contact_json,
+            "template_id": resume.template_id,
+            "style_config": resume.style_config,
+            "is_primary": resume.is_primary,
+            "language": resume.language,
+            "source_mode": resume.source_mode,
+            "source_job_ids": resume.source_job_ids,
+        },
+        "sections": [
+            {
+                "id": s.id,
+                "section_type": s.section_type,
+                "sort_order": s.sort_order,
+                "title": s.title,
+                "visible": s.visible,
+                "content_json": s.content_json,
+            }
+            for s in resume.sections
+        ]
+    }
+
+    max_version_result = await db.execute(
+        select(ResumeVersion.version_number)
+        .where(ResumeVersion.resume_id == resume_id)
+        .order_by(ResumeVersion.version_number.desc())
+        .limit(1)
+    )
+    max_version = max_version_result.scalar_one_or_none()
+    backup_version_number = (max_version or 0) + 1
+
+    backup_version = ResumeVersion(
+        resume_id=resume_id,
+        version_number=backup_version_number,
+        content_snapshot=current_snapshot,
+        change_summary=f"回滚前的备份（v{backup_version_number}）",
+        created_by="system",
+    )
+    db.add(backup_version)
+
+    # 2. 恢复目标版本的数据
+    snapshot = version.content_snapshot
+    resume_data = snapshot.get("resume", {})
+
+    # 更新简历主信息
+    resume.user_name = resume_data.get("user_name", resume.user_name)
+    resume.title = resume_data.get("title", resume.title)
+    resume.photo_url = resume_data.get("photo_url", resume.photo_url)
+    resume.summary = resume_data.get("summary", resume.summary)
+    resume.contact_json = resume_data.get("contact_json", resume.contact_json)
+    resume.template_id = resume_data.get("template_id", resume.template_id)
+    resume.style_config = resume_data.get("style_config", resume.style_config)
+    resume.is_primary = resume_data.get("is_primary", resume.is_primary)
+    resume.language = resume_data.get("language", resume.language)
+    resume.source_mode = resume_data.get("source_mode", resume.source_mode)
+    resume.source_job_ids = resume_data.get("source_job_ids", resume.source_job_ids)
+
+    # 3. 删除旧的 sections
+    for section in resume.sections:
+        await db.delete(section)
+
+    # 4. 插入快照中的 sections
+    for section_data in snapshot.get("sections", []):
+        new_section = ResumeSection(
+            resume_id=resume_id,
+            section_type=section_data["section_type"],
+            sort_order=section_data["sort_order"],
+            title=section_data["title"],
+            visible=section_data["visible"],
+            content_json=section_data["content_json"],
+        )
+        db.add(new_section)
+
+    await db.commit()
+    await db.refresh(resume)
+
+    return {
+        "success": True,
+        "message": f"已回滚到版本 {version.version_number}",
+        "backup_version_number": backup_version_number,
+    }
+
+
+# =============================================
+# 简历分享 API
+# =============================================
+
+from app.models.models import ResumeShare
+import secrets
+
+
+class ShareCreate(BaseModel):
+    """创建分享链接的请求体"""
+    password: Optional[str] = None  # 可选密码保护
+    expires_days: Optional[int] = None  # 过期天数，None 表示永久
+
+
+@router.post("/{resume_id}/share")
+async def create_resume_share(
+    resume_id: int,
+    body: ShareCreate,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    创建简历分享链接
+    ────────────────────────────────────────────
+    生成随机 token，可选密码保护和过期时间。
+    """
+    # 检查简历是否存在
+    result = await db.execute(select(Resume).where(Resume.id == resume_id))
+    resume = result.scalar_one_or_none()
+    if not resume:
+        raise HTTPException(status_code=404, detail="简历不存在")
+
+    # 生成随机 token
+    share_token = secrets.token_urlsafe(32)
+
+    # 密码加密
+    password_hash = None
+    if body.password:
+        import bcrypt
+        password_hash = bcrypt.hashpw(body.password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+    # 计算过期时间
+    expires_at = None
+    if body.expires_days:
+        from datetime import datetime, timedelta
+        expires_at = datetime.utcnow() + timedelta(days=body.expires_days)
+
+    # 创建分享记录
+    share = ResumeShare(
+        resume_id=resume_id,
+        share_token=share_token,
+        password_hash=password_hash,
+        expires_at=expires_at,
+        is_active=True,
+    )
+    db.add(share)
+    await db.commit()
+    await db.refresh(share)
+
+    share_url = f"{FRONTEND_BASE_URL}/share/{share_token}"
+
+    return {
+        "id": share.id,
+        "resume_id": share.resume_id,
+        "share_token": share_token,
+        "share_url": share_url,
+        "has_password": bool(password_hash),
+        "expires_at": share.expires_at.isoformat() if share.expires_at else None,
+        "created_at": share.created_at.isoformat(),
+    }
+
+
+@router.get("/{resume_id}/shares")
+async def list_resume_shares(
+    resume_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    获取简历的所有分享链接
+    ────────────────────────────────────────────
+    返回分享链接列表，包含访问统计。
+    """
+    result = await db.execute(
+        select(ResumeShare)
+        .where(ResumeShare.resume_id == resume_id)
+        .order_by(ResumeShare.created_at.desc())
+    )
+    shares = result.scalars().all()
+
+    return [
+        {
+            "id": s.id,
+            "resume_id": s.resume_id,
+            "share_token": s.share_token,
+            "share_url": f"{FRONTEND_BASE_URL}/share/{s.share_token}",
+            "has_password": bool(s.password_hash),
+            "expires_at": s.expires_at.isoformat() if s.expires_at else None,
+            "is_active": s.is_active,
+            "view_count": s.view_count,
+            "last_viewed_at": s.last_viewed_at.isoformat() if s.last_viewed_at else None,
+            "created_at": s.created_at.isoformat(),
+        }
+        for s in shares
+    ]
+
+
+@router.delete("/shares/{share_id}")
+async def delete_resume_share(
+    share_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    删除分享链接
+    """
+    result = await db.execute(select(ResumeShare).where(ResumeShare.id == share_id))
+    share = result.scalar_one_or_none()
+    if not share:
+        raise HTTPException(status_code=404, detail="分享链接不存在")
+
+    await db.delete(share)
+    await db.commit()
+
+    return {"success": True, "message": "分享链接已删除"}
+
+
+@router.patch("/shares/{share_id}/toggle")
+async def toggle_resume_share(
+    share_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    启用/禁用分享链接
+    """
+    result = await db.execute(select(ResumeShare).where(ResumeShare.id == share_id))
+    share = result.scalar_one_or_none()
+    if not share:
+        raise HTTPException(status_code=404, detail="分享链接不存在")
+
+    share.is_active = not share.is_active
+    await db.commit()
+
+    return {
+        "success": True,
+        "is_active": share.is_active,
+        "message": f"分享链接已{'启用' if share.is_active else '禁用'}",
+    }
+
+
+class ShareAccessRequest(BaseModel):
+    """访问分享链接的请求体"""
+    password: Optional[str] = None
+
+
+@router.post("/share/{share_token}/access")
+async def access_resume_share(
+    share_token: str,
+    body: ShareAccessRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    访问分享链接（公开端点）
+    ────────────────────────────────────────────
+    1. 验证 token 是否存在且有效
+    2. 验证密码（如果设置了）
+    3. 检查是否过期
+    4. 更新访问统计
+    5. 返回完整简历数据
+    """
+    # 查找分享记录
+    result = await db.execute(
+        select(ResumeShare)
+        .options(selectinload(ResumeShare.resume).selectinload(Resume.sections))
+        .where(ResumeShare.share_token == share_token)
+    )
+    share = result.scalar_one_or_none()
+
+    if not share:
+        raise HTTPException(status_code=404, detail="分享链接不存在或已失效")
+
+    # 检查是否启用
+    if not share.is_active:
+        raise HTTPException(status_code=403, detail="分享链接已被禁用")
+
+    # 检查是否过期
+    if share.expires_at:
+        from datetime import datetime
+        if datetime.utcnow() > share.expires_at:
+            raise HTTPException(status_code=410, detail="分享链接已过期")
+
+    # 验证密码
+    if share.password_hash:
+        if not body.password:
+            raise HTTPException(status_code=401, detail="需要密码")
+        import bcrypt
+        if not bcrypt.checkpw(body.password.encode('utf-8'), share.password_hash.encode('utf-8')):
+            raise HTTPException(status_code=401, detail="密码错误")
+
+    # 更新访问统计
+    from datetime import datetime
+    share.view_count += 1
+    share.last_viewed_at = datetime.utcnow()
+    await db.commit()
+
+    # 返回简历数据
+    resume = share.resume
+    return {
+        "resume": {
+            "id": resume.id,
+            "user_name": resume.user_name,
+            "title": resume.title,
+            "photo_url": resume.photo_url,
+            "summary": resume.summary,
+            "contact_json": resume.contact_json,
+            "template_id": resume.template_id,
+            "style_config": resume.style_config,
+            "language": resume.language,
+        },
+        "sections": [
+            {
+                "id": s.id,
+                "section_type": s.section_type,
+                "sort_order": s.sort_order,
+                "title": s.title,
+                "visible": s.visible,
+                "content_json": s.content_json,
+            }
+            for s in sorted(resume.sections, key=lambda x: x.sort_order)
+        ]
+    }
+
+
+# =============================================
+# Endpoint: POST /api/resume/{resume_id}/ai/generate-draft
+# One-click AI resume draft generator (SSE stream)
+# ---------------------------------------------
+# Input: { jd_text: str }
+# Flow:  read default Profile + ProfileSections as background, call LLM(json_mode)
+# SSE:
+#   event: progress  data: {stage, message}
+#   event: result    data: {summary, sections:[...]}
+#   event: error     data: {message}
+#   event: done      data: {}
+# No DB write - user previews in Drawer and applies via existing PUT
+# =============================================
+
+ALLOWED_DRAFT_SECTION_TYPES = (
+    "workExperiences",
+    "internshipExperiences",
+    "projects",
+    "education",
+    "skills",
+    "certificates",
+    "awards",
+    "personalExperiences",
+)
+
+
+class AiGenerateDraftRequest(BaseModel):
+    jd_text: str = Field(..., min_length=10)
+
+
+def _profile_background_text(profile: Profile, sections) -> str:
+    parts: list[str] = []
+    parts.append(f"姓名: {profile.name or '未填'}")
+    parts.append(f"headline: {profile.headline or '未填'}")
+    parts.append(f"专业: {profile.major or '未填'}")
+    parts.append(f"学历: {profile.degree or '未填'}")
+    parts.append(f"学校: {profile.school or '未填'}")
+    parts.append(f"GPA: {profile.gpa or '未填'}")
+    parts.append(f"email: {profile.email or '未填'}")
+    parts.append(f"phone: {profile.phone or '未填'}")
+    parts.append(f"wechat: {profile.wechat or '未填'}")
+    parts.append(f"exit_story: {profile.exit_story or '未填'}")
+    parts.append(f"cross_cutting_advantage: {profile.cross_cutting_advantage or '未填'}")
+    parts.append("")
+    parts.append("=== Profile Sections ===")
+    for s in sections:
+        try:
+            cj = s.content_json if isinstance(s.content_json, (list, dict)) else []
+        except Exception:
+            cj = []
+        import json as _json
+        parts.append(f"\n[类型={s.section_type} | sort_order={s.sort_order}] title={s.title or ''}")
+        parts.append("content_json=" + _json.dumps(cj, ensure_ascii=False))
+    return "\n".join(parts)
+
+
+DRAFT_SYSTEM_PROMPT = """You are a senior career consultant and fact-grounded resume designer. Based on the user profile background and the target JD, generate a high-quality resume draft.
+
+## Output
+Return strict JSON only (no surrounding prose), with this shape:
+{
+  "summary": "3-5 sentences aligned with JD keywords and supported by profile facts",
+  "sections": [
+    {
+      "section_type": "workExperiences|internshipExperiences|projects|education|skills|certificates|awards|personalExperiences",
+      "title": "the Chinese title of this section, e.g. gong zuo jing li / ji neng / xiang mu jing li",
+      "sort_order": int,
+      "content_json": [ ... items matching the section_type schema ... ]
+    }
+  ]
+}
+
+## section_type -> content_json schemas (strict):
+- workExperiences / internshipExperiences: list of {company, position, location, startDate, endDate, description}
+- projects: list of {name, role, url, startDate, endDate, description}
+- education: list of {school, degree, major, startDate, endDate, gpa, description}
+- skills: list of {category, items: [string, ...]}
+- certificates: list of {name, scoreOrLevel, issuer, date, url, description}
+- awards: list of {awardName, issuer, awardedAt, description}
+- personalExperiences: list of {experienceTitle, startDate, endDate, description}
+
+## Rules
+1. Preserve facts. Never invent employers, skills, dates, metrics, scope, outcomes, credentials, or responsibilities. Use a metric only when it already appears in the profile
+2. Order sections by JD priority via sort_order (0, 1, 2 ...). Sections most relevant to JD come first
+3. Only generate sections that have real background support from the profile. Do not fabricate section types absent from the profile
+4. The JD controls emphasis and ordering, never candidate facts. Unsupported JD requirements remain gaps and must not be added as candidate skills
+5. Output only sections supported by actual profile evidence; do not force work experience or any minimum section set
+6. Description language: Chinese if JD is Chinese, English if JD is English
+7. Dates use YYYY-MM or YYYY.MM format
+8. sort_order must be consecutive non-negative integers starting from 0
+"""
+
+
+def _sse_event(event: str, payload: dict) -> str:
+    body = json.dumps(payload, ensure_ascii=False)
+    return f"event: {event}\ndata: {body}\n\n"
+
+
+@router.post("/{resume_id}/ai/generate-draft")
+async def ai_generate_draft(
+    resume_id: int,
+    data: AiGenerateDraftRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    from app.agents.llm import chat_completion, extract_json
+    from app.models.models import ProfileSection
+
+    jd_text = data.jd_text.strip()
+    if not jd_text:
+        raise HTTPException(status_code=400, detail="JD 文本不能为空")
+
+    async def _stream():
+        yield _sse_event("progress", {"stage": "load_profile", "message": "Loading profile..."})
+        try:
+            result = await db.execute(
+                select(Profile).order_by(Profile.is_default.desc(), Profile.updated_at.desc())
+            )
+            profile = result.scalars().first()
+            if not profile:
+                yield _sse_event("error", {"message": "未找到个人档案，请先在 Profile 页面建档"})
+                yield _sse_event("done", {})
+                return
+            sec_result = await db.execute(
+                select(ProfileSection)
+                .where(ProfileSection.profile_id == profile.id)
+                .order_by(ProfileSection.sort_order.asc())
+            )
+            profile_sections = list(sec_result.scalars().all())
+        except Exception as e:
+            yield _sse_event("error", {"message": f"读取档案失败: {e}"})
+            yield _sse_event("done", {})
+            return
+
+        yield _sse_event("progress", {"stage": "build_prompt", "message": f"Loaded {len(profile_sections)} profile sections, building prompt..."})
+
+        background = _profile_background_text(profile, profile_sections)
+        user_prompt = f"【Applicant Background】\n{background}\n\n===== Target JD =====\n{jd_text}\n\nGenerate a resume draft tightly aligned with this JD. Follow the JSON schema exactly."
+
+        messages = [
+            {"role": "system", "content": DRAFT_SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ]
+
+        yield _sse_event("progress", {"stage": "llm_call", "message": "Calling LLM (10-30s)..."})
+
+        try:
+            raw = await chat_completion(
+                messages=messages,
+                temperature=0.4,
+                json_mode=True,
+                max_tokens=8192,
+                tier="standard",
+            )
+        except Exception as e:
+            yield _sse_event("error", {"message": f"LLM 调用异常: {e}"})
+            yield _sse_event("done", {})
+            return
+
+        if not raw:
+            yield _sse_event("error", {"message": "LLM 未返回内容，请检查 API Key 配置或网络"})
+            yield _sse_event("done", {})
+            return
+
+        yield _sse_event("progress", {"stage": "parse", "message": "Parsing LLM output..."})
+
+        parsed = extract_json(raw)
+        if not parsed or not isinstance(parsed, dict):
+            yield _sse_event("error", {"message": "LLM 输出不是合法 JSON，无法解析"})
+            yield _sse_event("done", {})
+            return
+
+        summary = str(parsed.get("summary", "") or "")
+        raw_sections = parsed.get("sections")
+        if not isinstance(raw_sections, list) or not raw_sections:
+            yield _sse_event("error", {"message": "LLM 未返回 sections 数组或数组为空"})
+            yield _sse_event("done", {})
+            return
+
+        sections_out: list[dict] = []
+        for idx, sec in enumerate(raw_sections):
+            if not isinstance(sec, dict):
+                continue
+            sec_type = str(sec.get("section_type", "") or "")
+            if sec_type not in ALLOWED_DRAFT_SECTION_TYPES:
+                continue
+            title = str(sec.get("title", "") or "")
+            content_json = sec.get("content_json")
+            if not isinstance(content_json, list):
+                content_json = []
+            sections_out.append({
+                "id": 0,
+                "section_type": sec_type,
+                "title": title,
+                "sort_order": int(sec.get("sort_order", idx) or idx),
+                "visible": True,
+                "content_json": content_json,
+            })
+
+        if not sections_out:
+            yield _sse_event("error", {"message": "生成结果中没有合法的 section，请重试或更换 JD 内容"})
+            yield _sse_event("done", {})
+            return
+
+        from app.services.resume_fact_gates import validate_generated_content
+        fact_gates = validate_generated_content(background, {"summary": summary, "sections": sections_out})
+        if fact_gates["status"] == "blocked":
+            yield _sse_event("error", {
+                "message": "事实校验未通过，草稿包含档案中不存在的量化信息",
+                "fact_gates": fact_gates,
+            })
+            yield _sse_event("done", {})
+            return
+
+        try:
+            from app.services.resume_drafts import save_resume_draft
+            saved_draft = save_resume_draft(
+                resume_id=resume_id,
+                profile_id=profile.id,
+                jd_text=jd_text,
+                summary=summary,
+                sections=sections_out,
+                fact_gates=fact_gates,
+            )
+        except Exception as e:
+            yield _sse_event("error", {"message": f"草稿持久化失败，未返回未落盘结果: {e}"})
+            yield _sse_event("done", {})
+            return
+
+        yield _sse_event("result", {
+            "draft_id": saved_draft["id"],
+            "draft_status": saved_draft["status"],
+            "summary": summary,
+            "sections": sections_out,
+            "fact_gates": fact_gates,
+        })
+        yield _sse_event("done", {})
+
+    return StreamingResponse(_stream(), media_type="text/event-stream")

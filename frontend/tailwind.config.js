@@ -9,20 +9,20 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        "swiss-paper": "#F8F8F5",
-        "swiss-canvas": "#F0F0E8",
-        "swiss-ink": "#000000",
-        "swiss-muted": "#6B7280",
-        "swiss-border": "#9CA3AF",
-        "hyper-blue": "#1D4ED8",
+        "swiss-paper": "#fbfaf8",
+        "swiss-canvas": "#f7f6f2",
+        "swiss-ink": "#37352f",
+        "swiss-muted": "#9b9993",
+        "swiss-border": "rgba(55,53,47,0.12)",
+        "hyper-blue": "#44558a",
       },
       fontFamily: {
         swiss: ["Inter", "Helvetica Neue", "Arial", "sans-serif"],
         "swiss-mono": ["SFMono-Regular", "Menlo", "Consolas", "monospace"],
       },
       boxShadow: {
-        "swiss-hard": "3px 3px 0 0 #000000",
-        "swiss-soft": "0 18px 48px rgba(0, 0, 0, 0.18)",
+        "swiss-hard": "none",
+        "swiss-soft": "0 1px 2px rgba(55,53,47,0.04)",
       },
     },
   },

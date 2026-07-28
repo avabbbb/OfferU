@@ -63,6 +63,19 @@ class JobScraperBase(ABC):
 # ---- 适配器注册表 ----
 # 通过 source_name 查找对应的适配器实例
 _registry: dict[str, JobScraperBase] = {}
+_loaded = False
+
+
+def _load_builtin_scrapers() -> None:
+    global _loaded
+    if _loaded:
+        return
+    _loaded = True
+    from app.services.scrapers import boss, corporate, linkedin, shixiseng, zhilian  # noqa: F401
+    try:
+        from app.services.scrapers import jobspy  # noqa: F401
+    except ImportError:
+        pass
 
 
 def register_scraper(scraper: JobScraperBase):
@@ -72,9 +85,11 @@ def register_scraper(scraper: JobScraperBase):
 
 def get_scraper(source_name: str) -> Optional[JobScraperBase]:
     """根据名称获取适配器"""
+    _load_builtin_scrapers()
     return _registry.get(source_name)
 
 
 def get_all_scrapers() -> dict[str, JobScraperBase]:
     """获取所有已注册的适配器"""
+    _load_builtin_scrapers()
     return dict(_registry)

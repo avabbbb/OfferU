@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { ScannedField } from "../core/types.js";
-import { writeSingleField } from "../write/writer.js";
+import { writeBatch, writeSingleField } from "../write/writer.js";
 import { __WriterInternals } from "../write/writer.js";
 import { __ComboboxWriterInternals } from "../write/combobox-writer.js";
 
@@ -110,5 +110,49 @@ describe("writer filled marker", () => {
     input.getBoundingClientRect = () => ({ width: 120, height: 24, top: 10, left: 10, right: 130, bottom: 34, x: 10, y: 10, toJSON: () => ({}) } as DOMRect);
 
     expect(__ComboboxWriterInternals.findSearchInput(null, ".custom-search-input")).toBe(input);
+  });
+
+  it("preserves a page value that appears after preview", async () => {
+    const input = document.createElement("input");
+    input.value = "用户刚刚填写的姓名";
+    const field = {
+      fieldId: "protected-name",
+      element: input,
+      cssPath: "",
+      controlType: "input",
+      frameworkHint: "native",
+      label: "姓名",
+      semanticLabel: "姓名",
+      moduleName: "基本信息",
+      canonicalKey: "",
+      placeholder: "",
+      name: "",
+      options: [],
+      isRequired: true,
+      nearbyText: "",
+      groupSignature: "",
+      structuralHash: "",
+      qualityScore: 100,
+      runtime: { writable: true },
+    } as ScannedField;
+
+    const results = await writeBatch(
+      [field],
+      new Map([[
+        field.fieldId,
+        {
+          fieldId: field.fieldId,
+          value: "档案姓名",
+          confidence: 0.99,
+          intent: "姓名",
+          source: "rule",
+          occurrenceIndex: 0,
+        },
+      ]]),
+      { preserveExistingValues: true },
+    );
+
+    expect(input.value).toBe("用户刚刚填写的姓名");
+    expect(results[0].failureReason).toBe("existing_value");
   });
 });

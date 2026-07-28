@@ -1,427 +1,386 @@
-﻿"use client";
+"use client";
+
+// =============================================
+// 今日 — 今日行动队列 (ADR 0030 / 0033)
+// 主体:待确认信号、临近日程、建议下一步。
+// 统计指标与趋势按需展开,不占据默认首屏;品牌叙事只出现在真实空状态。
+// =============================================
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
+  BarChart3,
   Briefcase,
-  Building2,
-  Layers,
-  Settings,
+  Calendar,
+  ChevronDown,
+  Inbox,
+  Mail,
   Sparkles,
-  Target,
-  TrendingUp,
 } from "lucide-react";
 import { TrendChart } from "@/components/charts/TrendChart";
-import { JobCard } from "@/components/jobs/JobCard";
 import {
   OnboardingChecklist,
   OnboardingTriggerButton,
 } from "@/components/onboarding/OnboardingChecklist";
-import { useJobs, useJobStats, useJobTrend } from "@/lib/hooks";
+import {
+  useCalendarEvents,
+  useJobs,
+  useJobStats,
+  useJobTrend,
+  useNotifications,
+} from "@/lib/hooks";
+import { useWorkbench } from "@/lib/workbench";
 
 const container = {
   hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { staggerChildren: 0.08 },
-  },
+  show: { opacity: 1, transition: { staggerChildren: 0.04, delayChildren: 0.05 } },
 };
 
 const item = {
-  hidden: { opacity: 0, y: 24 },
-  show: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.35, ease: "easeOut" },
-  },
+  hidden: { opacity: 0, y: 12 },
+  show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 420, damping: 30 } },
 };
 
-const periodOptions = [
-  { key: "today", label: "今日" },
-  { key: "week", label: "本周" },
-  { key: "month", label: "本月" },
-];
+function toDateInput(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
 
-const statColors = [
-  {
-    panel: "bg-[var(--surface)]",
-    iconBox: "bg-[#f6ecea] text-black",
-    shape: "rounded-full bg-[#d8e2da]",
-  },
-  {
-    panel: "bg-[var(--surface-muted)]",
-    iconBox: "bg-[#e4ece6] text-black",
-    shape: "bg-[#efe3bc]",
-  },
-  {
-    panel: "bg-[var(--surface)]",
-    iconBox: "bg-[#efe3bc] text-black",
-    shape: "bauhaus-triangle bg-[#e8d2cd]",
-  },
-  {
-    panel: "bg-[var(--surface-muted)]",
-    iconBox: "bg-[#efe3bc] text-black",
-    shape: "rotate-45 bg-[#d8e2da]",
-  },
-];
+function formatEventTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("zh-CN", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
-export default function DashboardPage() {
-  const [period, setPeriod] = useState<"today" | "week" | "month">("week");
-  const { data: stats } = useJobStats(period);
-  const { data: jobsData } = useJobs({ page: 1, period });
-  const { data: trendData } = useJobTrend(period);
-
-  const totalJobs = stats?.total_jobs ?? 0;
-  const topJobs = (jobsData?.items ?? []).slice(0, 6);
-  const sourceCount = Object.keys(stats?.source_distribution ?? {}).length;
-  const keywordCount = topJobs.reduce(
-    (sum, job) => sum + (job.keywords?.length ?? 0),
-    0
+function SectionHeader({
+  icon: Icon,
+  title,
+  count,
+  href,
+  hrefLabel,
+}: {
+  icon: typeof Inbox;
+  title: string;
+  count?: number;
+  href?: string;
+  hrefLabel?: string;
+}) {
+  return (
+    <div className="flex items-center justify-between px-1 pb-2">
+      <div className="flex items-center gap-2">
+        <Icon size={14} strokeWidth={1.75} className="text-[var(--foreground-muted)]" />
+        <h2 className="text-[13px] font-semibold text-[var(--foreground)]">{title}</h2>
+        {typeof count === "number" && count > 0 && (
+          <span className="rounded-full bg-[var(--surface-hover)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--foreground-soft)]">
+            {count}
+          </span>
+        )}
+      </div>
+      {href && (
+        <Link
+          href={href}
+          className="flex items-center gap-1 text-[12px] font-medium text-[var(--foreground-muted)] transition-colors duration-[var(--dur-quick)] hover:text-[var(--foreground)]"
+        >
+          {hrefLabel ?? "查看全部"}
+          <ArrowRight size={12} />
+        </Link>
+      )}
+    </div>
   );
-  const companyCount = new Set(
-    (jobsData?.items ?? []).map((job) => job.company).filter(Boolean)
-  ).size;
+}
 
-  const topSources = useMemo(
-    () =>
-      Object.entries(stats?.source_distribution ?? {})
-        .sort(([, left], [, right]) => Number(right) - Number(left))
-        .slice(0, 4),
-    [stats?.source_distribution]
+export default function TodayPage() {
+  const { select } = useWorkbench();
+  const [statsExpanded, setStatsExpanded] = useState(false);
+
+  const range = useMemo(() => {
+    const start = new Date();
+    const end = new Date();
+    end.setDate(end.getDate() + 7);
+    return { start: toDateInput(start), end: toDateInput(end) };
+  }, []);
+
+  const { data: events } = useCalendarEvents(range.start, range.end);
+  const { data: notifications } = useNotifications();
+  const { data: jobsData } = useJobs({ page: 1, period: "week" });
+  const { data: stats } = useJobStats("week");
+  const { data: trendData } = useJobTrend("week");
+
+  const pendingSignals = useMemo(
+    () => (notifications ?? []).filter((n) => Boolean(n.action_required)).slice(0, 6),
+    [notifications]
   );
+  const upcomingEvents = useMemo(() => (events ?? []).slice(0, 6), [events]);
+  const recentJobs = useMemo(() => (jobsData?.items ?? []).slice(0, 5), [jobsData]);
 
-  const statCards = [
-    {
-      label: "岗位总量",
-      value: totalJobs,
-      icon: Briefcase,
-      note: "所有已同步职位",
-    },
-    {
-      label: "活跃来源",
-      value: sourceCount,
-      icon: Target,
-      note: "当前参与抓取的平台数",
-    },
-    {
-      label: "本期新增",
-      value: jobsData?.items?.length ?? 0,
-      icon: TrendingUp,
-      note: "当前时间窗口新增岗位",
-    },
-    {
-      label: "关键词命中",
-      value: keywordCount,
-      icon: Layers,
-      note: "首页岗位卡片关键词总和",
-    },
-  ];
+  const today = new Date();
+  const dateLabel = today.toLocaleDateString("zh-CN", {
+    month: "long",
+    day: "numeric",
+    weekday: "long",
+  });
+
+  const isEmptyWorkspace =
+    pendingSignals.length === 0 && upcomingEvents.length === 0 && recentJobs.length === 0;
 
   return (
-    <motion.div
-      variants={container}
-      initial="hidden"
-      animate="show"
-      className="space-y-8"
-    >
-      <motion.section
-        variants={item}
-        className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]"
-      >
-        <div className="bauhaus-panel overflow-hidden bg-[var(--surface)]">
-          <div className="grid gap-8 p-6 md:p-8 xl:grid-cols-[1.1fr_0.9fr]">
-            <div className="space-y-6">
-              <span className="bauhaus-chip bg-[#f3ead2]">岗位进展总览</span>
-
-              <div>
-                <p className="bauhaus-label text-black/60">求职工作台</p>
-                <h1 className="mt-3 text-4xl font-bold leading-tight sm:text-5xl xl:text-6xl">
-                  把求职节奏
-                  <br />
-                  握在手里
-                </h1>
-                <p className="mt-4 max-w-2xl text-base font-medium leading-relaxed text-black/72 md:text-lg">
-                  在一个页面里看清抓取、筛选、简历与投递状态。重点信息优先展示，
-                  让你更快判断下一步动作。
-                </p>
-              </div>
-
-              <div className="flex flex-wrap gap-3">
-                <Link href="/jobs" className="bauhaus-button bauhaus-button-red">
-                  <Briefcase size={18} strokeWidth={2.4} />
-                  浏览岗位
-                </Link>
-                <Link
-                  href="/settings"
-                  className="bauhaus-button bauhaus-button-outline"
-                >
-                  <Settings size={18} strokeWidth={2.4} />
-                  配置来源
-                </Link>
-                <OnboardingTriggerButton />
-              </div>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-              <div className="bauhaus-panel-sm bauhaus-lift bg-[#f3ead2] p-4">
-                <p className="bauhaus-label text-black/65">活跃公司数</p>
-                <p className="mt-3 text-3xl font-bold">{companyCount}</p>
-                <p className="mt-2 text-sm font-medium text-black/70">
-                  当前时间范围内涉及的公司数量。
-                </p>
-              </div>
-
-              <div className="bauhaus-panel-sm bauhaus-lift bg-[var(--surface)] p-4">
-                <p className="bauhaus-label text-black/65">统计窗口</p>
-                <p className="mt-3 text-3xl font-bold">
-                  {period === "today" ? "24 小时" : period === "week" ? "近 7 天" : "近 30 天"}
-                </p>
-                <p className="mt-2 text-sm font-medium text-black/70">
-                  图表、统计与岗位列表使用同一时间维度。
-                </p>
-              </div>
-
-              <div className="bauhaus-panel-sm bauhaus-lift bg-[var(--surface-muted)] p-4 text-black sm:col-span-2 xl:col-span-1">
-                <p className="bauhaus-label text-black/55">快捷入口</p>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <Link href="/optimize" className="bauhaus-button bauhaus-button-yellow !px-3 !py-2 !text-[11px]">
-                    <Sparkles size={14} />
-                    简历优化
-                  </Link>
-                  <Link href="/applications" className="bauhaus-button bauhaus-button-blue !px-3 !py-2 !text-[11px]">
-                    <ArrowRight size={14} />
-                    投递跟进
-                  </Link>
-                </div>
-              </div>
-            </div>
-          </div>
+    <motion.div variants={container} initial="hidden" animate="show" className="mx-auto max-w-[860px] space-y-6">
+      {/* 页头:紧凑,不做 Hero */}
+      <motion.header variants={item} className="flex items-end justify-between px-1">
+        <div>
+          <p className="text-[12px] font-medium text-[var(--foreground-muted)]">{dateLabel}</p>
+          <h1 className="mt-1 text-[22px] font-semibold tracking-tight text-[var(--foreground)]">今日</h1>
         </div>
-
-        <div className="bauhaus-panel overflow-hidden bg-[var(--surface-muted)] text-black">
-          <div className="relative min-h-[360px] p-6 md:p-8">
-            <div className="absolute left-6 top-6 h-14 w-14 rounded-full border border-black/20 bg-[#efe3bc]/45" />
-            <div className="absolute right-8 top-14 h-16 w-16 rotate-45 border border-black/15 bg-[#e8d2cd]/35" />
-
-            <div className="relative z-10 flex min-h-[300px] flex-col justify-between">
-              <div className="max-w-sm space-y-3">
-                <p className="bauhaus-label text-black/55">本周概览</p>
-                <h2 className="text-3xl font-bold leading-tight md:text-4xl">
-                  数据有序
-                  <br />
-                  推进中
-                </h2>
-                <p className="text-base font-medium leading-relaxed text-black/72">
-                  用简洁卡片呈现关键进展，帮助你快速确认“现在到哪一步、接下来做什么”。
-                </p>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="bauhaus-panel-sm bg-[var(--surface)] p-4 text-black">
-                  <p className="bauhaus-label text-black/60">新增岗位</p>
-                  <p className="mt-2 text-3xl font-bold">{jobsData?.items?.length ?? 0}</p>
-                </div>
-                <div className="bauhaus-panel-sm bg-[#f7ece9] p-4 text-black">
-                  <p className="bauhaus-label text-black/60">关键词命中</p>
-                  <p className="mt-2 text-3xl font-bold">{keywordCount}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </motion.section>
+        <OnboardingTriggerButton />
+      </motion.header>
 
       <motion.div variants={item}>
-        <OnboardingChecklist />
+        <OnboardingChecklist hasJobs={Boolean(jobsData?.items?.length)} />
       </motion.div>
 
-      <motion.section
-        variants={item}
-        className="bauhaus-panel overflow-hidden bg-[var(--surface-muted)]"
-      >
-        <div className="grid grid-cols-1 divide-y divide-black/15 sm:grid-cols-2 sm:divide-x sm:divide-y-0 lg:grid-cols-4">
-          {statCards.map((stat, index) => {
-            const palette = statColors[index % statColors.length];
-            const Icon = stat.icon;
-
-            return (
-              <div
-                key={stat.label}
-                className={`relative p-5 md:p-6 ${palette.panel}`}
-              >
-                <span
-                  className={`absolute right-4 top-4 h-3 w-3 border border-black/30 ${palette.shape}`}
-                />
-                <div
-                  className={`flex h-10 w-10 items-center justify-center border border-black/25 ${palette.iconBox}`}
-                >
-                  <Icon size={20} strokeWidth={2.2} />
-                </div>
-                <p className="mt-4 text-3xl font-bold md:text-4xl">{stat.value}</p>
-                <p className="mt-2 text-sm font-semibold">{stat.label}</p>
-                <p className="mt-2 text-sm font-medium leading-relaxed opacity-80">
-                  {stat.note}
-                </p>
-              </div>
-            );
-          })}
+      {/* 待确认信号 */}
+      <motion.section variants={item}>
+        <SectionHeader
+          icon={Mail}
+          title="待确认信号"
+          count={pendingSignals.length}
+          href="/email"
+          hrefLabel="信号收件箱"
+        />
+        <div className="bauhaus-panel-sm divide-y divide-[var(--border)] overflow-hidden">
+          {pendingSignals.length === 0 && (
+            <p className="px-4 py-4 text-[13px] text-[var(--foreground-muted)]">
+              暂无待确认的外部进展信号。
+            </p>
+          )}
+          {pendingSignals.map((signal) => (
+            <button
+              key={signal.id}
+              type="button"
+              onClick={() =>
+                select({
+                  kind: "task",
+                  id: `signal-${signal.id}`,
+                  title: signal.action_required || signal.email_subject,
+                  subtitle: [signal.company, signal.position].filter(Boolean).join(" · "),
+                  data: {
+                    fields: [
+                      { label: "类型", value: signal.category_display || signal.category },
+                      { label: "来件", value: signal.email_from },
+                      { label: "主题", value: signal.email_subject },
+                      { label: "面试时间", value: signal.interview_time || "-" },
+                      { label: "地点", value: signal.location || "-" },
+                      { label: "解析于", value: signal.parsed_at },
+                    ],
+                    fullscreenHref: "/email",
+                  },
+                })
+              }
+              className="press-feedback flex w-full items-center gap-3 px-4 py-2.5 text-left"
+            >
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--primary-red)]" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13px] font-medium text-[var(--foreground)]">
+                  {signal.action_required || signal.email_subject}
+                </span>
+                <span className="mt-0.5 block truncate text-[12px] text-[var(--foreground-muted)]">
+                  {[signal.company, signal.position, signal.category_display].filter(Boolean).join(" · ")}
+                </span>
+              </span>
+              <ArrowRight size={13} className="shrink-0 text-[var(--foreground-faint)]" />
+            </button>
+          ))}
         </div>
       </motion.section>
 
-      <motion.section
-        variants={item}
-        className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]"
-      >
-        <div className="bauhaus-panel overflow-hidden bg-[var(--surface)]">
-          <div className="flex flex-col gap-4 border-b border-black/15 p-6 md:flex-row md:items-end md:justify-between">
-            <div>
-              <p className="bauhaus-label text-black/60">趋势监测</p>
-              <h2 className="mt-2 text-2xl font-bold md:text-3xl">抓取趋势</h2>
-              <p className="mt-2 max-w-2xl text-sm font-medium leading-relaxed text-black/70 md:text-base">
-                统一时间窗口后，你可以更快判断抓取频率是否稳定、是否需要补充渠道。
+      {/* 临近日程 */}
+      <motion.section variants={item}>
+        <SectionHeader
+          icon={Calendar}
+          title="未来 7 天日程"
+          count={upcomingEvents.length}
+          href="/calendar"
+          hrefLabel="日程"
+        />
+        <div className="bauhaus-panel-sm divide-y divide-[var(--border)] overflow-hidden">
+          {upcomingEvents.length === 0 && (
+            <p className="px-4 py-4 text-[13px] text-[var(--foreground-muted)]">近 7 天没有安排。</p>
+          )}
+          {upcomingEvents.map((event) => (
+            <button
+              key={event.id}
+              type="button"
+              onClick={() =>
+                select({
+                  kind: "event",
+                  id: event.id,
+                  title: event.title,
+                  subtitle: formatEventTime(event.start_time),
+                  data: {
+                    fields: [
+                      { label: "类型", value: event.event_type },
+                      { label: "开始", value: formatEventTime(event.start_time), emphasis: true },
+                      { label: "结束", value: event.end_time ? formatEventTime(event.end_time) : "-" },
+                      { label: "地点", value: event.location || "-" },
+                      { label: "备注", value: event.description || "-" },
+                    ],
+                  },
+                })
+              }
+              className="press-feedback flex w-full items-center gap-3 px-4 py-2.5 text-left"
+            >
+              <span className="w-[7.5rem] shrink-0 text-[12px] font-medium tabular-nums text-[var(--foreground-soft)]">
+                {formatEventTime(event.start_time)}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-[var(--foreground)]">
+                {event.title}
+              </span>
+              {event.location && (
+                <span className="max-w-[10rem] shrink-0 truncate text-[12px] text-[var(--foreground-muted)]">
+                  {event.location}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </motion.section>
+
+      {/* 建议下一步:本周新岗位 */}
+      <motion.section variants={item}>
+        <SectionHeader
+          icon={Briefcase}
+          title="本周新机会"
+          count={recentJobs.length}
+          href="/jobs"
+          hrefLabel="机会"
+        />
+        <div className="bauhaus-panel-sm divide-y divide-[var(--border)] overflow-hidden">
+          {recentJobs.length === 0 && (
+            <div className="px-4 py-6 text-center">
+              <p className="text-[13px] font-medium text-[var(--foreground)]">还没有岗位数据</p>
+              <p className="mt-1 text-[12px] leading-5 text-[var(--foreground-muted)]">
+                先在设置页配置来源,再从"机会"导入岗位,这里会出现值得处理的新机会。
               </p>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {periodOptions.map((option) => {
-                const active = period === option.key;
-
-                return (
-                  <button
-                    key={option.key}
-                    type="button"
-                    onClick={() => setPeriod(option.key as typeof period)}
-                    aria-pressed={active}
-                    className={`bauhaus-button !min-h-0 !px-4 !py-2 !text-[11px] ${
-                      active
-                        ? option.key === "today"
-                          ? "bauhaus-button-red"
-                          : option.key === "week"
-                            ? "bauhaus-button-blue"
-                            : "bauhaus-button-yellow"
-                        : "bauhaus-button-outline"
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="p-4 md:p-6">
-            <TrendChart data={trendData} />
-          </div>
-        </div>
-
-        <div className="bauhaus-panel overflow-hidden bg-[var(--surface)] text-black">
-          <div className="border-b border-black/15 p-6">
-            <p className="bauhaus-label text-black/55">来源结构</p>
-            <h2 className="mt-2 text-2xl font-bold">平台分布</h2>
-            <p className="mt-2 text-sm font-medium leading-relaxed text-black/70">
-              主动观察来源分布，有助于避免渠道单一导致的岗位样本偏差。
-            </p>
-          </div>
-
-          <div className="grid">
-            {topSources.length > 0 ? (
-              topSources.map(([source, count], index) => (
-                <div
-                  key={source}
-                  className="grid grid-cols-[1fr_auto] items-center gap-4 border-b border-black/10 bg-[var(--surface)] px-5 py-4 text-black last:border-b-0"
-                >
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={`h-3 w-3 border border-black/30 ${
-                        index % 3 === 0
-                          ? "rounded-full bg-[#e8d2cd]"
-                          : index % 3 === 1
-                            ? "bg-[#d8e2da]"
-                            : "bauhaus-triangle bg-[#efe3bc]"
-                      }`}
-                    />
-                    <div>
-                      <p className="text-sm font-semibold">{source}</p>
-                      <p className="text-xs font-medium text-black/55">已同步岗位</p>
-                    </div>
-                  </div>
-                  <div className="bauhaus-panel-sm min-w-[60px] bg-[#f3ead2] px-3 py-2 text-center">
-                    <p className="text-xl font-bold">{count}</p>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="p-6">
-                <div className="bauhaus-panel-sm bg-[#f3ead2] p-5 text-black">
-                  <p className="bauhaus-label text-black/65">暂无来源数据</p>
-                  <p className="mt-2 text-sm font-medium leading-relaxed">
-                    先在设置页补齐平台配置，再去抓取器发起任务，这里会自动形成来源分布。
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </motion.section>
-
-      <motion.section variants={item} className="space-y-4">
-        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div>
-            <p className="bauhaus-label text-black/60">最新岗位</p>
-            <h2 className="mt-2 text-2xl font-bold md:text-3xl">近期机会</h2>
-            <p className="mt-2 max-w-2xl text-sm font-medium leading-relaxed text-black/70 md:text-base">
-              这里展示当前窗口下最值得优先处理的一批岗位，方便你直接进入下一步。
-            </p>
-          </div>
-
-          <Link href="/jobs" className="bauhaus-button bauhaus-button-outline">
-            查看全部
-            <ArrowRight size={18} strokeWidth={2.4} />
-          </Link>
-        </div>
-
-        {topJobs.length > 0 ? (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
-            {topJobs.map((job) => (
-              <motion.div key={job.id} variants={item} className="h-full">
-                <JobCard job={job} />
-              </motion.div>
-            ))}
-          </div>
-        ) : (
-          <div className="bauhaus-panel overflow-hidden bg-[var(--surface)]">
-            <div className="grid gap-6 p-6 md:grid-cols-[auto_1fr] md:p-8">
-              <div className="flex h-24 w-24 items-center justify-center border border-black/20 bg-[#f3ead2]">
-                <Building2 size={40} strokeWidth={2.2} />
-              </div>
-              <div>
-                <p className="bauhaus-label text-black/60">暂无岗位</p>
-                <h3 className="mt-2 text-3xl font-bold">先开始一次抓取</h3>
-                <p className="mt-3 max-w-2xl text-sm font-medium leading-relaxed text-black/70 md:text-base">
-                  当前还没有可展示的岗位。先去设置页补齐来源与关键词，再到抓取器启动任务，
-                  首页就会自动出现趋势与岗位卡片。
-                </p>
-                <div className="mt-5 flex flex-wrap gap-3">
-                  <Link
-                    href="/settings"
-                    className="bauhaus-button bauhaus-button-outline"
-                  >
-                    去配置
-                  </Link>
-                  <Link
-                    href="/scraper"
-                    className="bauhaus-button bauhaus-button-red"
-                  >
-                    启动抓取
-                  </Link>
-                </div>
+              <div className="mt-3 flex justify-center gap-2">
+                <Link href="/settings" className="bauhaus-button bauhaus-button-sm bauhaus-button-outline">
+                  去配置
+                </Link>
+                <Link href="/jobs" className="bauhaus-button bauhaus-button-sm bauhaus-button-outline">
+                  去机会
+                </Link>
               </div>
             </div>
+          )}
+          {recentJobs.map((job) => (
+            <button
+              key={job.id}
+              type="button"
+              onClick={() =>
+                select({
+                  kind: "job",
+                  id: job.id,
+                  title: job.title,
+                  subtitle: job.company,
+                  data: {
+                    fields: [
+                      { label: "公司", value: job.company, emphasis: true },
+                      { label: "地点", value: job.location || "-" },
+                      { label: "薪资", value: job.salary_text || "-" },
+                      { label: "来源", value: job.source || "-" },
+                      {
+                        label: "关键词",
+                        value: (job.keywords ?? []).slice(0, 6).join(" / ") || "-",
+                      },
+                    ],
+                  },
+                })
+              }
+              className="press-feedback flex w-full items-center gap-3 px-4 py-2.5 text-left"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13px] font-medium text-[var(--foreground)]">
+                  {job.title}
+                </span>
+                <span className="mt-0.5 block truncate text-[12px] text-[var(--foreground-muted)]">
+                  {[job.company, job.location, job.salary_text].filter(Boolean).join(" · ")}
+                </span>
+              </span>
+              <ArrowRight size={13} className="shrink-0 text-[var(--foreground-faint)]" />
+            </button>
+          ))}
+        </div>
+        {recentJobs.length > 0 && (
+          <div className="mt-2 flex gap-2 px-1">
+            <Link href="/optimize" className="bauhaus-button bauhaus-button-sm bauhaus-button-outline">
+              <Sparkles size={12} />
+              为选中岗位定制简历
+            </Link>
           </div>
         )}
       </motion.section>
+
+      {/* 统计与趋势:按需展开 (ADR 0030) */}
+      <motion.section variants={item} className="pb-6">
+        <button
+          type="button"
+          onClick={() => setStatsExpanded((value) => !value)}
+          aria-expanded={statsExpanded}
+          className="flex w-full items-center gap-2 px-1 pb-2 text-left"
+        >
+          <BarChart3 size={14} strokeWidth={1.75} className="text-[var(--foreground-muted)]" />
+          <span className="text-[13px] font-semibold text-[var(--foreground)]">统计与趋势</span>
+          <motion.span
+            animate={{ rotate: statsExpanded ? 180 : 0 }}
+            transition={{ type: "spring", stiffness: 420, damping: 30 }}
+            className="text-[var(--foreground-muted)]"
+          >
+            <ChevronDown size={14} />
+          </motion.span>
+        </button>
+        <motion.div
+          initial={false}
+          animate={{ height: statsExpanded ? "auto" : 0, opacity: statsExpanded ? 1 : 0 }}
+          transition={{ type: "spring", stiffness: 320, damping: 34 }}
+          className="overflow-hidden"
+        >
+          <div className="bauhaus-panel-sm space-y-4 p-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {[
+                { label: "岗位总量", value: stats?.total_jobs ?? 0 },
+                { label: "本周新增", value: jobsData?.items?.length ?? 0 },
+                {
+                  label: "活跃来源",
+                  value: Object.keys(stats?.source_distribution ?? {}).length,
+                },
+                {
+                  label: "活跃公司",
+                  value: new Set((jobsData?.items ?? []).map((job) => job.company).filter(Boolean)).size,
+                },
+              ].map((stat) => (
+                <div key={stat.label} className="rounded-md bg-[var(--surface-muted)] px-3 py-2.5">
+                  <p className="text-[11px] font-medium text-[var(--foreground-muted)]">{stat.label}</p>
+                  <p className="mt-1 text-xl font-semibold tabular-nums text-[var(--foreground)]">
+                    {stat.value}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <TrendChart data={trendData} />
+          </div>
+        </motion.div>
+      </motion.section>
+
+      {isEmptyWorkspace && (
+        <motion.p variants={item} className="px-1 pb-8 text-center text-[12px] text-[var(--foreground-faint)]">
+          OfferU 会把待确认动作、临近截止和新机会汇总到这里,帮你决定现在做什么。
+        </motion.p>
+      )}
     </motion.div>
   );
 }

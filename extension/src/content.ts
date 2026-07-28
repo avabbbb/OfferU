@@ -12,10 +12,13 @@ import { buildHashKey, canonicalUrl, cleanText, parseSalary } from "./lib/collec
 import { PLATFORM_CONFIGS } from "./content/platforms/index.js";
 import type { PlatformConfig } from "./content/platforms/types.js";
 import { scanFieldsSync } from "./content/smartfill-v2/scan/scanner.js";
-import { runSmartFillPipeline } from "./content/smartfill-v2/pipeline.js";
+import {
+  applyCriticalSmartFillPlan,
+  prepareCriticalSmartFillPlan,
+} from "./content/smartfill-v2/pipeline.js";
 import { PendingFieldHighlighter } from "./content/smartfill-v2/ui/highlighter.js";
 import { setDebugEnabled, logDebug as logSmartFillDebug } from "./content/smartfill-v2/shared/logger.js";
-import type { ScannedField } from "./content/smartfill-v2/core/types.js";
+import type { CriticalSmartFillPlan, ScannedField } from "./content/smartfill-v2/core/types.js";
 
 const PLATFORMS: PlatformConfig[] = PLATFORM_CONFIGS;
 
@@ -2487,7 +2490,7 @@ function createFloatingDock(platform: PlatformConfig | null): void {
   let smartFillBusy = false;
   let smartFillFilledCount = 0;
   let smartFillPendingCount = 0;
-  let smartFillStatus: "idle" | "running" | "success" | "partial" | "failed" = "idle";
+  let smartFillStatus: "idle" | "running" | "preview" | "success" | "partial" | "failed" = "idle";
   let smartFillStatusText = "一键智填";
   let smartFillSubText = "";
   let smartFillResetTimer: number | null = null;
@@ -2495,6 +2498,8 @@ function createFloatingDock(platform: PlatformConfig | null): void {
   let smartFillRunToken = 0;
   let smartFillRunActive = false;
   let smartFillAbortController: AbortController | null = null;
+  let smartFillPlan: CriticalSmartFillPlan | null = null;
+  let smartFillPreviewMode = false;
   let smartFillChecklistData: Array<{ fieldId: string; title: string; resolved: boolean; reason: string }> = [];
 
   let expanded = false;
@@ -2683,6 +2688,7 @@ function createFloatingDock(platform: PlatformConfig | null): void {
       case "no_match": return "档案中无匹配数据";
       case "write_failed": return "已匹配但写入失败";
       case "write_blocked": return "控件不可写或只读";
+      case "existing_value": return "已保护网页中的现有值";
       case "verify_failed": return "写入后未通过校验";
       case "control_not_supported": return "复杂控件待手动补充";
       case "validation_error": return "页面校验未通过";
@@ -2705,7 +2711,7 @@ function createFloatingDock(platform: PlatformConfig | null): void {
 
   function renderSmartFillChecklist(): void {
     if (!smartFillChecklistEl) return;
-    const show = smartFillChecklistData.length > 0 && smartFillPendingCount > 0;
+    const show = smartFillChecklistData.length > 0 && (smartFillPendingCount > 0 || smartFillPreviewMode);
     smartFillChecklistEl.classList.toggle("hidden", !show);
     if (!show) {
       smartFillChecklistEl.innerHTML = "";
@@ -2738,13 +2744,18 @@ function createFloatingDock(platform: PlatformConfig | null): void {
       : smartFillStatusText;
 
     if (smartFillLinkEl) {
-      const showLink = smartFillPendingCount > 0;
+      const showLink = (smartFillPreviewMode && !smartFillBusy) || smartFillPendingCount > 0;
       smartFillLinkEl.classList.toggle("hidden", !showLink);
-      smartFillLinkEl.textContent = smartFillSubText || "查看待补字段 ›";
+      smartFillLinkEl.dataset.action = smartFillPreviewMode
+        ? "smart-fill-cancel-preview"
+        : "smart-fill-focus";
+      smartFillLinkEl.textContent = smartFillPreviewMode
+        ? "取消本次填写"
+        : (smartFillSubText || "查看待补字段 ›");
     }
 
     if (smartFillNavEl) {
-      const showNav = smartFillPendingCount > 0;
+      const showNav = !smartFillPreviewMode && smartFillPendingCount > 0;
       smartFillNavEl.classList.toggle("hidden", !showNav);
       syncSmartFillNavigationText();
     }
@@ -2759,6 +2770,8 @@ function createFloatingDock(platform: PlatformConfig | null): void {
     smartFillStatus = "idle";
     smartFillStatusText = "一键智填";
     smartFillSubText = "";
+    smartFillPlan = null;
+    smartFillPreviewMode = false;
     smartFillChecklistData = [];
     pendingHighlighter.clear();
     updateSmartFillUi();
@@ -2805,14 +2818,53 @@ function createFloatingDock(platform: PlatformConfig | null): void {
     smartFillAbortController = new AbortController();
 
     try {
-      const result = await runSmartFillPipeline({
+      const progressHandler = (progress: { detail: string }) => {
+        if (runToken !== smartFillRunToken) return;
+        smartFillStatusText = progress.detail;
+        updateSmartFillUi();
+      };
+
+      if (!smartFillPlan) {
+        const plan = await prepareCriticalSmartFillPlan({
+          signal: smartFillAbortController.signal,
+          onProgress: progressHandler,
+        });
+        if (runToken !== smartFillRunToken) return;
+        if (plan.items.length === 0) {
+          smartFillStatus = "failed";
+          smartFillStatusText = "没有可安全填写的关键字段";
+          const existingCount = plan.skipped.filter((item) => item.reason === "existing_value").length;
+          smartFillSubText = existingCount > 0
+            ? `已保护 ${existingCount} 个网页现有值`
+            : "敏感、低置信或非关键字段已跳过";
+          smartFillChecklistData = [];
+          smartFillPreviewMode = false;
+          return;
+        }
+        smartFillPlan = plan;
+        smartFillPreviewMode = true;
+        smartFillStatus = "preview";
+        smartFillStatusText = `确认填写 ${plan.items.length} 项`;
+        const protectedCount = plan.skipped.filter((item) => (
+          item.reason === "existing_value" || item.reason === "sensitive"
+        )).length;
+        smartFillSubText = protectedCount > 0 ? `已保护或跳过 ${protectedCount} 项` : "不会自动提交";
+        smartFillChecklistData = plan.items.map((item) => ({
+          fieldId: item.field.fieldId,
+          title: buildChecklistTitle(item.field),
+          resolved: true,
+          reason: `将填写：${item.valuePreview}`,
+        }));
+        return;
+      }
+
+      const planToApply = smartFillPlan;
+      const result = await applyCriticalSmartFillPlan(planToApply, {
         signal: smartFillAbortController.signal,
-        onProgress: (progress) => {
-          if (runToken !== smartFillRunToken) return;
-          smartFillStatusText = progress.detail;
-          updateSmartFillUi();
-        },
+        onProgress: progressHandler,
       });
+      smartFillPlan = null;
+      smartFillPreviewMode = false;
 
       if (runToken !== smartFillRunToken) return;
       const { outcome } = result;
@@ -2831,8 +2883,12 @@ function createFloatingDock(platform: PlatformConfig | null): void {
 
       if (outcome.pendingCount <= 0) {
         smartFillStatus = "success";
-        smartFillStatusText = `已填写 ${outcome.filledCount} 项`;
-        smartFillSubText = "已完成本页智填";
+        smartFillStatusText = outcome.skippedCount > 0
+          ? `已填写 ${outcome.filledCount} 项｜跳过 ${outcome.skippedCount} 项`
+          : `已填写 ${outcome.filledCount} 项`;
+        smartFillSubText = outcome.protectedCount > 0
+          ? `已保护 ${outcome.protectedCount} 项，页面不会自动提交`
+          : "已完成本页智填，不会自动提交";
         smartFillChecklistData = [];
         pendingHighlighter.clear();
         smartFillResetTimer = window.setTimeout(() => {
@@ -2892,6 +2948,11 @@ function createFloatingDock(platform: PlatformConfig | null): void {
       } else if (/fetch|网络|连接失败|Failed to fetch/i.test(text)) {
         smartFillStatusText = "AI 服务调用失败";
         smartFillSubText = "请检查网络或 AI 配置";
+      } else if (/页面已变化|计划已过期/i.test(text)) {
+        smartFillPlan = null;
+        smartFillPreviewMode = false;
+        smartFillStatusText = "页面已变化，请重新扫描";
+        smartFillSubText = "";
       } else if (/Failed to set|Permission denied|read.only/i.test(text)) {
         smartFillStatusText = "部分字段写入失败";
         smartFillSubText = smartFillPendingCount > 0 ? "查看待补字段 ›" : "";
@@ -2933,6 +2994,11 @@ function createFloatingDock(platform: PlatformConfig | null): void {
       return;
     }
 
+    if (action === "smart-fill-cancel-preview") {
+      resetSmartFillState();
+      return;
+    }
+
     if (action === "smart-fill-focus") {
       pendingHighlighter.focusFirst();
       syncSmartFillNavigationText();
@@ -2942,6 +3008,16 @@ function createFloatingDock(platform: PlatformConfig | null): void {
     if (action === "smart-fill-focus-item") {
       const node = trigger?.closest<HTMLElement>("[data-field-id]") || null;
       const fieldId = node?.dataset.fieldId || "";
+      if (smartFillPreviewMode && smartFillPlan) {
+        const planned = smartFillPlan.items.find((item) => item.field.fieldId === fieldId);
+        if (planned) {
+          try {
+            planned.field.element.scrollIntoView({ block: "center", behavior: "smooth" });
+            planned.field.element.focus({ preventScroll: true });
+          } catch { /* detached or non-focusable control */ }
+        }
+        return;
+      }
       const focused = pendingHighlighter.focusByFieldId(fieldId);
       if (!focused) {
         pendingHighlighter.focusFirst();
@@ -2986,6 +3062,7 @@ function createFloatingDock(platform: PlatformConfig | null): void {
       <div class="smart-fill-card">
         <button class="smart-fill-btn" data-action="smart-fill" type="button">一键智填</button>
         <button class="smart-fill-link hidden" data-action="smart-fill-focus" type="button">查看待补字段 ›</button>
+        <div class="meta meta-secondary">先预览再确认 · 不覆盖已填值 · 不自动提交</div>
       </div>
       <div class="smart-fill-nav hidden" id="offeruSmartFillNav">
         <span>待补导航</span>

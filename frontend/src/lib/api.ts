@@ -37,6 +37,57 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
+async function streamResult<T>(
+  path: string,
+  body: unknown,
+  onEvent?: (event: string, data: any) => void
+): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+    body: JSON.stringify(body),
+  });
+  if (res.status === 404 || res.status === 405) throw new Error("__SSE_UNAVAILABLE__");
+  if (!res.ok) throw new Error(`API Error: ${res.status}`);
+  if (!res.body) throw new Error("Agent 流式响应不可用");
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let result: T | undefined;
+
+  const consume = (block: string) => {
+    let event = "message";
+    const dataLines: string[] = [];
+    for (const line of block.split("\n")) {
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
+    }
+    if (dataLines.length === 0) return;
+    const raw = dataLines.join("\n");
+    let data: any = raw;
+    try { data = JSON.parse(raw); } catch { /* keep SSE text payload */ }
+    onEvent?.(event, data);
+    if (event === "message" && data?.response) result = data.response as T;
+    if (event === "error") throw new Error(data?.error || data?.content || "Agent 流式请求失败");
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done }).replace(/\r\n/g, "\n");
+    let boundary = buffer.indexOf("\n\n");
+    while (boundary >= 0) {
+      consume(buffer.slice(0, boundary));
+      buffer = buffer.slice(boundary + 2);
+      boundary = buffer.indexOf("\n\n");
+    }
+    if (done) break;
+  }
+  if (buffer.trim()) consume(buffer);
+  if (!result) throw new Error("Agent 流结束但没有返回结果");
+  return result;
+}
+
 // ---- Jobs API ----
 export const jobsApi = {
   list: (params?: {
@@ -193,6 +244,17 @@ export interface HarnessAgentProposedAction {
   args: Record<string, unknown>;
 }
 
+export interface HarnessAgentSkill {
+  id: string;
+  name: string;
+  group: string;
+  status: "native" | "partial" | "planned" | string;
+  description: string;
+  featured: boolean;
+  order: number;
+  missing_capabilities: string[];
+}
+
 export interface HarnessAgentCareerPath {
   title: string;
   industry: string;
@@ -260,6 +322,7 @@ export interface HarnessAgentConversationDetail {
 export interface HarnessAgentResponse {
   assistant_message: string;
   mode: string;
+  active_skill?: HarnessAgentSkill;
   requires_confirmation: boolean;
   tool_calls: HarnessAgentToolCall[];
   proposed_actions: HarnessAgentProposedAction[];
@@ -280,16 +343,23 @@ export interface HarnessAgentResponse {
 }
 
 export const harnessAgentApi = {
-  chat: (data: {
+  chat: async (data: {
     messages: HarnessAgentMessage[];
     confirmed_action_ids?: string[];
     memory?: Record<string, any>;
     conversation_id?: string | null;
-  }) =>
-    request<HarnessAgentResponse>("/api/harness-agent/chat", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
+    skill_id?: string | null;
+  }, onEvent?: (event: string, data: any) => void) => {
+    try {
+      return await streamResult<HarnessAgentResponse>("/api/harness-agent/chat/stream", data, onEvent);
+    } catch (error) {
+      if (!(error instanceof Error) || error.message !== "__SSE_UNAVAILABLE__") throw error;
+      return request<HarnessAgentResponse>("/api/harness-agent/chat", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+    }
+  },
   conversations: () =>
     request<{ conversations: HarnessAgentConversationSummary[] }>("/api/harness-agent/conversations"),
   conversation: (id: string) =>
@@ -307,6 +377,8 @@ export const harnessAgentApi = {
       method: "POST",
       body: JSON.stringify({ content }),
     }),
+  skills: () =>
+    request<{ skills: HarnessAgentSkill[] }>("/api/harness-agent/skills"),
 };
 
 // ---- Profile API ----

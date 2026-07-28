@@ -47,12 +47,12 @@ import {
 
 const container = {
   hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { staggerChildren: 0.06 } },
+  show: { opacity: 1, transition: { staggerChildren: 0.05, delayChildren: 0.06 } },
 };
 
 const item = {
-  hidden: { opacity: 0, x: -20 },
-  show: { opacity: 1, x: 0, transition: { type: "spring", damping: 15 } },
+  hidden: { opacity: 0, x: -16 },
+  show: { opacity: 1, x: 0, transition: { type: "spring", stiffness: 400, damping: 30 } },
 };
 
 const SOURCE_OPTIONS = [
@@ -83,31 +83,31 @@ const EDUCATION_OPTIONS = [
 
 const bauhausInputClassNames = {
   inputWrapper:
-    "border border-black/15 bg-[var(--surface)] shadow-[1px_1px_0_0_rgba(18,18,18,0.08)] transition-all hover:bg-[var(--surface-muted)]",
-  input: "font-medium text-black placeholder:text-black/45",
-  label: "font-semibold text-[11px] text-black/60",
+    "border border-[var(--border)] bg-[var(--surface)]  transition-all hover:bg-[var(--surface-muted)]",
+  input: "font-medium text-[var(--foreground)] placeholder:text-[var(--foreground-muted)]",
+  label: "font-semibold text-[11px] text-[var(--foreground-muted)]",
 };
 
 const bauhausSelectClassNames = {
   trigger:
-    "border border-black/15 bg-[var(--surface)] shadow-[1px_1px_0_0_rgba(18,18,18,0.08)]",
-  value: "font-medium text-black",
-  label: "font-semibold text-[11px] text-black/60",
+    "border border-[var(--border)] bg-[var(--surface)] ",
+  value: "font-medium text-[var(--foreground)]",
+  label: "font-semibold text-[11px] text-[var(--foreground-muted)]",
 };
 
 const bauhausPaginationClassNames = {
   base: "gap-1",
-  item: "border border-black/15 bg-[var(--surface)] text-black shadow-[1px_1px_0_0_rgba(18,18,18,0.08)]",
-  cursor: "border border-black/20 bg-[#e8d2cd] text-black shadow-[1px_1px_0_0_rgba(18,18,18,0.12)]",
-  next: "border border-black/15 bg-[#f3ead2] text-black shadow-[1px_1px_0_0_rgba(18,18,18,0.08)]",
-  prev: "border border-black/15 bg-[#f3ead2] text-black shadow-[1px_1px_0_0_rgba(18,18,18,0.08)]",
+  item: "border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] ",
+  cursor: "border border-[var(--border-strong)] bg-[var(--surface-muted)] text-[var(--foreground)] ",
+  next: "border border-[var(--border)] bg-[var(--surface-muted)] text-[var(--foreground)] ",
+  prev: "border border-[var(--border)] bg-[var(--surface-muted)] text-[var(--foreground)] ",
 };
 
 const bauhausModalContentClassName =
-  "border border-black/15 bg-[var(--surface)] text-black shadow-[2px_2px_0_0_rgba(18,18,18,0.14)]";
+  "border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] ";
 
 const bauhausIconButtonClassName =
-  "min-h-11 min-w-11 border border-black/15 bg-[var(--surface)] text-black shadow-[1px_1px_0_0_rgba(18,18,18,0.1)]";
+  "min-h-11 min-w-11 border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] ";
 
 function resolveTriageTab(raw: string | null): "all" | "inbox" | "picked" | "ignored" {
   if (!raw) return "inbox";
@@ -243,26 +243,26 @@ export default function JobsPage() {
   const triageMeta = {
     all: {
       label: "全部岗位",
-      tone: "bg-[#f3ead2] text-black",
-      accent: "bg-[#e8d2cd]",
+      tone: "bg-[var(--surface-muted)] text-[var(--foreground)]",
+      accent: "bg-[var(--surface-muted)]",
       description: "查看所有已同步职位，并通过筛选器把注意力拉回到目标范围。",
     },
     inbox: {
       label: "待筛选",
-      tone: "bg-[#e4ece6] text-black",
-      accent: "bg-[#f3ead2]",
+      tone: "bg-[var(--surface-muted)] text-[var(--foreground)]",
+      accent: "bg-[var(--surface-muted)]",
       description: "这里承接刚抓取回来的职位，用来做第一轮判断与归档。",
     },
     picked: {
       label: "已筛选池",
-      tone: "bg-[#f7ece9] text-black",
-      accent: "bg-[#f3ead2]",
+      tone: "bg-[var(--surface-muted)] text-[var(--foreground)]",
+      accent: "bg-[var(--surface-muted)]",
       description: "只保留你真正要追的岗位，再继续做简历定制和投递动作。",
     },
     ignored: {
       label: "已忽略",
-      tone: "bg-[var(--surface)] text-black",
-      accent: "bg-[#d8e2da]",
+      tone: "bg-[var(--surface)] text-[var(--foreground)]",
+      accent: "bg-[var(--background-muted)]",
       description: "回收站保留恢复入口，也支持彻底删除，避免主列表持续膨胀。",
     },
   }[triageStatus];
@@ -557,22 +557,23 @@ export default function JobsPage() {
 
   return (
     <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
+      initial={{ opacity: 0, y: 14, scale: 0.99 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ type: "spring", stiffness: 380, damping: 28 }}
       className="space-y-6"
     >
       <section className="bauhaus-panel overflow-hidden bg-[var(--surface)]">
-        <div className="grid gap-6 border-b border-black/15 p-6 md:p-8 xl:grid-cols-[1.05fr_0.95fr]">
+        <div className="grid gap-6 border-b border-[var(--border)] p-6 md:p-8 xl:grid-cols-[1.05fr_0.95fr]">
           <div className="space-y-4">
             <span className={`bauhaus-chip ${triageMeta.tone}`}>{triageMeta.label}</span>
             <div>
-              <p className="bauhaus-label text-black/60">岗位操作台</p>
+              <p className="bauhaus-label text-[var(--foreground-muted)]">岗位操作台</p>
               <h1 className="mt-2 text-4xl font-bold leading-tight md:text-5xl">
                 快速筛选
                 <br />
                 稳定推进
               </h1>
-              <p className="mt-3 max-w-2xl text-sm font-medium leading-relaxed text-black/72 md:text-base">
+              <p className="mt-3 max-w-2xl text-sm font-medium leading-relaxed text-[var(--foreground-soft)] md:text-base">
                 {triageMeta.description}
               </p>
             </div>
@@ -586,19 +587,19 @@ export default function JobsPage() {
               </p>
               <p className="mt-2 text-sm font-medium opacity-80">当前视图下的岗位总数。</p>
             </div>
-            <div className="bauhaus-panel-sm bg-[#e4ece6] p-4 text-black">
-              <p className="bauhaus-label text-black/60">已选岗位</p>
+            <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4 text-[var(--foreground)]">
+              <p className="bauhaus-label text-[var(--foreground-muted)]">已选岗位</p>
               <p className="mt-2 text-4xl font-bold">
                 {selectedIds.size}
               </p>
-              <p className="mt-2 text-sm font-medium text-black/70">批量操作始终作用于已选岗位。</p>
+              <p className="mt-2 text-sm font-medium text-[var(--foreground-soft)]">批量操作始终作用于已选岗位。</p>
             </div>
-            <div className="bauhaus-panel-sm bg-[#f3ead2] p-4 text-black">
-              <p className="bauhaus-label text-black/65">筛选条件</p>
+            <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4 text-[var(--foreground)]">
+              <p className="bauhaus-label text-[var(--foreground-soft)]">筛选条件</p>
               <p className="mt-2 text-4xl font-bold">
                 {activeFilterCount}
               </p>
-              <p className="mt-2 text-sm font-medium text-black/75">当前启用的筛选条件数量。</p>
+              <p className="mt-2 text-sm font-medium text-[var(--foreground-soft)]">当前启用的筛选条件数量。</p>
             </div>
           </div>
         </div>
@@ -635,9 +636,9 @@ export default function JobsPage() {
 
       <div className="space-y-4">
         {isScraperSyncing && (
-          <div className="bauhaus-panel-sm bg-[#e4ece6] p-4 text-black">
-            <p className="bauhaus-label text-black/60">同步进行中</p>
-            <p className="mt-2 text-sm font-medium leading-relaxed text-black/75">
+          <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4 text-[var(--foreground)]">
+            <p className="bauhaus-label text-[var(--foreground-muted)]">同步进行中</p>
+            <p className="mt-2 text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
               正在同步最新抓取结果，岗位列表会自动刷新，无需重复操作。
             </p>
           </div>
@@ -670,9 +671,9 @@ export default function JobsPage() {
                   classNames={{
                     base: "w-full",
                     tabList: "gap-2 rounded-none border-0 bg-transparent p-0",
-                    cursor: "rounded-none border border-black/20 bg-[#f7ece9] shadow-[1px_1px_0_0_rgba(18,18,18,0.12)]",
-                    tab: "h-auto rounded-none border border-black/15 bg-[var(--surface)] px-4 py-3",
-                    tabContent: "font-semibold text-[11px] text-black/72 group-data-[selected=true]:text-black",
+                    cursor: "rounded-none border border-[var(--border-strong)] bg-[var(--surface-muted)] ",
+                    tab: "h-auto rounded-none border border-[var(--border)] bg-[var(--surface)] px-4 py-3",
+                    tabContent: "font-semibold text-[11px] text-[var(--foreground-soft)] group-data-[selected=true]:text-[var(--foreground)]",
                   }}
                 >
                   <Tab key="inbox" title="未筛选" />
@@ -717,7 +718,7 @@ export default function JobsPage() {
                   placeholder="搜索岗位或公司"
                   value={keyword}
                   onValueChange={setKeyword}
-                  startContent={<Search size={16} className="text-black/55" />}
+                  startContent={<Search size={16} className="text-[var(--foreground-muted)]" />}
                   classNames={bauhausInputClassNames}
                   size="sm"
                 />
@@ -815,7 +816,7 @@ export default function JobsPage() {
             </div>
 
             <div className="flex flex-wrap items-center gap-4">
-              <div className="bauhaus-panel-sm flex items-center gap-3 bg-white px-4 py-3 text-black">
+              <div className="bauhaus-panel-sm flex items-center gap-3 bg-white px-4 py-3 text-[var(--foreground)]">
                 <Switch
                   size="sm"
                   isSelected={isCampus}
@@ -826,8 +827,8 @@ export default function JobsPage() {
                   classNames={{ wrapper: "bg-black/10" }}
                 />
                 <div>
-                  <p className="bauhaus-label text-black/55">校招筛选</p>
-                  <p className="text-sm font-medium text-black/75">仅看校招岗位</p>
+                  <p className="bauhaus-label text-[var(--foreground-muted)]">校招筛选</p>
+                  <p className="text-sm font-medium text-[var(--foreground-soft)]">仅看校招岗位</p>
                 </div>
               </div>
 
@@ -841,9 +842,9 @@ export default function JobsPage() {
                 </button>
               )}
 
-              <div className="bauhaus-panel-sm ml-auto bg-white px-4 py-3 text-black">
-                <p className="bauhaus-label text-black/55">选择状态</p>
-                <p className="mt-1 text-sm font-medium text-black/75">{selectionStatusText}</p>
+              <div className="bauhaus-panel-sm ml-auto bg-white px-4 py-3 text-[var(--foreground)]">
+                <p className="bauhaus-label text-[var(--foreground-muted)]">选择状态</p>
+                <p className="mt-1 text-sm font-medium text-[var(--foreground-soft)]">{selectionStatusText}</p>
               </div>
             </div>
           </div>
@@ -1033,7 +1034,7 @@ export default function JobsPage() {
       </div>
       {isLoading || (isValidating && jobs.length === 0) ? (
         <div className="bauhaus-panel flex justify-center bg-white py-20">
-          <div className="flex items-center gap-3 text-sm font-medium text-black/70">
+          <div className="flex items-center gap-3 text-sm font-medium text-[var(--foreground-soft)]">
             <Spinner size="lg" color="warning" />
             <span>岗位数据加载中...</span>
           </div>
@@ -1042,7 +1043,7 @@ export default function JobsPage() {
         <>
           {/* 批量模式：全选栏 */}
           {selectedIds.size > 0 && (
-            <div className="bauhaus-panel-sm flex items-center gap-3 bg-[#f3ead2] p-4 text-black">
+            <div className="bauhaus-panel-sm flex items-center gap-3 bg-[var(--surface-muted)] p-4 text-[var(--foreground)]">
               <Checkbox
                 isSelected={totalMatchingJobs > 0 && selectedIds.size === totalMatchingJobs}
                 isIndeterminate={selectedIds.size > 0 && totalMatchingJobs > 0 && selectedIds.size < totalMatchingJobs}
@@ -1053,7 +1054,7 @@ export default function JobsPage() {
                 size="sm"
                 color="primary"
               />
-              <span className="text-sm font-medium text-black/75">
+              <span className="text-sm font-medium text-[var(--foreground-soft)]">
                 {selectAllLoading
                   ? "正在汇总当前筛选下全部岗位..."
                   : selectedIds.size > 0
@@ -1067,11 +1068,13 @@ export default function JobsPage() {
             variants={container}
             initial="hidden"
             animate="show"
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch [grid-auto-flow:row_dense]"
+            className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3 items-stretch"
           >
             {jobs.map((job) => (
-              <div
+              <motion.div
                 key={job.id}
+                variants={item}
+                whileHover={{ y: -3, transition: { type: "spring", stiffness: 400, damping: 28 } }}
                 className="h-full min-w-0"
               >
                 <JobCard
@@ -1082,7 +1085,7 @@ export default function JobsPage() {
                   onSelectPointerDown={handleSelectionPointerDown}
                   onSelectPointerEnter={handleSelectionPointerEnter}
                 />
-              </div>
+              </motion.div>
             ))}
           </motion.div>
 
@@ -1109,13 +1112,13 @@ export default function JobsPage() {
                 transition={{ type: "spring", damping: 20 }}
                 className="fixed bottom-6 left-0 right-0 z-50 flex justify-center px-4 pointer-events-none md:left-64 md:right-auto md:w-[calc(100vw-16rem)]"
               >
-                <div className="pointer-events-auto flex max-w-full flex-wrap items-center gap-3 border border-black/15 bg-[var(--surface)] px-4 py-4 shadow-[2px_2px_0_0_rgba(18,18,18,0.12)]">
-                  <span className="text-sm font-semibold text-black/75">
+                <div className="pointer-events-auto flex max-w-full flex-wrap items-center gap-3 border border-[var(--border)] bg-[var(--surface)] px-4 py-4 ">
+                  <span className="text-sm font-semibold text-[var(--foreground-soft)]">
                     已选 <span className="font-bold text-[var(--primary-red)]">{selectedIds.size}</span> 个岗位
                   </span>
 
                   {actionError && (
-                    <span className="border border-[#c95548]/40 bg-[#f7ece9] px-3 py-1 text-xs font-semibold text-[#b7483c]" role="alert">
+                    <span className="border border-[var(--primary-red)]/30 bg-[var(--status-blush)] px-3 py-1 text-xs font-semibold text-[var(--primary-red)]" role="alert">
                       {actionError}
                     </span>
                   )}
@@ -1234,29 +1237,29 @@ export default function JobsPage() {
         <section className="bauhaus-panel overflow-hidden bg-[var(--surface)]">
           <div className="grid gap-6 p-6 md:grid-cols-[1.1fr_0.9fr] md:p-8">
             <div className="space-y-3">
-              <span className="bauhaus-chip bg-[#f3ead2] text-black">暂无岗位结果</span>
+              <span className="bauhaus-chip bg-[var(--surface-muted)] text-[var(--foreground)]">暂无岗位结果</span>
               <h2 className="text-3xl font-bold md:text-5xl">
                 当前筛选
                 <br />
                 没有命中
               </h2>
-              <p className="max-w-xl text-sm font-medium leading-relaxed text-black/70 md:text-base">
+              <p className="max-w-xl text-sm font-medium leading-relaxed text-[var(--foreground-soft)] md:text-base">
                 暂无符合当前筛选条件的岗位。可以调整筛选条件，或者前往爬虫控制台继续抓取并同步最新机会。
               </p>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="bauhaus-panel-sm bg-[#e4ece6] p-5 text-black">
-                <p className="bauhaus-label text-black/60">可先尝试</p>
+              <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-5 text-[var(--foreground)]">
+                <p className="bauhaus-label text-[var(--foreground-muted)]">可先尝试</p>
                 <p className="mt-2 text-lg font-semibold">放宽筛选</p>
-                <p className="mt-2 text-sm font-medium leading-relaxed text-black/72">
+                <p className="mt-2 text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
                   清空关键词、来源与岗位类型，先看更大的岗位池。
                 </p>
               </div>
-              <div className="bauhaus-panel-sm bg-[#f7ece9] p-5 text-black">
-                <p className="bauhaus-label text-black/60">下一步</p>
+              <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-5 text-[var(--foreground)]">
+                <p className="bauhaus-label text-[var(--foreground-muted)]">下一步</p>
                 <p className="mt-2 text-lg font-semibold">继续抓取</p>
-                <p className="mt-2 text-sm font-medium leading-relaxed text-black/72">
+                <p className="mt-2 text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
                   如果列表本身为空，回到爬虫控制台触发一次新抓取会更直接。
                 </p>
               </div>
@@ -1267,11 +1270,11 @@ export default function JobsPage() {
 
       <Modal isOpen={moveToPickedOpen} onClose={closeMoveToPickedModal} size="md">
         <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b border-black/15 px-6 py-5 text-xl font-semibold">
+          <ModalHeader className="border-b border-[var(--border)] px-6 py-5 text-xl font-semibold">
             加入已筛选池
           </ModalHeader>
           <ModalBody className="space-y-4 px-6 py-6">
-            <p className="text-sm font-medium leading-relaxed text-black/72">
+            <p className="text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
               选择目标已筛选池，确认后将从当前未筛选池中移除并流转到对应已筛选池。
             </p>
             <Select
@@ -1285,7 +1288,7 @@ export default function JobsPage() {
               {(item) => <SelectItem key={item.key}>{item.label}</SelectItem>}
             </Select>
           </ModalBody>
-          <ModalFooter className="border-t border-black/15 px-6 py-5">
+          <ModalFooter className="border-t border-[var(--border)] px-6 py-5">
             <Button
               variant="light"
               className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
@@ -1313,15 +1316,15 @@ export default function JobsPage() {
 
       <Modal isOpen={moveToTrashOpen} onClose={closeMoveToTrashModal} size="md">
         <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b border-black/15 bg-[#f3ead2] px-6 py-5 text-xl font-semibold">
+          <ModalHeader className="border-b border-[var(--border)] bg-[var(--surface-muted)] px-6 py-5 text-xl font-semibold">
             移入回收站
           </ModalHeader>
           <ModalBody className="space-y-4 px-6 py-6">
-            <p className="text-sm font-medium leading-relaxed text-black/72">
+            <p className="text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
               确认将选中的 {selectedIds.size} 个岗位移入回收站吗？移入后可在回收站页面恢复或永久删除。
             </p>
           </ModalBody>
-          <ModalFooter className="border-t border-black/15 px-6 py-5">
+          <ModalFooter className="border-t border-[var(--border)] px-6 py-5">
             <Button
               variant="light"
               className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
@@ -1345,7 +1348,7 @@ export default function JobsPage() {
 
       <Modal isOpen={poolOpen} onClose={closePoolModal} size="lg">
         <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b border-black/15 px-6 py-5 text-xl font-semibold">
+          <ModalHeader className="border-b border-[var(--border)] px-6 py-5 text-xl font-semibold">
             岗位池管理
           </ModalHeader>
           <ModalBody className="space-y-5 px-6 py-6">
@@ -1368,20 +1371,20 @@ export default function JobsPage() {
                 </Button>
               </div>
             ) : (
-              <div className="bauhaus-panel-sm bg-[#e4ece6] px-4 py-3 text-sm font-medium leading-relaxed text-black/75">
+              <div className="bauhaus-panel-sm bg-[var(--surface-muted)] px-4 py-3 text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
                 未筛选池仅由爬虫任务自动生成，当前仅支持重命名与删除管理。
               </div>
             )}
 
             {poolError && (
-              <p className="bauhaus-panel-sm bg-[#f7ece9] px-4 py-3 text-sm font-medium text-[#b7483c]">
+              <p className="bauhaus-panel-sm bg-[var(--surface-muted)] px-4 py-3 text-sm font-medium text-[var(--primary-red)]">
                 {poolError}
               </p>
             )}
 
             <div className="space-y-2 max-h-72 overflow-auto pr-1">
               {poolList.length === 0 ? (
-                <p className="bauhaus-panel-sm bg-white px-4 py-4 text-sm font-medium text-black/60">
+                <p className="bauhaus-panel-sm bg-white px-4 py-4 text-sm font-medium text-[var(--foreground-muted)]">
                   {triageStatus === "picked" ? "暂无岗位池，先创建一个文件夹。" : "暂无自动生成的爬取池。"}
                 </p>
               ) : (
@@ -1421,10 +1424,10 @@ export default function JobsPage() {
                     ) : (
                       <>
                         <div>
-                          <p className="text-base font-semibold tracking-[-0.04em] text-black">
+                          <p className="text-base font-semibold tracking-[-0.04em] text-[var(--foreground)]">
                             {pool.name}
                           </p>
-                          <p className="text-xs font-medium text-black/55">
+                          <p className="text-xs font-medium text-[var(--foreground-muted)]">
                             岗位数 {pool.job_count}
                           </p>
                         </div>
@@ -1445,7 +1448,7 @@ export default function JobsPage() {
                             isIconOnly
                             size="sm"
                             aria-label="删除池"
-                            className={`${bauhausIconButtonClassName} bg-[#f7ece9] text-[var(--primary-red)]`}
+                            className={`${bauhausIconButtonClassName} bg-[var(--surface-muted)] text-[var(--primary-red)]`}
                             onPress={() => handleDeletePool(pool)}
                           >
                             <Trash2 size={14} />
@@ -1458,7 +1461,7 @@ export default function JobsPage() {
               )}
             </div>
           </ModalBody>
-          <ModalFooter className="border-t border-black/15 px-6 py-5">
+          <ModalFooter className="border-t border-[var(--border)] px-6 py-5">
             <Button
               variant="light"
               className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
@@ -1473,11 +1476,11 @@ export default function JobsPage() {
       {/* 删除确认弹窗 */}
       <Modal isOpen={confirmDeleteOpen} onClose={closeConfirmDelete} placement="center">
         <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b border-black/15 bg-[#f7ece9] px-6 py-5 text-xl font-semibold text-[var(--primary-red)]">
+          <ModalHeader className="border-b border-[var(--border)] bg-[var(--surface-muted)] px-6 py-5 text-xl font-semibold text-[var(--primary-red)]">
             确认删除
           </ModalHeader>
           <ModalBody className="px-6 py-6">
-            <p className="text-base font-medium text-black/80">
+            <p className="text-base font-medium text-[var(--foreground-soft)]">
               {confirmDeleteContext?.type === "batch"
                 ? `确认彻底删除选中的 ${confirmDeleteContext.count} 个岗位吗？该操作会从本地数据库永久移除，无法恢复。`
                 : confirmDeleteContext?.type === "pool"
@@ -1485,7 +1488,7 @@ export default function JobsPage() {
                   : ""}
             </p>
           </ModalBody>
-          <ModalFooter className="border-t border-black/15 px-6 py-5">
+          <ModalFooter className="border-t border-[var(--border)] px-6 py-5">
             <Button
               variant="light"
               className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"

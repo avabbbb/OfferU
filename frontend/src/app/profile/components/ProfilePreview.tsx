@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -94,14 +94,14 @@ export function ProfilePreview({
   const itemCount = (profile.sections ?? []).length;
 
   return (
-    <Card className="h-full rounded-none border border-black/15 bg-[var(--surface)] shadow-[1px_1px_0_0_rgba(18,18,18,0.08)]">
-      <CardHeader className="flex items-center gap-3 border-b border-black/10 pb-3">
+    <Card className="h-full rounded-none border border-[var(--border)] bg-[var(--surface)] ">
+      <CardHeader className="flex items-center gap-3 border-b border-[var(--border)] pb-3">
         <User size={20} className="text-[var(--primary-blue)]" />
         <div className="flex-1">
-          <h3 className="text-lg font-semibold text-black">
+          <h3 className="text-lg font-semibold text-[var(--foreground)]">
             {profile.name || "未命名"}
           </h3>
-          <p className="text-xs text-black/45">
+          <p className="text-xs text-[var(--foreground-muted)]">
             {String(baseInfo.school || "")}
             {baseInfo.school && baseInfo.major ? " · " : ""}
             {String(baseInfo.major || "")}
@@ -112,7 +112,7 @@ export function ProfilePreview({
           size="sm"
           variant="flat"
           color="default"
-          className="border border-black/10 bg-[var(--surface-muted)] text-[10px] text-black"
+          className="border border-[var(--border)] bg-[var(--surface-muted)] text-[10px] text-[var(--foreground)]"
         >
           {itemCount} 条
         </Chip>
@@ -120,8 +120,8 @@ export function ProfilePreview({
 
       <CardBody className="overflow-auto p-0">
         {profile.headline && (
-          <div className="border-b border-black/10 px-4 py-3">
-            <p className="text-sm italic text-black/60">“{profile.headline}”</p>
+          <div className="border-b border-[var(--border)] px-4 py-3">
+            <p className="text-sm italic text-[var(--foreground-muted)]">“{profile.headline}”</p>
           </div>
         )}
 
@@ -134,26 +134,26 @@ export function ProfilePreview({
           return (
             <div
               key={topic}
-              className={`border-b border-black/8 ${isActive ? "bg-[var(--surface-muted)]/60" : ""}`}
+              className={`border-b border-[var(--border)] ${isActive ? "bg-[var(--surface-muted)]/60" : ""}`}
             >
               <button
                 type="button"
                 onClick={() => toggleTopic(topic)}
                 className="flex w-full items-center gap-2 px-4 py-3 text-left transition-colors hover:bg-[var(--surface-muted)]/70"
               >
-                <Icon size={16} className={isActive ? "text-[var(--primary-blue)]" : "text-black/45"} />
+                <Icon size={16} className={isActive ? "text-[var(--primary-blue)]" : "text-[var(--foreground-muted)]"} />
                 <span
                   className={`flex-1 text-sm ${
-                    isActive ? "font-semibold text-black" : "font-medium text-black/70"
+                    isActive ? "font-semibold text-[var(--foreground)]" : "font-medium text-[var(--foreground-soft)]"
                   }`}
                 >
                   {TOPIC_LABELS[topic] || topic}
                 </span>
-                <span className="text-xs text-black/35">{sections.length} 条</span>
+                <span className="text-xs text-[var(--foreground-muted)]">{sections.length} 条</span>
                 {isExpanded ? (
-                  <ChevronDown size={14} className="text-black/30" />
+                  <ChevronDown size={14} className="text-[var(--foreground-muted)]" />
                 ) : (
-                  <ChevronRight size={14} className="text-black/30" />
+                  <ChevronRight size={14} className="text-[var(--foreground-muted)]" />
                 )}
               </button>
 
@@ -163,11 +163,11 @@ export function ProfilePreview({
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: "auto", opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.2 }}
+                    transition={{ type: "spring", stiffness: 320, damping: 34 }}
                     className="overflow-hidden"
                   >
                     {sections.length === 0 ? (
-                      <p className="px-6 py-2 text-xs text-black/35">暂无条目，请在右侧引导中添加。</p>
+                      <p className="px-6 py-2 text-xs text-[var(--foreground-muted)]">暂无条目，请在右侧引导中添加。</p>
                     ) : (
                       sections.map((section) => (
                         <BulletItem
@@ -242,7 +242,7 @@ function BulletItem({
     <motion.div
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
-      className="group border-t border-black/8 px-6 py-2 transition-colors hover:bg-[var(--surface-muted)]/60"
+      className="group border-t border-[var(--border)] px-6 py-2 transition-colors hover:bg-[var(--surface-muted)]/60"
     >
       <div className="flex items-start gap-2">
         {isConfirmed ? (
@@ -265,7 +265,7 @@ function BulletItem({
             <button
               type="button"
               onClick={() => setExpanded((prev) => !prev)}
-              className="truncate text-left text-sm font-medium text-black/78 hover:text-black"
+              className="truncate text-left text-sm font-medium text-[var(--foreground-soft)] hover:text-[var(--foreground)]"
             >
               {section.title || "未命名条目"}
             </button>
@@ -275,7 +275,7 @@ function BulletItem({
           </div>
 
           {(organization || dateRange) && (
-            <p className="mt-0.5 text-xs text-black/45">
+            <p className="mt-0.5 text-xs text-[var(--foreground-muted)]">
               {organization}
               {organization && dateRange ? " · " : ""}
               {dateRange}
@@ -288,7 +288,7 @@ function BulletItem({
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: "auto", opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
-                className="mt-1 overflow-hidden text-xs text-black/60"
+                className="mt-1 overflow-hidden text-xs text-[var(--foreground-muted)]"
               >
                 {description}
               </motion.p>
@@ -303,7 +303,7 @@ function BulletItem({
               size="sm"
               variant="light"
               onPress={onDelete}
-              className="h-6 min-w-6 text-black/35 hover:bg-[#f7ece9] hover:text-[var(--primary-red)]"
+              className="h-6 min-w-6 text-[var(--foreground-muted)] hover:bg-[var(--status-blush)] hover:text-[var(--primary-red)]"
             >
               <Trash2 size={12} />
             </Button>

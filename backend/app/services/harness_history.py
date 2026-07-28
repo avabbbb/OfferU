@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from app.services.agent_files import atomic_write_json
+
 HISTORY_DIR = Path(__file__).resolve().parents[2] / "data"
 HISTORY_PATH = HISTORY_DIR / "harness_agent_conversations.json"
 MAX_TITLE_LENGTH = 32
@@ -62,8 +64,7 @@ def _load_store(path: Path | None = None) -> dict[str, Any]:
 
 def _save_store(store: dict[str, Any], path: Path | None = None) -> None:
     target = path or HISTORY_PATH
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(store, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_json(target, store)
 
 
 def list_conversations(path: Path | None = None) -> list[dict[str, Any]]:

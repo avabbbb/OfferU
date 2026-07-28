@@ -88,34 +88,34 @@ export default function CascadeTimePicker({ label, value, onChange }: CascadeTim
 
   return (
     <div ref={containerRef} className="relative">
-      <label className="mb-1.5 block font-bold uppercase tracking-[0.14em] text-[11px] text-black/65">
+      <label className="mb-1.5 block font-bold uppercase tracking-[0.14em] text-[11px] text-[var(--foreground-muted)]">
         {label}
       </label>
       <button
         type="button"
         onClick={handleToggle}
-        className="flex w-full items-center justify-between border-2 border-black bg-white px-3 py-2.5 shadow-[3px_3px_0_0_#121212] transition-all hover:shadow-[4px_4px_0_0_#121212]"
+        className="flex w-full items-center justify-between border border-[var(--border-strong)] bg-white px-3 py-2.5  transition-all hover:"
       >
-        <span className={`text-sm font-medium ${displayValue() ? "text-black" : "text-black/45"}`}>
-          {displayValue() || `选择${label}`}
+        <span className={`text-sm font-medium ${displayValue() ? "text-[var(--foreground)]" : "text-[var(--foreground-muted)]"}`}>
+          {displayValue() || `閫夋嫨${label}`}
         </span>
-        <ChevronDown size={16} className={`text-black/60 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+        <ChevronDown size={16} className={`text-[var(--foreground-muted)] transition-transform ${isOpen ? "rotate-180" : ""}`} />
       </button>
 
       {isOpen && (
-        <div className="absolute left-0 right-0 top-full z-50 mt-1 border-2 border-black bg-white shadow-[4px_4px_0_0_#121212]">
+        <div className="absolute left-0 right-0 top-full z-50 mt-1 border border-[var(--border-strong)] bg-white ">
           <div className="flex h-44">
             <div
-              className="h-full overflow-hidden border-r border-black/10"
+              className="h-full overflow-hidden border-r border-[var(--border)]"
               style={{
                 width: timeStage === 0 ? "100%" : "50%",
                 flex: "none",
-                transition: "width 300ms ease-out",
+                transition: "width 300ms var(--ease-snap)",
               }}
             >
               <div ref={hourColRef} className="h-full overflow-y-auto">
-                <div className="sticky top-0 z-10 bg-[var(--surface-muted)] px-2 py-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-black/50">
-                  时
+                <div className="sticky top-0 z-10 bg-[var(--surface-muted)] px-2 py-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--foreground-muted)]">
+                  鏃?
                 </div>
                 {hourOptions.map((h) => (
                   <button
@@ -125,8 +125,8 @@ export default function CascadeTimePicker({ label, value, onChange }: CascadeTim
                     onClick={() => handleHourClick(h)}
                     className={`block w-full px-3 py-2 text-left text-sm font-medium transition-colors ${
                       sel.hour === h
-                        ? "bg-[#f3ead2] font-bold text-black"
-                        : "text-black/70 hover:bg-black/5"
+                        ? "bg-[var(--surface-hover)] font-bold text-[var(--foreground)]"
+                        : "text-[var(--foreground-soft)] hover:bg-[var(--surface-hover)]"
                     }`}
                   >
                     {h}
@@ -141,12 +141,12 @@ export default function CascadeTimePicker({ label, value, onChange }: CascadeTim
                 width: timeStage === 1 ? "50%" : "0%",
                 flex: "none",
                 opacity: timeStage >= 1 ? 1 : 0,
-                transition: "width 300ms ease-out, opacity 300ms ease-out",
+                transition: "width 300ms var(--ease-snap), opacity 300ms var(--ease-snap)",
               }}
             >
               <div ref={minuteColRef} className="h-full overflow-y-auto">
-                <div className="sticky top-0 z-10 bg-[var(--surface-muted)] px-2 py-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-black/50">
-                  分
+                <div className="sticky top-0 z-10 bg-[var(--surface-muted)] px-2 py-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--foreground-muted)]">
+                  鍒?
                 </div>
                 {minuteOptions.map((m) => (
                   <button
@@ -156,8 +156,8 @@ export default function CascadeTimePicker({ label, value, onChange }: CascadeTim
                     onClick={() => handleMinuteClick(m)}
                     className={`block w-full px-3 py-2 text-left text-sm font-medium transition-colors ${
                       sel.minute === m
-                        ? "bg-[#f3ead2] font-bold text-black"
-                        : "text-black/70 hover:bg-black/5"
+                        ? "bg-[var(--surface-hover)] font-bold text-[var(--foreground)]"
+                        : "text-[var(--foreground-soft)] hover:bg-[var(--surface-hover)]"
                     }`}
                   >
                     {m}

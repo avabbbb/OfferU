@@ -13,9 +13,9 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useOnboarding } from "@/lib/useOnboarding";
-import { useConfig, useJobs, useResumes } from "@/lib/hooks";
+import { useConfig, useResumes } from "@/lib/hooks";
 
-export function OnboardingChecklist() {
+export function OnboardingChecklist({ hasJobs }: { hasJobs: boolean }) {
   const router = useRouter();
   const onboarding = useOnboarding();
   const {
@@ -28,7 +28,6 @@ export function OnboardingChecklist() {
   } = onboarding;
   const { data: config } = useConfig();
   const { data: resumes } = useResumes();
-  const { data: jobsData } = useJobs({ page: 1 });
 
   useEffect(() => {
     if (!hydrated) return;
@@ -60,9 +59,8 @@ export function OnboardingChecklist() {
     );
 
     const hasResume = Array.isArray(resumes) && resumes.length > 0;
-    const hasJobs = Boolean(jobsData?.items && jobsData.items.length > 0);
     syncFromData({ hasApiKey, hasResume, hasJobs });
-  }, [config, resumes, jobsData, hydrated, syncFromData]);
+  }, [config, resumes, hasJobs, hydrated, syncFromData]);
 
   if (!hydrated || allStepsCompleted) return null;
 
@@ -135,7 +133,7 @@ export function OnboardingChecklist() {
             <motion.div
               className="h-3.5 bg-[var(--primary-yellow)]"
               animate={{ width: `${progressPercent}%` }}
-              transition={{ duration: 0.3, ease: "easeOut" }}
+              transition={{ type: "spring", stiffness: 120, damping: 20 }}
             />
           </div>
 
@@ -193,7 +191,7 @@ export function OnboardingChecklist() {
                       <button
                         type="button"
                         onClick={step.action}
-                        className="bauhaus-button bauhaus-button-red !px-4 !py-2 !text-[11px]"
+                        className="bauhaus-button bauhaus-button-red bauhaus-button-sm"
                       >
                         {step.actionLabel}
                         <ArrowRight size={14} strokeWidth={2.2} />

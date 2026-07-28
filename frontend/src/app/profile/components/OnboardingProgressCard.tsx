@@ -29,14 +29,14 @@ export function OnboardingProgressCard({
   return (
     <Card className={profileUiTokens.card}>
       <CardBody className="p-4 space-y-3">
-        <div className="text-sm font-semibold text-white/85">Onboarding 进度</div>
+        <div className="text-sm font-semibold text-white/85">Onboarding 杩涘害</div>
         <div className="flex flex-wrap gap-2">
           {[
-            { key: "step1", label: "Step1 基础信息", done: onboardingStatus.hasBaseInfo },
-            { key: "step2", label: "Step2 目标岗位", done: onboardingStatus.hasRoles },
-            { key: "step3", label: "Step3 对话引导", done: onboardingStatus.hasGuidedContent },
-            { key: "step4", label: "Step4 条目确认", done: onboardingStatus.hasConfirmedBullets },
-            { key: "step5", label: "Step5 职业叙事", done: onboardingStatus.hasNarrative },
+            { key: "step1", label: "Step1 鍩虹淇℃伅", done: onboardingStatus.hasBaseInfo },
+            { key: "step2", label: "Step2 鐩爣宀椾綅", done: onboardingStatus.hasRoles },
+            { key: "step3", label: "Step3 瀵硅瘽寮曞", done: onboardingStatus.hasGuidedContent },
+            { key: "step4", label: "Step4 鏉＄洰纭", done: onboardingStatus.hasConfirmedBullets },
+            { key: "step5", label: "Step5 鑱屼笟鍙欎簨", done: onboardingStatus.hasNarrative },
           ].map((item) => (
             <Chip
               key={item.key}
@@ -53,7 +53,7 @@ export function OnboardingProgressCard({
           ))}
         </div>
 
-        <div className="text-xs text-white/50">主题进度</div>
+        <div className="text-xs text-white/50">涓婚杩涘害</div>
         <div className="flex flex-wrap gap-2">
           {coreTopicOrder.map((key) => {
             const current = currentTopic === key;

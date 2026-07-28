@@ -28,8 +28,8 @@ export function TopicStepper({
   onSelect,
 }: TopicStepperProps) {
   return (
-    <div className="flex items-center gap-2 py-3 px-4 bg-black/5 rounded-xl border border-black/10">
-      <span className="text-sm text-black/40 mr-2 whitespace-nowrap">
+    <div className="flex items-center gap-2 py-3 px-4 bg-black/5 rounded-xl border border-[var(--border-strong)]/10">
+      <span className="text-sm text-[var(--foreground-muted)] mr-2 whitespace-nowrap">
         Profile 构建进度
       </span>
 
@@ -56,7 +56,7 @@ export function TopicStepper({
                   ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
                   : status === "done"
                   ? "bg-green-500/10 text-green-400 hover:bg-green-500/20"
-                  : "bg-black/5 text-black/40 hover:bg-black/10 hover:text-black/60"
+                  : "bg-black/5 text-[var(--foreground-muted)] hover:bg-black/10 hover:text-[var(--foreground-muted)]"
               }`}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}

@@ -91,7 +91,7 @@ export default function RichTextEditor({
     `inline-flex items-center justify-center w-6 h-6 rounded-md transition-all ${
       active
         ? "bg-black text-white"
-        : "text-black/65 hover:bg-black/10 hover:text-black"
+        : "text-[var(--foreground-muted)] hover:bg-black/10 hover:text-[var(--foreground)]"
     }`;
 
   /** 插入/编辑链接 — 选中文字后 prompt 输入 URL */
@@ -112,9 +112,9 @@ export default function RichTextEditor({
   };
 
   return (
-    <div className="overflow-hidden rounded-lg border border-black/15 bg-[var(--surface)] shadow-[1px_1px_0_0_rgba(18,18,18,0.08)] transition-colors focus-within:border-black/35">
+    <div className="overflow-hidden rounded-lg border border-[var(--border-strong)]/15 bg-[var(--surface)] shadow-[1px_1px_0_0_rgba(18,18,18,0.08)] transition-colors focus-within:border-[var(--border-strong)]/35">
       {/* 工具栏 — 紧凑分组排列 */}
-      <div className="flex items-center gap-0.5 border-b border-black/10 bg-[color:color-mix(in_srgb,var(--surface)_78%,#e8ecef_22%)] px-1.5 py-1">
+      <div className="flex items-center gap-0.5 border-b border-[var(--border-strong)]/10 bg-[color:color-mix(in_srgb,var(--surface)_78%,#e8ecef_22%)] px-1.5 py-1">
         {/* 文字格式组 */}
         <button type="button" className={btnClass(editor.isActive("bold"))}
           onClick={() => editor.chain().focus().toggleBold().run()} title="加粗 (Ctrl+B)">
@@ -172,7 +172,7 @@ export default function RichTextEditor({
       {/* 编辑区 */}
       <EditorContent
         editor={editor}
-        className="prose prose-sm max-w-none px-3 py-2 text-black"
+        className="prose prose-sm max-w-none px-3 py-2 text-[var(--foreground)]"
         style={{ minHeight }}
       />
     </div>

@@ -1,7 +1,7 @@
 # =============================================
 # OfferU - FastAPI 应用入口
 # =============================================
-# 启动命令: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+# 启动命令: uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 # 职责：注册路由、CORS、生命周期事件
 # =============================================
 
@@ -14,28 +14,55 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 from app.database import init_db
-try:
-    from app.mcp_server import HAS_MCP_SERVER, mcp as mcp_server
-    from app.routes import agent as agent_route
-    _HAS_MCP = HAS_MCP_SERVER
-except ImportError:
-    mcp_server = None
-    agent_route = None
-    _HAS_MCP = False
-from app.routes import jobs, resume, calendar, email, config, applications, scraper, pools, profile, profile_agent, optimize, interview, harness_agent
-
 settings = get_settings()
-
+if settings.offeru_enable_mcp:
+    try:
+        from app.mcp_server import HAS_MCP_SERVER, mcp as mcp_server
+        _HAS_MCP = HAS_MCP_SERVER
+    except ImportError:
+        mcp_server = None
+        _HAS_MCP = False
+else:
+    mcp_server = None
+    _HAS_MCP = False
+from app.routes import jobs, resume, calendar, email, config, applications, scraper, pools, profile, profile_agent, optimize, interview, harness_agent, templates, interviews, research
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用启动时初始化数据库表与 MCP 会话管理器。"""
     await init_db()
-    if _HAS_MCP and mcp_server is not None:
-        async with mcp_server.session_manager.run():
+    from app.services.email_sync import (
+        start_email_sync_service,
+        stop_email_sync_service,
+    )
+    from app.services.authorized_research import (
+        recover_authorized_research_sessions,
+        stop_authorized_research_service,
+    )
+    from app.services.memory_distiller import (
+        start_memory_distill_service,
+        stop_memory_distill_service,
+    )
+    from app.services.work_sources import (
+        start_work_source_auto_sync,
+        stop_work_source_auto_sync,
+    )
+
+    await recover_authorized_research_sessions()
+    await start_email_sync_service()
+    start_memory_distill_service()
+    start_work_source_auto_sync()
+    try:
+        if _HAS_MCP and mcp_server is not None:
+            async with mcp_server.session_manager.run():
+                yield
+        else:
             yield
-    else:
-        yield
+    finally:
+        await stop_authorized_research_service()
+        await stop_email_sync_service()
+        await stop_memory_distill_service()
+        await stop_work_source_auto_sync()
 
 
 app = FastAPI(
@@ -65,16 +92,18 @@ app.include_router(pools.router, prefix="/api/pools", tags=["Pools"])
 app.include_router(profile.router, prefix="/api/profile", tags=["Profile"])
 app.include_router(profile_agent.router, prefix="/api/profile/agent", tags=["Profile Agent"])
 app.include_router(harness_agent.router, prefix="/api/harness-agent", tags=["Harness Agent"])
+app.include_router(harness_agent.router, prefix="/api/agent", tags=["Agent"])
 app.include_router(optimize.router, prefix="/api/optimize", tags=["Optimize"])
 app.include_router(resume.router, prefix="/api/resume", tags=["Resume"])
+app.include_router(templates.router, prefix="/api/templates", tags=["Templates"])
+app.include_router(interviews.router, prefix="/api/interviews", tags=["Interviews"])
 app.include_router(calendar.router, prefix="/api/calendar", tags=["Calendar"])
 app.include_router(email.router, prefix="/api/email", tags=["Email"])
+app.include_router(research.router, prefix="/api/research", tags=["Research"])
 app.include_router(config.router, prefix="/api/config", tags=["Config"])
 app.include_router(applications.router, prefix="/api/applications", tags=["Applications"])
 app.include_router(scraper.router, prefix="/api/scraper", tags=["Scraper"])
 app.include_router(interview.router, prefix="/api/interview", tags=["Interview"])
-if agent_route is not None:
-    app.include_router(agent_route.router, prefix="/api/agent", tags=["Agent"])
 
 # ---- 静态文件（头像等上传文件） ----
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
@@ -89,4 +118,10 @@ if _HAS_MCP and mcp_server is not None:
 
 @app.get("/api/health")
 async def health_check():
-    return {"status": "ok", "service": "OfferU"}
+    return {
+        "status": "ok",
+        "service": "OfferU",
+        "runtime": "python",
+        "architecture": "file-first-agent-kernel",
+        "mcp_enabled": _HAS_MCP,
+    }

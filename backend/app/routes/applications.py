@@ -124,6 +124,37 @@ async def workspace(db: AsyncSession = Depends(get_db)):
     return await get_workspace_payload(db)
 
 
+@router.get("/progress-board")
+async def progress_board(
+    status: str = Query("active", description="active / closed / all"),
+    include_timeline: bool = Query(False),
+):
+    """公司 → 岗位 二级分组的进度看板（渐进式披露第一、二层）。"""
+    from app.services.application_progress import get_application_progress_board
+
+    try:
+        return await get_application_progress_board(
+            status=status,
+            include_timeline=include_timeline,
+        )
+    except ValueError as error:
+        raise _bad_request(error)
+
+
+@router.get("/progress-board/{application_attempt_id}/timeline")
+async def progress_board_timeline(application_attempt_id: int):
+    """单个投递的完整阶段时间线 + 待确认候选（渐进式披露第三层）。"""
+    from app.services.application_progress import get_application_progress_timeline
+
+    try:
+        result = await get_application_progress_timeline(application_attempt_id)
+    except ValueError as error:
+        raise _bad_request(error)
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+    return result
+
+
 @router.get("/tables/{table_id}/records")
 async def table_records(
     table_id: int,

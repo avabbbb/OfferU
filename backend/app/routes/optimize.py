@@ -1,9 +1,9 @@
 # =============================================
-# Optimize 路由 — Profile 驱动的简历生成工作区
+# Optimize 路由 — Profile 驱动的单岗位简历优化提案工作区
 # =============================================
 # POST /api/optimize/generate
 # 输入：job_ids + mode
-# 输出：SSE progress/result/error/done
+# 输出：SSE progress/result/error/done（result 为待审核提案，不创建正式简历）
 # =============================================
 
 from __future__ import annotations
@@ -22,8 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models.models import Job, Profile, ProfileSection, Resume, ResumeSection
-from app.services.application_workspace import auto_write_job_to_total
+from app.models.models import Job, Profile, ProfileSection
 
 router = APIRouter()
 _logger = logging.getLogger(__name__)
@@ -140,6 +139,9 @@ def _section_search_text(section: ProfileSection) -> str:
 
 
 def _rank_profile_sections(sections: list[ProfileSection], jd_text: str, limit: int = 12) -> list[tuple[ProfileSection, int]]:
+    """
+    使用 jieba 分词的关键词匹配（旧版本，保留作为 fallback）
+    """
     jd_tokens = set(_to_tokens(jd_text))
     scored: list[tuple[ProfileSection, int, float]] = []
 
@@ -157,6 +159,159 @@ def _rank_profile_sections(sections: list[ProfileSection], jd_text: str, limit: 
         picked = scored[:limit]
 
     return [(section, overlap) for section, overlap, _ in picked]
+
+
+async def _rank_profile_sections_semantic(
+    sections: list[ProfileSection],
+    jd_text: str,
+    profile_id: int,
+    limit: int = 12,
+    use_hybrid: bool = True,
+) -> list[tuple[ProfileSection, int]]:
+    """
+    使用 Vector DB 的语义搜索（新版本，2026 年标准）
+
+    参数:
+      sections: 待排序的 Profile Sections
+      jd_text: 岗位描述文本
+      profile_id: Profile ID（用于过滤）
+      limit: 返回数量
+      use_hybrid: 是否混合关键词匹配（提升精度）
+
+    返回: [(ProfileSection, score), ...]（score 范围 0-100）
+    """
+    try:
+        from app.services.semantic_search import get_semantic_search
+        semantic = get_semantic_search()
+
+        # 1. 语义搜索（Vector DB）
+        results = await semantic.search_relevant_sections(
+            jd_text=jd_text,
+            profile_id=profile_id,
+            limit=limit * 2,  # 先召回 2 倍数量
+            score_threshold=0.3,  # 相关度 > 0.3
+        )
+
+        # 2. 构建 section_id → score 映射
+        semantic_scores = {r['section_id']: r['score'] for r in results}
+
+        # 3. 如果启用混合模式，结合关键词匹配
+        if use_hybrid:
+            keyword_scores = {}
+            jd_tokens = set(_to_tokens(jd_text))
+            for section in sections:
+                text = f"{section.title} {_bullet_text(section)}"
+                overlap = len(jd_tokens.intersection(set(_to_tokens(text))))
+                keyword_scores[section.id] = overlap / max(len(jd_tokens), 1)  # 归一化到 0-1
+
+        # 4. 混合打分并排序
+        scored = []
+        for section in sections:
+            if section.id not in semantic_scores:
+                continue  # 语义搜索没召回，直接跳过
+
+            # 混合权重：语义搜索 70%，关键词匹配 30%
+            semantic_score = semantic_scores[section.id]
+            keyword_score = keyword_scores.get(section.id, 0.0) if use_hybrid else 0.0
+            final_score = semantic_score * 0.7 + keyword_score * 0.3
+
+            # 置信度加权（低置信度的条目降权）
+            confidence_weight = section.confidence or 0.8
+            final_score *= confidence_weight
+
+            scored.append((section, int(final_score * 100), final_score))
+
+        # 5. 排序并返回 top-K
+        scored.sort(key=lambda item: item[2], reverse=True)
+        return [(section, score) for section, score, _ in scored[:limit]]
+
+    except Exception as e:
+        _logger.error(f"[Semantic Search Failed] {e}, fallback to jieba")
+        # Fallback 到 jieba 分词
+        return _rank_profile_sections(sections, jd_text, limit)
+
+
+# sections 文本超过此字符数则 fallback 到 Vector DB（约 90k token）
+_SECTION_TOKEN_BUDGET = 60000
+
+
+async def _select_sections_structured(
+    sections: list[ProfileSection],
+    jd_text: str,
+    profile_id: int,
+    limit: int = 12,
+) -> list[tuple[ProfileSection, int]]:
+    """
+    结构化数据匹配 — 所有 ProfileSections 直接喂 LLM 选择（2026 方案）
+    替代 Vector DB 语义召回；超 token 预算时 fallback 到 Vector DB。
+    """
+    from app.agents.llm import chat_completion, extract_json
+
+    lines: list[str] = []
+    for s in sections:
+        stype = (s.section_type or "general").lower()
+        bullet = _bullet_text(s)
+        lines.append(f"[{s.id}] [{stype}] {s.title or ''}: {bullet}")
+    combined = "\n".join(lines)
+
+    if len(combined) > _SECTION_TOKEN_BUDGET:
+        _logger.info("[SectionSelector] %d 字符超预算，fallback Vector DB", len(combined))
+        return await _rank_profile_sections_semantic(sections, jd_text, profile_id, limit)
+
+    system_prompt = """你是一名资深校招简历顾问。从用户全部经历条目中选出与目标岗位最相关的条目。
+
+选择规则:
+1. 仔细阅读 JD，理解岗位核心能力需求
+2. 对每个条目打相关度分数 (0-100)
+3. 只返回 score >= 30 的条目，最多 limit 个
+4. 按 score 降序排列
+
+输出严格 JSON:
+{"selected": [{"id": 条目ID, "score": 分数, "reason": "简短理由"}]}"""
+
+    user_prompt = f"目标岗位描述:\n{jd_text[:6000]}\n\n用户经历条目:\n{combined}\n\n请选出最相关的 {limit} 个条目。"
+
+    try:
+        raw = await chat_completion(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.1,
+            json_mode=True,
+            max_tokens=2048,
+            tier="fast",
+        )
+        if not raw:
+            raise RuntimeError("LLM 返回空")
+
+        result = extract_json(raw)
+        if not result or "selected" not in result:
+            raise RuntimeError("LLM 返回格式异常")
+
+        id_to_section = {s.id: s for s in sections}
+        ranked: list[tuple[ProfileSection, int]] = []
+        for item in result.get("selected", []):
+            raw_id = item.get("id")
+            try:
+                sid = int(raw_id)
+            except (TypeError, ValueError):
+                continue
+            score = int(item.get("score", 0))
+            section = id_to_section.get(sid)
+            if section and score >= 30:
+                ranked.append((section, score))
+
+        if not ranked:
+            raise RuntimeError("LLM 未选出任何条目")
+
+        ranked.sort(key=lambda x: x[1], reverse=True)
+        _logger.info("[SectionSelector] 结构化匹配 %d/%d", len(ranked), len(sections))
+        return ranked[:limit]
+
+    except Exception as e:
+        _logger.warning("[SectionSelector] 失败: %s，fallback jieba", e)
+        return _rank_profile_sections(sections, jd_text, limit)
 
 
 def _keywords_from_bullets(texts: Iterable[str], limit: int = 10) -> list[str]:
@@ -178,10 +333,12 @@ def _missing_keywords(job_text: str, used_texts: Iterable[str], limit: int = 8) 
 
 def _build_resume_sections(selected: list[ProfileSection]) -> list[dict]:
     grouped: dict[str, list[dict]] = defaultdict(list)
+    grouped_source_ids: dict[str, list[int]] = defaultdict(list)
 
     for section in selected:
         mapped = SECTION_TYPE_MAP.get((section.section_type or "general").lower(), "custom")
         bullet = _bullet_text(section)
+        grouped_source_ids[mapped].append(section.id)
 
         if mapped == "education":
             payload = section.content_json or {}
@@ -263,6 +420,7 @@ def _build_resume_sections(selected: list[ProfileSection]) -> list[dict]:
                 "sort_order": index,
                 "visible": True,
                 "content_json": content,
+                "source_section_ids": grouped_source_ids.get(section_type, []),
             }
         )
     return rows
@@ -274,7 +432,7 @@ _REWRITE_SYSTEM_PROMPT = """你是一位资深 HR 顾问。请根据目标岗位
 1. **保留所有事实和数字**，严禁编造经历或虚构数据
 2. **STAR 改写**：用 Situation-Task-Action-Result 结构优化描述
 3. **关键词注入**：将 JD 中的关键技能词自然融入描述（不要生硬堆砌）
-4. **量化优化**：已有数字保留，描述模糊处可建议追加"[待量化]"标记
+4. **量化优化**：只能保留候选人原始证据中已有的数字；不得新增数字、占位符或暗示性量化
 5. **教育经历**：一般不改写，原样保留
 6. **技能清单**：可根据 JD 调整顺序，将 JD 匹配的技能排前面
 
@@ -569,6 +727,7 @@ def _apply_reorder_to_rows(rows: list[dict], reorder_result: dict) -> list[dict]
 async def _skills_pipeline_rewrite(
     rows: list[dict],
     jd_text: str,
+    research_context: dict | None = None,
 ) -> tuple[list[dict], bool, dict]:
     from app.agents.skills import SkillPipeline
 
@@ -584,10 +743,15 @@ async def _skills_pipeline_rewrite(
             resume_text=resume_text,
             resume_data=None,
             jd_text=jd_text,
+            research_context=research_context,
         )
     except Exception as exc:
         _logger.warning("SkillPipeline.run failed: %s", exc)
-        pipeline_result = {}
+        pipeline_result = {
+            "pipeline_error": {
+                "error": str(exc)[:1000],
+            }
+        }
 
     rewrite_applied = False
 
@@ -612,6 +776,49 @@ async def _skills_pipeline_rewrite(
             pipeline_result["fallback_to_simple_rewrite"] = True
 
     return rows, rewrite_applied, pipeline_result
+
+
+# =============================================
+# FactGates — 确定性事实验证器
+# =============================================
+# 代码级校验改写后的内容是否捏造了源数据中不存在的指标/公司名。
+# 策略: 标记警告保留（不替换原文，只加 _gate_warnings 字段）。
+# =============================================
+
+
+def _extract_numbers(text: str) -> set[str]:
+    """提取文本中的所有数字（百分比、纯数字、带量词数字）"""
+    numbers: set[str] = set()
+    for m in re.finditer(r'(\d+(?:\.\d+)?)\s*%?', text):
+        numbers.add(m.group(1))
+    return numbers
+
+
+def _extract_source_orgs(sections: list[ProfileSection]) -> set[str]:
+    """从源 ProfileSections 提取公司/学校/项目名"""
+    orgs: set[str] = set()
+    for s in sections:
+        payload = s.content_json or {}
+        if isinstance(payload, dict):
+            normalized = payload.get("normalized")
+            if isinstance(normalized, dict):
+                for key in ("company", "school", "name", "organization"):
+                    val = normalized.get(key)
+                    if val and isinstance(val, str):
+                        orgs.add(val.strip())
+        if s.title:
+            orgs.add(s.title.strip())
+    return orgs
+
+
+def _fact_gates_validate(
+    rows: list[dict],
+    source_sections: list[ProfileSection],
+) -> dict:
+    """Delegate all resume writes to the shared deterministic fact gate."""
+    from app.services.resume_fact_gates import validate_resume_fact_gates
+
+    return validate_resume_fact_gates(rows, source_sections)
 
 
 def _profile_to_contact_json(profile: Profile) -> dict:
@@ -645,6 +852,7 @@ async def _get_profile_sections(profile_id: int, db: AsyncSession) -> list[Profi
     result = await db.execute(
         select(ProfileSection)
         .where(ProfileSection.profile_id == profile_id)
+        .where(ProfileSection.tier == "verified_fact")
         .order_by(ProfileSection.sort_order.asc(), ProfileSection.updated_at.desc())
     )
     sections = list(result.scalars().all())
@@ -653,380 +861,112 @@ async def _get_profile_sections(profile_id: int, db: AsyncSession) -> list[Profi
         if not _looks_like_corrupt_placeholder_text(_section_search_text(section))
     ]
     if not sections:
-        raise HTTPException(status_code=400, detail="档案条目为空，请先在 Profile 页面确认至少 1 条事实")
+        raise HTTPException(
+            status_code=400,
+            detail="没有 tier=verified_fact 的档案条目，请先确认至少 1 条职业事实",
+        )
     return sections
 
 
-async def _create_generated_resume(
-    *,
-    db: AsyncSession,
-    profile: Profile,
-    title: str,
-    summary: str,
-    source_mode: str,
-    source_job_ids: list[int],
-    contact_json: dict,
-    style_config: dict,
-    template_id: int | None,
-    source_profile_snapshot: dict,
-    rows: list[dict],
-) -> Resume:
-    # Delegated to shared service; kept for backward compatibility
-    from app.services.resume_builder import _create_generated_resume as _impl
-    return await _impl(
-        db=db,
-        profile=profile,
-        title=title,
-        summary=summary,
-        source_mode=source_mode,
-        source_job_ids=source_job_ids,
-        contact_json=contact_json,
-        style_config=style_config,
-        template_id=template_id,
-        source_profile_snapshot=source_profile_snapshot,
-        rows=rows,
-    )
-
-
-async def _generate_for_job(
-    profile: Profile,
-    job: Job,
-    sections: list[ProfileSection],
-    db: AsyncSession,
-    reference_resume: Resume | None = None,
-) -> dict:
-    """供 MCP/Agent 复用的单岗位生成入口。"""
-    jd_text = (job.raw_description or "").strip()
-    if not jd_text:
-        raise HTTPException(status_code=400, detail=f"岗位 {job.id} 缺少 JD 文本")
-
-    ranked = _rank_profile_sections(sections, jd_text, limit=12)
-    selected = [item[0] for item in ranked]
-    rows = _build_resume_sections(selected)
-    rows, rewrite_applied, pipeline_result = await _skills_pipeline_rewrite(rows, jd_text)
-
-    base_contact_json = (
-        (reference_resume.contact_json or {})
-        if reference_resume and isinstance(reference_resume.contact_json, dict)
-        else _profile_to_contact_json(profile)
-    )
-    base_style_config = (
-        (reference_resume.style_config or {})
-        if reference_resume and isinstance(reference_resume.style_config, dict)
-        else {}
-    )
-    base_template_id = reference_resume.template_id if reference_resume else None
-    base_summary = profile.headline or profile.exit_story or ""
-    if not base_summary and reference_resume and isinstance(reference_resume.summary, str):
-        base_summary = reference_resume.summary
-
-    resume = await _create_generated_resume(
-        db=db,
-        profile=profile,
-        title=f"{job.company} - {job.title} 定制简历",
-        summary=base_summary,
-        source_mode="per_job",
-        source_job_ids=[job.id],
-        contact_json=base_contact_json,
-        style_config=base_style_config,
-        template_id=base_template_id,
-        source_profile_snapshot=_build_source_profile_snapshot(profile, selected),
-        rows=rows,
-    )
-
-    used_bullets = [
-        {
-            "id": section.id,
-            "section_type": section.section_type,
-            "title": section.title,
-        }
-        for section in selected
-    ]
-    used_texts = [_bullet_text(section) for section in selected]
-    missing_keywords = _missing_keywords(jd_text, used_texts)
-
-    return {
-        "job_id": job.id,
-        "job_title": job.title,
-        "resume_id": resume.id,
-        "resume_title": resume.title,
-        "used_bullets": used_bullets,
-        "used_bullets_count": len(used_bullets),
-        "missing_keywords": missing_keywords,
-        "missing_capabilities": missing_keywords,
-        "profile_hit_ratio": f"{len(selected)}/{len(sections)}",
-        "match_rate": f"{len(selected)}/{len(sections)}",
-        "rewrite_applied": rewrite_applied,
-        "pipeline": pipeline_result,
-    }
-
-
 @router.post("/generate")
-async def optimize_generate(
-    data: OptimizeGenerateRequest,
-    db: AsyncSession = Depends(get_db),
-):
-    profile = await _get_default_profile(db)
-    profile_sections = await _get_profile_sections(profile.id, db)
-
-    reference_resume: Resume | None = None
-    if data.reference_resume_id is not None:
-        ref_result = await db.execute(select(Resume).where(Resume.id == data.reference_resume_id))
-        reference_resume = ref_result.scalar_one_or_none()
-        if not reference_resume:
-            raise HTTPException(status_code=404, detail="reference_resume_id 对应简历不存在")
+async def optimize_generate(data: OptimizeGenerateRequest):
+    """逐岗位准备可审核提案；此兼容入口不再创建正式 Resume。"""
+    if data.mode == "combined":
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "综合多 JD 直写简历已停用。请逐岗位准备提案，分别核对证据、"
+                "事实门和 diff 后再明确接受。"
+            ),
+        )
 
     effective_job_ids = _ordered_unique_ids(data.job_ids)
     if len(effective_job_ids) > MAX_OPTIMIZE_JOB_COUNT:
         raise HTTPException(
             status_code=400,
-            detail=f"单次最多生成 {MAX_OPTIMIZE_JOB_COUNT} 个岗位，请分批操作",
+            detail=f"单次最多准备 {MAX_OPTIMIZE_JOB_COUNT} 个岗位提案，请分批操作",
         )
 
-    jobs_result = await db.execute(select(Job).where(Job.id.in_(effective_job_ids)))
-    job_map = {job.id: job for job in jobs_result.scalars().all()}
-    missing = [job_id for job_id in effective_job_ids if job_id not in job_map]
-    if missing:
-        raise HTTPException(status_code=404, detail=f"以下岗位不存在: {missing}")
-
-    ordered_jobs = [job_map[job_id] for job_id in effective_job_ids]
-
-    base_contact_json = (
-        (reference_resume.contact_json or {})
-        if reference_resume and isinstance(reference_resume.contact_json, dict)
-        else _profile_to_contact_json(profile)
-    )
-    base_style_config = (
-        (reference_resume.style_config or {})
-        if reference_resume and isinstance(reference_resume.style_config, dict)
-        else {}
-    )
-    base_template_id = reference_resume.template_id if reference_resume else None
-    base_summary = profile.headline or profile.exit_story or ""
-    if not base_summary and reference_resume and isinstance(reference_resume.summary, str):
-        base_summary = reference_resume.summary
-
     async def _stream():
-        total = len(ordered_jobs)
-        created = 0
-        failed = 0
-        created_resume_ids: list[int] = []
+        from app.ops import execute_operation
 
+        prepared = 0
+        failed = 0
+        proposal_ids: list[str] = []
         yield _sse("heartbeat", {})
 
-        if data.mode == "combined":
-            merged_jd = "\n\n".join(job.raw_description or "" for job in ordered_jobs)
-            ranked = _rank_profile_sections(profile_sections, merged_jd, limit=14)
-            selected = [item[0] for item in ranked]
-            used_bullets = [_bullet_text(item) for item in selected]
-            rows = _build_resume_sections(selected)
-            rows, rewrite_applied, pipeline_result = await _skills_pipeline_rewrite(rows, merged_jd)
-            if not rewrite_applied:
-                yield _sse("warning", {"message": "AI 改写失败，已使用原始内容生成简历", "mode": "combined"})
-            if pipeline_result:
-                yield _sse("analysis", {"mode": "combined", **pipeline_result})
-            source_profile_snapshot = _build_source_profile_snapshot(profile, selected)
-
-            try:
-                title = f"{profile.name or '候选人'} - 综合定制简历"
-                resume = await _create_generated_resume(
-                    db=db,
-                    profile=profile,
-                    title=title,
-                    summary=base_summary,
-                    source_mode="combined",
-                    source_job_ids=[job.id for job in ordered_jobs],
-                    contact_json=base_contact_json,
-                    style_config=base_style_config,
-                    template_id=base_template_id,
-                    source_profile_snapshot=source_profile_snapshot,
-                    rows=rows,
-                )
-                created += 1
-                created_resume_ids.append(resume.id)
-                yield _sse("progress", {"index": 1, "total": 1, "status": "success", "mode": "combined"})
-                yield _sse(
-                    "result",
-                    {
-                        "mode": "combined",
-                        "resume_id": resume.id,
-                        "resume_title": resume.title,
-                        "job_ids": [job.id for job in ordered_jobs],
-                        "reference_resume_id": reference_resume.id if reference_resume else None,
-                        "used_bullets": [
-                            {
-                                "id": section.id,
-                                "section_type": section.section_type,
-                                "title": section.title,
-                            }
-                            for section in selected
-                        ],
-                        "missing_keywords": _missing_keywords(merged_jd, used_bullets),
-                        "profile_hit_ratio": f"{len(selected)}/{len(profile_sections)}",
-                    },
-                )
-                for related_job in ordered_jobs:
-                    try:
-                        await auto_write_job_to_total(db, job_id=related_job.id)
-                    except Exception as exc:
-                        _logger.warning("auto write failed for job %s: %s", related_job.id, exc)
-                        yield _sse(
-                            "warning",
-                            {
-                                "mode": "combined",
-                                "job_id": related_job.id,
-                                "message": "自动写入投递总表失败，请稍后在投递页手动导入",
-                            },
-                        )
-            except Exception as exc:
-                await db.rollback()
-                failed += 1
-                yield _sse("progress", {"index": 1, "total": 1, "status": "failed", "mode": "combined"})
-                yield _sse("error", {"mode": "combined", "message": str(exc)})
-
-            yield _sse(
-                "done",
+        for index, job_id in enumerate(effective_job_ids, start=1):
+            result = await execute_operation(
+                "prepare_resume_optimization",
                 {
-                    "mode": "combined",
-                    "total": 1,
-                    "created": created,
-                    "failed": failed,
-                    "resume_ids": created_resume_ids,
+                    "job_id": job_id,
+                    "reference_resume_id": data.reference_resume_id,
                 },
+                dry_run=False,
+                surface="optimize_generate",
             )
-            return
-
-        for idx, job in enumerate(ordered_jobs, start=1):
-            yield _sse("heartbeat", {})
-            jd_text = (job.raw_description or "").strip()
-            if not jd_text:
-                failed += 1
+            outputs = result.get("outputs") if result.get("ok") else None
+            if isinstance(outputs, dict) and outputs.get("proposal_id"):
+                prepared += 1
+                proposal_id = str(outputs["proposal_id"])
+                proposal_ids.append(proposal_id)
                 yield _sse(
                     "progress",
                     {
-                        "index": idx,
-                        "total": total,
-                        "job_id": job.id,
-                        "job_title": job.title,
-                        "status": "failed",
+                        "index": index,
+                        "total": len(effective_job_ids),
+                        "job_id": job_id,
+                        "job_title": outputs.get("job_title", ""),
+                        "status": "prepared",
                     },
                 )
                 yield _sse(
-                    "error",
+                    "result",
                     {
-                        "index": idx,
-                        "total": total,
-                        "job_id": job.id,
-                        "job_title": job.title,
-                        "message": "岗位缺少 JD 文本，已跳过",
+                        "index": index,
+                        "total": len(effective_job_ids),
+                        "mode": "per_job",
+                        "job_id": job_id,
+                        "job_title": outputs.get("job_title", ""),
+                        "company": outputs.get("company", ""),
+                        "proposal_id": proposal_id,
+                        "proposal_status": outputs.get("status", ""),
+                        "fact_gate_status": outputs.get("fact_gate_status", ""),
+                        "change_count": outputs.get("change_count", 0),
+                        "reference_resume_id": outputs.get("reference_resume_id"),
                     },
                 )
                 continue
 
-            try:
-                ranked = _rank_profile_sections(profile_sections, jd_text, limit=12)
-                selected = [item[0] for item in ranked]
-                used_bullets = [_bullet_text(item) for item in selected]
-                rows = _build_resume_sections(selected)
-                rows, rewrite_applied, pipeline_result = await _skills_pipeline_rewrite(rows, jd_text)
-                if not rewrite_applied:
-                    yield _sse("warning", {"message": "AI 改写失败，已使用原始内容", "job_id": job.id})
-                if pipeline_result:
-                    yield _sse("analysis", {"job_id": job.id, "job_title": job.title, **pipeline_result})
-                source_profile_snapshot = _build_source_profile_snapshot(profile, selected)
-                resume = await _create_generated_resume(
-                    db=db,
-                    profile=profile,
-                    title=f"{job.company} - {job.title} 定制简历",
-                    summary=base_summary,
-                    source_mode="per_job",
-                    source_job_ids=[job.id],
-                    contact_json=base_contact_json,
-                    style_config=base_style_config,
-                    template_id=base_template_id,
-                    source_profile_snapshot=source_profile_snapshot,
-                    rows=rows,
-                )
-
-                created += 1
-                created_resume_ids.append(resume.id)
-
-                yield _sse(
-                    "progress",
-                    {
-                        "index": idx,
-                        "total": total,
-                        "job_id": job.id,
-                        "job_title": job.title,
-                        "status": "success",
-                    },
-                )
-                yield _sse(
-                    "result",
-                    {
-                        "index": idx,
-                        "total": total,
-                        "mode": "per_job",
-                        "job_id": job.id,
-                        "job_title": job.title,
-                        "resume_id": resume.id,
-                        "resume_title": resume.title,
-                        "reference_resume_id": reference_resume.id if reference_resume else None,
-                        "used_bullets": [
-                            {
-                                "id": section.id,
-                                "section_type": section.section_type,
-                                "title": section.title,
-                            }
-                            for section in selected
-                        ],
-                        "missing_keywords": _missing_keywords(jd_text, used_bullets),
-                        "profile_hit_ratio": f"{len(selected)}/{len(profile_sections)}",
-                    },
-                )
-                try:
-                    await auto_write_job_to_total(db, job_id=job.id)
-                except Exception as exc:
-                    _logger.warning("auto write failed for job %s: %s", job.id, exc)
-                    yield _sse(
-                        "warning",
-                        {
-                            "job_id": job.id,
-                            "message": "自动写入投递总表失败，请稍后在投递页手动导入",
-                        },
-                    )
-            except Exception as exc:
-                await db.rollback()
-                failed += 1
-                yield _sse(
-                    "progress",
-                    {
-                        "index": idx,
-                        "total": total,
-                        "job_id": job.id,
-                        "job_title": job.title,
-                        "status": "failed",
-                    },
-                )
-                yield _sse(
-                    "error",
-                    {
-                        "index": idx,
-                        "total": total,
-                        "job_id": job.id,
-                        "job_title": job.title,
-                        "message": str(exc),
-                    },
-                )
+            failed += 1
+            message = "；".join(str(item) for item in (result.get("errors") or []))
+            yield _sse(
+                "progress",
+                {
+                    "index": index,
+                    "total": len(effective_job_ids),
+                    "job_id": job_id,
+                    "status": "failed",
+                },
+            )
+            yield _sse(
+                "error",
+                {
+                    "index": index,
+                    "total": len(effective_job_ids),
+                    "job_id": job_id,
+                    "message": message or "岗位提案准备失败",
+                },
+            )
 
         yield _sse(
             "done",
             {
                 "mode": "per_job",
-                "total": total,
-                "created": created,
+                "total": len(effective_job_ids),
+                "prepared": prepared,
                 "failed": failed,
-                "resume_ids": created_resume_ids,
+                "proposal_ids": proposal_ids,
             },
         )
 
@@ -1058,6 +998,7 @@ class OptimizeAgentStartRequest(BaseModel):
     job_ids: list[int] = Field(..., min_length=1, max_length=200)
     mode: Literal["per_job", "combined"] = "per_job"
     profile_id: int | None = None
+    reference_resume_id: int | None = None
 
 
 class OptimizeAgentChatRequest(BaseModel):
@@ -1072,10 +1013,17 @@ async def optimize_agent_start(
     body: OptimizeAgentStartRequest,
     db: AsyncSession = Depends(get_db),
 ):
+    effective_job_ids = _ordered_unique_ids(body.job_ids)
+    if body.mode != "per_job" or len(effective_job_ids) != 1:
+        raise HTTPException(
+            status_code=409,
+            detail="对话式简历提案当前一次只支持一个岗位；综合多 JD 直写模式已停用。",
+        )
     result = await start_session(
-        job_ids=body.job_ids,
-        mode=body.mode,
+        job_ids=effective_job_ids,
+        mode="per_job",
         profile_id=body.profile_id,
+        reference_resume_id=body.reference_resume_id,
         db=db,
     )
     return result

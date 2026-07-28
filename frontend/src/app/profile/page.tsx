@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { motion } from "framer-motion";
-import { Button, Spinner } from "@nextui-org/react";
+import { Spinner } from "@nextui-org/react";
 import {
   type ArchiveTab,
   type PersonalArchive,
+  type ResumeBasicInfo,
   createDefaultPersonalArchive,
   normalizePersonalArchiveFromProfile,
   computeArchiveCompleteness,
@@ -18,35 +18,34 @@ import {
   sanitizePersonalArchive,
   buildProfileBaseInfoForSave,
 } from "@/lib/personalArchive";
-import { importProfileResume, updateProfileData, useProfile, type ProfileImportResult } from "@/lib/hooks";
+import { updateProfileData, useProfile, type ProfileImportResult } from "@/lib/hooks";
 import ArchiveIntroCard from "./components/archive/ArchiveIntroCard";
-import ArchiveCompletenessBar from "./components/archive/ArchiveCompletenessBar";
-import ArchiveTabsHeader from "./components/archive/ArchiveTabsHeader";
+import ArchiveTabsHeader, {
+  type ProfileArchiveView,
+} from "./components/archive/ArchiveTabsHeader";
 import ArchiveSettingsDialog from "./components/archive/ArchiveSettingsDialog";
 import ResumeArchiveEditor from "./components/archive/ResumeArchiveEditor";
 import ApplicationArchiveEditor from "./components/archive/ApplicationArchiveEditor";
 import { ProfileOnboarding } from "./components/ProfileOnboarding";
+import ProfileOverview from "./components/ProfileOverview";
 import AIImportModal from "./components/AIImportModal";
 
 export default function ProfilePage() {
   const { data: profile, mutate, isLoading } = useProfile();
 
   const [archive, setArchive] = useState<PersonalArchive>(createDefaultPersonalArchive);
-  const [activeTab, setActiveTab] = useState<ArchiveTab>("resume");
+  const [activeView, setActiveView] = useState<ProfileArchiveView>("overview");
   const [focusSection, setFocusSection] = useState<string | undefined>();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [importing, setImporting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [aiImportOpen, setAiImportOpen] = useState(false);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const lastProfileArchiveUpdatedAtRef = useRef("");
   const archiveDirtyRef = useRef(false);
-  const autoOpenedOnboardingRef = useRef(false);
 
   // Sync archive from profile data
   useEffect(() => {
@@ -65,20 +64,6 @@ export default function ProfilePage() {
     const timer = setTimeout(() => setNotice(""), 5500);
     return () => clearTimeout(timer);
   }, [notice]);
-
-  useEffect(() => {
-    if (!profile || autoOpenedOnboardingRef.current || archiveDirtyRef.current) return;
-    const profileArchive = normalizePersonalArchiveFromProfile(profile);
-    const isBlankProfile =
-      !profileArchive.resumeArchive.basicInfo.name.trim() &&
-      profileArchive.resumeArchive.education.length === 0 &&
-      profileArchive.resumeArchive.projects.length === 0 &&
-      profileArchive.resumeArchive.workExperiences.length === 0 &&
-      profileArchive.resumeArchive.internshipExperiences.length === 0;
-    if (!isBlankProfile) return;
-    autoOpenedOnboardingRef.current = true;
-    setShowOnboarding(true);
-  }, [profile]);
 
   // === Save ===
   const handleSave = async () => {
@@ -149,94 +134,9 @@ export default function ProfilePage() {
     setNotice("已导入 AI 解析结果");
   };
 
-  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    try {
-      setImporting(true);
-      setError("");
-      const result = await importProfileResume(file);
-      const importedBase = result.base_info || {};
-      const importedBaseInfo = {
-        ...(profile?.base_info_json || {}),
-        personal_archive: undefined,
-        ...importedBase,
-      };
-      // Merge imported data into archive
-      const rawArchive = normalizePersonalArchiveFromProfile({
-        ...profile,
-        name: importedBase.name || profile?.name || "",
-        base_info_json: importedBaseInfo,
-        sections: result.bullets?.map((b: any) => ({
-          ...b,
-          category_key: b.section_type,
-          category_label: "",
-          title: b.title || "",
-          content_json: b.content_json || {},
-          confidence: b.confidence ?? 0.7,
-          source: "ai_import",
-        })) || [],
-      } as any);
-      rawArchive.resumeArchive.basicInfo = {
-        ...rawArchive.resumeArchive.basicInfo,
-        name: importedBase.name || rawArchive.resumeArchive.basicInfo.name,
-        phone: importedBase.phone || rawArchive.resumeArchive.basicInfo.phone,
-        email: importedBase.email || rawArchive.resumeArchive.basicInfo.email,
-        currentCity: importedBase.current_city || rawArchive.resumeArchive.basicInfo.currentCity,
-        jobIntention: importedBase.job_intention || rawArchive.resumeArchive.basicInfo.jobIntention,
-        website: importedBase.website || rawArchive.resumeArchive.basicInfo.website,
-        github: importedBase.github || rawArchive.resumeArchive.basicInfo.github,
-      };
-
-      const importedSummary = importedBase.summary || importedBase.personal_summary;
-      if (importedSummary && !rawArchive.resumeArchive.personalSummary) {
-        rawArchive.resumeArchive.personalSummary = importedSummary;
-      }
-
-      const syncedArchive = applyResumeToApplicationSync(rawArchive, [...SHARED_ROOT_PATHS], true).nextArchive;
-      const basicInfo = syncedArchive.resumeArchive.basicInfo;
-      syncedArchive.applicationArchive.identityContact = {
-        ...syncedArchive.applicationArchive.identityContact,
-        chineseName: basicInfo.name || syncedArchive.applicationArchive.identityContact.chineseName,
-        phone: basicInfo.phone || syncedArchive.applicationArchive.identityContact.phone,
-        email: basicInfo.email || syncedArchive.applicationArchive.identityContact.email,
-        currentCity: basicInfo.currentCity || syncedArchive.applicationArchive.identityContact.currentCity,
-      };
-      syncedArchive.applicationArchive.jobPreference = {
-        ...syncedArchive.applicationArchive.jobPreference,
-        expectedPosition: basicInfo.jobIntention || syncedArchive.applicationArchive.jobPreference.expectedPosition,
-      };
-      archiveDirtyRef.current = true;
-      setArchive(syncedArchive);
-      setNotice(`已导入 ${file.name}`);
-    } catch (err: any) {
-      setError(err.message || "导入失败");
-    } finally {
-      setImporting(false);
-    }
-  };
-
-  // === Jump / Focus ===
-  const handleJump = (target: "resume" | "application" | "missing" | "syncable") => {
-    if (target === "resume") {
-      setActiveTab("resume");
-      setFocusSection(metrics.missingResumeSectionKeys[0] || undefined);
-    } else if (target === "application") {
-      setActiveTab("application");
-      setFocusSection(metrics.missingApplicationSectionKeys[0] || undefined);
-    } else if (target === "missing") {
-      const firstMissing =
-        metrics.missingResumeSectionKeys[0] || metrics.missingApplicationSectionKeys[0];
-      if (firstMissing) {
-        setActiveTab(
-          metrics.missingResumeSectionKeys.includes(firstMissing) ? "resume" : "application"
-        );
-        setFocusSection(firstMissing);
-      }
-    } else if (target === "syncable") {
-      setSettingsOpen(true);
-    }
+  const handleOpenView = (view: ArchiveTab, section?: string) => {
+    setActiveView(view);
+    setFocusSection(section);
   };
 
   // === Sync ===
@@ -264,15 +164,34 @@ export default function ProfilePage() {
   };
 
   const handleRequestEditShared = (path: string) => {
-    setActiveTab("resume");
+    setActiveView("resume");
     setFocusSection(path);
+  };
+
+  const handleUpdateBasicInfo = (field: keyof ResumeBasicInfo, value: string) => {
+    archiveDirtyRef.current = true;
+    setArchive((prev) => {
+      const next: PersonalArchive = {
+        ...prev,
+        updatedAt: new Date().toISOString(),
+        resumeArchive: {
+          ...prev.resumeArchive,
+          basicInfo: {
+            ...prev.resumeArchive.basicInfo,
+            [field]: value,
+          },
+        },
+      };
+      if (!next.syncSettings.autoSyncEnabled) return next;
+      return applyResumeToApplicationSync(next, [`basicInfo.${field}`]).nextArchive;
+    });
   };
 
   // === Loading ===
   if (isLoading && !profile) {
     return (
       <div className="grid h-[70vh] place-items-center">
-        <div className="bauhaus-panel flex items-center gap-3 bg-white px-6 py-5 text-sm font-medium text-black/70">
+        <div className="bauhaus-panel flex items-center gap-3 bg-white px-6 py-5 text-sm font-medium text-[var(--foreground-muted)]">
           <Spinner color="warning" />
           <span>正在加载档案...</span>
         </div>
@@ -280,17 +199,13 @@ export default function ProfilePage() {
     );
   }
 
+  const activeTab: ArchiveTab = activeView === "application" ? "application" : "resume";
   const missingSections = activeTab === "resume"
     ? metrics.missingResumeSectionKeys
     : metrics.missingApplicationSectionKeys;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ type: "spring", damping: 18 }}
-      className="space-y-5"
-    >
+    <div className="mx-auto max-w-[1080px] space-y-4 pb-8">
       {/* AI Import Modal */}
       <AIImportModal
         open={aiImportOpen}
@@ -315,31 +230,19 @@ export default function ProfilePage() {
 
       {/* Header */}
       <ArchiveIntroCard
+        name={archive.resumeArchive.basicInfo.name}
+        jobIntention={archive.resumeArchive.basicInfo.jobIntention}
+        updatedAt={archive.updatedAt}
         onImport={triggerImport}
+        onOnboarding={() => setShowOnboarding(true)}
         onSave={handleSave}
         saving={saving}
       />
 
-      <div className="bauhaus-panel-sm flex flex-col gap-3 bg-[var(--surface)] p-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <p className="text-sm font-semibold text-black">新人投递档案向导</p>
-          <p className="mt-1 text-xs text-black/55">
-            按 4 步补齐实名、教育、岗位、经历和技能，系统会同步生成简历档案与网申档案。
-          </p>
-        </div>
-        <Button className="bauhaus-button bauhaus-button-black" onPress={() => setShowOnboarding(true)}>
-          开始向导
-        </Button>
-      </div>
-
-      {/* Completeness */}
-      <ArchiveCompletenessBar metrics={metrics} onJump={handleJump} />
-
-      {/* Tabs */}
       <ArchiveTabsHeader
-        activeTab={activeTab}
-        onTabChange={(tab) => {
-          setActiveTab(tab);
+        activeView={activeView}
+        onViewChange={(view) => {
+          setActiveView(view);
           setFocusSection(undefined);
         }}
         onOpenSettings={() => setSettingsOpen(true)}
@@ -347,18 +250,26 @@ export default function ProfilePage() {
 
       {/* Error / Notice */}
       {error && (
-        <div className="bauhaus-panel-sm bg-[#D02020] px-4 py-3 text-sm font-medium text-white">
+        <div className="rounded-md bg-[var(--status-blush)] px-3 py-2 text-[12.5px] font-medium text-[var(--primary-red)]">
           {error}
         </div>
       )}
       {notice && (
-        <div className="bauhaus-panel-sm bg-[#F0C020] px-4 py-3 text-sm font-medium text-black">
+        <div className="rounded-md bg-[var(--status-sage)] px-3 py-2 text-[12.5px] font-medium text-[var(--primary-green)]">
           {notice}
         </div>
       )}
 
-      {/* Editor */}
-      {activeTab === "resume" ? (
+      {activeView === "overview" ? (
+        <ProfileOverview
+          archive={archive}
+          metrics={metrics}
+          onOpenView={handleOpenView}
+          onStartOnboarding={() => setShowOnboarding(true)}
+          onUpdateBasicInfo={handleUpdateBasicInfo}
+          onSave={handleSave}
+        />
+      ) : activeView === "resume" ? (
         <ResumeArchiveEditor
           value={getResumeArchive(archive)}
           focusSection={focusSection}
@@ -425,6 +336,6 @@ export default function ProfilePage() {
         onOneClickSync={handleOneClickSync}
         syncing={syncing}
       />
-    </motion.div>
+    </div>
   );
 }

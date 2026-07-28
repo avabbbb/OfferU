@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import inspect
 import json
 import time
@@ -10,19 +11,94 @@ from sqlalchemy import func, select
 
 from app.database import async_session
 from app.services.agent_operations import (
+    activate_authorized_research_read_only,
+    add_profile_evidence,
+    analyze_application_patterns,
     batch_triage,
+    begin_gmail_oauth,
+    complete_gmail_oauth,
+    complete_authorized_research_session,
+    connect_imap_account,
+    create_ai_interview,
     create_application,
+    create_interview_scoring_skill,
+    create_memory_proposal,
+    cancel_authorized_research_session,
+    capture_authorized_research_page,
+    consolidate_memory_observations,
+    export_resume_pdf,
     generate_cover_letter,
-    generate_resume,
+    get_application_workspace,
+    get_application_progress_candidate,
+    get_application_progress_overview,
+    get_ai_interview,
+    get_ai_interview_runtime,
+    get_authorized_research_session,
+    get_career_artifact,
     get_job,
+    get_job_research,
+    get_interview_scoring_skill,
     get_profile,
     get_resume,
+    get_resume_optimization,
+    get_work_source,
+    get_work_source_sync_run,
+    get_batch_job_evaluation,
+    get_email_sync_run,
+    import_jd,
+    invalidate_memory_source,
+    invalidate_work_source,
+    create_application_attempt,
+    validate_fact_gate,
     job_stats,
     list_applications,
+    list_ai_interviews,
+    list_authorized_research_sessions,
+    list_application_progress_candidates,
+    list_application_records,
+    list_application_events,
+    list_career_artifacts,
+    list_follow_up_cadence,
     list_jobs,
+    list_job_research_runs,
+    list_interview_scoring_skills,
+    list_learning_observations,
+    list_memory_inbox,
     list_pools,
+    list_batch_job_evaluations,
+    list_coding_agents,
+    list_email_accounts,
+    list_email_sync_runs,
+    list_work_sources,
+    list_work_source_sync_runs,
+    list_profile_evidence,
+    list_resume_optimizations,
     list_resumes,
+    prepare_resume_optimization,
+    register_work_source,
+    ingest_application_signal,
+    ingest_interview_behavior_events,
+    record_follow_up,
+    revoke_email_account,
+    restart_ai_interview,
+    review_memory_proposal,
+    review_resume_optimization,
+    review_application_progress,
+    save_career_artifact,
+    start_batch_job_evaluation,
+    start_authorized_research_session,
+    resume_batch_job_evaluation,
+    resume_job_research,
+    resume_work_source_sync,
+    start_work_source_sync,
+    start_job_research,
+    sync_email_notifications,
+    submit_ai_interview_answer,
     triage_job,
+    update_application_record,
+    update_application_status,
+    email_connection_status,
+    delete_ai_interview,
 )
 from app.models.models import AgentWorkspaceState, Job, OperationAuditLog, Pool
 
@@ -40,6 +116,8 @@ class Operation:
     side_effects: tuple[str, ...] = ("read",)
     permissions: tuple[str, ...] = ()
     examples: tuple[dict[str, Any], ...] = ()
+    audit_redacted_parameters: tuple[str, ...] = ()
+    audit_redacted_output_parameters: tuple[str, ...] = ()
     version: str = "2026-05-23"
 
     @property
@@ -56,6 +134,10 @@ class Operation:
             "supports_dry_run": self.is_mutation,
             "requires_confirmation": self.is_mutation,
             "permissions": list(self.permissions),
+            "audit_redacted_parameters": list(self.audit_redacted_parameters),
+            "audit_redacted_output_parameters": list(
+                self.audit_redacted_output_parameters
+            ),
             "examples": list(self.examples),
             "output_contract": {
                 "ok": "bool",
@@ -79,6 +161,339 @@ OPERATIONS: dict[str, Operation] = {
         description="获取用户个人资料概览，包括基本信息、目标岗位、经历统计。",
         group="profile",
     ),
+    "list_profile_evidence": Operation(
+        name="list_profile_evidence",
+        fn=list_profile_evidence,
+        description="读取带来源信息的结构化职业证据条目。",
+        parameters={"section_type": "str?", "limit": "int=100"},
+        group="profile",
+    ),
+    "add_profile_evidence": Operation(
+        name="add_profile_evidence",
+        fn=add_profile_evidence,
+        description="确认后追加一条来源可验证且确定性去重的分层档案条目；记忆提案应通过 review_memory_proposal 进入此事实门。",
+        parameters={
+            "section_type": "str",
+            "title": "str",
+            "content_json": "object",
+            "source_text": "str",
+            "category_label": "str?",
+            "source_url": "str?",
+            "dedup_key": "str?",
+            "tier": "str? (verified_fact|preference|career_hypothesis)",
+        },
+        group="profile",
+        side_effects=("write",),
+    ),
+    "list_learning_observations": Operation(
+        name="list_learning_observations",
+        fn=list_learning_observations,
+        description="读取带来源、幂等键和失效状态的学习观察；学习观察本身不是职业事实。",
+        parameters={
+            "status": "str=active (active|invalidated|all)",
+            "observation_type": "str?",
+            "limit": "int=100",
+        },
+        group="memory",
+    ),
+    "list_memory_inbox": Operation(
+        name="list_memory_inbox",
+        fn=list_memory_inbox,
+        description="读取记忆收件箱提案及其前后差异、理由、影响和来源证据。",
+        parameters={"status": "str=pending", "limit": "int=100"},
+        group="memory",
+    ),
+    "create_memory_proposal": Operation(
+        name="create_memory_proposal",
+        fn=create_memory_proposal,
+        description="确认后从一条有效学习观察生成记忆收件箱提案；不会直接改写 Profile。",
+        parameters={
+            "observation_id": "int",
+            "target_tier": "str (verified_fact|preference|career_hypothesis)",
+            "section_type": "str",
+            "title": "str",
+            "after": "object",
+            "reason": "str",
+            "before": "object?",
+            "impact": "list[str]?",
+        },
+        group="memory",
+        side_effects=("write",),
+    ),
+    "review_memory_proposal": Operation(
+        name="review_memory_proposal",
+        fn=review_memory_proposal,
+        description="确认后接受、拒绝、稍后处理或撤销记忆提案；只有接受才按分层事实门写入 Profile。",
+        parameters={
+            "proposal_id": "int",
+            "action": "str (accept|reject|defer|revoke)",
+            "note": "str?",
+        },
+        group="memory",
+        side_effects=("write",),
+    ),
+    "invalidate_memory_source": Operation(
+        name="invalidate_memory_source",
+        fn=invalidate_memory_source,
+        description="确认后撤销一个职业模型来源，并级联失效其观察、提案、证据链接和无其他支持的 Profile 条目。",
+        parameters={"source_id": "int", "reason": "str"},
+        group="memory",
+        side_effects=("write",),
+    ),
+    "consolidate_memory_observations": Operation(
+        name="consolidate_memory_observations",
+        fn=consolidate_memory_observations,
+        description="把上游已结构化的学习候选幂等巩固为记忆收件箱提案；不调用模型且不直接改写 Profile。",
+        parameters={"observation_ids": "list[int]?", "limit": "int=100"},
+        group="memory",
+        side_effects=("write",),
+    ),
+    "get_ai_interview_runtime": Operation(
+        name="get_ai_interview_runtime",
+        fn=get_ai_interview_runtime,
+        description="读取当前面试模型、数据类别同意要求、摄像头隐私边界和禁止推断范围。",
+        group="interview",
+    ),
+    "list_interview_scoring_skills": Operation(
+        name="list_interview_scoring_skills",
+        fn=list_interview_scoring_skills,
+        description="读取版本化声明式内容评分 Skill 摘要；Skill 不执行任意代码。",
+        parameters={"status": "str=active", "limit": "int=50"},
+        group="interview",
+    ),
+    "get_interview_scoring_skill": Operation(
+        name="get_interview_scoring_skill",
+        fn=get_interview_scoring_skill,
+        description="读取一个固定版本的内容评分定义、权重、证据要求和禁止输出。",
+        parameters={"skill_id": "str", "version": "int?"},
+        group="interview",
+    ),
+    "create_interview_scoring_skill": Operation(
+        name="create_interview_scoring_skill",
+        fn=create_interview_scoring_skill,
+        description="确认后创建新版本声明式内容评分 Skill；只允许 schema 内权重和提示，不执行 Python、JS 或 Shell。",
+        parameters={
+            "skill_id": "str",
+            "name": "str",
+            "definition": "object",
+            "user_confirmed": "bool (must be true)",
+        },
+        group="interview",
+        side_effects=("write",),
+    ),
+    "list_ai_interviews": Operation(
+        name="list_ai_interviews",
+        fn=list_ai_interviews,
+        description="渐进读取 AI 面试摘要列表，不展开回答文本和逐条表达行为事件。",
+        parameters={"status": "str?", "limit": "int=100"},
+        group="interview",
+    ),
+    "get_ai_interview": Operation(
+        name="get_ai_interview",
+        fn=get_ai_interview,
+        description="读取一场 AI 面试；summary 不展开，full 才返回回答、内容评价和派生表达行为事件。",
+        parameters={"interview_id": "int", "detail": "str=full (summary|full)"},
+        group="interview",
+        audit_redacted_output_parameters=("messages",),
+    ),
+    "create_ai_interview": Operation(
+        name="create_ai_interview",
+        fn=create_ai_interview,
+        description="确认模型提供方和数据类别后，使用已验证档案事实、JD 与调研证据生成一题一答的 AI 面试。",
+        parameters={
+            "model_provider": "str",
+            "data_consent": "bool",
+            "consented_data_categories": "list[str]",
+            "user_confirmed": "bool (must be true)",
+            "title": "str?",
+            "target_company": "str?",
+            "target_position": "str?",
+            "target_job_id": "int?",
+            "resume_id": "int?",
+            "profile_id": "int?",
+            "interview_type": "str=behavioral",
+            "difficulty": "str=medium",
+            "question_count": "int=5",
+            "scoring_skill_id": "str=evidence-interview-score",
+            "scoring_skill_version": "int?",
+        },
+        group="interview",
+        side_effects=("llm", "external", "write"),
+        permissions=("model:interview_context",),
+    ),
+    "submit_ai_interview_answer": Operation(
+        name="submit_ai_interview_answer",
+        fn=submit_ai_interview_answer,
+        description="确认后评价并保存当前题回答；模型只输出逐字证据维度，服务器按固定 Skill 确定性聚合内容分。",
+        parameters={
+            "interview_id": "int",
+            "question_index": "int",
+            "content": "str",
+            "model_provider": "str",
+            "user_confirmed": "bool (must be true)",
+        },
+        group="interview",
+        side_effects=("llm", "external", "write"),
+        permissions=("model:interview_transcript",),
+        audit_redacted_parameters=("content",),
+    ),
+    "ingest_interview_behavior_events": Operation(
+        name="ingest_interview_behavior_events",
+        fn=ingest_interview_behavior_events,
+        description="确认后保存浏览器本地视觉模型产生的派生事件；拒绝原始帧、landmarks，并与内容评分保持分离。",
+        parameters={
+            "interview_id": "int",
+            "events": "list[object]",
+            "user_confirmed": "bool (must be true)",
+        },
+        group="interview",
+        side_effects=("write",),
+        permissions=("camera:derived_events",),
+        audit_redacted_parameters=("events",),
+    ),
+    "restart_ai_interview": Operation(
+        name="restart_ai_interview",
+        fn=restart_ai_interview,
+        description="确认后归档原会话并从同一固定问题和评分版本创建新会话，保留旧会话证据链。",
+        parameters={
+            "interview_id": "int",
+            "user_confirmed": "bool (must be true)",
+        },
+        group="interview",
+        side_effects=("write",),
+    ),
+    "delete_ai_interview": Operation(
+        name="delete_ai_interview",
+        fn=delete_ai_interview,
+        description="确认后删除面试，并先级联失效由它产生的学习观察和无其他支持的派生记忆。",
+        parameters={
+            "interview_id": "int",
+            "reason": "str",
+            "user_confirmed": "bool (must be true)",
+        },
+        group="interview",
+        side_effects=("write",),
+    ),
+    "register_work_source": Operation(
+        name="register_work_source",
+        fn=register_work_source,
+        description="确认后登记一个本地目录或 Git 仓库为只读工作源；未登记路径不会被扫描。",
+        parameters={
+            "name": "str",
+            "root_path": "str",
+            "source_type": "str=directory (directory|git_repository)",
+            "runtime_id": "str=codex",
+            "include_patterns": "list[str]?",
+            "exclude_patterns": "list[str]?",
+        },
+        group="memory",
+        side_effects=("write",),
+        audit_redacted_parameters=("root_path",),
+    ),
+    "list_work_sources": Operation(
+        name="list_work_sources",
+        fn=list_work_sources,
+        description="读取使用者显式登记的工作源、同步指纹和最近同步时间。",
+        parameters={"status": "str=active", "limit": "int=100"},
+        group="memory",
+    ),
+    "get_work_source": Operation(
+        name="get_work_source",
+        fn=get_work_source,
+        description="读取一项登记工作源的配置和最近同步状态。",
+        parameters={"work_source_id": "int"},
+        group="memory",
+    ),
+    "start_work_source_sync": Operation(
+        name="start_work_source_sync",
+        fn=start_work_source_sync,
+        description="在本次工作内容模型授权后启动只读增量摘要；原始文件不落库，结果只形成观察和待确认提案。",
+        parameters={
+            "work_source_id": "int",
+            "data_consent": "bool (must be true)",
+            "runtime_id": "str?",
+        },
+        group="memory",
+        side_effects=("external", "llm", "write"),
+        permissions=("work_source_content:model",),
+    ),
+    "list_work_source_sync_runs": Operation(
+        name="list_work_source_sync_runs",
+        fn=list_work_source_sync_runs,
+        description="读取工作源同步运行及其真实状态、摘要和失败信息。",
+        parameters={
+            "work_source_id": "int?",
+            "status": "str?",
+            "limit": "int=50",
+        },
+        group="memory",
+    ),
+    "get_work_source_sync_run": Operation(
+        name="get_work_source_sync_run",
+        fn=get_work_source_sync_run,
+        description="读取单次工作源同步的摘要、审计轨迹和错误。",
+        parameters={"run_id": "str"},
+        group="memory",
+    ),
+    "resume_work_source_sync": Operation(
+        name="resume_work_source_sync",
+        fn=resume_work_source_sync,
+        description="确认后重放失败的工作源同步；幂等指纹防止重复观察和重复提案。",
+        parameters={"run_id": "str"},
+        group="memory",
+        side_effects=("external", "llm", "write"),
+        permissions=("work_source_content:model",),
+    ),
+    "invalidate_work_source": Operation(
+        name="invalidate_work_source",
+        fn=invalidate_work_source,
+        description="确认后撤销工作源并清除路径、指纹、摘要和派生记忆，保留最小审计外壳。",
+        parameters={"work_source_id": "int", "reason": "str"},
+        group="memory",
+        side_effects=("write",),
+    ),
+    "import_jd": Operation(
+        name="import_jd",
+        fn=import_jd,
+        description="导入单条 JD 文本为 Job；按 md5(jd_text) 去重，新建 Job triage_status=inbox。",
+        parameters={
+            "title": "str",
+            "company": "str",
+            "jd_text": "str",
+            "source": "str=agent_import",
+            "location": "str?",
+            "url": "str?",
+            "apply_url": "str?",
+            "batch_id": "str?",
+        },
+        group="jobs",
+        side_effects=("write",),
+    ),
+    "validate_fact_gate": Operation(
+        name="validate_fact_gate",
+        fn=validate_fact_gate,
+        description="对生成内容跑事实门校验：返回 unverified_metric / unverified_fact 警告列表。只读。",
+        parameters={
+            "source_facts": "object",
+            "generated": "object",
+        },
+        group="profile",
+        side_effects=("read",),
+    ),
+    "create_application_attempt": Operation(
+        name="create_application_attempt",
+        fn=create_application_attempt,
+        description="确认后创建一条投递尝试记录（ADR-0007：一行一次尝试）。不自动提交站外申请。",
+        parameters={
+            "job_id": "int",
+            "resume_id": "int?",
+            "resume_version_id": "int?",
+            "cover_letter": "str?",
+            "notes": "str?",
+        },
+        group="applications",
+        side_effects=("write",),
+    ),
     "list_pools": Operation(
         name="list_pools",
         fn=list_pools,
@@ -97,6 +512,161 @@ OPERATIONS: dict[str, Operation] = {
             "page_size": "int=20",
         },
         group="jobs",
+    ),
+    "list_coding_agents": Operation(
+        name="list_coding_agents",
+        fn=list_coding_agents,
+        description="检测本机 coding-agent CLI 及其隔离运行支持。",
+        group="agent_runtime",
+    ),
+    "list_batch_job_evaluations": Operation(
+        name="list_batch_job_evaluations",
+        fn=list_batch_job_evaluations,
+        description="读取持久化的 coding-agent 批处理运行。",
+        parameters={"limit": "int=20"},
+        group="agent_runtime",
+    ),
+    "get_batch_job_evaluation": Operation(
+        name="get_batch_job_evaluation",
+        fn=get_batch_job_evaluation,
+        description="读取一条批处理运行和逐岗位断点。",
+        parameters={"batch_id": "str"},
+        group="agent_runtime",
+    ),
+    "start_batch_job_evaluation": Operation(
+        name="start_batch_job_evaluation",
+        fn=start_batch_job_evaluation,
+        description="确认后用隔离的本地 coding-agent 后台并行评估岗位。",
+        parameters={"job_ids": "list[int]", "runtime_id": "str=codex", "max_workers": "int=2"},
+        group="agent_runtime",
+        side_effects=("write", "external"),
+    ),
+    "resume_batch_job_evaluation": Operation(
+        name="resume_batch_job_evaluation",
+        fn=resume_batch_job_evaluation,
+        description="确认后恢复失败或中断的批处理岗位，已完成项不会重放。",
+        parameters={"batch_id": "str"},
+        group="agent_runtime",
+        side_effects=("write", "external"),
+    ),
+    "list_job_research_runs": Operation(
+        name="list_job_research_runs",
+        fn=list_job_research_runs,
+        description="读取持久化的单岗位公开网页调研运行及证据数量。",
+        parameters={"job_id": "int?", "status": "str?", "limit": "int=20"},
+        group="research",
+    ),
+    "get_job_research": Operation(
+        name="get_job_research",
+        fn=get_job_research,
+        description="读取一次岗位调研的双档案、逐条结论、证据快照、报告和执行轨迹。",
+        parameters={"run_id": "str"},
+        group="research",
+    ),
+    "start_job_research": Operation(
+        name="start_job_research",
+        fn=start_job_research,
+        description="确认后由只读临时 Codex worker 实时检索公开网页并建立公司与岗位档案。",
+        parameters={"job_id": "int", "runtime_id": "str=codex"},
+        group="research",
+        side_effects=("write", "external"),
+    ),
+    "resume_job_research": Operation(
+        name="resume_job_research",
+        fn=resume_job_research,
+        description="确认后恢复失败或被中断的岗位公开网页调研；已完成运行不会重放。",
+        parameters={"run_id": "str"},
+        group="research",
+        side_effects=("write", "external"),
+    ),
+    "start_authorized_research_session": Operation(
+        name="start_authorized_research_session",
+        fn=start_authorized_research_session,
+        description="确认后启动一个不持久化登录状态的本地可见浏览器，由使用者手动登录指定平台。",
+        parameters={
+            "job_id": "int",
+            "platform": "str (xiaohongshu|maimai|niuke|boss)",
+            "initial_url": "str",
+            "user_authorized": "bool",
+            "base_run_id": "str?",
+            "expires_minutes": "int=30",
+        },
+        group="research",
+        side_effects=("external", "write"),
+        permissions=("authenticated_browser:manual_login",),
+        audit_redacted_parameters=("initial_url",),
+        audit_redacted_output_parameters=("initial_url",),
+    ),
+    "activate_authorized_research_read_only": Operation(
+        name="activate_authorized_research_read_only",
+        fn=activate_authorized_research_read_only,
+        description="使用者确认登录完成后重建为只读页面，拦截写请求、WebSocket、下载与 service worker。",
+        parameters={
+            "session_id": "str",
+            "user_confirmed_login_complete": "bool",
+        },
+        group="research",
+        side_effects=("external", "write"),
+        permissions=("authenticated_browser:read",),
+    ),
+    "capture_authorized_research_page": Operation(
+        name="capture_authorized_research_page",
+        fn=capture_authorized_research_page,
+        description="逐页确认后只保存当前页面中使用者选中的短摘录；不保存页面、截图、Cookie 或 storage state。",
+        parameters={
+            "session_id": "str",
+            "dossier_scope": "str (company|role)",
+            "source_class": "str",
+            "user_confirmed_capture": "bool",
+            "publisher": "str?",
+            "published_at": "str?",
+            "selected_text": "str?",
+        },
+        group="research",
+        side_effects=("external", "write"),
+        permissions=("authenticated_browser:read",),
+        audit_redacted_parameters=("selected_text",),
+        audit_redacted_output_parameters=("excerpt", "authorization"),
+    ),
+    "list_authorized_research_sessions": Operation(
+        name="list_authorized_research_sessions",
+        fn=list_authorized_research_sessions,
+        description="读取登录态只读调研会话摘要，不展开证据摘录。",
+        parameters={"job_id": "int?", "status": "str?", "limit": "int=20"},
+        group="research",
+    ),
+    "get_authorized_research_session": Operation(
+        name="get_authorized_research_session",
+        fn=get_authorized_research_session,
+        description="读取一个授权调研会话及证据清单；只有显式 include_excerpts 才展开短摘录。",
+        parameters={"session_id": "str", "include_excerpts": "bool=false"},
+        group="research",
+        permissions=("authenticated_browser:read",),
+        audit_redacted_output_parameters=("captures",),
+    ),
+    "complete_authorized_research_session": Operation(
+        name="complete_authorized_research_session",
+        fn=complete_authorized_research_session,
+        description="确认后把选定登录态证据与公开网结果合并；每条 finding 仅含 dossier_scope、finding_type、statement、details、capture_ids、base_source_refs，并统一经过事实门。",
+        parameters={
+            "session_id": "str",
+            "findings": "list[object]",
+            "user_confirmed_findings": "bool",
+            "gaps": "list[str]?",
+        },
+        group="research",
+        side_effects=("write",),
+        permissions=("authenticated_browser:read",),
+        audit_redacted_parameters=("findings",),
+    ),
+    "cancel_authorized_research_session": Operation(
+        name="cancel_authorized_research_session",
+        fn=cancel_authorized_research_session,
+        description="确认后关闭临时浏览器并删除尚未提升为正式调研证据的摘录。",
+        parameters={"session_id": "str", "reason": "str"},
+        group="research",
+        side_effects=("write",),
+        permissions=("authenticated_browser:read",),
     ),
     "get_job": Operation(
         name="get_job",
@@ -121,13 +691,45 @@ OPERATIONS: dict[str, Operation] = {
         group="jobs",
         side_effects=("write",),
     ),
-    "generate_resume": Operation(
-        name="generate_resume",
-        fn=generate_resume,
-        description="为指定岗位 AI 生成一份定制简历并保存。",
-        parameters={"job_id": "int", "reference_resume_id": "int?"},
+    "prepare_resume_optimization": Operation(
+        name="prepare_resume_optimization",
+        fn=prepare_resume_optimization,
+        description="基于已验证档案、完整 JD 和已完成岗位调研生成可审核简历提案；不创建正式 Resume。",
+        parameters={
+            "job_id": "int",
+            "profile_id": "int? (省略时使用默认 Profile)",
+            "reference_resume_id": "int?",
+            "research_run_id": "str?",
+            "candidate_rows": "list[object]? (仅已逐段确认的 Optimize Session 候选稿)",
+            "candidate_original_rows": "list[object]? (与候选稿对应的原文快照)",
+            "source_session_id": "str? (会话候选稿必填)",
+        },
         group="resume",
         side_effects=("llm", "write"),
+        permissions=("profile_evidence", "job_description", "job_research"),
+    ),
+    "list_resume_optimizations": Operation(
+        name="list_resume_optimizations",
+        fn=list_resume_optimizations,
+        description="扁平读取简历优化提案摘要，可按岗位和状态筛选。",
+        parameters={"job_id": "int?", "status": "str?", "limit": "int=20"},
+        group="resume",
+    ),
+    "get_resume_optimization": Operation(
+        name="get_resume_optimization",
+        fn=get_resume_optimization,
+        description="渐进披露一个简历优化提案的原文、候选稿、逐项 diff、事实门与调研证据。",
+        parameters={"proposal_id": "str"},
+        group="resume",
+    ),
+    "review_resume_optimization": Operation(
+        name="review_resume_optimization",
+        fn=review_resume_optimization,
+        description="明确接受或拒绝简历提案；仅接受通过事实门的非过期提案才原子创建 Resume 与版本。",
+        parameters={"proposal_id": "str", "action": "str (accept|reject)", "note": "str?"},
+        group="resume",
+        side_effects=("write",),
+        permissions=("resume_write", "career_memory"),
     ),
     "list_resumes": Operation(
         name="list_resumes",
@@ -142,6 +744,14 @@ OPERATIONS: dict[str, Operation] = {
         parameters={"resume_id": "int"},
         group="resume",
     ),
+    "export_resume_pdf": Operation(
+        name="export_resume_pdf",
+        fn=export_resume_pdf,
+        description="确认后渲染并原子保存一份 ATS 可读 PDF。",
+        parameters={"resume_id": "int"},
+        group="resume",
+        side_effects=("write",),
+    ),
     "list_applications": Operation(
         name="list_applications",
         fn=list_applications,
@@ -152,9 +762,243 @@ OPERATIONS: dict[str, Operation] = {
     "create_application": Operation(
         name="create_application",
         fn=create_application,
-        description="为指定岗位创建一条待投递记录。",
+        description="为指定岗位在投递工作区事实源中创建一条待投递记录。",
         parameters={"job_id": "int", "notes": "str?"},
         group="applications",
+        side_effects=("write",),
+    ),
+    "update_application_status": Operation(
+        name="update_application_status",
+        fn=update_application_status,
+        description="确认后原子更新一条投递记录状态。",
+        parameters={"application_id": "int", "status": "str", "notes": "str?"},
+        group="applications",
+        side_effects=("write",),
+    ),
+    "begin_gmail_oauth": Operation(
+        name="begin_gmail_oauth",
+        fn=begin_gmail_oauth,
+        description="生成带 PKCE 与一次性 state 的 Gmail 只读授权链接；verifier 只进入系统钥匙串。",
+        parameters={"redirect_uri": "str"},
+        group="email",
+        side_effects=("write",),
+        permissions=("credential:keychain",),
+        audit_redacted_output_parameters=("auth_url",),
+    ),
+    "complete_gmail_oauth": Operation(
+        name="complete_gmail_oauth",
+        fn=complete_gmail_oauth,
+        description="交换 Gmail OAuth code 并把 token 存入系统钥匙串；数据库只保存不透明引用。",
+        parameters={"code": "str", "state": "str"},
+        group="email",
+        side_effects=("external", "write"),
+        permissions=("credential:keychain",),
+        audit_redacted_parameters=("code", "state"),
+    ),
+    "connect_imap_account": Operation(
+        name="connect_imap_account",
+        fn=connect_imap_account,
+        description="测试只读 IMAP 连接并把应用授权码存入系统钥匙串。",
+        parameters={
+            "user": "str",
+            "password": "str (transient; audit-redacted)",
+            "provider": "str?",
+            "host": "str?",
+            "port": "int=993",
+        },
+        group="email",
+        side_effects=("external", "write"),
+        permissions=("credential:keychain",),
+        audit_redacted_parameters=("password",),
+    ),
+    "email_connection_status": Operation(
+        name="email_connection_status",
+        fn=email_connection_status,
+        description="读取不含凭据引用和密钥的邮箱连接状态。",
+        group="email",
+    ),
+    "list_email_accounts": Operation(
+        name="list_email_accounts",
+        fn=list_email_accounts,
+        description="读取邮箱账号元数据与增量同步状态；不返回 credential_ref 或原始密钥。",
+        parameters={"status": "str=active", "limit": "int=50"},
+        group="email",
+    ),
+    "sync_email_notifications": Operation(
+        name="sync_email_notifications",
+        fn=sync_email_notifications,
+        description="用 Gmail historyId 或 IMAP UID/UIDVALIDITY 增量同步，生成待确认候选进展，不自动改变投递阶段。",
+        parameters={"account_id": "str?"},
+        group="email",
+        side_effects=("external", "write"),
+        permissions=("mailbox:read",),
+    ),
+    "list_email_sync_runs": Operation(
+        name="list_email_sync_runs",
+        fn=list_email_sync_runs,
+        description="读取持久化邮箱增量同步运行、真实状态与恢复轨迹。",
+        parameters={"account_id": "str?", "status": "str?", "limit": "int=50"},
+        group="email",
+    ),
+    "get_email_sync_run": Operation(
+        name="get_email_sync_run",
+        fn=get_email_sync_run,
+        description="读取单次邮箱同步的计数、游标模式和错误；不包含邮件正文或凭据。",
+        parameters={"run_id": "str"},
+        group="email",
+    ),
+    "revoke_email_account": Operation(
+        name="revoke_email_account",
+        fn=revoke_email_account,
+        description="撤销邮箱账号、删除钥匙串凭据并失效尚未确认的消息信号与候选进展。",
+        parameters={"account_id": "str", "reason": "str"},
+        group="email",
+        side_effects=("external", "write"),
+        permissions=("credential:keychain",),
+    ),
+    "ingest_application_signal": Operation(
+        name="ingest_application_signal",
+        fn=ingest_application_signal,
+        description="把一封邮件或主动转发短信保存为最小证据快照和待确认候选进展；不改变正式投递阶段。",
+        parameters={
+            "channel": "str (email|sms_forward)",
+            "account_ref": "str",
+            "external_message_id": "str",
+            "sender": "str",
+            "subject": "str",
+            "body": "str (transient; audit-redacted)",
+            "external_thread_id": "str?",
+            "received_at": "ISO-8601?",
+            "stage_hint": "str?",
+        },
+        group="applications",
+        side_effects=("write",),
+        audit_redacted_parameters=("body",),
+    ),
+    "list_application_progress_candidates": Operation(
+        name="list_application_progress_candidates",
+        fn=list_application_progress_candidates,
+        description="渐进式读取外部消息形成的候选进展；summary 默认隐藏正文片段和备选关联。",
+        parameters={"status": "str=pending", "disclosure": "str=summary", "limit": "int=100"},
+        group="applications",
+    ),
+    "get_application_progress_candidate": Operation(
+        name="get_application_progress_candidate",
+        fn=get_application_progress_candidate,
+        description="读取一条候选进展的最小消息证据、关联依据和备选投递尝试。",
+        parameters={"candidate_id": "str"},
+        group="applications",
+    ),
+    "review_application_progress": Operation(
+        name="review_application_progress",
+        fn=review_application_progress,
+        description="用户确认或拒绝候选进展；只有接受才追加投递阶段事件。",
+        parameters={
+            "candidate_id": "str",
+            "action": "str (accept|reject)",
+            "application_attempt_id": "int?",
+            "stage": "str?",
+            "note": "str?",
+        },
+        group="applications",
+        side_effects=("write",),
+    ),
+    "get_application_progress_overview": Operation(
+        name="get_application_progress_overview",
+        fn=get_application_progress_overview,
+        description="从投递尝试和已确认阶段事件派生紧凑进度表；detail 才展开时间线。",
+        parameters={"disclosure": "str=summary", "job_id": "int?", "limit": "int=200"},
+        group="applications",
+    ),
+    "get_application_workspace": Operation(
+        name="get_application_workspace",
+        fn=get_application_workspace,
+        description="读取当前投递工作区、表结构、统计和当前表记录。",
+        group="applications",
+    ),
+    "list_application_records": Operation(
+        name="list_application_records",
+        fn=list_application_records,
+        description="读取指定投递工作区表中的事实记录。",
+        parameters={"table_id": "int", "keyword": "str?"},
+        group="applications",
+    ),
+    "list_application_events": Operation(
+        name="list_application_events",
+        fn=list_application_events,
+        description="读取追加式投递事件时间线，可按记录或事件类型过滤。",
+        parameters={"application_type": "str?", "application_id": "int?", "event_type": "str?", "limit": "int=1000"},
+        group="applications",
+    ),
+    "analyze_application_patterns": Operation(
+        name="analyze_application_patterns",
+        fn=analyze_application_patterns,
+        description="基于当前状态和追加式事件计算漏斗、转化、状态迁移与历史覆盖率。",
+        group="applications",
+    ),
+    "update_application_record": Operation(
+        name="update_application_record",
+        fn=update_application_record,
+        description="确认后更新投递工作区记录的状态、跟进日期或备注。",
+        parameters={"record_id": "int", "field_key": "str", "value": "any"},
+        group="applications",
+        side_effects=("write",),
+    ),
+    "list_follow_up_cadence": Operation(
+        name="list_follow_up_cadence",
+        fn=list_follow_up_cadence,
+        description="按确定性规则计算到期、紧急、等待与冷却跟进。",
+        group="applications",
+    ),
+    "record_follow_up": Operation(
+        name="record_follow_up",
+        fn=record_follow_up,
+        description="只在用户确认实际发送后，追加一条不可变跟进记录。",
+        parameters={
+            "application_type": "str (application|application_record)",
+            "application_id": "int",
+            "channel": "str",
+            "contact": "str?",
+            "notes": "str?",
+            "sent_at": "YYYY-MM-DD?",
+        },
+        group="applications",
+        side_effects=("write",),
+    ),
+    "list_career_artifacts": Operation(
+        name="list_career_artifacts",
+        fn=list_career_artifacts,
+        description="读取 file-first 职业材料索引和预览。",
+        parameters={
+            "artifact_type": "str?",
+            "related_job_id": "int?",
+            "related_application_id": "int?",
+            "related_application_record_id": "int?",
+            "limit": "int=20",
+        },
+        group="artifacts",
+    ),
+    "get_career_artifact": Operation(
+        name="get_career_artifact",
+        fn=get_career_artifact,
+        description="读取一份完整的 file-first 职业材料。",
+        parameters={"artifact_id": "str"},
+        group="artifacts",
+    ),
+    "save_career_artifact": Operation(
+        name="save_career_artifact",
+        fn=save_career_artifact,
+        description="确认后原子保存一份 Markdown 职业材料。",
+        parameters={
+            "artifact_type": "str",
+            "title": "str",
+            "content_markdown": "str",
+            "related_job_id": "int?",
+            "related_application_id": "int?",
+            "related_application_record_id": "int?",
+            "metadata": "object?",
+        },
+        group="artifacts",
         side_effects=("write",),
     ),
     "generate_cover_letter": Operation(
@@ -215,24 +1059,25 @@ WORKFLOW_CATALOG: dict[str, dict[str, Any]] = {
     },
     "tailored_resume": {
         "name": "tailored_resume",
-        "description": "针对单个岗位生成定制简历：先核对 profile、岗位和现有简历，再 dry-run 生成。",
+        "description": "针对单个岗位准备可审核简历提案：先核对档案、岗位、已完成调研和历史提案，再 dry-run 生成；正式简历必须另行接受。",
         "intent_keywords": ["简历", "优化", "定制", "resume", "岗位匹配"],
         "steps": [
             {"operation": "get_profile", "args": {}},
             {"operation": "get_job", "args": {"job_id": 0}},
-            {"operation": "list_resumes", "args": {}},
-            {"operation": "generate_resume", "args": {"job_id": 0}, "dry_run": True},
+            {"operation": "list_job_research_runs", "args": {"job_id": 0, "status": "completed", "limit": 5}},
+            {"operation": "list_resume_optimizations", "args": {"job_id": 0, "limit": 20}},
+            {"operation": "prepare_resume_optimization", "args": {"job_id": 0}, "dry_run": True},
         ],
     },
     "application_pipeline": {
         "name": "application_pipeline",
-        "description": "从已筛岗位到投递待办：读取岗位、生成简历和求职信草稿、创建投递记录；不自动提交站外申请。",
+        "description": "从已筛岗位先建立调研与简历提案；接受正式简历后，再单独生成求职信和创建投递待办，永不自动提交站外申请。",
         "intent_keywords": ["投递", "申请", "application", "cover letter", "求职信"],
         "steps": [
             {"operation": "get_job", "args": {"job_id": 0}},
-            {"operation": "generate_resume", "args": {"job_id": 0}, "dry_run": True},
-            {"operation": "generate_cover_letter", "args": {"job_id": 0, "resume_id": 0}, "dry_run": True},
-            {"operation": "create_application", "args": {"job_id": 0}, "dry_run": True},
+            {"operation": "list_job_research_runs", "args": {"job_id": 0, "status": "completed", "limit": 5}},
+            {"operation": "list_resume_optimizations", "args": {"job_id": 0, "limit": 20}},
+            {"operation": "prepare_resume_optimization", "args": {"job_id": 0}, "dry_run": True},
         ],
     },
     "workspace_handoff": {
@@ -856,34 +1701,41 @@ async def execute_operation(
             started=started,
             errors=[f"未知操作: {name}"],
         )
-        await _record_audit(envelope, dry_run=dry_run, surface=surface, audit=audit)
+        await _record_audit(
+            envelope, dry_run=dry_run, surface=surface, audit=audit, op=op
+        )
         return envelope
 
     clean_args = {k: v for k, v in inputs.items() if v is not None}
+    audit_inputs = _audit_inputs(op, clean_args)
     validation_error = _validate_args(op, clean_args)
     if validation_error:
         envelope = _envelope(
             ok=False,
             operation=name,
-            inputs=clean_args,
+            inputs=audit_inputs,
             started=started,
             errors=[validation_error],
             op=op,
         )
-        await _record_audit(envelope, dry_run=dry_run, surface=surface, audit=audit)
+        await _record_audit(
+            envelope, dry_run=dry_run, surface=surface, audit=audit, op=op
+        )
         return envelope
 
     if dry_run and op.is_mutation:
         envelope = _envelope(
             ok=True,
             operation=name,
-            inputs=clean_args,
+            inputs=audit_inputs,
             started=started,
             outputs={"skipped": True, "reason": "dry_run", "side_effects": list(op.side_effects)},
             warnings=["dry_run 已启用，未执行会写入、调用 LLM 或访问外部系统的操作。"],
             op=op,
         )
-        await _record_audit(envelope, dry_run=dry_run, surface=surface, audit=audit)
+        await _record_audit(
+            envelope, dry_run=dry_run, surface=surface, audit=audit, op=op
+        )
         return envelope
 
     try:
@@ -891,24 +1743,28 @@ async def execute_operation(
         envelope = _envelope(
             ok=not (isinstance(result, dict) and result.get("error")),
             operation=name,
-            inputs=clean_args,
+            inputs=audit_inputs,
             started=started,
             outputs=result,
             errors=[result["error"]] if isinstance(result, dict) and result.get("error") else [],
             op=op,
         )
-        await _record_audit(envelope, dry_run=dry_run, surface=surface, audit=audit)
+        await _record_audit(
+            envelope, dry_run=dry_run, surface=surface, audit=audit, op=op
+        )
         return envelope
     except Exception as exc:
         envelope = _envelope(
             ok=False,
             operation=name,
-            inputs=clean_args,
+            inputs=audit_inputs,
             started=started,
             errors=[str(exc)],
             op=op,
         )
-        await _record_audit(envelope, dry_run=dry_run, surface=surface, audit=audit)
+        await _record_audit(
+            envelope, dry_run=dry_run, surface=surface, audit=audit, op=op
+        )
         return envelope
 
 
@@ -929,6 +1785,44 @@ def _validate_args(op: Operation, args: dict[str, Any]) -> Optional[str]:
     if extra:
         return f"未知参数: {', '.join(extra)}"
     return None
+
+
+def _audit_inputs(op: Operation, inputs: dict[str, Any]) -> dict[str, Any]:
+    return _redact_mapping(inputs, set(op.audit_redacted_parameters))
+
+
+def _audit_outputs(op: Optional[Operation], outputs: Any) -> Any:
+    if op is None or not isinstance(outputs, dict):
+        return outputs
+    return _redact_mapping(outputs, set(op.audit_redacted_output_parameters))
+
+
+def _redact_mapping(
+    values: dict[str, Any],
+    redacted: set[str],
+) -> dict[str, Any]:
+    if not redacted:
+        return values
+    result = dict(values)
+    for key in redacted:
+        if key not in result:
+            continue
+        value = result[key]
+        try:
+            serialized = json.dumps(
+                value,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        except (TypeError, ValueError):
+            serialized = str(value)
+        result[key] = {
+            "redacted": True,
+            "sha256": hashlib.sha256(serialized.encode("utf-8")).hexdigest(),
+            "length": len(serialized),
+        }
+    return result
 
 
 def _envelope(
@@ -955,7 +1849,14 @@ def _envelope(
     }
 
 
-async def _record_audit(envelope: dict[str, Any], *, dry_run: bool, surface: str, audit: bool) -> None:
+async def _record_audit(
+    envelope: dict[str, Any],
+    *,
+    dry_run: bool,
+    surface: str,
+    audit: bool,
+    op: Optional[Operation],
+) -> None:
     if not audit or envelope.get("operation") == "list_operation_audit":
         return
     try:
@@ -968,7 +1869,9 @@ async def _record_audit(envelope: dict[str, Any], *, dry_run: bool, surface: str
                 dry_run=bool(dry_run),
                 side_effects=list(envelope.get("side_effects") or []),
                 inputs_json=_json_object(envelope.get("inputs")),
-                outputs_json=_json_object(envelope.get("outputs")),
+                outputs_json=_json_object(
+                    _audit_outputs(op, envelope.get("outputs"))
+                ),
                 warnings_json=list(envelope.get("warnings") or []),
                 errors_json=list(envelope.get("errors") or []),
                 elapsed_ms=float(envelope.get("elapsed_ms") or 0),

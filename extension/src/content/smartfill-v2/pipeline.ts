@@ -11,6 +11,7 @@ import type {
   MatchCandidate,
   WriteResult,
   AiFieldMapping,
+  CriticalSmartFillPlan,
 } from "./core/types.js";
 import { detectSite } from "./ats/detector.js";
 import { scanFields } from "./scan/scanner.js";
@@ -22,6 +23,7 @@ import { writeBatch } from "./write/writer.js";
 import { logPipelineStage, flushRunLogs, logRunEntry } from "./shared/logger.js";
 import { MATCH, AI as AiConst } from "./shared/constants.js";
 import { atsRegistry } from "./ats/registry.js";
+import { buildCriticalSmartFillPlan, candidatesFromCriticalPlan } from "./core/critical-plan.js";
 
 // These adapters register themselves on import
 import "./ats/adapters/feishu.adapter.js";
@@ -40,34 +42,31 @@ import "./ats/adapters/netease.adapter.js";
 const PROFILE_CACHE_TTL_MS = 60_000; // 60 seconds
 const MAX_SMART_FILL_ROUNDS = 3;
 const ROUND_SETTLE_DELAY_MS = 800;
-let cachedProfile: NormalizedProfile | null = null;
-let profileCacheAt: number = 0;
+const cachedProfiles = new Map<"full" | "critical", { profile: NormalizedProfile; cachedAt: number }>();
 
 export function invalidateProfileCache(): void {
-  cachedProfile = null;
-  profileCacheAt = 0;
+  cachedProfiles.clear();
 }
 
-export async function loadProfile(): Promise<NormalizedProfile> {
+export async function loadProfile(scope: "full" | "critical" = "full"): Promise<NormalizedProfile> {
   const now = Date.now();
-  if (cachedProfile && (now - profileCacheAt) < PROFILE_CACHE_TTL_MS) {
-    return cachedProfile;
+  const cached = cachedProfiles.get(scope);
+  if (cached && (now - cached.cachedAt) < PROFILE_CACHE_TTL_MS) {
+    return cached.profile;
   }
   try {
-    const response = await chrome.runtime.sendMessage({ type: "GET_SMART_FILL_PROFILE" });
+    const response = await chrome.runtime.sendMessage({ type: "GET_SMART_FILL_PROFILE", scope });
     // P0-1 fix: background sends { ok, profile } not { ok, data }
     const rawProfile = response?.profile || response?.data;
     if (response?.ok && rawProfile) {
-      cachedProfile = normalizeProfile(rawProfile);
-      profileCacheAt = now;
-      return cachedProfile;
+      const profile = normalizeProfile(rawProfile);
+      cachedProfiles.set(scope, { profile, cachedAt: now });
+      return profile;
     }
   } catch { /* background not available */ }
-  if (!cachedProfile) {
-    cachedProfile = normalizeProfile(null);
-    profileCacheAt = now;
-  }
-  return cachedProfile;
+  const emptyProfile = normalizeProfile(null);
+  cachedProfiles.set(scope, { profile: emptyProfile, cachedAt: now });
+  return emptyProfile;
 }
 
 export async function getAiSettings(): Promise<{
@@ -180,6 +179,167 @@ export async function requestFieldMap(
     }
   } catch { /* field-map unavailable */ }
   return candidates;
+}
+
+async function resolveCandidates(
+  fields: ScannedField[],
+  profile: NormalizedProfile,
+  detection: DetectionResult,
+  aliases: Record<string, string>,
+  allowFullProfileFieldMap = true,
+): Promise<{ candidates: Map<string, MatchCandidate>; aiUsed: boolean }> {
+  const catalog = buildProfileCatalog(profile);
+  let candidates = new Map<string, MatchCandidate>();
+  let aiUsed = false;
+
+  if (allowFullProfileFieldMap) {
+    try {
+      candidates = await requestFieldMap(fields);
+    } catch { /* field-map unavailable */ }
+  }
+
+  const ruleCandidates = matchFieldsWithRules(fields, profile, aliases);
+  for (const [fieldId, candidate] of ruleCandidates) {
+    if (!candidates.has(fieldId)) candidates.set(fieldId, candidate);
+  }
+
+  try {
+    const aiSettings = await getAiSettings();
+    if (aiSettings.enabled && (profile.availableCount || 0) > 0) {
+      const unmatched = fields.filter((field) => !candidates.has(field.fieldId));
+      if (unmatched.length > 0) {
+        const aiMappings = await requestAiMapping(unmatched, profile, detection.adapterId);
+        if (aiMappings.length > 0) {
+          candidates = mergeAiCandidates(
+            candidates,
+            aiMappings,
+            MATCH.aiConfidenceThreshold,
+            catalog,
+            fields,
+          );
+          aiUsed = true;
+        }
+      }
+    }
+  } catch { /* AI unavailable; deterministic candidates remain usable */ }
+
+  return { candidates, aiUsed };
+}
+
+export async function prepareCriticalSmartFillPlan(
+  options?: PipelineOptions,
+): Promise<CriticalSmartFillPlan> {
+  const { signal, onProgress } = options || {};
+  const report = (stage: PipelineProgress) => onProgress?.(stage);
+
+  report({ stage: "detect", detail: "正在识别当前网申页面", percent: 10 });
+  const detection = detectSite(document, window.location.href);
+  const adapter = atsRegistry.get(detection.adapterId);
+  const selectorOverrides = adapter?.getSelectorOverrides?.();
+
+  report({ stage: "scan", detail: "正在扫描可填写字段", percent: 35 });
+  const fields = await scanFields(document, {
+    adapter: {
+      supportedFrameworks: detection.capabilities.supportedFrameworks as string[],
+      sectionExpandSelectors: detection.capabilities.sectionExpandSelectors,
+      pageStructure: selectorOverrides?.pageStructure,
+    },
+    labelSelector: selectorOverrides?.labelSelector,
+    containerSelector: selectorOverrides?.containerSelector,
+    sectionSelector: selectorOverrides?.sectionSelector,
+    expandSections: false,
+    signal,
+  });
+  if (signal?.aborted) throw new Error("Aborted");
+
+  report({ stage: "profile", detail: "正在读取已确认档案", percent: 55 });
+  const profile = await loadProfile("critical");
+  if ((profile.availableCount || 0) <= 0) {
+    throw new Error("档案中暂无可填写信息");
+  }
+
+  report({ stage: "match", detail: "正在生成关键字段填写计划", percent: 75 });
+  const { candidates, aiUsed } = await resolveCandidates(
+    fields,
+    profile,
+    detection,
+    adapter?.getIntentAliases?.() || {},
+    false,
+  );
+  const plan = buildCriticalSmartFillPlan(
+    fields,
+    candidates,
+    detection,
+    aiUsed,
+    window.location.href,
+  );
+  logPipelineStage("match", `关键字段计划: ${plan.items.length} 项`, {
+    scannedCount: fields.length,
+    skippedCount: plan.skipped.length,
+    aiUsed,
+  });
+  report({ stage: "verify", detail: "计划已生成，等待确认", percent: 100 });
+  return plan;
+}
+
+export async function applyCriticalSmartFillPlan(
+  plan: CriticalSmartFillPlan,
+  options?: PipelineOptions,
+): Promise<PipelineResult> {
+  const { signal, onProgress } = options || {};
+  const report = (stage: PipelineProgress) => onProgress?.(stage);
+  if (plan.pageUrl !== window.location.href) {
+    throw new Error("页面已变化，请重新扫描");
+  }
+  if (Date.now() - plan.createdAt > 2 * 60_000) {
+    throw new Error("填写计划已过期，请重新扫描");
+  }
+  if (signal?.aborted) throw new Error("Aborted");
+
+  const candidates = candidatesFromCriticalPlan(plan);
+  const fields = plan.items.map((item) => item.field);
+  report({ stage: "write", detail: `正在填写 ${fields.length} 个关键字段`, percent: 55 });
+  const results = await writeBatch(fields, candidates, {
+    signal,
+    adapterId: plan.adapterId,
+    preserveExistingValues: true,
+    onFieldDone: (result) => {
+      logRunEntry({
+        scope: "smart-fill.field",
+        severity: result.written ? "info" : "warn",
+        payload: { mode: "critical-confirmed", ...result },
+      });
+    },
+  });
+
+  report({ stage: "verify", detail: "正在回读校验填写结果", percent: 90 });
+  const outcome = evaluateOutcome(
+    plan.items.map((item) => item.field),
+    results,
+    plan.aiUsed,
+  );
+  const relevantSkipped = plan.skipped.filter((item) => item.reason !== "not_critical");
+  outcome.skippedCount += relevantSkipped.length;
+  outcome.protectedCount += relevantSkipped.filter((item) => (
+    item.reason === "existing_value" || item.reason === "sensitive"
+  )).length;
+  outcome.submitReadiness = false;
+  logPipelineStage("verify", `关键字段填写完成: ${outcome.filledCount}/${plan.items.length}`, {
+    filledCount: outcome.filledCount,
+    pendingCount: outcome.pendingCount,
+    preservedExistingCount: outcome.protectedCount,
+    skippedCount: outcome.skippedCount,
+  });
+  report({ stage: "verify", detail: "关键字段填写完成", percent: 100 });
+
+  return {
+    fields: plan.items.map((item) => item.field),
+    outcome,
+    adapterId: plan.adapterId,
+    adapterName: plan.adapterName,
+    adapterConfidence: plan.adapterConfidence,
+    aiUsed: plan.aiUsed,
+  };
 }
 
 export async function runSmartFillPipeline(
@@ -387,12 +547,16 @@ function evaluateOutcome(
   const resultMap = new Map(results.map((r) => [r.fieldId, r]));
   const filled: WriteResult[] = [];
   const pending: ScannedField[] = [];
+  const protectedFields: ScannedField[] = [];
   const matchedIds = new Set(results.map((r) => r.fieldId));
 
   for (const field of fields) {
     const result = resultMap.get(field.fieldId);
     if (result?.written) {
       filled.push(result);
+    } else if (result?.failureReason === "existing_value") {
+      field.runtime.failureReason = "existing_value";
+      protectedFields.push(field);
     } else {
       // Tag field with reason: no_match vs write_failed vs write_blocked
       if (!matchedIds.has(field.fieldId)) {
@@ -416,6 +580,8 @@ function evaluateOutcome(
     matchedCount: results.filter((r) => r.written || r.recovered).length,
     pendingFields: pending,
     pendingCount: pending.length,
+    skippedCount: protectedFields.length,
+    protectedCount: protectedFields.length,
     requiredTotal,
     requiredFilled,
     submitReadiness: pending.filter((f) => f.isRequired).length === 0,
@@ -432,6 +598,8 @@ function emptyOutcome(): SmartFillOutcome {
     matchedCount: 0,
     pendingFields: [],
     pendingCount: 0,
+    skippedCount: 0,
+    protectedCount: 0,
     requiredTotal: 0,
     requiredFilled: 0,
     submitReadiness: false,

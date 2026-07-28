@@ -22,16 +22,50 @@ class OperationRegistryTests(unittest.TestCase):
     def test_registry_exposes_expected_atomic_operations(self) -> None:
         expected = {
             "get_profile",
+            "list_profile_evidence",
+            "add_profile_evidence",
+            "list_learning_observations",
+            "list_memory_inbox",
+            "create_memory_proposal",
+            "review_memory_proposal",
+            "invalidate_memory_source",
+            "import_jd",
+            "validate_fact_gate",
+            "create_application_attempt",
             "list_pools",
             "list_jobs",
+            "list_coding_agents",
+            "list_batch_job_evaluations",
+            "get_batch_job_evaluation",
+            "start_batch_job_evaluation",
+            "resume_batch_job_evaluation",
+            "list_job_research_runs",
+            "get_job_research",
+            "start_job_research",
+            "resume_job_research",
             "get_job",
             "triage_job",
             "batch_triage",
-            "generate_resume",
+            "prepare_resume_optimization",
+            "list_resume_optimizations",
+            "get_resume_optimization",
+            "review_resume_optimization",
             "list_resumes",
             "get_resume",
+            "export_resume_pdf",
             "list_applications",
             "create_application",
+            "update_application_status",
+            "get_application_workspace",
+            "list_application_records",
+            "list_application_events",
+            "analyze_application_patterns",
+            "update_application_record",
+            "list_follow_up_cadence",
+            "record_follow_up",
+            "list_career_artifacts",
+            "get_career_artifact",
+            "save_career_artifact",
             "generate_cover_letter",
             "job_stats",
             "agent_playbook",
@@ -158,7 +192,11 @@ class CliBlackBoxTests(unittest.TestCase):
         self.assertEqual(payload["_exit_code"], 0)
         names = {item["name"] for item in payload["operations"]}
         self.assertIn("list_jobs", names)
-        self.assertIn("generate_resume", names)
+        self.assertIn("prepare_resume_optimization", names)
+        self.assertIn("list_resume_optimizations", names)
+        self.assertIn("get_resume_optimization", names)
+        self.assertIn("review_resume_optimization", names)
+        self.assertNotIn("generate_resume", names)
 
     def test_routes_lists_fastapi_control_surface(self) -> None:
         payload = self.run_cli("routes")

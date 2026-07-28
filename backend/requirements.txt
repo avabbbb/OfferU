@@ -20,4 +20,9 @@ pypdf>=4.0.0
 beautifulsoup4>=4.12.0
 python-jobspy>=1.1.80
 jieba>=0.42.0
-mcp>=1.27.0
+mcp>=1.27.0,<2
+bcrypt>=4.0.0
+keyring>=25.6.0
+
+# Vector Database for Semantic Search (Phase 1)
+qdrant-client>=1.12.0

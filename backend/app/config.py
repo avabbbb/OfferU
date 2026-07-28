@@ -41,12 +41,17 @@ class Settings(BaseSettings):
     ssl_verify: bool = True
     # LLM API 全局超时（秒），防止请求挂起
     llm_timeout: int = 60
+    # MCP is optional for external coding-agent clients. Keeping it off avoids
+    # importing the MCP protocol stack on every desktop cold start.
+    offeru_enable_mcp: bool = False
 
     # ---- 安全 ----
     secret_key: str = "change-me-in-production"
     cors_origins: str = (
         "http://localhost:3011,"
         "http://127.0.0.1:3011,"
+"http://localhost:3300,"
+        "http://127.0.0.1:3300,"
         "http://localhost:3000,"
         "http://127.0.0.1:3000,"
         "http://localhost:3001,"
@@ -59,12 +64,28 @@ class Settings(BaseSettings):
     gmail_client_id: str = ""
     gmail_client_secret: str = ""
     gmail_redirect_uri: str = ""  # 自定义回调地址，为空则自动从 cors_origins 推导
+    email_sync_interval_seconds: int = 300
 
-    # ---- IMAP 邮箱直连（QQ/163/Gmail等，无需 GCP） ----
-    imap_host: str = ""          # 如 imap.qq.com / imap.163.com / imap.gmail.com
-    imap_port: int = 993
-    imap_user: str = ""          # 完整邮箱地址
-    imap_password: str = ""      # 授权码（QQ/163）或应用专用密码（Gmail）
+    # ---- Coding agent runtime ----
+    # 自动选择本地 coding agent CLI 的优先顺序（逗号分隔）
+    coding_agent_priority: str = "claude,codex,gemini"
+
+    # ---- 长时记忆 ----
+    # memory distiller 后台循环间隔（秒），0 = 关闭
+    memory_distill_interval_seconds: int = 1800
+    # 工作源自动同步间隔（秒），0 = 关闭（同步会把内容送给 coding agent，默认需手动触发）
+    work_source_auto_sync_interval_seconds: int = 0
+
+    # ---- 网页搜索（岗位调研兜底链，无 live-capable CLI runtime 时启用） ----
+    # search_provider: auto / bocha / tavily / serper / ddgs
+    search_provider: str = "auto"
+    bocha_api_key: str = ""
+    tavily_api_key: str = ""
+    serper_api_key: str = ""
+
+    # ---- 投递进度 ----
+    # 邮件信号是否叠加 LLM 分类（关键词规则永远保底执行）
+    progress_llm_classify: bool = True
 
     # Ignore unrelated env vars (for example docker-style db_user/db_password/db_name)
     # so local startup does not fail when extra keys exist.

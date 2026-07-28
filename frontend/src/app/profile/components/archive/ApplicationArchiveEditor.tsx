@@ -65,16 +65,16 @@ function useSectionState(focusSection: string | undefined) {
 }
 
 const fieldClassNames = {
-  inputWrapper: "border border-black/15 bg-[var(--surface)] shadow-[1px_1px_0_0_rgba(18,18,18,0.08)] group-data-[focus=true]:border-black/35",
-  input: "text-sm text-black",
-  label: "text-xs font-semibold text-black/60",
+  inputWrapper: "border border-[var(--border-strong)]/15 bg-[var(--surface)] shadow-[1px_1px_0_0_rgba(18,18,18,0.08)] group-data-[focus=true]:border-[var(--border-strong)]/35",
+  input: "text-sm text-[var(--foreground)]",
+  label: "text-xs font-semibold text-[var(--foreground-muted)]",
 };
 
 const selectClassNames = {
-  trigger: "h-10 border border-black/15 bg-[var(--surface)] shadow-[1px_1px_0_0_rgba(18,18,18,0.08)] data-[hover=true]:border-black/35",
-  value: "text-sm text-black",
-  label: "text-xs font-semibold text-black/60",
-  popoverContent: "border border-black/15 bg-[var(--surface)] text-black shadow-[2px_2px_0_0_rgba(18,18,18,0.12)]",
+  trigger: "h-10 border border-[var(--border-strong)]/15 bg-[var(--surface)] shadow-[1px_1px_0_0_rgba(18,18,18,0.08)] data-[hover=true]:border-[var(--border-strong)]/35",
+  value: "text-sm text-[var(--foreground)]",
+  label: "text-xs font-semibold text-[var(--foreground-muted)]",
+  popoverContent: "border border-[var(--border-strong)]/15 bg-[var(--surface)] text-[var(--foreground)] shadow-[2px_2px_0_0_rgba(18,18,18,0.12)]",
   listboxWrapper: "bg-[var(--surface)] p-1",
 };
 
@@ -420,8 +420,8 @@ function SectionFrame(props: {
     : props.focused
       ? "ring-2 ring-[color:color-mix(in_srgb,var(--auxiliary-blue)_45%,#ffffff_55%)]"
       : "";
-  const titleClass = props.missing ? "text-[var(--primary-red)]" : "text-black";
-  const descClass = props.missing ? "text-[color:color-mix(in_srgb,var(--primary-red)_80%,#3a2f2a_20%)]" : "text-black/65";
+  const titleClass = props.missing ? "text-[var(--primary-red)]" : "text-[var(--foreground)]";
+  const descClass = props.missing ? "text-[color:color-mix(in_srgb,var(--primary-red)_80%,#3a2f2a_20%)]" : "text-[var(--foreground-muted)]";
 
   return (
     <Card className={`bauhaus-panel overflow-hidden bg-[var(--surface)] ${borderClass}`} data-section={props.sectionKey}>
@@ -454,7 +454,7 @@ function SectionFrame(props: {
 function OverrideBadge(props: { overridden: boolean }) {
   return (
     <span
-      className={`bauhaus-chip ${props.overridden ? "bg-[color:color-mix(in_srgb,var(--primary-red)_9%,#ffffff_91%)] text-[var(--primary-red)]" : "bg-[var(--surface-muted)] text-black/75"}`}
+      className={`bauhaus-chip ${props.overridden ? "bg-[color:color-mix(in_srgb,var(--primary-red)_9%,#ffffff_91%)] text-[var(--primary-red)]" : "bg-[var(--surface-muted)] text-[var(--foreground-muted)]"}`}
     >
       {props.overridden ? "投递侧已覆盖" : "跟随简历档案"}
     </span>
@@ -479,17 +479,17 @@ function AttachmentField(props: {
 
   return (
     <div className="bauhaus-panel-sm space-y-2 p-3">
-      <div className="text-sm font-semibold text-black">{props.label}</div>
+      <div className="text-sm font-semibold text-[var(--foreground)]">{props.label}</div>
       {props.value ? (
-        <div className="space-y-1 text-xs text-black/70">
-          <div className="font-medium text-black">{props.value.fileName}</div>
+        <div className="space-y-1 text-xs text-[var(--foreground-muted)]">
+          <div className="font-medium text-[var(--foreground)]">{props.value.fileName}</div>
           <div>
             {props.value.fileType || "未知类型"}  · {formatSize(props.value.fileSize)}
           </div>
           <div>上传时间：{new Date(props.value.uploadedAt).toLocaleString()}</div>
         </div>
       ) : (
-        <div className="text-xs text-black/60">尚未上传文件</div>
+        <div className="text-xs text-[var(--foreground-muted)]">尚未上传文件</div>
       )}
 
       <div className="flex flex-wrap gap-2">
@@ -556,7 +556,7 @@ function FamilyMemberItem(props: {
   return (
     <div className="bauhaus-panel-sm space-y-3 p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0 flex-1 text-base font-semibold text-black">
+        <div className="min-w-0 flex-1 text-base font-semibold text-[var(--foreground)]">
           <span className="line-clamp-1 break-words">{props.value.name || "未命名家庭成员"}</span>
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -669,7 +669,7 @@ export default function ApplicationArchiveEditor(props: ApplicationArchiveEditor
     return (
       <div className="space-y-1">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-xs font-semibold text-black/60">{label}</span>
+          <span className="text-xs font-semibold text-[var(--foreground-muted)]">{label}</span>
           <OverrideBadge overridden={overridden} />
         </div>
         <Input
@@ -720,7 +720,7 @@ export default function ApplicationArchiveEditor(props: ApplicationArchiveEditor
 
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-semibold text-black/60">个人简介</span>
+            <span className="text-xs font-semibold text-[var(--foreground-muted)]">个人简介</span>
             <OverrideBadge overridden={isOverridden("personalSummary")} />
           </div>
           <Textarea
@@ -758,7 +758,7 @@ export default function ApplicationArchiveEditor(props: ApplicationArchiveEditor
             return (
               <div key={config.path} className="bauhaus-panel-sm space-y-2 bg-[var(--surface)] p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="text-sm font-semibold text-black">
+                  <div className="text-sm font-semibold text-[var(--foreground)]">
                     {config.label}（{Array.isArray(moduleValue) ? moduleValue.length : 0} 条）
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -1051,7 +1051,7 @@ export default function ApplicationArchiveEditor(props: ApplicationArchiveEditor
       >
         <div className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="text-sm font-semibold text-black">家庭成员</div>
+            <div className="text-sm font-semibold text-[var(--foreground)]">家庭成员</div>
             <Button
               size="sm"
               startContent={<Plus size={14} />}
@@ -1182,12 +1182,12 @@ export default function ApplicationArchiveEditor(props: ApplicationArchiveEditor
         </div>
 
         <div className="space-y-2">
-          <div className="text-sm font-semibold text-black">其他附件</div>
+          <div className="text-sm font-semibold text-[var(--foreground)]">其他附件</div>
           <div className="space-y-2">
             {value.attachments.otherAttachments.map((attachment, index) => (
               <div key={attachment.id} className="bauhaus-panel-sm flex flex-wrap items-center justify-between gap-2 p-3">
-                <div className="text-xs text-black/75">
-                  <div className="font-medium text-black">{attachment.fileName}</div>
+                <div className="text-xs text-[var(--foreground-muted)]">
+                  <div className="font-medium text-[var(--foreground)]">{attachment.fileName}</div>
                   <div>{attachment.fileType || "未知类型"}  · {attachment.fileSize || 0} B</div>
                 </div>
                 <Button
@@ -1246,8 +1246,8 @@ export default function ApplicationArchiveEditor(props: ApplicationArchiveEditor
         onToggleCollapse={() => sectionState.toggle("syncSourceHint")}
       >
         <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-          <div className="bauhaus-panel-sm bg-[var(--surface)] p-3 text-sm text-black/75">简历档案姓名：{resumeArchive.basicInfo.name || "未填写"}</div>
-          <div className="bauhaus-panel-sm bg-[var(--surface)] p-3 text-sm text-black/75">简历档案求职意向：{resumeArchive.basicInfo.jobIntention || "未填写"}</div>
+          <div className="bauhaus-panel-sm bg-[var(--surface)] p-3 text-sm text-[var(--foreground-muted)]">简历档案姓名：{resumeArchive.basicInfo.name || "未填写"}</div>
+          <div className="bauhaus-panel-sm bg-[var(--surface)] p-3 text-sm text-[var(--foreground-muted)]">简历档案求职意向：{resumeArchive.basicInfo.jobIntention || "未填写"}</div>
         </div>
       </SectionFrame>
     </div>

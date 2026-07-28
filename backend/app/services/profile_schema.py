@@ -7,6 +7,21 @@ from typing import Any
 PROFILE_SECTION_SCHEMA_VERSION = "profile.section.v1"
 PROFILE_BASE_SCHEMA_VERSION = "profile.base.v1"
 
+PROFILE_SECTION_TIERS = {
+    "verified_fact",
+    "preference",
+    "career_hypothesis",
+}
+
+
+def normalize_profile_tier(value: Any) -> str | None:
+    tier = (str(value).strip().lower() if value is not None else "")
+    if not tier:
+        return None
+    if tier in PROFILE_SECTION_TIERS:
+        return tier
+    return None
+
 BASE_INFO_FIELD_IDS = {
     "name": "base.full_name",
     "phone": "base.phone",
@@ -300,10 +315,14 @@ def canonicalize_profile_content(
     raw_content_json: dict[str, Any] | None,
     *,
     category_label: str | None = None,
+    tier: Any = None,
 ) -> dict[str, Any]:
     raw = raw_content_json if isinstance(raw_content_json, dict) else {}
     field_values_in = raw.get("field_values") if isinstance(raw.get("field_values"), dict) else {}
     normalized_in = raw.get("normalized") if isinstance(raw.get("normalized"), dict) else {}
+    resolved_tier = normalize_profile_tier(
+        tier if tier is not None else raw.get("tier")
+    )
 
     if category_key in PROFILE_BUILTIN_CATEGORY_DEFINITIONS:
         definition = PROFILE_BUILTIN_CATEGORY_DEFINITIONS[category_key]
@@ -371,6 +390,7 @@ def canonicalize_profile_content(
             "normalized": normalized,
             "bullet": bullet,
             "title": _as_str(title),
+            "tier": resolved_tier,
         }
 
     # 自定义分类
@@ -426,6 +446,7 @@ def canonicalize_profile_content(
         "normalized": normalized,
         "bullet": bullet,
         "title": _as_str(title),
+        "tier": resolved_tier,
     }
 
 
@@ -434,6 +455,8 @@ def canonicalize_profile_section_payload(
     title: str,
     raw_content_json: dict[str, Any] | None,
     category_label: str | None = None,
+    *,
+    tier: Any = None,
 ) -> tuple[str, str, bool, dict[str, Any]]:
     category_key, resolved_label, is_custom = resolve_category_key(section_type, category_label)
     canonical = canonicalize_profile_content(
@@ -441,6 +464,7 @@ def canonicalize_profile_section_payload(
         title=title,
         raw_content_json=raw_content_json,
         category_label=resolved_label,
+        tier=tier,
     )
     return category_key, resolved_label, is_custom, canonical
 

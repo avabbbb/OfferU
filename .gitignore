@@ -9,6 +9,7 @@ __pycache__/
 *.pyc
 
 # ---- 构建输出 ----
+backend-rs/target/
 frontend/.next/
 frontend/.next-dev/
 frontend/out/
@@ -26,6 +27,7 @@ extension/popup.html
 backend/*.db
 *.db
 backend/data/
+offeru-data/
 
 # ---- 环境配置 ----
 .env
@@ -57,7 +59,19 @@ npm-debug.log*
 # ---- 测试/临时 ----
 coverage/
 .pytest_cache/
-docs/
+.playwright-mcp/
+# 文档默认保持本地；只版本化正式决策、实施路线与 Agent 配置。
+docs/*
+!docs/adr/
+!docs/adr/**
+!docs/agents/
+!docs/agents/**
+!docs/BACKEND_CAPABILITY_AUDIT_2026-07-16.md
+!docs/IMPLEMENTATION_ROADMAP_2026-07-17.md
+!docs/WEBUI_WORKBENCH_DESIGN_2026-07-17.md
+!docs/implementation/
+docs/implementation/*
+!docs/implementation/WEBUI_SLICE_01_APPLICATIONS_PLAN_2026-07-17.md
 artifacts/
 
 # ---- 备份文件 ----
@@ -81,3 +95,11 @@ md/
 # ---- 本地参考仓库（不入库） ----
 references/
 reference/
+/Niuke/
+
+# ---- Launcher 打包产物 ----
+launcher/build/
+launcher/dist/
+launcher/*.spec
+launcher/__pycache__/
+/OfferU.exe

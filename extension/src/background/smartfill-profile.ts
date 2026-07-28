@@ -8,6 +8,7 @@ export interface SmartFillProfileNormalized {
     targetRole: string;
     website: string;
     github: string;
+    linkedin?: string;
     summary: string;
   };
   resumeArchive: {
@@ -32,6 +33,67 @@ export interface SmartFillProfileNormalized {
   };
   syncSettings: Record<string, unknown>;
   sections: unknown[];
+}
+
+const CRITICAL_EDUCATION_KEYS = new Set([
+  "schoolName",
+  "school",
+  "university",
+  "college",
+  "major",
+  "degree",
+  "educationLevel",
+  "startDate",
+  "endDate",
+  "graduationDate",
+]);
+
+export function selectCriticalSmartFillProfile(
+  profile: SmartFillProfileNormalized,
+): SmartFillProfileNormalized {
+  const education = profile.resumeArchive.education.map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return item;
+    return Object.fromEntries(
+      Object.entries(item as Record<string, unknown>)
+        .filter(([key]) => CRITICAL_EDUCATION_KEYS.has(key)),
+    );
+  });
+  return {
+    profileVersion: profile.profileVersion,
+    basic: {
+      fullName: profile.basic.fullName,
+      phone: profile.basic.phone,
+      email: profile.basic.email,
+      city: profile.basic.city,
+      targetRole: "",
+      website: profile.basic.website,
+      github: profile.basic.github,
+      linkedin: profile.basic.linkedin || "",
+      summary: "",
+    },
+    resumeArchive: {
+      personalSummary: "",
+      education,
+      workExperiences: [],
+      internshipExperiences: [],
+      projects: [],
+      skills: [],
+      certificates: [],
+      awards: [],
+      personalExperiences: [],
+    },
+    applicationArchive: {
+      shared: {},
+      identityContact: {},
+      jobPreference: {},
+      campusFields: {},
+      relationshipCompliance: {},
+      sourceReferral: {},
+      attachments: {},
+    },
+    syncSettings: {},
+    sections: [],
+  };
 }
 
 export type SmartFillProfileValueType =
@@ -403,6 +465,7 @@ function pickArchiveFromProfile(rawProfile: unknown): {
         targetRole: resumeBasic.jobIntention || baseInfo.job_intention || "",
         website: resumeBasic.website || baseInfo.website || "",
         github: resumeBasic.github || baseInfo.github || "",
+        linkedin: resumeBasic.linkedin || baseInfo.linkedin || "",
         summary: resumeArchiveLegacy.personalSummary || baseInfo.personal_summary || baseInfo.summary || profile.headline || "",
       },
       resumeArchiveRaw: resumeArchiveLegacy,
@@ -433,6 +496,7 @@ function pickArchiveFromProfile(rawProfile: unknown): {
       targetRole: asString(profile.job_intention || baseInfo.job_intention),
       website: asString(profile.website || baseInfo.website),
       github: asString(profile.github || baseInfo.github),
+      linkedin: asString(profile.linkedin || baseInfo.linkedin),
       summary: asString(profile.personal_summary || baseInfo.personal_summary || profile.summary || profile.headline),
     },
     resumeArchiveRaw: {},
@@ -462,6 +526,7 @@ export function normalizeSmartFillProfile(rawProfile: unknown): SmartFillProfile
     targetRole: asString(resolved.basicRaw.targetRole || jobPreference.expectedPosition),
     website: asString(resolved.basicRaw.website),
     github: asString(resolved.basicRaw.github),
+    linkedin: asString(resolved.basicRaw.linkedin),
     summary: asString(resolved.basicRaw.summary || resolved.resumeArchiveRaw.personalSummary),
   };
 
@@ -527,10 +592,13 @@ export function countSmartFillAvailableFields(profile: SmartFillProfileNormalize
     profile.basic.email,
     profile.basic.city,
     profile.basic.targetRole,
+    profile.basic.website,
+    profile.basic.github,
+    profile.basic.linkedin,
     profile.basic.summary,
   ];
   for (const value of basicValues) {
-    if (value.trim()) count += 1;
+    if (String(value || "").trim()) count += 1;
   }
 
   if (profile.resumeArchive.personalSummary.trim()) count += 1;
@@ -560,6 +628,9 @@ export function buildSmartFillProfileFieldValues(
     enrichFieldValue({ key: "basic.phone", path: "basic.phone", label: "手机号", value: profile.basic.phone, category: "基本信息", aliases: ["手机号", "手机号码", "联系电话"], valueType: "phone" }),
     enrichFieldValue({ key: "basic.email", path: "basic.email", label: "邮箱", value: profile.basic.email, category: "基本信息", aliases: ["邮箱", "电子邮箱"], valueType: "email" }),
     enrichFieldValue({ key: "basic.city", path: "basic.city", label: "所在城市", value: profile.basic.city, category: "基本信息", aliases: ["所在城市", "现居住城市"] }),
+    enrichFieldValue({ key: "basic.website", path: "basic.website", label: "个人网站", value: profile.basic.website, category: "基本信息", aliases: ["个人网站", "主页"], valueType: "url" }),
+    enrichFieldValue({ key: "basic.github", path: "basic.github", label: "GitHub", value: profile.basic.github, category: "基本信息", aliases: ["GitHub", "代码仓库"], valueType: "url" }),
+    enrichFieldValue({ key: "basic.linkedin", path: "basic.linkedin", label: "LinkedIn", value: profile.basic.linkedin || "", category: "基本信息", aliases: ["LinkedIn", "领英"], valueType: "url" }),
     enrichFieldValue({ key: "basic.targetRole", path: "basic.targetRole", label: "目标岗位", value: profile.basic.targetRole, category: "求职意向", aliases: ["目标岗位", "期望职位"] }),
     enrichFieldValue({ key: "resumeArchive.personalSummary", path: "resumeArchive.personalSummary", label: "个人简介", value: profile.resumeArchive.personalSummary, category: "其他信息", aliases: ["个人简介", "自我评价"], valueType: "long-text" }),
     enrichFieldValue({

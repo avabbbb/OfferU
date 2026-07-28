@@ -6,7 +6,13 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from app.services.resume_parser import _normalize_extracted_text, _parse_pdf_sync  # noqa: E402
+from app.services.resume_parser import (  # noqa: E402
+    _normalize_extracted_text,
+    locate_resume_source_pages,
+    _parse_pdf_document_sync,
+    _parse_pdf_sync,
+    _sort_pdf_blocks,
+)
 
 
 def test_normalizer_merges_visual_wraps() -> None:
@@ -45,7 +51,53 @@ def test_pymupdf_pdf_extraction_keeps_text() -> None:
     assert "Technical lead" in text
 
 
+def test_two_column_blocks_stay_column_stable() -> None:
+    blocks = [
+        (24, 20, 280, 40, "RESUME"),
+        (24, 80, 250, 110, "left one"),
+        (24, 130, 250, 160, "left two"),
+        (330, 75, 570, 105, "right one"),
+        (330, 125, 570, 155, "right two"),
+    ]
+    ordered = _sort_pdf_blocks(blocks, page_width=595)
+    assert [block[4] for block in ordered] == [
+        "RESUME",
+        "left one",
+        "left two",
+        "right one",
+        "right two",
+    ]
+
+
+def test_pdf_diagnostics_keep_page_evidence() -> None:
+    import fitz
+
+    doc = fitz.open()
+    page = doc.new_page(width=595, height=842)
+    for index in range(8):
+        page.insert_text(
+            (72, 72 + index * 24),
+            f"OfferU resume parser quality evidence line {index + 1}",
+            fontsize=11,
+        )
+    pdf_bytes = doc.tobytes()
+    doc.close()
+
+    result = _parse_pdf_document_sync(pdf_bytes)
+    diagnostics = result.public_dict()
+    assert diagnostics["page_count"] == 1
+    assert diagnostics["pages"][0]["page_number"] == 1
+    assert diagnostics["pages"][0]["method"] == "native"
+    assert "text" not in diagnostics["pages"][0]
+    assert locate_resume_source_pages(
+        result,
+        {"title": "OfferU resume parser quality evidence"},
+    ) == [1]
+
+
 if __name__ == "__main__":
     test_normalizer_merges_visual_wraps()
     test_pymupdf_pdf_extraction_keeps_text()
+    test_two_column_blocks_stay_column_stable()
+    test_pdf_diagnostics_keep_page_evidence()
     print("resume parser tests passed")

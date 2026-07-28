@@ -123,7 +123,7 @@ def _default_custom_template_fields() -> list[dict[str, Any]]:
             "fixed": False,
             "visible": True,
             "width": 160,
-            "options": ["待投递", "已投递", "面试中", "已拒绝", "已录用"],
+            "options": ["待投递", "已投递", "待处理", "面试中", "已拒绝", "已录用"],
         },
         {
             "field_key": "follow_up_date",
@@ -661,11 +661,28 @@ async def create_record(
     await recompute_duplicate_flags(db)
     await db.commit()
     await db.refresh(record)
+    event_warning = None
+    try:
+        from app.services.application_events import application_event_store
+
+        current_values = _record_to_values(record)
+        application_event_store.record(
+            application_type="application_record",
+            application_id=record.id,
+            event_type="created",
+            source="application_workspace",
+            field_key="status",
+            value=current_values.get("apply_status") or "待投递",
+            metadata={"job_id": record.job_ref_id, "table_id": table_id},
+        )
+    except Exception as exc:
+        event_warning = str(exc)[:500]
     return {
         "id": record.id,
         "values": _record_to_values(record),
         "is_duplicate": record.is_duplicate,
         "duplicate_group": record.duplicate_group,
+        "event_warning": event_warning,
     }
 
 
@@ -730,12 +747,34 @@ async def create_records_from_jobs(
     for record in created_records:
         await db.refresh(record)
 
+    event_warnings: list[str] = []
+    try:
+        from app.services.application_events import application_event_store
+    except Exception as exc:
+        event_warnings.append(str(exc)[:500])
+    else:
+        for record in created_records:
+            try:
+                values = _record_to_values(record)
+                application_event_store.record(
+                    application_type="application_record",
+                    application_id=record.id,
+                    event_type="created",
+                    source="application_workspace",
+                    field_key="status",
+                    value=values.get("apply_status") or "待投递",
+                    metadata={"job_id": record.job_ref_id, "table_id": table_id},
+                )
+            except Exception as exc:
+                event_warnings.append(str(exc)[:500])
+
     duplicate_count = sum(1 for record in created_records if record.is_duplicate)
     return {
         "created": len(created_records),
         "skipped_existing": len(skipped_existing_job_ids),
         "skipped_existing_job_ids": skipped_existing_job_ids,
         "duplicate_created": duplicate_count,
+        "event_warnings": event_warnings,
         "items": [
             {
                 "id": record.id,
@@ -767,6 +806,7 @@ async def update_record_value(
     record_id: int,
     field_key: str,
     value: Any,
+    source: str = "application_workspace",
 ) -> dict[str, Any]:
     await ensure_workspace_bootstrap(db)
     record = (
@@ -776,6 +816,10 @@ async def update_record_value(
         raise ValueError("记录不存在")
 
     key = _safe_field_key(field_key)
+    if key in FIXED_FIELD_KEYS:
+        previous_value = getattr(record, key, None)
+    else:
+        previous_value = (record.custom_values or {}).get(key)
     if key in FIXED_FIELD_KEYS:
         if key == "company_name":
             record.company_name = str(value or "")
@@ -804,11 +848,29 @@ async def update_record_value(
         await recompute_duplicate_flags(db)
     await db.commit()
     await db.refresh(record)
+    event_warning = None
+    if previous_value != value:
+        try:
+            from app.services.application_events import application_event_store
+
+            application_event_store.record(
+                application_type="application_record",
+                application_id=record.id,
+                event_type="status_changed" if key == "apply_status" else "field_updated",
+                source=source,
+                field_key="status" if key == "apply_status" else key,
+                previous_value=previous_value,
+                value=value,
+                metadata={"job_id": record.job_ref_id},
+            )
+        except Exception as exc:
+            event_warning = str(exc)[:500]
     return {
         "id": record.id,
         "values": _record_to_values(record),
         "is_duplicate": record.is_duplicate,
         "duplicate_group": record.duplicate_group,
+        "event_warning": event_warning,
     }
 
 

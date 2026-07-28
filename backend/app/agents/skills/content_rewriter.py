@@ -80,21 +80,21 @@ SECTION_TYPE_GUIDANCE = """
 **work_experience / experience（实习/工作经历）**:
 - 优先改写：模糊描述 → STAR 结构
 - 关键词映射：将 JD 要求的技术/工具映射到经历中的证据，自然融入职责描述
-- 动词升级：参与→负责、做了→设计并实现、协助→独立完成
-- 量化引导：如有模糊暗示可加"[待量化]"标记，但绝不编造数字
+- 责任边界锁定：参与、协助、配合不能升级为负责、主导、独立完成
+- 量化边界锁定：原文没有数字时，不添加数字或占位符
 - 每条经历控制在 2-4 个 bullet point
 - description 字段使用 HTML 格式：<ul><li>...</li></ul>
 
 **project（项目经历）**:
 - 突出技术栈与 JD 的匹配
-- 强调个人贡献而非团队成果（"负责…模块"而非"参与了…"）
-- 补充技术选型理由（如 JD 强调某技术，在项目中体现为何选用）
+- 只按原文已有证据呈现个人贡献，不改变参与程度或责任归属
+- 只保留原文已有的技术选型理由，不根据 JD 反推候选人事实
 - 项目成果用 Result 表达，即使没有数字也要体现价值
 - description 字段使用 HTML 格式
 
 **skill（技能清单）**:
 - 将 JD 匹配的技能排前面
-- 补充 JD 要求但简历缺失的技能（标注 [推断]，如根据经历推断应会某技术）
+- JD 要求但简历缺失的技能只能列为能力缺口，禁止写入 suggested
 - 合并同类技能分类
 - 不要删除候选人已有的技能
 
@@ -121,6 +121,16 @@ INTERVIEW_CONTEXT_TEMPLATE = """
 - 如果面经有行为类问题（如"最大挑战"），确保经历中有对应的 STAR 故事
 - 不要直接提及面经内容，只是让改写方向与面试考察点对齐
 - 在每条受面经影响的建议中，用 interview_reference 字段说明参考了哪个考察点"""
+
+RESEARCH_CONTEXT_TEMPLATE = """
+### 已完成岗位调研（仅作为表达策略证据）
+{research_lines}
+
+使用边界：
+- 调研信息只能决定内容排序、强调方向和能力缺口，不能成为候选人的经历、技能、成果或责任事实
+- 每条调研结论保留证据等级和 source_refs；证据不足或冲突时，宁可不采用
+- 面试题、团队氛围和参考简历模式不能被写成候选人亲历事实
+- JD 或调研要求但候选人原文没有证据的能力，只能保留为缺口"""
 
 THREE_STAGE_WORKFLOW = """
 ## 三阶段改写工作流（CRITICAL — 必须严格遵守）
@@ -152,7 +162,7 @@ ANTI_MECHANICAL_INJECTION_RULES = """
 3. 每条描述应是一个微型工作故事：情境→行动→结果，而非关键词列表
 4. 如果某个 JD 要求在当前经历中找不到自然关联，宁可跳过也不要强行注入
 5. 保留原文的限定词和自然表达，不要全部改成"完美"的 AI 语言
-6. 如果缺少量化数据，使用"[待量化]"标记，不要编造数字
+6. 如果缺少量化数据，保持非量化表达；禁止添加数字或"[待量化]"占位符
 7. 关键词映射而非注入：先列出 JD 关键词，逐个映射到简历中的证据
 8. 有证据的：自然融入描述
 9. 无证据的：标注为"缺失"，建议用户补充，不要强行注入
@@ -175,14 +185,14 @@ SYSTEM_PROMPT = f"""你是一名专业的校招简历内容优化师。你的任
 ### 改写规则
 1. **STAR 法则**: 把模糊描述重构为 Situation-Task-Action-Result 结构
 2. **校招特殊**: 实习/课程项目/竞赛/社团活动 = 正式经历，同等重视
-3. **动词升级**: "参与了" → "负责…的…模块开发"、"做了" → "设计并实现…"
+3. **动作澄清**: 在不改变责任边界的前提下让动作更具体；参与、协助不能升级为负责、主导或独立完成
 4. **细化拆分**: 一句笼统描述 → 拆成 2-3 个具体动作点
 5. **量化引导**: 如果原文有模糊暗示（如"大量"），可以改为"多个/若干"，但不能编数字
 
 ### 关键词映射规则（替代"注入"）
 1. 先列出 JD 关键词，逐个映射到简历中的证据
 2. 有证据的关键词：自然融入经历描述句子中，不是单独列出
-3. 无证据的关键词：在 injected_keywords 中标注，但不强行写入 suggested 文本
+3. 无证据的关键词：只能作为能力缺口保留在分析结果中，不得出现在 suggested 或 injected_keywords
 4. 每条经历最多映射 1-2 个关键词，不要过度堆砌
 5. 如果没有合适的映射位置，不要强行映射
 
@@ -198,6 +208,7 @@ SYSTEM_PROMPT = f"""你是一名专业的校招简历内容优化师。你的任
 2. JD 分析结果（岗位要求）
 3. 匹配分析结果（已匹配/缺失技能、各段评分）
 4. 面试经验参考（如有）
+5. 已完成的岗位调研证据（如有，仅用于表达策略）
 
 ## 输出要求
 输出结构化 JSON，包含 section 信息和改写建议列表。
@@ -228,7 +239,7 @@ SYSTEM_PROMPT = f"""你是一名专业的校招简历内容优化师。你的任
       "type": "rewrite",
       "item_label": "条目名或空",
       "original": "原文",
-      "suggested": "<ul><li><strong>负责</strong>系统设计</li></ul>",
+      "suggested": "<ul><li>参与系统设计并完成原文已证实的工作</li></ul>",
       "reason": "理由（需说明匹配了JD的什么要求）",
       "injected_keywords": [],
       "matched_jd_requirements": ["匹配的JD要求"],
@@ -286,6 +297,7 @@ class ContentRewriterSkill(BaseSkill):
         )
 
         interview_context = self._build_interview_context(context)
+        research_context = self._build_research_context(context)
 
         user_parts = [
             f"## 候选人简历\n\n{resume_text}",
@@ -293,6 +305,8 @@ class ContentRewriterSkill(BaseSkill):
         ]
         if interview_context:
             user_parts.append(interview_context)
+        if research_context:
+            user_parts.append(research_context)
 
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -349,6 +363,7 @@ class ContentRewriterSkill(BaseSkill):
         )
 
         interview_context = self._build_interview_context(context)
+        research_context = self._build_research_context(context)
 
         single_section_prompt = f"""请只改写以下这一个 section：
 
@@ -365,6 +380,8 @@ class ContentRewriterSkill(BaseSkill):
 """
         if interview_context:
             single_section_prompt += f"\n\n{interview_context}"
+        if research_context:
+            single_section_prompt += f"\n\n{research_context}"
 
         if extra_instruction:
             single_section_prompt += f"\n\n## 额外指令\n{extra_instruction}"
@@ -466,11 +483,57 @@ class ContentRewriterSkill(BaseSkill):
             interview_questions=interview_questions
         )
 
+    def _build_research_context(self, context: dict) -> str:
+        research = context.get("research_context")
+        if not isinstance(research, dict):
+            return ""
+
+        labels = {
+            "role_requirements": "岗位要求",
+            "resume_patterns": "参考简历表达模式",
+            "interview_questions": "面试考察",
+            "team_culture_signals": "团队氛围信号",
+            "company_context": "公司与业务背景",
+            "risks": "风险或未知项",
+        }
+        lines: list[str] = []
+        for key, label in labels.items():
+            items = research.get(key)
+            if not isinstance(items, list):
+                continue
+            for item in items[:8]:
+                if not isinstance(item, dict):
+                    continue
+                statement = str(item.get("statement") or "").strip()
+                if not statement:
+                    continue
+                evidence_level = str(item.get("evidence_level") or "unknown")
+                refs = [
+                    str(ref).strip()
+                    for ref in (item.get("source_refs") or [])
+                    if str(ref).strip()
+                ]
+                lines.append(
+                    f"- [{label}] {statement} "
+                    f"(evidence={evidence_level}; source_refs={','.join(refs) or 'none'})"
+                )
+
+        gaps = [
+            str(item).strip()
+            for item in (research.get("gaps") or [])
+            if str(item).strip()
+        ]
+        if gaps:
+            lines.append(f"- [调研缺口] {'；'.join(gaps[:8])}")
+        if not lines:
+            return ""
+        return RESEARCH_CONTEXT_TEMPLATE.format(research_lines="\n".join(lines))
+
 
 # ---- Quality Guardrail ----
 
 def _apply_quality_guardrail(result: dict, missing_skills: list[str]) -> dict:
-    """后置质量检查：检测机械式关键词堆砌、虚假因果、AI 生成特征"""
+    """后置事实与质量检查：不让 LLM 输出越过候选人证据边界。"""
     if not isinstance(result, dict):
         return result
 
@@ -479,23 +542,73 @@ def _apply_quality_guardrail(result: dict, missing_skills: list[str]) -> dict:
         return result
 
     warnings: list[str] = []
+    blocked: list[dict[str, Any]] = []
+    accepted: list[dict[str, Any]] = []
 
     for sug in suggestions:
         if not isinstance(sug, dict):
             continue
 
-        suggested = sug.get("suggested", "")
-        original = sug.get("original", "")
+        suggested = str(sug.get("suggested") or "")
+        original = str(sug.get("original") or "")
         injected = sug.get("injected_keywords", [])
+        block_reasons: list[str] = []
 
-        # 1. 检测单条 bullet 中 3+ 个 JD 关键词
+        # 1. 责任边界不能从参与/协助升级为负责/主导。
+        source_is_supporting = re.search(
+            r"(参与|协助|配合|支持|\bcontributed\b|\bassisted\b|\bsupported\b)",
+            original,
+            flags=re.IGNORECASE,
+        )
+        target_claims_ownership = re.search(
+            r"(负责|主导|独立完成|\bowner\b|\bowned\b|\bled\b|\bspearheaded\b)",
+            suggested,
+            flags=re.IGNORECASE,
+        )
+        if source_is_supporting and target_claims_ownership:
+            block_reasons.append("责任边界从参与或协助升级为负责、主导或独立完成")
+
+        # 2. 不允许用占位符掩盖缺失的量化事实。
+        if "[待量化]" in suggested:
+            block_reasons.append("包含未经证实的量化占位符")
+
+        # 3. 缺失技能没有原文证据时，不能进入建议文本或关键词字段。
+        unsupported_skills = [
+            skill
+            for skill in missing_skills
+            if (
+                _mentions_skill(suggested, skill)
+                or (
+                    isinstance(injected, list)
+                    and any(
+                        str(value).strip().casefold() == str(skill).strip().casefold()
+                        for value in injected
+                    )
+                )
+            )
+            and not _mentions_skill(original, skill)
+        ]
+        if unsupported_skills:
+            block_reasons.append(
+                f"缺失技能没有候选人原文证据：{', '.join(map(str, unsupported_skills[:5]))}"
+            )
+
+        if block_reasons:
+            blocked.append({
+                "item_label": str(sug.get("item_label") or ""),
+                "original": original,
+                "reasons": block_reasons,
+            })
+            continue
+
+        # 4. 检测单条 bullet 中 3+ 个 JD 关键词
         if isinstance(injected, list) and len(injected) >= 3:
             warnings.append(
                 f"⚠️ 「{sug.get('item_label', '')}」映射了 {len(injected)} 个关键词"
-                f"（{', '.join(injected[:5])}），可能过于机械"
+                f"（{', '.join(map(str, injected[:5]))}），可能过于机械"
             )
 
-        # 2. 检测虚假因果关系
+        # 5. 检测虚假因果关系
         false_causal_patterns = [
             (r"奖学金.*(?:逻辑|分析|创新|领导)", "奖学金与该能力无直接因果关系"),
             (r"成绩.*(?:团队|协作|沟通)", "成绩与该能力无直接因果关系"),
@@ -507,20 +620,35 @@ def _apply_quality_guardrail(result: dict, missing_skills: list[str]) -> dict:
                     f"⚠️ 「{sug.get('item_label', '')}」可能存在虚假因果：{reason}"
                 )
 
-        # 3. 检测过于对称的段落结构（AI 生成特征）
+        # 6. 检测过于对称的段落结构（AI 生成特征）
         if _detect_symmetric_structure(suggested):
             warnings.append(
                 f"⚠️ 「{sug.get('item_label', '')}」段落结构可能过于对称（AI 生成特征）"
             )
 
-        # 4. Ensure diff exists
-        if "diff" not in sug or not isinstance(sug.get("diff"), dict):
-            sug["diff"] = _compute_diff(original, suggested)
+        sug["diff"] = _compute_diff(original, suggested)
+        accepted.append(sug)
 
+    result["suggestions"] = accepted
     if warnings:
         result["_quality_warnings"] = warnings
+    if blocked:
+        result["_guardrail_blocked"] = blocked
 
     return result
+
+
+def _mentions_skill(text: str, skill: Any) -> bool:
+    candidate = str(skill or "").strip().casefold()
+    if not candidate:
+        return False
+    plain = re.sub(r"<[^>]+>", " ", str(text or "")).casefold()
+    if re.fullmatch(r"[a-z0-9_.+#/-]+", candidate):
+        return bool(re.search(
+            rf"(?<![a-z0-9]){re.escape(candidate)}(?![a-z0-9])",
+            plain,
+        ))
+    return candidate in plain
 
 
 def _detect_symmetric_structure(text: str) -> bool:

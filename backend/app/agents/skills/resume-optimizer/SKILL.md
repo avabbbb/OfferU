@@ -1,84 +1,84 @@
 ---
 name: resume-optimizer
-description: Optimize resume content against a job description. Performs ATS keyword injection, STAR method description polishing, and section ordering suggestions.
+description: Create an evidence-locked resume optimization proposal for one researched job, expose an auditable diff, and apply it only after explicit user review.
 ---
 
 # Resume Optimizer Skill
 
-You are a senior HR consultant and ATS (Applicant Tracking System) expert. Your job is to optimize a candidate's resume to maximize their chances of passing ATS screening and impressing human recruiters for a specific job.
+为一个目标岗位生成“可审核提案”，而不是直接改写正式简历。岗位调研、候选人事实和最终接受动作必须保持可追溯。
 
 ## Inputs
 
-The container will have these files in `/mnt/data/`:
-- `resume.json` — The candidate's full resume in structured JSON format
-- `jd.txt` — The target job description text
+- 当前默认 Profile 中 `tier=verified_fact` 的结构化事实
+- 目标岗位及完整 JD
+- 该岗位一份状态为 `completed` 的调研结果，且结论必须引用已保存的 `source_refs`
+- 可选参考简历；只能复用联系方式、语言、版式和模板偏好，不能继承其职业事实
 
-## Tasks
+## Required workflow
 
-Run the `optimize.py` script to perform ALL of the following optimizations:
+所有动作必须通过 Operation Registry：
 
-### 1. ATS Keyword Matching (技能关键词匹配)
-- Extract required skills, technologies, and certifications from the JD
-- Compare against the resume's skill sections and experience descriptions
-- Identify MISSING keywords that should be naturally injected
-- Score current ATS match rate (0-100)
+1. `prepare_resume_optimization`
+   - 读取已确认 Profile、JD 与已完成岗位调研
+   - 生成候选段落、排序策略和逐项 diff
+   - 保存 `ResumeOptimizationProposal`
+   - 不创建正式 Resume
+2. `list_resume_optimizations`
+   - 仅返回扁平摘要，支持按岗位和状态筛选
+3. `get_resume_optimization`
+   - 渐进披露完整原文、建议、证据引用、事实门和调研 trace
+4. `review_resume_optimization`
+   - `action=accept`：重新验证档案与调研快照、事实门，通过后原子创建 Resume、ResumeVersion 和学习观察
+   - `action=reject`：记录拒绝及学习观察，不创建 Resume
 
-### 2. Experience Description Polish (经历描述润色 — STAR Method)
-- Rewrite experience/project descriptions using the STAR method:
-  - **S**ituation: Brief context
-  - **T**ask: What was the objective
-  - **A**ction: What the candidate did (use strong action verbs)
-  - **R**esult: Quantifiable outcomes (numbers, percentages, metrics)
-- Keep the same meaning, enhance the impact
-- Output as HTML (matching TipTap rich text format)
+## Evidence and fact gates
 
-### 3. Section Ordering (模块排序建议)
-- Analyze the JD's priority areas
-- Suggest optimal section order that highlights the most relevant content first
-- Consider: For technical roles, put skills near top; for management roles, put experience first
+- 每个候选段落都必须包含有效 `source_section_ids`
+- 只能改写已确认事实；不得添加候选人未确认的技能、经历、指标、成果、责任范围或时间线
+- “参与、协助、配合、支持”不得升级为“负责、主导、独立完成、owned、led”
+- 原文没有数字时，不得添加数字或 `[待量化]` 占位符
+- JD、面经、团队氛围、岗位调研和参考简历只影响排序、强调方向与能力缺口，永远不能成为候选人事实
+- 找不到证据的 JD 能力必须列为 `missing_capabilities`，不能注入简历
+- 调研结果必须保留 `evidence_level` 和 `source_refs`；冲突或证据不足时明确披露
+- 提案生成后 Profile、JD 或调研发生变化，接受动作必须标记提案为 `stale`，要求重新生成
 
-## Output Format
+## Output contract
 
-The script MUST write a JSON file to `/mnt/data/result.json` with this exact schema:
+提案至少包含：
 
 ```json
 {
-  "ats_score": 75,
-  "ats_score_after": 92,
-  "keyword_gaps": ["keyword1", "keyword2"],
-  "suggestions": [
+  "proposal_id": "uuid",
+  "status": "ready",
+  "job_id": 123,
+  "original_rows": [],
+  "proposed_rows": [],
+  "diff": [
     {
-      "type": "experience_polish",
-      "section_id": 123,
-      "item_index": 0,
-      "field": "description",
-      "original": "<p>Original HTML text</p>",
-      "suggested": "<p>Improved HTML text with <strong>metrics</strong></p>",
-      "reason": "Added STAR structure and quantifiable results"
-    },
-    {
-      "type": "keyword_inject",
-      "section_id": 456,
-      "item_index": 0,
-      "field": "items",
-      "original": ["Python", "React"],
-      "suggested": ["Python", "React", "TypeScript", "AWS"],
-      "reason": "JD requires TypeScript and AWS experience"
-    },
-    {
-      "type": "section_reorder",
-      "original_order": [1, 2, 3, 4],
-      "suggested_order": [2, 1, 3, 4],
-      "reason": "Technical skills should come before education for this engineering role"
+      "change_id": "stable-id",
+      "change_type": "modified",
+      "source_section_ids": [1],
+      "before": {},
+      "after": {}
     }
   ],
-  "summary": "Overall optimization summary in Chinese"
+  "strategy": {
+    "missing_capabilities": [],
+    "research_gaps": [],
+    "scoring_policy": "no_unvalidated_ats_score"
+  },
+  "fact_gates": {
+    "status": "passed",
+    "warnings": [],
+    "warnings_count": 0
+  }
 }
 ```
 
 ## Rules
-- All text output in the SAME language as the resume (Chinese resume → Chinese suggestions)
-- Preserve the original meaning — enhance, do not fabricate
-- Every suggestion must include a clear `reason`
-- Quantify improvements where possible (ATS score before/after)
-- HTML descriptions must be valid TipTap-compatible HTML
+
+- 不输出伪造的 ATS 0–100 分或“优化后分数”；除非未来接入经过验证、可解释、可复现的评分器
+- 不静默降级，不把失败包装成成功
+- 不直接写数据库或执行隐藏 shell；必须走 Operation Registry 的权限、dry-run、确认和审计
+- 在使用者明确接受前，正式 Resume 保持不变
+- 输出语言跟随候选人简历语言，HTML 必须为 TipTap 兼容格式

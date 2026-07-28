@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Button, Chip, Input, Select, SelectItem, Spinner } from "@nextui-org/react";
+import { Chip, Input, Select, SelectItem, Spinner } from "@nextui-org/react";
 import {
   CheckCircle2,
   FolderOpen,
@@ -30,19 +30,17 @@ interface OptimizeWorkspaceProps {
   seedJobIds?: number[];
 }
 
-const MAX_GENERATE_JOB_COUNT = 20;
-
 function getPoolButtonClassName(active: boolean, tone: "yellow" | "red" | "white" = "white") {
   if (active) {
     const activeMap = {
-      yellow: "bg-[#f3ead2] text-black",
-      red: "bg-[#f7ece9] text-black",
-      white: "bg-[var(--surface)] text-black",
+      yellow: "bg-[var(--surface-muted)] text-[var(--foreground)]",
+      red: "bg-[var(--status-blush)] text-[var(--foreground)]",
+      white: "bg-[var(--surface)] text-[var(--foreground)]",
     };
-    return `border border-black/15 px-3 py-2 text-xs font-semibold shadow-[1px_1px_0_0_rgba(18,18,18,0.1)] transition-colors ${activeMap[tone]}`;
+    return `border border-[var(--border-strong)]/15 px-3 py-2 text-xs font-semibold shadow-[1px_1px_0_0_rgba(18,18,18,0.1)] transition-colors ${activeMap[tone]}`;
   }
 
-  return "border border-black/15 bg-[var(--surface)] px-3 py-2 text-xs font-medium text-black/72 shadow-[1px_1px_0_0_rgba(18,18,18,0.08)] transition-colors hover:bg-[var(--surface-muted)]";
+  return "border border-[var(--border-strong)]/15 bg-[var(--surface)] px-3 py-2 text-xs font-medium text-[var(--foreground-muted)] shadow-[1px_1px_0_0_rgba(18,18,18,0.08)] transition-colors hover:bg-[var(--surface-muted)]";
 }
 
 function getLocationLabel(job: Job) {
@@ -51,13 +49,13 @@ function getLocationLabel(job: Job) {
 
 export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
   const normalizedSeedJobIds = useMemo(
-    () => Array.from(new Set(seedJobIds.filter((id) => Number.isFinite(id) && id > 0))),
+    () => Array.from(new Set(seedJobIds.filter((id) => Number.isFinite(id) && id > 0))).slice(0, 1),
     [seedJobIds]
   );
   const lastAppliedSeedRef = useRef("");
   const [poolFilter, setPoolFilter] = useState<PoolFilter>("all");
   const [keyword, setKeyword] = useState("");
-  const [mode, setMode] = useState<"per_job" | "combined">("per_job");
+  const mode = "per_job" as const;
   const [selectedJobIds, setSelectedJobIds] = useState<number[]>(normalizedSeedJobIds);
   const [referenceResumeId, setReferenceResumeId] = useState<number | null>(null);
   const [showConversationList, setShowConversationList] = useState(false);
@@ -97,8 +95,7 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
     );
   }, [archive]);
   const referenceResumes: ResumeBrief[] = Array.isArray(resumeListData) ? resumeListData : [];
-  const overSelectionLimit = selectedJobIds.length > MAX_GENERATE_JOB_COUNT;
-  const canStart = selectedJobIds.length > 0 && profileSectionCount > 0 && !overSelectionLimit;
+  const canStart = selectedJobIds.length === 1 && profileSectionCount > 0;
 
   useEffect(() => {
     let cancelled = false;
@@ -165,63 +162,45 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
     () => jobs.filter((job) => selectedJobIds.includes(job.id)).length,
     [jobs, selectedJobIds]
   );
-  const allSelectedInCurrent = jobs.length > 0 && selectedCountInCurrentList === jobs.length;
   const totalJobsInCurrentPool = useMemo(
     () => Math.max(jobsTotal, jobs.length),
     [jobsTotal, jobs.length]
   );
 
   const toggleJob = (jobId: number) => {
-    setSelectedJobIds((prev) =>
-      prev.includes(jobId) ? prev.filter((id) => id !== jobId) : [...prev, jobId]
-    );
-  };
-
-  const toggleSelectAllInCurrentList = () => {
-    if (allSelectedInCurrent) {
-      setSelectedJobIds([]);
-      return;
-    }
-
-    setSelectedJobIds((prev) => {
-      const next = new Set(prev);
-      for (const job of jobs) {
-        next.add(job.id);
-      }
-      return Array.from(next);
-    });
+    setSelectedJobIds((prev) => (prev.includes(jobId) ? [] : [jobId]));
   };
 
   return (
     <div className="grid gap-6 xl:grid-cols-[0.95fr_1fr_1.05fr] xl:items-start">
-      <section className="bauhaus-panel overflow-hidden bg-[var(--surface)] text-black">
-        <div className="border-b border-black/12 p-5 md:p-6">
+      <section className="bauhaus-panel overflow-hidden bg-[var(--surface)] text-[var(--foreground)]">
+        <div className="border-b border-[var(--border-strong)]/12 p-5 md:p-6">
           <div className="flex items-start justify-between gap-4">
             <div className="space-y-3">
-              <span className="bauhaus-chip bg-[#f3ead2] text-black">步骤一 · 设置范围</span>
+              <span className="bauhaus-chip bg-[var(--surface-muted)] text-[var(--foreground)]">步骤一 · 设置范围</span>
               <div>
-                <p className="bauhaus-label text-black/55">先筛选再生成</p>
+                <p className="bauhaus-label text-[var(--foreground-muted)]">先筛选再生成</p>
                 <h2 className="mt-2 text-3xl font-bold leading-tight md:text-4xl">筛选岗位与生成条件</h2>
               </div>
             </div>
 
             <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
               <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-3">
-                <p className="bauhaus-label text-black/55">档案条目</p>
+                <p className="bauhaus-label text-[var(--foreground-muted)]">档案条目</p>
                 <p className="mt-2 text-2xl font-bold">
                   {loadingProfile ? "--" : profileSectionCount}
                 </p>
               </div>
-              <div className="bauhaus-panel-sm bg-[#e4ece6] p-3 text-black">
-                <p className="bauhaus-label text-black/60">已选岗位</p>
+              <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-3 text-[var(--foreground)]">
+                <p className="bauhaus-label text-[var(--foreground-muted)]">已选岗位</p>
                 <p className="mt-2 text-2xl font-bold">
                   {selectedJobIds.length}
                 </p>
               </div>
-              <div className="bauhaus-panel-sm bg-[#f7ece9] p-3 text-black">
-                <p className="bauhaus-label text-black/60">生成方式</p>
+              <div className="bauhaus-panel-sm bg-[var(--status-blush)] p-3 text-[var(--foreground)]">
+                <p className="bauhaus-label text-[var(--foreground-muted)]">生成方式</p>
                 <p className="mt-2 text-lg font-semibold">
-                  {mode === "per_job" ? "逐岗位" : "综合版"}
+                  单岗位提案
                 </p>
               </div>
             </div>
@@ -230,7 +209,7 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
 
         <div className="space-y-5 p-5 md:p-6">
           {!loadingProfile && profileSectionCount === 0 && (
-            <div className="bauhaus-panel-sm bg-[var(--surface-muted)] px-4 py-4 text-sm font-medium leading-relaxed text-black/72">
+            <div className="bauhaus-panel-sm bg-[var(--surface-muted)] px-4 py-4 text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
               当前还没有可复用的档案条目。先去
               <Link href="/profile" className="mx-1 font-bold underline">
                 个人档案
@@ -239,16 +218,10 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
             </div>
           )}
 
-          {overSelectionLimit && (
-            <div className="bauhaus-panel-sm bg-[#f7ece9] px-4 py-4 text-sm font-medium leading-relaxed text-[#8a1e1e]">
-              当前已选择 {selectedJobIds.length} 个岗位，超过单次上限 {MAX_GENERATE_JOB_COUNT}。
-            </div>
-          )}
-
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <FolderOpen size={18} strokeWidth={2.6} />
-              <p className="bauhaus-label text-black/65">岗位池筛选</p>
+              <p className="bauhaus-label text-[var(--foreground-muted)]">岗位池筛选</p>
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -285,7 +258,7 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
             placeholder="搜索岗位标题、公司或关键词"
             value={keyword}
             onValueChange={setKeyword}
-            startContent={<Search size={15} className="text-black/55" />}
+            startContent={<Search size={15} className="text-[var(--foreground-muted)]" />}
             classNames={bauhausFieldClassNames}
           />
 
@@ -293,25 +266,10 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <Sparkles size={18} strokeWidth={2.6} />
-                <p className="bauhaus-label text-black/65">生成方式</p>
+                <p className="bauhaus-label text-[var(--foreground-muted)]">审核方式</p>
               </div>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  aria-pressed={mode === "per_job"}
-                  className={getPoolButtonClassName(mode === "per_job", "red")}
-                  onClick={() => setMode("per_job")}
-                >
-                  逐岗位生成
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={mode === "combined"}
-                  className={getPoolButtonClassName(mode === "combined", "white")}
-                  onClick={() => setMode("combined")}
-                >
-                  合并生成
-                </button>
+              <div className="bauhaus-panel-sm bg-[var(--status-blush)] px-3 py-3 text-sm font-semibold">
+                一次选择一个岗位，先调研并生成 diff 提案；明确接受后才创建正式简历。
               </div>
             </div>
 
@@ -334,21 +292,21 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
             </Select>
           </div>
 
-          <div className="bauhaus-panel-sm bg-[var(--surface-muted)] px-4 py-4 text-sm font-medium leading-relaxed text-black/72">
+          <div className="bauhaus-panel-sm bg-[var(--surface-muted)] px-4 py-4 text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
             参考简历只会影响表达方式和版面倾向，事实来源仍然限定为档案中已确认的内容。
           </div>
         </div>
       </section>
 
-      <section className="bauhaus-panel overflow-hidden bg-[var(--surface-muted)] text-black">
-        <div className="border-b border-black/12 p-5 md:p-6">
+      <section className="bauhaus-panel overflow-hidden bg-[var(--surface-muted)] text-[var(--foreground)]">
+        <div className="border-b border-[var(--border-strong)]/12 p-5 md:p-6">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="bauhaus-label text-black/60">步骤二 · 选择岗位</p>
-              <h2 className="mt-2 text-3xl font-bold leading-tight md:text-4xl">确认生成队列</h2>
+              <p className="bauhaus-label text-[var(--foreground-muted)]">步骤二 · 选择岗位</p>
+              <h2 className="mt-2 text-3xl font-bold leading-tight md:text-4xl">选择一个目标岗位</h2>
             </div>
-            <div className="bauhaus-panel-sm bg-[#f3ead2] px-4 py-3 text-black">
-              <p className="bauhaus-label text-black/55">当前可见岗位</p>
+            <div className="bauhaus-panel-sm bg-[var(--surface-muted)] px-4 py-3 text-[var(--foreground)]">
+              <p className="bauhaus-label text-[var(--foreground-muted)]">当前可见岗位</p>
               <p className="mt-2 text-2xl font-bold">{jobs.length}</p>
             </div>
           </div>
@@ -358,31 +316,21 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <ListChecks size={18} strokeWidth={2.6} />
-              <p className="bauhaus-label text-black/65">当前队列</p>
+              <p className="bauhaus-label text-[var(--foreground-muted)]">当前队列</p>
             </div>
-            <Chip className="bauhaus-chip bg-white text-black">
+            <Chip className="bauhaus-chip bg-white text-[var(--foreground)]">
               {selectedCountInCurrentList} / {totalJobsInCurrentPool}
             </Chip>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            <Button
-              className="bauhaus-button bauhaus-button-yellow !min-h-11 !px-4 !py-3"
-              onPress={toggleSelectAllInCurrentList}
-              isDisabled={jobs.length === 0}
-            >
-              {allSelectedInCurrent ? "清空当前可见" : "全选当前可见"}
-            </Button>
-          </div>
-
-          <div className="bauhaus-panel-sm max-h-[32rem] space-y-3 overflow-y-auto bg-white p-3 text-black custom-scrollbar">
+          <div className="bauhaus-panel-sm max-h-[32rem] space-y-3 overflow-y-auto bg-white p-3 text-[var(--foreground)] custom-scrollbar">
             {loadingJobs ? (
-              <div className="flex min-h-48 items-center justify-center gap-3 text-sm font-medium text-black/70">
+              <div className="flex min-h-48 items-center justify-center gap-3 text-sm font-medium text-[var(--foreground-muted)]">
                 <Spinner size="sm" color="warning" />
                 <span>正在加载岗位列表…</span>
               </div>
             ) : jobs.length === 0 ? (
-              <div className="flex min-h-48 items-center justify-center text-center text-sm font-medium text-black/60">
+              <div className="flex min-h-48 items-center justify-center text-center text-sm font-medium text-[var(--foreground-muted)]">
                 当前筛选范围内没有岗位。
               </div>
             ) : (
@@ -393,27 +341,27 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
                     key={job.id}
                     type="button"
                     onClick={() => toggleJob(job.id)}
-                    className={`w-full border border-black/15 p-4 text-left shadow-[1px_1px_0_0_rgba(18,18,18,0.12)] transition-transform hover:-translate-y-[1px] ${
-                      checked ? "bg-[#f3ead2]" : "bg-[var(--surface)]"
+                    className={`w-full border border-[var(--border-strong)]/15 p-4 text-left shadow-[1px_1px_0_0_rgba(18,18,18,0.12)] transition-transform hover:-translate-y-[1px] ${
+                      checked ? "bg-[var(--surface-muted)]" : "bg-[var(--surface)]"
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <p className="bauhaus-label text-black/55">#{String(index + 1).padStart(2, "0")}</p>
+                        <p className="bauhaus-label text-[var(--foreground-muted)]">#{String(index + 1).padStart(2, "0")}</p>
                         <h3 className="mt-1 line-clamp-2 text-lg font-semibold leading-snug">
                           {job.title}
                         </h3>
-                        <p className="mt-2 text-sm font-semibold tracking-[0.02em] text-black/68">
+                        <p className="mt-2 text-sm font-semibold tracking-[0.02em] text-[var(--foreground-muted)]">
                           {job.company}
                         </p>
-                        <p className="mt-2 text-sm font-medium leading-relaxed text-black/72">
+                        <p className="mt-2 text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
                           {getLocationLabel(job)}
                         </p>
                       </div>
 
                       <span
-                        className={`flex h-11 w-11 items-center justify-center border border-black/20 ${
-                          checked ? "bg-[#e4ece6] text-black" : "bg-white text-black"
+                        className={`flex h-11 w-11 items-center justify-center border border-[var(--border-strong)]/20 ${
+                          checked ? "bg-[var(--surface-muted)] text-[var(--foreground)]" : "bg-white text-[var(--foreground)]"
                         }`}
                       >
                         <CheckCircle2 size={18} strokeWidth={2.6} />
@@ -425,24 +373,24 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
             )}
           </div>
 
-          <div className="bauhaus-panel-sm bg-[var(--surface)] px-4 py-4 text-sm font-medium leading-relaxed text-black/75">
-            当前池内共 {totalJobsInCurrentPool} 个岗位，本轮已选择 {selectedCountInCurrentList} 个。
+          <div className="bauhaus-panel-sm bg-[var(--surface)] px-4 py-4 text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
+            当前池内共 {totalJobsInCurrentPool} 个岗位，本轮请选择 1 个岗位逐项审核。
           </div>
         </div>
       </section>
 
-      <section className="bauhaus-panel relative overflow-hidden bg-[var(--surface)] text-black h-[calc(100vh-6rem)]">
+      <section className="bauhaus-panel relative overflow-hidden bg-[var(--surface)] text-[var(--foreground)] h-[calc(100vh-6rem)]">
         <div className="absolute inset-0 flex flex-col">
           {/* Header bar with title and conversation list toggle */}
-          <div className="shrink-0 border-b border-black/12 px-5 py-3 md:px-6 flex items-center justify-between">
+          <div className="shrink-0 border-b border-[var(--border-strong)]/12 px-5 py-3 md:px-6 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <MessageSquare size={18} strokeWidth={2.4} />
-              <span className="text-sm font-bold text-black/80">智能优化工作流</span>
+              <span className="text-sm font-bold text-[var(--foreground-muted)]">智能优化工作流</span>
             </div>
             <button
               type="button"
               onClick={() => setShowConversationList(!showConversationList)}
-              className="flex items-center gap-1.5 border border-black/15 bg-[var(--surface-muted)] px-3 py-1.5 text-sm font-semibold text-black/80 transition-colors hover:bg-[#e4ece6] hover:text-black"
+              className="flex items-center gap-1.5 border border-[var(--border-strong)]/15 bg-[var(--surface-muted)] px-3 py-1.5 text-sm font-semibold text-[var(--foreground-muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
             >
               <FolderOpen size={15} />
               {showConversationList ? "返回对话" : "往期对话"}
@@ -463,6 +411,7 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
                 mode={mode}
                 disabled={!canStart}
                 profileId={profileData?.id ?? null}
+                referenceResumeId={referenceResumeId}
                 loadSessionId={loadSessionId}
                 onLoadSessionConsumed={() => setLoadSessionId(null)}
               />

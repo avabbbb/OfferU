@@ -194,7 +194,7 @@ export function normalizeProfile(raw: unknown): NormalizedProfile {
   const basicFields: Array<[string, string]> = [
     ["fullName", "姓名"], ["phone", "手机号"], ["email", "邮箱"],
     ["city", "所在城市"], ["targetRole", "目标岗位"], ["website", "个人网站"],
-    ["github", "GitHub"], ["summary", "个人简介"],
+    ["github", "GitHub"], ["linkedin", "LinkedIn"], ["summary", "个人简介"],
   ];
   for (const [key, label] of basicFields) {
     const value = coerceString(basic[key]);

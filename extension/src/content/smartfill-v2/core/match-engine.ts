@@ -248,6 +248,9 @@ export function matchFieldsWithRules(
         intent: bestEntry.label,
         source: "rule",
         occurrenceIndex: bestEntry.index,
+        profilePath: bestEntry.path || bestEntry.key,
+        catalogKey: bestEntry.key,
+        valueType: bestEntry.valueType,
       });
       usedEntries.add(bestEntry.index);
     }

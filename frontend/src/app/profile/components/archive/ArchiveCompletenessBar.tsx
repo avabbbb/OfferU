@@ -21,9 +21,9 @@ function MetricCard(props: {
       onClick={props.onPress}
       className={`bauhaus-panel-sm flex h-full w-full flex-col bg-[var(--surface)] p-4 text-left transition hover:-translate-y-[1px] ${props.colorClass || ""}`}
     >
-      <div className="bauhaus-label text-black/60">{props.title}</div>
-      <div className="mt-2 text-2xl font-bold text-black">{props.value}</div>
-      <div className="mt-2 min-h-[2.5rem] text-xs text-black/60">{props.hint || ""}</div>
+      <div className="bauhaus-label text-[var(--foreground-muted)]">{props.title}</div>
+      <div className="mt-2 text-2xl font-bold text-[var(--foreground)]">{props.value}</div>
+      <div className="mt-2 min-h-[2.5rem] text-xs text-[var(--foreground-muted)]">{props.hint || ""}</div>
     </button>
   );
 }

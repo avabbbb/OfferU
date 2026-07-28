@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
-import { Outfit } from "next/font/google";
+import { Inter } from "next/font/google";
 import "./globals.css";
 import "./resume/components/templates/resumeTemplate.css";
 import { Providers } from "./providers";
-import { Sidebar } from "@/components/layout/Sidebar";
+import { WorkbenchShell } from "@/components/workbench/WorkbenchShell";
 
-const outfit = Outfit({
+const inter = Inter({
   subsets: ["latin"],
-  weight: ["400", "500", "700", "900"],
+  weight: ["400", "500", "600", "700"],
   variable: "--font-display",
   display: "swap",
 });
@@ -24,18 +24,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN">
-      <body className={`${outfit.variable} h-screen overflow-hidden bg-[var(--background)] text-[var(--foreground)] antialiased`}>
+      <body className={`${inter.variable} h-screen overflow-hidden bg-[var(--background)] text-[var(--foreground)] antialiased`}>
         <Providers>
-          <div className="relative flex h-screen w-full overflow-hidden">
-            <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden opacity-20">
-              <div className="absolute -left-10 top-14 h-14 w-14 rounded-full border border-black/10 bg-[var(--primary-yellow)]/12" />
-              <div className="bauhaus-triangle absolute bottom-14 right-12 h-12 w-12 border border-black/10 bg-[var(--surface-muted)]" />
-            </div>
-            <Sidebar />
-            <main className="relative h-screen flex-1 overflow-y-auto overflow-x-hidden px-4 py-6 pb-28 md:px-8 md:py-8 md:pb-10">
-              <div className="mx-auto max-w-[1600px]">{children}</div>
-            </main>
-          </div>
+          <WorkbenchShell>{children}</WorkbenchShell>
         </Providers>
       </body>
     </html>

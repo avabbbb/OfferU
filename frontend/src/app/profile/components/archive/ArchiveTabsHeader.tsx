@@ -1,64 +1,63 @@
 "use client";
 
-import { Button, Card, CardBody } from "@nextui-org/react";
-import { Settings2 } from "lucide-react";
+import { motion } from "framer-motion";
+import { FileOutput, LayoutList, Settings2, Sheet } from "lucide-react";
 import type { ArchiveTab } from "@/lib/personalArchive";
 
+export type ProfileArchiveView = "overview" | ArchiveTab;
+
 interface ArchiveTabsHeaderProps {
-  activeTab: ArchiveTab;
-  onTabChange: (tab: ArchiveTab) => void;
+  activeView: ProfileArchiveView;
+  onViewChange: (view: ProfileArchiveView) => void;
   onOpenSettings: () => void;
 }
 
-function TabButton(props: {
-  active: boolean;
-  label: string;
-  subtitle: string;
-  onPress: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={props.onPress}
-      className={`bauhaus-panel-sm flex-1 p-3 text-left transition ${
-        props.active ? "bg-[#e4ece6] ring-1 ring-black/20" : "bg-[var(--surface)] hover:-translate-y-[1px]"
-      }`}
-    >
-      <div className="text-sm font-semibold text-black">{props.label}</div>
-      <div className="mt-1 text-xs leading-relaxed text-black/65">{props.subtitle}</div>
-    </button>
-  );
-}
-
 export default function ArchiveTabsHeader(props: ArchiveTabsHeaderProps) {
+  const views = [
+    { key: "overview" as const, label: "档案总览", icon: LayoutList },
+    { key: "resume" as const, label: "简历输出", icon: FileOutput },
+    { key: "application" as const, label: "网申输出", icon: Sheet },
+  ];
+
   return (
-    <Card className="bauhaus-panel overflow-hidden bg-[var(--surface)]">
-      <CardBody className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
-        <div className="flex flex-1 flex-col gap-2 md:flex-row">
-          <TabButton
-            active={props.activeTab === "resume"}
-            label="简历档案"
-            subtitle="用于简历生成、简历编辑和 AI 优化，保持精简表达。"
-            onPress={() => props.onTabChange("resume")}
-          />
-          <TabButton
-            active={props.activeTab === "application"}
-            label="投递档案"
-            subtitle="用于官网网申、一键填充和投递补充信息。"
-            onPress={() => props.onTabChange("application")}
-          />
-        </div>
-        <div className="flex items-center md:pl-2">
-          <Button
-            isIconOnly
-            aria-label="打开同步设置"
-            className="bauhaus-button bauhaus-button-outline !h-10 !min-w-10 !w-10 !px-0 !py-0"
-            onPress={props.onOpenSettings}
-          >
-            <Settings2 size={16} />
-          </Button>
-        </div>
-      </CardBody>
-    </Card>
+    <div className="flex items-center justify-between gap-3 border-y border-[var(--border)] py-2">
+      <div className="flex min-w-0 items-center gap-0.5">
+        {views.map((view) => {
+          const Icon = view.icon;
+          const active = props.activeView === view.key;
+          return (
+            <button
+              key={view.key}
+              type="button"
+              onClick={() => props.onViewChange(view.key)}
+              aria-pressed={active}
+              className={`relative flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12.5px] font-medium transition-colors duration-[var(--dur-quick)] ${
+                active
+                  ? "text-[var(--foreground)]"
+                  : "text-[var(--foreground-muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+              }`}
+            >
+              {active && (
+                <motion.span
+                  layoutId="profile-view-active"
+                  className="absolute inset-0 rounded-md bg-[var(--surface-muted)]"
+                  transition={{ type: "spring", stiffness: 360, damping: 38, mass: 0.75 }}
+                />
+              )}
+              <Icon size={13} strokeWidth={1.75} className="relative z-10" />
+              <span className="relative z-10">{view.label}</span>
+            </button>
+          );
+        })}
+      </div>
+      <button
+        type="button"
+        aria-label="打开档案同步设置"
+        onClick={props.onOpenSettings}
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--foreground-muted)] transition-colors duration-[var(--dur-quick)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+      >
+        <Settings2 size={15} strokeWidth={1.75} />
+      </button>
+    </div>
   );
 }

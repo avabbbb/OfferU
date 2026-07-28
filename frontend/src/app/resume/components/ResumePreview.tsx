@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useMemo } from "react";
+import { forwardRef, memo, useMemo } from "react";
 import { ResumeSwissSingle } from "./templates/ResumeSwissSingle";
 import { ResumeSwissTwoColumn } from "./templates/ResumeSwissTwoColumn";
 import { ResumeModernSingle } from "./templates/ResumeModernSingle";
@@ -199,8 +199,11 @@ function normalizeResumeData(props: ResumePreviewProps): NormalizedResumeData {
 const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(function ResumePreview(props, ref) {
   const settings = useMemo(() => normalizeTemplateSettings(props.styleConfig), [props.styleConfig]);
   const cssVars = useMemo(() => settingsToCssVars(settings), [settings]);
-  const data = useMemo(() => normalizeResumeData(props), [props]);
-  const highlightKeywords = props.highlightKeywords || [];
+  const data = useMemo(
+    () => normalizeResumeData(props),
+    [props.userName, props.title, props.photoUrl, props.summary, props.contactJson, props.sections, props.styleConfig],
+  );
+  const highlightKeywords = useMemo(() => props.highlightKeywords || [], [props.highlightKeywords]);
 
   const template = (() => {
     if (
@@ -235,4 +238,4 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(function Re
   );
 });
 
-export default ResumePreview;
+export default memo(ResumePreview);

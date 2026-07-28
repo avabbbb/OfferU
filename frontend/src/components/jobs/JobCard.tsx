@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useRouter } from "next/navigation";
 import {
@@ -78,7 +78,7 @@ export function JobCard({
 
   return (
     <article
-      className={`group relative flex h-full min-h-[280px] max-w-full flex-col overflow-hidden border border-black/15 bg-[var(--surface)] transition-all duration-200 ease-out ${
+      className={`group relative flex h-full min-h-[280px] max-w-full flex-col overflow-hidden border border-black/15 bg-[var(--surface)] transition-all duration-[var(--dur-quick)] ease-[var(--ease-snap)] ${
         selected
           ? "bg-[var(--surface-muted)] shadow-[1px_1px_0_0_rgba(18,18,18,0.16)]"
           : "shadow-[1px_1px_0_0_rgba(18,18,18,0.08)] hover:-translate-y-0.5 hover:shadow-[2px_2px_0_0_rgba(18,18,18,0.14)]"
@@ -211,7 +211,7 @@ export function JobCard({
           type="button"
           aria-label={selected ? "取消选择岗位" : "选择岗位"}
           aria-pressed={selected}
-          className={`absolute bottom-4 right-4 z-20 flex h-11 w-11 items-center justify-center border border-black/20 transition-all duration-200 ease-out ${
+          className={`absolute bottom-4 right-4 z-20 flex h-11 w-11 items-center justify-center border border-black/20 transition-all duration-[var(--dur-quick)] ease-[var(--ease-snap)] ${
             selected
               ? "bg-[#e4ece6] text-black shadow-[1px_1px_0_0_rgba(18,18,18,0.14)]"
               : "bg-[var(--surface)] text-black shadow-[1px_1px_0_0_rgba(18,18,18,0.1)] hover:bg-[var(--surface-muted)]"

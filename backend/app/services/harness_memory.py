@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from app.services.agent_files import atomic_write_json
+
 MEMORY_SCHEMA_VERSION = "offeru.agent_memory.v1"
 MEMORY_DIR = Path(__file__).resolve().parents[2] / "data"
 MEMORY_PATH = MEMORY_DIR / "harness_agent_memory.json"
@@ -83,8 +85,7 @@ def load_agent_memory(path: Path | None = None) -> dict[str, Any]:
 def save_agent_memory(memory: dict[str, Any], path: Path | None = None) -> dict[str, Any]:
     normalized = normalize_agent_memory({**memory, "updated_at": _now_iso()})
     target = path or MEMORY_PATH
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(normalized, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_json(target, normalized)
     return normalized
 
 

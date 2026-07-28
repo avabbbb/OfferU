@@ -15,6 +15,7 @@ import json
 import logging
 import re
 import uuid
+from copy import deepcopy
 from typing import AsyncGenerator
 
 from app.agents.skills.content_rewriter import ContentRewriterSkill
@@ -119,9 +120,32 @@ TOOL_REGISTRY: dict[str, dict] = {
         "parameters": {},
         "risk_level": "read",
     },
-    "generate_resume": {
-        "description": "根据所有已确认内容生成最终简历（需用户确认）",
+    "prepare_resume_optimization": {
+        "description": "将所有已确认内容通过 Operation Registry 保存为可审核提案；不会创建正式简历",
+        "parameters": {"research_run_id": "指定已完成岗位调研 run_id（可选）"},
+        "risk_level": "confirm",
+    },
+    "get_resume_optimization": {
+        "description": "读取当前会话提案的原文、候选稿、逐项 diff、事实门和证据",
         "parameters": {},
+        "risk_level": "read",
+    },
+    "start_job_research": {
+        "description": "通过 Operation Registry 启动当前岗位的公开网页证据化调研",
+        "parameters": {"runtime_id": "本地 coding agent runtime，默认 codex"},
+        "risk_level": "confirm",
+    },
+    "get_job_research": {
+        "description": "读取当前岗位调研状态、证据、结论和缺口",
+        "parameters": {},
+        "risk_level": "read",
+    },
+    "review_resume_optimization": {
+        "description": "明确接受或拒绝当前提案；只有接受通过事实门的提案才创建正式简历",
+        "parameters": {
+            "action": "accept 或 reject",
+            "note": "审核备注（可选）",
+        },
         "risk_level": "confirm",
     },
 }
@@ -147,6 +171,8 @@ _SYSTEM_PROMPT_TEMPLATE = """你是一位资深校招简历优化顾问。你通
 - 目标岗位: {job_titles}
 - 已确认 sections: {confirmed_sections_summary}
 - 待处理 sections: {pending_sections_summary}
+- 当前岗位调研: {research_run_id}
+- 当前简历提案: {resume_optimization_proposal_id}
 - 当前待确认操作: {pending_action_summary}
 
 ## 可用工具
@@ -155,14 +181,15 @@ _SYSTEM_PROMPT_TEMPLATE = """你是一位资深校招简历优化顾问。你通
 ## 工具使用规则
 1. 每次只调用一个工具，观察结果后再决定下一步
 2. 改写 section 时，输出结构化 JSON，description 用 HTML 格式
-3. 需要用户确认的操作（confirm_section, rollback, generate_resume）先向用户说明意图，等用户确认后再调用
+3. 需要用户确认的操作（confirm_section, rollback, start_job_research, prepare_resume_optimization, review_resume_optimization）先向用户说明意图，等用户确认后再调用
 4. 如果用户反馈不满意，调用 rewrite_section 并传入 extra_instruction
 5. 如果用户想修改已确认的 section，调用 review_section
 6. 如果用户想回退到更早的阶段，调用 rollback
-7. 如果用户确认了所有 section，主动调用 generate_resume
-8. 如果工具返回错误，向用户说明问题并建议解决方案，不要反复调用同一工具
-9. 如果连续两个工具返回错误，直接回复用户说明情况，建议重新开始会话
-10. 不要在同一个section上反复调用rewrite_section，如果改写结果不满意，向用户确认是否需要调整方向
+7. 准备提案前必须有 completed 岗位调研；先调用 get_job_research 复用该岗位最近完成的调研，查不到时再调用 start_job_research，随后继续用 get_job_research 查看状态
+8. 所有 section 确认且调研完成后，调用 prepare_resume_optimization；再用 get_resume_optimization 展示 diff 和事实门；只有用户明确接受或拒绝后才调用 review_resume_optimization
+9. 如果工具返回错误，向用户说明问题并建议解决方案，不要反复调用同一工具
+10. 如果连续两个工具返回错误，直接回复用户说明情况，建议重新开始会话
+11. 不要在同一个section上反复调用rewrite_section，如果改写结果不满意，向用户确认是否需要调整方向
 
 ## 改写质量规则（CRITICAL）
 1. 绝不编造经历、技能、数据、成果 — 如果原文没有证据，不要强行关联
@@ -170,7 +197,7 @@ _SYSTEM_PROMPT_TEMPLATE = """你是一位资深校招简历优化顾问。你通
 3. 每条描述应是一个微型工作故事：情境→行动→结果，而非关键词列表
 4. 如果某个 JD 要求在当前经历中找不到自然关联，宁可跳过也不要强行注入
 5. 保留原文的限定词和自然表达，不要全部改成"完美"的 AI 语言
-6. 如果缺少量化数据，使用"[待量化]"标记，不要编造数字
+6. 如果缺少量化数据，保留有证据的原始措辞并指出能力缺口；不要编造数字，也不要写占位符
 
 ## 输出格式
 返回 JSON：
@@ -208,6 +235,10 @@ def _build_system_prompt(session: OptimizeSession) -> str:
         job_titles=job_titles,
         confirmed_sections_summary=confirmed_summary,
         pending_sections_summary=pending_summary,
+        research_run_id=session.research_run_id or "尚未启动",
+        resume_optimization_proposal_id=(
+            session.resume_optimization_proposal_id or "尚未准备"
+        ),
         pending_action_summary=pending_action_summary,
         tools_description=_build_tools_description(),
     ) + _ANTI_MECHANICAL_INJECTION_RULES
@@ -254,11 +285,13 @@ class OptimizeSession:
         job_ids: list[int] | None = None,
         mode: str = "per_job",
         profile_id: int | None = None,
+        reference_resume_id: int | None = None,
     ):
         self.session_id = session_id or f"opt_{uuid.uuid4().hex[:12]}"
         self.job_ids = job_ids or []
         self.mode = mode
         self.profile_id = profile_id
+        self.reference_resume_id = reference_resume_id
         self.phase = PHASE_CONFIRMING
         self.messages: list[dict] = []
         self.jd_analysis: dict = {}
@@ -268,6 +301,8 @@ class OptimizeSession:
         self.rows: list[dict] = []
         self.current_section_index: int = 0
         self.resume_id: int | None = None
+        self.resume_optimization_proposal_id: str | None = None
+        self.research_run_id: str | None = None
         self.interview_experiences: list[dict] = []
         self.raw_jd: str = ""
         self.job_titles: list[str] = []
@@ -275,6 +310,7 @@ class OptimizeSession:
         self.pending_action: dict | None = None
         self.confirmed_sections: dict = {}  # section_index (str) → content_json
         self.original_rows: dict = {}  # section_index (str) → original content_json before first rewrite
+        self._source_sections_cache: list | None = None  # 源档案条目缓存（内存态）
 
 
 _sessions: dict[str, OptimizeSession] = {}
@@ -304,6 +340,7 @@ async def _load_session_from_db(session_id: str, db) -> OptimizeSession | None:
         job_ids=row.job_ids or [],
         mode=row.mode or "per_job",
         profile_id=row.profile_id,
+        reference_resume_id=row.reference_resume_id,
     )
     session.phase = row.phase or PHASE_CONFIRMING
     session.messages = row.messages_json or []
@@ -314,6 +351,8 @@ async def _load_session_from_db(session_id: str, db) -> OptimizeSession | None:
     session.rows = row.rows_json or []
     session.current_section_index = row.current_section_index or 0
     session.resume_id = row.resume_id
+    session.resume_optimization_proposal_id = row.resume_optimization_proposal_id
+    session.research_run_id = row.research_run_id
     session.interview_experiences = row.interview_experiences_json or []
     session.raw_jd = row.raw_jd_json or ""
     session.job_titles = row.job_titles_json or []
@@ -347,7 +386,10 @@ async def _persist_session(session: OptimizeSession, db) -> None:
         row.framework_json = session.framework
         row.rows_json = session.rows
         row.current_section_index = session.current_section_index
+        row.reference_resume_id = session.reference_resume_id
         row.resume_id = session.resume_id
+        row.resume_optimization_proposal_id = session.resume_optimization_proposal_id
+        row.research_run_id = session.research_run_id
         row.interview_experiences_json = session.interview_experiences
         row.raw_jd_json = session.raw_jd
         row.job_titles_json = session.job_titles or None
@@ -368,7 +410,10 @@ async def _persist_session(session: OptimizeSession, db) -> None:
             framework_json=session.framework,
             rows_json=session.rows,
             current_section_index=session.current_section_index,
+            reference_resume_id=session.reference_resume_id,
             resume_id=session.resume_id,
+            resume_optimization_proposal_id=session.resume_optimization_proposal_id,
+            research_run_id=session.research_run_id,
             interview_experiences_json=session.interview_experiences,
             raw_jd_json=session.raw_jd,
             job_titles_json=session.job_titles or None,
@@ -398,6 +443,9 @@ async def list_sessions_from_db(db) -> list[dict]:
             "created_at": r.created_at.isoformat() if r.created_at else "",
             "updated_at": r.updated_at.isoformat() if r.updated_at else "",
             "resume_id": r.resume_id,
+            "reference_resume_id": r.reference_resume_id,
+            "resume_optimization_proposal_id": r.resume_optimization_proposal_id,
+            "research_run_id": r.research_run_id,
         }
         for r in rows
     ]
@@ -424,6 +472,9 @@ async def get_session_detail(session_id: str, db) -> dict | None:
         "created_at": row.created_at.isoformat() if row.created_at else "",
         "updated_at": row.updated_at.isoformat() if row.updated_at else "",
         "resume_id": row.resume_id,
+        "reference_resume_id": row.reference_resume_id,
+        "resume_optimization_proposal_id": row.resume_optimization_proposal_id,
+        "research_run_id": row.research_run_id,
         "pending_action": row.pending_action_json or None,
     }
 
@@ -461,6 +512,27 @@ async def _get_session_profile(session: OptimizeSession, db) -> object | None:
         select(Profile).order_by(Profile.is_default.desc(), Profile.updated_at.desc())
     )
     return result.scalars().first()
+
+
+async def _get_source_sections(session: OptimizeSession, db) -> list:
+    """加载源档案条目（带 session 级缓存，避免每次改写都查库）"""
+    if session._source_sections_cache is not None:
+        return session._source_sections_cache
+    from app.models.models import ProfileSection
+    from sqlalchemy import select
+
+    profile = await _get_session_profile(session, db)
+    if not profile:
+        session._source_sections_cache = []
+        return []
+    result = await db.execute(
+        select(ProfileSection)
+        .where(ProfileSection.profile_id == profile.id)
+        .order_by(ProfileSection.sort_order.asc())
+    )
+    sections = list(result.scalars().all())
+    session._source_sections_cache = sections
+    return sections
 
 
 # ---- Tool Implementations ----
@@ -599,6 +671,8 @@ async def _tool_rewrite_section(session: OptimizeSession, args: dict, db) -> dic
     if isinstance(result, dict) and "error" not in result:
         session.phase = PHASE_REWRITING
         session.current_section_index = section_index
+        session.resume_id = None
+        session.resume_optimization_proposal_id = None
 
         # Apply suggestions to session.rows in-place so confirm_section saves rewritten data
         suggestions = result.get("suggestions", [])
@@ -614,9 +688,34 @@ async def _tool_rewrite_section(session: OptimizeSession, args: dict, db) -> dic
             for sug in suggestions:
                 if isinstance(sug, dict) and not sug.get("section_title"):
                     sug["section_title"] = section_title
+
+            # ── Humanizer: 去除 AI 痕迹（改写后立即执行，纯规则零成本） ──
+            try:
+                from app.agents.skills.humanizer import HumanizerSkill
+                humanizer = HumanizerSkill()
+                humanizer_stats = await humanizer.execute({"content_rewrite": result})
+                result["humanizer"] = humanizer_stats
+                # 重建 suggestions 引用已被 humanizer 原地修改
+                suggestions = result.get("suggestions", [])
+            except Exception as exc:
+                _logger.warning("Humanizer failed: %s", exc)
+                result["humanizer"] = {"applied": False, "error": str(exc)}
+
             rewritten = _apply_suggestions_to_rows(single_row, suggestions)
             if rewritten and isinstance(rewritten[0].get("content_json"), list):
                 session.rows[section_index]["content_json"] = rewritten[0]["content_json"]
+
+            # ── FactGates: 确定性事实验证（校验数字/机构名是否捏造） ──
+            try:
+                from app.routes.optimize import _fact_gates_validate
+                source_sections = await _get_source_sections(session, db) if db is not None else []
+                gate_result = _fact_gates_validate(
+                    [session.rows[section_index]], source_sections
+                )
+                result["fact_gates"] = gate_result
+            except Exception as exc:
+                _logger.warning("FactGates validate failed: %s", exc)
+                result["fact_gates"] = {"error": str(exc)}
 
     return result
 
@@ -689,6 +788,8 @@ async def _tool_rollback(session: OptimizeSession, args: dict, db) -> dict:
         return {"error": f"不支持回退到阶段: {target_phase}，可选: analyzing, framework, rewriting"}
 
     session.phase = target_phase
+    session.resume_id = None
+    session.resume_optimization_proposal_id = None
 
     # Clear data based on target phase
     if target_phase == "analyzing":
@@ -722,6 +823,8 @@ async def _tool_switch_job(session: OptimizeSession, args: dict, db) -> dict:
     new_job_ids = args.get("new_job_ids")
     if not new_job_ids or not isinstance(new_job_ids, list):
         return {"error": "缺少 new_job_ids 参数，需提供新的岗位ID列表"}
+    if len(set(new_job_ids)) != 1:
+        return {"error": "当前提案流程一次只能切换到一个岗位"}
 
     if db is None:
         return {"error": "数据库连接不可用"}
@@ -755,6 +858,9 @@ async def _tool_switch_job(session: OptimizeSession, args: dict, db) -> dict:
     session.rows = []
     session.confirmed_sections = {}
     session.original_rows = {}
+    session.resume_id = None
+    session.resume_optimization_proposal_id = None
+    session.research_run_id = None
 
     # Reset phase
     session.phase = PHASE_ANALYZING
@@ -812,90 +918,176 @@ async def _tool_list_available_jobs(session: OptimizeSession, args: dict, db) ->
     }
 
 
-async def _tool_generate_resume(session: OptimizeSession, args: dict, db) -> dict:
-    """根据所有已确认内容生成最终简历"""
+async def _registry_outputs(operation: str, args: dict) -> dict:
+    from app.ops import execute_operation
+
+    result = await execute_operation(
+        operation,
+        args,
+        dry_run=False,
+        surface="optimize_agent",
+    )
+    if not result.get("ok"):
+        errors = result.get("errors") or [f"{operation} 执行失败"]
+        return {"error": "；".join(str(item) for item in errors)}
+    outputs = result.get("outputs")
+    if not isinstance(outputs, dict):
+        return {"error": f"{operation} 返回了无效结果"}
+    return outputs
+
+
+async def _tool_start_job_research(
+    session: OptimizeSession,
+    args: dict,
+    db,
+) -> dict:
+    if len(session.job_ids) != 1:
+        return {"error": "岗位调研一次只能对应一个岗位"}
+    result = await _registry_outputs(
+        "start_job_research",
+        {
+            "job_id": session.job_ids[0],
+            "runtime_id": args.get("runtime_id") or "codex",
+        },
+    )
+    if result.get("run_id"):
+        session.research_run_id = str(result["run_id"])
+    return result
+
+
+async def _tool_get_job_research(
+    session: OptimizeSession,
+    args: dict,
+    db,
+) -> dict:
+    if not session.research_run_id:
+        if len(session.job_ids) != 1:
+            return {"error": "岗位调研一次只能对应一个岗位"}
+        listed = await _registry_outputs(
+            "list_job_research_runs",
+            {
+                "job_id": session.job_ids[0],
+                "status": "completed",
+                "limit": 1,
+            },
+        )
+        if listed.get("error"):
+            return listed
+        items = listed.get("items")
+        if not isinstance(items, list) or not items:
+            return {"error": "当前岗位没有可复用的已完成调研，请先启动岗位调研"}
+        run_id = items[0].get("run_id") if isinstance(items[0], dict) else None
+        if not run_id:
+            return {"error": "岗位调研列表返回了无效结果"}
+        session.research_run_id = str(run_id)
+    return await _registry_outputs(
+        "get_job_research",
+        {"run_id": session.research_run_id},
+    )
+
+
+def _session_candidate_rows(
+    session: OptimizeSession,
+) -> tuple[list[dict], list[dict]]:
+    proposed_rows: list[dict] = []
+    original_rows: list[dict] = []
+    for index, row in enumerate(session.rows):
+        confirmed = session.confirmed_sections.get(str(index))
+        if not isinstance(confirmed, dict):
+            raise ValueError(f"第 {index + 1} 个 section 尚未确认")
+        proposed = {
+            "section_type": row.get("section_type", ""),
+            "title": row.get("title", ""),
+            "sort_order": row.get("sort_order", index),
+            "visible": bool(row.get("visible", True)),
+            "content_json": deepcopy(
+                confirmed.get("content_json", row.get("content_json", []))
+            ),
+            "source_section_ids": deepcopy(row.get("source_section_ids") or []),
+        }
+        original = deepcopy(proposed)
+        if str(index) in session.original_rows:
+            original["content_json"] = deepcopy(session.original_rows[str(index)])
+        proposed_rows.append(proposed)
+        original_rows.append(original)
+    return proposed_rows, original_rows
+
+
+async def _tool_prepare_resume_optimization(
+    session: OptimizeSession,
+    args: dict,
+    db,
+) -> dict:
+    """把逐段确认过的候选稿交给统一提案服务，不直接创建 Resume。"""
     if not session.confirmed_sections:
-        return {"error": "没有已确认的 section，无法生成简历"}
+        return {"error": "没有已确认的 section，无法准备提案"}
 
     if not all(str(i) in session.confirmed_sections for i in range(len(session.rows))):
         return {"error": "还有 section 未确认，请先确认所有 section"}
-
-    if db is None:
-        return {"error": "数据库连接不可用"}
-
+    if len(session.job_ids) != 1:
+        return {"error": "会话提案一次只能对应一个岗位；请切换到单岗位 per_job 模式"}
     try:
-        from app.services.resume_builder import _create_generated_resume, _profile_to_contact_json, _build_source_profile_snapshot
-        from app.models.models import Profile
-        from sqlalchemy import select
-
-        profile = await _get_session_profile(session, db)
-        if not profile:
-            return {"error": "未找到个人档案"}
-
-        # Build rows from confirmed sections
-        final_rows = []
-        for i, row in enumerate(session.rows):
-            confirmed = session.confirmed_sections.get(str(i))
-            if confirmed and isinstance(confirmed, dict):
-                final_rows.append({
-                    "section_type": row.get("section_type", ""),
-                    "title": row.get("title", ""),
-                    "sort_order": row.get("sort_order", i),
-                    "visible": True,
-                    "content_json": confirmed.get("content_json", row.get("content_json", [])),
-                })
-            else:
-                final_rows.append(row)
-
-        contact_json = _profile_to_contact_json(profile)
-
-        # Get job info for title
-        job_title_str = ""
-        if session.job_ids:
-            from app.models.models import Job
-            jobs_result = await db.execute(select(Job).where(Job.id.in_(session.job_ids)))
-            jobs = list(jobs_result.scalars().all())
-            job_title_str = "、".join(
-                " - ".join(part for part in [j.company, j.title] if part) for j in jobs[:3]
-            )
-
-        resume_title = f"{job_title_str} 定制简历" if job_title_str else "AI 定制简历"
-        base_summary = profile.headline or profile.exit_story or ""
-
-        # Build source profile snapshot
-        from app.models.models import ProfileSection
-        sections_result = await db.execute(
-            select(ProfileSection)
-            .where(ProfileSection.profile_id == profile.id)
-            .order_by(ProfileSection.sort_order.asc())
+        proposed_rows, original_rows = _session_candidate_rows(session)
+        result = await _registry_outputs(
+            "prepare_resume_optimization",
+            {
+                "job_id": session.job_ids[0],
+                "profile_id": session.profile_id,
+                "reference_resume_id": session.reference_resume_id,
+                "research_run_id": args.get("research_run_id") or session.research_run_id,
+                "candidate_rows": proposed_rows,
+                "candidate_original_rows": original_rows,
+                "source_session_id": session.session_id,
+            },
         )
-        selected_sections = list(sections_result.scalars().all())
-        source_snapshot = _build_source_profile_snapshot(profile, selected_sections)
-
-        resume = await _create_generated_resume(
-            db=db,
-            profile=profile,
-            title=resume_title,
-            summary=base_summary,
-            source_mode=session.mode,
-            source_job_ids=session.job_ids,
-            contact_json=contact_json,
-            style_config={},
-            template_id=None,
-            source_profile_snapshot=source_snapshot,
-            rows=final_rows,
-        )
-
-        session.resume_id = resume.id
-        session.phase = PHASE_COMPLETED
-
-        return {
-            "resume_id": resume.id,
-            "resume_title": resume.title,
-        }
+        if "error" not in result:
+            session.resume_optimization_proposal_id = result.get("proposal_id")
+        return result
     except Exception as exc:
-        _logger.warning("Resume generation failed: %s", exc, exc_info=True)
-        return {"error": f"简历生成失败: {str(exc)}"}
+        _logger.warning("Resume proposal preparation failed: %s", exc, exc_info=True)
+        return {"error": f"简历提案准备失败: {str(exc)}"}
+
+
+async def _tool_get_resume_optimization(
+    session: OptimizeSession,
+    args: dict,
+    db,
+) -> dict:
+    proposal_id = session.resume_optimization_proposal_id
+    if not proposal_id:
+        return {"error": "当前会话还没有简历优化提案"}
+    return await _registry_outputs(
+        "get_resume_optimization",
+        {"proposal_id": proposal_id},
+    )
+
+
+async def _tool_review_resume_optimization(
+    session: OptimizeSession,
+    args: dict,
+    db,
+) -> dict:
+    proposal_id = session.resume_optimization_proposal_id
+    if not proposal_id:
+        return {"error": "当前会话还没有简历优化提案"}
+    action = str(args.get("action") or "").strip().lower()
+    if action not in {"accept", "reject"}:
+        return {"error": "action 只能是 accept 或 reject"}
+    result = await _registry_outputs(
+        "review_resume_optimization",
+        {
+            "proposal_id": proposal_id,
+            "action": action,
+            "note": args.get("note") or "",
+        },
+    )
+    if result.get("status") == "accepted" and isinstance(
+        result.get("accepted_resume_id"),
+        int,
+    ):
+        session.resume_id = result["accepted_resume_id"]
+        session.phase = PHASE_COMPLETED
+    return result
 
 
 # ---- Tool Dispatcher ----
@@ -910,7 +1102,11 @@ _TOOL_HANDLERS = {
     "rollback": _tool_rollback,
     "switch_job": _tool_switch_job,
     "list_available_jobs": _tool_list_available_jobs,
-    "generate_resume": _tool_generate_resume,
+    "start_job_research": _tool_start_job_research,
+    "get_job_research": _tool_get_job_research,
+    "prepare_resume_optimization": _tool_prepare_resume_optimization,
+    "get_resume_optimization": _tool_get_resume_optimization,
+    "review_resume_optimization": _tool_review_resume_optimization,
 }
 
 
@@ -935,8 +1131,13 @@ def _build_action_summary(tool_name: str, args: dict) -> str:
         phase = args.get("target_phase", "?")
         reason = args.get("reason", "")
         return f"回退到「{phase}」阶段。原因：{reason}" if reason else f"回退到「{phase}」阶段"
-    if tool_name == "generate_resume":
-        return "生成最终简历"
+    if tool_name == "prepare_resume_optimization":
+        return "把全部已确认内容保存为可审核简历提案（不会创建正式简历）"
+    if tool_name == "start_job_research":
+        return "启动当前岗位的公开网页证据化调研"
+    if tool_name == "review_resume_optimization":
+        action = args.get("action", "")
+        return "接受当前简历提案并创建正式简历" if action == "accept" else "拒绝当前简历提案"
     if tool_name == "switch_job":
         new_ids = args.get("new_job_ids", [])
         return f"切换目标岗位为 ID: {new_ids}"
@@ -963,52 +1164,42 @@ async def agent_turn_stream(
     if session.pending_action:
         pa = session.pending_action
 
-        # Positive confirmation matching — require confirmation keyword to be standalone
-        # or at the start of the message, not a substring of another word
-        # NOTE: \b does NOT work for Chinese characters in Python regex.
-        #       For Chinese multi-char keywords we use (?<![不没]) as negative lookbehind
-        #       to exclude negation prefixes (e.g. "不确认"), while still matching
-        #       "我确认", "我同意了" etc. Single-char keywords ("是") use ^…$ only.
-        msg_lower = user_message.lower().strip()
-        is_confirmed = False
-        _NEG_LB = "(?<![不没])"  # negative lookbehind: not preceded by 否定字
-        _CONFIRM_PATTERNS = [
-            # Chinese: at start of message
-            r"^确认", r"^同意", r"^好的", r"^是$", r"^可以", r"^没问题", r"^确认了", r"^对的",
-            # Chinese: anywhere, but NOT preceded by 否定字 (不/没)
-            _NEG_LB + "确认",
-            _NEG_LB + "同意",
-            _NEG_LB + "好的",
-            _NEG_LB + "可以",
-            _NEG_LB + "没问题",
-            _NEG_LB + "确认了",
-            _NEG_LB + "对的",
-            # English: \b works correctly
-            r"^ok$", r"^yes$",
-            r"\bok\b", r"\byes\b",
-        ]
-        for pat in _CONFIRM_PATTERNS:
-            if re.search(pat, msg_lower):
-                is_confirmed = True
-                break
+        # 严格整句匹配：去除标点和首尾空白后，整句等于确认/拒绝词才算数。
+        # 这样 "确认吗" "确认，但是想改改" 都不会误判为已确认。
+        import unicodedata
 
-        # Explicit rejection keywords — use specific multi-char patterns, NOT single "不"
-        _REJECT_PATTERNS = [
-            # Chinese: at start of message
-            r"^取消", r"^不要", r"^拒绝", r"^算了", r"^否$", r"^不想",
-            # Chinese: anywhere in message
-            "取消", "不要", "拒绝", "算了", "不想",
-            # English: \b works correctly
-            r"^cancel$", r"^no$",
-            r"\bcancel\b", r"\bno\b",
-        ]
-        is_rejected = False
-        for pat in _REJECT_PATTERNS:
-            if re.search(pat, msg_lower):
-                is_rejected = True
-                break
+        def _strip_punct(s: str) -> str:
+            """去除中英文标点和多余空白"""
+            out = []
+            for ch in s:
+                cat = unicodedata.category(ch)
+                # P* = 标点；Z* = 分隔符（空格等）
+                if cat.startswith("P") or cat.startswith("Z"):
+                    continue
+                out.append(ch)
+            return "".join(out).strip()
 
-        # If both confirmed and rejected patterns match (ambiguous), treat as NOT confirmed
+        cleaned = _strip_punct(user_message.lower())
+
+        # 确认词集合（允许前面带"我"/"那就"等口语前缀）
+        _CONFIRM_PHRASES = {
+            "确认", "确认了", "我确认", "我确认了", "确认确认",
+            "同意", "我同意", "我同意了",
+            "好的", "好的好的", "行", "可以", "没问题", "好",
+            "对", "对的", "是", "是的", "嗯", "嗯嗯",
+            "ok", "okay", "yes", "yeah", "y",
+        }
+        # 拒绝词集合
+        _REJECT_PHRASES = {
+            "取消", "不要", "拒绝", "算了", "否", "不想", "不行", "不要了",
+            "不要了", "先不要", "先别", "别",
+            "no", "cancel", "n",
+        }
+
+        is_confirmed = cleaned in _CONFIRM_PHRASES
+        is_rejected = cleaned in _REJECT_PHRASES
+
+        # If both match (理论上不会，但兜底), treat as NOT confirmed
         if is_confirmed and is_rejected:
             is_confirmed = False
             is_rejected = False
@@ -1034,11 +1225,26 @@ async def agent_turn_stream(
                 "result_summary": json.dumps(result, ensure_ascii=False)[:500],
             })
 
-            # Special handling for generate_resume
-            if tool_name == "generate_resume" and isinstance(result, dict) and "resume_id" in result:
+            if (
+                tool_name == "prepare_resume_optimization"
+                and isinstance(result, dict)
+                and result.get("proposal_id")
+            ):
+                yield _sse_event("resume_proposal_prepared", {
+                    "proposal_id": result["proposal_id"],
+                    "status": result.get("status", ""),
+                    "fact_gate_status": result.get("fact_gate_status", ""),
+                })
+
+            if (
+                tool_name == "review_resume_optimization"
+                and isinstance(result, dict)
+                and result.get("status") == "accepted"
+                and isinstance(result.get("accepted_resume_id"), int)
+            ):
                 yield _sse_event("resume_generated", {
-                    "resume_id": result["resume_id"],
-                    "resume_title": result.get("resume_title", ""),
+                    "resume_id": result["accepted_resume_id"],
+                    "resume_title": "",
                 })
 
             # Special handling for confirm_section
@@ -1059,13 +1265,28 @@ async def agent_turn_stream(
                 await _persist_session(session, db)
 
             # Build a response message
-            if tool_name == "generate_resume":
-                reply_msg = f"✅ 简历已生成！简历 ID: {result.get('resume_id', '')}"
+            if isinstance(result, dict) and result.get("error"):
+                reply_msg = f"操作失败：{result['error']}"
+            elif tool_name == "prepare_resume_optimization":
+                reply_msg = (
+                    f"简历提案已准备：{result.get('proposal_id', '')}。"
+                    "请先查看逐项差异和事实门，再明确接受或拒绝。"
+                )
+            elif tool_name == "start_job_research":
+                reply_msg = (
+                    f"岗位调研已启动：{result.get('run_id', '')}。"
+                    "调研完成后，我会读取证据与结论，再准备简历提案。"
+                )
+            elif tool_name == "review_resume_optimization":
+                if result.get("status") == "accepted":
+                    reply_msg = f"✅ 提案已接受，正式简历 ID: {result.get('accepted_resume_id', '')}"
+                else:
+                    reply_msg = "已拒绝当前简历提案；未创建正式简历。"
             elif tool_name == "confirm_section":
                 idx = result.get("section_index", 0)
                 title = result.get("section_title", "")
                 if result.get("all_confirmed"):
-                    reply_msg = f"✅ 「{title}」已确认。所有模块都已确认完成！你可以让我生成最终简历。"
+                    reply_msg = f"✅ 「{title}」已确认。所有模块都已确认完成！下一步可以准备可审核提案。"
                 else:
                     # Find next unconfirmed section
                     next_idx = None
@@ -1084,8 +1305,13 @@ async def agent_turn_stream(
                 reply_msg = f"操作已完成。"
 
             msg_data: dict = {"content": reply_msg}
-            if tool_name == "generate_resume" and isinstance(result, dict) and "resume_id" in result:
-                msg_data["resume_id"] = result["resume_id"]
+            if tool_name == "prepare_resume_optimization" and result.get("proposal_id"):
+                msg_data["proposal_id"] = result["proposal_id"]
+            if (
+                tool_name == "review_resume_optimization"
+                and isinstance(result.get("accepted_resume_id"), int)
+            ):
+                msg_data["resume_id"] = result["accepted_resume_id"]
             yield _sse_event("assistant_message", msg_data)
             yield _sse_event("phase", {"phase": session.phase, "session_id": session.session_id})
 
@@ -1108,7 +1334,7 @@ async def agent_turn_stream(
 
     # ReAct Loop
     max_rounds = 10
-    consecutive_same_tool = 0
+    consecutive_tool_errors = 0
     last_tool_name = None
     for round_idx in range(max_rounds):
         # 1. Build dynamic system prompt
@@ -1232,15 +1458,16 @@ async def agent_turn_stream(
                 "content": f"工具 {tool_name} 执行结果：{json.dumps(result, ensure_ascii=False)[:3000]}\n\n请根据工具结果决定下一步操作，或直接回复用户。",
             })
 
-            # Detect repeated tool calls (same tool 3 times in a row)
-            if tool_name == last_tool_name:
-                consecutive_same_tool += 1
+            # Detect repeated tool failures (same tool 3 errors in a row)
+            tool_failed = isinstance(result, dict) and "error" in result
+            if tool_failed:
+                consecutive_tool_errors += 1
             else:
-                consecutive_same_tool = 1
-                last_tool_name = tool_name
-            if consecutive_same_tool >= 3:
-                yield _sse_event("assistant_message", {"content": f"工具 {tool_name} 连续执行失败，可能存在数据问题。请尝试换一种方式描述你的需求，或重新开始会话。"})
-                session.messages.append({"role": "assistant", "content": f"工具 {tool_name} 连续执行失败，可能存在数据问题。请尝试换一种方式描述你的需求，或重新开始会话。"})
+                consecutive_tool_errors = 0
+            last_tool_name = tool_name
+            if consecutive_tool_errors >= 3:
+                yield _sse_event("assistant_message", {"content": f"工具 {tool_name} 连续 3 次执行失败，可能存在数据问题。请尝试换一种方式描述你的需求，或重新开始会话。"})
+                session.messages.append({"role": "assistant", "content": f"工具 {tool_name} 连续 3 次执行失败，可能存在数据问题。请尝试换一种方式描述你的需求，或重新开始会话。"})
                 if db is not None:
                     await _persist_session(session, db)
                 return
@@ -1264,12 +1491,14 @@ async def start_session(
     job_ids: list[int],
     mode: str = "per_job",
     profile_id: int | None = None,
+    reference_resume_id: int | None = None,
     db=None,
 ) -> dict:
     session = OptimizeSession(
         job_ids=job_ids,
         mode=mode,
         profile_id=profile_id,
+        reference_resume_id=reference_resume_id,
     )
     _save_session(session)
 
@@ -1343,7 +1572,7 @@ async def start_session(
                 })
 
             # Build session.rows from profile sections so that
-            # match_resume / rewrite_section / generate_resume work immediately
+            # match_resume / rewrite_section / proposal preparation work immediately
             from app.routes.optimize import _rank_profile_sections, _build_resume_sections
             if sections and session.raw_jd:
                 ranked = _rank_profile_sections(sections, session.raw_jd, limit=12)
@@ -1403,6 +1632,10 @@ async def chat_turn(
                 event_type = data.get("event")
                 if event_type == "assistant_message":
                     final_response["assistant_message"] = data.get("content", "")
+                    if data.get("proposal_id"):
+                        final_response["proposal_id"] = data.get("proposal_id")
+                    if isinstance(data.get("resume_id"), int):
+                        final_response["resume_id"] = data.get("resume_id")
                 elif event_type == "phase":
                     final_response["phase"] = data.get("phase", session.phase)
                 elif event_type == "error":
@@ -1415,6 +1648,13 @@ async def chat_turn(
                     }
                 elif event_type == "resume_generated":
                     final_response["resume_id"] = data.get("resume_id")
+                elif event_type == "resume_proposal_prepared":
+                    final_response["proposal_id"] = data.get("proposal_id")
+                    final_response["proposal_status"] = data.get("status", "")
+                    final_response["fact_gate_status"] = data.get(
+                        "fact_gate_status",
+                        "",
+                    )
                 elif event_type == "section_confirmed":
                     final_response["section_confirmed"] = data
             except json.JSONDecodeError:

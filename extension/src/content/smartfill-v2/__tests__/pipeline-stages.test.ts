@@ -150,6 +150,33 @@ describe("smart fill pipeline stages", () => {
     expect(progressStages).toContain("verify");
     expect(progressStages).not.toContain("structure");
   });
+
+  it("builds a critical-field preview without expanding or writing the page", async () => {
+    const { prepareCriticalSmartFillPlan } = await import("../pipeline.js");
+    const input = document.getElementById("smartfill-field") as HTMLInputElement;
+
+    const plan = await prepareCriticalSmartFillPlan();
+
+    expect(plan.items).toHaveLength(1);
+    expect(expandEditableSectionsMock).not.toHaveBeenCalled();
+    expect(writeBatchMock).not.toHaveBeenCalled();
+    expect(input.value).toBe("");
+  });
+
+  it("writes a critical-field plan only after explicit apply", async () => {
+    const {
+      applyCriticalSmartFillPlan,
+      prepareCriticalSmartFillPlan,
+    } = await import("../pipeline.js");
+    const plan = await prepareCriticalSmartFillPlan();
+
+    await applyCriticalSmartFillPlan(plan);
+
+    expect(writeBatchMock).toHaveBeenCalledTimes(1);
+    expect(writeBatchMock.mock.calls[0][2]).toMatchObject({
+      preserveExistingValues: true,
+    });
+  });
 });
 
 function makeField(element: HTMLInputElement): ScannedField {

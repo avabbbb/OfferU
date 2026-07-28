@@ -27,9 +27,14 @@ import {
   ChevronsUpDown,
   CopyPlus,
   ExternalLink,
+  KanbanSquare,
+  Mail,
+  MailCheck,
+  MailWarning,
   MoreHorizontal,
   Pencil,
   Plus,
+  RefreshCw,
   Search,
   Settings,
   ShoppingCart,
@@ -37,6 +42,8 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import ProgressBoard from "@/components/progress-board";
+import { useWorkbench } from "@/lib/workbench";
 import {
   type ApplicationFieldSchema,
   type ApplicationTableRecordItem,
@@ -48,12 +55,14 @@ import {
   importLatestExtensionBatchToApplicationTable,
   moveApplicationRecords,
   renameApplicationTable,
+  syncEmails,
   updateApplicationRecordCell,
   updateApplicationTableSchema,
   updateApplicationTemplate,
   updateApplicationWorkspaceSettings,
   useApplicationTableRecords,
   useApplicationWorkspace,
+  useEmailStatus,
   useJobs,
 } from "@/lib/hooks";
 
@@ -303,8 +312,11 @@ function InlineCellEditor({
 }
 
 export default function ApplicationsPage() {
-  const { data: workspace, mutate: mutateWorkspace } = useApplicationWorkspace();
-  const [currentTableId, setCurrentTableId] = useState<number | null>(null);
+const { data: workspace, mutate: mutateWorkspace } = useApplicationWorkspace();
+const { data: emailStatus, mutate: mutateEmailStatus } = useEmailStatus();
+const { select } = useWorkbench();
+const [viewMode, setViewMode] = useState<"table" | "board">("table");
+const [currentTableId, setCurrentTableId] = useState<number | null>(null);
   const [keyword, setKeyword] = useState("");
   const [debouncedKeyword, setDebouncedKeyword] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -322,6 +334,7 @@ export default function ApplicationsPage() {
   const [importTargetTableId, setImportTargetTableId] = useState<number | null>(null);
   const [importing, setImporting] = useState(false);
   const [latestExtensionImporting, setLatestExtensionImporting] = useState(false);
+const [emailSyncing, setEmailSyncing] = useState(false);
 
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [templateDraft, setTemplateDraft] = useState<ApplicationFieldSchema[]>([]);
@@ -481,6 +494,41 @@ export default function ApplicationsPage() {
     setEditingCell({ recordId: record.id, fieldKey: field.field_key });
   };
 
+  // 行点击 → 右侧检查器 (ADR 0031:列表 → 检查器 → 复杂编辑全屏)
+  const inspectRecord = (record: ApplicationTableRecordItem) => {
+    const schema = currentTable?.schema ?? [];
+    const valueOf = (key: string) => record.values[key];
+    const title = String(valueOf("job_title") || valueOf("position") || "投递记录");
+    const company = String(valueOf("company_name") || valueOf("company") || "");
+    const summaryKeys = new Set(["job_title", "position", "company_name", "company"]);
+    const fields = schema
+      .filter((field) => field.visible && !summaryKeys.has(field.field_key))
+      .slice(0, 10)
+      .map((field) => ({
+        label: field.label,
+        value: formatValue(valueOf(field.field_key), field.type, field.field_key),
+        emphasis: field.field_key === "status" || field.field_key === "apply_status",
+      }));
+    if (record.is_duplicate) {
+      fields.unshift({ label: "去重", value: "与其他记录重复", emphasis: true });
+    }
+    select({
+      kind: "application",
+      id: record.id,
+      title,
+      subtitle: company,
+      data: {
+        fields,
+        timeline: [
+          { time: formatDateOnly(record.created_at), text: "创建记录" },
+          ...(record.updated_at && record.updated_at !== record.created_at
+            ? [{ time: formatDateOnly(record.updated_at), text: "最近更新" }]
+            : []),
+        ],
+      },
+    });
+  };
+
   const saveCell = async (nextValue: unknown, targetCell: EditingCell | null = editingCell) => {
     if (!targetCell) return;
     setCellSaving(true);
@@ -624,6 +672,32 @@ export default function ApplicationsPage() {
       });
     } finally {
       setLatestExtensionImporting(false);
+    }
+  };
+
+  const handleSyncEmails = async () => {
+    setEmailSyncing(true);
+    try {
+      const result = await syncEmails();
+      const synced = toSafeCount(result?.synced, result?.count ?? 0);
+      setOperationFeedback({
+        tone: synced > 0 ? "success" : "warning",
+        message:
+          synced > 0
+            ? `已同步 ${synced} 封邮件，面试通知已写入看板。`
+            : `邮箱同步完成，但未发现新的面试通知邮件。`,
+      });
+      await Promise.all([mutateEmailStatus(), refreshAll()]);
+    } catch (error) {
+      setOperationFeedback({
+        tone: "error",
+        message:
+          error instanceof Error
+            ? `邮箱同步失败：${error.message}`
+            : "邮箱同步失败，请稍后重试。",
+      });
+    } finally {
+      setEmailSyncing(false);
     }
   };
 
@@ -792,35 +866,58 @@ export default function ApplicationsPage() {
       <section className="bauhaus-panel overflow-hidden bg-[var(--surface)]">
         <div className="grid gap-4 p-6 md:grid-cols-3">
           <div className="md:col-span-2">
-            <span className="bauhaus-chip bg-[#f3ead2] text-black">投递管理工作台</span>
-            <h1 className="mt-4 text-4xl font-semibold tracking-tight text-black">投递</h1>
-            <p className="mt-3 text-sm font-medium leading-relaxed text-black/65">
+            <span className="bauhaus-chip bg-[var(--surface-muted)] text-[var(--foreground)]">投递管理工作台</span>
+            <h1 className="mt-4 text-4xl font-semibold tracking-tight text-[var(--foreground)]">投递</h1>
+            <p className="mt-3 text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
               总表承接全量记录，子表用于分类管理。你可以在任意表编辑记录值，系统会同步到同一业务记录的其他视图。
             </p>
+            <div className="mt-4 flex items-center gap-1">
+              <Button
+                size="sm"
+                className={`bauhaus-button !min-h-9 !px-4 ${
+                  viewMode === "table" ? "bauhaus-button-blue" : "bauhaus-button-outline"
+                }`}
+                onPress={() => setViewMode("table")}
+                startContent={<Table2 size={13} />}
+              >
+                数据表
+              </Button>
+              <Button
+                size="sm"
+                className={`bauhaus-button !min-h-9 !px-4 ${
+                  viewMode === "board" ? "bauhaus-button-blue" : "bauhaus-button-outline"
+                }`}
+                onPress={() => setViewMode("board")}
+                startContent={<KanbanSquare size={13} />}
+              >
+                进度看板
+              </Button>
+            </div>
           </div>
           <div className="grid gap-3 sm:grid-cols-3 md:grid-cols-1">
-            <div className="bauhaus-panel-sm bg-[#e4ece6] p-3">
-              <p className="bauhaus-label text-black/55">总记录</p>
+            <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-3">
+              <p className="bauhaus-label text-[var(--foreground-muted)]">总记录</p>
               <p className="mt-2 text-2xl font-semibold">{workspace?.stats.total_records ?? 0}</p>
             </div>
-            <div className="bauhaus-panel-sm bg-[#f7ece9] p-3">
-              <p className="bauhaus-label text-black/55">重复记录</p>
+            <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-3">
+              <p className="bauhaus-label text-[var(--foreground-muted)]">重复记录</p>
               <p className="mt-2 text-2xl font-semibold">{workspace?.stats.duplicate_records ?? 0}</p>
             </div>
-            <div className="bauhaus-panel-sm bg-[#f3ead2] p-3">
-              <p className="bauhaus-label text-black/55">当前表</p>
+            <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-3">
+              <p className="bauhaus-label text-[var(--foreground-muted)]">当前表</p>
               <p className="mt-2 text-base font-semibold">{currentTable?.name ?? "-"}</p>
             </div>
           </div>
         </div>
       </section>
 
+      {viewMode === "table" && (
       <section className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center lg:flex-1 lg:flex-nowrap">
             <div className="w-full sm:max-w-[420px] lg:w-[34%] lg:min-w-[260px] lg:max-w-[500px]">
               <Input
-                startContent={<Search size={14} className="text-black/50" />}
+                startContent={<Search size={14} className="text-[var(--foreground-muted)]" />}
                 value={keyword}
                 onValueChange={setKeyword}
                 placeholder="搜索公司 / 岗位 / 地点 / 链接"
@@ -862,6 +959,31 @@ export default function ApplicationsPage() {
                   导入最近插件同步
                 </Button>
               </Tooltip>
+              <Tooltip
+                content={
+                  emailStatus?.connected
+                    ? `已连接${emailStatus.imap_connected ? ` IMAP ${emailStatus.imap_user}` : " Gmail"}，点击拉取最近 7 天邮件并解析面试通知`
+                    : "未连接邮箱，点击后请在「邮箱」页配置 IMAP 或 Gmail 授权"
+                }
+                placement="bottom"
+                closeDelay={120}
+              >
+                <Button
+                  className="bauhaus-button bauhaus-button-outline !min-h-11 !px-4"
+                  startContent={
+                    emailStatus?.connected ? (
+                      emailSyncing ? <RefreshCw size={14} className="animate-spin" /> : <MailCheck size={14} />
+                    ) : (
+                      <MailWarning size={14} />
+                    )
+                  }
+                  onPress={handleSyncEmails}
+                  isLoading={emailSyncing}
+                  isDisabled={!emailStatus?.connected}
+                >
+                  同步邮箱
+                </Button>
+              </Tooltip>
               <Button
                 className="bauhaus-button bauhaus-button-blue !min-h-11 !px-4"
                 startContent={<CopyPlus size={14} />}
@@ -880,22 +1002,40 @@ export default function ApplicationsPage() {
                 </Button>
               </Tooltip>
             </div>
-            <p className="max-w-[520px] text-xs font-medium leading-5 text-black/55 lg:text-right">
+            <p className="max-w-[520px] text-xs font-medium leading-5 text-[var(--foreground-muted)] lg:text-right">
               插件购物车同步后可直接导入当前表；导入后检查投递状态和岗位链接。
             </p>
+            <div className="flex flex-wrap items-center gap-2 text-xs font-medium leading-5 lg:justify-end">
+              {emailStatus?.connected ? (
+                <span className="inline-flex items-center gap-1 text-[var(--foreground-soft)]">
+                  <MailCheck size={12} />
+                  {emailStatus.imap_connected
+                    ? `IMAP · ${emailStatus.imap_user}`
+                    : "Gmail · 已授权"}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-[var(--primary-red)]">
+                  <MailWarning size={12} />
+                  邮箱未连接 — 请在「邮箱」页配置 IMAP 或 Gmail 授权后再同步
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </section>
+      )}
+
+      {viewMode === "board" && <ProgressBoard />}
 
       {operationFeedback && (
         <div className="fixed right-4 top-4 z-50 max-w-md">
           <div
             className={`flex items-start justify-between gap-3 border px-3 py-2 text-sm shadow-sm ${
               operationFeedback.tone === "success"
-                ? "border-[#5e6f65]/35 bg-[var(--status-sage)] text-black"
+                ? "border-[var(--border-strong)] bg-[var(--status-sage)] text-[var(--foreground)]"
                 : operationFeedback.tone === "warning"
-                ? "border-[#c95548]/35 bg-[var(--status-blush)] text-black"
-                : "border-[#c95548]/45 bg-[#f9e2dd] text-[#7f2f24]"
+                ? "border-[var(--border-strong)] bg-[var(--status-blush)] text-[var(--foreground)]"
+                : "border-[var(--primary-red)]/35 bg-[var(--status-blush)] text-[var(--primary-red)]"
             }`}
           >
             <div className="flex items-center gap-2">
@@ -917,14 +1057,15 @@ export default function ApplicationsPage() {
         </div>
       )}
 
+      {viewMode === "table" && (
       <section className="bauhaus-panel relative overflow-hidden bg-white">
         <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
-          <div className="flex items-center gap-2 text-sm font-medium text-black/70">
+          <div className="flex items-center gap-2 text-sm font-medium text-[var(--foreground-soft)]">
             <ChevronsUpDown size={14} />
             共 {records.length} 条记录
           </div>
           <div className="flex items-center gap-3">
-            <p className="hidden text-xs font-medium text-black/55 lg:block">
+            <p className="hidden text-xs font-medium text-[var(--foreground-muted)] lg:block">
               双击单元格可编辑；按 Esc 或点击空白处保存并退出
             </p>
             <Button
@@ -963,7 +1104,7 @@ export default function ApplicationsPage() {
                 {visibleFields.map((field) => (
                   <th
                     key={field.field_key}
-                    className={`border-b border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 font-semibold text-black ${
+                    className={`border-b border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 font-semibold text-[var(--foreground)] ${
                       stickyFieldLeftMap.has(field.field_key) ? "sticky z-20" : ""
                     }`}
                     style={{
@@ -978,7 +1119,7 @@ export default function ApplicationsPage() {
                         <DropdownTrigger>
                           <button
                             type="button"
-                            className="rounded-none border border-[var(--border)] bg-white px-1.5 py-1 text-black/70 hover:bg-[var(--surface-muted)]"
+                            className="rounded-none border border-[var(--border)] bg-white px-1.5 py-1 text-[var(--foreground-soft)] hover:bg-[var(--surface-muted)]"
                             aria-label={`操作列-${field.label}`}
                           >
                             <MoreHorizontal size={12} />
@@ -1021,11 +1162,11 @@ export default function ApplicationsPage() {
                           <DropdownItem key="wider">列宽 +20</DropdownItem>
                           <DropdownItem key="narrower">列宽 -20</DropdownItem>
                           {field.fixed ? (
-                            <DropdownItem key="locked" isReadOnly className="text-black/50">
+                            <DropdownItem key="locked" isReadOnly className="text-[var(--foreground-muted)]">
                               固定字段不可删改定义
                             </DropdownItem>
                           ) : (
-                            <DropdownItem key="delete-custom" className="text-[#b7483c]">
+                            <DropdownItem key="delete-custom" className="text-[var(--primary-red)]">
                               删除自定义字段
                             </DropdownItem>
                           )}
@@ -1039,7 +1180,7 @@ export default function ApplicationsPage() {
             <tbody>
               {records.length === 0 && (
                 <tr>
-                  <td colSpan={visibleFields.length + 1} className="px-4 py-10 text-center text-black/60">
+                  <td colSpan={visibleFields.length + 1} className="px-4 py-10 text-center text-[var(--foreground-muted)]">
                     暂无记录。你可以手动新增，或者从快捷导入中批量添加岗位。
                   </td>
                 </tr>
@@ -1047,13 +1188,15 @@ export default function ApplicationsPage() {
               {records.map((record) => (
                 <tr
                   key={record.id}
-                  className={`border-b border-[var(--border)] align-top ${
+                  onClick={() => inspectRecord(record)}
+                  className={`cursor-pointer border-b border-[var(--border)] align-top transition-colors duration-[var(--dur-instant)] hover:bg-[var(--surface-muted)] ${
                     record.is_duplicate ? "bg-[var(--status-blush)]" : "bg-white"
                   }`}
                 >
                   <td
                     className="sticky left-0 z-20 bg-white px-3 py-2"
                     style={{ width: `${CHECKBOX_COL_WIDTH}px`, minWidth: `${CHECKBOX_COL_WIDTH}px` }}
+                    onClick={(event) => event.stopPropagation()}
                   >
                     <Checkbox
                       isSelected={selectedIds.has(record.id)}
@@ -1082,7 +1225,13 @@ export default function ApplicationsPage() {
                           minWidth: `${Math.max(120, field.width)}px`,
                           left: stickyFieldLeftMap.get(field.field_key),
                         }}
-                        onDoubleClick={() => beginEditCell(record, field)}
+                        onClick={(event) => {
+                          if (isEditing) event.stopPropagation();
+                        }}
+                        onDoubleClick={(event) => {
+                          event.stopPropagation();
+                          beginEditCell(record, field);
+                        }}
                       >
                         {isEditing ? (
                           <div className="space-y-1">
@@ -1104,7 +1253,7 @@ export default function ApplicationsPage() {
                                   href={rawLinkValue}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 text-[#5e6f65] hover:underline"
+                                  className="inline-flex items-center gap-1 text-[var(--foreground)] hover:underline"
                                   title={rawLinkValue}
                                 >
                                   <span className={cellClass}>{formatLinkDisplayLabel(field.label, field.field_key)}</span>
@@ -1122,7 +1271,7 @@ export default function ApplicationsPage() {
                               <Chip
                                 size="sm"
                                 variant="flat"
-                                className="rounded-none border border-[#c95548]/60 bg-[#fdece8] text-[#b7483c]"
+                                className="rounded-none border border-[var(--primary-red)]/30 bg-[var(--status-blush)] text-[var(--primary-red)]"
                                 startContent={<AlertTriangle size={11} />}
                               >
                                 重复
@@ -1139,11 +1288,12 @@ export default function ApplicationsPage() {
           </table>
         </div>
       </section>
+      )}
 
-      {hasSelection && (
+      {viewMode === "table" && hasSelection && (
         <div className="fixed bottom-6 left-0 right-0 z-40 flex justify-center px-4 pointer-events-none md:left-64 md:right-auto md:w-[calc(100vw-16rem)]">
           <div className="pointer-events-auto bauhaus-panel flex w-full max-w-[980px] flex-nowrap items-center gap-3 overflow-x-auto bg-[var(--surface)] px-4 py-3">
-            <p className="whitespace-nowrap text-sm font-medium text-black/75">
+            <p className="whitespace-nowrap text-sm font-medium text-[var(--foreground-soft)]">
               已选 <span className="font-semibold text-[var(--primary-red)]">{selectedIds.size}</span> 条记录
             </p>
             <Button
@@ -1203,7 +1353,7 @@ export default function ApplicationsPage() {
                 <div
                   key={table.id}
                   className={`bauhaus-panel-sm flex items-center justify-between gap-2 px-3 py-2 ${
-                    table.id === currentTableId ? "bg-[#f3ead2]" : "bg-white"
+                    table.id === currentTableId ? "bg-[var(--surface-muted)]" : "bg-white"
                   }`}
                 >
                   <button
@@ -1217,7 +1367,7 @@ export default function ApplicationsPage() {
                     <span className="truncate text-sm font-medium">
                       {table.is_total ? "总表" : table.name}
                     </span>
-                    <span className="text-xs text-black/50">{table.record_count}</span>
+                    <span className="text-xs text-[var(--foreground-muted)]">{table.record_count}</span>
                   </button>
                   {table.id === currentTableId && <Check size={14} className="text-[var(--primary-red)]" />}
                   {!table.is_total && (
@@ -1289,7 +1439,7 @@ export default function ApplicationsPage() {
                 value={importKeyword}
                 onValueChange={setImportKeyword}
                 placeholder="搜索岗位名称 / 公司"
-                startContent={<Search size={14} className="text-black/50" />}
+                startContent={<Search size={14} className="text-[var(--foreground-muted)]" />}
                 classNames={{
                   inputWrapper: "rounded-none border border-[var(--border)] bg-white shadow-none",
                 }}
@@ -1319,7 +1469,7 @@ export default function ApplicationsPage() {
                   <label
                     key={job.id}
                     className={`bauhaus-panel-sm flex cursor-pointer items-start gap-3 px-3 py-3 ${
-                      checked ? "bg-[#f3ead2]" : "bg-white"
+                      checked ? "bg-[var(--surface-muted)]" : "bg-white"
                     }`}
                   >
                     <Checkbox
@@ -1338,12 +1488,12 @@ export default function ApplicationsPage() {
                       radius="none"
                     />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-black">{job.title}</p>
-                      <p className="truncate text-xs text-black/65">{job.company} · {job.location || "未知地点"}</p>
-                      <p className="truncate text-xs text-black/55">{job.apply_url || job.url || "无岗位链接"}</p>
+                      <p className="truncate text-sm font-semibold text-[var(--foreground)]">{job.title}</p>
+                      <p className="truncate text-xs text-[var(--foreground-soft)]">{job.company} · {job.location || "未知地点"}</p>
+                      <p className="truncate text-xs text-[var(--foreground-muted)]">{job.apply_url || job.url || "无岗位链接"}</p>
                     </div>
                     {job.salary_text && (
-                      <Chip size="sm" variant="flat" className="rounded-none border border-[var(--border)] bg-[#e4ece6] text-black">
+                      <Chip size="sm" variant="flat" className="rounded-none border border-[var(--border)] bg-[var(--surface-muted)] text-[var(--foreground)]">
                         {job.salary_text}
                       </Chip>
                     )}
@@ -1351,14 +1501,14 @@ export default function ApplicationsPage() {
                 );
               })}
               {(importJobs?.items ?? []).length === 0 && (
-                <div className="bauhaus-panel-sm bg-white px-4 py-8 text-center text-sm text-black/60">
+                <div className="bauhaus-panel-sm bg-white px-4 py-8 text-center text-sm text-[var(--foreground-muted)]">
                   未找到可导入岗位，请调整搜索条件。
                 </div>
               )}
             </div>
           </ModalBody>
           <ModalFooter className="border-t border-[var(--border)]">
-            <div className="mr-auto text-sm font-medium text-black/70">已选 {importSelected.size} 条</div>
+            <div className="mr-auto text-sm font-medium text-[var(--foreground-soft)]">已选 {importSelected.size} 条</div>
             <Button className="bauhaus-button bauhaus-button-outline !min-h-10 !px-4 !py-2 !text-[11px]" onPress={() => setImportModalOpen(false)}>
               取消
             </Button>
@@ -1379,7 +1529,7 @@ export default function ApplicationsPage() {
           <ModalHeader className="border-b border-[var(--border)]">投递设置</ModalHeader>
           <ModalBody className="space-y-5 py-5">
             <section className="space-y-3">
-              <h3 className="text-sm font-semibold text-black">模块级显示设置</h3>
+              <h3 className="text-sm font-semibold text-[var(--foreground)]">模块级显示设置</h3>
               <div className="grid gap-3 sm:grid-cols-3">
                 <label className="bauhaus-panel-sm flex items-center justify-between gap-3 bg-white px-3 py-3">
                   <span className="text-sm font-medium">自动行高</span>
@@ -1416,7 +1566,7 @@ export default function ApplicationsPage() {
 
             <section className="space-y-3">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-black">默认投递模板（新建子表基于此模板）</h3>
+                <h3 className="text-sm font-semibold text-[var(--foreground)]">默认投递模板（新建子表基于此模板）</h3>
                 <Button
                   size="sm"
                   className="bauhaus-button bauhaus-button-outline !min-h-9 !px-3 !py-2 !text-[11px]"
@@ -1516,9 +1666,9 @@ export default function ApplicationsPage() {
               </div>
             </section>
 
-            <section className="bauhaus-panel-sm space-y-3 bg-[#f7ece9] p-3">
-              <h3 className="text-sm font-semibold text-black">同步到所有表</h3>
-              <label className="flex items-center gap-2 text-sm font-medium text-black/70">
+            <section className="bauhaus-panel-sm space-y-3 bg-[var(--status-blush)] p-3">
+              <h3 className="text-sm font-semibold text-[var(--primary-red)]">同步到所有表</h3>
+              <label className="flex items-center gap-2 text-sm font-medium text-[var(--foreground-soft)]">
                 <Checkbox
                   isSelected={purgeNonTemplateFields}
                   onValueChange={setPurgeNonTemplateFields}
@@ -1526,7 +1676,7 @@ export default function ApplicationsPage() {
                 />
                 同时删除现有表中不属于模板的自定义字段及其数据（高风险）
               </label>
-              <p className="text-xs font-medium text-black/60">
+              <p className="text-xs font-medium text-[var(--foreground-muted)]">
                 不勾选时，仅同步模板新增和结构调整；已存在于各表中的非模板字段会继续保留。
               </p>
             </section>
@@ -1550,7 +1700,7 @@ export default function ApplicationsPage() {
         <ModalContent className="rounded-none border border-[var(--border-strong)] bg-[var(--surface)]">
           <ModalHeader className="border-b border-[var(--border)]">确认删除子表</ModalHeader>
           <ModalBody className="space-y-3 py-5">
-            <p className="text-sm font-medium leading-relaxed text-black/70">
+            <p className="text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
               确认删除子表「{tableDeleteTarget?.name || "当前子表"}」吗？总表记录不会受影响。
             </p>
           </ModalBody>
@@ -1621,7 +1771,7 @@ export default function ApplicationsPage() {
               placeholder="例如：待投递, 已投递, 面试中"
               classNames={{ inputWrapper: "rounded-none border border-[var(--border)] bg-white shadow-none h-10 min-h-10" }}
             />
-            <label className="flex items-center gap-2 text-sm font-medium text-black/75">
+            <label className="flex items-center gap-2 text-sm font-medium text-[var(--foreground-soft)]">
               <Checkbox
                 isSelected={templateFieldDraft.visible}
                 onValueChange={(next) => setTemplateFieldDraft((prev) => ({ ...prev, visible: next }))}
@@ -1652,7 +1802,7 @@ export default function ApplicationsPage() {
         <ModalContent className="rounded-none border border-[var(--border-strong)] bg-[var(--surface)]">
           <ModalHeader className="border-b border-[var(--border)]">删除自定义字段</ModalHeader>
           <ModalBody className="space-y-2 py-5">
-            <p className="text-sm font-medium leading-relaxed text-black/70">
+            <p className="text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
               确认删除字段「{templateDeleteTarget?.label || "当前字段"}」吗？该字段对应数据将被移除。
             </p>
           </ModalBody>
@@ -1678,7 +1828,7 @@ export default function ApplicationsPage() {
         <ModalContent className="rounded-none border border-[var(--border-strong)] bg-[var(--surface)]">
           <ModalHeader className="border-b border-[var(--border)]">移动到其他表</ModalHeader>
           <ModalBody className="space-y-3 py-5">
-            <p className="text-sm font-medium leading-relaxed text-black/70">
+            <p className="text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
               将把当前已选记录加入目标表；若目标表已存在同一记录会自动跳过。
             </p>
             <Select
@@ -1719,11 +1869,11 @@ export default function ApplicationsPage() {
         <ModalContent className="rounded-none border border-[var(--border-strong)] bg-[var(--surface)]">
           <ModalHeader className="border-b border-[var(--border)]">确认删除</ModalHeader>
           <ModalBody className="space-y-3 py-5">
-            <p className="text-sm font-medium leading-relaxed text-black/70">
+            <p className="text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
               将删除选中的 {selectedIds.size} 条记录。
             </p>
             {!currentTableIsTotal && (
-              <label className="bauhaus-panel-sm flex items-center gap-2 bg-white px-3 py-3 text-sm font-medium text-black/75">
+              <label className="bauhaus-panel-sm flex items-center gap-2 bg-white px-3 py-3 text-sm font-medium text-[var(--foreground-soft)]">
                 <Checkbox
                   isSelected={deleteFromTotal}
                   onValueChange={setDeleteFromTotal}
@@ -1733,7 +1883,7 @@ export default function ApplicationsPage() {
               </label>
             )}
             {currentTableIsTotal && (
-              <div className="bauhaus-panel-sm bg-[#f7ece9] px-3 py-3 text-sm font-medium text-[#b7483c]">
+              <div className="bauhaus-panel-sm bg-[var(--status-blush)] px-3 py-3 text-sm font-medium text-[var(--primary-red)]">
                 当前是总表：删除将同步从所有子表移除。
               </div>
             )}
@@ -1754,13 +1904,13 @@ export default function ApplicationsPage() {
       </Modal>
 
       {editHintToastVisible && (
-        <div className="fixed right-4 top-20 z-50 rounded-none border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs font-medium text-black/75">
+        <div className="fixed right-4 top-20 z-50 rounded-none border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs font-medium text-[var(--foreground-soft)]">
           编辑中：按 Esc 或点击空白处保存并退出
         </div>
       )}
 
       {cellSaving && (
-        <div className="fixed right-4 top-4 z-50 rounded-none border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs font-medium text-black/65">
+        <div className="fixed right-4 top-4 z-50 rounded-none border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs font-medium text-[var(--foreground-soft)]">
           正在保存单元格...
         </div>
       )}

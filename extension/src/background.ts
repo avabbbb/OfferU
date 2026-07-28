@@ -49,6 +49,7 @@ import {
   buildSmartFillProfileFieldValues,
   countSmartFillAvailableFields,
   normalizeSmartFillProfile,
+  selectCriticalSmartFillProfile,
   type SmartFillProfileFieldValue,
   type SmartFillProfileNormalized,
 } from "./background/smartfill-profile.js";
@@ -1388,7 +1389,12 @@ chrome.runtime.onMessage.addListener(
       case "GET_SMART_FILL_PROFILE":
         fetchSmartFillProfilePayload().then(
           (profile) => {
-            sendResponse({ ok: true, profile });
+            sendResponse({
+              ok: true,
+              profile: message.scope === "critical"
+                ? selectCriticalSmartFillProfile(profile)
+                : profile,
+            });
           },
           (error: unknown) => {
             sendResponse({

@@ -60,7 +60,8 @@ mcp = FastMCP(
     instructions=(
         "OfferU 是面向中国文科生校招的 AI 求职助手。"
         "你可以通过这些工具帮用户完成：查看个人资料、浏览岗位、筛选分拣、"
-        "AI 生成定制简历、管理投递记录等全流程操作。"
+        "基于已完成岗位调研准备可审核简历提案，并在用户明确接受后创建正式简历。"
+        "所有提案变更默认 dry_run，MCP 客户端必须在用户确认后显式关闭 dry_run。"
     ),
     stateless_http=True,
     json_response=True,
@@ -327,43 +328,75 @@ async def batch_triage(
 
 
 # =============================================
-# Tool 7: AI 生成定制简历（同步版·单岗位）
+# Tool 7: 可审核简历提案（统一 Operation Registry）
 # =============================================
 
 @mcp.tool()
-async def generate_resume(
+async def prepare_resume_optimization(
     job_id: int,
     reference_resume_id: Optional[int] = None,
+    research_run_id: Optional[str] = None,
+    dry_run: bool = True,
 ) -> dict:
-    """为指定岗位 AI 生成一份定制简历。
-    会基于用户 Profile 中的经历 Bullet 自动召回匹配、组装简历。
-    返回生成结果（含 resume_id、匹配率、缺失能力等）。"""
-    # 延迟导入避免循环
-    from app.routes.optimize import _generate_for_job
+    """准备可审核简历提案，不创建正式 Resume；默认只预览副作用。"""
+    from app.ops import execute_operation
 
-    async with async_session() as db:
-        # 获取 profile
-        profile = (await db.execute(
-            select(Profile).where(Profile.is_default == True)
-        )).scalar_one_or_none()
-        if not profile:
-            return {"error": "未找到 Profile"}
+    return await execute_operation(
+        "prepare_resume_optimization",
+        {
+            "job_id": job_id,
+            "reference_resume_id": reference_resume_id,
+            "research_run_id": research_run_id,
+        },
+        dry_run=dry_run,
+        surface="mcp",
+    )
 
-        # 获取 job
-        job = (await db.execute(select(Job).where(Job.id == job_id))).scalar_one_or_none()
-        if not job:
-            return {"error": f"岗位 #{job_id} 不存在"}
 
-        # 获取 profile sections
-        secs = (await db.execute(
-            select(ProfileSection).where(ProfileSection.profile_id == profile.id)
-        )).scalars().all()
+@mcp.tool()
+async def list_resume_optimizations(
+    job_id: Optional[int] = None,
+    status: Optional[str] = None,
+    limit: int = 20,
+) -> dict:
+    """扁平读取简历提案摘要。"""
+    from app.ops import execute_operation
 
-        try:
-            result = await _generate_for_job(profile, job, list(secs), db)
-            return result
-        except Exception as e:
-            return {"error": str(e)}
+    return await execute_operation(
+        "list_resume_optimizations",
+        {"job_id": job_id, "status": status, "limit": limit},
+        surface="mcp",
+    )
+
+
+@mcp.tool()
+async def get_resume_optimization(proposal_id: str) -> dict:
+    """渐进披露一个提案的 diff、事实门、调研证据和来源快照。"""
+    from app.ops import execute_operation
+
+    return await execute_operation(
+        "get_resume_optimization",
+        {"proposal_id": proposal_id},
+        surface="mcp",
+    )
+
+
+@mcp.tool()
+async def review_resume_optimization(
+    proposal_id: str,
+    action: str,
+    note: str = "",
+    dry_run: bool = True,
+) -> dict:
+    """接受或拒绝提案；默认 dry_run，接受成功时才创建正式 Resume。"""
+    from app.ops import execute_operation
+
+    return await execute_operation(
+        "review_resume_optimization",
+        {"proposal_id": proposal_id, "action": action, "note": note},
+        dry_run=dry_run,
+        surface="mcp",
+    )
 
 
 # =============================================

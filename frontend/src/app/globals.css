@@ -3,21 +3,47 @@
 @tailwind utilities;
 
 :root {
-  --background: #f6f3eb;
-  --foreground: #1f1d1a;
-  --surface: #fdfbf7;
-  --surface-muted: #f2ede4;
-  --status-blush: #fdece8;
-  --status-sage: #f0f3ed;
-  --primary-red: #c95548;
-  --auxiliary-blue: #6f8396;
-  --auxiliary-green: #7a8f7e;
-  --primary-blue: var(--auxiliary-blue);
-  --primary-yellow: #e4c46a;
-  --border: rgba(18, 18, 18, 0.16);
-  --border-strong: rgba(18, 18, 18, 0.24);
-  --shadow-soft: rgba(18, 18, 18, 0.12);
-  --shadow-medium: rgba(18, 18, 18, 0.18);
+  /* ── Editorial / Notion 极简令牌 ── */
+  --background: #fbfaf8;
+  --foreground: #37352f;
+  --foreground-soft: #6b6963;
+  --foreground-muted: #9b9993;
+  --foreground-faint: #c5c3bd;
+  --surface: #ffffff;
+  --surface-muted: #f7f6f2;
+  --surface-hover: #f1efea;
+  --status-blush: #fbf2ee;
+  --status-sage: #eef3ee;
+  --accent-clay: #b87e6b;
+
+  /* 语义色 — 仅用于关键状态提示, 去饱和 */
+  --primary-red: #b4451f;
+  --primary-yellow: #946200;
+  --primary-green: #2f6e4f;
+  --primary-blue: #44558a;
+  --auxiliary-blue: var(--primary-blue);
+  --auxiliary-green: var(--primary-green);
+  --accent: var(--foreground);
+  --accent-bg: var(--surface-hover);
+
+  /* hairline 边框 — 拒绝 2px 黑实线 + 硬偏移阴影 */
+  --border: rgba(55, 53, 47, 0.06);
+  --border-strong: rgba(55, 53, 47, 0.12);
+  --shadow-soft: rgba(55, 53, 47, 0.04);
+  --shadow-medium: rgba(55, 53, 47, 0.08);
+
+  /* ── Animation Tokens ── */
+  --dur-instant: 100ms;
+  --dur-quick: 160ms;
+  --dur-snappy: 260ms;
+  --dur-deliberate: 400ms;
+  --dur-lingering: 600ms;
+
+  --ease-snap: cubic-bezier(0.2, 0.85, 0.25, 1);
+  --ease-precise: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-overshoot: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --ease-settle: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-spring-out: cubic-bezier(0.18, 0.89, 0.32, 1.28);
 }
 
 * {
@@ -32,11 +58,11 @@ html {
 body {
   min-height: 100vh;
   background-color: var(--background);
-  background-image: radial-gradient(rgba(18, 18, 18, 0.02) 1px, transparent 1px);
-  background-size: 56px 56px;
   color: var(--foreground);
-  font-family: var(--font-display), "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  font-family: var(--font-display), "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
 }
 
 a {
@@ -52,7 +78,7 @@ select {
 }
 
 ::selection {
-  background: rgba(228, 196, 106, 0.45);
+  background: rgba(68, 85, 138, 0.18);
   color: var(--foreground);
 }
 
@@ -66,12 +92,15 @@ select {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--primary-red);
-  border: 2px solid var(--background);
+  background: rgba(55, 53, 47, 0.14);
+  border: 2px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--primary-blue);
+  background: rgba(55, 53, 47, 0.22);
+  background-clip: content-box;
 }
 
 .custom-scrollbar::-webkit-scrollbar {
@@ -83,8 +112,10 @@ select {
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: var(--primary-blue);
-  border: 2px solid var(--background);
+  background: rgba(55, 53, 47, 0.12);
+  border: 2px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
 }
 
 .prose-chat {
@@ -190,91 +221,131 @@ select {
 
 @layer components {
   .bauhaus-panel {
-    border: 1.5px solid var(--border-strong);
+    border: 1px solid var(--border);
     background: var(--surface);
-    box-shadow: 2px 2px 0 0 var(--shadow-soft);
+    border-radius: 10px;
+    box-shadow: none;
   }
 
   .bauhaus-panel-sm {
     border: 1px solid var(--border);
     background: var(--surface);
-    box-shadow: 1px 1px 0 0 rgba(18, 18, 18, 0.1);
+    border-radius: 8px;
+    box-shadow: none;
   }
 }
 
 .bauhaus-lift {
   transition:
-    transform 200ms ease-out,
-    box-shadow 200ms ease-out,
-    background-color 200ms ease-out,
-    color 200ms ease-out;
+    background-color var(--dur-quick) var(--ease-snap),
+    border-color var(--dur-quick) var(--ease-snap),
+    color var(--dur-quick) var(--ease-snap);
 }
 
 .bauhaus-lift:hover {
-  transform: translateY(-2px);
+  background: var(--surface-muted);
+  border-color: var(--border-strong);
+}
+
+.bauhaus-lift:active {
+  background: var(--surface-hover);
 }
 
 .bauhaus-button {
   display: inline-flex;
-  min-height: 44px;
+  min-height: 36px;
   cursor: pointer;
   align-items: center;
   justify-content: center;
-  gap: 0.625rem;
-  border: 1.5px solid var(--border-strong);
-  padding: 0.625rem 1.125rem;
-  font-size: 0.82rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  gap: 0.5rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 0.5rem 0.875rem;
+  font-size: 0.84rem;
+  font-weight: 500;
+  letter-spacing: 0;
   text-transform: none;
+  background: transparent;
+  color: var(--foreground);
   transition:
-    transform 200ms ease-out,
-    box-shadow 200ms ease-out,
-    background-color 200ms ease-out,
-    color 200ms ease-out;
-  box-shadow: 2px 2px 0 0 var(--shadow-medium);
-}
-
-.bauhaus-button:focus-visible {
-  outline: 2px solid var(--border-strong);
-  outline-offset: 3px;
-}
-
-.bauhaus-button:active {
-  transform: translate(1px, 1px);
+    background-color var(--dur-quick) var(--ease-snap),
+    border-color var(--dur-quick) var(--ease-snap),
+    color var(--dur-quick) var(--ease-snap);
   box-shadow: none;
 }
 
-.bauhaus-button-red {
-  background: var(--primary-red);
-  color: #ffffff;
+.bauhaus-button:focus-visible {
+  outline: 2px solid var(--primary-blue);
+  outline-offset: 2px;
 }
 
-.bauhaus-button-blue {
-  background: color-mix(in srgb, var(--auxiliary-blue) 20%, #ffffff 80%);
-  color: var(--foreground);
+.bauhaus-button:hover {
+  background: var(--surface-muted);
 }
 
-.bauhaus-button-green {
-  background: color-mix(in srgb, var(--auxiliary-green) 22%, #ffffff 78%);
-  color: var(--foreground);
+.bauhaus-button:active {
+  background: var(--surface-hover);
+  transition-duration: var(--dur-instant);
 }
 
+.bauhaus-button-red,
+.bauhaus-button-blue,
+.bauhaus-button-green,
 .bauhaus-button-yellow {
-  background: var(--primary-yellow);
+  background: transparent;
   color: var(--foreground);
+}
+
+.bauhaus-button-red:hover {
+  background: var(--status-blush);
+  color: var(--primary-red);
+}
+
+.bauhaus-button-blue:hover {
+  background: rgba(68, 85, 138, 0.08);
+  color: var(--primary-blue);
+}
+
+.bauhaus-button-green:hover {
+  background: var(--status-sage);
+  color: var(--primary-green);
+}
+
+.bauhaus-button-yellow:hover {
+  background: rgba(148, 98, 0, 0.08);
+  color: var(--primary-yellow);
 }
 
 .bauhaus-button-outline {
   background: var(--surface);
-  color: var(--foreground);
+  border-color: var(--border-strong);
+}
+
+.bauhaus-button-sm {
+  min-height: 28px;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.76rem;
+  gap: 0.35rem;
+  box-shadow: none;
+  border-width: 1px;
+}
+
+.bauhaus-button-sm:hover {
+  background: var(--surface-muted);
+  box-shadow: none;
+}
+
+.bauhaus-button-sm:active {
+  background: var(--surface-hover);
+  box-shadow: none;
 }
 
 .bauhaus-label {
-  font-size: 0.76rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  font-size: 0.74rem;
+  font-weight: 500;
+  letter-spacing: 0;
   text-transform: none;
+  color: var(--foreground-soft);
 }
 
 @layer components {
@@ -283,32 +354,23 @@ select {
     align-items: center;
     gap: 0.3rem;
     border: 1px solid var(--border);
-    background: rgba(253, 251, 247, 0.92);
-    padding: 0.3rem 0.7rem;
-    font-size: 0.76rem;
+    background: var(--surface-muted);
+    padding: 0.25rem 0.6rem;
+    border-radius: 6px;
+    font-size: 0.74rem;
     font-weight: 500;
     letter-spacing: 0;
     text-transform: none;
+    color: var(--foreground-soft);
   }
 }
 
-.bauhaus-dot-pattern {
-  background-image: radial-gradient(rgba(18, 18, 18, 0.025) 1px, transparent 1px);
-  background-size: 44px 44px;
-}
-
-.bauhaus-stripe-pattern {
-  background-image: repeating-linear-gradient(
-    -45deg,
-    rgba(18, 18, 18, 0.03) 0,
-    rgba(18, 18, 18, 0.03) 6px,
-    transparent 6px,
-    transparent 32px
-  );
-}
-
+/* ── 装饰类保留为空类避免破坏引用, 但视觉清零 ── */
+.bauhaus-dot-pattern,
+.bauhaus-stripe-pattern,
 .bauhaus-triangle {
-  clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+  background: none;
+  clip-path: none;
 }
 
 .fullcalendar-dark .fc {
@@ -341,9 +403,11 @@ select {
 }
 
 .fullcalendar-dark .fc .fc-button {
-  border-width: 1.5px;
-  box-shadow: 2px 2px 0 0 var(--shadow-soft);
+  border-width: 1px;
+  border-color: var(--border-strong);
+  box-shadow: none;
   text-transform: none;
+  border-radius: 6px;
 }
 
 .cs-main-container,
@@ -354,20 +418,20 @@ select {
 }
 
 .cs-message__content {
-  border: 1.5px solid var(--border-strong) !important;
-  border-radius: 0 !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 10px !important;
   background: var(--surface) !important;
   color: var(--foreground) !important;
-  box-shadow: 2px 2px 0 0 var(--shadow-soft) !important;
+  box-shadow: none !important;
 }
 
 .cs-message--outgoing .cs-message__content {
-  background: rgba(228, 196, 106, 0.36) !important;
+  background: var(--surface-muted) !important;
 }
 
 .cs-message-input {
-  border-top: 1.5px solid var(--border) !important;
-  background: rgba(253, 251, 247, 0.86) !important;
+  border-top: 1px solid var(--border) !important;
+  background: var(--surface) !important;
 }
 
 .cs-message-input__content-editor-wrapper,
@@ -377,27 +441,142 @@ select {
 }
 
 .cs-button--send {
-  color: var(--primary-red) !important;
+  color: var(--primary-blue) !important;
 }
 
 .cs-typing-indicator__dot {
-  background-color: var(--primary-blue) !important;
+  background-color: var(--foreground-muted) !important;
 }
 
 @media (min-width: 768px) {
-  .bauhaus-panel {
-    border-width: 1.5px;
-    box-shadow: 2px 2px 0 0 var(--shadow-soft);
-  }
-
-  .bauhaus-panel-sm {
-    border-width: 1px;
-    box-shadow: 1px 1px 0 0 rgba(18, 18, 18, 0.1);
-  }
-
+  .bauhaus-panel,
+  .bauhaus-panel-sm,
   .bauhaus-button {
-    border-width: 1.5px;
-    box-shadow: 2px 2px 0 0 var(--shadow-medium);
+    border-width: 1px;
+    box-shadow: none;
+  }
+}
+
+/* Lcode-style pop animation: 弹入、稳住、淡出、循环 */
+@keyframes lcode-pop {
+  0%   { opacity: 0; transform: translateY(14px) scale(0.92); }
+  18%  { opacity: 1; transform: translateY(0) scale(1); }
+  62%  { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-8px) scale(0.96); }
+}
+
+.lcode-pop {
+  animation: lcode-pop 3.2s var(--ease-spring-out) infinite;
+}
+
+.lcode-pop-delay-1 {
+  animation: lcode-pop 3.2s var(--ease-spring-out) infinite;
+  animation-delay: 0.3s;
+}
+
+.lcode-pop-delay-2 {
+  animation: lcode-pop 3.2s var(--ease-spring-out) infinite;
+  animation-delay: 0.6s;
+}
+
+.lcode-pop-delay-3 {
+  animation: lcode-pop 3.2s var(--ease-spring-out) infinite;
+  animation-delay: 0.9s;
+}
+
+/* ── Spring Entrance Animations ── */
+@keyframes spring-up {
+  0%   { opacity: 0; transform: translateY(20px) scale(0.96); }
+  60%  { opacity: 1; transform: translateY(-4px) scale(1.01); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes spring-in {
+  0%   { opacity: 0; transform: translateY(16px) scale(0.98); }
+  50%  { opacity: 1; transform: translateY(-2px) scale(1.005); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes spring-side {
+  0%   { opacity: 0; transform: translateX(-16px) scale(0.97); }
+  55%  { opacity: 1; transform: translateX(3px) scale(1.01); }
+  100% { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+@keyframes pop-scale {
+  0%   { opacity: 0; transform: scale(0.85); }
+  55%  { opacity: 1; transform: scale(1.05); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* Stagger utility — use --stagger-index on children */
+.spring-up {
+  animation: spring-up var(--dur-snappy) var(--ease-spring-out) both;
+  animation-delay: calc(var(--stagger-index, 0) * 50ms);
+}
+
+.spring-in {
+  animation: spring-in var(--dur-snappy) var(--ease-overshoot) both;
+  animation-delay: calc(var(--stagger-index, 0) * 50ms);
+}
+
+.spring-side {
+  animation: spring-side var(--dur-snappy) var(--ease-spring-out) both;
+  animation-delay: calc(var(--stagger-index, 0) * 45ms);
+}
+
+.pop-scale {
+  animation: pop-scale var(--dur-snappy) var(--ease-overshoot) both;
+  animation-delay: calc(var(--stagger-index, 0) * 60ms);
+}
+
+/* Press feedback — tactile depth on tap */
+.press-feedback {
+  transition:
+    background-color var(--dur-quick) var(--ease-snap),
+    border-color var(--dur-quick) var(--ease-snap),
+    color var(--dur-quick) var(--ease-snap);
+}
+
+.press-feedback:hover {
+  background: var(--surface-muted);
+}
+
+.press-feedback:active {
+  background: var(--surface-hover);
+  transition-duration: var(--dur-instant);
+}
+
+/* Active indicator slide — for sidebar/pills */
+.indicator-slide {
+  transition:
+    transform var(--dur-snappy) var(--ease-spring-out),
+    background-color var(--dur-quick) var(--ease-snap);
+}
+
+/* Profile 的织物感只作为局部材料提示，不进入正文阅读面。 */
+.profile-woven-accent {
+  background-color: #f4f1ea;
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      rgba(92, 78, 64, 0.035) 0,
+      rgba(92, 78, 64, 0.035) 1px,
+      transparent 1px,
+      transparent 4px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.42) 0,
+      rgba(255, 255, 255, 0.42) 1px,
+      transparent 1px,
+      transparent 5px
+    );
+}
+
+@media (prefers-contrast: more) {
+  .profile-woven-accent {
+    background-image: none;
   }
 }
 

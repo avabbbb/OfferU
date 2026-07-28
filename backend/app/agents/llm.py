@@ -17,10 +17,11 @@ import asyncio
 import json
 import logging
 import re
-from typing import Optional, AsyncGenerator
+from typing import TYPE_CHECKING, Any, Optional, AsyncGenerator
 
 import httpx
-from openai import AsyncOpenAI
+if TYPE_CHECKING:
+    from openai import AsyncOpenAI
 
 from app.config import get_settings
 
@@ -41,6 +42,7 @@ def _make_http_client() -> httpx.AsyncClient:
     return httpx.AsyncClient(
         transport=httpx.AsyncHTTPTransport(local_address="0.0.0.0"),
         verify=settings.ssl_verify,
+        trust_env=False,
     )
 
 
@@ -74,6 +76,35 @@ TIER_MODEL_MAP: dict[str, dict[str, str]] = {
 }
 
 
+def _runtime_source(settings) -> str:
+    provider = (settings.llm_provider or "deepseek").strip().lower()
+    if provider == "ollama":
+        return "ollama"
+    if settings.active_llm_config_id or settings.active_llm_base_url or settings.active_llm_api_key:
+        return "active_config"
+    return "legacy_fallback"
+
+
+def get_llm_runtime_info(tier: str = "standard") -> dict[str, str]:
+    """Return the model selection that chat_completion will use for this tier."""
+    settings = get_settings()
+    provider = (settings.llm_provider or "deepseek").strip().lower()
+    user_tier_map = getattr(settings, "tier_model_map", None) or {}
+    if user_tier_map:
+        model = str(user_tier_map.get(tier) or settings.llm_model)
+        model_source = "tier_model_map"
+    else:
+        model = str(settings.llm_model)
+        model_source = "llm_model"
+    return {
+        "provider": provider,
+        "model": model,
+        "tier": tier,
+        "source": _runtime_source(settings),
+        "model_source": model_source,
+    }
+
+
 def _ensure_ollama_v1(base_url: str) -> str:
     base = base_url.rstrip("/")
     if base.endswith("/v1"):
@@ -81,7 +112,7 @@ def _ensure_ollama_v1(base_url: str) -> str:
     return f"{base}/v1"
 
 
-def _get_client() -> tuple[AsyncOpenAI, str]:
+def _get_client() -> tuple[Any, str]:
     """
     根据当前配置的 LLM Provider 创建对应客户端
     ─────────────────────────────────────────────
@@ -94,6 +125,9 @@ def _get_client() -> tuple[AsyncOpenAI, str]:
     返回: (client, model_name)
     """
     settings = get_settings()
+    # openai imports hundreds of generated schema modules. Keep that ~1.2s
+    # cost off the desktop cold-start path and pay it only for the first LLM call.
+    from openai import AsyncOpenAI
     provider = (settings.llm_provider or "deepseek").strip().lower()
     model = settings.llm_model
     active_base_url = (settings.active_llm_base_url or "").strip().rstrip("/")
@@ -310,3 +344,49 @@ def extract_json(text: str) -> Optional[dict]:
             pass
 
     return None
+
+
+# =============================================
+# Embedding API — 文本向量化（用于语义搜索）
+# =============================================
+
+async def get_embedding(text: str, model: str = "text-embedding-v3") -> list[float]:
+    """
+    获取文本的 Embedding 向量
+    ─────────────────────────────────────────────
+    优先使用 Qwen 的 embedding 模型（便宜且效果好）
+    备选：OpenAI text-embedding-3-small
+
+    参数:
+      text: 待向量化的文本
+      model: embedding 模型名称
+
+    返回: 向量列表（长度取决于模型，Qwen v3 为 1024 维）
+    """
+    if not text or not text.strip():
+        # 返回零向量（避免崩溃）
+        return [0.0] * 1024
+
+    client, _ = _get_client()
+    settings = get_settings()
+
+    try:
+        # OpenAI 兼容的 embedding API
+        response = await asyncio.wait_for(
+            client.embeddings.create(
+                model=model,
+                input=text[:8000],  # 截断过长文本（避免超限）
+            ),
+            timeout=settings.llm_timeout,
+        )
+
+        embedding = response.data[0].embedding
+        _logger.debug(f"[Embedding] model={model}, text_len={len(text)}, vec_dim={len(embedding)}")
+        return embedding
+
+    except asyncio.TimeoutError:
+        _logger.error(f"[Embedding Timeout] model={model}: 超过 {settings.llm_timeout}s")
+        return [0.0] * 1024
+    except Exception as e:
+        _logger.error(f"[Embedding Error] model={model}: {e}")
+        return [0.0] * 1024

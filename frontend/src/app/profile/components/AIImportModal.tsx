@@ -462,14 +462,14 @@ export default function AIImportModal({ open, onClose, onImport }: AIImportModal
       case 0:
         return (
           <div className="space-y-4">
-            <div className="rounded-md border border-black/15 bg-white/60 p-4">
-              <p className="text-sm leading-relaxed text-black/70">
+            <div className="rounded-md border border-[var(--border-strong)]/15 bg-white/60 p-4">
+              <p className="text-sm leading-relaxed text-[var(--foreground-muted)]">
                 点击下方按钮复制提示词，然后前往 AI 工具（如豆包、ChatGPT、通义千问等），
                 上传你的简历文件并将提示词发送给 AI，AI 会返回一段结构化的 JSON 数据。
               </p>
             </div>
-            <div className="max-h-48 overflow-y-auto rounded-md border border-black/10 bg-black/5 p-3">
-              <pre className="whitespace-pre-wrap break-words text-xs leading-relaxed text-black/65">
+            <div className="max-h-48 overflow-y-auto rounded-md border border-[var(--border-strong)]/10 bg-black/5 p-3">
+              <pre className="whitespace-pre-wrap break-words text-xs leading-relaxed text-[var(--foreground-muted)]">
                 {AI_IMPORT_PROMPT}
               </pre>
             </div>
@@ -486,8 +486,8 @@ export default function AIImportModal({ open, onClose, onImport }: AIImportModal
       case 1:
         return (
           <div className="space-y-4">
-            <div className="rounded-md border border-black/15 bg-white/60 p-4">
-              <p className="text-sm leading-relaxed text-black/70">
+            <div className="rounded-md border border-[var(--border-strong)]/15 bg-white/60 p-4">
+              <p className="text-sm leading-relaxed text-[var(--foreground-muted)]">
                 提示词已复制到剪贴板。现在请前往你常用的 AI 工具，上传简历并发送提示词：
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
@@ -502,7 +502,7 @@ export default function AIImportModal({ open, onClose, onImport }: AIImportModal
                     href={tool.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 rounded-md border border-black/15 px-3 py-1.5 text-sm font-medium text-black/70 transition hover:border-black/30 hover:text-black"
+                    className="inline-flex items-center gap-1 rounded-md border border-[var(--border-strong)]/15 px-3 py-1.5 text-sm font-medium text-[var(--foreground-muted)] transition hover:border-[var(--border-strong)]/30 hover:text-[var(--foreground)]"
                   >
                     <ExternalLink size={14} />
                     {tool.name}
@@ -512,7 +512,7 @@ export default function AIImportModal({ open, onClose, onImport }: AIImportModal
             </div>
             <div className="space-y-2 rounded-md border border-[rgba(201,85,72,0.2)] bg-[rgba(201,85,72,0.05)] p-4">
               <p className="text-sm font-semibold text-[var(--primary-red)]">操作步骤</p>
-              <ol className="ml-4 list-decimal space-y-1 text-sm text-black/70">
+              <ol className="ml-4 list-decimal space-y-1 text-sm text-[var(--foreground-muted)]">
                 <li>打开 AI 工具（点击上方链接或自行打开）</li>
                 <li>上传你的简历文件（PDF / Word / 图片均可）</li>
                 <li>粘贴刚才复制的提示词并发送</li>
@@ -532,8 +532,8 @@ export default function AIImportModal({ open, onClose, onImport }: AIImportModal
       case 2:
         return (
           <div className="space-y-4">
-            <div className="rounded-md border border-black/15 bg-white/60 p-4">
-              <p className="text-sm leading-relaxed text-black/70">
+            <div className="rounded-md border border-[var(--border-strong)]/15 bg-white/60 p-4">
+              <p className="text-sm leading-relaxed text-[var(--foreground-muted)]">
                 将 AI 返回的 JSON 结果粘贴到下方文本框中，点击确认导入即可自动解析。
               </p>
             </div>
@@ -545,7 +545,7 @@ export default function AIImportModal({ open, onClose, onImport }: AIImportModal
               onValueChange={setJsonText}
               variant="bordered"
               classNames={{
-                inputWrapper: "border-black/20 bg-white font-mono text-sm",
+                inputWrapper: "border-[var(--border-strong)]/20 bg-white font-mono text-sm",
               }}
             />
             <div className="flex gap-2">
@@ -585,21 +585,21 @@ export default function AIImportModal({ open, onClose, onImport }: AIImportModal
       placement="center"
       scrollBehavior="inside"
     >
-      <ModalContent className="border-2 border-black bg-[#F0F0F0] text-black shadow-[4px_4px_0_0_rgba(18,18,18,0.45)]">
-        <ModalHeader className="border-b-2 border-black px-6 py-5">
+      <ModalContent className="border border-[var(--border-strong)] bg-[var(--surface-muted)] text-[var(--foreground)] shadow-[4px_4px_0_0_rgba(18,18,18,0.45)]">
+        <ModalHeader className="border-b-2 border-[var(--border-strong)] px-6 py-5">
           <div className="flex w-full items-center gap-3">
             <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[var(--primary-red)] text-white">
               <Sparkles size={18} />
             </div>
             <div>
               <h2 className="text-lg font-black tracking-[-0.04em]">AI 导入简历</h2>
-              <p className="text-xs text-black/50">借助 AI 工具快速解析简历</p>
+              <p className="text-xs text-[var(--foreground-muted)]">借助 AI 工具快速解析简历</p>
             </div>
           </div>
         </ModalHeader>
 
         {/* 步骤进度条 */}
-        <div className="flex items-center gap-1 border-b border-black/10 px-6 py-3">
+        <div className="flex items-center gap-1 border-b border-[var(--border-strong)]/10 px-6 py-3">
           {STEP_TITLES.map((title, index) => (
             <div key={title} className="flex items-center gap-1">
               {index > 0 && (
@@ -610,8 +610,8 @@ export default function AIImportModal({ open, onClose, onImport }: AIImportModal
                   index === step
                     ? "bg-[var(--primary-red)] text-white"
                     : index < step
-                      ? "bg-black/10 text-black/60"
-                      : "bg-transparent text-black/35"
+                      ? "bg-black/10 text-[var(--foreground-muted)]"
+                      : "bg-transparent text-[var(--foreground-muted)]"
                 }`}
               >
                 {index < step ? (
@@ -629,7 +629,7 @@ export default function AIImportModal({ open, onClose, onImport }: AIImportModal
 
         <ModalBody className="px-6 py-5">{renderStepContent()}</ModalBody>
 
-        <ModalFooter className="border-t-2 border-black px-6 py-4">
+        <ModalFooter className="border-t-2 border-[var(--border-strong)] px-6 py-4">
           <div className="flex w-full items-center justify-between">
             <Button
               className="bauhaus-button bauhaus-button-outline"

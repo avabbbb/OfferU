@@ -624,6 +624,8 @@ export interface ProfileBulletCandidate {
   title: string;
   content_json: Record<string, any>;
   confidence: number;
+  source_pages?: number[];
+  source_ref?: string;
 }
 
 export interface ProfileStreamEvent {
@@ -655,12 +657,29 @@ export interface ProfileChatSessionDetail extends ProfileChatSessionSummary {
 
 export type ResumeImportParseMode = "ai" | "mechanical";
 
+export interface ResumeParseDiagnostics {
+  parser: string;
+  page_count: number;
+  used_ocr: boolean;
+  average_quality: number;
+  low_quality_pages: number[];
+  warnings: string[];
+  pages: Array<{
+    page_number: number;
+    method: "native" | "ocr" | "pypdf" | "docx" | string;
+    char_count: number;
+    quality_score: number;
+    warnings: string[];
+  }>;
+}
+
 export interface ProfileImportResult {
   session_id: number;
   agent_session_id?: number;
   filename: string;
   parse_mode?: ResumeImportParseMode;
   text_length: number;
+  parse_diagnostics?: ResumeParseDiagnostics;
   base_info?: {
     name?: string;
     phone?: string;
@@ -1695,7 +1714,7 @@ export interface BatchOptimizeEntry {
   new_resume_id: number | null;
   ats_score: number | null;
   suggestions_applied: number;
-  status: "success" | "skipped" | "failed" | "pending";
+  status: "success" | "skipped" | "failed" | "pending" | "review_required";
   error: string | null;
   index: number;
   total: number;
@@ -1714,7 +1733,7 @@ export interface BatchOptimizeResponse {
 export async function batchOptimizeResume(
   resumeId: number,
   jobIds: number[],
-  autoApply = true,
+  autoApply = false,
   onProgress?: (entry: BatchOptimizeEntry) => void
 ): Promise<BatchOptimizeResponse> {
   const res = await fetch(`${API_BASE}/api/resume/${resumeId}/ai/batch-optimize`, {
@@ -1782,23 +1801,16 @@ export interface OptimizeGenerateRequest {
   reference_resume_id?: number;
 }
 
-export interface OptimizeUsedBullet {
-  id: number;
-  section_type: string;
-  title: string;
-}
-
 export interface OptimizeGenerateResult {
-  mode: "per_job" | "combined";
-  resume_id: number;
-  resume_title: string;
+  mode: "per_job";
+  proposal_id: string;
+  proposal_status: string;
+  fact_gate_status: string;
+  change_count: number;
   reference_resume_id?: number | null;
-  job_id?: number;
-  job_title?: string;
-  job_ids?: number[];
-  used_bullets: OptimizeUsedBullet[];
-  missing_keywords: string[];
-  profile_hit_ratio: string;
+  job_id: number;
+  job_title: string;
+  company: string;
   index?: number;
   total?: number;
 }
@@ -1806,18 +1818,18 @@ export interface OptimizeGenerateResult {
 export interface OptimizeProgressEvent {
   index: number;
   total: number;
-  status: "success" | "failed";
+  status: "prepared" | "failed";
   job_id?: number;
   job_title?: string;
   mode?: "per_job" | "combined";
 }
 
 export interface OptimizeDoneEvent {
-  mode: "per_job" | "combined";
+  mode: "per_job";
   total: number;
-  created: number;
+  prepared: number;
   failed: number;
-  resume_ids: number[];
+  proposal_ids: string[];
 }
 
 export interface OptimizeStreamEvent {
@@ -1845,6 +1857,8 @@ export interface OptimizeAgentStreamEvent {
   suggestions?: any[];
   resume_id?: number;
   resume_title?: string;
+  proposal_id?: string;
+  proposal_status?: string;
   /** confirm request event — agent asks user to approve a tool call */
   confirm_request?: {
     tool: string;
@@ -1918,6 +1932,7 @@ export async function streamOptimizeAgentChat(
           transformed.assistant_message = raw.content;
           if (raw.suggestions) transformed.suggestions = raw.suggestions;
           if (raw.resume_id) transformed.resume_id = raw.resume_id;
+          if (raw.proposal_id) transformed.proposal_id = raw.proposal_id;
           break;
         case "phase":
           transformed.phase = raw.phase;
@@ -1943,6 +1958,10 @@ export async function streamOptimizeAgentChat(
         case "resume_generated":
           transformed.resume_id = raw.resume_id;
           transformed.resume_title = raw.resume_title;
+          break;
+        case "resume_proposal_prepared":
+          transformed.proposal_id = raw.proposal_id;
+          transformed.proposal_status = raw.status;
           break;
         case "section_confirmed":
           transformed.section_confirmed = {
@@ -1988,6 +2007,9 @@ export interface OptimizeSessionSummary {
   title: string;
   phase: string;
   resume_id: number | null;
+  reference_resume_id: number | null;
+  resume_optimization_proposal_id: string | null;
+  research_run_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -2194,6 +2216,410 @@ export async function generateAnswer(questionId: number) {
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || `生成回答失败 (${res.status})`);
+  }
+  return res.json();
+}
+
+// =============================================
+// AI 模拟面试
+// =============================================
+
+export interface AIInterviewQuestion {
+  question: string;
+  type: "behavioral" | "technical" | "case" | string;
+  focus: string;
+  tips: string;
+}
+
+export interface AIInterviewEvaluation {
+  content_score: number;
+  score_band: string;
+  dimensions: Record<string, {
+    score: number;
+    evidence: string[];
+    missing_evidence: boolean;
+    not_applicable: boolean;
+    strength: string;
+    improvement: string;
+  }>;
+  strengths: string[];
+  improvements: string[];
+  suggestion: string;
+  aggregation: "weighted_mean";
+  skill_id: string;
+  skill_version: number;
+}
+
+export interface AIInterviewReport {
+  overall_score: number;
+  content_score: number;
+  score_scope: "content_only";
+  dimension_scores: Record<string, number>;
+  summary: string;
+  highlights: string[];
+  areas_for_improvement: string[];
+  recommendations: string[];
+  delivery_feedback: Record<string, unknown>;
+  combined_score: null;
+  boundary: string;
+}
+
+export interface AIInterviewSession {
+  id: number;
+  title: string;
+  target_company: string;
+  target_position: string;
+  interview_type: string;
+  difficulty: string;
+  questions: AIInterviewQuestion[];
+  status: string;
+  current_question_index: number;
+  total_questions: number;
+  scoring_skill: { skill_id: string; version: number };
+  model_runtime: AIInterviewRuntime["runtime"];
+  data_consent: Record<string, unknown>;
+  behavior_summary: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface AIInterviewRuntime {
+  runtime: {
+    provider: string;
+    model: string;
+    tier: string;
+    source: string;
+    model_source: string;
+    is_local: boolean;
+    consent_policy: "local_runtime_notice" | "explicit_cloud_consent";
+  };
+  available_data_categories: string[];
+  privacy: {
+    raw_camera_data_sent_to_backend: false;
+    derived_behavior_events_only: true;
+    raw_audio_stored_by_default: false;
+  };
+  evaluation_boundary: {
+    content_and_delivery_are_separate: true;
+    combined_score: null;
+    prohibited_inferences: string[];
+  };
+}
+
+export interface AIInterviewBehaviorEvent {
+  event_id: string;
+  event_type: string;
+  started_ms: number;
+  ended_ms: number;
+  occurrence_count: number;
+  confidence: number;
+  detector_id: string;
+  detector_version: string;
+  metadata: { question_index?: number };
+}
+
+export interface AIInterviewAnswerResult {
+  success: boolean;
+  evaluation: AIInterviewEvaluation;
+  next_question?: AIInterviewQuestion;
+  progress?: { current: number; total: number };
+  completed?: boolean;
+  report?: AIInterviewReport;
+}
+
+export async function getAIInterviewRuntime(): Promise<AIInterviewRuntime> {
+  const res = await fetch(`${API_BASE}/api/interviews/runtime`, { cache: "no-store" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `读取面试模型配置失败 (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function createAIInterview(body: {
+  title: string;
+  target_company: string;
+  target_position: string;
+  interview_type: "behavioral" | "technical" | "case" | "mixed";
+  difficulty: "easy" | "medium" | "hard";
+  question_count: number;
+  scoring_skill_id?: string;
+  scoring_skill_version?: number;
+  model_provider: string;
+  data_consent: boolean;
+  consented_data_categories: string[];
+  user_confirmed: boolean;
+}): Promise<AIInterviewSession> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/api/interviews/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch (error) {
+    throw new Error(formatBackendNetworkError(error));
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `创建模拟面试失败 (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function submitAIInterviewAnswer(
+  interviewId: number,
+  questionIndex: number,
+  content: string,
+  modelProvider: string
+): Promise<AIInterviewAnswerResult> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/api/interviews/${interviewId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        question_index: questionIndex,
+        content,
+        model_provider: modelProvider,
+        user_confirmed: true,
+      }),
+    });
+  } catch (error) {
+    throw new Error(formatBackendNetworkError(error));
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `提交回答失败 (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function ingestAIInterviewBehaviorEvents(
+  interviewId: number,
+  events: AIInterviewBehaviorEvent[]
+): Promise<{ accepted: number; duplicates: number; summary: Record<string, unknown> }> {
+  const res = await fetch(`${API_BASE}/api/interviews/${interviewId}/behavior-events`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ events, user_confirmed: true }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `上传派生表达行为事件失败 (${res.status})`);
+  }
+  return res.json();
+}
+
+// ---- AI Generate Draft (SSE) ----
+
+export interface DraftResultSection {
+  id: number;
+  section_type: string;
+  title: string;
+  sort_order: number;
+  visible: boolean;
+  content_json: any[];
+}
+
+export interface DraftResult {
+  summary: string;
+  sections: DraftResultSection[];
+}
+
+export interface DraftStreamEvent {
+  progress?: { stage: string; message: string };
+  result?: DraftResult;
+  error?: string;
+  done?: boolean;
+}
+
+export async function streamGenerateResumeDraft(
+  resumeId: number,
+  payload: { jd_text: string },
+  options?: {
+    signal?: AbortSignal;
+    onEvent?: (event: DraftStreamEvent) => void;
+  }
+) {
+  const res = await fetch(`${API_BASE}/api/resume/${resumeId}/ai/generate-draft`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal: options?.signal,
+  });
+  if (!res.ok || !res.body) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `生成初稿失败 (${res.status})`);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let buffer = "";
+  const findBoundary = (text: string) => {
+    const u = text.indexOf("\n\n");
+    const w = text.indexOf("\r\n\r\n");
+    if (u === -1) return w;
+    if (w === -1) return u;
+    return Math.min(u, w);
+  };
+  const emit = (chunk: string) => {
+    const lines = chunk.split(/\r?\n/);
+    let event = "";
+    const dataLines: string[] = [];
+    for (const line of lines) {
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+    }
+    if (dataLines.length === 0) return;
+    try {
+      const data = JSON.parse(dataLines.join("\n"));
+      const ev: DraftStreamEvent = {};
+      if (event === "progress") ev.progress = { stage: data.stage, message: data.message };
+      else if (event === "result") ev.result = data as DraftResult;
+      else if (event === "error") ev.error = data.message;
+      else if (event === "done") ev.done = true;
+      options?.onEvent?.(ev);
+    } catch {
+      // ignore malformed JSON
+    }
+  };
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let boundary = findBoundary(buffer);
+    while (boundary >= 0) {
+      const sepLen = buffer.slice(boundary, boundary + 4) === "\r\n\r\n" ? 4 : 2;
+      const block = buffer.slice(0, boundary).trim();
+      buffer = buffer.slice(boundary + sepLen);
+      if (block) emit(block);
+      boundary = findBoundary(buffer);
+    }
+  }
+  const tail = buffer.trim();
+  if (tail) emit(tail);
+}
+
+// =============================================
+// 进度看板（公司 × 岗位 渐进披露）
+// =============================================
+
+export interface ProgressBoardRecord {
+  application_attempt_id: number;
+  job_id: number;
+  company: string;
+  job_title: string;
+  location: string;
+  current_stage: string;
+  next_action: string;
+  last_event_at: string | null;
+  timeline_count: number;
+  pending_candidates: number;
+  upcoming_interview: {
+    calendar_event_id: number;
+    title: string;
+    start_time: string;
+    location: string;
+  } | null;
+  attempt_created_at: string;
+}
+
+export interface ProgressBoardCompany {
+  company: string;
+  records: ProgressBoardRecord[];
+  max_stage: string;
+  pending_candidates: number;
+  last_event_at: string | null;
+}
+
+export interface ProgressBoardPayload {
+  status: string;
+  total_companies: number;
+  total_records: number;
+  companies: ProgressBoardCompany[];
+  summary: { by_stage: Record<string, number>; pending_review: number };
+}
+
+export interface ProgressTimelineEntry {
+  event_id: string;
+  previous_stage: string;
+  stage: string;
+  occurred_at: string | null;
+  source_channel: string;
+  snippet: string;
+}
+
+export interface ProgressPendingCandidate {
+  candidate_id: string;
+  status: string;
+  match_state: string;
+  suggested_stage: string;
+  selected_stage: string | null;
+  application: {
+    application_attempt_id: number;
+    job_id: number;
+    company: string;
+    job_title: string;
+  } | null;
+  signal: {
+    signal_id: string;
+    channel: string;
+    sender: string;
+    received_at: string | null;
+    subject: string;
+    status: string;
+  };
+  created_at: string;
+}
+
+export interface ProgressTimelinePayload {
+  application_attempt_id: number;
+  job_id: number;
+  company: string;
+  job_title: string;
+  current_stage: string;
+  next_action: string;
+  timeline: ProgressTimelineEntry[];
+  pending_candidates: ProgressPendingCandidate[];
+}
+
+export function useProgressBoard(status: "active" | "closed" | "all" = "active") {
+  return useSWR<ProgressBoardPayload>(
+    `${API_BASE}/api/applications/progress-board?status=${status}`,
+    fetcher
+  );
+}
+
+export function useProgressTimeline(attemptId: number | null) {
+  return useSWR<ProgressTimelinePayload>(
+    attemptId
+      ? `${API_BASE}/api/applications/progress-board/${attemptId}/timeline`
+      : null,
+    fetcher
+  );
+}
+
+export async function reviewProgressCandidate(
+  candidateId: string,
+  payload: {
+    action: "accept" | "reject";
+    application_attempt_id?: number | null;
+    stage?: string;
+    note?: string;
+    add_calendar?: boolean;
+    create_record?: boolean;
+  }
+) {
+  const res = await fetch(
+    `${API_BASE}/api/email/progress-candidates/${encodeURIComponent(candidateId)}/review`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `审核候选进展失败 (${res.status})`);
   }
   return res.json();
 }

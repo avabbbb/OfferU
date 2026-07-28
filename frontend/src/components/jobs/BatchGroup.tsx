@@ -29,7 +29,7 @@ const cardContainer = {
 
 const cardItem = {
   hidden: { opacity: 0, y: 10 },
-  show: { opacity: 1, y: 0, transition: { type: "spring", damping: 15 } },
+  show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 400, damping: 30 } },
 };
 
 interface BatchGroupProps {
@@ -168,7 +168,7 @@ export function BatchGroup({
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ type: "spring", damping: 20, stiffness: 200 }}
+            transition={{ type: "spring", stiffness: 320, damping: 34 }}
             className="overflow-hidden"
           >
             <motion.div
@@ -181,8 +181,7 @@ export function BatchGroup({
                 <motion.div
                   key={job.id}
                   variants={cardItem}
-                  whileHover={{ y: -4 }}
-                  transition={{ type: "spring", stiffness: 300 }}
+                  whileHover={{ y: -4, transition: { type: "spring", stiffness: 400, damping: 28 } }}
                   className="h-full"
                 >
                   <JobCard

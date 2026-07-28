@@ -1763,6 +1763,23 @@ async def create_profile_section(data: ProfileSectionCreateRequest, db: AsyncSes
     db.add(section)
     await db.commit()
     await db.refresh(section)
+
+    # 自动索引到 Vector DB
+    try:
+        from app.services.semantic_search import get_semantic_search
+        semantic = get_semantic_search()
+        bullet_text = canonical_content_json.get("bullet", "") if isinstance(canonical_content_json, dict) else ""
+        await semantic.index_profile_section(
+            section_id=section.id,
+            title=section.title or "",
+            bullet_text=bullet_text,
+            profile_id=profile.id,
+        )
+        _logger.info(f"[Vector DB] Indexed section {section.id}")
+    except Exception as e:
+        _logger.error(f"[Vector DB] Failed to index section {section.id}: {e}")
+        # 索引失败不影响主流程
+
     return _serialize_section(section)
 
 
@@ -1822,6 +1839,22 @@ async def update_profile_section(
 
     await db.commit()
     await db.refresh(section)
+
+    # 自动更新 Vector DB 索引
+    try:
+        from app.services.semantic_search import get_semantic_search
+        semantic = get_semantic_search()
+        bullet_text = canonical_content_json.get("bullet", "") if isinstance(canonical_content_json, dict) else ""
+        await semantic.index_profile_section(
+            section_id=section.id,
+            title=section.title or "",
+            bullet_text=bullet_text,
+            profile_id=profile.id,
+        )
+        _logger.info(f"[Vector DB] Updated index for section {section.id}")
+    except Exception as e:
+        _logger.error(f"[Vector DB] Failed to update index for section {section.id}: {e}")
+
     return _serialize_section(section)
 
 
@@ -2051,11 +2084,22 @@ async def import_profile_resume(
     if len(file_bytes) > MAX_RESUME_IMPORT_FILE_SIZE:
         raise HTTPException(status_code=400, detail="file too large (max 10MB)")
 
-    from app.services.resume_parser import parse_resume_file
+    from app.services.resume_parser import parse_resume_document
 
-    parsed_text = await parse_resume_file(filename, file_bytes)
+    parsed_document = await parse_resume_document(filename, file_bytes)
+    parsed_text = parsed_document.text if parsed_document else ""
+    parse_diagnostics = parsed_document.public_dict() if parsed_document else {}
     if not parsed_text or not parsed_text.strip():
-        raise HTTPException(status_code=400, detail="resume text is empty")
+        ocr_unavailable = any(
+            "ocr_unavailable" in str(warning)
+            for warning in parse_diagnostics.get("warnings", [])
+        )
+        detail = (
+            "这是扫描版 PDF，但本机 OCR 不可用；请安装 Tesseract（中文 chi_sim + 英文 eng）后重试"
+            if ocr_unavailable
+            else "resume text is empty"
+        )
+        raise HTTPException(status_code=400, detail=detail)
 
     profile = await _get_or_create_default_profile(db)
     base_info = _extract_resume_base_info(parsed_text)
@@ -2069,6 +2113,26 @@ async def import_profile_resume(
     candidates = import_payload.get("candidates") if isinstance(import_payload, dict) else []
     if not isinstance(candidates, list):
         candidates = _coalesce_resume_entry_candidates(_fallback_resume_candidates(parsed_text))
+    from app.services.resume_parser import locate_resume_source_pages
+
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        source_pages = (
+            locate_resume_source_pages(parsed_document, candidate)
+            if parsed_document.parser != "python-docx"
+            else []
+        )
+        candidate["source_pages"] = source_pages
+        candidate["source_ref"] = (
+            "、".join(f"第{page_number}页" for page_number in source_pages)
+            if source_pages
+            else (
+                "Word 文档正文"
+                if parsed_document.parser == "python-docx"
+                else "未能精确定位原文页码"
+            )
+        )
 
     memory_summary = _resume_import_memory_summary(
         filename=filename,
@@ -2093,6 +2157,7 @@ async def import_profile_resume(
                 "text_length": len(parsed_text),
                 "parse_mode": normalized_parse_mode,
                 "base_info": base_info,
+                "parse_diagnostics": parse_diagnostics,
             },
             memory_summary,
             {
@@ -2138,6 +2203,7 @@ async def import_profile_resume(
         "filename": filename,
         "parse_mode": normalized_parse_mode,
         "text_length": len(parsed_text),
+        "parse_diagnostics": parse_diagnostics,
         "base_info": base_info,
         "bullets": bullets,
     }
@@ -2731,6 +2797,7 @@ def _smartfill_profile_view(profile_payload: dict[str, Any]) -> dict[str, Any]:
                 ),
                 "website": _smartfill_str(resume_basic.get("website") or base_info_json.get("website") or payload.get("website")),
                 "github": _smartfill_str(resume_basic.get("github") or base_info_json.get("github") or payload.get("github")),
+                "linkedin": _smartfill_str(resume_basic.get("linkedin") or base_info_json.get("linkedin") or payload.get("linkedin")),
                 "summary": _smartfill_str(
                     resume_archive_legacy.get("personalSummary")
                     or base_info_json.get("personal_summary")
@@ -2754,6 +2821,7 @@ def _smartfill_profile_view(profile_payload: dict[str, Any]) -> dict[str, Any]:
             "targetRole": _smartfill_str(base_info_json.get("job_intention") or payload.get("job_intention")),
             "website": _smartfill_str(base_info_json.get("website") or payload.get("website")),
             "github": _smartfill_str(base_info_json.get("github") or payload.get("github")),
+            "linkedin": _smartfill_str(base_info_json.get("linkedin") or payload.get("linkedin")),
             "summary": _smartfill_str(
                 base_info_json.get("personal_summary")
                 or base_info_json.get("summary")
@@ -2782,6 +2850,7 @@ def _build_smartfill_catalog_from_profile(profile_payload: dict[str, Any]) -> li
         "targetRole": "目标岗位",
         "website": "个人网站",
         "github": "GitHub",
+        "linkedin": "LinkedIn",
         "summary": "个人简介",
     }
     for key, label in basic_map.items():

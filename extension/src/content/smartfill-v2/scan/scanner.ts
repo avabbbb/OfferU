@@ -69,6 +69,7 @@ export interface ScannerOptions {
   containerSelector?: string;
   sectionSelector?: string;
   pageStructure?: PageStructureConfig;
+  expandSections?: boolean;
   signal?: AbortSignal;
 }
 
@@ -82,12 +83,14 @@ export async function scanFields(
   const { adapter, signal } = options || {};
 
   // Phase 1: Expand dynamic sections
-  logPipelineStage("expand", "展开可编辑区域");
-  await expandEditableSections({
-    editLabels: adapter?.editLabels,
-    sectionExpandSelectors: adapter?.sectionExpandSelectors,
-    signal,
-  });
+  if (options?.expandSections !== false) {
+    logPipelineStage("expand", "展开可编辑区域");
+    await expandEditableSections({
+      editLabels: adapter?.editLabels,
+      sectionExpandSelectors: adapter?.sectionExpandSelectors,
+      signal,
+    });
+  }
 
   if (signal?.aborted) return [];
 

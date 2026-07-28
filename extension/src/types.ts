@@ -215,7 +215,7 @@ export type Message =
   | { type: "SYNC_TO_SERVER" }
   | { type: "GET_STATUS" }
   | { type: "GET_JOBS" }
-  | { type: "GET_SMART_FILL_PROFILE" }
+  | { type: "GET_SMART_FILL_PROFILE"; scope?: "full" | "critical" }
   | { type: "GET_SMART_FILL_SETTINGS" }
   | { type: "SAVE_SMART_FILL_SETTINGS"; settings: SmartFillAiSettings }
   | { type: "REQUEST_SMART_FILL_HOST_PERMISSION"; baseUrl: string }

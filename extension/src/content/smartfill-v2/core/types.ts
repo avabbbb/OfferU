@@ -1,5 +1,5 @@
 // ===== UI State Types (preserved from V1) =====
-export type SmartFillStatus = "idle" | "running" | "success" | "partial" | "failed";
+export type SmartFillStatus = "idle" | "running" | "preview" | "success" | "partial" | "failed";
 
 export interface SmartFillUiState {
   status: SmartFillStatus;
@@ -206,6 +206,38 @@ export interface WriteResult {
   recoveryPath: RecoveryStep[];
 }
 
+export type CriticalPlanSkipReason =
+  | "not_critical"
+  | "sensitive"
+  | "low_confidence"
+  | "existing_value"
+  | "unsupported_control";
+
+export interface CriticalPlanItem {
+  field: ScannedField;
+  candidate: MatchCandidate;
+  label: string;
+  valuePreview: string;
+}
+
+export interface CriticalPlanSkippedItem {
+  field: ScannedField;
+  label: string;
+  reason: CriticalPlanSkipReason;
+}
+
+export interface CriticalSmartFillPlan {
+  pageUrl: string;
+  createdAt: number;
+  adapterId: string;
+  adapterName: string;
+  adapterConfidence: number;
+  aiUsed: boolean;
+  scannedFields: ScannedField[];
+  items: CriticalPlanItem[];
+  skipped: CriticalPlanSkippedItem[];
+}
+
 // ===== Result Types =====
 export interface SmartFillOutcome {
   scannedFields: ScannedField[];
@@ -214,6 +246,8 @@ export interface SmartFillOutcome {
   matchedCount: number;
   pendingFields: ScannedField[];
   pendingCount: number;
+  skippedCount: number;
+  protectedCount: number;
   requiredTotal: number;
   requiredFilled: number;
   submitReadiness: boolean;
@@ -233,6 +267,11 @@ export interface PipelineProgress {
 export interface PipelineOptions {
   signal?: AbortSignal;
   onProgress?: (progress: PipelineProgress) => void;
+}
+
+export interface CriticalPlanResult {
+  plan: CriticalSmartFillPlan;
+  outcome?: SmartFillOutcome;
 }
 
 export interface PipelineResult {

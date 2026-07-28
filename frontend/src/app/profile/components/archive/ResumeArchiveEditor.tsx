@@ -78,7 +78,7 @@ function DescriptionArrayEditor(props: {
 
   return (
     <div className="space-y-2">
-      <div className="text-xs font-semibold text-black/60">{props.label}</div>
+      <div className="text-xs font-semibold text-[var(--foreground-muted)]">{props.label}</div>
       {values.map((item, index) => (
         <div key={`${props.label}-${index}`} className="flex items-center gap-2">
           <Textarea
@@ -87,7 +87,7 @@ function DescriptionArrayEditor(props: {
             variant="bordered"
             className="flex-1"
             classNames={{
-              inputWrapper: "border border-black/15 bg-[var(--surface)] shadow-[1px_1px_0_0_rgba(18,18,18,0.08)]",
+              inputWrapper: "border border-[var(--border-strong)]/15 bg-[var(--surface)] shadow-[1px_1px_0_0_rgba(18,18,18,0.08)]",
             }}
             onValueChange={(nextValue) => {
               const next = values.slice();
@@ -181,7 +181,7 @@ function SingleDescriptionEditor(props: {
       minRows={5}
       variant="bordered"
       classNames={{
-        inputWrapper: "border border-black/15 bg-[var(--surface)] shadow-[1px_1px_0_0_rgba(18,18,18,0.08)]",
+        inputWrapper: "border border-[var(--border-strong)]/15 bg-[var(--surface)] shadow-[1px_1px_0_0_rgba(18,18,18,0.08)]",
       }}
       onValueChange={(nextValue) => {
         props.onChange([nextValue]);
@@ -207,8 +207,8 @@ function SectionFrame(props: {
     : props.focused
       ? "ring-2 ring-[color:color-mix(in_srgb,var(--auxiliary-blue)_45%,#ffffff_55%)]"
       : "";
-  const titleClass = props.missing ? "text-[var(--primary-red)]" : "text-black";
-  const descClass = props.missing ? "text-[color:color-mix(in_srgb,var(--primary-red)_80%,#3a2f2a_20%)]" : "text-black/65";
+  const titleClass = props.missing ? "text-[var(--primary-red)]" : "text-[var(--foreground)]";
+  const descClass = props.missing ? "text-[color:color-mix(in_srgb,var(--primary-red)_80%,#3a2f2a_20%)]" : "text-[var(--foreground-muted)]";
 
   return (
     <Card className={`bauhaus-panel overflow-hidden bg-[var(--surface)] ${borderClass}`} data-section={props.sectionKey}>
@@ -220,7 +220,7 @@ function SectionFrame(props: {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {typeof props.count === "number" && (
-              <span className="bauhaus-chip bg-[var(--surface-muted)] text-black">{props.count} 条</span>
+              <span className="bauhaus-chip bg-[var(--surface-muted)] text-[var(--foreground)]">{props.count} 条</span>
             )}
             {props.missing && (
               <span className="bauhaus-chip border-[var(--primary-red)] bg-[color:color-mix(in_srgb,var(--primary-red)_10%,#ffffff_90%)] text-[var(--primary-red)]">
@@ -254,7 +254,7 @@ function ItemShell(props: {
   return (
     <div className="bauhaus-panel-sm space-y-3 bg-[var(--surface)] p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0 flex-1 text-base font-semibold text-black">
+        <div className="min-w-0 flex-1 text-base font-semibold text-[var(--foreground)]">
           <span className="line-clamp-2 break-words">{props.title || props.fallbackTitle}</span>
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -336,7 +336,7 @@ function EducationItemEditor(props: {
         variant="bordered"
       />
       <div>
-        <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-black/55">描述</label>
+        <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-[var(--foreground-muted)]">描述</label>
         <RichTextEditor content={item.description} onChange={(v) => props.onChange({ ...item, description: v })} minHeight={80} placeholder="补充说明（可选）" />
       </div>
     </ItemShell>
@@ -368,7 +368,7 @@ function WorkItemEditor(props: {
         <Input label="结束时间" value={item.endDate} onValueChange={(v) => props.onChange({ ...item, endDate: v })} variant="bordered" />
       </div>
       <div>
-        <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-black/55">工作描述</label>
+        <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-[var(--foreground-muted)]">工作描述</label>
         <RichTextEditor content={item.description} onChange={(v) => props.onChange({ ...item, description: v })} placeholder="描述你的工作职责和成果..." />
       </div>
     </ItemShell>
@@ -399,7 +399,7 @@ function InternshipItemEditor(props: {
         <Input label="结束时间" value={item.endDate} onValueChange={(v) => props.onChange({ ...item, endDate: v })} variant="bordered" />
       </div>
       <div>
-        <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-black/55">实习描述</label>
+        <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-[var(--foreground-muted)]">实习描述</label>
         <RichTextEditor content={item.description} onChange={(v) => props.onChange({ ...item, description: v })} placeholder="描述实习职责和成果..." />
       </div>
     </ItemShell>
@@ -431,7 +431,7 @@ function ProjectItemEditor(props: {
         <Input label="结束时间" value={item.endDate} onValueChange={(v) => props.onChange({ ...item, endDate: v })} variant="bordered" />
       </div>
       <div>
-        <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-black/55">项目描述</label>
+        <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-[var(--foreground-muted)]">项目描述</label>
         <RichTextEditor content={item.description} onChange={(v) => props.onChange({ ...item, description: v })} placeholder="描述项目亮点和你的贡献..." />
       </div>
     </ItemShell>
@@ -513,7 +513,7 @@ function AwardItemEditor(props: {
         <Input label="获奖时间" value={item.awardedAt} onValueChange={(v) => props.onChange({ ...item, awardedAt: v })} variant="bordered" />
       </div>
       <div>
-        <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-black/55">获奖描述</label>
+        <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-[var(--foreground-muted)]">获奖描述</label>
         <RichTextEditor content={item.description} onChange={(v) => props.onChange({ ...item, description: v })} placeholder="补充奖项背景与成果..." />
       </div>
     </ItemShell>
@@ -543,7 +543,7 @@ function PersonalExperienceItemEditor(props: {
         <Input label="结束时间" value={item.endDate} onValueChange={(v) => props.onChange({ ...item, endDate: v })} variant="bordered" />
       </div>
       <div>
-        <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-black/55">经历描述</label>
+        <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-[var(--foreground-muted)]">经历描述</label>
         <RichTextEditor content={item.description} onChange={(v) => props.onChange({ ...item, description: v })} placeholder="输入个人经历内容..." />
       </div>
     </ItemShell>
@@ -749,7 +749,7 @@ export default function ResumeArchiveEditor(props: ResumeArchiveEditorProps) {
         <div className="space-y-5">
           <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="text-sm font-semibold text-black">技能条目</div>
+              <div className="text-sm font-semibold text-[var(--foreground)]">技能条目</div>
               <Button
                 size="sm"
                 startContent={<Plus size={14} />}
@@ -773,7 +773,7 @@ export default function ResumeArchiveEditor(props: ResumeArchiveEditorProps) {
 
           <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="text-sm font-semibold text-black">证书条目</div>
+              <div className="text-sm font-semibold text-[var(--foreground)]">证书条目</div>
               <Button
                 size="sm"
                 startContent={<Plus size={14} />}

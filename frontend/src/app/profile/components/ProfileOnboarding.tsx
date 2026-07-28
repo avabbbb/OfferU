@@ -396,12 +396,12 @@ export function ProfileOnboarding({ currentArchive, profile, onComplete, onClose
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#f6f3ed]/95 p-4 text-black backdrop-blur-md">
+    <div className="fixed inset-0 z-50 bg-[#f6f3ed]/95 p-4 text-[var(--foreground)] backdrop-blur-md">
       <div className="mx-auto flex h-full max-w-6xl flex-col">
-        <div className="flex items-center justify-between border-b border-black/10 py-3">
+        <div className="flex items-center justify-between border-b border-[var(--border-strong)]/10 py-3">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-black/45">OfferU Onboarding</p>
-            <h2 className="text-xl font-semibold text-black">新人投递档案向导</h2>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--foreground-muted)]">OfferU Onboarding</p>
+            <h2 className="text-xl font-semibold text-[var(--foreground)]">新人投递档案向导</h2>
           </div>
           <Button isIconOnly variant="light" aria-label="关闭新人向导" onPress={onClose}>
             <X size={18} />
@@ -409,13 +409,13 @@ export function ProfileOnboarding({ currentArchive, profile, onComplete, onClose
         </div>
 
         <div className="grid min-h-0 flex-1 gap-5 py-5 lg:grid-cols-[260px_1fr_300px]">
-          <aside className="space-y-3 border-r border-black/10 pr-4">
+          <aside className="space-y-3 border-r border-[var(--border-strong)]/10 pr-4">
             {STEP_LABELS.map((label, index) => (
               <button
                 key={label}
                 type="button"
                 className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition ${
-                  index === step ? "bg-black text-white" : "text-black/60 hover:bg-black/5"
+                  index === step ? "bg-black text-white" : "text-[var(--foreground-muted)] hover:bg-black/5"
                 }`}
                 onClick={() => {
                   setDirection(index > step ? 1 : -1);
@@ -466,7 +466,7 @@ export function ProfileOnboarding({ currentArchive, profile, onComplete, onClose
                   </div>
                   <div className="mt-5 space-y-2">
                     {form.targetRoles.map((role, index) => (
-                      <div key={role.title} className="flex items-center justify-between rounded-md border border-black/10 px-3 py-2">
+                      <div key={role.title} className="flex items-center justify-between rounded-md border border-[var(--border-strong)]/10 px-3 py-2">
                         <span className="text-sm font-medium">{role.title}</span>
                         <Chip size="sm" variant="flat">{index === 0 ? "主投" : "备选"}</Chip>
                       </div>
@@ -506,6 +506,27 @@ export function ProfileOnboarding({ currentArchive, profile, onComplete, onClose
                       {imported ? `已导入 ${imported.filename === "ai-import" ? "AI 解析结果" : imported.filename}` : "AI 对话导入简历"}
                     </Button>
                   </div>
+                  {imported?.parse_diagnostics && (
+                    <div className="mt-3 rounded-md border border-[var(--border-strong)]/10 bg-black/[0.025] px-3 py-2 text-xs text-[var(--foreground-muted)]">
+                      <p>
+                        {imported.parse_diagnostics.parser === "python-docx"
+                          ? "已解析 Word 文档"
+                          : `已解析 ${imported.parse_diagnostics.page_count} 页`}
+                        {imported.parse_diagnostics.parser === "python-docx"
+                          ? ""
+                          : imported.parse_diagnostics.used_ocr
+                            ? "，其中扫描页已使用 OCR"
+                            : "，使用原生文本层"}
+                        {` · 质量 ${Math.round(imported.parse_diagnostics.average_quality * 100)}%`}
+                      </p>
+                      {imported.parse_diagnostics.parser !== "python-docx"
+                        && imported.parse_diagnostics.low_quality_pages.length > 0 && (
+                        <p className="mt-1 text-amber-700">
+                          第 {imported.parse_diagnostics.low_quality_pages.join("、")} 页识别质量偏低，请在确认候选时重点核对。
+                        </p>
+                        )}
+                    </div>
+                  )}
                   <AIImportModal
                     open={aiImportOpen}
                     onClose={() => setAiImportOpen(false)}
@@ -535,10 +556,10 @@ export function ProfileOnboarding({ currentArchive, profile, onComplete, onClose
                 <StepFrame key="review" direction={direction} icon={Sparkles} title="补齐技能，然后生成可投递档案" subtitle="这里会把简历档案和网申档案一起写好。">
                   <Textarea label="技能 / 工具 / 证书" minRows={3} value={form.skillsText} onValueChange={(skillsText) => update({ skillsText })} placeholder="例如：Excel、SQL、Canva、用户访谈、公众号排版、英语六级" variant="bordered" />
                   <Textarea label="个人简介" minRows={3} value={form.summary} onValueChange={(summary) => update({ summary })} placeholder="一句话总结你的方向和优势；不填也会自动生成基础版本。" variant="bordered" className="mt-3" />
-                  <div className="mt-4 rounded-md border border-black/10 bg-white p-4">
+                  <div className="mt-4 rounded-md border border-[var(--border-strong)]/10 bg-white p-4">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-semibold">可投递度 {deliverableScore}%</span>
-                      {missing.length === 0 ? <CheckCircle2 className="text-green-600" size={18} /> : <span className="text-xs text-black/50">还差 {missing.length} 项</span>}
+                      {missing.length === 0 ? <CheckCircle2 className="text-green-600" size={18} /> : <span className="text-xs text-[var(--foreground-muted)]">还差 {missing.length} 项</span>}
                     </div>
                     <div className="mt-3 h-2 overflow-hidden rounded-full bg-black/10">
                       <div className="h-full bg-black transition-all" style={{ width: `${deliverableScore}%` }} />
@@ -558,10 +579,10 @@ export function ProfileOnboarding({ currentArchive, profile, onComplete, onClose
             {error && <div className="mt-4 rounded-md bg-red-600 px-4 py-3 text-sm text-white">{error}</div>}
           </main>
 
-          <aside className="border-l border-black/10 pl-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-black/45">Result</p>
+          <aside className="border-l border-[var(--border-strong)]/10 pl-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--foreground-muted)]">Result</p>
             <h3 className="mt-2 text-2xl font-semibold">{deliverableScore}%</h3>
-            <p className="mt-1 text-sm text-black/55">{missing.length === 0 ? "已经可以作为第一版投递档案。" : `还差 ${missing.join("、")}。`}</p>
+            <p className="mt-1 text-sm text-[var(--foreground-muted)]">{missing.length === 0 ? "已经可以作为第一版投递档案。" : `还差 ${missing.join("、")}。`}</p>
             <div className="mt-5 space-y-3 text-sm">
               <PreviewLine label="姓名" value={previewArchive.resumeArchive.basicInfo.name} />
               <PreviewLine label="目标岗位" value={previewArchive.resumeArchive.basicInfo.jobIntention} />
@@ -572,7 +593,7 @@ export function ProfileOnboarding({ currentArchive, profile, onComplete, onClose
           </aside>
         </div>
 
-        <div className="flex items-center justify-between border-t border-black/10 py-3">
+        <div className="flex items-center justify-between border-t border-[var(--border-strong)]/10 py-3">
           <Button variant="light" startContent={<ArrowLeft size={16} />} isDisabled={step === 0 || saving} onPress={goBack}>上一步</Button>
           {step < STEP_LABELS.length - 1 ? (
             <Button color="primary" endContent={<ArrowRight size={16} />} isDisabled={!canGoNext} onPress={goNext}>下一步</Button>
@@ -607,8 +628,8 @@ function StepFrame(props: {
           <Icon size={19} />
         </div>
         <div>
-          <h2 className="text-2xl font-semibold text-black">{props.title}</h2>
-          <p className="mt-1 text-sm text-black/55">{props.subtitle}</p>
+          <h2 className="text-2xl font-semibold text-[var(--foreground)]">{props.title}</h2>
+          <p className="mt-1 text-sm text-[var(--foreground-muted)]">{props.subtitle}</p>
         </div>
       </div>
       {props.children}
@@ -618,8 +639,8 @@ function StepFrame(props: {
 
 function PreviewLine(props: { label: string; value?: string }) {
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-black/10 pb-2">
-      <span className="text-black/45">{props.label}</span>
+    <div className="flex items-center justify-between gap-3 border-b border-[var(--border-strong)]/10 pb-2">
+      <span className="text-[var(--foreground-muted)]">{props.label}</span>
       <span className="max-w-[160px] truncate text-right font-medium">{props.value?.trim() || "未填写"}</span>
     </div>
   );

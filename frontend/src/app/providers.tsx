@@ -8,10 +8,8 @@ import { NextUIProvider } from "@nextui-org/react";
 import { SWRConfig } from "swr";
 import { AnimatePresence } from "framer-motion";
 import { usePathname } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
-import { HarnessAgentDock } from "@/components/ai/HarnessAgentDock";
-import { ProfileAgentDock } from "@/components/ai/ProfileAgentDock";
 import { useOnboarding } from "@/lib/useOnboarding";
 
 const API_BASE =
@@ -21,17 +19,14 @@ const API_BASE =
     : "http://127.0.0.1:8000");
 
 const PAGE_TITLES: Record<string, string> = {
-  "/": "仪表盘",
-  "/scraper": "抓取器",
-  "/jobs": "岗位库",
-  "/optimize": "AI 优化",
-  "/resume": "简历",
-  "/applications": "投递",
+  "/": "今日",
+  "/jobs": "机会",
+  "/resume": "材料",
+  "/optimize": "简历定制",
+  "/applications": "进展",
   "/interview": "面试",
   "/calendar": "日程",
-  "/email": "邮件",
-  "/analytics": "分析",
-  "/agent": "助手",
+  "/email": "信号收件箱",
   "/profile": "档案",
   "/settings": "设置",
 };
@@ -100,10 +95,59 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function Providers({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  const isProfilePage = pathname === "/profile";
+function BackendReadyGate({ children }: { children: React.ReactNode }) {
+  const [ready, setReady] = useState(false);
 
+  useEffect(() => {
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const probe = async () => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 1200);
+      try {
+        const response = await fetch(`${API_BASE}/api/health`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const payload = response.ok ? await response.json() : null;
+        if (!cancelled && payload?.runtime === "python") {
+          setReady(true);
+          return;
+        }
+      } catch {
+        // Desktop startup is expected to race the Python process once.
+      } finally {
+        clearTimeout(timeout);
+      }
+      if (!cancelled) retryTimer = setTimeout(probe, 180);
+    };
+
+    probe();
+    return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, []);
+
+  if (!ready) {
+    return (
+      <div className="grid h-screen w-full place-items-center bg-[var(--background)] px-6">
+        <div className="bauhaus-panel flex items-center gap-4 bg-[var(--surface)] px-6 py-5">
+          <span className="h-5 w-5 animate-pulse bg-[var(--primary-red)]" aria-hidden="true" />
+          <div>
+            <p className="bauhaus-label text-[var(--foreground-muted)]">OfferU</p>
+            <p className="text-sm font-semibold">正在启动 Python 工作台…</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return children;
+}
+
+export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <SWRConfig
       value={{
@@ -113,11 +157,12 @@ export function Providers({ children }: { children: React.ReactNode }) {
       }}
     >
       <NextUIProvider>
-        <AgentContextReporter />
-        <OnboardingGate>
-          {children}
-          {isProfilePage ? <ProfileAgentDock /> : <HarnessAgentDock />}
-        </OnboardingGate>
+        <BackendReadyGate>
+          <AgentContextReporter />
+          <OnboardingGate>
+            {children}
+          </OnboardingGate>
+        </BackendReadyGate>
       </NextUIProvider>
     </SWRConfig>
   );

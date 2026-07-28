@@ -75,8 +75,9 @@
 - **Source tracking**: Each resume labeled "Generated for Tencent-Content Operations"
 
 ### 🤖 MCP Server + AI Agent (13 Tools)
-- Built-in MCP Server (FastMCP Streamable HTTP) for external AI agent integration
-- Web Agent Console: conversational control of the entire system
+- Built-in Python AgentKernel with 31 skill protocols, per-skill tool allowlists, file-first runs/checkpoints, and HITL confirmation
+- Optional MCP Server (FastMCP Streamable HTTP) for external coding-agent integration; disabled by default on desktop
+- Web Agent Console: conversational control without requiring a local coding agent
 - 13 MCP Tools: profile view / job stats / triage operations / resume generation / pool management
 - LLM autonomous tool-chain decision making with multi-turn reasoning
 
@@ -133,12 +134,14 @@ npm install
 npm run dev
 ```
 
-| Service | URL | Description |
-|---|---|---|
-| Frontend | http://localhost:3000 | Web application |
-| Backend API | http://localhost:8000 | FastAPI + auto docs |
-| API Docs | http://localhost:8000/docs | Swagger interactive docs |
-| MCP Endpoint | http://localhost:8000/mcp | MCP Streamable HTTP |
+| Service | Local Dev | Docker | Description |
+|---|---|---|---|
+| Frontend | http://localhost:3300 | http://localhost:3011 | Web application |
+| Backend API | http://localhost:8000 | http://localhost:9000 | FastAPI + auto docs |
+| API Docs | http://localhost:8000/docs | http://localhost:9000/docs | Swagger interactive docs |
+| MCP Endpoint (opt-in) | http://localhost:8000/mcp | http://localhost:9000/mcp | Set `OFFERU_ENABLE_MCP=true` for external coding-agent clients |
+
+> ⚠️ Local dev port is fixed to **3300** (Windows Hyper-V/WSL2 winnat excludes port 3000, causing `EACCES`; 3300 is not excluded). Changing the port requires syncing `frontend/package.json`, `frontend/src-tauri/tauri.conf.json`, and `frontend/src-tauri/src/lib.rs`. In Docker mode the frontend listens on 3011 inside the container and the backend is exposed on host port 9000.
 
 ---
 
@@ -173,8 +176,8 @@ npm run dev
 - [x] Profile AI dialogue guidance (5-topic + SSE streaming + bullet confirmation)
 - [x] Three-tab job triage (batch folding + job pools)
 - [x] Three-section AI resume workspace (pool → jobs → SSE generate)
-- [x] MCP Server (13 Tools, FastMCP Streamable HTTP)
-- [x] AI Agent Chat (Web console + Tool Use)
+- [x] Optional MCP Server (13 Tools, FastMCP Streamable HTTP)
+- [x] Python AgentKernel (31 skills, file-first runs, checkpoints, HITL confirmation)
 - [x] Resume source tracking
 - [x] Multi-LLM support (Qwen / DeepSeek / OpenAI / SiliconFlow / Gemini / Zhipu / Ollama)
 

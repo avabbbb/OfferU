@@ -48,7 +48,7 @@ export function BatchOptimizeModal({
   const router = useRouter();
   const { data: resumes } = useResumes();
   const [selectedResumeId, setSelectedResumeId] = useState<number | null>(null);
-  const [autoApply, setAutoApply] = useState(true);
+  const [autoApply, setAutoApply] = useState(false);
   const [phase, setPhase] = useState<Phase>("select");
   const [results, setResults] = useState<BatchOptimizeEntry[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
