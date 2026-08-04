@@ -295,6 +295,7 @@ async def _context_for_questions(
                     select(JobResearchRun)
                     .where(JobResearchRun.job_id == job.id)
                     .where(JobResearchRun.status == "completed")
+                    .where(JobResearchRun.review_status == "accepted")
                     .order_by(JobResearchRun.completed_at.desc())
                     .limit(1)
                 )

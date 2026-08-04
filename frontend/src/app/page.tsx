@@ -6,7 +6,7 @@
 // 统计指标与趋势按需展开,不占据默认首屏;品牌叙事只出现在真实空状态。
 // =============================================
 
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
@@ -19,7 +19,6 @@ import {
   Mail,
   Sparkles,
 } from "lucide-react";
-import { TrendChart } from "@/components/charts/TrendChart";
 import {
   OnboardingChecklist,
   OnboardingTriggerButton,
@@ -32,6 +31,12 @@ import {
   useNotifications,
 } from "@/lib/hooks";
 import { useWorkbench } from "@/lib/workbench";
+
+const TrendChart = lazy(() =>
+  import("@/components/charts/TrendChart").then((module) => ({
+    default: module.TrendChart,
+  })),
+);
 
 const container = {
   hidden: { opacity: 0 },
@@ -130,7 +135,7 @@ export default function TodayPage() {
     pendingSignals.length === 0 && upcomingEvents.length === 0 && recentJobs.length === 0;
 
   return (
-    <motion.div variants={container} initial="hidden" animate="show" className="mx-auto max-w-[860px] space-y-6">
+    <motion.div variants={container} initial="hidden" animate="show" className="stage-page stage-page--today mx-auto max-w-[860px] space-y-6">
       {/* 页头:紧凑,不做 Hero */}
       <motion.header variants={item} className="flex items-end justify-between px-1">
         <div>
@@ -371,7 +376,9 @@ export default function TodayPage() {
                 </div>
               ))}
             </div>
-            <TrendChart data={trendData} />
+            <Suspense fallback={null}>
+              <TrendChart data={trendData} />
+            </Suspense>
           </div>
         </motion.div>
       </motion.section>

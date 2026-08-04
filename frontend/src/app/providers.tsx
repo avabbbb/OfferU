@@ -8,9 +8,14 @@ import { NextUIProvider } from "@nextui-org/react";
 import { SWRConfig } from "swr";
 import { AnimatePresence } from "framer-motion";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
-import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useOnboarding } from "@/lib/useOnboarding";
+
+const OnboardingWizard = lazy(() =>
+  import("@/components/onboarding/OnboardingWizard").then((module) => ({
+    default: module.OnboardingWizard,
+  })),
+);
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ||
@@ -85,10 +90,12 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
       {children}
       <AnimatePresence>
         {shouldShowWizard && canShowWizard && (
-          <OnboardingWizard
-            onComplete={completeWizard}
-            onSkip={skipWizard}
-          />
+          <Suspense fallback={null}>
+            <OnboardingWizard
+              onComplete={completeWizard}
+              onSkip={skipWizard}
+            />
+          </Suspense>
         )}
       </AnimatePresence>
     </>

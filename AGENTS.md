@@ -21,7 +21,7 @@ Playwright MCP 或Browser 来访问/截图/识别/探索网站的视觉和代码
 - 每次写完代码，不需要检查语法，不需要执行构建，用户会自己做。
 - 不要改无关文件，不要顺手重构。
 - 如果工作区已有用户改动，不要回滚，不要覆盖；只在必要范围内追加修改。
-- **前端 dev 端口固定 3300**：Windows 上 Hyper-V/WSL2 的 winnat 会把 3000 列进动态排除段（`netsh interface ipv4 show excludedportrange protocol=tcp` 可见 2942-3041），导致 Next dev `EACCES permission denied 0.0.0.0:3000`，不是端口被占而是系统级权限拒绝。3300 不在排除段、稳定可用。改端口必须同步三处：`frontend/package.json` 的 `scripts.dev` (`-p 3300`)、`frontend/src-tauri/tauri.conf.json` 的 `frontendDist`+`devUrl`、`frontend/src-tauri/src/lib.rs` 的 `wait_for_url`。
+- **前端 dev 端口固定 3300**：Windows 上 Hyper-V/WSL2 的 winnat 会把 3000 列进动态排除段（`netsh interface ipv4 show excludedportrange protocol=tcp` 可见 2942-3041），会导致开发服务器出现系统级 `EACCES`。OfferU 已使用 Vite，3300 不在排除段、稳定可用。改端口必须同步 `frontend/package.json` 的 `scripts.dev` / `scripts.start` 与 `frontend/src-tauri/tauri.conf.json` 的 `devUrl`；`frontendDist` 必须继续指向静态目录 `../dist`，不能改成 localhost URL。
 
 ## Agent skills
 

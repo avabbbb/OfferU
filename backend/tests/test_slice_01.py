@@ -146,7 +146,7 @@ class Slice01Tests(unittest.TestCase):
                     "title": title,
                     "content_json": content_json,
                     "source_text": source_text,
-                    "tier": "VERIFIED_FACT",
+                    "tier": "verified_fact",
                 },
                 surface="slice01_test",
             )
@@ -219,7 +219,9 @@ class Slice01Tests(unittest.TestCase):
         async def run() -> dict[str, Any]:
             await init_db()
             op = OPERATIONS["validate_fact_gate"]
-            source_facts = "候选人是 Python 工程师，有 5 years 经验，公司字节跳动。"
+            source_facts = {
+                "summary": "候选人是 Python 工程师，有 5 years 经验，公司字节跳动。"
+            }
             generated = {
                 "company": "字节跳动",
                 "section_text": "Python 工程师 5 years",
@@ -248,7 +250,7 @@ class Slice01Tests(unittest.TestCase):
                 before = (
                     await db.execute(select(func.count(ResumeVersion.id)))
                 ).scalar_one()
-            source_facts = "候选人会 Java 开发。"
+            source_facts = {"summary": "候选人会 Java 开发。"}
             generated = {
                 "company": "OpenAI",
                 "section_text": "Python 工程师 5 years 在 OpenAI",

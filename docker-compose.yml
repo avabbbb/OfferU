@@ -1,7 +1,7 @@
 # =============================================
-# OfferU - Docker Compose 编排
+# OfferU - Docker Compose 本地开发编排
 # =============================================
-# 一键启动所有服务：PostgreSQL + FastAPI后端 + Next.js前端
+# 一键启动所有服务：PostgreSQL + FastAPI 后端 + Vite 前端
 # 使用方式：docker compose up -d
 # =============================================
 
@@ -42,7 +42,7 @@ services:
       - LLM_PROVIDER=${LLM_PROVIDER:-qwen}
       - LLM_MODEL=${LLM_MODEL:-qwen-flash}
       - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
-      - CORS_ORIGINS=http://localhost:3011,http://127.0.0.1:3011,http://localhost:3000,http://127.0.0.1:3000
+      - CORS_ORIGINS=http://localhost:3011,http://127.0.0.1:3011
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app
     ports:
       - "9000:8000"
@@ -52,7 +52,7 @@ services:
     volumes:
       - ./backend:/app
 
-  # ---- Next.js 前端 ----
+  # ---- Vite 前端 ----
   frontend:
     build:
       context: ./frontend
@@ -61,12 +61,11 @@ services:
     container_name: offeru-frontend
     restart: unless-stopped
     environment:
-      - NEXT_PUBLIC_API_URL=http://127.0.0.1:9000
-      - WATCHPACK_POLLING=true
+      - VITE_API_URL=http://127.0.0.1:9000
       - CHOKIDAR_USEPOLLING=true
-    command: sh -c "npm install && npm run dev -- --hostname 0.0.0.0 --port 3011"
+    command: npm run dev -- --host 0.0.0.0
     ports:
-      - "3011:3011"
+      - "3011:3300"
     depends_on:
       - backend
     volumes:

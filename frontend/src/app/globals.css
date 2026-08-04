@@ -15,6 +15,10 @@
   --status-blush: #fbf2ee;
   --status-sage: #eef3ee;
   --accent-clay: #b87e6b;
+  --fabric-base: #f4f1ea;
+  --fabric-thread: rgba(92, 78, 64, 0.055);
+  --fabric-highlight: rgba(255, 255, 255, 0.52);
+  --focus-ring: rgba(68, 85, 138, 0.32);
 
   /* 语义色 — 仅用于关键状态提示, 去饱和 */
   --primary-red: #b4451f;
@@ -237,17 +241,20 @@ select {
 
 .bauhaus-lift {
   transition:
+    transform var(--dur-snappy) var(--ease-precise),
     background-color var(--dur-quick) var(--ease-snap),
     border-color var(--dur-quick) var(--ease-snap),
     color var(--dur-quick) var(--ease-snap);
 }
 
 .bauhaus-lift:hover {
+  transform: translateY(-2px);
   background: var(--surface-muted);
   border-color: var(--border-strong);
 }
 
 .bauhaus-lift:active {
+  transform: translateY(0) scale(0.992);
   background: var(--surface-hover);
 }
 
@@ -268,6 +275,7 @@ select {
   background: transparent;
   color: var(--foreground);
   transition:
+    transform var(--dur-snappy) var(--ease-precise),
     background-color var(--dur-quick) var(--ease-snap),
     border-color var(--dur-quick) var(--ease-snap),
     color var(--dur-quick) var(--ease-snap);
@@ -280,10 +288,12 @@ select {
 }
 
 .bauhaus-button:hover {
+  transform: translateY(-1px);
   background: var(--surface-muted);
 }
 
 .bauhaus-button:active {
+  transform: translateY(0) scale(0.975);
   background: var(--surface-hover);
   transition-duration: var(--dur-instant);
 }
@@ -533,16 +543,19 @@ select {
 /* Press feedback — tactile depth on tap */
 .press-feedback {
   transition:
+    transform var(--dur-snappy) var(--ease-precise),
     background-color var(--dur-quick) var(--ease-snap),
     border-color var(--dur-quick) var(--ease-snap),
     color var(--dur-quick) var(--ease-snap);
 }
 
 .press-feedback:hover {
+  transform: translateX(2px);
   background: var(--surface-muted);
 }
 
 .press-feedback:active {
+  transform: translateX(1px) scale(0.992);
   background: var(--surface-hover);
   transition-duration: var(--dur-instant);
 }
@@ -552,6 +565,242 @@ select {
   transition:
     transform var(--dur-snappy) var(--ease-spring-out),
     background-color var(--dur-quick) var(--ease-snap);
+}
+
+/* ── OfferU flat workbench: Notion interaction base + local woven material ── */
+.workbench-main {
+  background:
+    radial-gradient(circle at 88% 4%, rgba(184, 126, 107, 0.045), transparent 24rem),
+    var(--background);
+}
+
+.stage-page {
+  container-type: inline-size;
+  padding-bottom: 1rem;
+}
+
+.stage-page > section,
+.stage-page > div {
+  scroll-margin-top: 1rem;
+}
+
+.stage-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-color: var(--border-strong);
+}
+
+.stage-hero::after,
+.surface-fabric::after {
+  position: absolute;
+  inset: 0 0 0 auto;
+  z-index: -1;
+  width: min(42%, 34rem);
+  content: "";
+  pointer-events: none;
+  opacity: 0.72;
+  background-color: var(--fabric-base);
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.09'/%3E%3C/svg%3E"),
+    repeating-linear-gradient(0deg, var(--fabric-thread) 0 1px, transparent 1px 4px),
+    repeating-linear-gradient(90deg, var(--fabric-highlight) 0 1px, transparent 1px 5px);
+  mask-image: linear-gradient(90deg, transparent, #000 28%, #000);
+}
+
+.stage-hero > *,
+.surface-fabric > * {
+  position: relative;
+  z-index: 1;
+}
+
+.stage-hero h1 {
+  max-width: 16ch;
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 650;
+  line-height: 1.05;
+  letter-spacing: -0.045em;
+  text-transform: none;
+  text-wrap: balance;
+}
+
+.stage-hero .bauhaus-panel-sm {
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(4px);
+}
+
+.stage-toolbar,
+.data-toolbar {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 94%, var(--fabric-base));
+}
+
+.data-workspace {
+  border-color: var(--border-strong);
+  border-radius: 8px;
+  box-shadow: 0 1px 0 var(--shadow-soft);
+}
+
+.offeru-data-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.offeru-data-table th,
+.offeru-data-table td {
+  border-right: 1px solid var(--border);
+}
+
+.offeru-data-table th:last-child,
+.offeru-data-table td:last-child {
+  border-right: 0;
+}
+
+.offeru-data-table thead th {
+  height: 38px;
+  color: var(--foreground-soft);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.offeru-data-row {
+  outline: none;
+  transition:
+    background-color var(--dur-quick) var(--ease-snap),
+    box-shadow var(--dur-quick) var(--ease-snap);
+}
+
+.offeru-data-row:hover,
+.offeru-data-row:focus-visible {
+  background: color-mix(in srgb, var(--surface-hover) 72%, white);
+  box-shadow: inset 3px 0 0 var(--accent-clay);
+}
+
+.offeru-data-row:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.column-resize-handle {
+  position: absolute;
+  inset: 4px -4px 4px auto;
+  z-index: 40;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.column-resize-handle::after {
+  position: absolute;
+  inset: 4px 3px;
+  content: "";
+  border-radius: 999px;
+  background: transparent;
+  transition: background-color var(--dur-quick) var(--ease-snap);
+}
+
+.column-resize-handle:hover::after,
+.column-resize-handle:active::after {
+  background: var(--accent-clay);
+}
+
+.context-rail {
+  background:
+    linear-gradient(180deg, rgba(244, 241, 234, 0.58), transparent 8rem),
+    var(--background);
+}
+
+.context-rail-header {
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(12px);
+}
+
+.inspector-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.inspector-hero::after {
+  width: 44%;
+  opacity: 0.52;
+}
+
+.inspector-fields {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.inspector-field-row {
+  min-height: 36px;
+  border-radius: 6px;
+  padding: 3px 4px;
+  transition: background-color var(--dur-quick) var(--ease-snap);
+}
+
+.inspector-field-row:hover {
+  background: var(--surface-muted);
+}
+
+.feedback-pop {
+  animation: feedback-pop var(--dur-deliberate) var(--ease-precise) both;
+}
+
+@keyframes feedback-pop {
+  0% { opacity: 0; transform: translateY(-8px) scale(0.97); }
+  70% { opacity: 1; transform: translateY(1px) scale(1.005); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@container (max-width: 760px) {
+  .stage-hero::after {
+    width: 68%;
+    opacity: 0.45;
+  }
+}
+
+@container (min-width: 640px) {
+  .data-toolbar-primary {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .data-toolbar-search {
+    max-width: 420px;
+  }
+}
+
+@container (min-width: 980px) {
+  .data-toolbar-layout {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .data-toolbar-primary {
+    flex: 1 1 0%;
+    flex-wrap: nowrap;
+  }
+
+  .data-toolbar-search {
+    width: 34%;
+    min-width: 260px;
+    max-width: 500px;
+  }
+
+  .data-toolbar-actions {
+    align-items: flex-end;
+  }
+
+  .data-toolbar-help {
+    text-align: right;
+  }
+
+  .data-toolbar-status {
+    justify-content: flex-end;
+  }
 }
 
 /* Profile 的织物感只作为局部材料提示，不进入正文阅读面。 */

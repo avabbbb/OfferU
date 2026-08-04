@@ -4,32 +4,40 @@ import hashlib
 import inspect
 import json
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Optional
 
-from sqlalchemy import func, select
+from pydantic import BaseModel, ConfigDict, Field, PositiveInt, ValidationError, model_validator
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy import func, select, update
 
 from app.database import async_session
 from app.services.agent_operations import (
     activate_authorized_research_read_only,
     add_profile_evidence,
     analyze_application_patterns,
-    batch_triage,
     begin_gmail_oauth,
     complete_gmail_oauth,
     complete_authorized_research_session,
     connect_imap_account,
+    cancel_job_research,
     create_ai_interview,
     create_application,
     create_interview_scoring_skill,
     create_memory_proposal,
     cancel_authorized_research_session,
     capture_authorized_research_page,
+    classify_progress_signal,
     consolidate_memory_observations,
+    distill_memory,
+    draft_interview_scoring_skill,
     export_resume_pdf,
     generate_cover_letter,
     get_application_workspace,
     get_application_progress_candidate,
+    get_application_progress_board,
     get_application_progress_overview,
     get_ai_interview,
     get_ai_interview_runtime,
@@ -37,6 +45,8 @@ from app.services.agent_operations import (
     get_career_artifact,
     get_job,
     get_job_research,
+    get_hosted_executor_session,
+    get_pre_application_state,
     get_interview_scoring_skill,
     get_profile,
     get_resume,
@@ -46,11 +56,13 @@ from app.services.agent_operations import (
     get_batch_job_evaluation,
     get_email_sync_run,
     import_jd,
+    inspect_resume_document,
     invalidate_memory_source,
     invalidate_work_source,
     create_application_attempt,
     validate_fact_gate,
     job_stats,
+    list_agent_runs_summary,
     list_applications,
     list_ai_interviews,
     list_authorized_research_sessions,
@@ -58,9 +70,12 @@ from app.services.agent_operations import (
     list_application_records,
     list_application_events,
     list_career_artifacts,
+    list_calendar_events,
     list_follow_up_cadence,
     list_jobs,
     list_job_research_runs,
+    list_hosted_executor_sessions,
+    list_interview_questions,
     list_interview_scoring_skills,
     list_learning_observations,
     list_memory_inbox,
@@ -74,17 +89,23 @@ from app.services.agent_operations import (
     list_profile_evidence,
     list_resume_optimizations,
     list_resumes,
+    prepare_pre_application_decision,
     prepare_resume_optimization,
+    promote_session_memory,
     register_work_source,
+    refresh_job_research_report,
     ingest_application_signal,
     ingest_interview_behavior_events,
     record_follow_up,
     revoke_email_account,
     restart_ai_interview,
     review_memory_proposal,
+    review_job_research,
+    review_pre_application_decision,
     review_resume_optimization,
     review_application_progress,
     save_career_artifact,
+    search_memory,
     start_batch_job_evaluation,
     start_authorized_research_session,
     resume_batch_job_evaluation,
@@ -94,7 +115,6 @@ from app.services.agent_operations import (
     start_job_research,
     sync_email_notifications,
     submit_ai_interview_answer,
-    triage_job,
     update_application_record,
     update_application_status,
     email_connection_status,
@@ -104,6 +124,499 @@ from app.models.models import AgentWorkspaceState, Job, OperationAuditLog, Pool
 
 
 OperationFn = Callable[..., Awaitable[Any]]
+
+
+class _StrictOperationInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class GetJobInput(_StrictOperationInput):
+    job_id: int = Field(gt=0)
+
+
+class ListJobResearchRunsInput(_StrictOperationInput):
+    job_id: int | None = Field(default=None, gt=0)
+    status: str | None = Field(default=None, min_length=1, max_length=32)
+    limit: int = Field(default=20, ge=1, le=100)
+
+
+class GetJobResearchInput(_StrictOperationInput):
+    run_id: str = Field(min_length=1, max_length=80)
+
+
+class ReviewJobResearchInput(_StrictOperationInput):
+    run_id: str = Field(min_length=1, max_length=80)
+    action: str = Field(pattern="^(accept|reject)$")
+    note: str = Field(default="", max_length=2000)
+
+
+class StartJobResearchInput(_StrictOperationInput):
+    job_id: int = Field(gt=0)
+    runtime_id: str = Field(default="codex", pattern="^(codex|claude)$")
+
+
+class ResumeJobResearchInput(_StrictOperationInput):
+    run_id: str = Field(min_length=1, max_length=80)
+
+
+class ListHostedExecutorSessionsInput(_StrictOperationInput):
+    task_type: str | None = Field(default=None, min_length=1, max_length=80)
+    task_id: str | None = Field(default=None, min_length=1, max_length=80)
+    limit: int = Field(default=20, ge=1, le=100)
+
+
+class GetHostedExecutorSessionInput(_StrictOperationInput):
+    session_id: str = Field(min_length=1, max_length=64)
+
+
+class GetPreApplicationStateInput(_StrictOperationInput):
+    job_id: int = Field(gt=0)
+
+
+class PreparePreApplicationDecisionInput(_StrictOperationInput):
+    job_id: int = Field(gt=0)
+    research_run_id: str | None = Field(default=None, min_length=1, max_length=80)
+
+
+class ReviewPreApplicationDecisionInput(_StrictOperationInput):
+    decision_id: str = Field(min_length=1, max_length=80)
+    final_decision: str = Field(
+        pattern="^(go|conditional_go|no_go|insufficient_evidence)$"
+    )
+    note: str = Field(default="", max_length=2000)
+
+
+class PrepareResumeOptimizationInput(_StrictOperationInput):
+    job_id: int = Field(gt=0)
+    profile_id: int | None = Field(default=None, gt=0)
+    reference_resume_id: int | None = Field(default=None, gt=0)
+    research_run_id: str | None = Field(default=None, min_length=1, max_length=80)
+    candidate_rows: list[dict[str, Any]] | None = Field(default=None)
+    candidate_original_rows: list[dict[str, Any]] | None = Field(default=None)
+    source_session_id: str | None = Field(default=None, min_length=1, max_length=60)
+
+
+class ListCalendarEventsInput(_StrictOperationInput):
+    start: str | None = Field(default=None, min_length=1, max_length=64)
+    end: str | None = Field(default=None, min_length=1, max_length=64)
+    related_job_id: int | None = Field(default=None, gt=0)
+    limit: int = Field(default=100, ge=1, le=500)
+
+
+class ListInterviewQuestionsInput(_StrictOperationInput):
+    company: str | None = Field(default=None, min_length=1, max_length=300)
+    role: str | None = Field(default=None, min_length=1, max_length=300)
+    job_id: int | None = Field(default=None, gt=0)
+    category: str | None = Field(default=None, min_length=1, max_length=80)
+    limit: int = Field(default=100, ge=1, le=500)
+
+
+class ListAgentRunsInput(_StrictOperationInput):
+    conversation_id: str | None = Field(default=None, min_length=1, max_length=120)
+    task_id: str | None = Field(default=None, min_length=1, max_length=120)
+    limit: int = Field(default=20, ge=1, le=100)
+
+
+class AgentPlaybookInput(_StrictOperationInput):
+    detail: str = Field(default="compact", pattern="^(compact|full)$")
+
+
+class WorkflowCatalogInput(_StrictOperationInput):
+    pass
+
+
+class WorkflowPlanInput(_StrictOperationInput):
+    goal: str = Field(min_length=1, max_length=1000)
+    limit: int = Field(default=20, ge=1, le=100)
+
+
+class ListOperationAuditInput(_StrictOperationInput):
+    operation: str | None = Field(default=None, min_length=1, max_length=120)
+    surface: str | None = Field(default=None, min_length=1, max_length=80)
+    limit: int = Field(default=50, ge=1, le=200)
+
+
+class CurrentViewInput(_StrictOperationInput):
+    scope: str = Field(default="default", min_length=1, max_length=80)
+
+
+class SetCurrentViewInput(CurrentViewInput):
+    route: str = Field(default="", max_length=300)
+    title: str = Field(default="", max_length=300)
+    entity_type: str = Field(default="", max_length=80)
+    entity_id: str = Field(default="", max_length=120)
+    selection: dict[str, Any] = Field(default_factory=dict)
+    filters: dict[str, Any] = Field(default_factory=dict)
+    context: dict[str, Any] = Field(default_factory=dict)
+    updated_by: str = Field(default="ui", min_length=1, max_length=80)
+
+
+class ListPoolsInput(_StrictOperationInput):
+    pass
+
+
+class ListJobsInput(_StrictOperationInput):
+    triage_status: str | None = Field(
+        default=None,
+        pattern="^(inbox|picked|ignored)$",
+    )
+    pool_id: int | None = Field(default=None, gt=0)
+    keyword: str | None = Field(default=None, min_length=1, max_length=300)
+    page: int = Field(default=1, ge=1)
+    page_size: int = Field(default=20, ge=1, le=100)
+
+
+class TriageJobInput(_StrictOperationInput):
+    job_id: int = Field(gt=0)
+    status: str = Field(
+        pattern="^(inbox|picked|ignored)$",
+    )
+    pool_id: int | None = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def validate_pool_status(self):
+        if self.pool_id is not None and self.status != "picked":
+            raise ValueError("pool_id can only be used with status=picked")
+        return self
+
+
+class BatchTriageInput(_StrictOperationInput):
+    job_ids: list[PositiveInt] = Field(min_length=1, max_length=500)
+    status: str = Field(
+        pattern="^(inbox|picked|ignored)$",
+    )
+    pool_id: int | None = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def validate_pool_status(self):
+        if self.pool_id is not None and self.status != "picked":
+            raise ValueError("pool_id can only be used with status=picked")
+        return self
+
+
+class CreatePoolInput(_StrictOperationInput):
+    name: str = Field(min_length=1, max_length=100)
+    scope: str = Field(default="picked", pattern="^(inbox|picked|ignored)$")
+    description: str = Field(default="", max_length=2000)
+    color: str = Field(default="#3B82F6", pattern="^#[0-9A-Fa-f]{6}$")
+    sort_order: int = Field(default=0, ge=0, le=100000)
+
+
+class UpdatePoolInput(_StrictOperationInput):
+    pool_id: int = Field(gt=0)
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    description: str | None = Field(default=None, max_length=2000)
+    color: str | None = Field(default=None, pattern="^#[0-9A-Fa-f]{6}$")
+    sort_order: int | None = Field(default=None, ge=0, le=100000)
+
+
+class PoolIdInput(_StrictOperationInput):
+    pool_id: int = Field(gt=0)
+
+
+class UpdateJobInput(_StrictOperationInput):
+    job_id: int = Field(gt=0)
+    triage_status: str | None = Field(
+        default=None,
+        pattern="^(inbox|picked|ignored)$",
+    )
+    pool_id: int | None = Field(default=None, gt=0)
+    clear_pool: bool = False
+
+    @model_validator(mode="after")
+    def validate_update(self):
+        if self.triage_status is None and self.pool_id is None and not self.clear_pool:
+            raise ValueError("no update fields provided")
+        if self.pool_id is not None and self.clear_pool:
+            raise ValueError("pool_id and clear_pool are mutually exclusive")
+        if self.pool_id is not None and self.triage_status not in {None, "picked"}:
+            raise ValueError("pool_id can only be used with triage_status=picked")
+        return self
+
+
+class BatchUpdateJobsInput(_StrictOperationInput):
+    job_ids: list[PositiveInt] = Field(min_length=1, max_length=500)
+    triage_status: str | None = Field(
+        default=None,
+        pattern="^(inbox|picked|ignored)$",
+    )
+    pool_id: int | None = Field(default=None, gt=0)
+    clear_pool: bool = False
+
+    @model_validator(mode="after")
+    def validate_update(self):
+        if self.triage_status is None and self.pool_id is None and not self.clear_pool:
+            raise ValueError("no update fields provided")
+        if self.pool_id is not None and self.clear_pool:
+            raise ValueError("pool_id and clear_pool are mutually exclusive")
+        if self.pool_id is not None and self.triage_status not in {None, "picked"}:
+            raise ValueError("pool_id can only be used with triage_status=picked")
+        return self
+
+
+class JobStatsInput(_StrictOperationInput):
+    pass
+
+
+class GetProfileInput(_StrictOperationInput):
+    pass
+
+
+class InspectResumeDocumentInput(_StrictOperationInput):
+    file_path: str = Field(min_length=1, max_length=2048)
+
+
+class ListProfileEvidenceInput(_StrictOperationInput):
+    section_type: str | None = Field(
+        default=None,
+        pattern="^(education|experience|project|skill|certificate|custom|custom:[a-z0-9_]{6,64})$",
+    )
+    limit: int = Field(default=100, ge=1, le=500)
+
+
+class AddProfileEvidenceInput(_StrictOperationInput):
+    section_type: str = Field(
+        pattern="^(education|experience|project|skill|certificate|custom|custom:[a-z0-9_]{6,64})$",
+    )
+    title: str = Field(min_length=1, max_length=220)
+    content_json: dict[str, Any] = Field(min_length=1)
+    source_text: str = Field(min_length=1, max_length=20_000)
+    category_label: str | None = Field(default=None, max_length=220)
+    source_url: str | None = Field(default=None, max_length=2048)
+    dedup_key: str | None = Field(default=None, max_length=500)
+    tier: str | None = Field(
+        default=None,
+        pattern="^(verified_fact|preference|career_hypothesis)$",
+    )
+
+
+class ListLearningObservationsInput(_StrictOperationInput):
+    status: str = Field(default="active", pattern="^(active|invalidated|all)$")
+    observation_type: str | None = Field(
+        default=None,
+        pattern="^[a-z][a-z0-9_]{1,79}$",
+    )
+    limit: int = Field(default=100, ge=1, le=500)
+
+
+class ListMemoryInboxInput(_StrictOperationInput):
+    status: str = Field(
+        default="pending",
+        pattern="^(pending|deferred|applying|accepted|rejected|revoked|invalidated|all)$",
+    )
+    limit: int = Field(default=100, ge=1, le=500)
+
+
+class CreateMemoryProposalInput(_StrictOperationInput):
+    observation_id: int = Field(gt=0)
+    target_tier: str = Field(
+        pattern="^(verified_fact|preference|career_hypothesis)$",
+    )
+    section_type: str = Field(pattern="^[a-z][a-z0-9_]{1,79}$")
+    title: str = Field(min_length=1, max_length=220)
+    after: dict[str, Any] = Field(min_length=1)
+    reason: str = Field(min_length=1, max_length=4000)
+    before: dict[str, Any] | None = None
+    impact: list[str] | None = Field(default=None, max_length=20)
+
+
+class ReviewMemoryProposalInput(_StrictOperationInput):
+    proposal_id: int = Field(gt=0)
+    action: str = Field(pattern="^(accept|reject|defer|revoke)$")
+    note: str = Field(default="", max_length=2000)
+
+
+class InvalidateMemorySourceInput(_StrictOperationInput):
+    source_id: int = Field(gt=0)
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class ConsolidateMemoryObservationsInput(_StrictOperationInput):
+    observation_ids: list[PositiveInt] | None = Field(default=None, max_length=500)
+    limit: int = Field(default=100, ge=1, le=500)
+
+
+class ValidateFactGateInput(_StrictOperationInput):
+    source_facts: dict[str, Any]
+    generated: dict[str, Any]
+
+
+class CreateApplicationAttemptInput(_StrictOperationInput):
+    job_id: int = Field(gt=0)
+    resume_id: int | None = Field(default=None, gt=0)
+    resume_version_id: int | None = Field(default=None, gt=0)
+    cover_letter: str = Field(default="", max_length=60_000)
+    notes: str = Field(default="", max_length=60_000)
+
+
+class ListApplicationsInput(_StrictOperationInput):
+    status: str | None = Field(
+        default=None,
+        pattern="^(pending|submitted|responded|interview|rejected|offer)$",
+    )
+    page: int = Field(default=1, ge=1)
+    page_size: int = Field(default=20, ge=1, le=100)
+
+
+class CreateApplicationInput(_StrictOperationInput):
+    job_id: int = Field(gt=0)
+    notes: str | None = Field(default=None, max_length=60_000)
+
+
+class UpdateApplicationStatusInput(_StrictOperationInput):
+    application_id: int = Field(gt=0)
+    status: str = Field(
+        pattern="^(pending|submitted|responded|interview|rejected|offer)$",
+    )
+    notes: str | None = Field(default=None, max_length=60_000)
+
+
+class IngestApplicationSignalInput(_StrictOperationInput):
+    channel: str = Field(pattern="^(email|sms_forward)$")
+    account_ref: str = Field(min_length=1, max_length=160)
+    external_message_id: str = Field(min_length=1, max_length=500)
+    sender: str = Field(max_length=500)
+    subject: str = Field(max_length=500)
+    body: str = Field(min_length=1, max_length=200_000)
+    external_thread_id: str = Field(default="", max_length=500)
+    received_at: str | None = Field(default=None, max_length=64)
+    stage_hint: str = Field(
+        default="",
+        pattern="^(|applied|written_test|assessment|interview_1|interview_2|interview_hr|offer|rejected)$",
+    )
+
+
+class ListApplicationProgressCandidatesInput(_StrictOperationInput):
+    status: str = Field(
+        default="pending",
+        pattern="^(pending|confirmed|rejected|all)$",
+    )
+    disclosure: str = Field(default="summary", pattern="^(summary|detail)$")
+    limit: int = Field(default=100, ge=1, le=500)
+
+
+class ApplicationProgressCandidateInput(_StrictOperationInput):
+    candidate_id: str = Field(min_length=1, max_length=64)
+
+
+class ReviewApplicationProgressInput(ApplicationProgressCandidateInput):
+    action: str = Field(pattern="^(accept|reject)$")
+    application_attempt_id: int | None = Field(default=None, gt=0)
+    stage: str = Field(
+        default="",
+        pattern="^(|applied|written_test|assessment|interview_1|interview_2|interview_hr|offer|rejected)$",
+    )
+    note: str = Field(default="", max_length=1000)
+
+
+class GetApplicationProgressOverviewInput(_StrictOperationInput):
+    disclosure: str = Field(default="summary", pattern="^(summary|detail)$")
+    job_id: int | None = Field(default=None, gt=0)
+    limit: int = Field(default=200, ge=1, le=500)
+
+
+class GetApplicationWorkspaceInput(_StrictOperationInput):
+    pass
+
+
+class ListApplicationRecordsInput(_StrictOperationInput):
+    table_id: int = Field(gt=0)
+    keyword: str = Field(default="", max_length=300)
+
+
+class ListApplicationEventsInput(_StrictOperationInput):
+    application_type: str | None = Field(
+        default=None,
+        pattern="^(application|application_record)$",
+    )
+    application_id: int | None = Field(default=None, gt=0)
+    event_type: str | None = Field(
+        default=None,
+        pattern="^[a-z][a-z0-9_]{1,79}$",
+    )
+    limit: int = Field(default=1000, ge=1, le=5000)
+
+
+class AnalyzeApplicationPatternsInput(_StrictOperationInput):
+    pass
+
+
+class UpdateApplicationRecordInput(_StrictOperationInput):
+    record_id: int = Field(gt=0)
+    field_key: str = Field(pattern="^(apply_status|follow_up_date|notes)$")
+    value: str = Field(max_length=60_000)
+
+    @model_validator(mode="after")
+    def validate_value(self):
+        allowed_statuses = {"待投递", "已投递", "待处理", "面试中", "已拒绝", "已录用"}
+        if self.field_key == "apply_status" and self.value.strip() not in allowed_statuses:
+            raise ValueError("apply_status has an unsupported value")
+        return self
+
+
+class ListFollowUpCadenceInput(_StrictOperationInput):
+    pass
+
+
+class RecordFollowUpInput(_StrictOperationInput):
+    application_type: str = Field(pattern="^(application|application_record)$")
+    application_id: int = Field(gt=0)
+    channel: str = Field(pattern="^(email|linkedin|phone|wechat|other)$")
+    contact: str = Field(default="", max_length=300)
+    notes: str = Field(default="", max_length=2000)
+    sent_at: str | None = Field(
+        default=None,
+        pattern="^\\d{4}-\\d{2}-\\d{2}$",
+    )
+
+
+@dataclass(frozen=True)
+class OperationAuthorization:
+    operation: str
+    run_id: str
+    action_id: str
+    idempotency_key: str
+
+    @property
+    def confirmation_ref(self) -> str:
+        return f"agent-run:{self.run_id}:{self.action_id}"
+
+
+_OPERATION_AUTHORIZATION: ContextVar[OperationAuthorization | None] = ContextVar(
+    "offeru_operation_authorization",
+    default=None,
+)
+_PROTECTED_AGENT_SURFACES = {
+    "agent",
+    "cli",
+    "mcp",
+    "pi",
+    "web_agent",
+    "optimize_agent",
+}
+
+
+@contextmanager
+def confirmed_operation(
+    *,
+    operation: str,
+    run_id: str,
+    action_id: str,
+    idempotency_key: str,
+):
+    """Authorize exactly one persisted Agent Run step for Registry execution."""
+
+    authorization = OperationAuthorization(
+        operation=str(operation or "").strip(),
+        run_id=str(run_id or "").strip(),
+        action_id=str(action_id or "").strip(),
+        idempotency_key=str(idempotency_key or "").strip(),
+    )
+    token = _OPERATION_AUTHORIZATION.set(authorization)
+    try:
+        yield
+    finally:
+        _OPERATION_AUTHORIZATION.reset(token)
 
 
 @dataclass(frozen=True)
@@ -118,6 +631,7 @@ class Operation:
     examples: tuple[dict[str, Any], ...] = ()
     audit_redacted_parameters: tuple[str, ...] = ()
     audit_redacted_output_parameters: tuple[str, ...] = ()
+    input_model: type[BaseModel] | None = None
     version: str = "2026-05-23"
 
     @property
@@ -125,10 +639,20 @@ class Operation:
         return any(effect in self.side_effects for effect in ("write", "llm", "external"))
 
     def schema(self) -> dict[str, Any]:
+        input_schema = (
+            self.input_model.model_json_schema()
+            if self.input_model is not None
+            else None
+        )
         return {
             "name": self.name,
             "description": self.description,
-            "parameters": self.parameters,
+            "parameters": (
+                input_schema.get("properties", {})
+                if input_schema is not None
+                else self.parameters
+            ),
+            "input_schema": input_schema,
             "group": self.group,
             "side_effects": list(self.side_effects),
             "supports_dry_run": self.is_mutation,
@@ -154,12 +678,53 @@ class Operation:
         }
 
 
+async def _triage_job_via_canonical_update(
+    job_id: int,
+    status: str,
+    pool_id: int | None = None,
+) -> dict[str, Any]:
+    return await update_job_operation(
+        job_id=job_id,
+        triage_status=status,
+        pool_id=pool_id,
+    )
+
+
+async def _batch_triage_via_canonical_update(
+    job_ids: list[int],
+    status: str,
+    pool_id: int | None = None,
+) -> dict[str, Any]:
+    return await batch_update_jobs_operation(
+        job_ids=job_ids,
+        triage_status=status,
+        pool_id=pool_id,
+    )
+
+
+async def _prepare_resume_optimization_after_pre_application(
+    **kwargs: Any,
+) -> dict[str, Any]:
+    job_id = kwargs.get("job_id")
+    state = await get_pre_application_state(job_id=job_id)
+    stage = state.get("stage")
+    if stage == "resume_proposal_ready":
+        proposal = state.get("resume_proposal") or {}
+        proposal_id = proposal.get("proposal_id")
+        if proposal_id:
+            return await get_resume_optimization(proposal_id=proposal_id)
+    if stage != "ready_for_resume_proposal":
+        raise ValueError("只有审核通过投或有条件投的岗位才能生成简历提案")
+    return await prepare_resume_optimization(**kwargs)
+
+
 OPERATIONS: dict[str, Operation] = {
     "get_profile": Operation(
         name="get_profile",
         fn=get_profile,
         description="获取用户个人资料概览，包括基本信息、目标岗位、经历统计。",
         group="profile",
+        input_model=GetProfileInput,
     ),
     "list_profile_evidence": Operation(
         name="list_profile_evidence",
@@ -167,6 +732,7 @@ OPERATIONS: dict[str, Operation] = {
         description="读取带来源信息的结构化职业证据条目。",
         parameters={"section_type": "str?", "limit": "int=100"},
         group="profile",
+        input_model=ListProfileEvidenceInput,
     ),
     "add_profile_evidence": Operation(
         name="add_profile_evidence",
@@ -184,6 +750,7 @@ OPERATIONS: dict[str, Operation] = {
         },
         group="profile",
         side_effects=("write",),
+        input_model=AddProfileEvidenceInput,
     ),
     "list_learning_observations": Operation(
         name="list_learning_observations",
@@ -195,6 +762,7 @@ OPERATIONS: dict[str, Operation] = {
             "limit": "int=100",
         },
         group="memory",
+        input_model=ListLearningObservationsInput,
     ),
     "list_memory_inbox": Operation(
         name="list_memory_inbox",
@@ -202,6 +770,7 @@ OPERATIONS: dict[str, Operation] = {
         description="读取记忆收件箱提案及其前后差异、理由、影响和来源证据。",
         parameters={"status": "str=pending", "limit": "int=100"},
         group="memory",
+        input_model=ListMemoryInboxInput,
     ),
     "create_memory_proposal": Operation(
         name="create_memory_proposal",
@@ -219,6 +788,7 @@ OPERATIONS: dict[str, Operation] = {
         },
         group="memory",
         side_effects=("write",),
+        input_model=CreateMemoryProposalInput,
     ),
     "review_memory_proposal": Operation(
         name="review_memory_proposal",
@@ -231,6 +801,7 @@ OPERATIONS: dict[str, Operation] = {
         },
         group="memory",
         side_effects=("write",),
+        input_model=ReviewMemoryProposalInput,
     ),
     "invalidate_memory_source": Operation(
         name="invalidate_memory_source",
@@ -239,6 +810,7 @@ OPERATIONS: dict[str, Operation] = {
         parameters={"source_id": "int", "reason": "str"},
         group="memory",
         side_effects=("write",),
+        input_model=InvalidateMemorySourceInput,
     ),
     "consolidate_memory_observations": Operation(
         name="consolidate_memory_observations",
@@ -247,12 +819,29 @@ OPERATIONS: dict[str, Operation] = {
         parameters={"observation_ids": "list[int]?", "limit": "int=100"},
         group="memory",
         side_effects=("write",),
+        input_model=ConsolidateMemoryObservationsInput,
     ),
     "get_ai_interview_runtime": Operation(
         name="get_ai_interview_runtime",
         fn=get_ai_interview_runtime,
         description="读取当前面试模型、数据类别同意要求、摄像头隐私边界和禁止推断范围。",
         group="interview",
+    ),
+    "list_calendar_events": Operation(
+        name="list_calendar_events",
+        fn=list_calendar_events,
+        description="按时间范围或岗位读取面试、截止日期及其他本地日程事件。",
+        parameters={"start": "str?", "end": "str?", "related_job_id": "int?", "limit": "int=100"},
+        group="interview",
+        input_model=ListCalendarEventsInput,
+    ),
+    "list_interview_questions": Operation(
+        name="list_interview_questions",
+        fn=list_interview_questions,
+        description="按公司、岗位、职位或类别读取已收集的结构化面试题。",
+        parameters={"company": "str?", "role": "str?", "job_id": "int?", "category": "str?", "limit": "int=100"},
+        group="interview",
+        input_model=ListInterviewQuestionsInput,
     ),
     "list_interview_scoring_skills": Operation(
         name="list_interview_scoring_skills",
@@ -479,6 +1068,7 @@ OPERATIONS: dict[str, Operation] = {
         },
         group="profile",
         side_effects=("read",),
+        input_model=ValidateFactGateInput,
     ),
     "create_application_attempt": Operation(
         name="create_application_attempt",
@@ -493,31 +1083,42 @@ OPERATIONS: dict[str, Operation] = {
         },
         group="applications",
         side_effects=("write",),
+        input_model=CreateApplicationAttemptInput,
     ),
     "list_pools": Operation(
         name="list_pools",
         fn=list_pools,
         description="获取岗位池列表。",
         group="jobs",
+        input_model=ListPoolsInput,
     ),
     "list_jobs": Operation(
         name="list_jobs",
         fn=list_jobs,
         description="分页浏览岗位列表，支持按分拣状态、池、关键词筛选。",
         parameters={
-            "triage_status": "str? (unscreened|screened|ignored)",
+            "triage_status": "str? (inbox|picked|ignored)",
             "pool_id": "int?",
             "keyword": "str?",
             "page": "int=1",
             "page_size": "int=20",
         },
         group="jobs",
+        input_model=ListJobsInput,
     ),
     "list_coding_agents": Operation(
         name="list_coding_agents",
         fn=list_coding_agents,
         description="检测本机 coding-agent CLI 及其隔离运行支持。",
         group="agent_runtime",
+    ),
+    "list_agent_runs": Operation(
+        name="list_agent_runs",
+        fn=list_agent_runs_summary,
+        description="读取主 Agent Run 摘要、状态、待确认动作数量和可见失败，不展开消息或 Provider 原始事件。",
+        parameters={"conversation_id": "str?", "task_id": "str?", "limit": "int=20"},
+        group="agent_runtime",
+        input_model=ListAgentRunsInput,
     ),
     "list_batch_job_evaluations": Operation(
         name="list_batch_job_evaluations",
@@ -555,6 +1156,7 @@ OPERATIONS: dict[str, Operation] = {
         description="读取持久化的单岗位公开网页调研运行及证据数量。",
         parameters={"job_id": "int?", "status": "str?", "limit": "int=20"},
         group="research",
+        input_model=ListJobResearchRunsInput,
     ),
     "get_job_research": Operation(
         name="get_job_research",
@@ -562,6 +1164,16 @@ OPERATIONS: dict[str, Operation] = {
         description="读取一次岗位调研的双档案、逐条结论、证据快照、报告和执行轨迹。",
         parameters={"run_id": "str"},
         group="research",
+        input_model=GetJobResearchInput,
+    ),
+    "review_job_research": Operation(
+        name="review_job_research",
+        fn=review_job_research,
+        description="由使用者接受或拒绝候选调研证据；只有接受后才发布到公司与岗位档案。",
+        parameters={"run_id": "str", "action": "accept|reject", "note": "str="},
+        group="research",
+        side_effects=("write",),
+        input_model=ReviewJobResearchInput,
     ),
     "start_job_research": Operation(
         name="start_job_research",
@@ -570,6 +1182,7 @@ OPERATIONS: dict[str, Operation] = {
         parameters={"job_id": "int", "runtime_id": "str=codex"},
         group="research",
         side_effects=("write", "external"),
+        input_model=StartJobResearchInput,
     ),
     "resume_job_research": Operation(
         name="resume_job_research",
@@ -578,6 +1191,62 @@ OPERATIONS: dict[str, Operation] = {
         parameters={"run_id": "str"},
         group="research",
         side_effects=("write", "external"),
+        input_model=ResumeJobResearchInput,
+    ),
+    "cancel_job_research": Operation(
+        name="cancel_job_research",
+        fn=cancel_job_research,
+        description="确认后取消运行中或被中断的岗位调研，并终止其任务绑定的外部会话。",
+        parameters={"run_id": "str"},
+        group="research",
+        side_effects=("write", "external"),
+        input_model=ResumeJobResearchInput,
+    ),
+    "list_hosted_executor_sessions": Operation(
+        name="list_hosted_executor_sessions",
+        fn=list_hosted_executor_sessions,
+        description="读取按重任务绑定的外部 Coding Agent 会话、协议、授权范围和恢复游标。",
+        parameters={"task_type": "str?", "task_id": "str?", "limit": "int=20"},
+        group="agent_runtime",
+        input_model=ListHostedExecutorSessionsInput,
+    ),
+    "get_hosted_executor_session": Operation(
+        name="get_hosted_executor_session",
+        fn=get_hosted_executor_session,
+        description="读取一个外部 Coding Agent 托管会话及其追加式事件审计记录。",
+        parameters={"session_id": "str"},
+        group="agent_runtime",
+        input_model=GetHostedExecutorSessionInput,
+    ),
+    "get_pre_application_state": Operation(
+        name="get_pre_application_state",
+        fn=get_pre_application_state,
+        description="读取一个岗位在投前决策闭环中的当前状态、可复核建议和退出结果。",
+        parameters={"job_id": "int"},
+        group="pre_application",
+        input_model=GetPreApplicationStateInput,
+    ),
+    "prepare_pre_application_decision": Operation(
+        name="prepare_pre_application_decision",
+        fn=prepare_pre_application_decision,
+        description="确认后基于真实岗位、已确认职业证据和最新已完成调研生成可复核投前决策。",
+        parameters={"job_id": "int", "research_run_id": "str?"},
+        group="pre_application",
+        side_effects=("write", "external"),
+        input_model=PreparePreApplicationDecisionInput,
+    ),
+    "review_pre_application_decision": Operation(
+        name="review_pre_application_decision",
+        fn=review_pre_application_decision,
+        description="记录使用者最终选择；覆盖 Agent 建议时必须附理由。",
+        parameters={
+            "decision_id": "str",
+            "final_decision": "str (go|conditional_go|no_go|insufficient_evidence)",
+            "note": "str=",
+        },
+        group="pre_application",
+        side_effects=("write",),
+        input_model=ReviewPreApplicationDecisionInput,
     ),
     "start_authorized_research_session": Operation(
         name="start_authorized_research_session",
@@ -674,26 +1343,29 @@ OPERATIONS: dict[str, Operation] = {
         description="查看单个岗位详情，含完整 JD、投递链接、学历经验要求。",
         parameters={"job_id": "int"},
         group="jobs",
+        input_model=GetJobInput,
     ),
     "triage_job": Operation(
         name="triage_job",
-        fn=triage_job,
-        description="将单个岗位分拣为 screened/ignored/unscreened，可分配岗位池。",
+        fn=_triage_job_via_canonical_update,
+        description="将单个岗位分拣为 inbox/picked/ignored，可分配岗位池。",
         parameters={"job_id": "int", "status": "str", "pool_id": "int?"},
         group="jobs",
         side_effects=("write",),
+        input_model=TriageJobInput,
     ),
     "batch_triage": Operation(
         name="batch_triage",
-        fn=batch_triage,
+        fn=_batch_triage_via_canonical_update,
         description="批量分拣多个岗位。",
         parameters={"job_ids": "list[int]", "status": "str", "pool_id": "int?"},
         group="jobs",
         side_effects=("write",),
+        input_model=BatchTriageInput,
     ),
     "prepare_resume_optimization": Operation(
         name="prepare_resume_optimization",
-        fn=prepare_resume_optimization,
+        fn=_prepare_resume_optimization_after_pre_application,
         description="基于已验证档案、完整 JD 和已完成岗位调研生成可审核简历提案；不创建正式 Resume。",
         parameters={
             "job_id": "int",
@@ -707,6 +1379,7 @@ OPERATIONS: dict[str, Operation] = {
         group="resume",
         side_effects=("llm", "write"),
         permissions=("profile_evidence", "job_description", "job_research"),
+        input_model=PrepareResumeOptimizationInput,
     ),
     "list_resume_optimizations": Operation(
         name="list_resume_optimizations",
@@ -730,6 +1403,18 @@ OPERATIONS: dict[str, Operation] = {
         group="resume",
         side_effects=("write",),
         permissions=("resume_write", "career_memory"),
+    ),
+    "inspect_resume_document": Operation(
+        name="inspect_resume_document",
+        fn=inspect_resume_document,
+        description="经使用者确认后读取一个本地 PDF/DOCX 简历，返回原文与逐页解析诊断；不会写入档案或简历。",
+        parameters={"file_path": "str"},
+        group="resume",
+        side_effects=("external",),
+        permissions=("local_file:read",),
+        audit_redacted_parameters=("file_path",),
+        audit_redacted_output_parameters=("text",),
+        input_model=InspectResumeDocumentInput,
     ),
     "list_resumes": Operation(
         name="list_resumes",
@@ -758,6 +1443,7 @@ OPERATIONS: dict[str, Operation] = {
         description="查看投递记录列表，可按状态筛选。",
         parameters={"status": "str?", "page": "int=1", "page_size": "int=20"},
         group="applications",
+        input_model=ListApplicationsInput,
     ),
     "create_application": Operation(
         name="create_application",
@@ -766,6 +1452,7 @@ OPERATIONS: dict[str, Operation] = {
         parameters={"job_id": "int", "notes": "str?"},
         group="applications",
         side_effects=("write",),
+        input_model=CreateApplicationInput,
     ),
     "update_application_status": Operation(
         name="update_application_status",
@@ -774,6 +1461,7 @@ OPERATIONS: dict[str, Operation] = {
         parameters={"application_id": "int", "status": "str", "notes": "str?"},
         group="applications",
         side_effects=("write",),
+        input_model=UpdateApplicationStatusInput,
     ),
     "begin_gmail_oauth": Operation(
         name="begin_gmail_oauth",
@@ -874,6 +1562,7 @@ OPERATIONS: dict[str, Operation] = {
         group="applications",
         side_effects=("write",),
         audit_redacted_parameters=("body",),
+        input_model=IngestApplicationSignalInput,
     ),
     "list_application_progress_candidates": Operation(
         name="list_application_progress_candidates",
@@ -881,6 +1570,7 @@ OPERATIONS: dict[str, Operation] = {
         description="渐进式读取外部消息形成的候选进展；summary 默认隐藏正文片段和备选关联。",
         parameters={"status": "str=pending", "disclosure": "str=summary", "limit": "int=100"},
         group="applications",
+        input_model=ListApplicationProgressCandidatesInput,
     ),
     "get_application_progress_candidate": Operation(
         name="get_application_progress_candidate",
@@ -888,6 +1578,7 @@ OPERATIONS: dict[str, Operation] = {
         description="读取一条候选进展的最小消息证据、关联依据和备选投递尝试。",
         parameters={"candidate_id": "str"},
         group="applications",
+        input_model=ApplicationProgressCandidateInput,
     ),
     "review_application_progress": Operation(
         name="review_application_progress",
@@ -902,6 +1593,7 @@ OPERATIONS: dict[str, Operation] = {
         },
         group="applications",
         side_effects=("write",),
+        input_model=ReviewApplicationProgressInput,
     ),
     "get_application_progress_overview": Operation(
         name="get_application_progress_overview",
@@ -909,12 +1601,14 @@ OPERATIONS: dict[str, Operation] = {
         description="从投递尝试和已确认阶段事件派生紧凑进度表；detail 才展开时间线。",
         parameters={"disclosure": "str=summary", "job_id": "int?", "limit": "int=200"},
         group="applications",
+        input_model=GetApplicationProgressOverviewInput,
     ),
     "get_application_workspace": Operation(
         name="get_application_workspace",
         fn=get_application_workspace,
         description="读取当前投递工作区、表结构、统计和当前表记录。",
         group="applications",
+        input_model=GetApplicationWorkspaceInput,
     ),
     "list_application_records": Operation(
         name="list_application_records",
@@ -922,6 +1616,7 @@ OPERATIONS: dict[str, Operation] = {
         description="读取指定投递工作区表中的事实记录。",
         parameters={"table_id": "int", "keyword": "str?"},
         group="applications",
+        input_model=ListApplicationRecordsInput,
     ),
     "list_application_events": Operation(
         name="list_application_events",
@@ -929,12 +1624,14 @@ OPERATIONS: dict[str, Operation] = {
         description="读取追加式投递事件时间线，可按记录或事件类型过滤。",
         parameters={"application_type": "str?", "application_id": "int?", "event_type": "str?", "limit": "int=1000"},
         group="applications",
+        input_model=ListApplicationEventsInput,
     ),
     "analyze_application_patterns": Operation(
         name="analyze_application_patterns",
         fn=analyze_application_patterns,
         description="基于当前状态和追加式事件计算漏斗、转化、状态迁移与历史覆盖率。",
         group="applications",
+        input_model=AnalyzeApplicationPatternsInput,
     ),
     "update_application_record": Operation(
         name="update_application_record",
@@ -943,12 +1640,14 @@ OPERATIONS: dict[str, Operation] = {
         parameters={"record_id": "int", "field_key": "str", "value": "any"},
         group="applications",
         side_effects=("write",),
+        input_model=UpdateApplicationRecordInput,
     ),
     "list_follow_up_cadence": Operation(
         name="list_follow_up_cadence",
         fn=list_follow_up_cadence,
         description="按确定性规则计算到期、紧急、等待与冷却跟进。",
         group="applications",
+        input_model=ListFollowUpCadenceInput,
     ),
     "record_follow_up": Operation(
         name="record_follow_up",
@@ -964,6 +1663,7 @@ OPERATIONS: dict[str, Operation] = {
         },
         group="applications",
         side_effects=("write",),
+        input_model=RecordFollowUpInput,
     ),
     "list_career_artifacts": Operation(
         name="list_career_artifacts",
@@ -1014,6 +1714,7 @@ OPERATIONS: dict[str, Operation] = {
         fn=job_stats,
         description="获取岗位数据统计。",
         group="analytics",
+        input_model=JobStatsInput,
     ),
 }
 
@@ -1044,7 +1745,7 @@ WORKFLOW_CATALOG: dict[str, dict[str, Any]] = {
         "steps": [
             {"operation": "job_stats", "args": {}},
             {"operation": "list_pools", "args": {}},
-            {"operation": "list_jobs", "args": {"triage_status": "unscreened", "page_size": 20}},
+            {"operation": "list_jobs", "args": {"triage_status": "inbox", "page_size": 20}},
         ],
     },
     "batch_triage": {
@@ -1053,7 +1754,7 @@ WORKFLOW_CATALOG: dict[str, dict[str, Any]] = {
         "intent_keywords": ["批量", "筛选", "分拣", "triage", "忽略", "入池"],
         "steps": [
             {"operation": "get_profile", "args": {}},
-            {"operation": "list_jobs", "args": {"triage_status": "unscreened", "page_size": 50}},
+            {"operation": "list_jobs", "args": {"triage_status": "inbox", "page_size": 50}},
             {"operation": "batch_update_jobs", "args": {"job_ids": [], "triage_status": "picked"}, "dry_run": True},
         ],
     },
@@ -1089,6 +1790,27 @@ WORKFLOW_CATALOG: dict[str, dict[str, Any]] = {
             {"operation": "set_current_view", "args": {"scope": "default", "route": "", "title": "", "updated_by": "external_agent"}, "dry_run": True},
         ],
     },
+    "jd_research_deep_dive": {
+        "name": "jd_research_deep_dive",
+        "description": "对单个岗位做深挖调研：读取岗位，自动选 runtime 启动公开网调研，检查已完成调研与证据缺口，最后刷新 LLM 综合分析报告。",
+        "intent_keywords": ["调研", "研究", "深挖", "面经", "简历模式", "research", "jd"],
+        "steps": [
+            {"operation": "get_job", "args": {"job_id": 0}},
+            {"operation": "start_job_research", "args": {"job_id": 0}, "dry_run": True},
+            {"operation": "list_job_research_runs", "args": {"job_id": 0, "status": "completed", "limit": 5}},
+            {"operation": "refresh_job_research_report", "args": {"job_id": 0}, "dry_run": True},
+        ],
+    },
+    "progress_board_review": {
+        "name": "progress_board_review",
+        "description": "查看公司→岗位二级进度看板，列出待确认候选，逐条审核接受或拒绝并安排下一步动作。",
+        "intent_keywords": ["进度", "看板", "进展", "面试", "offer", "progress", "review"],
+        "steps": [
+            {"operation": "get_application_progress_board", "args": {}},
+            {"operation": "list_application_progress_candidates", "args": {"status": "pending", "limit": 20}},
+            {"operation": "review_application_progress", "args": {"candidate_id": "", "action": "accept"}, "dry_run": True},
+        ],
+    },
 }
 
 
@@ -1101,7 +1823,8 @@ async def get_agent_playbook(detail: str = "compact") -> dict[str, Any]:
             "Use python -m app.cli manifest --pretty before controlling the system.",
             "Discover atomic operations with python -m app.cli ops --pretty and inspect parameters with schema.",
             "One CLI invocation performs one atomic operation; compose workflows in the agent, not inside ad-hoc shell scripts.",
-            "Read operations execute directly; write, llm, and external side-effect operations must dry-run before user confirmation.",
+            "Read operations execute directly; write, llm, and external operations create a persisted proposal instead of executing.",
+            "Only after explicit user confirmation, execute the returned run/action with python -m app.cli confirm.",
             "Never auto-submit job applications, send email, or message external parties; create drafts and pending records only.",
         ],
         "commands": {
@@ -1111,6 +1834,7 @@ async def get_agent_playbook(detail: str = "compact") -> dict[str, Any]:
             "schema": "python -m app.cli schema <operation> --pretty",
             "run": "python -m app.cli run <operation> --arg key=value --pretty",
             "dry_run": "python -m app.cli run <operation> --arg key=value --dry-run --pretty",
+            "confirm": "python -m app.cli confirm <run_id> --action <action_id> --pretty",
             "workflow_catalog": "python -m app.cli run workflow_catalog --pretty",
             "workflow_plan": "python -m app.cli run workflow_plan --arg goal=\"批量筛选岗位\" --pretty",
         },
@@ -1143,7 +1867,7 @@ async def workflow_plan(goal: str, limit: int = 20) -> dict[str, Any]:
         "requires_agent_judgment": _workflow_requires_agent_judgment(workflow["name"]),
         "steps": steps,
         "commands": [step["command"] for step in steps],
-        "confirmation_rule": "Commands marked dry_run inspect side effects only; execute the same operation without --dry-run only after user confirmation.",
+        "confirmation_rule": "A mutation run creates a persisted proposal. After explicit user confirmation, execute the returned run/action once with python -m app.cli confirm.",
     }
 
 
@@ -1442,6 +2166,9 @@ async def list_operation_audit(
                     "operation": row.operation,
                     "operation_version": row.operation_version,
                     "surface": row.surface,
+                    "status": row.status,
+                    "confirmation_ref": row.confirmation_ref,
+                    "idempotency_key": row.idempotency_key,
                     "ok": row.ok,
                     "dry_run": row.dry_run,
                     "side_effects": row.side_effects,
@@ -1561,12 +2288,14 @@ OPERATIONS.update(
             fn=get_agent_playbook,
             description="输出外部 Agent 操作 OfferU 的专家级控制契约、CLI 规则和安全边界。",
             parameters={"detail": "str=compact (compact|full)"},
+            input_model=AgentPlaybookInput,
             group="governance",
         ),
         "workflow_catalog": Operation(
             name="workflow_catalog",
             fn=workflow_catalog,
             description="列出内置可组合工作流模板，供外部 Agent 自主选择和批量编排。",
+            input_model=WorkflowCatalogInput,
             group="governance",
         ),
         "workflow_plan": Operation(
@@ -1574,6 +2303,7 @@ OPERATIONS.update(
             fn=workflow_plan,
             description="按自然语言目标选择内置工作流，并返回可执行的原子 CLI 命令序列。",
             parameters={"goal": "str", "limit": "int=20"},
+            input_model=WorkflowPlanInput,
             group="governance",
         ),
         "create_pool": Operation(
@@ -1589,6 +2319,7 @@ OPERATIONS.update(
             },
             group="jobs",
             side_effects=("write",),
+            input_model=CreatePoolInput,
         ),
         "update_pool": Operation(
             name="update_pool",
@@ -1603,6 +2334,7 @@ OPERATIONS.update(
             },
             group="jobs",
             side_effects=("write",),
+            input_model=UpdatePoolInput,
         ),
         "delete_pool": Operation(
             name="delete_pool",
@@ -1611,6 +2343,7 @@ OPERATIONS.update(
             parameters={"pool_id": "int"},
             group="jobs",
             side_effects=("write",),
+            input_model=PoolIdInput,
         ),
         "update_job": Operation(
             name="update_job",
@@ -1624,6 +2357,7 @@ OPERATIONS.update(
             },
             group="jobs",
             side_effects=("write",),
+            input_model=UpdateJobInput,
         ),
         "batch_update_jobs": Operation(
             name="batch_update_jobs",
@@ -1637,12 +2371,14 @@ OPERATIONS.update(
             },
             group="jobs",
             side_effects=("write",),
+            input_model=BatchUpdateJobsInput,
         ),
         "list_operation_audit": Operation(
             name="list_operation_audit",
             fn=list_operation_audit,
             description="查看 Operation Registry 统一审计日志。",
             parameters={"operation": "str?", "surface": "str?", "limit": "int=50"},
+            input_model=ListOperationAuditInput,
             group="governance",
         ),
         "get_current_view": Operation(
@@ -1650,6 +2386,7 @@ OPERATIONS.update(
             fn=get_current_view,
             description="获取 UI 与 Agent 共享的当前工作区上下文。",
             parameters={"scope": "str=default"},
+            input_model=CurrentViewInput,
             group="context",
         ),
         "set_current_view": Operation(
@@ -1667,6 +2404,7 @@ OPERATIONS.update(
                 "context": "dict?",
                 "updated_by": "str=ui",
             },
+            input_model=SetCurrentViewInput,
             group="context",
             side_effects=("write",),
         ),
@@ -1675,8 +2413,63 @@ OPERATIONS.update(
             fn=clear_current_view,
             description="清空 UI 与 Agent 共享的当前工作区上下文。",
             parameters={"scope": "str=default"},
+            input_model=CurrentViewInput,
             group="context",
             side_effects=("write",),
+        ),
+        "distill_memory": Operation(
+            name="distill_memory",
+            fn=distill_memory,
+            description="确认后用 LLM 提炼未处理的职业观察为记忆候选并巩固为收件箱提案；不直接改写 Profile。",
+            parameters={"observation_ids": "list[int]?", "limit": "int=20"},
+            group="memory",
+            side_effects=("llm", "write"),
+        ),
+        "promote_session_memory": Operation(
+            name="promote_session_memory",
+            fn=promote_session_memory,
+            description="确认后把外部 Agent 会话记忆(facts/preferences/goals)打包为一条观察并提炼为收件箱提案；单向 session→career。",
+            group="memory",
+            side_effects=("llm", "write"),
+        ),
+        "search_memory": Operation(
+            name="search_memory",
+            fn=search_memory,
+            description="按语义检索历史职业观察（向量召回），用于注入 LLM 提炼与 Agent 上下文。",
+            parameters={"query": "str", "limit": "int=8"},
+            group="memory",
+            side_effects=("llm",),
+        ),
+        "refresh_job_research_report": Operation(
+            name="refresh_job_research_report",
+            fn=refresh_job_research_report,
+            description="确认后对岗位最近一次已完成调研重新生成 LLM 综合分析章节并重渲染报告；不改动已验证事实层。",
+            parameters={"job_id": "int"},
+            group="research",
+            side_effects=("llm", "write"),
+        ),
+        "get_application_progress_board": Operation(
+            name="get_application_progress_board",
+            fn=get_application_progress_board,
+            description="读取公司→岗位二级分组的求职进度看板，含阶段、待确认候选、下一步动作与面试时间。",
+            parameters={"status": "str=active (active|closed|all)", "include_timeline": "bool=false"},
+            group="applications",
+        ),
+        "classify_progress_signal": Operation(
+            name="classify_progress_signal",
+            fn=classify_progress_signal,
+            description="确认后对单条待审核的求职进展候选重跑 LLM 分类（回填旧信号或重试失败分类）；基于 subject+snippet。",
+            parameters={"candidate_id": "str"},
+            group="applications",
+            side_effects=("llm", "write"),
+        ),
+        "draft_interview_scoring_skill": Operation(
+            name="draft_interview_scoring_skill",
+            fn=draft_interview_scoring_skill,
+            description="确认后由 LLM 起草一份评分 Skill 草稿并返回，不落库；用户确认后走 create_interview_scoring_skill。",
+            parameters={"goal": "str", "target_role": "str=", "job_id": "int?"},
+            group="interview",
+            side_effects=("llm",),
         ),
     }
 )
@@ -1701,27 +2494,25 @@ async def execute_operation(
             started=started,
             errors=[f"未知操作: {name}"],
         )
-        await _record_audit(
+        return await _audit_or_expose_failure(
             envelope, dry_run=dry_run, surface=surface, audit=audit, op=op
         )
-        return envelope
 
-    clean_args = {k: v for k, v in inputs.items() if v is not None}
+    raw_args = {k: v for k, v in inputs.items() if v is not None}
+    clean_args, validation_error = _validated_args(op, raw_args)
     audit_inputs = _audit_inputs(op, clean_args)
-    validation_error = _validate_args(op, clean_args)
     if validation_error:
         envelope = _envelope(
             ok=False,
             operation=name,
-            inputs=audit_inputs,
+            inputs=_audit_inputs(op, raw_args),
             started=started,
             errors=[validation_error],
             op=op,
         )
-        await _record_audit(
+        return await _audit_or_expose_failure(
             envelope, dry_run=dry_run, surface=surface, audit=audit, op=op
         )
-        return envelope
 
     if dry_run and op.is_mutation:
         envelope = _envelope(
@@ -1733,10 +2524,62 @@ async def execute_operation(
             warnings=["dry_run 已启用，未执行会写入、调用 LLM 或访问外部系统的操作。"],
             op=op,
         )
-        await _record_audit(
+        return await _audit_or_expose_failure(
             envelope, dry_run=dry_run, surface=surface, audit=audit, op=op
         )
-        return envelope
+
+    authorization = _OPERATION_AUTHORIZATION.get()
+    audit_id: int | None = None
+    if op.is_mutation and surface in _PROTECTED_AGENT_SURFACES:
+        authorization_error = await _validate_authorization(op, authorization)
+        if authorization_error:
+            envelope = _envelope(
+                ok=False,
+                operation=name,
+                inputs=audit_inputs,
+                started=started,
+                outputs={
+                    "executed": False,
+                    "requires_confirmation": True,
+                },
+                errors=[authorization_error],
+                op=op,
+            )
+            return await _audit_or_expose_failure(
+                envelope, dry_run=dry_run, surface=surface, audit=audit, op=op
+            )
+        assert authorization is not None
+        if not audit:
+            return _envelope(
+                ok=False,
+                operation=name,
+                inputs=audit_inputs,
+                started=started,
+                errors=["Agent 副作用操作不能关闭审计。"],
+                op=op,
+            )
+        try:
+            audit_id, replay = await _claim_authorized_execution(
+                op=op,
+                inputs=audit_inputs,
+                surface=surface,
+                authorization=authorization,
+                started=started,
+            )
+        except OperationAuditError as exc:
+            return _audit_failure_envelope(
+                _envelope(
+                    ok=False,
+                    operation=name,
+                    inputs=audit_inputs,
+                    started=started,
+                    op=op,
+                ),
+                exc,
+                side_effect_may_have_completed=False,
+            )
+        if replay is not None:
+            return replay
 
     try:
         result = await op.fn(**clean_args)
@@ -1749,10 +2592,6 @@ async def execute_operation(
             errors=[result["error"]] if isinstance(result, dict) and result.get("error") else [],
             op=op,
         )
-        await _record_audit(
-            envelope, dry_run=dry_run, surface=surface, audit=audit, op=op
-        )
-        return envelope
     except Exception as exc:
         envelope = _envelope(
             ok=False,
@@ -1762,13 +2601,52 @@ async def execute_operation(
             errors=[str(exc)],
             op=op,
         )
-        await _record_audit(
-            envelope, dry_run=dry_run, surface=surface, audit=audit, op=op
-        )
+
+    if audit_id is not None:
+        try:
+            await _complete_authorized_audit(audit_id, envelope=envelope, op=op)
+        except OperationAuditError as exc:
+            return _audit_failure_envelope(
+                envelope,
+                exc,
+                side_effect_may_have_completed=True,
+            )
         return envelope
 
+    return await _audit_or_expose_failure(
+        envelope, dry_run=dry_run, surface=surface, audit=audit, op=op
+    )
 
-def _validate_args(op: Operation, args: dict[str, Any]) -> Optional[str]:
+
+def _validated_args(
+    op: Operation,
+    args: dict[str, Any],
+) -> tuple[dict[str, Any], Optional[str]]:
+    if op.input_model is not None:
+        try:
+            value = op.input_model.model_validate(args)
+        except ValidationError as exc:
+            missing = [
+                ".".join(str(part) for part in error.get("loc") or ())
+                for error in exc.errors()
+                if error.get("type") == "missing"
+            ]
+            if missing:
+                return args, f"缺少必填参数: {', '.join(missing)}"
+            extras = [
+                ".".join(str(part) for part in error.get("loc") or ())
+                for error in exc.errors()
+                if error.get("type") == "extra_forbidden"
+            ]
+            if extras:
+                return args, f"未知参数: {', '.join(extras)}"
+            details = "; ".join(
+                f"{'.'.join(str(part) for part in error.get('loc') or ())}: {error.get('msg')}"
+                for error in exc.errors()
+            )
+            return args, f"参数校验失败: {details}"
+        return value.model_dump(exclude_none=True), None
+
     signature = inspect.signature(op.fn)
     required = [
         name
@@ -1778,13 +2656,226 @@ def _validate_args(op: Operation, args: dict[str, Any]) -> Optional[str]:
     ]
     missing = [name for name in required if name not in args]
     if missing:
-        return f"缺少必填参数: {', '.join(missing)}"
+        return args, f"缺少必填参数: {', '.join(missing)}"
 
     allowed = set(signature.parameters)
     extra = [name for name in args if name not in allowed]
     if extra:
-        return f"未知参数: {', '.join(extra)}"
+        return args, f"未知参数: {', '.join(extra)}"
+    return args, None
+
+
+async def _validate_authorization(
+    op: Operation,
+    authorization: OperationAuthorization | None,
+) -> Optional[str]:
+    if authorization is None:
+        return "该副作用操作需要先写入 Agent Run 提案并由用户确认。"
+    if authorization.operation != op.name:
+        return "确认授权与待执行 Operation 不匹配。"
+    if not all(
+        (
+            authorization.run_id,
+            authorization.action_id,
+            authorization.idempotency_key,
+        )
+    ):
+        return "确认授权缺少 Agent Run、动作或幂等键。"
+
+    from app.services.agent_run_state import load_agent_run
+
+    run = await load_agent_run(authorization.run_id)
+    if run is None:
+        return "确认授权对应的持久化 Agent Run 不存在。"
+    step = next(
+        (
+            item
+            for item in (run.get("steps") or [])
+            if isinstance(item, dict)
+            and str(item.get("id") or "") == authorization.action_id
+        ),
+        None,
+    )
+    if step is None:
+        return "确认授权对应的持久化 Agent Run 动作不存在。"
+    if str(step.get("tool") or "") != op.name:
+        return "持久化 Agent Run 动作与待执行 Operation 不匹配。"
+    if str(step.get("idempotency_key") or "") != authorization.idempotency_key:
+        return "持久化 Agent Run 动作的幂等键不匹配。"
+    if str(step.get("status") or "") != "executing":
+        return "持久化 Agent Run 动作尚未进入已确认执行状态。"
     return None
+
+
+class OperationAuditError(RuntimeError):
+    pass
+
+
+async def _claim_authorized_execution(
+    *,
+    op: Operation,
+    inputs: dict[str, Any],
+    surface: str,
+    authorization: OperationAuthorization,
+    started: float,
+) -> tuple[int | None, dict[str, Any] | None]:
+    row = OperationAuditLog(
+        operation=op.name,
+        operation_version=op.version,
+        surface=(surface or "unknown")[:40],
+        status="executing",
+        confirmation_ref=authorization.confirmation_ref[:160],
+        idempotency_key=authorization.idempotency_key[:180],
+        ok=False,
+        dry_run=False,
+        side_effects=list(op.side_effects),
+        inputs_json=_json_object(inputs),
+        outputs_json={},
+        warnings_json=[],
+        errors_json=[],
+        elapsed_ms=round((time.perf_counter() - started) * 1000, 2),
+    )
+    try:
+        async with async_session() as db:
+            db.add(row)
+            await db.commit()
+            await db.refresh(row)
+            return row.id, None
+    except IntegrityError:
+        pass
+    except Exception as exc:
+        raise OperationAuditError(f"无法在执行前写入审计记录: {exc}") from exc
+
+    try:
+        async with async_session() as db:
+            existing = (
+                await db.execute(
+                    select(OperationAuditLog).where(
+                        OperationAuditLog.idempotency_key
+                        == authorization.idempotency_key[:180]
+                    )
+                )
+            ).scalar_one_or_none()
+    except Exception as exc:
+        raise OperationAuditError(f"无法核对幂等执行记录: {exc}") from exc
+    if existing is None:
+        raise OperationAuditError("幂等键已被占用，但找不到对应审计记录。")
+    if (
+        existing.operation != op.name
+        or existing.confirmation_ref != authorization.confirmation_ref[:160]
+        or existing.inputs_json != _json_object(inputs)
+    ):
+        return None, _envelope(
+            ok=False,
+            operation=op.name,
+            inputs=inputs,
+            started=started,
+            errors=["幂等键已被另一项 Operation 或不同输入占用。"],
+            op=op,
+        )
+    if existing.status == "completed":
+        return None, _envelope(
+            ok=bool(existing.ok),
+            operation=op.name,
+            inputs=inputs,
+            started=started,
+            outputs=existing.outputs_json,
+            warnings=[
+                *list(existing.warnings_json or []),
+                "相同确认动作已执行；本次返回持久化结果，没有重放副作用。",
+            ],
+            errors=list(existing.errors_json or []),
+            op=op,
+        )
+    if existing.status == "failed":
+        return None, _envelope(
+            ok=False,
+            operation=op.name,
+            inputs=inputs,
+            started=started,
+            outputs=existing.outputs_json,
+            warnings=list(existing.warnings_json or []),
+            errors=list(existing.errors_json or []) or ["该确认动作此前执行失败，没有自动重放。"],
+            op=op,
+        )
+    return None, _envelope(
+        ok=False,
+        operation=op.name,
+        inputs=inputs,
+        started=started,
+        errors=[
+            "相同确认动作已有执行中或结果不确定的审计记录；为避免重复副作用，系统没有自动重放。"
+        ],
+        op=op,
+    )
+
+
+async def _complete_authorized_audit(
+    audit_id: int,
+    *,
+    envelope: dict[str, Any],
+    op: Operation,
+) -> None:
+    try:
+        async with async_session() as db:
+            await db.execute(
+                update(OperationAuditLog)
+                .where(OperationAuditLog.id == audit_id)
+                .values(
+                    status="completed" if envelope.get("ok") else "failed",
+                    ok=bool(envelope.get("ok")),
+                    outputs_json=_json_object(
+                        _audit_outputs(op, envelope.get("outputs"))
+                    ),
+                    warnings_json=list(envelope.get("warnings") or []),
+                    errors_json=list(envelope.get("errors") or []),
+                    elapsed_ms=float(envelope.get("elapsed_ms") or 0),
+                )
+            )
+            await db.commit()
+    except Exception as exc:
+        raise OperationAuditError(f"Operation 已返回，但最终审计记录写入失败: {exc}") from exc
+
+
+async def _audit_or_expose_failure(
+    envelope: dict[str, Any],
+    *,
+    dry_run: bool,
+    surface: str,
+    audit: bool,
+    op: Optional[Operation],
+) -> dict[str, Any]:
+    try:
+        await _record_audit(
+            envelope, dry_run=dry_run, surface=surface, audit=audit, op=op
+        )
+        return envelope
+    except OperationAuditError as exc:
+        return _audit_failure_envelope(
+            envelope,
+            exc,
+            side_effect_may_have_completed=bool(op and op.is_mutation and not dry_run),
+        )
+
+
+def _audit_failure_envelope(
+    envelope: dict[str, Any],
+    error: OperationAuditError,
+    *,
+    side_effect_may_have_completed: bool,
+) -> dict[str, Any]:
+    message = str(error)
+    if side_effect_may_have_completed:
+        message = f"{message}；副作用可能已完成，需要人工核对，系统不会自动重放。"
+    return {
+        **envelope,
+        "ok": False,
+        "warnings": [
+            *list(envelope.get("warnings") or []),
+            "审计完整性失败已显式暴露。",
+        ],
+        "errors": [*list(envelope.get("errors") or []), message],
+    }
 
 
 def _audit_inputs(op: Operation, inputs: dict[str, Any]) -> dict[str, Any]:
@@ -1865,6 +2956,9 @@ async def _record_audit(
                 operation=envelope.get("operation") or "unknown",
                 operation_version=envelope.get("operation_version") or "",
                 surface=(surface or "unknown")[:40],
+                status="completed" if envelope.get("ok") else "failed",
+                confirmation_ref="",
+                idempotency_key=None,
                 ok=bool(envelope.get("ok")),
                 dry_run=bool(dry_run),
                 side_effects=list(envelope.get("side_effects") or []),
@@ -1878,8 +2972,8 @@ async def _record_audit(
             )
             db.add(row)
             await db.commit()
-    except Exception:
-        return
+    except Exception as exc:
+        raise OperationAuditError(f"审计记录写入失败: {exc}") from exc
 
 
 def _json_object(value: Any) -> dict[str, Any]:

@@ -9,6 +9,7 @@
 
 import { useMemo, useState } from "react";
 import { Button, Chip, Spinner, Tooltip } from "@nextui-org/react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   Building2,
   CalendarClock,
@@ -178,7 +179,7 @@ function RecordRow({
     <div className="border-t border-[var(--border)]">
       <button
         type="button"
-        className="flex w-full items-center gap-3 px-6 py-2.5 text-left transition hover:bg-[var(--surface-muted)]"
+        className="press-feedback flex w-full items-center gap-3 px-6 py-2.5 text-left"
         onClick={() => setExpanded((prev) => !prev)}
       >
         {expanded ? (
@@ -213,12 +214,22 @@ function RecordRow({
           {record.next_action}
         </span>
       </button>
-      {expanded && (
-        <RecordTimeline
-          attemptId={record.application_attempt_id}
-          onReviewed={onReviewed}
-        />
-      )}
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 420, damping: 38, mass: 0.72 }}
+            className="overflow-hidden"
+          >
+            <RecordTimeline
+              attemptId={record.application_attempt_id}
+              onReviewed={onReviewed}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -235,7 +246,7 @@ function CompanyGroup({
     <div className="bauhaus-panel-sm overflow-hidden bg-[var(--surface)]">
       <button
         type="button"
-        className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-[var(--surface-muted)]"
+        className="press-feedback flex w-full items-center gap-3 px-4 py-3 text-left"
         onClick={() => setExpanded((prev) => !prev)}
       >
         {expanded ? (
@@ -257,17 +268,25 @@ function CompanyGroup({
           </Chip>
         )}
       </button>
-      {expanded && (
-        <div>
-          {group.records.map((record) => (
-            <RecordRow
-              key={record.application_attempt_id}
-              record={record}
-              onReviewed={onReviewed}
-            />
-          ))}
-        </div>
-      )}
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 400, damping: 38, mass: 0.78 }}
+            className="overflow-hidden"
+          >
+            {group.records.map((record) => (
+              <RecordRow
+                key={record.application_attempt_id}
+                record={record}
+                onReviewed={onReviewed}
+              />
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -284,8 +303,8 @@ export default function ProgressBoard() {
   }, [data]);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
+    <div className="progress-board space-y-4">
+      <div className="stage-toolbar flex flex-wrap items-center gap-3 p-2">
         <div className="flex items-center gap-1">
           {(["active", "closed", "all"] as const).map((item) => (
             <Button
@@ -323,9 +342,11 @@ export default function ProgressBoard() {
         </div>
       )}
       {!isLoading && data && data.companies.length === 0 && (
-        <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-8 text-center text-sm text-[var(--foreground-muted)]">
-          暂无{status === "active" ? "进行中的" : status === "closed" ? "已结束的" : ""}投递记录。
-          从「岗位」页挑选岗位创建投递，或连接邮箱自动捕获进展。
+        <div className="surface-fabric relative isolate overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] p-10 text-center text-sm text-[var(--foreground-muted)]">
+          <p className="font-medium text-[var(--foreground)]">
+            暂无{status === "active" ? "进行中的" : status === "closed" ? "已结束的" : ""}投递记录
+          </p>
+          <p className="mt-2">从「岗位」页挑选岗位创建投递，或连接邮箱自动捕获进展。</p>
         </div>
       )}
       <div className="space-y-3">

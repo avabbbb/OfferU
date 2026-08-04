@@ -19,6 +19,9 @@ RUN apt-get update \
 		libffi8 \
 		shared-mime-info \
 		fonts-noto-cjk \
+		tesseract-ocr \
+		tesseract-ocr-eng \
+		tesseract-ocr-chi-sim \
 	&& rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

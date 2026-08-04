@@ -33,16 +33,17 @@ def main() -> None:
     scraper_page = read("frontend/src/app/scraper/page.tsx")
     assert_contains(scraper_page, ['redirect("/jobs")'], label="Scraper route")
 
-    harness_dock = read("frontend/src/components/ai/HarnessAgentDock.tsx")
+    agent_panel = read("frontend/src/components/workbench/AgentPanel.tsx")
     assert_contains(
-        harness_dock,
-        ["useDraggableDock", "launcherDragHandleProps", "consumeDragClick", "OfferU 全局助手"],
-        label="Harness dock",
+        agent_panel,
+        ["piAgentApi.start", "OfferU 主 Agent", "stream.reconnecting"],
+        label="main Agent panel",
     )
+    api_client = read("frontend/src/lib/api.ts")
     assert_not_contains(
-        harness_dock,
-        ["鎴戞槸", "鑱屼笟", "鍖归厤", "鍙戦€", "闇€瑕佺"],
-        label="Harness dock visible copy",
+        api_client,
+        ["/api/harness-agent", "harnessAgentApi"],
+        label="retired Harness chat API",
     )
 
     profile_dock = read("frontend/src/components/ai/ProfileAgentDock.tsx")

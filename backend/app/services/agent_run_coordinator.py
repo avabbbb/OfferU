@@ -44,7 +44,16 @@ class AgentRunCoordinator:
                 step["error"] = message
                 calls.append(self._call(step, {"error": message, "idempotency_key": step.get("idempotency_key")}))
                 run["status"] = "needs_reconciliation"
-                save_agent_run(run)
+                await save_agent_run(
+                    run,
+                    event_type="operation.failed",
+                    event_payload={
+                        "action_id": step.get("id"),
+                        "operation": step.get("tool"),
+                        "status": "uncertain",
+                        "error": message,
+                    },
+                )
                 break
             if step.get("status") != "waiting_confirmation":
                 continue
@@ -54,11 +63,27 @@ class AgentRunCoordinator:
             step["attempts"] = int(step.get("attempts") or 0) + 1
             step["started_at"] = _now_iso()
             step["error"] = None
-            save_agent_run(run)
+            await save_agent_run(
+                run,
+                event_type="operation.started",
+                event_payload={
+                    "action_id": step.get("id"),
+                    "operation": step.get("tool"),
+                    "idempotency_key": step.get("idempotency_key"),
+                },
+            )
 
             args = step.get("args") if isinstance(step.get("args"), dict) else {}
             try:
-                result = await tool_runner(str(step.get("tool") or ""), args)
+                from app.ops import confirmed_operation
+
+                with confirmed_operation(
+                    operation=str(step.get("tool") or ""),
+                    run_id=str(run.get("id") or ""),
+                    action_id=str(step.get("id") or ""),
+                    idempotency_key=str(step.get("idempotency_key") or ""),
+                ):
+                    result = await tool_runner(str(step.get("tool") or ""), args)
             except Exception as exc:
                 result = {"error": str(exc)[:500]}
             has_error = isinstance(result, dict) and bool(result.get("error"))
@@ -67,7 +92,18 @@ class AgentRunCoordinator:
             step["result"] = safe_result_preview(result)
             step["error"] = str(result.get("error"))[:500] if has_error else None
             calls.append(self._call(step, result))
-            save_agent_run(run)
+            await save_agent_run(
+                run,
+                event_type=(
+                    "operation.failed" if has_error else "operation.completed"
+                ),
+                event_payload={
+                    "action_id": step.get("id"),
+                    "operation": step.get("tool"),
+                    "result": safe_result_preview(result),
+                    "error": step.get("error"),
+                },
+            )
             if has_error:
                 break
 
@@ -82,7 +118,7 @@ class AgentRunCoordinator:
             run["status"] = "waiting_confirmation"
         else:
             run["status"] = "executing"
-        run = save_agent_run(run)
+        run = await save_agent_run(run)
         return {
             "run": run,
             "tool_calls": calls,

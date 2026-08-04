@@ -29,10 +29,13 @@ from app.services.email_sync import (
     revoke_email_account,
     sync_email_account,
 )
-from app.services.harness_agent import (
-    CONFIRM_TOOLS,
-    READ_TOOLS,
-    REGISTRY_OPERATION_TOOLS,
+READ_OPERATIONS = frozenset(
+    name for name, operation in OPERATIONS.items()
+    if not operation.is_mutation
+)
+MUTATION_OPERATIONS = frozenset(
+    name for name, operation in OPERATIONS.items()
+    if operation.is_mutation
 )
 
 
@@ -96,14 +99,14 @@ class EmailIncrementalSyncTests(unittest.TestCase):
                 "list_email_accounts",
                 "list_email_sync_runs",
                 "get_email_sync_run",
-            }.issubset(READ_TOOLS)
+            }.issubset(READ_OPERATIONS)
         )
         self.assertTrue(
             {"sync_email_notifications", "revoke_email_account"}.issubset(
-                CONFIRM_TOOLS
+                MUTATION_OPERATIONS
             )
         )
-        self.assertTrue(expected.issubset(REGISTRY_OPERATION_TOOLS))
+        self.assertTrue(expected.issubset(OPERATIONS))
         self.assertIn(
             "password",
             OPERATIONS["connect_imap_account"].audit_redacted_parameters,

@@ -664,6 +664,13 @@ export interface ResumeParseDiagnostics {
   average_quality: number;
   low_quality_pages: number[];
   warnings: string[];
+  ocr?: {
+    configured: boolean;
+    language: string;
+    fallback_english_configured: boolean;
+    missing_languages: string[];
+    install_hint?: string | null;
+  };
   pages: Array<{
     page_number: number;
     method: "native" | "ocr" | "pypdf" | "docx" | string;

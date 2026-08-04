@@ -41,6 +41,22 @@ class AuthorizedResearchCancelRequest(BaseModel):
     reason: str
 
 
+class JobResearchReviewRequest(BaseModel):
+    action: str = Field(pattern="^(accept|reject)$")
+    note: str = Field("", max_length=2000)
+
+
+class PreApplicationDecisionPrepareRequest(BaseModel):
+    research_run_id: Optional[str] = Field(default=None, min_length=1, max_length=80)
+
+
+class PreApplicationDecisionReviewRequest(BaseModel):
+    final_decision: str = Field(
+        pattern="^(go|conditional_go|no_go|insufficient_evidence)$"
+    )
+    note: str = Field("", max_length=2000)
+
+
 def _operation_outputs(result: dict[str, Any]) -> dict[str, Any]:
     if not result.get("ok"):
         message = "；".join(str(item) for item in result.get("errors") or [])
@@ -56,6 +72,61 @@ async def _execute(name: str, args: dict[str, Any]) -> dict[str, Any]:
 
     result = await execute_operation(name, args, surface="research_api")
     return _operation_outputs(result)
+
+
+@router.get("/job-runs")
+async def job_research_runs(
+    job_id: Optional[int] = Query(None),
+    status: Optional[str] = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+):
+    return await _execute(
+        "list_job_research_runs",
+        {"job_id": job_id, "status": status, "limit": limit},
+    )
+
+
+@router.get("/job-runs/{run_id}")
+async def job_research_run(run_id: str):
+    return await _execute("get_job_research", {"run_id": run_id})
+
+
+@router.post("/job-runs/{run_id}/review")
+async def review_job_research_run(
+    run_id: str,
+    data: JobResearchReviewRequest,
+):
+    return await _execute(
+        "review_job_research",
+        {"run_id": run_id, **data.model_dump()},
+    )
+
+
+@router.get("/pre-application/{job_id}")
+async def pre_application_state(job_id: int):
+    return await _execute("get_pre_application_state", {"job_id": job_id})
+
+
+@router.post("/pre-application/{job_id}/prepare")
+async def prepare_pre_application_decision(
+    job_id: int,
+    data: PreApplicationDecisionPrepareRequest,
+):
+    return await _execute(
+        "prepare_pre_application_decision",
+        {"job_id": job_id, **data.model_dump()},
+    )
+
+
+@router.post("/pre-application/decisions/{decision_id}/review")
+async def review_pre_application_decision(
+    decision_id: str,
+    data: PreApplicationDecisionReviewRequest,
+):
+    return await _execute(
+        "review_pre_application_decision",
+        {"decision_id": decision_id, **data.model_dump()},
+    )
 
 
 @router.post("/authorized-sessions")

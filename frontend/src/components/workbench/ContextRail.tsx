@@ -7,15 +7,30 @@
 // =============================================
 
 import { AnimatePresence, motion } from "framer-motion";
+import { lazy, Suspense, useEffect } from "react";
 import { PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useWorkbench } from "@/lib/workbench";
-import { AgentPanel } from "./AgentPanel";
-import { InspectorPanel } from "./InspectorPanel";
+
+const AgentPanel = lazy(() =>
+  import("./AgentPanel").then((module) => ({ default: module.AgentPanel })),
+);
+const InspectorPanel = lazy(() =>
+  import("./InspectorPanel").then((module) => ({ default: module.InspectorPanel })),
+);
 
 const RAIL_WIDTH = 340;
 
 export function ContextRail() {
   const { railMode, setRailMode, railOpen, setRailOpen, selection } = useWorkbench();
+
+  useEffect(() => {
+    if (!railOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setRailOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [railOpen, setRailOpen]);
 
   return (
     <>
@@ -33,17 +48,31 @@ export function ContextRail() {
 
       <AnimatePresence initial={false}>
         {railOpen && (
+          <motion.button
+            key="context-rail-backdrop"
+            type="button"
+            tabIndex={-1}
+            aria-label="关闭上下文栏遮罩"
+            onClick={() => setRailOpen(false)}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, pointerEvents: "none" }}
+            transition={{ duration: 0.16, ease: [0.2, 0.85, 0.25, 1] }}
+            className="fixed inset-y-0 left-60 right-0 z-40 hidden cursor-default border-0 bg-[var(--shadow-medium)] p-0 md:block xl:hidden"
+          />
+        )}
+        {railOpen && (
           <motion.aside
             key="context-rail"
             initial={{ width: 0, opacity: 0 }}
             animate={{ width: RAIL_WIDTH, opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
+            exit={{ width: 0, opacity: 0, pointerEvents: "none" }}
             transition={{ type: "spring", stiffness: 380, damping: 36 }}
-            className="relative hidden h-screen shrink-0 overflow-hidden border-l border-[var(--border)] bg-[var(--background)] md:block"
+            className="context-rail fixed inset-y-0 right-0 z-50 hidden h-screen shrink-0 overflow-hidden border-l border-[var(--border)] bg-[var(--background)] shadow-[-12px_0_32px_var(--shadow-medium)] md:block xl:relative xl:inset-auto xl:z-auto xl:shadow-none"
           >
             <div className="flex h-full flex-col" style={{ width: RAIL_WIDTH }}>
               {/* 模式切换头 */}
-              <div className="flex items-center gap-1 border-b border-[var(--border)] px-3 py-2.5">
+              <div className="context-rail-header flex items-center gap-1 border-b border-[var(--border)] px-3 py-2.5">
                 <div className="relative flex flex-1 rounded-md bg-[var(--surface-muted)] p-0.5">
                   {(
                     [
@@ -94,10 +123,12 @@ export function ContextRail() {
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -8 }}
-                    transition={{ duration: 0.16, ease: "easeOut" }}
+                    transition={{ type: "spring", stiffness: 420, damping: 38, mass: 0.72 }}
                     className="absolute inset-0"
                   >
-                    {railMode === "inspector" ? <InspectorPanel /> : <AgentPanel />}
+                    <Suspense fallback={null}>
+                      {railMode === "inspector" ? <InspectorPanel /> : <AgentPanel />}
+                    </Suspense>
                   </motion.div>
                 </AnimatePresence>
               </div>

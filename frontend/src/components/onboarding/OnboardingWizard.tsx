@@ -19,6 +19,7 @@ import {
   Briefcase,
   ArrowRight,
   ArrowLeft,
+  Upload,
   X,
   Eye,
   EyeOff,
@@ -26,9 +27,20 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { bauhausFieldClassNames } from "@/lib/bauhaus";
-import { createResume, updateConfig, useConfig, type ProfileImportResult } from "@/lib/hooks";
+import {
+  createResume,
+  importProfileResume,
+  updateConfig,
+  useConfig,
+  type ProfileImportResult,
+} from "@/lib/hooks";
 import { profileApi, resumeApi } from "@/lib/api";
-import AIImportModal, { AI_IMPORT_PROMPT, parseAiImportJson } from "@/app/profile/components/AIImportModal";
+import { AI_IMPORT_PROMPT, parseAiImportJson } from "@/app/profile/components/AIImportModal";
+import {
+  groupProfileCandidatesForResume,
+  normalizeProfileCategoryKey,
+  resolveProfileCategoryLabel,
+} from "@/lib/profileSchema";
 
 interface OnboardingWizardProps {
   onComplete: () => void;
@@ -376,7 +388,8 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
   const [resumeCreated, setResumeCreated] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [uploadResult, setUploadResult] = useState<string | null>(null);
-  const [aiImportOpen, setAiImportOpen] = useState(false);
+  const [resumeImportResult, setResumeImportResult] = useState<ProfileImportResult | null>(null);
+  const [selectedImportCandidates, setSelectedImportCandidates] = useState<number[]>([]);
   const [aiImportStep, setAiImportStep] = useState(0);
   const [aiImportCopied, setAiImportCopied] = useState(false);
   const [aiImportJsonText, setAiImportJsonText] = useState("");
@@ -766,72 +779,105 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
 
     setUploadingFile(true);
     setUploadResult(null);
+    setResumeImportResult(null);
+    setSelectedImportCandidates([]);
 
     try {
-      const API_BASE =
-        process.env.NEXT_PUBLIC_API_URL ||
-        (typeof window !== "undefined"
-          ? `${window.location.protocol}//${window.location.hostname}:8000`
-          : "http://127.0.0.1:8000");
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const res = await fetch(`${API_BASE}/api/resume/parse`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!res.ok) throw new Error("解析失败");
-      const data = await res.json();
-      setUploadResult(`已解析 ${data.filename}，稍后可以继续在简历编辑器中精修。`);
-
-      await createResume({
-        user_name: "待完善",
-        title: file.name.replace(/\.(pdf|docx)$/i, ""),
-        raw_text: data.text,
-      });
-
-      setResumeCreated(true);
-      setTimeout(goNext, 1000);
-    } catch {
-      setUploadResult("文件解析失败，请确认上传的是有效的 PDF 或 Word 文档。");
+      const result = await importProfileResume(file);
+      setResumeImportResult(result);
+      setSelectedImportCandidates((result.bullets || []).map((_, index) => index));
+      setUploadResult(
+        result.bullets?.length
+          ? `已解析 ${result.filename}，请核对并选择要写入简历的候选内容。`
+          : `已解析 ${result.filename}，但没有识别出可导入的候选内容。`
+      );
+    } catch (error) {
+      setUploadResult(
+        error instanceof Error
+          ? error.message
+          : "文件解析失败，请确认上传的是有效的 PDF 或 Word 文档。"
+      );
     } finally {
       setUploadingFile(false);
+      event.target.value = "";
     }
   };
 
   const handleAiImportForWizard = async (result: ProfileImportResult) => {
+    const selected = (result.bullets || []).filter((_, index) =>
+      selectedImportCandidates.includes(index)
+    );
+    if (selected.length === 0) {
+      setUploadResult("请至少选择一条候选内容。");
+      return;
+    }
+
+    setCreatingResume(true);
     try {
-      // 从 AI 解析结果中提取文本，创建简历
       const baseInfo = result.base_info || {};
-      const sections = result.bullets || [];
-      const textParts: string[] = [];
-      if (baseInfo.name) textParts.push(baseInfo.name);
-      if (baseInfo.phone) textParts.push(baseInfo.phone);
-      if (baseInfo.email) textParts.push(baseInfo.email);
-      if (baseInfo.job_intention) textParts.push(`求职意向：${baseInfo.job_intention}`);
-      if (baseInfo.summary) textParts.push(baseInfo.summary);
-
-      for (const bullet of sections) {
-        const normalized = bullet.content_json?.normalized || {};
-        const values = Object.values(normalized).filter((v) => v && typeof v === "string");
-        if (values.length) textParts.push(values.join(" | "));
-      }
-
-      const rawText = textParts.join("\n");
-      const titleName = baseInfo.name || "AI 导入简历";
-
-      await createResume({
+      const titleName = result.filename.replace(/\.(pdf|docx?)$/i, "").trim();
+      const created: any = await createResume({
         user_name: baseInfo.name || "待完善",
-        title: titleName,
-        raw_text: rawText,
+        title: titleName || baseInfo.name || "导入简历",
+        summary: baseInfo.summary || baseInfo.personal_summary || "",
+        contact_json: {
+          phone: baseInfo.phone || "",
+          email: baseInfo.email || "",
+          linkedin: baseInfo.linkedin || "",
+          github: baseInfo.github || "",
+          website: baseInfo.website || "",
+        },
+        source_mode: "imported",
       });
 
-      setUploadResult("已通过 AI 导入创建简历，稍后可以继续在简历编辑器中精修。");
+      const resumeId = Number(created?.id || 0);
+      if (!resumeId) throw new Error("后端没有返回新简历 ID");
+
+      const groups = groupProfileCandidatesForResume(
+        selected.map((candidate, index) => {
+          const sectionType = normalizeProfileCategoryKey(candidate.section_type || "custom");
+          return {
+            id: candidate.index ?? index,
+            section_type: sectionType,
+            title: candidate.title || resolveProfileCategoryLabel(sectionType),
+            content_json: candidate.content_json || {},
+          };
+        })
+      );
+      const existingSections = Array.isArray(created?.sections) ? created.sections : [];
+      for (let index = 0; index < groups.length; index++) {
+        const group = groups[index];
+        const existing = existingSections.find(
+          (section: any) => section.section_type === group.sectionType
+        );
+        if (existing?.id) {
+          await resumeApi.updateSection(resumeId, existing.id, {
+            title: group.title,
+            sort_order: group.sortOrder,
+            content_json: group.items,
+          });
+        } else {
+          await resumeApi.createSection(resumeId, {
+            section_type: group.sectionType,
+            title: group.title,
+            sort_order: group.sortOrder,
+            visible: true,
+            content_json: group.items,
+          });
+        }
+      }
+
+      setUploadResult(`已确认并写入 ${selected.length} 条简历内容。`);
       setResumeCreated(true);
       setTimeout(goNext, 1000);
-    } catch {
-      setUploadResult("AI 导入创建简历失败，请重试或选择快速创建。");
+    } catch (error) {
+      setUploadResult(
+        error instanceof Error
+          ? `导入创建失败：${error.message}`
+          : "导入创建失败，请重试或选择快速创建。"
+      );
+    } finally {
+      setCreatingResume(false);
     }
   };
 
@@ -875,7 +921,9 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
     setAiImportError("");
     try {
       const result = parseAiImportJson(aiImportJsonText);
-      handleAiImportForWizard(result);
+      setResumeImportResult(result);
+      setSelectedImportCandidates((result.bullets || []).map((_, index) => index));
+      setUploadResult("JSON 已解析，请核对并选择要写入简历的候选内容。");
     } catch (err: any) {
       setAiImportError(err.message || "解析失败，请确认 JSON 格式正确。");
     } finally {
@@ -1647,102 +1695,26 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                         <Card className="rounded-none border border-black/20 bg-white shadow-[0_8px_22px_rgba(18,18,18,0.08)]">
                           <CardBody className="space-y-5 p-6">
                             <div className="flex items-center gap-3">
-                              <Sparkles size={28} strokeWidth={2.4} className="text-[var(--primary-red)]" />
-                              <p className="text-2xl font-bold">AI 导入简历</p>
+                              <Upload size={28} strokeWidth={2.4} className="text-[var(--primary-red)]" />
+                              <p className="text-2xl font-bold">导入现有简历</p>
                             </div>
 
-                            {/* 内联 3 步骤 */}
-                            {aiImportStep === 0 && (
-                              <div className="space-y-4">
-                                <p className="text-sm leading-relaxed text-black/70">
-                                  点击下方按钮复制提示词，然后前往 AI 工具上传简历并发送提示词。
-                                </p>
-                                <Button
-                                  className="bauhaus-button bauhaus-button-red w-full justify-center"
-                                  startContent={<Sparkles size={16} />}
-                                  onPress={handleCopyPromptInline}
-                                >
-                                  {aiImportCopied ? "已复制，进入下一步" : "复制提示词"}
-                                </Button>
-                              </div>
-                            )}
-
-                            {aiImportStep === 1 && (
-                              <div className="space-y-4">
-                                <p className="text-sm leading-relaxed text-black/70">
-                                  提示词已复制。请前往 AI 工具上传简历并发送提示词，然后复制返回的 JSON。
-                                </p>
-                                <div className="flex flex-wrap gap-2">
-                                  {[
-                                    { name: "豆包", url: "https://www.doubao.com/chat/" },
-                                    { name: "ChatGPT", url: "https://chat.openai.com/" },
-                                    { name: "通义千问", url: "https://tongyi.aliyun.com/qianwen/" },
-                                    { name: "Kimi", url: "https://kimi.moonshot.cn/" },
-                                  ].map((tool) => (
-                                    <a
-                                      key={tool.name}
-                                      href={tool.url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="inline-flex items-center gap-1 rounded-md border border-black/15 px-3 py-1.5 text-sm font-medium text-black/70 transition hover:border-black/30 hover:text-black"
-                                    >
-                                      {tool.name}
-                                    </a>
-                                  ))}
-                                </div>
-                                <Button
-                                  className="bauhaus-button bauhaus-button-red w-full justify-center"
-                                  onPress={() => setAiImportStep(2)}
-                                >
-                                  我已复制 JSON，下一步
-                                </Button>
-                              </div>
-                            )}
-
-                            {aiImportStep === 2 && (
-                              <div className="space-y-4">
-                                <p className="text-sm leading-relaxed text-black/70">
-                                  将 AI 返回的 JSON 粘贴到下方，点击确认导入。
-                                </p>
-                                <Textarea
-                                  minRows={6}
-                                  maxRows={12}
-                                  placeholder='粘贴 AI 返回的 JSON...'
-                                  value={aiImportJsonText}
-                                  onValueChange={setAiImportJsonText}
-                                  variant="bordered"
-                                  classNames={{ inputWrapper: "border-black/20 bg-white font-mono text-sm" }}
+                            <div className="space-y-3">
+                              <p className="text-sm leading-relaxed text-black/70">
+                                上传 PDF 或 DOCX。OfferU 会先提取候选内容；只有你勾选确认后，内容才会写入新简历。
+                              </p>
+                              <label className="bauhaus-button bauhaus-button-red flex w-full cursor-pointer items-center justify-center gap-2">
+                                <Upload size={16} />
+                                <span>{uploadingFile ? "正在解析…" : "选择 PDF / DOCX"}</span>
+                                <input
+                                  type="file"
+                                  accept=".pdf,.docx"
+                                  className="hidden"
+                                  disabled={uploadingFile || creatingResume}
+                                  onChange={handleFileUpload}
                                 />
-                                <div className="flex gap-2">
-                                  <Button
-                                    className="bauhaus-button bauhaus-button-outline flex-1"
-                                    onPress={handlePasteFromClipboardInline}
-                                  >
-                                    从剪贴板粘贴
-                                  </Button>
-                                  <Button
-                                    className="bauhaus-button bauhaus-button-outline flex-1"
-                                    onPress={() => setAiImportJsonText("")}
-                                    isDisabled={!aiImportJsonText}
-                                  >
-                                    清空
-                                  </Button>
-                                </div>
-                                {aiImportError && (
-                                  <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
-                                    {aiImportError}
-                                  </div>
-                                )}
-                                <Button
-                                  className="bauhaus-button bauhaus-button-red w-full justify-center"
-                                  isDisabled={!aiImportJsonText.trim()}
-                                  isLoading={aiImportParsing}
-                                  onPress={handleConfirmAiImportInline}
-                                >
-                                  确认导入
-                                </Button>
-                              </div>
-                            )}
+                              </label>
+                            </div>
 
                             {uploadResult && (
                               <div
@@ -1755,6 +1727,187 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                                 {uploadResult}
                               </div>
                             )}
+
+                            {resumeImportResult && (
+                              <div className="space-y-4 border-t border-black/15 pt-5">
+                                {resumeImportResult.parse_diagnostics && (
+                                  <div className="grid gap-2 text-xs font-semibold text-black/60 sm:grid-cols-3">
+                                    <span>解析器：{resumeImportResult.parse_diagnostics.parser}</span>
+                                    <span>
+                                      页数：{resumeImportResult.parse_diagnostics.page_count}
+                                      {resumeImportResult.parse_diagnostics.used_ocr ? " · 已使用 OCR" : " · 原生文本"}
+                                    </span>
+                                    <span>
+                                      平均质量：{Math.round(resumeImportResult.parse_diagnostics.average_quality * 100)}%
+                                    </span>
+                                    {resumeImportResult.parse_diagnostics.ocr
+                                      && !resumeImportResult.parse_diagnostics.ocr.configured && (
+                                      <span className="sm:col-span-3 text-[#8a4b00]">
+                                        未配置完整的 {resumeImportResult.parse_diagnostics.ocr.language} OCR；纯扫描 PDF 可能无法识别。
+                                      </span>
+                                      )}
+                                  </div>
+                                )}
+
+                                <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                                  {(resumeImportResult.bullets || []).map((candidate, index) => {
+                                    const selected = selectedImportCandidates.includes(index);
+                                    const content = candidate.content_json || {};
+                                    const preview =
+                                      String(content.bullet || content.description || "").trim() ||
+                                      Object.values(content)
+                                        .filter((value) => typeof value === "string" && value.trim())
+                                        .slice(0, 3)
+                                        .join(" · ");
+                                    return (
+                                      <label
+                                        key={`${candidate.session_id}-${candidate.index}-${index}`}
+                                        className={`block cursor-pointer border p-3 ${
+                                          selected ? "border-black bg-[#efe3bc]" : "border-black/15 bg-white"
+                                        }`}
+                                      >
+                                        <div className="flex items-start gap-3">
+                                          <input
+                                            type="checkbox"
+                                            checked={selected}
+                                            onChange={() =>
+                                              setSelectedImportCandidates((current) =>
+                                                selected
+                                                  ? current.filter((item) => item !== index)
+                                                  : [...current, index]
+                                              )
+                                            }
+                                            className="mt-1 h-4 w-4 accent-black"
+                                          />
+                                          <div className="min-w-0 flex-1">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                              <span className="text-sm font-bold">
+                                                {candidate.title ||
+                                                  resolveProfileCategoryLabel(
+                                                    normalizeProfileCategoryKey(candidate.section_type || "custom")
+                                                  )}
+                                              </span>
+                                              {candidate.source_pages?.length ? (
+                                                <span className="text-[11px] font-semibold text-black/50">
+                                                  第 {candidate.source_pages.join("、")} 页
+                                                </span>
+                                              ) : null}
+                                            </div>
+                                            <p className="mt-1 line-clamp-3 text-xs leading-relaxed text-black/65">
+                                              {preview || "未生成预览，请展开后在简历编辑器中核对。"}
+                                            </p>
+                                          </div>
+                                        </div>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                                <Button
+                                  className="bauhaus-button bauhaus-button-red w-full justify-center"
+                                  isDisabled={selectedImportCandidates.length === 0}
+                                  isLoading={creatingResume}
+                                  onPress={() => void handleAiImportForWizard(resumeImportResult)}
+                                >
+                                  确认 {selectedImportCandidates.length} 条并创建简历
+                                </Button>
+                              </div>
+                            )}
+
+                            <details className="border-t border-black/15 pt-4">
+                              <summary className="cursor-pointer text-sm font-bold text-black/65">
+                                备用：让外部 AI 返回结构化 JSON
+                              </summary>
+                              <div className="mt-4 space-y-4">
+                                {aiImportStep === 0 && (
+                                  <div className="space-y-4">
+                                    <p className="text-sm leading-relaxed text-black/70">
+                                      复制提示词，再到外部 AI 工具上传简历；返回的 JSON 仍需在 OfferU 中逐条确认。
+                                    </p>
+                                    <Button
+                                      className="bauhaus-button bauhaus-button-outline w-full justify-center"
+                                      startContent={<Sparkles size={16} />}
+                                      onPress={handleCopyPromptInline}
+                                    >
+                                      {aiImportCopied ? "已复制，进入下一步" : "复制提示词"}
+                                    </Button>
+                                  </div>
+                                )}
+
+                                {aiImportStep === 1 && (
+                                  <div className="space-y-4">
+                                    <p className="text-sm leading-relaxed text-black/70">
+                                      提示词已复制。请在外部 AI 中上传简历并发送提示词，然后复制返回的 JSON。
+                                    </p>
+                                    <div className="flex flex-wrap gap-2">
+                                      {[
+                                        { name: "豆包", url: "https://www.doubao.com/chat/" },
+                                        { name: "ChatGPT", url: "https://chat.openai.com/" },
+                                        { name: "通义千问", url: "https://tongyi.aliyun.com/qianwen/" },
+                                        { name: "Kimi", url: "https://kimi.moonshot.cn/" },
+                                      ].map((tool) => (
+                                        <a
+                                          key={tool.name}
+                                          href={tool.url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="inline-flex items-center gap-1 rounded-md border border-black/15 px-3 py-1.5 text-sm font-medium text-black/70 transition hover:border-black/30 hover:text-black"
+                                        >
+                                          {tool.name}
+                                        </a>
+                                      ))}
+                                    </div>
+                                    <Button
+                                      className="bauhaus-button bauhaus-button-outline w-full justify-center"
+                                      onPress={() => setAiImportStep(2)}
+                                    >
+                                      我已复制 JSON，下一步
+                                    </Button>
+                                  </div>
+                                )}
+
+                                {aiImportStep === 2 && (
+                                  <div className="space-y-4">
+                                    <Textarea
+                                      minRows={6}
+                                      maxRows={12}
+                                      placeholder="粘贴 AI 返回的 JSON..."
+                                      value={aiImportJsonText}
+                                      onValueChange={setAiImportJsonText}
+                                      variant="bordered"
+                                      classNames={{ inputWrapper: "border-black/20 bg-white font-mono text-sm" }}
+                                    />
+                                    <div className="flex gap-2">
+                                      <Button
+                                        className="bauhaus-button bauhaus-button-outline flex-1"
+                                        onPress={handlePasteFromClipboardInline}
+                                      >
+                                        从剪贴板粘贴
+                                      </Button>
+                                      <Button
+                                        className="bauhaus-button bauhaus-button-outline flex-1"
+                                        onPress={() => setAiImportJsonText("")}
+                                        isDisabled={!aiImportJsonText}
+                                      >
+                                        清空
+                                      </Button>
+                                    </div>
+                                    {aiImportError && (
+                                      <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                                        {aiImportError}
+                                      </div>
+                                    )}
+                                    <Button
+                                      className="bauhaus-button bauhaus-button-outline w-full justify-center"
+                                      isDisabled={!aiImportJsonText.trim()}
+                                      isLoading={aiImportParsing}
+                                      onPress={handleConfirmAiImportInline}
+                                    >
+                                      解析 JSON 并进入确认
+                                    </Button>
+                                  </div>
+                                )}
+                              </div>
+                            </details>
                           </CardBody>
                         </Card>
 

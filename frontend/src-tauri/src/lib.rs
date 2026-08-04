@@ -1,7 +1,7 @@
 // OfferU Tauri desktop launcher (dev mode)
 // 启动时只 spawn FastAPI + Python AgentKernel @ :8000。
-// frontend Next dev @ :3300 由 tauri.conf.json 的 beforeDevCommand 负责，避免重复启动。
-// Tauri webview 加载 http://localhost:3300
+// frontend Vite dev @ :3300 由 tauri.conf.json 的 beforeDevCommand 负责，避免重复启动。
+// dev WebView 加载 http://localhost:3300；release WebView 直接加载嵌入的 dist。
 // 关窗时 kill 后端子进程
 
 use std::process::{Child, Command, Stdio};
@@ -51,22 +51,6 @@ fn spawn_python_backend(root: &std::path::Path) -> Option<Child> {
     cmd.spawn().ok()
 }
 
-fn wait_for_url(url: &str, timeout_secs: u64) -> bool {
-    let deadline = std::time::Instant::now() + Duration::from_secs(timeout_secs);
-    let client = reqwest::blocking::Client::new();
-    loop {
-        match client.get(url).timeout(Duration::from_secs(1)).send() {
-            Ok(_) => return true,
-            Err(_) => {
-                if std::time::Instant::now() > deadline {
-                    return false;
-                }
-                thread::sleep(Duration::from_millis(700));
-            }
-        }
-    }
-}
-
 fn wait_for_python_backend(timeout_secs: u64) -> bool {
     let deadline = std::time::Instant::now() + Duration::from_secs(timeout_secs);
     let client = reqwest::blocking::Client::new();
@@ -113,9 +97,8 @@ pub fn run() {
             let handle = app.handle().clone();
             thread::spawn(move || {
                 let backend_ok = wait_for_python_backend(45);
-                let frontend_ok = wait_for_url("http://127.0.0.1:3300", 90);
-                println!("[OfferU] backend_ready={}, frontend_ready={}", backend_ok, frontend_ok);
-                if backend_ok && frontend_ok {
+                println!("[OfferU] backend_ready={}", backend_ok);
+                if backend_ok {
                     handle.emit("offeru-ready", true).ok();
                 } else {
                     handle.emit("offeru-ready", false).ok();

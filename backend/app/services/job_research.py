@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import ipaddress
 import json
@@ -22,9 +23,10 @@ from app.models.models import (
     ResearchFinding,
 )
 from app.services.coding_agent_runtime import (
-    list_coding_agent_runtimes,
-    run_coding_agent,
-    select_runtime,
+    DeepTaskSpec,
+    ExecutorRequirements,
+    execute_deep_task,
+    select_local_executor,
 )
 
 
@@ -32,6 +34,7 @@ RESEARCH_RESULT_SCHEMA = "offeru.job_research_result.v1"
 _WORKER_DIR = Path(__file__).resolve().parents[2] / "data" / "job_research_workers"
 _LIVE_TASKS: dict[str, asyncio.Task[Any]] = {}
 _DOSSIER_SCOPES = {"company", "role"}
+_REVIEW_ACTIONS = {"accept", "reject"}
 _SOURCE_CLASSES = {
     "official_company",
     "official_careers",
@@ -555,6 +558,8 @@ def _run_summary(run: JobResearchRun) -> dict[str, Any]:
         "runtime_version": run.runtime_version or None,
         "status": run.status,
         "review_status": run.review_status,
+        "review_note": run.review_note or "",
+        "reviewed_at": str(run.reviewed_at) if run.reviewed_at else None,
         "attempts": run.attempts,
         "source_count": len(result.get("sources") or []),
         "finding_count": len(result.get("findings") or []),
@@ -563,6 +568,31 @@ def _run_summary(run: JobResearchRun) -> dict[str, Any]:
         "updated_at": str(run.updated_at),
         "started_at": str(run.started_at) if run.started_at else None,
         "completed_at": str(run.completed_at) if run.completed_at else None,
+    }
+
+
+def _dossier_summary(
+    *,
+    run_id: str,
+    findings: list[ResearchFinding],
+    dossier_id: int,
+) -> dict[str, Any]:
+    scoped_findings = [
+        item for item in findings if item.dossier_id == dossier_id
+    ]
+    return {
+        "run_id": run_id,
+        "source_count": len(
+            {
+                ref
+                for item in scoped_findings
+                for ref in (item.source_refs_json or [])
+            }
+        ),
+        "finding_count": len(scoped_findings),
+        "evidence_levels": sorted(
+            {item.evidence_level for item in scoped_findings}
+        ),
     }
 
 
@@ -601,6 +631,15 @@ Security and evidence rules:
 7. Use source_ref values S1, S2, ... and exact public URLs. Return only sources
    referenced by at least one finding.
 
+Budget and completion rules (non-negotiable):
+8. Be efficient. Conduct at most 5 web searches and fetch at most 8 distinct
+   pages in total. Prefer official/primary pages. If a search returns nothing
+   useful, move on and record the gap instead of retrying the same angle.
+9. Reserve your final turns to compose the complete JSON object. Once you have
+   enough sources to satisfy the coverage priorities below — or have confirmed
+   what is not publicly available — stop searching and write the final result.
+   Do not keep gathering evidence past the budget.
+
 Research coverage priorities (in order):
 a. Company business, product, and org signals from official pages (hard facts).
 b. Role requirements from the JD and official job pages.
@@ -624,7 +663,10 @@ async def _compatible_research_runtime(runtime_id: str | None = None) -> dict[st
     """选择可执行公开网页调研的 runtime：任何 contract_compatible 且声明
     live web search 能力的 CLI（claude/codex/gemini）均可；不指定时按
     settings.coding_agent_priority 自动选择。"""
-    return await select_runtime(runtime_id, require_web_search=True)
+    return await select_local_executor(
+        runtime_id,
+        requirements=ExecutorRequirements(web_search=True),
+    )
 
 
 async def _get_or_create_dossiers(
@@ -772,33 +814,11 @@ async def _persist_completed_run(
             )
         )
 
-    for scope, dossier_id in dossier_ids.items():
-        dossier = (
-            await db.execute(
-                select(ResearchDossier).where(ResearchDossier.id == dossier_id)
-            )
-        ).scalar_one()
-        scoped_findings = [
-            item for item in result["findings"] if item["dossier_scope"] == scope
-        ]
-        dossier.latest_run_id = run.run_id
-        dossier.summary_json = {
-            "run_id": run.run_id,
-            "source_count": len(
-                {
-                    ref
-                    for item in scoped_findings
-                    for ref in item["source_refs"]
-                }
-            ),
-            "finding_count": len(scoped_findings),
-            "evidence_levels": sorted(
-                {item["evidence_level"] for item in scoped_findings}
-            ),
-        }
     run.runtime_version = runtime_version
     run.status = "completed"
     run.review_status = "candidate"
+    run.review_note = ""
+    run.reviewed_at = None
     run.result_json = result
     run.report_markdown = report_markdown
     run.trace_json = {
@@ -944,14 +964,23 @@ async def _execute_run(run_id: str) -> None:
             run.error = ""
             await db.commit()
 
-            worker = await run_coding_agent(
+            worker = await execute_deep_task(DeepTaskSpec(
                 runtime_id=run.runtime_id,
                 prompt=_worker_prompt(job),
                 cwd=_WORKER_DIR / run.run_id,
                 output_schema=JOB_RESEARCH_OUTPUT_SCHEMA,
-                timeout_seconds=600,
+                timeout_seconds=1800,
+                max_turns=50,
                 web_search_mode="live",
-            )
+                task_type="job_research",
+                task_id=run.run_id,
+                capability_grant={
+                    "offeru_operations": [],
+                    "data_scope": {"job_id": run.job_id},
+                    "filesystem": "task_cwd_read_only",
+                    "network": "public_web_only",
+                },
+            ))
             result = _validated_research_result(worker.get("structured"))
             narrative = await _compose_narrative(
                 job={"company": job.company, "title": job.title},
@@ -1091,8 +1120,55 @@ async def resume_job_research(run_id: str) -> dict[str, Any]:
         run.error = ""
         run.completed_at = None
         await db.commit()
+        # updated_at 由 SQL 表达式 onupdate=func.now() 生成，commit 后该属性已过期；
+        # 若在 session 关闭后再访问会抛 DetachedInstanceError，这里先刷新重新加载。
+        await db.refresh(run)
     _schedule(clean_run_id)
     return {**_run_summary(run), "accepted": True}
+
+
+async def cancel_job_research(run_id: str) -> dict[str, Any]:
+    clean_run_id = _clean_text(run_id, "run_id", 64, required=True)
+    live = _LIVE_TASKS.get(clean_run_id)
+    if live is not None and not live.done():
+        live.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await live
+
+    from app.services.coding_agent_runtime import (
+        cancel_hosted_executor_session,
+        list_hosted_executor_sessions,
+    )
+
+    sessions = await list_hosted_executor_sessions(
+        task_type="job_research",
+        task_id=clean_run_id,
+        limit=1,
+    )
+    for session in sessions.get("items") or []:
+        if session.get("status") not in {"completed", "failed", "cancelled"}:
+            await cancel_hosted_executor_session(str(session["session_id"]))
+
+    async with async_session() as db:
+        run = (
+            await db.execute(
+                select(JobResearchRun).where(JobResearchRun.run_id == clean_run_id)
+            )
+        ).scalar_one_or_none()
+        if run is None:
+            return {"error": f"Job research {clean_run_id} not found"}
+        if run.status in {"completed", "cancelled"}:
+            return {
+                **_run_summary(run),
+                "accepted": False,
+                "message": f"Research is already {run.status}",
+            }
+        run.status = "cancelled"
+        run.review_status = "pending"
+        run.error = "研究任务已由使用者取消"
+        run.completed_at = _utc_now()
+        await db.commit()
+        return {**_run_summary(run), "accepted": True}
 
 
 async def list_job_research_runs(
@@ -1206,6 +1282,104 @@ async def get_job_research(run_id: str) -> dict[str, Any]:
         }
 
 
+async def review_job_research(
+    *,
+    run_id: str,
+    action: str,
+    note: str = "",
+) -> dict[str, Any]:
+    clean_run_id = _clean_text(run_id, "run_id", 64, required=True)
+    if not isinstance(action, str) or action.strip().lower() not in _REVIEW_ACTIONS:
+        raise ValueError("action 必须是 accept 或 reject")
+    clean_action = action.strip().lower()
+    if not isinstance(note, str):
+        raise ValueError("note 必须是字符串")
+    clean_note = note.strip()[:2000]
+    if clean_action == "reject" and not clean_note:
+        raise ValueError("拒绝候选证据时必须填写 note")
+
+    duplicate = False
+    async with async_session() as db:
+        run = (
+            await db.execute(
+                select(JobResearchRun).where(JobResearchRun.run_id == clean_run_id)
+            )
+        ).scalar_one_or_none()
+        if run is None:
+            raise ValueError(f"Job research {clean_run_id} not found")
+        if run.status != "completed":
+            raise ValueError("只有已完成的岗位调研可以审核")
+        if run.review_status in {"accepted", "rejected"}:
+            expected_status = f"{clean_action}ed"
+            if run.review_status != expected_status:
+                raise ValueError("岗位调研已经完成终态审核，不能改写审核结论")
+            duplicate = True
+        elif run.review_status != "candidate":
+            raise ValueError("岗位调研尚未形成可审核的候选证据")
+
+        if not duplicate:
+            dossier_ids = {
+                "company": run.company_dossier_id,
+                "role": run.role_dossier_id,
+            }
+            dossiers = list((
+                await db.execute(
+                    select(ResearchDossier).where(
+                        ResearchDossier.id.in_(tuple(dossier_ids.values()))
+                    )
+                )
+            ).scalars().all())
+            dossier_by_id = {item.id: item for item in dossiers}
+
+            if clean_action == "accept":
+                evidence = list((
+                    await db.execute(
+                        select(ResearchEvidenceSnapshot).where(
+                            ResearchEvidenceSnapshot.run_id == clean_run_id
+                        )
+                    )
+                ).scalars().all())
+                findings = list((
+                    await db.execute(
+                        select(ResearchFinding).where(
+                            ResearchFinding.run_id == clean_run_id
+                        )
+                    )
+                ).scalars().all())
+                if not evidence or not findings:
+                    raise ValueError("候选调研缺少可引用证据或结论，不能通过审核")
+                source_refs = {item.source_ref for item in evidence}
+                for finding in findings:
+                    refs = list(finding.source_refs_json or [])
+                    if not refs or any(ref not in source_refs for ref in refs):
+                        raise ValueError(f"候选结论 #{finding.id} 缺少有效来源")
+                if set(dossier_by_id) != set(dossier_ids.values()):
+                    raise ValueError("候选调研关联档案不完整，不能通过审核")
+                for dossier_id in dossier_ids.values():
+                    dossier = dossier_by_id[dossier_id]
+                    dossier.latest_run_id = run.run_id
+                    dossier.summary_json = _dossier_summary(
+                        run_id=run.run_id,
+                        findings=findings,
+                        dossier_id=dossier_id,
+                    )
+            else:
+                for dossier in dossiers:
+                    if dossier.latest_run_id == run.run_id:
+                        dossier.latest_run_id = None
+                        dossier.summary_json = {}
+
+            run.review_status = f"{clean_action}ed"
+            run.review_note = clean_note
+            run.reviewed_at = _utc_now()
+            await db.commit()
+
+    detail = await get_job_research(clean_run_id)
+    detail["review_action"] = clean_action
+    detail["duplicate"] = duplicate
+    return detail
+
+
 async def refresh_job_research_report(job_id: int) -> dict[str, Any]:
     """对岗位最近一次 completed run 重新生成 LLM 综合章节并重渲染报告。
 
@@ -1283,7 +1457,7 @@ Rules (same contract as the live worker):
 async def run_backend_research(job_id: int, *, max_pages: int = 6) -> dict[str, Any]:
     """后端检索模式：search API 兜底链采集 → LLM 归纳 → 同一事实门 → 同一 dossier。
 
-    仅当没有 live-capable CLI runtime 时使用（select_runtime 失败的兜底）。"""
+    仅当没有 live-capable CLI runtime 时使用（select_local_executor 失败的兜底）。"""
     from app.agents.llm import chat_completion, extract_json
     from app.services.web_search import fetch_readable, web_search
 

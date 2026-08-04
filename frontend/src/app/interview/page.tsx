@@ -152,8 +152,8 @@ export default function InterviewPage() {
   const difficultyStars = (difficulty: number) => "★".repeat(difficulty) + "☆".repeat(5 - difficulty);
 
   return (
-    <motion.div variants={container} initial="hidden" animate="show" className="space-y-8">
-      <motion.section variants={item} className="bauhaus-panel overflow-hidden bg-white">
+    <motion.div variants={container} initial="hidden" animate="show" className="stage-page stage-page--interview space-y-6">
+      <motion.section variants={item} className="stage-hero bauhaus-panel overflow-hidden bg-white">
         <div className="grid gap-6 p-6 md:p-8 xl:grid-cols-[1.05fr_0.95fr]">
           <div className="space-y-4">
             <span className="bauhaus-chip bg-[var(--surface-muted)] text-[var(--foreground)]">面试题库</span>

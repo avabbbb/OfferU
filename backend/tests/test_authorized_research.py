@@ -20,12 +20,16 @@ from app.services.authorized_research import (
     _platform_url,
     _redact_personal_identifiers,
 )
-from app.services.harness_agent import (
-    CONFIRM_TOOLS,
-    READ_TOOLS,
-    REGISTRY_OPERATION_TOOLS,
-)
 from app.services.job_research import _validated_research_result
+
+READ_OPERATIONS = frozenset(
+    name for name, operation in OPERATIONS.items()
+    if not operation.is_mutation
+)
+MUTATION_OPERATIONS = frozenset(
+    name for name, operation in OPERATIONS.items()
+    if operation.is_mutation
+)
 
 
 def _base_result() -> dict:
@@ -238,9 +242,9 @@ class AuthorizedResearchContractTests(unittest.TestCase):
             "cancel_authorized_research_session",
         }
 
-        self.assertTrue(reads.issubset(READ_TOOLS))
-        self.assertTrue(mutations.issubset(CONFIRM_TOOLS))
-        self.assertTrue((reads | mutations).issubset(REGISTRY_OPERATION_TOOLS))
+        self.assertTrue(reads.issubset(READ_OPERATIONS))
+        self.assertTrue(mutations.issubset(MUTATION_OPERATIONS))
+        self.assertTrue((reads | mutations).issubset(OPERATIONS))
         self.assertTrue((reads | mutations).issubset(OPERATIONS))
         self.assertTrue(
             OPERATIONS[

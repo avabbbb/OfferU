@@ -37,17 +37,21 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
-async function streamResult<T>(
+async function readEventStream<T>(
   path: string,
-  body: unknown,
+  options: RequestInit,
   onEvent?: (event: string, data: any) => void
 ): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-    body: JSON.stringify(body),
+    ...options,
+    headers: { Accept: "text/event-stream", ...options.headers },
   });
-  if (res.status === 404 || res.status === 405) throw new Error("__SSE_UNAVAILABLE__");
+  if (
+    (res.status === 404 || res.status === 405)
+    && String(options.method || "GET").toUpperCase() === "POST"
+  ) {
+    throw new Error("__SSE_UNAVAILABLE__");
+  }
   if (!res.ok) throw new Error(`API Error: ${res.status}`);
   if (!res.body) throw new Error("Agent 流式响应不可用");
 
@@ -86,6 +90,30 @@ async function streamResult<T>(
   if (buffer.trim()) consume(buffer);
   if (!result) throw new Error("Agent 流结束但没有返回结果");
   return result;
+}
+
+async function streamResult<T>(
+  path: string,
+  body: unknown,
+  onEvent?: (event: string, data: any) => void
+): Promise<T> {
+  return readEventStream<T>(
+    path,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    onEvent
+  );
+}
+
+function createAgentRunId() {
+  return `run_${crypto.randomUUID().replace(/-/g, "")}`;
+}
+
+function waitForReconnect(delayMs: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, delayMs));
 }
 
 // ---- Jobs API ----
@@ -222,20 +250,20 @@ export const configApi = {
     request("/api/config/", { method: "PUT", body: JSON.stringify(data) }),
 };
 
-// ---- Harness Agent API ----
-export interface HarnessAgentMessage {
+// ---- Main Agent support records ----
+export interface AgentConversationMessage {
   role: "user" | "assistant";
   content: string;
 }
 
-export interface HarnessAgentToolCall {
+export interface AgentToolCall {
   tool: string;
   args: Record<string, unknown>;
   result: unknown;
   action_id?: string;
 }
 
-export interface HarnessAgentProposedAction {
+export interface AgentProposedAction {
   id: string;
   tool: string;
   summary: string;
@@ -244,7 +272,7 @@ export interface HarnessAgentProposedAction {
   args: Record<string, unknown>;
 }
 
-export interface HarnessAgentSkill {
+export interface AgentSkill {
   id: string;
   name: string;
   group: string;
@@ -255,7 +283,7 @@ export interface HarnessAgentSkill {
   missing_capabilities: string[];
 }
 
-export interface HarnessAgentCareerPath {
+export interface AgentCareerPath {
   title: string;
   industry: string;
   fit_reason: string;
@@ -265,7 +293,7 @@ export interface HarnessAgentCareerPath {
   application_strategy: string;
 }
 
-export interface HarnessAgentJobCard {
+export interface AgentJobCard {
   id: number;
   title: string;
   company: string;
@@ -276,7 +304,7 @@ export interface HarnessAgentJobCard {
   summary?: string;
 }
 
-export interface HarnessAgentAlert {
+export interface GuardianAlert {
   code: string;
   severity: "low" | "medium" | "high" | string;
   title: string;
@@ -284,13 +312,13 @@ export interface HarnessAgentAlert {
   action?: string;
 }
 
-export interface HarnessAgentProactiveSuggestion {
+export interface GuardianSuggestion {
   title: string;
   description: string;
   prompt: string;
 }
 
-export interface HarnessAgentMemorySnapshot {
+export interface AgentMemorySnapshot {
   schema_version: string;
   user_stage: "unknown" | "campus" | "experienced" | string;
   confidence: number;
@@ -302,7 +330,7 @@ export interface HarnessAgentMemorySnapshot {
   updated_at: string;
 }
 
-export interface HarnessAgentConversationSummary {
+export interface AgentConversationSummary {
   id: string;
   title: string;
   created_at: string;
@@ -311,23 +339,23 @@ export interface HarnessAgentConversationSummary {
   last_message: string;
 }
 
-export interface HarnessAgentConversationDetail {
+export interface AgentConversationDetail {
   id: string;
   title: string;
   created_at: string;
   updated_at: string;
-  messages: HarnessAgentMessage[];
+  messages: AgentConversationMessage[];
 }
 
-export interface HarnessAgentResponse {
+export interface AgentResponse {
   assistant_message: string;
   mode: string;
-  active_skill?: HarnessAgentSkill;
+  active_skill?: AgentSkill;
   requires_confirmation: boolean;
-  tool_calls: HarnessAgentToolCall[];
-  proposed_actions: HarnessAgentProposedAction[];
-  career_paths?: HarnessAgentCareerPath[];
-  job_cards?: HarnessAgentJobCard[];
+  tool_calls: AgentToolCall[];
+  proposed_actions: AgentProposedAction[];
+  career_paths?: AgentCareerPath[];
+  job_cards?: AgentJobCard[];
   next_steps?: string[];
   transferable_skills_summary?: string;
   quick_wins?: string[];
@@ -335,50 +363,456 @@ export interface HarnessAgentResponse {
   user_stage?: "unknown" | "campus" | "experienced" | string;
   stage_confidence?: number;
   stage_signals?: string[];
-  memory_snapshot?: HarnessAgentMemorySnapshot;
-  alerts?: HarnessAgentAlert[];
-  proactive_suggestions?: HarnessAgentProactiveSuggestion[];
+  memory_snapshot?: AgentMemorySnapshot;
+  alerts?: GuardianAlert[];
+  proactive_suggestions?: GuardianSuggestion[];
   conversation_id?: string;
   conversation_title?: string;
 }
 
-export const harnessAgentApi = {
-  chat: async (data: {
-    messages: HarnessAgentMessage[];
-    confirmed_action_ids?: string[];
-    memory?: Record<string, any>;
+export interface AgentRunStep extends AgentProposedAction {
+  idempotency_key: string;
+  status: string;
+  attempts: number;
+  result?: unknown;
+  error?: string | null;
+}
+
+export interface AgentRunRecord {
+  id: string;
+  task_id: string;
+  conversation_id: string;
+  goal: string;
+  mode: string;
+  skill_id: string;
+  skill_version: string;
+  skill_snapshot: Record<string, any>;
+  status: string;
+  steps: AgentRunStep[];
+  llm_runtime: Record<string, any>;
+  final_result: Record<string, any>;
+  failure_reason: string;
+  event_sequence: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PiAgentRunResponse {
+  ok: boolean;
+  run: AgentRunRecord;
+  assistant_message: string;
+  pending_actions: AgentProposedAction[];
+  active_skill: AgentSkill;
+  guardian?: {
+    user_stage?: string;
+    stage_confidence?: number;
+    stage_signals?: string[];
+    alerts?: GuardianAlert[];
+    proactive_suggestions?: GuardianSuggestion[];
+  };
+  errors?: string[];
+  conversation_id?: string;
+  conversation_title?: string;
+}
+
+export interface PiAgentConfirmationResponse {
+  ok: boolean;
+  run: AgentRunRecord;
+  tool_calls: AgentToolCall[];
+  errors?: string[];
+  warnings?: string[];
+}
+
+export interface HostedExecutorEvent {
+  event_id: string;
+  sequence: number;
+  type: string;
+  provider_event: string;
+  payload: Record<string, any>;
+  created_at: string;
+}
+
+export interface HostedExecutorSession {
+  session_id: string;
+  task_type: string;
+  task_id: string;
+  executor_id: string;
+  protocol: string;
+  external_session_id: string;
+  external_turn_id: string;
+  status: string;
+  capability_grant: Record<string, any>;
+  recovery_cursor: Record<string, any>;
+  error: string;
+  event_sequence: number;
+  created_at: string;
+  updated_at: string;
+  started_at?: string | null;
+  completed_at?: string | null;
+}
+
+export interface HostedExecutorSessionDetail extends HostedExecutorSession {
+  result: Record<string, any>;
+  events: HostedExecutorEvent[];
+}
+
+export interface JobResearchRunSummary {
+  run_id: string;
+  job_id: number;
+  runtime_id: string;
+  runtime_version?: string | null;
+  status: string;
+  review_status: "pending" | "candidate" | "accepted" | "rejected" | "not_available";
+  review_note: string;
+  reviewed_at?: string | null;
+  attempts: number;
+  source_count: number;
+  finding_count: number;
+  error?: string | null;
+  created_at: string;
+  updated_at: string;
+  started_at?: string | null;
+  completed_at?: string | null;
+}
+
+export interface JobResearchEvidence {
+  id: number;
+  source_ref: string;
+  url: string;
+  title: string;
+  publisher: string;
+  source_class: string;
+  published_at?: string | null;
+  retrieved_at: string;
+  excerpt: string;
+}
+
+export interface JobResearchFinding {
+  id: number;
+  finding_type: string;
+  statement: string;
+  details: Record<string, any>;
+  source_refs: string[];
+  evidence_level: string;
+}
+
+export interface JobResearchRunDetail extends JobResearchRunSummary {
+  report_markdown: string;
+  result: {
+    schema?: string;
+    gaps?: string[];
+    [key: string]: any;
+  };
+  trace: Record<string, any>;
+  evidence: JobResearchEvidence[];
+  findings: JobResearchFinding[];
+}
+
+export type PreApplicationDecisionChoice =
+  | "go"
+  | "conditional_go"
+  | "no_go"
+  | "insufficient_evidence";
+
+export interface PreApplicationDecisionEvidence {
+  source_refs: string[];
+  claim: string;
+  kind: "candidate_fact" | "job_requirement" | "research_fact" | "inference";
+}
+
+export interface PreApplicationDecisionRecord {
+  id: string;
+  job_id: number;
+  status: "ready_for_review" | "reviewed" | string;
+  agent_recommendation: PreApplicationDecisionChoice;
+  final_decision: PreApplicationDecisionChoice | null;
+  review_note: string;
+  reviewed_at?: string | null;
+  created_at: string;
+  updated_at: string;
+  decision: {
+    recommendation: PreApplicationDecisionChoice;
+    rationale: string;
+    strengths: string[];
+    gaps: string[];
+    conditions: string[];
+    missing_evidence: string[];
+    evidence: PreApplicationDecisionEvidence[];
+  };
+}
+
+export interface PreApplicationState {
+  stage: string;
+  job: Record<string, any>;
+  profile_id: number;
+  profile_evidence_count: number;
+  research_run?: {
+    run_id: string;
+    status: string;
+    finding_count?: number;
+    source_count?: number;
+    error?: string;
+    attempts?: number;
+  } | null;
+  stale_decision_id?: string | null;
+  decision?: PreApplicationDecisionRecord | null;
+  resume_proposal?: {
+    proposal_id: string;
+    status: string;
+    created_at: string;
+  } | null;
+}
+
+export const piAgentApi = {
+  skills: () =>
+    request<{ skills: AgentSkill[] }>("/api/agent/skills"),
+  runtime: () =>
+    request<Record<string, any> & { available: boolean; runtime: string }>("/api/agent/runtime"),
+  start: async (data: {
+    message: string;
+    skill_id: string;
     conversation_id?: string | null;
-    skill_id?: string | null;
+    task_id?: string | null;
   }, onEvent?: (event: string, data: any) => void) => {
+    const runId = createAgentRunId();
+    const requestData = { ...data, run_id: runId };
+    let lastSequence = 0;
+    let nextDeltaIndex = 0;
+
+    const forwardEvent = (event: string, eventData: any) => {
+      const sequence = Number(eventData?.sequence);
+      if (Number.isInteger(sequence) && sequence > lastSequence) {
+        lastSequence = sequence;
+      }
+
+      if (event !== "message.delta") {
+        onEvent?.(event, eventData);
+        return;
+      }
+
+      const payload = eventData?.payload || {};
+      const parts = Array.isArray(payload.parts) ? payload.parts : null;
+      if (parts) {
+        for (const part of parts) {
+          const deltaIndex = Number(part?.delta_index);
+          if (!Number.isInteger(deltaIndex) || deltaIndex < nextDeltaIndex) continue;
+          nextDeltaIndex = deltaIndex + 1;
+          onEvent?.("message.delta", {
+            ...eventData,
+            payload: {
+              ...payload,
+              parts: undefined,
+              delta: String(part?.delta || ""),
+              delta_index: deltaIndex,
+            },
+          });
+        }
+        return;
+      }
+
+      const deltaIndex = Number(payload.delta_index);
+      if (Number.isInteger(deltaIndex)) {
+        if (deltaIndex < nextDeltaIndex) return;
+        nextDeltaIndex = deltaIndex + 1;
+      }
+      onEvent?.(event, eventData);
+    };
+
+    const followExistingRun = async () => {
+      let failures = 0;
+      while (true) {
+        try {
+          return await readEventStream<PiAgentRunResponse>(
+            `/api/agent/runtime/runs/${encodeURIComponent(runId)}/events/stream?${buildQuery({
+              after_sequence: lastSequence,
+            })}`,
+            { method: "GET" },
+            forwardEvent
+          );
+        } catch (error) {
+          failures += 1;
+          if (failures >= 8) throw error;
+          const delayMs = Math.min(250 * (2 ** (failures - 1)), 2000);
+          onEvent?.("stream.reconnecting", {
+            run_id: runId,
+            after_sequence: lastSequence,
+            attempt: failures,
+          });
+          await waitForReconnect(delayMs);
+        }
+      }
+    };
+
     try {
-      return await streamResult<HarnessAgentResponse>("/api/harness-agent/chat/stream", data, onEvent);
+      return await streamResult<PiAgentRunResponse>(
+        "/api/agent/runtime/runs/stream",
+        requestData,
+        forwardEvent
+      );
     } catch (error) {
-      if (!(error instanceof Error) || error.message !== "__SSE_UNAVAILABLE__") throw error;
-      return request<HarnessAgentResponse>("/api/harness-agent/chat", {
-        method: "POST",
-        body: JSON.stringify(data),
-      });
+      if (error instanceof Error && error.message === "__SSE_UNAVAILABLE__") {
+        return request<PiAgentRunResponse>("/api/agent/runtime/runs", {
+          method: "POST",
+          body: JSON.stringify(requestData),
+        });
+      }
+      try {
+        onEvent?.("stream.reconnecting", {
+          run_id: runId,
+          after_sequence: lastSequence,
+          attempt: 0,
+        });
+        return await followExistingRun();
+      } catch (followError) {
+        if (
+          followError instanceof Error
+          && followError.message === "API Error: 404"
+        ) {
+          throw error;
+        }
+        throw followError;
+      }
     }
   },
+  confirm: (runId: string, actionId: string) =>
+    request<PiAgentConfirmationResponse>(
+      `/api/agent/runtime/runs/${encodeURIComponent(runId)}/confirm`,
+      {
+        method: "POST",
+        body: JSON.stringify({ action_id: actionId }),
+      }
+    ),
+  resume: (runId: string) =>
+    request<PiAgentRunResponse>(
+      `/api/agent/runtime/runs/${encodeURIComponent(runId)}/resume`,
+      { method: "POST" }
+    ),
+  abort: (runId: string) =>
+    request<{ ok: boolean; run: AgentRunRecord }>(
+      `/api/agent/runtime/runs/${encodeURIComponent(runId)}/abort`,
+      { method: "POST" }
+    ),
+  run: (runId: string) =>
+    request<{ run: AgentRunRecord }>(`/api/agent/runs/${encodeURIComponent(runId)}`),
+  runs: (params?: { conversation_id?: string; task_id?: string; limit?: number }) =>
+    request<{ runs: AgentRunRecord[] }>(
+      `/api/agent/runs?${buildQuery(params)}`
+    ),
+  events: (runId: string, afterSequence = 0) =>
+    request<{
+      run_id: string;
+      events: Array<{
+        event_id: string;
+        run_id: string;
+        sequence: number;
+        type: string;
+        timestamp: string;
+        payload: Record<string, any>;
+      }>;
+      last_sequence: number;
+    }>(
+      `/api/agent/runs/${encodeURIComponent(runId)}/events?${buildQuery({
+        after_sequence: afterSequence,
+      })}`
+    ),
+};
+
+export const hostedExecutorApi = {
+  sessions: (params?: { task_type?: string; task_id?: string; limit?: number }) =>
+    request<{ items: HostedExecutorSession[] }>(
+      `/api/agent/runtime/hosted-sessions?${buildQuery(params)}`
+    ),
+  session: (sessionId: string) =>
+    request<HostedExecutorSessionDetail>(
+      `/api/agent/runtime/hosted-sessions/${encodeURIComponent(sessionId)}`
+    ),
+  cancel: (sessionId: string) =>
+    request<Record<string, any>>(
+      `/api/agent/runtime/hosted-sessions/${encodeURIComponent(sessionId)}/cancel`,
+      {
+        method: "POST",
+        body: JSON.stringify({ confirmed: true }),
+      }
+    ),
+  resume: (sessionId: string) =>
+    request<Record<string, any>>(
+      `/api/agent/runtime/hosted-sessions/${encodeURIComponent(sessionId)}/resume`,
+      {
+        method: "POST",
+        body: JSON.stringify({ confirmed: true }),
+      }
+  ),
+};
+
+export const jobResearchApi = {
+  runs: (params?: { job_id?: number; status?: string; limit?: number }) =>
+    request<{ total: number; items: JobResearchRunSummary[] }>(
+      `/api/research/job-runs?${buildQuery(params)}`
+    ),
+  run: (runId: string) =>
+    request<JobResearchRunDetail>(
+      `/api/research/job-runs/${encodeURIComponent(runId)}`
+    ),
+  review: (
+    runId: string,
+    data: { action: "accept" | "reject"; note?: string }
+  ) =>
+    request<JobResearchRunDetail>(
+      `/api/research/job-runs/${encodeURIComponent(runId)}/review`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      }
+  ),
+};
+
+export const preApplicationApi = {
+  state: (jobId: number) =>
+    request<PreApplicationState>(`/api/research/pre-application/${jobId}`),
+  prepare: (jobId: number, researchRunId?: string | null) =>
+    request<PreApplicationDecisionRecord>(
+      `/api/research/pre-application/${jobId}/prepare`,
+      {
+        method: "POST",
+        body: JSON.stringify({ research_run_id: researchRunId || null }),
+      }
+    ),
+  review: (
+    decisionId: string,
+    data: {
+      final_decision: PreApplicationDecisionChoice;
+      note?: string;
+    }
+  ) =>
+    request<PreApplicationDecisionRecord>(
+      `/api/research/pre-application/decisions/${encodeURIComponent(decisionId)}/review`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      }
+    ),
+};
+
+export const agentSupportApi = {
   conversations: () =>
-    request<{ conversations: HarnessAgentConversationSummary[] }>("/api/harness-agent/conversations"),
+    request<{ conversations: AgentConversationSummary[] }>("/api/agent/conversations"),
   conversation: (id: string) =>
-    request<HarnessAgentConversationDetail>(`/api/harness-agent/conversations/${encodeURIComponent(id)}`),
+    request<AgentConversationDetail>(`/api/agent/conversations/${encodeURIComponent(id)}`),
   deleteConversation: (id: string) =>
-    request<{ ok: boolean }>(`/api/harness-agent/conversations/${encodeURIComponent(id)}`, {
+    request<{ ok: boolean }>(`/api/agent/conversations/${encodeURIComponent(id)}`, {
       method: "DELETE",
     }),
   exportMemory: (format: "json" | "markdown" = "json") =>
-    request<{ format: string; content: any; memory: HarnessAgentMemorySnapshot }>(
-      `/api/harness-agent/memory/export?${buildQuery({ format })}`
+    request<{ format: string; content: any; memory: AgentMemorySnapshot }>(
+      `/api/agent/memory/export?${buildQuery({ format })}`
     ),
   importMemory: (content: Record<string, any> | string) =>
-    request<{ ok: boolean; memory: HarnessAgentMemorySnapshot }>("/api/harness-agent/memory/import", {
+    request<{ ok: boolean; memory: AgentMemorySnapshot }>("/api/agent/memory/import", {
       method: "POST",
       body: JSON.stringify({ content }),
     }),
   skills: () =>
-    request<{ skills: HarnessAgentSkill[] }>("/api/harness-agent/skills"),
+    request<{ skills: AgentSkill[] }>("/api/agent/skills"),
 };
 
 // ---- Profile API ----

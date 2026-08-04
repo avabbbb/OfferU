@@ -59,10 +59,11 @@ async def _preference_proposal(observation_id: int) -> dict:
     return await create_memory_proposal(
         observation_id=observation_id,
         target_tier="preference",
-        section_type="preference",
+        section_type="custom:c_preference",
         title=_uniq("目标地点偏好"),
         before={},
         after={
+            "category_label": "求职偏好",
             "description": statement,
             "bullet": statement,
         },

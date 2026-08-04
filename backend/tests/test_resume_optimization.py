@@ -21,7 +21,6 @@ from sqlalchemy import select
 
 from app.database import async_session, init_db
 from app.agents import optimize_agent
-from app.agents.runtimes.defs.claude import build_claude_args
 from app import mcp_server
 from app.models.models import (
     Job,
@@ -39,14 +38,18 @@ from app.models.models import (
 from app.ops import OPERATIONS
 from app.routes.agent import SYSTEM_PROMPT as WEB_AGENT_SYSTEM_PROMPT
 from app.routes import optimize as optimize_route
-from app.services import resume_optimization
+from app.services import coding_agent_runtime, resume_optimization
 from app.services.agent_skill_registry import resolve_skill
-from app.services.harness_agent import (
-    CONFIRM_TOOLS,
-    READ_TOOLS,
-    REGISTRY_OPERATION_TOOLS,
-)
 from app.services.resume_fact_gates import validate_resume_fact_gates
+
+READ_OPERATIONS = frozenset(
+    name for name, operation in OPERATIONS.items()
+    if not operation.is_mutation
+)
+MUTATION_OPERATIONS = frozenset(
+    name for name, operation in OPERATIONS.items()
+    if operation.is_mutation
+)
 
 
 _RUN_SALT = secrets.token_hex(8)
@@ -67,16 +70,16 @@ class ResumeOptimizationContractTests(unittest.TestCase):
         skill = resolve_skill("tailor_resume")
 
         self.assertTrue(_RESUME_OPERATIONS.issubset(OPERATIONS))
-        self.assertTrue(_RESUME_OPERATIONS.issubset(REGISTRY_OPERATION_TOOLS))
+        self.assertTrue(_RESUME_OPERATIONS.issubset(OPERATIONS))
         self.assertNotIn("generate_resume", OPERATIONS)
         self.assertEqual(
             {"list_resume_optimizations", "get_resume_optimization"}
             & _RESUME_OPERATIONS,
-            READ_TOOLS & _RESUME_OPERATIONS,
+            READ_OPERATIONS & _RESUME_OPERATIONS,
         )
         self.assertEqual(
             {"prepare_resume_optimization", "review_resume_optimization"},
-            CONFIRM_TOOLS & _RESUME_OPERATIONS,
+            MUTATION_OPERATIONS & _RESUME_OPERATIONS,
         )
         self.assertIsNotNone(skill)
         assert skill is not None
@@ -89,7 +92,10 @@ class ResumeOptimizationContractTests(unittest.TestCase):
         self.assertFalse(hasattr(optimize_route, "_create_generated_resume"))
         self.assertFalse(hasattr(optimize_route, "_generate_for_job"))
         self.assertIn("execute_operation", inspect.getsource(optimize_route.optimize_generate))
-        self.assertNotIn("bypassPermissions", inspect.getsource(build_claude_args))
+        self.assertNotIn(
+            "bypassPermissions",
+            inspect.getsource(coding_agent_runtime._runtime_args),
+        )
         self.assertTrue(
             {"start_job_research", "get_job_research"}.issubset(
                 optimize_agent.TOOL_REGISTRY
@@ -480,7 +486,7 @@ async def _create_fixture() -> dict:
             company_dossier_id=company_dossier.id,
             role_dossier_id=role_dossier.id,
             status="completed",
-            review_status="candidate",
+            review_status="accepted",
             result_json={"gaps": []},
             completed_at=datetime.utcnow(),
         )

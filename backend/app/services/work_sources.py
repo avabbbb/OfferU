@@ -22,7 +22,11 @@ from app.services.career_memory import (
     invalidate_memory_source,
     record_learning_observation,
 )
-from app.services.coding_agent_runtime import run_coding_agent, select_runtime
+from app.services.coding_agent_runtime import (
+    DeepTaskSpec,
+    execute_deep_task,
+    select_local_executor,
+)
 
 
 SOURCE_TYPES = frozenset({"directory", "git_repository"})
@@ -675,7 +679,7 @@ async def start_work_source_sync(
         ).lower()
         if selected_runtime == "auto":
             # 按 settings.coding_agent_priority 解析为具体 runtime
-            selected_runtime = str((await select_runtime()).get("id"))
+            selected_runtime = str((await select_local_executor()).get("id"))
         run = WorkSourceSyncRun(
             run_id=f"work-sync-{secrets.token_hex(16)}",
             work_source_id=source.id,
@@ -750,14 +754,22 @@ async def _execute_sync(run_id: str) -> None:
             runtime_version = ""
         else:
             run_dir = RUN_ROOT / run_id
-            worker = await run_coding_agent(
+            worker = await execute_deep_task(DeepTaskSpec(
                 runtime_id=runtime_id,
                 prompt=_worker_prompt(source_name, source_type, changes, excerpts),
                 cwd=run_dir,
                 output_schema=WORK_SOURCE_RESULT_SCHEMA,
                 timeout_seconds=600,
                 web_search_mode="disabled",
-            )
+                task_type="work_source_sync",
+                task_id=run_id,
+                capability_grant={
+                    "offeru_operations": [],
+                    "data_scope": {"work_source_id": source_id},
+                    "filesystem": "prompt_payload_only",
+                    "network": "disabled",
+                },
+            ))
             result = _validated_result(worker["structured"], changes)
             result["no_change"] = False
             result["changed_files"] = changes[:300]

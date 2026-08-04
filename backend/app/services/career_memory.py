@@ -454,7 +454,16 @@ async def create_memory_proposal(
     ).lower()
     if clean_tier not in TARGET_TIERS:
         raise ValueError("target_tier 必须是 verified_fact、preference 或 career_hypothesis")
-    clean_section_type = _clean_type(section_type, "section_type")
+    from app.services.profile_schema import (
+        is_valid_profile_section_type,
+        normalize_section_type_alias,
+    )
+
+    clean_section_type = normalize_section_type_alias(
+        _clean_text(section_type, "section_type", limit=80, required=True).lower()
+    )
+    if not is_valid_profile_section_type(clean_section_type):
+        raise ValueError("section_type 必须是内置档案分类或稳定 custom 分类")
     clean_title = _clean_text(title, "title", limit=220, required=True)
     clean_reason = _clean_text(reason, "reason", limit=4000, required=True)
     clean_before = _validate_json_object(
@@ -791,6 +800,7 @@ async def review_memory_proposal(
             title=snapshot["title"],
             content_json=snapshot["after"],
             source_text=source_excerpt,
+            category_label=str(snapshot["after"].get("category_label") or "").strip() or None,
             source_url=snapshot["source_locator"],
             dedup_key=f"memory_proposal:{clean_proposal_id}",
             tier=snapshot["target_tier"],

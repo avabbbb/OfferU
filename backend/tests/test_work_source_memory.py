@@ -25,11 +25,6 @@ from app.models.models import (
     WorkSource,
 )
 from app.ops import OPERATIONS
-from app.services.harness_agent import (
-    CONFIRM_TOOLS,
-    READ_TOOLS,
-    REGISTRY_OPERATION_TOOLS,
-)
 from app.services.agent_skill_registry import resolve_skill
 from app.services.career_memory import list_memory_inbox, review_memory_proposal
 from app.services.work_sources import (
@@ -40,6 +35,15 @@ from app.services.work_sources import (
     invalidate_work_source,
     register_work_source,
     start_work_source_sync,
+)
+
+READ_OPERATIONS = frozenset(
+    name for name, operation in OPERATIONS.items()
+    if not operation.is_mutation
+)
+MUTATION_OPERATIONS = frozenset(
+    name for name, operation in OPERATIONS.items()
+    if operation.is_mutation
 )
 
 
@@ -127,9 +131,9 @@ class WorkSourceMemoryTests(unittest.TestCase):
             "get_work_source_sync_run",
         }
         confirmable = expected - readable
-        self.assertTrue(readable.issubset(READ_TOOLS))
-        self.assertTrue(confirmable.issubset(CONFIRM_TOOLS))
-        self.assertTrue(expected.issubset(REGISTRY_OPERATION_TOOLS))
+        self.assertTrue(readable.issubset(READ_OPERATIONS))
+        self.assertTrue(confirmable.issubset(MUTATION_OPERATIONS))
+        self.assertTrue(expected.issubset(OPERATIONS))
 
     def test_register_is_idempotent_and_requires_an_existing_directory(self) -> None:
         async def run(root: str) -> tuple[dict, dict]:
@@ -185,7 +189,7 @@ class WorkSourceMemoryTests(unittest.TestCase):
                     data_consent=True,
                 )
             with patch(
-                "app.services.work_sources.run_coding_agent",
+                "app.services.work_sources.execute_deep_task",
                 new=AsyncMock(return_value=_worker_result(title)),
             ):
                 await _execute_sync(run["run_id"])
@@ -232,7 +236,7 @@ class WorkSourceMemoryTests(unittest.TestCase):
                     data_consent=True,
                 )
             with patch(
-                "app.services.work_sources.run_coding_agent",
+                "app.services.work_sources.execute_deep_task",
                 new=AsyncMock(return_value=_worker_result(title)),
             ):
                 await _execute_sync(first["run_id"])
@@ -242,7 +246,7 @@ class WorkSourceMemoryTests(unittest.TestCase):
                     data_consent=True,
                 )
             model = AsyncMock(side_effect=AssertionError("无变化时不应调用模型"))
-            with patch("app.services.work_sources.run_coding_agent", new=model):
+            with patch("app.services.work_sources.execute_deep_task", new=model):
                 await _execute_sync(second["run_id"])
             completed = await get_work_source_sync_run(second["run_id"])
             async with async_session() as db:
@@ -282,7 +286,7 @@ class WorkSourceMemoryTests(unittest.TestCase):
                     data_consent=True,
                 )
             with patch(
-                "app.services.work_sources.run_coding_agent",
+                "app.services.work_sources.execute_deep_task",
                 new=AsyncMock(return_value=_worker_result(title)),
             ):
                 await _execute_sync(run["run_id"])

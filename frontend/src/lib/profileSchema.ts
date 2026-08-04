@@ -691,6 +691,68 @@ export function mapProfileSectionToResumeItem(section: ProfileSectionLike): Reco
   };
 }
 
+export function mapProfileCandidateToResumeItem(section: ProfileSectionLike): Record<string, any> {
+  const item = mapProfileSectionToResumeItem(section);
+  const bullet = asString(section.content_json?.bullet);
+  const resumeType = mapProfileSectionToResumeType(section.section_type);
+  if (bullet && resumeType === "skills") {
+    item.items = asStringList(bullet);
+  } else if (bullet && resumeType === "certificates") {
+    item.name = bullet;
+  } else if (bullet) {
+    item.description = bullet;
+  }
+  delete item._source_profile_section_id;
+  delete item._source_profile_updated_at;
+  delete item._source_profile_category_key;
+  return item;
+}
+
+export interface ResumeCandidateGroup {
+  sectionType: ReturnType<typeof mapProfileSectionToResumeType>;
+  title: string;
+  sortOrder: number;
+  items: Record<string, any>[];
+}
+
+export function groupProfileCandidatesForResume(
+  candidates: ProfileSectionLike[]
+): ResumeCandidateGroup[] {
+  const titles: Record<ResumeCandidateGroup["sectionType"], string> = {
+    education: "教育经历",
+    workExperiences: "工作经历",
+    internshipExperiences: "实习经历",
+    projects: "项目经历",
+    skills: "技能",
+    certificates: "证书",
+    awards: "获奖经历",
+    personalExperiences: "个人经历",
+  };
+  const groups = new Map<ResumeCandidateGroup["sectionType"], ResumeCandidateGroup>();
+  const sortOrders: Record<ResumeCandidateGroup["sectionType"], number> = {
+    education: 0,
+    workExperiences: 1,
+    internshipExperiences: 2,
+    projects: 3,
+    skills: 4,
+    certificates: 5,
+    awards: 6,
+    personalExperiences: 7,
+  };
+  for (const candidate of candidates) {
+    const sectionType = mapProfileSectionToResumeType(candidate.section_type);
+    const group = groups.get(sectionType) || {
+      sectionType,
+      title: titles[sectionType],
+      sortOrder: sortOrders[sectionType],
+      items: [],
+    };
+    group.items.push(mapProfileCandidateToResumeItem(candidate));
+    groups.set(sectionType, group);
+  }
+  return [...groups.values()];
+}
+
 export function getProfileSectionEndDate(section: ProfileSectionLike): string {
   const key = normalizeProfileCategoryKey(section.category_key || section.section_type);
   const content = section.content_json || {};

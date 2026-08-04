@@ -25,12 +25,18 @@ if settings.offeru_enable_mcp:
 else:
     mcp_server = None
     _HAS_MCP = False
-from app.routes import jobs, resume, calendar, email, config, applications, scraper, pools, profile, profile_agent, optimize, interview, harness_agent, templates, interviews, research
+from app.routes import jobs, resume, calendar, email, config, applications, scraper, pools, profile, profile_agent, optimize, interview, main_agent, templates, interviews, research
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用启动时初始化数据库表与 MCP 会话管理器。"""
     await init_db()
+    from app.services.agent_run_state import recover_interrupted_agent_runs
+
+    await recover_interrupted_agent_runs()
+    from app.services.coding_agent_runtime import recover_hosted_executor_sessions
+
+    await recover_hosted_executor_sessions()
     from app.services.email_sync import (
         start_email_sync_service,
         stop_email_sync_service,
@@ -59,6 +65,11 @@ async def lifespan(app: FastAPI):
         else:
             yield
     finally:
+        from app.services.coding_agent_runtime import shutdown_hosted_executors
+        from app.services.pi_agent_worker import close_pi_agent_worker
+
+        await shutdown_hosted_executors()
+        await close_pi_agent_worker()
         await stop_authorized_research_service()
         await stop_email_sync_service()
         await stop_memory_distill_service()
@@ -91,8 +102,8 @@ app.include_router(jobs.router, prefix="/api/jobs", tags=["Jobs"])
 app.include_router(pools.router, prefix="/api/pools", tags=["Pools"])
 app.include_router(profile.router, prefix="/api/profile", tags=["Profile"])
 app.include_router(profile_agent.router, prefix="/api/profile/agent", tags=["Profile Agent"])
-app.include_router(harness_agent.router, prefix="/api/harness-agent", tags=["Harness Agent"])
-app.include_router(harness_agent.router, prefix="/api/agent", tags=["Agent"])
+app.include_router(main_agent.router, prefix="/api/agent", tags=["Agent"])
+app.include_router(main_agent.runtime_router, prefix="/api/agent", tags=["Agent Runtime"])
 app.include_router(optimize.router, prefix="/api/optimize", tags=["Optimize"])
 app.include_router(resume.router, prefix="/api/resume", tags=["Resume"])
 app.include_router(templates.router, prefix="/api/templates", tags=["Templates"])

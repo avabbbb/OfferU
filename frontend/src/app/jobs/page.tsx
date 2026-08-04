@@ -560,9 +560,9 @@ export default function JobsPage() {
       initial={{ opacity: 0, y: 14, scale: 0.99 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ type: "spring", stiffness: 380, damping: 28 }}
-      className="space-y-6"
+      className="stage-page stage-page--jobs space-y-6"
     >
-      <section className="bauhaus-panel overflow-hidden bg-[var(--surface)]">
+      <section className="stage-hero bauhaus-panel overflow-hidden bg-[var(--surface)]">
         <div className="grid gap-6 border-b border-[var(--border)] p-6 md:p-8 xl:grid-cols-[1.05fr_0.95fr]">
           <div className="space-y-4">
             <span className={`bauhaus-chip ${triageMeta.tone}`}>{triageMeta.label}</span>

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 import hashlib
 from pathlib import Path
@@ -13,6 +14,9 @@ from app.models.models import (
     Application,
     ApplicationRecord,
     ApplicationAttempt,
+    CalendarEvent,
+    InterviewExperience,
+    InterviewQuestion,
     Job,
     Pool,
     Profile,
@@ -54,6 +58,153 @@ async def get_profile() -> dict:
             "target_locations": base_info.get("target_locations", []) or [],
             "summary": base_info.get("personal_summary") or base_info.get("summary") or profile.headline or "",
         }
+
+
+def _optional_datetime(value: Optional[str], field: str) -> Optional[datetime]:
+    clean = str(value or "").strip()
+    if not clean:
+        return None
+    try:
+        parsed = datetime.fromisoformat(clean.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(f"{field} 必须为 ISO 8601 时间") from exc
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    return parsed
+
+
+async def list_calendar_events(
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    related_job_id: Optional[int] = None,
+    limit: int = 100,
+) -> dict:
+    safe_limit = max(1, min(int(limit or 100), 500))
+    start_at = _optional_datetime(start, "start")
+    end_at = _optional_datetime(end, "end")
+    if start_at and end_at and start_at > end_at:
+        raise ValueError("start 不能晚于 end")
+    async with async_session() as db:
+        query = select(CalendarEvent)
+        if start_at:
+            query = query.where(CalendarEvent.start_time >= start_at)
+        if end_at:
+            query = query.where(CalendarEvent.start_time <= end_at)
+        if related_job_id is not None:
+            query = query.where(CalendarEvent.related_job_id == int(related_job_id))
+        rows = (
+            await db.execute(query.order_by(CalendarEvent.start_time.asc()).limit(safe_limit))
+        ).scalars().all()
+        return {
+            "total": len(rows),
+            "items": [
+                {
+                    "id": row.id,
+                    "title": row.title,
+                    "description": row.description or "",
+                    "event_type": row.event_type,
+                    "start_time": row.start_time.isoformat(),
+                    "end_time": row.end_time.isoformat() if row.end_time else None,
+                    "location": row.location or "",
+                    "related_job_id": row.related_job_id,
+                    "related_notification_id": row.related_notification_id,
+                }
+                for row in rows
+            ],
+        }
+
+
+async def list_interview_questions(
+    company: Optional[str] = None,
+    role: Optional[str] = None,
+    job_id: Optional[int] = None,
+    category: Optional[str] = None,
+    limit: int = 100,
+) -> dict:
+    safe_limit = max(1, min(int(limit or 100), 500))
+    async with async_session() as db:
+        query = select(InterviewQuestion)
+        if company:
+            query = query.where(
+                InterviewQuestion.experience.has(
+                    InterviewExperience.company.contains(str(company).strip())
+                )
+            )
+        if role:
+            query = query.where(
+                InterviewQuestion.experience.has(
+                    InterviewExperience.role.contains(str(role).strip())
+                )
+            )
+        if job_id is not None:
+            query = query.where(InterviewQuestion.job_id == int(job_id))
+        if category:
+            query = query.where(InterviewQuestion.category == str(category).strip())
+        rows = (
+            await db.execute(
+                query.order_by(
+                    InterviewQuestion.frequency.desc(),
+                    InterviewQuestion.id.desc(),
+                ).limit(safe_limit)
+            )
+        ).scalars().all()
+        return {
+            "total": len(rows),
+            "items": [
+                {
+                    "id": row.id,
+                    "experience_id": row.experience_id,
+                    "question_text": row.question_text,
+                    "round_type": row.round_type,
+                    "category": row.category,
+                    "difficulty": row.difficulty,
+                    "frequency": row.frequency,
+                    "suggested_answer": row.suggested_answer,
+                    "job_id": row.job_id,
+                    "created_at": row.created_at.isoformat() if row.created_at else None,
+                }
+                for row in rows
+            ],
+        }
+
+
+async def list_agent_runs_summary(
+    conversation_id: Optional[str] = None,
+    task_id: Optional[str] = None,
+    limit: int = 20,
+) -> dict:
+    from app.services.agent_run_state import list_agent_runs
+
+    runs = await list_agent_runs(
+        conversation_id=conversation_id,
+        task_id=task_id,
+        limit=limit,
+    )
+    return {
+        "total": len(runs),
+        "items": [
+            {
+                "id": run["id"],
+                "task_id": run["task_id"],
+                "conversation_id": run["conversation_id"],
+                "goal": run["goal"],
+                "mode": run["mode"],
+                "skill_id": run["skill_id"],
+                "skill_version": run["skill_version"],
+                "status": run["status"],
+                "pending_action_count": sum(
+                    1
+                    for step in run.get("steps") or []
+                    if step.get("status") in {"waiting_confirmation", "executing"}
+                ),
+                "failure_reason": run.get("failure_reason") or "",
+                "event_sequence": run.get("event_sequence") or 0,
+                "created_at": run.get("created_at"),
+                "updated_at": run.get("updated_at"),
+            }
+            for run in runs
+        ],
+    }
 
 
 async def list_profile_evidence(
@@ -477,6 +628,59 @@ async def consolidate_memory_observations(
     return await _consolidate(observation_ids=observation_ids, limit=limit)
 
 
+async def distill_memory(
+    observation_ids: Optional[list[int]] = None,
+    limit: int = 20,
+) -> dict:
+    from app.services.memory_distiller import distill_observations as _distill
+
+    return await _distill(observation_ids=observation_ids, limit=limit)
+
+
+async def promote_session_memory() -> dict:
+    from app.services.memory_distiller import promote_session_memory as _promote
+
+    return await _promote()
+
+
+async def search_memory(query: str, limit: int = 8) -> dict:
+    from app.services.semantic_search import get_semantic_search
+
+    hits = await get_semantic_search().search_observations(query=query, limit=limit)
+    return {"count": len(hits), "hits": hits}
+
+
+async def refresh_job_research_report(job_id: int) -> dict:
+    from app.services.job_research import refresh_job_research_report as _refresh
+
+    return await _refresh(job_id=job_id)
+
+
+async def get_application_progress_board(
+    status: str = "active",
+    include_timeline: bool = False,
+) -> dict:
+    from app.services.application_progress import get_application_progress_board as _board
+
+    return await _board(status=status, include_timeline=include_timeline)
+
+
+async def classify_progress_signal(candidate_id: str) -> dict:
+    from app.services.application_progress import classify_progress_signal as _classify
+
+    return await _classify(candidate_id=candidate_id)
+
+
+async def draft_interview_scoring_skill(
+    goal: str,
+    target_role: str = "",
+    job_id: Optional[int] = None,
+) -> dict:
+    from app.services.interview_scoring import draft_scoring_skill as _draft
+
+    return await _draft(goal=goal, target_role=target_role, job_id=job_id)
+
+
 async def invalidate_work_source(work_source_id: int, reason: str) -> dict:
     from app.services.work_sources import invalidate_work_source as _invalidate
 
@@ -569,6 +773,16 @@ async def get_job_research(run_id: str) -> dict:
     return await _get(run_id=run_id)
 
 
+async def review_job_research(
+    run_id: str,
+    action: str,
+    note: str = "",
+) -> dict:
+    from app.services.job_research import review_job_research as _review
+
+    return await _review(run_id=run_id, action=action, note=note)
+
+
 async def start_job_research(
     job_id: int,
     runtime_id: str = "codex",
@@ -582,6 +796,61 @@ async def resume_job_research(run_id: str) -> dict:
     from app.services.job_research import resume_job_research as _resume
 
     return await _resume(run_id=run_id)
+
+
+async def cancel_job_research(run_id: str) -> dict:
+    from app.services.job_research import cancel_job_research as _cancel
+
+    return await _cancel(run_id=run_id)
+
+
+async def list_hosted_executor_sessions(
+    task_type: Optional[str] = None,
+    task_id: Optional[str] = None,
+    limit: int = 20,
+) -> dict:
+    from app.services.coding_agent_runtime import list_hosted_executor_sessions as _list
+
+    return await _list(task_type=task_type, task_id=task_id, limit=limit)
+
+
+async def get_hosted_executor_session(session_id: str) -> dict:
+    from app.services.coding_agent_runtime import get_hosted_executor_session as _get
+
+    return await _get(session_id=session_id)
+
+
+async def get_pre_application_state(job_id: int) -> dict:
+    from app.services.pre_application_decisions import get_pre_application_state as _get
+
+    return await _get(job_id=job_id)
+
+
+async def prepare_pre_application_decision(
+    job_id: int,
+    research_run_id: Optional[str] = None,
+) -> dict:
+    from app.services.pre_application_decisions import (
+        prepare_pre_application_decision as _prepare,
+    )
+
+    return await _prepare(job_id=job_id, research_run_id=research_run_id)
+
+
+async def review_pre_application_decision(
+    decision_id: str,
+    final_decision: str,
+    note: str = "",
+) -> dict:
+    from app.services.pre_application_decisions import (
+        review_pre_application_decision as _review,
+    )
+
+    return await _review(
+        decision_id=decision_id,
+        final_decision=final_decision,
+        note=note,
+    )
 
 
 async def start_authorized_research_session(
@@ -1017,9 +1286,9 @@ async def batch_triage(job_ids: list[int], status: str, pool_id: Optional[int] =
 
 
 async def list_coding_agents() -> dict:
-    from app.services.coding_agent_runtime import list_coding_agent_runtimes
+    from app.services.coding_agent_runtime import list_local_executors
 
-    return await list_coding_agent_runtimes()
+    return await list_local_executors()
 
 
 async def list_batch_job_evaluations(limit: int = 20) -> dict:
@@ -1116,6 +1385,40 @@ async def list_resumes() -> list[dict]:
             }
             for r in rows
         ]
+
+
+async def inspect_resume_document(file_path: str) -> dict:
+    """Read one confirmed local PDF/DOCX and return candidates' source text only."""
+    requested_path = Path(str(file_path or "").strip()).expanduser()
+    try:
+        path = requested_path.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise ValueError("简历文件不存在或不可读取") from exc
+    if not path.is_file():
+        raise ValueError("简历路径必须指向一个文件")
+    if path.suffix.lower() not in {".pdf", ".docx"}:
+        raise ValueError("仅支持 .pdf 和 .docx 简历文件")
+    size = path.stat().st_size
+    if size <= 0:
+        raise ValueError("简历文件为空")
+    if size > 10 * 1024 * 1024:
+        raise ValueError("简历文件不能超过 10MB")
+
+    from app.services.resume_parser import parse_resume_document
+
+    file_bytes = await asyncio.to_thread(path.read_bytes)
+    parsed = await parse_resume_document(path.name, file_bytes)
+    if parsed is None or not parsed.text.strip():
+        diagnostics = parsed.public_dict() if parsed else {}
+        ocr = diagnostics.get("ocr") if isinstance(diagnostics, dict) else {}
+        hint = ocr.get("install_hint") if isinstance(ocr, dict) else None
+        raise ValueError(str(hint or "未能从简历文件中提取文本"))
+    return {
+        "filename": path.name,
+        "text": parsed.text,
+        "length": len(parsed.text),
+        "parse_diagnostics": parsed.public_dict(),
+    }
 
 
 async def get_resume(resume_id: int) -> dict:

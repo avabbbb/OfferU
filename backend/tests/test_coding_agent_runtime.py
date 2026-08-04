@@ -29,25 +29,21 @@ class CodingAgentRuntimeTests(unittest.TestCase):
     def setUp(self) -> None:
         runtime._PROBE_CACHE.clear()
 
-    def test_codex_args_enforce_current_isolated_structured_contract(self) -> None:
+    def test_codex_uses_app_server_protocol_instead_of_one_shot_exec(self) -> None:
         schema_path = Path("worker/output.schema.json")
 
         args = runtime._runtime_args("codex", output_schema=OUTPUT_SCHEMA, schema_path=schema_path)
 
-        self.assertEqual(args[0], "exec")
-        self.assertIn('approval_policy="never"', args)
-        self.assertIn("--sandbox", args)
-        self.assertEqual(args[args.index("--sandbox") + 1], "read-only")
-        self.assertIn("--ephemeral", args)
-        self.assertIn("--ignore-user-config", args)
-        self.assertIn("--ignore-rules", args)
-        self.assertEqual(args[args.index("--output-schema") + 1], str(schema_path))
-        self.assertIn("--json", args)
-        self.assertNotIn("--ask-for-approval", args)
-        self.assertNotIn('web_search="live"', args)
-        self.assertEqual(args[-1], "-")
+        self.assertEqual(args, ["app-server", "--stdio"])
+        self.assertEqual(
+            runtime.RUNTIME_DEFINITIONS["codex"]["protocol"],
+            "codex-app-server-jsonl-v2",
+        )
+        self.assertTrue(
+            runtime.RUNTIME_DEFINITIONS["codex"]["capabilities_decl"]["supports_resume"]
+        )
 
-    def test_codex_live_web_search_uses_probed_config_surface(self) -> None:
+    def test_codex_web_grant_is_sent_in_protocol_not_hardcoded_argv(self) -> None:
         args = runtime._runtime_args(
             "codex",
             output_schema=OUTPUT_SCHEMA,
@@ -55,41 +51,75 @@ class CodingAgentRuntimeTests(unittest.TestCase):
             web_search_mode="live",
         )
 
-        self.assertIn('web_search="live"', args)
-        web_config_index = args.index('web_search="live"')
-        self.assertEqual(args[web_config_index - 1], "--config")
-        self.assertEqual(args[args.index("--sandbox") + 1], "read-only")
-        self.assertIn("--ephemeral", args)
+        self.assertEqual(args, ["app-server", "--stdio"])
+        self.assertNotIn("exec", args)
+        config = runtime._codex_thread_config("live")
+        self.assertEqual(config["web_search"], "live")
+        self.assertFalse(config["features.shell_tool"])
+        self.assertFalse(config["features.unified_exec"])
+        self.assertFalse(config["features.apps"])
+        self.assertFalse(config["features.browser_use"])
+        self.assertFalse(config["features.computer_use"])
+        self.assertFalse(config["features.multi_agent"])
+        self.assertFalse(config["features.multi_agent_v2"])
+        self.assertFalse(config["features.workspace_dependencies"])
+        self.assertEqual(config["mcp_servers"], {})
+        self.assertEqual(config["project_doc_max_bytes"], 0)
 
-    def test_claude_args_enforce_schema_and_disable_tools_and_sessions(self) -> None:
+    def test_claude_uses_sdk_worker_instead_of_print_mode(self) -> None:
         args = runtime._runtime_args(
             "claude",
             output_schema=OUTPUT_SCHEMA,
             schema_path=Path("unused.json"),
         )
 
-        self.assertIn("--print", args)
-        self.assertEqual(args[args.index("--output-format") + 1], "json")
-        self.assertEqual(json.loads(args[args.index("--json-schema") + 1]), OUTPUT_SCHEMA)
-        self.assertEqual(args[args.index("--permission-mode") + 1], "plan")
-        self.assertEqual(args[args.index("--tools") + 1], "")
-        self.assertIn("--no-session-persistence", args)
-        self.assertIn("--safe-mode", args)
+        self.assertEqual(args, [str(runtime._CLAUDE_SDK_WORKER)])
+        worker_source = runtime._CLAUDE_SDK_WORKER.read_text(encoding="utf-8")
+        self.assertIn('settingSources: []', worker_source)
+        self.assertIn('tools.includes(toolName)', worker_source)
+        self.assertIn('options.resume = command.external_session_id', worker_source)
+        self.assertIn("normalizeMessageEvent(message)", worker_source)
+        self.assertIn('event_type: "provider.initialized"', worker_source)
+        self.assertIn('"tool.started"', worker_source)
+        self.assertIn('event_type: "tool.progress"', worker_source)
+        self.assertIn('event_type: "tool.completed"', worker_source)
+        self.assertIn("command.max_turns", worker_source)
+        self.assertIn("maxTurns,", worker_source)
+        self.assertIn("includePartialMessages: false", worker_source)
+        self.assertNotIn('event_type: "message.delta"', worker_source)
+        self.assertNotIn("--no-session-persistence", worker_source)
 
-    def test_claude_live_web_search_fails_closed(self) -> None:
-        with self.assertRaises(ValueError):
-            runtime._runtime_args(
-                "claude",
-                output_schema=OUTPUT_SCHEMA,
-                schema_path=Path("unused.json"),
-                web_search_mode="live",
-            )
+    def test_claude_live_web_search_remains_inside_sdk_tool_allowlist(self) -> None:
+        worker_source = runtime._CLAUDE_SDK_WORKER.read_text(encoding="utf-8")
+
+        self.assertIn('["WebSearch", "WebFetch"]', worker_source)
+        self.assertIn('behavior: "deny"', worker_source)
+        self.assertIn('"Bash"', worker_source)
+        self.assertIn('"Read"', worker_source)
+
+    def test_deep_task_carries_stable_task_identity_and_minimal_grant(self) -> None:
+        task = runtime.DeepTaskSpec(
+            runtime_id="codex",
+            prompt="research one job",
+            cwd=Path("worker/job_research_1"),
+            output_schema=OUTPUT_SCHEMA,
+            web_search_mode="live",
+            task_type="job_research",
+            task_id="job_research_1",
+            capability_grant={
+                "offeru_operations": [],
+                "data_scope": {"job_id": 1},
+                "network": "public_web_only",
+            },
+        )
+
+        self.assertEqual(task.task_type, "job_research")
+        self.assertEqual(task.task_id, "job_research_1")
+        self.assertEqual(task.capability_grant["offeru_operations"], [])
 
     def test_capability_probe_fails_closed_when_required_flag_is_missing(self) -> None:
         definition = runtime.RUNTIME_DEFINITIONS["codex"]
-        help_text = "\n".join(
-            flag for flag in definition["required_flags"] if flag != "--output-schema"
-        )
+        help_text = "--listen"
         capture = AsyncMock(
             side_effect=[
                 (0, "codex-cli 0.144.1\n", ""),
@@ -108,7 +138,63 @@ class CodingAgentRuntimeTests(unittest.TestCase):
 
         self.assertTrue(result["available"])
         self.assertFalse(result["contract_compatible"])
-        self.assertEqual(result["missing_required_flags"], ["--output-schema"])
+        self.assertEqual(result["missing_required_flags"], ["--stdio"])
+
+    def test_windows_probe_prefers_runnable_launcher_over_extensionless_npm_shim(self) -> None:
+        with patch.object(runtime.os, "name", "nt"), patch.object(
+            runtime.shutil,
+            "which",
+            side_effect=[
+                r"C:\npm\codex",
+                r"C:\npm\codex.cmd",
+            ],
+        ):
+            executable = runtime._resolve_executable("codex")
+
+        self.assertEqual(executable, r"C:\npm\codex.cmd")
+
+    def test_public_selector_rejects_adapter_without_required_schema_flag(self) -> None:
+        with patch.object(runtime, "_probe", AsyncMock()) as probe:
+            with self.assertRaises(ValueError):
+                asyncio.run(
+                    runtime.select_local_executor(
+                        "gemini",
+                        requirements=runtime.ExecutorRequirements(schema_flag=True),
+                    )
+                )
+
+        probe.assert_not_awaited()
+
+    def test_hosted_adapters_remember_cancel_before_process_start(self) -> None:
+        codex = runtime.CodexAppServerAdapter("session-1", "codex")
+        claude = runtime.ClaudeAgentSdkAdapter("session-2")
+
+        asyncio.run(codex.cancel())
+        asyncio.run(claude.cancel())
+
+        self.assertTrue(codex._cancel_requested)
+        self.assertTrue(claude._cancel_requested)
+
+    def test_public_selector_returns_compatible_adapter(self) -> None:
+        selected = {
+            "id": "codex",
+            **runtime.RUNTIME_DEFINITIONS["codex"],
+            "available": True,
+            "contract_compatible": True,
+            "missing_required_flags": [],
+        }
+        with patch.object(runtime, "_probe", AsyncMock(return_value=selected)):
+            result = asyncio.run(
+                runtime.select_local_executor(
+                    "codex",
+                    requirements=runtime.ExecutorRequirements(
+                        web_search=True,
+                        schema_flag=True,
+                    ),
+                )
+            )
+
+        self.assertEqual(result["id"], "codex")
 
     def test_extracts_codex_agent_message_from_jsonl(self) -> None:
         stdout = "\n".join(

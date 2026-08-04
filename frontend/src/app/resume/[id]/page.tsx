@@ -20,7 +20,7 @@
 import "@puckeditor/core/puck.css";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Puck, type InitialData } from "@puckeditor/core";
+import { Puck, type Data } from "@puckeditor/core";
 import { motion } from "framer-motion";
 import { ArrowLeft, FileDown, Loader2, ImagePlus, Wand2, Sparkles } from "lucide-react";
 import {
@@ -200,7 +200,7 @@ export default function ResumeEditorPage() {
   );
 
   const handlePublish = useCallback(
-    async (data: InitialData) => {
+    async (data: Data) => {
       if (!resume) return;
       setSaving(true);
       setSaveError(null);
@@ -226,7 +226,7 @@ export default function ResumeEditorPage() {
     []
   );
 
-  const handlePuckChange = useCallback((data: InitialData) => {
+  const handlePuckChange = useCallback((data: Data) => {
     setPuckData(data as PuckResumeData);
     setDirty(true);
   }, []);

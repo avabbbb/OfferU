@@ -13,7 +13,6 @@ if str(BACKEND_DIR) not in sys.path:
 
 from app.ops import OPERATIONS
 from app.services.agent_skill_registry import resolve_skill
-from app.services.harness_agent import REGISTRY_OPERATION_TOOLS
 from app.services.job_research import _build_report, _validated_research_result
 
 
@@ -151,24 +150,45 @@ class JobResearchValidationTests(unittest.TestCase):
 
     def test_operations_and_skill_share_the_same_research_boundary(self) -> None:
         operation_names = {
+            "get_job",
             "list_job_research_runs",
             "get_job_research",
+            "review_job_research",
             "start_job_research",
             "resume_job_research",
+            "cancel_job_research",
+            "list_hosted_executor_sessions",
+            "get_hosted_executor_session",
+            "get_pre_application_state",
         }
         skill = resolve_skill("company_research")
 
         self.assertTrue(operation_names.issubset(OPERATIONS))
-        self.assertTrue(operation_names.issubset(REGISTRY_OPERATION_TOOLS))
+        self.assertTrue(operation_names.issubset(OPERATIONS))
         self.assertEqual(OPERATIONS["start_job_research"].group, "research")
         self.assertEqual(
             OPERATIONS["start_job_research"].side_effects,
             ("write", "external"),
         )
+        self.assertEqual(
+            OPERATIONS["review_job_research"].side_effects,
+            ("write",),
+        )
         self.assertIsNotNone(skill)
         assert skill is not None
         self.assertEqual(skill.status, "native")
-        self.assertTrue(operation_names.issubset(skill.allowed_tools))
+        self.assertTrue(
+            {
+                "list_job_research_runs",
+                "get_job_research",
+                "review_job_research",
+                "start_job_research",
+                "resume_job_research",
+                "cancel_job_research",
+                "list_hosted_executor_sessions",
+                "get_hosted_executor_session",
+            }.issubset(skill.allowed_tools)
+        )
 
 
 if __name__ == "__main__":

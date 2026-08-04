@@ -1,43 +1,56 @@
 "use client";
 
 // =============================================
-// OfferU 主 Agent 面板 — 右侧上下文栏 "OfferU" 模式 (ADR 0031)
-// 由 HarnessAgentDock 迁移:去掉悬浮/拖拽外壳,扁平化为栏内面板。
+// OfferU 主 Agent 面板 — Python Run Host → Pi SDK Worker
+// 对话仍是交互记录；任务、Run、事件、提案、确认和审计由后端控制。
 // =============================================
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, Textarea } from "@nextui-org/react";
 import {
+  Activity,
   AlertTriangle,
   Briefcase,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   History,
   Download,
   Loader2,
   Plus,
+  RefreshCw,
   Send,
   Sparkles,
+  Square,
   Trash2,
   Upload,
   Wrench,
 } from "lucide-react";
 import {
-  harnessAgentApi,
-  type HarnessAgentCareerPath,
-  type HarnessAgentConversationSummary,
-  type HarnessAgentJobCard,
-  type HarnessAgentMessage,
-  type HarnessAgentProposedAction,
-  type HarnessAgentResponse,
+  agentSupportApi,
+  hostedExecutorApi,
+  piAgentApi,
+  type AgentCareerPath,
+  type AgentConversationSummary,
+  type AgentJobCard,
+  type AgentProposedAction,
+  type AgentResponse,
+  type AgentRunRecord,
+  type AgentSkill,
+  type AgentToolCall,
+  type HostedExecutorEvent,
+  type HostedExecutorSession,
+  type HostedExecutorSessionDetail,
+  type PiAgentRunResponse,
 } from "@/lib/api";
-import { presentHarnessToolCall } from "@/lib/harnessToolPresentation";
+import { presentAgentToolCall } from "@/lib/agentToolPresentation";
 import { bauhausFieldClassNames } from "@/lib/bauhaus";
 
 interface PanelMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
-  response?: HarnessAgentResponse;
+  response?: AgentResponse;
 }
 
 const QUICK_ACTIONS = [
@@ -69,6 +82,67 @@ const STAGE_LABELS: Record<string, string> = {
   unknown: "待确认",
 };
 
+const HOSTED_STATUS_LABELS: Record<string, string> = {
+  created: "已创建",
+  starting: "启动中",
+  running: "运行中",
+  interrupted: "已中断",
+  completed: "已完成",
+  failed: "失败",
+  cancelled: "已取消",
+};
+
+const HOSTED_ACTIVE_STATUSES = new Set(["created", "starting", "running"]);
+
+function hostedEventLabel(event: HostedExecutorEvent) {
+  const payload = event.payload || {};
+  if (event.type === "provider.initialized") {
+    return `运行时就绪 · ${payload.model || event.provider_event || "Provider"}`;
+  }
+  if (event.type === "tool.started") {
+    const names = Array.isArray(payload.tool_names) ? payload.tool_names.join("、") : "";
+    return `调用工具 · ${names || "未命名工具"}`;
+  }
+  if (event.type === "tool.progress") {
+    return `工具运行中 · ${payload.tool_name || ""} ${payload.elapsed_time_seconds || 0}s`;
+  }
+  if (event.type === "tool.completed") {
+    const failed = Array.isArray(payload.results)
+      && payload.results.some((item: any) => item?.is_error);
+    return failed ? "工具返回错误" : "工具调用完成";
+  }
+  const labels: Record<string, string> = {
+    "session.created": "会话已持久化",
+    "session.starting": "正在启动外部执行器",
+    "session.resuming": "正在恢复同一外部会话",
+    "session.bound": "外部会话已绑定",
+    "session.completed": "托管任务已完成",
+    "session.cancelled": "托管任务已取消",
+    "session.failed": "托管任务失败",
+    "recovery.interrupted": "检测到后端中断",
+    "approval.denied": "越权工具请求已拒绝",
+    "provider.retry": "Provider 正在重试",
+    "provider.auth_error": "Provider 认证失败",
+    "provider.rate_limit": "Provider 触发限流",
+    "executor.result": "结构化结果已返回",
+    "assistant.completed": "Agent 完成一轮推理",
+  };
+  return labels[event.type] || event.type;
+}
+
+function shortTime(value?: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleString("zh-CN", {
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+}
+
 function previewJson(value: unknown) {
   try {
     const text = JSON.stringify(value, null, 2);
@@ -78,11 +152,36 @@ function previewJson(value: unknown) {
   }
 }
 
-function toApiMessages(messages: PanelMessage[]): HarnessAgentMessage[] {
-  return messages.map((message) => ({
-    role: message.role,
-    content: message.content,
-  }));
+function toPanelResponse(response: PiAgentRunResponse): AgentResponse {
+  const guardian = response.guardian || {};
+  return {
+    assistant_message: response.assistant_message,
+    mode: response.run.mode,
+    active_skill: response.active_skill,
+    requires_confirmation: response.pending_actions.length > 0,
+    tool_calls: [],
+    proposed_actions: response.pending_actions,
+    user_stage: guardian.user_stage,
+    stage_confidence: guardian.stage_confidence,
+    stage_signals: guardian.stage_signals,
+    alerts: guardian.alerts,
+    proactive_suggestions: guardian.proactive_suggestions,
+    conversation_id: response.conversation_id,
+    conversation_title: response.conversation_title,
+  };
+}
+
+function pendingActionsFromRun(run: AgentRunRecord): AgentProposedAction[] {
+  return (run.steps || [])
+    .filter((step) => step.status === "waiting_confirmation")
+    .map((step) => ({
+      id: step.id,
+      tool: step.tool,
+      summary: step.summary,
+      risk_level: step.risk_level,
+      requires_confirmation: step.requires_confirmation,
+      args: step.args,
+    }));
 }
 
 export function AgentPanel() {
@@ -91,19 +190,32 @@ export function AgentPanel() {
       id: "welcome",
       role: "assistant",
       content:
-        "我是 OfferU。我会结合你当前所在页面和选中的对象,检查档案、岗位、简历、投递和面试日程里的风险。",
+        "我是 OfferU 内置 Agent。每次任务都会创建可审计 Run；读取直接执行，写入会先请你确认。",
     },
   ]);
   const [input, setInput] = useState("");
-  const [pendingActions, setPendingActions] = useState<HarnessAgentProposedAction[]>([]);
+  const [pendingActions, setPendingActions] = useState<AgentProposedAction[]>([]);
   const [loading, setLoading] = useState(false);
   const [progressText, setProgressText] = useState("正在连接 Python AgentKernel...");
+  const [streamingText, setStreamingText] = useState("");
   const [error, setError] = useState("");
   const [importedStage, setImportedStage] = useState<string>("unknown");
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversationTitle, setConversationTitle] = useState("新对话");
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const [interruptedRunId, setInterruptedRunId] = useState<string | null>(null);
+  const [activeSkillId, setActiveSkillId] = useState("discovery");
+  const [skills, setSkills] = useState<AgentSkill[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [conversations, setConversations] = useState<HarnessAgentConversationSummary[]>([]);
+  const [conversations, setConversations] = useState<AgentConversationSummary[]>([]);
+  const [hostedOpen, setHostedOpen] = useState(false);
+  const [hostedSessions, setHostedSessions] = useState<HostedExecutorSession[]>([]);
+  const [selectedHostedSessionId, setSelectedHostedSessionId] = useState<string | null>(null);
+  const [hostedDetail, setHostedDetail] = useState<HostedExecutorSessionDetail | null>(null);
+  const [hostedLoading, setHostedLoading] = useState(false);
+  const [hostedAction, setHostedAction] = useState<"cancel" | "resume" | null>(null);
+  const [hostedError, setHostedError] = useState("");
+  const [hostedRefreshKey, setHostedRefreshKey] = useState(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -118,7 +230,7 @@ export function AgentPanel() {
 
   const refreshConversations = async () => {
     try {
-      const result = await harnessAgentApi.conversations();
+      const result = await agentSupportApi.conversations();
       setConversations(result.conversations || []);
     } catch {
       setConversations([]);
@@ -127,46 +239,115 @@ export function AgentPanel() {
 
   useEffect(() => {
     refreshConversations();
+    piAgentApi
+      .skills()
+      .then((result) => setSkills(result.skills || []))
+      .catch(() => setSkills([]));
+    hostedExecutorApi
+      .sessions({ limit: 20 })
+      .then((result) => setHostedSessions(result.items || []))
+      .catch(() => setHostedSessions([]));
   }, []);
+
+  useEffect(() => {
+    if (!hostedOpen) return;
+    let stopped = false;
+    let timer: number | undefined;
+    const refresh = async (silent = false) => {
+      if (!silent) setHostedLoading(true);
+      try {
+        const result = await hostedExecutorApi.sessions({ limit: 20 });
+        if (stopped) return;
+        const items = result.items || [];
+        setHostedSessions(items);
+        const selectedId = (
+          selectedHostedSessionId
+          && items.some((item) => item.session_id === selectedHostedSessionId)
+        )
+          ? selectedHostedSessionId
+          : items[0]?.session_id || null;
+        setSelectedHostedSessionId(selectedId);
+        if (selectedId) {
+          const detail = await hostedExecutorApi.session(selectedId);
+          if (!stopped) setHostedDetail(detail);
+        } else {
+          setHostedDetail(null);
+        }
+        setHostedError("");
+        if (!stopped && items.some((item) => HOSTED_ACTIVE_STATUSES.has(item.status))) {
+          timer = window.setTimeout(() => void refresh(true), 3000);
+        }
+      } catch (err: any) {
+        if (!stopped) setHostedError(err.message || "读取托管会话失败");
+      } finally {
+        if (!stopped && !silent) setHostedLoading(false);
+      }
+    };
+    void refresh();
+    return () => {
+      stopped = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [hostedOpen, hostedRefreshKey, selectedHostedSessionId]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, loading]);
 
-  const sendMessage = async (text?: string, confirmedActionIds?: string[], skillId?: string) => {
+  const sendMessage = async (text?: string, skillId?: string) => {
     const content = (text ?? input).trim();
-    const isConfirmation = Boolean(confirmedActionIds?.length);
-    if ((!content && !isConfirmation) || loading) return;
-
-    const userMessage: PanelMessage | null = isConfirmation
-      ? null
-      : {
-          id: `user-${Date.now()}`,
-          role: "user",
-          content,
-        };
-    const nextMessages = userMessage ? [...messages, userMessage] : messages;
+    if (!content || loading || hasPendingActions || interruptedRunId) return;
+    const selectedSkillId = skillId || activeSkillId;
+    const userMessage: PanelMessage = {
+      id: `user-${Date.now()}`,
+      role: "user",
+      content,
+    };
+    const nextMessages = [...messages, userMessage];
 
     setMessages(nextMessages);
     setInput("");
     setLoading(true);
-    setProgressText(isConfirmation ? "正在恢复并执行已确认的 Run..." : "正在连接 Python AgentKernel...");
+    setProgressText("正在创建任务 Run 并启动 Pi Session...");
+    setStreamingText("");
     setError("");
 
     try {
-      const response = await harnessAgentApi.chat(
+      const runtimeResponse = await piAgentApi.start(
         {
-          messages: toApiMessages(nextMessages),
-          confirmed_action_ids: confirmedActionIds,
+          message: content,
+          skill_id: selectedSkillId,
           conversation_id: conversationId,
-          skill_id: skillId,
         },
         (event, data) => {
-          if (event === "thinking") setProgressText("正在规划目标并选择工具...");
-          if (event === "skill_selected") setProgressText(`已进入${data?.name || "求职"}技能，正在执行协议...`);
-          if (event === "tool_call") setProgressText("正在读取真实数据并整理结果...");
+          const eventRunId = String(data?.run_id || "");
+          if (eventRunId) setActiveRunId(eventRunId);
+          if (event === "run.created") {
+            setProgressText("Run 已持久化，正在启动 Pi Session...");
+          } else if (event === "runtime.session_started") {
+            setProgressText("Pi Session 已就绪，正在执行当前 Skill...");
+          } else if (event === "runtime.tool_started") {
+            setProgressText("Pi 正在调用 OfferU Operation...");
+          } else if (event === "operation.started") {
+            setProgressText(`正在读取：${data?.payload?.operation || "OfferU 数据"}`);
+          } else if (event === "operation.proposed") {
+            setProgressText("写操作已形成提案，等待本轮回答完成...");
+          } else if (event === "runtime.retry_started") {
+            setProgressText("模型调用正在安全重试...");
+          } else if (event === "runtime.compaction_started") {
+            setProgressText("正在压缩本 Run 的模型上下文...");
+          } else if (event === "stream.reconnecting") {
+            setProgressText("连接中断，正在按事件游标恢复同一个 Run...");
+          } else if (event === "message.delta") {
+            const delta = String(data?.payload?.delta || "");
+            if (delta) setStreamingText((current) => current + delta);
+          }
         }
       );
+      if (!runtimeResponse.ok) {
+        throw new Error(runtimeResponse.errors?.join("；") || "Pi Agent Run 执行失败");
+      }
+      const response = toPanelResponse(runtimeResponse);
       const assistantMessage: PanelMessage = {
         id: `assistant-${Date.now()}`,
         role: "assistant",
@@ -175,26 +356,39 @@ export function AgentPanel() {
       };
       if (response.conversation_id) setConversationId(response.conversation_id);
       if (response.conversation_title) setConversationTitle(response.conversation_title);
+      setActiveRunId(runtimeResponse.run.id);
+      setActiveSkillId(runtimeResponse.active_skill.id);
       setMessages((prev) => [...prev, assistantMessage]);
       setPendingActions(response.proposed_actions || []);
       refreshConversations();
     } catch (err: any) {
       setError(err.message || "OfferU 请求失败");
     } finally {
+      setStreamingText("");
       setLoading(false);
     }
   };
 
-  const startNewConversation = () => {
+  const startNewConversation = async () => {
+    if (activeRunId && (hasPendingActions || interruptedRunId)) {
+      try {
+        await piAgentApi.abort(activeRunId);
+      } catch {
+        // 新对话仍可开始；后端会让残留 Worker 冲突显式失败。
+      }
+    }
     setConversationId(null);
     setConversationTitle("新对话");
+    setActiveRunId(null);
+    setInterruptedRunId(null);
+    setActiveSkillId("discovery");
     setPendingActions([]);
     setHistoryOpen(false);
     setMessages([
       {
         id: `welcome-${Date.now()}`,
         role: "assistant",
-        content: "新对话已开始。先告诉我你是校招/应届/实习，还是社招/跳槽，我会按对应路径主动检查。",
+        content: "新对话已开始。选择上方技能，或直接描述你要推进的求职任务。",
       },
     ]);
   };
@@ -202,9 +396,15 @@ export function AgentPanel() {
   const loadConversation = async (id: string) => {
     setError("");
     try {
-      const conversation = await harnessAgentApi.conversation(id);
+      if (activeRunId && (hasPendingActions || interruptedRunId)) {
+        await piAgentApi.abort(activeRunId);
+      }
+      const conversation = await agentSupportApi.conversation(id);
       setConversationId(conversation.id);
       setConversationTitle(conversation.title || "历史对话");
+      setActiveRunId(null);
+      setInterruptedRunId(null);
+      setActiveSkillId("discovery");
       setPendingActions([]);
       setHistoryOpen(false);
       setMessages(
@@ -214,30 +414,212 @@ export function AgentPanel() {
           content: message.content,
         }))
       );
+      const runResult = await piAgentApi.runs({
+        conversation_id: conversation.id,
+        limit: 1,
+      });
+      const latestRun = runResult.runs[0];
+      if (latestRun?.status === "waiting_confirmation") {
+        setActiveRunId(latestRun.id);
+        setActiveSkillId(latestRun.skill_id || "discovery");
+        setPendingActions(pendingActionsFromRun(latestRun));
+      } else if (latestRun?.status === "interrupted") {
+        setActiveRunId(latestRun.id);
+        setInterruptedRunId(latestRun.id);
+        setActiveSkillId(latestRun.skill_id || "discovery");
+      }
     } catch (err: any) {
       setError(err.message || "加载历史对话失败");
     }
   };
 
+  useEffect(() => {
+    if (conversationId || conversations.length === 0) return;
+    let cancelled = false;
+    const restoreLatestActiveRun = async () => {
+      const latestConversation = conversations[0];
+      try {
+        const result = await piAgentApi.runs({
+          conversation_id: latestConversation.id,
+          limit: 1,
+        });
+        const status = result.runs[0]?.status;
+        if (
+          !cancelled
+          && (status === "waiting_confirmation" || status === "interrupted")
+        ) {
+          await loadConversation(latestConversation.id);
+        }
+      } catch {
+        // 没有可恢复 Run 时保留新对话欢迎页。
+      }
+    };
+    void restoreLatestActiveRun();
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId, conversations]);
+
   const removeConversation = async (id: string) => {
     setError("");
     try {
-      await harnessAgentApi.deleteConversation(id);
-      if (conversationId === id) startNewConversation();
+      await agentSupportApi.deleteConversation(id);
+      if (conversationId === id) await startNewConversation();
       await refreshConversations();
     } catch (err: any) {
       setError(err.message || "删除历史对话失败");
     }
   };
 
-  const confirmPendingActions = () => {
-    sendMessage("", pendingActions.map((action) => action.id));
+  const confirmPendingActions = async () => {
+    if (!activeRunId || pendingActions.length === 0 || loading) return;
+    setLoading(true);
+    setProgressText("正在通过 Registry 执行已确认动作...");
+    setError("");
+    try {
+      let finalRun: AgentRunRecord | null = null;
+      const toolCalls: AgentToolCall[] = [];
+      for (const action of pendingActions) {
+        const result = await piAgentApi.confirm(activeRunId, action.id);
+        finalRun = result.run;
+        toolCalls.push(...(result.tool_calls || []));
+        if (result.errors?.length) {
+          throw new Error(result.errors.join("；"));
+        }
+      }
+      if (!finalRun) throw new Error("确认结果缺少 Agent Run");
+      const remaining = pendingActionsFromRun(finalRun);
+      const response: AgentResponse = {
+        assistant_message:
+          remaining.length > 0
+            ? `已执行确认动作，仍有 ${remaining.length} 个动作等待确认。`
+            : "已通过 OfferU Operation Registry 执行确认动作，并完成审计。",
+        mode: finalRun.mode,
+        active_skill: latestResponse?.active_skill,
+        requires_confirmation: remaining.length > 0,
+        tool_calls: toolCalls,
+        proposed_actions: remaining,
+      };
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `assistant-confirm-${Date.now()}`,
+          role: "assistant",
+          content: response.assistant_message,
+          response,
+        },
+      ]);
+      setPendingActions(remaining);
+      if (remaining.length === 0) setActiveRunId(null);
+    } catch (err: any) {
+      setError(err.message || "确认动作失败");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const abortPendingRun = async () => {
+    if (!activeRunId || loading) return;
+    setLoading(true);
+    setProgressText("正在取消当前 Run...");
+    setError("");
+    try {
+      await piAgentApi.abort(activeRunId);
+      setActiveRunId(null);
+      setInterruptedRunId(null);
+      setPendingActions([]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `assistant-abort-${Date.now()}`,
+          role: "assistant",
+          content: "已取消当前 Run，未执行待确认写操作。",
+        },
+      ]);
+    } catch (err: any) {
+      setError(err.message || "取消 Run 失败");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resumeInterruptedRun = async () => {
+    if (!interruptedRunId || loading) return;
+    setLoading(true);
+    setProgressText("正在从持久化 Pi Session 恢复 Run...");
+    setError("");
+    try {
+      const runtimeResponse = await piAgentApi.resume(interruptedRunId);
+      if (!runtimeResponse.ok) {
+        throw new Error(runtimeResponse.errors?.join("；") || "恢复 Run 失败");
+      }
+      const response = toPanelResponse(runtimeResponse);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `assistant-resume-${Date.now()}`,
+          role: "assistant",
+          content: response.assistant_message,
+          response,
+        },
+      ]);
+      setPendingActions(response.proposed_actions || []);
+      setActiveRunId(runtimeResponse.run.id);
+      setInterruptedRunId(null);
+      if (response.conversation_title) {
+        setConversationTitle(response.conversation_title);
+      }
+      refreshConversations();
+    } catch (err: any) {
+      setError(err.message || "恢复 Run 失败");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const selectHostedSession = async (sessionId: string) => {
+    setSelectedHostedSessionId(sessionId);
+    setHostedLoading(true);
+    setHostedError("");
+    try {
+      setHostedDetail(await hostedExecutorApi.session(sessionId));
+    } catch (err: any) {
+      setHostedError(err.message || "读取托管会话失败");
+    } finally {
+      setHostedLoading(false);
+    }
+  };
+
+  const runHostedAction = async (action: "cancel" | "resume") => {
+    if (!hostedDetail || hostedAction) return;
+    if (
+      action === "cancel"
+      && !window.confirm("确认取消这个托管研究任务？已取消的外部会话不能恢复。")
+    ) {
+      return;
+    }
+    setHostedAction(action);
+    setHostedError("");
+    try {
+      if (action === "cancel") {
+        await hostedExecutorApi.cancel(hostedDetail.session_id);
+      } else {
+        await hostedExecutorApi.resume(hostedDetail.session_id);
+      }
+      const list = await hostedExecutorApi.sessions({ limit: 20 });
+      setHostedSessions(list.items || []);
+      setHostedDetail(await hostedExecutorApi.session(hostedDetail.session_id));
+    } catch (err: any) {
+      setHostedError(err.message || `${action === "cancel" ? "取消" : "恢复"}托管任务失败`);
+    } finally {
+      setHostedAction(null);
+    }
   };
 
   const exportMemory = async () => {
     setError("");
     try {
-      const result = await harnessAgentApi.exportMemory("markdown");
+      const result = await agentSupportApi.exportMemory("markdown");
       await navigator.clipboard.writeText(String(result.content || ""));
       setMessages((prev) => [
         ...prev,
@@ -256,7 +638,7 @@ export function AgentPanel() {
     setError("");
     try {
       const text = await file.text();
-      const result = await harnessAgentApi.importMemory(text);
+      const result = await agentSupportApi.importMemory(text);
       setImportedStage(result.memory.user_stage);
       setMessages((prev) => [
         ...prev,
@@ -287,6 +669,19 @@ export function AgentPanel() {
           <span className="truncate">{conversationTitle || "历史对话"}</span>
         </button>
         <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setHostedOpen((value) => !value)}
+            className={`bauhaus-chip !flex !items-center !gap-1 !py-0.5 !text-[10.5px] ${
+              hostedOpen ? "!border-[var(--border-strong)] !bg-[var(--surface-muted)]" : ""
+            }`}
+            title="查看外部 Coding Agent 托管会话"
+          >
+            <Activity size={11} />
+            托管 {hostedSessions.filter((item) => HOSTED_ACTIVE_STATUSES.has(item.status)).length || hostedSessions.length}
+            {hostedOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+          </button>
+          <span className="bauhaus-chip !py-0.5 !text-[10.5px]">Pi</span>
           <span className="bauhaus-chip !py-0.5 !text-[10.5px]">{STAGE_LABELS[latestStage] || latestStage}</span>
           <span className="bauhaus-chip !py-0.5 !text-[10.5px]">{latestMode}</span>
         </div>
@@ -344,14 +739,183 @@ export function AgentPanel() {
         </div>
       )}
 
+      {hostedOpen && (
+        <section className="border-b border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <p className="text-[12px] font-semibold text-[var(--foreground)]">外部执行器</p>
+              <p className="mt-0.5 text-[10.5px] text-[var(--foreground-muted)]">
+                一个重任务只绑定一个可审计会话
+              </p>
+            </div>
+            <button
+              type="button"
+              aria-label="刷新托管会话"
+              title="刷新托管会话"
+              disabled={hostedLoading}
+              onClick={() => setHostedRefreshKey((value) => value + 1)}
+              className="rounded p-1 text-[var(--foreground-muted)] hover:bg-[var(--surface)] hover:text-[var(--foreground)] disabled:opacity-50"
+            >
+              <RefreshCw size={12} className={hostedLoading ? "animate-spin" : ""} />
+            </button>
+          </div>
+
+          {hostedSessions.length === 0 && !hostedLoading ? (
+            <div className="mt-2 rounded-md border border-dashed border-[var(--border-strong)] bg-[var(--surface)] px-2.5 py-2 text-[11.5px] leading-5 text-[var(--foreground-soft)]">
+              还没有托管任务。确认“岗位公开调研”后，Codex 或 Claude 的会话、授权范围和事件会显示在这里。
+            </div>
+          ) : (
+            <>
+              <div className="custom-scrollbar mt-2 flex gap-1.5 overflow-x-auto pb-1">
+                {hostedSessions.map((session) => (
+                  <button
+                    key={session.session_id}
+                    type="button"
+                    onClick={() => void selectHostedSession(session.session_id)}
+                    className={`min-w-[132px] rounded-md border px-2 py-1.5 text-left transition-colors duration-[var(--dur-quick)] ${
+                      session.session_id === selectedHostedSessionId
+                        ? "border-[var(--border-strong)] bg-[var(--surface)]"
+                        : "border-[var(--border)] bg-transparent hover:bg-[var(--surface)]"
+                    }`}
+                  >
+                    <span className="block truncate text-[11.5px] font-semibold text-[var(--foreground)]">
+                      {session.executor_id === "claude" ? "Claude" : "Codex"} · {HOSTED_STATUS_LABELS[session.status] || session.status}
+                    </span>
+                    <span className="mt-0.5 block truncate text-[10px] text-[var(--foreground-muted)]">
+                      {session.task_type} / {shortTime(session.updated_at)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {hostedDetail && (
+                <div className="mt-2 rounded-md border border-[var(--border)] bg-[var(--surface)] p-2.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-1">
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                            hostedDetail.status === "completed"
+                              ? "bg-[var(--status-sage)] text-[var(--primary-green)]"
+                              : ["failed", "cancelled"].includes(hostedDetail.status)
+                                ? "bg-[var(--status-blush)] text-[var(--primary-red)]"
+                                : "bg-[var(--surface-muted)] text-[var(--foreground)]"
+                          }`}
+                        >
+                          {HOSTED_STATUS_LABELS[hostedDetail.status] || hostedDetail.status}
+                        </span>
+                        <span className="bauhaus-chip !py-0.5 !text-[10px]">{hostedDetail.executor_id}</span>
+                        <span className="bauhaus-chip !py-0.5 !text-[10px]">
+                          {hostedDetail.capability_grant?.network || "network disabled"}
+                        </span>
+                      </div>
+                      <p className="mt-1 truncate font-mono text-[10px] text-[var(--foreground-muted)]" title={hostedDetail.external_session_id}>
+                        {hostedDetail.external_session_id
+                          ? `外部会话 ${hostedDetail.external_session_id}`
+                          : "尚未绑定外部会话 ID"}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 gap-1">
+                      {hostedDetail.task_type === "job_research"
+                        && ["failed", "interrupted"].includes(hostedDetail.status) && (
+                          <button
+                            type="button"
+                            disabled={Boolean(hostedAction)}
+                            onClick={() => void runHostedAction("resume")}
+                            className="bauhaus-button bauhaus-button-sm"
+                          >
+                            {hostedAction === "resume"
+                              ? <Loader2 size={11} className="animate-spin" />
+                              : <RefreshCw size={11} />}
+                            恢复
+                          </button>
+                        )}
+                      {hostedDetail.task_type === "job_research"
+                        && ["created", "starting", "running", "interrupted"].includes(hostedDetail.status) && (
+                          <button
+                            type="button"
+                            disabled={Boolean(hostedAction)}
+                            onClick={() => void runHostedAction("cancel")}
+                            className="bauhaus-button bauhaus-button-sm"
+                          >
+                            {hostedAction === "cancel"
+                              ? <Loader2 size={11} className="animate-spin" />
+                              : <Square size={10} />}
+                            取消
+                          </button>
+                        )}
+                    </div>
+                  </div>
+
+                  {hostedDetail.error && (
+                    <p className="mt-2 rounded bg-[var(--status-blush)] px-2 py-1.5 text-[10.5px] leading-4 text-[var(--primary-red)]">
+                      {hostedDetail.error}
+                    </p>
+                  )}
+
+                  <div className="custom-scrollbar mt-2 max-h-40 space-y-1 overflow-y-auto border-t border-[var(--border)] pt-2">
+                    {hostedDetail.events.length === 0 && (
+                      <p className="text-[10.5px] text-[var(--foreground-muted)]">等待第一个 Provider 事件…</p>
+                    )}
+                    {hostedDetail.events.slice(-12).map((event) => (
+                      <div key={event.event_id} className="flex items-start gap-2 text-[10.5px] leading-4">
+                        <span
+                          className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
+                            event.type.includes("failed")
+                              || event.type.includes("denied")
+                              || event.type.includes("error")
+                              ? "bg-[var(--primary-red)]"
+                              : event.type.includes("completed")
+                                ? "bg-[var(--primary-green)]"
+                                : "bg-[var(--foreground-muted)]"
+                          }`}
+                        />
+                        <span className="min-w-0 flex-1 text-[var(--foreground-soft)]">
+                          {hostedEventLabel(event)}
+                        </span>
+                        <span className="shrink-0 font-mono text-[9.5px] text-[var(--foreground-muted)]">
+                          #{event.sequence}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {hostedError && (
+            <p className="mt-2 rounded bg-[var(--status-blush)] px-2 py-1.5 text-[10.5px] text-[var(--primary-red)]">
+              {hostedError}
+            </p>
+          )}
+        </section>
+      )}
+
       {/* 快捷技能 */}
       <div className="flex flex-wrap gap-1.5 border-b border-[var(--border)] px-3 py-2">
+        <select
+          aria-label="当前 Agent Skill"
+          value={activeSkillId}
+          disabled={loading || hasPendingActions || Boolean(interruptedRunId)}
+          onChange={(event) => setActiveSkillId(event.target.value)}
+          className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[11.5px] text-[var(--foreground)] outline-none disabled:opacity-50"
+        >
+          {skills.length === 0 && <option value="discovery">技能中心</option>}
+          {skills.map((skill) => (
+            <option key={skill.id} value={skill.id}>
+              {skill.name}{skill.status === "partial" ? "（部分能力）" : ""}
+            </option>
+          ))}
+        </select>
+        <div className="basis-full" />
         {QUICK_ACTIONS.map((action) => (
           <button
             key={action.label}
             type="button"
-            onClick={() => sendMessage(action.prompt, undefined, action.skillId)}
-            className="bauhaus-chip cursor-pointer transition-colors duration-[var(--dur-quick)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)]"
+            disabled={loading || hasPendingActions || Boolean(interruptedRunId)}
+            onClick={() => sendMessage(action.prompt, action.skillId)}
+            className="bauhaus-chip cursor-pointer transition-colors duration-[var(--dur-quick)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {action.label}
           </button>
@@ -394,6 +958,13 @@ export function AgentPanel() {
           {messages.map((message) => (
             <PanelMessageBubble key={message.id} message={message} onSuggestion={sendMessage} />
           ))}
+          {streamingText && (
+            <div className="flex justify-start">
+              <div className="max-w-[94%] whitespace-pre-wrap rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-left text-[13px] leading-6 text-[var(--foreground)]">
+                {streamingText}
+              </div>
+            </div>
+          )}
           {loading && (
             <div className="inline-flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[12.5px] text-[var(--foreground-soft)]">
               <Loader2 size={13} className="animate-spin" />
@@ -402,6 +973,31 @@ export function AgentPanel() {
           )}
         </div>
       </div>
+
+      {interruptedRunId && (
+        <div className="border-t border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2.5">
+          <p className="text-[12px] font-semibold text-[var(--foreground)]">检测到中断的 Agent Run</p>
+          <p className="mt-1 text-[11.5px] leading-5 text-[var(--foreground-soft)]">
+            OfferU 不会自动重放工具。你可以从已持久化的 Pi Session 显式恢复，或取消本次 Run。
+          </p>
+          <div className="mt-2 flex gap-1.5">
+            <Button
+              onPress={resumeInterruptedRun}
+              isDisabled={loading}
+              className="bauhaus-button bauhaus-button-red !min-h-8 !flex-1 !justify-center !py-1 !text-[12px]"
+            >
+              恢复 Run
+            </Button>
+            <Button
+              onPress={abortPendingRun}
+              isDisabled={loading}
+              className="bauhaus-button bauhaus-button-outline !min-h-8 !flex-1 !justify-center !py-1 !text-[12px]"
+            >
+              取消
+            </Button>
+          </div>
+        </div>
+      )}
 
       {hasPendingActions && (
         <div className="border-t border-[var(--border)] bg-[var(--status-blush)] px-3 py-2.5">
@@ -424,6 +1020,13 @@ export function AgentPanel() {
           >
             确认执行
           </Button>
+          <Button
+            onPress={abortPendingRun}
+            isDisabled={loading}
+            className="bauhaus-button bauhaus-button-outline mt-1.5 !min-h-8 !w-full !justify-center !py-1 !text-[12px]"
+          >
+            取消本次 Run
+          </Button>
         </div>
       )}
 
@@ -441,11 +1044,15 @@ export function AgentPanel() {
             onValueChange={setInput}
             minRows={1}
             maxRows={4}
-            placeholder="问 OfferU,或说你要推进哪一步..."
+            placeholder={
+              hasPendingActions || interruptedRunId
+                ? "请先处理当前 Run"
+                : "问 OfferU，或说你要推进哪一步..."
+            }
             variant="bordered"
             className="flex-1"
             classNames={bauhausFieldClassNames}
-            isDisabled={loading}
+            isDisabled={loading || hasPendingActions || Boolean(interruptedRunId)}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
@@ -457,7 +1064,7 @@ export function AgentPanel() {
             isIconOnly
             aria-label="发送"
             onPress={() => sendMessage()}
-            isDisabled={!input.trim() || loading}
+            isDisabled={!input.trim() || loading || hasPendingActions || Boolean(interruptedRunId)}
             className="bauhaus-button bauhaus-button-outline !min-h-9 !min-w-9 !px-0 !py-0"
           >
             {loading ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
@@ -518,7 +1125,7 @@ function PanelMessageBubble({
   );
 }
 
-function AlertList({ alerts }: { alerts: NonNullable<HarnessAgentResponse["alerts"]> }) {
+function AlertList({ alerts }: { alerts: NonNullable<AgentResponse["alerts"]> }) {
   return (
     <div className="space-y-1.5">
       {alerts.map((alert) => (
@@ -544,7 +1151,7 @@ function SuggestionList({
   suggestions,
   onSuggestion,
 }: {
-  suggestions: NonNullable<HarnessAgentResponse["proactive_suggestions"]>;
+  suggestions: NonNullable<AgentResponse["proactive_suggestions"]>;
   onSuggestion: (prompt: string) => void;
 }) {
   return (
@@ -564,7 +1171,7 @@ function SuggestionList({
   );
 }
 
-function CareerPathList({ paths }: { paths: HarnessAgentCareerPath[] }) {
+function CareerPathList({ paths }: { paths: AgentCareerPath[] }) {
   return (
     <div className="space-y-1.5">
       {paths.map((path) => (
@@ -591,7 +1198,7 @@ function CareerPathList({ paths }: { paths: HarnessAgentCareerPath[] }) {
   );
 }
 
-function JobCardList({ jobs }: { jobs: HarnessAgentJobCard[] }) {
+function JobCardList({ jobs }: { jobs: AgentJobCard[] }) {
   return (
     <div className="space-y-1.5">
       {jobs.map((job) => (
@@ -622,11 +1229,11 @@ function JobCardList({ jobs }: { jobs: HarnessAgentJobCard[] }) {
   );
 }
 
-function ToolCallList({ calls }: { calls: HarnessAgentResponse["tool_calls"] }) {
+function ToolCallList({ calls }: { calls: AgentResponse["tool_calls"] }) {
   return (
     <div className="space-y-1.5">
       {calls.map((call, index) => {
-        const presentation = presentHarnessToolCall(call);
+        const presentation = presentAgentToolCall(call);
         return (
           <details
             key={`${call.tool}-${index}`}

@@ -305,6 +305,7 @@ async def start_authorized_research_session(
                         JobResearchRun.run_id == str(base_run_id).strip(),
                         JobResearchRun.job_id == job.id,
                         JobResearchRun.status == "completed",
+                        JobResearchRun.review_status.in_(("candidate", "accepted")),
                     )
                 )
             ).scalar_one_or_none()
@@ -317,6 +318,7 @@ async def start_authorized_research_session(
                     .where(
                         JobResearchRun.job_id == job.id,
                         JobResearchRun.status == "completed",
+                        JobResearchRun.review_status.in_(("candidate", "accepted")),
                     )
                     .order_by(JobResearchRun.completed_at.desc())
                 )
@@ -848,6 +850,7 @@ async def complete_authorized_research_session(
                         JobResearchRun.run_id == session.base_run_id,
                         JobResearchRun.job_id == session.job_id,
                         JobResearchRun.status == "completed",
+                        JobResearchRun.review_status.in_(("candidate", "accepted")),
                     )
                 )
             ).scalar_one_or_none()

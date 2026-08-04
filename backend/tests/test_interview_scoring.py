@@ -13,17 +13,21 @@ if str(BACKEND_DIR) not in sys.path:
 
 from app.ops import OPERATIONS
 from app.services.agent_skill_registry import resolve_skill
-from app.services.harness_agent import (
-    CONFIRM_TOOLS,
-    READ_TOOLS,
-    REGISTRY_OPERATION_TOOLS,
-)
 from app.services.interview_scoring import (
     _default_definition,
     build_behavior_summary,
     validate_behavior_events,
     validate_content_evaluation,
     validate_scoring_skill_definition,
+)
+
+READ_OPERATIONS = frozenset(
+    name for name, operation in OPERATIONS.items()
+    if not operation.is_mutation
+)
+MUTATION_OPERATIONS = frozenset(
+    name for name, operation in OPERATIONS.items()
+    if operation.is_mutation
 )
 
 
@@ -181,9 +185,9 @@ class InterviewOperationContractTests(unittest.TestCase):
             "delete_ai_interview",
         }
 
-        self.assertTrue(reads.issubset(READ_TOOLS))
-        self.assertTrue(mutations.issubset(CONFIRM_TOOLS))
-        self.assertTrue((reads | mutations).issubset(REGISTRY_OPERATION_TOOLS))
+        self.assertTrue(reads.issubset(READ_OPERATIONS))
+        self.assertTrue(mutations.issubset(MUTATION_OPERATIONS))
+        self.assertTrue((reads | mutations).issubset(OPERATIONS))
         self.assertTrue((reads | mutations).issubset(OPERATIONS))
         self.assertIn(
             "model:interview_transcript",

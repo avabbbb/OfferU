@@ -7,14 +7,18 @@ from pathlib import Path
 import sys
 from typing import Any, Optional, Union
 
-import httpx
-
 from app.config import get_settings
 from app.database import init_db
-from app.ops import execute_operation, get_operation_schema, list_operations
+from app.ops import get_operation_schema, list_operations
+from app.services.agent_skill_registry import registry_snapshot
+from app.services.operation_projection import (
+    confirm_operation_proposal,
+    execute_or_propose_operation,
+)
+from app.services.resume_parser import get_resume_ocr_capabilities
 
 
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.4.0"
 
 
 class CliParseError(Exception):
@@ -46,8 +50,6 @@ def main(argv: Optional[list[str]] = None) -> int:
             return _print(_manifest(), args.pretty)
         if args.command == "ops":
             return _print({"ok": True, "operations": list_operations()}, args.pretty)
-        if args.command == "routes":
-            return _print(_routes(args.prefix), args.pretty)
         if args.command == "schema":
             schema = get_operation_schema(args.name)
             if not schema:
@@ -67,28 +69,11 @@ def main(argv: Optional[list[str]] = None) -> int:
             op_args.update(pair_args)
             result = asyncio.run(_run_operation(args.name, op_args, dry_run=args.dry_run))
             return _print(result, args.pretty, exit_code=0 if result.get("ok") else 1)
-        if args.command == "api":
-            query_args = _parse_arg_pairs(args.query_pairs)
-            if isinstance(query_args, str):
-                return _print({"ok": False, "errors": [query_args]}, args.pretty, exit_code=1)
-            body_args = _parse_args_json(args.body_json)
-            if isinstance(body_args, str):
-                return _print({"ok": False, "errors": [body_args]}, args.pretty, exit_code=1)
-            file_args = _parse_input_file(args.input_file)
-            if isinstance(file_args, str):
-                return _print({"ok": False, "errors": [file_args]}, args.pretty, exit_code=1)
-            field_args = _parse_arg_pairs(args.field_pairs)
-            if isinstance(field_args, str):
-                return _print({"ok": False, "errors": [field_args]}, args.pretty, exit_code=1)
-            body_args.update(file_args)
-            body_args.update(field_args)
+        if args.command == "confirm":
             result = asyncio.run(
-                _run_api(
-                    args.method,
-                    args.path,
-                    query=query_args,
-                    body=body_args,
-                    execute=args.execute,
+                _confirm_operation(
+                    args.run_id,
+                    action_id=args.action_id,
                 )
             )
             return _print(result, args.pretty, exit_code=0 if result.get("ok") else 1)
@@ -114,10 +99,6 @@ def _build_parser() -> JsonArgumentParser:
     ops = sub.add_parser("ops", help="List all atomic internal operations.", add_help=False)
     ops.add_argument("--pretty", action="store_true", help="Pretty-print JSON.")
 
-    routes = sub.add_parser("routes", help="List FastAPI routes for full API discovery.", add_help=False)
-    routes.add_argument("--prefix", default="/api", help="Only include routes under this prefix.")
-    routes.add_argument("--pretty", action="store_true", help="Pretty-print JSON.")
-
     schema = sub.add_parser("schema", help="Show one operation schema.", add_help=False)
     schema.add_argument("name", help="Operation name, for example list_jobs.")
     schema.add_argument("--pretty", action="store_true", help="Pretty-print JSON.")
@@ -130,20 +111,24 @@ def _build_parser() -> JsonArgumentParser:
     run.add_argument("--dry-run", action="store_true", help="Skip mutation, LLM, or external side-effect operations.")
     run.add_argument("--pretty", action="store_true", help="Pretty-print JSON.")
 
-    api = sub.add_parser("api", help="Call an internal FastAPI route through the ASGI app.", add_help=False)
-    api.add_argument("method", help="HTTP method, for example GET or POST.")
-    api.add_argument("path", help="HTTP path, for example /api/jobs/stats.")
-    api.add_argument("--query", dest="query_pairs", action="append", default=[], help="Query key=value arg. May be repeated.")
-    api.add_argument("--body", dest="body_json", default="{}", help="JSON object request body.")
-    api.add_argument("--input", dest="input_file", default="", help="Path to a JSON object file merged into request body.")
-    api.add_argument("--field", dest="field_pairs", action="append", default=[], help="Body key=value arg. May be repeated.")
-    api.add_argument("--execute", action="store_true", help="Allow non-GET methods to execute. GET/HEAD/OPTIONS execute without this flag.")
-    api.add_argument("--pretty", action="store_true", help="Pretty-print JSON.")
+    confirm = sub.add_parser(
+        "confirm",
+        help="Confirm one persisted Operation proposal.",
+        add_help=False,
+    )
+    confirm.add_argument("run_id", help="Persisted Agent Run ID returned by run.")
+    confirm.add_argument(
+        "--action",
+        dest="action_id",
+        default="",
+        help="Action ID. Defaults to the first pending action.",
+    )
+    confirm.add_argument("--pretty", action="store_true", help="Pretty-print JSON.")
     return parser
 
 
 def _commands() -> list[str]:
-    return ["doctor", "manifest", "ops", "routes", "schema", "run", "api"]
+    return ["doctor", "manifest", "ops", "schema", "run", "confirm"]
 
 
 def _doctor() -> dict[str, Any]:
@@ -157,6 +142,11 @@ def _doctor() -> dict[str, Any]:
         "database_url_configured": bool(settings.database_url),
         "llm_provider": settings.llm_provider,
         "llm_model": settings.llm_model,
+        "resume_import": {
+            "formats": ["pdf", "docx"],
+            "max_file_size_mb": 10,
+            "ocr": get_resume_ocr_capabilities(),
+        },
         "safety": {
             "json_output": True,
             "dry_run_for_mutations": True,
@@ -167,139 +157,62 @@ def _doctor() -> dict[str, Any]:
 
 def _manifest() -> dict[str, Any]:
     operations = list_operations()
+    skills = registry_snapshot(operations)
     return {
         "ok": True,
         "service": "OfferU CLI",
         "version": APP_VERSION,
-        "purpose": "Agent-native control surface for OfferU. Claude Code can discover operations, inspect schemas, run safe reads, and dry-run side-effect operations before confirmation.",
+        "purpose": "Agent-native control surface for OfferU. External agents discover schemas and run reads; side-effect runs persist a proposal that requires a separate explicit confirm command.",
         "commands": {
             "health": "python -m app.cli doctor --pretty",
             "manifest": "python -m app.cli manifest --pretty",
             "list_operations": "python -m app.cli ops --pretty",
-            "list_routes": "python -m app.cli routes --pretty",
             "inspect_operation": "python -m app.cli schema <operation> --pretty",
             "agent_playbook": "python -m app.cli run agent_playbook --arg detail=full --pretty",
             "workflow_catalog": "python -m app.cli run workflow_catalog --pretty",
             "workflow_plan": "python -m app.cli run workflow_plan --arg goal=\"批量筛选岗位\" --pretty",
             "run_operation": "python -m app.cli run <operation> --arg key=value --pretty",
             "dry_run_mutation": "python -m app.cli run <operation> --arg key=value --dry-run --pretty",
+            "confirm_proposal": "python -m app.cli confirm <run_id> --action <action_id> --pretty",
             "file_input": "python -m app.cli run <operation> --input args.json --pretty",
-            "call_get_api": "python -m app.cli api GET /api/health --pretty",
-            "call_write_api": "python -m app.cli api POST /api/resource --field key=value --execute --pretty",
         },
         "io_contract": {
             "stdout": "single JSON object",
             "stderr": "reserved for Python/runtime diagnostics only",
             "exit_codes": {"0": "success", "1": "operation or input error", "2": "CLI syntax error", "130": "interrupted"},
-            "argument_precedence": ["--args/--body", "--input", "--arg/--field"],
+            "argument_precedence": ["--args", "--input", "--arg"],
         },
         "safety": {
             "auto_submit_applications": False,
             "machine_mode_interactive_prompts": False,
-            "side_effect_operations_require_dry_run_first": True,
-            "api_write_methods_require_execute_flag": True,
+            "side_effect_operations_create_persisted_proposal": True,
+            "explicit_confirm_command_required": True,
+            "raw_api_capability": False,
             "side_effect_labels": sorted({effect for op in operations for effect in op.get("side_effects", [])}),
         },
         "operation_count": len(operations),
         "operations": operations,
-    }
-
-
-def _routes(prefix: str = "/api") -> dict[str, Any]:
-    from app.main import app
-
-    route_items: list[dict[str, Any]] = []
-    for route in app.routes:
-        path = getattr(route, "path", "")
-        if prefix and not path.startswith(prefix):
-            continue
-        methods = sorted(getattr(route, "methods", []) or [])
-        if not methods:
-            continue
-        route_items.append(
-            {
-                "path": path,
-                "name": getattr(route, "name", ""),
-                "methods": [method for method in methods if method not in {"HEAD"} or "GET" not in methods],
-                "requires_execute": any(_method_needs_execute(method) for method in methods),
-            }
-        )
-    return {
-        "ok": True,
-        "prefix": prefix,
-        "route_count": len(route_items),
-        "routes": route_items,
+        "skill_registry": skills,
     }
 
 
 async def _run_operation(name: str, args: dict[str, Any], *, dry_run: bool) -> dict[str, Any]:
     await init_db()
-    return await execute_operation(name, args, dry_run=dry_run, surface="cli")
+    return await execute_or_propose_operation(
+        name,
+        args,
+        dry_run=dry_run,
+        surface="cli",
+    )
 
 
-async def _run_api(
-    method: str,
-    path: str,
-    *,
-    query: dict[str, Any],
-    body: dict[str, Any],
-    execute: bool,
-) -> dict[str, Any]:
-    normalized_method = (method or "").strip().upper()
-    normalized_path = _normalize_path(path)
-    if not normalized_method:
-        return {"ok": False, "errors": ["method is required"]}
-    if not normalized_path.startswith("/api/") and normalized_path != "/api/health":
-        return {"ok": False, "errors": ["api path must start with /api/"]}
-
-    if _method_needs_execute(normalized_method) and not execute:
-        return {
-            "ok": True,
-            "executed": False,
-            "requires_execute": True,
-            "method": normalized_method,
-            "path": normalized_path,
-            "query": query,
-            "body": body,
-            "warnings": ["非安全 HTTP 方法默认不执行；确认后追加 --execute。"],
-        }
-
+async def _confirm_operation(run_id: str, *, action_id: str = "") -> dict[str, Any]:
     await init_db()
-    from app.main import app
-
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://offeru.local") as client:
-        response = await client.request(
-            normalized_method,
-            normalized_path,
-            params=query,
-            json=body if body and normalized_method not in {"GET", "HEAD", "OPTIONS"} else None,
-        )
-    try:
-        payload: Any = response.json()
-    except ValueError:
-        payload = response.text
-    return {
-        "ok": 200 <= response.status_code < 400,
-        "executed": True,
-        "method": normalized_method,
-        "path": normalized_path,
-        "query": query,
-        "status_code": response.status_code,
-        "outputs": payload,
-        "errors": [] if 200 <= response.status_code < 400 else [str(payload)],
-    }
-
-
-def _method_needs_execute(method: str) -> bool:
-    return method.upper() not in {"GET", "HEAD", "OPTIONS"}
-
-
-def _normalize_path(path: str) -> str:
-    value = (path or "").strip()
-    if not value.startswith("/"):
-        value = "/" + value
-    return value
+    return await confirm_operation_proposal(
+        run_id,
+        action_id=action_id,
+        surface="cli",
+    )
 
 
 def _parse_args_json(raw: str) -> Union[dict[str, Any], str]:

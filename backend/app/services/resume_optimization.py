@@ -224,6 +224,7 @@ async def _load_research_context(
         select(JobResearchRun)
         .where(JobResearchRun.job_id == job_id)
         .where(JobResearchRun.status == "completed")
+        .where(JobResearchRun.review_status == "accepted")
     )
     if research_run_id:
         query = query.where(JobResearchRun.run_id == research_run_id)
@@ -234,8 +235,8 @@ async def _load_research_context(
     run = (await db.execute(query)).scalars().first()
     if run is None:
         if research_run_id:
-            raise ValueError("指定的岗位调研不存在、未完成或不属于该岗位")
-        raise ValueError("该岗位尚无已完成调研；请先执行 start_job_research")
+            raise ValueError("指定的岗位调研不存在、未完成、未通过审核或不属于该岗位")
+        raise ValueError("该岗位尚无已完成并通过审核的调研")
 
     sources = (
         await db.execute(

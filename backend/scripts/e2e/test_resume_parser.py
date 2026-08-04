@@ -7,12 +7,21 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from app.services.resume_parser import (  # noqa: E402
+    get_resume_ocr_capabilities,
     _normalize_extracted_text,
     locate_resume_source_pages,
     _parse_pdf_document_sync,
     _parse_pdf_sync,
     _sort_pdf_blocks,
 )
+
+
+def test_ocr_capabilities_do_not_expose_local_paths() -> None:
+    capabilities = get_resume_ocr_capabilities()
+    assert capabilities["language"]
+    assert isinstance(capabilities["configured"], bool)
+    assert isinstance(capabilities["missing_languages"], list)
+    assert "path" not in capabilities
 
 
 def test_normalizer_merges_visual_wraps() -> None:
@@ -96,6 +105,7 @@ def test_pdf_diagnostics_keep_page_evidence() -> None:
 
 
 if __name__ == "__main__":
+    test_ocr_capabilities_do_not_expose_local_paths()
     test_normalizer_merges_visual_wraps()
     test_pymupdf_pdf_extraction_keeps_text()
     test_two_column_blocks_stay_column_stable()

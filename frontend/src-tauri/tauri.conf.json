@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "identifier": "com.offeru.app",
   "build": {
-"frontendDist": "http://localhost:3300",
-      "devUrl": "http://localhost:3300",
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:3300",
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build"
   },

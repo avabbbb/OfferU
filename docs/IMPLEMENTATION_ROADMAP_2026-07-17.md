@@ -3,6 +3,9 @@
 > 日期：2026-07-17  
 > 输入：`BACKEND_CAPABILITY_AUDIT_2026-07-16.md`、`CONTEXT.md`、`docs/adr/0001` 至 `0028`  
 > 目标：把现有局部能力收敛为四个可独立使用、可审计的垂直闭环
+> 状态：历史路线快照；其中 Agent runtime 与前端技术栈已被 ADR-0034 至 ADR-0047 及当前实现更新  
+>
+> 当前 Agent 架构与剩余缺口见 [`docs/architecture/agent-system.md`](./architecture/agent-system.md)。实现时以 `CONTEXT.md` 和最新 accepted ADR 为准。
 
 ## 总体发布规则
 
@@ -22,7 +25,7 @@ OfferU 主 Agent 可以可靠委托本地深度执行器；所有模块通过同
 
 ### 实施范围
 
-- 以 Python/FastAPI 作为唯一业务后端，冻结 `backend-rs` 业务写路径；
+- 以 Python/FastAPI 作为唯一业务后端，不再保留或新增第二套 Rust 业务写路径；
 - 修复 Codex CLI 已移除参数，Codex 使用结构化输出约束，Claude 使用 JSON schema；
 - 深度执行器只承担公司/岗位调研、批量 JD 评估和工作源变化摘要；
 - 把现有 `python -m app.cli` 收敛为稳定的 `offeru` 机器 CLI，保留 JSON stdout、schema 发现、稳定退出码、dry-run 和确认契约；

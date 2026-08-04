@@ -6,16 +6,23 @@
 // 简历深度编辑与面试房间自动进入专注模式,只保留最小控制条。
 // =============================================
 
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, Bot } from "lucide-react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { WorkbenchProvider, useWorkbench } from "@/lib/workbench";
-import { ContextRail } from "./ContextRail";
-import { CommandPalette } from "./CommandPalette";
-import { AgentPanel } from "./AgentPanel";
+
+const ContextRail = lazy(() =>
+  import("./ContextRail").then((module) => ({ default: module.ContextRail })),
+);
+const CommandPalette = lazy(() =>
+  import("./CommandPalette").then((module) => ({ default: module.CommandPalette })),
+);
+const AgentPanel = lazy(() =>
+  import("./AgentPanel").then((module) => ({ default: module.AgentPanel })),
+);
 
 interface FocusRule {
   pattern: RegExp;
@@ -78,7 +85,9 @@ function FocusTopBar({ rule }: { rule: FocusRule }) {
             transition={{ type: "spring", stiffness: 400, damping: 34 }}
             className="fixed bottom-4 right-4 top-14 z-50 w-[min(92vw,340px)] overflow-hidden rounded-lg border border-[var(--border-strong)] bg-[var(--background)] shadow-[0_12px_36px_var(--shadow-medium)]"
           >
-            <AgentPanel />
+            <Suspense fallback={null}>
+              <AgentPanel />
+            </Suspense>
           </motion.div>
         )}
       </AnimatePresence>
@@ -144,7 +153,7 @@ function WorkbenchFrame({ children }: { children: React.ReactNode }) {
     return (
       <div className="flex h-screen w-full flex-col overflow-hidden">
         <FocusTopBar rule={focusRule} />
-        <main className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 md:px-6">
+        <main className="workbench-main relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 md:px-6">
           {children}
         </main>
       </div>
@@ -154,11 +163,13 @@ function WorkbenchFrame({ children }: { children: React.ReactNode }) {
   return (
     <div className="relative flex h-screen w-full overflow-hidden">
       <Sidebar />
-      <main className="relative h-screen min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-5 pb-28 md:px-6 md:py-6 md:pb-8">
+      <main className="workbench-main relative h-screen min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-5 pb-28 md:px-6 md:py-6 md:pb-8">
         <div className="mx-auto max-w-[1600px]">{children}</div>
       </main>
-      <ContextRail />
-      <CommandPalette />
+      <Suspense fallback={null}>
+        <ContextRail />
+        <CommandPalette />
+      </Suspense>
     </div>
   );
 }

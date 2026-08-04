@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
   Checkbox,
@@ -320,6 +320,7 @@ const [currentTableId, setCurrentTableId] = useState<number | null>(null);
   const [keyword, setKeyword] = useState("");
   const [debouncedKeyword, setDebouncedKeyword] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [columnWidthDrafts, setColumnWidthDrafts] = useState<Record<string, number>>({});
 
   const [tableModalOpen, setTableModalOpen] = useState(false);
   const [newTableName, setNewTableName] = useState("");
@@ -393,6 +394,7 @@ const [emailSyncing, setEmailSyncing] = useState(false);
     setSelectedIds(new Set());
     setEditingCell(null);
     setMoveDialogTargetTableId(null);
+    setColumnWidthDrafts({});
   }, [currentTableId, debouncedKeyword]);
 
   useEffect(() => {
@@ -433,10 +435,15 @@ const [emailSyncing, setEmailSyncing] = useState(false);
     () => tables.filter((table) => table.id !== currentTableId),
     [tables, currentTableId]
   );
+  const getFieldWidth = useCallback(
+    (field: ApplicationFieldSchema) =>
+      columnWidthDrafts[field.field_key] ?? Math.max(120, field.width),
+    [columnWidthDrafts]
+  );
   const fieldWidthMap = useMemo(() => {
-    const pairs = visibleFields.map((field) => [field.field_key, Math.max(120, field.width)] as const);
+    const pairs = visibleFields.map((field) => [field.field_key, getFieldWidth(field)] as const);
     return new Map<string, number>(pairs);
-  }, [visibleFields]);
+  }, [visibleFields, getFieldWidth]);
   const companyColWidth = fieldWidthMap.get("company_name") ?? 0;
   const stickyFieldLeftMap = useMemo(
     () =>
@@ -447,9 +454,9 @@ const [emailSyncing, setEmailSyncing] = useState(false);
     [companyColWidth]
   );
   const tableMinWidth = useMemo(() => {
-    const fieldsWidth = visibleFields.reduce((sum, field) => sum + Math.max(120, field.width), 0);
+    const fieldsWidth = visibleFields.reduce((sum, field) => sum + getFieldWidth(field), 0);
     return CHECKBOX_COL_WIDTH + fieldsWidth;
-  }, [visibleFields]);
+  }, [visibleFields, getFieldWidth]);
 
   const toSafeCount = (value: unknown, fallback = 0) => {
     const parsed = Number(value);
@@ -488,6 +495,43 @@ const [emailSyncing, setEmailSyncing] = useState(false);
     mutator(draft);
     await updateApplicationTableSchema(currentTableId, draft);
     await refreshAll();
+  };
+
+  const startColumnResize = (
+    event: { clientX: number; preventDefault: () => void; stopPropagation: () => void },
+    field: ApplicationFieldSchema
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const startWidth = getFieldWidth(field);
+    let finalWidth = startWidth;
+
+    const handlePointerMove = (pointerEvent: PointerEvent) => {
+      finalWidth = Math.max(120, Math.round(startWidth + pointerEvent.clientX - startX));
+      setColumnWidthDrafts((current) => ({ ...current, [field.field_key]: finalWidth }));
+    };
+
+    const handlePointerUp = () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+      if (finalWidth === startWidth) return;
+      void handleSchemaPatch((schema) => {
+        const item = schema.find((entry) => entry.field_key === field.field_key);
+        if (item) item.width = finalWidth;
+      }).finally(() => {
+        setColumnWidthDrafts((current) => {
+          const next = { ...current };
+          delete next[field.field_key];
+          return next;
+        });
+      });
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp, { once: true });
+    window.addEventListener("pointercancel", handlePointerUp, { once: true });
   };
 
   const beginEditCell = (record: ApplicationTableRecordItem, field: ApplicationFieldSchema) => {
@@ -862,8 +906,8 @@ const [emailSyncing, setEmailSyncing] = useState(false);
   };
 
   return (
-    <div className="space-y-6">
-      <section className="bauhaus-panel overflow-hidden bg-[var(--surface)]">
+    <div className="stage-page stage-page--applications space-y-5">
+      <section className="stage-hero bauhaus-panel overflow-hidden bg-[var(--surface)]">
         <div className="grid gap-4 p-6 md:grid-cols-3">
           <div className="md:col-span-2">
             <span className="bauhaus-chip bg-[var(--surface-muted)] text-[var(--foreground)]">投递管理工作台</span>
@@ -912,10 +956,10 @@ const [emailSyncing, setEmailSyncing] = useState(false);
       </section>
 
       {viewMode === "table" && (
-      <section className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center lg:flex-1 lg:flex-nowrap">
-            <div className="w-full sm:max-w-[420px] lg:w-[34%] lg:min-w-[260px] lg:max-w-[500px]">
+      <section className="data-toolbar bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
+        <div className="data-toolbar-layout flex flex-col gap-3">
+          <div className="data-toolbar-primary flex min-w-0 flex-col gap-2">
+            <div className="data-toolbar-search w-full">
               <Input
                 startContent={<Search size={14} className="text-[var(--foreground-muted)]" />}
                 value={keyword}
@@ -946,7 +990,7 @@ const [emailSyncing, setEmailSyncing] = useState(false);
             </div>
           </div>
 
-          <div className="flex flex-col items-stretch gap-2 lg:items-end">
+          <div className="data-toolbar-actions flex flex-col items-stretch gap-2">
             <div className="flex flex-wrap items-center justify-end gap-2">
               <Tooltip content="把最近一次插件购物车同步的岗位直接写入当前投递表" placement="bottom" closeDelay={120}>
                 <Button
@@ -1002,10 +1046,10 @@ const [emailSyncing, setEmailSyncing] = useState(false);
                 </Button>
               </Tooltip>
             </div>
-            <p className="max-w-[520px] text-xs font-medium leading-5 text-[var(--foreground-muted)] lg:text-right">
+            <p className="data-toolbar-help max-w-[520px] text-xs font-medium leading-5 text-[var(--foreground-muted)]">
               插件购物车同步后可直接导入当前表；导入后检查投递状态和岗位链接。
             </p>
-            <div className="flex flex-wrap items-center gap-2 text-xs font-medium leading-5 lg:justify-end">
+            <div className="data-toolbar-status flex flex-wrap items-center gap-2 text-xs font-medium leading-5">
               {emailStatus?.connected ? (
                 <span className="inline-flex items-center gap-1 text-[var(--foreground-soft)]">
                   <MailCheck size={12} />
@@ -1028,7 +1072,7 @@ const [emailSyncing, setEmailSyncing] = useState(false);
       {viewMode === "board" && <ProgressBoard />}
 
       {operationFeedback && (
-        <div className="fixed right-4 top-4 z-50 max-w-md">
+        <div className="feedback-pop fixed right-4 top-4 z-50 max-w-md">
           <div
             className={`flex items-start justify-between gap-3 border px-3 py-2 text-sm shadow-sm ${
               operationFeedback.tone === "success"
@@ -1058,7 +1102,7 @@ const [emailSyncing, setEmailSyncing] = useState(false);
       )}
 
       {viewMode === "table" && (
-      <section className="bauhaus-panel relative overflow-hidden bg-white">
+      <section className="data-workspace bauhaus-panel relative overflow-hidden bg-white">
         <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
           <div className="flex items-center gap-2 text-sm font-medium text-[var(--foreground-soft)]">
             <ChevronsUpDown size={14} />
@@ -1079,9 +1123,9 @@ const [emailSyncing, setEmailSyncing] = useState(false);
           </div>
         </div>
 
-        <div className="max-h-[68vh] overflow-x-auto overflow-y-auto">
+        <div className="max-h-[72vh] overflow-x-auto overflow-y-auto">
           <table
-            className="text-left text-sm"
+            className="offeru-data-table text-left text-sm"
             style={{
               tableLayout: "fixed",
               minWidth: `${tableMinWidth}px`,
@@ -1091,7 +1135,7 @@ const [emailSyncing, setEmailSyncing] = useState(false);
             <thead className="bg-[var(--surface-muted)]">
               <tr>
                 <th
-                  className="sticky left-0 z-30 border-b border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2"
+                  className="sticky left-0 top-0 z-30 border-b border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2"
                   style={{ width: `${CHECKBOX_COL_WIDTH}px`, minWidth: `${CHECKBOX_COL_WIDTH}px` }}
                 >
                   <Checkbox
@@ -1104,12 +1148,12 @@ const [emailSyncing, setEmailSyncing] = useState(false);
                 {visibleFields.map((field) => (
                   <th
                     key={field.field_key}
-                    className={`border-b border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 font-semibold text-[var(--foreground)] ${
+                    className={`relative sticky top-0 z-10 border-b border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 font-semibold text-[var(--foreground)] ${
                       stickyFieldLeftMap.has(field.field_key) ? "sticky z-20" : ""
                     }`}
                     style={{
-                      width: `${Math.max(120, field.width)}px`,
-                      minWidth: `${Math.max(120, field.width)}px`,
+                      width: `${getFieldWidth(field)}px`,
+                      minWidth: `${getFieldWidth(field)}px`,
                       left: stickyFieldLeftMap.get(field.field_key),
                     }}
                   >
@@ -1173,6 +1217,21 @@ const [emailSyncing, setEmailSyncing] = useState(false);
                         </DropdownMenu>
                       </Dropdown>
                     </div>
+                    <button
+                      type="button"
+                      className="column-resize-handle"
+                      aria-label={`拖拽调整${field.label}列宽`}
+                      onPointerDown={(event) => startColumnResize(event, field)}
+                      onKeyDown={(event) => {
+                        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+                        event.preventDefault();
+                        const delta = event.key === "ArrowRight" ? 20 : -20;
+                        void handleSchemaPatch((schema) => {
+                          const item = schema.find((entry) => entry.field_key === field.field_key);
+                          if (item) item.width = Math.max(120, getFieldWidth(field) + delta);
+                        });
+                      }}
+                    />
                   </th>
                 ))}
               </tr>
@@ -1189,12 +1248,26 @@ const [emailSyncing, setEmailSyncing] = useState(false);
                 <tr
                   key={record.id}
                   onClick={() => inspectRecord(record)}
-                  className={`cursor-pointer border-b border-[var(--border)] align-top transition-colors duration-[var(--dur-instant)] hover:bg-[var(--surface-muted)] ${
-                    record.is_duplicate ? "bg-[var(--status-blush)]" : "bg-white"
+                  tabIndex={0}
+                  aria-selected={selectedIds.has(record.id)}
+                  aria-label={`查看${String(record.values.company_name || "")}${String(record.values.job_title || "投递记录")}详情`}
+                  onKeyDown={(event) => {
+                    if (event.target !== event.currentTarget) return;
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      inspectRecord(record);
+                    }
+                  }}
+                  className={`offeru-data-row cursor-pointer border-b border-[var(--border)] align-top ${
+                    selectedIds.has(record.id)
+                      ? "bg-[var(--status-sage)]"
+                      : record.is_duplicate
+                        ? "bg-[var(--status-blush)]"
+                        : "bg-white"
                   }`}
                 >
                   <td
-                    className="sticky left-0 z-20 bg-white px-3 py-2"
+                    className="sticky left-0 z-20 bg-inherit px-3 py-2"
                     style={{ width: `${CHECKBOX_COL_WIDTH}px`, minWidth: `${CHECKBOX_COL_WIDTH}px` }}
                     onClick={(event) => event.stopPropagation()}
                   >
@@ -1219,10 +1292,10 @@ const [emailSyncing, setEmailSyncing] = useState(false);
                     return (
                       <td
                         key={`${record.id}-${field.field_key}`}
-                        className={`px-3 py-2 ${cellClass} ${stickyFieldLeftMap.has(field.field_key) ? "sticky z-10 bg-white" : ""}`}
+                        className={`px-3 py-2 ${cellClass} ${stickyFieldLeftMap.has(field.field_key) ? "sticky z-10 bg-inherit" : ""}`}
                         style={{
-                          width: `${Math.max(120, field.width)}px`,
-                          minWidth: `${Math.max(120, field.width)}px`,
+                          width: `${getFieldWidth(field)}px`,
+                          minWidth: `${getFieldWidth(field)}px`,
                           left: stickyFieldLeftMap.get(field.field_key),
                         }}
                         onClick={(event) => {
@@ -1904,13 +1977,13 @@ const [emailSyncing, setEmailSyncing] = useState(false);
       </Modal>
 
       {editHintToastVisible && (
-        <div className="fixed right-4 top-20 z-50 rounded-none border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs font-medium text-[var(--foreground-soft)]">
+        <div className="feedback-pop fixed right-4 top-20 z-50 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs font-medium text-[var(--foreground-soft)]">
           编辑中：按 Esc 或点击空白处保存并退出
         </div>
       )}
 
       {cellSaving && (
-        <div className="fixed right-4 top-4 z-50 rounded-none border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs font-medium text-[var(--foreground-soft)]">
+        <div className="feedback-pop fixed right-4 top-4 z-50 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs font-medium text-[var(--foreground-soft)]">
           正在保存单元格...
         </div>
       )}

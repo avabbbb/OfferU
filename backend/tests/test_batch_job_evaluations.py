@@ -139,7 +139,7 @@ class BatchJobEvaluationTests(unittest.TestCase):
                 evaluations,
                 "_WORKER_DIR",
                 root / "workers",
-            ), patch.object(evaluations, "run_coding_agent", runner):
+            ), patch.object(evaluations, "execute_deep_task", runner):
                 await evaluations._execute_job(batch["id"], 11, asyncio.Semaphore(1))
             loaded = store.get(batch["id"])
             assert loaded is not None
@@ -158,7 +158,7 @@ class BatchJobEvaluationTests(unittest.TestCase):
         self.assertTrue(input_path.is_file())
         self.assertTrue(input_path.is_relative_to(root))
         self.assertEqual(
-            runner.await_args.kwargs["output_schema"],
+            runner.await_args.args[0].output_schema,
             evaluations.JOB_EVALUATION_OUTPUT_SCHEMA,
         )
 

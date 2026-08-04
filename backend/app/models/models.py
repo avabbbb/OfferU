@@ -15,6 +15,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     Integer,
+    Index,
     String,
     Text,
     ForeignKey,
@@ -118,6 +119,8 @@ class JobResearchRun(Base):
     runtime_version: Mapped[str] = mapped_column(String(120), default="")
     status: Mapped[str] = mapped_column(String(24), default="pending", index=True)
     review_status: Mapped[str] = mapped_column(String(24), default="pending")
+    review_note: Mapped[str] = mapped_column(Text, default="")
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     result_json: Mapped[dict] = mapped_column(JSON, default=dict)
     report_markdown: Mapped[str] = mapped_column(Text, default="")
     trace_json: Mapped[dict] = mapped_column(JSON, default=dict)
@@ -936,11 +939,23 @@ class OperationAuditLog(Base):
     """统一操作审计日志：记录 UI/Agent/CLI/MCP 通过 action model 执行的动作。"""
 
     __tablename__ = "operation_audit_logs"
+    __table_args__ = (
+        Index(
+            "ux_operation_audit_idempotency_key",
+            "idempotency_key",
+            unique=True,
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     operation: Mapped[str] = mapped_column(String(120), index=True)
     operation_version: Mapped[str] = mapped_column(String(40), default="")
     surface: Mapped[str] = mapped_column(String(40), default="unknown", index=True)
+    status: Mapped[str] = mapped_column(String(24), default="completed", index=True)
+    confirmation_ref: Mapped[str] = mapped_column(String(160), default="", index=True)
+    idempotency_key: Mapped[Optional[str]] = mapped_column(
+        String(180), nullable=True
+    )
     ok: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     dry_run: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     side_effects: Mapped[list] = mapped_column(JSON, default=list)
@@ -949,6 +964,145 @@ class OperationAuditLog(Base):
     warnings_json: Mapped[list] = mapped_column(JSON, default=list)
     errors_json: Mapped[list] = mapped_column(JSON, default=list)
     elapsed_ms: Mapped[float] = mapped_column(Float, default=0.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+
+
+class JobSearchTask(Base):
+    """使用者可见的求职任务；对话与 Agent Run 都附着在任务内。"""
+
+    __tablename__ = "job_search_tasks"
+
+    task_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    conversation_id: Mapped[str] = mapped_column(String(80), default="", index=True)
+    title: Mapped[str] = mapped_column(String(300), default="")
+    goal: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(32), default="active", index=True)
+    primary_job_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("jobs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    domain_refs_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), index=True
+    )
+
+
+class AgentRunRecord(Base):
+    """一个求职任务内的主 Agent 可恢复执行事实。"""
+
+    __tablename__ = "agent_runs"
+
+    run_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    task_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("job_search_tasks.task_id", ondelete="CASCADE"),
+        index=True,
+    )
+    conversation_id: Mapped[str] = mapped_column(String(80), default="", index=True)
+    goal: Mapped[str] = mapped_column(Text, default="")
+    mode: Mapped[str] = mapped_column(String(80), default="general", index=True)
+    skill_id: Mapped[str] = mapped_column(String(100), default="", index=True)
+    skill_version: Mapped[str] = mapped_column(String(80), default="")
+    skill_snapshot_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(40), default="created", index=True)
+    steps_json: Mapped[list] = mapped_column(JSON, default=list)
+    exit_criteria_json: Mapped[list] = mapped_column(JSON, default=list)
+    llm_runtime_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    recovery_cursor_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    final_result_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    failure_reason: Mapped[str] = mapped_column(Text, default="")
+    event_sequence: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), index=True
+    )
+
+
+class AgentRunEvent(Base):
+    """Provider-neutral append-only lifecycle event for one Agent Run."""
+
+    __tablename__ = "agent_run_events"
+    __table_args__ = (
+        UniqueConstraint(
+            "run_id",
+            "sequence",
+            name="uq_agent_run_event_sequence",
+        ),
+    )
+
+    event_id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    run_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("agent_runs.run_id", ondelete="CASCADE"),
+        index=True,
+    )
+    sequence: Mapped[int] = mapped_column(Integer)
+    event_type: Mapped[str] = mapped_column(String(80), index=True)
+    payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+
+
+class HostedExecutorSession(Base):
+    """One auditable external coding-agent session bound to one heavy task."""
+
+    __tablename__ = "hosted_executor_sessions"
+    __table_args__ = (
+        UniqueConstraint(
+            "task_type",
+            "task_id",
+            name="uq_hosted_executor_task",
+        ),
+    )
+
+    session_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    task_type: Mapped[str] = mapped_column(String(80), index=True)
+    task_id: Mapped[str] = mapped_column(String(80), index=True)
+    executor_id: Mapped[str] = mapped_column(String(40), index=True)
+    protocol: Mapped[str] = mapped_column(String(80))
+    external_session_id: Mapped[str] = mapped_column(String(160), default="")
+    external_turn_id: Mapped[str] = mapped_column(String(160), default="")
+    status: Mapped[str] = mapped_column(String(32), default="created", index=True)
+    cwd: Mapped[str] = mapped_column(Text)
+    capability_grant_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    input_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    output_schema_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    result_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    recovery_cursor_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    error: Mapped[str] = mapped_column(Text, default="")
+    event_sequence: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), index=True
+    )
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class HostedExecutorEvent(Base):
+    """Provider-neutral append-only event for one hosted executor session."""
+
+    __tablename__ = "hosted_executor_events"
+    __table_args__ = (
+        UniqueConstraint(
+            "session_id",
+            "sequence",
+            name="uq_hosted_executor_event_sequence",
+        ),
+    )
+
+    event_id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    session_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("hosted_executor_sessions.session_id", ondelete="CASCADE"),
+        index=True,
+    )
+    sequence: Mapped[int] = mapped_column(Integer)
+    event_type: Mapped[str] = mapped_column(String(100), index=True)
+    provider_event: Mapped[str] = mapped_column(String(120), default="")
+    payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
 
 

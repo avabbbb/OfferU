@@ -5,6 +5,7 @@ import io
 import os
 import re
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Any, Optional
 
 
@@ -45,6 +46,74 @@ _LIGATURES = str.maketrans(
         "\ufb04": "ffl",
     }
 )
+
+
+def _ocr_language() -> str:
+    return os.getenv("OFFERU_OCR_LANGUAGE", "chi_sim+eng").strip() or "chi_sim+eng"
+
+
+def _tessdata_candidates() -> list[Path]:
+    candidates: list[Path] = []
+    configured = os.getenv("TESSDATA_PREFIX", "").strip()
+    if configured:
+        root = Path(configured).expanduser()
+        candidates.extend((root, root / "tessdata"))
+    try:
+        import fitz
+
+        get_tessdata = getattr(fitz, "get_tessdata", None)
+        if callable(get_tessdata):
+            candidates.append(Path(get_tessdata()))
+    except Exception:
+        pass
+    candidates.extend(
+        (
+            Path("/usr/share/tesseract-ocr/5/tessdata"),
+            Path("/usr/share/tesseract-ocr/4.00/tessdata"),
+            Path("/usr/share/tessdata"),
+            Path("C:/Program Files/Tesseract-OCR/tessdata"),
+            Path("C:/Program Files (x86)/Tesseract-OCR/tessdata"),
+        )
+    )
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = str(candidate)
+        if key not in seen:
+            seen.add(key)
+            unique.append(candidate)
+    return unique
+
+
+def _resolve_tessdata_path(language: str) -> Optional[Path]:
+    required = [item for item in language.split("+") if item]
+    for candidate in _tessdata_candidates():
+        if candidate.is_dir() and all((candidate / f"{item}.traineddata").is_file() for item in required):
+            return candidate
+    return None
+
+
+def get_resume_ocr_capabilities() -> dict[str, Any]:
+    preferred = _ocr_language()
+    required = [item for item in preferred.split("+") if item]
+    preferred_path = _resolve_tessdata_path(preferred)
+    available: set[str] = set()
+    for candidate in _tessdata_candidates():
+        if not candidate.is_dir():
+            continue
+        available.update(path.stem for path in candidate.glob("*.traineddata"))
+    missing = [item for item in required if item not in available]
+    return {
+        "configured": preferred_path is not None,
+        "language": preferred,
+        "fallback_english_configured": _resolve_tessdata_path("eng") is not None,
+        "missing_languages": missing,
+        "install_hint": (
+            None
+            if preferred_path is not None
+            else "Install Tesseract traineddata for chi_sim and eng, or set TESSDATA_PREFIX."
+        ),
+    }
 
 
 @dataclass
@@ -92,6 +161,7 @@ class ResumeParseResult:
             ],
             "warnings": self.warnings,
             "pages": [page.public_dict() for page in self.pages],
+            "ocr": get_resume_ocr_capabilities(),
         }
 
 
@@ -326,14 +396,22 @@ def _remove_repeated_margins(
 
 
 def _ocr_page_blocks(page: Any) -> tuple[list[_PdfTextBlock], str]:
-    preferred = os.getenv("OFFERU_OCR_LANGUAGE", "chi_sim+eng").strip() or "chi_sim+eng"
+    preferred = _ocr_language()
     languages = [preferred]
     if preferred != "eng":
         languages.append("eng")
     last_error = ""
     for language in languages:
         try:
-            textpage = page.get_textpage_ocr(language=language, dpi=200, full=True)
+            tessdata = _resolve_tessdata_path(language)
+            kwargs = {
+                "language": language,
+                "dpi": 200,
+                "full": True,
+            }
+            if tessdata is not None:
+                kwargs["tessdata"] = str(tessdata)
+            textpage = page.get_textpage_ocr(**kwargs)
             return _extract_page_blocks(page, textpage=textpage), language
         except Exception as exc:
             last_error = str(exc)

@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
+import reactionAssets from "virtual:offeru-interview-reactions";
 import type { InterviewReaction, ReactionAssetCatalog } from "../reactionConfig";
 
 const COPY: Record<InterviewReaction, { eyebrow: string; title: string; detail: string }> = {
@@ -44,35 +45,13 @@ interface Props {
 export default function ReactionAvatar({ reaction, score }: Props) {
   const copy = COPY[reaction];
   const cursorRef = useRef<Partial<Record<InterviewReaction, number>>>({});
-  const [catalog, setCatalog] = useState<ReactionAssetCatalog>({});
   const [candidates, setCandidates] = useState<string[]>([]);
   const [candidateIndex, setCandidateIndex] = useState(0);
   const [imageReady, setImageReady] = useState(false);
   const imageSrc = candidates[candidateIndex] ?? null;
 
-  const refreshCatalog = useCallback(async () => {
-    try {
-      const response = await fetch("/api/interview-reactions", { cache: "no-store" });
-      if (!response.ok) return;
-      const payload = (await response.json()) as { reactions?: ReactionAssetCatalog };
-      const nextCatalog = payload.reactions ?? {};
-      setCatalog((current) =>
-        JSON.stringify(current) === JSON.stringify(nextCatalog) ? current : nextCatalog
-      );
-    } catch {}
-  }, []);
-
   useEffect(() => {
-    void refreshCatalog();
-    const interval = window.setInterval(refreshCatalog, 15_000);
-    window.addEventListener("focus", refreshCatalog);
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener("focus", refreshCatalog);
-    };
-  }, [refreshCatalog]);
-
-  useEffect(() => {
+    const catalog = reactionAssets as ReactionAssetCatalog;
     const assets = catalog[reaction] ?? [];
     const cursor = cursorRef.current[reaction] ?? 0;
     const start = assets.length ? cursor % assets.length : 0;
@@ -80,7 +59,7 @@ export default function ReactionAvatar({ reaction, score }: Props) {
     setCandidates([...assets.slice(start), ...assets.slice(0, start)]);
     setCandidateIndex(0);
     setImageReady(false);
-  }, [catalog, reaction]);
+  }, [reaction]);
 
   return (
     <div className="relative flex h-full min-h-[320px] flex-col items-center justify-center overflow-hidden bg-[var(--surface-muted)] p-6 text-center">

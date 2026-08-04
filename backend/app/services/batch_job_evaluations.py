@@ -15,7 +15,11 @@ from sqlalchemy import select
 from app.database import async_session
 from app.models.models import Job, Profile, ProfileSection
 from app.services.agent_files import atomic_write_json
-from app.services.coding_agent_runtime import list_coding_agent_runtimes, run_coding_agent
+from app.services.coding_agent_runtime import (
+    DeepTaskSpec,
+    execute_deep_task,
+    list_local_executors,
+)
 
 
 BATCH_SCHEMA = "offeru.batch_job_evaluation.v1"
@@ -363,12 +367,20 @@ async def _execute_job(batch_id: str, job_id: int, semaphore: asyncio.Semaphore)
 
         batch_evaluation_store.update(batch_id, record_input)
         try:
-            worker = await run_coding_agent(
+            worker = await execute_deep_task(DeepTaskSpec(
                 runtime_id=str(batch["runtime_id"]),
                 prompt=_worker_prompt(batch, job),
                 cwd=worker_dir,
                 output_schema=JOB_EVALUATION_OUTPUT_SCHEMA,
-            )
+                task_type="batch_job_evaluation",
+                task_id=f"{batch_id}:{job_id}",
+                capability_grant={
+                    "offeru_operations": [],
+                    "data_scope": {"batch_id": batch_id, "job_id": job_id},
+                    "filesystem": "task_cwd_read_only",
+                    "network": "disabled",
+                },
+            ))
             result = _validated_result(
                 worker.get("structured"),
                 allowed_source_refs=_allowed_source_refs(batch, job),
@@ -463,7 +475,7 @@ async def start_batch_job_evaluation(
     clean_ids = list(dict.fromkeys(int(item) for item in job_ids))
     if not clean_ids or len(clean_ids) > 20:
         raise ValueError("job_ids 必须包含 1-20 个岗位")
-    runtimes = await list_coding_agent_runtimes()
+    runtimes = await list_local_executors()
     selected = next((item for item in runtimes["items"] if item["id"] == runtime_id), None)
     if not selected or not selected["available"] or not selected["supported"]:
         raise ValueError(f"coding-agent runtime {runtime_id} 当前不可用")

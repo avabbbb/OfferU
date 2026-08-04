@@ -110,7 +110,7 @@ function InspectorFieldRow({ field }: { field: InspectorField }) {
   };
 
   return (
-    <div className="grid grid-cols-[5.5rem_1fr] items-center gap-2">
+    <div className="inspector-field-row grid grid-cols-[5.5rem_1fr] items-center gap-2">
       <dt className="truncate text-[12px] text-[var(--foreground-muted)]">{field.label}</dt>
       <dd className="min-w-0">
         {field.onCommit ? (
@@ -155,7 +155,7 @@ export function InspectorPanel() {
 
   if (!selection) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+      <div className="surface-fabric relative isolate flex h-full flex-col items-center justify-center gap-3 overflow-hidden px-6 text-center">
         <div className="flex h-10 w-10 items-center justify-center rounded-md bg-[var(--surface-muted)] text-[var(--foreground-muted)]">
           <MousePointerClick size={18} strokeWidth={1.75} />
         </div>
@@ -185,7 +185,7 @@ export function InspectorPanel() {
       className="custom-scrollbar flex h-full flex-col overflow-y-auto"
     >
       {/* 对象头 */}
-      <div className="border-b border-[var(--border)] px-4 py-3">
+      <div className="inspector-hero surface-fabric border-b border-[var(--border)] px-4 py-4">
         <div className="flex items-center gap-1.5 text-[11px] font-medium text-[var(--foreground-muted)]">
           <Icon size={12} strokeWidth={1.75} />
           {meta.label}
@@ -200,7 +200,7 @@ export function InspectorPanel() {
 
       {/* 关键属性 */}
       {fields.length > 0 && (
-        <dl className="space-y-2 border-b border-[var(--border)] px-4 py-3">
+        <dl className="inspector-fields space-y-1 border-b border-[var(--border)] px-3 py-3">
           {fields.map((field) => (
             <InspectorFieldRow
               key={field.label}

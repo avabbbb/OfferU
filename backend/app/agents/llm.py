@@ -47,6 +47,7 @@ def _make_http_client() -> httpx.AsyncClient:
 
 
 DEFAULT_BASE_URLS = {
+    "openai": "https://api.openai.com/v1",
     "deepseek": "https://api.deepseek.com",
     "qwen": "https://dashscope.aliyuncs.com/compatible-mode/v1",
     "siliconflow": "https://api.siliconflow.com/v1",
@@ -85,9 +86,12 @@ def _runtime_source(settings) -> str:
     return "legacy_fallback"
 
 
-def get_llm_runtime_info(tier: str = "standard") -> dict[str, str]:
+def get_llm_runtime_info(
+    tier: str = "standard",
+    settings_override: Any | None = None,
+) -> dict[str, str]:
     """Return the model selection that chat_completion will use for this tier."""
-    settings = get_settings()
+    settings = settings_override or get_settings()
     provider = (settings.llm_provider or "deepseek").strip().lower()
     user_tier_map = getattr(settings, "tier_model_map", None) or {}
     if user_tier_map:

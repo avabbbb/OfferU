@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
@@ -22,15 +22,53 @@ import {
   ArrowLeft,
   Building2,
   Calendar,
+  CheckCircle2,
   ExternalLink,
   MapPin,
+  RefreshCw,
   Send,
+  XCircle,
 } from "lucide-react";
-import { createApplication, patchJob, useJob, usePools } from "@/lib/hooks";
+import { patchJob, useJob, usePools } from "@/lib/hooks";
+import {
+  jobResearchApi,
+  preApplicationApi,
+  type JobResearchRunDetail,
+  type PreApplicationDecisionChoice,
+  type PreApplicationState,
+} from "@/lib/api";
 import {
   bauhausModalContentClassName,
   bauhausSelectClassNames,
 } from "@/lib/bauhaus";
+
+const PRE_APPLICATION_STAGE_LABELS: Record<string, string> = {
+  research_pending: "等待调研",
+  research_failed: "调研失败",
+  needs_decision: "等待生成决策",
+  needs_decision_review: "等待人工审核",
+  completed_no_go: "已确认不投",
+  completed_insufficient_evidence: "证据不足",
+  ready_for_resume_proposal: "可以准备简历提案",
+  resume_proposal_ready: "已有简历提案",
+};
+
+const PRE_APPLICATION_DECISION_LABELS: Record<PreApplicationDecisionChoice, string> = {
+  go: "投",
+  conditional_go: "有条件投",
+  no_go: "不投",
+  insufficient_evidence: "证据不足",
+};
+
+const PRE_APPLICATION_DECISION_OPTIONS: Array<{
+  value: PreApplicationDecisionChoice;
+  label: string;
+}> = [
+  { value: "go", label: "投" },
+  { value: "conditional_go", label: "有条件投" },
+  { value: "no_go", label: "不投" },
+  { value: "insufficient_evidence", label: "证据不足" },
+];
 
 export default function JobDetailPage() {
   const params = useParams();
@@ -42,11 +80,129 @@ export default function JobDetailPage() {
   const [trashConfirmOpen, setTrashConfirmOpen] = useState(false);
   const [targetPool, setTargetPool] = useState<string>("ungrouped");
   const [actionLoading, setActionLoading] = useState<"join" | "trash" | null>(null);
+  const [research, setResearch] = useState<JobResearchRunDetail | null>(null);
+  const [researchLoading, setResearchLoading] = useState(false);
+  const [researchError, setResearchError] = useState("");
+  const [reviewNote, setReviewNote] = useState("");
+  const [reviewAction, setReviewAction] = useState<"accept" | "reject" | null>(null);
+  const [preApplication, setPreApplication] = useState<PreApplicationState | null>(null);
+  const [preApplicationLoading, setPreApplicationLoading] = useState(false);
+  const [preApplicationError, setPreApplicationError] = useState("");
+  const [preApplicationAction, setPreApplicationAction] = useState<"prepare" | "review" | null>(null);
+  const [decisionChoice, setDecisionChoice] = useState<PreApplicationDecisionChoice | "">("");
+  const [decisionNote, setDecisionNote] = useState("");
 
   const poolOptions = useMemo(
     () => [{ key: "ungrouped", label: "未分组" }, ...((pickedPools || []).map((pool) => ({ key: String(pool.id), label: pool.name })))],
     [pickedPools]
   );
+
+  const loadResearch = useCallback(async () => {
+    if (!jobId || !Number.isInteger(jobId) || jobId <= 0) return;
+    setResearchLoading(true);
+    setResearchError("");
+    try {
+      const runs = await jobResearchApi.runs({ job_id: jobId, limit: 1 });
+      const latest = runs.items[0];
+      if (!latest) {
+        setResearch(null);
+        setReviewNote("");
+        return;
+      }
+      const detail = await jobResearchApi.run(latest.run_id);
+      setResearch(detail);
+      setReviewNote(detail.review_note || "");
+    } catch (err) {
+      setResearchError(err instanceof Error ? err.message : "调研证据加载失败");
+    } finally {
+      setResearchLoading(false);
+    }
+  }, [jobId]);
+
+  const loadPreApplication = useCallback(async () => {
+    if (!jobId || !Number.isInteger(jobId) || jobId <= 0) return;
+    setPreApplicationLoading(true);
+    setPreApplicationError("");
+    try {
+      const state = await preApplicationApi.state(jobId);
+      setPreApplication(state);
+      const decision = state.decision;
+      setDecisionChoice(decision?.final_decision || decision?.agent_recommendation || "");
+      setDecisionNote(decision?.review_note || "");
+    } catch (err) {
+      setPreApplicationError(err instanceof Error ? err.message : "投前决策状态加载失败");
+    } finally {
+      setPreApplicationLoading(false);
+    }
+  }, [jobId]);
+
+  useEffect(() => {
+    void loadResearch();
+  }, [loadResearch]);
+
+  useEffect(() => {
+    void loadPreApplication();
+  }, [loadPreApplication]);
+
+  const handleResearchReview = async (action: "accept" | "reject") => {
+    if (!research || reviewAction) return;
+    const note = reviewNote.trim();
+    if (action === "reject" && !note) {
+      setResearchError("拒绝候选证据时必须填写原因。");
+      return;
+    }
+    setReviewAction(action);
+    setResearchError("");
+    try {
+      const detail = await jobResearchApi.review(research.run_id, { action, note });
+      setResearch(detail);
+      setReviewNote(detail.review_note || "");
+      void loadPreApplication();
+    } catch (err) {
+      setResearchError(err instanceof Error ? err.message : "审核操作失败");
+    } finally {
+      setReviewAction(null);
+    }
+  };
+
+  const handlePreparePreApplication = async () => {
+    if (!jobId || !preApplication?.research_run?.run_id || preApplicationAction) return;
+    setPreApplicationAction("prepare");
+    setPreApplicationError("");
+    try {
+      const decision = await preApplicationApi.prepare(jobId, preApplication.research_run.run_id);
+      setDecisionChoice(decision.agent_recommendation);
+      setDecisionNote("");
+      await loadPreApplication();
+    } catch (err) {
+      setPreApplicationError(err instanceof Error ? err.message : "投前决策生成失败");
+    } finally {
+      setPreApplicationAction(null);
+    }
+  };
+
+  const handlePreApplicationReview = async () => {
+    const decision = preApplication?.decision;
+    if (!decision || !decisionChoice || preApplicationAction) return;
+    const note = decisionNote.trim();
+    if (decisionChoice !== decision.agent_recommendation && !note) {
+      setPreApplicationError("覆盖 Agent 建议时必须填写理由。");
+      return;
+    }
+    setPreApplicationAction("review");
+    setPreApplicationError("");
+    try {
+      await preApplicationApi.review(decision.id, {
+        final_decision: decisionChoice,
+        note,
+      });
+      await loadPreApplication();
+    } catch (err) {
+      setPreApplicationError(err instanceof Error ? err.message : "投前决策审核失败");
+    } finally {
+      setPreApplicationAction(null);
+    }
+  };
 
   const handleJoinPicked = async () => {
     if (!job) return;
@@ -79,6 +235,16 @@ export default function JobDetailPage() {
       setActionLoading(null);
     }
   };
+
+  const preApplicationDecision = preApplication?.decision;
+  const decisionSections: Array<[string, string[]]> = preApplicationDecision
+    ? [
+        ["优势", preApplicationDecision.decision.strengths],
+        ["缺口", preApplicationDecision.decision.gaps],
+        ["有条件投条件", preApplicationDecision.decision.conditions],
+        ["缺少证据", preApplicationDecision.decision.missing_evidence],
+      ]
+    : [];
 
   if (isLoading) {
     return (
@@ -173,6 +339,425 @@ export default function JobDetailPage() {
         </Card>
       )}
 
+      <Card className="bauhaus-panel rounded-none bg-white shadow-none" data-testid="job-research-handback">
+        <CardBody className="space-y-5 p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="bauhaus-label text-[var(--foreground-muted)]">Evidence handback</p>
+              <h2 className="mt-2 text-2xl font-black uppercase tracking-[-0.05em] text-[var(--foreground)]">
+                调研证据审核
+              </h2>
+              <p className="mt-2 max-w-2xl text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
+                外部 Coding Agent 的调研结果先作为候选证据返回。只有你接受后，投前决策、简历优化和 AI 面试才能使用。
+              </p>
+            </div>
+            <Button
+              isIconOnly
+              aria-label="刷新调研证据"
+              variant="light"
+              isLoading={researchLoading}
+              onPress={() => void loadResearch()}
+              className="min-h-11 min-w-11 border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)]"
+            >
+              <RefreshCw size={17} />
+            </Button>
+          </div>
+
+          {researchError && (
+            <div className="bauhaus-panel-sm border-[var(--primary-red)] bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
+              {researchError}
+            </div>
+          )}
+
+          {researchLoading && !research ? (
+            <div className="bauhaus-panel-sm flex items-center gap-3 bg-[var(--surface-muted)] px-4 py-4">
+              <Spinner size="sm" color="warning" />
+              <span className="text-sm font-semibold text-[var(--foreground-soft)]">正在读取最新调研运行...</span>
+            </div>
+          ) : !research ? (
+            <div className="bauhaus-panel-sm bg-[var(--surface-muted)] px-4 py-4">
+              <p className="text-sm font-black text-[var(--foreground)]">还没有调研证据</p>
+              <p className="mt-1 text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
+                在 OfferU Agent 中使用“公司与岗位调研”技能。运行完成后，候选证据会出现在这里等待你的审核。
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
+                  <p className="bauhaus-label text-[var(--foreground-muted)]">运行</p>
+                  <p className="mt-2 truncate text-sm font-black text-[var(--foreground)]" title={research.run_id}>
+                    {research.run_id}
+                  </p>
+                </div>
+                <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
+                  <p className="bauhaus-label text-[var(--foreground-muted)]">证据 / 结论</p>
+                  <p className="mt-2 text-2xl font-black text-[var(--foreground)]">
+                    {research.source_count} / {research.finding_count}
+                  </p>
+                </div>
+                <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
+                  <p className="bauhaus-label text-[var(--foreground-muted)]">审核状态</p>
+                  <p className="mt-2 text-sm font-black uppercase text-[var(--foreground)]">
+                    {research.review_status === "candidate"
+                      ? "等待审核"
+                      : research.review_status === "accepted"
+                        ? "已接受"
+                        : research.review_status === "rejected"
+                          ? "已拒绝"
+                          : research.status}
+                  </p>
+                </div>
+              </div>
+
+              {research.status !== "completed" ? (
+                <div className="bauhaus-panel-sm bg-[var(--surface-muted)] px-4 py-4 text-sm font-semibold text-[var(--foreground-soft)]">
+                  {research.status === "failed"
+                    ? `调研失败：${research.error || "没有可用错误信息"}`
+                    : `调研正在处理中，当前状态：${research.status}`}
+                </div>
+              ) : (
+                <>
+                  {research.review_status === "candidate" && (
+                    <div className="bauhaus-panel-sm border-amber-500 bg-amber-50 px-4 py-4 text-sm font-semibold leading-relaxed text-amber-950">
+                      这些内容还不是 OfferU 的可消费事实。请检查来源、结论和信息缺口，再明确接受或拒绝。
+                    </div>
+                  )}
+                  {research.review_status === "accepted" && (
+                    <div className="bauhaus-panel-sm flex items-start gap-3 border-emerald-600 bg-emerald-50 px-4 py-4 text-sm font-semibold text-emerald-900">
+                      <CheckCircle2 className="mt-0.5 shrink-0" size={18} />
+                      已发布到公司与岗位档案，下游 Agent 可以引用这些证据。
+                    </div>
+                  )}
+                  {research.review_status === "rejected" && (
+                    <div className="bauhaus-panel-sm flex items-start gap-3 border-[var(--primary-red)] bg-red-50 px-4 py-4 text-sm font-semibold text-red-900">
+                      <XCircle className="mt-0.5 shrink-0" size={18} />
+                      已拒绝并从可消费档案中隔离；运行和证据仍保留用于审计。
+                    </div>
+                  )}
+
+                  <div>
+                    <p className="bauhaus-label text-[var(--foreground-muted)]">结论与引用</p>
+                    <div className="mt-3 space-y-3">
+                      {research.findings.map((finding) => (
+                        <article key={finding.id} className="bauhaus-panel-sm bg-white p-4">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Chip size="sm" variant="flat" className="border border-[var(--border)] bg-[var(--surface-muted)] font-bold text-[var(--foreground)]">
+                              {finding.finding_type}
+                            </Chip>
+                            <Chip size="sm" variant="flat" className="border border-[var(--border)] bg-white font-bold text-[var(--foreground-soft)]">
+                              {finding.evidence_level}
+                            </Chip>
+                          </div>
+                          <p className="mt-3 text-sm font-semibold leading-relaxed text-[var(--foreground)]">
+                            {finding.statement}
+                          </p>
+                          <p className="mt-2 text-xs font-bold uppercase tracking-[0.08em] text-[var(--foreground-muted)]">
+                            引用 {finding.source_refs.join(" · ")}
+                          </p>
+                        </article>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="bauhaus-label text-[var(--foreground-muted)]">来源快照</p>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      {research.evidence.map((source) => (
+                        <article key={source.id} className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-xs font-black uppercase tracking-[0.08em] text-[var(--primary-blue)]">
+                                {source.source_ref} · {source.source_class}
+                              </p>
+                              <p className="mt-2 text-sm font-black text-[var(--foreground)]">{source.title}</p>
+                              <p className="mt-1 text-xs font-semibold text-[var(--foreground-muted)]">{source.publisher}</p>
+                            </div>
+                            <Link
+                              href={source.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              aria-label={`打开来源 ${source.source_ref}`}
+                              className="shrink-0 text-[var(--primary-blue)]"
+                            >
+                              <ExternalLink size={16} />
+                            </Link>
+                          </div>
+                          <p className="mt-3 text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
+                            {source.excerpt}
+                          </p>
+                        </article>
+                      ))}
+                    </div>
+                  </div>
+
+                  {Array.isArray(research.result.gaps) && research.result.gaps.length > 0 && (
+                    <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
+                      <p className="bauhaus-label text-[var(--foreground-muted)]">仍未知</p>
+                      <ul className="mt-3 space-y-2 text-sm font-medium text-[var(--foreground-soft)]">
+                        {research.result.gaps.map((gap, index) => (
+                          <li key={`${index}-${gap}`} className="flex gap-2">
+                            <span aria-hidden>—</span>
+                            <span>{gap}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {research.review_status === "candidate" ? (
+                    <div className="space-y-3">
+                      <label htmlFor="research-review-note" className="bauhaus-label text-[var(--foreground-muted)]">
+                        审核备注（拒绝时必填）
+                      </label>
+                      <textarea
+                        id="research-review-note"
+                        value={reviewNote}
+                        onChange={(event) => setReviewNote(event.target.value)}
+                        maxLength={2000}
+                        rows={3}
+                        placeholder="记录来源疑点、需要补查的内容，或接受依据。"
+                        className="w-full border border-[var(--border-strong)] bg-white px-4 py-3 text-sm font-medium text-[var(--foreground)] outline-none focus:border-[var(--primary-blue)]"
+                      />
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Button
+                          onPress={() => void handleResearchReview("accept")}
+                          isLoading={reviewAction === "accept"}
+                          isDisabled={reviewAction === "reject"}
+                          startContent={<CheckCircle2 size={17} />}
+                          className="bauhaus-button bauhaus-button-blue !justify-center !px-4 !py-3 !text-[11px]"
+                        >
+                          接受并发布证据
+                        </Button>
+                        <Button
+                          onPress={() => void handleResearchReview("reject")}
+                          isLoading={reviewAction === "reject"}
+                          isDisabled={reviewAction === "accept"}
+                          startContent={<XCircle size={17} />}
+                          className="bauhaus-button bauhaus-button-red !justify-center !px-4 !py-3 !text-[11px]"
+                        >
+                          拒绝并隔离
+                        </Button>
+                      </div>
+                    </div>
+                  ) : research.review_note ? (
+                    <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
+                      <p className="bauhaus-label text-[var(--foreground-muted)]">审核备注</p>
+                      <p className="mt-2 text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
+                        {research.review_note}
+                      </p>
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </>
+          )}
+        </CardBody>
+      </Card>
+
+      <Card className="bauhaus-panel rounded-none bg-white shadow-none" data-testid="pre-application-decision">
+        <CardBody className="space-y-5 p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="bauhaus-label text-[var(--foreground-muted)]">Decision gate</p>
+              <h2 className="mt-2 text-2xl font-black uppercase tracking-[-0.05em] text-[var(--foreground)]">
+                投前决策
+              </h2>
+              <p className="mt-2 max-w-2xl text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
+                只有审核通过的投前决策，才能进入该岗位的简历提案；不投和证据不足会在这里结束。
+              </p>
+            </div>
+            <Button
+              isIconOnly
+              aria-label="刷新投前决策"
+              variant="light"
+              isLoading={preApplicationLoading}
+              onPress={() => void loadPreApplication()}
+              className="min-h-11 min-w-11 border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)]"
+            >
+              <RefreshCw size={17} />
+            </Button>
+          </div>
+
+          {preApplicationError && (
+            <div className="bauhaus-panel-sm border-[var(--primary-red)] bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
+              {preApplicationError}
+            </div>
+          )}
+
+          {preApplicationLoading && !preApplication ? (
+            <div className="bauhaus-panel-sm flex items-center gap-3 bg-[var(--surface-muted)] px-4 py-4">
+              <Spinner size="sm" color="warning" />
+              <span className="text-sm font-semibold text-[var(--foreground-soft)]">正在读取投前决策状态...</span>
+            </div>
+          ) : !preApplication ? (
+            <div className="bauhaus-panel-sm bg-[var(--surface-muted)] px-4 py-4">
+              <p className="text-sm font-black text-[var(--foreground)]">投前决策暂不可用</p>
+              <p className="mt-1 text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
+                请先完成岗位调研并接受候选证据。
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
+                  <p className="bauhaus-label text-[var(--foreground-muted)]">当前阶段</p>
+                  <p className="mt-2 text-sm font-black text-[var(--foreground)]">
+                    {PRE_APPLICATION_STAGE_LABELS[preApplication.stage] || preApplication.stage}
+                  </p>
+                </div>
+                <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
+                  <p className="bauhaus-label text-[var(--foreground-muted)]">职业证据</p>
+                  <p className="mt-2 text-2xl font-black text-[var(--foreground)]">
+                    {preApplication.profile_evidence_count}
+                  </p>
+                </div>
+                <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
+                  <p className="bauhaus-label text-[var(--foreground-muted)]">最新调研</p>
+                  <p className="mt-2 text-sm font-black text-[var(--foreground)]">
+                    {preApplication.research_run?.status || "未开始"}
+                  </p>
+                </div>
+              </div>
+
+              {preApplication.stage === "needs_decision" && (
+                <div className="bauhaus-panel-sm border-amber-500 bg-amber-50 p-4">
+                  <p className="text-sm font-semibold leading-relaxed text-amber-950">
+                    岗位、职业证据和已接受调研已经准备好，可以生成一份带来源的投前决策建议。
+                  </p>
+                  <Button
+                    onPress={() => void handlePreparePreApplication()}
+                    isLoading={preApplicationAction === "prepare"}
+                    className="bauhaus-button bauhaus-button-blue mt-4 !px-4 !py-3 !text-[11px]"
+                  >
+                    生成投前决策建议
+                  </Button>
+                </div>
+              )}
+
+              {preApplication.decision && (
+                <>
+                  <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="bauhaus-label text-[var(--foreground-muted)]">Agent 建议</p>
+                        <p className="mt-2 text-2xl font-black text-[var(--foreground)]">
+                          {PRE_APPLICATION_DECISION_LABELS[preApplication.decision.agent_recommendation]}
+                        </p>
+                      </div>
+                      {preApplication.decision.final_decision && (
+                        <Chip className="border border-[var(--border)] bg-white font-bold text-[var(--foreground)]">
+                          最终：{PRE_APPLICATION_DECISION_LABELS[preApplication.decision.final_decision]}
+                        </Chip>
+                      )}
+                    </div>
+                    <p className="mt-4 text-sm font-semibold leading-relaxed text-[var(--foreground-soft)]">
+                      {preApplication.decision.decision.rationale}
+                    </p>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {decisionSections.map(([label, items]) => (
+                      <div key={label} className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
+                        <p className="bauhaus-label text-[var(--foreground-muted)]">{label}</p>
+                        {items.length > 0 ? (
+                          <ul className="mt-3 space-y-2 text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
+                            {items.map((item) => <li key={item}>— {item}</li>)}
+                          </ul>
+                        ) : (
+                          <p className="mt-3 text-sm font-medium text-[var(--foreground-muted)]">暂无</p>
+                        )}
+                      </div>
+                    ])}
+                  </div>
+
+                  <div>
+                    <p className="bauhaus-label text-[var(--foreground-muted)]">逐条来源</p>
+                    <div className="mt-3 space-y-3">
+                      {preApplication.decision.decision.evidence.map((item, index) => (
+                        <article key={`${item.claim}-${index}`} className="bauhaus-panel-sm bg-white p-4">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Chip size="sm" variant="flat" className="border border-[var(--border)] bg-[var(--surface-muted)] font-bold text-[var(--foreground)]">
+                              {item.kind}
+                            </Chip>
+                            <span className="text-xs font-black uppercase tracking-[0.08em] text-[var(--primary-blue)]">
+                              {item.source_refs.join(" · ")}
+                            </span>
+                          </div>
+                          <p className="mt-3 text-sm font-semibold leading-relaxed text-[var(--foreground)]">
+                            {item.claim}
+                          </p>
+                        </article>
+                      ))}
+                    </div>
+                  </div>
+
+                  {preApplication.stage === "needs_decision_review" && (
+                    <div className="space-y-3">
+                      <Select
+                        label="你的最终选择"
+                        selectedKeys={decisionChoice ? [decisionChoice] : []}
+                        onSelectionChange={(keys) => {
+                          const value = Array.from(keys)[0] as PreApplicationDecisionChoice | undefined;
+                          setDecisionChoice(value || "");
+                        }}
+                        classNames={bauhausSelectClassNames}
+                      >
+                        {PRE_APPLICATION_DECISION_OPTIONS.map((option) => (
+                          <SelectItem key={option.value}>{option.label}</SelectItem>
+                        ))}
+                      </Select>
+                      <label htmlFor="pre-application-decision-note" className="bauhaus-label text-[var(--foreground-muted)]">
+                        覆盖建议时的理由（覆盖 Agent 建议必填）
+                      </label>
+                      <textarea
+                        id="pre-application-decision-note"
+                        value={decisionNote}
+                        onChange={(event) => setDecisionNote(event.target.value)}
+                        maxLength={2000}
+                        rows={3}
+                        placeholder="记录你接受或覆盖建议的依据。"
+                        className="w-full border border-[var(--border-strong)] bg-white px-4 py-3 text-sm font-medium text-[var(--foreground)] outline-none focus:border-[var(--primary-blue)]"
+                      />
+                      <Button
+                        onPress={() => void handlePreApplicationReview()}
+                        isLoading={preApplicationAction === "review"}
+                        isDisabled={!decisionChoice}
+                        className="bauhaus-button bauhaus-button-blue !px-4 !py-3 !text-[11px]"
+                      >
+                        保存最终投前决策
+                      </Button>
+                    </div>
+                  )}
+
+                  {preApplication.stage === "ready_for_resume_proposal" && (
+                    <div className="bauhaus-panel-sm border-emerald-600 bg-emerald-50 p-4">
+                      <p className="text-sm font-semibold leading-relaxed text-emerald-900">
+                        你已经确认投或有条件投，现在可以进入简历提案工作区。
+                      </p>
+                      <Button
+                        as={Link}
+                        href={`/optimize?job_ids=${job.id}`}
+                        className="bauhaus-button bauhaus-button-blue mt-4 !px-4 !py-3 !text-[11px]"
+                      >
+                        进入简历提案
+                      </Button>
+                    </div>
+                  )}
+
+                  {(preApplication.stage === "completed_no_go" ||
+                    preApplication.stage === "completed_insufficient_evidence") && (
+                    <div className="bauhaus-panel-sm border-[var(--border-strong)] bg-[var(--surface-muted)] p-4 text-sm font-semibold leading-relaxed text-[var(--foreground-soft)]">
+                      当前投前决策已结束，不会创建该岗位的简历提案或投递尝试。
+                    </div>
+                  )}
+                </>
+              )}
+            </>
+          )}
+        </CardBody>
+      </Card>
+
       <Card className="bauhaus-panel rounded-none bg-white shadow-none">
         <CardBody className="space-y-4 p-5">
           <div>
@@ -237,16 +822,23 @@ export default function JobDetailPage() {
             查看原文
           </Button>
         )}
-        <Button
-          endContent={<Send size={16} />}
-          onPress={async () => {
-            await createApplication(job.id);
-            router.push("/applications");
-          }}
-          className="bauhaus-button bauhaus-button-blue !justify-center !px-4 !py-3 !text-[11px]"
-        >
-          一键投递
-        </Button>
+        {preApplication?.stage === "ready_for_resume_proposal" || preApplication?.stage === "resume_proposal_ready" ? (
+          <Button
+            as={Link}
+            href={`/optimize?job_ids=${job.id}`}
+            endContent={<Send size={16} />}
+            className="bauhaus-button bauhaus-button-blue !justify-center !px-4 !py-3 !text-[11px]"
+          >
+            进入简历提案
+          </Button>
+        ) : (
+          <Button
+            isDisabled
+            className="bauhaus-button bauhaus-button-blue !justify-center !px-4 !py-3 !text-[11px] opacity-50"
+          >
+            完成投前决策后可进入简历提案
+          </Button>
+        )}
       </section>
 
       <Modal isOpen={joinModalOpen} onClose={() => setJoinModalOpen(false)} size="md">

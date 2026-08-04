@@ -23,7 +23,12 @@ import {
   type ResumeParseDiagnostics,
 } from "@/lib/hooks";
 import { resumeApi } from "@/lib/api";
-import { normalizeProfileCategoryKey, resolveProfileCategoryLabel, getProfileBulletText } from "@/lib/profileSchema";
+import {
+  getProfileBulletText,
+  groupProfileCandidatesForResume,
+  normalizeProfileCategoryKey,
+  resolveProfileCategoryLabel,
+} from "@/lib/profileSchema";
 
 const bauhausFieldClassNames = {
   inputWrapper:
@@ -48,6 +53,10 @@ function getResumeSourceLabel(resume: ResumeBrief): { text: string; color: "defa
   if (resume.source_mode === "combined") {
     const count = resume.source_job_ids?.length || 0;
     return { text: count > 0 ? `综合 ${count} 个岗位生成` : "AI 综合生成", color: "success" };
+  }
+
+  if (resume.source_mode === "imported") {
+    return { text: "由现有简历导入", color: "success" };
   }
 
   return { text: "手动创建", color: "default" };
@@ -208,16 +217,37 @@ export default function ResumesListPage() {
       const newResume = await createResume({
         user_name: profileName,
         title: uploadTitle.trim() || "上传简历",
+        source_mode: "imported",
       });
-      for (let i = 0; i < selected.length; i++) {
-        const c = selected[i];
-        await resumeApi.createSection(newResume.id, {
-          section_type: c.sectionType,
-          title: c.title,
-          sort_order: i,
-          visible: true,
-          content_json: c.contentJson,
-        });
+      const groups = groupProfileCandidatesForResume(
+        selected.map((candidate, index) => ({
+          id: index,
+          section_type: candidate.sectionType,
+          title: candidate.title,
+          content_json: candidate.contentJson,
+        }))
+      );
+      const existingSections = Array.isArray(newResume.sections) ? newResume.sections : [];
+      for (let index = 0; index < groups.length; index++) {
+        const group = groups[index];
+        const existing = existingSections.find(
+          (section: any) => section.section_type === group.sectionType
+        );
+        if (existing?.id) {
+          await resumeApi.updateSection(newResume.id, existing.id, {
+            title: group.title,
+            sort_order: group.sortOrder,
+            content_json: group.items,
+          });
+        } else {
+          await resumeApi.createSection(newResume.id, {
+            section_type: group.sectionType,
+            title: group.title,
+            sort_order: group.sortOrder,
+            visible: true,
+            content_json: group.items,
+          });
+        }
       }
       setUploadModalOpen(false);
       setUploadCandidates([]);
@@ -237,10 +267,10 @@ export default function ResumesListPage() {
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ type: "spring", damping: 15 }}
-      className="space-y-6"
+      transition={{ type: "spring", stiffness: 360, damping: 34, mass: 0.82 }}
+      className="stage-page stage-page--resume space-y-6"
     >
-      <section className="bauhaus-panel overflow-hidden bg-[var(--surface)]">
+      <section className="stage-hero bauhaus-panel overflow-hidden bg-[var(--surface)]">
         <div className="grid gap-6 border-b border-[var(--border)] p-6 md:p-8 xl:grid-cols-[1.05fr_0.95fr]">
           <div className="space-y-4">
             <span className="bauhaus-chip bg-[var(--surface-muted)] text-[var(--foreground)]">简历管理中心</span>
@@ -521,6 +551,13 @@ export default function ResumesListPage() {
                   && uploadDiagnostics.low_quality_pages.length > 0 && (
                   <p className="mt-1 font-semibold text-[var(--primary-yellow)]">
                     第 {uploadDiagnostics.low_quality_pages.join("、")} 页识别质量偏低，请结合页码来源重点核对。
+                  </p>
+                  )}
+                {uploadDiagnostics.parser !== "python-docx"
+                  && uploadDiagnostics.ocr
+                  && !uploadDiagnostics.ocr.configured && (
+                  <p className="mt-1 font-semibold text-[var(--primary-yellow)]">
+                    当前未配置完整的 {uploadDiagnostics.ocr.language} OCR 训练数据；纯扫描 PDF 可能无法识别。
                   </p>
                   )}
               </div>

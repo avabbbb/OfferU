@@ -1,10 +1,12 @@
 # WebUI Slice 01 最终实施计划：投递进展工作台
 
-> 状态：已批准，待实施  
+> 状态：历史实施计划；工作台壳层和投递页切片已经进入当前代码，本文只保留原验收意图  
 > 日期：2026-07-17  
 > 批准日期：2026-07-18  
 > 设计事实源：`docs/WEBUI_WORKBENCH_DESIGN_2026-07-17.md`、ADR-0030、ADR-0031、ADR-0032  
 > 与 `docs/implementation/SLICE_01_PLAN_2026-07-17.md` 的关系：独立并行，不覆盖、不替换
+>
+> 文中的 Harness Agent 已由 Pi 主 Agent Runtime + 确定性 Guardian 取代；当前契约见 `docs/architecture/agent-system.md` 与 ADR-0041、ADR-0046。
 
 ## 1. 目标
 

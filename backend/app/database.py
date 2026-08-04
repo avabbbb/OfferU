@@ -82,6 +82,13 @@ def _auto_migrate(connection):
                         default_clause = " DEFAULT 0"
                 ddl = f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {col_type}{nullable}{default_clause}'
                 connection.execute(text(ddl))
+    if inspector.has_table("operation_audit_logs"):
+        connection.execute(
+            text(
+                'CREATE UNIQUE INDEX IF NOT EXISTS "ux_operation_audit_idempotency_key" '
+                'ON "operation_audit_logs" ("idempotency_key")'
+            )
+        )
 
 
 # =============================================
