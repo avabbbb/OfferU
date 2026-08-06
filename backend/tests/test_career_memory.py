@@ -18,18 +18,29 @@ if str(BACKEND_DIR) not in sys.path:
 from sqlalchemy import select
 
 from app.database import async_session, init_db
-from app.models.models import CareerSource, LearningObservation, MemoryProposal, ProfileSection
+from app.models.models import (
+    CareerSource,
+    Job,
+    LearningObservation,
+    MemoryProposal,
+    Profile,
+    ProfileSection,
+)
 from app.ops import OPERATIONS
+from app.services.agent_operations import add_profile_evidence
 from app.services.agent_skill_registry import resolve_skill
 from app.services.career_memory import (
     create_memory_proposal,
+    derive_career_model,
     invalidate_memory_source,
+    list_career_ledger,
     list_memory_inbox,
     record_conversation_observation,
     record_learning_observation,
     review_memory_proposal,
     _observation_source_excerpt,
 )
+from app.services.job_projection import build_job_projection
 
 
 _RUN_SALT = secrets.token_hex(8)
@@ -79,6 +90,9 @@ class CareerMemoryTests(unittest.TestCase):
         self.assertIn("create_memory_proposal", OPERATIONS)
         self.assertIn("review_memory_proposal", OPERATIONS)
         self.assertIn("invalidate_memory_source", OPERATIONS)
+        self.assertIn("derive_career_model", OPERATIONS)
+        self.assertIn("list_career_ledger", OPERATIONS)
+        self.assertIn("build_job_projection", OPERATIONS)
         self.assertFalse(
             OPERATIONS["list_memory_inbox"].schema()["requires_confirmation"]
         )
@@ -215,16 +229,19 @@ class CareerMemoryTests(unittest.TestCase):
                 accepted,
                 revoked,
                 in_pending and section_before_revoke is not None,
-                section_after_revoke is None,
+                section_after_revoke,
             )
 
-        accepted, revoked, visible_before_accept, removed_after_revoke = asyncio.run(run())
+        accepted, revoked, visible_before_accept, section_after_revoke = asyncio.run(run())
 
         self.assertTrue(visible_before_accept)
         self.assertEqual(accepted["status"], "accepted")
         self.assertEqual(accepted["profile_write"]["tier"], "preference")
         self.assertEqual(revoked["status"], "revoked")
-        self.assertTrue(removed_after_revoke)
+        # ADR-0048：撤销不再物理删除条目，保留审计外壳并标记失效
+        self.assertIsNotNone(section_after_revoke)
+        self.assertEqual(section_after_revoke.status, "revoked")
+        self.assertIsNotNone(section_after_revoke.invalidated_at)
 
     def test_reject_keeps_profile_unchanged(self) -> None:
         async def run() -> tuple[dict, int]:
@@ -328,10 +345,10 @@ class CareerMemoryTests(unittest.TestCase):
                     "proposal_status": stored_proposal.status,
                     "proposal_after": stored_proposal.after_json,
                 },
-                stored_section is None,
+                stored_section,
             )
 
-        result, source, derived, section_removed = asyncio.run(run())
+        result, source, derived, stored_section = asyncio.run(run())
 
         self.assertTrue(result["invalidated"])
         self.assertEqual(source["status"], "invalidated")
@@ -342,7 +359,9 @@ class CareerMemoryTests(unittest.TestCase):
         self.assertEqual(derived["observation_content"], {})
         self.assertEqual(derived["proposal_status"], "invalidated")
         self.assertEqual(derived["proposal_after"], {})
-        self.assertTrue(section_removed)
+        # ADR-0048：级联失效保留条目审计外壳，条目标记 invalidated 而非删除
+        self.assertIsNotNone(stored_section)
+        self.assertEqual(stored_section.status, "invalidated")
 
 
 async def _profile_section_count(title: str) -> int:
@@ -351,6 +370,286 @@ async def _profile_section_count(title: str) -> int:
             await db.execute(select(ProfileSection.id).where(ProfileSection.title == title))
         ).scalars().all()
         return len(rows)
+
+
+async def _insert_section(
+    title: str,
+    *,
+    tier: str = "verified_fact",
+    section_type: str = "experience",
+    content: dict | None = None,
+) -> int:
+    async with async_session() as db:
+        profile = (
+            await db.execute(select(Profile).where(Profile.is_default == True))
+        ).scalar_one_or_none()
+        if profile is None:
+            profile = Profile(name="默认档案", is_default=True)
+            db.add(profile)
+            await db.flush()
+        section = ProfileSection(
+            profile_id=profile.id,
+            section_type=section_type,
+            title=title,
+            sort_order=0,
+            content_json=content or {"bullet": title},
+            source="test",
+            confidence=1.0,
+            tier=tier,
+        )
+        db.add(section)
+        await db.commit()
+        await db.refresh(section)
+        return section.id
+
+
+async def _insert_job(title: str, description: str) -> int:
+    async with async_session() as db:
+        job = Job(
+            title=title,
+            company="测试公司",
+            raw_description=description,
+            hash_key=_uniq("job"),
+        )
+        db.add(job)
+        await db.commit()
+        await db.refresh(job)
+        return job.id
+
+
+class CareerLedgerTests(unittest.TestCase):
+    def test_derive_career_model_excludes_revoked_entries(self) -> None:
+        async def run() -> tuple[dict, dict, str]:
+            await init_db()
+            observation = await _preference_observation()
+            proposal = await _preference_proposal(observation["id"])
+            await review_memory_proposal(
+                proposal_id=proposal["id"],
+                action="accept",
+            )
+            model_before = await derive_career_model()
+            await review_memory_proposal(
+                proposal_id=proposal["id"],
+                action="revoke",
+            )
+            model_after = await derive_career_model()
+            return model_before, model_after, proposal["title"]
+
+        before, after, title = asyncio.run(run())
+
+        before_by_title = {item["title"]: item for item in before["entries"]}
+        self.assertIn(title, before_by_title)
+        self.assertEqual(before_by_title[title]["status"], "active")
+        after_by_title = {item["title"]: item for item in after["entries"]}
+        self.assertNotIn(title, after_by_title)
+        invalid_by_title = {
+            item["title"]: item for item in after["invalidated_entries"]
+        }
+        self.assertIn(title, invalid_by_title)
+        self.assertEqual(invalid_by_title[title]["status"], "revoked")
+
+    def test_supersede_proposal_marks_old_entry_superseded(self) -> None:
+        async def run() -> tuple[dict, dict, dict]:
+            await init_db()
+            first = await _preference_observation()
+            proposal_a = await _preference_proposal(first["id"])
+            accepted_a = await review_memory_proposal(
+                proposal_id=proposal_a["id"],
+                action="accept",
+            )
+            second = await _preference_observation()
+            proposal_b = await create_memory_proposal(
+                observation_id=second["id"],
+                target_tier="preference",
+                section_type="custom:c_preference",
+                title=_uniq("取代后的地点偏好"),
+                before={},
+                after={
+                    "category_label": "求职偏好",
+                    "description": "我希望优先考虑上海的后端工程师岗位。",
+                    "bullet": "我希望优先考虑上海的后端工程师岗位。",
+                },
+                reason="使用者更新了当前求职地点偏好。",
+                impact=["后续岗位推荐以新地点为准"],
+                supersedes_proposal_id=proposal_a["id"],
+            )
+            accepted_b = await review_memory_proposal(
+                proposal_id=proposal_b["id"],
+                action="accept",
+            )
+            model = await derive_career_model()
+            ledger = await list_career_ledger(status="all", limit=500)
+            return accepted_b, model, ledger, accepted_a["applied_profile_section_id"]
+
+        accepted_b, model, ledger, old_section_id = asyncio.run(run())
+
+        self.assertEqual(accepted_b["status"], "accepted")
+        by_id = {int(item["id"]): item for item in model["entries"]}
+        self.assertIn(accepted_b["applied_profile_section_id"], by_id)
+        self.assertEqual(
+            by_id[accepted_b["applied_profile_section_id"]]["status"],
+            "active",
+        )
+        old_by_id = {int(item["id"]): item for item in model["invalidated_entries"]}
+        self.assertIn(old_section_id, old_by_id)
+        old = old_by_id[old_section_id]
+        self.assertEqual(old["status"], "superseded")
+        self.assertEqual(old["superseded_by_id"], accepted_b["applied_profile_section_id"])
+        by_id = {item["id"]: item for item in ledger["entries"]}
+        new_entry = by_id[accepted_b["id"]]
+        old_entry = next(item for item in ledger["entries"] if item["id"] != accepted_b["id"])
+        self.assertEqual(new_entry["supersedes_proposal_id"], old_entry["id"])
+        self.assertEqual(new_entry["applied_section"]["status"], "active")
+        self.assertEqual(old_entry["applied_section"]["status"], "superseded")
+
+    def test_supersede_requires_accepted_target(self) -> None:
+        async def run() -> None:
+            await init_db()
+            observation = await _preference_observation()
+            proposal = await _preference_proposal(observation["id"])
+            second = await _preference_observation()
+            await create_memory_proposal(
+                observation_id=second["id"],
+                target_tier="preference",
+                section_type="custom:c_preference",
+                title=_uniq("非法取代提案"),
+                after={"bullet": "不应创建"},
+                reason="测试非法取代",
+                supersedes_proposal_id=proposal["id"],
+            )
+
+        with self.assertRaises(ValueError):
+            asyncio.run(run())
+
+    def test_revoke_superseded_proposal_is_rejected(self) -> None:
+        async def run() -> None:
+            await init_db()
+            first = await _preference_observation()
+            proposal_a = await _preference_proposal(first["id"])
+            await review_memory_proposal(proposal_id=proposal_a["id"], action="accept")
+            second = await _preference_observation()
+            proposal_b = await create_memory_proposal(
+                observation_id=second["id"],
+                target_tier="preference",
+                section_type="custom:c_preference",
+                title=_uniq("取代后的地点偏好"),
+                after={"bullet": "上海后端"},
+                reason="更新偏好",
+                supersedes_proposal_id=proposal_a["id"],
+            )
+            await review_memory_proposal(proposal_id=proposal_b["id"], action="accept")
+            await review_memory_proposal(
+                proposal_id=proposal_a["id"],
+                action="revoke",
+            )
+
+        with self.assertRaises(ValueError):
+            asyncio.run(run())
+
+    def test_job_projection_ranks_relevant_entries_and_excludes_invalid(self) -> None:
+        async def run() -> tuple[dict, int, int, int]:
+            await init_db()
+            relevant_id = await _insert_section(
+                "Python 后端开发经验",
+                content={"bullet": "使用 FastAPI 开发后端服务"},
+            )
+            irrelevant_id = await _insert_section(
+                "平面设计作品集",
+                content={"bullet": "负责海报与品牌视觉设计"},
+            )
+            revoked_id = await _insert_section(
+                "已撤销的经历条目",
+                content={"bullet": "不应出现在投影中"},
+            )
+            async with async_session() as db:
+                section = (
+                    await db.execute(
+                        select(ProfileSection).where(ProfileSection.id == revoked_id)
+                    )
+                ).scalar_one()
+                section.status = "revoked"
+                await db.commit()
+            job_id = await _insert_job(
+                "Python 后端工程师",
+                "负责后端服务开发，熟悉 Python、FastAPI、数据库设计。",
+            )
+            projection = await build_job_projection(job_id=job_id)
+            return projection, relevant_id, irrelevant_id, revoked_id
+
+        projection, relevant_id, irrelevant_id, revoked_id = asyncio.run(run())
+
+        by_id = {int(item["id"]): item for item in projection["entries"]}
+        self.assertIn(relevant_id, by_id)
+        self.assertTrue(by_id[relevant_id]["selected"])
+        self.assertGreater(by_id[relevant_id]["relevance"], 0)
+        self.assertIn(irrelevant_id, by_id)
+        self.assertFalse(by_id[irrelevant_id]["selected"])
+        self.assertEqual(by_id[irrelevant_id]["relevance"], 0)
+        relevances = [by_id[int(item["id"])]["relevance"] for item in projection["entries"]]
+        self.assertEqual(relevances, sorted(relevances, reverse=True))
+        invalid_ids = {int(item["id"]) for item in projection["invalidated_entries"]}
+        self.assertIn(revoked_id, invalid_ids)
+        self.assertNotIn(relevant_id, projection["invalidated_entries"])
+        self.assertFalse(any(item["id"] == revoked_id for item in projection["entries"]))
+
+
+class PreferenceGateTests(unittest.TestCase):
+    def test_preference_write_without_confirmation_is_rejected(self) -> None:
+        async def run() -> None:
+            await init_db()
+            await add_profile_evidence(
+                section_type="custom:c_preference",
+                title=_uniq("推断偏好"),
+                content_json={"category_label": "求职偏好", "bullet": "系统推断的偏好"},
+                source_text="系统推断的偏好",
+                tier="preference",
+            )
+
+        with self.assertRaises(ValueError):
+            asyncio.run(run())
+
+    def test_preference_direct_statement_and_verified_fact_pass_gate(self) -> None:
+        async def run() -> tuple[dict, dict]:
+            await init_db()
+            statement = "我明确希望在深圳工作。"
+            direct = await add_profile_evidence(
+                section_type="custom:c_preference",
+                title=_uniq("直写偏好"),
+                content_json={"category_label": "求职偏好", "bullet": statement},
+                source_text=statement,
+                tier="preference",
+                preference_confirmation="direct",
+            )
+            verified = await add_profile_evidence(
+                section_type="experience",
+                title=_uniq("经历条目"),
+                content_json={"bullet": "负责后端服务开发"},
+                source_text="负责后端服务开发",
+                tier="verified_fact",
+            )
+            return direct, verified
+
+        direct, verified = asyncio.run(run())
+
+        self.assertFalse(direct.get("duplicate"))
+        self.assertEqual(direct["tier"], "preference")
+        self.assertEqual(verified["tier"], "verified_fact")
+
+    def test_proposal_accept_passes_preference_gate(self) -> None:
+        async def run() -> dict:
+            await init_db()
+            observation = await _preference_observation()
+            proposal = await _preference_proposal(observation["id"])
+            accepted = await review_memory_proposal(
+                proposal_id=proposal["id"],
+                action="accept",
+            )
+            return accepted
+
+        accepted = asyncio.run(run())
+
+        self.assertEqual(accepted["status"], "accepted")
+        self.assertEqual(accepted["profile_write"]["tier"], "preference")
 
 
 if __name__ == "__main__":

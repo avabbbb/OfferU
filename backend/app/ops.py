@@ -27,6 +27,9 @@ from app.services.agent_operations import (
     create_application,
     create_interview_scoring_skill,
     create_memory_proposal,
+    build_job_projection,
+    derive_career_model,
+    list_career_ledger,
     cancel_authorized_research_session,
     capture_authorized_research_page,
     classify_progress_signal,
@@ -152,7 +155,10 @@ class ReviewJobResearchInput(_StrictOperationInput):
 
 class StartJobResearchInput(_StrictOperationInput):
     job_id: int = Field(gt=0)
-    runtime_id: str = Field(default="codex", pattern="^(codex|claude)$")
+    runtime_id: str = Field(
+        default="codex",
+        pattern="^(codex|claude|omp|pi|opencode)$",
+    )
 
 
 class ResumeJobResearchInput(_StrictOperationInput):
@@ -388,6 +394,13 @@ class AddProfileEvidenceInput(_StrictOperationInput):
         default=None,
         pattern="^(verified_fact|preference|career_hypothesis)$",
     )
+    # ADR-0048 偏好门：tier=preference 时必填，direct=使用者明确陈述，proposal=收件箱提案确认
+    preference_confirmation: str | None = Field(
+        default=None,
+        pattern="^(direct|proposal)$",
+    )
+    # 自回声来源（来源=声明本身）时，只有使用者明确确认才放行
+    user_confirmed: bool = False
 
 
 class ListLearningObservationsInput(_StrictOperationInput):
@@ -412,12 +425,55 @@ class CreateMemoryProposalInput(_StrictOperationInput):
     target_tier: str = Field(
         pattern="^(verified_fact|preference|career_hypothesis)$",
     )
-    section_type: str = Field(pattern="^[a-z][a-z0-9_]{1,79}$")
+    section_type: str = Field(
+        pattern="^(education|experience|project|skill|certificate|activity|honor|language|general|custom|custom:[a-z0-9_]{6,64})$",
+    )
     title: str = Field(min_length=1, max_length=220)
     after: dict[str, Any] = Field(min_length=1)
     reason: str = Field(min_length=1, max_length=4000)
     before: dict[str, Any] | None = None
     impact: list[str] | None = Field(default=None, max_length=20)
+    supersedes_proposal_id: int | None = Field(default=None, gt=0)
+
+
+class DeriveCareerModelInput(_StrictOperationInput):
+    pass
+
+
+class ListCareerLedgerInput(_StrictOperationInput):
+    status: str = Field(
+        default="all",
+        pattern="^(pending|deferred|applying|accepted|rejected|revoked|invalidated|all)$",
+    )
+    limit: int = Field(default=100, ge=1, le=500)
+
+
+class SaveCareerArtifactInput(_StrictOperationInput):
+    artifact_type: str = Field(
+        pattern=(
+            "^(application_answers|application_email|company_research|cover_letter|"
+            "follow_up_draft|interview_debrief|interview_prep|interview_risk_review|"
+            "job_evaluation|offer_review|pattern_analysis|reply_digest|skill_gap)$"
+        )
+    )
+    title: str = Field(min_length=1, max_length=300)
+    content_markdown: str = Field(min_length=1, max_length=200_000)
+    related_job_id: int | None = Field(default=None, gt=0)
+    related_application_id: int | None = Field(default=None, gt=0)
+    related_application_record_id: int | None = Field(default=None, gt=0)
+    metadata: dict[str, Any] | None = None
+
+
+class ListCareerArtifactsInput(_StrictOperationInput):
+    artifact_type: str | None = Field(
+        default=None,
+        pattern=(
+            "^(application_answers|application_email|company_research|cover_letter|"
+            "follow_up_draft|interview_debrief|interview_prep|interview_risk_review|"
+            "job_evaluation|offer_review|pattern_analysis|reply_digest|skill_gap)$"
+        ),
+    )
+    limit: int = Field(default=100, ge=1, le=500)
 
 
 class ReviewMemoryProposalInput(_StrictOperationInput):
@@ -737,7 +793,7 @@ OPERATIONS: dict[str, Operation] = {
     "add_profile_evidence": Operation(
         name="add_profile_evidence",
         fn=add_profile_evidence,
-        description="确认后追加一条来源可验证且确定性去重的分层档案条目；记忆提案应通过 review_memory_proposal 进入此事实门。",
+        description="确认后追加一条来源可验证且确定性去重的分层档案条目；记忆提案应通过 review_memory_proposal 进入此事实门。tier=preference 时必填 preference_confirmation（direct=使用者明确陈述，proposal=收件箱提案确认）。",
         parameters={
             "section_type": "str",
             "title": "str",
@@ -747,6 +803,7 @@ OPERATIONS: dict[str, Operation] = {
             "source_url": "str?",
             "dedup_key": "str?",
             "tier": "str? (verified_fact|preference|career_hypothesis)",
+            "preference_confirmation": "str? (direct|proposal; tier=preference 时必填)",
         },
         group="profile",
         side_effects=("write",),
@@ -785,6 +842,7 @@ OPERATIONS: dict[str, Operation] = {
             "reason": "str",
             "before": "object?",
             "impact": "list[str]?",
+            "supersedes_proposal_id": "int? (被本提案取代的已接受提案)",
         },
         group="memory",
         side_effects=("write",),
@@ -806,11 +864,35 @@ OPERATIONS: dict[str, Operation] = {
     "invalidate_memory_source": Operation(
         name="invalidate_memory_source",
         fn=invalidate_memory_source,
-        description="确认后撤销一个职业模型来源，并级联失效其观察、提案、证据链接和无其他支持的 Profile 条目。",
+        description="确认后撤销一个职业模型来源，并级联失效其观察、提案、证据链接和无其他支持的 Profile 条目（失效条目保留审计外壳）。",
         parameters={"source_id": "int", "reason": "str"},
         group="memory",
         side_effects=("write",),
         input_model=InvalidateMemorySourceInput,
+    ),
+    "derive_career_model": Operation(
+        name="derive_career_model",
+        fn=derive_career_model,
+        description="从仍有效的档案条目派生当前职业模型视图：按 tier 分组、标注来源有效性，失效条目进入审计列表（ADR-0048）。",
+        parameters={},
+        group="memory",
+        input_model=DeriveCareerModelInput,
+    ),
+    "list_career_ledger": Operation(
+        name="list_career_ledger",
+        fn=list_career_ledger,
+        description="按条目列出职业模型变更账本：保留变化前后、来源、理由、影响与取代链，并附每条落地条目的当前状态（ADR-0048）。",
+        parameters={"status": "str=all", "limit": "int=100"},
+        group="memory",
+        input_model=ListCareerLedgerInput,
+    ),
+    "build_job_projection": Operation(
+        name="build_job_projection",
+        fn=build_job_projection,
+        description="面向一个岗位从当前职业模型生成岗位职业投影：选择相关证据并按相关性排序，不修改长期模型（ADR-0048）。",
+        parameters={"job_id": "int"},
+        group="job",
+        input_model=GetJobInput,
     ),
     "consolidate_memory_observations": Operation(
         name="consolidate_memory_observations",
@@ -1700,6 +1782,7 @@ OPERATIONS: dict[str, Operation] = {
         },
         group="artifacts",
         side_effects=("write",),
+        input_model=SaveCareerArtifactInput,
     ),
     "generate_cover_letter": Operation(
         name="generate_cover_letter",

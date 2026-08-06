@@ -356,7 +356,7 @@ async def _load_current_context(job_id: int) -> dict[str, Any]:
                 select(ProfileSection)
                 .where(ProfileSection.profile_id == profile.id)
                 .where(ProfileSection.tier == "verified_fact")
-                .order_by(ProfileSection.sort_order.asc(), ProfileSection.id.asc())
+                .where(ProfileSection.status == "active")
             )
         ).scalars().all())
         if not sections:
@@ -365,6 +365,13 @@ async def _load_current_context(job_id: int) -> dict[str, Any]:
                 "job": job_row,
                 "profile_id": profile.id,
             }
+        from app.services.job_projection import reorder_sections_by_job_relevance
+
+        reorder_sections_by_job_relevance(
+            sections,
+            job_title=str(job.title or ""),
+            jd_text=str(job.raw_description or ""),
+        )
 
         latest_run = (
             await db.execute(

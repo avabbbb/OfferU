@@ -321,6 +321,7 @@ async def _load_profile_bundle(db: AsyncSession, profile_id: int) -> tuple[Profi
         await db.execute(
             select(ProfileSection)
             .where(ProfileSection.profile_id == profile_id)
+            .where(ProfileSection.status == "active")
             .order_by(ProfileSection.sort_order.asc(), ProfileSection.created_at.asc())
         )
     ).scalars().all()
@@ -974,6 +975,58 @@ def _coalesce_resume_entry_candidates(candidates: list[dict[str, Any]]) -> list[
     return merged
 
 
+def _merge_skill_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """把 LLM 按视觉行拆出的多条 skill 候选合并为一条（items 汇总去重）。
+
+    免费/快速模型常忽略「一个技能段落一条」的约束，逐行输出多条 skill；
+    这里做确定性合并，保证技能清单不碎片化。
+    """
+    skills = [
+        candidate
+        for candidate in candidates
+        if isinstance(candidate, dict)
+        and normalize_section_type_alias(str(candidate.get("section_type") or "")) == "skill"
+    ]
+    if len(skills) <= 1:
+        return candidates
+    others = [candidate for candidate in candidates if candidate not in skills]
+
+    merged_items: list[str] = []
+    merged_texts: list[str] = []
+    for skill in skills:
+        content_json = skill.get("content_json")
+        if not isinstance(content_json, dict):
+            continue
+        items = content_json.get("items")
+        if isinstance(items, list):
+            for item in items:
+                text = str(item or "").strip()
+                if text and text not in merged_items:
+                    merged_items.append(text)
+        normalized = content_json.get("normalized")
+        if isinstance(normalized, dict):
+            _append_unique_text(merged_texts, normalized.get("description"))
+        _append_unique_text(merged_texts, content_json.get("bullet"))
+        _append_unique_text(merged_texts, content_json.get("description"))
+
+    bullet = "，".join(merged_items) if merged_items else "；".join(merged_texts)
+    merged = {
+        "section_type": "skill",
+        "title": "技能清单",
+        "content_json": {
+            "category": "综合技能",
+            "items": merged_items,
+            "description": "；".join(merged_texts),
+            "bullet": bullet,
+        },
+        "confidence": max(
+            (float(skill.get("confidence") or 0) for skill in skills),
+            default=0.7,
+        ),
+    }
+    return [*others, merged]
+
+
 def _structured_entry_type(value: Any) -> str:
     raw = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
     aliases = {
@@ -1152,7 +1205,7 @@ def _candidates_from_structured_resume_payload(parsed: dict[str, Any]) -> list[d
         for candidate in [_candidate_from_structured_resume_entry(item)]
         if candidate is not None
     ]
-    return _coalesce_resume_entry_candidates(candidates)
+    return _merge_skill_candidates(_coalesce_resume_entry_candidates(candidates))
 
 
 def _base_info_from_structured_resume_payload(parsed: dict[str, Any]) -> dict[str, str]:
@@ -1375,6 +1428,7 @@ async def list_profile_categories(db: AsyncSession = Depends(get_db)):
         await db.execute(
             select(ProfileSection)
             .where(ProfileSection.profile_id == profile.id)
+            .where(ProfileSection.status == "active")
             .order_by(ProfileSection.updated_at.desc(), ProfileSection.id.desc())
         )
     ).scalars().all()
@@ -2032,6 +2086,7 @@ async def confirm_profile_bullet(data: ProfileChatConfirmRequest, db: AsyncSessi
                 ProfileSection.profile_id == profile.id,
                 ProfileSection.section_type == candidate["section_type"],
                 ProfileSection.title == candidate["title"],
+                ProfileSection.status == "active",
             )
             .order_by(ProfileSection.id.desc())
         )
@@ -2216,6 +2271,7 @@ async def generate_narrative(db: AsyncSession = Depends(get_db)):
         await db.execute(
             select(ProfileSection)
             .where(ProfileSection.profile_id == profile.id)
+            .where(ProfileSection.status == "active")
             .order_by(ProfileSection.sort_order.asc(), ProfileSection.created_at.asc())
         )
     ).scalars().all()

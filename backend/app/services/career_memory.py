@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Optional
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.database import async_session
@@ -16,6 +16,7 @@ from app.models.models import (
     EvidenceLink,
     LearningObservation,
     MemoryProposal,
+    Profile,
     ProfileSection,
 )
 
@@ -157,6 +158,8 @@ def _serialize_proposal(
         "impact": proposal.impact_json or [],
         "status": proposal.status,
         "applied_profile_section_id": proposal.applied_profile_section_id,
+        "supersedes_proposal_id": proposal.supersedes_proposal_id,
+        "applied_at": str(proposal.applied_at) if proposal.applied_at else None,
         "review_note": proposal.review_note or "",
         "evidence": evidence,
         "created_at": str(proposal.created_at),
@@ -444,8 +447,14 @@ async def create_memory_proposal(
     reason: str,
     before: Optional[dict[str, Any]] = None,
     impact: Optional[list[str]] = None,
+    supersedes_proposal_id: Optional[int] = None,
 ) -> dict[str, Any]:
     clean_observation_id = _clean_positive_int(observation_id, "observation_id")
+    clean_supersedes = (
+        _clean_positive_int(supersedes_proposal_id, "supersedes_proposal_id")
+        if supersedes_proposal_id is not None
+        else None
+    )
     clean_tier = _clean_text(
         target_tier,
         "target_tier",
@@ -509,6 +518,36 @@ async def create_memory_proposal(
         ).scalar_one()
         if observation.status != "active" or source.status != "active":
             raise ValueError("失效观察不能生成记忆提案")
+        superseded_target: Optional[MemoryProposal] = None
+        if clean_supersedes is not None:
+            superseded_target = (
+                await db.execute(
+                    select(MemoryProposal).where(
+                        MemoryProposal.id == clean_supersedes
+                    )
+                )
+            ).scalar_one_or_none()
+            if superseded_target is None:
+                raise ValueError(f"Memory proposal #{clean_supersedes} not found")
+            if superseded_target.status != "accepted":
+                raise ValueError("只有已接受提案可以被取代")
+            if superseded_target.applied_profile_section_id is None:
+                raise ValueError("取代目标尚未落地为档案条目，无法取代")
+            cursor = superseded_target
+            seen_chain: set[int] = set()
+            while cursor is not None:
+                if cursor.id in seen_chain:
+                    raise ValueError("取代链存在回环")
+                seen_chain.add(cursor.id)
+                if cursor.supersedes_proposal_id is None:
+                    break
+                cursor = (
+                    await db.execute(
+                        select(MemoryProposal).where(
+                            MemoryProposal.id == cursor.supersedes_proposal_id
+                        )
+                    )
+                ).scalar_one_or_none()
         existing = (
             await db.execute(
                 select(MemoryProposal).where(MemoryProposal.proposal_key == proposal_key)
@@ -531,6 +570,7 @@ async def create_memory_proposal(
             reason=clean_reason,
             impact_json=clean_impact,
             status="pending",
+            supersedes_proposal_id=clean_supersedes,
         )
         db.add(proposal)
         try:
@@ -715,6 +755,16 @@ async def review_memory_proposal(
                 int(item["observation"]["id"]) for item in evidence.get(proposal.id, [])
             ]
             if section_id:
+                section = (
+                    await db.execute(
+                        select(ProfileSection).where(ProfileSection.id == section_id)
+                    )
+                ).scalar_one_or_none()
+                if section is not None:
+                    if section.status == "superseded":
+                        raise ValueError("该条目已被新条目取代，不能撤销；请先撤销取代它的提案")
+                    section.status = "revoked"
+                    section.invalidated_at = _now()
                 section_links = (
                     await db.execute(
                         select(EvidenceLink)
@@ -727,16 +777,6 @@ async def review_memory_proposal(
                     link.is_active = False
                     link.invalidated_at = _now()
                 await db.flush()
-                remaining_links = (
-                    await db.execute(
-                        select(func.count(EvidenceLink.id))
-                        .where(EvidenceLink.target_type == "profile_section")
-                        .where(EvidenceLink.target_id == section_id)
-                        .where(EvidenceLink.is_active == True)
-                    )
-                ).scalar_one()
-                if not remaining_links:
-                    await db.execute(delete(ProfileSection).where(ProfileSection.id == section_id))
             proposal.status = "revoked"
             proposal.review_note = clean_note
             proposal.reviewed_at = _now()
@@ -804,6 +844,10 @@ async def review_memory_proposal(
             source_url=snapshot["source_locator"],
             dedup_key=f"memory_proposal:{clean_proposal_id}",
             tier=snapshot["target_tier"],
+            preference_confirmation=(
+                "proposal" if snapshot["target_tier"] == "preference" else None
+            ),
+            user_confirmed=True,
         )
     except Exception as exc:
         async with async_session() as db:
@@ -851,9 +895,14 @@ async def review_memory_proposal(
             or observation.status != "active"
             or source.status != "active"
         ):
-            await db.execute(
-                delete(ProfileSection).where(ProfileSection.id == profile_section_id)
-            )
+            raced_section = (
+                await db.execute(
+                    select(ProfileSection).where(ProfileSection.id == profile_section_id)
+                )
+            ).scalar_one_or_none()
+            if raced_section is not None:
+                raced_section.status = "invalidated"
+                raced_section.invalidated_at = _now()
             proposal.status = "invalidated"
             proposal.before_json = {}
             proposal.after_json = {}
@@ -865,8 +914,30 @@ async def review_memory_proposal(
             return {"error": "来源在提案应用期间失效，Profile 写入已撤销"}
         proposal.status = "accepted"
         proposal.applied_profile_section_id = profile_section_id
+        proposal.applied_at = _now()
         proposal.review_note = clean_note
         proposal.reviewed_at = _now()
+        if proposal.supersedes_proposal_id is not None:
+            superseded_target = (
+                await db.execute(
+                    select(MemoryProposal).where(
+                        MemoryProposal.id == proposal.supersedes_proposal_id
+                    )
+                )
+            ).scalar_one_or_none()
+            if superseded_target is None or superseded_target.status != "accepted":
+                raise ValueError("取代目标已失效，无法应用取代")
+            old_section = (
+                await db.execute(
+                    select(ProfileSection).where(
+                        ProfileSection.id == superseded_target.applied_profile_section_id
+                    )
+                )
+            ).scalar_one_or_none()
+            if old_section is not None:
+                old_section.status = "superseded"
+                old_section.invalidated_at = _now()
+                old_section.superseded_by_id = profile_section_id
         existing_link = (
             await db.execute(
                 select(EvidenceLink)
@@ -972,10 +1043,15 @@ async def invalidate_memory_source(
                     )
                 ).scalar_one()
                 if not remaining_section_support:
-                    result = await db.execute(
-                        delete(ProfileSection).where(ProfileSection.id == section_id)
-                    )
-                    removed_profile_sections += int(result.rowcount or 0)
+                    section = (
+                        await db.execute(
+                            select(ProfileSection).where(ProfileSection.id == section_id)
+                        )
+                    ).scalar_one_or_none()
+                    if section is not None:
+                        section.status = "invalidated"
+                        section.invalidated_at = invalidated_at
+                        removed_profile_sections += 1
             proposal.status = "invalidated"
             proposal.before_json = {}
             proposal.after_json = {}
@@ -1000,4 +1076,209 @@ async def invalidate_memory_source(
             "observation_count": len(observations),
             "proposal_count": invalidated_proposals,
             "removed_profile_section_count": removed_profile_sections,
+        }
+
+
+async def derive_career_model(
+    *,
+    profile_id: Optional[int] = None,
+) -> dict[str, Any]:
+    """从仍有效的档案条目派生当前职业模型视图（ADR-0048）。
+
+    - 只把 status=active 的条目纳入当前模型；revoked / invalidated / superseded
+      条目进入 invalidated_entries 审计列表，不再参与派生
+    - 按 tier 分组输出（verified_fact / preference / career_hypothesis）
+    - 每条标注来源有效性：存在 active 链接且观察与来源均 active 视为有效；
+      手动条目（无链接）视为有效
+    """
+    async with async_session() as db:
+        if profile_id is not None:
+            profile = (
+                await db.execute(select(Profile).where(Profile.id == profile_id))
+            ).scalar_one_or_none()
+        else:
+            profile = (
+                await db.execute(select(Profile).where(Profile.is_default == True))
+            ).scalar_one_or_none()
+        empty = {
+            "profile_id": None,
+            "derived_at": str(_now()),
+            "entries": [],
+            "by_tier": {},
+            "invalidated_entries": [],
+        }
+        if profile is None:
+            return empty
+        sections = list(
+            (
+                await db.execute(
+                    select(ProfileSection)
+                    .where(ProfileSection.profile_id == profile.id)
+                    .order_by(ProfileSection.sort_order.asc(), ProfileSection.id.asc())
+                )
+            ).scalars().all()
+        )
+        if not sections:
+            return {
+                **empty,
+                "profile_id": profile.id,
+            }
+        section_ids = [section.id for section in sections]
+        links = list(
+            (
+                await db.execute(
+                    select(EvidenceLink)
+                    .where(EvidenceLink.target_type == "profile_section")
+                    .where(EvidenceLink.target_id.in_(section_ids))
+                    .where(EvidenceLink.is_active == True)
+                )
+            ).scalars().all()
+        )
+        observation_ids = sorted({link.observation_id for link in links})
+        observations: dict[int, LearningObservation] = {}
+        if observation_ids:
+            observations = {
+                item.id: item
+                for item in (
+                    await db.execute(
+                        select(LearningObservation).where(
+                            LearningObservation.id.in_(observation_ids)
+                        )
+                    )
+                ).scalars()
+            }
+        source_ids = sorted({item.source_id for item in observations.values()})
+        sources: dict[int, CareerSource] = {}
+        if source_ids:
+            sources = {
+                item.id: item
+                for item in (
+                    await db.execute(
+                        select(CareerSource).where(CareerSource.id.in_(source_ids))
+                    )
+                ).scalars()
+            }
+        links_by_section: dict[int, list[EvidenceLink]] = {}
+        for link in links:
+            links_by_section.setdefault(link.target_id, []).append(link)
+
+        entries: list[dict[str, Any]] = []
+        invalidated_entries: list[dict[str, Any]] = []
+        for section in sections:
+            section_links = links_by_section.get(section.id, [])
+            source_active = True
+            if section_links:
+                source_active = any(
+                    observations.get(link.observation_id) is not None
+                    and observations[link.observation_id].status == "active"
+                    and sources.get(observations[link.observation_id].source_id) is not None
+                    and sources[observations[link.observation_id].source_id].status == "active"
+                    for link in section_links
+                )
+            entry = {
+                "id": section.id,
+                "section_type": section.section_type,
+                "title": section.title,
+                "content_json": section.content_json or {},
+                "tier": section.tier,
+                "sort_order": section.sort_order,
+                "status": section.status,
+                "invalidated_at": str(section.invalidated_at) if section.invalidated_at else None,
+                "superseded_by_id": section.superseded_by_id,
+                "source_status": "active" if source_active else "invalidated",
+                "source_count": len(section_links),
+                "created_at": str(section.created_at),
+                "updated_at": str(section.updated_at),
+            }
+            if section.status == "active":
+                entries.append(entry)
+            else:
+                invalidated_entries.append(entry)
+        by_tier: dict[str, list[dict[str, Any]]] = {}
+        for entry in entries:
+            tier = entry["tier"] or "verified_fact"
+            by_tier.setdefault(tier, []).append(entry)
+        return {
+            "profile_id": profile.id,
+            "derived_at": str(_now()),
+            "entries": entries,
+            "by_tier": by_tier,
+            "invalidated_entries": invalidated_entries,
+        }
+
+
+async def list_career_ledger(
+    *,
+    status: str = "all",
+    limit: int = 100,
+) -> dict[str, Any]:
+    """按条目列出职业模型变更账本（ADR-0048）。
+
+    账本 = MemoryProposal 历史，保留变化前后、来源、理由、影响与取代关系；
+    每条附带落地档案条目的当前状态（active / superseded / revoked / invalidated）。
+    """
+    clean_status = _clean_text(status, "status", limit=24).lower() or "all"
+    clean_limit = min(_clean_positive_int(limit, "limit"), 500)
+    if clean_status not in PROPOSAL_STATUSES and clean_status != "all":
+        raise ValueError(
+            f"status 必须是 {'、'.join(sorted(PROPOSAL_STATUSES))} 或 all"
+        )
+    async with async_session() as db:
+        query = select(MemoryProposal)
+        if clean_status != "all":
+            query = query.where(MemoryProposal.status == clean_status)
+        rows = list(
+            (
+                await db.execute(
+                    query.order_by(
+                        MemoryProposal.created_at.desc(), MemoryProposal.id.desc()
+                    ).limit(clean_limit)
+                )
+            ).scalars().all()
+        )
+        if not rows:
+            return {"entries": [], "total": 0, "status": clean_status, "limit": clean_limit}
+        evidence = await _proposal_evidence(db, [row.id for row in rows])
+        applied_section_ids = [
+            row.applied_profile_section_id
+            for row in rows
+            if row.applied_profile_section_id is not None
+        ]
+        sections: dict[int, ProfileSection] = {}
+        if applied_section_ids:
+            sections = {
+                item.id: item
+                for item in (
+                    await db.execute(
+                        select(ProfileSection).where(
+                            ProfileSection.id.in_(applied_section_ids)
+                        )
+                    )
+                ).scalars()
+            }
+        entries: list[dict[str, Any]] = []
+        for row in rows:
+            item = _serialize_proposal(row, evidence.get(row.id, []))
+            section = sections.get(row.applied_profile_section_id)
+            item["applied_section"] = (
+                None
+                if section is None
+                else {
+                    "id": section.id,
+                    "section_type": section.section_type,
+                    "title": section.title,
+                    "tier": section.tier,
+                    "status": section.status,
+                    "invalidated_at": (
+                        str(section.invalidated_at) if section.invalidated_at else None
+                    ),
+                    "superseded_by_id": section.superseded_by_id,
+                }
+            )
+            entries.append(item)
+        return {
+            "entries": entries,
+            "total": len(entries),
+            "status": clean_status,
+            "limit": clean_limit,
         }

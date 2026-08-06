@@ -528,6 +528,7 @@ async def _get_source_sections(session: OptimizeSession, db) -> list:
     result = await db.execute(
         select(ProfileSection)
         .where(ProfileSection.profile_id == profile.id)
+        .where(ProfileSection.status == "active")
         .order_by(ProfileSection.sort_order.asc())
     )
     sections = list(result.scalars().all())
@@ -1533,6 +1534,7 @@ async def start_session(
             sections_result = await db.execute(
                 select(ProfileSection)
                 .where(ProfileSection.profile_id == profile.id)
+                .where(ProfileSection.status == "active")
                 .order_by(ProfileSection.sort_order.asc())
             )
             sections = list(sections_result.scalars().all())

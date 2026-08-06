@@ -72,6 +72,7 @@ async def _current_value(candidate: dict[str, Any]) -> dict[str, Any]:
                 .where(ProfileSection.tier == candidate["target_tier"])
                 .where(ProfileSection.section_type == candidate["section_type"])
                 .where(ProfileSection.title == candidate["title"])
+                .where(ProfileSection.status == "active")
                 .order_by(ProfileSection.updated_at.desc(), ProfileSection.id.desc())
                 .limit(1)
             )

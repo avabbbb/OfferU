@@ -486,11 +486,18 @@ async def prepare_resume_optimization(
                 select(ProfileSection)
                 .where(ProfileSection.profile_id == profile.id)
                 .where(ProfileSection.tier == "verified_fact")
-                .order_by(ProfileSection.sort_order.asc(), ProfileSection.id.asc())
+                .where(ProfileSection.status == "active")
             )
         ).scalars().all())
         if not sections:
             raise ValueError("Profile 中没有 tier=verified_fact 的可用职业事实")
+        from app.services.job_projection import reorder_sections_by_job_relevance
+
+        reorder_sections_by_job_relevance(
+            sections,
+            job_title=str(job.title or ""),
+            jd_text=jd_text,
+        )
 
         reference_resume = None
         if clean_reference_id is not None:
@@ -827,6 +834,7 @@ async def review_resume_optimization(
                 .where(ProfileSection.id.in_(source_ids))
                 .where(ProfileSection.profile_id == proposal.profile_id)
                 .where(ProfileSection.tier == "verified_fact")
+                .where(ProfileSection.status == "active")
                 .order_by(ProfileSection.id.asc())
             )
         ).scalars().all())

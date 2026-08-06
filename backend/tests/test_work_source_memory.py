@@ -331,12 +331,12 @@ class WorkSourceMemoryTests(unittest.TestCase):
                     "run": stored_run,
                     "proposal_status": stored_proposal.status,
                 },
-                stored_section is None,
+                stored_section,
             )
 
         with tempfile.TemporaryDirectory() as directory:
             Path(directory, "feature.py").write_text("VALUE = 2\n", encoding="utf-8")
-            invalidated, source, derived, section_removed = asyncio.run(
+            invalidated, source, derived, stored_section = asyncio.run(
                 run(directory, _uniq("撤销候选"))
             )
 
@@ -347,7 +347,9 @@ class WorkSourceMemoryTests(unittest.TestCase):
         self.assertEqual(source["checkpoint"], {})
         self.assertEqual(derived["run"]["result"], {})
         self.assertEqual(derived["proposal_status"], "invalidated")
-        self.assertTrue(section_removed)
+        # ADR-0048：级联失效保留条目审计外壳，条目标记 invalidated 而非删除
+        self.assertIsNotNone(stored_section)
+        self.assertEqual(stored_section.status, "invalidated")
 
 
 if __name__ == "__main__":

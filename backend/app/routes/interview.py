@@ -205,7 +205,9 @@ async def generate_answer(body: GenerateAnswerBody, db: AsyncSession = Depends(g
         raise HTTPException(404, "请先创建个人档案")
 
     sections = (await db.execute(
-        select(ProfileSection).where(ProfileSection.profile_id == profile.id)
+        select(ProfileSection)
+        .where(ProfileSection.profile_id == profile.id)
+        .where(ProfileSection.status == "active")
     )).scalars().all()
 
     # 从 content_json 提取文本（PRD §8.4: 优先 bullet → description → title）

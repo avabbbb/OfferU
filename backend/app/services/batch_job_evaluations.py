@@ -494,6 +494,7 @@ async def start_batch_job_evaluation(
                 select(ProfileSection)
                 .where(ProfileSection.profile_id == profile.id)
                 .where(ProfileSection.tier == "verified_fact")
+                .where(ProfileSection.status == "active")
                 .order_by(ProfileSection.sort_order.asc())
                 .limit(40)
             )

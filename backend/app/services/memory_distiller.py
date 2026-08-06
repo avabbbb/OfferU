@@ -76,6 +76,7 @@ async def _profile_snapshot(limit: int = 60) -> list[dict[str, Any]]:
         sections = (
             await db.execute(
                 select(ProfileSection)
+                .where(ProfileSection.status == "active")
                 .order_by(ProfileSection.updated_at.desc())
                 .limit(limit)
             )
@@ -471,6 +472,7 @@ async def search_memory(*, query: str, limit: int = 8) -> dict[str, Any]:
             rows = (
                 await db.execute(
                     select(ProfileSection)
+                    .where(ProfileSection.status == "active")
                     .order_by(ProfileSection.updated_at.desc())
                     .limit(100)
                 )

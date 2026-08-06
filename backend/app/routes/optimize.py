@@ -853,6 +853,7 @@ async def _get_profile_sections(profile_id: int, db: AsyncSession) -> list[Profi
         select(ProfileSection)
         .where(ProfileSection.profile_id == profile_id)
         .where(ProfileSection.tier == "verified_fact")
+        .where(ProfileSection.status == "active")
         .order_by(ProfileSection.sort_order.asc(), ProfileSection.updated_at.desc())
     )
     sections = list(result.scalars().all())

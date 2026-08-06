@@ -357,6 +357,13 @@ class ProfileSection(Base):
     source: Mapped[str] = mapped_column(String(30), default="manual")
     confidence: Mapped[float] = mapped_column(Float, default=1.0)
     tier: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, index=True)
+    # ---- ADR-0048 账本支持：条目失效状态与取代链 ----
+    # status: active | revoked | invalidated | superseded
+    status: Mapped[str] = mapped_column(String(24), default="active", index=True)
+    invalidated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    superseded_by_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("profile_sections.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
@@ -532,6 +539,11 @@ class MemoryProposal(Base):
     impact_json: Mapped[list] = mapped_column(JSON, default=list)
     status: Mapped[str] = mapped_column(String(24), default="pending", index=True)
     applied_profile_section_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # ADR-0048：本提案取代的已接受提案（取代链）；accept 时使目标条目 superseded
+    supersedes_proposal_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("memory_proposals.id", ondelete="SET NULL"), nullable=True
+    )
+    applied_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     review_note: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
     updated_at: Mapped[datetime] = mapped_column(

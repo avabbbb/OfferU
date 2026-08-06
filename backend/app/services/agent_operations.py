@@ -219,6 +219,7 @@ async def list_profile_evidence(
         if not profile:
             return {"error": "No default profile found"}
         query = select(ProfileSection).where(ProfileSection.profile_id == profile.id)
+        query = query.where(ProfileSection.status == "active")
         if section_type:
             query = query.where(ProfileSection.section_type == str(section_type).strip())
         sections = (
@@ -354,6 +355,7 @@ async def create_memory_proposal(
     reason: str,
     before: Optional[dict] = None,
     impact: Optional[list[str]] = None,
+    supersedes_proposal_id: Optional[int] = None,
 ) -> dict:
     from app.services.career_memory import create_memory_proposal as _create
 
@@ -366,7 +368,29 @@ async def create_memory_proposal(
         reason=reason,
         before=before,
         impact=impact,
+        supersedes_proposal_id=supersedes_proposal_id,
     )
+
+
+async def derive_career_model() -> dict:
+    from app.services.career_memory import derive_career_model as _derive
+
+    return await _derive()
+
+
+async def build_job_projection(job_id: int) -> dict:
+    from app.services.job_projection import build_job_projection as _build
+
+    return await _build(job_id=job_id)
+
+
+async def list_career_ledger(
+    status: str = "all",
+    limit: int = 100,
+) -> dict:
+    from app.services.career_memory import list_career_ledger as _list
+
+    return await _list(status=status, limit=limit)
 
 
 async def review_memory_proposal(
@@ -1050,6 +1074,8 @@ async def add_profile_evidence(
     source_url: Optional[str] = None,
     dedup_key: Optional[str] = None,
     tier: Optional[str] = None,
+    preference_confirmation: Optional[str] = None,
+    user_confirmed: bool = False,
 ) -> dict:
     """Append one confirmed, source-grounded profile entry with deterministic dedup."""
     from app.services.profile_schema import canonicalize_profile_section_payload, normalize_profile_tier
@@ -1065,6 +1091,13 @@ async def add_profile_evidence(
         raise ValueError("source_text 长度必须为 1-20000 个字符")
 
     resolved_tier = normalize_profile_tier(tier)
+    # ADR-0048 偏好门：行为信号或 Agent 推断不能直写 preference；
+    # 只有使用者明确陈述（direct）或收件箱提案确认（proposal）允许落地偏好。
+    if resolved_tier == "preference" and preference_confirmation not in {"direct", "proposal"}:
+        raise ValueError(
+            "preference 条目必须来自使用者明确陈述（preference_confirmation=direct）"
+            "或记忆收件箱提案确认（preference_confirmation=proposal）；行为信号或 Agent 推断请先走收件箱提案"
+        )
     resolved_type, resolved_label, _, canonical = canonicalize_profile_section_payload(
         section_type=str(section_type or "").strip(),
         category_label=category_label,
@@ -1074,10 +1107,23 @@ async def add_profile_evidence(
     )
     fact_gate = validate_generated_content(clean_source, canonical)
     if fact_gate["status"] != "passed":
-        return {
-            "error": "档案条目包含来源中无法验证的事实，未写入",
-            "fact_gate": fact_gate,
-        }
+        # 自回声来源（来源=声明本身）：只有使用者明确确认（收件箱 accept / 手动确认）
+        # 才放行；未确认的直写（如主 Agent 把用户陈述回声当来源）一律拒绝。
+        echo_blocked = any(
+            item.get("issue") == "echo_source" for item in fact_gate.get("warnings") or []
+        )
+        if echo_blocked:
+            if not user_confirmed:
+                return {
+                    "error": "来源只是声明自身的回声，缺少独立可验证出处；请提供真实来源材料，或经记忆收件箱由使用者确认",
+                    "fact_gate": fact_gate,
+                }
+            # 使用者明确确认的回声来源（如记忆收件箱 accept）放行
+        else:
+            return {
+                "error": "档案条目包含来源中无法验证的事实，未写入",
+                "fact_gate": fact_gate,
+            }
 
     raw_dedup = dedup_key or f"{resolved_type}:{clean_title}:{source_url or ''}"
     normalized_dedup = re.sub(r"[^a-z0-9\u4e00-\u9fff]+", "", raw_dedup.casefold())
@@ -1098,7 +1144,9 @@ async def add_profile_evidence(
             await db.flush()
         existing_sections = (
             await db.execute(
-                select(ProfileSection).where(ProfileSection.profile_id == profile.id)
+                select(ProfileSection)
+                .where(ProfileSection.profile_id == profile.id)
+                .where(ProfileSection.status == "active")
             )
         ).scalars().all()
         for existing in existing_sections:

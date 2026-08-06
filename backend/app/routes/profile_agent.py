@@ -645,6 +645,7 @@ async def _apply_patch_to_profile(db: AsyncSession, patch: dict[str, Any]) -> di
                     ProfileSection.profile_id == profile.id,
                     ProfileSection.section_type == item["section_type"],
                     ProfileSection.title == item["title"],
+                    ProfileSection.status == "active",
                 )
                 .order_by(ProfileSection.id.desc())
             )
