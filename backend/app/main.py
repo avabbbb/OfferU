@@ -1,7 +1,7 @@
 # =============================================
 # OfferU - FastAPI 应用入口
 # =============================================
-# 启动命令: uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+# 启动命令: uvicorn app.main:app --reload --host 127.0.0.1 --port 8765
 # 职责：注册路由、CORS、生命周期事件
 # =============================================
 
@@ -25,7 +25,7 @@ if settings.offeru_enable_mcp:
 else:
     mcp_server = None
     _HAS_MCP = False
-from app.routes import jobs, resume, calendar, email, config, applications, scraper, pools, profile, profile_agent, optimize, interview, main_agent, templates, interviews, research
+from app.routes import jobs, resume, calendar, email, config, applications, scraper, pools, profile, profile_agent, optimize, interview, main_agent, templates, interviews, research, memory
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -34,6 +34,18 @@ async def lifespan(app: FastAPI):
     from app.services.agent_run_state import recover_interrupted_agent_runs
 
     await recover_interrupted_agent_runs()
+    from app.services.job_research import recover_interrupted_research_runs
+
+    try:
+        await recover_interrupted_research_runs()
+    except Exception:
+        pass  # 调研恢复失败不阻塞启动
+    from app.llm_config_store import discover_local_llms
+
+    try:
+        await discover_local_llms()
+    except Exception:
+        pass  # 本地引擎发现失败不阻塞启动
     from app.services.coding_agent_runtime import recover_hosted_executor_sessions
 
     await recover_hosted_executor_sessions()
@@ -88,6 +100,12 @@ cors_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()
 # ---- CORS 允许前端跨域访问 ----
 # cors_origins 以逗号分隔多个来源，如 "http://localhost:3000,http://localhost:8080"
 # allow_credentials=True 允许带 cookie 的跨域请求（Gmail OAuth 回调需要）
+cors_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+# 前端 dev 端口 7410 无条件可用：系统环境变量 CORS_ORIGINS 会覆盖 settings，
+# 且该变量可能在旧值（5140/3000）上漂移，导致浏览器请求被 CORS 拦截。
+for _offeru_frontend_origin in ("http://localhost:7410", "http://127.0.0.1:7410"):
+    if _offeru_frontend_origin not in cors_origins:
+        cors_origins.append(_offeru_frontend_origin)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
@@ -115,6 +133,7 @@ app.include_router(config.router, prefix="/api/config", tags=["Config"])
 app.include_router(applications.router, prefix="/api/applications", tags=["Applications"])
 app.include_router(scraper.router, prefix="/api/scraper", tags=["Scraper"])
 app.include_router(interview.router, prefix="/api/interview", tags=["Interview"])
+app.include_router(memory.router, prefix="/api/memory", tags=["Memory"])
 
 # ---- 静态文件（头像等上传文件） ----
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")

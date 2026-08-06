@@ -32,8 +32,13 @@ class Settings(BaseSettings):
     active_llm_config_id: str = ""
     active_llm_base_url: str = ""
     active_llm_api_key: str = ""
+    # BYOK provider 列表（由 backend/config.json 同步进来；provider 可自由配置，
+    # base_url / api_key / model 任意组合，provider_id 不参与行为分支）。
+    llm_api_configs: list = []
     # tier → model 自定义映射 (覆盖 llm.py 中的 TIER_MODEL_MAP)
     tier_model_map: dict = {}
+    # 禁用的 LLM provider_id 列表（omp disabledProviders 模式：禁用后不可选）
+    disabled_llm_providers: list = []
 
     # ---- 网络 ----
     # ssl_verify=False 仅用于开发环境（如 Clash 代理导致证书主机名不匹配）。
@@ -50,8 +55,8 @@ class Settings(BaseSettings):
     cors_origins: str = (
         "http://localhost:3011,"
         "http://127.0.0.1:3011,"
-"http://localhost:3300,"
-        "http://127.0.0.1:3300,"
+"http://localhost:7410,"
+        "http://127.0.0.1:7410,"
         "http://localhost:3000,"
         "http://127.0.0.1:3000,"
         "http://localhost:3001,"
@@ -68,7 +73,7 @@ class Settings(BaseSettings):
 
     # ---- Coding agent runtime ----
     # 自动选择本地 coding agent CLI 的优先顺序（逗号分隔）
-    coding_agent_priority: str = "claude,codex,gemini"
+    coding_agent_priority: str = "claude,codex,omp,gemini,pi"
 
     # ---- 长时记忆 ----
     # memory distiller 后台循环间隔（秒），0 = 关闭
