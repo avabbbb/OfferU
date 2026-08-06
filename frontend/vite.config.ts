@@ -68,13 +68,13 @@ export default defineConfig(({ mode }) => {
     envPrefix: ["VITE_", "TAURI_ENV_*"],
     server: {
       host: tauriHost || "127.0.0.1",
-      port: 3300,
+      port: 7410,
       strictPort: true,
       hmr: tauriHost
         ? {
             protocol: "ws",
             host: tauriHost,
-            port: 3301,
+            port: 7411,
           }
         : undefined,
       watch: {

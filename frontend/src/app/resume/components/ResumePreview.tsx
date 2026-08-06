@@ -157,7 +157,7 @@ function normalizeSectionItem(sectionType: string, item: any, index: number): No
 function resolveAssetUrl(url?: string) {
   if (!url) return "";
   return url.startsWith("/")
-    ? `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}${url}`
+    ? `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8765"}${url}`
     : url;
 }
 

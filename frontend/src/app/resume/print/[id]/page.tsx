@@ -16,7 +16,7 @@ import {
 } from "../../components/StyleToolbar";
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8765";
 
 function prefixUrl(u?: string): string {
   if (!u) return "";

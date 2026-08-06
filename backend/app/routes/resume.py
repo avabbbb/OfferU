@@ -55,7 +55,7 @@ from app.services.application_workspace import auto_write_job_to_total
 
 router = APIRouter()
 
-FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://127.0.0.1:3300").rstrip("/")
+FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://127.0.0.1:7410").rstrip("/")
 _EXPORT_IMAGE_CACHE_TTL_SECONDS = 120
 _EXPORT_IMAGE_CACHE_MAX_ENTRIES = 8
 _export_image_cache: dict[tuple[int, str, str], tuple[float, bytes]] = {}
@@ -3138,6 +3138,7 @@ async def ai_generate_draft(
             sec_result = await db.execute(
                 select(ProfileSection)
                 .where(ProfileSection.profile_id == profile.id)
+                .where(ProfileSection.status == "active")
                 .order_by(ProfileSection.sort_order.asc())
             )
             profile_sections = list(sec_result.scalars().all())

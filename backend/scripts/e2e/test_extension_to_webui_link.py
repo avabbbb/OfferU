@@ -13,7 +13,7 @@ import time
 import httpx
 
 
-BASE = "http://127.0.0.1:8000/api"
+BASE = "http://127.0.0.1:8765/api"
 
 
 def make_job(index: int, batch_key: str) -> dict:

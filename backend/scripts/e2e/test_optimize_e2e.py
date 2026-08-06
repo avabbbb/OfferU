@@ -19,7 +19,7 @@ import json
 import time
 import sys
 
-BASE = "http://localhost:8000/api"
+BASE = "http://localhost:8765/api"
 PASS = 0
 FAIL = 0
 

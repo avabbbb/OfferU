@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "vite --port 3300 --strictPort",
+    "dev": "vite --port 7410 --strictPort",
     "build": "vite build",
-    "start": "vite preview --port 3300 --strictPort",
+    "start": "vite preview --port 7410 --strictPort",
     "typecheck": "tsc --noEmit",
     "tauri": "tauri"
   },

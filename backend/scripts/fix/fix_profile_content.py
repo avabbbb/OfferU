@@ -6,7 +6,7 @@ content_json 的值放在 root level 使 _pick_value 通过 alias 匹配
 import json
 import urllib.request
 
-BASE = "http://localhost:8000"
+BASE = "http://localhost:8765"
 
 def api(method, path, data=None):
     body = json.dumps(data, ensure_ascii=False).encode() if data else None

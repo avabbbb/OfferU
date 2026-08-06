@@ -175,7 +175,7 @@ export default function ResumeEditorPage() {
         const fullUrl =
           (result?.photo_url as string | undefined)?.startsWith("http")
             ? result.photo_url
-            : `${window.location.protocol}//${window.location.hostname}:8000${result?.photo_url ?? ""}`;
+            : `${window.location.protocol}//${window.location.hostname}:8765${result?.photo_url ?? ""}`;
         const next: PuckResumeData = {
           ...puckData,
           content: puckData.content.map((unit) =>

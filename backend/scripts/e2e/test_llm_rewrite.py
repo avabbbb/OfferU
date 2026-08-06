@@ -6,7 +6,7 @@ import json
 import urllib.request
 import time
 
-BASE = "http://localhost:8000"
+BASE = "http://localhost:8765"
 
 def sse_request(path, data, timeout=120):
     body = json.dumps(data, ensure_ascii=False).encode()

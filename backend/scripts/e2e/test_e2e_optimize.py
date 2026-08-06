@@ -1,7 +1,7 @@
 """E2E test: optimize generate with jieba + SSE warning + tier system."""
 import httpx, json, sys
 
-BASE = "http://127.0.0.1:8000"
+BASE = "http://127.0.0.1:8765"
 
 print("=== E2E Optimize Test ===")
 

@@ -82,8 +82,8 @@ def _frontend_url() -> str:
         if item.strip()
     ]
     return next(
-        (item for item in origins if item.rstrip("/").endswith(":3300")),
-        origins[0] if origins else "http://localhost:3300",
+        (item for item in origins if item.rstrip("/").endswith(":7410")),
+        origins[0] if origins else "http://localhost:7410",
     )
 
 
