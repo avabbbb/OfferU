@@ -1,10 +1,10 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { FileOutput, LayoutList, Settings2, Sheet } from "lucide-react";
+import { Brain, FileOutput, LayoutList, Settings2, Sheet } from "lucide-react";
 import type { ArchiveTab } from "@/lib/personalArchive";
 
-export type ProfileArchiveView = "overview" | ArchiveTab;
+export type ProfileArchiveView = "overview" | "ledger" | ArchiveTab;
 
 interface ArchiveTabsHeaderProps {
   activeView: ProfileArchiveView;
@@ -17,6 +17,7 @@ export default function ArchiveTabsHeader(props: ArchiveTabsHeaderProps) {
     { key: "overview" as const, label: "档案总览", icon: LayoutList },
     { key: "resume" as const, label: "简历输出", icon: FileOutput },
     { key: "application" as const, label: "网申输出", icon: Sheet },
+    { key: "ledger" as const, label: "职业模型", icon: Brain },
   ];
 
   return (

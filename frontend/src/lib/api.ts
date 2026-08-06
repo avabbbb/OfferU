@@ -8,8 +8,8 @@
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ||
   (typeof window !== "undefined"
-    ? `${window.location.protocol}//${window.location.hostname}:8000`
-    : "http://127.0.0.1:8000");
+    ? `${window.location.protocol}//${window.location.hostname}:8765`
+    : "http://127.0.0.1:8765");
 
 function buildQuery(params?: Record<string, unknown>) {
   const sp = new URLSearchParams();
@@ -955,5 +955,93 @@ export const profileApi = {
     request("/api/profile/agent/apply-patch", {
       method: "POST",
       body: JSON.stringify(data),
+    }),
+};
+
+// ---- Career Model & Memory Ledger API（ADR-0048）----
+export interface CareerModelEntry {
+  id: number;
+  section_type: string;
+  title: string;
+  content_json: Record<string, any>;
+  tier: string | null;
+  sort_order: number;
+  status: string;
+  invalidated_at: string | null;
+  superseded_by_id: number | null;
+  source_status: string;
+  source_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MemoryInboxItem {
+  id: number;
+  proposal_key: string;
+  target_tier: string;
+  section_type: string;
+  title: string;
+  before: Record<string, any>;
+  after: Record<string, any>;
+  reason: string;
+  impact: string[];
+  status: string;
+  applied_profile_section_id: number | null;
+  supersedes_proposal_id: number | null;
+  applied_at: string | null;
+  review_note: string;
+  evidence: Array<{
+    link_id: number;
+    active: boolean;
+    observation: {
+      id: number;
+      observation_type: string;
+      content: Record<string, any>;
+      status: string;
+      source: { id: number; source_type: string; title: string; status: string; locator: string };
+    };
+  }>;
+  created_at: string;
+  updated_at: string;
+  reviewed_at: string | null;
+  invalidated_at: string | null;
+}
+
+export interface CareerLedgerEntry extends MemoryInboxItem {
+  applied_section: {
+    id: number;
+    section_type: string;
+    title: string;
+    tier: string | null;
+    status: string;
+    invalidated_at: string | null;
+    superseded_by_id: number | null;
+  } | null;
+}
+
+export const memoryApi = {
+  inbox: (params?: { status?: string; limit?: number }) =>
+    request<{ items: MemoryInboxItem[] }>(
+      `/api/memory/inbox?${buildQuery(params)}`
+    ),
+
+  ledger: (params?: { status?: string; limit?: number }) =>
+    request<{ entries: CareerLedgerEntry[] }>(
+      `/api/memory/ledger?${buildQuery(params)}`
+    ),
+
+  careerModel: () =>
+    request<{
+      profile_id: number | null;
+      derived_at: string;
+      entries: CareerModelEntry[];
+      by_tier: Record<string, CareerModelEntry[]>;
+      invalidated_entries: CareerModelEntry[];
+    }>("/api/memory/career-model"),
+
+  reviewProposal: (proposalId: number, action: string, note = "") =>
+    request<MemoryInboxItem>(`/api/memory/proposals/${proposalId}/review`, {
+      method: "POST",
+      body: JSON.stringify({ action, note }),
     }),
 };

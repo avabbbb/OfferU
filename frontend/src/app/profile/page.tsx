@@ -29,6 +29,7 @@ import ApplicationArchiveEditor from "./components/archive/ApplicationArchiveEdi
 import { ProfileOnboarding } from "./components/ProfileOnboarding";
 import ProfileOverview from "./components/ProfileOverview";
 import AIImportModal from "./components/AIImportModal";
+import CareerLedgerPanel from "./components/archive/CareerLedgerPanel";
 
 export default function ProfilePage() {
   const { data: profile, mutate, isLoading } = useProfile();
@@ -269,6 +270,8 @@ export default function ProfilePage() {
           onUpdateBasicInfo={handleUpdateBasicInfo}
           onSave={handleSave}
         />
+      ) : activeView === "ledger" ? (
+        <CareerLedgerPanel />
       ) : activeView === "resume" ? (
         <ResumeArchiveEditor
           value={getResumeArchive(archive)}
