@@ -119,12 +119,20 @@ class JobResearchValidationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             _validated_research_result(payload)
 
-    def test_hard_fact_without_official_source_is_rejected(self) -> None:
+    def test_hard_fact_without_official_source_is_downgraded_not_rejected(self) -> None:
+        # CONTEXT.md：证据不足是可解释退出状态。硬事实（公司业务/产品/岗位要求）
+        # 无官方来源时降级为 single_signal，而不是让整个研究崩溃。
         payload = copy.deepcopy(_worker_payload())
         payload["sources"][0]["source_class"] = "public_community"
 
-        with self.assertRaises(ValueError):
-            _validated_research_result(payload)
+        result = _validated_research_result(payload)
+        hard = [
+            item
+            for item in result["findings"]
+            if item["finding_type"] in ("company_business", "company_product", "role_requirement")
+            and item["evidence_level"] == "single_signal"
+        ]
+        self.assertTrue(hard, "无官方来源的硬事实应降级为 single_signal")
 
     def test_full_candidate_resume_fields_are_rejected(self) -> None:
         payload = copy.deepcopy(_worker_payload())

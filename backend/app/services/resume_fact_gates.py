@@ -39,6 +39,32 @@ def _plain(value: Any) -> str:
     return re.sub(r"<[^>]+>", " ", text)
 
 
+def _compact(value: Any) -> str:
+    """去空白与标点后的紧凑文本，用于回声比较。"""
+    return re.sub(
+        r"[\s，。、,.!！?？;；:：\"'‘’“”（）()【】\[\]·\-—]+",
+        "",
+        _plain(value),
+    )
+
+
+def _is_self_echo_source(source_facts: Any, claims: list[str]) -> bool:
+    """检测来源是否为声明自身的回声（无独立可验证出处）。
+
+    当 source 文本去掉全部声明后几乎没有剩余内容，说明来源没有
+    独立信息量（典型：Agent 把用户陈述原文当来源传回）。
+    """
+    compact_source = _compact(source_facts)
+    if not compact_source or len(compact_source) < 16:
+        return False
+    remainder = compact_source
+    for claim in sorted(claims, key=len, reverse=True):
+        compact_claim = _compact(claim)
+        if compact_claim:
+            remainder = remainder.replace(compact_claim, "", 1)
+    return len(remainder) < 8
+
+
 def metric_claims(value: Any) -> set[str]:
     text = _plain(value).lower()
     return {
@@ -85,6 +111,22 @@ def validate_generated_content(source_facts: Any, generated: Any) -> dict[str, A
         {"issue": "unverified_fact", "detail": f"生成内容出现来源中不存在的结构化事实: {claim}"}
         for claim in unsupported_facts
     ]
+    # 自回声来源：source 去掉全部声明后几乎没有剩余内容，说明来源只是声明的回声，
+    # 没有独立可验证出处（典型：Agent 把用户陈述原文当来源传回）。
+    if not warnings:
+        echo_claims = list(structured)
+        if isinstance(generated, dict):
+            for key in ("bullet", "description", "title"):
+                value = generated.get(key)
+                if isinstance(value, str) and value.strip():
+                    echo_claims.append(value.strip())
+        if _is_self_echo_source(source_facts, echo_claims):
+            warnings.append(
+                {
+                    "issue": "echo_source",
+                    "detail": "来源只是声明自身的回声，缺少独立可验证出处；请提供真实来源材料或走记忆收件箱提案",
+                }
+            )
     return {
         "status": "blocked" if warnings else "passed",
         "requires_user_confirmation": bool(warnings),

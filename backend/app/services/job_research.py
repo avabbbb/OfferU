@@ -151,7 +151,10 @@ JOB_RESEARCH_OUTPUT_SCHEMA: dict[str, Any] = {
                     "source_refs": {
                         "type": "array",
                         "maxItems": 12,
-                        "uniqueItems": True,
+                        # NOTE: `uniqueItems` is intentionally omitted. Codex / OpenAI
+                        # strict response_format schemas reject `uniqueItems`
+                        # ("'uniqueItems' is not permitted"), which blocked every
+                        # codex-backed research run. Dedup is enforced downstream.
                         "items": {"type": "string", "pattern": "^S[1-9][0-9]?$"},
                     },
                 },
@@ -260,11 +263,16 @@ def _evidence_level(finding_type: str, source_refs: list[str], sources: dict[str
         return "unknown"
     if not source_refs:
         raise ValueError(f"{finding_type} finding 缺少来源引用")
-    if finding_type in _HARD_FINDINGS and not any(
-        sources[source_ref]["source_class"].startswith("official_")
-        for source_ref in source_refs
-    ):
-        raise ValueError(f"{finding_type} hard fact 至少需要一个官方来源")
+    if finding_type in _HARD_FINDINGS:
+        # 硬事实（公司业务/产品/岗位要求）优先由官网、招聘官网等官方来源支撑；
+        # 但官方来源可能因站点 JS 渲染 / 反爬 / 聚合站转载而不可得。按
+        # CONTEXT.md「证据不足是可解释退出状态」，此时把结论降级为
+        # single_signal（有来源、未官方验证）而非让整个研究崩溃，交由审核决定。
+        if not any(
+            sources[source_ref]["source_class"].startswith("official_")
+            for source_ref in source_refs
+        ):
+            return "single_signal"
     if finding_type in _SUBJECTIVE_FINDINGS:
         domains = {_host(sources[source_ref]["url"]) for source_ref in source_refs}
         return "corroborated" if len(domains) >= 2 else "single_signal"
@@ -361,6 +369,10 @@ def _validated_research_result(payload: Any) -> dict[str, Any]:
                 raise ValueError(f"worker finding 引用了未知来源: {source_ref}")
             if source_ref not in source_refs:
                 source_refs.append(source_ref)
+        if finding_type == "unknown":
+            # 未知结论不应伪装成有来源的确定结论；worker 误填来源时宽容清空，
+            # 而不是让单个畸形条目使整个研究失败（证据不足是可解释退出状态）。
+            source_refs = []
         details = _validate_details(finding_type, item.get("details"))
         findings.append(
             {
@@ -388,8 +400,14 @@ def _validated_research_result(payload: Any) -> dict[str, Any]:
     }
     unused_source_refs = sorted(set(source_map) - used_source_refs)
     if unused_source_refs:
-        raise ValueError(
-            f"worker 返回了未被任何 finding 引用的来源: {', '.join(unused_source_refs)}"
+        # 未引用来源宽容丢弃并记入 gaps，而不是让整个研究失败：
+        # worker 多给的来源不构成结论，审核时可见但无需阻塞。
+        for source_ref in unused_source_refs:
+            source_map.pop(source_ref, None)
+        sources = [s for s in sources if s["source_ref"] in source_map]
+        gaps.append(
+            "worker 返回了未引用来源（已忽略）："
+            + ", ".join(unused_source_refs)
         )
     return {
         "schema": RESEARCH_RESULT_SCHEMA,
@@ -1089,6 +1107,27 @@ async def start_job_research(
         "research_scope": "public_web_only",
         "login_gated_platforms": "require_user_authorized_browser_slice",
     }
+
+
+async def recover_interrupted_research_runs() -> int:
+    """启动时把 pending/running 的调研 run 标记为 interrupted（与主 Agent run 恢复对称）。
+
+    服务器异常退出（kill/断电）后，调研 run 没有恢复会永久停留在 running 成孤儿；
+    标记为 interrupted 后使用者可显式 resume_job_research 复用同一 run_id/dossiers 续跑。
+    """
+    async with async_session() as db:
+        rows = list((
+            await db.execute(
+                select(JobResearchRun).where(
+                    JobResearchRun.status.in_(("pending", "running"))
+                )
+            )
+        ).scalars().all())
+        for row in rows:
+            row.status = "interrupted"
+            row.error = "研究任务被运行环境中断，可显式恢复"
+        await db.commit()
+        return len(rows)
 
 
 async def resume_job_research(run_id: str) -> dict[str, Any]:
