@@ -5,7 +5,7 @@
 > 目标：把现有局部能力收敛为四个可独立使用、可审计的垂直闭环
 > 状态：历史路线快照；其中 Agent runtime 与前端技术栈已被 ADR-0034 至 ADR-0047 及当前实现更新  
 >
-> 当前 Agent 架构与剩余缺口见 [`docs/architecture/agent-system.md`](./architecture/agent-system.md)。实现时以 `CONTEXT.md` 和最新 accepted ADR 为准。
+> 当前 Agent 架构与剩余缺口见 [`docs/architecture/agent-system.md`](../../architecture/agent-system.md)。实现时以 [`CONTEXT.md`](../../../CONTEXT.md) 和最新 accepted ADR 为准。
 
 ## 总体发布规则
 

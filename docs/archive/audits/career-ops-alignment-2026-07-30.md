@@ -3,7 +3,7 @@
 > 状态日期：2026-07-30  
 > 对比基准：CareerOps `main`（审计时提交 `dab8517`）  
 > 范围：外部 Coding Agent、内置主 Agent、Skill/CLI/MCP 控制面和求职操作交互。
-> 当前架构事实源：[Agent System](./agent-system.md)；动态能力事实源：`python -m app.cli manifest`。
+> 当前架构事实源：[Agent System](../../architecture/agent-system.md)；动态能力事实源：`python -m app.cli manifest`。
 
 ## 1. 结论
 

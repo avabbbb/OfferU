@@ -61,7 +61,7 @@ npm-debug.log*
 coverage/
 .pytest_cache/
 .playwright-mcp/
-# 文档默认保持本地；只版本化正式决策、实施路线与 Agent 配置。
+# 文档默认保持本地；只版本化当前事实链、Eval、归档索引与 Agent 配置。
 docs/*
 !docs/README.md
 !docs/adr/
@@ -70,12 +70,12 @@ docs/*
 !docs/agents/**
 !docs/architecture/
 !docs/architecture/**
-!docs/BACKEND_CAPABILITY_AUDIT_2026-07-16.md
-!docs/IMPLEMENTATION_ROADMAP_2026-07-17.md
-!docs/WEBUI_WORKBENCH_DESIGN_2026-07-17.md
-!docs/implementation/
-docs/implementation/*
-!docs/implementation/WEBUI_SLICE_01_APPLICATIONS_PLAN_2026-07-17.md
+!docs/evals/
+!docs/evals/**
+!docs/archive/
+!docs/archive/**
+# Eval 原始截图/trace 默认只保留本地；正式报告必须包含脱敏后的关键证据。
+docs/evals/reports/artifacts/
 artifacts/
 
 # ---- 备份文件 ----

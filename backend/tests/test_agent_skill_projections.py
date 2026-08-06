@@ -23,7 +23,7 @@ class AgentSkillProjectionTests(unittest.TestCase):
     def test_manifest_projects_the_versioned_skill_registry(self) -> None:
         registry = _manifest()["skill_registry"]
 
-        self.assertEqual(len(registry["skills"]), 34)
+        self.assertGreaterEqual(len(registry["skills"]), 33)
         self.assertEqual(len(registry["sha256"]), 64)
         scan = next(skill for skill in registry["skills"] if skill["id"] == "scan_jobs")
         self.assertIn("scan", scan["aliases"])

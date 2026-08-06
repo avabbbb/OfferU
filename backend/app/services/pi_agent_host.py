@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
-from app.agents.llm import DEFAULT_BASE_URLS, _ensure_ollama_v1, get_llm_runtime_info
+from app.agents.llm import resolve_llm_client_config, resolve_model_for_tier
 from app.config import Settings, get_settings
 from app.ops import OPERATIONS, execute_operation
 from app.services.career_memory import record_conversation_observation
@@ -55,70 +55,28 @@ StreamListener = Callable[[dict[str, Any]], Awaitable[None]]
 def resolve_pi_provider_config(
     settings: Settings | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Resolve the active OpenAI-compatible provider without persisting its key."""
+    """Resolve the active OpenAI-compatible provider without persisting its key.
 
+    BYOK 统一解析（见 app/agents/llm.resolve_llm_client_config）：
+    provider 可自由配置，base_url / api_key / model 来自激活配置；
+    provider_id 不参与行为分支。
+    """
     config = settings or get_settings()
-    runtime = get_llm_runtime_info("standard", config)
-    provider = str(runtime["provider"] or "").strip().lower()
-    model = str(runtime["model"] or "").strip()
-    active_base_url = str(config.active_llm_base_url or "").strip().rstrip("/")
-    active_api_key = str(config.active_llm_api_key or "").strip()
-    active_config_id = str(config.active_llm_config_id or "").strip()
-
-    if not model:
-        raise ValueError("当前 LLM 配置缺少模型名称。")
-
-    if provider == "ollama":
-        base_url = _ensure_ollama_v1(
-            active_base_url or str(config.ollama_base_url or "").strip()
-        )
-        api_key = "ollama"
-        source = "ollama"
-    else:
-        has_active_selection = bool(
-            active_config_id or active_base_url or active_api_key
-        )
-        if has_active_selection:
-            api_key = active_api_key
-            base_url = active_base_url or DEFAULT_BASE_URLS.get(provider, "")
-            source = "active_config"
-            if not api_key:
-                raise ValueError(
-                    f"当前激活的 LLM 配置缺少 API Key（provider={provider}）。"
-                )
-        else:
-            legacy_keys = {
-                "deepseek": config.deepseek_api_key,
-                "openai": config.openai_api_key,
-                "qwen": config.qwen_api_key,
-                "siliconflow": config.siliconflow_api_key,
-                "gemini": config.gemini_api_key,
-                "zhipu": config.zhipu_api_key,
-            }
-            api_key = str(legacy_keys.get(provider, "") or "").strip()
-            base_url = DEFAULT_BASE_URLS.get(provider, "")
-            source = "legacy_fallback"
-            if not api_key:
-                raise ValueError(
-                    f"LLM API Key 未配置（provider={provider}），请在设置页面填写。"
-                )
-        if not base_url:
-            raise ValueError(
-                f"LLM Base URL 未配置（provider={provider}），请在设置页面填写。"
-            )
+    resolved = resolve_llm_client_config(config)
+    model = resolve_model_for_tier("standard", config)
 
     private = {
-        "name": provider,
+        "name": resolved["provider"],
         "model": model,
-        "base_url": base_url,
-        "api_key": api_key,
+        "base_url": resolved["base_url"],
+        "api_key": resolved["api_key"],
     }
     public = {
         "runtime": "pi_sdk_worker",
         "protocol_version": PROTOCOL_VERSION,
-        "provider": provider,
+        "provider": resolved["provider"],
         "model": model,
-        "source": source,
+        "source": resolved["source"],
     }
     return private, public
 
@@ -717,6 +675,13 @@ async def start_pi_agent_run(
         current = await load_agent_run(run_id)
         assert current is not None
         pending_actions = pending_actions_for_run(current)
+        # 反静默降级：LLM 未返回任何回复且没有待确认动作时，不能当作成功完成。
+        # 否则用户看到空白回复无法区分「正常但无输出」与「LLM 故障」。
+        if not assistant_message and not pending_actions:
+            raise RuntimeError(
+                "主 Agent 未返回任何回复，也没有待确认动作；"
+                "请检查 LLM API Key / 模型 / Base URL 配置是否有效。"
+            )
         current["final_result"] = {
             "assistant_message": assistant_message,
             "requires_confirmation": bool(pending_actions),

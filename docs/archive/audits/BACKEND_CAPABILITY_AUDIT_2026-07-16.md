@@ -6,7 +6,7 @@
 > 范围：当前桌面运行链、Python 后端、已移除的 Rust 迁移分支，以及与目标能力直接相关的前端本地视觉代码  
 > 验证方式：静态代码审计、本机 CLI 契约核对、官方资料与当前开源实现核对；按项目规则未执行构建、语法检查或测试
 >
-> 当前领域边界以 [`CONTEXT.md`](../CONTEXT.md) 与 accepted ADR 为准；当前 Agent 架构见 [`docs/architecture/agent-system.md`](./architecture/agent-system.md)。
+> 当前领域边界以 [`CONTEXT.md`](../../../CONTEXT.md) 与 accepted ADR 为准；当前 Agent 架构见 [`docs/architecture/agent-system.md`](../../architecture/agent-system.md)。
 
 ## 1. 当前结论
 

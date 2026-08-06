@@ -668,7 +668,7 @@ export default function JobDetailPage() {
                           <p className="mt-3 text-sm font-medium text-[var(--foreground-muted)]">暂无</p>
                         )}
                       </div>
-                    ])}
+                    ))}
                   </div>
 
                   <div>

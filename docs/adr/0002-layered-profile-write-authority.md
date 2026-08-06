@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by ADR-0048
 ---
 
 # Profile 采用分层写权限

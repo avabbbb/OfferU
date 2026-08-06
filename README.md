@@ -5,36 +5,29 @@
 <h1 align="center">OfferU</h1>
 
 <p align="center">
-  <strong>本地优先、证据驱动的 AI 求职工作台</strong><br />
-  用同一份职业事实连接岗位研究、材料提案、投递进展、面试训练与可审计 Agent。
+  <strong>本地优先、证据驱动、Eval-first 的 AI 求职工作台</strong><br />
+  用同一份职业事实连接岗位判断、研究、材料提案、投递进展、面试训练与可审计 Agent。
 </p>
 
 <p align="center">
   <a href="https://github.com/avabbbb/OfferU/stargazers"><img src="https://img.shields.io/github/stars/avabbbb/OfferU?style=flat&logo=github" alt="GitHub stars" /></a>
-  <a href="https://github.com/avabbbb/OfferU/forks"><img src="https://img.shields.io/github/forks/avabbbb/OfferU?style=flat" alt="GitHub forks" /></a>
   <a href="https://github.com/avabbbb/OfferU/issues"><img src="https://img.shields.io/github/issues/avabbbb/OfferU?style=flat" alt="GitHub issues" /></a>
-  <a href="https://github.com/avabbbb/OfferU/releases"><img src="https://img.shields.io/github/downloads/avabbbb/OfferU/total?style=flat&label=downloads" alt="Release downloads" /></a>
-  <img src="https://visitor-badge.laobi.icu/badge?page_id=avabbbb.OfferU&left_text=README%20views" alt="README badge views" />
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/Backend-FastAPI-009688?style=flat&logo=fastapi" alt="FastAPI" />
-  <img src="https://img.shields.io/badge/Frontend-React%2018%20%2B%20Vite%208-646CFF?style=flat&logo=vite" alt="React 18 and Vite 8" />
-  <img src="https://img.shields.io/badge/Desktop-Tauri%202-24C8DB?style=flat&logo=tauri" alt="Tauri 2" />
-  <img src="https://img.shields.io/badge/Agent-Pi%20SDK%20runtime-6B6B6B?style=flat" alt="Pi SDK runtime" />
-  <img src="https://img.shields.io/badge/License-MIT-2F855A?style=flat" alt="MIT License" />
+  <img src="https://img.shields.io/badge/status-internal%20alpha-D97706?style=flat" alt="Internal alpha" />
+  <img src="https://img.shields.io/badge/eval-baseline%20pending-64748B?style=flat" alt="Eval baseline pending" />
+  <img src="https://img.shields.io/badge/license-MIT-2F855A?style=flat" alt="MIT License" />
 </p>
 
 <p align="center">
   <a href="./README_EN.md">English</a> ·
-  <a href="#当前版本">当前版本</a> ·
-  <a href="#agent-系统">Agent 系统</a> ·
+  <a href="#当前状态">当前状态</a> ·
+  <a href="#普通用户核心闭环">核心闭环</a> ·
   <a href="#快速开始">快速开始</a> ·
-  <a href="#roadmap">Roadmap</a>
+  <a href="#eval-first-开发">Eval</a> ·
+  <a href="./docs/evals/deepseek-deep-test-prompt.md">DeepSeek 深测</a>
 </p>
 
 > [!IMPORTANT]
-> OfferU 目前是本地单人版 POC，不是 SaaS，也不会自动提交申请、发送邮件或联系第三方。AI 产出先是提案或候选信号，只有通过证据门和使用者确认后才能改变正式求职事实。
+> OfferU 目前是本地单人内部 Alpha，不是 SaaS。系统不会自动提交申请、发送邮件或联系第三方；Agent 产出先是候选或提案，只有经过事实门和使用者确认后才能改变正式求职状态。
 
 <table>
   <tr>
@@ -43,228 +36,191 @@
   </tr>
   <tr>
     <td align="center"><strong>任务内 Agent Run、事件与确认</strong></td>
-    <td align="center"><strong>候选结论、来源和未知项审核</strong></td>
+    <td align="center"><strong>候选结论、来源与未知项审核</strong></td>
   </tr>
 </table>
 
-## 一分钟认识 OfferU
+## 从这里开始
 
-求职不是一次生成，而是一条持续变化的证据链：
+| 你的目标 | 建议入口 |
+|---|---|
+| 先理解 OfferU 为谁解决什么问题 | [普通用户核心闭环](#普通用户核心闭环) 与 [`CONTEXT.md`](./CONTEXT.md) |
+| 在本机启动产品 | [快速开始](#快速开始) |
+| 了解 Agent、Registry 与安全边界 | [`Agent System`](./docs/architecture/agent-system.md) |
+| 参与开发或判断架构决策 | [`docs/README.md`](./docs/README.md) 与最新 accepted ADR |
+| 把完整测试任务交给 DeepSeek | [`DeepSeek 深度测试提示词`](./docs/evals/deepseek-deep-test-prompt.md) |
+
+## 当前状态
+
+> [!NOTE]
+> `internal alpha` 只描述开发阶段，不代表核心能力已经通过正式验收。OfferU 目前仍没有一份符合 [`offeru-core-v1`](./docs/evals/offeru-core-v1.md) 的有效 baseline。
+
+| 证据账本 | 当前结论 |
+|---|---|
+| 当前有效 baseline | 尚无；没有报告可以作为当前版本的正式通过证据 |
+| 本轮验证状态 | 仅重构文档，未运行测试、构建或外部 Agent，因此没有新增产品通过结论 |
+| 下一次证明方式 | 由使用者在准备好后，手动把[完整深测提示词](./docs/evals/deepseek-deep-test-prompt.md)交给新的 DeepSeek 会话；项目不会自动启动外部 Agent |
+
+因此，本 README 只陈述证据等级，不用“功能已实现”推导“用户可用”，也不把截图、旧报告或单次测试当作发布证明。
+
+状态含义：`PROVEN` = 有当前有效 Eval 证据；`PARTIAL` = 有实现或局部证据，但尚未满足完整验收规则；`UNPROVEN` = 尚未真实执行到可判定程度；`BLOCKED` = 环境或依赖阻止验证。
+
+| 评估对象 | 当前证据状态 | 要达到 PROVEN 还缺什么 |
+|---|---|---|
+| Operation / Skill 控制面 | `PARTIAL` | 对 live manifest 的 schema、dry-run、proposal/confirm 和入口一致性做机器验收 |
+| 内置主 Agent | `PARTIAL` | 三次独立验证上下文、路由、工具参数、失败状态和最终 outcome |
+| 前端工程入口 | `UNPROVEN` | 候选语法修复后重新取得 typecheck=0、build=0 的新证据 |
+| 普通用户求职闭环 | `UNPROVEN` | 在隔离数据上完成岗位 → 决策 → 材料 → 投递进展的真实用户旅程 |
+| 安全与人工控制 | `PARTIAL` | 证明无 Registry 绕过、无静默成功、无提示注入越权和无凭据泄漏 |
+| DeepSeek/研究/邮件等真实集成 | `UNPROVEN` | 使用当次真实 provider、授权数据和可追溯 trace 完成对应集成任务 |
+| 内测/发布就绪度 | `UNPROVEN` | 所有 `required` 任务实际通过，且被声称可用的集成均有真实证据 |
+
+历史内测评估已经移入 [`docs/evals/reports`](./docs/evals/reports/README.md) 并标记为 pre-eval；其中问题是首轮复现候选，不代表当前版本仍有或已经修复。
+
+## 普通用户核心闭环
+
+OfferU 要让用户不必理解 Agent、Operation 或工作流术语，也能完成这条路径：
 
 ```text
-已确认职业事实
-      ↓
-岗位与公司证据
-      ↓
-可审核的材料提案
-      ↓
-投递尝试与阶段事件
-      ↓
-面试训练与学习观察
-      ↓
-使用者确认后更新职业模型
+选中当前岗位
+  → 问“这个岗位值得投吗？”
+  → 系统自动使用已确认职业档案和当前 JD
+  → 给出带证据、未知项和风险的投前判断
+  → 用户确认投 / 有条件投 / 不投
+  → 只基于已验证事实生成定制材料提案
+  → 用户审核后受控填表，绝不自动提交
+  → 跟踪一次申请尝试及阶段事件
+  → 邮件信号先成为候选进展，确认后更新状态
 ```
 
-OfferU 让同一份事实跨阶段复用，并把数据授权、LLM 调用、写入和外部动作放进明确的确认与审计契约。它不是通用 Agent 的数据库外壳，也不是只生成一份简历后就结束的工具。
+这条链路是产品的 Golden Path，也是 `offeru-core-v1` 的核心。后续优先级由它的真实失败决定，而不是继续堆功能页。
 
-## 当前版本
+## 为什么是“证据驱动”
 
-事实基线：**2026-07-30**。
-
-| 能力 | 当前状态 | 边界 |
-|---|---|---|
-| 今日工作台、机会、材料、进展、面试 | 可用 / 持续收敛 | 按求职阶段组织，而不是平铺技术模块 |
-| 岗位采集、筛选与研究 | 可用 / 部分闭环 | 公开来源与使用者授权来源分开；研究先进入候选审核 |
-| 职业档案与长期学习 | 可用 / 部分闭环 | AI 推断和学习观察不能直接成为职业事实 |
-| 简历、求职信与 PDF | 可用 / 部分闭环 | PDF/DOCX 可解析为带页码与质量诊断的候选项；确认后才创建简历段落，不自动覆盖或投递 |
-| 投递表、邮件与日程信号 | 可用 / 部分闭环 | 外部消息先成为候选进展，确认后才改变正式阶段 |
-| 面试题库、模拟与表达反馈 | 可用 / 部分闭环 | 内容评分与可观察表达行为分开，不推断人格或录用概率 |
-| 内置主 Agent | Pi SDK 主路径已接通 | AgentPanel → Python Run Host → 受限 Pi Session → Operation Registry |
-| 外部 Coding Agent | 原生托管与证据 handback 已实现 | Codex / Claude 是可替换重任务执行器，不是第二业务后端 |
-| Tauri 前端 | 已迁移到 Vite 静态 SPA | 开发端口固定 3300；发布时直接加载内嵌 `dist`，不再启动 Next.js |
-
-真实 Operation、Skill 和确认边界请从机器 CLI 动态发现，不依赖 README 中会漂移的固定数量：
-
-```powershell
-Set-Location backend
-python -m app.cli doctor --pretty
-python -m app.cli manifest --pretty
-```
+- 职业经历、能力和偏好只有在来源可追溯并经用户确认后才是正式事实。
+- 岗位研究逐条保留来源、时间和未知项；外部文本默认不可信。
+- 简历、求职信、决策和进展先是可审核 candidate/proposal。
+- 面试反馈和 Agent 推断是学习观察，不能直接改写职业事实。
+- LLM、写入和外部动作经过统一 Registry、授权、确认和审计边界。
 
 ## Agent 系统
 
-是的，OfferU 的内置 Agent Core 已经以 **Pi SDK 为运行时底座**。Pi 负责 AgentSession、模型适配、上下文压缩、类型化工具、Session 和流式生命周期；Python 仍是唯一业务后端，负责 Skill、Operation、权限、确认、审计、幂等和职业事实门。
-
-```mermaid
-flowchart TB
-    UI["AgentPanel / Tauri"] --> HOST["Python Agent Run Host"]
-    HOST --> PI["Pi SDK Worker<br/>1 Run = 1 Session"]
-    PI --> BRIDGE["offeru_operation"]
-
-    EXT["Codex / Claude Code / 其他宿主"] --> SKILL["生成的 OfferU Skill"]
-    SKILL --> CLI["机器 CLI"]
-    EXT -. "可选" .-> MCP["MCP adapter"]
-
-    HOST --> EXECUTOR["Hosted Executor Supervisor"]
-    EXECUTOR --> CODEX["Codex App Server"]
-    EXECUTOR --> CLAUDE["Claude Agent SDK"]
-
-    BRIDGE --> OPS["Operation Registry"]
-    CLI --> OPS
-    MCP --> OPS
-    CODEX --> REVIEW["候选结果 / 人工审核"]
-    CLAUDE --> REVIEW
-    OPS --> DOMAIN["档案 / 岗位 / 材料 / 投递 / 面试"]
+```text
+React/Vite/Tauri UI ──> Python Agent Run Host ──> Pi SDK Worker
+        │                         │                       │
+        │                         └──── scoped tools ─────┘
+        │                                      │
+External IDE/CLI Agent ──> Skill + Machine CLI │
+                                               ↓
+                                      Operation Registry
+                                               ↓
+                          schema → auth → proposal → confirm
+                                               ↓
+                                    Python/SQLite facts
 ```
 
-两条路线共享控制面，但保留各自原生运行时：
+- **Python 是唯一业务后端**：档案、岗位、材料、申请、面试和审计事实都归 Python/SQL 管理。
+- **Pi SDK 是内置 Agent runtime**：负责会话 loop、模型协议、工具调用和流式事件，不持有业务写权限。
+- **外部 Coding Agent 是可替换宿主**：先读取实时 contract，再通过机器 CLI/MCP 调用原子 Operation。
+- **托管重任务是受限执行会话**：provider adapter 只返回 candidate 和证据，不能直接成为职业事实。
+- **DeepSeek Eval Agent 是测试执行者**：它可运行仓库测试并写报告；当 DeepSeek 也是被测 provider 时，不能担任唯一 grader。
 
-| 路线 | 用途 | 已完成 | 主要缺口 |
-|---|---|---|---|
-| 内置 Pi 主 Agent | 产品内对话、Skill 选择和 Operation loop | 任务绑定 Run、受限 Session、流式事件、SSE 续接、proposal/confirm、取消与恢复 | 剩余 Operation 严格 Schema、Session 丢失决策、更多故障演练 |
-| 外部 Coding Agent | 借助 Codex、Claude 等宿主操作 OfferU 或执行重研究 | Skill + CLI/MCP、多宿主投影、原生 Codex/Claude adapter、任务 session、统一事件、证据审核 | 通用文件产物 handback、多版本和可用上游现场验收 |
-
-关键安全边界：
-
-- Pi 内置 Bash、文件读写和通用 coding tools 在 OfferU Run 中关闭，只暴露 `offeru_operation`。
-- Codex 与 Claude 的公开研究任务不获得数据库、任意 shell 或 OfferU 业务写权限。
-- GUI、内置 Agent、CLI、MCP 和外部宿主都经过同一个 Operation Registry。
-- 副作用先持久化 proposal，再由独立确认执行一次；失败必须可见，禁止静默降级。
-
-完整设计见 [Agent System](./docs/architecture/agent-system.md)，CareerOps 差异见 [CareerOps alignment](./docs/architecture/career-ops-alignment.md)，现场阻塞见 [Runtime acceptance](./docs/architecture/runtime-acceptance-2026-07-30.md)。
+完整边界见 [`Agent System`](./docs/architecture/agent-system.md)。
 
 ## 快速开始
 
 ### 环境要求
 
+- Windows（当前主要开发环境）
 - Python 3.12
-- Node.js 22.19+
-- npm
-- 一个可用的 LLM API Key，或本地 Ollama
-- Tesseract `chi_sim` + `eng`（可选；只在识别纯扫描 PDF 时需要，Docker 后端已内置）
-- Docker Desktop（可选）
+- Node.js 与 npm
+- Rust/Tauri toolchain（只在运行桌面壳时需要）
 
-### 本地开发
+### 1. 后端
+
+在仓库根目录运行：
 
 ```powershell
-git clone https://github.com/avabbbb/OfferU.git
-Set-Location OfferU
-
-# Pi SDK 与 Claude hosted worker
-npm --prefix agent-runtime ci --ignore-scripts
-
-# Python 业务后端
 python -m venv backend/.venv312
-backend/.venv312/Scripts/Activate.ps1
-python -m pip install -r backend/requirements.txt
-Copy-Item .env.example backend/.env
-python backend/run_server.py
+backend\.venv312\Scripts\python.exe -m pip install -r backend\requirements.txt
+Copy-Item .env.example backend\.env
+backend\.venv312\Scripts\python.exe backend\run_server.py
+```
 
-# 另开终端：Vite 前端
+按需在 `backend/.env` 或设置页配置 provider；不要提交 API Key。
+
+### 2. 前端
+
+新终端中运行：
+
+```powershell
 npm --prefix frontend ci
 npm --prefix frontend run dev
 ```
 
-打开：
+打开 `http://localhost:7410`。开发端口固定为 `7410`：若修改，必须同步 `frontend/package.json` 的 `dev/start` 与 `frontend/src-tauri/tauri.conf.json` 的 `devUrl`；`frontendDist` 必须继续指向 `../dist`。
 
-- WebUI：<http://localhost:3300>
-- API 文档：<http://localhost:8000/docs>
-
-Windows 前端开发端口固定为 `3300`。如需修改，必须同步 `frontend/package.json` 和 `frontend/src-tauri/tauri.conf.json` 的 `devUrl`；`frontendDist` 必须继续指向 `../dist`。详见 [ADR 0047](./docs/adr/0047-use-vite-static-spa-for-tauri-frontend.md)。
-
-文本型 PDF 和 DOCX 无需 OCR。纯扫描 PDF 需要安装 [Tesseract](https://tesseract-ocr.github.io/tessdoc/Installation.html) 以及 `chi_sim`、`eng` 训练数据；可用 `tesseract --list-langs` 检查。解析响应和导入审核界面会显示 OCR 配置、逐页解析方式、质量和低质量页，不会把识别失败伪装成成功。
-
-### Docker 开发栈
+### 3. 读取实时 Agent contract
 
 ```powershell
-Copy-Item .env.example .env
-docker compose up -d
+Set-Location backend
+.\.venv312\Scripts\python.exe -m app.cli doctor --pretty
+.\.venv312\Scripts\python.exe -m app.cli manifest --pretty
+.\.venv312\Scripts\python.exe -m app.cli ops --pretty
+.\.venv312\Scripts\python.exe -m app.cli schema <operation_name> --pretty
 ```
 
-| 服务 | 地址 |
-|---|---|
-| WebUI | <http://localhost:3011> |
-| Backend API | <http://localhost:9000> |
-| API Docs | <http://localhost:9000/docs> |
+不要依赖 README 中会漂移的 Operation 数量、Skill 数量、provider 或模型名。
 
-Docker Compose 当前用于 PostgreSQL、FastAPI 和 Vite WebUI 联调；Pi/Claude 本地 Worker 与 Tauri 打包请使用上面的本地开发路径。
+## Eval-first 开发
 
-### 外部 Agent 控制 OfferU
-
-从 `backend/` 运行：
-
-```powershell
-python -m app.cli manifest --pretty
-python -m app.cli ops --pretty
-python -m app.cli schema prepare_resume_optimization --pretty
-python -m app.cli run list_jobs --arg page_size=5 --pretty
-
-# 副作用命令只创建 proposal
-python -m app.cli run start_job_research --arg job_id=1 --pretty
-# 只有明确确认后才执行
-python -m app.cli confirm <run_id> --action <action_id> --pretty
-```
-
-外部宿主使用 `.agents`、`.claude`、`.codex` 或 `.copilot` 中由 Skill Registry 生成的 OfferU 入口。不要直接调用内部 HTTP、写数据库或把多个业务步骤藏进 shell。
-
-`inspect_resume_document` 为外部宿主和内置 Pi 提供同一条 PDF/DOCX 解析能力。它是需要独立确认的敏感本地读取 Operation，限制 10MB，只返回原文与诊断，不直接写入档案；文件路径和简历正文会从 Operation 审计记录中脱敏。
-
-MCP 默认关闭。只在可信本机环境确有需要时，在 `backend/.env` 设置 `OFFERU_ENABLE_MCP=true`；端点为 `http://127.0.0.1:8000/mcp`。
-
-## 数据、安全与计数
-
-- 本地单人版以 SQLite 为主数据存储；Docker 联调可使用 PostgreSQL。
-- API Key 与 OAuth / IMAP 凭据不得提交到 Git，敏感凭据优先进入操作系统钥匙串。
-- 简历、邮件片段和面试转写发往云端模型前，需要按供应商和数据类别授权。
-- 简历导入先生成候选项；只有使用者勾选后才写入 Resume sections，不能自动成为职业档案事实。
-- 原始摄像头画面不上传、不落盘；只保存明确授权的派生表达事件。
-- README 顶部的 stars、forks、issues 和 release downloads 来自 GitHub / Shields 动态公开数据。
-- `README views` 是徽章请求次数，不是 GitHub 官方独立访客数，也不能当作真实用户数。
-- OfferU 默认不上传使用遥测。未来远程匿名遥测必须有独立 ADR、显式 opt-in 和字段白名单。
-
-## 项目结构
+任何“可用”“Agent 完整”“适合内测”的结论都必须经过：
 
 ```text
-OfferU/
-├── agent-runtime/              # Pi SDK Worker + Claude hosted worker
-├── backend/
-│   ├── app/ops.py              # 唯一 Operation Registry
-│   ├── app/cli.py              # 机器 CLI
-│   ├── app/mcp_server.py       # 可选 MCP 薄适配器
-│   └── app/services/           # Agent Host、Guardian、领域服务
-├── frontend/
-│   ├── src/vite/               # SPA 路由与页面级懒加载
-│   ├── src/app/                # 复用的 React 业务页面
-│   └── src-tauri/              # Tauri 桌面壳
-├── docs/
-│   ├── architecture/           # 当前架构与日期化验收
-│   ├── adr/                    # 已确认架构决策
-│   └── README.md               # 文档事实优先级
-├── asset/screenshots/          # README 页面截图
-├── CONTEXT.md                  # 领域语言与产品边界
-└── docker-compose.yml
+真实用户任务 → fixtures → 1/3 次 trials → trajectory + outcome graders
+              → Eval 报告 → 人工复核 → 下一工程决策
 ```
 
-依赖目录、虚拟环境、构建产物和本地调研草稿不属于仓库结构；不要把它们作为架构事实源。
+入口：
 
-## Roadmap
+- [`Eval 方法与验收规则`](./docs/evals/README.md)
+- [`OfferU Core v1：24 个任务`](./docs/evals/offeru-core-v1.md)
+- [`可直接粘贴给 DeepSeek 的完整深测提示词`](./docs/evals/deepseek-deep-test-prompt.md)
+- [`DeepSeek IDE/CLI 实测手册`](./docs/evals/deepseek-runbook.md)
+- [`机器可读报告 Schema`](./docs/evals/report-schema.json)
+- [`报告目录`](./docs/evals/reports/README.md)
 
-1. 将剩余 Operation 参数收敛为严格 JSON Schema。
-2. 完成托管执行器的通用文件产物 handback 与人工审核。
-3. 在可用上游上完成 Codex / Claude 多版本、取消、恢复和故障现场验收。
-4. 完成岗位研究 → 简历提案 → 使用者采纳，以及邮件信号 → 候选进展 → 使用者确认两个闭环。
-5. 建立桌面 Release、版本说明和隐私安全的本地运行指标。
+测试由使用者显式启动，不由 OfferU 或 Codex 自动调用 DeepSeek。报告返回后，决策顺序固定为：报告完整性 → 关键安全与控制失败 → 静默失败/错误状态 → 阻断 Golden Path 的必测任务 → 已获授权的真实集成 → 主观质量优化。
 
-文档入口见 [docs/README.md](./docs/README.md)。当前领域边界以 [CONTEXT.md](./CONTEXT.md) 和 [accepted ADRs](./docs/adr/) 为准。
+## 文档与仓库结构
 
-## 参考与许可
+```text
+OFFERU/
+├─ backend/                  FastAPI、领域服务、Registry、Agent Run Host
+├─ frontend/                 React + Vite + Tauri
+├─ agent-runtime/            Pi SDK worker/runtime bridge
+├─ docs/
+│  ├─ README.md              文档事实入口
+│  ├─ architecture/          当前架构合同
+│  ├─ adr/                   保留历史的架构决策
+│  ├─ evals/                 prompt、suite、runbook、schema、reports
+│  ├─ agents/                Issue/triage/domain 协作规则
+│  ├─ design/                机器可读设计资产
+│  └─ archive/               过时计划、审计与研究稿
+├─ CONTEXT.md                领域语言与产品边界
+└─ AGENTS.md                 Agent 开发约束
+```
 
-- [CareerOps](https://github.com/santifer/career-ops)：外部 Coding Agent / CLI-first 交互参考
-- [Pi SDK](https://pi.dev/docs/latest/sdk)：内置 Agent runtime 脚手架
-- [Codex App Server](https://developers.openai.com/codex/app-server/)：Codex 原生托管协议
-- [Claude Agent SDK](https://platform.claude.com/docs/en/agent-sdk/overview)：Claude 原生托管 SDK
-- [Tauri frontend configuration](https://v2.tauri.app/start/frontend/) 与 [Vite](https://vite.dev/guide/)
-- [Model Context Protocol](https://modelcontextprotocol.io/docs/learn/architecture)
-- [Agent Skills specification](https://agentskills.io/specification)
+从 [`docs/README.md`](./docs/README.md) 进入完整文档；归档内容不证明当前能力。
 
-OfferU 使用 [MIT License](./LICENSE)。欢迎通过 [GitHub Issues](https://github.com/avabbbb/OfferU/issues) 提交可复现问题和边界明确的改进建议。
+## Eval 驱动 Roadmap
+
+1. 继续完善文档、fixtures 与隔离条件；由使用者决定何时手动启动新一轮 DeepSeek 深测。
+2. 主 Agent 先验证报告 schema、脱敏和证据，再复核真实 trace/outcome。
+3. 让本地 Golden Path 在三个独立 trials 中稳定通过。
+4. 按“关键安全与控制 → 静默失败 → 核心旅程”一次只修一个纵向切片，并固化为 regression task。
+5. 最后分别验证研究、材料、邮件等真实集成，再讨论新增能力和 UI 优化。
+
+## License
+
+[MIT](./LICENSE)

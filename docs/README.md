@@ -1,44 +1,66 @@
 # OfferU 文档导航
 
-本文只回答两个问题：现在什么是事实源，以及旧文档还应该怎样使用。
+这里区分“产品应该怎样”“代码暴露了什么”和“当前版本已经证明什么”。不要再用旧路线图或静态功能表替代实测证据。
 
-## 事实优先级
+## 从哪里开始
 
-1. [`CONTEXT.md`](../CONTEXT.md)：领域语言、产品边界和不可混用的概念。
-2. [`docs/adr/`](./adr/) 中最新的 `accepted` ADR：已经确认的架构决策。
-3. 当前代码与 `python -m app.cli manifest --pretty`：真实可执行能力。
-4. [`docs/architecture/`](./architecture/)：当前架构说明、外部参考对齐与日期化验收记录。
-5. 日期化审计、路线图和实施计划：历史上下文，不覆盖以上事实源。
-
-当聊天总结、旧计划或 README 与 accepted ADR 冲突时，以最新 accepted ADR 为准。
-
-## 当前架构
-
-| 文档 | 用途 |
+| 你要回答的问题 | 入口 |
 |---|---|
-| [Agent System](./architecture/agent-system.md) | 内置 Pi Agent、外部 Coding Agent、Operation Registry 和安全边界 |
-| [CareerOps alignment](./architecture/career-ops-alignment.md) | OfferU 借鉴了什么、没有复刻什么、还缺什么 |
-| [Runtime acceptance 2026-07-30](./architecture/runtime-acceptance-2026-07-30.md) | Pi、Codex、Claude 的一次现场验收与外部阻塞快照 |
-| [ADR 0046](./adr/0046-use-pi-sdk-worker-for-main-agent-runtime.md) | Pi SDK 是内置主 Agent 的运行时底座 |
-| [ADR 0047](./adr/0047-use-vite-static-spa-for-tauri-frontend.md) | Tauri 使用 Vite 静态 SPA，不再使用 Next.js 开发服务器 |
+| OfferU 的领域模型、用户目标和产品边界是什么？ | [`CONTEXT.md`](../CONTEXT.md) |
+| 当前架构为何这样设计？ | [`docs/adr`](./adr/) 中最新 accepted ADR |
+| Agent、Registry 和执行器如何分工？ | [`Agent System`](./architecture/agent-system.md) |
+| 当前版本是否真的可用、Agent 是否完整？ | [`Eval 手册`](./evals/README.md) 与最新有效报告 |
+| 如何让 DeepSeek Agent 做真实测试？ | [`DeepSeek Eval Runbook`](./evals/deepseek-runbook.md) |
+| 过去的设计和阶段计划在哪里？ | [`Archive`](./archive/README.md) |
 
-## 历史快照
+## 当前事实链
 
-下列文档保留原始决策过程和验收意图，但不再表示当前完成度：
+```text
+CONTEXT + accepted ADR
+        定义预期行为
+                ↓
+实时 doctor / manifest / ops / schema
+        定义当前可执行表面
+                ↓
+版本化 Eval suite + trace + outcome
+        证明当前实际行为
+                ↓
+Eval 报告
+        驱动下一修复或发布决策
+```
 
-| 文档 | 当前用途 |
+当来源冲突时：
+
+- 领域含义和预期行为以 `CONTEXT.md` 与最新 accepted ADR 为准。
+- Operation、参数和动态数量以实时 Registry 为准。
+- “已通过”“可内测”“Agent 完整”等运行事实只能由符合规范的最新 Eval 报告证明。
+- 归档文件和 pre-eval 报告只提供历史线索，不覆盖前三项。
+
+## 活跃文档
+
+| 路径 | 维护内容 |
 |---|---|
-| [Backend capability audit 2026-07-16](./BACKEND_CAPABILITY_AUDIT_2026-07-16.md) | 早期能力与风险基线 |
-| [Implementation roadmap 2026-07-17](./IMPLEMENTATION_ROADMAP_2026-07-17.md) | 四个垂直闭环的原始发布门 |
-| [WebUI workbench design 2026-07-17](./WEBUI_WORKBENCH_DESIGN_2026-07-17.md) | 工作台信息架构和交互意图 |
-| [WebUI Slice 01](./implementation/WEBUI_SLICE_01_APPLICATIONS_PLAN_2026-07-17.md) | 投递进展首切片的历史实施计划 |
+| [`architecture/agent-system.md`](./architecture/agent-system.md) | 当前 Agent 拓扑、责任边界与不变量 |
+| [`evals/README.md`](./evals/README.md) | Eval 方法、状态、grader 和验收规则 |
+| [`evals/offeru-core-v1.md`](./evals/offeru-core-v1.md) | 24 个核心产品与 Agent 完整性任务 |
+| [`evals/deepseek-runbook.md`](./evals/deepseek-runbook.md) | DeepSeek IDE/CLI Agent 的真实执行协议 |
+| [`evals/reports`](./evals/reports/README.md) | 正式结果与已降级标记的历史快照 |
+| [`agents`](./agents/domain.md) | Issue、triage 和领域文档协作规则 |
+| [`design/offeru-design-dna.json`](./design/offeru-design-dna.json) | 机器可读的视觉设计 DNA |
 
-本地被 `.gitignore` 排除的调研草稿、PoC 方案和个人笔记不是项目事实源。若其中结论仍有效，应压缩进 `CONTEXT.md`、accepted ADR 或 `docs/architecture/`，而不是继续让多个大文档并行维护同一事实。
+## ADR 规则
 
-## 维护规则
+- ADR 保留完整历史，不删除 superseded 记录。
+- 架构变化写新 ADR，不在 README 中悄悄改变决策。
+- 当前实现冲突时，以最新 `accepted` ADR 为目标事实，并通过 Eval 暴露实现差距。
+- 关键入口包括 [量化验收原则](./adr/0028-use-three-layer-quantitative-acceptance-gates.md)、[统一 Operation Registry](./adr/0029-one-operation-registry-for-gui-cli-tui-and-slash-skills.md)、[结构化 Skill Registry](./adr/0037-structured-skill-registry-is-the-single-source.md)、[主 Agent runtime](./adr/0046-use-pi-sdk-worker-for-main-agent-runtime.md) 和 [Vite/Tauri 前端](./adr/0047-use-vite-static-spa-for-tauri-frontend.md)。
 
-- README 面向第一次进入项目的人，只保留定位、真实入口、当前边界和下一步。
-- 架构选择写 ADR；动态数量从 CLI manifest 发现，不在多个文档重复维护。
-- 现场验收使用日期化文件，记录版本、环境、成功项和外部阻塞。
-- 实施计划完成后改成历史状态，不再把“待实施”留在当前文档入口。
-- 不删除 superseded ADR；通过 front matter 明确替代关系。
+## 文档生命周期
+
+1. 用户目标或真实失败先固化为 Eval Task。
+2. 架构决策进入 ADR；当前拓扑同步到 `architecture/agent-system.md`。
+3. 实施计划只服务一个可验收纵向切片。
+4. 切片结束后，保留必要 ADR/Task，阶段计划移入 archive。
+5. 每次正式测试生成日期化报告，不覆盖历史结果。
+
+README 只保留定位、启动方式、已经证明/尚未证明的状态和入口；动态计数从 CLI 发现，不在多份文档中复制。

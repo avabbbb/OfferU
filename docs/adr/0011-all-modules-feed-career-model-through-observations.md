@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted (partially superseded by ADR-0048)
 ---
 
 # 面试、简历与投递通过学习观察反哺使用者职业模型

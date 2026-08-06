@@ -17,7 +17,7 @@ os.chdir(BACKEND_DIR)
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.database import async_session, init_db
 from app.agents import optimize_agent
@@ -432,6 +432,10 @@ class ResumeOptimizationLifecycleTests(unittest.TestCase):
 async def _create_fixture() -> dict:
     token = _uniq("resume-opt")
     async with async_session() as db:
+        # 先复位既有默认标记：测试候选档案不应该是全局默认档案，
+        # 否则多默认档案会让 get_profile / list_profile_evidence 报
+        # MultipleResultsFound，污染后续测试与应用运行。
+        await db.execute(update(Profile).values(is_default=False))
         profile = Profile(
             name=f"候选人-{token}",
             is_default=True,

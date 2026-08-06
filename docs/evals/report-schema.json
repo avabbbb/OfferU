@@ -1,0 +1,198 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "offeru-eval-report/1.0",
+  "title": "OfferU Eval Report Summary",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "report_schema",
+    "suite_id",
+    "suite_version",
+    "run_id",
+    "target_scope",
+    "started_at",
+    "finished_at",
+    "executor",
+    "environment",
+    "engineering_checks",
+    "totals",
+    "verdicts",
+    "tasks",
+    "metrics",
+    "security_findings",
+    "limitations",
+    "recommended_decision"
+  ],
+  "properties": {
+    "report_schema": { "const": "offeru-eval-report/1.0" },
+    "suite_id": { "const": "offeru-core-v1" },
+    "suite_version": { "type": "string", "minLength": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "target_scope": {
+      "enum": ["core-baseline", "full-integration"]
+    },
+    "started_at": { "type": "string", "format": "date-time" },
+    "finished_at": { "type": "string", "format": "date-time" },
+    "executor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agent", "model"],
+      "properties": {
+        "agent": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commit",
+        "dirty_files",
+        "os",
+        "python",
+        "node",
+        "offeru_cli",
+        "provider",
+        "provider_model",
+        "data_isolation"
+      ],
+      "properties": {
+        "commit": { "type": "string", "minLength": 1 },
+        "dirty_files": { "type": "array", "items": { "type": "string" } },
+        "os": { "type": "string", "minLength": 1 },
+        "python": { "type": "string", "minLength": 1 },
+        "node": { "type": "string", "minLength": 1 },
+        "offeru_cli": { "type": "string", "minLength": 1 },
+        "provider": { "type": "string", "minLength": 1 },
+        "provider_model": { "type": "string", "minLength": 1 },
+        "data_isolation": { "enum": ["proven", "not_proven"] }
+      }
+    },
+    "engineering_checks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/check" }
+    },
+    "totals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pass", "fail", "blocked", "not_run", "invalid"],
+      "properties": {
+        "pass": { "type": "integer", "minimum": 0 },
+        "fail": { "type": "integer", "minimum": 0 },
+        "blocked": { "type": "integer", "minimum": 0 },
+        "not_run": { "type": "integer", "minimum": 0 },
+        "invalid": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "verdicts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required_tasks",
+        "core_journey",
+        "integration_claims",
+        "overall"
+      ],
+      "properties": {
+        "required_tasks": { "$ref": "#/$defs/status" },
+        "core_journey": { "$ref": "#/$defs/status" },
+        "integration_claims": { "$ref": "#/$defs/status" },
+        "overall": { "$ref": "#/$defs/status" }
+      }
+    },
+    "tasks": {
+      "type": "array",
+      "minItems": 24,
+      "maxItems": 24,
+      "items": { "$ref": "#/$defs/task" }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pass_at_1",
+        "pass_power_3",
+        "tool_argument_validity",
+        "latency_p50_ms",
+        "latency_p95_ms"
+      ],
+      "properties": {
+        "pass_at_1": { "$ref": "#/$defs/nullableNumber" },
+        "pass_power_3": { "$ref": "#/$defs/nullableNumber" },
+        "tool_argument_validity": { "$ref": "#/$defs/nullableNumber" },
+        "latency_p50_ms": { "$ref": "#/$defs/nullableNumber" },
+        "latency_p95_ms": { "$ref": "#/$defs/nullableNumber" }
+      }
+    },
+    "security_findings": { "type": "array", "items": { "type": "string" } },
+    "limitations": { "type": "array", "items": { "type": "string" } },
+    "recommended_decision": {
+      "enum": [
+        "stop-for-safety",
+        "fix-regression",
+        "unblock-environment",
+        "run-more-evals",
+        "candidate-for-human-review"
+      ]
+    }
+  },
+  "$defs": {
+    "status": {
+      "enum": ["PASS", "FAIL", "BLOCKED", "NOT_RUN", "INVALID"]
+    },
+    "nullableNumber": {
+      "type": ["number", "null"]
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "exit_code", "duration_ms"],
+      "properties": {
+        "command": { "type": "string", "minLength": 1 },
+        "exit_code": { "type": ["integer", "null"] },
+        "duration_ms": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "status", "command", "exit_code", "duration_ms", "artifact"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "status": { "$ref": "#/$defs/status" },
+        "command": { "type": "string", "minLength": 1 },
+        "exit_code": { "type": ["integer", "null"] },
+        "duration_ms": { "type": ["integer", "null"], "minimum": 0 },
+        "artifact": { "type": "string", "minLength": 1 }
+      }
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "class",
+        "status",
+        "trials_required",
+        "trials_passed",
+        "commands",
+        "trajectory_evidence",
+        "outcome_evidence",
+        "failed_assertions",
+        "limitations"
+      ],
+      "properties": {
+        "id": { "type": "string", "pattern": "^CORE-[A-Z]+-[0-9]{3}$" },
+        "class": { "enum": ["required", "integration", "diagnostic"] },
+        "status": { "$ref": "#/$defs/status" },
+        "trials_required": { "type": "integer", "enum": [1, 3] },
+        "trials_passed": { "type": "integer", "minimum": 0, "maximum": 3 },
+        "commands": { "type": "array", "items": { "$ref": "#/$defs/command" } },
+        "trajectory_evidence": { "type": "array", "items": { "type": "string" } },
+        "outcome_evidence": { "type": "array", "items": { "type": "string" } },
+        "failed_assertions": { "type": "array", "items": { "type": "string" } },
+        "limitations": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

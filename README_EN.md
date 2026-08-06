@@ -5,36 +5,29 @@
 <h1 align="center">OfferU</h1>
 
 <p align="center">
-  <strong>A local-first, evidence-driven AI job-search workbench</strong><br />
-  One set of career facts connecting job research, material proposals, application progress, interview practice, and auditable Agents.
+  <strong>A local-first, evidence-driven, eval-first AI job-search workbench</strong><br />
+  One set of career facts connecting job decisions, research, material proposals, application progress, interview practice, and auditable Agents.
 </p>
 
 <p align="center">
   <a href="https://github.com/avabbbb/OfferU/stargazers"><img src="https://img.shields.io/github/stars/avabbbb/OfferU?style=flat&logo=github" alt="GitHub stars" /></a>
-  <a href="https://github.com/avabbbb/OfferU/forks"><img src="https://img.shields.io/github/forks/avabbbb/OfferU?style=flat" alt="GitHub forks" /></a>
   <a href="https://github.com/avabbbb/OfferU/issues"><img src="https://img.shields.io/github/issues/avabbbb/OfferU?style=flat" alt="GitHub issues" /></a>
-  <a href="https://github.com/avabbbb/OfferU/releases"><img src="https://img.shields.io/github/downloads/avabbbb/OfferU/total?style=flat&label=downloads" alt="Release downloads" /></a>
-  <img src="https://visitor-badge.laobi.icu/badge?page_id=avabbbb.OfferU&left_text=README%20views" alt="README badge views" />
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/Backend-FastAPI-009688?style=flat&logo=fastapi" alt="FastAPI" />
-  <img src="https://img.shields.io/badge/Frontend-React%2018%20%2B%20Vite%208-646CFF?style=flat&logo=vite" alt="React 18 and Vite 8" />
-  <img src="https://img.shields.io/badge/Desktop-Tauri%202-24C8DB?style=flat&logo=tauri" alt="Tauri 2" />
-  <img src="https://img.shields.io/badge/Agent-Pi%20SDK%20runtime-6B6B6B?style=flat" alt="Pi SDK runtime" />
-  <img src="https://img.shields.io/badge/License-MIT-2F855A?style=flat" alt="MIT License" />
+  <img src="https://img.shields.io/badge/status-internal%20alpha-D97706?style=flat" alt="Internal alpha" />
+  <img src="https://img.shields.io/badge/eval-baseline%20pending-64748B?style=flat" alt="Eval baseline pending" />
+  <img src="https://img.shields.io/badge/license-MIT-2F855A?style=flat" alt="MIT License" />
 </p>
 
 <p align="center">
   <a href="./README.md">中文</a> ·
-  <a href="#current-release">Current release</a> ·
-  <a href="#agent-system">Agent system</a> ·
+  <a href="#current-status">Current status</a> ·
+  <a href="#the-core-user-loop">Core loop</a> ·
   <a href="#quick-start">Quick start</a> ·
-  <a href="#roadmap">Roadmap</a>
+  <a href="#eval-first-development">Evals</a> ·
+  <a href="./docs/evals/deepseek-deep-test-prompt.md">DeepSeek test</a>
 </p>
 
 > [!IMPORTANT]
-> OfferU is currently a local, single-user POC—not a SaaS product. It never submits applications, sends email, or contacts third parties automatically. AI output begins as a proposal or candidate signal and may change formal job-search facts only after evidence gates and user confirmation.
+> OfferU is a local, single-user internal alpha—not a SaaS product. It never submits applications, sends email, or contacts third parties automatically. Agent output begins as a candidate or proposal and may change formal job-search state only after evidence gates and user confirmation.
 
 <table>
   <tr>
@@ -43,228 +36,191 @@
   </tr>
   <tr>
     <td align="center"><strong>Task-bound Agent Runs, events, and confirmation</strong></td>
-    <td align="center"><strong>Candidate claims, sources, and gap review</strong></td>
+    <td align="center"><strong>Candidate claims, sources, and unknowns under review</strong></td>
   </tr>
 </table>
 
-## OfferU in one minute
+## Start here
 
-A job search is an evolving evidence chain, not a one-shot generation task:
+| Your goal | Recommended entry |
+|---|---|
+| Understand whom OfferU serves and why | [The core user loop](#the-core-user-loop) and [`CONTEXT.md`](./CONTEXT.md) |
+| Run the product locally | [Quick start](#quick-start) |
+| Understand the Agent, Registry, and safety boundary | [`Agent System`](./docs/architecture/agent-system.md) |
+| Contribute or review architecture decisions | [`docs/README.md`](./docs/README.md) and the latest accepted ADR |
+| Hand the full evaluation task to DeepSeek | [`DeepSeek deep-test prompt`](./docs/evals/deepseek-deep-test-prompt.md) |
+
+## Current status
+
+> [!NOTE]
+> `internal alpha` describes the development stage only; it does not mean the core product has passed formal acceptance. OfferU still has no valid baseline conforming to [`offeru-core-v1`](./docs/evals/offeru-core-v1.md).
+
+| Evidence ledger | Current conclusion |
+|---|---|
+| Current valid baseline | None; no report is accepted as formal evidence for the current revision |
+| Verification in this update | Documentation only; no tests, builds, or external Agents were run, so there is no new product-pass claim |
+| Next proof mechanism | When ready, the user manually gives the [full deep-test prompt](./docs/evals/deepseek-deep-test-prompt.md) to a fresh DeepSeek session; the project does not auto-launch an external Agent |
+
+This README therefore reports evidence levels only. It does not infer user readiness from implementation, screenshots, old reports, or a single test run.
+
+Status vocabulary: `PROVEN` means current valid eval evidence exists; `PARTIAL` means implementation or local evidence exists but the complete acceptance rules have not been met; `UNPROVEN` means no conclusive real run exists; `BLOCKED` means an environment or dependency prevented evaluation.
+
+| Evaluation target | Current evidence state | What is still required for PROVEN |
+|---|---|---|
+| Operation / Skill control plane | `PARTIAL` | Machine-check live manifest schemas, dry-run, proposal/confirm, and cross-entry consistency |
+| Built-in main Agent | `PARTIAL` | Three independent trials of context, routing, tool arguments, failure state, and final outcome |
+| Frontend engineering surface | `UNPROVEN` | Obtain fresh typecheck=0 and build=0 evidence after the candidate syntax fix |
+| Ordinary-user job-search loop | `UNPROVEN` | Complete the job → decision → materials → progress user journey on isolated data |
+| Safety and human control | `PARTIAL` | Prove no Registry bypass, silent success, prompt-injection escalation, or credential leakage |
+| Live DeepSeek/research/email integrations | `UNPROVEN` | Run the relevant integration tasks with the actual provider, authorized data, and traceable evidence |
+| Alpha/beta release readiness | `UNPROVEN` | Pass every `required` task and provide real evidence for each integration claimed as available |
+
+Older readiness assessments now live under [`docs/evals/reports`](./docs/evals/reports/README.md) as pre-eval evidence. Their findings are candidates to reproduce, not claims about the current revision.
+
+## The core user loop
+
+OfferU should let an ordinary job seeker complete this path without learning Agent, Operation, or workflow jargon:
 
 ```text
-Confirmed career facts
-        ↓
-Job and company evidence
-        ↓
-Reviewable material proposals
-        ↓
-Application attempts and stage events
-        ↓
-Interview practice and learning observations
-        ↓
-User-confirmed career-model updates
+Select the current job
+  → Ask “Is this role worth applying to?”
+  → Reuse the confirmed career profile and current JD automatically
+  → Produce an evidence-linked decision with unknowns and risks
+  → User confirms apply / conditional apply / do not apply
+  → Propose tailored materials using verified facts only
+  → User reviews controlled form filling; never auto-submit
+  → Track one application attempt and its stage events
+  → Email signals remain candidates until the user confirms progress
 ```
 
-OfferU reuses the same facts across stages while placing data access, model calls, writes, and external actions behind explicit confirmation and audit contracts. It is neither a generic Agent wrapped around a database nor a tool that ends after generating one résumé.
+This is the product's Golden Path and the center of `offeru-core-v1`. Real failures in this path—not the desire to add more pages—set engineering priority.
 
-## Current release
+## Why “evidence-driven”
 
-Evidence baseline: **2026-07-30**.
-
-| Capability | Current state | Boundary |
-|---|---|---|
-| Today, opportunities, materials, progress, interviews | Usable / converging | Organized around job-search stages, not technical modules |
-| Job collection, triage, and research | Usable / partial loop | Public and user-authorized sources remain separate; research is reviewed as a candidate |
-| Career profile and long-term learning | Usable / partial loop | Inference and learning observations cannot become career facts directly |
-| Résumés, cover letters, and PDF | Usable / partial loop | PDF/DOCX files become page-linked candidates with quality diagnostics; only confirmed items create résumé sections |
-| Application table, email, and calendar signals | Usable / partial loop | External messages become candidate progress until the user confirms a stage change |
-| Interview library, simulation, and delivery feedback | Usable / partial loop | Content scoring remains separate from observable delivery; no personality or hiring inference |
-| Built-in main Agent | Pi SDK main path connected | AgentPanel → Python Run Host → restricted Pi Session → Operation Registry |
-| External coding agents | Native hosting and evidence handback implemented | Codex / Claude are replaceable heavy-task executors, not a second business backend |
-| Tauri frontend | Migrated to a Vite static SPA | Fixed dev port 3300; releases embed `dist` and do not start Next.js |
-
-Discover live Operations, Skills, and confirmation boundaries from the machine CLI instead of relying on numbers that will drift:
-
-```powershell
-Set-Location backend
-python -m app.cli doctor --pretty
-python -m app.cli manifest --pretty
-```
+- Experience, skills, and preferences become formal career facts only when their source is traceable and the user confirms them.
+- Job research retains sources, timestamps, and unknowns; external content is untrusted by default.
+- Résumés, letters, decisions, and progress changes begin as reviewable candidates or proposals.
+- Interview feedback and Agent inference are learning observations, not direct edits to career facts.
+- Model calls, writes, and external actions pass through one Registry, authorization, confirmation, and audit boundary.
 
 ## Agent system
 
-Yes: **Pi SDK is the runtime foundation of OfferU's built-in Agent Core**. Pi owns AgentSession, provider adaptation, context compaction, typed tools, Sessions, and lifecycle streaming. Python remains the only business backend and owns Skills, Operations, permissions, confirmation, audit, idempotency, and career-fact gates.
-
-```mermaid
-flowchart TB
-    UI["AgentPanel / Tauri"] --> HOST["Python Agent Run Host"]
-    HOST --> PI["Pi SDK Worker<br/>1 Run = 1 Session"]
-    PI --> BRIDGE["offeru_operation"]
-
-    EXT["Codex / Claude Code / other hosts"] --> SKILL["Generated OfferU Skill"]
-    SKILL --> CLI["Machine CLI"]
-    EXT -. "optional" .-> MCP["MCP adapter"]
-
-    HOST --> EXECUTOR["Hosted Executor Supervisor"]
-    EXECUTOR --> CODEX["Codex App Server"]
-    EXECUTOR --> CLAUDE["Claude Agent SDK"]
-
-    BRIDGE --> OPS["Operation Registry"]
-    CLI --> OPS
-    MCP --> OPS
-    CODEX --> REVIEW["Candidate result / human review"]
-    CLAUDE --> REVIEW
-    OPS --> DOMAIN["Profile / jobs / materials / applications / interviews"]
+```text
+React/Vite/Tauri UI ──> Python Agent Run Host ──> Pi SDK Worker
+        │                         │                       │
+        │                         └──── scoped tools ─────┘
+        │                                      │
+External IDE/CLI Agent ──> Skill + Machine CLI │
+                                               ↓
+                                      Operation Registry
+                                               ↓
+                          schema → auth → proposal → confirm
+                                               ↓
+                                    Python/SQLite facts
 ```
 
-The two paths share a control plane while retaining their native runtimes:
+- **Python is the only business backend:** profile, job, material, application, interview, and audit facts remain in Python/SQL.
+- **Pi SDK is the built-in Agent runtime:** it owns the session loop, model protocol, tool calls, and streaming—not business write authority.
+- **External coding agents are replaceable hosts:** they discover the live contract before composing atomic Operations through the machine CLI/MCP.
+- **Hosted heavy tasks are constrained sessions:** provider adapters return candidates and evidence, never direct career facts.
+- **The DeepSeek Eval Agent is a test executor:** it may run repository checks and author a report; when DeepSeek is also under test, it cannot be the sole grader.
 
-| Path | Purpose | Implemented | Main gaps |
-|---|---|---|---|
-| Built-in Pi main Agent | In-product conversation, Skill selection, and Operation loop | Task-bound Runs, restricted Sessions, streaming events, SSE reconnect, proposal/confirm, cancel, and resume | Strict schemas for remaining Operations, lost-Session decisions, more failure drills |
-| External coding agents | Let Codex, Claude, and other hosts control OfferU or run deep research | Skill + CLI/MCP, multi-host projection, native Codex/Claude adapters, task sessions, normalized events, evidence review | General file-artifact handback, multi-version and healthy-upstream live acceptance |
-
-Key safety boundaries:
-
-- Pi's built-in shell, file-write, and generic coding tools are disabled in OfferU Runs; only `offeru_operation` is exposed.
-- Public-research tasks hosted by Codex or Claude receive no database, arbitrary shell, or OfferU business-write authority.
-- GUI, the built-in Agent, CLI, MCP, and external hosts all pass through one Operation Registry.
-- Side effects persist a proposal before a separate confirmation executes it once; failures stay visible and never degrade silently.
-
-See [Agent System](./docs/architecture/agent-system.md), [CareerOps alignment](./docs/architecture/career-ops-alignment.md), and the [runtime acceptance snapshot](./docs/architecture/runtime-acceptance-2026-07-30.md).
+See [`Agent System`](./docs/architecture/agent-system.md) for the full boundary.
 
 ## Quick start
 
 ### Requirements
 
+- Windows (the primary development environment today)
 - Python 3.12
-- Node.js 22.19+
-- npm
-- A usable LLM API key or local Ollama
-- Tesseract `chi_sim` + `eng` (optional; needed only for image-only scanned PDFs and included in the backend Docker image)
-- Docker Desktop (optional)
+- Node.js and npm
+- Rust/Tauri toolchain only when running the desktop shell
 
-### Local development
+### 1. Backend
+
+From the repository root:
 
 ```powershell
-git clone https://github.com/avabbbb/OfferU.git
-Set-Location OfferU
-
-# Pi SDK and Claude hosted worker
-npm --prefix agent-runtime ci --ignore-scripts
-
-# Python business backend
 python -m venv backend/.venv312
-backend/.venv312/Scripts/Activate.ps1
-python -m pip install -r backend/requirements.txt
-Copy-Item .env.example backend/.env
-python backend/run_server.py
+backend\.venv312\Scripts\python.exe -m pip install -r backend\requirements.txt
+Copy-Item .env.example backend\.env
+backend\.venv312\Scripts\python.exe backend\run_server.py
+```
 
-# In another terminal: Vite frontend
+Configure a provider in `backend/.env` or the settings UI when needed. Never commit API keys.
+
+### 2. Frontend
+
+In another terminal:
+
+```powershell
 npm --prefix frontend ci
 npm --prefix frontend run dev
 ```
 
-Open:
+Open `http://localhost:7410`. The development port is fixed at `7410`. A port change must update both `dev/start` in `frontend/package.json` and `devUrl` in `frontend/src-tauri/tauri.conf.json`; `frontendDist` must remain the static `../dist` path.
 
-- WebUI: <http://localhost:3300>
-- API docs: <http://localhost:8000/docs>
-
-The Windows frontend development port is fixed at `3300`. A port change must update both `frontend/package.json` and `frontend/src-tauri/tauri.conf.json`; `frontendDist` must continue to point at `../dist`. See [ADR 0047](./docs/adr/0047-use-vite-static-spa-for-tauri-frontend.md).
-
-Text-layer PDFs and DOCX files do not need OCR. Image-only PDFs require [Tesseract](https://tesseract-ocr.github.io/tessdoc/Installation.html) with the `chi_sim` and `eng` trained data; use `tesseract --list-langs` to inspect the installation. Parse responses and the import review UI expose OCR configuration, per-page methods, quality, and low-quality pages instead of reporting false success.
-
-### Docker development stack
+### 3. Discover the live Agent contract
 
 ```powershell
-Copy-Item .env.example .env
-docker compose up -d
+Set-Location backend
+.\.venv312\Scripts\python.exe -m app.cli doctor --pretty
+.\.venv312\Scripts\python.exe -m app.cli manifest --pretty
+.\.venv312\Scripts\python.exe -m app.cli ops --pretty
+.\.venv312\Scripts\python.exe -m app.cli schema <operation_name> --pretty
 ```
 
-| Service | Address |
-|---|---|
-| WebUI | <http://localhost:3011> |
-| Backend API | <http://localhost:9000> |
-| API docs | <http://localhost:9000/docs> |
+Do not rely on drifting Operation counts, Skill counts, provider names, or model names in documentation.
 
-Docker Compose currently covers PostgreSQL, FastAPI, and the Vite WebUI. Use the local development path above for Pi/Claude local workers and Tauri packaging.
+## Eval-first development
 
-### Control OfferU from an external Agent
-
-Run from `backend/`:
-
-```powershell
-python -m app.cli manifest --pretty
-python -m app.cli ops --pretty
-python -m app.cli schema prepare_resume_optimization --pretty
-python -m app.cli run list_jobs --arg page_size=5 --pretty
-
-# A side-effect command only creates a proposal
-python -m app.cli run start_job_research --arg job_id=1 --pretty
-# Execute only after explicit confirmation
-python -m app.cli confirm <run_id> --action <action_id> --pretty
-```
-
-External hosts use the generated OfferU entry under `.agents`, `.claude`, `.codex`, or `.copilot`. Do not call internal HTTP directly, write the database, or hide multi-step business behavior in shell scripts.
-
-`inspect_resume_document` gives external hosts and the embedded Pi Agent the same PDF/DOCX parser. It is a confirmation-required sensitive local-read Operation, accepts files up to 10 MB, returns text and diagnostics without writing profile facts, and redacts both the local path and résumé text from Operation audit records.
-
-MCP is disabled by default. In a trusted local environment only, set `OFFERU_ENABLE_MCP=true` in `backend/.env`; the endpoint is `http://127.0.0.1:8000/mcp`.
-
-## Data, safety, and metrics
-
-- The local single-user edition uses SQLite; Docker integration can use PostgreSQL.
-- API keys and OAuth / IMAP credentials must never enter Git and should use the OS keychain.
-- Résumés, email excerpts, and interview transcripts require provider- and data-category consent before cloud model access.
-- Résumé imports first produce candidates; only user-selected items become Resume sections and they do not automatically become career-profile facts.
-- Raw camera video is neither uploaded nor persisted; only explicitly authorized derived delivery events are retained.
-- Stars, forks, issues, and release downloads at the top come from dynamic GitHub / Shields data.
-- `README views` counts badge requests, not GitHub-verified unique visitors or users.
-- OfferU uploads no usage telemetry by default. Any future anonymous remote telemetry requires a separate ADR, explicit opt-in, and a field allowlist.
-
-## Repository map
+Every claim that the product is “usable,” the Agent is “complete,” or a revision is “ready for alpha” must pass through:
 
 ```text
-OfferU/
-├── agent-runtime/              # Pi SDK Worker + Claude hosted worker
-├── backend/
-│   ├── app/ops.py              # sole Operation Registry
-│   ├── app/cli.py              # machine CLI
-│   ├── app/mcp_server.py       # optional thin MCP adapter
-│   └── app/services/           # Agent Hosts, Guardian, domain services
-├── frontend/
-│   ├── src/vite/               # SPA routes and page-level lazy loading
-│   ├── src/app/                # reused React feature pages
-│   └── src-tauri/              # Tauri desktop shell
-├── docs/
-│   ├── architecture/           # current architecture and dated acceptance
-│   ├── adr/                    # accepted architecture decisions
-│   └── README.md               # documentation source-of-truth order
-├── asset/screenshots/          # README screenshots
-├── CONTEXT.md                  # domain language and product boundary
-└── docker-compose.yml
+Real user task → fixtures → 1/3 trials → trajectory + outcome graders
+               → eval report → human review → next engineering decision
 ```
 
-Dependency directories, virtual environments, build output, and local research drafts are not repository architecture and must not be treated as sources of truth.
+Start here:
 
-## Roadmap
+- [`Eval methodology and acceptance rules`](./docs/evals/README.md)
+- [`OfferU Core v1: 24 tasks`](./docs/evals/offeru-core-v1.md)
+- [`Full copy-paste DeepSeek deep-test prompt`](./docs/evals/deepseek-deep-test-prompt.md)
+- [`DeepSeek IDE/CLI execution runbook`](./docs/evals/deepseek-runbook.md)
+- [`Machine-readable report schema`](./docs/evals/report-schema.json)
+- [`Report index`](./docs/evals/reports/README.md)
 
-1. Give every remaining Operation a strict JSON Schema input contract.
-2. Add general file-artifact handback and human review for hosted executors.
-3. Complete multi-version Codex / Claude cancel, resume, and failure acceptance against healthy upstreams.
-4. Close job research → résumé proposal → user adoption, and email signal → candidate progress → user confirmation.
-5. Establish desktop Releases, release notes, and privacy-safe local runtime metrics.
+The user starts testing explicitly; neither OfferU nor Codex auto-invokes DeepSeek. Once a report returns, decisions follow this order: report integrity → critical safety/control failures → silent failures and error-state defects → required Golden Path blockers → authorized live integrations → subjective quality improvements.
 
-Start with [docs/README.md](./docs/README.md). [CONTEXT.md](./CONTEXT.md) and the latest [accepted ADRs](./docs/adr/) govern current boundaries.
+## Documentation and repository layout
 
-## References and license
+```text
+OFFERU/
+├─ backend/                  FastAPI, domain services, Registry, Agent Run Host
+├─ frontend/                 React + Vite + Tauri
+├─ agent-runtime/            Pi SDK worker/runtime bridge
+├─ docs/
+│  ├─ README.md              Documentation fact index
+│  ├─ architecture/          Current architecture contract
+│  ├─ adr/                   Append-only architecture decisions
+│  ├─ evals/                 Prompt, suite, runbook, schema, and reports
+│  ├─ agents/                Issue/triage/domain collaboration rules
+│  ├─ design/                Machine-readable design assets
+│  └─ archive/               Superseded plans, audits, and research
+├─ CONTEXT.md                Domain language and product boundary
+└─ AGENTS.md                 Agent development constraints
+```
 
-- [CareerOps](https://github.com/santifer/career-ops): external coding-agent / CLI-first interaction reference
-- [Pi SDK](https://pi.dev/docs/latest/sdk): built-in Agent runtime scaffolding
-- [Codex App Server](https://developers.openai.com/codex/app-server/): native Codex hosting protocol
-- [Claude Agent SDK](https://platform.claude.com/docs/en/agent-sdk/overview): native Claude hosting SDK
-- [Tauri frontend configuration](https://v2.tauri.app/start/frontend/) and [Vite](https://vite.dev/guide/)
-- [Model Context Protocol](https://modelcontextprotocol.io/docs/learn/architecture)
-- [Agent Skills specification](https://agentskills.io/specification)
+Use [`docs/README.md`](./docs/README.md) as the documentation entry point. Archived files do not prove current behavior.
 
-OfferU is licensed under the [MIT License](./LICENSE). Reproducible bug reports and tightly scoped proposals are welcome in [GitHub Issues](https://github.com/avabbbb/OfferU/issues).
+## Eval-driven roadmap
+
+1. Continue improving docs, fixtures, and isolation; the user decides when to launch a fresh DeepSeek deep test manually.
+2. Have the main Agent validate report schema, redaction, and evidence before reviewing trace/outcome claims.
+3. Make the local Golden Path pass three independent trials.
+4. Fix one vertical slice at a time in the order critical safety/control → silent failures → core journey, turning each real fix into a regression task.
+5. Validate research, materials, and email integrations last, then discuss new capabilities or UI polish.
+
+## License
+
+[MIT](./LICENSE)

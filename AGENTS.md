@@ -21,7 +21,8 @@ Playwright MCP 或Browser 来访问/截图/识别/探索网站的视觉和代码
 - 每次写完代码，不需要检查语法，不需要执行构建，用户会自己做。
 - 不要改无关文件，不要顺手重构。
 - 如果工作区已有用户改动，不要回滚，不要覆盖；只在必要范围内追加修改。
-- **前端 dev 端口固定 3300**：Windows 上 Hyper-V/WSL2 的 winnat 会把 3000 列进动态排除段（`netsh interface ipv4 show excludedportrange protocol=tcp` 可见 2942-3041），会导致开发服务器出现系统级 `EACCES`。OfferU 已使用 Vite，3300 不在排除段、稳定可用。改端口必须同步 `frontend/package.json` 的 `scripts.dev` / `scripts.start` 与 `frontend/src-tauri/tauri.conf.json` 的 `devUrl`；`frontendDist` 必须继续指向静态目录 `../dist`，不能改成 localhost URL。
+- **前端 dev 端口固定 7410，后端固定 8765**：两个端口均避开 AI/框架常用端口（3000/3300/5173/8000/8080/11434 等）与当前 winnat 动态排除段。winnat 排除段会漂移（曾见 2942-3041，后又出现 4229-4328，4321 因此 EACCES），改端口前必须先执行 `netsh interface ipv4 show excludedportrange protocol=tcp` 确认不在任何段内。改前端端口必须同步 `frontend/package.json` 的 `scripts.dev` / `scripts.start`、`frontend/vite.config.ts`（含 TAURI HMR 端口 7411）、`frontend/src-tauri/tauri.conf.json` 的 `devUrl`、`backend/app/config.py` 默认 CORS、`backend/app/routes/email.py`、`backend/app/routes/resume.py` 的 `FRONTEND_BASE_URL`、`.env.example` 与 `backend/.env`；`frontendDist` 必须继续指向静态目录 `../dist`，不能改成 localhost URL。
+- **系统环境变量 `CORS_ORIGINS` 会覆盖 `backend/.env`**：本机 Windows 用户环境变量里存在 `CORS_ORIGINS`（旧值仅 5140/3000），pydantic-settings 环境变量优先级高于 .env，导致 .env 的 CORS 修改不生效、前端（7410）请求后端被拦。出现「浏览器 Failed to fetch / CORS blocked」时先查 `env | grep CORS` 与 `setx CORS_ORIGINS`（含 `http://localhost:7410,http://127.0.0.1:7410`），再改 .env。
 
 ## Agent skills
 

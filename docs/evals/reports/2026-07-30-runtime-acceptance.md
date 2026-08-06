@@ -1,11 +1,14 @@
 # Agent Runtime 现场验收记录
 
+> [!WARNING]
+> **历史运行时快照，不是当前发布门。** 本文早于 `offeru-core-v1` Eval 规范，保留用于追溯当时的探测结果；版本、可用性和结论都必须通过当前环境重新验证。当前规则见 [Eval 手册](../README.md)。
+
 - Date: 2026-07-30
 - Scope: Pi 主 Agent 与 Codex / Claude hosted executor 的运行时边界
 - Environment: Windows, Python 3.12.0 project venv, Node 24.14.0
 - Formal build/test status: not run, following `AGENTS.md`
 
-> 本文是现场验收快照，不是当前架构规范。当前边界见 [Agent System](./agent-system.md)；新验收结果应追加新的日期化记录，不覆盖本次外部阻塞。
+> 本文是现场验收快照，不是当前架构规范。当前边界见 [Agent System](../../architecture/agent-system.md)；新验收结果应生成符合当前 schema 的日期化报告，不覆盖本次历史记录。
 
 ## 1. Runtime baseline
 

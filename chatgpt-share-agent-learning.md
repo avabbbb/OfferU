@@ -1,0 +1,232 @@
+- generic [ref=e1]:
+  - link "跳至内容" [ref=e2] [cursor=pointer]:
+    - /url: "#main"
+  - generic [ref=e4]:
+    - generic [ref=e6]:
+      - generic [ref=e8]:
+        - navigation "侧边栏":
+          - generic:
+            - generic:
+              - generic:
+                - button "打开边栏":
+                  - img
+          - generic:
+            - generic:
+              - link "新聊天":
+                - /url: /
+                - generic:
+                  - img
+                - generic: 新聊天
+            - generic:
+              - generic:
+                - generic:
+                  - img
+                - generic: 搜索聊天
+            - generic:
+              - link "图片":
+                - /url: /images
+                - generic:
+                  - img
+                - generic: 图片
+          - generic:
+            - generic:
+              - button "打开“个人资料”菜单":
+                - generic:
+                  - generic:
+                    - img
+        - generic [ref=e9]:
+          - heading "历史聊天记录" [level=2] [ref=e10]
+          - navigation "历史聊天记录" [ref=e12]:
+            - generic [ref=e15]:
+              - link "主页" [ref=e16] [cursor=pointer]:
+                - /url: /
+                - img [ref=e17]
+              - button "关闭边栏" [expanded] [ref=e20]:
+                - img [ref=e21]
+            - list [ref=e24]:
+              - listitem [ref=e25]:
+                - link "新聊天 控制 Shift O" [ref=e26] [cursor=pointer]:
+                  - /url: /
+                  - generic [ref=e27]:
+                    - img [ref=e29]
+                    - generic [ref=e32]: 新聊天
+                  - generic [ref=e34]:
+                    - generic "控制" [ref=e35]
+                    - generic "Shift" [ref=e37]
+                    - generic [ref=e40]: O
+              - listitem
+              - listitem [ref=e41]:
+                - generic [ref=e42] [cursor=pointer]:
+                  - img [ref=e44]
+                  - generic [ref=e47]: 搜索聊天
+            - link "图片" [ref=e48] [cursor=pointer]:
+              - /url: /images
+              - img [ref=e50]
+              - generic [ref=e53]: 图片
+            - generic [ref=e55]:
+              - link "查看套餐和定价" [ref=e56] [cursor=pointer]:
+                - /url: https://openai.com/chatgpt/pricing/
+                - generic [ref=e57]:
+                  - img [ref=e59]
+                  - text: 查看套餐和定价
+                - img [ref=e62]
+              - generic [ref=e64] [cursor=pointer]:
+                - img [ref=e66]
+                - text: 设置
+              - generic [ref=e68] [cursor=pointer]:
+                - generic [ref=e69]:
+                  - img [ref=e71]
+                  - generic [ref=e74]: 帮助
+                - img [ref=e76]
+            - generic [ref=e78]:
+              - generic [ref=e79]:
+                - paragraph [ref=e80]: 获取为你量身定制的回复
+                - paragraph [ref=e81]: 登录以获取基于已保存聊天的回答，并可创建图片和上传文件。
+              - button "登录" [ref=e83] [cursor=pointer]:
+                - generic [ref=e84]: 登录
+      - generic [ref=e87]:
+        - generic [ref=e88]:
+          - banner:
+            - button "模型选择器" [ref=e89] [cursor=pointer]:
+              - generic [ref=e90]:
+                - generic [ref=e91]: ChatGPT
+                - img [ref=e92]
+            - generic [ref=e98]:
+              - button "登录" [ref=e99] [cursor=pointer]:
+                - generic [ref=e100]: 登录
+              - button "免费注册" [ref=e101] [cursor=pointer]:
+                - generic [ref=e102]: 免费注册
+        - main [ref=e104]:
+          - generic [ref=e105]:
+            - generic [ref=e166]:
+              - paragraph [ref=e168]: 这是已分享的 ChatGPT 对话副本
+              - button "举报对话" [ref=e170] [cursor=pointer]
+              - generic [ref=e171]:
+                - generic [ref=e174]:
+                  - button "Prompt 1" [ref=e175] [cursor=pointer]
+                  - button "Prompt 2" [ref=e176] [cursor=pointer]
+                  - button "Prompt 3" [ref=e177] [cursor=pointer]
+                  - button "Prompt 4" [ref=e178] [cursor=pointer]
+                  - button "Prompt 5" [ref=e179] [cursor=pointer]
+                  - button "Prompt 6" [ref=e180] [cursor=pointer]
+                  - button "Prompt 7" [ref=e181] [cursor=pointer]
+                  - button "Prompt 8" [ref=e182] [cursor=pointer]
+                  - button "Prompt 9" [ref=e183] [cursor=pointer]
+                  - button "Prompt 10" [ref=e184] [cursor=pointer]
+                  - button "Prompt 11" [ref=e185] [cursor=pointer]
+                  - button "Prompt 12" [ref=e186] [cursor=pointer]
+                  - button "Prompt 13" [ref=e187] [cursor=pointer]
+                  - button "Prompt 14" [ref=e188] [cursor=pointer]
+                  - button "Prompt 15" [ref=e189] [cursor=pointer]
+                  - button "Prompt 16" [ref=e190] [cursor=pointer]
+                  - button "Prompt 17" [ref=e191] [cursor=pointer]
+                  - button "Prompt 18" [ref=e192] [cursor=pointer]
+                  - button "Prompt 19" [ref=e193] [cursor=pointer]
+                  - button "Prompt 20" [ref=e194] [cursor=pointer]
+                  - button "Prompt 21" [ref=e195] [cursor=pointer]
+                  - button "Prompt 22" [ref=e196] [cursor=pointer]
+                  - button "Prompt 23" [ref=e197] [cursor=pointer]
+                  - button "Prompt 24" [ref=e198] [cursor=pointer]
+                  - button "Prompt 25" [ref=e199] [cursor=pointer]
+                  - button "Prompt 26" [ref=e200] [cursor=pointer]
+                  - button "Prompt 27" [ref=e201] [cursor=pointer]
+                  - button "Prompt 28" [ref=e202] [cursor=pointer]
+                  - button "Prompt 29" [ref=e203] [cursor=pointer]
+                  - button "Prompt 30" [ref=e204] [cursor=pointer]
+                  - button "Prompt 31" [ref=e205] [cursor=pointer]
+                  - button "Prompt 32" [ref=e206] [cursor=pointer]
+                  - button "Prompt 33" [ref=e207] [cursor=pointer]
+                  - button "Prompt 34" [ref=e208] [cursor=pointer]
+                  - button "Prompt 35" [ref=e209] [cursor=pointer]
+                  - button "Prompt 36" [ref=e210] [cursor=pointer]
+                  - button "Prompt 37" [ref=e211] [cursor=pointer]
+                  - button "Prompt 38" [ref=e212] [cursor=pointer]
+                  - button "Prompt 39" [ref=e213] [cursor=pointer]
+                  - button "Prompt 40" [ref=e214] [cursor=pointer]
+                  - button "Prompt 41" [ref=e215] [cursor=pointer]
+                  - button "Prompt 42" [ref=e216] [cursor=pointer]
+                  - button "Prompt 43" [ref=e217] [cursor=pointer]
+                - generic [ref=e233]:
+                  - heading "你说：" [level=4] [ref=e234]
+                  - generic [ref=e239]:
+                    - generic [ref=e240]
+                    - generic [ref=e258]: "@网页搜索 他披露了更多细节，请你帮我梳理串讲这些知识，形成一个技术博客，说明一下学习路线和感悟，结合我的简历里的项目"
+                - generic [ref=e288]:
+                  - heading "你说：" [level=4] [ref=e289]
+                  - generic [ref=e294]:
+                    - generic [ref=e295]
+                    - generic [ref=e309]: "@网页搜索 你这些术语概念是你自己自创的吗？你看看人家现在都在说啥好吧，受控执行思维是啥东西？没听过"
+                - generic [ref=e323]:
+                  - heading "你说：" [level=4] [ref=e324]
+                  - generic [ref=e329]:
+                    - generic [ref=e331]
+                    - generic [ref=e336]: "@网页搜索 这是我在网上扎到的一个优秀简历，你看看我目前的简历跟他对比起来有哪些可以优化"
+                - generic [ref=e358]:
+                  - heading "你说：" [level=4] [ref=e359]
+                  - generic [ref=e364]:
+                    - generic [ref=e366]
+                    - generic [ref=e371]: "@网页搜索 这是我做的初版简历，你看看如何"
+                - generic [ref=e380]:
+                  - heading "ChatGPT 说：" [level=4] [ref=e381]
+                  - generic [ref=e383]:
+                    - generic [ref=e384]
+                    - button "来源" [ref=e454] [cursor=pointer]
+                - generic [ref=e461]:
+                  - heading "你说：" [level=4] [ref=e462]
+                  - generic [ref=e467]:
+                    - generic [ref=e469]
+                    - generic [ref=e474]: "@网页搜索 他这个评估方法你可以给我讲讲吗："
+                - generic [ref=e477]:
+                  - heading "ChatGPT 说：" [level=4] [ref=e478]
+                  - generic [ref=e480]:
+                    - generic [ref=e481]
+                    - button "来源" [ref=e922] [cursor=pointer]
+                - generic [ref=e929]:
+                  - heading "你说：" [level=4] [ref=e930]
+                  - generic [ref=e937]: "@网页搜索 他还有哪些类似这篇文章一样的讲harness工程设计的博客，有价值的，比如Sub agent muti agent相关的 infra相关的 后训练sfs相关的？https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents"
+                - generic [ref=e940]:
+                  - heading "ChatGPT 说：" [level=4] [ref=e941]
+                  - generic [ref=e943]:
+                    - generic [ref=e944]
+                    - button "来源" [ref=e1458] [cursor=pointer]
+            - generic [ref=e107]:
+              - generic:
+                - generic:
+                  - button:
+                    - img
+              - generic [ref=e113]:
+                - generic [ref=e117]:
+                  - button "添加文件等" [ref=e120] [cursor=pointer]:
+                    - img
+                  - textbox "与 ChatGPT 聊天" [ref=e123]:
+                    - paragraph [ref=e124]: 给“ChatGPT”发送消息
+                  - button "搜索，点击以重试" [ref=e129] [cursor=pointer]:
+                    - generic
+                    - generic [ref=e130]: 搜索
+                    - generic
+                  - generic [ref=e132]:
+                    - button "开始听写" [ref=e133] [cursor=pointer]
+                    - button "启动语音功能" [ref=e137] [cursor=pointer]
+                - button [ref=e142]
+                - button [ref=e143]
+              - generic [ref=e149]: ChatGPT 是 AI，可能会犯错。
+    - dialog [ref=e151]:
+      - generic [ref=e152]:
+        - heading "我们使用 Cookie" [level=1] [ref=e153]
+        - button "关闭" [ref=e154] [cursor=pointer]:
+          - img
+      - generic [ref=e155]:
+        - paragraph [ref=e156]:
+          - text: Cookie 可帮助本网站正常运行、衡量使用情况并支持营销。你可以随时
+          - button "管理" [ref=e157] [cursor=pointer]
+          - text: Cookie 偏好设置。详细了解我们的
+          - link "Cookie 政策" [ref=e158] [cursor=pointer]:
+            - /url: https://openai.com/policies/cookie-policy/
+          - text: 。
+        - generic [ref=e159]:
+          - button "拒绝非必需" [ref=e160] [cursor=pointer]:
+            - generic [ref=e161]: 拒绝非必需
+          - button "全部接受" [active] [ref=e162] [cursor=pointer]:
+            - generic [ref=e163]: 全部接受
+  - alert [ref=e164]
+  - status [ref=e165]

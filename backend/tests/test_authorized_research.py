@@ -167,7 +167,9 @@ class AuthorizedResearchBoundaryTests(unittest.TestCase):
             "corroborated",
         )
 
-    def test_community_capture_cannot_become_a_hard_fact(self) -> None:
+    def test_community_capture_cannot_become_a_verified_hard_fact(self) -> None:
+        # 社区来源（脉脉）可以支撑一条结论，但不能被当作官方验证的硬事实：
+        # 无官方来源时降级为 single_signal，研究仍可完成（证据不足是可解释退出状态）。
         payload = _combined_payload(
             base={"sources": [], "findings": [], "gaps": []},
             captures=[
@@ -194,8 +196,15 @@ class AuthorizedResearchBoundaryTests(unittest.TestCase):
             gaps=[],
         )
 
-        with self.assertRaises(ValueError):
-            _validated_research_result(payload)
+        result = _validated_research_result(payload)
+        hard = [
+            item
+            for item in result["findings"]
+            if item["finding_type"] == "role_requirement"
+        ]
+        self.assertTrue(hard)
+        self.assertEqual(hard[0]["evidence_level"], "single_signal",
+                         "社区来源的硬事实应降级为 single_signal，而非官方验证结论")
 
     def test_resume_capture_stores_expression_pattern_not_candidate_resume(self) -> None:
         payload = _combined_payload(

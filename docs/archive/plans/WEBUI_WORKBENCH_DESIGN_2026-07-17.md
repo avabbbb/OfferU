@@ -5,9 +5,9 @@
 - 日期：2026-07-17
 - 状态：历史设计基线；任务工作台外壳已经实施，本文不再表示当前完成度
 - 适用范围：OfferU WebUI；操作员 TUI 只共享能力契约，不共享界面形态
-- 事实源：[CONTEXT.md](../CONTEXT.md)、[ADR 0029](./adr/0029-one-operation-registry-for-gui-cli-tui-and-slash-skills.md)、[ADR 0030](./adr/0030-organize-gui-around-job-search-flow.md)、[ADR 0031](./adr/0031-use-a-task-centered-agent-workbench-shell.md)、[ADR 0032](./adr/0032-keep-mobile-focused-on-lightweight-operations.md)
+- 事实源：[CONTEXT.md](../../../CONTEXT.md)、[ADR 0029](../../adr/0029-one-operation-registry-for-gui-cli-tui-and-slash-skills.md)、[ADR 0030](../../adr/0030-organize-gui-around-job-search-flow.md)、[ADR 0031](../../adr/0031-use-a-task-centered-agent-workbench-shell.md)、[ADR 0032](../../adr/0032-keep-mobile-focused-on-lightweight-operations.md)
 
-当前前端运行边界以 [ADR 0047](./adr/0047-use-vite-static-spa-for-tauri-frontend.md) 和代码为准；当前 Agent 交互边界见 [Agent System](./architecture/agent-system.md)。
+当前前端运行边界以 [ADR 0047](../../adr/0047-use-vite-static-spa-for-tauri-frontend.md) 和代码为准；当前 Agent 交互边界见 [Agent System](../../architecture/agent-system.md)。
 
 本文取代 `UI_NOTION_CLEANUP_SOP.md` 作为后续 WebUI 结构与交互的目标蓝图。旧 SOP 保留为历史清理记录，不再作为新页面的设计依据。
 
