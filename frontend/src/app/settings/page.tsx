@@ -89,6 +89,7 @@ interface SettingsConfigPayload {
 
   llm_api_configs?: LlmApiConfig[];
   active_llm_config_id?: string;
+  disabled_llm_providers?: string[];
   provider_presets?: ProviderPreset[];
 
   active_llm_summary?: {
@@ -294,8 +295,8 @@ function TestLlmButton() {
       const API_BASE =
         process.env.NEXT_PUBLIC_API_URL ||
         (typeof window !== "undefined"
-          ? `${window.location.protocol}//${window.location.hostname}:8000`
-          : "http://127.0.0.1:8000");
+          ? `${window.location.protocol}//${window.location.hostname}:8765`
+          : "http://127.0.0.1:8765");
       const res = await fetch(`${API_BASE}/api/config/test-llm`, { method: "POST" });
       const data = await res.json();
       setResult({ success: data.success, message: data.message });
@@ -346,8 +347,8 @@ function FetchModelsButton({ baseUrl, apiKey, onModelsFetched }: FetchModelsButt
       const API_BASE =
         process.env.NEXT_PUBLIC_API_URL ||
         (typeof window !== "undefined"
-          ? `${window.location.protocol}//${window.location.hostname}:8000`
-          : "http://127.0.0.1:8000");
+          ? `${window.location.protocol}//${window.location.hostname}:8765`
+          : "http://127.0.0.1:8765");
       const res = await fetch(`${API_BASE}/api/config/fetch-models`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -415,6 +416,7 @@ export default function SettingsPage() {
 
   const [providerPresets, setProviderPresets] = useState<ProviderPreset[]>(FALLBACK_PROVIDER_PRESETS);
   const [apiConfigs, setApiConfigs] = useState<LlmApiConfig[]>([]);
+  const [disabledProviders, setDisabledProviders] = useState<string[]>([]);
   const [selectedConfigId, setSelectedConfigId] = useState("");
   const [listFeedback, setListFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
@@ -603,6 +605,10 @@ export default function SettingsPage() {
       .filter((item) => item.service_name && item.model && item.base_url);
 
     setApiConfigs(normalized);
+
+    setDisabledProviders(
+      Array.isArray(config.disabled_llm_providers) ? config.disabled_llm_providers : []
+    );
 
     const activeIdFromServer = config.active_llm_config_id || "";
     const fallbackSelected = normalized.find((item) => item.is_active)?.id || normalized[0]?.id || "";
@@ -897,6 +903,7 @@ export default function SettingsPage() {
       await updateConfig({
         llm_api_configs: normalizedConfigs,
         active_llm_config_id: activeConfig?.id || "",
+        disabled_llm_providers: disabledProviders,
         llm_provider: activeConfig?.provider_id || "",
         llm_model: activeConfig?.model || "",
         active_llm_base_url: activeConfig?.base_url || "",
@@ -1051,9 +1058,10 @@ export default function SettingsPage() {
               <thead className="bg-[var(--foreground)] text-white">
                 <tr>
                   <th className="px-3 py-3 text-left font-semibold tracking-[0.06em]">服务商</th>
-                  <th className="px-3 py-3 text-left font-semibold tracking-[0.06em]">模型名称</th>
+                  <th className="px-3 py-3 text-left font-semibold tracking-[0.04em]">模型名称</th>
                   <th className="px-3 py-3 text-left font-semibold tracking-[0.04em]">接口地址</th>
                   <th className="px-3 py-3 text-left font-semibold tracking-[0.04em]">密钥状态</th>
+                  <th className="px-3 py-3 text-center font-semibold tracking-[0.06em]">禁用</th>
                   <th className="px-3 py-3 text-center font-semibold tracking-[0.06em]">是否激活</th>
                 </tr>
               </thead>
@@ -1082,6 +1090,23 @@ export default function SettingsPage() {
                       <td className="px-3 py-3 text-[var(--foreground-muted)]">{item.model}</td>
                       <td className="px-3 py-3 break-all text-[var(--foreground-muted)]">{item.base_url}</td>
                       <td className="px-3 py-3 text-[var(--foreground-muted)]">{displayMaskedKey(item.api_key)}</td>
+                      <td className="px-3 py-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={disabledProviders.includes(item.provider_id)}
+                          onChange={() => {
+                            setDisabledProviders((prev) =>
+                              prev.includes(item.provider_id)
+                                ? prev.filter((pid) => pid !== item.provider_id)
+                                : [...prev, item.provider_id]
+                            );
+                            markApiDirty();
+                          }}
+                          onClick={(event) => event.stopPropagation()}
+                          className="h-4 w-4 cursor-pointer"
+                          aria-label={`禁用 ${item.service_name}`}
+                        />
+                      </td>
                       <td className="px-3 py-3 text-center">
                         <input
                           type="radio"
@@ -1594,7 +1619,7 @@ export default function SettingsPage() {
               variant="bordered"
               value={formApiKey}
               onValueChange={setFormApiKey}
-              placeholder={resolvedFormProviderId === "ollama" ? "Ollama 无需密钥" : "sk-..."}
+              placeholder={resolvedFormProviderId === "ollama" ? "Ollama 无需密钥" : "sk-... 或 env:MY_API_KEY"}
               type={showFormApiKey ? "text" : "password"}
               isDisabled={resolvedFormProviderId === "ollama"}
               isInvalid={Boolean(formErrors.api_key)}

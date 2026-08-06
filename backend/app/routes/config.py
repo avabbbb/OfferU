@@ -17,6 +17,15 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from app.config import get_settings
+from app.llm_presets import (
+    AVAILABLE_PROVIDERS,
+    PROVIDER_PRESETS,
+    _PRESET_BY_ID,
+    provider_default_model as _provider_default_model,
+    provider_default_url as _provider_default_url,
+    provider_name as _provider_name,
+    provider_tier_models as _provider_tier_models,
+)
 
 router = APIRouter()
 
@@ -34,124 +43,15 @@ _PLACEHOLDER_API_KEYS = {
     "sk-your-key",
 }
 
-PROVIDER_PRESETS: list[dict[str, Any]] = [
-    {
-        "id": "deepseek",
-        "name": "DeepSeek",
-        "description": "Cost-effective Chinese/English model",
-        "default_base_url": "https://api.deepseek.com",
-        "models": [
-            {"id": "deepseek-v4-flash", "name": "DeepSeek V4 Flash", "description": "Current fast non-thinking model"},
-            {"id": "deepseek-v4-pro", "name": "DeepSeek V4 Pro", "description": "Current high-quality reasoning model"},
-            {"id": "deepseek-chat", "name": "DeepSeek Chat (deprecated 2026-07-24)", "description": "Legacy alias for DeepSeek V4 Flash"},
-            {"id": "deepseek-reasoner", "name": "DeepSeek Reasoner (deprecated 2026-07-24)", "description": "Legacy alias for DeepSeek V4 reasoning mode"},
-        ],
-        "key_prefix": "sk-",
-    },
-    {
-        "id": "openai",
-        "name": "OpenAI",
-        "description": "Mainstream global provider",
-        "default_base_url": "https://api.openai.com/v1",
-        "models": [
-            {"id": "gpt-4.1-mini", "name": "GPT-4.1 Mini", "description": "Balanced speed and quality"},
-            {"id": "gpt-4o-mini", "name": "GPT-4o Mini", "description": "Fast multimodal model"},
-            {"id": "gpt-4.1", "name": "GPT-4.1", "description": "High quality general model"},
-        ],
-        "key_prefix": "sk-",
-    },
-    {
-        "id": "qwen",
-        "name": "Qwen",
-        "description": "Alibaba DashScope OpenAI-compatible API",
-        "default_base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        "models": [
-            {"id": "qwen-flash", "name": "Qwen Flash", "description": "Ultra-fast, lowest cost (tier=fast)"},
-            {"id": "qwen3.5-plus", "name": "Qwen3.5 Plus", "description": "Balanced quality and speed (tier=standard/premium)"},
-            {"id": "qwen3.6-plus", "name": "Qwen3.6 Plus", "description": "Best reasoning quality (tier=premium)"},
-            {"id": "qwen3.5-flash", "name": "Qwen3.5 Flash", "description": "Fast with good quality"},
-        ],
-        "key_prefix": "sk-",
-    },
-    {
-        "id": "siliconflow",
-        "name": "SiliconFlow",
-        "description": "Aggregated open model inference",
-        "default_base_url": "https://api.siliconflow.com/v1",
-        "models": [
-            {"id": "deepseek-ai/DeepSeek-V3.2", "name": "DeepSeek-V3.2", "description": "Popular coding and writing model"},
-            {"id": "Qwen/Qwen3-32B", "name": "Qwen3-32B", "description": "Strong Chinese performance"},
-            {"id": "zai-org/GLM-4.5", "name": "GLM-4.5", "description": "General purpose option"},
-        ],
-        "key_prefix": "sk-",
-    },
-    {
-        "id": "gemini",
-        "name": "Google Gemini",
-        "description": "Gemini via OpenAI-compatible endpoint",
-        "default_base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
-        "models": [
-            {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash", "description": "Fast and low-cost"},
-            {"id": "gemini-2.5-pro", "name": "Gemini 2.5 Pro", "description": "High quality reasoning"},
-        ],
-        "key_prefix": "",
-    },
-    {
-        "id": "zhipu",
-        "name": "智谱",
-        "description": "BigModel Open Platform",
-        "default_base_url": "https://open.bigmodel.cn/api/paas/v4",
-        "models": [
-            {"id": "glm-5.1", "name": "GLM-5.1", "description": "Latest flagship"},
-            {"id": "glm-4.6", "name": "GLM-4.6", "description": "Stable general model"},
-            {"id": "glm-4-plus", "name": "GLM-4-Plus", "description": "Legacy high-quality model"},
-        ],
-        "key_prefix": "",
-    },
-    {
-        "id": "ollama",
-        "name": "Ollama",
-        "description": "Local open-source inference",
-        "default_base_url": "http://localhost:11434/v1",
-        "models": [
-            {"id": "qwen2.5:7b", "name": "Qwen2.5 7B", "description": "Good Chinese local model"},
-            {"id": "llama3.1:8b", "name": "Llama 3.1 8B", "description": "General open model"},
-            {"id": "gemma2:9b", "name": "Gemma2 9B", "description": "Google open model"},
-        ],
-        "key_prefix": "",
-    },
-    {
-        "id": "custom",
-        "name": "自定义 (OpenAI 兼容)",
-        "description": "Any OpenAI-compatible API endpoint (e.g. Groq, Mistral, Together, Azure OpenAI, etc.)",
-        "default_base_url": "",
-        "models": [],
-        "key_prefix": "",
-    },
-]
-
-_PRESET_BY_ID: dict[str, dict[str, Any]] = {preset["id"]: preset for preset in PROVIDER_PRESETS}
-
-AVAILABLE_PROVIDERS = [
-    {
-        "id": preset["id"],
-        "name": preset["name"],
-        "description": preset["description"],
-        "models": [
-            {
-                "id": model["id"],
-                "name": model["name"],
-                "description": model.get("description", ""),
-            }
-            for model in preset.get("models", [])
-        ],
-    }
-    for preset in PROVIDER_PRESETS
-]
 
 
 class LlmApiConfig(BaseModel):
-    """A single provider configuration entry."""
+    """A single BYOK provider configuration entry.
+
+    provider_id 只作身份 slug 与预设匹配，不参与 LLM 行为分支；
+    base_url / api_key / model 任意组合，支持接入任意 OpenAI 兼容 API。
+    新字段均带默认值，向后兼容旧 config.json。
+    """
 
     id: str = Field(default_factory=lambda: uuid4().hex)
     provider_id: str = ""
@@ -161,6 +61,17 @@ class LlmApiConfig(BaseModel):
     api_key: str = ""
     is_active: bool = False
     extra_params: dict[str, str] = Field(default_factory=dict)
+    # tier -> model 覆盖（fast / standard / premium），可选
+    models: dict[str, str] = Field(default_factory=dict)
+    # 预留协议字段；当前仅支持 OpenAI 兼容（openai）
+    api_format: str = "openai"
+    # 是否支持 response_format=json_object（本地/旧版端点可关闭）
+    supports_json_mode: bool = True
+    default_headers: dict[str, str] = Field(default_factory=dict)
+    # 预设展示信息（cc-switch 风格），非必需
+    icon: str = ""
+    website_url: str = ""
+    notes: str = ""
 
 
 class ConfigUpdate(BaseModel):
@@ -194,6 +105,9 @@ class ConfigUpdate(BaseModel):
     # 格式: {"fast": "model-id", "standard": "model-id", "premium": "model-id"}
     tier_model_map: dict[str, str] = Field(default_factory=dict)
 
+    # 禁用的 LLM provider_id 列表（禁用后不可选，omp disabledProviders 模式）
+    disabled_llm_providers: list[str] = Field(default_factory=list)
+
     # 网络 — 仅开发环境需要改
     ssl_verify: bool = True       # False = 跳过 SSL 验证（Clash 代理场景）
     llm_timeout: int = 60         # LLM API 超时秒数
@@ -207,33 +121,14 @@ def _normalize_provider_id(value: str) -> str:
     return normalized or "custom"
 
 
-def _provider_default_url(provider_id: str) -> str:
-    preset = _PRESET_BY_ID.get(provider_id)
-    if not preset:
-        return ""
-    return str(preset.get("default_base_url", "")).strip().rstrip("/")
-
-
-def _provider_default_model(provider_id: str) -> str:
-    preset = _PRESET_BY_ID.get(provider_id)
-    if not preset:
-        return ""
-    models = preset.get("models", [])
-    if not models:
-        return ""
-    return str(models[0].get("id", "")).strip()
-
-
-def _provider_name(provider_id: str) -> str:
-    preset = _PRESET_BY_ID.get(provider_id)
-    if preset:
-        return str(preset.get("name", provider_id))
-    return provider_id
 
 
 def _mask_key(key: str) -> str:
     if not key:
         return ""
+    # env:VAR_NAME 引用不暴露密钥，原样显示
+    if key.startswith("env:") or key.startswith("ENV:"):
+        return key
     if len(key) <= 8:
         return "*" * len(key)
     return f"{key[:4]}{'*' * (len(key) - 8)}{key[-4:]}"
@@ -244,6 +139,9 @@ def _sanitize_api_key(raw: str) -> str:
     if not value:
         return ""
 
+    # env:VAR_NAME 引用原样保留，运行期从环境变量解析
+    if value.startswith("env:") or value.startswith("ENV:"):
+        return value
     lowered = value.lower()
     if "*" in value:
         return ""
@@ -275,6 +173,9 @@ def _upsert_provider_config(
             base_url=(base_url or _provider_default_url(provider_id)).rstrip("/"),
             api_key=api_key or "",
             is_active=False,
+            # BYOK: 从预设播种 tier 模型映射（fast/standard/premium），
+            # 无预设或用户自定义时不填充，回落到单模型。
+            models=_provider_tier_models(provider_id),
         )
         configs.append(target)
         return target
@@ -550,6 +451,7 @@ def _load_config() -> ConfigUpdate:
         active_llm_config_id=settings.active_llm_config_id,
         active_llm_base_url=settings.active_llm_base_url,
         active_llm_api_key=settings.active_llm_api_key,
+        disabled_llm_providers=list(settings.disabled_llm_providers or []),
     )
     _normalize_llm_state(cfg)
     return cfg
@@ -577,8 +479,12 @@ def _sync_runtime_settings(cfg: ConfigUpdate) -> None:
     settings.active_llm_base_url = cfg.active_llm_base_url
     settings.active_llm_api_key = cfg.active_llm_api_key
     settings.tier_model_map = cfg.tier_model_map
+    settings.disabled_llm_providers = cfg.disabled_llm_providers
     settings.ssl_verify = cfg.ssl_verify
     settings.llm_timeout = cfg.llm_timeout
+    # BYOK: 把 provider 列表同步进运行时 Settings，供 llm.py 统一解析
+    # （provider 可自由配置，不依赖写死的 provider 行为分支）。
+    settings.llm_api_configs = [item.model_dump() for item in cfg.llm_api_configs]
 
 
 _current_config = _load_config()
@@ -793,9 +699,24 @@ async def boss_cookie_status():
     }
 
 
+async def _probe_llm_endpoint(
+    base_url: str,
+    api_key: str,
+    model: str,
+    provider: str = "custom",
+) -> dict[str, Any]:
+    """委托共享探测逻辑（app.llm_config_store.probe_llm_endpoint）。
+
+    供「测试连接」与「一键导入」共用：返回成功/失败及可读信息，
+    失败时如实暴露 HTTP 状态与错误消息，便于用户定位（如无效 API Key）。
+    """
+    from app.llm_config_store import probe_llm_endpoint
+
+    return await probe_llm_endpoint(base_url, api_key, model, provider)
+
+
 @router.post("/test-llm")
 async def test_llm_connection():
-    import httpx
     from app.agents.llm import _get_client
 
     settings = get_settings()
@@ -814,77 +735,86 @@ async def test_llm_connection():
             "message": str(exc),
         }
 
-    if not api_key or (isinstance(api_key, str) and api_key in _PLACEHOLDER_API_KEYS):
-        return {
-            "success": False,
-            "provider": provider,
-            "model": model,
-            "message": "API Key 未配置或仍为占位符，请先在设置中填写有效的 API Key。",
-        }
-
-    test_url = f"{base_url.rstrip('/')}/chat/completions"
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {api_key}",
-    }
-    payload = {
-        "model": model,
-        "messages": [{"role": "user", "content": "Hi"}],
-        "max_tokens": 5,
-    }
-
-    try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(test_url, json=payload, headers=headers)
-
-        if resp.status_code == 200:
-            body = resp.json()
-            model_used = body.get("model", model)
-            return {
-                "success": True,
-                "provider": provider,
-                "model": model_used,
-                "message": f"连接成功！模型 {model_used} 可正常使用。",
-            }
-
-        try:
-            err_body = resp.json()
-            err_msg = err_body.get("error", {}).get("message", "") or err_body.get("message", "")
-        except Exception:
-            err_msg = resp.text[:200]
-
-        return {
-            "success": False,
-            "provider": provider,
-            "model": model,
-            "message": f"API 返回错误 ({resp.status_code}): {err_msg}",
-        }
-    except httpx.ConnectError:
-        return {
-            "success": False,
-            "provider": provider,
-            "model": model,
-            "message": f"无法连接到 {base_url}，请检查 Base URL 是否正确以及网络是否畅通。",
-        }
-    except httpx.TimeoutException:
-        return {
-            "success": False,
-            "provider": provider,
-            "model": model,
-            "message": f"连接超时 ({base_url})，请检查网络或更换 Base URL。",
-        }
-    except Exception as exc:
-        return {
-            "success": False,
-            "provider": provider,
-            "model": model,
-            "message": f"检测失败: {exc}",
-        }
+    result = await _probe_llm_endpoint(base_url, api_key, resolved_model, provider)
+    return result
 
 
 class FetchModelsRequest(BaseModel):
     base_url: str = Field(..., min_length=1)
     api_key: str = Field(default="")
+
+
+class LlmProviderImportRequest(BaseModel):
+    """一键导入自己的 API Key（cc-switch 风格，数据驱动）。
+
+    - 提供 provider_id（预设服务商）时，base_url / 默认模型 / tier 映射自动补全。
+    - 不提供 provider_id 时，必须提供 base_url + model（任意 OpenAI 兼容端点）。
+    - activate=True 导入后立即激活；test=True 导入后真实测连接。
+    """
+
+    api_key: str = Field(..., min_length=1)
+    provider_id: str = ""
+    base_url: str = ""
+    model: str = ""
+    service_name: str = ""
+    models: dict[str, str] = Field(default_factory=dict)
+    activate: bool = True
+    test: bool = True
+
+
+@router.post("/llm-providers/import")
+async def import_llm_provider(body: LlmProviderImportRequest) -> dict[str, Any]:
+    """一键导入自己的 API Key：写入 config.json、可选激活、可选测连接。"""
+    global _current_config
+    from app.llm_config_store import import_provider, probe_llm_endpoint
+
+    result = import_provider(
+        provider_id=body.provider_id,
+        api_key=body.api_key,
+        base_url=body.base_url,
+        model=body.model,
+        service_name=body.service_name,
+        models=body.models or None,
+        activate=body.activate,
+    )
+    payload: dict[str, Any] = {"ok": result["ok"], "errors": result["errors"]}
+    config = result.get("config")
+    if config is None:
+        payload["config"] = None
+        payload["test_result"] = None
+        return payload
+    # 重载内存配置，确保 active_llm_summary / 后续读取与落盘一致
+    _current_config = _load_config()
+    _sync_runtime_settings(_current_config)
+    payload["config"] = {
+        k: config.get(k)
+        for k in (
+            "id",
+            "provider_id",
+            "service_name",
+            "model",
+            "base_url",
+            "is_active",
+            "models",
+        )
+    }
+    active = next((item for item in _current_config.llm_api_configs if item.is_active), None)
+    payload["active_llm_summary"] = {
+        "provider_id": active.provider_id if active else _current_config.llm_provider,
+        "service_name": active.service_name if active else _current_config.llm_provider,
+        "model": active.model if active else _current_config.llm_model,
+        "base_url": active.base_url if active else "",
+        "is_active": bool(active),
+    }
+    payload["test_result"] = None
+    if body.test:
+        payload["test_result"] = await probe_llm_endpoint(
+            config.get("base_url", ""),
+            config.get("api_key", ""),
+            config.get("model", ""),
+            config.get("provider_id", "custom"),
+        )
+    return payload
 
 
 @router.post("/fetch-models")

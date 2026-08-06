@@ -43,6 +43,15 @@ def main(argv: Optional[list[str]] = None) -> int:
         args = parser.parse_args(argv)
     except CliParseError as exc:
         return _print({"ok": False, "errors": [exc.message], "commands": _commands()}, exit_code=2)
+    # BYOK: CLI 与服务器共用同一份 config.json LLM 配置，避免 CLI 只读 .env
+    # 导致与 GUI 解析不一致（统一 Operation Registry 原则）。文件不存在时静默跳过。
+    try:
+        from app.llm_config_store import sync_runtime_settings_from_file
+
+        sync_runtime_settings_from_file()
+    except Exception:
+        # 配置同步失败不应阻塞只读操作；具体错误由 LLM 调用时可见地暴露。
+        pass
     try:
         if args.command == "doctor":
             return _print(_doctor(), args.pretty)

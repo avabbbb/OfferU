@@ -93,8 +93,7 @@ _SKILLS = (
     _skill("add_profile_evidence", "补充职业证据", "profile", "native", "把项目、经历、技能或证书整理为来源可验证、可去重的档案条目。", "skill_assistant", ("get_profile", "list_profile_evidence", "add_profile_evidence"), featured=False, order=180, aliases=("add", "补充经历")),
     _skill("memory_inbox", "记忆收件箱", "profile", "native", "查看职业学习观察和模型变更提案；接受、拒绝、稍后或撤销，只有确认接受后才写入档案。", "skill_assistant", ("get_profile", "list_profile_evidence", "list_learning_observations", "list_memory_inbox", "create_memory_proposal", "consolidate_memory_observations", "review_memory_proposal", "invalidate_memory_source"), featured=True, order=185, aliases=("memory", "记忆", "记忆收件箱")),
     _skill("work_source_sync", "工作源同步", "profile", "native", "只读取使用者显式登记的本地工作源；每次模型读取单独授权，变化只进入学习观察和记忆收件箱。", "skill_assistant", ("get_profile", "list_work_sources", "get_work_source", "register_work_source", "start_work_source_sync", "list_work_source_sync_runs", "get_work_source_sync_run", "resume_work_source_sync", "consolidate_memory_observations", "list_learning_observations", "list_memory_inbox", "review_memory_proposal", "invalidate_work_source"), featured=False, order=187, aliases=("work", "工作源", "工作同步")),
-    _skill("interview_prep", "面试准备", "interview", "native", "基于岗位、档案、题库和日程生成并保存准备方案。", "skill_assistant", ("get_profile", "list_jobs", "get_job", "list_calendar_events", "list_interview_questions", "list_career_artifacts", "get_career_artifact", "save_career_artifact"), featured=True, order=190, aliases=("interview", "面试准备")),
-    _skill("interview_plan", "面试冲刺计划", "interview", "native", "根据面试时间和题库生成并保存有优先级的分时准备计划。", "skill_assistant", ("get_profile", "list_jobs", "get_job", "list_calendar_events", "list_interview_questions", "list_career_artifacts", "get_career_artifact", "save_career_artifact"), featured=False, order=195, aliases=("plan", "面试计划")),
+    _skill("interview_prep", "面试准备", "interview", "native", "基于岗位、档案、题库和日程生成并保存准备方案（含按面试时间排优先级的分时冲刺计划）。", "skill_assistant", ("get_profile", "list_jobs", "get_job", "list_calendar_events", "list_interview_questions", "list_career_artifacts", "get_career_artifact", "save_career_artifact"), featured=True, order=190, aliases=("interview", "面试准备", "plan", "面试计划", "冲刺计划")),
     _skill("interview_practice", "模拟面试", "interview", "native", "确认模型和数据类别后一次一题练习；内容按固定版本 Skill 引用原文评分，浏览器派生表达事件只作独立统计。", "skill_assistant", ("get_profile", "list_jobs", "get_job", "list_interview_questions", "get_ai_interview_runtime", "list_interview_scoring_skills", "get_interview_scoring_skill", "list_ai_interviews", "get_ai_interview", "create_ai_interview", "submit_ai_interview_answer", "ingest_interview_behavior_events", "restart_ai_interview", "delete_ai_interview"), featured=True, order=200, aliases=("practice", "模拟面试", "ai面试")),
     _skill("interview_scoring", "面试评分设计", "interview", "native", "创建受 schema 约束的版本化内容评分规则；只允许声明维度、权重、证据门和提示，禁止任意代码与表达行为总分。", "skill_assistant", ("list_interview_scoring_skills", "get_interview_scoring_skill", "create_interview_scoring_skill"), featured=False, order=205, aliases=("rubric", "评分skill", "面试评分")),
     _skill("interview_debrief", "面试复盘", "interview", "native", "持久化真实面试复盘，并在确认后更新投递事实源。", "skill_assistant", ("get_profile", "list_applications", "get_application_workspace", "list_application_events", "list_career_artifacts", "get_career_artifact", "save_career_artifact", "update_application_status", "update_application_record"), featured=False, order=210, aliases=("debrief", "面试复盘")),
@@ -110,21 +109,41 @@ _SKILLS = (
 )
 
 
+def _directory_skills() -> tuple[AgentSkill, ...]:
+    """延迟加载用户目录技能（backend/skills/<name>/SKILL.md），避免循环 import。"""
+    from app.services.directory_skills import scan_directory_skills
+
+    return tuple(scan_directory_skills())
+
+
 def catalog() -> list[dict[str, Any]]:
-    return [skill.summary() for skill in sorted(_SKILLS, key=lambda item: (item.order, item.id))]
+    skills = [*_SKILLS, *_directory_skills()]
+    return [skill.summary() for skill in sorted(skills, key=lambda item: (item.order, item.id))]
 
 
 def registry_snapshot(operation_schemas: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     skills = catalog()
     if operation_schemas is not None:
         available = {str(operation.get("name") or "") for operation in operation_schemas}
+        # 内置技能引用未注册 Operation = 开发错误，直接暴露；
+        # 目录技能（用户配置）声明了未注册工具则宽容过滤，不阻塞启动。
+        builtin_ids = {skill.id for skill in _SKILLS}
         invalid = {
             skill["id"]: sorted(set(skill["allowed_tools"]) - available)
             for skill in skills
-            if set(skill["allowed_tools"]) - available
+            if skill["id"] in builtin_ids and set(skill["allowed_tools"]) - available
         }
         if invalid:
             raise ValueError(f"Skill Registry 引用了未注册 Operation: {invalid}")
+        skills = [
+            {
+                **skill,
+                "allowed_tools": sorted(
+                    set(skill["allowed_tools"]).intersection(available)
+                ),
+            }
+            for skill in skills
+        ]
         confirmed = {
             str(operation.get("name") or "")
             for operation in operation_schemas
@@ -145,7 +164,10 @@ def resolve_skill(value: str | None) -> AgentSkill | None:
         return None
     if normalized == "offeru":
         normalized = "discovery"
-    return next((skill for skill in _SKILLS if normalized == skill.id or normalized in skill.aliases), None)
+    for skill in (*_SKILLS, *_directory_skills()):
+        if normalized == skill.id or normalized in skill.aliases:
+            return skill
+    return None
 
 
 def resolve_slash_skill(user_message: str | None) -> AgentSkill | None:
@@ -184,7 +206,7 @@ async def select_skill(*, user_message: str, explicit_skill_id: str | None, fall
     if selected is not None:
         return selected, "explicit_slash_command"
 
-    visible = [skill for skill in _SKILLS if skill.featured]
+    visible = [skill for skill in (*_SKILLS, *_directory_skills()) if skill.featured]
     rows = "\n".join(f"- {skill.id}: {skill.description}" for skill in visible)
     try:
         from app.agents.llm import chat_completion, extract_json
