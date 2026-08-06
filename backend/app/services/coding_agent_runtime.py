@@ -79,13 +79,56 @@ RUNTIME_DEFINITIONS = {
         "binary": "opencode",
         "version_args": ["--version"],
         "help_args": ["--help"],
-        "required_flags": (),
-        "supported": False,
-        "protocol": "unavailable",
-        "isolation": "detected only; no verified headless contract configured",
+        "required_flags": ("run",),
+        "supported": True,
+        "protocol": "opencode-jsonl-events-v1",
+        "isolation": "non-interactive run, pure mode, ephemeral session, task cwd, prompt via stdin",
         "capabilities_decl": {
             "schema_mode": "prompt",
-            "supports_live_web_search": False,
+            "supports_live_web_search": True,
+            "supports_resume": False,
+            "supports_cancel": False,
+        },
+    },
+    "pi": {
+        "name": "Pi Coding Agent",
+        "binary": "pi",
+        "version_args": ["--version"],
+        "help_args": ["--help"],
+        "required_flags": (
+            "--print",
+            "--mode",
+            "--no-session",
+        ),
+        "supported": True,
+        "protocol": "pi-jsonl-events-v1",
+        "isolation": "non-interactive print, ephemeral session, task cwd, prompt via stdin",
+        "capabilities_decl": {
+            "schema_mode": "prompt",
+            "supports_live_web_search": True,
+            "supports_resume": True,
+            "supports_cancel": True,
+        },
+    },
+    "omp": {
+        "name": "Oh My Pi",
+        "binary": "omp",
+        "version_args": ["--version"],
+        "help_args": ["--help"],
+        "required_flags": (
+            "--print",
+            "--mode",
+            "--no-session",
+            "--no-pty",
+        ),
+        "supported": True,
+        "protocol": "pi-jsonl-events-v1",
+        "isolation": "non-interactive print, ephemeral session, no PTY, task cwd, prompt via stdin",
+        "capabilities_decl": {
+            "schema_mode": "prompt",
+            "supports_live_web_search": True,
+            "supports_resume": True,
+            "supports_cancel": True,
         },
     },
 }
@@ -352,12 +395,24 @@ def _runtime_args(
             "--output-format",
             "json",
         ]
+    if runtime_id in {"pi", "omp"}:
+        # Pi/OMP 非交互 print + JSONL 事件流；prompt 经 stdin 传入。
+        # --no-session 保证委托任务的会话不污染用户主会话；
+        # omp 额外关 PTY/LSP 加速并避免交互残留。
+        args = ["--print", "--mode", "json", "--no-session"]
+        if runtime_id == "omp":
+            args += ["--no-pty", "--no-lsp"]
+        return args
+    if runtime_id == "opencode":
+        # opencode run --format json：非交互 JSONL 事件流；--pure 关闭外部插件。
+        return ["run", "--format", "json", "--pure"]
     raise ValueError(f"未配置可执行的 coding-agent runtime: {runtime_id}")
 
 
 def _extract_worker_text(runtime_id: str, stdout: str) -> tuple[str, int]:
     candidates: list[str] = []
     structured_candidates: list[str] = []
+    error_candidates: list[str] = []
     event_count = 0
     if runtime_id == "gemini":
         # gemini --output-format json 输出单个 JSON 文档 {"response": "...", ...}
@@ -379,6 +434,44 @@ def _extract_worker_text(runtime_id: str, stdout: str) -> tuple[str, int]:
         if not isinstance(event, dict):
             continue
         event_count += 1
+        if runtime_id == "opencode":
+            # opencode run --format json：message/part 事件带文本；error 事件暴露真实原因
+            #（opencode 错误也返回 exit 0，必须从事件流识别）。
+            part = event.get("part")
+            if isinstance(part, dict) and isinstance(part.get("text"), str) and part["text"].strip():
+                candidates.append(part["text"])
+            if event.get("type") == "message":
+                message = event.get("message")
+                content = message.get("content") if isinstance(message, dict) else None
+                if isinstance(content, list):
+                    candidates.extend(
+                        str(block.get("text"))
+                        for block in content
+                        if isinstance(block, dict)
+                        and block.get("type") == "text"
+                        and str(block.get("text") or "").strip()
+                    )
+            if event.get("type") == "error":
+                err = event.get("error") if isinstance(event.get("error"), dict) else {}
+                data = err.get("data") if isinstance(err.get("data"), dict) else {}
+                message = data.get("message") or err.get("message") or ""
+                if message:
+                    error_candidates.append(f"[opencode error] {message}")
+        if runtime_id in {"pi", "omp"}:
+            # Pi/OMP JSONL 事件流：assistant message 在 message_end/turn_end/agent_end 的
+            # message.content 里（跳过 thinking 块，取 text 块）；用法统计一并收集。
+            message = event.get("message")
+            content = message.get("content") if isinstance(message, dict) else None
+            if isinstance(content, list):
+                text_blocks = [
+                    str(block.get("text"))
+                    for block in content
+                    if isinstance(block, dict)
+                    and block.get("type") == "text"
+                    and str(block.get("text") or "").strip()
+                ]
+                if text_blocks:
+                    candidates.append("\n".join(text_blocks))
         if runtime_id == "codex":
             item = event.get("item")
             if isinstance(item, dict) and item.get("type") == "agent_message" and item.get("text"):
@@ -401,7 +494,11 @@ def _extract_worker_text(runtime_id: str, stdout: str) -> tuple[str, int]:
                 )
     if structured_candidates:
         return structured_candidates[-1], event_count
-    return (candidates[-1] if candidates else stdout.strip(), event_count)
+    if candidates:
+        return candidates[-1], event_count
+    if error_candidates:
+        return error_candidates[-1], event_count
+    return stdout.strip(), event_count
 
 
 def _decode_structured_output(text: str, *, schema_mode: str = "flag") -> dict[str, Any]:
