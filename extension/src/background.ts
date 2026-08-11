@@ -16,14 +16,15 @@ import type {
   SmartFillRuntimeStats,
   SmartFillRunLogEntry,
   Message,
-  IngestPayload,
-  IngestJobPayload,
-  IngestResponse,
   MergeResponse,
+  PageAgentCollectViaResponse,
   RemoveResponse,
   StatusResponse,
   SyncResponse,
 } from "./types.js";
+import type { CollectResult } from "./page-agent/collect.js";
+import { HttpOfferUControl } from "./background/offeru-control-http.js";
+import type { SyncJobCandidate } from "./framework/workflow.js";
 import {
   JOBS_SCHEMA_VERSION,
   JOBS_STORAGE_KEY,
@@ -40,6 +41,7 @@ import {
   resolveChannelOrder,
   type SmartFillChannel,
 } from "./background/smartfill-channel.js";
+import { toExtractedJob } from "./background/page-agent-collect.js";
 import {
   buildRuntimeCatalog,
   buildSmartFillCatalogSignature,
@@ -55,7 +57,7 @@ import {
 } from "./background/smartfill-profile.js";
 
 const DEFAULT_SETTINGS: ExtensionSettings = {
-  serverUrl: "http://127.0.0.1:9000",
+  serverUrl: "http://127.0.0.1:8765",
 };
 
 const SETTINGS_KEY = "settings";
@@ -279,25 +281,24 @@ function mergeJob(existing: ExtractedJob, incoming: ExtractedJob): ExtractedJob 
   return sanitizeJob(merged);
 }
 
-function toIngestJobPayload(job: ExtractedJob): IngestJobPayload {
+function toSyncJobCandidate(job: ExtractedJob): SyncJobCandidate {
   return {
     title: job.title,
     company: job.company,
-    location: job.location,
-    url: job.url,
-    apply_url: job.apply_url || job.url,
-    source: job.source,
-    raw_description: job.raw_description,
-    posted_at: job.posted_at || undefined,
-    hash_key: job.hash_key,
-    salary_min: job.salary_min,
-    salary_max: job.salary_max,
-    salary_text: job.salary_text,
-    education: job.education,
-    experience: job.experience,
-    job_type: job.job_type,
-    company_size: job.company_size,
-    company_industry: job.company_industry,
+    description: job.raw_description,
+    location: job.location || undefined,
+    salary: job.salary_text || undefined,
+    applyUrl: job.apply_url || undefined,
+    postedAt: job.posted_at ?? undefined,
+    sourceUrl: job.url,
+    hashKey: job.hash_key,
+    salaryMin: job.salary_min,
+    salaryMax: job.salary_max,
+    education: job.education || undefined,
+    experience: job.experience || undefined,
+    jobType: job.job_type || undefined,
+    companySize: job.company_size || undefined,
+    companyIndustry: job.company_industry || undefined,
   };
 }
 
@@ -1298,43 +1299,19 @@ async function syncToServer(): Promise<SyncResponse> {
   }
 
   const settings = await getSettings();
-  const batchId = `offeru-ext-${Date.now()}`;
-  const payload: IngestPayload = {
-    jobs: jobsToSync.map(toIngestJobPayload),
-    source: "offeru-extension",
-    batch_id: batchId,
-  };
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
+  const control = new HttpOfferUControl(settings.serverUrl);
+  const candidates = jobsToSync.map(toSyncJobCandidate);
 
   try {
-    const resp = await fetch(`${settings.serverUrl}/api/jobs/ingest`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      signal: controller.signal,
-      body: JSON.stringify(payload),
-    });
+    const plan = await control.prepareJobImport(candidates);
+    const result = await control.confirmJobImport(plan.planId);
 
-    if (!resp.ok) {
-      const text = await resp.text();
-      return { ok: false, synced: 0, skippedDraft, error: `HTTP ${resp.status}: ${text}` };
-    }
+    const confirmedHashKeys = result.perItem
+      .filter((item) => item.status !== "failed")
+      .map((item) => candidates[item.index]?.hashKey)
+      .filter((key): key is string => Boolean(key));
 
-    const data = await resp.json().catch(() => ({} as IngestResponse));
-    const acceptedHashKeys = Array.isArray(data.accepted_hash_keys)
-      ? data.accepted_hash_keys.filter((key: unknown): key is string => typeof key === "string" && key.trim().length > 0)
-      : [];
-    const created = typeof data.created === "number" ? data.created : 0;
-    const skipped = typeof data.skipped === "number" ? data.skipped : 0;
-    const countedSynced = Math.max(0, created + skipped);
-    const confirmedHashKeys = acceptedHashKeys.length > 0
-      ? acceptedHashKeys
-      : countedSynced >= jobsToSync.length
-        ? jobsToSync.map((job) => job.hash_key)
-        : [];
-
-    if (confirmedHashKeys.length === 0 && countedSynced > 0) {
+    if (confirmedHashKeys.length === 0 && jobsToSync.length > 0) {
       return {
         ok: false,
         synced: 0,
@@ -1353,8 +1330,83 @@ async function syncToServer(): Promise<SyncResponse> {
     }
     const msg = err instanceof Error ? err.message : String(err);
     return { ok: false, synced: 0, skippedDraft, error: msg };
-  } finally {
-    clearTimeout(timeout);
+  }
+}
+
+// ---- 规则包采集（Page Agent 显式注入） ----
+async function collectViaPageAgent(): Promise<PageAgentCollectViaResponse> {
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  const tab = tabs[0];
+  if (!tab?.id || !tab.url) {
+    return { ok: false, message: "未找到当前标签页" };
+  }
+
+  let url: URL;
+  try {
+    url = new URL(tab.url);
+  } catch {
+    return { ok: false, message: "当前页面地址无效", fallback: true };
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    return { ok: false, message: "当前页面不支持采集", fallback: true };
+  }
+
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ["page-agent.js"],
+    });
+  } catch (error: unknown) {
+    return {
+      ok: false,
+      message: `注入失败：${error instanceof Error ? error.message : String(error)}`,
+      fallback: true,
+    };
+  }
+
+  let result: CollectResult;
+  try {
+    result = await new Promise<CollectResult>((resolve, reject) => {
+      chrome.tabs.sendMessage(
+        tab.id!,
+        { type: "PAGE_AGENT_COLLECT", url: tab.url! },
+        (response: CollectResult | undefined) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+            return;
+          }
+          resolve(response as CollectResult);
+        },
+      );
+    });
+  } catch (error: unknown) {
+    return {
+      ok: false,
+      message: `采集无响应：${error instanceof Error ? error.message : String(error)}`,
+      fallback: true,
+    };
+  }
+
+  switch (result.status) {
+    case "collected": {
+      const job = toExtractedJob(result, tab.url!);
+      if (!job) return { ok: false, message: "岗位信息不完整", status: "collected" };
+      await mergeJobs([job]);
+      const draft = job.status === "draft_pending_jd";
+      return {
+        ok: true,
+        message: draft ? "已加入购物车（信息不完整，可后续补全）" : "已加入购物车",
+        status: "collected",
+      };
+    }
+    case "unsupported":
+      return { ok: false, message: "当前页面不是受支持的岗位详情页", status: "unsupported", fallback: true };
+    case "ambiguous":
+      return { ok: false, message: "页面识别存在歧义，请稍后重试", status: "ambiguous" };
+    case "diagnostic":
+      return { ok: false, message: "页面规则异常，暂不支持采集", status: "diagnostic", fallback: true };
+    case "error":
+      return { ok: false, message: `采集失败：${result.reason ?? "未知错误"}`, status: "error", fallback: true };
   }
 }
 
@@ -1367,6 +1419,12 @@ chrome.runtime.onMessage.addListener(
           sendResponse(result);
         });
         return true; // 异步 sendResponse
+
+      case "COLLECT_VIA_PAGE_AGENT":
+        collectViaPageAgent().then((result) => {
+          sendResponse(result);
+        });
+        return true;
 
       case "SYNC_TO_SERVER":
         syncToServer().then((result) => {

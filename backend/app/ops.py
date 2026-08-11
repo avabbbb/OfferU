@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func, select, update
 
 from app.database import async_session
+from app.services.job_ingest import JobIngestItem, import_job_batch
 from app.services.agent_operations import (
     activate_authorized_research_read_only,
     add_profile_evidence,
@@ -503,6 +504,16 @@ class CreateApplicationAttemptInput(_StrictOperationInput):
     resume_version_id: int | None = Field(default=None, gt=0)
     cover_letter: str = Field(default="", max_length=60_000)
     notes: str = Field(default="", max_length=60_000)
+
+
+class ImportJobBatchInput(_StrictOperationInput):
+    """批量岗位导入（EXT-JOB-002）：逐条 hash_key 幂等，batch_id 为批次幂等键。"""
+
+    jobs: list[JobIngestItem] = Field(min_length=1, max_length=500)
+    source: str = Field(default="manual", min_length=1, max_length=40)
+    batch_id: str | None = Field(default=None, min_length=1, max_length=64)
+    keywords: list[str] = Field(default_factory=list, max_length=50)
+    location: str = Field(default="", max_length=200)
 
 
 class ListApplicationsInput(_StrictOperationInput):
@@ -1139,6 +1150,22 @@ OPERATIONS: dict[str, Operation] = {
         },
         group="jobs",
         side_effects=("write",),
+    ),
+    "import_job_batch": Operation(
+        name="import_job_batch",
+        fn=import_job_batch,
+        description="批量导入岗位为 Job（浏览器扩展/CLI 统一入口）：逐条按 hash_key 幂等去重，同 batch_id 重放不重复计数；triage_status=inbox。",
+        parameters={
+            "jobs": "list[object]",
+            "source": "str=manual",
+            "batch_id": "str?",
+            "keywords": "list[str]=[]",
+            "location": "str?",
+        },
+        group="jobs",
+        side_effects=("write",),
+        input_model=ImportJobBatchInput,
+        version="2026-08-10",
     ),
     "validate_fact_gate": Operation(
         name="validate_fact_gate",

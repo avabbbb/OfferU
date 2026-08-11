@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>Application Form - Acme Fixtures Ltd</title>
+</head>
+<body>
+  <form data-testid="application-form" action="/applications" method="post">
+    <label>
+      Full name
+      <input type="text" name="name" aria-label="full name">
+    </label>
+    <label>
+      Email
+      <input type="email" name="email" aria-label="email">
+    </label>
+    <div>
+      <span>Department</span>
+      <div data-testid="fixture-combobox" role="combobox" aria-label="department">
+        <input data-testid="fixture-options" role="listbox" aria-label="department options">
+        <div role="option">Engineering</div>
+        <div role="option">Design</div>
+      </div>
+    </div>
+    <label>
+      Notes
+      <textarea name="notes" aria-label="notes"></textarea>
+    </label>
+  </form>
+</body>
+</html>

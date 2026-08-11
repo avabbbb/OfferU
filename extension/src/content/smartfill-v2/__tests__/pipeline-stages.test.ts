@@ -21,7 +21,9 @@ vi.mock("../core/match-engine.js", () => ({
   mergeAiCandidates: mergeAiCandidatesMock,
 }));
 vi.mock("../write/writer.js", () => ({ writeBatch: writeBatchMock }));
-vi.mock("../ats/registry.js", () => ({ atsRegistry: { get: atsRegistryGetMock } }));
+vi.mock("../ats/registry.js", () => ({
+  atsRegistry: { get: atsRegistryGetMock, register: vi.fn() },
+}));
 vi.mock("../ats/adapters/feishu.adapter.js", () => ({}));
 vi.mock("../ats/adapters/beisen.adapter.js", () => ({}));
 vi.mock("../ats/adapters/moka.adapter.js", () => ({}));

@@ -6,38 +6,20 @@ import { FIELD_SCAN } from "../shared/constants.js";
 import { normalizeText } from "../shared/text-utils.js";
 
 function clickInMainWorld(element: HTMLElement): boolean {
-  const id = "__offeru_click_" + Date.now() + "_" + Math.random().toString(36).slice(2);
-  element.setAttribute(id, "");
   try {
-    const script = document.createElement("script");
-    script.textContent = `
-      (function() {
-        var el = document.querySelector('[${id}]');
-        if (el) {
-          try {
-            var rect = el.getBoundingClientRect();
-            var cx = rect.left + Math.max(0, rect.width) / 2;
-            var cy = rect.top + Math.max(0, rect.height) / 2;
-            var downOpts = { bubbles: true, cancelable: true, view: window, button: 0, buttons: 1, clientX: cx, clientY: cy, screenX: cx, screenY: cy };
-            var upOpts = { bubbles: true, cancelable: true, view: window, button: 0, buttons: 0, clientX: cx, clientY: cy, screenX: cx, screenY: cy };
-            var clickOpts = { bubbles: true, cancelable: true, view: window, button: 0, buttons: 0, clientX: cx, clientY: cy, screenX: cx, screenY: cy, detail: 1 };
-            try { el.dispatchEvent(new PointerEvent('pointerdown', downOpts)); } catch(e) { el.dispatchEvent(new MouseEvent('mousedown', downOpts)); }
-            el.dispatchEvent(new MouseEvent('mousedown', downOpts));
-            el.dispatchEvent(new MouseEvent('mouseup', upOpts));
-            el.dispatchEvent(new MouseEvent('click', clickOpts));
-          } catch(e) {
-            try { el.click(); } catch(e2) {}
-          }
-          el.removeAttribute('${id}');
-        }
-      })();
-    `;
-    document.documentElement.appendChild(script);
-    script.remove();
-    element.removeAttribute(id);
+    const rect = element.getBoundingClientRect();
+    const clientX = rect.left + Math.max(0, rect.width) / 2;
+    const clientY = rect.top + Math.max(0, rect.height) / 2;
+    const down = { bubbles: true, cancelable: true, view: window, button: 0, buttons: 1, clientX, clientY };
+    const up = { ...down, buttons: 0 };
+    if (typeof PointerEvent !== "undefined") {
+      element.dispatchEvent(new PointerEvent("pointerdown", down));
+    }
+    element.dispatchEvent(new MouseEvent("mousedown", down));
+    element.dispatchEvent(new MouseEvent("mouseup", up));
+    element.click();
     return true;
   } catch {
-    element.removeAttribute(id);
     try {
       element.click();
       return true;

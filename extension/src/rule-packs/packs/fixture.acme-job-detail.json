@@ -1,0 +1,62 @@
+{
+  "schemaVersion": "1",
+  "id": "fixture.acme-job-detail",
+  "version": "1.0.0",
+  "status": "verified",
+  "displayName": "Acme fixture job detail",
+  "hosts": [{ "kind": "exact", "value": "jobs.acme.invalid" }],
+  "pages": [
+    {
+      "id": "detail",
+      "kind": "job-detail",
+      "match": {
+        "minScore": 70,
+        "minPositiveSignals": 2,
+        "ambiguityMargin": 20,
+        "signals": [
+          { "id": "detail-path", "type": "path-glob", "polarity": "positive", "value": "/jobs/*", "weight": 40 },
+          { "id": "detail-root", "type": "css-exists", "polarity": "positive", "value": "[data-testid='job-detail']", "weight": 40 },
+          { "id": "search-page", "type": "css-exists", "polarity": "negative", "value": "[data-testid='job-search']", "weight": 80, "veto": true }
+        ]
+      },
+      "capabilities": ["read-job-detail"],
+      "jobDetail": {
+        "root": {
+          "scope": "document",
+          "candidates": [{ "css": "[data-testid='job-detail']", "stability": "semantic" }],
+          "required": true,
+          "maxMatches": 1
+        },
+        "fields": {
+          "title": {
+            "selectors": { "scope": "page-root", "candidates": [{ "css": "[data-testid='job-title']", "stability": "semantic" }], "required": true, "maxMatches": 1 },
+            "mode": "text",
+            "normalize": ["trim", "collapse-space"]
+          },
+          "company": {
+            "selectors": { "scope": "page-root", "candidates": [{ "css": "[data-testid='company-name']", "stability": "semantic" }], "required": true, "maxMatches": 1 },
+            "mode": "text",
+            "normalize": ["trim", "collapse-space"]
+          },
+          "description": {
+            "selectors": { "scope": "page-root", "candidates": [{ "css": "[data-testid='job-description']", "stability": "semantic" }], "required": true, "maxMatches": 1 },
+            "mode": "text",
+            "normalize": ["trim", "collapse-space"]
+          }
+        }
+      }
+    }
+  ],
+  "fixtures": [
+    { "id": "detail-positive", "pageKind": "job-detail", "role": "positive", "path": "fixtures/acme/detail.html", "sanitized": true, "expectedRuleId": "detail" },
+    { "id": "detail-near-negative", "pageKind": "job-detail", "role": "near-negative", "path": "fixtures/acme/search.html", "sanitized": true },
+    { "id": "detail-conflict", "pageKind": "job-detail", "role": "conflict", "path": "fixtures/acme/conflict.html", "sanitized": true }
+  ],
+  "provenance": {
+    "owner": "offeru",
+    "method": "first-party",
+    "capturedFrom": "synthetic",
+    "notesPath": "fixtures/acme/README.md",
+    "lastVerifiedAt": "2026-08-10"
+  }
+}

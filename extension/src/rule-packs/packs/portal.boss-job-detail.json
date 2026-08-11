@@ -1,0 +1,164 @@
+{
+  "schemaVersion": "1",
+  "id": "portal.boss-job-detail",
+  "version": "0.1.0",
+  "status": "experimental",
+  "displayName": "BOSS 直聘岗位详情页",
+  "hosts": [{ "kind": "suffix", "value": "zhipin.com" }],
+  "pages": [
+    {
+      "id": "job-detail",
+      "kind": "job-detail",
+      "match": {
+        "minScore": 70,
+        "minPositiveSignals": 2,
+        "ambiguityMargin": 20,
+        "signals": [
+          { "id": "detail-path", "type": "path-glob", "polarity": "positive", "value": "/job_detail/*", "weight": 40 },
+          { "id": "detail-root", "type": "css-exists", "polarity": "positive", "value": ".job-sec-text", "weight": 40 },
+          { "id": "list-page", "type": "css-exists", "polarity": "negative", "value": ".job-list-box", "weight": 80, "veto": true }
+        ]
+      },
+      "capabilities": ["read-job-detail"],
+      "jobDetail": {
+        "root": {
+          "scope": "document",
+          "candidates": [{ "css": ".job-detail", "stability": "vendor-stable" }],
+          "required": true,
+          "maxMatches": 1
+        },
+        "fields": {
+          "title": {
+            "selectors": {
+              "scope": "page-root",
+              "candidates": [
+                { "css": ".info-primary .name", "stability": "fragile" },
+                { "css": ".name h1", "stability": "fragile" },
+                { "css": "h1", "stability": "semantic" }
+              ],
+              "required": true,
+              "maxMatches": 1
+            },
+            "mode": "text",
+            "normalize": ["trim", "collapse-space"]
+          },
+          "company": {
+            "selectors": {
+              "scope": "page-root",
+              "candidates": [
+                { "css": ".company-info .name", "stability": "fragile" },
+                { "css": ".company-info a", "stability": "fragile" },
+                { "css": ".company-name", "stability": "fragile" },
+                { "css": ".boss-name", "stability": "fragile" }
+              ],
+              "required": true,
+              "maxMatches": 1
+            },
+            "mode": "text",
+            "normalize": ["trim", "collapse-space"]
+          },
+          "description": {
+            "selectors": {
+              "scope": "page-root",
+              "candidates": [
+                { "css": ".job-sec-text", "stability": "vendor-stable" },
+                { "css": ".job-detail .job-sec-text", "stability": "fragile" },
+                { "css": ".job-description", "stability": "fragile" }
+              ],
+              "required": true,
+              "maxMatches": 1
+            },
+            "mode": "text",
+            "normalize": ["trim", "collapse-space"]
+          },
+          "salary": {
+            "selectors": {
+              "scope": "page-root",
+              "candidates": [{ "css": ".salary", "stability": "vendor-stable" }],
+              "required": false,
+              "maxMatches": 1
+            },
+            "mode": "text",
+            "normalize": ["trim", "collapse-space"]
+          },
+          "location": {
+            "selectors": {
+              "scope": "page-root",
+              "candidates": [
+                { "css": ".location-address", "stability": "fragile" },
+                { "css": ".job-location", "stability": "fragile" }
+              ],
+              "required": false,
+              "maxMatches": 1
+            },
+            "mode": "text",
+            "normalize": ["trim", "collapse-space"]
+          },
+          "applyUrl": {
+            "selectors": {
+              "scope": "page-root",
+              "candidates": [
+                { "css": "a.btn-startchat", "stability": "fragile" },
+                { "css": "a[href*='job_detail']", "stability": "fragile" }
+              ],
+              "required": false,
+              "maxMatches": 1
+            },
+            "mode": "href",
+            "normalize": ["trim", "absolute-url"]
+          },
+          "postedAt": {
+            "selectors": {
+              "scope": "page-root",
+              "candidates": [
+                { "css": ".job-author .time", "stability": "fragile" },
+                { "css": ".job-author span:last-child", "stability": "fragile" }
+              ],
+              "required": false,
+              "maxMatches": 1
+            },
+            "mode": "text",
+            "normalize": ["trim", "collapse-space"]
+          },
+          "tags": {
+            "selectors": {
+              "scope": "page-root",
+              "candidates": [
+                { "css": ".job-tags .tag-item", "stability": "fragile" },
+                { "css": ".tag-list li", "stability": "fragile" }
+              ],
+              "required": false,
+              "maxMatches": 20
+            },
+            "mode": "texts",
+            "normalize": ["trim"]
+          },
+          "companyTags": {
+            "selectors": {
+              "scope": "page-root",
+              "candidates": [
+                { "css": ".company-info p", "stability": "fragile" },
+                { "css": ".sider-company p", "stability": "fragile" }
+              ],
+              "required": false,
+              "maxMatches": 8
+            },
+            "mode": "texts",
+            "normalize": ["trim"]
+          }
+        }
+      }
+    }
+  ],
+  "fixtures": [
+    { "id": "boss-detail-positive", "pageKind": "job-detail", "role": "positive", "path": "fixtures/boss/detail.html", "sanitized": true, "expectedRuleId": "job-detail" },
+    { "id": "boss-detail-near-negative", "pageKind": "job-detail", "role": "near-negative", "path": "fixtures/boss/list.html", "sanitized": true },
+    { "id": "boss-detail-conflict", "pageKind": "job-detail", "role": "conflict", "path": "fixtures/boss/conflict.html", "sanitized": true }
+  ],
+  "provenance": {
+    "owner": "offeru",
+    "method": "first-party",
+    "capturedFrom": "synthetic",
+    "notesPath": "fixtures/boss/README.md"
+  }
+}

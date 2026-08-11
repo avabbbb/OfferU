@@ -1,7 +1,8 @@
-﻿import type {
+import type {
   ClipboardCopyResponse,
   ExtractedJob,
   Message,
+  PageAgentCollectViaResponse,
   RemoveResponse,
   ResumeDetail,
   ResumeListItem,
@@ -77,7 +78,7 @@ interface CollectFromPageResponse {
   skipped: number;
 }
 
-const DEFAULT_SERVER_URL = "http://127.0.0.1:9000";
+const DEFAULT_SERVER_URL = "http://127.0.0.1:8765";
 const RESUME_IMAGE_EXPORT_SCALE = 1.2;
 const RESUME_THUMB_PREFETCH_LIMIT = 1;
 const SETTINGS_KEY = "settings";
@@ -85,7 +86,7 @@ const JOBS_KEY = "collectedJobs";
 const UI_SETTINGS_KEY = "popupUiSettings";
 const SHORTCUT_SETTINGS_KEY = "shortcutSettingsV1";
 const DESKTOP_OPEN_SETTINGS_KEY = "desktopOpenSettingsV1";
-const DEFAULT_DOCKER_PORT = "3000";
+const DEFAULT_DOCKER_PORT = "7410";
 
 const DEFAULT_UI_SETTINGS: PopupUiSettings = {
   autoSync: true,
@@ -1115,11 +1116,21 @@ async function collectCurrentPageJob(): Promise<void> {
       return;
     }
 
-    const resp = await sendCollectCommandToTab(activeTab.id);
+    // 优先规则包采集（显式注入 Page Agent）；不受支持时回退旧 content script 路径
+    const resp = await sendBackgroundMessage<PageAgentCollectViaResponse>({
+      type: "COLLECT_VIA_PAGE_AGENT",
+    });
     if (resp.ok) {
       showMessage(resp.message || "已加入购物车", "success");
+    } else if (!resp.fallback) {
+      showMessage(resp.message || "采集失败", "error");
     } else {
-      showMessage(resp.message || "当前页面无法加入岗位", "error");
+      const legacy = await sendCollectCommandToTab(activeTab.id);
+      if (legacy.ok) {
+        showMessage(legacy.message || "已加入购物车", "success");
+      } else {
+        showMessage(legacy.message || "当前页面无法加入岗位", "error");
+      }
     }
 
     await refreshStatus();

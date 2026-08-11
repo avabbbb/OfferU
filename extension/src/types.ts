@@ -33,7 +33,7 @@ export interface ExtractedJob {
 
 /** 插件设置 */
 export interface ExtensionSettings {
-  serverUrl: string; // OfferU 后端地址，默认 http://127.0.0.1:9000
+  serverUrl: string; // OfferU 后端地址，默认 http://127.0.0.1:8765
 }
 
 export interface SmartFillAiSettings {
@@ -231,7 +231,17 @@ export type Message =
   | { type: "OPEN_DRAWER"; tab?: "cart" | "resumes" | "settings" }
   | { type: "REMOVE_JOB"; hashKey: string }
   | { type: "REMOVE_JOBS"; hashKeys: string[] }
-  | { type: "CLEAR_JOBS" };
+  | { type: "CLEAR_JOBS" }
+  | { type: "COLLECT_VIA_PAGE_AGENT" }
+  | { type: "PAGE_AGENT_COLLECT"; url: string };
+
+/** popup → background：规则包采集响应（fallback=true 表示可回退旧路径） */
+export interface PageAgentCollectViaResponse {
+  ok: boolean;
+  message: string;
+  status?: "collected" | "unsupported" | "ambiguous" | "diagnostic" | "error";
+  fallback?: boolean;
+}
 
 /** 后端 /api/jobs/ingest 单条岗位结构 */
 export interface IngestJobPayload {

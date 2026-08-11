@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-import re
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -25,7 +24,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.models import Job, Pool, Batch
 from app.ops import execute_operation
-from app.services.campus_detector import detect_campus
 from pydantic import BaseModel, Field
 
 router = APIRouter()
@@ -44,7 +42,6 @@ INTERNAL_TEST_URL_MARKERS = (
     "example.com/apply/test-",
 )
 
-
 def _to_internal_status(status: str) -> str:
     value = (status or "").strip().lower()
     if value in TRIAGE_ALIAS_GROUPS["inbox"]:
@@ -55,7 +52,6 @@ def _to_internal_status(status: str) -> str:
         return "ignored"
     return value
 
-
 def _status_filter_values(status: str) -> list[str]:
     internal = _to_internal_status(status)
     if internal == "inbox":
@@ -65,7 +61,6 @@ def _status_filter_values(status: str) -> list[str]:
     if internal == "ignored":
         return ["ignored"]
     return [status]
-
 
 def _public_job_filter():
     batch_filters = [
@@ -84,42 +79,6 @@ def _public_job_filter():
         or_(Job.company.is_(None), ~Job.company.ilike(f"{INTERNAL_TEST_COMPANY_PREFIX}%")),
         *url_filters,
     )
-
-
-def _parse_posted_at(value: Optional[str]) -> Optional[datetime]:
-    text = (value or "").strip()
-    if not text:
-        return None
-
-    # 去掉常见中文前缀，兼容“发布时间：2026-04-16”这类格式。
-    text = re.sub(r"^(发布时间|更新时间|发布于|更新于|发布|更新)[:：\s]*", "", text)
-
-    iso_candidates = [text, text.replace("Z", "+00:00"), text.replace("/", "-")]
-    for candidate in iso_candidates:
-        try:
-            return datetime.fromisoformat(candidate)
-        except ValueError:
-            continue
-
-    full_date = re.search(r"(20\d{2})[年\-/.](\d{1,2})[月\-/.](\d{1,2})", text)
-    if full_date:
-        try:
-            year, month, day = map(int, full_date.groups())
-            return datetime(year, month, day)
-        except ValueError:
-            return None
-
-    month_day = re.search(r"(\d{1,2})月(\d{1,2})日", text)
-    if month_day:
-        try:
-            month, day = map(int, month_day.groups())
-            now = datetime.utcnow()
-            return datetime(now.year, month, day)
-        except ValueError:
-            return None
-
-    return None
-
 
 # ---- Pydantic Schemas ----
 
@@ -149,7 +108,6 @@ class JobPayload(BaseModel):
     company_logo: str = ""
     is_campus: bool = False
 
-
 class IngestRequest(BaseModel):
     """批量数据写入请求体"""
     jobs: list[JobPayload]
@@ -158,14 +116,12 @@ class IngestRequest(BaseModel):
     keywords: list[str] = []
     location: str = ""
 
-
 class JobPatchRequest(BaseModel):
     """单岗位分拣更新请求"""
 
     triage_status: Optional[str] = None
     pool_id: Optional[int] = None
     clear_pool: bool = False
-
 
 class JobBatchPatchRequest(BaseModel):
     """批量岗位分拣更新请求"""
@@ -175,12 +131,10 @@ class JobBatchPatchRequest(BaseModel):
     pool_id: Optional[int] = None
     clear_pool: bool = False
 
-
 class JobBatchDeleteRequest(BaseModel):
     """批量岗位彻底删除请求（仅允许回收站岗位）"""
 
     job_ids: list[int]
-
 
 class BatchTriageRequest(BaseModel):
     """兼容新接口的批量分拣请求（pool_id=0 表示清空）。"""
@@ -188,7 +142,6 @@ class BatchTriageRequest(BaseModel):
     job_ids: list[int]
     triage_status: Optional[str] = None
     pool_id: Optional[int] = None
-
 
 # ---- Routes ----
 
@@ -298,7 +251,6 @@ async def list_jobs(
         "items": [_job_to_dict(j) for j in jobs],
     }
 
-
 @router.get("/batches")
 async def list_batches(
     limit: int = Query(30, ge=1, le=200),
@@ -343,7 +295,6 @@ async def list_batches(
         for r in rows
     ]
 
-
 @router.patch("/batch-update")
 async def patch_jobs_batch(data: JobBatchPatchRequest, db: AsyncSession = Depends(get_db)):
     """批量更新岗位分拣状态/池归属"""
@@ -353,7 +304,6 @@ async def patch_jobs_batch(data: JobBatchPatchRequest, db: AsyncSession = Depend
         surface="ui",
     )
     return _operation_output_or_error(result)
-
 
 @router.delete("/batch-delete")
 async def delete_jobs_batch(data: JobBatchDeleteRequest, db: AsyncSession = Depends(get_db)):
@@ -387,7 +337,6 @@ async def delete_jobs_batch(data: JobBatchDeleteRequest, db: AsyncSession = Depe
     await db.commit()
     return {"deleted": deleted}
 
-
 @router.patch("/{job_id}")
 async def patch_job(job_id: int, data: JobPatchRequest, db: AsyncSession = Depends(get_db)):
     """更新单个岗位的分拣状态与池归属"""
@@ -395,7 +344,6 @@ async def patch_job(job_id: int, data: JobPatchRequest, db: AsyncSession = Depen
     payload["job_id"] = job_id
     result = await execute_operation("update_job", payload, surface="ui")
     return _operation_output_or_error(result)
-
 
 @router.get("/stats")
 async def job_stats(
@@ -431,7 +379,6 @@ async def job_stats(
         "source_distribution": {s.source: s.count for s in sources},
     }
 
-
 @router.get("/trend")
 async def job_trend(
     period: str = Query("week", description="week / month"),
@@ -460,7 +407,6 @@ async def job_trend(
         }
         for r in rows
     ]
-
 
 @router.get("/weekly-report")
 async def weekly_report(db: AsyncSession = Depends(get_db)):
@@ -510,7 +456,6 @@ async def weekly_report(db: AsyncSession = Depends(get_db)):
         "top_keywords": [{"keyword": k, "count": c} for k, c in top_keywords],
     }
 
-
 @router.get("/triage-counts")
 async def triage_counts(db: AsyncSession = Depends(get_db)):
     """返回分拣状态计数（兼容旧状态和新状态命名）。"""
@@ -542,7 +487,6 @@ async def triage_counts(db: AsyncSession = Depends(get_db)):
         "picked": screened,
     }
 
-
 @router.patch("/batch-triage")
 async def batch_triage(data: BatchTriageRequest, db: AsyncSession = Depends(get_db)):
     """兼容新接口：批量分拣（pool_id=0 表示清空池）。"""
@@ -573,7 +517,6 @@ async def batch_triage(data: BatchTriageRequest, db: AsyncSession = Depends(get_
     await db.commit()
     return {"updated": result.rowcount or 0}
 
-
 @router.get("/{job_id}")
 async def get_job(job_id: int, db: AsyncSession = Depends(get_db)):
     """获取单个岗位详情"""
@@ -583,130 +526,20 @@ async def get_job(job_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Job not found")
     return _job_to_dict(job)
 
-
 @router.post("/ingest")
-async def ingest_jobs(req: IngestRequest, db: AsyncSession = Depends(get_db)):
+async def ingest_jobs(req: IngestRequest):
     """
-    批量写入岗位数据（爬虫回调接口）
-    自动跳过已存在的 hash_key（去重）
+    批量写入岗位数据（爬虫回调/浏览器扩展入口）
+
+    薄 Adapter：统一调用 import_job_batch Operation。
+    逐条按 hash_key 幂等去重；同 batch_id 重放不重复计数；审计 surface=browser_extension_ui。
     """
-    created = 0
-    skipped = 0
-    accepted_hash_keys: list[str] = []
-    created_hash_keys: list[str] = []
-    skipped_hash_keys: list[str] = []
-    failed: list[dict[str, str]] = []
-
-    def append_unique(target: list[str], value: str) -> None:
-        key = (value or "").strip()
-        if key and key not in target:
-            target.append(key)
-
-    ingest_batch_id = req.batch_id or f"manual-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
-    await _ensure_batch(
-        db,
-        batch_id=ingest_batch_id,
-        source=req.source,
-        keywords=req.keywords,
-        location=req.location,
+    result = await execute_operation(
+        "import_job_batch",
+        req.model_dump(),
+        surface="browser_extension_ui",
     )
-
-    for item in req.jobs:
-        existing = await db.execute(select(Job).where(Job.hash_key == item.hash_key))
-        if existing.scalar_one_or_none():
-            skipped += 1
-            append_unique(accepted_hash_keys, item.hash_key)
-            append_unique(skipped_hash_keys, item.hash_key)
-            continue
-
-        job_batch_id = item.batch_id or ingest_batch_id
-        await _ensure_batch(
-            db,
-            batch_id=job_batch_id,
-            source=item.source,
-            keywords=req.keywords,
-            location=req.location,
-        )
-
-        job = Job(
-            title=item.title,
-            company=item.company,
-            location=item.location,
-            url=item.url,
-            apply_url=item.apply_url,
-            source=item.source,
-            raw_description=item.raw_description,
-            posted_at=_parse_posted_at(item.posted_at),
-            batch_id=job_batch_id,
-            triage_status="inbox",
-            hash_key=item.hash_key,
-            summary=item.summary,
-            keywords=item.keywords,
-            salary_min=item.salary_min,
-            salary_max=item.salary_max,
-            salary_text=item.salary_text,
-            education=item.education,
-            experience=item.experience,
-            job_type=item.job_type,
-            company_size=item.company_size,
-            company_industry=item.company_industry,
-            company_logo=item.company_logo,
-            is_campus=item.is_campus or detect_campus(
-                title=item.title,
-                source=item.source,
-                experience=item.experience,
-                job_type=item.job_type,
-                raw_description=item.raw_description,
-            ),
-        )
-        db.add(job)
-        created += 1
-        append_unique(accepted_hash_keys, item.hash_key)
-        append_unique(created_hash_keys, item.hash_key)
-
-    await db.flush()
-    batch = (await db.execute(select(Batch).where(Batch.id == ingest_batch_id))).scalar_one_or_none()
-    if batch:
-        batch.total_fetched = (batch.total_fetched or 0) + created
-
-    await db.commit()
-    return {
-        "created": created,
-        "skipped": skipped,
-        "batch_id": ingest_batch_id,
-        "accepted_hash_keys": accepted_hash_keys,
-        "created_hash_keys": created_hash_keys,
-        "skipped_hash_keys": skipped_hash_keys,
-        "failed": failed,
-    }
-
-
-async def _ensure_batch(
-    db: AsyncSession,
-    *,
-    batch_id: str,
-    source: str,
-    keywords: list[str],
-    location: str,
-):
-    """确保批次元数据存在；用于 Inbox 按批次分区展示"""
-    if not batch_id:
-        return
-
-    result = await db.execute(select(Batch).where(Batch.id == batch_id))
-    existing = result.scalar_one_or_none()
-    if existing:
-        return
-
-    db.add(
-        Batch(
-            id=batch_id,
-            source=source or "",
-            keywords=keywords or [],
-            location=location or "",
-        )
-    )
-
+    return _operation_output_or_error(result)
 
 def _job_to_dict(job: Job) -> dict:
     """将 ORM 对象序列化为字典"""
@@ -737,7 +570,6 @@ def _job_to_dict(job: Job) -> dict:
         "batch_id": job.batch_id,
         "created_at": str(job.created_at),
     }
-
 
 def _operation_output_or_error(result: dict) -> dict:
     if result.get("ok"):

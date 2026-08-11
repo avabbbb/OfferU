@@ -15,8 +15,23 @@ const detection = {
   adapterName: "通用网申",
   confidence: 0.7,
   matchedSignals: [],
-  capabilities: {},
-} as DetectionResult;
+  capabilities: {
+    enableCssPathRecovery: false,
+    enableMetadataRefind: false,
+    enableEditScopeRecovery: false,
+    enableSpecializedControlRetry: false,
+    supportedFrameworks: ["native"],
+    datePickerInteraction: false,
+    cascaderInteraction: false,
+    fileUploadAutomation: false,
+    enableDynamicSectionExpansion: false,
+    sectionExpandSelectors: {},
+    forceNativeWrite: false,
+    prototypeWritePreferred: false,
+    verificationDelayMs: 0,
+    useCustomVerifier: false,
+  },
+} satisfies DetectionResult;
 
 function field(label: string, value = "", writable = true): ScannedField {
   const element = document.createElement("input");

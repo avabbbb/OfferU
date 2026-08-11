@@ -1,0 +1,90 @@
+{
+  "schemaVersion": "1",
+  "id": "fixture.acme-application-form",
+  "version": "1.0.0",
+  "status": "experimental",
+  "displayName": "Acme fixture application form",
+  "hosts": [{ "kind": "exact", "value": "apply.acme.invalid" }],
+  "pages": [
+    {
+      "id": "application",
+      "kind": "application-form",
+      "match": {
+        "minScore": 80,
+        "minPositiveSignals": 2,
+        "ambiguityMargin": 20,
+        "signals": [
+          { "id": "apply-path", "type": "path-glob", "polarity": "positive", "value": "/applications/*", "weight": 40 },
+          { "id": "form-root", "type": "css-exists", "polarity": "positive", "value": "[data-testid='application-form']", "weight": 50 },
+          { "id": "receipt-page", "type": "css-exists", "polarity": "negative", "value": "[data-testid='application-success']", "weight": 100, "veto": true }
+        ]
+      },
+      "capabilities": ["scan-form", "write-native-text", "write-known-combobox"],
+      "form": {
+        "root": {
+          "scope": "document",
+          "candidates": [{ "css": "[data-testid='application-form']", "stability": "semantic" }],
+          "required": true,
+          "maxMatches": 1
+        },
+        "fieldCandidates": {
+          "scope": "page-root",
+          "candidates": [{ "css": "input, textarea, select, [role='combobox']", "stability": "semantic" }],
+          "required": true,
+          "maxMatches": 200
+        },
+        "labels": [
+          { "scope": "field", "candidates": [{ "css": "label", "stability": "semantic" }], "required": false, "maxMatches": 2 },
+          { "scope": "field", "candidates": [{ "css": "[aria-label]", "stability": "semantic" }], "required": false, "maxMatches": 1 }
+        ],
+        "aliases": [
+          { "canonicalIntent": "full_name", "aliases": ["姓名", "name"] },
+          { "canonicalIntent": "email", "aliases": ["邮箱", "email"] }
+        ],
+        "controls": [
+          {
+            "id": "fixture-combobox",
+            "when": {
+              "scope": "field",
+              "candidates": [{ "css": "[data-testid='fixture-combobox']", "stability": "semantic" }],
+              "required": false,
+              "maxMatches": 20
+            },
+            "driverId": "antd",
+            "selectors": {
+              "host": {
+                "scope": "field",
+                "candidates": [{ "css": "[data-testid='fixture-combobox']", "stability": "semantic" }],
+                "required": true,
+                "maxMatches": 1
+              },
+              "popup": {
+                "scope": "document",
+                "candidates": [{ "css": "[data-testid='fixture-options']", "stability": "semantic" }],
+                "required": true,
+                "maxMatches": 1
+              },
+              "option": {
+                "scope": "document",
+                "candidates": [{ "css": "[role='option']", "stability": "semantic" }],
+                "required": true,
+                "maxMatches": 100
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "fixtures": [
+    { "id": "form-positive", "pageKind": "application-form", "role": "positive", "path": "fixtures/acme/form.html", "sanitized": true, "expectedRuleId": "application" },
+    { "id": "form-near-negative", "pageKind": "application-form", "role": "near-negative", "path": "fixtures/acme/login.html", "sanitized": true },
+    { "id": "form-conflict", "pageKind": "application-form", "role": "conflict", "path": "fixtures/acme/conflict-form.html", "sanitized": true }
+  ],
+  "provenance": {
+    "owner": "offeru",
+    "method": "clean-room",
+    "capturedFrom": "synthetic",
+    "notesPath": "fixtures/acme/README.md"
+  }
+}

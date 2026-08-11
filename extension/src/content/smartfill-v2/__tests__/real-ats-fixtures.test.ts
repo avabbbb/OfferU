@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { scanFieldsSync } from "../scan/scanner.js";
@@ -18,6 +18,9 @@ const FIXTURES = {
 } as const;
 
 type FixtureName = keyof typeof FIXTURES;
+const REAL_FIXTURES_AVAILABLE = Object.values(FIXTURES).every((file) =>
+  existsSync(resolve(FIXTURE_DIR, file)),
+);
 
 function rect(width = 180, height = 32, top = 10, left = 20): DOMRect {
   return {
@@ -94,7 +97,7 @@ function usefulLabelRatio(fields: ScannedField[]): number {
   return useful.length / Math.max(fields.length, 1);
 }
 
-describe("SmartFill real ATS saved HTML fixtures", () => {
+describe.skipIf(!REAL_FIXTURES_AVAILABLE)("SmartFill real ATS saved HTML fixtures", () => {
   it("recognizes Beisen Talent/Kuma controls from Alibaba as structured fields", () => {
     loadFixtureSample("alibaba", ["学校全称", "kuma-calendar-picker-input"], 1800);
     const fields = scan();
