@@ -80,6 +80,18 @@ export type CustomItemProps = {
   description: string;
 };
 
+export type ResumeComponentProps = {
+  Header: HeaderProps;
+  Summary: SummaryProps;
+  ExperienceEntry: ExperienceEntryProps;
+  EducationItem: EducationItemProps;
+  ProjectItem: ProjectItemProps;
+  SkillGroup: SkillGroupProps;
+  CertificateItem: CertificateItemProps;
+  AwardItem: AwardItemProps;
+  CustomItem: CustomItemProps;
+};
+
 // ---- 共用样式片段 ----
 
 const sectionTitleStyle = {
@@ -107,17 +119,17 @@ function drawBullets(description: string) {
 
 // ---- config ----
 
-export const puckConfig: Config = {
+export const puckConfig: Config<ResumeComponentProps> = {
   components: {
     Header: {
-      fields: [
-        { name: "name", type: "text", label: "姓名" },
-        { name: "title", type: "text", label: "职位" },
-        { name: "email", type: "text", label: "邮箱" },
-        { name: "phone", type: "text", label: "电话" },
-        { name: "location", type: "text", label: "所在地" },
-        { name: "photoUrl", type: "text", label: "头像 URL（可选）" },
-      ],
+      fields: {
+        name: { type: "text", label: "姓名" },
+        title: { type: "text", label: "职位" },
+        email: { type: "text", label: "邮箱" },
+        phone: { type: "text", label: "电话" },
+        location: { type: "text", label: "所在地" },
+        photoUrl: { type: "text", label: "头像 URL（可选）" },
+      },
       render: ({ name, title, email, phone, location, photoUrl }: HeaderProps) => (
         <header
           style={{
@@ -153,7 +165,7 @@ export const puckConfig: Config = {
       ),
     },
     Summary: {
-      fields: [{ name: "text", type: "textarea", label: "简介" } as any],
+      fields: { text: { type: "textarea", label: "简介" } },
       render: ({ text }: SummaryProps) => (
         <section style={{ marginBottom: 16 }}>
           <h3 style={sectionTitleStyle}>个人简介</h3>
@@ -172,14 +184,14 @@ export const puckConfig: Config = {
       ),
     },
     ExperienceEntry: {
-      fields: [
-        { name: "company", type: "text", label: "公司" },
-        { name: "position", type: "text", label: "职位" },
-        { name: "location", type: "text", label: "地点（可选）" },
-        { name: "startDate", type: "text", label: "开始日期" },
-        { name: "endDate", type: "text", label: "结束日期" },
-        { name: "description", type: "textarea", label: "描述（每行一条要点）" } as any,
-      ],
+      fields: {
+        company: { type: "text", label: "公司" },
+        position: { type: "text", label: "职位" },
+        location: { type: "text", label: "地点（可选）" },
+        startDate: { type: "text", label: "开始日期" },
+        endDate: { type: "text", label: "结束日期" },
+        description: { type: "textarea", label: "描述（每行一条要点）" },
+      },
       render: ({ company, position, location, startDate, endDate, description }: ExperienceEntryProps) => {
         const dateStr = [startDate, endDate].filter(Boolean).join(" — ");
         return (
@@ -207,15 +219,15 @@ export const puckConfig: Config = {
       },
     },
     EducationItem: {
-      fields: [
-        { name: "school", type: "text", label: "学校" },
-        { name: "degree", type: "text", label: "学位" },
-        { name: "major", type: "text", label: "专业" },
-        { name: "startDate", type: "text", label: "开始日期" },
-        { name: "endDate", type: "text", label: "结束日期" },
-        { name: "gpa", type: "text", label: "GPA / 排名（可选）" },
-        { name: "description", type: "textarea", label: "备注（可选）" } as any,
-      ],
+      fields: {
+        school: { type: "text", label: "学校" },
+        degree: { type: "text", label: "学位" },
+        major: { type: "text", label: "专业" },
+        startDate: { type: "text", label: "开始日期" },
+        endDate: { type: "text", label: "结束日期" },
+        gpa: { type: "text", label: "GPA / 排名（可选）" },
+        description: { type: "textarea", label: "备注（可选）" },
+      },
       render: ({ school, degree, major, startDate, endDate, gpa, description }: EducationItemProps) => {
         const dateStr = [startDate, endDate].filter(Boolean).join(" — ");
         return (
@@ -243,14 +255,14 @@ export const puckConfig: Config = {
       },
     },
     ProjectItem: {
-      fields: [
-        { name: "name", type: "text", label: "项目名" },
-        { name: "role", type: "text", label: "角色" },
-        { name: "url", type: "text", label: "链接（可选）" },
-        { name: "startDate", type: "text", label: "开始日期" },
-        { name: "endDate", type: "text", label: "结束日期" },
-        { name: "description", type: "textarea", label: "描述（每行一条要点）" } as any,
-      ],
+      fields: {
+        name: { type: "text", label: "项目名" },
+        role: { type: "text", label: "角色" },
+        url: { type: "text", label: "链接（可选）" },
+        startDate: { type: "text", label: "开始日期" },
+        endDate: { type: "text", label: "结束日期" },
+        description: { type: "textarea", label: "描述（每行一条要点）" },
+      },
       render: ({ name, role, url, startDate, endDate, description }: ProjectItemProps) => {
         const dateStr = [startDate, endDate].filter(Boolean).join(" — ");
         return (
@@ -278,14 +290,13 @@ export const puckConfig: Config = {
       },
     },
     SkillGroup: {
-      fields: [
-        { name: "category", type: "text", label: "分类名" },
-        {
-          name: "items",
+      fields: {
+        category: { type: "text", label: "分类名" },
+        items: {
           type: "textarea",
           label: "技能（每行一条，或逗号分隔）",
-        } as any,
-      ],
+        },
+      },
       render: ({ category, items }: SkillGroupProps) => {
         const list = (items || "")
           .split(/[\n,，、]/)
@@ -318,14 +329,14 @@ export const puckConfig: Config = {
       },
     },
     CertificateItem: {
-      fields: [
-        { name: "name", type: "text", label: "证书名" },
-        { name: "scoreOrLevel", type: "text", label: "成绩 / 等级（可选）" },
-        { name: "issuer", type: "text", label: "颁发机构" },
-        { name: "date", type: "text", label: "日期" },
-        { name: "url", type: "text", label: "链接（可选）" },
-        { name: "description", type: "textarea", label: "备注（可选）" } as any,
-      ],
+      fields: {
+        name: { type: "text", label: "证书名" },
+        scoreOrLevel: { type: "text", label: "成绩 / 等级（可选）" },
+        issuer: { type: "text", label: "颁发机构" },
+        date: { type: "text", label: "日期" },
+        url: { type: "text", label: "链接（可选）" },
+        description: { type: "textarea", label: "备注（可选）" },
+      },
       render: ({ name, scoreOrLevel, issuer, date, url, description }: CertificateItemProps) => (
         <article style={articleMargin}>
           <div
@@ -355,12 +366,12 @@ export const puckConfig: Config = {
       ),
     },
     AwardItem: {
-      fields: [
-        { name: "awardName", type: "text", label: "奖项名" },
-        { name: "issuer", type: "text", label: "颁发机构（可选）" },
-        { name: "awardedAt", type: "text", label: "日期" },
-        { name: "description", type: "textarea", label: "描述（可选，每行一条要点）" } as any,
-      ],
+      fields: {
+        awardName: { type: "text", label: "奖项名" },
+        issuer: { type: "text", label: "颁发机构（可选）" },
+        awardedAt: { type: "text", label: "日期" },
+        description: { type: "textarea", label: "描述（可选，每行一条要点）" },
+      },
       render: ({ awardName, issuer, awardedAt, description }: AwardItemProps) => (
         <article style={articleMargin}>
           <div
@@ -382,16 +393,15 @@ export const puckConfig: Config = {
       ),
     },
     CustomItem: {
-      fields: [
-        { name: "experienceTitle", type: "text", label: "段落标题" },
-        { name: "startDate", type: "text", label: "开始日期（可选）" },
-        { name: "endDate", type: "text", label: "结束日期（可选）" },
-        {
-          name: "description",
+      fields: {
+        experienceTitle: { type: "text", label: "段落标题" },
+        startDate: { type: "text", label: "开始日期（可选）" },
+        endDate: { type: "text", label: "结束日期（可选）" },
+        description: {
           type: "textarea",
           label: "正文（每段空行分隔，每行一条要点）",
-        } as any,
-      ],
+        },
+      },
       render: ({ experienceTitle, startDate, endDate, description }: CustomItemProps) => {
         const dateStr = [startDate, endDate].filter(Boolean).join(" — ");
         const paragraphs = (description || "").split(/\n\s*\n/).filter(Boolean);

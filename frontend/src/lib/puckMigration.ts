@@ -8,7 +8,6 @@
 // 详见 docs/RESUME_PUCK_MIGRATION_PLAN.md
 // =============================================
 
-import type { InitialData } from "@puckeditor/core";
 import type {
   ResumeDetail,
   ResumeSectionBlock,
@@ -29,11 +28,13 @@ export type PuckComponentType =
 
 export interface PuckContentUnit {
   type: PuckComponentType;
-  props: Record<string, any>;
+  props: Record<string, any> & { id: string };
 }
 
-export interface PuckResumeData extends InitialData {
+export interface PuckResumeData {
+  root: Record<string, never>;
   content: PuckContentUnit[];
+  zones?: Record<string, PuckContentUnit[]>;
 }
 
 // section_type → Puck component 名
@@ -175,6 +176,7 @@ export function migrateResumeToPuck(resume: ResumeDetail): PuckResumeData {
   content.push({
     type: "Header",
     props: {
+      id: `resume-${resume.id}-header`,
       name: c.name ?? "",
       title: c.title ?? "",
       email: c.email ?? "",
@@ -188,26 +190,29 @@ export function migrateResumeToPuck(resume: ResumeDetail): PuckResumeData {
   // Summary ← summary
   content.push({
     type: "Summary",
-    props: { text: resume.summary ?? "" },
+    props: { id: `resume-${resume.id}-summary`, text: resume.summary ?? "" },
   });
 
   // 按 sort_order 处理 sections
   const sortedSections = [...(resume.sections ?? [])].sort(
     (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
   );
-  for (const section of sortedSections) {
+  for (const [sectionIndex, section] of sortedSections.entries()) {
     if (section.visible === false) continue;
     const componentType = SECTION_TYPE_TO_COMPONENT[section.section_type];
     if (!componentType) continue;
-    for (const item of section.content_json ?? []) {
+    for (const [itemIndex, item] of (section.content_json ?? []).entries()) {
       content.push({
         type: componentType,
-        props: itemToProps(section.section_type, item),
+        props: {
+          id: `resume-${resume.id}-section-${section.id || sectionIndex}-${itemIndex}`,
+          ...itemToProps(section.section_type, item),
+        },
       });
     }
   }
 
-  return { content };
+  return { root: {}, content };
 }
 
 // 反向：Puck content → Resume update payload
@@ -323,22 +328,28 @@ export function draftToPuckContent(
 ): PuckResumeData {
   const content: PuckContentUnit[] = [];
   if (headerUnit) content.push(headerUnit);
-  content.push({ type: "Summary", props: { text: draft.summary ?? "" } });
+  content.push({
+    type: "Summary",
+    props: { id: "draft-summary", text: draft.summary ?? "" },
+  });
   const sorted = [...(draft.sections ?? [])].sort(
     (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
   );
-  for (const section of sorted) {
+  for (const [sectionIndex, section] of sorted.entries()) {
     if (section.visible === false) continue;
     const componentType = SECTION_TYPE_TO_COMPONENT[section.section_type];
     if (!componentType) continue;
-    for (const item of section.content_json ?? []) {
+    for (const [itemIndex, item] of (section.content_json ?? []).entries()) {
       content.push({
         type: componentType,
-        props: itemToProps(section.section_type, item),
+        props: {
+          id: `draft-${section.section_type}-${sectionIndex}-${itemIndex}`,
+          ...itemToProps(section.section_type, item),
+        },
       });
     }
   }
-  return { content };
+  return { root: {}, content };
 }
 
 function propsToItem(sectionType: string, props: Record<string, any>): any {
