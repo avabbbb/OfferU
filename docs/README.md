@@ -11,6 +11,7 @@
 | Agent、Registry 和执行器如何分工？ | [`Agent System`](./architecture/agent-system.md) |
 | 当前版本是否真的可用、Agent 是否完整？ | [`Eval 手册`](./evals/README.md) 与最新有效报告 |
 | 如何让 DeepSeek Agent 做真实测试？ | [`DeepSeek Eval Runbook`](./evals/deepseek-runbook.md) |
+| 如何让 DeepSeek 持续复测并把报告交回主 Agent？ | [`DeepSeek Loop Eval 指导书`](./evals/deepseek-loop-eval-guide.md) |
 | 过去的设计和阶段计划在哪里？ | [`Archive`](./archive/README.md) |
 
 ## 当前事实链
@@ -44,6 +45,7 @@ Eval 报告
 | [`evals/README.md`](./evals/README.md) | Eval 方法、状态、grader 和验收规则 |
 | [`evals/offeru-core-v1.md`](./evals/offeru-core-v1.md) | 24 个核心产品与 Agent 完整性任务 |
 | [`evals/deepseek-runbook.md`](./evals/deepseek-runbook.md) | DeepSeek IDE/CLI Agent 的真实执行协议 |
+| [`evals/deepseek-loop-eval-guide.md`](./evals/deepseek-loop-eval-guide.md) | baseline、定向复测、全量回归与主 Agent 回传协议 |
 | [`evals/reports`](./evals/reports/README.md) | 正式结果与已降级标记的历史快照 |
 | [`agents`](./agents/domain.md) | Issue、triage 和领域文档协作规则 |
 | [`design/offeru-design-dna.json`](./design/offeru-design-dna.json) | 机器可读的视觉设计 DNA |

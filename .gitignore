@@ -70,8 +70,14 @@ docs/*
 !docs/agents/**
 !docs/architecture/
 !docs/architecture/**
+!docs/design/
+docs/design/*
+!docs/design/browser-extension-interaction.md
 !docs/evals/
 !docs/evals/**
+!docs/implementation/
+docs/implementation/*
+!docs/implementation/deepseek-browser-extension-framework-brief.md
 !docs/archive/
 !docs/archive/**
 # Eval 原始截图/trace 默认只保留本地；正式报告必须包含脱敏后的关键证据。
