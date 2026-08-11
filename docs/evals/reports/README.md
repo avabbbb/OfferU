@@ -21,7 +21,9 @@ JSON 必须符合 [`report-schema.json`](../report-schema.json)。报告不能�
 
 ## 当前记录
 
+- [`2026-08-10-test-readiness-audit.md`](./2026-08-10-test-readiness-audit.md)：当前测试资产、数据隔离、Agent 完整性、长期职业模型和浏览器链路的只读就绪度审计；不是正式 baseline。
 - [`2026-08-05-beta-readiness-pre-eval.md`](./2026-08-05-beta-readiness-pre-eval.md)：历史内测评估，缺少当前 schema 要求的完整证据，只能用来提取待复现任务。
 - [`2026-07-30-runtime-acceptance.md`](./2026-07-30-runtime-acceptance.md)：历史运行时探测快照，不证明当前版本状态。
+- [`2026-08-06-eval-report.md`](./2026-08-06-eval-report.md)：E1-E5 ad-hoc capability discovery，适合提取回归任务；不符合 `offeru-core-v1` 的 24 Task 与机器 schema，不能作为 baseline。
 
 **当前仍没有有效正式 baseline。** 下一次运行应由修订后的 [`deepseek-runbook.md`](../deepseek-runbook.md) 驱动，满足机器 schema 和最终脱敏门，并覆盖 [`offeru-core-v1`](../offeru-core-v1.md)。

@@ -2,7 +2,7 @@
 
 > 日期：2026-08-06
 > 执行：EvalRunner sub-agent（E1-E3 完整、E4 部分）+ 主 Agent 接手（E4/E5 补完）
-> 场景设计：`docs/plans/2026-08-06-eval-scenarios.md`
+> 场景设计：`docs/evals/2026-08-06-eval-scenarios.md`
 > 环境：Windows 11，backend venv 3.12，deepseek 本地代理（deepseek-v4-flash-free），调研执行器 omp
 
 ## 结论总览

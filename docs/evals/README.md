@@ -4,7 +4,7 @@
 
 当前基线套件是 [`offeru-core-v1`](./offeru-core-v1.md)。在出现一份有效且满足验收规则的报告前，OfferU 的状态统一表述为：**内部 Alpha；核心能力尚未被正式 Eval 证明**。
 
-需要手动交给 DeepSeek IDE/CLI Agent 时，直接使用 [`DeepSeek 深度测试提示词`](./deepseek-deep-test-prompt.md)；执行细则仍以 [`deepseek-runbook`](./deepseek-runbook.md) 和机器 schema 为准。
+需要手动交给 DeepSeek IDE/CLI Agent 时，直接使用 [`DeepSeek 深度测试提示词`](./deepseek-deep-test-prompt.md)；执行细则仍以 [`deepseek-runbook`](./deepseek-runbook.md) 和机器 schema 为准。需要在主 Agent 修复后持续做定向复测、全量回归和证据回传时，使用 [`DeepSeek Loop Eval 指导书`](./deepseek-loop-eval-guide.md)。
 
 ## 1. 四类事实源
 
