@@ -1,3 +1,5 @@
+
+
 <p align="center">
   <img src="./asset/logo.png" width="112" alt="OfferU logo" />
 </p>
@@ -269,6 +271,7 @@ OFFERU/
 ├─ backend/                  FastAPI、领域服务、Registry、Agent Run Host
 ├─ frontend/                 React + Vite + Tauri 工作台
 ├─ agent-runtime/            Pi SDK worker/runtime bridge
+├─ extension/                岗位采集浏览器插件（WXT）
 ├─ .agents/skills/offeru/    外部 Agent 的 OfferU Skill
 ├─ docs/
 │  ├─ architecture/          当前架构合同
