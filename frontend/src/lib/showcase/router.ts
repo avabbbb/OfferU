@@ -317,7 +317,7 @@ async function getWorkspace(): Promise<unknown> {
 
 async function getTableRecords(url: URL): Promise<unknown> {
   const parts = url.pathname.split("/").filter(Boolean);
-  const tableId = Number(parts[2]);
+  const tableId = Number(parts[3]);
   const workspace = (await readTable("workspace", seeds.workspace)) as {
     tables: Array<{ id: number; name: string; is_total: boolean }>;
   };
@@ -338,7 +338,7 @@ async function getTableRecords(url: URL): Promise<unknown> {
 
 async function updateRecord(url: URL, body: unknown): Promise<unknown> {
   const parts = url.pathname.split("/").filter(Boolean);
-  const recordId = Number(parts[2]);
+  const recordId = Number(parts[3]);
   const payload = body as { field_key?: string; value?: unknown };
   const records = await readTable<Array<Record<string, unknown>>>(
     "app_records",
@@ -479,11 +479,14 @@ export async function showcaseHandle(path: string, options?: RequestInit): Promi
       if (method === "GET" && isNumericSub) return getResume(url);
       if (method === "GET") return listResumes();
       return {};
-    case "applications":
+    case "applications": {
+      const subId = segments[3];
+      const subIdNumeric = subId !== undefined && /^\d+$/.test(subId);
       if (method === "GET" && sub === "workspace") return getWorkspace();
-      if (method === "GET" && sub === "tables" && isNumericSub) return getTableRecords(url);
-      if (method === "PATCH" && sub === "records" && isNumericSub) return updateRecord(url, body);
+      if (method === "GET" && sub === "tables" && subIdNumeric) return getTableRecords(url);
+      if (method === "PATCH" && sub === "records" && subIdNumeric) return updateRecord(url, body);
       return {};
+    }
     case "calendar":
       if (method === "GET" && sub === "events") return listEvents(url);
       if (method === "POST" && sub === "events") return createEvent(body);
