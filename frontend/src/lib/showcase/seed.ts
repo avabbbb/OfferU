@@ -524,4 +524,48 @@ export const seeds: Record<TableName, unknown> = {
     },
   ],
   agent_runs: [],
+  app_records: [
+    {
+      id: 1,
+      table_id: 1,
+      values: {
+        company_name: "星辰科技",
+        job_title: "高级前端工程师",
+        location: "深圳",
+        current_stage: "interview_1",
+        next_action: "准备算法与项目深挖",
+        next_action_at: "2026-08-15T12:00:00",
+        updated_at: "2026-08-13T09:00:00",
+      },
+      is_duplicate: false,
+    },
+    {
+      id: 2,
+      table_id: 1,
+      values: {
+        company_name: "云帆数据",
+        job_title: "后端开发工程师",
+        location: "上海",
+        current_stage: "written_test",
+        next_action: "牛客刷题：贪心/动态规划",
+        next_action_at: "2026-08-18T19:00:00",
+        updated_at: "2026-08-13T10:00:00",
+      },
+      is_duplicate: false,
+    },
+    {
+      id: 3,
+      table_id: 1,
+      values: {
+        company_name: "极光互动",
+        job_title: "算法工程师",
+        location: "北京",
+        current_stage: "interview_2",
+        next_action: "复习推荐系统评估指标",
+        next_action_at: "2026-08-22T10:30:00",
+        updated_at: "2026-08-12T15:00:00",
+      },
+      is_duplicate: false,
+    },
+  ],
 };

@@ -24,7 +24,8 @@ export type TableName =
   | "workspace"
   | "calendar_events"
   | "progress_candidates"
-  | "agent_runs";
+  | "agent_runs"
+  | "app_records";
 
 export async function readTable<T>(name: TableName, fallback: T): Promise<T> {
   const value = await db.getItem<T>(name);

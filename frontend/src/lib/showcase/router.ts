@@ -6,6 +6,11 @@
 
 import { readTable, writeTable, SHOWCASE, type TableName } from "./db";
 import { seeds } from "./seed";
+import {
+  validateTriageUpdate,
+  validateJobUpdate,
+  validateReviewStage,
+} from "./rules";
 
 export { SHOWCASE };
 
@@ -178,14 +183,40 @@ async function weeklyReport(): Promise<unknown> {
 }
 
 async function batchUpdateJobs(body: unknown): Promise<unknown> {
-  const payload = body as { job_ids?: number[]; triage_status?: string; pool_id?: number | null };
+  const payload = body as {
+    job_ids?: number[];
+    triage_status?: string;
+    pool_id?: number | null;
+    clear_pool?: boolean;
+  };
+  const validation = validateTriageUpdate({
+    job_ids: payload.job_ids,
+    triage_status: payload.triage_status,
+    pool_id: payload.pool_id,
+    clear_pool: payload.clear_pool,
+  });
+  if (validation) return { error: validation.error };
+
   const jobIds = payload.job_ids || [];
   const jobs = await withJobs();
+  if (payload.pool_id !== undefined && payload.pool_id !== null) {
+    const pools = await withPools();
+    const pool = pools.find((p) => p.id === payload.pool_id);
+    if (!pool) return { error: "Pool not found" };
+  }
   let updated = 0;
   for (const job of jobs) {
     if (!jobIds.includes(job.id)) continue;
-    if (payload.triage_status) job.triage_status = payload.triage_status;
-    if (payload.pool_id !== undefined) job.pool_id = payload.pool_id;
+    if (payload.triage_status) {
+      job.triage_status = payload.triage_status;
+      // 离开 picked 时清池；picked 且未指定池保留原池（对齐 Python 语义）
+      if (payload.triage_status !== "picked") job.pool_id = null;
+    }
+    if (payload.pool_id !== undefined && payload.pool_id !== null) {
+      job.pool_id = payload.pool_id;
+      if (!payload.triage_status) job.triage_status = "picked";
+    }
+    if (payload.clear_pool) job.pool_id = null;
     updated += 1;
   }
   await writeTable("jobs", jobs);
@@ -194,12 +225,34 @@ async function batchUpdateJobs(body: unknown): Promise<unknown> {
 
 async function updateJob(url: URL, body: unknown): Promise<unknown> {
   const id = Number(url.pathname.split("/").filter(Boolean)[1]);
-  const payload = body as { triage_status?: string; pool_id?: number | null };
+  const payload = body as {
+    triage_status?: string;
+    pool_id?: number | null;
+    clear_pool?: boolean;
+  };
+  const validation = validateJobUpdate({
+    triage_status: payload.triage_status,
+    pool_id: payload.pool_id,
+    clear_pool: payload.clear_pool,
+  });
+  if (validation) return { error: validation.error };
+
   const jobs = await withJobs();
   const job = jobs.find((j) => j.id === id);
   if (!job) return { detail: "Job not found" };
-  if (payload.triage_status !== undefined) job.triage_status = payload.triage_status;
-  if (payload.pool_id !== undefined) job.pool_id = payload.pool_id;
+  if (payload.pool_id !== undefined && payload.pool_id !== null) {
+    const pools = await withPools();
+    if (!pools.some((p) => p.id === payload.pool_id)) return { error: "Pool not found" };
+  }
+  if (payload.triage_status !== undefined) {
+    job.triage_status = payload.triage_status;
+    if (payload.triage_status !== "picked") job.pool_id = null;
+  }
+  if (payload.pool_id !== undefined && payload.pool_id !== null) {
+    job.pool_id = payload.pool_id;
+    if (!payload.triage_status) job.triage_status = "picked";
+  }
+  if (payload.clear_pool) job.pool_id = null;
   await writeTable("jobs", jobs);
   return job;
 }
@@ -269,24 +322,38 @@ async function getTableRecords(url: URL): Promise<unknown> {
     tables: Array<{ id: number; name: string; is_total: boolean }>;
   };
   const table = workspace.tables.find((t) => t.id === tableId) || workspace.tables[0];
-  const records: Array<{ id: number; values: Record<string, unknown>; is_duplicate: boolean }> = [
-    {
-      id: 1,
-      values: { company_name: "星辰科技", job_title: "高级前端工程师", location: "深圳", current_stage: "一面", next_action: "准备算法与项目深挖", next_action_at: "2026-08-15T12:00:00", updated_at: "2026-08-13T09:00:00" },
-      is_duplicate: false,
-    },
-    {
-      id: 2,
-      values: { company_name: "云帆数据", job_title: "后端开发工程师", location: "上海", current_stage: "笔试", next_action: "牛客刷题：贪心/动态规划", next_action_at: "2026-08-18T19:00:00", updated_at: "2026-08-13T10:00:00" },
-      is_duplicate: false,
-    },
-    {
-      id: 3,
-      values: { company_name: "极光互动", job_title: "算法工程师", location: "北京", current_stage: "二面", next_action: "复习推荐系统评估指标", next_action_at: "2026-08-22T10:30:00", updated_at: "2026-08-12T15:00:00" },
-      is_duplicate: false,
-    },
-  ];
-  return { table, records };
+  const records = await readTable<Array<Record<string, unknown>>>(
+    "app_records",
+    seeds.app_records as Array<Record<string, unknown>>,
+  );
+  const keyword = url.searchParams.get("keyword") || "";
+  const filtered = keyword
+    ? records.filter((record) => {
+        const values = (record.values || {}) as Record<string, unknown>;
+        return Object.values(values).some((v) => String(v || "").includes(keyword));
+      })
+    : records;
+  return { table, records: filtered };
+}
+
+async function updateRecord(url: URL, body: unknown): Promise<unknown> {
+  const parts = url.pathname.split("/").filter(Boolean);
+  const recordId = Number(parts[2]);
+  const payload = body as { field_key?: string; value?: unknown };
+  const records = await readTable<Array<Record<string, unknown>>>(
+    "app_records",
+    seeds.app_records as Array<Record<string, unknown>>,
+  );
+  const record = records.find((r) => r.id === recordId);
+  if (!record) return { detail: "Record not found" };
+  const values = (record.values || {}) as Record<string, unknown>;
+  // 工作区 current_stage 是中文自由标签（待投递/已投递/面试中…），
+  // 不做枚举迁移校验（对齐 Python：迁移校验属阶段事件流，不在此表）。
+  if (payload.field_key) values[payload.field_key] = payload.value;
+  record.values = values;
+  record.updated_at = new Date().toISOString();
+  await writeTable("app_records", records);
+  return record;
 }
 
 // ---- /api/calendar ----
@@ -356,8 +423,14 @@ async function reviewCandidate(url: URL, body: unknown): Promise<unknown> {
   if (payload.action === "reject") {
     candidate.status = "rejected";
   } else if (payload.action === "accept") {
+    // 接受候选进展必须选择合法枚举阶段（移植自 Python review_application_progress）
+    const stage = String(payload.stage || candidate.suggested_stage || "");
+    const violation = validateReviewStage(stage);
+    if (violation) return { ok: false, errors: [violation.error] };
     candidate.status = "confirmed";
     candidate.match_state = "assigned";
+  } else {
+    return { ok: false, errors: ["action must be accept or reject"] };
   }
   await writeTable("progress_candidates", candidates);
   return { candidate_id: candidate.candidate_id, status: candidate.status, duplicate: false };
@@ -409,6 +482,7 @@ export async function showcaseHandle(path: string, options?: RequestInit): Promi
     case "applications":
       if (method === "GET" && sub === "workspace") return getWorkspace();
       if (method === "GET" && sub === "tables" && isNumericSub) return getTableRecords(url);
+      if (method === "PATCH" && sub === "records" && isNumericSub) return updateRecord(url, body);
       return {};
     case "calendar":
       if (method === "GET" && sub === "events") return listEvents(url);
