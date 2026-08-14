@@ -64,6 +64,9 @@ export default defineConfig(({ mode }) => {
       "process.env.NEXT_PUBLIC_API_URL": JSON.stringify(
         env.VITE_API_URL || env.NEXT_PUBLIC_API_URL || "",
       ),
+      "process.env.VITE_SHOWCASE": JSON.stringify(
+        process.env.VITE_SHOWCASE || env.VITE_SHOWCASE || "",
+      ),
     },
     envPrefix: ["VITE_", "TAURI_ENV_*"],
     server: {

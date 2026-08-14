@@ -10,6 +10,7 @@ import { AnimatePresence } from "framer-motion";
 import { usePathname } from "next/navigation";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useOnboarding } from "@/lib/useOnboarding";
+import { SHOWCASE } from "@/lib/showcase/router";
 
 const OnboardingWizard = lazy(() =>
   import("@/components/onboarding/OnboardingWizard").then((module) => ({
@@ -54,6 +55,7 @@ function AgentContextReporter() {
   const pathname = usePathname();
 
   useEffect(() => {
+    if (SHOWCASE) return; // 展示模式无后端，跳过上下文同步
     const controller = new AbortController();
     const entity = inferEntity(pathname);
     fetch(`${API_BASE}/api/agent/context`, {
@@ -84,6 +86,7 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
   const { shouldShowWizard, completeWizard, skipWizard } = useOnboarding();
   const pathname = usePathname();
   const canShowWizard = pathname === "/";
+  if (SHOWCASE) return children; // 展示模式不弹引导向导
 
   return (
     <>
@@ -103,9 +106,10 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
 }
 
 function BackendReadyGate({ children }: { children: React.ReactNode }) {
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(SHOWCASE);
 
   useEffect(() => {
+    if (SHOWCASE) return; // 展示模式无 Python 后端，直接放行
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
 

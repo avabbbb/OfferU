@@ -5,6 +5,9 @@
 // 基于 fetch API，支持 SWR 缓存
 // =============================================
 
+import { SHOWCASE, showcaseHandle } from "./showcase/router";
+import { showcaseChatResponse } from "./showcase/llm";
+
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ||
   (typeof window !== "undefined"
@@ -23,6 +26,10 @@ function buildQuery(params?: Record<string, unknown>) {
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  if (SHOWCASE) {
+    // 展示模式：全部请求由本地 IndexedDB 数据层承载（无需 Python 后端）
+    return (await showcaseHandle(path, options)) as T;
+  }
   let res: Response;
   try {
     res = await fetch(`${API_BASE}${path}`, {
@@ -42,6 +49,11 @@ async function readEventStream<T>(
   options: RequestInit,
   onEvent?: (event: string, data: any) => void
 ): Promise<T> {
+  if (SHOWCASE) {
+    // 展示模式：Agent 工作流端点（optimize/interviews）不接本地数据层，
+    // 返回空结果避免抛错；对话式交互见 profileApi.chat 的合成 SSE。
+    return {} as T;
+  }
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers: { Accept: "text/event-stream", ...options.headers },
@@ -884,6 +896,10 @@ export const profileApi = {
     request(`/api/profile/sections/${id}`, { method: "DELETE" }),
 
   chat: async (data: { topic: string; message: string; session_id?: number }) => {
+    if (SHOWCASE) {
+      // 展示模式：合成 SSE 流（本地模板或浏览器直连 LLM），不依赖 Python 后端
+      return showcaseChatResponse(data.topic || "general", data.message || "");
+    }
     const res = await fetch(`${API_BASE}/api/profile/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

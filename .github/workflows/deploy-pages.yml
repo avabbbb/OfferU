@@ -37,6 +37,8 @@ jobs:
       - name: Build
         run: npm run build
         working-directory: frontend
+        env:
+          VITE_SHOWCASE: "true"
 
       - uses: actions/configure-pages@v5
 

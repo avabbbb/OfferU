@@ -7,6 +7,8 @@
 // =============================================
 
 import useSWR from "swr";
+import { SHOWCASE, showcaseHandle } from "@/lib/showcase/router";
+import { showcaseChatResponse } from "@/lib/showcase/llm";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ||
@@ -23,7 +25,15 @@ function formatBackendNetworkError(error: unknown) {
  * 通用 fetcher：SWR 默认请求函数
  * 自动处理 JSON 解析和错误码
  */
-const fetcher = async (url: string) => {
+const fetcher = async (url: string) => {  if (SHOWCASE) {
+    // 展示模式：SWR 请求也由本地数据层承载（URL 为完整地址，提取 path）
+    try {
+      const parsed = new URL(url);
+      return await showcaseHandle(parsed.pathname + parsed.search);
+    } catch {
+      return {};
+    }
+  }
   let res: Response;
   try {
     res = await fetch(url);
@@ -33,6 +43,29 @@ const fetcher = async (url: string) => {
   if (!res.ok) throw new Error(`API ${res.status}`);
   return res.json();
 };
+
+/**
+ * 统一后端请求：非展示模式等价 fetch(API_BASE + path)；
+ * 展示模式（VITE_SHOWCASE）下由本地 IndexedDB 数据层承载，
+ * 合成标准 Response，调用方无需感知后端是否存在。
+ */
+async function showcaseFetch(url: string, init?: RequestInit): Promise<Response> {
+  if (!SHOWCASE) return fetch(url, init);
+  const method = String(init?.method || "GET").toUpperCase();
+  if (method === "POST" && url.includes("/api/profile/chat") && !url.includes("confirm")) {
+    // 对话式 Agent：本地模板或浏览器直连 LLM 的合成 SSE 流
+    const body = JSON.parse(String(init?.body || "{}")) as {
+      topic?: string;
+      message?: string;
+    };
+    return showcaseChatResponse(body.topic || "general", body.message || "");
+  }
+  const data = await showcaseHandle(url, init);
+  return new Response(JSON.stringify(data), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+}
 
 // ---- 类型定义 ----
 
@@ -248,7 +281,7 @@ export async function patchJob(
     clear_pool?: boolean;
   }
 ) {
-  const res = await fetch(`${API_BASE}/api/jobs/${id}`, {
+  const res = await showcaseFetch(`/api/jobs/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -267,7 +300,7 @@ export async function patchJobsBatch(data: {
   pool_id?: number;
   clear_pool?: boolean;
 }) {
-  const res = await fetch(`${API_BASE}/api/jobs/batch-update`, {
+  const res = await showcaseFetch(`/api/jobs/batch-update`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -281,7 +314,7 @@ export async function patchJobsBatch(data: {
 
 /** 批量彻底删除岗位（仅回收站内） */
 export async function deleteJobsBatch(data: { job_ids: number[] }) {
-  const res = await fetch(`${API_BASE}/api/jobs/batch-delete`, {
+  const res = await showcaseFetch(`/api/jobs/batch-delete`, {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -295,7 +328,7 @@ export async function deleteJobsBatch(data: { job_ids: number[] }) {
 
 /** 创建岗位池 */
 export async function createPool(name: string, scope: "inbox" | "picked" | "ignored" = "picked") {
-  const res = await fetch(`${API_BASE}/api/pools/`, {
+  const res = await showcaseFetch(`/api/pools/`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, scope }),
@@ -310,7 +343,7 @@ export async function createPool(name: string, scope: "inbox" | "picked" | "igno
 /** 重命名岗位池 */
 export async function updatePoolName(poolId: number, name: string, scope?: "inbox" | "picked" | "ignored") {
   const query = scope ? `?scope=${scope}` : "";
-  const res = await fetch(`${API_BASE}/api/pools/${poolId}${query}`, {
+  const res = await showcaseFetch(`/api/pools/${poolId}${query}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name }),
@@ -325,7 +358,7 @@ export async function updatePoolName(poolId: number, name: string, scope?: "inbo
 /** 删除岗位池（池内岗位转为未分组） */
 export async function deletePoolById(poolId: number, scope?: "inbox" | "picked" | "ignored") {
   const query = scope ? `?scope=${scope}` : "";
-  const res = await fetch(`${API_BASE}/api/pools/${poolId}${query}`, {
+  const res = await showcaseFetch(`/api/pools/${poolId}${query}`, {
     method: "DELETE",
   });
   if (!res.ok) {
@@ -341,7 +374,7 @@ export async function deletePoolById(poolId: number, scope?: "inbox" | "picked" 
 export async function updateConfig(data: any) {
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}/api/config/`, {
+    res = await showcaseFetch(`/api/config/`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
@@ -358,7 +391,7 @@ export async function updateConfig(data: any) {
 
 /** 创建日历事件 */
 export async function createCalendarEvent(data: any) {
-  const res = await fetch(`${API_BASE}/api/calendar/events`, {
+  const res = await showcaseFetch(`/api/calendar/events`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -372,7 +405,7 @@ export async function createCalendarEvent(data: any) {
 
 /** 触发邮件同步 */
 export async function syncEmails() {
-  const res = await fetch(`${API_BASE}/api/email/sync`, { method: "POST" });
+  const res = await showcaseFetch(`/api/email/sync`, { method: "POST" });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || err.message || `邮件同步失败 (${res.status})`);
@@ -382,7 +415,7 @@ export async function syncEmails() {
 
 /** 获取 Gmail 授权链接 */
 export async function getEmailAuthUrl(): Promise<{ auth_url?: string; message?: string }> {
-  const res = await fetch(`${API_BASE}/api/email/auth-url`);
+  const res = await showcaseFetch(`/api/email/auth-url`);
   return res.json();
 }
 
@@ -407,7 +440,7 @@ export async function imapConnect(data: {
   host?: string;
   port?: number;
 }) {
-  const res = await fetch(`${API_BASE}/api/email/imap-connect`, {
+  const res = await showcaseFetch(`/api/email/imap-connect`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -417,7 +450,7 @@ export async function imapConnect(data: {
 
 /** 自动补建日历事件 */
 export async function autoFillCalendar() {
-  const res = await fetch(`${API_BASE}/api/calendar/auto-fill`, { method: "POST" });
+  const res = await showcaseFetch(`/api/calendar/auto-fill`, { method: "POST" });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || `自动补建日历失败 (${res.status})`);
@@ -427,7 +460,7 @@ export async function autoFillCalendar() {
 
 /** 创建简历 */
 export async function createResume(data: any) {
-  const res = await fetch(`${API_BASE}/api/resume/`, {
+  const res = await showcaseFetch(`/api/resume/`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -480,7 +513,7 @@ export interface ResumeDetail extends ResumeBrief {
 
 /** 更新简历主信息 */
 export async function updateResume(id: number, data: any) {
-  const res = await fetch(`${API_BASE}/api/resume/${id}`, {
+  const res = await showcaseFetch(`/api/resume/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -494,7 +527,7 @@ export async function updateResume(id: number, data: any) {
 
 /** 删除简历 */
 export async function deleteResume(id: number) {
-  const res = await fetch(`${API_BASE}/api/resume/${id}`, { method: "DELETE" });
+  const res = await showcaseFetch(`/api/resume/${id}`, { method: "DELETE" });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || `删除简历失败 (${res.status})`);
@@ -514,7 +547,7 @@ export function useResume(id: number | null) {
 
 /** 更新段落 */
 export async function updateSection(resumeId: number, sectionId: number, data: any) {
-  const res = await fetch(`${API_BASE}/api/resume/${resumeId}/sections/${sectionId}`, {
+  const res = await showcaseFetch(`/api/resume/${resumeId}/sections/${sectionId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -528,7 +561,7 @@ export async function updateSection(resumeId: number, sectionId: number, data: a
 
 /** 创建段落 */
 export async function createSection(resumeId: number, data: any) {
-  const res = await fetch(`${API_BASE}/api/resume/${resumeId}/sections`, {
+  const res = await showcaseFetch(`/api/resume/${resumeId}/sections`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -542,7 +575,7 @@ export async function createSection(resumeId: number, data: any) {
 
 /** 删除段落 */
 export async function deleteSection(resumeId: number, sectionId: number) {
-  const res = await fetch(`${API_BASE}/api/resume/${resumeId}/sections/${sectionId}`, {
+  const res = await showcaseFetch(`/api/resume/${resumeId}/sections/${sectionId}`, {
     method: "DELETE",
   });
   if (!res.ok) {
@@ -731,7 +764,7 @@ export async function updateProfileData(data: {
   cross_cutting_advantage?: string;
   base_info_json?: Record<string, any>;
 }) {
-  const res = await fetch(`${API_BASE}/api/profile/`, {
+  const res = await showcaseFetch(`/api/profile/`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -748,7 +781,7 @@ export async function createProfileTargetRole(data: {
   role_level?: string;
   fit?: "primary" | "secondary" | "adjacent";
 }) {
-  const res = await fetch(`${API_BASE}/api/profile/target-roles`, {
+  const res = await showcaseFetch(`/api/profile/target-roles`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -761,7 +794,7 @@ export async function createProfileTargetRole(data: {
 }
 
 export async function deleteProfileTargetRole(roleId: number) {
-  const res = await fetch(`${API_BASE}/api/profile/target-roles/${roleId}`, {
+  const res = await showcaseFetch(`/api/profile/target-roles/${roleId}`, {
     method: "DELETE",
   });
   if (!res.ok) {
@@ -780,7 +813,7 @@ export async function createProfileSection(data: {
   source?: string;
   confidence?: number;
 }) {
-  const res = await fetch(`${API_BASE}/api/profile/sections`, {
+  const res = await showcaseFetch(`/api/profile/sections`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -804,7 +837,7 @@ export async function updateProfileSectionData(
     confidence?: number;
   }
 ) {
-  const res = await fetch(`${API_BASE}/api/profile/sections/${sectionId}`, {
+  const res = await showcaseFetch(`/api/profile/sections/${sectionId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -817,7 +850,7 @@ export async function updateProfileSectionData(
 }
 
 export async function deleteProfileSectionData(sectionId: number) {
-  const res = await fetch(`${API_BASE}/api/profile/sections/${sectionId}`, {
+  const res = await showcaseFetch(`/api/profile/sections/${sectionId}`, {
     method: "DELETE",
   });
   if (!res.ok) {
@@ -834,7 +867,7 @@ export async function streamProfileChat(
     onEvent?: (event: ProfileStreamEvent) => void;
   }
 ) {
-  const res = await fetch(`${API_BASE}/api/profile/chat`, {
+  const res = await showcaseFetch(`/api/profile/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -905,7 +938,7 @@ export async function importProfileResume(file: File, parseMode: ResumeImportPar
   formData.append("file", file);
   const params = new URLSearchParams({ parse_mode: parseMode });
 
-  const res = await fetch(`${API_BASE}/api/profile/import-resume?${params.toString()}`, {
+  const res = await showcaseFetch(`/api/profile/import-resume?${params.toString()}`, {
     method: "POST",
     body: formData,
   });
@@ -921,7 +954,7 @@ export async function confirmProfileCandidate(data: {
   bullet_index: number;
   edits?: Record<string, any>;
 }) {
-  const res = await fetch(`${API_BASE}/api/profile/chat/confirm`, {
+  const res = await showcaseFetch(`/api/profile/chat/confirm`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -934,7 +967,7 @@ export async function confirmProfileCandidate(data: {
 }
 
 export async function generateProfileNarrative() {
-  const res = await fetch(`${API_BASE}/api/profile/generate-narrative`, {
+  const res = await showcaseFetch(`/api/profile/generate-narrative`, {
     method: "POST",
   });
   if (!res.ok) {
@@ -977,7 +1010,7 @@ export async function aiOptimizeResume(
   resumeId: number,
   data: { jd_text?: string; job_id?: number }
 ): Promise<AiOptimizeResult> {
-  const res = await fetch(`${API_BASE}/api/resume/${resumeId}/ai/optimize`, {
+  const res = await showcaseFetch(`/api/resume/${resumeId}/ai/optimize`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -993,7 +1026,7 @@ export async function aiOptimizeResume(
 export async function aiOptimizeText(
   data: { resume_text: string; jd_text: string }
 ): Promise<AiOptimizeResult> {
-  const res = await fetch(`${API_BASE}/api/resume/ai/optimize-text`, {
+  const res = await showcaseFetch(`/api/resume/ai/optimize-text`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -1010,7 +1043,7 @@ export async function aiApplySuggestion(
   resumeId: number,
   suggestion: any
 ) {
-  const res = await fetch(`${API_BASE}/api/resume/${resumeId}/ai/apply`, {
+  const res = await showcaseFetch(`/api/resume/${resumeId}/ai/apply`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(suggestion),
@@ -1026,7 +1059,7 @@ export async function aiApplyBatch(
     reorder?: { suggested_order: string[] };
   }
 ) {
-  const res = await fetch(`${API_BASE}/api/resume/${resumeId}/ai/apply-batch`, {
+  const res = await showcaseFetch(`/api/resume/${resumeId}/ai/apply-batch`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -1042,7 +1075,7 @@ export async function aiApplyBatch(
 export async function parseResumeFile(file: File): Promise<{ filename: string; text: string; length: number }> {
   const formData = new FormData();
   formData.append("file", file);
-  const res = await fetch(`${API_BASE}/api/resume/parse`, {
+  const res = await showcaseFetch(`/api/resume/parse`, {
     method: "POST",
     body: formData,
   });
@@ -1055,7 +1088,7 @@ export async function parseResumeFile(file: File): Promise<{ filename: string; t
 
 /** 段落排序 */
 export async function reorderSections(resumeId: number, items: { id: number; sort_order: number }[]) {
-  const res = await fetch(`${API_BASE}/api/resume/${resumeId}/sections/reorder`, {
+  const res = await showcaseFetch(`/api/resume/${resumeId}/sections/reorder`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ items }),
@@ -1067,7 +1100,7 @@ export async function reorderSections(resumeId: number, items: { id: number; sor
 export async function uploadResumePhoto(resumeId: number, file: File) {
   const formData = new FormData();
   formData.append("file", file);
-  const res = await fetch(`${API_BASE}/api/resume/${resumeId}/photo`, {
+  const res = await showcaseFetch(`/api/resume/${resumeId}/photo`, {
     method: "POST",
     body: formData,
   });
@@ -1078,7 +1111,7 @@ export async function uploadResumePhoto(resumeId: number, file: File) {
 export async function uploadResumeLogo(resumeId: number, file: File) {
   const formData = new FormData();
   formData.append("file", file);
-  const res = await fetch(`${API_BASE}/api/resume/${resumeId}/logo`, {
+  const res = await showcaseFetch(`/api/resume/${resumeId}/logo`, {
     method: "POST",
     body: formData,
   });
@@ -1087,7 +1120,7 @@ export async function uploadResumeLogo(resumeId: number, file: File) {
 
 /** 根据学校名称联网获取大学校徽 */
 export async function resolveResumeLogo(resumeId: number, schoolName: string) {
-  const res = await fetch(`${API_BASE}/api/resume/${resumeId}/logo/resolve`, {
+  const res = await showcaseFetch(`/api/resume/${resumeId}/logo/resolve`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ school_name: schoolName }),
@@ -1187,7 +1220,7 @@ export async function aiAnalyzeResume(
   resumeId: number,
   data: { jd_text?: string; job_id?: number }
 ): Promise<SkillAnalyzeResult> {
-  const res = await fetch(`${API_BASE}/api/resume/${resumeId}/ai/analyze`, {
+  const res = await showcaseFetch(`/api/resume/${resumeId}/ai/analyze`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -1203,7 +1236,7 @@ export async function aiAnalyzeResume(
 export async function aiAnalyzeText(
   data: { resume_text: string; jd_text: string }
 ): Promise<SkillAnalyzeResult> {
-  const res = await fetch(`${API_BASE}/api/resume/ai/analyze-text`, {
+  const res = await showcaseFetch(`/api/resume/ai/analyze-text`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -1255,7 +1288,7 @@ export function useApplicationStats() {
 
 /** 创建投递记录 */
 export async function createApplication(jobId: number, notes = "") {
-  const res = await fetch(`${API_BASE}/api/applications/auto-write`, {
+  const res = await showcaseFetch(`/api/applications/auto-write`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ job_id: jobId, notes }),
@@ -1269,7 +1302,7 @@ export async function createApplication(jobId: number, notes = "") {
 
 /** 更新投递状态 */
 export async function updateApplication(id: number, data: { status?: string; notes?: string; cover_letter?: string }) {
-  const res = await fetch(`${API_BASE}/api/applications/${id}`, {
+  const res = await showcaseFetch(`/api/applications/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -1279,7 +1312,7 @@ export async function updateApplication(id: number, data: { status?: string; not
 
 /** AI 生成求职信 */
 export async function generateCoverLetter(jobId: number, resumeId: number) {
-  const res = await fetch(`${API_BASE}/api/applications/generate`, {
+  const res = await showcaseFetch(`/api/applications/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ job_id: jobId, resume_id: resumeId }),
@@ -1373,7 +1406,7 @@ export function useApplicationSettings() {
 }
 
 export async function createApplicationTable(name: string) {
-  const res = await fetch(`${API_BASE}/api/applications/tables`, {
+  const res = await showcaseFetch(`/api/applications/tables`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name }),
@@ -1386,7 +1419,7 @@ export async function createApplicationTable(name: string) {
 }
 
 export async function renameApplicationTable(tableId: number, name: string) {
-  const res = await fetch(`${API_BASE}/api/applications/tables/${tableId}`, {
+  const res = await showcaseFetch(`/api/applications/tables/${tableId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name }),
@@ -1399,7 +1432,7 @@ export async function renameApplicationTable(tableId: number, name: string) {
 }
 
 export async function deleteApplicationTable(tableId: number) {
-  const res = await fetch(`${API_BASE}/api/applications/tables/${tableId}`, {
+  const res = await showcaseFetch(`/api/applications/tables/${tableId}`, {
     method: "DELETE",
   });
   if (!res.ok) {
@@ -1410,7 +1443,7 @@ export async function deleteApplicationTable(tableId: number) {
 }
 
 export async function importJobsToApplicationTable(tableId: number, jobIds: number[]) {
-  const res = await fetch(`${API_BASE}/api/applications/tables/${tableId}/import-jobs`, {
+  const res = await showcaseFetch(`/api/applications/tables/${tableId}/import-jobs`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ job_ids: jobIds }),
@@ -1431,7 +1464,7 @@ export async function importLatestExtensionBatchToApplicationTable(
     skip_existing?: boolean;
   } = {}
 ) {
-  const res = await fetch(`${API_BASE}/api/applications/tables/${tableId}/import-latest-extension-batch`, {
+  const res = await showcaseFetch(`/api/applications/tables/${tableId}/import-latest-extension-batch`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(options),
@@ -1444,7 +1477,7 @@ export async function importLatestExtensionBatchToApplicationTable(
 }
 
 export async function createApplicationRecord(tableId: number, values: Record<string, any>, jobRefId?: number) {
-  const res = await fetch(`${API_BASE}/api/applications/records`, {
+  const res = await showcaseFetch(`/api/applications/records`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ table_id: tableId, values, job_ref_id: jobRefId }),
@@ -1513,7 +1546,7 @@ function toSerializableApplicationValue(value: any, seen = new WeakSet<object>()
 
 export async function updateApplicationRecordCell(recordId: number, fieldKey: string, value: any) {
   const normalizedValue = toSerializableApplicationValue(value);
-  const res = await fetch(`${API_BASE}/api/applications/records/${recordId}`, {
+  const res = await showcaseFetch(`/api/applications/records/${recordId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ field_key: fieldKey, value: normalizedValue }),
@@ -1526,7 +1559,7 @@ export async function updateApplicationRecordCell(recordId: number, fieldKey: st
 }
 
 export async function moveApplicationRecords(sourceTableId: number, targetTableId: number, recordIds: number[]) {
-  const res = await fetch(`${API_BASE}/api/applications/records/move`, {
+  const res = await showcaseFetch(`/api/applications/records/move`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -1543,7 +1576,7 @@ export async function moveApplicationRecords(sourceTableId: number, targetTableI
 }
 
 export async function deleteApplicationRecords(tableId: number, recordIds: number[], deleteFromTotal = false) {
-  const res = await fetch(`${API_BASE}/api/applications/records/delete`, {
+  const res = await showcaseFetch(`/api/applications/records/delete`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -1560,7 +1593,7 @@ export async function deleteApplicationRecords(tableId: number, recordIds: numbe
 }
 
 export async function updateApplicationTableSchema(tableId: number, schema: ApplicationFieldSchema[]) {
-  const res = await fetch(`${API_BASE}/api/applications/tables/${tableId}/schema`, {
+  const res = await showcaseFetch(`/api/applications/tables/${tableId}/schema`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ schema }),
@@ -1576,7 +1609,7 @@ export async function updateApplicationTemplate(
   schema: ApplicationFieldSchema[],
   purgeNonTemplateFields = false
 ) {
-  const res = await fetch(`${API_BASE}/api/applications/template`, {
+  const res = await showcaseFetch(`/api/applications/template`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ schema, purge_non_template_fields: purgeNonTemplateFields }),
@@ -1589,7 +1622,7 @@ export async function updateApplicationTemplate(
 }
 
 export async function applyApplicationTemplateToAll(purgeNonTemplateFields = false) {
-  const res = await fetch(`${API_BASE}/api/applications/template/apply-to-all`, {
+  const res = await showcaseFetch(`/api/applications/template/apply-to-all`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ purge_non_template_fields: purgeNonTemplateFields }),
@@ -1606,7 +1639,7 @@ export async function updateApplicationWorkspaceSettings(data: {
   auto_column_width?: boolean;
   delete_subtable_sync_total_default?: boolean;
 }) {
-  const res = await fetch(`${API_BASE}/api/applications/settings`, {
+  const res = await showcaseFetch(`/api/applications/settings`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -1622,7 +1655,7 @@ export async function updateApplicationWorkspaceSettings(data: {
 
 /** 将模板应用到简历（覆盖 style_config） */
 export async function applyTemplate(resumeId: number, templateId: number) {
-  const res = await fetch(`${API_BASE}/api/resume/${resumeId}/apply-template/${templateId}`, {
+  const res = await showcaseFetch(`/api/resume/${resumeId}/apply-template/${templateId}`, {
     method: "POST",
   });
   if (!res.ok) throw new Error(`Apply template failed: ${res.status}`);
@@ -1672,7 +1705,7 @@ export function useScraperTasks() {
 
 /** 触发爬取任务 */
 export async function runScraper(source: string, keywords: string[], location = "", maxResults = 50) {
-  const res = await fetch(`${API_BASE}/api/scraper/run`, {
+  const res = await showcaseFetch(`/api/scraper/run`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ source, keywords, location, max_results: maxResults }),
@@ -1703,7 +1736,7 @@ export async function saveBossCookie(cookie: string) {
   // 先拿当前完整配置
   const current = await fetcher(`${API_BASE}/api/config/`);
   // 合并 boss_cookie，其余字段原值回传
-  const res = await fetch(`${API_BASE}/api/config/`, {
+  const res = await showcaseFetch(`/api/config/`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...current, boss_cookie: cookie }),
@@ -1744,7 +1777,7 @@ export async function batchOptimizeResume(
   onProgress?: (entry: BatchOptimizeEntry) => void,
   signal?: AbortSignal
 ): Promise<BatchOptimizeResponse> {
-  const res = await fetch(`${API_BASE}/api/resume/${resumeId}/ai/batch-optimize`, {
+  const res = await showcaseFetch(`/api/resume/${resumeId}/ai/batch-optimize`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ job_ids: jobIds, auto_apply: autoApply }),
@@ -1892,7 +1925,7 @@ export async function streamOptimizeAgentChat(
     onEvent?: (event: OptimizeAgentStreamEvent) => void;
   }
 ) {
-  const res = await fetch(`${API_BASE}/api/optimize/agent/chat/stream`, {
+  const res = await showcaseFetch(`/api/optimize/agent/chat/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -2029,7 +2062,7 @@ export interface OptimizeSessionDetail extends OptimizeSessionSummary {
 }
 
 export async function fetchOptimizeSessions(): Promise<OptimizeSessionSummary[]> {
-  const res = await fetch(`${API_BASE}/api/optimize/agent/sessions`);
+  const res = await showcaseFetch(`/api/optimize/agent/sessions`);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || `获取会话列表失败 (${res.status})`);
@@ -2039,7 +2072,7 @@ export async function fetchOptimizeSessions(): Promise<OptimizeSessionSummary[]>
 }
 
 export async function fetchOptimizeSessionDetail(sessionId: string): Promise<OptimizeSessionDetail> {
-  const res = await fetch(`${API_BASE}/api/optimize/agent/sessions/${sessionId}`);
+  const res = await showcaseFetch(`/api/optimize/agent/sessions/${sessionId}`);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || `获取会话详情失败 (${res.status})`);
@@ -2048,7 +2081,7 @@ export async function fetchOptimizeSessionDetail(sessionId: string): Promise<Opt
 }
 
 export async function deleteOptimizeSession(sessionId: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/optimize/agent/sessions/${sessionId}`, {
+  const res = await showcaseFetch(`/api/optimize/agent/sessions/${sessionId}`, {
     method: "DELETE",
   });
   if (!res.ok) {
@@ -2064,7 +2097,7 @@ export async function streamOptimizeGenerate(
     onEvent?: (event: OptimizeStreamEvent) => void;
   }
 ) {
-  const res = await fetch(`${API_BASE}/api/optimize/generate`, {
+  const res = await showcaseFetch(`/api/optimize/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -2191,7 +2224,7 @@ export async function collectExperience(body: {
   source_platform?: string;
   job_id?: number;
 }) {
-  const res = await fetch(`${API_BASE}/api/interview/collect`, {
+  const res = await showcaseFetch(`/api/interview/collect`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -2204,7 +2237,7 @@ export async function collectExperience(body: {
 }
 
 export async function extractQuestions(experienceId: number) {
-  const res = await fetch(`${API_BASE}/api/interview/extract`, {
+  const res = await showcaseFetch(`/api/interview/extract`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ experience_id: experienceId }),
@@ -2217,7 +2250,7 @@ export async function extractQuestions(experienceId: number) {
 }
 
 export async function generateAnswer(questionId: number) {
-  const res = await fetch(`${API_BASE}/api/interview/generate-answer`, {
+  const res = await showcaseFetch(`/api/interview/generate-answer`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ question_id: questionId }),
@@ -2336,7 +2369,7 @@ export interface AIInterviewAnswerResult {
 }
 
 export async function getAIInterviewRuntime(): Promise<AIInterviewRuntime> {
-  const res = await fetch(`${API_BASE}/api/interviews/runtime`, { cache: "no-store" });
+  const res = await showcaseFetch(`/api/interviews/runtime`, { cache: "no-store" });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || `读取面试模型配置失败 (${res.status})`);
@@ -2360,7 +2393,7 @@ export async function createAIInterview(body: {
 }): Promise<AIInterviewSession> {
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}/api/interviews/`, {
+    res = await showcaseFetch(`/api/interviews/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -2383,7 +2416,7 @@ export async function submitAIInterviewAnswer(
 ): Promise<AIInterviewAnswerResult> {
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}/api/interviews/${interviewId}/messages`, {
+    res = await showcaseFetch(`/api/interviews/${interviewId}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -2407,7 +2440,7 @@ export async function ingestAIInterviewBehaviorEvents(
   interviewId: number,
   events: AIInterviewBehaviorEvent[]
 ): Promise<{ accepted: number; duplicates: number; summary: Record<string, unknown> }> {
-  const res = await fetch(`${API_BASE}/api/interviews/${interviewId}/behavior-events`, {
+  const res = await showcaseFetch(`/api/interviews/${interviewId}/behavior-events`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ events, user_confirmed: true }),
@@ -2450,7 +2483,7 @@ export async function streamGenerateResumeDraft(
     onEvent?: (event: DraftStreamEvent) => void;
   }
 ) {
-  const res = await fetch(`${API_BASE}/api/resume/${resumeId}/ai/generate-draft`, {
+  const res = await showcaseFetch(`/api/resume/${resumeId}/ai/generate-draft`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -2679,8 +2712,7 @@ export async function reviewProgressCandidate(
     create_record?: boolean;
   }
 ) {
-  const res = await fetch(
-    `${API_BASE}/api/email/progress-candidates/${encodeURIComponent(candidateId)}/review`,
+  const res = await showcaseFetch(`/api/email/progress-candidates/${encodeURIComponent(candidateId)}/review`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
