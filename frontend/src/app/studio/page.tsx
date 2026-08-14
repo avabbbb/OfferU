@@ -4,6 +4,14 @@
 import { useState, useEffect } from "react";
 import { Card, Button, Spinner } from "@nextui-org/react";
 
+// 与 lib/api.ts 同款后端地址解析；vite dev 无 proxy，
+// 相对路径 /api/... 会打到 Vite 自身（7410）返回 index.html。
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== "undefined"
+    ? `${window.location.protocol}//${window.location.hostname}:8765`
+    : "http://127.0.0.1:8765");
+
 interface Template {
   id: number;
   name: string;
@@ -19,7 +27,7 @@ export default function StudioPage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/studio/templates")
+    fetch(`${API_BASE}/api/studio/templates`)
       .then(res => res.json())
       .then(setTemplates);
   }, []);
@@ -28,11 +36,11 @@ export default function StudioPage() {
     if (!selectedTemplate) return;
 
     setLoading(true);
-    const res = await fetch("/api/studio/generate", {
+    const res = await fetch(`${API_BASE}/api/studio/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        profile_id: 1, // 从当前用户获取
+        profile_id: 1, // 本地单人应用：固定默认 profile
         template_id: selectedTemplate,
         design_overrides: {},
         job_ids: []
@@ -40,7 +48,7 @@ export default function StudioPage() {
     });
 
     const data = await res.json();
-    setPreviewUrl(`/api/studio/resumes/${data.id}/preview`);
+    setPreviewUrl(`${API_BASE}/api/studio/resumes/${data.id}/preview`);
     setLoading(false);
   };
 
@@ -65,7 +73,7 @@ export default function StudioPage() {
               onPress={() => setSelectedTemplate(tpl.id)}
             >
               <div className="p-4">
-                <img src={tpl.preview_image} alt={tpl.display_name} className="w-full h-32 object-cover rounded mb-2" />
+                <img src={`${API_BASE}${tpl.preview_image}`} alt={tpl.display_name} className="w-full h-32 object-cover rounded mb-2" />
                 <div className="font-medium">{tpl.display_name}</div>
                 <div className="text-xs text-gray-500">{tpl.category}</div>
               </div>

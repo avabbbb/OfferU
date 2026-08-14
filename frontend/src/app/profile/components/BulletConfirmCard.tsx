@@ -39,6 +39,7 @@ export function BulletConfirmCard({
   const [editDesc, setEditDesc] = useState(bullet.description);
   const [confirming, setConfirming] = useState(false);
   const [done, setDone] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
 
   const confidenceColor =
     bullet.confidence > 0.8
@@ -56,6 +57,7 @@ export function BulletConfirmCard({
 
   const handleConfirm = async () => {
     setConfirming(true);
+    setConfirmError(null);
     try {
       const edits =
         mode === "edit" && editDesc !== bullet.description
@@ -69,10 +71,10 @@ export function BulletConfirmCard({
       });
       setDone(true);
       onConfirmed();
-    } catch {
-      // 即使失败也标记完成，避免卡住
-      setDone(true);
-      onConfirmed();
+    } catch (e) {
+      // 失败必须如实展示：标记成功会误导用户认为条目已入库，
+      // 实际未持久化且没有重试路径。
+      setConfirmError(e instanceof Error ? e.message : String(e));
     } finally {
       setConfirming(false);
     }
@@ -142,6 +144,11 @@ export function BulletConfirmCard({
 
       {/* Actions */}
       <div className="flex items-center gap-2 mt-3 pl-5">
+        {confirmError && (
+          <span className="text-xs text-red-500 mr-2 max-w-[240px] break-all">
+            加入失败: {confirmError}
+          </span>
+        )}
         <Button
           size="sm"
           color="success"

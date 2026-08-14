@@ -574,6 +574,18 @@ class ReviewApplicationProgressInput(ApplicationProgressCandidateInput):
         pattern="^(|applied|written_test|assessment|interview_1|interview_2|interview_hr|offer|rejected)$",
     )
     note: str = Field(default="", max_length=1000)
+    add_calendar: bool = True
+    create_record: bool = False
+
+    @model_validator(mode="after")
+    def validate_create_record_action(self) -> "ReviewApplicationProgressInput":
+        if self.create_record and self.action != "accept":
+            raise ValueError("create_record can only be used with action=accept")
+        if self.create_record and self.application_attempt_id is not None:
+            raise ValueError(
+                "create_record cannot be combined with application_attempt_id"
+            )
+        return self
 
 
 class GetApplicationProgressOverviewInput(_StrictOperationInput):
@@ -1692,17 +1704,20 @@ OPERATIONS: dict[str, Operation] = {
     "review_application_progress": Operation(
         name="review_application_progress",
         fn=review_application_progress,
-        description="用户确认或拒绝候选进展；只有接受才追加投递阶段事件。",
+        description="用户确认或拒绝候选进展；接受未关联候选时可显式一键建档，只有接受才追加投递阶段事件。",
         parameters={
             "candidate_id": "str",
             "action": "str (accept|reject)",
             "application_attempt_id": "int?",
             "stage": "str?",
             "note": "str?",
+            "add_calendar": "bool=true",
+            "create_record": "bool=false",
         },
         group="applications",
         side_effects=("write",),
         input_model=ReviewApplicationProgressInput,
+        version="2026-08-13",
     ),
     "get_application_progress_overview": Operation(
         name="get_application_progress_overview",
@@ -2217,9 +2232,9 @@ async def batch_update_jobs_operation(
         for job in jobs:
             if normalized:
                 job.triage_status = normalized
+                # 与 update_job_operation 对齐：仅离开 picked 时清池；
+                # picked 且未指定 pool_id 保留原池归属。
                 if normalized != "picked":
-                    job.pool_id = None
-                elif pool_id is None and not clear_pool:
                     job.pool_id = None
             if pool_id is not None:
                 job.pool_id = pool_id
@@ -2561,9 +2576,10 @@ OPERATIONS.update(
         "get_application_progress_board": Operation(
             name="get_application_progress_board",
             fn=get_application_progress_board,
-            description="读取公司→岗位二级分组的求职进度看板，含阶段、待确认候选、下一步动作与面试时间。",
+            description="读取公司→岗位二级分组的求职进度看板，含未关联候选、阶段、下一步动作与面试时间。",
             parameters={"status": "str=active (active|closed|all)", "include_timeline": "bool=false"},
             group="applications",
+            version="2026-08-13",
         ),
         "classify_progress_signal": Operation(
             name="classify_progress_signal",

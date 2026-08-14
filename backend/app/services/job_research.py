@@ -1151,7 +1151,7 @@ async def resume_job_research(run_id: str) -> dict[str, Any]:
             return {
                 **_run_summary(run),
                 "accepted": False,
-                "message": "Only failed or interrupted research can be resumed",
+                "message": "Only failed, interrupted or running research can be resumed",
             }
         await _compatible_research_runtime(run.runtime_id)
         run.status = "pending"

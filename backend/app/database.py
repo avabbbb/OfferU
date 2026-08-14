@@ -6,6 +6,7 @@
 # =============================================
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy import event
 from sqlalchemy.orm import DeclarativeBase
 
 from app.config import get_settings
@@ -16,6 +17,17 @@ settings = get_settings()
 # echo=False 关闭 SQL 日志；生产环境 database_url 应为 postgresql+asyncpg://...
 # 开发环境默认使用 sqlite+aiosqlite:///./djm.db
 engine = create_async_engine(settings.database_url, echo=False)
+
+
+if engine.dialect.name == "sqlite":
+    # SQLite 默认关闭外键约束：所有 ondelete=CASCADE/SET NULL 从不生效，
+    # 删除岗位/池后遗留孤儿行（job_research_runs、applications 等）。
+    # 每个连接建立时显式开启；PostgreSQL/MySQL 天然启用，无需处理。
+    @event.listens_for(engine.sync_engine, "connect")
+    def _enable_sqlite_foreign_keys(dbapi_connection, connection_record):  # noqa: ANN001
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 
 # expire_on_commit=False：commit 后 ORM 对象属性不失效，
 # 避免异步上下文中意外触发延迟加载（async session 不允许隐式 IO）
@@ -39,6 +51,12 @@ async def init_db():
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_auto_migrate)
     await seed_templates()
+    # HTML 简历工作室（studio 路由）使用的 HtmlResumeTemplate 种子；
+    # 此前从未被调用，模板表恒空导致 studio 页面无模板可选。
+    from app.services.template_seeder import seed_templates as seed_html_templates
+
+    async with async_session() as session:
+        await seed_html_templates(session)
     await seed_system_batches()
     await migrate_triage_status()
 

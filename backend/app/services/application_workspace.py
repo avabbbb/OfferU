@@ -250,22 +250,26 @@ def _normalize_schema(schema: list[dict[str, Any]] | None) -> list[dict[str, Any
     return normalized
 
 
-def _coerce_datetime(value: Any) -> datetime:
+def _coerce_datetime(value: Any) -> Optional[datetime]:
+    """把输入转为 naive UTC datetime；空串/非法值返回 None（表示未设置），
+    而不是静默写成当前时间——否则清空日期字段会变成「现在」，数据失真。"""
     def _as_naive_utc(dt: datetime) -> datetime:
         if dt.tzinfo is None:
             return dt
         return dt.astimezone(timezone.utc).replace(tzinfo=None)
 
+    if value is None:
+        return None
     if isinstance(value, datetime):
         return _as_naive_utc(value)
-    text = str(value or "").strip()
+    text = str(value).strip()
     if not text:
-        return datetime.utcnow()
+        return None
     try:
         parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
         return _as_naive_utc(parsed)
     except ValueError:
-        return datetime.utcnow()
+        return None
 
 
 def _record_signature(record: ApplicationRecord) -> tuple[str, str, str, str]:

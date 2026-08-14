@@ -6,15 +6,20 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import unittest
+import uuid
 from unittest.mock import AsyncMock, patch
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 os.chdir(BACKEND_DIR)
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from app.database import init_db
+from app.database import Base, init_db
+from app.models.models import Application, Job
 from app.ops import (
     OPERATIONS,
     OperationAuditError,
@@ -26,6 +31,12 @@ from app.services.operation_projection import (
     confirm_operation_proposal,
     execute_or_propose_operation,
 )
+from app.services.agent_operations import (
+    create_application,
+    list_applications,
+    update_application_status,
+)
+from app.services.application_events import application_event_store
 
 
 class OperationRegistryTests(unittest.TestCase):
@@ -280,6 +291,43 @@ class OperationRegistryTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("参数校验失败", result["errors"][0])
 
+    def test_application_progress_review_schema_accepts_record_creation_options(self) -> None:
+        result = asyncio.run(
+            execute_operation(
+                "review_application_progress",
+                {
+                    "candidate_id": "progress_candidate_schema",
+                    "action": "accept",
+                    "stage": "interview_1",
+                    "add_calendar": False,
+                    "create_record": True,
+                },
+                dry_run=True,
+                audit=False,
+            )
+        )
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["inputs"]["create_record"])
+        self.assertFalse(result["inputs"]["add_calendar"])
+
+    def test_application_progress_review_schema_rejects_record_creation_on_reject(self) -> None:
+        result = asyncio.run(
+            execute_operation(
+                "review_application_progress",
+                {
+                    "candidate_id": "progress_candidate_schema",
+                    "action": "reject",
+                    "create_record": True,
+                },
+                dry_run=True,
+                audit=False,
+            )
+        )
+
+        self.assertFalse(result["ok"])
+        self.assertIn("create_record", result["errors"][0])
+
     def test_application_record_schema_rejects_unknown_status(self) -> None:
         result = asyncio.run(
             execute_operation(
@@ -295,6 +343,116 @@ class OperationRegistryTests(unittest.TestCase):
 
         self.assertFalse(result["ok"])
         self.assertIn("apply_status has an unsupported value", result["errors"][0])
+
+    def test_application_operations_share_the_workspace_record(self) -> None:
+        async def run(
+            database_path: Path,
+        ) -> tuple[dict, dict, bool, list[dict], bool]:
+            test_engine = create_async_engine(
+                f"sqlite+aiosqlite:///{database_path.as_posix()}"
+            )
+            test_session = async_sessionmaker(
+                test_engine,
+                class_=AsyncSession,
+                expire_on_commit=False,
+            )
+            try:
+                async with test_engine.begin() as connection:
+                    await connection.run_sync(Base.metadata.create_all)
+                token = uuid.uuid4().hex
+                async with test_session() as db:
+                    legacy_job = Job(
+                        title=f"Legacy application {token}",
+                        company=f"Legacy application company {token}",
+                        location="Remote",
+                        url=f"https://legacy.jobs.invalid/{token}",
+                        apply_url=f"https://legacy.jobs.invalid/{token}/apply",
+                        source="unit-test",
+                        raw_description="Legacy application collision record",
+                        hash_key=f"legacy-{token}",
+                        batch_id="legacy-import",
+                    )
+                    job = Job(
+                        title=f"Agent application {token}",
+                        company=f"Agent application company {token}",
+                        location="Remote",
+                        url=f"https://jobs.invalid/{token}",
+                        apply_url=f"https://jobs.invalid/{token}/apply",
+                        source="unit-test",
+                        raw_description="Agent application operation round trip",
+                        hash_key=token,
+                        batch_id="legacy-import",
+                    )
+                    db.add_all([legacy_job, job])
+                    await db.commit()
+                    await db.refresh(legacy_job)
+                    await db.refresh(job)
+                    job_id = job.id
+                    legacy = Application(
+                        id=1,
+                        job_id=legacy_job.id,
+                        status="pending",
+                        notes="旧表记录不得被修改",
+                    )
+                    db.add(legacy)
+                    await db.commit()
+
+                with patch(
+                    "app.services.agent_operations.async_session",
+                    test_session,
+                ):
+                    created = await create_application(job_id, notes="创建备注")
+                    listed = await list_applications(status="pending", page_size=100)
+                    listed_before = any(
+                        item["id"] == created["id"] and item["job_id"] == job_id
+                        for item in listed["items"]
+                    )
+                    updated = await update_application_status(
+                        created["id"],
+                        "interview",
+                        notes="进入面试",
+                    )
+                    listed_after = await list_applications(
+                        status="interview",
+                        page_size=100,
+                    )
+                    matching = [
+                        item
+                        for item in listed_after["items"]
+                        if item["id"] == created["id"] and item["job_id"] == job_id
+                    ]
+                async with test_session() as db:
+                    legacy = await db.get(Application, 1)
+                    legacy_unchanged = bool(
+                        legacy
+                        and legacy.status == "pending"
+                        and legacy.notes == "旧表记录不得被修改"
+                        and legacy.job_id == legacy_job.id
+                    )
+                return created, updated, listed_before, matching, legacy_unchanged
+            finally:
+                await test_engine.dispose()
+
+        with tempfile.TemporaryDirectory() as temp_dir, patch.object(
+            application_event_store,
+            "directory",
+            Path(temp_dir) / "events",
+        ):
+            created, updated, listed_before, matching, legacy_unchanged = asyncio.run(
+                run(Path(temp_dir) / "application-operations.db")
+            )
+
+        self.assertEqual(created["application_type"], "application_record")
+        self.assertEqual(created["id"], 1)
+        self.assertTrue(listed_before)
+        self.assertEqual(updated["id"], created["id"])
+        self.assertEqual(updated["application_type"], "application_record")
+        self.assertEqual(updated["status"], "interview")
+        self.assertEqual(updated["workspace_status"], "面试中")
+        self.assertEqual(len(matching), 1)
+        self.assertEqual(matching[0]["status"], "interview")
+        self.assertEqual(matching[0]["notes"], "进入面试")
+        self.assertTrue(legacy_unchanged)
 
     def test_dry_run_skips_mutating_operation(self) -> None:
         result = asyncio.run(

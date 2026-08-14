@@ -1741,12 +1741,14 @@ export async function batchOptimizeResume(
   resumeId: number,
   jobIds: number[],
   autoApply = false,
-  onProgress?: (entry: BatchOptimizeEntry) => void
+  onProgress?: (entry: BatchOptimizeEntry) => void,
+  signal?: AbortSignal
 ): Promise<BatchOptimizeResponse> {
   const res = await fetch(`${API_BASE}/api/resume/${resumeId}/ai/batch-optimize`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ job_ids: jobIds, auto_apply: autoApply }),
+    signal,
   });
 
   if (!res.ok) {
@@ -2543,7 +2545,12 @@ export interface ProgressBoardPayload {
   total_companies: number;
   total_records: number;
   companies: ProgressBoardCompany[];
-  summary: { by_stage: Record<string, number>; pending_review: number };
+  unlinked_candidates: ProgressUnlinkedCandidate[];
+  summary: {
+    by_stage: Record<string, number>;
+    pending_review: number;
+    unlinked_review: number;
+  };
 }
 
 export interface ProgressTimelineEntry {
@@ -2561,6 +2568,9 @@ export interface ProgressPendingCandidate {
   match_state: string;
   suggested_stage: string;
   selected_stage: string | null;
+  classification_conflict: boolean;
+  rule_stage: string;
+  llm_stage: string;
   application: {
     application_attempt_id: number;
     job_id: number;
@@ -2574,8 +2584,39 @@ export interface ProgressPendingCandidate {
     received_at: string | null;
     subject: string;
     status: string;
+    snippet?: string;
+  };
+  llm_extracted?: {
+    interview_time?: string | null;
   };
   created_at: string;
+}
+
+export interface ProgressCandidateMatch {
+  application_attempt_id: number;
+  job_id: number;
+  company: string;
+  job_title: string;
+  match_basis: string[];
+}
+
+export interface ProgressUnlinkedCandidate extends ProgressPendingCandidate {
+  extracted: {
+    company: string;
+    job_title: string;
+    interview_time: string | null;
+  };
+  evidence: {
+    snippet: string;
+    evidence_span: string;
+    rule_stage: string;
+    llm_stage: string;
+    llm_confidence: number | null;
+    classification_conflict: boolean;
+  };
+  match_candidates: ProgressCandidateMatch[];
+  reasons: string[];
+  can_create_record: boolean;
 }
 
 export interface ProgressTimelinePayload {
@@ -2587,6 +2628,28 @@ export interface ProgressTimelinePayload {
   next_action: string;
   timeline: ProgressTimelineEntry[];
   pending_candidates: ProgressPendingCandidate[];
+}
+
+export interface ProgressReviewResult {
+  candidate_id: string;
+  status: string;
+  duplicate: boolean;
+  workspace_record?: {
+    record_id: number;
+    created: boolean;
+    total_table_id: number | null;
+    previous_status: string | null;
+    status: string;
+    event_warning?: string;
+  } | null;
+  created_record?: {
+    job_id: number;
+    application_attempt_id: number;
+    application_attempt_created: boolean;
+    company: string;
+    job_title: string;
+    workspace?: ProgressReviewResult["workspace_record"];
+  } | null;
 }
 
 export function useProgressBoard(status: "active" | "closed" | "all" = "active") {
@@ -2628,5 +2691,5 @@ export async function reviewProgressCandidate(
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || `审核候选进展失败 (${res.status})`);
   }
-  return res.json();
+  return (await res.json()) as ProgressReviewResult;
 }

@@ -1,7 +1,7 @@
 // Beisen Phoenix specialized writer
 import type { ScannedField } from "../../core/types.js";
 import { simulateClick, simulateFocus, simulateInput, setNativeValue } from "../event-simulator.js";
-import { collectDropdownOptions } from "../option-picker.js";
+import { captureOpenDropdownPanels, collectDropdownOptions } from "../option-picker.js";
 import { pickBestSearchOption, tryBackendOptionMatch } from "../combobox-writer.js";
 import { normalizeText } from "../../shared/text-utils.js";
 
@@ -33,6 +33,11 @@ async function writePhoenixSelect(host: HTMLElement, value: string, field?: Scan
   try {
     try { host.scrollIntoView({ block: "center", behavior: "smooth" }); } catch { /* ignore */ }
 
+    const optionConfig = {
+      dropdownSelector: PHOENIX_OPTION_CONTAINER,
+      optionSelector: PHOENIX_OPTION_ITEM,
+    };
+    const previouslyOpenPanels = captureOpenDropdownPanels(host, optionConfig);
     // Open dropdown
     simulateClick(host);
     await sleep(180);
@@ -40,13 +45,18 @@ async function writePhoenixSelect(host: HTMLElement, value: string, field?: Scan
     // Phoenix area cascader: multi-level selection
     const segments = parsePhoenixSegments(value);
     if (segments.length > 1) {
-      return await writePhoenixCascaded(host, segments, { level1Title: field?.level1Title, level2Title: field?.level2Title });
+      return await writePhoenixCascaded(
+        host,
+        segments,
+        { level1Title: field?.level1Title, level2Title: field?.level2Title },
+        previouslyOpenPanels,
+      );
     }
 
     // Single value selection
-    const options = await collectDropdownOptions(host, {
-      dropdownSelector: PHOENIX_OPTION_CONTAINER,
-      optionSelector: PHOENIX_OPTION_ITEM,
+    const options = await collectDropdownOptions(host, optionConfig, {
+      excludePanels: previouslyOpenPanels,
+      portalSnapshotCaptured: true,
     });
     if (options.length > 0) {
       const backendMatch = await tryBackendOptionMatch(options, value, { level1Title: field?.level1Title, level2Title: field?.level2Title });
@@ -58,12 +68,20 @@ async function writePhoenixSelect(host: HTMLElement, value: string, field?: Scan
   } catch { return false; }
 }
 
-async function writePhoenixCascaded(host: HTMLElement, segments: string[], context?: { level1Title?: string; level2Title?: string }): Promise<boolean> {
+async function writePhoenixCascaded(
+  host: HTMLElement,
+  segments: string[],
+  context: { level1Title?: string; level2Title?: string } | undefined,
+  previouslyOpenPanels: Set<HTMLElement>,
+): Promise<boolean> {
   for (let i = 0; i < segments.length; i++) {
     await sleep(100);
     const options = await collectDropdownOptions(host, {
       dropdownSelector: PHOENIX_OPTION_CONTAINER,
       optionSelector: PHOENIX_OPTION_ITEM,
+    }, {
+      excludePanels: previouslyOpenPanels,
+      portalSnapshotCaptured: true,
     });
     const backendMatch = await tryBackendOptionMatch(options, segments[i], context);
     const match = backendMatch || pickBestSearchOption(options, segments[i]);

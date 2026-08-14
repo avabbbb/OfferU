@@ -9,7 +9,7 @@
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
@@ -41,9 +41,17 @@ async def list_events(
     query = select(CalendarEvent).order_by(CalendarEvent.start_time)
 
     if start:
-        query = query.where(CalendarEvent.start_time >= datetime.fromisoformat(start))
+        try:
+            start_dt = datetime.fromisoformat(start)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"invalid start datetime: {start}")
+        query = query.where(CalendarEvent.start_time >= start_dt)
     if end:
-        query = query.where(CalendarEvent.start_time <= datetime.fromisoformat(end))
+        try:
+            end_dt = datetime.fromisoformat(end)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"invalid end datetime: {end}")
+        query = query.where(CalendarEvent.start_time <= end_dt)
 
     result = await db.execute(query)
     events = result.scalars().all()

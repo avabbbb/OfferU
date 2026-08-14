@@ -386,6 +386,26 @@ async def chat_completion(
             kwargs["messages"] = messages
 
     try:
+        async def _create(**kw: Any) -> Any:
+            """带超时与瞬态重试（408/429/5xx 指数退避，最多 3 次）。"""
+            last_error: Optional[BaseException] = None
+            for attempt in range(3):
+                try:
+                    return await asyncio.wait_for(
+                        client.chat.completions.create(**kw),
+                        timeout=settings.llm_timeout,
+                    )
+                except Exception as exc:
+                    status = getattr(exc, "status_code", None)
+                    retryable = status in (408, 429) or (
+                        status is not None and status >= 500
+                    )
+                    if not retryable or attempt == 2:
+                        raise
+                    last_error = exc
+                    await asyncio.sleep(0.5 * (2**attempt))
+            raise last_error  # type: ignore[misc]
+
         # 推理模型（deepseek-v4 等）的思考会消耗 max_tokens 预算，正文被截断；
         # 用 max_completion_tokens 提供含思考的总预算，老端点不支持时回退 max_tokens。
         try:
@@ -394,18 +414,12 @@ async def chat_completion(
                 "max_completion_tokens": int(max_tokens) * 3,
             }
             completion_kwargs.pop("max_tokens", None)
-            response = await asyncio.wait_for(
-                client.chat.completions.create(**completion_kwargs),
-                timeout=settings.llm_timeout,
-            )
+            response = await _create(**completion_kwargs)
         except Exception as completion_exc:
             message_lower = str(completion_exc).lower()
             if "max_completion_tokens" not in message_lower:
                 raise
-            response = await asyncio.wait_for(
-                client.chat.completions.create(**kwargs),
-                timeout=settings.llm_timeout,
-            )
+            response = await _create(**kwargs)
         return response.choices[0].message.content
     except asyncio.TimeoutError:
         _logger.error(f"[LLM Timeout] {provider}/{model} (tier={tier}): 超过 {settings.llm_timeout}s")
@@ -455,6 +469,26 @@ async def chat_completion_stream(
             kwargs["messages"] = messages
 
     try:
+        async def _create_stream(**kw: Any) -> Any:
+            """带超时与瞬态重试的流式 create。"""
+            last_error: Optional[BaseException] = None
+            for attempt in range(3):
+                try:
+                    return await asyncio.wait_for(
+                        client.chat.completions.create(**kw),
+                        timeout=settings.llm_timeout,
+                    )
+                except Exception as exc:
+                    status = getattr(exc, "status_code", None)
+                    retryable = status in (408, 429) or (
+                        status is not None and status >= 500
+                    )
+                    if not retryable or attempt == 2:
+                        raise
+                    last_error = exc
+                    await asyncio.sleep(0.5 * (2**attempt))
+            raise last_error  # type: ignore[misc]
+
         # 推理模型思考消耗 max_tokens 预算导致正文截断；max_completion_tokens 提供总预算
         try:
             stream_kwargs = {
@@ -462,16 +496,25 @@ async def chat_completion_stream(
                 "max_completion_tokens": int(max_tokens) * 3,
             }
             stream_kwargs.pop("max_tokens", None)
-            stream = await client.chat.completions.create(**stream_kwargs)
+            stream = await _create_stream(**stream_kwargs)
         except Exception as completion_exc:
             message_lower = str(completion_exc).lower()
             if "max_completion_tokens" not in message_lower:
                 raise
-            stream = await client.chat.completions.create(**kwargs)
-        async for chunk in stream:
-            delta = chunk.choices[0].delta if chunk.choices else None
-            if delta and delta.content:
-                yield delta.content
+            stream = await _create_stream(**kwargs)
+        try:
+            async for chunk in stream:
+                delta = chunk.choices[0].delta if chunk.choices else None
+                if delta and delta.content:
+                    yield delta.content
+        finally:
+            # 关闭底层连接，避免流中断/异常时连接泄漏
+            close = getattr(stream, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:
+                    pass
     except asyncio.TimeoutError:
         _logger.error(f"[LLM Timeout] {provider}/{model} (tier={tier}, stream): 超过 {settings.llm_timeout}s")
         return

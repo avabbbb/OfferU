@@ -3453,7 +3453,7 @@ function createFloatingDock(platform: PlatformConfig | null): void {
     }
 
     if (action === "settings") {
-      toggleDrawer("cart");
+      openSettingsPage();
     }
   }
 
@@ -3829,6 +3829,12 @@ function decorateDetailPage(platform: PlatformConfig): void {
 function run(): void {
   const platform = resolveCurrentPlatform();
   createFloatingDock(platform);
+
+  // SPA 导航离开详情页后移除残留的详情按钮：按钮只增不删时，
+  // 列表页点击会经 extractFromDetailPage 误采集当前首卡内容。
+  if (!platform || !isDetailPage(platform)) {
+    document.getElementById(DETAIL_BUTTON_ID)?.remove();
+  }
 
   if (!platform) return;
 

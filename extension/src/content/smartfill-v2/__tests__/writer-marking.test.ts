@@ -87,29 +87,47 @@ describe("writer filled marker", () => {
     input.remove();
   });
 
-  it("finds searchable dropdown inputs and options rendered in a portal", () => {
+  it("finds searchable dropdown inputs and options only in the target portal", () => {
     document.body.innerHTML = `
-      <div class="ant-select" role="combobox"></div>
-      <div class="ant-select-dropdown">
+      <div class="ant-select" role="combobox" aria-controls="school-options"></div>
+      <div id="school-options" class="ant-select-dropdown">
         <input class="ant-select-selection-search-input" />
         <div class="ant-select-item-option">复旦大学</div>
       </div>
     `;
+    const scope = document.querySelector(".ant-select") as HTMLElement;
+    const dropdown = document.querySelector(".ant-select-dropdown") as HTMLElement;
     const searchInput = document.querySelector(".ant-select-selection-search-input") as HTMLInputElement;
     const option = document.querySelector(".ant-select-item-option") as HTMLElement;
     searchInput.getBoundingClientRect = () => ({ width: 120, height: 24, top: 10, left: 10, right: 130, bottom: 34, x: 10, y: 10, toJSON: () => ({}) } as DOMRect);
     option.getBoundingClientRect = () => ({ width: 160, height: 32, top: 40, left: 10, right: 170, bottom: 72, x: 10, y: 40, toJSON: () => ({}) } as DOMRect);
 
-    expect(__ComboboxWriterInternals.findSearchInput(null)).toBe(searchInput);
-    expect(__ComboboxWriterInternals.findVisibleOptionsFallback(null).map((item) => item.text)).toContain("复旦大学");
+    expect(__ComboboxWriterInternals.findSearchInput(scope, undefined, dropdown)).toBe(searchInput);
+    expect(__ComboboxWriterInternals.findVisibleOptionsFallback(scope, dropdown).map((item) => item.text)).toContain("复旦大学");
   });
 
   it("uses adapter-provided search input selectors for searchable dropdowns", () => {
-    document.body.innerHTML = `<input class="custom-search-input" />`;
+    document.body.innerHTML = `<div class="target-dropdown"><input class="custom-search-input" /></div>`;
+    const dropdown = document.querySelector(".target-dropdown") as HTMLElement;
     const input = document.querySelector("input") as HTMLInputElement;
     input.getBoundingClientRect = () => ({ width: 120, height: 24, top: 10, left: 10, right: 130, bottom: 34, x: 10, y: 10, toJSON: () => ({}) } as DOMRect);
 
-    expect(__ComboboxWriterInternals.findSearchInput(null, ".custom-search-input")).toBe(input);
+    expect(__ComboboxWriterInternals.findSearchInput(null, ".custom-search-input", dropdown)).toBe(input);
+  });
+
+  it("does not use options from an unrelated open dropdown", () => {
+    document.body.innerHTML = `
+      <div class="target-select" role="combobox"></div>
+      <div class="unrelated-dropdown">
+        <div class="ant-select-item-option">错误字段的选项</div>
+      </div>
+    `;
+    const scope = document.querySelector(".target-select") as HTMLElement;
+    const option = document.querySelector(".ant-select-item-option") as HTMLElement;
+    option.getBoundingClientRect = () => ({ width: 160, height: 32, top: 40, left: 10, right: 170, bottom: 72, x: 10, y: 40, toJSON: () => ({}) } as DOMRect);
+
+    expect(__ComboboxWriterInternals.findSearchInput(scope)).toBeNull();
+    expect(__ComboboxWriterInternals.findVisibleOptionsFallback(scope)).toEqual([]);
   });
 
   it("preserves a page value that appears after preview", async () => {

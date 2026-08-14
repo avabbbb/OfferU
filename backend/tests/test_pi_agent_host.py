@@ -292,6 +292,7 @@ class PiAgentHostTests(unittest.TestCase):
 
     def test_pi_run_freezes_skill_proposes_write_and_confirms_once(self) -> None:
         calls = 0
+        turn_finished_while_confirming: bool | None = None
         original = OPERATIONS["start_job_research"]
         worker = FakePiWorker()
         secret = "pi-host-secret-must-not-persist"
@@ -301,8 +302,14 @@ class PiAgentHostTests(unittest.TestCase):
             job_id: int,
             runtime_id: str = "codex",
         ) -> dict[str, Any]:
-            nonlocal calls
+            nonlocal calls, turn_finished_while_confirming
             calls += 1
+            confirming_run = await load_agent_run(worker.active_run_id)
+            turn_finished_while_confirming = bool(
+                (confirming_run or {})
+                .get("final_result", {})
+                .get("turn_finished")
+            )
             return {
                 "run_id": f"research-{job_id}",
                 "job_id": job_id,
@@ -369,8 +376,13 @@ class PiAgentHostTests(unittest.TestCase):
             worker.operation_results[1]["outputs"]["executed"]
         )
         self.assertEqual(calls, 1)
+        self.assertFalse(turn_finished_while_confirming)
         self.assertTrue(confirmed["ok"])
         self.assertEqual(confirmed["run"]["status"], "completed")
+        self.assertTrue(confirmed["run"]["final_result"]["turn_finished"])
+        self.assertFalse(
+            confirmed["run"]["final_result"]["requires_confirmation"]
+        )
         self.assertIsNone(worker.active_run_id)
 
         granted = {item["name"] for item in worker.allowed_operations}
@@ -399,6 +411,19 @@ class PiAgentHostTests(unittest.TestCase):
         self.assertIn("operation.completed", event_types)
         self.assertIn("run.completed", event_types)
         self.assertIn("runtime.disposed", event_types)
+        turn_finished_events = [
+            event for event in events if event["type"] == "run.turn_finished"
+        ]
+        self.assertEqual(len(turn_finished_events), 2)
+        self.assertFalse(
+            turn_finished_events[-1]["payload"]["requires_confirmation"]
+        )
+        disposed_sequence = next(
+            event["sequence"]
+            for event in events
+            if event["type"] == "runtime.disposed"
+        )
+        self.assertGreater(turn_finished_events[-1]["sequence"], disposed_sequence)
         streamed_types = {event["type"] for event in streamed_events}
         self.assertIn("run.created", streamed_types)
         self.assertIn("runtime.starting", streamed_types)
@@ -418,6 +443,110 @@ class PiAgentHostTests(unittest.TestCase):
         )
         self.assertNotIn("tool_calls", started["guardian"])
         self.assertNotIn("proposed_actions", started["guardian"])
+
+    def test_confirm_with_remaining_action_finishes_current_turn(self) -> None:
+        calls: list[int] = []
+        original = OPERATIONS["start_job_research"]
+
+        async def fake_start_job_research(
+            job_id: int,
+            runtime_id: str = "codex",
+        ) -> dict[str, Any]:
+            calls.append(job_id)
+            return {
+                "run_id": f"research-{job_id}",
+                "job_id": job_id,
+                "runtime_id": runtime_id,
+            }
+
+        async def run() -> tuple[
+            dict[str, Any],
+            list[dict[str, Any]],
+            list[dict[str, Any]],
+        ]:
+            from app.routes.main_agent import follow_runtime_run_events
+
+            await init_db()
+            created = await create_agent_run(
+                conversation_id="pi-multi-confirm-test",
+                goal="依次确认两个岗位调研",
+                mode="skill_assistant",
+                skill_id="company_research",
+                skill_version="2026-07-29.1",
+                skill_snapshot={
+                    "id": "company_research",
+                    "version": "2026-07-29.1",
+                    "allowed_tools": ["start_job_research"],
+                },
+                actions=[
+                    {
+                        "id": "start_job_research:first",
+                        "tool": "start_job_research",
+                        "args": {"job_id": 81001},
+                        "summary": "启动第一个岗位调研",
+                        "requires_confirmation": True,
+                    },
+                    {
+                        "id": "start_job_research:second",
+                        "tool": "start_job_research",
+                        "args": {"job_id": 81002},
+                        "summary": "启动第二个岗位调研",
+                        "requires_confirmation": True,
+                    },
+                ],
+                llm_runtime={
+                    "runtime": "pi_sdk_worker",
+                    "stream_protocol": "cursor_v1",
+                },
+            )
+            created["status"] = "waiting_confirmation"
+            created["final_result"] = {
+                "requires_confirmation": True,
+                "turn_finished": True,
+            }
+            await save_agent_run(created)
+            confirmed = await confirm_pi_agent_action(
+                created["id"],
+                action_id="start_job_research:first",
+                worker=FakePiWorker(),
+            )
+            events = await list_agent_run_events(created["id"])
+            response = await follow_runtime_run_events(created["id"])
+
+            async def consume_stream() -> list[dict[str, Any]]:
+                items: list[dict[str, Any]] = []
+                async for item in response.body_iterator:
+                    items.append(item)
+                return items
+
+            stream_items = await asyncio.wait_for(consume_stream(), timeout=1)
+            return confirmed, events, stream_items
+
+        OPERATIONS["start_job_research"] = replace(
+            original,
+            fn=fake_start_job_research,
+        )
+        try:
+            confirmed, events, stream_items = asyncio.run(run())
+        finally:
+            OPERATIONS["start_job_research"] = original
+
+        self.assertEqual(calls, [81001])
+        self.assertEqual(confirmed["run"]["status"], "waiting_confirmation")
+        self.assertEqual(len(confirmed["pending_actions"]), 1)
+        self.assertTrue(confirmed["run"]["final_result"]["turn_finished"])
+        self.assertTrue(
+            confirmed["run"]["final_result"]["requires_confirmation"]
+        )
+        turn_finished_events = [
+            event for event in events if event["type"] == "run.turn_finished"
+        ]
+        self.assertEqual(len(turn_finished_events), 1)
+        self.assertTrue(
+            turn_finished_events[-1]["payload"]["requires_confirmation"]
+        )
+        self.assertEqual(stream_items[-1]["event"], "message")
+        self.assertIn("waiting_confirmation", stream_items[-1]["data"])
 
     def test_restart_marks_run_interrupted_and_explicitly_resumes_same_session(self) -> None:
         worker = FakePiWorker()

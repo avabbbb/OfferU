@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from sqlalchemy import select
 
 from app.database import async_session
@@ -81,7 +81,21 @@ async def import_job_batch(
     - 同 batch_id 重放不会创建新批次或重复计数；
     - 单条失败记录到 failed，不中断整批。
     """
-    items = [JobIngestItem(**item) for item in jobs]
+    failed: list[dict[str, str]] = []
+    items: list[JobIngestItem] = []
+    for raw_item in jobs:
+        try:
+            items.append(JobIngestItem(**raw_item))
+        except ValidationError as exc:
+            # 单条失败不中断整批（docstring 承诺）；错误摘要截断避免审计膨胀。
+            failed.append(
+                {
+                    "title": str(
+                        raw_item.get("title") or raw_item.get("company") or "?"
+                    ),
+                    "error": str(exc)[:300],
+                }
+            )
     clean_keywords = keywords or []
     resolved_batch_id = (batch_id or "").strip() or f"browser-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
 
@@ -90,7 +104,6 @@ async def import_job_batch(
     accepted_hash_keys: list[str] = []
     created_hash_keys: list[str] = []
     skipped_hash_keys: list[str] = []
-    failed: list[dict[str, str]] = []
 
     async with async_session() as db:
         async def ensure_batch(db_batch_id: str, batch_source: str) -> None:

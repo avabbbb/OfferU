@@ -147,6 +147,11 @@ export function ChatPanel({
     setMessages((prev) => [...prev, { id: `msg-${++idRef.current}`, role, content }]);
   }, []);
 
+  // 跳过建议：从对话中移除该候选卡片（用户明确不想采纳）。
+  const handleSkipBullet = useCallback((id: string) => {
+    setMessages((prev) => prev.filter((m) => m.id !== id));
+  }, []);
+
   const handleSend = useCallback(async () => {
     const content = text.trim();
     if (!content || isTyping) return;
@@ -258,7 +263,7 @@ export function ChatPanel({
                 key={msg.id}
                 bullet={msg.bullet}
                 onConfirmed={onBulletConfirmed}
-                onSkipped={() => {}}
+                onSkipped={() => handleSkipBullet(msg.id)}
               />
             );
           }

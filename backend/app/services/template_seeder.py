@@ -1,6 +1,8 @@
 # backend/app/services/template_seeder.py
 """预置 15 个 HTML 简历模板"""
 
+from sqlalchemy import select
+
 TEMPLATES = [
     {
         "name": "modern-minimal",

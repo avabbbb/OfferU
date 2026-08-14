@@ -1032,6 +1032,10 @@ async def invalidate_memory_source(
             ).scalar_one_or_none()
             if proposal is None:
                 continue
+            if proposal.status == "superseded":
+                # 已取代的旧提案保留 superseded 历史状态（指向取代者），
+                # 不能被降级为 invalidated，否则账本状态自相矛盾。
+                continue
             section_id = proposal.applied_profile_section_id
             if section_id:
                 remaining_section_support = (

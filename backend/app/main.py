@@ -25,7 +25,7 @@ if settings.offeru_enable_mcp:
 else:
     mcp_server = None
     _HAS_MCP = False
-from app.routes import jobs, resume, calendar, email, config, applications, scraper, pools, profile, profile_agent, optimize, interview, main_agent, templates, interviews, research, memory
+from app.routes import jobs, resume, calendar, email, config, applications, scraper, pools, profile, profile_agent, optimize, interview, main_agent, templates, interviews, research, memory, studio
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -33,7 +33,10 @@ async def lifespan(app: FastAPI):
     await init_db()
     from app.services.agent_run_state import recover_interrupted_agent_runs
 
-    await recover_interrupted_agent_runs()
+    try:
+        await recover_interrupted_agent_runs()
+    except Exception:
+        pass  # Agent Run 恢复失败不阻塞启动（与相邻恢复逻辑一致）
     from app.services.job_research import recover_interrupted_research_runs
 
     try:
@@ -134,11 +137,19 @@ app.include_router(applications.router, prefix="/api/applications", tags=["Appli
 app.include_router(scraper.router, prefix="/api/scraper", tags=["Scraper"])
 app.include_router(interview.router, prefix="/api/interview", tags=["Interview"])
 app.include_router(memory.router, prefix="/api/memory", tags=["Memory"])
+# studio.router 自带 prefix="/api/studio"，直接注册
+app.include_router(studio.router)
 
 # ---- 静态文件（头像等上传文件） ----
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+
+# HTML 简历模板预览图（template_seeder preview_image=/templates/*.png）。
+# 图片资产由使用者提供，放在 backend/uploads/templates/ 下。
+TEMPLATE_ASSET_DIR = os.path.join(UPLOAD_DIR, "templates")
+os.makedirs(TEMPLATE_ASSET_DIR, exist_ok=True)
+app.mount("/templates", StaticFiles(directory=TEMPLATE_ASSET_DIR), name="templates")
 
 # ---- MCP Server (Streamable HTTP) ----
 if _HAS_MCP and mcp_server is not None:

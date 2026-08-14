@@ -12,6 +12,7 @@ from app.database import async_session
 from app.models.models import (
     ApplicationAttempt,
     ApplicationProgressCandidate,
+    ApplicationRecord,
     ApplicationStageEvent,
     ExternalProgressSignal,
     Job,
@@ -281,6 +282,18 @@ def _normalize_stage(value: Any) -> str:
     return _LEGACY_STAGE_ALIASES.get(clean, clean if clean in APPLICATION_STAGES else "prepared")
 
 
+def _workspace_status_for_stage(stage: str) -> str:
+    if stage in {"interview_1", "interview_2", "interview_hr"}:
+        return "面试中"
+    if stage in {"written_test", "assessment"}:
+        return "待处理"
+    if stage == "offer":
+        return "已录用"
+    if stage == "rejected":
+        return "已拒绝"
+    return "已投递"
+
+
 async def _confirmed_thread_attempt(
     db: Any,
     *,
@@ -472,6 +485,7 @@ async def _candidate_payload(
     detail: bool,
 ) -> dict[str, Any]:
     linked_attempt_id = candidate.selected_attempt_id or candidate.suggested_attempt_id
+    classification = signal.classification_json or {}
     payload = {
         "candidate_id": candidate.candidate_id,
         "status": candidate.status,
@@ -480,6 +494,11 @@ async def _candidate_payload(
         "selected_stage": candidate.selected_stage or None,
         "application": await _attempt_payload(db, linked_attempt_id),
         "signal": _signal_payload(signal, detail=detail),
+        "classification_conflict": bool(
+            classification.get("classification_conflict")
+        ),
+        "rule_stage": str(classification.get("rule_stage") or ""),
+        "llm_stage": candidate.llm_stage or "",
         "created_at": str(candidate.created_at),
         "reviewed_at": str(candidate.reviewed_at) if candidate.reviewed_at else None,
     }
@@ -768,6 +787,10 @@ async def review_application_progress(
     clean_action = str(action or "").strip().lower()
     if clean_action not in REVIEW_ACTIONS:
         raise ValueError("action 只能是 accept 或 reject")
+    if create_record and clean_action != "accept":
+        raise ValueError("create_record 只能用于接受候选进展")
+    if create_record and application_attempt_id is not None:
+        raise ValueError("create_record 不能与 application_attempt_id 同时使用")
     clean_note = _clean_text(note, "note", limit=1000)
 
     async with async_session() as db:
@@ -802,9 +825,22 @@ async def review_application_progress(
                 "duplicate": False,
             }
 
+        classification_conflict = bool(
+            (signal.classification_json or {}).get("classification_conflict")
+        )
+        if classification_conflict and not str(stage or "").strip():
+            raise ValueError("规则与模型的阶段判断冲突，请明确选择新阶段")
+        selected_stage = str(stage or candidate.suggested_stage or "").strip().lower()
+        if selected_stage not in APPLICATION_STAGES - {"prepared", "unknown"}:
+            raise ValueError("接受候选进展前必须选择有效的新阶段")
+
         selected_attempt_id = application_attempt_id or candidate.suggested_attempt_id
         created_record_payload: Optional[dict[str, Any]] = None
-        if not selected_attempt_id and create_record:
+        if create_record:
+            if candidate.match_state != "unassigned":
+                raise ValueError("只有无匹配投递的候选进展才能一键建档")
+            if selected_attempt_id:
+                raise ValueError("候选进展已有投递关联，不能重复建档")
             # 无匹配投递时按用户确认一键建档：Job(如缺) + ApplicationAttempt + 工作区总表记录
             selected_attempt_id, created_record_payload = await _create_attempt_from_signal(
                 db,
@@ -819,10 +855,6 @@ async def review_application_progress(
             raise ValueError("application_attempt_id 必须是正整数") from exc
         if selected_attempt_id <= 0:
             raise ValueError("application_attempt_id 必须是正整数")
-        selected_stage = str(stage or candidate.suggested_stage or "").strip().lower()
-        if selected_stage not in APPLICATION_STAGES - {"prepared", "unknown"}:
-            raise ValueError("接受候选进展前必须选择有效的新阶段")
-
         attempt = (
             await db.execute(
                 select(ApplicationAttempt).where(ApplicationAttempt.id == selected_attempt_id)
@@ -830,10 +862,12 @@ async def review_application_progress(
         ).scalar_one_or_none()
         if not attempt:
             raise ValueError(f"ApplicationAttempt #{selected_attempt_id} 不存在")
-        latest_event = (
+        event_time = signal.received_at or _now()
+        previous_event = (
             await db.execute(
                 select(ApplicationStageEvent)
                 .where(ApplicationStageEvent.application_attempt_id == attempt.id)
+                .where(ApplicationStageEvent.occurred_at <= event_time)
                 .order_by(
                     ApplicationStageEvent.occurred_at.desc(),
                     ApplicationStageEvent.id.desc(),
@@ -842,8 +876,24 @@ async def review_application_progress(
             )
         ).scalar_one_or_none()
         previous_stage = (
-            latest_event.stage if latest_event is not None else _normalize_stage(attempt.status)
+            previous_event.stage
+            if previous_event is not None
+            else _normalize_stage(attempt.status)
         )
+        next_event = (
+            await db.execute(
+                select(ApplicationStageEvent)
+                .where(ApplicationStageEvent.application_attempt_id == attempt.id)
+                .where(ApplicationStageEvent.occurred_at > event_time)
+                .order_by(
+                    ApplicationStageEvent.occurred_at.asc(),
+                    ApplicationStageEvent.id.asc(),
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if next_event is not None:
+            next_event.previous_stage = selected_stage
         event = ApplicationStageEvent(
             event_id=f"application_stage_{uuid.uuid4().hex}",
             candidate_id=candidate.id,
@@ -851,7 +901,7 @@ async def review_application_progress(
             application_attempt_id=attempt.id,
             previous_stage=previous_stage,
             stage=selected_stage,
-            occurred_at=signal.received_at or _now(),
+            occurred_at=event_time,
             source_channel=signal.channel,
             evidence_json={
                 "signal_id": signal.signal_id,
@@ -867,6 +917,27 @@ async def review_application_progress(
         candidate.review_note = clean_note
         candidate.reviewed_at = _now()
         await db.flush()
+        latest_stage_event = (
+            await db.execute(
+                select(ApplicationStageEvent)
+                .where(ApplicationStageEvent.application_attempt_id == attempt.id)
+                .order_by(
+                    ApplicationStageEvent.occurred_at.desc(),
+                    ApplicationStageEvent.id.desc(),
+                )
+                .limit(1)
+            )
+        ).scalar_one()
+        job = await db.get(Job, attempt.job_id)
+        if job is None:
+            raise ValueError(f"Job #{attempt.job_id} 不存在")
+        workspace_record_payload = await _sync_workspace_record_stage(
+            db,
+            job=job,
+            stage=latest_stage_event.stage,
+        )
+        if created_record_payload is not None:
+            created_record_payload["workspace"] = workspace_record_payload
         calendar_event_payload: Optional[dict[str, Any]] = None
         if add_calendar:
             calendar_event_payload = await _maybe_create_interview_calendar_event(
@@ -900,6 +971,33 @@ async def review_application_progress(
         await db.commit()
         await db.refresh(candidate)
         await db.refresh(event)
+        record_id = workspace_record_payload.get("record_id")
+        previous_status = workspace_record_payload.get("previous_status")
+        workspace_status = workspace_record_payload.get("status")
+        if record_id and previous_status != workspace_status:
+            try:
+                from app.services.application_events import application_event_store
+
+                application_event_store.record(
+                    application_type="application_record",
+                    application_id=int(record_id),
+                    event_type=(
+                        "created"
+                        if workspace_record_payload.get("created")
+                        else "status_changed"
+                    ),
+                    source="application_progress_confirmation",
+                    field_key="status",
+                    previous_value=previous_status,
+                    value=workspace_status,
+                    metadata={
+                        "job_id": attempt.job_id,
+                        "application_attempt_id": attempt.id,
+                        "candidate_id": candidate.candidate_id,
+                    },
+                )
+            except Exception as exc:
+                workspace_record_payload["event_warning"] = str(exc)[:500]
         return {
             **await _candidate_payload(db, candidate, signal, detail=True),
             "duplicate": False,
@@ -912,6 +1010,7 @@ async def review_application_progress(
                 "source_channel": event.source_channel,
             },
             "calendar_event": calendar_event_payload,
+            "workspace_record": workspace_record_payload,
             "created_record": created_record_payload,
             "learning_observation_id": observation.get("id"),
         }
@@ -923,7 +1022,7 @@ async def _create_attempt_from_signal(
     candidate: ApplicationProgressCandidate,
     signal: ExternalProgressSignal,
 ) -> tuple[int, dict[str, Any]]:
-    """用户确认后从邮件信号一键建档：Job + ApplicationAttempt + 工作区总表记录。
+    """用户确认后从邮件信号一键建档：Job + ApplicationAttempt。
 
     company/job_title 优先取 LLM 抽取值，回退主题。仅在 review accept 且
     create_record=True 时调用（HITL 已确认）。"""
@@ -962,27 +1061,84 @@ async def _create_attempt_from_signal(
         db.add(job)
         await db.flush()
 
-    attempt = ApplicationAttempt(
-        job_id=job.id,
-        status="applied",
-        notes=f"由邮件信号 {signal.signal_id} 确认建档",
-    )
-    db.add(attempt)
-    await db.flush()
+    attempt_note = f"由邮件信号 {signal.signal_id} 确认建档"
+    attempt = (
+        await db.execute(
+            select(ApplicationAttempt)
+            .where(ApplicationAttempt.job_id == job.id)
+            .where(ApplicationAttempt.notes == attempt_note)
+            .order_by(ApplicationAttempt.id.asc())
+        )
+    ).scalars().first()
+    attempt_created = attempt is None
+    if attempt is None:
+        attempt = ApplicationAttempt(
+            job_id=job.id,
+            status="applied",
+            notes=attempt_note,
+        )
+        db.add(attempt)
+        await db.flush()
 
-    record_result: dict[str, Any] = {}
-    try:
-        from app.services.application_workspace import auto_write_job_to_total
-
-        record_result = await auto_write_job_to_total(db, job_id=job.id)
-    except Exception as exc:  # 工作区写入失败不阻塞进度确认
-        record_result = {"error": str(exc)}
     return attempt.id, {
         "job_id": job.id,
         "application_attempt_id": attempt.id,
+        "application_attempt_created": attempt_created,
         "company": company,
         "job_title": job_title,
-        "workspace": record_result,
+    }
+
+
+async def _sync_workspace_record_stage(
+    db: Any,
+    *,
+    job: Job,
+    stage: str,
+) -> dict[str, Any]:
+    from app.services.application_workspace import (
+        _build_fixed_values_from_job,
+        _create_record_no_commit,
+        _get_total_table,
+        recompute_duplicate_flags,
+    )
+
+    record = (
+        await db.execute(
+            select(ApplicationRecord)
+            .where(ApplicationRecord.job_ref_id == job.id)
+            .order_by(ApplicationRecord.updated_at.desc(), ApplicationRecord.id.desc())
+        )
+    ).scalars().first()
+    workspace_status = _workspace_status_for_stage(stage)
+    previous_status: Optional[str] = None
+    record_created = record is None
+    total_table_id: Optional[int] = None
+    if record is None:
+        total_table = await _get_total_table(db)
+        total_table_id = total_table.id
+        values = _build_fixed_values_from_job(job)
+        values["apply_status"] = workspace_status
+        record = await _create_record_no_commit(
+            db,
+            target_table=total_table,
+            total_table=total_table,
+            values=values,
+            job_ref_id=job.id,
+        )
+        await recompute_duplicate_flags(db)
+    else:
+        custom_values = dict(record.custom_values or {})
+        previous_status = str(custom_values.get("apply_status") or "待投递")
+        custom_values["apply_status"] = workspace_status
+        record.custom_values = custom_values
+        record.updated_at_value = _now()
+        await db.flush()
+    return {
+        "record_id": record.id,
+        "created": record_created,
+        "total_table_id": total_table_id,
+        "previous_status": previous_status,
+        "status": workspace_status,
     }
 
 
@@ -1264,6 +1420,97 @@ async def _attempt_board_rows(
     return board_rows
 
 
+async def _unlinked_progress_candidates(db: Any) -> list[dict[str, Any]]:
+    rows = (
+        await db.execute(
+            select(ApplicationProgressCandidate, ExternalProgressSignal)
+            .join(
+                ExternalProgressSignal,
+                ApplicationProgressCandidate.signal_id == ExternalProgressSignal.id,
+            )
+            .where(ApplicationProgressCandidate.status == "pending")
+            .where(ApplicationProgressCandidate.suggested_attempt_id.is_(None))
+            .where(ApplicationProgressCandidate.selected_attempt_id.is_(None))
+            .order_by(ApplicationProgressCandidate.created_at.desc())
+            .limit(100)
+        )
+    ).all()
+    attempt_rows = (
+        await db.execute(
+            select(ApplicationAttempt, Job)
+            .join(Job, Job.id == ApplicationAttempt.job_id)
+            .order_by(ApplicationAttempt.created_at.desc())
+            .limit(500)
+        )
+    ).all()
+    items: list[dict[str, Any]] = []
+    for candidate, signal in rows:
+        extracted = candidate.llm_extracted_json or {}
+        company = str(extracted.get("company") or "").strip()
+        job_title = str(extracted.get("job_title") or "").strip()
+        dynamic_matches: list[dict[str, Any]] = []
+        if candidate.match_state == "unassigned" and company:
+            company_core = _normalize_company_name(company)
+            title_core = _normalize_text(job_title)
+            for attempt, job in attempt_rows:
+                if _normalize_company_name(job.company) != company_core:
+                    continue
+                if title_core and _normalize_text(job.title) != title_core:
+                    continue
+                dynamic_matches.append(
+                    {
+                        "application_attempt_id": attempt.id,
+                        "job_id": job.id,
+                        "company": job.company or "",
+                        "job_title": job.title or "",
+                        "match_basis": [
+                            "current_company_role_exact"
+                            if title_core
+                            else "current_company_match"
+                        ],
+                    }
+                )
+                if len(dynamic_matches) >= 5:
+                    break
+        match_candidates = candidate.match_candidates_json or dynamic_matches
+        effective_match_state = (
+            "ambiguous"
+            if candidate.match_state == "unassigned" and match_candidates
+            else candidate.match_state
+        )
+        classification = signal.classification_json or {}
+        item = await _candidate_payload(db, candidate, signal, detail=False)
+        item.update(
+            {
+                "match_state": effective_match_state,
+                "extracted": {
+                    "company": company,
+                    "job_title": job_title,
+                    "interview_time": extracted.get("interview_time"),
+                },
+                "evidence": {
+                    "snippet": (signal.snippet or "")[:500],
+                    "evidence_span": str(extracted.get("evidence_span") or "")[:120],
+                    "rule_stage": str(classification.get("rule_stage") or ""),
+                    "llm_stage": candidate.llm_stage or "",
+                    "llm_confidence": candidate.llm_confidence,
+                    "classification_conflict": bool(
+                        classification.get("classification_conflict")
+                    ),
+                },
+                "match_candidates": match_candidates,
+                "reasons": candidate.reasons_json or [],
+                "can_create_record": bool(
+                    candidate.match_state == "unassigned"
+                    and not match_candidates
+                    and company
+                ),
+            }
+        )
+        items.append(item)
+    return items
+
+
 async def get_application_progress_board(
     status: str = "active",
     include_timeline: bool = False,
@@ -1278,11 +1525,13 @@ async def get_application_progress_board(
 
     async with async_session() as db:
         board_rows = await _attempt_board_rows(db)
+        unlinked_candidates = await _unlinked_progress_candidates(db)
 
     if clean_status == "active":
         board_rows = [row for row in board_rows if row["current_stage"] not in _TERMINAL_STAGES]
     elif clean_status == "closed":
         board_rows = [row for row in board_rows if row["current_stage"] in _TERMINAL_STAGES]
+        unlinked_candidates = []
 
     companies: dict[str, dict[str, Any]] = {}
     stage_summary: dict[str, int] = {}
@@ -1323,9 +1572,11 @@ async def get_application_progress_board(
         "total_companies": len(ordered),
         "total_records": len(board_rows),
         "companies": ordered,
+        "unlinked_candidates": unlinked_candidates,
         "summary": {
             "by_stage": stage_summary,
-            "pending_review": total_pending,
+            "pending_review": total_pending + len(unlinked_candidates),
+            "unlinked_review": len(unlinked_candidates),
         },
     }
 
@@ -1393,7 +1644,7 @@ async def get_application_progress_timeline(
             "next_action": _next_action(current_stage),
             "timeline": timeline,
             "pending_candidates": [
-                await _candidate_payload(db, candidate, signal, detail=False)
+                await _candidate_payload(db, candidate, signal, detail=True)
                 for candidate, signal in pending
             ],
         }

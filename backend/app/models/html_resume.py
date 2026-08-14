@@ -31,5 +31,5 @@ class HtmlResume(Base):
     job_ids = Column(JSON)  # 关联岗位 [1, 2, 3]
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    profile = relationship("Profile", back_populates="html_resumes")
+    profile = relationship("Profile")
     template = relationship("HtmlResumeTemplate")

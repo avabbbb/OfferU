@@ -575,7 +575,9 @@ async def start_pi_agent_run(
                 step = await propose_agent_run_action(
                     run_id,
                     operation=operation_name,
-                    args=preview.get("inputs") or inputs,
+                    # 持久化原始（未 redact）参数供 confirm 重放；preview 的
+                    # inputs 已被 dry-run 审计替换为 sha256 占位，重放必失败。
+                    args=inputs,
                     summary=operation.description,
                 )
                 await publish(
@@ -841,6 +843,32 @@ async def confirm_pi_agent_action(
     action_id: str,
     worker: PiAgentWorkerClient | None = None,
 ) -> dict[str, Any]:
+    current = await load_agent_run(run_id)
+    selected = (
+        next(
+            (
+                step
+                for step in (current.get("steps") or [])
+                if isinstance(step, dict)
+                and step.get("status")
+                in {"waiting_confirmation", "executing"}
+                and (
+                    not action_id
+                    or str(step.get("id") or "") == action_id
+                )
+            ),
+            None,
+        )
+        if current is not None
+        else None
+    )
+    if current is not None and selected is not None:
+        current["final_result"] = {
+            **(current.get("final_result") or {}),
+            "requires_confirmation": True,
+            "turn_finished": False,
+        }
+        await save_agent_run(current)
     result = await confirm_operation_proposal(
         run_id,
         action_id=action_id,
@@ -861,6 +889,39 @@ async def confirm_pi_agent_action(
             )
             result.setdefault("warnings", []).append(
                 "操作已处理，但 Pi Session 释放失败；Worker 会在下次启动时显式报错。"
+            )
+    run = result.get("run") if isinstance(result.get("run"), dict) else None
+    if run is not None and run.get("status") in {
+        "completed",
+        "failed",
+        "cancelled",
+        "waiting_confirmation",
+        "needs_reconciliation",
+    }:
+        final_result = run.get("final_result") or {}
+        action_finished = bool(result.get("tool_calls"))
+        requires_confirmation = (
+            run.get("status") == "waiting_confirmation"
+            and bool(pending_actions_for_run(run))
+        )
+        if (
+            action_finished
+            or final_result.get("turn_finished") is not True
+            or final_result.get("requires_confirmation")
+            is not requires_confirmation
+        ):
+            run["final_result"] = {
+                **final_result,
+                "requires_confirmation": requires_confirmation,
+                "turn_finished": True,
+            }
+            result["run"] = await save_agent_run(
+                run,
+                event_type="run.turn_finished",
+                event_payload={
+                    "status": str(run.get("status") or ""),
+                    "requires_confirmation": requires_confirmation,
+                },
             )
     return result
 

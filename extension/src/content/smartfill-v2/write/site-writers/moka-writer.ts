@@ -1,6 +1,10 @@
 import type { ScannedField } from "../../core/types.js";
 import { simulateClick, simulateFocus, simulateBlur, simulateInput, simulateChange, setNativeValue } from "../event-simulator.js";
-import { collectDropdownOptions } from "../option-picker.js";
+import {
+  captureOpenDropdownPanels,
+  collectDropdownOptions,
+  resolveTargetDropdown,
+} from "../option-picker.js";
 import { pickBestSearchOption, tryBackendOptionMatch } from "../combobox-writer.js";
 
 const MOKA_OPTION_CONTAINER = '[class*="sd-Dropdown-dropdown-"]';
@@ -44,30 +48,55 @@ async function writeMokaSelect(field: ScannedField, value: string): Promise<{ ha
   try {
     try { el.scrollIntoView({ block: "center", behavior: "smooth" }); } catch { /* ignore */ }
 
+    const optionConfig = {
+      dropdownSelector: MOKA_OPTION_CONTAINER,
+      optionSelector: MOKA_OPTION_ITEM,
+    };
+    const previouslyOpenPanels = captureOpenDropdownPanels(el, optionConfig);
     simulateClick(el);
     await sleep(150);
 
-    let options = await collectDropdownOptions(el, {
-      dropdownSelector: MOKA_OPTION_CONTAINER,
-      optionSelector: MOKA_OPTION_ITEM,
+    let targetPanel = resolveTargetDropdown(
+      el,
+      optionConfig,
+      previouslyOpenPanels,
+      true,
+    );
+    const collectionOptions = () => ({
+      portalSnapshotCaptured: true,
+      ...(
+        targetPanel
+          ? { preselectedContainer: targetPanel }
+          : { excludePanels: previouslyOpenPanels }
+      ),
     });
+    let options = await collectDropdownOptions(el, optionConfig, collectionOptions());
 
     if (options.length > 0) {
       const result = await matchAndSelectOption(options, el, value, field);
       if (result) return { handled: true, success: true };
     }
 
-    const searchInput = findMokaSearchInput(el);
+    targetPanel = resolveTargetDropdown(
+      el,
+      optionConfig,
+      previouslyOpenPanels,
+      true,
+    );
+    const searchInput = findMokaSearchInput(el, targetPanel);
     if (searchInput) {
       simulateFocus(searchInput);
       setNativeValue(searchInput, value.slice(0, Math.min(value.length, 4)));
       simulateInput(searchInput, value.slice(0, Math.min(value.length, 4)));
       await sleep(200);
 
-      options = await collectDropdownOptions(el, {
-        dropdownSelector: MOKA_OPTION_CONTAINER,
-        optionSelector: MOKA_OPTION_ITEM,
-      });
+      targetPanel = resolveTargetDropdown(
+        el,
+        optionConfig,
+        previouslyOpenPanels,
+        true,
+      );
+      options = await collectDropdownOptions(el, optionConfig, collectionOptions());
 
       if (options.length > 0) {
         const result = await matchAndSelectOption(options, el, value, field);
@@ -92,9 +121,14 @@ async function matchAndSelectOption(
   return false;
 }
 
-function findMokaSearchInput(host: HTMLElement): HTMLInputElement | null {
+function findMokaSearchInput(
+  host: HTMLElement,
+  dropdown?: HTMLElement | null,
+): HTMLInputElement | null {
   const scope = host.closest('[class*="sd-Select"], [class*="sd-Dropdown"]');
-  const roots: ParentNode[] = scope ? [scope, document] : [document];
+  const roots = [dropdown, scope].filter(
+    (root): root is HTMLElement => root instanceof HTMLElement,
+  );
   for (const root of roots) {
     try {
       const inputs = root.querySelectorAll(MOKA_SEARCH_INPUT);

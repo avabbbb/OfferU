@@ -49,7 +49,11 @@ async def execute_or_propose_operation(
             {
                 "id": action_id,
                 "tool": name,
-                "args": preview.get("inputs") or inputs,
+                # 持久化原始（未 redact）参数供 confirm 重放；审计行仍由
+                # execute_operation 在 _record_audit 中独立 redact。
+                # 不能使用 preview["inputs"]：dry-run envelope 的 inputs 已
+                # 经 _audit_inputs 替换敏感参数为 sha256 占位，重放必然失败。
+                "args": inputs,
                 "summary": operation.description,
                 "risk_level": "confirm",
                 "requires_confirmation": True,

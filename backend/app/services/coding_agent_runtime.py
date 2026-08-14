@@ -1163,9 +1163,14 @@ class CodexAppServerAdapter:
         if self.process is not None and self.process.returncode is None:
             if self.thread_id and self.turn_id:
                 with contextlib.suppress(Exception):
-                    await self._request(
-                        "turn/interrupt",
-                        {"threadId": self.thread_id, "turnId": self.turn_id},
+                    # 服务端挂起时 interrupt 请求会永久阻塞 future；加 5s 超时
+                    # 保证取消路径不被卡死（cancel_job_research 依赖此路径）。
+                    await asyncio.wait_for(
+                        self._request(
+                            "turn/interrupt",
+                            {"threadId": self.thread_id, "turnId": self.turn_id},
+                        ),
+                        timeout=5,
                     )
             await self._close()
 
@@ -1595,12 +1600,12 @@ async def execute_deep_task(task: DeepTaskSpec) -> dict[str, Any]:
             timeout=max(30, min(int(timeout_seconds), 2700)),
         )
     except asyncio.CancelledError:
-        process.kill()
-        await process.wait()
+        # process.kill() 在 Windows 只杀直接子进程；opencode 经 cmd.exe shim
+        # 启动时 node 进程会存活继续执行（含 live web search）。统一走进程树终止。
+        await _terminate_process(process)
         raise
     except asyncio.TimeoutError:
-        process.kill()
-        await process.wait()
+        await _terminate_process(process)
         raise RuntimeError(f"{definition['name']} worker 超时")
 
     stdout = stdout_bytes.decode("utf-8", errors="replace")[-2_000_000:]

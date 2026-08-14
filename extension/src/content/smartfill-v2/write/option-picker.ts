@@ -125,9 +125,11 @@ export class DropdownObserver {
               this.newPanels.push(node);
               continue;
             }
-            const match = node.querySelector(this.dropdownSelector);
-            if (match instanceof HTMLElement && !this.excludePanels.has(match)) {
-              this.newPanels.push(match);
+            const matches = node.querySelectorAll(this.dropdownSelector);
+            for (const match of matches) {
+              if (match instanceof HTMLElement && !this.excludePanels.has(match)) {
+                this.newPanels.push(match);
+              }
             }
           } catch { /* invalid selector */ }
         }
@@ -144,6 +146,10 @@ export class DropdownObserver {
     }
     return { panels: this.newPanels };
   }
+
+  peekPanels(): HTMLElement[] {
+    return [...this.newPanels];
+  }
 }
 
 // ===== Option Collection Engine =====
@@ -155,6 +161,7 @@ export async function collectDropdownOptions(
     shouldRetry?: boolean;
     preselectedContainer?: HTMLElement | null;
     excludePanels?: Set<HTMLElement>;
+    portalSnapshotCaptured?: boolean;
     maxWaitMs?: number;
   },
 ): Promise<DropdownOption[]> {
@@ -169,11 +176,14 @@ export async function collectDropdownOptions(
   const excludePanels = options?.excludePanels || new Set<HTMLElement>();
   const maxWaitMs = options?.maxWaitMs || 800;
 
-  // Step 1: Check for already open dropdown
-  let container = findOpenDropdown(element, resolved);
-  if (!container && options?.shouldRetry !== false) {
-    container = findAnyOpenDropdown(resolved);
-  }
+  // Prefer an explicitly controlled or inline panel. A global visible panel may
+  // belong to another field whose dropdown was not closed yet.
+  let container = findDropdownContainer(
+    element,
+    resolved,
+    excludePanels,
+    options?.portalSnapshotCaptured === true,
+  );
 
   // Step 2: Start MutationObserver if no dropdown found yet
   let observer: DropdownObserver | null = null;
@@ -190,9 +200,15 @@ export async function collectDropdownOptions(
     const deadline = Date.now() + maxWaitMs;
     while (!container && Date.now() < deadline) {
       await sleep(pollInterval);
-      container = findOpenDropdown(element, resolved);
-      if (!container && options?.shouldRetry !== false) {
-        container = findAnyOpenDropdown(resolved);
+      container = findDropdownContainer(
+        element,
+        resolved,
+        excludePanels,
+        options?.portalSnapshotCaptured === true,
+      );
+      if (!container && observer) {
+        const panels = observer.peekPanels();
+        container = pickUnambiguousContainer(panels, excludePanels);
       }
       if (container) break;
     }
@@ -202,7 +218,7 @@ export async function collectDropdownOptions(
   if (!container && observer) {
     const { panels } = observer.stopAndCollect();
     if (panels.length > 0) {
-      container = pickNearestContainer(element, panels, excludePanels);
+      container = pickUnambiguousContainer(panels, excludePanels);
     }
   }
 
@@ -215,8 +231,14 @@ export async function collectDropdownOptions(
 
   // Step 5: Re-select nearest container (with distance + exclude logic)
   if (!options?.preselectedContainer) {
-    const allContainers = safeQueryAll(document, resolved.optionContainerSelector);
-    container = pickNearestContainer(element, allContainers, excludePanels) || container;
+    container = resolveControlledDropdown(element, resolved, excludePanels)
+      || container
+      || findDropdownContainer(
+        element,
+        resolved,
+        excludePanels,
+        options?.portalSnapshotCaptured === true,
+      );
   }
 
   // Step 6: Extract options from container
@@ -225,33 +247,110 @@ export async function collectDropdownOptions(
 
 // ===== Helper Functions =====
 
-function findOpenDropdown(element: HTMLElement, config: ResolvedOptionConfig): HTMLElement | null {
-  // Search in ancestors first (for inline dropdowns like Element UI, Feishu UD)
-  let current: HTMLElement | null = element.parentElement;
-  for (let depth = 0; current && depth < 12; depth++, current = current.parentElement) {
-    try {
-      const found = current.querySelector(config.optionContainerSelector);
-      if (found instanceof HTMLElement && isElementVisible(found)) return found;
-    } catch { /* invalid selector */ }
+function findInlineDropdown(
+  element: HTMLElement,
+  config: ResolvedOptionConfig,
+  excludePanels: Set<HTMLElement> = new Set(),
+): HTMLElement | null {
+  const controlScope = element.closest(
+    "[role=combobox], [aria-controls], [aria-owns],"
+    + " .ant-select, .el-select, .arco-select, .kuma-select2,"
+    + " .ivu-select, .atsx-select, .next-select, .ud__select,"
+    + " .phoenix-select, .phoenix-datePicker,"
+    + " [class*=brick-select], [class*=sd-Dropdown], [class*=sd-Select]",
+  );
+  const scopes = [element, controlScope].filter(
+    (scope): scope is HTMLElement => scope instanceof HTMLElement,
+  );
+  for (const scope of scopes) {
+    const candidates = [
+      ...(safeMatches(scope, config.optionContainerSelector) ? [scope] : []),
+      ...safeQueryAll(scope, config.optionContainerSelector),
+    ];
+    const found = candidates.find(
+      (candidate) => !containsOrIsAny(excludePanels, candidate) && isElementVisible(candidate),
+    );
+    if (found) return found;
   }
-  // Global search (for portal dropdowns like Ant Design)
-  return findAnyOpenDropdown(config);
+  return null;
 }
 
-function findAnyOpenDropdown(config: ResolvedOptionConfig): HTMLElement | null {
-  try {
-    const candidates = document.querySelectorAll(config.optionContainerSelector);
-    for (const c of candidates) {
-      if (c instanceof HTMLElement && isElementVisible(c)) return c;
-    }
-  } catch { /* invalid selector */ }
-  return null;
+function findOpenDropdown(element: HTMLElement, config: ResolvedOptionConfig): HTMLElement | null {
+  return findDropdownContainer(element, config);
+}
+
+function findAnyOpenDropdown(
+  element: HTMLElement,
+  config: ResolvedOptionConfig,
+  excludePanels: Set<HTMLElement> = new Set(),
+  portalSnapshotCaptured = false,
+): HTMLElement | null {
+  const candidates = safeQueryAll(document, config.optionContainerSelector)
+    .filter((candidate) => !containsOrIsAny(excludePanels, candidate) && isElementVisible(candidate));
+  const controlled = resolveControlledDropdown(element, config, excludePanels);
+  if (controlled) return controlled;
+  if (!portalSnapshotCaptured) return null;
+  return pickUnambiguousContainer(candidates, excludePanels);
+}
+
+function findDropdownContainer(
+  element: HTMLElement,
+  config: ResolvedOptionConfig,
+  excludePanels: Set<HTMLElement> = new Set(),
+  portalSnapshotCaptured = false,
+): HTMLElement | null {
+  return resolveControlledDropdown(element, config, excludePanels)
+    || findInlineDropdown(element, config, excludePanels)
+    || findAnyOpenDropdown(
+      element,
+      config,
+      excludePanels,
+      portalSnapshotCaptured,
+    );
+}
+
+export function captureOpenDropdownPanels(
+  element: HTMLElement,
+  config?: OptionSelectorConfig,
+): Set<HTMLElement> {
+  const resolved = resolveOptionConfig(element, config);
+  if (!resolved) return new Set();
+  const controlled = resolveControlledDropdown(element, resolved);
+  const inline = findInlineDropdown(element, resolved);
+  const targetPanels = new Set(
+    [controlled, inline].filter(
+      (panel): panel is HTMLElement => panel instanceof HTMLElement,
+    ),
+  );
+  return new Set(
+    safeQueryAll(document, resolved.optionContainerSelector).filter(
+      (panel) => !containsOrIsAny(targetPanels, panel) && isElementVisible(panel),
+    ),
+  );
+}
+
+export function resolveTargetDropdown(
+  element: HTMLElement,
+  config?: OptionSelectorConfig,
+  excludePanels: Set<HTMLElement> = new Set(),
+  portalSnapshotCaptured = false,
+): HTMLElement | null {
+  const resolved = resolveOptionConfig(element, config);
+  return resolved
+    ? findDropdownContainer(
+      element,
+      resolved,
+      excludePanels,
+      portalSnapshotCaptured,
+    )
+    : null;
 }
 
 function pickNearestContainer(
   element: HTMLElement,
   containers: HTMLElement[],
   excludePanels: Set<HTMLElement>,
+  requireNewPanel = false,
 ): HTMLElement | null {
   const targetRect = element.getBoundingClientRect();
   let best: HTMLElement | null = null;
@@ -259,6 +358,7 @@ function pickNearestContainer(
 
   for (const container of containers) {
     if (excludePanels.has(container)) continue;
+    if (requireNewPanel && containsOrIsAny(excludePanels, container)) continue;
     if (!isElementVisible(container)) continue;
     const rect = container.getBoundingClientRect();
     const dx = Math.max(0, targetRect.left - rect.right, rect.left - targetRect.right);
@@ -271,6 +371,83 @@ function pickNearestContainer(
   }
 
   return best;
+}
+
+function pickUnambiguousContainer(
+  containers: HTMLElement[],
+  excludePanels: Set<HTMLElement>,
+): HTMLElement | null {
+  const eligible = Array.from(new Set(containers)).filter(
+    (container) => !containsOrIsAny(excludePanels, container) && isElementVisible(container),
+  );
+  const roots = eligible.filter(
+    (candidate) => !eligible.some(
+      (other) => other !== candidate && other.contains(candidate),
+    ),
+  );
+  if (roots.length !== 1) return null;
+  const root = roots[0];
+  return eligible.every((candidate) => root === candidate || root.contains(candidate))
+    ? root
+    : null;
+}
+
+function containsOrIsAny(panels: Set<HTMLElement>, candidate: HTMLElement): boolean {
+  for (const panel of panels) {
+    if (panel === candidate || panel.contains(candidate) || candidate.contains(panel)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function resolveControlledDropdown(
+  element: HTMLElement,
+  config: ResolvedOptionConfig,
+  excludePanels: Set<HTMLElement> = new Set(),
+): HTMLElement | null {
+  const controlScope = element.closest(
+    "[role=combobox], .ant-select, .el-select, .arco-select, .kuma-select2,"
+    + " .ivu-select, .atsx-select, .next-select, .ud__select,"
+    + " [class*=brick-select], [class*=sd-Dropdown], [class*=sd-Select]",
+  );
+  const owners = Array.from(new Set([
+    element,
+    element.closest("[role=combobox]"),
+    element.closest("[aria-controls], [aria-owns]"),
+    ...safeQueryAll(element, "[aria-controls], [aria-owns]"),
+    ...(controlScope instanceof HTMLElement
+      ? safeQueryAll(controlScope, "[aria-controls], [aria-owns]")
+      : []),
+  ].filter((item): item is HTMLElement => item instanceof HTMLElement)));
+  for (const owner of owners) {
+    const ids = `${owner.getAttribute("aria-controls") || ""} ${owner.getAttribute("aria-owns") || ""}`
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    for (const id of ids) {
+      const panel = document.getElementById(id);
+      if (!(panel instanceof HTMLElement)) continue;
+      if (
+        safeMatches(panel, config.optionContainerSelector)
+        && !containsOrIsAny(excludePanels, panel)
+        && isElementVisible(panel)
+      ) return panel;
+      const container = safeClosest(panel, config.optionContainerSelector)
+        || safeQueryAll(panel, config.optionContainerSelector)[0];
+      if (
+        container instanceof HTMLElement
+        && !containsOrIsAny(excludePanels, container)
+        && isElementVisible(container)
+      ) return container;
+      if (
+        !containsOrIsAny(excludePanels, panel)
+        && isElementVisible(panel)
+        && safeQueryAll(panel, config.optionSelector).length > 0
+      ) return panel;
+    }
+  }
+  return null;
 }
 
 function extractOptionsFromContainer(container: HTMLElement, optionSelector: string): DropdownOption[] {
@@ -319,6 +496,22 @@ function safeQueryAll(root: ParentNode, selector: string): HTMLElement[] {
   }
 }
 
+function safeMatches(element: HTMLElement, selector: string): boolean {
+  try {
+    return element.matches(selector);
+  } catch {
+    return false;
+  }
+}
+
+function safeClosest(element: HTMLElement, selector: string): HTMLElement | null {
+  try {
+    return element.closest(selector) as HTMLElement | null;
+  } catch {
+    return null;
+  }
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -328,5 +521,6 @@ export const __OptionPickerInternals = {
   findOpenDropdown,
   findAnyOpenDropdown,
   pickNearestContainer,
+  pickUnambiguousContainer,
   extractOptionsFromContainer,
 };

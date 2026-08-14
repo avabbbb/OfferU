@@ -2,7 +2,11 @@
 import type { FrameworkHint } from "../core/types.js";
 import { simulateClick, simulateFocus, simulateInput, simulateKeydown, setNativeValue } from "./event-simulator.js";
 import { normalizeText } from "../shared/text-utils.js";
-import { collectDropdownOptions } from "./option-picker.js";
+import {
+  captureOpenDropdownPanels,
+  collectDropdownOptions,
+  resolveTargetDropdown,
+} from "./option-picker.js";
 import type { OptionSelectorConfig } from "../ats/adapters/adapter.interface.js";
 import { isCascaderField, splitCascadeValue, writeCascader } from "./cascade-writer.js";
 import { WRITE } from "../shared/constants.js";
@@ -131,14 +135,40 @@ export async function writeComboboxValue(
   try {
     try { host.scrollIntoView({ block: "center", behavior: "smooth" }); } catch { /* ignore */ }
 
+    const previouslyOpenPanels = captureOpenDropdownPanels(host, optionConfig);
     simulateClick(host);
     await sleep(WRITE.datePanelOpenDelayMs);
 
-    let options = await collectDropdownOptions(host, optionConfig, { shouldRetry: true });
+    let targetPanel = resolveTargetDropdown(
+      host,
+      optionConfig,
+      previouslyOpenPanels,
+      true,
+    );
+    const collectionOptions = () => ({
+      shouldRetry: true,
+      portalSnapshotCaptured: true,
+      ...(
+        targetPanel
+          ? { preselectedContainer: targetPanel }
+          : { excludePanels: previouslyOpenPanels }
+      ),
+    });
+    let options = await collectDropdownOptions(host, optionConfig, {
+      ...collectionOptions(),
+    });
 
     if (options.length === 0 || isOnlyEmptyState(options)) {
       await sleep(WRITE.comboBoxOptionRetryDelayMs);
-      options = await collectDropdownOptions(host, optionConfig, { shouldRetry: true });
+      targetPanel = resolveTargetDropdown(
+        host,
+        optionConfig,
+        previouslyOpenPanels,
+        true,
+      );
+      options = await collectDropdownOptions(host, optionConfig, {
+        ...collectionOptions(),
+      });
     }
 
     if (options.length > 0 && !isOnlyEmptyState(options)) {
@@ -147,7 +177,13 @@ export async function writeComboboxValue(
       if (result) return true;
     }
 
-    const searchInput = findSearchInput(scope, optionConfig?.searchInputSelector);
+    targetPanel = resolveTargetDropdown(
+      host,
+      optionConfig,
+      previouslyOpenPanels,
+      true,
+    );
+    const searchInput = findSearchInput(scope, optionConfig?.searchInputSelector, targetPanel);
     if (searchInput) {
       simulateClick(host);
       await sleep(WRITE.datePanelOpenDelayMs);
@@ -158,10 +194,26 @@ export async function writeComboboxValue(
       simulateInput(searchInput, searchTerm);
       await sleep(WRITE.searchInputDelayMs);
 
-      options = await collectDropdownOptions(host, optionConfig, { shouldRetry: true });
+      targetPanel = resolveTargetDropdown(
+        host,
+        optionConfig,
+        previouslyOpenPanels,
+        true,
+      );
+      options = await collectDropdownOptions(host, optionConfig, {
+        ...collectionOptions(),
+      });
       if (options.length === 0 || isOnlyEmptyState(options)) {
         await sleep(WRITE.comboBoxOptionRetryDelayMs);
-        options = await collectDropdownOptions(host, optionConfig, { shouldRetry: true });
+        targetPanel = resolveTargetDropdown(
+          host,
+          optionConfig,
+          previouslyOpenPanels,
+          true,
+        );
+        options = await collectDropdownOptions(host, optionConfig, {
+          ...collectionOptions(),
+        });
       }
 
       if (options.length > 0 && !isOnlyEmptyState(options)) {
@@ -171,7 +223,7 @@ export async function writeComboboxValue(
       }
     }
 
-    const fallbackOptions = findVisibleOptionsFallback(scope);
+    const fallbackOptions = findVisibleOptionsFallback(scope, targetPanel);
     if (fallbackOptions.length > 0) {
       const result = await selectFromOptions(fallbackOptions, host, value, context);
       if (result) return true;
@@ -269,12 +321,25 @@ function findComboboxScope(host: HTMLElement): HTMLElement | null {
   ) as HTMLElement | null;
 }
 
-function findSearchInput(scope: HTMLElement | null, preferredSelector?: string): HTMLInputElement | null {
-  const roots: ParentNode[] = scope ? [scope, document] : [document];
+function findSearchInput(
+  scope: HTMLElement | null,
+  preferredSelector?: string,
+  dropdown?: HTMLElement | null,
+): HTMLInputElement | null {
+  const roots: ParentNode[] = [dropdown, scope].filter(
+    (root): root is HTMLElement => root instanceof HTMLElement,
+  );
   const selectors = preferredSelector ? [preferredSelector, ...FALLBACK_SEARCH_INPUTS] : FALLBACK_SEARCH_INPUTS;
   for (const selector of selectors) {
     for (const root of roots) {
       try {
+        if (
+          root instanceof HTMLInputElement
+          && root.matches(selector)
+          && root.getBoundingClientRect().width > 0
+          && root.getBoundingClientRect().height > 0
+          && !root.disabled
+        ) return root;
         const inputs = root.querySelectorAll(selector);
         for (const input of inputs) {
           const el = input as HTMLInputElement;
@@ -287,10 +352,15 @@ function findSearchInput(scope: HTMLElement | null, preferredSelector?: string):
   return null;
 }
 
-function findVisibleOptionsFallback(scope: HTMLElement | null): OptionMatch[] {
+function findVisibleOptionsFallback(
+  scope: HTMLElement | null,
+  dropdown?: HTMLElement | null,
+): OptionMatch[] {
   const results: OptionMatch[] = [];
+  const roots: ParentNode[] = [dropdown || scope].filter(
+    (root): root is HTMLElement => root instanceof HTMLElement,
+  );
   for (const selector of FALLBACK_OPTION_SELECTORS) {
-    const roots: ParentNode[] = scope ? [scope, document] : [document];
     for (const root of roots) {
       try {
         const elements = root.querySelectorAll(selector);

@@ -178,6 +178,7 @@ function InlineCellEditor({
   onFirstEditHint,
 }: InlineCellEditorProps) {
   const [draft, setDraft] = useState<unknown>(initialValue);
+  const [commitError, setCommitError] = useState<string | null>(null);
   const savingRef = useRef(false);
 
   useEffect(() => {
@@ -187,10 +188,15 @@ function InlineCellEditor({
   const commitAndClose = async (nextDraft: unknown = draft) => {
     if (savingRef.current) return;
     savingRef.current = true;
+    setCommitError(null);
     try {
       await onCommit(nextDraft);
-    } finally {
       onClose();
+    } catch (e) {
+      // 提交失败：保留编辑器与草稿，展示错误；不能静默关闭
+      //（用户会以为已保存，且异常会变成 unhandled rejection）。
+      setCommitError(e instanceof Error ? e.message : String(e));
+    } finally {
       savingRef.current = false;
     }
   };
@@ -201,6 +207,8 @@ function InlineCellEditor({
         autoFocus
         minRows={2}
         value={String(draft ?? "")}
+        isInvalid={Boolean(commitError)}
+        errorMessage={commitError || undefined}
         onValueChange={setDraft}
         onKeyDown={(event) => {
           if (event.key === "Escape") {
@@ -242,6 +250,8 @@ function InlineCellEditor({
       <Select
         autoFocus
         className="min-w-[220px]"
+        isInvalid={Boolean(commitError)}
+        errorMessage={commitError || undefined}
         selectedKeys={draft ? [String(draft)] : []}
         onSelectionChange={(keys) => {
           const first = Array.from(keys).at(0);
@@ -272,6 +282,8 @@ function InlineCellEditor({
     <Input
       autoFocus
       value={String(Array.isArray(draft) ? draft.join(", ") : draft ?? "")}
+      isInvalid={Boolean(commitError)}
+      errorMessage={commitError || undefined}
       type={
         field.type === "number"
           ? "number"

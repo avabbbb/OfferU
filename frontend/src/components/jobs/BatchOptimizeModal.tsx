@@ -7,7 +7,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Modal,
   ModalContent,
@@ -53,6 +53,8 @@ export function BatchOptimizeModal({
   const [results, setResults] = useState<BatchOptimizeEntry[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  // 关闭弹窗时中止进行中的 SSE 流，避免卸载后 setState 与连接泄漏
+  const abortRef = useRef<AbortController | null>(null);
 
   const resumeList = Array.isArray(resumes) ? resumes : [];
 
@@ -63,6 +65,7 @@ export function BatchOptimizeModal({
     setError(null);
     setResults([]);
     setCurrentIndex(0);
+    abortRef.current = new AbortController();
 
     try {
       await batchOptimizeResume(
@@ -73,16 +76,22 @@ export function BatchOptimizeModal({
         (entry) => {
           setResults((prev) => [...prev, entry]);
           setCurrentIndex(entry.index + 1);
-        }
+        },
+        abortRef.current.signal
       );
       setPhase("done");
-    } catch (e: any) {
-      setError(e.message || "批量优化失败");
+    } catch (e: unknown) {
+      if (e instanceof Error && e.name === "AbortError") {
+        // 用户主动关闭弹窗，不算失败
+        return;
+      }
+      setError(e instanceof Error ? e.message : String(e));
       setPhase("done");
     }
   };
 
   const handleClose = () => {
+    abortRef.current?.abort();
     setPhase("select");
     setResults([]);
     setError(null);

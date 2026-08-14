@@ -221,8 +221,12 @@ async def fetch_readable(url: str, *, max_chars: int = 20_000) -> str:
     ) as client:
         response = await client.get(clean_url)
         response.raise_for_status()
-        # 重定向后再次检查黑名单（防跳转绕过）
-        if _is_restricted(str(response.url)):
+        # 重定向后再次检查：目标可能已跳到内网 IP/非公网地址（SSRF 防护），
+        # 或跳到受限站点（防跳转绕过黑名单）。
+        final_url = str(response.url)
+        if not _is_public_http_url(final_url):
+            raise ValueError("目标经重定向指向非公网地址，已拒绝抓取")
+        if _is_restricted(final_url):
             raise ValueError("目标经重定向指向受限站点，已拒绝抓取")
         html = response.text
 

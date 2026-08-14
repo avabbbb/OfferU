@@ -486,6 +486,32 @@ async def delete_resume(resume_id: int, db: AsyncSession = Depends(get_db)):
 # =============================================
 
 
+# 注意：静态路径段（reorder）必须注册在动态段（{section_id}）之前，
+# 否则 FastAPI 按注册顺序匹配会把 "reorder" 当作 section_id 导致 422。
+@router.put("/{resume_id}/sections/reorder")
+async def reorder_sections(
+    resume_id: int, data: SectionReorder, db: AsyncSession = Depends(get_db)
+):
+    """
+    批量更新段落排序
+    ─────────────────────────────────────────────
+    前端拖拽排序后，一次性提交所有段落的新 sort_order。
+    """
+    await _get_resume_or_404(resume_id, db)
+    for item in data.items:
+        result = await db.execute(
+            select(ResumeSection).where(
+                ResumeSection.id == item.id,
+                ResumeSection.resume_id == resume_id,
+            )
+        )
+        section = result.scalar_one_or_none()
+        if section:
+            section.sort_order = item.sort_order
+    await db.commit()
+    return {"message": "Sections reordered"}
+
+
 @router.post("/{resume_id}/sections")
 async def create_section(
     resume_id: int, data: SectionCreate, db: AsyncSession = Depends(get_db)
@@ -549,30 +575,6 @@ async def delete_section(
     await db.delete(section)
     await db.commit()
     return {"message": "Section deleted"}
-
-
-@router.put("/{resume_id}/sections/reorder")
-async def reorder_sections(
-    resume_id: int, data: SectionReorder, db: AsyncSession = Depends(get_db)
-):
-    """
-    批量更新段落排序
-    ─────────────────────────────────────────────
-    前端拖拽排序后，一次性提交所有段落的新 sort_order。
-    """
-    await _get_resume_or_404(resume_id, db)
-    for item in data.items:
-        result = await db.execute(
-            select(ResumeSection).where(
-                ResumeSection.id == item.id,
-                ResumeSection.resume_id == resume_id,
-            )
-        )
-        section = result.scalar_one_or_none()
-        if section:
-            section.sort_order = item.sort_order
-    await db.commit()
-    return {"message": "Sections reordered"}
 
 
 # =============================================

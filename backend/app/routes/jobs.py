@@ -337,6 +337,39 @@ async def delete_jobs_batch(data: JobBatchDeleteRequest, db: AsyncSession = Depe
     await db.commit()
     return {"deleted": deleted}
 
+# 注意：静态路径段（batch-triage）必须注册在动态段（{job_id}）之前，
+# 否则 FastAPI 按注册顺序匹配会把 "batch-triage" 当作 job_id 导致 422。
+@router.patch("/batch-triage")
+async def batch_triage(data: BatchTriageRequest, db: AsyncSession = Depends(get_db)):
+    """兼容新接口：批量分拣（pool_id=0 表示清空池）。"""
+    triage_status = _to_internal_status(data.triage_status) if data.triage_status else None
+    clear_pool = data.pool_id == 0
+    pool_id = None if clear_pool else data.pool_id
+
+    if not data.job_ids:
+        raise HTTPException(status_code=400, detail="job_ids is required")
+    if triage_status and triage_status not in TRIAGE_STATUSES:
+        raise HTTPException(status_code=400, detail="invalid triage_status")
+
+    values: dict = {}
+    if triage_status:
+        values["triage_status"] = triage_status
+    if clear_pool:
+        values["pool_id"] = None
+    elif pool_id is not None:
+        values["pool_id"] = pool_id
+        if triage_status is None:
+            values["triage_status"] = "picked"
+
+    if not values:
+        raise HTTPException(status_code=400, detail="no update fields provided")
+
+    stmt = update(Job).where(Job.id.in_(data.job_ids)).values(**values)
+    result = await db.execute(stmt)
+    await db.commit()
+    return {"updated": result.rowcount or 0}
+
+
 @router.patch("/{job_id}")
 async def patch_job(job_id: int, data: JobPatchRequest, db: AsyncSession = Depends(get_db)):
     """更新单个岗位的分拣状态与池归属"""
@@ -486,36 +519,6 @@ async def triage_counts(db: AsyncSession = Depends(get_db)):
         "inbox": unscreened,
         "picked": screened,
     }
-
-@router.patch("/batch-triage")
-async def batch_triage(data: BatchTriageRequest, db: AsyncSession = Depends(get_db)):
-    """兼容新接口：批量分拣（pool_id=0 表示清空池）。"""
-    triage_status = _to_internal_status(data.triage_status) if data.triage_status else None
-    clear_pool = data.pool_id == 0
-    pool_id = None if clear_pool else data.pool_id
-
-    if not data.job_ids:
-        raise HTTPException(status_code=400, detail="job_ids is required")
-    if triage_status and triage_status not in TRIAGE_STATUSES:
-        raise HTTPException(status_code=400, detail="invalid triage_status")
-
-    values: dict = {}
-    if triage_status:
-        values["triage_status"] = triage_status
-    if clear_pool:
-        values["pool_id"] = None
-    elif pool_id is not None:
-        values["pool_id"] = pool_id
-        if triage_status is None:
-            values["triage_status"] = "picked"
-
-    if not values:
-        raise HTTPException(status_code=400, detail="no update fields provided")
-
-    stmt = update(Job).where(Job.id.in_(data.job_ids)).values(**values)
-    result = await db.execute(stmt)
-    await db.commit()
-    return {"updated": result.rowcount or 0}
 
 @router.get("/{job_id}")
 async def get_job(job_id: int, db: AsyncSession = Depends(get_db)):

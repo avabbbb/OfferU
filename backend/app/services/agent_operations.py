@@ -13,6 +13,7 @@ from app.database import async_session
 from app.models.models import (
     Application,
     ApplicationRecord,
+    ApplicationTableRecord,
     ApplicationAttempt,
     CalendarEvent,
     InterviewExperience,
@@ -1543,38 +1544,83 @@ async def export_resume_pdf(resume_id: int) -> dict:
     }
 
 
+_APPLICATION_STATUS_TO_WORKSPACE = {
+    "pending": "待投递",
+    "submitted": "已投递",
+    "responded": "待处理",
+    "interview": "面试中",
+    "rejected": "已拒绝",
+    "offer": "已录用",
+}
+
+
+def _application_record_status(value: object) -> str:
+    clean = str(value or "").strip().lower()
+    aliases = {
+        "": "pending",
+        "待投递": "pending",
+        "draft": "pending",
+        "已投递": "submitted",
+        "applied": "submitted",
+        "待处理": "responded",
+        "已回复": "responded",
+        "need_action": "responded",
+        "面试": "interview",
+        "面试中": "interview",
+        "interviewing": "interview",
+        "已拒绝": "rejected",
+        "已录用": "offer",
+        "accepted": "offer",
+    }
+    return aliases.get(clean, clean)
+
+
+def _serialize_application_record(record: ApplicationRecord) -> dict:
+    custom = record.custom_values if isinstance(record.custom_values, dict) else {}
+    return {
+        "id": record.id,
+        "application_type": "application_record",
+        "job_id": record.job_ref_id,
+        "status": _application_record_status(custom.get("apply_status")),
+        "cover_letter": str(custom.get("cover_letter") or ""),
+        "apply_url": record.job_link or "",
+        "notes": str(custom.get("notes") or ""),
+        "submitted_at": custom.get("applied_at") or custom.get("application_date"),
+        "created_at": str(record.created_at),
+    }
+
+
 async def list_applications(
     status: Optional[str] = None,
     page: int = 1,
     page_size: int = 20,
 ) -> dict:
     async with async_session() as db:
-        query = select(Application).order_by(desc(Application.created_at))
-        if status:
-            query = query.where(Application.status == status)
-
-        total_q = select(func.count()).select_from(query.subquery())
-        total = (await db.execute(total_q)).scalar() or 0
-
-        query = query.offset((page - 1) * page_size).limit(page_size)
-        apps = (await db.execute(query)).scalars().all()
+        records = (
+            await db.execute(
+                select(ApplicationRecord).order_by(desc(ApplicationRecord.created_at))
+            )
+        ).scalars().all()
+        filtered = [
+            record
+            for record in records
+            if not status
+            or _application_record_status(
+                (record.custom_values or {}).get("apply_status")
+                if isinstance(record.custom_values, dict)
+                else None
+            )
+            == status
+        ]
+        total = len(filtered)
+        start = (page - 1) * page_size
+        apps = filtered[start : start + page_size]
 
         return {
             "total": total,
             "page": page,
             "page_size": page_size,
-            "items": [
-                {
-                    "id": a.id,
-                    "job_id": a.job_id,
-                    "status": a.status,
-                    "cover_letter": a.cover_letter,
-                    "apply_url": a.apply_url,
-                    "notes": a.notes,
-                    "created_at": str(a.created_at),
-                }
-                for a in apps
-            ],
+            "items": [_serialize_application_record(a) for a in apps],
         }
 
 
@@ -1604,7 +1650,12 @@ async def create_application(job_id: int, notes: Optional[str] = None) -> dict:
                 (
                     await db.execute(
                         select(ApplicationRecord.id)
+                        .join(
+                            ApplicationTableRecord,
+                            ApplicationTableRecord.record_id == ApplicationRecord.id,
+                        )
                         .where(ApplicationRecord.job_ref_id == job_id)
+                        .where(ApplicationTableRecord.table_id == table_id)
                         .order_by(ApplicationRecord.updated_at.desc())
                     )
                 ).scalars().first()
@@ -1626,7 +1677,8 @@ async def create_application(job_id: int, notes: Optional[str] = None) -> dict:
             "id": record.id,
             "application_type": "application_record",
             "table_id": table_id,
-            "status": custom_values["apply_status"],
+            "status": _application_record_status(custom_values["apply_status"]),
+            "workspace_status": custom_values["apply_status"],
             "created": bool(item),
             "message": "Application workspace record ready",
         }
@@ -1642,42 +1694,53 @@ async def update_application_status(
     if clean_status not in allowed:
         raise ValueError(f"不支持的投递状态: {clean_status}")
     async with async_session() as db:
-        application = (
-            await db.execute(select(Application).where(Application.id == application_id))
+        record = (
+            await db.execute(
+                select(ApplicationRecord).where(ApplicationRecord.id == application_id)
+            )
         ).scalar_one_or_none()
-        if not application:
+        if not record:
             return {"error": f"Application #{application_id} not found"}
-        previous_status = application.status
-        application.status = clean_status
-        if clean_status == "submitted" and application.submitted_at is None:
-            application.submitted_at = datetime.utcnow()
+        custom_values = dict(record.custom_values or {})
+        previous_workspace_status = custom_values.get("apply_status") or "待投递"
+        previous_status = _application_record_status(previous_workspace_status)
+        custom_values["apply_status"] = _APPLICATION_STATUS_TO_WORKSPACE[clean_status]
+        if clean_status == "submitted" and not (
+            custom_values.get("applied_at") or custom_values.get("application_date")
+        ):
+            custom_values["applied_at"] = datetime.utcnow().isoformat()
         if notes is not None:
-            application.notes = str(notes).strip()
+            custom_values["notes"] = str(notes).strip()
+        record.custom_values = custom_values
+        record.updated_at_value = datetime.utcnow()
         await db.commit()
-        await db.refresh(application)
+        await db.refresh(record)
         event_warning = None
-        if previous_status != application.status:
+        if previous_status != clean_status:
             try:
                 from app.services.application_events import application_event_store
 
                 application_event_store.record(
-                    application_type="application",
-                    application_id=application.id,
+                    application_type="application_record",
+                    application_id=record.id,
                     event_type="status_changed",
                     source="agent",
                     field_key="status",
-                    previous_value=previous_status,
-                    value=application.status,
-                    metadata={"job_id": application.job_id},
+                    previous_value=previous_workspace_status,
+                    value=custom_values["apply_status"],
+                    metadata={"job_id": record.job_ref_id},
                 )
             except Exception as exc:
                 event_warning = str(exc)[:500]
         return {
-            "id": application.id,
+            "id": record.id,
+            "application_type": "application_record",
             "previous_status": previous_status,
-            "status": application.status,
-            "notes": application.notes or "",
-            "submitted_at": str(application.submitted_at) if application.submitted_at else None,
+            "status": clean_status,
+            "workspace_status": custom_values["apply_status"],
+            "notes": str(custom_values.get("notes") or ""),
+            "submitted_at": custom_values.get("applied_at")
+            or custom_values.get("application_date"),
             "updated": True,
             "event_warning": event_warning,
         }
@@ -1733,6 +1796,8 @@ async def review_application_progress(
     application_attempt_id: Optional[int] = None,
     stage: str = "",
     note: str = "",
+    add_calendar: bool = True,
+    create_record: bool = False,
 ) -> dict:
     from app.services.application_progress import review_application_progress as _review
 
@@ -1742,6 +1807,8 @@ async def review_application_progress(
         application_attempt_id=application_attempt_id,
         stage=stage,
         note=note,
+        add_calendar=add_calendar,
+        create_record=create_record,
     )
 
 

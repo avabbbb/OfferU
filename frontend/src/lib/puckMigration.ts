@@ -259,7 +259,19 @@ export function unMigratePuckToResume(
         summary = String(unit.props.text ?? "");
         break;
       default: {
-        const sectionType = COMPONENT_TO_SECTION_TYPE[unit.type];
+        // 优先从 unit id 还原来源 section（id 格式：
+        // resume-{resumeId}-section-{sectionId}-{itemIndex}），
+        // 否则工作/实习等共享同一 Puck 组件类型的 section 会在反向
+        // 迁移时全部并入 COMPONENT_TO_SECTION_TYPE 的兜底类型，
+        // 导致实习内容并入工作段、实习段被清空。
+        let sectionType = COMPONENT_TO_SECTION_TYPE[unit.type];
+        const unitSectionId = sectionIdFromUnitId(String(unit.props?.id ?? ""));
+        if (unitSectionId != null) {
+          const sourceSection = (base.sections ?? []).find(
+            (s) => s.id === unitSectionId,
+          );
+          if (sourceSection) sectionType = sourceSection.section_type;
+        }
         if (!sectionType) continue;
         const list = sectionsByType.get(sectionType) ?? [];
         list.push(propsToItem(sectionType, unit.props));
@@ -306,8 +318,15 @@ export function unMigratePuckToResume(
   };
 }
 
-function defaultSectionTitle(sectionType: string): string {
-  const map: Record<string, string> = {
+// 从 Puck unit id（resume-{resumeId}-section-{sectionId}-{itemIndex}）解析
+// 来源 section.id；新 section（id=0 占位）migrate 时写入的是 sectionIndex，
+// 匹配不到 base.sections 时返回 null，由调用方走组件类型兜底。
+function sectionIdFromUnitId(id: string): number | null {
+  const match = /^resume-\d+-section-(\d+)-/.exec(id);
+  return match ? Number(match[1]) : null;
+}
+
+function defaultSectionTitle(sectionType: string): string {  const map: Record<string, string> = {
     workExperiences: "工作经历",
     internshipExperiences: "实习经历",
     education: "教育经历",

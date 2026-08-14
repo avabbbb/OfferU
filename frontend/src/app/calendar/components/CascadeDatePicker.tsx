@@ -128,7 +128,7 @@ export default function CascadeDatePicker({ label, value, onChange }: CascadeDat
         className="flex w-full items-center justify-between border border-[var(--border-strong)] bg-white px-3 py-2.5  transition-all hover:"
       >
         <span className={`text-sm font-medium ${displayValue() ? "text-[var(--foreground)]" : "text-[var(--foreground-muted)]"}`}>
-          {displayValue() || `閫夋嫨${label}`}
+          {displayValue() || `选择${label}`}
         </span>
         <ChevronDown size={16} className={`text-[var(--foreground-muted)] transition-transform ${isOpen ? "rotate-180" : ""}`} />
       </button>
@@ -146,7 +146,7 @@ export default function CascadeDatePicker({ label, value, onChange }: CascadeDat
             >
               <div ref={yearColRef} className="h-full overflow-y-auto">
                 <div className="sticky top-0 z-10 bg-[var(--surface-muted)] px-2 py-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--foreground-muted)]">
-                  骞?
+                  年
                 </div>
                 {yearOptions.map((y) => (
                   <button
@@ -178,7 +178,7 @@ export default function CascadeDatePicker({ label, value, onChange }: CascadeDat
             >
               <div ref={monthColRef} className="h-full overflow-y-auto">
                 <div className="sticky top-0 z-10 bg-[var(--surface-muted)] px-2 py-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--foreground-muted)]">
-                  鏈?
+                  月
                 </div>
                 {monthOptions.map((m) => (
                   <button
@@ -209,7 +209,7 @@ export default function CascadeDatePicker({ label, value, onChange }: CascadeDat
             >
               <div ref={dayColRef} className="h-full overflow-y-auto">
                 <div className="sticky top-0 z-10 bg-[var(--surface-muted)] px-2 py-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--foreground-muted)]">
-                  鏃?
+                  日
                 </div>
                 {dayOptions.map((d) => (
                   <button

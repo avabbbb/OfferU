@@ -55,8 +55,12 @@ def _is_self_echo_source(source_facts: Any, claims: list[str]) -> bool:
     独立信息量（典型：Agent 把用户陈述原文当来源传回）。
     """
     compact_source = _compact(source_facts)
-    if not compact_source or len(compact_source) < 16:
-        return False
+    if not compact_source:
+        return True
+    # 来源过短（<16 字符）说明没有独立信息量（典型：Agent 把用户陈述
+    # 原文回传），直接视为回声，不能作为 verified_fact 的来源。
+    if len(compact_source) < 16:
+        return True
     remainder = compact_source
     for claim in sorted(claims, key=len, reverse=True):
         compact_claim = _compact(claim)

@@ -1,7 +1,7 @@
 // Feishu UD (Unified Design) / Throne Biz specialized writer
 import type { ScannedField } from "../../core/types.js";
 import { simulateClick, simulateFocus, simulateInput, setNativeValue } from "../event-simulator.js";
-import { collectDropdownOptions } from "../option-picker.js";
+import { captureOpenDropdownPanels, collectDropdownOptions } from "../option-picker.js";
 import { pickBestSearchOption, tryBackendOptionMatch, requestOptionMatch } from "../combobox-writer.js";
 import { normalizeText } from "../../shared/text-utils.js";
 
@@ -48,12 +48,17 @@ export async function writeFeishuUDField(field: ScannedField, value: string): Pr
 
 async function writeFeishuSelect(host: HTMLElement, value: string, context?: { level1Title?: string; level2Title?: string }): Promise<boolean> {
   try {
+    const optionConfig = {
+      dropdownSelector: FEISHU_DROPDOWN_VISIBLE,
+      optionSelector: FEISHU_OPTION,
+    };
+    const previouslyOpenPanels = captureOpenDropdownPanels(host, optionConfig);
     simulateClick(host);
     await sleep(120);
 
-    const options = await collectDropdownOptions(host, {
-      dropdownSelector: FEISHU_DROPDOWN_VISIBLE,
-      optionSelector: FEISHU_OPTION,
+    const options = await collectDropdownOptions(host, optionConfig, {
+      excludePanels: previouslyOpenPanels,
+      portalSnapshotCaptured: true,
     });
     if (options.length > 0) {
       const backendMatch = await tryBackendOptionMatch(options, value, context);
