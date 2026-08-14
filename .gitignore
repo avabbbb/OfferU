@@ -114,3 +114,4 @@ launcher/*.spec
 launcher/__pycache__/
 /OfferU.exe
 /package-lock.json
+.wrangler/
