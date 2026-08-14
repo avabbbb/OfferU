@@ -97,11 +97,11 @@ export function validateJobUpdate(input: {
  * accept 时必须选择合法枚举阶段；prepared/unknown 是内部态，不可作为新阶段。
  */
 export function validateReviewStage(stage: string): TriageValidationError | null {
-  if (!APPLICATION_STAGES.includes(stage as ApplicationStage)) {
-    return { error: `接受候选进展前必须选择有效的新阶段: ${stage}` };
-  }
   if (stage === "prepared" || stage === "unknown") {
     return { error: `内部阶段不可作为确认目标: ${stage}` };
+  }
+  if (!APPLICATION_STAGES.includes(stage as ApplicationStage)) {
+    return { error: `接受候选进展前必须选择有效的新阶段: ${stage}` };
   }
   return null;
 }
