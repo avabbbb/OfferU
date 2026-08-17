@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from "react";
 import { Card, Button, Spinner } from "@nextui-org/react";
+import { SHOWCASE, showcaseHandle } from "@/lib/showcase/router";
 
 // 与 lib/api.ts 同款后端地址解析；vite dev 无 proxy，
 // 相对路径 /api/... 会打到 Vite 自身（7410）返回 index.html。
@@ -27,6 +28,13 @@ export default function StudioPage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
+    if (SHOWCASE) {
+      // 展示模式：模板列表由本地数据层提供（无后端）
+      showcaseHandle("/api/studio/templates").then((data) => {
+        if (Array.isArray(data)) setTemplates(data as Template[]);
+      });
+      return;
+    }
     fetch(`${API_BASE}/api/studio/templates`)
       .then(res => res.json())
       .then(setTemplates);
@@ -73,7 +81,14 @@ export default function StudioPage() {
               onPress={() => setSelectedTemplate(tpl.id)}
             >
               <div className="p-4">
-                <img src={`${API_BASE}${tpl.preview_image}`} alt={tpl.display_name} className="w-full h-32 object-cover rounded mb-2" />
+                {SHOWCASE ? (
+                  // 展示模式：预览图资产在后端本地，用品牌色占位块
+                  <div className="flex h-32 w-full items-center justify-center rounded bg-[#f2e9e1] text-sm font-bold text-[#b3541a]">
+                    {tpl.display_name}
+                  </div>
+                ) : (
+                  <img src={`${API_BASE}${tpl.preview_image}`} alt={tpl.display_name} className="w-full h-32 object-cover rounded mb-2" />
+                )}
                 <div className="font-medium">{tpl.display_name}</div>
                 <div className="text-xs text-gray-500">{tpl.category}</div>
               </div>

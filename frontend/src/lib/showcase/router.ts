@@ -407,6 +407,33 @@ async function deleteEvent(url: URL): Promise<unknown> {
 
 // ---- /api/email (progress candidates) ----
 
+// 把种子候选映射为邮箱通知卡片（对齐 email 页 notification 字段契约）
+async function listNotifications(): Promise<unknown> {
+  const candidates = await withCandidates();
+  return candidates.map((candidate, index) => {
+    const stage = candidate.suggested_stage;
+    const category = stage === "rejected" ? "rejected" : stage === "written_test" ? "written_test" : "interview";
+    const companyMatch = /([^：:，, ]+)/.exec(candidate.subject || "")?.[1] || "招聘方";
+    return {
+      id: `notification_${index + 1}`,
+      category,
+      category_display:
+        category === "rejected" ? "已拒绝" : category === "written_test" ? "笔试" : "面试",
+      position: candidate.subject || "岗位进展通知",
+      company: companyMatch,
+      location: "",
+      interview_time:
+        candidate.received_at && category !== "rejected" ? candidate.received_at : null,
+      action_required:
+        candidate.status === "pending"
+          ? `确认「${candidate.subject}」的进展（建议阶段：${stage}）`
+          : "",
+      email_from: candidate.sender,
+      parsed_at: candidate.received_at,
+    };
+  });
+}
+
 async function listCandidates(url: URL): Promise<unknown> {
   const candidates = await withCandidates();
   const status = url.searchParams.get("status");
@@ -495,9 +522,18 @@ export async function showcaseHandle(path: string, options?: RequestInit): Promi
       return {};
     case "email":
       if (method === "GET" && sub === "progress-candidates") return listCandidates(url);
-      if (method === "GET" && sub === "notifications") return [];
+      if (method === "GET" && sub === "notifications") return listNotifications();
       if (method === "POST" && sub === "progress-candidates" && isNumericSub) return {};
       if (method === "POST" && segments[3] === "review") return reviewCandidate(url, body);
+      return {};
+    case "studio":
+      if (method === "GET" && sub === "templates") {
+        return [
+          { id: 1, name: "modern-minimal", display_name: "现代简约", category: "professional", preview_image: "" },
+          { id: 2, name: "creative-gradient", display_name: "创意渐变", category: "creative", preview_image: "" },
+          { id: 3, name: "tech-dark", display_name: "技术暗黑", category: "technical", preview_image: "" },
+        ];
+      }
       return {};
     case "agent":
       if (method === "GET" && sub === "runs") return listAgentRuns();
