@@ -15,13 +15,14 @@ describe("nowcoder site detection via self-built adapter", () => {
     const signals = adapter!.getDetectionSignals().filter((s) => s.type === "url-pattern");
     const nowcoderPattern = signals.find((s) => s.value.includes("nowcoder"));
     expect(nowcoderPattern).toBeDefined();
-    expect(new RegExp(nowcoderPattern!.value).test("https://www.nowcoder.com/apply/123")).toBe(true);
-    expect(new RegExp(nowcoderPattern!.value).test("https://d.nowcoder.com/job/apply?jobId=1")).toBe(true);
+    if (!nowcoderPattern) return; // 上面断言失败时终止（类型守卫）
+    expect(new RegExp(nowcoderPattern.value).test("https://www.nowcoder.com/apply/123")).toBe(true);
+    expect(new RegExp(nowcoderPattern.value).test("https://d.nowcoder.com/job/apply?jobId=1")).toBe(true);
   });
 
   it("self-built covers antd + element controls used by nowcoder forms", () => {
     const adapter = atsRegistry.get("self-built");
-    const overrides = adapter!.getSelectorOverrides();
+    const overrides = adapter!.getSelectorOverrides!(); // 接口方法可选（unknown 适配器无 override）
     const custom = overrides.pageStructure?.customControlSelectors ?? [];
     expect(custom.join(" ")).toContain(".ant-select");
     expect(custom.join(" ")).toContain(".el-select");

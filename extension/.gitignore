@@ -1,0 +1,4 @@
+
+# 发布者签名私钥（ADR-0050），绝不入库
+scripts/keys/
+dist-rule-packs/

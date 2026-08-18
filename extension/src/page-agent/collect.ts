@@ -9,6 +9,7 @@ import { createSnapshotFromDom } from "../framework/page-snapshot.js";
 import { readJobDetail } from "../framework/dom-reader.js";
 import { SiteRuleRegistry } from "../rule-packs/registry.js";
 import { resolveSite } from "../rule-packs/resolver.js";
+import { fetchRemoteRulePacks } from "../rule-packs/remote.js";
 import bossJobDetailPack from "../rule-packs/packs/portal.boss-job-detail.json";
 
 export type CollectStatus = "collected" | "unsupported" | "ambiguous" | "diagnostic" | "error";
@@ -26,6 +27,10 @@ export interface CollectResult {
 
 const registry = new SiteRuleRegistry();
 registry.loadPacks([bossJobDetailPack]);
+
+// 异步拉取签名远程规则包（ADR-0050）：失败静默，内置规则兜底；
+// 成功则按 bundleVersion 递增合并，新站点/选择器修复无需发版。
+void fetchRemoteRulePacks(registry);
 
 /** 从当前文档采集岗位；experimental 规则仍允许读能力（read-job-detail） */
 export function collectFromDocument(url: string, doc: Document): CollectResult {
