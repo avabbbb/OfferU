@@ -4,7 +4,7 @@ import type { AtsCapabilities } from "../../core/types.js";
 import { atsRegistry } from "../registry.js";
 
 const DETECTION_SIGNALS: DetectionSignalTemplate[] = [
-  { type: "url-pattern", value: "tencent\\.com|self-built|自建|建发|minmetals", weight: 0.40 },
+  { type: "url-pattern", value: "tencent\\.com|self-built|自建|建发|minmetals|nowcoder\\.com", weight: 0.40 },
   { type: "dom-signature", value: "internal|portal|career|recruit", weight: 0.15 },
 ];
 
