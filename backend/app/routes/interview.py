@@ -14,7 +14,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select, and_
+from sqlalchemy import func, select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -262,6 +262,17 @@ async def list_experiences(
     result = await db.execute(stmt)
     rows = result.scalars().all()
 
+    # 一次分组查询统计每个面经的问题数（避免 N+1，也不返回假数据）
+    question_counts: dict[int, int] = {}
+    if rows:
+        ids = [e.id for e in rows]
+        count_stmt = (
+            select(InterviewQuestion.experience_id, func.count(InterviewQuestion.id))
+            .where(InterviewQuestion.experience_id.in_(ids))
+            .group_by(InterviewQuestion.experience_id)
+        )
+        question_counts = dict((await db.execute(count_stmt)).all())
+
     return [
         {
             "id": e.id,
@@ -270,7 +281,7 @@ async def list_experiences(
             "source_platform": e.source_platform,
             "source_url": e.source_url,
             "collected_at": e.collected_at.isoformat() if e.collected_at else None,
-            "questions_count": 0,  # lazy — avoid N+1
+            "questions_count": question_counts.get(e.id, 0),
         }
         for e in rows
     ]
