@@ -13,7 +13,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${DB_USER:-offeru}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-offeru_secret}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-QX7OeA7bzp0m07u03m18CJUMXRY9Y1OZ}
       POSTGRES_DB: ${DB_NAME:-offeru}
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -33,7 +33,7 @@ services:
     container_name: offeru-backend
     restart: unless-stopped
     environment:
-      - DATABASE_URL=postgresql+asyncpg://${DB_USER:-offeru}:${DB_PASSWORD:-offeru_secret}@db:5432/${DB_NAME:-offeru}
+      - DATABASE_URL=postgresql+asyncpg://${DB_USER:-offeru}:${DB_PASSWORD:-QX7OeA7bzp0m07u03m18CJUMXRY9Y1OZ}@db:5432/${DB_NAME:-offeru}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
       - QWEN_API_KEY=${QWEN_API_KEY:-}

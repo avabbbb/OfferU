@@ -21,7 +21,7 @@
 #   PUT    /api/resume/{id}/sections/reorder        段落排序
 #   POST   /api/resume/{id}/photo                  上传头像
 #   POST   /api/resume/{id}/export/pdf             导出 PDF
-#   POST   /api/resume/parse                       Agent 解析简历（TODO）
+#   POST   /api/resume/parse                       解析 PDF/Word 简历文件（提取文本）
 # =============================================
 
 from __future__ import annotations

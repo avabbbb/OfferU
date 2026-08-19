@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     offeru_enable_mcp: bool = False
 
     # ---- 安全 ----
-    secret_key: str = "change-me-in-production"
+    # 本地单人应用：无登录/会话体系，不设服务端对称密钥。
     cors_origins: str = (
         "http://localhost:3011,"
         "http://127.0.0.1:3011,"
