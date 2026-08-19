@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Button,
@@ -79,7 +79,19 @@ export default function EmailPage() {
   const { data: emailStatus, mutate: mutateStatus } = useEmailStatus();
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState("");
+  const [authResult, setAuthResult] = useState<string | null>(null);
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
+
+  // Gmail OAuth 回调：{frontend}/email?auth=success|error → 展示提示并清理 URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const outcome = params.get("auth");
+    if (outcome) {
+      setAuthResult(outcome === "success" ? "Gmail 授权成功，开始同步邮件" : "Gmail 授权失败，请重试");
+      mutateStatus();
+      window.history.replaceState({}, "", window.location.pathname + window.location.hash);
+    }
+  }, [mutateStatus]);
 
   const [imapProvider, setImapProvider] = useState("qq");
   const [imapUser, setImapUser] = useState("");
@@ -234,6 +246,7 @@ export default function EmailPage() {
                   ? `${isImap ? `IMAP: ${emailStatus?.imap_user}` : ""}${isImap && isGmail ? " + " : ""}${isGmail ? "Gmail OAuth" : ""} · 已解析 ${notifications?.length ?? 0} 条通知`
                   : "尚未连接邮箱。支持 QQ邮箱 / 163邮箱 / Gmail IMAP 直连，也支持 Gmail OAuth。"}
               </p>
+              {authResult && <p className="mt-2 text-sm font-medium text-[#2f7d4f]">{authResult}</p>}
               {syncResult && <p className="mt-2 text-sm font-medium text-[#7a8f7e]">{syncResult}</p>}
             </div>
             <Chip
