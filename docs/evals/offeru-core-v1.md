@@ -4,7 +4,7 @@
 - **Suite version:** `1.0.0`
 - **Status:** candidate baseline
 - **Owner:** project maintainer
-- **Executor:** DeepSeek IDE/CLI Agent under [`deepseek-runbook`](./deepseek-runbook.md)
+- **Executor:** any capability-probed local Harness plus an independent human reviewer
 - **Evidence policy:** [`README.md`](./README.md)
 
 本套件回答两个问题：普通求职者能否完成 OfferU 的核心求职闭环，以及 Agent 是否在真实执行中保持完整、可控、可追溯。它不是功能点清单，而是 24 个有明确结果判据的任务。

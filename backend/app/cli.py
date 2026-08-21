@@ -10,6 +10,7 @@ from typing import Any, Optional, Union
 from app.config import get_settings
 from app.database import init_db
 from app.ops import get_operation_schema, list_operations
+from app.bridge_cli import main as bridge_main
 from app.services.agent_skill_registry import registry_snapshot
 from app.services.operation_projection import (
     confirm_operation_proposal,
@@ -53,6 +54,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         # 配置同步失败不应阻塞只读操作；具体错误由 LLM 调用时可见地暴露。
         pass
     try:
+        if args.command == "bridge":
+            return bridge_main(args.bridge_args)
         if args.command == "doctor":
             return _print(_doctor(), args.pretty)
         if args.command == "manifest":
@@ -99,6 +102,13 @@ def _build_parser() -> JsonArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", parser_class=JsonArgumentParser)
 
+    bridge = sub.add_parser(
+        "bridge",
+        help="Agent Bridge machine surface (probe/schema).",
+        add_help=False,
+    )
+    bridge.add_argument("bridge_args", nargs=argparse.REMAINDER, help="Arguments passed to the bridge surface.")
+
     doctor = sub.add_parser("doctor", help="Check runtime configuration and CLI health.", add_help=False)
     doctor.add_argument("--pretty", action="store_true", help="Pretty-print JSON.")
 
@@ -137,7 +147,7 @@ def _build_parser() -> JsonArgumentParser:
 
 
 def _commands() -> list[str]:
-    return ["doctor", "manifest", "ops", "schema", "run", "confirm"]
+    return ["doctor", "manifest", "ops", "schema", "run", "confirm", "bridge"]
 
 
 def _doctor() -> dict[str, Any]:

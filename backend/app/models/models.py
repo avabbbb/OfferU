@@ -1027,6 +1027,15 @@ class AgentRunRecord(Base):
     final_result_json: Mapped[dict] = mapped_column(JSON, default=dict)
     failure_reason: Mapped[str] = mapped_column(Text, default="")
     event_sequence: Mapped[int] = mapped_column(Integer, default=0)
+    # ---- Agent Bridge（ADR-0051）：外部 Harness 身份与单写入租约 ----
+    harness_name: Mapped[str] = mapped_column(String(80), default="")
+    harness_version: Mapped[str] = mapped_column(String(80), default="")
+    adapter_name: Mapped[str] = mapped_column(String(120), default="")
+    adapter_version: Mapped[str] = mapped_column(String(80), default="")
+    harness_session_id: Mapped[str] = mapped_column(String(160), default="")
+    lease_id: Mapped[str] = mapped_column(String(80), default="")
+    lease_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    context_version: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now(), index=True
@@ -1055,6 +1064,24 @@ class AgentRunEvent(Base):
     event_type: Mapped[str] = mapped_column(String(80), index=True)
     payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+
+
+class BridgePairing(Base):
+    """一次 Agent Bridge 配对：bootstrap token 与 Run 绑定，用后即焚。"""
+
+    __tablename__ = "bridge_pairings"
+
+    pairing_id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    run_id: Mapped[Optional[str]] = mapped_column(
+        String(64),
+        ForeignKey("agent_runs.run_id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    status: Mapped[str] = mapped_column(String(24), default="pending", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    consumed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
 
 class HostedExecutorSession(Base):

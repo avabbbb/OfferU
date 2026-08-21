@@ -1109,12 +1109,16 @@ async def add_profile_evidence(
     fact_gate = validate_generated_content(clean_source, canonical)
     if fact_gate["status"] != "passed":
         # 自回声来源（来源=声明本身）：只有使用者明确确认（收件箱 accept / 手动确认）
+        # 或使用者明确陈述偏好（preference_confirmation=direct，陈述本身即构成确认）
         # 才放行；未确认的直写（如主 Agent 把用户陈述回声当来源）一律拒绝。
         echo_blocked = any(
             item.get("issue") == "echo_source" for item in fact_gate.get("warnings") or []
         )
         if echo_blocked:
-            if not user_confirmed:
+            if not (
+                user_confirmed
+                or (resolved_tier == "preference" and preference_confirmation == "direct")
+            ):
                 return {
                     "error": "来源只是声明自身的回声，缺少独立可验证出处；请提供真实来源材料，或经记忆收件箱由使用者确认",
                     "fact_gate": fact_gate,

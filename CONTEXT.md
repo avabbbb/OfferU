@@ -32,6 +32,14 @@ _Avoid_: Codex 会话、Claude 会话、外部 Agent 对话、独立 Agent 任�
 OfferU 操作控制面依据使用者授权为一个托管执行会话签发的 Operation 与数据范围白名单，只允许完成当前可审计重任务所需的最小能力。它随会话结束失效，不授予业务事实写入权，也不能由主控 Agent、Skill 或执行器自行扩大。
 _Avoid_: Agent 权限、全局工具权限、Prompt 白名单、用户角色
 
+**Run 工件工作区**:
+一个 Agent Run 独占的隔离文件空间，用于主控 Harness 处理显式输入、中间文件和候选产物。它不是职业事实源或跨 Run 记忆，不能包含 OfferU 数据库、配置、源码或未授权职业数据；其中产物必须经审核和 Operation 才能进入正式业务状态。
+_Avoid_: 项目工作区、OfferU 仓库、Agent 记忆目录、共享临时目录
+
+**Run 工具授权**:
+OfferU 操作控制面依据所选 Skill 和使用者授权，为一个 Agent Run 限定可调用的 Operation、数据范围、Run 工件工作区和外部网络能力。授权随 Run 结束失效，主控 Harness 或接入包不能自行扩大，也不能把原生 Coding Agent 工具变成业务写路径。
+_Avoid_: 全局工具权限、Harness 默认权限、项目级 Shell、自动授权
+
 **可审计重任务**:
 可以取消、重放并检查输入、工具调用、输出和来源的长耗时任务。第一阶段包括公司/岗位深度调研、批量 JD 评估和已登记工作源的变化摘要；其结果必须经过 OfferU 的事实门和使用者确认后才能影响领域数据。
 _Avoid_: Agent 自动化、后台任务、Profile 自动更新
@@ -39,6 +47,54 @@ _Avoid_: Agent 自动化、后台任务、Profile 自动更新
 **统一控制台**:
 让使用者或本地 Coding Agent 通过 GUI、机器 CLI、交互式 TUI 或斜杠 Skill 命令操控 OfferU 的多入口控制面。所有入口都调用同一 Operation Registry，并共享参数 schema、权限、确认、审计、数据授权和错误语义；控制台本身不实现业务逻辑。
 _Avoid_: CLI 后端、TUI 应用、第二套控制系统
+
+**机器 CLI 契约**:
+OfferU 向主控 Agent 和本地自动化公开的唯一机器控制契约，以结构化能力探测、manifest、Operation schema、dry-run、执行、提案状态、取消和事件定义可调用表面。Harness 接入包可以包装该契约，但不能确认自身提案，也不能另建 MCP、原始 HTTP、数据库或任意 shell 业务入口。
+_Avoid_: MCP 业务接口、REST 自动化后端、Shell 脚本协议、固定 Provider argv
+
+**OfferU Agent Bridge**:
+外部主控 Harness 将自身会话关联到 OfferU Agent Run，并取得当前任务上下文和已授权 Operation 的唯一确定性连接面。主会话、推理和工具循环属于外部 Harness；Bridge 不规划任务、不拥有业务事实，也不成为第二个 Agent。
+_Avoid_: OfferU Harness Host、内置 Agent Runtime、MCP Host、第二主脑
+
+**Harness 接入包**:
+安装到一种外部 Coding Agent Harness 中、把 OfferU Skill、上下文、Operation、Agent Run 事件和人类控制界面投影为该宿主原生能力的薄集成。支持 UI 扩展的宿主使用 host/client 双面插件：host half 连接 CLI-first Bridge，client half 注册原生 OfferU 工作区；它只适配宿主差异，不包含求职业务逻辑，也不能扩大权限或形成独立事实源。
+_Avoid_: Harness Driver、CLI Wrapper、Provider 业务后端、iframe 应用、MCP 插件
+
+**Harness 主界面**:
+使用者与主控 Agent 对话并管理其原生会话的 Harness 界面，是本地 Coding Agent 使用者的默认产品外壳。它拥有提示输入和会话交互，但不拥有 OfferU 业务事实、Operation 确认或求职状态。
+_Avoid_: OfferU 聊天框、第二工作台、Agent 控制面、业务事实界面
+
+**OfferU 工作区**:
+由 OfferU 拥有并投影到 Harness 主界面的同一套人类控制界面。它可以按宿主能力拆成全局入口、全局确认界面和任务内主视图，用于浏览求职流程、事实、证据、Run、提案和结果；大画布任务可以在同一状态边界下弹出专注窗口。它不要求宿主提供一个永远占据中央区域的全局页面，不提供第二个 Agent 提示输入，也不把全局领域数据变成一个全局模型会话。
+_Avoid_: 独立主应用、OfferU Agent 聊天、Harness 侧栏替代品、嵌入网页副本
+
+**OfferU 任务视图**:
+OfferU 工作区在当前求职任务与 Harness session 内的主操作表面，用于查看该任务的上下文、Run、Operation、证据、候选工件和结果。它可以读取全局职业数据与流程导航，但任何 Agent 动作都绑定当前任务、Run、授权和事件流；切换任务必须切换或恢复对应 Harness session。
+_Avoid_: 全局 Agent 面板、第二聊天页、跨 Session 控制台、工作台 iframe
+
+**任务会话绑定**:
+OfferU 工作区的入口和领域数据可以全局可达，但 OfferU 任务视图、每个求职任务及其 Agent Run 独立创建或恢复自己的 Harness session；切换任务会切换推理上下文、授权和事件流，而不是把多个岗位继续写入同一隐藏模型上下文。
+_Avoid_: 全局 Agent Session、跨任务隐藏记忆、按页面建 Session、共享 Run
+
+**Harness 支持目录**:
+OfferU 明确维护的外部主控 Harness 集合，包含 Codex、DeepSeek Harness、Claude Code、OpenCode 与 Pi；Codex 和 DeepSeek Harness 是首批优先接入目标。目录声明产品目标，某台设备上的实际可用性仍由对应 Harness 接入包实时探测，不能用假能力或静默替代伪造支持。
+_Avoid_: Provider 列表、模型列表、固定命令表、自动降级链
+
+**主控 Harness 一致性契约**:
+Codex、DeepSeek Harness、Claude Code、OpenCode 与 Pi 被标记为“支持”前必须共同满足的完整业务行为契约，包括创建与恢复会话、追加指令与运行中转向、中断与取消、通过 CLI-first Agent Bridge 调用 OfferU Operation、暂停并恢复使用者确认、输出统一事件流，以及显式报告完成或失败。宿主可以按能力使用原生嵌入工作区或 OfferU companion window，但不得因此缩减业务能力、改用一次性问答或隐藏降级；Codex 和 DeepSeek Harness 仅决定实现优先级，不降低其他三种的最终验收门槛。
+_Avoid_: 基础可用、实验性支持、兼容模式、最低公分母协议
+
+**Harness 交接**:
+当前主控 Harness 无法恢复时，由使用者显式选择另一 Harness，并用原 Run 的已确认事实、可审计产物、未决提案和可公开执行摘要创建新 Agent Run 的转换。原 Run 保持中断或失败终态，隐藏会话、未记录推理和原生进程状态不得冒充可移植上下文。
+_Avoid_: 自动 Failover、跨 Harness 恢复、Session 迁移、同 Run 换 Provider
+
+**受控 CLI Broker**:
+OfferU Agent Bridge 内部接收主控 Agent 提交的结构化 JSON/JSONL 命令，在绑定当前 Agent Run、Run 工具授权和幂等信息后分派到对应 Operation，再把标准结果返回主控会话的边界。它不接收 shell 字符串、管道、重定向、任意可执行文件或绕过确认的调用，也不把 Harness argv 变成业务契约。
+_Avoid_: Shell Tool、Bash/PowerShell 代理、MCP Tool、通用 subprocess、动态业务 API
+
+**OfferU 确认**:
+使用者在 OfferU 拥有的嵌入工作区或专注窗口中核对 Operation 提案、影响和证据后作出的批准或拒绝，是提案获得执行授权的唯一来源。Harness 原生 approval、接入包和模型可调用 CLI 只能请求并等待，不能代表使用者作出决定。
+_Avoid_: Agent 确认、Harness Approval、CLI confirm、模型自批、聊天回复确认
 
 **斜杠 Skill 命令**:
 在主控 Agent 对话入口或 TUI 输入框中显式激活一个版本化 Skill 的命令形式。`/offeru` 打开技能菜单，`/skill-id` 或已声明 alias 直接进入具体 Skill；两种入口都从 Skill Registry 自动生成并解析到同一 Skill ID，只选择协议与允许操作集合，不执行 shell，也不绕过领域事实门。
@@ -68,12 +124,12 @@ _Avoid_: Python Worker、临时后端、Rust 迁移过渡层
 从用户触发、Agent 或确定性处理、领域事实、审核界面到最终可见结果组成的可独立使用闭环。第一阶段按共同底座、投递进度、岗位调研与简历、AI 面试的顺序推进，不按数据库、API、前端等技术层横向铺开。
 _Avoid_: 模块开发、后端阶段、功能列表
 
-**任务优先工作台**:
-OfferU 图形界面的统一交互模型，以使用者当前处理的求职对象、状态与下一动作作为页面主体；品牌叙事只出现在首次引导与真实空状态。
-_Avoid_: 营销式模块首页、页面 Hero、独立视觉工作室
+**任务优先工作区**:
+OfferU 工作区的统一交互模型，以使用者当前处理的求职对象、状态与下一动作作为主体；无论嵌入 Harness 还是弹出专注窗口都共享同一领域状态。
+_Avoid_: 营销式模块首页、页面 Hero、独立视觉工作室、第二聊天应用
 
 **求职流程导航**:
-任务优先工作台按今日、机会、材料、进展与面试五个求职阶段组织一级入口；档案和设置是支持入口，主控 Agent 的连接入口贯穿各阶段而不是成为并列业务模块。
+任务优先工作区按今日、机会、材料、进展与面试五个求职阶段组织内部入口；档案和设置是支持入口，主控 Agent 的连接状态贯穿各阶段而不是成为并列业务模块。
 _Avoid_: 平铺模块导航、功能清单导航、Agent 独立模块
 
 **求职任务**:
@@ -93,7 +149,7 @@ _Avoid_: Provider JSONL、聊天消息、审计日志、前端通知
 _Avoid_: 数据看板、统计首页、任务事实表
 
 **移动端轻操作**:
-任务优先工作台在手机尺寸下提供查看、确认、投递进展更新和主控 Agent 续接，不承担简历深度编辑或面试训练。它与桌面端共享领域事实和操作契约，但不追求界面能力完全对等。
+任务优先工作区在手机尺寸下提供查看、确认、投递进展更新和主控 Agent 续接，不承担简历深度编辑或面试训练。它与桌面端共享领域事实和操作契约，但不追求界面能力完全对等。
 _Avoid_: 全端功能一致、移动端只读、手机版工作台
 
 ### 使用者模型

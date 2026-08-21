@@ -2,8 +2,8 @@
 
 > 状态：normative draft，供 `EXT-FRAME-001` 实现  
 > 日期：2026-08-10  
-> 上位架构：[OfferU 浏览器扩展框架](browser-extension-framework.md)  
-> 安全决策：[ADR-0049](../adr/0049-unify-browser-job-collection-and-application-form-fill.md)
+> 上位架构：[OfferU 浏览器扩展](browser-extension.md)  
+> 安全决策：[ADR-0049](../adr/README.md#adr-0049)、[ADR-0050](../adr/README.md#adr-0050)
 
 ## 1. 规范目标
 
@@ -446,7 +446,8 @@ INPUT: normalized URL + budgeted PageSnapshot + all valid packs
 - `MAJOR`：同 schemaVersion 下改变已有规则语义；应尽量避免；
 - `schemaVersion`：格式或安全语义破坏性变化；
 - 同一个 `id + version` 的内容必须不可变；构建生成 hash，发现同版本不同内容就失败；
-- v1 规则只随扩展发布，不支持用户导入或远程更新。
+- v1 规则可以随扩展内置，也可以包含在 ADR-0050 定义的固定来源、签名远程 bundle 中；两种来源进入同一个 validator/resolver，远程来源不能扩大 schema 或携带代码。
+- 不支持用户导入未签名规则；远程 bundle 的签名、单调版本、防重放、熔断和回滚由上位浏览器扩展契约约束。
 
 ## 14. Validator 必须拒绝的输入
 

@@ -1,29 +1,42 @@
 # Eval 报告
 
-本目录只接收可追溯的 Eval 结果和明确标记的历史 pre-eval 快照。
+本目录只接收能够证明一个可定位 commit 当前行为的正式 Eval 报告。预评估、测试计划、聊天总结、只读审计和已失效运行记录不放在这里；需要追溯时使用 Git 历史。
 
 ## 命名
 
-正式报告：`YYYY-MM-DD-<executor>-<suite-id>-<run-id>.md`
+正式报告：
 
-配套证据：`artifacts/<run-id>/`。截图、脱敏 trace 和机器可读输出必须以 Task ID 命名，不得存放凭据或真实个人敏感数据。
+```text
+YYYY-MM-DD-<executor>-<suite-id>-<run-id>.md
+```
 
-## 有效报告的最小结构
+配套证据：
 
-1. 运行身份：suite/version/run ID、commit、dirty state、执行 Agent/model。
-2. 环境：OS、Python、Node、CLI、OfferU provider/model、隔离数据说明。
-3. 总结：`PASS` / `FAIL` / `BLOCKED` / `NOT_RUN` / `INVALID` 数量、target scope 与 verdicts。
-4. 每个 Task 的 trials、完整命令、退出码、耗时、trajectory evidence、outcome evidence。
-5. 已脱敏的失败复现、限制、成本和下一步建议。
-6. 一个与正文一致、能被 JSON parser 读取的 `eval-summary` JSON 代码块。
+```text
+artifacts/<run-id>/<task-id>/...
+```
 
-JSON 必须符合 [`report-schema.json`](../report-schema.json)。报告不能把跳过、阻塞、模拟返回或模型自评记成 `PASS`。正文、JSON、CLI 最终摘要或最终 artifacts 不一致时，整份报告为 `INVALID`。
+截图、脱敏 trace 和机器输出按 Task ID 组织，不得保存凭据或真实个人敏感数据。
 
-## 当前记录
+## 最小结构
 
-- [`2026-08-10-test-readiness-audit.md`](./2026-08-10-test-readiness-audit.md)：当前测试资产、数据隔离、Agent 完整性、长期职业模型和浏览器链路的只读就绪度审计；不是正式 baseline。
-- [`2026-08-05-beta-readiness-pre-eval.md`](./2026-08-05-beta-readiness-pre-eval.md)：历史内测评估，缺少当前 schema 要求的完整证据，只能用来提取待复现任务。
-- [`2026-07-30-runtime-acceptance.md`](./2026-07-30-runtime-acceptance.md)：历史运行时探测快照，不证明当前版本状态。
-- [`2026-08-06-eval-report.md`](./2026-08-06-eval-report.md)：E1-E5 ad-hoc capability discovery，适合提取回归任务；不符合 `offeru-core-v1` 的 24 Task 与机器 schema，不能作为 baseline。
+1. 运行身份：suite/version/run ID、commit、dirty state、执行 Harness/model。
+2. 环境：OS、Python、Node、CLI、Harness/adapter、provider/model、fixture 隔离。
+3. 总结：各状态数量、target scope 与明确 verdict。
+4. 每个 Task 的 trials、命令或交互、退出码、耗时、trajectory evidence 与 outcome evidence。
+5. 脱敏失败复现、限制、成本和下一步。
+6. 与正文一致、可被 JSON parser 读取的 `eval-summary` JSON 代码块。
 
-**当前仍没有有效正式 baseline。** 下一次运行应由修订后的 [`deepseek-runbook.md`](../deepseek-runbook.md) 驱动，满足机器 schema 和最终脱敏门，并覆盖 [`offeru-core-v1`](../offeru-core-v1.md)。
+JSON 必须符合 [`report-schema.json`](../report-schema.json)。以下任一情况会使报告成为 `INVALID`：
+
+- 把跳过、阻塞、模拟返回或模型自评记成 `PASS`；
+- 正文、JSON、命令摘要或 artifacts 相互矛盾；
+- 未记录 commit/dirty state，无法定位被测代码；
+- 缺少必需的轨迹或 outcome 证据；
+- 证据包含未经脱敏的凭据或个人信息。
+
+## 当前基线
+
+**当前没有有效正式 baseline，目录中也不保留旧报告作为占位。**
+
+下一份报告必须覆盖 [`offeru-core-v1`](../offeru-core-v1.md)，符合机器 schema，并由实际执行证据而不是历史结论建立新的 baseline。

@@ -1,0 +1,3 @@
+name: OfferU 只读模式
+description: OfferU 求职控制面 tracer：禁用原生 Shell/文件/网络/子代理工具，仅通过 Agent Bridge 读取岗位与档案数据。
+order: 10

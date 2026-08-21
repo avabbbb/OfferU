@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "scenarios": [
+    {
+      "id": "handshake_ok",
+      "fixture": "hello_ok.jsonl",
+      "expect": [
+        {"line": 0, "ok": true, "resultEchoedType": "hello"}
+      ]
+    },
+    {
+      "id": "malformed_json",
+      "fixture": "bad_json.jsonl",
+      "expect": [
+        {"line": 0, "ok": false, "errorCode": "schema_invalid"}
+      ]
+    },
+    {
+      "id": "unknown_protocol_version",
+      "fixture": "unknown_version.jsonl",
+      "expect": [
+        {"line": 0, "ok": false, "errorCode": "protocol_mismatch"}
+      ]
+    },
+    {
+      "id": "unknown_message_type",
+      "fixture": "unknown_message.jsonl",
+      "expect": [
+        {"line": 0, "ok": false, "errorCode": "schema_invalid"}
+      ]
+    },
+    {
+      "id": "run_create_not_public",
+      "fixture": "run_create_forbidden.jsonl",
+      "expect": [
+        {"line": 0, "ok": false, "errorCode": "schema_invalid"}
+      ]
+    }
+  ]
+}

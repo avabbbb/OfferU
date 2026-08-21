@@ -624,7 +624,9 @@ class PreferenceGateTests(unittest.TestCase):
                 section_type="experience",
                 title=_uniq("经历条目"),
                 content_json={"bullet": "负责后端服务开发"},
-                source_text="负责后端服务开发",
+                # verified_fact 需要独立可验证出处；来源=声明原文会被
+                # 事实门按自回声拦截（resume_fact_gates._is_self_echo_source）。
+                source_text="2023-2025 某科技公司后端组：负责订单后端服务开发，QPS 峰值 1.2 万。",
                 tier="verified_fact",
             )
             return direct, verified
