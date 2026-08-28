@@ -74,6 +74,7 @@ async def import_job_batch(
     batch_id: Optional[str] = None,
     keywords: Optional[list[str]] = None,
     location: str = "",
+    pool_id: int | None = None,
 ) -> dict[str, Any]:
     """逐条幂等批量导入岗位。
 
@@ -104,6 +105,7 @@ async def import_job_batch(
     accepted_hash_keys: list[str] = []
     created_hash_keys: list[str] = []
     skipped_hash_keys: list[str] = []
+    created_jobs: list[Job] = []
 
     async with async_session() as db:
         async def ensure_batch(db_batch_id: str, batch_source: str) -> None:
@@ -146,6 +148,7 @@ async def import_job_batch(
                 raw_description=item.raw_description,
                 posted_at=_parse_posted_at(item.posted_at),
                 batch_id=job_batch_id,
+                pool_id=pool_id,
                 triage_status="inbox",
                 hash_key=item.hash_key,
                 summary=item.summary,
@@ -169,11 +172,13 @@ async def import_job_batch(
                 ),
             )
             db.add(job)
+            created_jobs.append(job)
             created += 1
             accepted_hash_keys.append(item.hash_key)
             created_hash_keys.append(item.hash_key)
 
         await db.flush()
+        created_job_ids = [int(job.id) for job in created_jobs]
         batch = (
             await db.execute(select(Batch).where(Batch.id == resolved_batch_id))
         ).scalar_one_or_none()
@@ -189,5 +194,6 @@ async def import_job_batch(
         "accepted_hash_keys": accepted_hash_keys,
         "created_hash_keys": created_hash_keys,
         "skipped_hash_keys": skipped_hash_keys,
+        "created_job_ids": created_job_ids,
         "failed": failed,
     }

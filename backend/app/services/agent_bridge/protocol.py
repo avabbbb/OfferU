@@ -41,6 +41,9 @@ KNOWN_MESSAGE_TYPES = (
     "operation.schema",
     "operation.invoke",
     "proposal.get",
+    "workspace.resolve",
+    "workspace.context",
+    "workspace.delegate",
     "event.append",
     "event.follow",
     "run.finish",
@@ -331,6 +334,47 @@ class ProposalGetRequest(_RunRequest):
     payload: ProposalGetPayload
 
 
+class ProposalConfirmPayload(_StrictPayload):
+    proposal_id: Identifier = Field(alias="proposalId")
+    action_id: Identifier | None = Field(default=None, alias="actionId")
+
+
+class ProposalConfirmRequest(_RunRequest):
+    type: Literal["proposal.confirm"]
+    payload: ProposalConfirmPayload
+
+
+class WorkspaceResolvePayload(_StrictPayload):
+    relative: NonEmptyString = Field(alias="relative")
+
+
+class WorkspaceResolveRequest(_RunRequest):
+    type: Literal["workspace.resolve"]
+    payload: WorkspaceResolvePayload
+
+
+class WorkspaceContextPayload(_StrictPayload):
+    job_id: PositiveInt = Field(alias="jobId")
+
+
+class WorkspaceContextRequest(_RunRequest):
+    type: Literal["workspace.context"]
+    payload: WorkspaceContextPayload
+
+
+class WorkspaceDelegatePayload(_StrictPayload):
+    runtime_id: NonEmptyString | None = Field(default=None, alias="runtimeId")
+    prompt: NonEmptyString
+    job_id: PositiveInt = Field(alias="jobId")
+    timeout_seconds: NonNegativeInt = Field(default=240, alias="timeoutSeconds")
+    web_search_mode: NonEmptyString = Field(default="disabled", alias="webSearchMode")
+
+
+class WorkspaceDelegateRequest(_RunRequest):
+    type: Literal["workspace.delegate"]
+    payload: WorkspaceDelegatePayload
+
+
 class EventAppendRequest(_RunRequest):
     type: Literal["event.append"]
     payload: EventAppendPayload
@@ -359,6 +403,9 @@ BridgeRequest: TypeAlias = Annotated[
         OperationSchemaRequest,
         OperationInvokeRequest,
         ProposalGetRequest,
+        WorkspaceResolveRequest,
+        WorkspaceContextRequest,
+        WorkspaceDelegateRequest,
         EventAppendRequest,
         EventFollowRequest,
         RunFinishRequest,

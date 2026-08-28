@@ -1145,6 +1145,159 @@ class HostedExecutorEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
 
 
+class AgentProviderHealth(Base):
+    """Provider health snapshot; authentication state is not career data."""
+
+    __tablename__ = "agent_provider_health"
+
+    provider_id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    available: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    authenticated: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    blocked: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    version: Mapped[str] = mapped_column(String(160), default="")
+    auth_mode: Mapped[str] = mapped_column(String(60), default="unknown")
+    protocol_version: Mapped[str] = mapped_column(String(80), default="")
+    capabilities_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    last_error: Mapped[str] = mapped_column(Text, default="")
+    checked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), index=True
+    )
+
+
+class CareerTask(Base):
+    """Durable control-plane task; it never owns Career Truth."""
+
+    __tablename__ = "career_tasks"
+    __table_args__ = (
+        UniqueConstraint(
+            "idempotency_key",
+            name="uq_career_task_idempotency_key",
+        ),
+        Index("ix_career_task_target", "target_type", "target_id"),
+    )
+
+    task_id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    task_type: Mapped[str] = mapped_column(String(100), index=True)
+    source: Mapped[str] = mapped_column(String(80), default="ui", index=True)
+    target_type: Mapped[str] = mapped_column(String(80), default="", index=True)
+    target_id: Mapped[str] = mapped_column(String(160), default="", index=True)
+    runtime_provider: Mapped[str] = mapped_column(String(100), default="replay", index=True)
+    input_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    output_contract_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(32), default="queued", index=True)
+    progress_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    event_sequence: Mapped[int] = mapped_column(Integer, default=0)
+    agent_thread_id: Mapped[str] = mapped_column(String(160), default="")
+    agent_turn_id: Mapped[str] = mapped_column(String(160), default="")
+    run_id: Mapped[str] = mapped_column(String(160), default="", index=True)
+    result_ref: Mapped[str] = mapped_column(String(200), default="")
+    result_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    checkpoint_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    error: Mapped[str] = mapped_column(Text, default="")
+    retryable: Mapped[bool] = mapped_column(Boolean, default=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=3)
+    next_retry_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
+    idempotency_key: Mapped[str] = mapped_column(String(180), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), index=True
+    )
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class CareerTaskEvent(Base):
+    """Append-only provider-neutral lifecycle events for one CareerTask."""
+
+    __tablename__ = "career_task_events"
+    __table_args__ = (
+        UniqueConstraint(
+            "task_id",
+            "sequence",
+            name="uq_career_task_event_sequence",
+        ),
+    )
+
+    event_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    task_id: Mapped[str] = mapped_column(
+        String(80), ForeignKey("career_tasks.task_id", ondelete="CASCADE"), index=True
+    )
+    sequence: Mapped[int] = mapped_column(Integer)
+    event_type: Mapped[str] = mapped_column(String(100), index=True)
+    payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+
+
+class AutomationEvent(Base):
+    """Durable signal consumed by explicit Automation Rules."""
+
+    __tablename__ = "automation_events"
+    __table_args__ = (
+        UniqueConstraint("dedupe_key", name="uq_automation_event_dedupe_key"),
+        Index("ix_automation_event_target", "target_type", "target_id"),
+    )
+
+    event_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    event_type: Mapped[str] = mapped_column(String(80), index=True)
+    source: Mapped[str] = mapped_column(String(80), default="system", index=True)
+    target_type: Mapped[str] = mapped_column(String(80), default="", index=True)
+    target_id: Mapped[str] = mapped_column(String(160), default="", index=True)
+    payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    dedupe_key: Mapped[str] = mapped_column(String(180), unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(32), default="queued", index=True)
+    result_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    error: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+    processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class AutomationRule(Base):
+    """Persisted event-to-task policy; it is not an autonomous reasoning loop."""
+
+    __tablename__ = "automation_rules"
+
+    rule_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    event_type: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    task_type: Mapped[str] = mapped_column(String(100), default="")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    policy_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    version: Mapped[str] = mapped_column(String(40), default="v1")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), index=True
+    )
+
+
+class AutomationInboxItem(Base):
+    """User-facing automation result/approval item with explicit resolution."""
+
+    __tablename__ = "automation_inbox_items"
+    __table_args__ = (
+        Index("ix_automation_inbox_status_created", "status", "created_at"),
+        Index("ix_automation_inbox_target", "target_type", "target_id"),
+    )
+
+    item_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    category: Mapped[str] = mapped_column(String(32), default="fyi", index=True)
+    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    event_id: Mapped[str] = mapped_column(String(100), default="", index=True)
+    task_id: Mapped[str] = mapped_column(String(80), default="", index=True)
+    operation: Mapped[str] = mapped_column(String(100), default="")
+    proposal_run_id: Mapped[str] = mapped_column(String(160), default="")
+    target_type: Mapped[str] = mapped_column(String(80), default="", index=True)
+    target_id: Mapped[str] = mapped_column(String(160), default="", index=True)
+    title: Mapped[str] = mapped_column(String(300), default="")
+    body: Mapped[str] = mapped_column(Text, default="")
+    payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), index=True
+    )
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
 class AgentWorkspaceState(Base):
     """Agent 与 UI 共享的当前工作区上下文。"""
 
@@ -1444,6 +1597,8 @@ class Interview(Base):
     status: Mapped[str] = mapped_column(String(20), default="active", index=True)  # active / completed / archived
     # AI 生成的面试问题列表
     questions_json: Mapped[list] = mapped_column(JSON, default=list)  # [{"question": "...", "answered": false}, ...]
+    # 可选的 Role Intelligence 专项训练快照；沿用 Interview 会话，不另建面试系统
+    focus_plan_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     current_question_index: Mapped[int] = mapped_column(Integer, default=0)
     # 面试报告（完成后生成）
     report_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # 包含总体评分、各维度分析、改进建议
@@ -1558,3 +1713,171 @@ class InterviewEvaluationRun(Base):
         DateTime, server_default=func.now(), index=True
     )
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+# =============================================
+# Role Intelligence v0.1
+# =============================================
+
+class RoleBenchmarkRun(Base):
+    """一次岗位基准运行；统计事实由 Runtime 从去重后的样本确定性生成。"""
+
+    __tablename__ = "role_benchmark_runs"
+    __table_args__ = (
+        Index(
+            "ix_role_benchmark_target_created",
+            "target_job_id",
+            "created_at",
+        ),
+    )
+
+    run_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    target_job_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("jobs.id", ondelete="CASCADE"),
+        index=True,
+    )
+    cohort_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    requested_sample_count: Mapped[int] = mapped_column(Integer, default=30)
+    min_sample_count: Mapped[int] = mapped_column(Integer, default=15)
+    max_sample_count: Mapped[int] = mapped_column(Integer, default=50)
+    valid_sample_count: Mapped[int] = mapped_column(Integer, default=0)
+    company_count: Mapped[int] = mapped_column(Integer, default=0)
+    source_summary_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    target_profile_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    schema_version: Mapped[str] = mapped_column(String(80), default="")
+    algorithm_version: Mapped[str] = mapped_column(String(80), default="")
+    runtime_id: Mapped[str] = mapped_column(String(40), default="")
+    runtime_version: Mapped[str] = mapped_column(String(120), default="")
+    status: Mapped[str] = mapped_column(String(24), default="pending", index=True)
+    result_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    trace_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    error: Mapped[str] = mapped_column(Text, default="")
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class RoleBenchmarkDocument(Base):
+    """Benchmark 作用域的 target/comparator JD 快照，不是第二套岗位 Inbox。"""
+
+    __tablename__ = "role_benchmark_documents"
+    __table_args__ = (
+        UniqueConstraint(
+            "run_id",
+            "source_ref",
+            name="uq_role_benchmark_document_source_ref",
+        ),
+        Index(
+            "ix_role_benchmark_document_run_kind",
+            "run_id",
+            "document_kind",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("role_benchmark_runs.run_id", ondelete="CASCADE"),
+        index=True,
+    )
+    # 已存在于 OfferU 岗位库的 comparator 可以关联；外部候选只留在本次 benchmark 快照中。
+    job_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("jobs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    document_kind: Mapped[str] = mapped_column(String(20), index=True)
+    source_ref: Mapped[str] = mapped_column(String(120))
+    source: Mapped[str] = mapped_column(String(80), default="")
+    canonical_url: Mapped[str] = mapped_column(Text, default="")
+    description_hash: Mapped[str] = mapped_column(String(64), index=True)
+    title: Mapped[str] = mapped_column(String(500), default="")
+    company: Mapped[str] = mapped_column(String(300), default="")
+    location: Mapped[str] = mapped_column(String(300), default="")
+    industry: Mapped[str] = mapped_column(String(200), default="")
+    raw_description: Mapped[str] = mapped_column(Text, default="")
+    role_family: Mapped[str] = mapped_column(String(120), default="", index=True)
+    specialization: Mapped[str] = mapped_column(String(160), default="", index=True)
+    seniority: Mapped[str] = mapped_column(String(60), default="", index=True)
+    domain: Mapped[str] = mapped_column(String(200), default="")
+    normalized_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    source_metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    inclusion_status: Mapped[str] = mapped_column(String(24), default="included", index=True)
+    exclusion_reason: Mapped[str] = mapped_column(String(300), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class RoleCapabilityObservation(Base):
+    """单份 JD 的能力观察；canonicalization 之前后的名称和原文证据一起保存。"""
+
+    __tablename__ = "role_capability_observations"
+    __table_args__ = (
+        UniqueConstraint(
+            "document_id",
+            "capability_id",
+            "evidence_hash",
+            name="uq_role_capability_observation_evidence",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("role_benchmark_runs.run_id", ondelete="CASCADE"),
+        index=True,
+    )
+    document_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("role_benchmark_documents.id", ondelete="CASCADE"),
+        index=True,
+    )
+    capability_id: Mapped[str] = mapped_column(String(120), index=True)
+    raw_capability: Mapped[str] = mapped_column(String(160), default="")
+    category: Mapped[str] = mapped_column(String(80), default="", index=True)
+    importance: Mapped[str] = mapped_column(String(30), default="nice_to_have", index=True)
+    evidence_text: Mapped[str] = mapped_column(Text)
+    source_section: Mapped[str] = mapped_column(String(100), default="")
+    confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    canonicalization_status: Mapped[str] = mapped_column(String(24), default="canonicalized")
+    evidence_hash: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class RoleDeltaSignal(Base):
+    """由 Python Runtime 计算的岗位 Delta；不保存 LLM 猜测的市场百分比。"""
+
+    __tablename__ = "role_delta_signals"
+    __table_args__ = (
+        UniqueConstraint(
+            "run_id",
+            "capability_id",
+            name="uq_role_delta_signal_capability",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("role_benchmark_runs.run_id", ondelete="CASCADE"),
+        index=True,
+    )
+    capability_id: Mapped[str] = mapped_column(String(120), index=True)
+    category: Mapped[str] = mapped_column(String(80), default="", index=True)
+    target_importance: Mapped[str] = mapped_column(String(30), default="not_present")
+    target_occurrence_count: Mapped[int] = mapped_column(Integer, default=0)
+    comparator_count: Mapped[int] = mapped_column(Integer, default=0)
+    comparator_total: Mapped[int] = mapped_column(Integer, default=0)
+    market_frequency: Mapped[float] = mapped_column(Float, default=0.0)
+    direction: Mapped[str] = mapped_column(String(32), index=True)
+    confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    priority: Mapped[float] = mapped_column(Float, default=0.0, index=True)
+    evidence_refs_json: Mapped[list] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

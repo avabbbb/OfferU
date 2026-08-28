@@ -208,6 +208,24 @@ async def list_agent_runs_summary(
     }
 
 
+async def reject_agent_run(run_id: str) -> dict:
+    """Persist an explicit user rejection through the Agent Run state service."""
+    from app.services.agent_run_state import ACTIVE_STATUSES, load_agent_run, save_agent_run
+
+    run = await load_agent_run(run_id)
+    if run is None:
+        return {"error": f"Agent Run {run_id} 不存在。"}
+    if run.get("status") in ACTIVE_STATUSES:
+        run["status"] = "needs_reconciliation"
+        run["failure_reason"] = "rejected_by_user"
+        run = await save_agent_run(run)
+    return {
+        "rejected": True,
+        "runStatus": run.get("status"),
+        "warnings": ["已拒绝；该提案不会执行。"],
+    }
+
+
 async def list_profile_evidence(
     section_type: Optional[str] = None,
     limit: int = 100,
@@ -488,6 +506,7 @@ async def create_ai_interview(
     question_count: int = 5,
     scoring_skill_id: str = "evidence-interview-score",
     scoring_skill_version: Optional[int] = None,
+    role_benchmark_run_id: Optional[str] = None,
 ) -> dict:
     from app.services.ai_interviews import create_ai_interview as _create
 
@@ -503,6 +522,7 @@ async def create_ai_interview(
         question_count=question_count,
         scoring_skill_id=scoring_skill_id,
         scoring_skill_version=scoring_skill_version,
+        role_benchmark_run_id=role_benchmark_run_id,
         model_provider=model_provider,
         data_consent=data_consent,
         consented_data_categories=consented_data_categories,
@@ -827,6 +847,301 @@ async def cancel_job_research(run_id: str) -> dict:
     from app.services.job_research import cancel_job_research as _cancel
 
     return await _cancel(run_id=run_id)
+
+
+async def build_role_benchmark(
+    job_id: int,
+    runtime_id: str = "codex",
+    role_family: str = "",
+    specialization: str = "",
+    seniority: str = "",
+    region: str = "",
+    industry: str = "",
+) -> dict:
+    from app.services.role_intelligence import build_role_benchmark as _build
+
+    return await _build(
+        job_id=job_id,
+        runtime_id=runtime_id,
+        role_family=role_family,
+        specialization=specialization,
+        seniority=seniority,
+        region=region,
+        industry=industry,
+    )
+
+
+async def refresh_role_benchmark(
+    job_id: int,
+    runtime_id: str = "codex",
+    role_family: str = "",
+    specialization: str = "",
+    seniority: str = "",
+    region: str = "",
+    industry: str = "",
+) -> dict:
+    from app.services.role_intelligence import refresh_role_benchmark as _refresh
+
+    return await _refresh(
+        job_id=job_id,
+        runtime_id=runtime_id,
+        role_family=role_family,
+        specialization=specialization,
+        seniority=seniority,
+        region=region,
+        industry=industry,
+    )
+
+
+async def get_role_benchmark(
+    run_id: Optional[str] = None,
+    job_id: Optional[int] = None,
+) -> dict:
+    from app.services.role_intelligence import get_role_benchmark as _get
+
+    return await _get(run_id=run_id, job_id=job_id)
+
+
+async def list_role_delta_signals(
+    run_id: Optional[str] = None,
+    job_id: Optional[int] = None,
+    direction: Optional[str] = None,
+    limit: int = 100,
+) -> dict:
+    from app.services.role_intelligence import list_role_delta_signals as _list
+
+    return await _list(
+        run_id=run_id,
+        job_id=job_id,
+        direction=direction,
+        limit=limit,
+    )
+
+
+async def prepare_role_interview_focus(
+    job_id: int,
+    run_id: Optional[str] = None,
+    profile_id: Optional[int] = None,
+    focus_count: int = 5,
+    question_count: int = 5,
+) -> dict:
+    from app.services.role_intelligence import (
+        prepare_role_interview_focus as _prepare,
+    )
+
+    return await _prepare(
+        job_id=job_id,
+        run_id=run_id,
+        profile_id=profile_id,
+        focus_count=focus_count,
+        question_count=question_count,
+    )
+
+
+async def start_career_task(
+    task_type: str,
+    source: str = "ui",
+    target_type: str = "",
+    target_id: str = "",
+    runtime_provider: str = "replay",
+    input: Optional[dict] = None,
+    output_contract: Optional[dict] = None,
+    run_id: str = "",
+    idempotency_key: str = "",
+    max_attempts: int = 3,
+) -> dict:
+    from app.services.career_tasks import start_career_task as _start
+
+    return await _start(
+        task_type=task_type,
+        source=source,
+        target_type=target_type,
+        target_id=target_id,
+        runtime_provider=runtime_provider,
+        input=input,
+        output_contract=output_contract,
+        run_id=run_id,
+        idempotency_key=idempotency_key,
+        max_attempts=max_attempts,
+    )
+
+
+async def get_career_task(task_id: str) -> dict:
+    from app.services.career_tasks import get_career_task as _get
+
+    return await _get(task_id)
+
+
+async def list_career_tasks(
+    status: Optional[str] = None,
+    task_type: Optional[str] = None,
+    target_type: Optional[str] = None,
+    target_id: Optional[str] = None,
+    limit: int = 50,
+) -> dict:
+    from app.services.career_tasks import list_career_tasks as _list
+
+    return await _list(
+        status=status,
+        task_type=task_type,
+        target_type=target_type,
+        target_id=target_id,
+        limit=limit,
+    )
+
+
+async def list_career_task_events(task_id: str, after: int = 0, limit: int = 100) -> dict:
+    from app.services.career_tasks import list_career_task_events as _list
+
+    return await _list(task_id, after=after, limit=limit)
+
+
+async def get_career_task_result(task_id: str) -> dict:
+    from app.services.career_tasks import get_career_task_result as _get
+
+    return await _get(task_id)
+
+
+async def cancel_career_task(task_id: str) -> dict:
+    from app.services.career_tasks import cancel_career_task as _cancel
+
+    return await _cancel(task_id)
+
+
+async def retry_career_task(task_id: str) -> dict:
+    from app.services.career_tasks import retry_career_task as _retry
+
+    return await _retry(task_id)
+
+
+async def resume_career_task(task_id: str) -> dict:
+    from app.services.career_tasks import resume_career_task as _resume
+
+    return await _resume(task_id)
+
+
+async def delegate_career_task(
+    run_id: str,
+    job_id: int,
+    runtime_id: str,
+    prompt: str,
+    timeout_seconds: int = 240,
+    web_search_mode: str = "disabled",
+) -> dict:
+    from app.services.career_tasks import delegate_workspace_task
+
+    return await delegate_workspace_task(
+        run_id=run_id,
+        job_id=job_id,
+        runtime_id=runtime_id,
+        prompt=prompt,
+        timeout_seconds=timeout_seconds,
+        web_search_mode=web_search_mode,
+    )
+
+
+async def get_agent_provider_health(provider_id: str) -> dict:
+    from app.services.agent_provider_health import get_provider_health
+
+    return await get_provider_health(provider_id)
+
+
+async def list_agent_provider_health() -> dict:
+    from app.services.agent_provider_health import list_provider_health
+
+    return await list_provider_health()
+
+
+async def list_capability_plugins() -> dict:
+    from app.services.capability_plugins import discover_plugins
+
+    return discover_plugins()
+
+
+async def list_plugin_capabilities() -> dict:
+    from app.services.capability_plugins import list_plugin_capabilities as _list
+
+    return _list()
+
+
+async def install_capability_plugin(plugin: str) -> dict:
+    from app.services.capability_plugins import install_plugin
+
+    return install_plugin(plugin)
+
+
+async def uninstall_capability_plugin(plugin: str) -> dict:
+    from app.services.capability_plugins import uninstall_plugin
+
+    return uninstall_plugin(plugin)
+
+
+async def invoke_plugin_capability(
+    plugin: str,
+    capability: str,
+    arguments: Optional[dict] = None,
+    timeout_seconds: int = 60,
+) -> dict:
+    from app.services.capability_plugins import invoke_plugin_capability as _invoke
+
+    return await _invoke(
+        plugin=plugin,
+        capability=capability,
+        arguments=arguments,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+async def record_automation_event(
+    event_type: str,
+    source: str = "system",
+    target_type: str = "",
+    target_id: str = "",
+    payload: Optional[dict] = None,
+    dedupe_key: str = "",
+) -> dict:
+    from app.services.automation import record_automation_event as _record
+
+    return await _record(
+        event_type=event_type,
+        source=source,
+        target_type=target_type,
+        target_id=target_id,
+        payload=payload,
+        dedupe_key=dedupe_key,
+    )
+
+
+async def list_automation_events(
+    event_type: Optional[str] = None,
+    status: Optional[str] = None,
+    limit: int = 100,
+) -> dict:
+    from app.services.automation import list_automation_events as _list
+
+    return await _list(event_type=event_type, status=status, limit=limit)
+
+
+async def list_automation_inbox(
+    status: str = "pending",
+    category: Optional[str] = None,
+    limit: int = 100,
+) -> dict:
+    from app.services.automation import list_automation_inbox as _list
+
+    return await _list(status=status, category=category, limit=limit)
+
+
+async def list_automation_rules(enabled: Optional[bool] = None) -> dict:
+    from app.services.automation import list_automation_rules as _list
+
+    return await _list(enabled=enabled)
+
+
+async def resolve_automation_inbox_item(item_id: str, action: str) -> dict:
+    from app.services.automation import resolve_automation_inbox_item as _resolve
+
+    return await _resolve(item_id=item_id, action=action)
 
 
 async def list_hosted_executor_sessions(

@@ -27,8 +27,11 @@ from app.services.agent_bridge.event_stream import (
     follow_events,
 )
 from app.services.agent_bridge.operation_gateway import (
+    confirm_proposal,
     granted_operations,
-    invoke_read_operation,
+    invoke_operation,
+    invoke_workspace_delegate,
+    load_proposal_state,
 )
 from app.services.agent_bridge.protocol import (
     BRIDGE_VERSION,
@@ -43,6 +46,10 @@ from app.services.agent_bridge.run_coordinator import (
     LeaseLostError,
     RunCoordinator,
     consume_bootstrap_token,
+)
+from app.services.artifact_workspace import (
+    ArtifactWorkspaceManager,
+    WorkspaceError,
 )
 
 MAX_LINE_BYTES = 1 << 20
@@ -128,11 +135,15 @@ class BridgeSession:
         if message_type == "operation.invoke":
             return await self._invoke(request_id, payload)
         if message_type == "proposal.get":
-            raise BridgeProtocolError(
-                "grant_denied",
-                "Slice 1 has no side-effect proposals",
-                request_id=request_id,
-            )
+            return await self._proposal_get(request_id, payload)
+        if message_type == "proposal.confirm":
+            return await self._proposal_confirm(request_id, payload)
+        if message_type == "workspace.resolve":
+            return self._workspace_resolve(request_id, payload)
+        if message_type == "workspace.context":
+            return await self._workspace_context(request_id, payload)
+        if message_type == "workspace.delegate":
+            return await self._workspace_delegate(request_id, payload)
         if message_type == "event.append":
             return await self._event_append(request_id, payload)
         if message_type == "event.follow":
@@ -222,6 +233,18 @@ class BridgeSession:
             ) from exc
         self.lease_id = str(result["leaseId"])
         self.context_version = int(result["contextVersion"])
+        # Slice 4: every attached Run gets a confined artifact workspace.
+        workspace = ArtifactWorkspaceManager(str(self.run_id))
+        try:
+            manifest = workspace.verify()
+        except WorkspaceError:
+            manifest = workspace.create(owner="deepseek-harness")
+        result["workspace"] = {
+            "runId": self.run_id,
+            "root": str(workspace.root / self.run_id),
+            "manifest": manifest,
+            "confined": True,
+        }
         return success_response(request_id, result)
 
     async def _require_lease(self, request_id: str) -> None:
@@ -255,6 +278,119 @@ class BridgeSession:
             ) from exc
         self.lease_id = str(result["leaseId"])
         return success_response(request_id, result)
+
+    def _workspace_resolve(
+        self, request_id: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Resolve a path INSIDE the Run's confined workspace (Slice 4).
+
+        The only path a Run's native tools may touch. Any traversal,
+        absolute, or symlink/junction escape is rejected with a protocol
+        error; the resolved absolute path is returned for tool cwd use.
+        """
+        workspace = ArtifactWorkspaceManager(str(self.run_id))
+        try:
+            relative = str(payload.get("relative") or "")
+            resolved = workspace.resolve_inside(relative)
+        except WorkspaceError as exc:
+            raise BridgeProtocolError(
+                "path_escape_blocked",
+                str(exc),
+                request_id=request_id,
+            ) from exc
+        return success_response(
+            request_id,
+            {
+                "runId": self.run_id,
+                "relative": relative,
+                "resolved": str(resolved),
+                "confined": True,
+            },
+        )
+
+    async def _workspace_context(
+        self, request_id: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Return the projected Run context (Job + confirmed profile facts)."""
+        from app.services.context_projector import ContextProjector
+
+        job_id = int(payload.get("jobId") or 0)
+        workspace = ArtifactWorkspaceManager(str(self.run_id))
+        try:
+            workspace.verify()
+            context = await ContextProjector(workspace).project(job_id=job_id)
+        except (WorkspaceError, ValueError) as exc:
+            raise BridgeProtocolError(
+                "context_unavailable",
+                str(exc),
+                request_id=request_id,
+            ) from exc
+        return success_response(request_id, context)
+
+    async def _workspace_delegate(
+        self, request_id: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Queue a bounded workspace task through the Operation Registry."""
+        runtime_id = str(payload.get("runtimeId") or "codex")
+        prompt = str(payload.get("prompt") or "").strip()
+        if not prompt:
+            raise BridgeProtocolError(
+                "schema_invalid",
+                "workspace.delegate requires a non-empty prompt",
+                request_id=request_id,
+            )
+        job_id = int(payload.get("jobId") or 0)
+        timeout_seconds = int(payload.get("timeoutSeconds") or 240)
+        web_search_mode = str(payload.get("webSearchMode") or "disabled")
+        workspace = ArtifactWorkspaceManager(str(self.run_id))
+        try:
+            workspace.verify()
+        except WorkspaceError as exc:
+            raise BridgeProtocolError(
+                "run_not_found",
+                str(exc),
+                request_id=request_id,
+            ) from exc
+        try:
+            result = await invoke_workspace_delegate(
+                arguments={
+                    "run_id": str(self.run_id),
+                    "job_id": job_id,
+                    "runtime_id": runtime_id,
+                    "prompt": prompt,
+                    "timeout_seconds": max(1, min(timeout_seconds, 3600)),
+                    "web_search_mode": web_search_mode,
+                }
+            )
+        except ValueError as exc:
+            raise BridgeProtocolError("context_unavailable", str(exc), request_id=request_id) from exc
+        except RuntimeError as exc:
+            raise BridgeProtocolError(
+                "backpressure",
+                str(exc),
+                retryable=True,
+                request_id=request_id,
+            ) from exc
+        if result.get("requiresConfirmation"):
+            await append_standard_event(
+                run_id=str(self.run_id),
+                event_type="operation.proposal_pending",
+                payload={
+                    "operation": "delegate_career_task",
+                    "proposalRunId": (result.get("proposal") or {}).get("runId"),
+                    "surface": "bridge",
+                },
+            )
+        return success_response(
+            request_id,
+            {
+                "runId": self.run_id,
+                "jobId": job_id,
+                "queued": not bool(result.get("completed")),
+                "workspace": str(workspace.workspace_dir),
+                **result,
+            },
+        )
 
     async def _context_snapshot(
         self, request_id: str, payload: dict[str, Any]
@@ -324,17 +460,59 @@ class BridgeSession:
             payload.get("arguments") if isinstance(payload.get("arguments"), dict) else {}
         )
         idempotency_key = str(payload.get("idempotencyKey") or "")
-        result = await invoke_read_operation(
+        result = await invoke_operation(
             operation=operation,
             arguments=arguments,
         )
+        result = dict(result)
+        if result.get("requiresConfirmation"):
+            await append_standard_event(
+                run_id=str(self.run_id),
+                event_type="operation.proposal_pending",
+                payload={
+                    "operation": operation,
+                    "proposalRunId": (result.get("proposal") or {}).get("runId"),
+                    "idempotencyKey": idempotency_key,
+                    "surface": "bridge",
+                },
+            )
+        else:
+            await append_standard_event(
+                run_id=str(self.run_id),
+                event_type="operation.completed",
+                payload={
+                    "operation": operation,
+                    "idempotencyKey": idempotency_key,
+                    "surface": "bridge",
+                },
+            )
+        return success_response(request_id, result)
+
+    async def _proposal_get(
+        self, request_id: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        proposal_run_id = str(payload.get("proposalId") or "")
+        state = await load_proposal_state(run_id=proposal_run_id)
+        return success_response(request_id, state)
+
+    async def _proposal_confirm(
+        self, request_id: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        # The single-writer lease does NOT gate confirmation: the approver is
+        # the human in the OfferU overlay, a different principal from the
+        # Bridge writer. Idempotency lives in confirm_operation_proposal.
+        action_id = str(payload.get("actionId") or "")
+        result = await confirm_proposal(
+            run_id=str(payload.get("proposalId") or ""),
+            action_id=action_id,
+        )
         await append_standard_event(
             run_id=str(self.run_id),
-            event_type="operation.completed",
+            event_type="operation.confirmed",
             payload={
-                "operation": operation,
-                "idempotencyKey": idempotency_key,
-                "surface": "bridge",
+                "proposalRunId": str(payload.get("proposalId") or ""),
+                "actionId": action_id,
+                "surface": "bridge_overlay",
             },
         )
         return success_response(request_id, result)
@@ -505,4 +683,3 @@ __all__ = [
     "OUTPUT_QUEUE_LIMIT",
     "serve",
 ]
-

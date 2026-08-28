@@ -358,18 +358,26 @@ def _schema_prompt_suffix(output_schema: dict[str, Any]) -> str:
     )
 
 
-def _adapter_output_schema(output_schema: dict[str, Any]) -> dict[str, Any]:
-    """外部 runtime（Claude Agent SDK / Codex）对 JSON Schema 顶层的
-    $schema/$id 元键解析支持差：Claude SDK 会拒绝未注册的 draft URI 引用
-    （如 https://json-schema.org/draft/2020-12/schema）。传给 adapter 前剥掉，
-    只保留结构定义；提示词内嵌路径（gemini）与落盘 schema_path 不受影响。"""
+def _adapter_output_schema(
+    output_schema: dict[str, Any], *, runtime_id: str = ""
+) -> dict[str, Any]:
+    """外部 runtime 对 JSON Schema 的解析差异归一化。
+
+    - 所有 adapter：剥掉 $schema/$id 元键（Claude SDK 拒绝未注册 draft URI）。
+    - Codex App Server（实测 0.149.0）：response_format 'codex_output_schema'
+      要求根对象必须显式 `additionalProperties: false`，否则 turn 直接失败
+      （invalid_json_schema）。这是按实际版本验证出的契约，升级前必须重验。
+    """
     if not isinstance(output_schema, dict):
         return output_schema
-    return {
+    cleaned = {
         key: value
         for key, value in output_schema.items()
         if key not in {"$schema", "$id"}
     }
+    if runtime_id in {"codex", "codex-cli"} and cleaned.get("type") == "object":
+        cleaned.setdefault("additionalProperties", False)
+    return cleaned
 
 
 def _runtime_args(
@@ -1469,7 +1477,9 @@ async def execute_deep_task(task: DeepTaskSpec) -> dict[str, Any]:
             provider_result = await asyncio.wait_for(
                 adapter.run(
                     prompt=prompt,
-                    output_schema=_adapter_output_schema(output_schema),
+                    output_schema=_adapter_output_schema(
+                        output_schema, runtime_id=str(runtime_id)
+                    ),
                     cwd=cwd,
                     web_search_mode=clean_web_search_mode,
                     external_session_id=str(session.get("external_session_id") or ""),

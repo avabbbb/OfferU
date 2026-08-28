@@ -178,19 +178,26 @@ class PiAgentHostTests(unittest.TestCase):
                 items.append(item)
             return items
 
+        async def fake_operation(operation: str, args: dict[str, Any]) -> dict[str, Any]:
+            self.assertEqual(operation, "save_harness_conversation")
+            return fake_save(
+                conversation_id=args.get("conversation_id"),
+                messages=args.get("messages") or [],
+            )
+
         with (
             patch(
                 "app.services.pi_agent_host.start_pi_agent_run",
                 side_effect=fake_start,
             ),
             patch(
-                "app.routes.main_agent.save_conversation_messages",
-                side_effect=fake_save,
+                "app.routes.main_agent._ui_operation_outputs",
+                side_effect=fake_operation,
             ),
         ):
             items = asyncio.run(run())
 
-        self.assertEqual(items[0]["event"], "message.delta")
+        self.assertEqual(items[0]["event"], "assistant.delta")
         self.assertIn("增量", items[0]["data"])
         self.assertEqual(items[-1]["event"], "message")
         self.assertIn("增量回答", items[-1]["data"])

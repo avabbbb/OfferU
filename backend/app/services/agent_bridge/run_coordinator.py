@@ -107,6 +107,14 @@ class RunCoordinator:
                     select(AgentRunRecord).where(AgentRunRecord.run_id == run_id)
                 )
             ).scalar_one()
+            current_lease = str(row.lease_id or "")
+            current_expires = row.lease_expires_at
+            if (
+                current_lease
+                and current_lease != lease_id
+                and (current_expires is None or current_expires > _now())
+            ):
+                raise LeaseLostError(run_id)
             row.harness_name = str(harness.get("name") or "")
             row.harness_version = str(harness.get("version") or "")
             row.adapter_name = str(adapter.get("name") or "")

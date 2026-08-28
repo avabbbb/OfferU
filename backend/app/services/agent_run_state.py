@@ -135,6 +135,15 @@ def _row_to_run(row: AgentRunRecord) -> dict[str, Any]:
         "event_sequence": int(row.event_sequence or 0),
         "created_at": str(row.created_at) if row.created_at else None,
         "updated_at": str(row.updated_at) if row.updated_at else None,
+        # ADR-0051 外部 Harness 身份与单写入租约（Slice 5 Harness 中性化）。
+        "harness_name": row.harness_name or "",
+        "harness_version": row.harness_version or "",
+        "adapter_name": row.adapter_name or "",
+        "adapter_version": row.adapter_version or "",
+        "harness_session_id": row.harness_session_id or "",
+        "lease_id": row.lease_id or "",
+        "lease_expires_at": str(row.lease_expires_at) if row.lease_expires_at else None,
+        "context_version": int(row.context_version or 0),
     }
 
 
@@ -444,7 +453,7 @@ async def list_agent_run_events(
 
 
 async def recover_interrupted_agent_runs() -> dict[str, int]:
-    """Classify non-terminal Pi Runs after process restart without replaying work."""
+    """Classify non-terminal Runs after process restart without replaying work."""
 
     recovered = 0
     reconciliation_required = 0

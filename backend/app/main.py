@@ -25,7 +25,7 @@ if settings.offeru_enable_mcp:
 else:
     mcp_server = None
     _HAS_MCP = False
-from app.routes import jobs, resume, calendar, email, config, applications, scraper, pools, profile, profile_agent, optimize, interview, main_agent, templates, interviews, research, memory, studio
+from app.routes import jobs, resume, calendar, email, config, applications, scraper, pools, profile, profile_agent, optimize, interview, main_agent, templates, interviews, research, memory, studio, bridge
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -37,6 +37,12 @@ async def lifespan(app: FastAPI):
         await recover_interrupted_agent_runs()
     except Exception:
         pass  # Agent Run 恢复失败不阻塞启动（与相邻恢复逻辑一致）
+    from app.services.career_tasks import recover_career_tasks
+
+    try:
+        await recover_career_tasks()
+    except Exception:
+        pass  # CareerTask 恢复失败不阻塞启动；任务状态仍可由控制面查询
     from app.services.job_research import recover_interrupted_research_runs
 
     try:
@@ -109,6 +115,10 @@ cors_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()
 for _offeru_frontend_origin in ("http://localhost:7410", "http://127.0.0.1:7410"):
     if _offeru_frontend_origin not in cors_origins:
         cors_origins.append(_offeru_frontend_origin)
+# DSH Web 浮层（Slice 3 确认浮层）运行在 3080，需要直接轮询/提交提案决定。
+for _dsh_web_origin in ("http://localhost:3737", "http://127.0.0.1:3737"):
+    if _dsh_web_origin not in cors_origins:
+        cors_origins.append(_dsh_web_origin)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
@@ -139,6 +149,7 @@ app.include_router(interview.router, prefix="/api/interview", tags=["Interview"]
 app.include_router(memory.router, prefix="/api/memory", tags=["Memory"])
 # studio.router 自带 prefix="/api/studio"，直接注册
 app.include_router(studio.router)
+app.include_router(bridge.router, prefix="/api/bridge", tags=["Bridge"])
 
 # ---- 静态文件（头像等上传文件） ----
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")

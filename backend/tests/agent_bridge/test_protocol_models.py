@@ -187,6 +187,26 @@ class RequestModelTests(unittest.TestCase):
 
         self.assert_schema_invalid(value)
 
+    def test_public_protocol_does_not_expose_model_confirmation(self) -> None:
+        value = {
+            "v": 1,
+            "id": "req_confirm",
+            "type": "proposal.confirm",
+            "runId": "run_01J",
+            "payload": {
+                "proposalId": "prop_01J",
+                "actionId": "action_01J",
+            },
+        }
+
+        error = self.assert_schema_invalid(value)
+
+        self.assertEqual(error.details["type"], "proposal.confirm")
+        self.assertNotIn(
+            "proposal.confirm",
+            bridge_schema_bundle()["messageTypes"],
+        )
+
 
 class ResponseAndSchemaTests(unittest.TestCase):
     def test_success_and_error_helpers_emit_valid_response_envelopes(self) -> None:

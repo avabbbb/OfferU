@@ -7,6 +7,7 @@ import time
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Awaitable, Callable, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, PositiveInt, ValidationError, model_validator
@@ -15,6 +16,20 @@ from sqlalchemy import func, select, update
 
 from app.database import async_session
 from app.services.job_ingest import JobIngestItem, import_job_batch
+from app.services.scraper_operations import finalize_scraper_batch, start_scraper_batch
+from app.services.harness_operations import (
+    delete_harness_conversation,
+    distill_harness_conversation,
+    import_harness_memory,
+    promote_harness_memory,
+    save_harness_conversation,
+)
+from app.services.optimize_agent_operations import (
+    chat_optimize_agent_session,
+    delete_optimize_agent_session,
+    start_optimize_agent_session,
+    stream_optimize_agent_session,
+)
 from app.services.agent_operations import (
     activate_authorized_research_read_only,
     add_profile_evidence,
@@ -24,6 +39,7 @@ from app.services.agent_operations import (
     complete_authorized_research_session,
     connect_imap_account,
     cancel_job_research,
+    cancel_career_task,
     create_ai_interview,
     create_application,
     create_interview_scoring_skill,
@@ -50,6 +66,12 @@ from app.services.agent_operations import (
     get_job,
     get_job_research,
     get_hosted_executor_session,
+    get_career_task,
+    get_career_task_result,
+    get_agent_provider_health,
+    install_capability_plugin,
+    invoke_plugin_capability,
+    get_role_benchmark,
     get_pre_application_state,
     get_interview_scoring_skill,
     get_profile,
@@ -67,6 +89,7 @@ from app.services.agent_operations import (
     validate_fact_gate,
     job_stats,
     list_agent_runs_summary,
+    reject_agent_run,
     list_applications,
     list_ai_interviews,
     list_authorized_research_sessions,
@@ -79,6 +102,14 @@ from app.services.agent_operations import (
     list_jobs,
     list_job_research_runs,
     list_hosted_executor_sessions,
+    list_career_task_events,
+    list_career_tasks,
+    list_agent_provider_health,
+    list_automation_events,
+    list_automation_inbox,
+    list_automation_rules,
+    list_capability_plugins,
+    list_plugin_capabilities,
     list_interview_questions,
     list_interview_scoring_skills,
     list_learning_observations,
@@ -91,15 +122,19 @@ from app.services.agent_operations import (
     list_work_sources,
     list_work_source_sync_runs,
     list_profile_evidence,
+    list_role_delta_signals,
     list_resume_optimizations,
     list_resumes,
     prepare_pre_application_decision,
+    prepare_role_interview_focus,
     prepare_resume_optimization,
     promote_session_memory,
     register_work_source,
     refresh_job_research_report,
+    refresh_role_benchmark,
     ingest_application_signal,
     ingest_interview_behavior_events,
+    record_automation_event,
     record_follow_up,
     revoke_email_account,
     restart_ai_interview,
@@ -108,6 +143,7 @@ from app.services.agent_operations import (
     review_pre_application_decision,
     review_resume_optimization,
     review_application_progress,
+    resolve_automation_inbox_item,
     save_career_artifact,
     search_memory,
     start_batch_job_evaluation,
@@ -115,14 +151,99 @@ from app.services.agent_operations import (
     resume_batch_job_evaluation,
     resume_job_research,
     resume_work_source_sync,
+    resume_career_task,
+    retry_career_task,
     start_work_source_sync,
     start_job_research,
+    start_career_task,
+    delegate_career_task,
+    build_role_benchmark,
     sync_email_notifications,
     submit_ai_interview_answer,
     update_application_record,
     update_application_status,
+    uninstall_capability_plugin,
     email_connection_status,
     delete_ai_interview,
+)
+from app.services.legacy_operations import (
+    apply_application_template_to_all,
+    apply_resume_template,
+    auto_fill_calendar_events,
+    auto_write_application_job,
+    collect_interview_experience,
+    create_application_table,
+    create_application_table_record,
+    create_calendar_event,
+    create_legacy_application,
+    create_resume_template,
+    delete_application_records,
+    delete_application_table,
+    delete_resume_template,
+    duplicate_resume_template,
+    extract_interview_questions,
+    generate_html_resume,
+    generate_legacy_cover_letter,
+    generate_legacy_interview_answer,
+    import_jobs_to_application_table,
+    import_latest_extension_batch_to_application_table,
+    move_application_records,
+    rename_application_table,
+    update_application_settings,
+    update_application_table_record,
+    update_application_table_schema,
+    update_legacy_application,
+    update_resume_template,
+    update_application_template,
+)
+from app.services.profile_operations import (
+    confirm_profile_bullet,
+    create_profile_section,
+    create_target_role,
+    delete_profile_section,
+    delete_target_role,
+    generate_profile_narrative,
+    get_legacy_profile,
+    list_target_roles,
+    list_profile_chat_sessions,
+    get_profile_chat_session,
+    start_smart_fill_run,
+    complete_smart_fill_run,
+    save_profile_chat_turn,
+    save_profile_resume_import,
+    save_smart_fill_cache,
+    save_smart_fill_run_logs,
+    update_profile,
+    update_profile_section,
+)
+from app.services.profile_agent_operations import (
+    apply_profile_agent_patch,
+    continue_profile_agent_session,
+    get_profile_agent_session,
+    start_profile_agent_session,
+)
+from app.services.resume_route_operations import (
+    access_resume_share_record,
+    apply_resume_suggestions_batch,
+    apply_resume_suggestion,
+    apply_resume_template_to_record,
+    batch_optimize_resume_records,
+    create_resume_record,
+    create_resume_section,
+    create_resume_share_record,
+    create_resume_version_record,
+    delete_resume_record,
+    delete_resume_section,
+    delete_resume_share_record,
+    reorder_resume_sections,
+    resolve_resume_logo,
+    restore_resume_version_record,
+    save_resume_draft_record,
+    toggle_resume_share_record,
+    update_resume_record,
+    update_resume_section,
+    upload_resume_logo,
+    upload_resume_photo,
 )
 from app.models.models import AgentWorkspaceState, Job, OperationAuditLog, Pool
 
@@ -160,6 +281,152 @@ class StartJobResearchInput(_StrictOperationInput):
         default="codex",
         pattern="^(codex|claude|omp|pi|opencode)$",
     )
+
+
+class RoleBenchmarkRunInput(_StrictOperationInput):
+    job_id: int = Field(gt=0)
+    runtime_id: str = Field(
+        default="codex",
+        pattern="^(codex|claude|gemini|omp|pi|opencode|fixture|replay|boss-fixture|plugin:[A-Za-z0-9_.-]+)$",
+    )
+    role_family: str = Field(default="", max_length=120)
+    specialization: str = Field(default="", max_length=160)
+    seniority: str = Field(default="", max_length=60)
+    region: str = Field(default="", max_length=300)
+    industry: str = Field(default="", max_length=200)
+
+
+class CareerTaskStartInput(_StrictOperationInput):
+    task_type: str = Field(
+        pattern="^(agent_turn|run_artifact|role_intelligence|plugin_capability)$"
+    )
+    source: str = Field(default="ui", min_length=1, max_length=80)
+    target_type: str = Field(default="", max_length=80)
+    target_id: str = Field(default="", max_length=160)
+    runtime_provider: str = Field(
+        default="replay",
+        pattern="^(codex|codex-app-server|claude|fixture|replay|mock|boss-fixture|plugin:[A-Za-z0-9_.-]+)$",
+    )
+    input: dict[str, Any] = Field(default_factory=dict)
+    output_contract: dict[str, Any] = Field(default_factory=dict)
+    run_id: str = Field(default="", max_length=160)
+    idempotency_key: str = Field(default="", max_length=180)
+    max_attempts: int = Field(default=3, ge=1, le=10)
+
+
+class CareerTaskIdInput(_StrictOperationInput):
+    task_id: str = Field(min_length=1, max_length=80)
+
+
+class ListCareerTasksInput(_StrictOperationInput):
+    status: str | None = Field(default=None, pattern="^(queued|running|waiting_for_approval|completed|failed|blocked|cancelled)$")
+    task_type: str | None = Field(default=None, min_length=1, max_length=100)
+    target_type: str | None = Field(default=None, min_length=1, max_length=80)
+    target_id: str | None = Field(default=None, min_length=1, max_length=160)
+    limit: int = Field(default=50, ge=1, le=200)
+
+
+class CareerTaskEventsInput(CareerTaskIdInput):
+    after: int = Field(default=0, ge=0)
+    limit: int = Field(default=100, ge=1, le=500)
+
+
+class ProviderHealthInput(_StrictOperationInput):
+    provider_id: str = Field(min_length=1, max_length=80)
+
+
+class DelegateCareerTaskInput(_StrictOperationInput):
+    run_id: str = Field(min_length=1, max_length=160)
+    job_id: int = Field(gt=0)
+    runtime_id: str = Field(
+        default="codex",
+        pattern="^(codex|claude|gemini|omp|pi|opencode|fixture|replay|mock)$",
+    )
+    prompt: str = Field(min_length=1, max_length=12000)
+    timeout_seconds: int = Field(default=240, ge=1, le=3600)
+    web_search_mode: str = Field(default="disabled", pattern="^(disabled|live)$")
+
+
+class PluginNameInput(_StrictOperationInput):
+    plugin: str = Field(pattern="^[A-Za-z0-9_.-]{1,80}$")
+
+
+class InvokePluginCapabilityInput(_StrictOperationInput):
+    plugin: str = Field(pattern="^[A-Za-z0-9_.-]{1,80}$")
+    capability: str = Field(min_length=1, max_length=160)
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    timeout_seconds: int = Field(default=60, ge=1, le=300)
+
+
+class RecordAutomationEventInput(_StrictOperationInput):
+    event_type: str = Field(
+        pattern=(
+            "^(JOB_SAVED|JOB_UPDATED|APPLICATION_CREATED|APPLICATION_SUBMITTED|"
+            "APPLICATION_STAGE_CANDIDATE|EMAIL_RECEIVED|INTERVIEW_INVITATION_DETECTED|"
+            "REJECTION_DETECTED|OFFER_DETECTED|CAREER_FILE_CHANGED|"
+            "CAREER_FACT_CANDIDATE_CREATED|RESUME_UPDATED|INTERVIEW_COMPLETED|"
+            "INTERVIEW_DEBRIEF_CREATED|ROLE_BENCHMARK_STALE|DAILY_REVIEW|WEEKLY_REVIEW)$"
+        )
+    )
+    source: str = Field(default="system", min_length=1, max_length=80)
+    target_type: str = Field(default="", max_length=80)
+    target_id: str = Field(default="", max_length=160)
+    payload: dict[str, Any] = Field(default_factory=dict)
+    dedupe_key: str = Field(default="", max_length=180)
+
+
+class ListAutomationEventsInput(_StrictOperationInput):
+    event_type: str | None = Field(default=None, max_length=80)
+    status: str | None = Field(
+        default=None,
+        pattern="^(queued|dispatched|completed|failed|blocked|skipped)$",
+    )
+    limit: int = Field(default=100, ge=1, le=500)
+
+
+class ListAutomationInboxInput(_StrictOperationInput):
+    status: str = Field(default="pending", pattern="^(pending|resolved|dismissed|all)$")
+    category: str | None = Field(
+        default=None,
+        pattern="^(needs_approval|needs_review|fyi|completed|failed)$",
+    )
+    limit: int = Field(default=100, ge=1, le=500)
+
+
+class ListAutomationRulesInput(_StrictOperationInput):
+    enabled: bool | None = None
+
+
+class ResolveAutomationInboxItemInput(_StrictOperationInput):
+    item_id: str = Field(min_length=1, max_length=100)
+    action: str = Field(pattern="^(resolve|dismiss|reopen)$")
+
+
+class GetRoleBenchmarkInput(_StrictOperationInput):
+    run_id: str | None = Field(default=None, min_length=1, max_length=64)
+    job_id: int | None = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def require_run_or_job(self) -> "GetRoleBenchmarkInput":
+        if not self.run_id and self.job_id is None:
+            raise ValueError("run_id 或 job_id 至少填写一个")
+        return self
+
+
+class ListRoleDeltaSignalsInput(GetRoleBenchmarkInput):
+    direction: str | None = Field(
+        default=None,
+        pattern="^(common|distinctive|highly_distinctive|missing_common)$",
+    )
+    limit: int = Field(default=100, ge=1, le=200)
+
+
+class PrepareRoleInterviewFocusInput(_StrictOperationInput):
+    job_id: int = Field(gt=0)
+    run_id: str | None = Field(default=None, min_length=1, max_length=64)
+    profile_id: int | None = Field(default=None, gt=0)
+    focus_count: int = Field(default=5, ge=3, le=5)
+    question_count: int = Field(default=5, ge=5, le=8)
 
 
 class ResumeJobResearchInput(_StrictOperationInput):
@@ -222,6 +489,10 @@ class ListAgentRunsInput(_StrictOperationInput):
     conversation_id: str | None = Field(default=None, min_length=1, max_length=120)
     task_id: str | None = Field(default=None, min_length=1, max_length=120)
     limit: int = Field(default=20, ge=1, le=100)
+
+
+class AgentRunIdInput(_StrictOperationInput):
+    run_id: str = Field(min_length=1, max_length=120)
 
 
 class AgentPlaybookInput(_StrictOperationInput):
@@ -361,12 +632,433 @@ class BatchUpdateJobsInput(_StrictOperationInput):
         return self
 
 
+class BatchDeleteJobsInput(_StrictOperationInput):
+    job_ids: list[PositiveInt] = Field(min_length=1, max_length=500)
+
+
+class ApplicationTableNameInput(_StrictOperationInput):
+    name: str = Field(min_length=1, max_length=120)
+
+
+class ApplicationTableIdNameInput(_StrictOperationInput):
+    table_id: int = Field(gt=0)
+    name: str = Field(min_length=1, max_length=120)
+
+
+class ApplicationTableIdInput(_StrictOperationInput):
+    table_id: int = Field(gt=0)
+
+
+class ImportApplicationJobsInput(_StrictOperationInput):
+    table_id: int = Field(gt=0)
+    job_ids: list[PositiveInt] = Field(min_length=1, max_length=500)
+    skip_existing_in_table: bool = False
+
+
+class ImportLatestExtensionBatchInput(_StrictOperationInput):
+    table_id: int = Field(gt=0)
+    batch_id: str = Field(default="", max_length=64)
+    source: str = Field(default="offeru-extension", min_length=1, max_length=64)
+    limit: int = Field(default=500, ge=1, le=500)
+    skip_existing: bool = True
+
+
+class ApplicationRecordCreateInput(_StrictOperationInput):
+    table_id: int = Field(gt=0)
+    values: dict[str, Any] = Field(min_length=1)
+    job_ref_id: int | None = Field(default=None, gt=0)
+
+
+class ApplicationRecordUpdateInput(_StrictOperationInput):
+    record_id: int = Field(gt=0)
+    field_key: str = Field(min_length=1, max_length=120)
+    value: Any = None
+
+
+class MoveApplicationRecordsInput(_StrictOperationInput):
+    source_table_id: int = Field(gt=0)
+    target_table_id: int = Field(gt=0)
+    record_ids: list[PositiveInt] = Field(min_length=1, max_length=500)
+
+
+class DeleteApplicationRecordsInput(_StrictOperationInput):
+    table_id: int = Field(gt=0)
+    record_ids: list[PositiveInt] = Field(min_length=1, max_length=500)
+    delete_from_total: bool = False
+
+
+class ApplicationTableSchemaInput(_StrictOperationInput):
+    table_id: int = Field(gt=0)
+    schema: list[dict[str, Any]] = Field(min_length=1, max_length=200)
+
+
+class ApplicationTemplateInput(_StrictOperationInput):
+    schema: list[dict[str, Any]] = Field(min_length=1, max_length=200)
+    purge_non_template_fields: bool = False
+
+
+class ApplicationTemplateApplyAllInput(_StrictOperationInput):
+    purge_non_template_fields: bool = False
+
+
+class ApplicationSettingsInput(_StrictOperationInput):
+    auto_row_height: bool | None = None
+    auto_column_width: bool | None = None
+    delete_subtable_sync_total_default: bool | None = None
+
+
+class LegacyApplicationCreateInput(_StrictOperationInput):
+    job_id: int = Field(gt=0)
+    notes: str = Field(default="", max_length=60000)
+
+
+class LegacyApplicationUpdateInput(_StrictOperationInput):
+    application_id: int = Field(gt=0)
+    status: str | None = Field(default=None, max_length=80)
+    notes: str | None = Field(default=None, max_length=60000)
+    cover_letter: str | None = Field(default=None, max_length=60000)
+
+
+class CalendarEventCreateInput(_StrictOperationInput):
+    title: str = Field(min_length=1, max_length=500)
+    description: str = Field(default="", max_length=10000)
+    event_type: str = Field(default="interview", max_length=80)
+    start_time: datetime
+    end_time: datetime | None = None
+    location: str = Field(default="", max_length=1000)
+    related_job_id: int | None = Field(default=None, gt=0)
+    related_notification_id: int | None = Field(default=None, gt=0)
+
+
+class CollectInterviewExperienceInput(_StrictOperationInput):
+    company: str = Field(min_length=1, max_length=300)
+    role: str = Field(min_length=1, max_length=300)
+    raw_text: str = Field(min_length=10, max_length=200000)
+    source_url: str | None = Field(default=None, max_length=2048)
+    source_platform: str = Field(default="manual", min_length=1, max_length=80)
+    job_id: int | None = Field(default=None, gt=0)
+
+
+class ExtractInterviewQuestionsInput(_StrictOperationInput):
+    experience_id: int = Field(gt=0)
+
+
+class GenerateLegacyInterviewAnswerInput(_StrictOperationInput):
+    question_id: int = Field(gt=0)
+
+
+class ResumeTemplateCreateInput(_StrictOperationInput):
+    name: str = Field(min_length=1, max_length=300)
+    thumbnail_url: str = Field(default="", max_length=2048)
+    css_variables: dict[str, Any] = Field(default_factory=dict)
+    html_layout: str = Field(default="", max_length=200000)
+    is_builtin: bool = False
+
+
+class ResumeTemplateUpdateInput(_StrictOperationInput):
+    template_id: int = Field(gt=0)
+    name: str | None = Field(default=None, min_length=1, max_length=300)
+    thumbnail_url: str | None = Field(default=None, max_length=2048)
+    css_variables: dict[str, Any] | None = None
+    html_layout: str | None = Field(default=None, max_length=200000)
+
+
+class ResumeTemplateIdInput(_StrictOperationInput):
+    template_id: int = Field(gt=0)
+
+
+class ResumeTemplateApplyInput(_StrictOperationInput):
+    template_id: int = Field(gt=0)
+    resume_id: int = Field(gt=0)
+
+
+class ResumeTemplateDuplicateInput(_StrictOperationInput):
+    template_id: int = Field(gt=0)
+    new_name: str = Field(min_length=1, max_length=300)
+
+
+class LegacyCoverLetterInput(_StrictOperationInput):
+    job_id: int = Field(gt=0)
+    resume_id: int = Field(gt=0)
+
+
+class GenerateHtmlResumeInput(_StrictOperationInput):
+    profile_id: int = Field(gt=0)
+    template_id: int = Field(gt=0)
+    design_overrides: dict[str, Any] = Field(default_factory=dict)
+    job_ids: list[PositiveInt] = Field(default_factory=list, max_length=500)
+
+
 class JobStatsInput(_StrictOperationInput):
     pass
 
 
 class GetProfileInput(_StrictOperationInput):
     pass
+
+
+class ProfileUpdateInput(_StrictOperationInput):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    headline: str | None = Field(default=None, max_length=300)
+    exit_story: str | None = None
+    cross_cutting_advantage: str | None = None
+    base_info_json: dict[str, Any] | None = None
+
+
+class TargetRoleCreateInput(_StrictOperationInput):
+    role_name: str = Field(min_length=1, max_length=120)
+    role_level: str = Field(default="", max_length=60)
+    fit: str = Field(default="primary", pattern="^(primary|secondary|adjacent)$")
+
+
+class TargetRoleIdInput(_StrictOperationInput):
+    role_id: int = Field(gt=0)
+
+
+class ProfileSectionCreateInput(_StrictOperationInput):
+    section_type: str = Field(min_length=1, max_length=60)
+    category_label: str | None = Field(default=None, max_length=80)
+    title: str = Field(default="", max_length=220)
+    sort_order: int = 0
+    content_json: dict[str, Any] = Field(default_factory=dict)
+    source: str = Field(default="manual", max_length=30)
+    confidence: float = Field(default=1.0, ge=0, le=1)
+
+
+class ProfileSectionUpdateInput(_StrictOperationInput):
+    section_id: int = Field(gt=0)
+    section_type: str | None = Field(default=None, min_length=1, max_length=60)
+    category_label: str | None = Field(default=None, max_length=80)
+    title: str | None = Field(default=None, max_length=220)
+    sort_order: int | None = None
+    content_json: dict[str, Any] | None = None
+    source: str | None = Field(default=None, max_length=30)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+
+
+class ProfileSectionIdInput(_StrictOperationInput):
+    section_id: int = Field(gt=0)
+
+
+class ProfileChatTurnInput(_StrictOperationInput):
+    topic: str = Field(pattern="^(education|experience|project|activity|skill|general)$")
+    user_message: str = Field(min_length=1, max_length=10000)
+    assistant_message: str = Field(min_length=1, max_length=30000)
+    candidates: list[dict[str, Any]] = Field(max_length=3)
+    topic_complete: bool = False
+    session_id: int | None = Field(default=None, gt=0)
+
+
+class ConfirmProfileBulletInput(_StrictOperationInput):
+    session_id: int = Field(gt=0)
+    bullet_index: int = Field(ge=0, le=20)
+    edits: dict[str, Any] | None = None
+
+
+class ProfileResumeImportInput(_StrictOperationInput):
+    filename: str = Field(min_length=1, max_length=255)
+    parse_mode: str = Field(pattern="^(ai|mechanical)$")
+    parsed_text: str = Field(min_length=1, max_length=1_000_000)
+    parse_diagnostics: dict[str, Any] = Field(default_factory=dict)
+    base_info: dict[str, Any] = Field(default_factory=dict)
+    candidates: list[dict[str, Any]] = Field(max_length=100)
+    agent_messages_json: list[dict[str, Any]] = Field(max_length=100)
+    memory_summary: dict[str, Any] = Field(default_factory=dict)
+
+
+class SmartFillCacheSetInput(_StrictOperationInput):
+    cache_key: str = Field(min_length=4, max_length=128)
+    adapter_id: str = Field(default="unknown", max_length=50)
+    model_signature: str = Field(default="", max_length=128)
+    ttl_seconds: int = Field(default=300, ge=30, le=7200)
+    mappings: list[dict[str, Any]] = Field(default_factory=list)
+    channel: str = Field(default="backend", max_length=30)
+    fallback_used: bool = False
+    run_id: str | None = Field(default=None, max_length=64)
+
+
+class SmartFillRunLogsInput(_StrictOperationInput):
+    run_id: str = Field(min_length=6, max_length=64)
+    logs: list[dict[str, Any]] = Field(default_factory=list, max_length=500)
+
+
+class ProfileChatSessionsInput(_StrictOperationInput):
+    limit: int = Field(default=20, ge=1, le=100)
+
+
+class HarnessConversationSaveInput(_StrictOperationInput):
+    conversation_id: str | None = Field(default=None, max_length=120)
+    messages: list[dict[str, str]] = Field(max_length=120)
+
+
+class HarnessConversationIdInput(_StrictOperationInput):
+    conversation_id: str = Field(min_length=1, max_length=120)
+
+
+class HarnessMemoryImportInput(_StrictOperationInput):
+    content: dict[str, Any] | str
+
+
+class OptimizeAgentStartInput(_StrictOperationInput):
+    job_ids: list[int] = Field(min_length=1, max_length=200)
+    mode: str = Field(default="per_job", pattern="^(per_job|combined)$")
+    profile_id: int | None = Field(default=None, gt=0)
+    reference_resume_id: int | None = Field(default=None, gt=0)
+
+
+class OptimizeAgentChatInput(_StrictOperationInput):
+    session_id: str = Field(min_length=1, max_length=120)
+    message: str = Field(min_length=1, max_length=20_000)
+    action: str = Field(default="reply", pattern="^(reply|confirm|reject|adjust)$")
+    feedback: str = Field(default="", max_length=20_000)
+
+
+class OptimizeAgentSessionIdInput(_StrictOperationInput):
+    session_id: str = Field(min_length=1, max_length=120)
+
+
+class ProfileChatSessionIdInput(_StrictOperationInput):
+    session_id: int = Field(gt=0)
+
+
+class SmartFillRunStartInput(_StrictOperationInput):
+    run_id: str = Field(min_length=6, max_length=64)
+
+
+class SmartFillRunCompleteInput(_StrictOperationInput):
+    run_id: str = Field(min_length=6, max_length=64)
+    status: str = Field(pattern="^(success|failed|cancelled)$")
+    summary: dict[str, Any] = Field(default_factory=dict)
+
+
+class ProfileAgentStartInput(_StrictOperationInput):
+    state: dict[str, Any] = Field(default_factory=dict)
+    patch: dict[str, Any] = Field(min_length=1)
+    messages_json: list[dict[str, Any]] = Field(max_length=100)
+
+
+class ProfileAgentMessageInput(_StrictOperationInput):
+    session_id: int = Field(gt=0)
+    message: str = Field(min_length=1, max_length=8000)
+
+
+class ProfileAgentApplyInput(_StrictOperationInput):
+    session_id: int = Field(gt=0)
+    patch: dict[str, Any] | None = None
+
+
+class ResumeCreateRecordInput(_StrictOperationInput):
+    user_name: str = Field(default="", max_length=200)
+    title: str = Field(default="未命名简历", max_length=300)
+    summary: str = Field(default="", max_length=50_000)
+    contact_json: dict[str, Any] = Field(default_factory=dict)
+    template_id: int | None = Field(default=None, gt=0)
+    style_config: dict[str, Any] = Field(default_factory=dict)
+    language: str = Field(default="zh", max_length=10)
+    source_mode: str = Field(default="manual", max_length=30)
+    source_job_ids: list[int] = Field(default_factory=list, max_length=100)
+    source_profile_snapshot: dict[str, Any] = Field(default_factory=dict)
+
+
+class ResumeApplyTemplateInput(_StrictOperationInput):
+    template_id: int = Field(gt=0)
+    resume_id: int = Field(gt=0)
+
+
+class ResumeUpdateRecordInput(_StrictOperationInput):
+    resume_id: int = Field(gt=0)
+    update_data: dict[str, Any] = Field(default_factory=dict)
+
+
+class ResumeIdInput(_StrictOperationInput):
+    resume_id: int = Field(gt=0)
+
+
+class ResumeSectionReorderInput(_StrictOperationInput):
+    resume_id: int = Field(gt=0)
+    items: list[dict[str, int]] = Field(max_length=500)
+
+
+class ResumeSectionCreateInput(_StrictOperationInput):
+    resume_id: int = Field(gt=0)
+    section_type: str = Field(min_length=1, max_length=50)
+    title: str = Field(default="", max_length=200)
+    sort_order: int = Field(default=0, ge=0)
+    visible: bool = True
+    content_json: list[Any] = Field(default_factory=list)
+
+
+class ResumeSectionUpdateInput(_StrictOperationInput):
+    resume_id: int = Field(gt=0)
+    section_id: int = Field(gt=0)
+    update_data: dict[str, Any] = Field(default_factory=dict)
+
+
+class ResumeSectionIdInput(_StrictOperationInput):
+    resume_id: int = Field(gt=0)
+    section_id: int = Field(gt=0)
+
+
+class ResumeUploadInput(_StrictOperationInput):
+    resume_id: int = Field(gt=0)
+    content_b64: str = Field(min_length=1, max_length=8_000_000)
+    content_type: str = Field(pattern="^image/(jpeg|png|webp)$")
+
+
+class ResumeLogoResolveInput(_StrictOperationInput):
+    resume_id: int = Field(gt=0)
+    school_name: str = Field(min_length=1, max_length=120)
+
+
+class ResumeSuggestionInput(_StrictOperationInput):
+    resume_id: int = Field(gt=0)
+    suggestion: dict[str, Any] = Field(min_length=1)
+
+
+class ResumeSuggestionBatchInput(_StrictOperationInput):
+    resume_id: int = Field(gt=0)
+    payload: dict[str, Any] = Field(min_length=1)
+
+
+class ResumeBatchOptimizeInput(_StrictOperationInput):
+    resume_id: int = Field(gt=0)
+    job_ids: list[int] = Field(min_length=1, max_length=20)
+    auto_apply: bool = False
+
+
+class ResumeVersionCreateInput(_StrictOperationInput):
+    resume_id: int = Field(gt=0)
+    change_summary: str = Field(default="", max_length=500)
+    created_by: str = Field(default="user", max_length=100)
+
+
+class ResumeVersionRestoreInput(_StrictOperationInput):
+    resume_id: int = Field(gt=0)
+    version_id: int = Field(gt=0)
+
+
+class ResumeShareCreateInput(_StrictOperationInput):
+    resume_id: int = Field(gt=0)
+    password: str | None = Field(default=None, max_length=200)
+    expires_days: int | None = Field(default=None, ge=1, le=3650)
+
+
+class ResumeShareIdInput(_StrictOperationInput):
+    share_id: int = Field(gt=0)
+
+
+class ResumeShareAccessInput(_StrictOperationInput):
+    share_token: str = Field(min_length=1, max_length=128)
+    password: str | None = Field(default=None, max_length=200)
+
+
+class SaveResumeDraftInput(_StrictOperationInput):
+    resume_id: int = Field(gt=0)
+    profile_id: int = Field(gt=0)
+    jd_text: str = Field(min_length=1, max_length=100_000)
+    summary: str = Field(default="", max_length=50_000)
+    sections: list[dict[str, Any]] = Field(min_length=1, max_length=50)
+    fact_gates: dict[str, Any] = Field(default_factory=dict)
 
 
 class InspectResumeDocumentInput(_StrictOperationInput):
@@ -514,6 +1206,23 @@ class ImportJobBatchInput(_StrictOperationInput):
     batch_id: str | None = Field(default=None, min_length=1, max_length=64)
     keywords: list[str] = Field(default_factory=list, max_length=50)
     location: str = Field(default="", max_length=200)
+    pool_id: int | None = Field(default=None, gt=0)
+
+
+class StartScraperBatchInput(_StrictOperationInput):
+    batch_id: str = Field(min_length=1, max_length=64)
+    source: str = Field(min_length=1, max_length=50)
+    keywords: list[str] = Field(default_factory=list, max_length=50)
+    location: str = Field(default="", max_length=100)
+    max_results: int = Field(default=50, ge=1, le=500)
+    pool_name: str = Field(min_length=1, max_length=100)
+
+
+class FinalizeScraperBatchInput(_StrictOperationInput):
+    batch_id: str = Field(min_length=1, max_length=64)
+    total_fetched: int = Field(default=0, ge=0, le=100_000)
+    job_count: int = Field(default=0, ge=0, le=100_000)
+    status: str = Field(default="completed", pattern="^(completed|failed)$")
 
 
 class ListApplicationsInput(_StrictOperationInput):
@@ -667,6 +1376,7 @@ _OPERATION_AUTHORIZATION: ContextVar[OperationAuthorization | None] = ContextVar
 )
 _PROTECTED_AGENT_SURFACES = {
     "agent",
+    "bridge",
     "cli",
     "mcp",
     "pi",
@@ -1010,6 +1720,7 @@ OPERATIONS: dict[str, Operation] = {
             "question_count": "int=5",
             "scoring_skill_id": "str=evidence-interview-score",
             "scoring_skill_version": "int?",
+            "role_benchmark_run_id": "str?",
         },
         group="interview",
         side_effects=("llm", "external", "write"),
@@ -1166,18 +1877,37 @@ OPERATIONS: dict[str, Operation] = {
     "import_job_batch": Operation(
         name="import_job_batch",
         fn=import_job_batch,
-        description="批量导入岗位为 Job（浏览器扩展/CLI 统一入口）：逐条按 hash_key 幂等去重，同 batch_id 重放不重复计数；triage_status=inbox。",
+        description="批量导入岗位为 Job（浏览器扩展/CLI/采集器统一入口）：逐条按 hash_key 幂等去重，同 batch_id 重放不重复计数；triage_status=inbox。",
         parameters={
             "jobs": "list[object]",
             "source": "str=manual",
             "batch_id": "str?",
             "keywords": "list[str]=[]",
             "location": "str?",
+            "pool_id": "int?",
         },
         group="jobs",
         side_effects=("write",),
         input_model=ImportJobBatchInput,
         version="2026-08-10",
+    ),
+    "start_scraper_batch": Operation(
+        name="start_scraper_batch",
+        fn=start_scraper_batch,
+        description="创建采集任务的岗位池与持久化批次。后台采集器不得直接写入 ORM。",
+        group="jobs",
+        side_effects=("external", "write"),
+        input_model=StartScraperBatchInput,
+        version="2026-08-28",
+    ),
+    "finalize_scraper_batch": Operation(
+        name="finalize_scraper_batch",
+        fn=finalize_scraper_batch,
+        description="记录采集批次最终状态与 Runtime 统计数量。",
+        group="jobs",
+        side_effects=("write",),
+        input_model=FinalizeScraperBatchInput,
+        version="2026-08-28",
     ),
     "validate_fact_gate": Operation(
         name="validate_fact_gate",
@@ -1322,6 +2052,257 @@ OPERATIONS: dict[str, Operation] = {
         group="research",
         side_effects=("write", "external"),
         input_model=ResumeJobResearchInput,
+    ),
+    "build_role_benchmark": Operation(
+        name="build_role_benchmark",
+        fn=build_role_benchmark,
+        description="确认后使用受限 deep executor 收集同类 JD，并由 Runtime 持久化去重后的岗位基准与确定性 Delta；fixture/replay 仅用于本地验收。",
+        parameters={
+            "job_id": "int",
+            "runtime_id": "str=codex",
+            "role_family": "str?",
+            "specialization": "str?",
+            "seniority": "str?",
+            "region": "str?",
+            "industry": "str?",
+        },
+        group="research",
+        side_effects=("external", "llm", "write"),
+        input_model=RoleBenchmarkRunInput,
+        version="2026-08-26",
+    ),
+    "refresh_role_benchmark": Operation(
+        name="refresh_role_benchmark",
+        fn=refresh_role_benchmark,
+        description="确认后重新收集并计算目标岗位的同类岗位基准；历史运行保持不变。",
+        parameters={
+            "job_id": "int",
+            "runtime_id": "str=codex",
+            "role_family": "str?",
+            "specialization": "str?",
+            "seniority": "str?",
+            "region": "str?",
+            "industry": "str?",
+        },
+        group="research",
+        side_effects=("external", "llm", "write"),
+        input_model=RoleBenchmarkRunInput,
+        version="2026-08-26",
+    ),
+    "get_role_benchmark": Operation(
+        name="get_role_benchmark",
+        fn=get_role_benchmark,
+        description="读取岗位基准运行、去重/cohort 样本、统一能力观察和 Delta 证据。",
+        parameters={"run_id": "str?", "job_id": "int?"},
+        group="research",
+        input_model=GetRoleBenchmarkInput,
+        version="2026-08-26",
+    ),
+    "list_role_delta_signals": Operation(
+        name="list_role_delta_signals",
+        fn=list_role_delta_signals,
+        description="读取由 Python Runtime 计算的岗位 Delta，可按方向筛选；不接受 LLM 生成的频率。",
+        parameters={
+            "run_id": "str?",
+            "job_id": "int?",
+            "direction": "str? (common|distinctive|highly_distinctive|missing_common)",
+            "limit": "int=100",
+        },
+        group="research",
+        input_model=ListRoleDeltaSignalsInput,
+        version="2026-08-26",
+    ),
+    "prepare_role_interview_focus": Operation(
+        name="prepare_role_interview_focus",
+        fn=prepare_role_interview_focus,
+        description="读取已完成的岗位 Delta 与 active verified career evidence，确定性生成专项面试 Focus Plan；不修改 Profile。",
+        parameters={
+            "job_id": "int",
+            "run_id": "str?",
+            "profile_id": "int?",
+            "focus_count": "int=5 (3-5)",
+            "question_count": "int=5 (5-8)",
+        },
+        group="interview",
+        input_model=PrepareRoleInterviewFocusInput,
+        version="2026-08-27",
+    ),
+    "start_career_task": Operation(
+        name="start_career_task",
+        fn=start_career_task,
+        description="创建可恢复的 CareerTask 执行信封；任务结果是候选/提案，不直接成为 Career Truth。",
+        group="agent_runtime",
+        side_effects=("write",),
+        input_model=CareerTaskStartInput,
+        version="2026-08-27",
+    ),
+    "get_career_task": Operation(
+        name="get_career_task",
+        fn=get_career_task,
+        description="读取一个 CareerTask 的状态、进度、恢复信息和显式错误。",
+        group="agent_runtime",
+        input_model=CareerTaskIdInput,
+        version="2026-08-27",
+    ),
+    "list_career_tasks": Operation(
+        name="list_career_tasks",
+        fn=list_career_tasks,
+        description="读取 CareerTask 列表，支持状态、类型和目标筛选。",
+        group="agent_runtime",
+        input_model=ListCareerTasksInput,
+        version="2026-08-27",
+    ),
+    "list_career_task_events": Operation(
+        name="list_career_task_events",
+        fn=list_career_task_events,
+        description="读取 CareerTask 的追加式生命周期事件。",
+        group="agent_runtime",
+        input_model=CareerTaskEventsInput,
+        version="2026-08-27",
+    ),
+    "get_career_task_result": Operation(
+        name="get_career_task_result",
+        fn=get_career_task_result,
+        description="读取 CareerTask 的最终候选结果或显式失败原因。",
+        group="agent_runtime",
+        input_model=CareerTaskIdInput,
+        version="2026-08-27",
+    ),
+    "cancel_career_task": Operation(
+        name="cancel_career_task",
+        fn=cancel_career_task,
+        description="取消一个尚未完成的 CareerTask；已完成任务不可重放。",
+        group="agent_runtime",
+        side_effects=("write",),
+        input_model=CareerTaskIdInput,
+        version="2026-08-27",
+    ),
+    "retry_career_task": Operation(
+        name="retry_career_task",
+        fn=retry_career_task,
+        description="在 retry policy 允许时重新排队失败的 CareerTask。",
+        group="agent_runtime",
+        side_effects=("write",),
+        input_model=CareerTaskIdInput,
+        version="2026-08-27",
+    ),
+    "resume_career_task": Operation(
+        name="resume_career_task",
+        fn=resume_career_task,
+        description="从持久化 checkpoint 恢复可重试的 CareerTask。",
+        group="agent_runtime",
+        side_effects=("write",),
+        input_model=CareerTaskIdInput,
+        version="2026-08-27",
+    ),
+    "delegate_career_task": Operation(
+        name="delegate_career_task",
+        fn=delegate_career_task,
+        description="把受限 workspace 深度任务放入 CareerTask；工作区、Job 上下文和外部执行仍由控制面约束。",
+        group="agent_runtime",
+        side_effects=("external", "llm", "write"),
+        permissions=("workspace:bound", "executor:task-scoped"),
+        input_model=DelegateCareerTaskInput,
+        version="2026-08-27",
+    ),
+    "get_agent_provider_health": Operation(
+        name="get_agent_provider_health",
+        fn=get_agent_provider_health,
+        description="读取一个 Agent Runtime provider 的脱敏可用性、认证与阻塞状态。",
+        group="agent_runtime",
+        input_model=ProviderHealthInput,
+        version="2026-08-27",
+    ),
+    "list_agent_provider_health": Operation(
+        name="list_agent_provider_health",
+        fn=list_agent_provider_health,
+        description="读取所有已记录的 Agent Runtime provider 健康快照。",
+        group="agent_runtime",
+        version="2026-08-27",
+    ),
+    "list_capability_plugins": Operation(
+        name="list_capability_plugins",
+        fn=list_capability_plugins,
+        description="发现本地 OfferU Capability Plugin 及其安装状态；不执行插件。",
+        group="plugins",
+        version="2026-08-27",
+    ),
+    "list_plugin_capabilities": Operation(
+        name="list_plugin_capabilities",
+        fn=list_plugin_capabilities,
+        description="读取已安装插件声明的 capability、side effect 和输出契约。",
+        group="plugins",
+        version="2026-08-27",
+    ),
+    "install_capability_plugin": Operation(
+        name="install_capability_plugin",
+        fn=install_capability_plugin,
+        description="确认后启用一个本地 Capability Plugin；只改变能力发现状态，不删除或改写插件文件。",
+        group="plugins",
+        side_effects=("write",),
+        input_model=PluginNameInput,
+        version="2026-08-27",
+    ),
+    "uninstall_capability_plugin": Operation(
+        name="uninstall_capability_plugin",
+        fn=uninstall_capability_plugin,
+        description="确认后禁用一个本地 Capability Plugin；保留文件，能力从 Agent 目录消失。",
+        group="plugins",
+        side_effects=("write",),
+        input_model=PluginNameInput,
+        version="2026-08-27",
+    ),
+    "invoke_plugin_capability": Operation(
+        name="invoke_plugin_capability",
+        fn=invoke_plugin_capability,
+        description="调用已安装插件的读取型 CLI capability；stdout 必须是一个 JSON object，结果仍是候选数据。",
+        group="plugins",
+        side_effects=("external_read",),
+        permissions=("plugin:declared", "network:manifest-scoped"),
+        input_model=InvokePluginCapabilityInput,
+        version="2026-08-27",
+    ),
+    "record_automation_event": Operation(
+        name="record_automation_event",
+        fn=record_automation_event,
+        description="记录一个可幂等重放的 AutomationEvent，并按显式 Rule 创建 CareerTask；结果不会绕过控制面成为 Career Truth。",
+        group="automation",
+        side_effects=("write",),
+        input_model=RecordAutomationEventInput,
+        version="2026-08-27",
+    ),
+    "list_automation_events": Operation(
+        name="list_automation_events",
+        fn=list_automation_events,
+        description="读取 AutomationEvent 信号及其分发状态。",
+        group="automation",
+        input_model=ListAutomationEventsInput,
+        version="2026-08-27",
+    ),
+    "list_automation_inbox": Operation(
+        name="list_automation_inbox",
+        fn=list_automation_inbox,
+        description="读取 OfferU Automation Inbox 中需要审批、复核、知会或失败处理的项目。",
+        group="automation",
+        input_model=ListAutomationInboxInput,
+        version="2026-08-27",
+    ),
+    "list_automation_rules": Operation(
+        name="list_automation_rules",
+        fn=list_automation_rules,
+        description="读取事件到任务的显式 Automation Rule；不存在无限 Agent Loop。",
+        group="automation",
+        input_model=ListAutomationRulesInput,
+        version="2026-08-27",
+    ),
+    "resolve_automation_inbox_item": Operation(
+        name="resolve_automation_inbox_item",
+        fn=resolve_automation_inbox_item,
+        description="确认后关闭、忽略或重新打开一个 Automation Inbox 项；不会把候选直接写入 Career Profile。",
+        group="automation",
+        side_effects=("write",),
+        input_model=ResolveAutomationInboxItemInput,
+        version="2026-08-27",
     ),
     "list_hosted_executor_sessions": Operation(
         name="list_hosted_executor_sessions",
@@ -1844,6 +2825,650 @@ OPERATIONS: dict[str, Operation] = {
 }
 
 
+OPERATIONS.update(
+    {
+        "create_application_table": Operation(
+            name="create_application_table",
+            fn=create_application_table,
+            description="创建投递工作区子表。",
+            group="applications",
+            side_effects=("write",),
+            input_model=ApplicationTableNameInput,
+        ),
+        "rename_application_table": Operation(
+            name="rename_application_table",
+            fn=rename_application_table,
+            description="重命名投递工作区子表。",
+            group="applications",
+            side_effects=("write",),
+            input_model=ApplicationTableIdNameInput,
+        ),
+        "delete_application_table": Operation(
+            name="delete_application_table",
+            fn=delete_application_table,
+            description="删除投递工作区子表。",
+            group="applications",
+            side_effects=("write",),
+            input_model=ApplicationTableIdInput,
+        ),
+        "import_jobs_to_application_table": Operation(
+            name="import_jobs_to_application_table",
+            fn=import_jobs_to_application_table,
+            description="把指定岗位导入投递工作区表。",
+            group="applications",
+            side_effects=("write",),
+            input_model=ImportApplicationJobsInput,
+        ),
+        "import_latest_extension_batch_to_application_table": Operation(
+            name="import_latest_extension_batch_to_application_table",
+            fn=import_latest_extension_batch_to_application_table,
+            description="把最近一次浏览器扩展采集批次导入投递工作区表。",
+            group="applications",
+            side_effects=("write",),
+            input_model=ImportLatestExtensionBatchInput,
+        ),
+        "create_application_table_record": Operation(
+            name="create_application_table_record",
+            fn=create_application_table_record,
+            description="在投递工作区表中创建一条记录。",
+            group="applications",
+            side_effects=("write",),
+            input_model=ApplicationRecordCreateInput,
+        ),
+        "update_application_table_record": Operation(
+            name="update_application_table_record",
+            fn=update_application_table_record,
+            description="更新投递工作区记录字段。",
+            group="applications",
+            side_effects=("write",),
+            input_model=ApplicationRecordUpdateInput,
+        ),
+        "move_application_records": Operation(
+            name="move_application_records",
+            fn=move_application_records,
+            description="在投递工作区表之间移动记录。",
+            group="applications",
+            side_effects=("write",),
+            input_model=MoveApplicationRecordsInput,
+        ),
+        "delete_application_records": Operation(
+            name="delete_application_records",
+            fn=delete_application_records,
+            description="删除或从投递工作区表移除记录。",
+            group="applications",
+            side_effects=("write",),
+            input_model=DeleteApplicationRecordsInput,
+        ),
+        "update_application_table_schema": Operation(
+            name="update_application_table_schema",
+            fn=update_application_table_schema,
+            description="更新投递工作区表结构。",
+            group="applications",
+            side_effects=("write",),
+            input_model=ApplicationTableSchemaInput,
+        ),
+        "update_application_template": Operation(
+            name="update_application_template",
+            fn=update_application_template,
+            description="更新投递工作区模板并同步表结构。",
+            group="applications",
+            side_effects=("write",),
+            input_model=ApplicationTemplateInput,
+        ),
+        "apply_application_template_to_all": Operation(
+            name="apply_application_template_to_all",
+            fn=apply_application_template_to_all,
+            description="将投递工作区模板应用到所有表。",
+            group="applications",
+            side_effects=("write",),
+            input_model=ApplicationTemplateApplyAllInput,
+        ),
+        "update_application_settings": Operation(
+            name="update_application_settings",
+            fn=update_application_settings,
+            description="更新投递工作区设置。",
+            group="applications",
+            side_effects=("write",),
+            input_model=ApplicationSettingsInput,
+        ),
+        "auto_write_application_job": Operation(
+            name="auto_write_application_job",
+            fn=auto_write_application_job,
+            description="将岗位写入投递工作区总表。",
+            group="applications",
+            side_effects=("write",),
+            input_model=GetJobInput,
+        ),
+        "create_legacy_application": Operation(
+            name="create_legacy_application",
+            fn=create_legacy_application,
+            description="兼容旧投递接口创建投递记录。",
+            group="applications",
+            side_effects=("write",),
+            input_model=LegacyApplicationCreateInput,
+        ),
+        "update_legacy_application": Operation(
+            name="update_legacy_application",
+            fn=update_legacy_application,
+            description="兼容旧投递接口更新投递记录。",
+            group="applications",
+            side_effects=("write",),
+            input_model=LegacyApplicationUpdateInput,
+        ),
+        "create_calendar_event": Operation(
+            name="create_calendar_event",
+            fn=create_calendar_event,
+            description="创建本地日历事件。",
+            group="calendar",
+            side_effects=("write",),
+            input_model=CalendarEventCreateInput,
+        ),
+        "auto_fill_calendar_events": Operation(
+            name="auto_fill_calendar_events",
+            fn=auto_fill_calendar_events,
+            description="根据面试通知补建缺失的本地日历事件。",
+            group="calendar",
+            side_effects=("write",),
+            input_model=WorkflowCatalogInput,
+        ),
+        "collect_interview_experience": Operation(
+            name="collect_interview_experience",
+            fn=collect_interview_experience,
+            description="保存一条面经原文。",
+            group="interview",
+            side_effects=("write",),
+            input_model=CollectInterviewExperienceInput,
+        ),
+        "extract_interview_questions": Operation(
+            name="extract_interview_questions",
+            fn=extract_interview_questions,
+            description="从面经原文提炼结构化面试问题并保存。",
+            group="interview",
+            side_effects=("llm", "write"),
+            input_model=ExtractInterviewQuestionsInput,
+        ),
+        "generate_legacy_interview_answer": Operation(
+            name="generate_legacy_interview_answer",
+            fn=generate_legacy_interview_answer,
+            description="根据职业档案为题库问题生成回答思路并保存。",
+            group="interview",
+            side_effects=("llm", "write"),
+            input_model=GenerateLegacyInterviewAnswerInput,
+        ),
+        "generate_legacy_cover_letter": Operation(
+            name="generate_legacy_cover_letter",
+            fn=generate_legacy_cover_letter,
+            description="兼容旧投递接口生成求职信草稿。",
+            group="applications",
+            side_effects=("llm",),
+            input_model=LegacyCoverLetterInput,
+        ),
+        "create_resume_template": Operation(
+            name="create_resume_template",
+            fn=create_resume_template,
+            description="创建自定义简历模板。",
+            group="resume",
+            side_effects=("write",),
+            input_model=ResumeTemplateCreateInput,
+        ),
+        "update_resume_template": Operation(
+            name="update_resume_template",
+            fn=update_resume_template,
+            description="更新自定义简历模板。",
+            group="resume",
+            side_effects=("write",),
+            input_model=ResumeTemplateUpdateInput,
+        ),
+        "delete_resume_template": Operation(
+            name="delete_resume_template",
+            fn=delete_resume_template,
+            description="删除自定义简历模板。",
+            group="resume",
+            side_effects=("write",),
+            input_model=ResumeTemplateIdInput,
+        ),
+        "apply_resume_template": Operation(
+            name="apply_resume_template",
+            fn=apply_resume_template,
+            description="将简历模板应用到指定简历。",
+            group="resume",
+            side_effects=("write",),
+            input_model=ResumeTemplateApplyInput,
+        ),
+        "duplicate_resume_template": Operation(
+            name="duplicate_resume_template",
+            fn=duplicate_resume_template,
+            description="复制一份简历模板。",
+            group="resume",
+            side_effects=("write",),
+            input_model=ResumeTemplateDuplicateInput,
+        ),
+        "generate_html_resume": Operation(
+            name="generate_html_resume",
+            fn=generate_html_resume,
+            description="根据档案和 HTML 模板生成并保存 HTML 简历。",
+            group="resume",
+            side_effects=("llm", "write"),
+            input_model=GenerateHtmlResumeInput,
+        ),
+        "get_legacy_profile": Operation(
+            name="get_legacy_profile",
+            fn=get_legacy_profile,
+            description="读取并规范化兼容 Profile 接口使用的完整档案。",
+            group="profile",
+            side_effects=("write",),
+            input_model=GetProfileInput,
+        ),
+        "list_profile_target_roles": Operation(
+            name="list_profile_target_roles",
+            fn=list_target_roles,
+            description="读取兼容 Profile 接口使用的目标岗位方向。",
+            group="profile",
+            side_effects=("write",),
+            input_model=GetProfileInput,
+        ),
+        "list_profile_chat_sessions": Operation(
+            name="list_profile_chat_sessions",
+            fn=list_profile_chat_sessions,
+            description="读取 Profile 对话会话列表。",
+            group="profile",
+            side_effects=("write",),
+            input_model=ProfileChatSessionsInput,
+        ),
+        "get_profile_chat_session": Operation(
+            name="get_profile_chat_session",
+            fn=get_profile_chat_session,
+            description="读取 Profile 对话会话及最近候选。",
+            group="profile",
+            side_effects=("write",),
+            input_model=ProfileChatSessionIdInput,
+        ),
+        "update_profile": Operation(
+            name="update_profile",
+            fn=update_profile,
+            description="更新 Profile 基础信息并同步职业档案条目。",
+            group="profile",
+            side_effects=("write",),
+            input_model=ProfileUpdateInput,
+        ),
+        "create_target_role": Operation(
+            name="create_target_role",
+            fn=create_target_role,
+            description="创建一个目标岗位方向。",
+            group="profile",
+            side_effects=("write",),
+            input_model=TargetRoleCreateInput,
+        ),
+        "delete_target_role": Operation(
+            name="delete_target_role",
+            fn=delete_target_role,
+            description="删除当前档案下的目标岗位方向。",
+            group="profile",
+            side_effects=("write",),
+            input_model=TargetRoleIdInput,
+        ),
+        "create_profile_section": Operation(
+            name="create_profile_section",
+            fn=create_profile_section,
+            description="创建一条经过规范化的 Profile 档案条目。",
+            group="profile",
+            side_effects=("write",),
+            input_model=ProfileSectionCreateInput,
+        ),
+        "update_profile_section": Operation(
+            name="update_profile_section",
+            fn=update_profile_section,
+            description="更新一条 Profile 档案条目。",
+            group="profile",
+            side_effects=("write",),
+            input_model=ProfileSectionUpdateInput,
+        ),
+        "delete_profile_section": Operation(
+            name="delete_profile_section",
+            fn=delete_profile_section,
+            description="删除一条 Profile 档案条目。",
+            group="profile",
+            side_effects=("write",),
+            input_model=ProfileSectionIdInput,
+        ),
+        "save_profile_chat_turn": Operation(
+            name="save_profile_chat_turn",
+            fn=save_profile_chat_turn,
+            description="保存 Profile 对话及其候选条目；候选需经确认才进入档案事实。",
+            group="profile",
+            side_effects=("llm", "write"),
+            input_model=ProfileChatTurnInput,
+        ),
+        "confirm_profile_bullet": Operation(
+            name="confirm_profile_bullet",
+            fn=confirm_profile_bullet,
+            description="确认一条 Profile 对话候选并写入档案条目。",
+            group="profile",
+            side_effects=("write",),
+            input_model=ConfirmProfileBulletInput,
+        ),
+        "save_profile_resume_import": Operation(
+            name="save_profile_resume_import",
+            fn=save_profile_resume_import,
+            description="保存简历导入产生的候选会话与证据，不直接确认候选事实。",
+            group="profile",
+            side_effects=("write",),
+            input_model=ProfileResumeImportInput,
+        ),
+        "generate_profile_narrative": Operation(
+            name="generate_profile_narrative",
+            fn=generate_profile_narrative,
+            description="根据已保存档案条目生成并保存叙事字段。",
+            group="profile",
+            side_effects=("llm", "write"),
+            input_model=GetProfileInput,
+        ),
+        "save_smart_fill_cache": Operation(
+            name="save_smart_fill_cache",
+            fn=save_smart_fill_cache,
+            description="保存 SmartFill 映射缓存。",
+            group="profile",
+            side_effects=("write",),
+            input_model=SmartFillCacheSetInput,
+        ),
+        "save_smart_fill_run_logs": Operation(
+            name="save_smart_fill_run_logs",
+            fn=save_smart_fill_run_logs,
+            description="追加 SmartFill 运行诊断日志。",
+            group="profile",
+            side_effects=("write",),
+            input_model=SmartFillRunLogsInput,
+        ),
+        "start_smart_fill_run": Operation(
+            name="start_smart_fill_run",
+            fn=start_smart_fill_run,
+            description="创建 SmartFill 运行记录。",
+            group="profile",
+            side_effects=("write",),
+            input_model=SmartFillRunStartInput,
+        ),
+        "complete_smart_fill_run": Operation(
+            name="complete_smart_fill_run",
+            fn=complete_smart_fill_run,
+            description="记录 SmartFill 运行的成功或失败状态。",
+            group="profile",
+            side_effects=("write",),
+            input_model=SmartFillRunCompleteInput,
+        ),
+        "start_profile_agent_session": Operation(
+            name="start_profile_agent_session",
+            fn=start_profile_agent_session,
+            description="创建 Profile Builder Agent 的可审计会话。",
+            group="profile",
+            side_effects=("write",),
+            input_model=ProfileAgentStartInput,
+        ),
+        "get_profile_agent_session": Operation(
+            name="get_profile_agent_session",
+            fn=get_profile_agent_session,
+            description="读取 Profile Builder Agent 会话及其待确认候选。",
+            group="profile",
+            input_model=ProfileChatSessionIdInput,
+        ),
+        "continue_profile_agent_session": Operation(
+            name="continue_profile_agent_session",
+            fn=continue_profile_agent_session,
+            description="追加 Profile Builder Agent 用户消息并保存下一轮候选。",
+            group="profile",
+            side_effects=("llm", "write"),
+            input_model=ProfileAgentMessageInput,
+        ),
+        "apply_profile_agent_patch": Operation(
+            name="apply_profile_agent_patch",
+            fn=apply_profile_agent_patch,
+            description="将用户确认的 Profile Builder Agent 候选补丁写入职业档案。",
+            group="profile",
+            side_effects=("write",),
+            input_model=ProfileAgentApplyInput,
+        ),
+    }
+)
+
+
+OPERATIONS["reject_agent_run"] = Operation(
+    name="reject_agent_run",
+    fn=reject_agent_run,
+    description="记录用户拒绝 Agent Run 提案，确保后续不会执行。",
+    group="agent_runtime",
+    side_effects=("write",),
+    input_model=AgentRunIdInput,
+    version="2026-08-28",
+)
+
+
+OPERATIONS.update(
+    {
+        "start_optimize_agent_session": Operation(
+            name="start_optimize_agent_session",
+            fn=start_optimize_agent_session,
+            description="启动兼容的对话式简历优化会话并持久化会话快照。",
+            group="resume",
+            side_effects=("llm", "write"),
+            input_model=OptimizeAgentStartInput,
+            version="2026-08-28",
+        ),
+        "chat_optimize_agent_session": Operation(
+            name="chat_optimize_agent_session",
+            fn=chat_optimize_agent_session,
+            description="推进对话式简历优化会话并保存状态。",
+            group="resume",
+            side_effects=("llm", "write"),
+            input_model=OptimizeAgentChatInput,
+            version="2026-08-28",
+        ),
+        "stream_optimize_agent_session": Operation(
+            name="stream_optimize_agent_session",
+            fn=stream_optimize_agent_session,
+            description="执行兼容的对话式简历优化会话并返回可复用 SSE 事件。",
+            group="resume",
+            side_effects=("llm", "write"),
+            input_model=OptimizeAgentChatInput,
+            audit_redacted_output_parameters=("events",),
+            version="2026-08-28",
+        ),
+        "delete_optimize_agent_session": Operation(
+            name="delete_optimize_agent_session",
+            fn=delete_optimize_agent_session,
+            description="删除对话式简历优化会话。",
+            group="resume",
+            side_effects=("write",),
+            input_model=OptimizeAgentSessionIdInput,
+            version="2026-08-28",
+        ),
+    }
+)
+
+
+OPERATIONS.update(
+    {
+        "create_resume_record": Operation(
+            name="create_resume_record",
+            fn=create_resume_record,
+            description="创建一份带默认段落的简历记录。",
+            group="resume",
+            side_effects=("write",),
+            input_model=ResumeCreateRecordInput,
+        ),
+        "apply_resume_record_template": Operation(
+            name="apply_resume_record_template",
+            fn=apply_resume_template_to_record,
+            description="将模板样式应用到指定简历。",
+            group="resume",
+            side_effects=("write",),
+            input_model=ResumeApplyTemplateInput,
+        ),
+        "update_resume_record": Operation(
+            name="update_resume_record",
+            fn=update_resume_record,
+            description="更新简历元信息并按 id 同步段落。",
+            group="resume",
+            side_effects=("write",),
+            input_model=ResumeUpdateRecordInput,
+        ),
+        "delete_resume_record": Operation(
+            name="delete_resume_record",
+            fn=delete_resume_record,
+            description="删除简历及其段落。",
+            group="resume",
+            side_effects=("write",),
+            input_model=ResumeIdInput,
+        ),
+        "reorder_resume_sections": Operation(
+            name="reorder_resume_sections",
+            fn=reorder_resume_sections,
+            description="批量更新简历段落顺序。",
+            group="resume",
+            side_effects=("write",),
+            input_model=ResumeSectionReorderInput,
+        ),
+        "create_resume_section": Operation(
+            name="create_resume_section",
+            fn=create_resume_section,
+            description="向简历添加段落。",
+            group="resume",
+            side_effects=("write",),
+            input_model=ResumeSectionCreateInput,
+        ),
+        "update_resume_section": Operation(
+            name="update_resume_section",
+            fn=update_resume_section,
+            description="更新简历段落。",
+            group="resume",
+            side_effects=("write",),
+            input_model=ResumeSectionUpdateInput,
+        ),
+        "delete_resume_section": Operation(
+            name="delete_resume_section",
+            fn=delete_resume_section,
+            description="删除简历段落。",
+            group="resume",
+            side_effects=("write",),
+            input_model=ResumeSectionIdInput,
+        ),
+        "upload_resume_photo": Operation(
+            name="upload_resume_photo",
+            fn=upload_resume_photo,
+            description="保存简历头像并更新简历引用。",
+            group="resume",
+            side_effects=("external", "write"),
+            permissions=("local_file:write",),
+            audit_redacted_parameters=("content_b64",),
+            input_model=ResumeUploadInput,
+        ),
+        "upload_resume_logo": Operation(
+            name="upload_resume_logo",
+            fn=upload_resume_logo,
+            description="保存学校标识并更新简历联系方式。",
+            group="resume",
+            side_effects=("external", "write"),
+            permissions=("local_file:write",),
+            audit_redacted_parameters=("content_b64",),
+            input_model=ResumeUploadInput,
+        ),
+        "resolve_resume_logo": Operation(
+            name="resolve_resume_logo",
+            fn=resolve_resume_logo,
+            description="从公开来源解析学校标识并更新简历联系方式。",
+            group="resume",
+            side_effects=("external", "write"),
+            permissions=("network:public_read",),
+            input_model=ResumeLogoResolveInput,
+        ),
+        "apply_resume_suggestion": Operation(
+            name="apply_resume_suggestion",
+            fn=apply_resume_suggestion,
+            description="经事实门与版本备份后应用一条简历建议。",
+            group="resume",
+            side_effects=("write",),
+            permissions=("resume_write",),
+            input_model=ResumeSuggestionInput,
+        ),
+        "apply_resume_suggestions_batch": Operation(
+            name="apply_resume_suggestions_batch",
+            fn=apply_resume_suggestions_batch,
+            description="经事实门与版本备份后原子应用一批简历建议。",
+            group="resume",
+            side_effects=("write",),
+            permissions=("resume_write",),
+            input_model=ResumeSuggestionBatchInput,
+        ),
+        "batch_optimize_resume_records": Operation(
+            name="batch_optimize_resume_records",
+            fn=batch_optimize_resume_records,
+            description="按岗位批量创建岗位化简历候选稿。",
+            group="resume",
+            side_effects=("llm", "write"),
+            permissions=("resume_write", "job_description"),
+            input_model=ResumeBatchOptimizeInput,
+        ),
+        "create_resume_version_record": Operation(
+            name="create_resume_version_record",
+            fn=create_resume_version_record,
+            description="保存简历版本快照。",
+            group="resume",
+            side_effects=("write",),
+            input_model=ResumeVersionCreateInput,
+        ),
+        "restore_resume_version_record": Operation(
+            name="restore_resume_version_record",
+            fn=restore_resume_version_record,
+            description="创建回滚前备份并恢复指定简历版本。",
+            group="resume",
+            side_effects=("write",),
+            permissions=("resume_write",),
+            input_model=ResumeVersionRestoreInput,
+        ),
+        "create_resume_share_record": Operation(
+            name="create_resume_share_record",
+            fn=create_resume_share_record,
+            description="创建带可选密码和过期时间的简历分享链接。",
+            group="resume",
+            side_effects=("write",),
+            input_model=ResumeShareCreateInput,
+        ),
+        "delete_resume_share_record": Operation(
+            name="delete_resume_share_record",
+            fn=delete_resume_share_record,
+            description="删除简历分享链接。",
+            group="resume",
+            side_effects=("write",),
+            input_model=ResumeShareIdInput,
+        ),
+        "toggle_resume_share_record": Operation(
+            name="toggle_resume_share_record",
+            fn=toggle_resume_share_record,
+            description="启用或禁用简历分享链接。",
+            group="resume",
+            side_effects=("write",),
+            input_model=ResumeShareIdInput,
+        ),
+        "access_resume_share_record": Operation(
+            name="access_resume_share_record",
+            fn=access_resume_share_record,
+            description="验证分享链接并记录一次访问。",
+            group="resume",
+            side_effects=("write",),
+            input_model=ResumeShareAccessInput,
+        ),
+        "save_resume_draft_record": Operation(
+            name="save_resume_draft_record",
+            fn=save_resume_draft_record,
+            description="保存待审核的 AI 简历草稿，不直接覆盖正式简历。",
+            group="resume",
+            side_effects=("write",),
+            permissions=("resume_write",),
+            audit_redacted_parameters=("jd_text", "sections"),
+            input_model=SaveResumeDraftInput,
+        ),
+    }
+)
+
+
 def list_operations() -> list[dict[str, Any]]:
     return [op.schema() for op in sorted(OPERATIONS.values(), key=lambda item: item.name)]
 
@@ -2247,6 +3872,33 @@ async def batch_update_jobs_operation(
         return {"updated": len(jobs), "requested": len(job_ids), "pool_name": pool.name if pool else None}
 
 
+async def delete_jobs_batch_operation(job_ids: list[int]) -> dict[str, Any]:
+    if not job_ids:
+        return {"error": "job_ids is required"}
+    if len(job_ids) > 500:
+        return {"error": "job_ids exceeds 500"}
+
+    async with async_session() as db:
+        jobs = (await db.execute(select(Job).where(Job.id.in_(job_ids)))).scalars().all()
+        found_ids = {job.id for job in jobs}
+        missing_ids = sorted(set(job_ids) - found_ids)
+        if missing_ids:
+            return {"error": f"some job_ids were not found: {missing_ids}", "missing_job_ids": missing_ids}
+
+        non_ignored = [job.id for job in jobs if job.triage_status != "ignored"]
+        if non_ignored:
+            return {
+                "error": f"only ignored jobs can be deleted permanently: {non_ignored}",
+                "protected_job_ids": non_ignored,
+            }
+
+        for job in jobs:
+            await db.delete(job)
+
+        await db.commit()
+        return {"deleted": len(jobs), "requested": len(job_ids)}
+
+
 def _serialize_job_detail(job: Job) -> dict[str, Any]:
     return {
         "id": job.id,
@@ -2497,6 +4149,15 @@ OPERATIONS.update(
             group="jobs",
             side_effects=("write",),
             input_model=BatchUpdateJobsInput,
+        ),
+        "delete_jobs_batch": Operation(
+            name="delete_jobs_batch",
+            fn=delete_jobs_batch_operation,
+            description="永久删除批量岗位；仅允许删除已标记为 ignored 的岗位。",
+            parameters={"job_ids": "list[int]"},
+            group="jobs",
+            side_effects=("write",),
+            input_model=BatchDeleteJobsInput,
         ),
         "list_operation_audit": Operation(
             name="list_operation_audit",
@@ -3108,3 +4769,54 @@ def _json_object(value: Any) -> dict[str, Any]:
     if value is None:
         return {}
     return {"value": value}
+
+
+OPERATIONS.update(
+    {
+        "save_harness_conversation": Operation(
+            name="save_harness_conversation",
+            fn=save_harness_conversation,
+            description="保存本地 Harness 会话消息，不直接修改 Career Truth。",
+            group="agent_runtime",
+            side_effects=("write",),
+            input_model=HarnessConversationSaveInput,
+            version="2026-08-28",
+        ),
+        "delete_harness_conversation": Operation(
+            name="delete_harness_conversation",
+            fn=delete_harness_conversation,
+            description="删除本地 Harness 会话记录。",
+            group="agent_runtime",
+            side_effects=("write",),
+            input_model=HarnessConversationIdInput,
+            version="2026-08-28",
+        ),
+        "distill_harness_conversation": Operation(
+            name="distill_harness_conversation",
+            fn=distill_harness_conversation,
+            description="把 Harness 会话中的可验证用户摘录送入现有学习观察管线。",
+            group="agent_runtime",
+            side_effects=("llm", "write"),
+            input_model=HarnessConversationIdInput,
+            version="2026-08-28",
+        ),
+        "promote_harness_memory": Operation(
+            name="promote_harness_memory",
+            fn=promote_harness_memory,
+            description="把 Harness 会话记忆快照送入现有职业记忆候选管线。",
+            group="agent_runtime",
+            side_effects=("llm", "write"),
+            input_model=_StrictOperationInput,
+            version="2026-08-28",
+        ),
+        "import_harness_memory": Operation(
+            name="import_harness_memory",
+            fn=import_harness_memory,
+            description="导入并保存本地 Harness 记忆快照。",
+            group="agent_runtime",
+            side_effects=("write",),
+            input_model=HarnessMemoryImportInput,
+            version="2026-08-28",
+        ),
+    }
+)

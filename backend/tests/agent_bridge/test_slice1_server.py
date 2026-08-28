@@ -17,6 +17,7 @@ from app.models.models import AgentRunRecord, BridgePairing, JobSearchTask  # no
 from app.services.agent_bridge.errors import BridgeProtocolError  # noqa: E402
 from app.services.agent_bridge.event_stream import follow_events  # noqa: E402
 from app.services.agent_bridge.operation_gateway import (  # noqa: E402
+    granted_operations,
     invoke_read_operation,
 )
 from app.services.agent_bridge.run_coordinator import (  # noqa: E402
@@ -87,23 +88,20 @@ class Slice1BridgeTests(unittest.TestCase):
                 adapter={"name": "a1", "version": "1"},
                 harness_session_id="sess-a",
             )
-            second = await coordinator.attach(
-                run_id=run_id,
-                harness={"name": "h2", "version": "1"},
-                adapter={"name": "a2", "version": "1"},
-                harness_session_id="sess-b",
-            )
             with self.assertRaises(LeaseLostError):
-                await coordinator.assert_lease(
-                    run_id=run_id, lease_id=str(first["leaseId"])
+                await coordinator.attach(
+                    run_id=run_id,
+                    harness={"name": "h2", "version": "1"},
+                    adapter={"name": "a2", "version": "1"},
+                    harness_session_id="sess-b",
                 )
             await coordinator.assert_lease(
-                run_id=run_id, lease_id=str(second["leaseId"])
+                run_id=run_id, lease_id=str(first["leaseId"])
             )
-            return first, second
+            return first
 
-        first, second = self._run(flow())
-        self.assertNotEqual(first["leaseId"], second["leaseId"])
+        first = self._run(flow())
+        self.assertTrue(str(first["leaseId"]).startswith("lease_"))
 
     def test_session_full_readonly_flow(self) -> None:
         async def flow():
@@ -262,6 +260,25 @@ class Slice1BridgeTests(unittest.TestCase):
             raise AssertionError("mutation must be denied")
 
         self.assertEqual(self._run(flow()), "grant_denied")
+
+    def test_read_operation_outside_run_grant_is_denied(self) -> None:
+        async def flow():
+            try:
+                await invoke_read_operation(operation="list_pools", arguments={})
+            except BridgeProtocolError as error:
+                return error.code
+            raise AssertionError("ungranted read must be denied")
+
+        self.assertEqual(self._run(flow()), "grant_denied")
+
+    def test_active_bridge_grant_lists_only_registry_reads(self) -> None:
+        operations = granted_operations()
+
+        self.assertTrue(operations)
+        self.assertTrue(
+            all(item["side_effects"] == ["read"] for item in operations)
+        )
+        self.assertNotIn("triage_job", {item["name"] for item in operations})
 
     def test_run_messages_require_pairing_first(self) -> None:
         async def flow():

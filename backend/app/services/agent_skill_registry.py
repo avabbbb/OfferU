@@ -88,13 +88,14 @@ _SKILLS = (
     _skill("follow_up", "跟进节奏", "applications", "native", "按确定性节奏计算到期跟进，生成草稿；只有确认已发送后才记账。", "skill_assistant", ("get_profile", "list_applications", "get_application_workspace", "list_application_events", "list_application_progress_candidates", "get_application_progress_candidate", "get_application_progress_overview", "list_follow_up_cadence", "list_calendar_events", "email_connection_status", "list_email_accounts", "list_email_sync_runs", "get_email_sync_run", "list_career_artifacts", "get_career_artifact", "save_career_artifact", "record_follow_up", "review_application_progress", "update_application_status", "update_application_record", "sync_email_notifications", "revoke_email_account"), featured=True, order=130, aliases=("followup", "follow_up", "跟进")),
     _skill("reply_watch", "回复识别", "applications", "native", "用 Gmail historyId 或 IMAP UID 增量同步邮箱，把消息保存为候选进展；只有使用者确认后才追加投递阶段事件。", "skill_assistant", ("list_applications", "get_application_workspace", "list_application_events", "list_application_progress_candidates", "get_application_progress_candidate", "get_application_progress_overview", "email_connection_status", "list_email_accounts", "list_email_sync_runs", "get_email_sync_run", "list_career_artifacts", "get_career_artifact", "save_career_artifact", "review_application_progress", "sync_email_notifications", "revoke_email_account"), featured=False, order=140, aliases=("reply", "回复识别")),
     _skill("company_research", "公司与岗位调研", "research", "native", "以公开网页及使用者授权的本地只读浏览证据维护公司与岗位双档案，区分已引用、双来源印证、单一信号和未知，并只提炼匿名简历表达模式。", "skill_assistant", ("list_jobs", "get_job", "list_coding_agents", "list_job_research_runs", "get_job_research", "start_job_research", "resume_job_research", "cancel_job_research", "review_job_research", "list_hosted_executor_sessions", "get_hosted_executor_session", "list_authorized_research_sessions", "get_authorized_research_session", "start_authorized_research_session", "activate_authorized_research_read_only", "capture_authorized_research_page", "complete_authorized_research_session", "cancel_authorized_research_session"), featured=False, order=150, aliases=("deep", "research", "公司研究", "岗位调研")),
+    _skill("role_intelligence", "岗位情报", "research", "native", "从目标 JD 收集并标准化同类岗位，使用确定性去重、cohort 和统计生成可回溯的市场基准与岗位 Delta；专项训练只读取已完成的 Delta 与 Career Evidence Gap。", "skill_assistant", ("get_profile", "list_profile_evidence", "get_job", "build_role_benchmark", "refresh_role_benchmark", "get_role_benchmark", "list_role_delta_signals", "prepare_role_interview_focus", "list_capability_plugins", "list_plugin_capabilities", "invoke_plugin_capability"), featured=True, order=155, aliases=("role", "role_intel", "benchmark", "岗位情报", "岗位基准")),
     _skill("contact_outreach", "联系人外联", "research", "partial", "识别合适联系人角色并起草短消息，不虚构联系人。", "skill_assistant", ("get_profile", "list_jobs", "get_job"), featured=False, order=160, missing=("联系人搜索与来源验证",), aliases=("contact", "联系人")),
     _skill("profile_onboarding", "档案访谈", "profile", "native", "渐进发现职业证据缺口；学习信号先进入记忆收件箱，来源校验通过并确认后才写入。", "skill_assistant", ("get_profile", "inspect_resume_document", "list_profile_evidence", "list_learning_observations", "list_memory_inbox", "create_memory_proposal", "review_memory_proposal"), featured=True, order=170, aliases=("profile", "档案")),
     _skill("add_profile_evidence", "补充职业证据", "profile", "native", "把项目、经历、技能或证书整理为来源可验证、可去重的档案条目。", "skill_assistant", ("get_profile", "list_profile_evidence", "add_profile_evidence"), featured=False, order=180, aliases=("add", "补充经历")),
     _skill("memory_inbox", "记忆收件箱", "profile", "native", "查看职业学习观察和模型变更提案；接受、拒绝、稍后或撤销，只有确认接受后才写入档案。", "skill_assistant", ("get_profile", "list_profile_evidence", "list_learning_observations", "list_memory_inbox", "create_memory_proposal", "consolidate_memory_observations", "review_memory_proposal", "invalidate_memory_source"), featured=True, order=185, aliases=("memory", "记忆", "记忆收件箱")),
     _skill("work_source_sync", "工作源同步", "profile", "native", "只读取使用者显式登记的本地工作源；每次模型读取单独授权，变化只进入学习观察和记忆收件箱。", "skill_assistant", ("get_profile", "list_work_sources", "get_work_source", "register_work_source", "start_work_source_sync", "list_work_source_sync_runs", "get_work_source_sync_run", "resume_work_source_sync", "consolidate_memory_observations", "list_learning_observations", "list_memory_inbox", "review_memory_proposal", "invalidate_work_source"), featured=False, order=187, aliases=("work", "工作源", "工作同步")),
     _skill("interview_prep", "面试准备", "interview", "native", "基于岗位、档案、题库和日程生成并保存准备方案（含按面试时间排优先级的分时冲刺计划）。", "skill_assistant", ("get_profile", "list_jobs", "get_job", "list_calendar_events", "list_interview_questions", "list_career_artifacts", "get_career_artifact", "save_career_artifact"), featured=True, order=190, aliases=("interview", "面试准备", "plan", "面试计划", "冲刺计划")),
-    _skill("interview_practice", "模拟面试", "interview", "native", "确认模型和数据类别后一次一题练习；内容按固定版本 Skill 引用原文评分，浏览器派生表达事件只作独立统计。", "skill_assistant", ("get_profile", "list_jobs", "get_job", "list_interview_questions", "get_ai_interview_runtime", "list_interview_scoring_skills", "get_interview_scoring_skill", "list_ai_interviews", "get_ai_interview", "create_ai_interview", "submit_ai_interview_answer", "ingest_interview_behavior_events", "restart_ai_interview", "delete_ai_interview"), featured=True, order=200, aliases=("practice", "模拟面试", "ai面试")),
+    _skill("interview_practice", "模拟面试", "interview", "native", "确认模型和数据类别后一次一题练习；Role Intelligence 专项训练只根据确定性 Focus Plan 提问，内容按固定版本 Skill 引用原文评分，浏览器派生表达事件只作独立统计。", "skill_assistant", ("get_profile", "list_jobs", "get_job", "list_interview_questions", "get_ai_interview_runtime", "list_interview_scoring_skills", "get_interview_scoring_skill", "list_ai_interviews", "get_ai_interview", "prepare_role_interview_focus", "create_ai_interview", "submit_ai_interview_answer", "ingest_interview_behavior_events", "restart_ai_interview", "delete_ai_interview"), featured=True, order=200, aliases=("practice", "模拟面试", "ai面试")),
     _skill("interview_scoring", "面试评分设计", "interview", "native", "创建受 schema 约束的版本化内容评分规则；只允许声明维度、权重、证据门和提示，禁止任意代码与表达行为总分。", "skill_assistant", ("list_interview_scoring_skills", "get_interview_scoring_skill", "create_interview_scoring_skill"), featured=False, order=205, aliases=("rubric", "评分skill", "面试评分")),
     _skill("interview_debrief", "面试复盘", "interview", "native", "持久化真实面试复盘，并在确认后更新投递事实源。", "skill_assistant", ("get_profile", "list_applications", "get_application_workspace", "list_application_events", "list_career_artifacts", "get_career_artifact", "save_career_artifact", "update_application_status", "update_application_record"), featured=False, order=210, aliases=("debrief", "面试复盘")),
     _skill("interview_risk_review", "面试风险审查", "interview", "partial", "识别公司与招聘流程红旗，生成并保存验证问题。", "skill_assistant", ("list_jobs", "get_job", "get_application_workspace", "list_career_artifacts", "get_career_artifact", "save_career_artifact"), featured=False, order=215, missing=("实时雇主口碑研究",), aliases=("redflag", "面试红旗")),
@@ -105,7 +106,8 @@ _SKILLS = (
     _skill("project_review", "项目评估", "development", "native", "评估作品集项目能否补足目标岗位证据。", "skill_assistant", ("get_profile", "list_jobs"), featured=False, order=260, aliases=("project", "项目评估")),
     _skill("market_calibration", "市场校准", "development", "partial", "根据求职阶段、地区和岗位类型校准策略。", "skill_assistant", ("get_profile", "list_jobs", "job_stats"), featured=False, order=270, missing=("实时市场与政策数据",), aliases=("market", "市场校准")),
     _skill("offer_review", "Offer 阅读", "offer", "partial", "逐条阅读 Offer/合同，保存风险报告并生成律师与雇主问题清单。", "skill_assistant", ("get_profile", "list_applications", "get_application_workspace", "list_career_artifacts", "get_career_artifact", "save_career_artifact"), featured=False, order=280, missing=("法律结论",), aliases=("offer", "合同")),
-    _skill("agent_inbox", "持续任务箱", "system", "native", "查看主 Agent Run、coding-agent 批处理和中断状态。", "skill_assistant", ("list_agent_runs", "list_batch_job_evaluations", "get_batch_job_evaluation", "resume_batch_job_evaluation"), featured=False, order=290, aliases=("inbox", "agent_inbox")),
+    _skill("agent_inbox", "持续任务箱", "system", "native", "查看主 Agent Run、CareerTask、coding-agent 批处理和中断状态。", "skill_assistant", ("list_agent_runs", "list_career_tasks", "get_career_task", "list_career_task_events", "get_career_task_result", "list_agent_provider_health", "list_batch_job_evaluations", "get_batch_job_evaluation", "resume_batch_job_evaluation"), featured=False, order=290, aliases=("inbox", "agent_inbox")),
+    _skill("automation_inbox", "自动化任务箱", "system", "native", "读取事件驱动的后台任务与 Automation Inbox；自动化结果仍是候选或提案，不静默改写 Career Truth。", "skill_assistant", ("list_automation_events", "list_automation_inbox", "list_automation_rules", "get_career_task", "list_career_task_events", "get_career_task_result", "resolve_automation_inbox_item"), featured=False, order=295, aliases=("automation", "自动化", "自动化任务箱")),
 )
 
 
@@ -116,8 +118,18 @@ def _directory_skills() -> tuple[AgentSkill, ...]:
     return tuple(scan_directory_skills())
 
 
+def _plugin_skills() -> tuple[AgentSkill, ...]:
+    """Load skills from installed capability plugins without importing them at startup."""
+    try:
+        from app.services.capability_plugins import plugin_skill_catalog
+
+        return tuple(plugin_skill_catalog())
+    except Exception:
+        return ()
+
+
 def catalog() -> list[dict[str, Any]]:
-    skills = [*_SKILLS, *_directory_skills()]
+    skills = [*_SKILLS, *_directory_skills(), *_plugin_skills()]
     return [skill.summary() for skill in sorted(skills, key=lambda item: (item.order, item.id))]
 
 
@@ -164,7 +176,7 @@ def resolve_skill(value: str | None) -> AgentSkill | None:
         return None
     if normalized == "offeru":
         normalized = "discovery"
-    for skill in (*_SKILLS, *_directory_skills()):
+    for skill in (*_SKILLS, *_directory_skills(), *_plugin_skills()):
         if normalized == skill.id or normalized in skill.aliases:
             return skill
     return None
@@ -206,7 +218,11 @@ async def select_skill(*, user_message: str, explicit_skill_id: str | None, fall
     if selected is not None:
         return selected, "explicit_slash_command"
 
-    visible = [skill for skill in (*_SKILLS, *_directory_skills()) if skill.featured]
+    visible = [
+        skill
+        for skill in (*_SKILLS, *_directory_skills(), *_plugin_skills())
+        if skill.featured
+    ]
     rows = "\n".join(f"- {skill.id}: {skill.description}" for skill in visible)
     try:
         from app.agents.llm import chat_completion, extract_json
