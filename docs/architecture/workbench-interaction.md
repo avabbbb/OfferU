@@ -1,14 +1,14 @@
 # OfferU 原生工作区交互
 
-> 状态：accepted target design；DSH 映射校准到 `dsh-v0.1.0-rc.8`  
-> 决策：[ADR-0030](../adr/README.md#adr-0030)、[ADR-0031](../adr/README.md#adr-0031)、[ADR-0053](../adr/README.md#adr-0053)、[ADR-0055](../adr/README.md#adr-0055)  
+> 状态：accepted target design；DSH 映射校准到 `dsh-v0.1.0-rc.8`
+> 决策：[ADR-0030](../adr/README.md#adr-0030)、[ADR-0031](../adr/README.md#adr-0031)、[ADR-0053](../adr/README.md#adr-0053)、[ADR-0055](../adr/README.md#adr-0055)、[ADR-0056](../adr/README.md#adr-0056)
 > DSH 接缝：[Harness 接入](./harness-integrations.md#deepseek-harness-rc8第一条-tracer)
 
 ## 交互结论
 
 本地 Coding Agent 使用者已经把 Harness 当作日常主应用。OfferU 因而不是第二个聊天应用，也不是悬浮在旁边的完整独立工作台，而是嵌入 Harness 的职业操作工作区：Harness 保留提示输入、会话导航和唯一主控 Loop；OfferU 提供求职任务、事实、证据、Operations、候选工件、业务确认和审计。
 
-在 DSH rc8 中，一套 OfferU UI 被投影成三个原生表面：
+在 DSH rc8 中，同一套 OfferU 领域投影与交互状态由 DSH 原生渲染器呈现为三个表面：
 
 ```text
 ┌ DSH sidebar ─────────┬ DSH active session ─────────────────────┐
@@ -22,6 +22,12 @@
 ```
 
 OfferU 不注册一个永久占据 DSH 中央区域的全局页面。入口和确认可以是 root/global，主视图则属于当前 DSH session。全局职业数据可在任务视图中浏览，但 Agent 动作、授权和事件必须绑定当前求职任务与 Run。
+
+## 视觉与共享边界
+
+DSH 中的 OfferU 页面直接使用 DSH 原生组件、布局、设计令牌、焦点行为和响应式规则，视觉上属于 DSH，不建立 OfferU 品牌岛。跨 Harness 共享的是类型化领域投影、交互状态机、Operation 合约、确认语义和标准事件，不共享同一套 React 页面或宿主无关视觉组件。
+
+DSH client 只实现薄的宿主原生渲染器；领域判断、生命周期规则、权限和业务动作仍由 OfferU 控制面与无头契约拥有。companion window 使用 OfferU 自有渲染器，但必须消费同一投影和状态机，不能因此维护第二份业务状态。跨 Harness 验收业务与交互语义一致，不要求像素一致。
 
 ## rc8 原生表面
 
@@ -40,8 +46,8 @@ OfferU 不注册一个永久占据 DSH 中央区域的全局页面。入口和�
 
 1. 入口显示 `未连接 OfferU`、`待配对`、`已连接` 或 `需要处理`；
 2. 点击后在浮层中探测本机 OfferU Bridge，不跳到 iframe；
-3. 使用者选择现有求职任务，或先在 OfferU 创建求职任务；
-4. OfferU 请求创建/关联一个 DSH session，并展示 profile、preset、cwd 与能力摘要；
+3. 只有完全空白且未绑定的 DSH session 才显示岗位选择器；使用者从 OfferU 已存在的真实岗位中选择一个，并在 DSH 内创建对应求职任务；
+4. OfferU 将该任务一次性绑定当前 DSH session，并展示 profile、preset、cwd 与能力摘要；
 5. 关联完成后进入该 session 的 `OfferU` tab；
 6. 失败时保留 DSH 当前会话，给出明确原因，不自动切换 Harness 或 preset。
 
@@ -49,27 +55,45 @@ OfferU 不注册一个永久占据 DSH 中央区域的全局页面。入口和�
 
 ## OfferU 任务视图
 
-任务视图的一级导航仍是五个求职阶段：
+任务视图不复制 OfferU 全局的“今日、机会、材料、进展、面试”导航，也不复制 DSH 的 sidebar、聊天 composer 或 details panel。它只服务当前 session 已绑定的一个真实岗位，并采用任务驾驶舱布局：
 
 ```text
-今日 · 机会 · 材料 · 进展 · 面试        档案 · 设置
-```
-
-它不复制 DSH 的 sidebar、聊天 composer 或 details panel。任务视图内部采用任务优先布局：
-
-```text
-┌ 当前求职任务 / 对象 / 下一动作 ───────────────────────────────┐
-│ Run：Harness · session · 状态 · 输入主权 · 权限摘要           │
+┌ 公司 / 岗位 / 任务与 Run 状态 ────────────────────────────────┐
+│ 生命周期：准备 → 已投递 → 可选环节 … → Offer / 拒绝          │
 ├────────────────────────────────────────────────────────────────┤
-│ 领域主内容：对象、事实、证据、候选工件、阶段和审核             │
+│ 当前状态 / 下一动作 / 待确认 / 最近结果                        │
 ├────────────────────────────────────────────────────────────────┤
-│ Run 时间线 / Operation / outcome / 诊断（渐进披露）            │
+│ 事实、证据、候选工件与阶段详情                                 │
+├────────────────────────────────────────────────────────────────┤
+│ Run 事件 / Operation / outcome / 诊断（渐进披露）              │
 └────────────────────────────────────────────────────────────────┘
 ```
 
+生命周期轨道沿用九个现有业务状态，但不是线性完成度：
+
+```text
+准备 → 已投递 → [笔试?] → [测评?] → [一面?] → [二面?] → [HR 面?]
+          └──────────── 任一投递后阶段 ────────────→ Offer
+          └──────────── 任一投递后阶段 ────────────→ 拒绝
+```
+
+方括号节点是可选里程碑。后续阶段已有事实而前置可选节点没有事件时，显示“未发生/已跳过”，不显示“已完成”；`offer` 和 `rejected` 互斥。投前选择“不投”是投前任务结果，不进入 `rejected`，也不创建投递尝试。首个 tracer 虽展示完整轨道，但只有投前决策闭环提供真实可执行动作；后续阶段只显示已有事实、进入条件与明确的“尚未接入”。
+
+### 首屏主状态
+
+任务视图不把待确认、错误、运行、下一动作和最近结果铺成同权卡片。首屏只突出一个主状态，按以下固定优先级派生：
+
+1. `待确认`：显示提案对象、影响、证据、有效期和确认入口；
+2. `失败/断连`：区分 Bridge 离线、adapter 断开、Run 失败、状态待对账，并给出对应恢复条件；
+3. `正在执行`：显示当前 Skill/Operation、开始时间、最新可理解事件和请求中断；
+4. `下一动作`：显示现在应做什么、为什么、所需前置事实以及动作归属；
+5. `最近完成`：显示经过 outcome 校验的结果以及任务是否仍有下一动作。
+
+较低优先级信息保留在阶段详情和 Run 时间线中，但不得与主状态争夺首要按钮。主状态是注意力投影，不写回或覆盖任务、Run、提案和投递阶段事实。
+
 不再设计一个侵入 DSH 核心布局的常驻“右侧 OfferU 控制栏”。窄幅状态与动作留在 OfferU tab 内；简历深编、摄像头面试等大画布任务打开同一状态边界的 OfferU 专注窗口。
 
-任务视图可以切换浏览其他求职对象，但点击“让 Agent 继续”前必须先切换/创建对应 DSH session。不能在 A 岗位 session 中仅靠前端选中 B 岗位，就把 B 的上下文注入同一个隐藏模型会话。
+任务视图不能在当前 session 内切换浏览其他岗位。切换岗位必须从固定入口新建或恢复该岗位对应的 DSH session；不能在 A 岗位 session 中仅靠前端选中 B 岗位，就把 B 的上下文注入同一个隐藏模型会话。
 
 ## Run 顶栏
 
@@ -159,9 +183,9 @@ Harness 生成的文件先进入候选区：
 
 “请求中断”先调用 Harness 原生 interrupt，并显示宿主是否确认、是否有 executing Operation、是否需要对账和能否恢复同一 session。不能恢复时，使用者可以结束 Run，或显式交接到另一 Harness；交接创建新 Run，不迁移隐藏推理或原生进程状态。
 
-专注窗口只用于简历深编、面试摄像头/音频、复杂证据核对等大画布任务。它复用同一 OfferU UI 包、Task/Run identity、proposal 与 Operation Registry，不启动第二个主控 Agent，也不改变 DSH 的提示输入主权。
+专注窗口只用于简历深编、面试摄像头/音频、复杂证据核对等大画布任务。它复用同一无头领域投影、交互状态机、Task/Run identity、proposal 与 Operation Registry，并由 OfferU 自有渲染器呈现；它不启动第二个主控 Agent，也不改变 DSH 的提示输入主权。
 
-对于没有安全 UI extension point 的 Codex、Claude Code、OpenCode 或 Pi，OfferU 打开同一 UI 包的 companion window。跨 Harness 一致性要求是 Run、Operations、确认、事件和审计一致，不强求相同 slot 名称或布局。
+对于没有安全 UI extension point 的 Codex、Claude Code、OpenCode 或 Pi，OfferU 打开消费同一无头契约的 companion window。跨 Harness 一致性要求是 Run、Operations、确认、事件和审计一致，不强求相同组件、slot 名称或布局。
 
 ## 移动端
 

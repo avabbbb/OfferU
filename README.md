@@ -63,7 +63,7 @@ flowchart LR
 - **DeepSeek Harness 与 Codex 优先**：首个交互面是 DSH Web；Codex 采用官方 App Server 边界。Claude Code、OpenCode 和 Pi 通过同一一致性契约后再标记支持。
 - **确认权不交给模型**：Harness 原生审批只管理其文件或 shell 工具；OfferU 的业务副作用只能在工作台批准一次。
 
-上面是已接受的**目标架构**，不是当前完成度声明。当前仓库仍有 Pi Worker、旧 CLI `confirm`、实验性 MCP 模块和其他迁移期入口；它们不能作为新集成表面。DSH plugin、Codex adapter 与新 Bridge 尚未通过纵向切片验收。具体差距见[迁移路线](./docs/implementation/migration-roadmap.md)。
+上面是已接受的架构边界。当前 Main Agent UI 通过 provider-neutral `AgentRuntimeProvider` 消费 Pi/Replay 等适配器；C1 全局控制面审计已证明正式业务 mutation 没有已知的 Route 级 Registry 旁路。旧 Pi Worker、CLI `confirm` 和实验性 MCP 仍属于迁移期/兼容表面，不能作为新的业务集成契约。Codex App Server 的结构适配与 fixture/replay 路径已有验证，但本机真实 Codex 仍受认证阻塞；DSH 仍待独立 Provider 验收。真实 `job-search` Capability Plugin 已有 Manifest、Skill、CLI 和契约测试，live Role Intelligence 采集仍需单独验证。具体差距见[迁移路线](./docs/implementation/migration-roadmap.md)。
 
 上游现状以官方资料为准：
 

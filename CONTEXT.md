@@ -56,6 +56,30 @@ _Avoid_: MCP 业务接口、REST 自动化后端、Shell 脚本协议、固定 P
 外部主控 Harness 将自身会话关联到 OfferU Agent Run，并取得当前任务上下文和已授权 Operation 的唯一确定性连接面。主会话、推理和工具循环属于外部 Harness；Bridge 不规划任务、不拥有业务事实，也不成为第二个 Agent。
 _Avoid_: OfferU Harness Host、内置 Agent Runtime、MCP Host、第二主脑
 
+**OfferU Agent Runtime**:
+由 `AgentRuntimeProvider` 暴露的 provider-neutral 执行边界，负责 thread、turn、event、Skill/Plugin 发现、审批中断、取消和恢复等 Harness 生命周期。Codex App Server 是首个主 Provider，Pi/Replay 适配器用于当前本地兼容与确定性验收，DSH 等 Provider 必须通过同一契约后才能标记支持；该边界不拥有 Career Truth，也不能替代 Operation Registry。
+_Avoid_: Career Runtime、业务 Agent、第二套 Operation Registry、Codex Core Fork
+
+**CareerTask**:
+OfferU 控制面持久化的长任务执行信封，记录 task type、目标、provider、输入契约、状态、事件、checkpoint、结果引用和显式失败。它与可见的求职任务、主控 Agent Run 和 Hosted Executor Session 不同；其结果仍是候选或提案，不能直接成为职业事实。
+_Avoid_: Job、求职任务、Agent Run、后台字符串调用、事实表
+
+**Agent Provider Health**:
+OfferU 对 Agent Runtime provider 保存的脱敏健康快照，至少表达 available、authenticated、blocked、版本、协议和最后错误。Codex 401 属于 Provider Health/G2B live 验收阻塞，不是 Role Intelligence 业务事实，也不能触发静默换凭据或换 Provider。
+_Avoid_: API Key、Auth Token、Career status、LLM 业务结果
+
+**OfferU Capability Plugin**:
+通过自有版本化 Manifest 组合 CLI、Skill、capability、side effect、权限和输出契约的本地能力包。安装改变 Agent 能力发现，卸载只禁用能力；CLI 输出必须是 JSON，插件不能直连数据库、拥有 Career Truth 或绕过 Operation Registry。首个真实公开源实现是 `job-search`；fixture 插件只能用于 replay/验收，不能伪装成 live source。
+_Avoid_: Codex Fork、Marketplace 业务契约、插件数据库、自由 Shell 入口
+
+**AutomationEvent**:
+OfferU 控制面接收的可幂等外部或内部信号，例如 `JOB_SAVED`、邮箱进展和面试完成。事件只触发明确的 Automation Rule，不直接修改 Career Truth；分发失败、Provider 阻塞和结果引用都必须持久化。
+_Avoid_: 无限 Agent Loop、隐式触发器、聊天消息、静默状态变更
+
+**Automation Inbox**:
+从 AutomationEvent、CareerTask 和候选提案派生的使用者处理队列，按 needs approval、needs review、FYI、completed、failed 分类。它是注意力投影，不是新的事实表；关闭项目不会代替 Operation 确认或 Career Memory 提交。
+_Avoid_: 弹窗风暴、自动批准、第二套任务数据库、直接写 Profile
+
 **Harness 接入包**:
 安装到一种外部 Coding Agent Harness 中、把 OfferU Skill、上下文、Operation、Agent Run 事件和人类控制界面投影为该宿主原生能力的薄集成。支持 UI 扩展的宿主使用 host/client 双面插件：host half 连接 CLI-first Bridge，client half 注册原生 OfferU 工作区；它只适配宿主差异，不包含求职业务逻辑，也不能扩大权限或形成独立事实源。
 _Avoid_: Harness Driver、CLI Wrapper、Provider 业务后端、iframe 应用、MCP 插件
@@ -65,16 +89,24 @@ _Avoid_: Harness Driver、CLI Wrapper、Provider 业务后端、iframe 应用、
 _Avoid_: OfferU 聊天框、第二工作台、Agent 控制面、业务事实界面
 
 **OfferU 工作区**:
-由 OfferU 拥有并投影到 Harness 主界面的同一套人类控制界面。它可以按宿主能力拆成全局入口、全局确认界面和任务内主视图，用于浏览求职流程、事实、证据、Run、提案和结果；大画布任务可以在同一状态边界下弹出专注窗口。它不要求宿主提供一个永远占据中央区域的全局页面，不提供第二个 Agent 提示输入，也不把全局领域数据变成一个全局模型会话。
+由 OfferU 拥有并通过统一领域投影、交互状态机与 Operation 合约投影到 Harness 主界面的人类控制表面。各 Harness 使用自身原生组件和视觉语言渲染，不共享同一套 React 页面；它可以按宿主能力拆成全局入口、全局确认界面和任务内主视图，用于浏览求职流程、事实、证据、Run、提案和结果，大画布任务则在同一状态边界下弹出 OfferU 专注窗口。它不要求宿主提供一个永远占据中央区域的全局页面，不提供第二个 Agent 提示输入，也不把全局领域数据变成一个全局模型会话。
 _Avoid_: 独立主应用、OfferU Agent 聊天、Harness 侧栏替代品、嵌入网页副本
 
+**宿主原生工作区渲染器**:
+Harness 接入包 client half 中只负责把 OfferU 的类型化领域投影和交互状态映射为该宿主原生组件、布局、令牌与可访问性行为的薄渲染层。它不拥有领域状态机、Operation 规则或确认决策，也不能为了复用视觉而嵌入共享 React 页面、复制 OfferU SPA 或维护第二份业务状态。
+_Avoid_: 共享 UI 包、品牌微前端、主题皮肤、iframe 页面、宿主无关 React 页面
+
 **OfferU 任务视图**:
-OfferU 工作区在当前求职任务与 Harness session 内的主操作表面，用于查看该任务的上下文、Run、Operation、证据、候选工件和结果。它可以读取全局职业数据与流程导航，但任何 Agent 动作都绑定当前任务、Run、授权和事件流；切换任务必须切换或恢复对应 Harness session。
-_Avoid_: 全局 Agent 面板、第二聊天页、跨 Session 控制台、工作台 iframe
+OfferU 工作区在当前求职任务与 Harness session 内的主操作表面，首先让使用者看清任务状态、下一动作、待确认事项和已产出结果；上下文、Run、Operation、证据与候选工件都从该任务进入。它可以读取全局职业数据与流程导航，但任何 Agent 动作都绑定当前任务、Run、授权和事件流；切换任务必须切换或恢复对应 Harness session。
+_Avoid_: 全局 Agent 面板、全局 OfferU 首页、聊天流插卡、第二聊天页、跨 Session 控制台、工作台 iframe
+
+**任务视图主状态**:
+OfferU 任务视图首屏在任一时刻只突出一个最需要使用者理解或处理的状态，固定优先级为待确认、失败或断连、正在执行、下一动作、最近完成。它是从提案、连接、Run、任务和 outcome 派生的注意力投影，不覆盖底层事实；未成为主状态的信息仍可在详情和时间线中查看。
+_Avoid_: 并列仪表盘、多个同权主按钮、AI 在线、卡片堆砌、用最近完成遮住待确认
 
 **任务会话绑定**:
-OfferU 工作区的入口和领域数据可以全局可达，但 OfferU 任务视图、每个求职任务及其 Agent Run 独立创建或恢复自己的 Harness session；切换任务会切换推理上下文、授权和事件流，而不是把多个岗位继续写入同一隐藏模型上下文。
-_Avoid_: 全局 Agent Session、跨任务隐藏记忆、按页面建 Session、共享 Run
+OfferU 工作区的入口和领域数据可以全局可达；只有完全空白且尚未绑定的 Harness session，才能在使用者通过 OfferU 入口显式选择或创建求职任务后建立一次绑定，一条 session 只能绑定一个求职任务且绑定后不可改绑。已有聊天或工具历史、或需要切换任务时，必须新建或恢复对应 session，并同时切换推理上下文、授权和事件流，不能把多个岗位继续写入同一隐藏模型上下文。
+_Avoid_: 全局 Agent Session、Session 改绑、历史会话补绑、跨任务隐藏记忆、按页面建 Session、共享 Run
 
 **Harness 支持目录**:
 OfferU 明确维护的外部主控 Harness 集合，包含 Codex、DeepSeek Harness、Claude Code、OpenCode 与 Pi；Codex 和 DeepSeek Harness 是首批优先接入目标。目录声明产品目标，某台设备上的实际可用性仍由对应 Harness 接入包实时探测，不能用假能力或静默替代伪造支持。
@@ -313,6 +345,10 @@ _Avoid_: AI 自动关联、邮件分类、自动推进
 **投递阶段事件**:
 使用者确认后记录的一次投递阶段变化，包含发生时间、来源和前后阶段。它构成投递时间线，并派生当前状态。
 _Avoid_: 状态字段、邮件分类、候选进展
+
+**岗位生命周期里程碑轨道**:
+OfferU 任务视图对一个已绑定真实岗位的生命周期投影，沿用 `prepared`、`applied`、`written_test`、`assessment`、`interview_1`、`interview_2`、`interview_hr`、`offer`、`rejected` 九个现有业务状态，但不把它们解释为九步线性完成度。笔试、测评和各轮面试可以未发生或被跳过；`offer` 与 `rejected` 是互斥终态分支，拒绝可以从任一投递后阶段发生。投前选择“不投”只结束投前任务，不伪造成 `rejected`，也不创建投递尝试。
+_Avoid_: 九步进度条、完成百分比、跳过即完成、Offer 后再拒绝、用 rejected 表示不投
 
 **投递概览**:
 从投递尝试及其阶段事件派生的紧凑表格工作区，是投递页的默认主视图，默认呈现当前阶段、下一动作和下一时间，并允许按需显示具体阶段列；进度看板只是同一批数据的辅助视图。它不是投递进展的事实源。

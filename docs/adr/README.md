@@ -262,15 +262,39 @@ Harness 可以提出副作用 Operation 并等待，但只有 OfferU 拥有的�
 <a id="adr-0055"></a>
 ### ADR-0055 — Harness 原生界面是主外壳，OfferU 作为嵌入工作区
 
-`Status: accepted; reframes ADR-0031`
+`Status: accepted; reframes ADR-0031; UI sharing boundary refined by ADR-0056`
 
 本地 Coding Agent 使用者的日常入口是 Harness 原生界面，因此 OfferU 不再以独立工作台或第二聊天应用争夺主界面。接入包在宿主允许时注册固定 OfferU 入口、任务内主视图和 OfferU 自有确认浮层；简历深编、摄像头面试等大画布任务才打开共享同一状态边界的专注窗口。首个 DSH 实现只使用可加式 UI extension points，不替换 DSH 的 Workspace/Session 导航、对话区或核心 details 面板；不支持安全 UI 嵌入的 Harness 使用 companion window，但主控 Loop 和提示输入仍留在 Harness。
 
 OfferU 工作区是同一套 UI 与领域状态，但不承诺宿主提供全局中央页面：入口与确认可以是全局的，主视图按当前求职任务和 DSH Session 投影。它仍可浏览所有求职阶段和对象，但 Agent 执行绑定独立 Session/Run；界面统一不意味着多个岗位共享一个长期模型隐藏上下文。
 
-DSH 接入采用原生 React client plugin，不把现有完整 OfferU SPA 作为 iframe 套入 DSH。host half 负责 CLI stdio Bridge 与生命周期，client half 使用 DSH 可加式 slots 注册界面；现有前端拆出可复用领域视图，独立壳只承载专注窗口或不支持嵌入的宿主。
+DSH 接入采用原生 React client plugin，不把现有完整 OfferU SPA 作为 iframe 套入 DSH。host half 负责 CLI stdio Bridge 与生命周期，client half 使用 DSH 可加式 slots 注册界面；现有前端与接入包复用无头领域投影和交互状态机，独立壳只承载专注窗口或不支持嵌入的宿主。
 
-跨 Harness 的一致性约束针对 Operations、Run、确认、事件和审计，而不是要求每个宿主提供相同 UI extension API。DSH 使用原生嵌入；没有安全扩展点的 Codex、Claude Code、OpenCode 或 Pi 可以打开同一 OfferU UI 包的 companion window，但不能因此降级业务契约。
+跨 Harness 的一致性约束针对 Operations、Run、确认、事件和审计，而不是要求每个宿主提供相同 UI extension API 或视觉组件。DSH 使用原生嵌入；没有安全扩展点的 Codex、Claude Code、OpenCode 或 Pi 可以打开消费同一无头契约的 companion window，但不能因此降级业务契约。
+
+<a id="adr-0056"></a>
+### ADR-0056 — Harness 共享无头交互契约，各自使用宿主原生 UI
+
+`Status: accepted; refines ADR-0055`
+
+DSH 内的 OfferU 工作区完全遵循 DSH 原生组件、布局、设计令牌与交互习惯，不形成 OfferU 品牌岛。跨 Harness 只共享类型化领域投影、交互状态机、Operation 合约和一致的确认语义；不共享同一套 React 页面或宿主无关视觉组件。每个支持 UI 扩展的接入包提供薄的宿主原生渲染器，companion window 则使用 OfferU 自有渲染器，但所有渲染器消费同一无头契约且不得维护第二份业务状态。
+
+这一边界接受少量宿主渲染代码重复，以换取原生可用性、宿主升级适配和可访问性一致性；不得把领域判断、生命周期规则、权限或业务动作复制进渲染器。跨 Harness 一致性验收比较可见事实、状态转移、可执行 Operation、确认与错误语义，不做像素级一致性验收。
+
+<a id="adr-0057"></a>
+### ADR-0057 — Codex Agent Engine 与 OfferU Career Control Plane 解耦
+
+`Status: accepted`
+
+OfferU 不 Fork 或魔改 Codex Core；第一阶段通过 provider-neutral `AgentRuntimeProvider` 适配 Codex App Server stdio，并保留 Replay/Fixture 与未来其他 Harness provider 的替换 seam。Agent Runtime 只负责 thread、turn、event、skill/plugin、审批中断和执行生命周期，不拥有 Job、Profile、Resume、Application、Interview 或 Memory 真相。
+
+CareerTask 是控制面的持久化执行信封，Provider Health 只保存脱敏的可用性和认证阻塞状态。所有会改变 OfferU 业务状态的 Agent、CLI、MCP、浏览器扩展和插件调用都必须回到 Operation Registry，经 Proposal/HITL、幂等和审计后才能进入 Domain Runtime；Agent 返回的意图、候选和报告不等于事实。`workspace.delegate` 也必须先创建 CareerTask，不能直接调用执行器或 Runtime。
+
+OfferU Capability Plugin 使用自有版本化 Manifest，组合 CLI、Skill、capability、side effect、权限和输出契约。CLI 的 stdout 只能返回机器可读 JSON，stderr 只用于诊断；安装只改变本地能力发现状态，卸载不删除插件文件。插件输出由 OfferU Runtime 验证、去重、统计和持久化，不能把 Codex Marketplace 或任一 Harness 私有协议提升为业务契约。
+
+当前 Codex 认证故障属于 Provider Health/G2B live verification，不阻塞 Fixture/Replay 的架构和产品验收；不得因此自动修改凭据、代理或切换用户 Provider。
+
+自动化采用持久化 `AutomationEvent` → 显式 `AutomationRule` → `CareerTask` → Operation 的有限分发链，不引入常驻 Agent Loop。后台产生的岗位情报、简历建议和面试 Focus Plan 进入 Automation Inbox 作为候选或复核项；只有既有 Proposal/HITL 与 Career Memory 生命周期才能改变正式职业事实。
 
 ## 深度执行器
 
@@ -432,4 +456,4 @@ OfferU 负责深度执行会话的发起、恢复、事件呈现、取消和审�
 | ADR-0029–0034 | Operation、Skill、工作台与投前决策 |
 | ADR-0035–0046 | 主控/执行器架构演进与被取代路线 |
 | ADR-0047–0050 | 桌面前端、职业模型账本、浏览器扩展 |
-| ADR-0051–0055 | 外部 Harness 主控、工具隔离、确认、交接与嵌入工作区 |
+| ADR-0051–0056 | 外部 Harness 主控、工具隔离、确认、交接与宿主原生工作区 |

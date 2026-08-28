@@ -1,6 +1,6 @@
 # OfferU Agent 系统总览
 
-> 状态：accepted target architecture；实现迁移中  
+> 状态：accepted architecture；截至 2026-08-28 已完成部分纵向验收  
 > 主决策：[ADR-0051](../adr/README.md#adr-0051)  
 > 适用：主控 Harness、OfferU 原生工作区、Operation Registry、本地深度执行器
 
@@ -105,7 +105,9 @@ Codex 与 DeepSeek Harness 只享有实现优先级，不降低其他三种 Harn
 
 ## 当前代码与目标的差距
 
-截至 2026-08-20，仓库仍以 `pi_agent_host.py`、`pi_agent_worker.py`、`agent-runtime/src/worker.mjs` 和 Pi 命名的 `/runtime` 路由承载主路径；`backend/app/cli.py` 仍公开模型可调用的 `confirm`，且尚无 `integrations/dsh/`。本机 `dsh --version` 仍是 `0.1.0-rc.6`，所以 rc8 目前只是精确设计基线，尚未形成运行验收。这些实现与 [ADR-0051](../adr/README.md#adr-0051)、[ADR-0053](../adr/README.md#adr-0053) 和 [ADR-0055](../adr/README.md#adr-0055) 冲突。
+截至 2026-08-28，Main Agent UI 已通过 provider-neutral `AgentRuntimeProvider` 消费适配器；Pi 保留为 Provider，Replay/Fixture 用于确定性验收。Operation Registry 的 C1 全局 Route 审计已通过，已知正式业务 mutation 没有 Route 级直接 ORM DML、mutating service 或 Registry 旁路。旧 CLI `confirm`、Pi 命名的兼容入口和实验性 MCP 仍存在，但不属于新的业务集成契约。
+
+Codex App Server 适配边界已有结构测试，真实 Codex Provider 仍因本机认证返回 401 而标记 `BLOCKED_EXTERNAL_AUTH`；DSH 的协议/插件基础已有覆盖，但独立 `AgentRuntimeProvider` 尚未完成 live 验收。`job-search` Capability Plugin 已完成自有 Manifest、Skill、CLI 与契约验证，live Role Intelligence 仍需使用该能力单独验收。这些状态不影响已通过的 fixture/replay 产品链，也不应在文档中被表述为实时外部数据已完成。
 
 可复用的底座已经存在：
 

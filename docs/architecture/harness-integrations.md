@@ -1,8 +1,16 @@
 # Harness 接入设计
 
-> 状态：accepted target design；宿主 API 均需实时 probe  
+> 状态：accepted architecture；宿主 API 仍需实时 probe，当前验收状态见下文  
 > 优先级：DeepSeek Harness 与 Codex 第一批，Claude Code、OpenCode、Pi 第二批  
 > 共同协议：[Agent Bridge](./agent-bridge-protocol.md)
+
+## 当前验收状态（2026-08-28）
+
+- Main Agent UI 消费 provider-neutral `AgentRuntimeProvider`；Pi/Replay 是当前已覆盖的本地适配路径。
+- Operation Registry 的全局 Route mutation 审计为 `PASS_GLOBAL`；适配器、插件和自动化不能把领域写入当作自己的事实。
+- Codex App Server 适配器有结构化协议边界，但本机真实认证仍为 `BLOCKED_EXTERNAL_AUTH`，不得由 OfferU 修改凭据或静默切换 Provider。
+- DSH 仍是可替换的后续 Provider；现有协议/插件资料不等于独立 DSH AgentRun live 验收。
+- `job-search` 是首个真实公开源 Capability Plugin 的实现与契约验证；它的 live Role Intelligence 采集结果必须另行记录为 `PASS` 或 `INSUFFICIENT_SAMPLE`，不能用 fixture 结果代替。
 
 ## 接入原则
 
@@ -102,7 +110,7 @@ integrations/dsh/
 
 ### rc8 原生 UI 投影
 
-rc8 没有安全的“全局中央 OfferU 页面”席位。正确投影是一套 OfferU UI 的三个表面：
+rc8 没有安全的“全局中央 OfferU 页面”席位。正确投影是由 DSH 原生渲染器消费同一 OfferU 无头契约并呈现的三个表面：
 
 | OfferU 表面 | rc8 slot | 类型/作用域 | 用途 |
 | --- | --- | --- | --- |
