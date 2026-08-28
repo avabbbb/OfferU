@@ -455,7 +455,6 @@ async def get_table_or_raise(db: AsyncSession, table_id: int) -> ApplicationTabl
     ).scalars().first()
     if not table:
         raise ValueError("目标表不存在")
-    table.schema_json = _normalize_schema(table.schema_json)
     return table
 
 

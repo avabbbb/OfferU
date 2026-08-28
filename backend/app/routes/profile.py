@@ -61,6 +61,23 @@ except Exception:
 
 router = APIRouter()
 
+
+async def _execute_operation(name: str, args: dict[str, Any]) -> Any:
+    from app.ops import execute_operation
+
+    result = await execute_operation(name, args, surface="profile_api")
+    if not result.get("ok"):
+        message = "；".join(str(item) for item in result.get("errors") or [])
+        lowered = message.lower()
+        if "not found" in lowered or "不存在" in message:
+            status = 404
+        elif "invalid" in lowered or "无效" in message or "out of range" in lowered:
+            status = 400
+        else:
+            status = 400
+        raise HTTPException(status_code=status, detail=message or "操作失败")
+    return result.get("outputs")
+
 VALID_TOPICS = {"education", "experience", "project", "activity", "skill", "general"}
 VALID_FITS = {"primary", "secondary", "adjacent"}
 VALID_SECTION_TYPES = set(PROFILE_BUILTIN_SECTION_TYPES).union(
@@ -281,25 +298,6 @@ def _extract_last_candidates(messages_json: list[Any]) -> list[dict[str, Any]]:
             if isinstance(candidates, list):
                 return candidates
     return []
-
-
-async def _get_or_create_default_profile(db: AsyncSession) -> Profile:
-    existing = (
-        await db.execute(
-            select(Profile).where(Profile.is_default == True).order_by(Profile.id.asc())
-        )
-    ).scalars().first()
-    if existing:
-        return existing
-
-    profile = Profile(
-        name="默认档案",
-        is_default=True,
-        base_info_json=normalize_base_info_payload({"name": ""}),
-    )
-    db.add(profile)
-    await db.flush()
-    return profile
 
 
 async def _load_profile_bundle(db: AsyncSession, profile_id: int) -> tuple[Profile, list[ProfileTargetRole], list[ProfileSection]]:
@@ -1410,42 +1408,25 @@ def _build_resume_import_agent_messages(
 
 
 @router.get("/")
-async def get_profile(db: AsyncSession = Depends(get_db)):
-    profile = await _get_or_create_default_profile(db)
-    normalized_base_info = normalize_base_info_payload(profile.base_info_json)
-    if profile.base_info_json != normalized_base_info:
-        profile.base_info_json = normalized_base_info
-    await db.commit()
-
-    profile, roles, sections = await _load_profile_bundle(db, profile.id)
-    return _serialize_profile(profile, roles, sections)
+async def get_profile():
+    return await _execute_operation("get_legacy_profile", {})
 
 
 @router.get("/categories")
-async def list_profile_categories(db: AsyncSession = Depends(get_db)):
-    profile = await _get_or_create_default_profile(db)
-    sections = (
-        await db.execute(
-            select(ProfileSection)
-            .where(ProfileSection.profile_id == profile.id)
-            .where(ProfileSection.status == "active")
-            .order_by(ProfileSection.updated_at.desc(), ProfileSection.id.desc())
-        )
-    ).scalars().all()
+async def list_profile_categories():
+    profile_payload = await _execute_operation("get_legacy_profile", {})
+    sections = profile_payload.get("sections", []) if isinstance(profile_payload, dict) else []
 
     custom_map: dict[str, str] = {}
     for section in sections:
-        category_key = normalize_section_type_alias(section.section_type)
-        if category_key in {"general", "activity", "competition"} or not is_valid_profile_section_type(category_key):
-            category_key = "custom:c_legacy"
+        category_key = str(section.get("category_key") or "custom:c_legacy")
         if category_key in PROFILE_BUILTIN_SECTION_TYPES:
             continue
         if not is_custom_category_key(category_key):
             continue
         if category_key in custom_map:
             continue
-        content_json = section.content_json if isinstance(section.content_json, dict) else {}
-        custom_map[category_key] = get_category_label(category_key, content_json)
+        custom_map[category_key] = str(section.get("category_label") or "自定义分类")
 
     builtin = [
         {
@@ -1468,15 +1449,8 @@ async def list_profile_categories(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/smart-fill/catalog")
-async def smart_fill_catalog(db: AsyncSession = Depends(get_db)):
-    profile = await _get_or_create_default_profile(db)
-    normalized_base_info = normalize_base_info_payload(profile.base_info_json)
-    if profile.base_info_json != normalized_base_info:
-        profile.base_info_json = normalized_base_info
-    await db.commit()
-
-    profile, roles, sections = await _load_profile_bundle(db, profile.id)
-    profile_payload = _serialize_profile(profile, roles, sections)
+async def smart_fill_catalog():
+    profile_payload = await _execute_operation("get_legacy_profile", {})
     catalog = _build_smartfill_catalog_from_profile(profile_payload)
     public_catalog = [{key: value for key, value in item.items() if key != "value"} for item in catalog]
     return {
@@ -1488,452 +1462,49 @@ async def smart_fill_catalog(db: AsyncSession = Depends(get_db)):
     }
 
 
-def _html_to_plain_text(html: str) -> str:
-    text = re.sub(r"<[^>]+>", " ", html or "")
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
-
-
-_EXPERIENCE_MAPPED_CUSTOM_TYPES = {"custom:c_internship"}
-
-
-def _build_archive_entry(section_type: str, category_label: str, title: str, normalized: dict) -> tuple[str, str, dict] | None:
-    if section_type in _EXPERIENCE_MAPPED_CUSTOM_TYPES:
-        desc = normalized.get("description", "")
-        bullet = " | ".join(
-            [normalized.get("company", ""), normalized.get("position", ""), desc]
-        ).strip(" |")
-        content_json = {
-            "schema_version": PROFILE_SECTION_SCHEMA_VERSION,
-            "category_key": section_type,
-            "category_label": category_label,
-            "field_values": {
-                f"{section_type}.subtitle": title,
-                f"{section_type}.description": desc,
-            },
-            "normalized": normalized,
-            "bullet": bullet,
-            "title": title,
-        }
-        return section_type, title, content_json
-    try:
-        resolved_type, resolved_label, _, content_json = canonicalize_profile_section_payload(
-            section_type=section_type,
-            title=title,
-            raw_content_json={"normalized": normalized},
-            category_label=category_label,
-        )
-        return resolved_type, title, content_json
-    except ValueError:
-        return None
-
-
-async def _sync_personal_archive_to_sections(profile: Profile, db: AsyncSession) -> int:
-    base_info = profile.base_info_json or {}
-    personal_archive = base_info.get("personal_archive")
-    if not isinstance(personal_archive, dict):
-        return 0
-    if personal_archive.get("schemaVersion") != "personal.archive.v1":
-        return 0
-
-    resume_archive = personal_archive.get("resumeArchive")
-    if not isinstance(resume_archive, dict):
-        return 0
-
-    await db.execute(
-        ProfileSection.__table__.delete().where(
-            ProfileSection.profile_id == profile.id,
-            ProfileSection.source == "archive_sync",
-        )
-    )
-
-    sort_order = 0
-    entries: list[tuple[str, str, dict]] = []
-
-    for item in resume_archive.get("education", []):
-        if not isinstance(item, dict):
-            continue
-        title = (item.get("schoolName") or "").strip() or "教育经历"
-        normalized = {
-            "school": item.get("schoolName", ""),
-            "degree": (item.get("degree") or item.get("educationLevel") or ""),
-            "major": item.get("major", ""),
-            "start_date": item.get("startDate", ""),
-            "end_date": item.get("endDate", ""),
-            "gpa": item.get("gpa", ""),
-            "description": _html_to_plain_text(item.get("description", "")),
-        }
-        result = _build_archive_entry("education", "教育经历", title, normalized)
-        if result:
-            entries.append(result)
-
-    for item in resume_archive.get("workExperiences", []):
-        if not isinstance(item, dict):
-            continue
-        title = (item.get("companyName") or "").strip() or "工作经历"
-        normalized = {
-            "company": item.get("companyName", ""),
-            "department": item.get("department", ""),
-            "position": item.get("positionName", ""),
-            "start_date": item.get("startDate", ""),
-            "end_date": item.get("endDate", ""),
-            "description": _html_to_plain_text(item.get("description", "")),
-        }
-        result = _build_archive_entry("experience", "工作经历", title, normalized)
-        if result:
-            entries.append(result)
-
-    for item in resume_archive.get("internshipExperiences", []):
-        if not isinstance(item, dict):
-            continue
-        title = (item.get("companyName") or "").strip() or "实习经历"
-        desc = _html_to_plain_text(item.get("description", ""))
-        normalized = {
-            "company": item.get("companyName", ""),
-            "position": item.get("positionName", ""),
-            "start_date": item.get("startDate", ""),
-            "end_date": item.get("endDate", ""),
-            "description": desc,
-            "subtitle": title,
-        }
-        result = _build_archive_entry("custom:c_internship", "实习经历", title, normalized)
-        if result:
-            entries.append(result)
-
-    for item in resume_archive.get("projects", []):
-        if not isinstance(item, dict):
-            continue
-        title = (item.get("projectName") or "").strip() or "项目经历"
-        normalized = {
-            "name": item.get("projectName", ""),
-            "role": item.get("projectRole", ""),
-            "url": item.get("projectLink", ""),
-            "start_date": item.get("startDate", ""),
-            "end_date": item.get("endDate", ""),
-            "description": _html_to_plain_text(item.get("description", "")),
-        }
-        result = _build_archive_entry("project", "项目经历", title, normalized)
-        if result:
-            entries.append(result)
-
-    skill_groups: dict[str, dict] = {}
-    for item in resume_archive.get("skills", []):
-        if not isinstance(item, dict):
-            continue
-        proficiency = (item.get("proficiency") or "").strip() or "技能"
-        if proficiency not in skill_groups:
-            skill_groups[proficiency] = {"names": [], "remarks": []}
-        name = (item.get("skillName") or "").strip()
-        if name:
-            skill_groups[proficiency]["names"].append(name)
-        remark = (item.get("remark") or "").strip()
-        if remark:
-            skill_groups[proficiency]["remarks"].append(remark)
-
-    for proficiency, group in skill_groups.items():
-        normalized = {
-            "category": proficiency,
-            "items": group["names"],
-            "description": "\n".join(group["remarks"]) if group["remarks"] else "",
-        }
-        result = _build_archive_entry("skill", "技能与证书", proficiency, normalized)
-        if result:
-            entries.append(result)
-
-    for item in resume_archive.get("certificates", []):
-        if not isinstance(item, dict):
-            continue
-        title = (item.get("certificateName") or "").strip() or "证书"
-        normalized = {
-            "name": item.get("certificateName", ""),
-            "issuer": item.get("issuer", ""),
-            "date": item.get("acquiredAt", ""),
-            "score": item.get("scoreOrLevel", ""),
-            "description": item.get("scoreOrLevel", ""),
-        }
-        result = _build_archive_entry("certificate", "技能与证书", title, normalized)
-        if result:
-            entries.append(result)
-
-    for item in resume_archive.get("awards", []):
-        if not isinstance(item, dict):
-            continue
-        title = (item.get("awardName") or "").strip() or "获奖经历"
-        desc = _html_to_plain_text(item.get("description", ""))
-        normalized = {
-            "subtitle": title,
-            "description": desc,
-            "issuer": item.get("issuer", ""),
-            "date": item.get("awardedAt", ""),
-        }
-        result = _build_archive_entry("custom:c_awards", "获奖经历", title, normalized)
-        if result:
-            entries.append(result)
-
-    for item in resume_archive.get("personalExperiences", []):
-        if not isinstance(item, dict):
-            continue
-        title = (item.get("experienceTitle") or "").strip() or "个人经历"
-        desc = _html_to_plain_text(item.get("description", ""))
-        normalized = {
-            "subtitle": title,
-            "description": desc,
-            "start_date": item.get("startDate", ""),
-            "end_date": item.get("endDate", ""),
-        }
-        result = _build_archive_entry("custom:c_personal", "个人经历", title, normalized)
-        if result:
-            entries.append(result)
-
-    for resolved_type, title, content_json in entries:
-        section = ProfileSection(
-            profile_id=profile.id,
-            section_type=resolved_type,
-            title=title,
-            sort_order=sort_order,
-            content_json=content_json,
-            source="archive_sync",
-            confidence=1.0,
-        )
-        db.add(section)
-        sort_order += 1
-
-    await db.flush()
-    return sort_order
-
-
 @router.put("/")
-async def update_profile(data: ProfileUpdateRequest, db: AsyncSession = Depends(get_db)):
-    profile = await _get_or_create_default_profile(db)
-
-    payload = data.model_dump(exclude_none=True)
-    if "base_info_json" in payload:
-        payload["base_info_json"] = normalize_base_info_payload(payload["base_info_json"])
-
-    for key, value in payload.items():
-        setattr(profile, key, value)
-
-    if "base_info_json" in payload:
-        await _sync_personal_archive_to_sections(profile, db)
-
-    await db.commit()
-    await db.refresh(profile)
-
-    profile, roles, sections = await _load_profile_bundle(db, profile.id)
-    return _serialize_profile(profile, roles, sections)
+async def update_profile(data: ProfileUpdateRequest):
+    return await _execute_operation("update_profile", data.model_dump(exclude_none=True))
 
 
 @router.get("/target-roles")
-async def list_target_roles(db: AsyncSession = Depends(get_db)):
-    profile = await _get_or_create_default_profile(db)
-    roles = (
-        await db.execute(
-            select(ProfileTargetRole)
-            .where(ProfileTargetRole.profile_id == profile.id)
-            .order_by(ProfileTargetRole.created_at.desc())
-        )
-    ).scalars().all()
-    await db.commit()
-    return [_serialize_target_role(item) for item in roles]
+async def list_target_roles():
+    return await _execute_operation("list_profile_target_roles", {})
 
 
 @router.post("/target-roles")
-async def create_target_role(data: TargetRoleCreateRequest, db: AsyncSession = Depends(get_db)):
-    fit = data.fit.strip().lower()
-    if fit not in VALID_FITS:
-        raise HTTPException(status_code=400, detail="fit must be primary/secondary/adjacent")
-
-    profile = await _get_or_create_default_profile(db)
-
-    role = ProfileTargetRole(
-        profile_id=profile.id,
-        role_name=data.role_name.strip(),
-        role_level=data.role_level.strip(),
-        fit=fit,
-    )
-    db.add(role)
-    await db.commit()
-    await db.refresh(role)
-    return _serialize_target_role(role)
+async def create_target_role(data: TargetRoleCreateRequest):
+    return await _execute_operation("create_target_role", data.model_dump())
 
 
 @router.delete("/target-roles/{role_id}")
-async def delete_target_role(role_id: int, db: AsyncSession = Depends(get_db)):
-    profile = await _get_or_create_default_profile(db)
-    role = (
-        await db.execute(
-            select(ProfileTargetRole).where(
-                ProfileTargetRole.id == role_id,
-                ProfileTargetRole.profile_id == profile.id,
-            )
-        )
-    ).scalar_one_or_none()
-    if not role:
-        raise HTTPException(status_code=404, detail="Target role not found")
-
-    await db.delete(role)
-    await db.commit()
-    return {"deleted": True}
+async def delete_target_role(role_id: int):
+    return await _execute_operation("delete_target_role", {"role_id": role_id})
 
 
 @router.post("/sections")
-async def create_profile_section(data: ProfileSectionCreateRequest, db: AsyncSession = Depends(get_db)):
-    profile = await _get_or_create_default_profile(db)
-
-    try:
-        normalized_section_type = normalize_section_type_alias(data.section_type)
-        if normalized_section_type in {"general", "activity", "competition"}:
-            normalized_section_type = "custom"
-        if not is_valid_profile_section_type(normalized_section_type):
-            normalized_section_type = "custom"
-
-        section_type, _, _, canonical_content_json = canonicalize_profile_section_payload(
-            section_type=normalized_section_type,
-            category_label=data.category_label,
-            title=data.title.strip(),
-            raw_content_json=data.content_json,
-        )
-    except ValueError:
-        raise HTTPException(status_code=400, detail="invalid section_type")
-
-    sort_order = data.sort_order
-    if sort_order <= 0:
-        max_sort = (
-            await db.execute(
-                select(func.max(ProfileSection.sort_order)).where(ProfileSection.profile_id == profile.id)
-            )
-        ).scalar()
-        sort_order = int(max_sort or 0) + 1
-
-    section = ProfileSection(
-        profile_id=profile.id,
-        section_type=section_type,
-        title=data.title.strip() or get_category_label(section_type, canonical_content_json),
-        sort_order=sort_order,
-        content_json=canonical_content_json,
-        source=data.source,
-        confidence=data.confidence,
-    )
-    db.add(section)
-    await db.commit()
-    await db.refresh(section)
-
-    # 自动索引到 Vector DB
-    try:
-        from app.services.semantic_search import get_semantic_search
-        semantic = get_semantic_search()
-        bullet_text = canonical_content_json.get("bullet", "") if isinstance(canonical_content_json, dict) else ""
-        await semantic.index_profile_section(
-            section_id=section.id,
-            title=section.title or "",
-            bullet_text=bullet_text,
-            profile_id=profile.id,
-        )
-        _logger.info(f"[Vector DB] Indexed section {section.id}")
-    except Exception as e:
-        _logger.error(f"[Vector DB] Failed to index section {section.id}: {e}")
-        # 索引失败不影响主流程
-
-    return _serialize_section(section)
+async def create_profile_section(data: ProfileSectionCreateRequest):
+    return await _execute_operation("create_profile_section", data.model_dump())
 
 
 @router.put("/sections/{section_id}")
 async def update_profile_section(
     section_id: int,
     data: ProfileSectionUpdateRequest,
-    db: AsyncSession = Depends(get_db),
 ):
-    profile = await _get_or_create_default_profile(db)
-
-    section = (
-        await db.execute(
-            select(ProfileSection).where(
-                ProfileSection.id == section_id,
-                ProfileSection.profile_id == profile.id,
-            )
-        )
-    ).scalar_one_or_none()
-    if not section:
-        raise HTTPException(status_code=404, detail="Profile section not found")
-
-    payload = data.model_dump(exclude_none=True)
-
-    next_section_type = normalize_section_type_alias(str(payload.get("section_type") or section.section_type))
-    if next_section_type in {"general", "activity", "competition"}:
-        next_section_type = "custom"
-    if not is_valid_profile_section_type(next_section_type):
-        next_section_type = "custom"
-    next_title = str(payload.get("title") or section.title or "").strip()
-    next_content_json = payload.get("content_json") if "content_json" in payload else section.content_json
-    next_category_label = payload.get("category_label")
-
-    try:
-        resolved_section_type, _, _, canonical_content_json = canonicalize_profile_section_payload(
-            section_type=next_section_type,
-            category_label=next_category_label,
-            title=next_title,
-            raw_content_json=next_content_json,
-        )
-    except ValueError:
-        raise HTTPException(status_code=400, detail="invalid section_type")
-
-    if not next_title:
-        next_title = get_category_label(resolved_section_type, canonical_content_json)
-
-    section.section_type = resolved_section_type
-    section.title = next_title
-    section.content_json = canonical_content_json
-
-    if "sort_order" in payload and payload["sort_order"] is not None:
-        section.sort_order = int(payload["sort_order"])
-    if "source" in payload and payload["source"] is not None:
-        section.source = str(payload["source"])
-    if "confidence" in payload and payload["confidence"] is not None:
-        section.confidence = float(payload["confidence"])
-
-    await db.commit()
-    await db.refresh(section)
-
-    # 自动更新 Vector DB 索引
-    try:
-        from app.services.semantic_search import get_semantic_search
-        semantic = get_semantic_search()
-        bullet_text = canonical_content_json.get("bullet", "") if isinstance(canonical_content_json, dict) else ""
-        await semantic.index_profile_section(
-            section_id=section.id,
-            title=section.title or "",
-            bullet_text=bullet_text,
-            profile_id=profile.id,
-        )
-        _logger.info(f"[Vector DB] Updated index for section {section.id}")
-    except Exception as e:
-        _logger.error(f"[Vector DB] Failed to update index for section {section.id}: {e}")
-
-    return _serialize_section(section)
+    return await _execute_operation(
+        "update_profile_section",
+        {"section_id": section_id, **data.model_dump(exclude_none=True)},
+    )
 
 
 @router.delete("/sections/{section_id}")
-async def delete_profile_section(section_id: int, db: AsyncSession = Depends(get_db)):
-    profile = await _get_or_create_default_profile(db)
-
-    section = (
-        await db.execute(
-            select(ProfileSection).where(
-                ProfileSection.id == section_id,
-                ProfileSection.profile_id == profile.id,
-            )
-        )
-    ).scalar_one_or_none()
-    if not section:
-        raise HTTPException(status_code=404, detail="Profile section not found")
-
-    await db.delete(section)
-    await db.commit()
-    return {"deleted": True}
+async def delete_profile_section(section_id: int):
+    return await _execute_operation("delete_profile_section", {"section_id": section_id})
 
 
 @router.post("/chat")
-async def profile_chat(data: ProfileChatRequest, db: AsyncSession = Depends(get_db)):
+async def profile_chat(data: ProfileChatRequest):
     topic = data.topic.strip().lower()
     if topic not in VALID_TOPICS:
         raise HTTPException(status_code=400, detail="invalid topic")
@@ -1944,60 +1515,33 @@ async def profile_chat(data: ProfileChatRequest, db: AsyncSession = Depends(get_
 
     async def event_stream():
         try:
-            profile = await _get_or_create_default_profile(db)
-
-            if data.session_id is not None:
-                session = (
-                    await db.execute(
-                        select(ProfileChatSession).where(
-                            ProfileChatSession.id == data.session_id,
-                            ProfileChatSession.profile_id == profile.id,
-                        )
-                    )
-                ).scalar_one_or_none()
-                if not session:
-                    yield _sse("error", {"message": "chat session not found"})
-                    return
-            else:
-                session = ProfileChatSession(
-                    profile_id=profile.id,
-                    topic=topic,
-                    status="active",
-                    messages_json=[],
-                    extracted_bullets_count=0,
-                )
-                db.add(session)
-                await db.flush()
-                await db.commit()
-
-            messages_json = list(session.messages_json or [])
-            messages_json.append({"role": "user", "topic": topic, "content": user_message})
-
             payload = await _generate_chat_payload(topic, user_message)
             assistant_message = payload["assistant_message"]
             candidates = payload["bullet_candidates"]
             topic_complete = bool(payload.get("topic_complete", False))
+            saved = await _execute_operation(
+                "save_profile_chat_turn",
+                {
+                    "topic": topic,
+                    "user_message": user_message,
+                    "assistant_message": assistant_message,
+                    "candidates": candidates,
+                    "topic_complete": topic_complete,
+                    "session_id": data.session_id,
+                },
+            )
+            session_id = int(saved["session_id"])
 
-            messages_json.append({"role": "assistant", "topic": topic, "content": assistant_message})
-            messages_json.append({"kind": "bullet_candidates", "topic": topic, "candidates": candidates})
-
-            session.topic = topic
-            session.messages_json = messages_json
-            session.extracted_bullets_count = int(session.extracted_bullets_count or 0) + len(candidates)
-
-            await db.commit()
-
-            yield _sse("ai_message", {"content": assistant_message, "session_id": session.id})
+            yield _sse("ai_message", {"content": assistant_message, "session_id": session_id})
             for idx, candidate in enumerate(candidates):
-                event_payload = {"index": idx, "session_id": session.id, **candidate}
+                event_payload = {"index": idx, "session_id": session_id, **candidate}
                 yield _sse("bullet_candidate", event_payload)
 
             if topic_complete:
                 yield _sse("topic_complete", {"topic": topic, "bullets_extracted": len(candidates)})
 
-            yield _sse("done", {"session_id": session.id})
+            yield _sse("done", {"session_id": session_id})
         except Exception:
-            await db.rollback()
             yield _sse("error", {"message": "profile chat failed"})
 
     return StreamingResponse(
@@ -2014,115 +1558,27 @@ async def profile_chat(data: ProfileChatRequest, db: AsyncSession = Depends(get_
 @router.get("/chat/sessions")
 async def list_profile_chat_sessions(
     limit: int = Query(default=20, ge=1, le=100),
-    db: AsyncSession = Depends(get_db),
 ):
-    profile = await _get_or_create_default_profile(db)
-    sessions = (
-        await db.execute(
-            select(ProfileChatSession)
-            .where(ProfileChatSession.profile_id == profile.id)
-            .order_by(ProfileChatSession.updated_at.desc(), ProfileChatSession.id.desc())
-            .limit(limit)
-        )
-    ).scalars().all()
-    await db.commit()
-    return [_serialize_chat_session(item) for item in sessions]
+    return await _execute_operation("list_profile_chat_sessions", {"limit": limit})
 
 
 @router.get("/chat/sessions/{session_id}")
-async def get_profile_chat_session(session_id: int, db: AsyncSession = Depends(get_db)):
-    profile = await _get_or_create_default_profile(db)
-    session = (
-        await db.execute(
-            select(ProfileChatSession).where(
-                ProfileChatSession.id == session_id,
-                ProfileChatSession.profile_id == profile.id,
-            )
-        )
-    ).scalar_one_or_none()
-    if not session:
-        raise HTTPException(status_code=404, detail="chat session not found")
-
-    messages_json = list(session.messages_json or [])
-    return {
-        **_serialize_chat_session(session),
-        "messages_json": messages_json,
-        "latest_candidates": _extract_last_candidates(messages_json),
-    }
+async def get_profile_chat_session(session_id: int):
+    return await _execute_operation("get_profile_chat_session", {"session_id": session_id})
 
 
 @router.post("/chat/confirm")
-async def confirm_profile_bullet(data: ProfileChatConfirmRequest, db: AsyncSession = Depends(get_db)):
-    profile = await _get_or_create_default_profile(db)
-
-    session = (
-        await db.execute(
-            select(ProfileChatSession).where(
-                ProfileChatSession.id == data.session_id,
-                ProfileChatSession.profile_id == profile.id,
-            )
-        )
-    ).scalar_one_or_none()
-    if not session:
-        raise HTTPException(status_code=404, detail="chat session not found")
-
-    candidates = _extract_last_candidates(session.messages_json or [])
-    if data.bullet_index >= len(candidates):
-        raise HTTPException(status_code=400, detail="bullet_index out of range")
-
-    candidate = dict(candidates[data.bullet_index])
-    if data.edits:
-        for key in ("section_type", "title", "content_json", "confidence"):
-            if key in data.edits:
-                candidate[key] = data.edits[key]
-
-    candidate = _normalize_candidate(session.topic or "general", candidate)
-
-    # 幂等保护：同一档案下若已存在同类型+同标题+同内容条目，则直接返回，避免重复入库
-    existing_sections = (
-        await db.execute(
-            select(ProfileSection)
-            .where(
-                ProfileSection.profile_id == profile.id,
-                ProfileSection.section_type == candidate["section_type"],
-                ProfileSection.title == candidate["title"],
-                ProfileSection.status == "active",
-            )
-            .order_by(ProfileSection.id.desc())
-        )
-    ).scalars().all()
-    for existing in existing_sections:
-        if (existing.content_json or {}) == candidate["content_json"]:
-            return _serialize_section(existing)
-
-    max_sort = (
-        await db.execute(
-            select(func.max(ProfileSection.sort_order)).where(ProfileSection.profile_id == profile.id)
-        )
-    ).scalar()
-    next_sort = int(max_sort or 0) + 1
-
-    section = ProfileSection(
-        profile_id=profile.id,
-        section_type=candidate["section_type"],
-        title=candidate["title"],
-        sort_order=next_sort,
-        content_json=candidate["content_json"],
-        source="ai_chat",
-        confidence=candidate["confidence"],
+async def confirm_profile_bullet(data: ProfileChatConfirmRequest):
+    return await _execute_operation(
+        "confirm_profile_bullet",
+        data.model_dump(exclude_none=True),
     )
-    db.add(section)
-    await db.commit()
-    await db.refresh(section)
-
-    return _serialize_section(section)
 
 
 @router.post("/import-resume")
 async def import_profile_resume(
     file: UploadFile = File(...),
     parse_mode: str = Query(default="ai"),
-    db: AsyncSession = Depends(get_db),
 ):
     normalized_parse_mode = _normalize_resume_import_mode(parse_mode)
     if not file.filename:
@@ -2156,7 +1612,6 @@ async def import_profile_resume(
         )
         raise HTTPException(status_code=400, detail=detail)
 
-    profile = await _get_or_create_default_profile(db)
     base_info = _extract_resume_base_info(parsed_text)
     import_payload = await _extract_resume_import_payload_by_mode(parsed_text, normalized_parse_mode)
     llm_base_info = import_payload.get("base_info") if isinstance(import_payload, dict) else {}
@@ -2196,34 +1651,6 @@ async def import_profile_resume(
         base_info=base_info,
         candidates=candidates,
     )
-    session = ProfileChatSession(
-        profile_id=profile.id,
-        topic="general",
-        status="completed",
-        messages_json=[
-            {
-                "role": "assistant",
-                "topic": "general",
-                "content": "已从上传简历中提取候选条目，请逐条确认后入库。",
-            },
-            {
-                "kind": "resume_import_meta",
-                "filename": filename,
-                "text_length": len(parsed_text),
-                "parse_mode": normalized_parse_mode,
-                "base_info": base_info,
-                "parse_diagnostics": parse_diagnostics,
-            },
-            memory_summary,
-            {
-                "kind": "bullet_candidates",
-                "topic": "general",
-                "candidates": candidates,
-            },
-        ],
-        extracted_bullets_count=len(candidates),
-    )
-    db.add(session)
     agent_messages_json, _agent_patch = _build_resume_import_agent_messages(
         filename=filename,
         parse_mode=normalized_parse_mode,
@@ -2231,98 +1658,24 @@ async def import_profile_resume(
         base_info=base_info,
         candidates=candidates,
     )
-    agent_session = ProfileChatSession(
-        profile_id=profile.id,
-        topic=PROFILE_AGENT_TOPIC,
-        status="active",
-        messages_json=agent_messages_json,
-        extracted_bullets_count=len(candidates),
-    )
-    db.add(agent_session)
-    await db.commit()
-    await db.refresh(session)
-    await db.refresh(agent_session)
-
-    bullets = [
+    return await _execute_operation(
+        "save_profile_resume_import",
         {
-            "index": idx,
-            "session_id": session.id,
-            **candidate,
-        }
-        for idx, candidate in enumerate(candidates)
-    ]
-
-    return {
-        "session_id": session.id,
-        "agent_session_id": agent_session.id,
-        "filename": filename,
-        "parse_mode": normalized_parse_mode,
-        "text_length": len(parsed_text),
-        "parse_diagnostics": parse_diagnostics,
-        "base_info": base_info,
-        "bullets": bullets,
-    }
+            "filename": filename,
+            "parse_mode": normalized_parse_mode,
+            "parsed_text": parsed_text,
+            "parse_diagnostics": parse_diagnostics,
+            "base_info": base_info,
+            "candidates": candidates,
+            "agent_messages_json": agent_messages_json,
+            "memory_summary": memory_summary,
+        },
+    )
 
 
 @router.post("/generate-narrative")
-async def generate_narrative(db: AsyncSession = Depends(get_db)):
-    profile = await _get_or_create_default_profile(db)
-    sections = (
-        await db.execute(
-            select(ProfileSection)
-            .where(ProfileSection.profile_id == profile.id)
-            .where(ProfileSection.status == "active")
-            .order_by(ProfileSection.sort_order.asc(), ProfileSection.created_at.asc())
-        )
-    ).scalars().all()
-
-    section_texts = []
-    for item in sections[:30]:
-        section_texts.append(f"[{item.section_type}] {item.title} {json.dumps(item.content_json, ensure_ascii=False)}")
-
-    context_text = "\n".join(section_texts) if section_texts else "暂无条目"
-
-    prompt = (
-        "你是求职档案叙事助手。根据给定档案条目，生成严格 JSON: "
-        "{\"headline\": string, \"exit_story\": string, \"cross_cutting_advantage\": string}。"
-        "不要编造事实，措辞简洁。"
-    )
-
-    try:
-        llm_result = await chat_completion(
-            messages=[
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": context_text},
-            ],
-            temperature=0.3,
-            json_mode=True,
-            max_tokens=800,
-            tier="fast",
-        )
-        parsed = extract_json(llm_result or "")
-    except Exception:
-        parsed = None
-    if not isinstance(parsed, dict):
-        parsed = {
-            "headline": profile.headline or "正在构建中的求职者",
-            "exit_story": profile.exit_story or "基于现有经历，持续补全并打磨个人叙事。",
-            "cross_cutting_advantage": profile.cross_cutting_advantage or "学习快、执行稳、可迁移能力强。",
-        }
-
-    profile.headline = str(parsed.get("headline") or profile.headline or "")
-    profile.exit_story = str(parsed.get("exit_story") or profile.exit_story or "")
-    profile.cross_cutting_advantage = str(
-        parsed.get("cross_cutting_advantage") or profile.cross_cutting_advantage or ""
-    )
-
-    await db.commit()
-    await db.refresh(profile)
-
-    return {
-        "headline": profile.headline,
-        "exit_story": profile.exit_story,
-        "cross_cutting_advantage": profile.cross_cutting_advantage,
-    }
+async def generate_narrative():
+    return await _execute_operation("generate_profile_narrative", {})
 
 
 @router.post("/instant-draft")
@@ -2457,20 +1810,6 @@ def _sanitize_ai_mappings(
 
 def _new_smartfill_run_id() -> str:
     return f"sf-{uuid.uuid4().hex[:20]}"
-
-
-async def _ensure_smartfill_run(db: AsyncSession, run_id: str, status: str = "running") -> SmartFillRun:
-    existing = (
-        await db.execute(
-            select(SmartFillRun).where(SmartFillRun.run_id == run_id)
-        )
-    ).scalar_one_or_none()
-    if existing:
-        return existing
-    row = SmartFillRun(run_id=run_id, status=status, summary_json={})
-    db.add(row)
-    await db.flush()
-    return row
 
 
 def _parse_dt_iso(value: Optional[str]) -> datetime:
@@ -3070,62 +2409,31 @@ async def smart_fill_cache_get(data: SmartFillCacheGetRequest, db: AsyncSession 
 
 
 @router.post("/smart-fill/cache/set")
-async def smart_fill_cache_set(data: SmartFillCacheSetRequest, db: AsyncSession = Depends(get_db)):
-    now = datetime.utcnow()
-    expires_at = now + timedelta(seconds=max(30, min(7200, data.ttlSeconds)))
-    existing = (
-        await db.execute(
-            select(SmartFillMapCache).where(SmartFillMapCache.cache_key == data.cacheKey)
-        )
-    ).scalar_one_or_none()
-
-    if existing:
-        existing.adapter_id = data.adapterId or "unknown"
-        existing.model_signature = data.modelSignature or ""
-        existing.mappings_json = data.mappings
-        existing.channel = data.channel or "backend"
-        existing.fallback_used = bool(data.fallbackUsed)
-        existing.expires_at = expires_at
-        if data.runId:
-            existing.run_id = data.runId
-    else:
-        row = SmartFillMapCache(
-            cache_key=data.cacheKey,
-            adapter_id=data.adapterId or "unknown",
-            model_signature=data.modelSignature or "",
-            mappings_json=data.mappings,
-            channel=data.channel or "backend",
-            fallback_used=bool(data.fallbackUsed),
-            expires_at=expires_at,
-            run_id=data.runId or None,
-        )
-        db.add(row)
-
-    await db.commit()
-    return {"ok": True, "saved": True}
+async def smart_fill_cache_set(data: SmartFillCacheSetRequest):
+    return await _execute_operation(
+        "save_smart_fill_cache",
+        {
+            "cache_key": data.cacheKey,
+            "adapter_id": data.adapterId,
+            "model_signature": data.modelSignature,
+            "ttl_seconds": data.ttlSeconds,
+            "mappings": data.mappings,
+            "channel": data.channel,
+            "fallback_used": data.fallbackUsed,
+            "run_id": data.runId,
+        },
+    )
 
 
 @router.post("/smart-fill/runs/log")
-async def smart_fill_runs_log(data: SmartFillRunLogRequest, db: AsyncSession = Depends(get_db)):
-    run = await _ensure_smartfill_run(db, data.runId, status="running")
-    inserted = 0
-    for item in data.logs:
-        row = SmartFillRunLog(
-            run_id=data.runId,
-            stage=item.stage,
-            severity=item.severity or "info",
-            scope=item.scope or "run",
-            message=item.message or "",
-            field_id=item.fieldId or "",
-            payload_json=item.payload if isinstance(item.payload, dict) else {},
-            ts=_parse_dt_iso(item.ts),
-        )
-        db.add(row)
-        inserted += 1
-
-    run.updated_at = datetime.utcnow()
-    await db.commit()
-    return {"ok": True, "inserted": inserted}
+async def smart_fill_runs_log(data: SmartFillRunLogRequest):
+    return await _execute_operation(
+        "save_smart_fill_run_logs",
+        {
+            "run_id": data.runId,
+            "logs": [item.model_dump() for item in data.logs],
+        },
+    )
 
 
 @router.get("/smart-fill/runs/{run_id}")
@@ -3192,28 +2500,25 @@ async def smart_fill_run_export(run_id: str, db: AsyncSession = Depends(get_db))
 
 
 @router.post("/smart-fill/map")
-async def smart_fill_map(data: SmartFillMapRequest, db: AsyncSession = Depends(get_db)):
+async def smart_fill_map(data: SmartFillMapRequest):
     """
     后端 AI 通道：仅返回字段映射建议，不执行任何 DOM 写入。
     """
     fields = data.fields or []
     run_id = _new_smartfill_run_id()
-    await _ensure_smartfill_run(db, run_id, status="running")
-    await db.commit()
+    await _execute_operation("start_smart_fill_run", {"run_id": run_id})
     if len(fields) == 0:
+        await _execute_operation(
+            "complete_smart_fill_run",
+            {"run_id": run_id, "status": "success", "summary": {"mappingCount": 0, "fieldCount": 0}},
+        )
         return {"ok": True, "mappings": [], "runId": run_id}
 
     profile_payload: dict[str, Any]
     if isinstance(data.profile, dict) and data.profile:
         profile_payload = data.profile
     else:
-        profile = await _get_or_create_default_profile(db)
-        normalized_base_info = normalize_base_info_payload(profile.base_info_json)
-        if profile.base_info_json != normalized_base_info:
-            profile.base_info_json = normalized_base_info
-            await db.commit()
-        profile, roles, sections = await _load_profile_bundle(db, profile.id)
-        profile_payload = _serialize_profile(profile, roles, sections)
+        profile_payload = await _execute_operation("get_legacy_profile", {})
 
     if data.catalog:
         public_catalog = _sanitize_smartfill_catalog(data.catalog)
@@ -3269,18 +2574,14 @@ async def smart_fill_map(data: SmartFillMapRequest, db: AsyncSession = Depends(g
         raise HTTPException(status_code=502, detail="AI 映射返回格式异常")
 
     mappings = _sanitize_ai_mappings(parsed, fields, private_catalog)
-    run = (
-        await db.execute(
-            select(SmartFillRun).where(SmartFillRun.run_id == run_id)
-        )
-    ).scalar_one_or_none()
-    if run:
-        run.status = "success"
-        run.summary_json = {
-            "mappingCount": len(mappings),
-            "fieldCount": len(fields),
-        }
-    await db.commit()
+    await _execute_operation(
+        "complete_smart_fill_run",
+        {
+            "run_id": run_id,
+            "status": "success",
+            "summary": {"mappingCount": len(mappings), "fieldCount": len(fields)},
+        },
+    )
     return {"ok": True, "mappings": mappings, "runId": run_id}
 
 
@@ -3312,7 +2613,7 @@ async def smart_fill_option_match(data: SmartFillOptionMatchRequest):
 
 
 @router.post("/smart-fill/field-map")
-async def smart_fill_field_map(data: SmartFillFieldMapRequest, db: AsyncSession = Depends(get_db)):
+async def smart_fill_field_map(data: SmartFillFieldMapRequest):
     from app.services.field_mapper import field_map
 
     if not data.fragments:
@@ -3322,13 +2623,7 @@ async def smart_fill_field_map(data: SmartFillFieldMapRequest, db: AsyncSession 
     if isinstance(data.profile, dict) and data.profile:
         archive = data.profile
     else:
-        profile = await _get_or_create_default_profile(db)
-        normalized_base_info = normalize_base_info_payload(profile.base_info_json)
-        if profile.base_info_json != normalized_base_info:
-            profile.base_info_json = normalized_base_info
-            await db.commit()
-        profile, roles, sections = await _load_profile_bundle(db, profile.id)
-        profile_payload = _serialize_profile(profile, roles, sections)
+        profile_payload = await _execute_operation("get_legacy_profile", {})
         profile_view = _smartfill_profile_view(profile_payload)
         ra = profile_view.get("resumeArchive") or {}
         aa = profile_view.get("applicationArchive") or {}
@@ -3354,18 +2649,12 @@ async def smart_fill_field_map(data: SmartFillFieldMapRequest, db: AsyncSession 
 
 
 @router.post("/smart-fill/module-count")
-async def smart_fill_module_count(data: SmartFillModuleCountRequest, db: AsyncSession = Depends(get_db)):
+async def smart_fill_module_count(data: SmartFillModuleCountRequest):
     archive: dict[str, Any]
     if isinstance(data.profile, dict) and data.profile:
         archive = data.profile
     else:
-        profile = await _get_or_create_default_profile(db)
-        normalized_base_info = normalize_base_info_payload(profile.base_info_json)
-        if profile.base_info_json != normalized_base_info:
-            profile.base_info_json = normalized_base_info
-            await db.commit()
-        profile, roles, sections = await _load_profile_bundle(db, profile.id)
-        profile_payload = _serialize_profile(profile, roles, sections)
+        profile_payload = await _execute_operation("get_legacy_profile", {})
         profile_view = _smartfill_profile_view(profile_payload)
         ra = profile_view.get("resumeArchive") or {}
         aa = profile_view.get("applicationArchive") or {}

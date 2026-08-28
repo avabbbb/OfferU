@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, case, desc, func, or_, select, update
+from sqlalchemy import and_, case, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -41,6 +41,15 @@ INTERNAL_TEST_URL_MARKERS = (
     "example.com/jobs/test-",
     "example.com/apply/test-",
 )
+
+
+def _automation_runtime_for_source(source: str) -> str:
+    """Use the installed fixture provider for explicit local fixture imports."""
+
+    clean = str(source or "").strip().casefold()
+    if clean in {"fixture", "replay", "boss-fixture"} or clean.startswith("plugin:"):
+        return clean
+    return "codex"
 
 def _to_internal_status(status: str) -> str:
     value = (status or "").strip().lower()
@@ -306,68 +315,35 @@ async def patch_jobs_batch(data: JobBatchPatchRequest, db: AsyncSession = Depend
     return _operation_output_or_error(result)
 
 @router.delete("/batch-delete")
-async def delete_jobs_batch(data: JobBatchDeleteRequest, db: AsyncSession = Depends(get_db)):
+async def delete_jobs_batch(data: JobBatchDeleteRequest):
     """批量彻底删除岗位（仅回收站 triage_status=ignored）"""
-    if not data.job_ids:
-        raise HTTPException(status_code=400, detail="job_ids is required")
-
-    if len(data.job_ids) > 500:
-        raise HTTPException(status_code=400, detail="job_ids exceeds 500")
-
-    result = await db.execute(select(Job).where(Job.id.in_(data.job_ids)))
-    jobs = result.scalars().all()
-
-    found_ids = {job.id for job in jobs}
-    missing_ids = sorted(set(data.job_ids) - found_ids)
-    if missing_ids:
-        raise HTTPException(status_code=404, detail=f"some job_ids were not found: {missing_ids}")
-
-    non_ignored = [job.id for job in jobs if job.triage_status != "ignored"]
-    if non_ignored:
-        raise HTTPException(
-            status_code=400,
-            detail=f"only ignored jobs can be deleted permanently: {non_ignored}",
-        )
-
-    deleted = 0
-    for job in jobs:
-        await db.delete(job)
-        deleted += 1
-
-    await db.commit()
-    return {"deleted": deleted}
+    result = await execute_operation(
+        "delete_jobs_batch",
+        data.model_dump(),
+        surface="ui",
+    )
+    return _operation_output_or_error(result)
 
 # 注意：静态路径段（batch-triage）必须注册在动态段（{job_id}）之前，
 # 否则 FastAPI 按注册顺序匹配会把 "batch-triage" 当作 job_id 导致 422。
 @router.patch("/batch-triage")
-async def batch_triage(data: BatchTriageRequest, db: AsyncSession = Depends(get_db)):
+async def batch_triage(data: BatchTriageRequest):
     """兼容新接口：批量分拣（pool_id=0 表示清空池）。"""
     triage_status = _to_internal_status(data.triage_status) if data.triage_status else None
     clear_pool = data.pool_id == 0
     pool_id = None if clear_pool else data.pool_id
 
-    if not data.job_ids:
-        raise HTTPException(status_code=400, detail="job_ids is required")
-    if triage_status and triage_status not in TRIAGE_STATUSES:
-        raise HTTPException(status_code=400, detail="invalid triage_status")
-
-    values: dict = {}
-    if triage_status:
-        values["triage_status"] = triage_status
-    if clear_pool:
-        values["pool_id"] = None
-    elif pool_id is not None:
-        values["pool_id"] = pool_id
-        if triage_status is None:
-            values["triage_status"] = "picked"
-
-    if not values:
-        raise HTTPException(status_code=400, detail="no update fields provided")
-
-    stmt = update(Job).where(Job.id.in_(data.job_ids)).values(**values)
-    result = await db.execute(stmt)
-    await db.commit()
-    return {"updated": result.rowcount or 0}
+    result = await execute_operation(
+        "batch_update_jobs",
+        {
+            "job_ids": data.job_ids,
+            "triage_status": triage_status,
+            "pool_id": pool_id,
+            "clear_pool": clear_pool,
+        },
+        surface="ui",
+    )
+    return _operation_output_or_error(result)
 
 
 @router.patch("/{job_id}")
@@ -542,7 +518,32 @@ async def ingest_jobs(req: IngestRequest):
         req.model_dump(),
         surface="browser_extension_ui",
     )
-    return _operation_output_or_error(result)
+    output = _operation_output_or_error(result)
+    automation_events: list[dict] = []
+    automation_errors: list[str] = []
+    runtime_provider = _automation_runtime_for_source(req.source)
+    for job_id in output.get("created_job_ids") or []:
+        event = await execute_operation(
+            "record_automation_event",
+            {
+                "event_type": "JOB_SAVED",
+                "source": "browser_extension",
+                "target_type": "job",
+                "target_id": str(job_id),
+                "payload": {"job_id": int(job_id), "runtime_provider": runtime_provider},
+                "dedupe_key": f"job-saved:job:{int(job_id)}",
+            },
+            surface="automation",
+        )
+        if event.get("ok"):
+            automation_events.append(event.get("outputs") or {})
+        else:
+            automation_errors.extend(str(item) for item in event.get("errors") or [])
+    output["automation"] = {
+        "events": automation_events,
+        "errors": automation_errors,
+    }
+    return output
 
 def _job_to_dict(job: Job) -> dict:
     """将 ORM 对象序列化为字典"""

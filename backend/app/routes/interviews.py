@@ -21,6 +21,7 @@ class InterviewCreate(BaseModel):
     question_count: int = Field(5, ge=1, le=10)
     scoring_skill_id: str = "evidence-interview-score"
     scoring_skill_version: Optional[int] = None
+    role_benchmark_run_id: Optional[str] = Field(default=None, min_length=1, max_length=64)
     model_provider: str
     data_consent: bool
     consented_data_categories: list[str]
@@ -123,6 +124,26 @@ async def list_interviews(
 @router.post("/")
 async def create_interview(data: InterviewCreate):
     return await _execute("create_ai_interview", data.model_dump())
+
+
+@router.get("/focus-plan")
+async def prepare_role_interview_focus(
+    job_id: int = Query(..., gt=0),
+    run_id: Optional[str] = Query(None, min_length=1, max_length=64),
+    profile_id: Optional[int] = Query(None, gt=0),
+    focus_count: int = Query(5, ge=3, le=5),
+    question_count: int = Query(5, ge=5, le=8),
+):
+    return await _execute(
+        "prepare_role_interview_focus",
+        {
+            "job_id": job_id,
+            "run_id": run_id,
+            "profile_id": profile_id,
+            "focus_count": focus_count,
+            "question_count": question_count,
+        },
+    )
 
 
 @router.get("/{interview_id}")

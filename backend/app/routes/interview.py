@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -48,6 +48,23 @@ class ExtractBody(BaseModel):
 
 class GenerateAnswerBody(BaseModel):
     question_id: int
+
+
+async def _execute_operation(name: str, args: dict[str, Any]) -> Any:
+    from app.ops import execute_operation
+
+    result = await execute_operation(name, args, surface="legacy_interview_api")
+    if not result.get("ok"):
+        message = "；".join(str(item) for item in result.get("errors") or [])
+        lowered = message.lower()
+        if "不存在" in message or "not found" in lowered:
+            status = 404
+        elif "llm" in lowered:
+            status = 502
+        else:
+            status = 400
+        raise HTTPException(status_code=status, detail=message or "操作失败")
+    return result.get("outputs")
 
 
 # ---------- GET /questions ----------
@@ -104,146 +121,31 @@ async def list_questions(
 # ---------- POST /collect ----------
 
 @router.post("/collect")
-async def collect_experience(body: CollectBody, db: AsyncSession = Depends(get_db)):
+async def collect_experience(body: CollectBody):
     """提交面经原文（手动粘贴）"""
-    exp = InterviewExperience(
-        company=body.company.strip(),
-        role=body.role.strip(),
-        raw_text=body.raw_text,
-        source_url=body.source_url,
-        source_platform=body.source_platform,
-        job_id=body.job_id,
+    return await _execute_operation(
+        "collect_interview_experience", body.model_dump()
     )
-    db.add(exp)
-    await db.commit()
-    await db.refresh(exp)
-
-    _logger.info("Collected experience #%d: %s / %s", exp.id, exp.company, exp.role)
-
-    return {
-        "id": exp.id,
-        "company": exp.company,
-        "role": exp.role,
-        "source_platform": exp.source_platform,
-        "collected_at": exp.collected_at.isoformat() if exp.collected_at else None,
-    }
 
 
 # ---------- POST /extract ----------
 
 @router.post("/extract")
-async def extract_from_experience(body: ExtractBody, db: AsyncSession = Depends(get_db)):
+async def extract_from_experience(body: ExtractBody):
     """LLM 提炼面经 → 结构化问题入库"""
-    exp = await db.get(InterviewExperience, body.experience_id)
-    if not exp:
-        raise HTTPException(404, "面经记录不存在")
-
-    result = await extract_questions(
-        company=exp.company,
-        role=exp.role,
-        raw_text=exp.raw_text,
+    return await _execute_operation(
+        "extract_interview_questions", body.model_dump()
     )
-
-    if not result:
-        raise HTTPException(502, "LLM 提炼失败，请稍后重试")
-
-    questions_added = []
-    for q in result.get("questions", []):
-        iq = InterviewQuestion(
-            experience_id=exp.id,
-            question_text=q.get("question_text", ""),
-            round_type=q.get("round_type", "department"),
-            category=q.get("category", "behavioral"),
-            difficulty=q.get("difficulty", 3),
-            job_id=exp.job_id,
-        )
-        db.add(iq)
-        questions_added.append(iq)
-
-    # 更新面经的 rounds 信息
-    if result.get("rounds"):
-        import json
-        exp.interview_rounds = json.dumps(result["rounds"], ensure_ascii=False)
-
-    await db.commit()
-
-    # refresh to get IDs
-    for iq in questions_added:
-        await db.refresh(iq)
-
-    _logger.info("Extracted %d questions from experience #%d", len(questions_added), exp.id)
-
-    return {
-        "experience_id": exp.id,
-        "rounds": result.get("rounds", []),
-        "questions_count": len(questions_added),
-        "questions": [
-            {
-                "id": iq.id,
-                "question_text": iq.question_text,
-                "round_type": iq.round_type,
-                "category": iq.category,
-                "difficulty": iq.difficulty,
-            }
-            for iq in questions_added
-        ],
-    }
 
 
 # ---------- POST /generate-answer ----------
 
 @router.post("/generate-answer")
-async def generate_answer(body: GenerateAnswerBody, db: AsyncSession = Depends(get_db)):
+async def generate_answer(body: GenerateAnswerBody):
     """根据 Profile 为某道题生成回答思路"""
-    iq = await db.get(InterviewQuestion, body.question_id)
-    if not iq:
-        raise HTTPException(404, "题目不存在")
-
-    # 获取用户 Profile bullets
-    profile = (await db.execute(select(Profile).limit(1))).scalar_one_or_none()
-    if not profile:
-        raise HTTPException(404, "请先创建个人档案")
-
-    sections = (await db.execute(
-        select(ProfileSection)
-        .where(ProfileSection.profile_id == profile.id)
-        .where(ProfileSection.status == "active")
-    )).scalars().all()
-
-    # 从 content_json 提取文本（PRD §8.4: 优先 bullet → description → title）
-    bullet_lines = []
-    for s in sections:
-        cj = s.content_json or {}
-        text = cj.get("bullet") or cj.get("description") or s.title or ""
-        if isinstance(text, str):
-            text = text.strip()
-        if text:
-            bullet_lines.append(f"- [{s.section_type}] {text}")
-
-    bullets = "\n".join(bullet_lines)
-
-    if not bullets:
-        raise HTTPException(400, "Profile 内容为空，请先填写个人经历")
-
-    answer = await generate_answer_hint(
-        question=iq.question_text,
-        category=iq.category,
-        difficulty=iq.difficulty,
-        profile_bullets=bullets,
+    return await _execute_operation(
+        "generate_legacy_interview_answer", body.model_dump()
     )
-
-    if not answer:
-        raise HTTPException(502, "LLM 生成失败，请稍后重试")
-
-    # 保存到数据库
-    iq.suggested_answer = answer
-    await db.commit()
-
-    return {
-        "question_id": iq.id,
-        "question_text": iq.question_text,
-        "suggested_answer": answer,
-    }
 
 
 # ---------- GET /experiences ----------

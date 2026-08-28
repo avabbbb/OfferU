@@ -986,12 +986,8 @@ async def optimize_generate(data: OptimizeGenerateRequest):
 # =============================================
 
 from app.agents.optimize_agent import (
-    start_session,
-    chat_turn,
-    chat_turn_stream,
     list_sessions_from_db as _list_agent_sessions,
     get_session_detail as _get_session_detail,
-    delete_session as _delete_session,
 )
 
 
@@ -1009,10 +1005,23 @@ class OptimizeAgentChatRequest(BaseModel):
     feedback: str = ""
 
 
+async def _execute_agent_operation(name: str, args: dict) -> dict:
+    from app.ops import execute_operation
+
+    result = await execute_operation(name, args, surface="optimize_api")
+    if not result.get("ok"):
+        detail = "；".join(str(item) for item in result.get("errors") or [])
+        status = 404 if "不存在" in detail or "not found" in detail.lower() else 400
+        raise HTTPException(status_code=status, detail=detail or "操作失败")
+    outputs = result.get("outputs")
+    if not isinstance(outputs, dict):
+        raise HTTPException(status_code=502, detail="操作返回了无效结果")
+    return outputs
+
+
 @router.post("/agent/start")
 async def optimize_agent_start(
     body: OptimizeAgentStartRequest,
-    db: AsyncSession = Depends(get_db),
 ):
     effective_job_ids = _ordered_unique_ids(body.job_ids)
     if body.mode != "per_job" or len(effective_job_ids) != 1:
@@ -1020,12 +1029,14 @@ async def optimize_agent_start(
             status_code=409,
             detail="对话式简历提案当前一次只支持一个岗位；综合多 JD 直写模式已停用。",
         )
-    result = await start_session(
-        job_ids=effective_job_ids,
-        mode="per_job",
-        profile_id=body.profile_id,
-        reference_resume_id=body.reference_resume_id,
-        db=db,
+    result = await _execute_agent_operation(
+        "start_optimize_agent_session",
+        {
+            "job_ids": effective_job_ids,
+            "mode": "per_job",
+            "profile_id": body.profile_id,
+            "reference_resume_id": body.reference_resume_id,
+        },
     )
     return result
 
@@ -1033,31 +1044,34 @@ async def optimize_agent_start(
 @router.post("/agent/chat")
 async def optimize_agent_chat(
     body: OptimizeAgentChatRequest,
-    db: AsyncSession = Depends(get_db),
 ):
-    result = await chat_turn(
-        session_id=body.session_id,
-        user_message=body.message,
-        action=body.action,
-        feedback=body.feedback,
-        db=db,
+    return await _execute_agent_operation(
+        "chat_optimize_agent_session",
+        {
+            "session_id": body.session_id,
+            "message": body.message,
+            "action": body.action,
+            "feedback": body.feedback,
+        },
     )
-    return result
 
 
 @router.post("/agent/chat/stream")
 async def optimize_agent_chat_stream(
     body: OptimizeAgentChatRequest,
-    db: AsyncSession = Depends(get_db),
 ):
+    result = await _execute_agent_operation(
+        "stream_optimize_agent_session",
+        {
+            "session_id": body.session_id,
+            "message": body.message,
+            "action": body.action,
+            "feedback": body.feedback,
+        },
+    )
+
     async def _stream():
-        async for event in chat_turn_stream(
-            session_id=body.session_id,
-            user_message=body.message,
-            action=body.action,
-            feedback=body.feedback,
-            db=db,
-        ):
+        for event in result.get("events") or []:
             yield event
 
     return StreamingResponse(
@@ -1132,7 +1146,7 @@ async def optimize_agent_session_delete(
     session_id: str,
     db: AsyncSession = Depends(get_db),
 ):
-    deleted = await _delete_session(session_id, db)
-    if not deleted:
-        raise HTTPException(status_code=404, detail="会话不存在")
-    return {"deleted": True, "session_id": session_id}
+    return await _execute_agent_operation(
+        "delete_optimize_agent_session",
+        {"session_id": session_id},
+    )

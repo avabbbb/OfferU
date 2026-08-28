@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -10,23 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.cover_letter import generate_cover_letter
 from app.database import get_db
-from app.models.models import Application, Batch, Job, Resume
+from app.models.models import Application, Job
 from app.services.application_workspace import (
-    apply_template_to_all_tables,
-    auto_write_job_to_total,
-    create_record,
-    create_records_from_jobs,
-    create_subtable,
-    delete_records_from_table,
-    delete_subtable,
-    get_workspace_payload,
     list_table_records,
-    move_records_to_table,
-    rename_table,
-    save_template_schema_and_apply,
-    update_record_value,
-    update_settings,
-    update_table_schema,
+    get_workspace_payload,
 )
 
 router = APIRouter()
@@ -119,6 +105,18 @@ def _bad_request(error: ValueError) -> HTTPException:
     return HTTPException(status_code=400, detail=str(error))
 
 
+async def _execute_operation(name: str, args: dict[str, Any]) -> Any:
+    from app.ops import execute_operation
+
+    result = await execute_operation(name, args, surface="applications_api")
+    if not result.get("ok"):
+        message = "；".join(str(item) for item in result.get("errors") or [])
+        lowered = message.lower()
+        status = 404 if "不存在" in message or "not found" in lowered else 400
+        raise HTTPException(status_code=status, detail=message or "操作失败")
+    return result.get("outputs")
+
+
 @router.get("/workspace")
 async def workspace(db: AsyncSession = Depends(get_db)):
     return await get_workspace_payload(db)
@@ -168,9 +166,9 @@ async def table_records(
 
 
 @router.post("/tables")
-async def create_table(data: TableCreateRequest, db: AsyncSession = Depends(get_db)):
+async def create_table(data: TableCreateRequest):
     try:
-        return await create_subtable(db, name=data.name)
+        return await _execute_operation("create_application_table", data.model_dump())
     except ValueError as exc:
         raise _bad_request(exc) from exc
 
@@ -179,18 +177,19 @@ async def create_table(data: TableCreateRequest, db: AsyncSession = Depends(get_
 async def rename_table_route(
     table_id: int,
     data: TableRenameRequest,
-    db: AsyncSession = Depends(get_db),
 ):
     try:
-        return await rename_table(db, table_id=table_id, name=data.name)
+        return await _execute_operation(
+            "rename_application_table", {"table_id": table_id, **data.model_dump()}
+        )
     except ValueError as exc:
         raise _bad_request(exc) from exc
 
 
 @router.delete("/tables/{table_id}")
-async def delete_table_route(table_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_table_route(table_id: int):
     try:
-        return await delete_subtable(db, table_id=table_id)
+        return await _execute_operation("delete_application_table", {"table_id": table_id})
     except ValueError as exc:
         raise _bad_request(exc) from exc
 
@@ -199,10 +198,12 @@ async def delete_table_route(table_id: int, db: AsyncSession = Depends(get_db)):
 async def import_jobs(
     table_id: int,
     data: ImportJobsRequest,
-    db: AsyncSession = Depends(get_db),
 ):
     try:
-        return await create_records_from_jobs(db, table_id=table_id, job_ids=data.job_ids)
+        return await _execute_operation(
+            "import_jobs_to_application_table",
+            {"table_id": table_id, "job_ids": data.job_ids},
+        )
     except ValueError as exc:
         raise _bad_request(exc) from exc
 
@@ -211,64 +212,20 @@ async def import_jobs(
 async def import_latest_extension_batch(
     table_id: int,
     data: ImportLatestExtensionBatchRequest,
-    db: AsyncSession = Depends(get_db),
 ):
-    source = (data.source or "offeru-extension").strip()
-    batch_id = (data.batch_id or "").strip()
-    batch: Batch | None = None
-
-    if batch_id:
-        batch = (await db.execute(select(Batch).where(Batch.id == batch_id))).scalar_one_or_none()
-    else:
-        batch = (
-            await db.execute(
-                select(Batch)
-                .where(Batch.source == source)
-                .order_by(desc(Batch.created_at))
-            )
-        ).scalars().first()
-        batch_id = batch.id if batch else ""
-
-    if not batch_id:
-        raise HTTPException(status_code=404, detail="no extension sync batch found")
-
-    job_ids = (
-        await db.execute(
-            select(Job.id)
-            .where(Job.batch_id == batch_id)
-            .order_by(Job.created_at.desc(), Job.id.desc())
-            .limit(data.limit)
-        )
-    ).scalars().all()
-    if not job_ids:
-        raise HTTPException(status_code=404, detail="extension sync batch has no jobs")
-
     try:
-        result = await create_records_from_jobs(
-            db,
-            table_id=table_id,
-            job_ids=[int(job_id) for job_id in job_ids],
-            skip_existing_in_table=data.skip_existing,
+        return await _execute_operation(
+            "import_latest_extension_batch_to_application_table",
+            {"table_id": table_id, **data.model_dump()},
         )
     except ValueError as exc:
         raise _bad_request(exc) from exc
 
-    return {
-        "batch_id": batch_id,
-        "source": batch.source if batch else source,
-        "total_jobs": len(job_ids),
-        **result,
-    }
-
-
 @router.post("/records")
-async def create_record_route(data: RecordCreateRequest, db: AsyncSession = Depends(get_db)):
+async def create_record_route(data: RecordCreateRequest):
     try:
-        return await create_record(
-            db,
-            table_id=data.table_id,
-            values=data.values,
-            job_ref_id=data.job_ref_id,
+        return await _execute_operation(
+            "create_application_table_record", data.model_dump()
         )
     except ValueError as exc:
         raise _bad_request(exc) from exc
@@ -278,40 +235,31 @@ async def create_record_route(data: RecordCreateRequest, db: AsyncSession = Depe
 async def patch_record(
     record_id: int,
     data: RecordPatchRequest,
-    db: AsyncSession = Depends(get_db),
 ):
     try:
-        return await update_record_value(
-            db,
-            record_id=record_id,
-            field_key=data.field_key,
-            value=data.value,
+        return await _execute_operation(
+            "update_application_table_record",
+            {"record_id": record_id, **data.model_dump()},
         )
     except ValueError as exc:
         raise _bad_request(exc) from exc
 
 
 @router.post("/records/move")
-async def move_records(data: MoveRecordsRequest, db: AsyncSession = Depends(get_db)):
+async def move_records(data: MoveRecordsRequest):
     try:
-        return await move_records_to_table(
-            db,
-            source_table_id=data.source_table_id,
-            target_table_id=data.target_table_id,
-            record_ids=data.record_ids,
+        return await _execute_operation(
+            "move_application_records", data.model_dump()
         )
     except ValueError as exc:
         raise _bad_request(exc) from exc
 
 
 @router.post("/records/delete")
-async def delete_records(data: DeleteRecordsRequest, db: AsyncSession = Depends(get_db)):
+async def delete_records(data: DeleteRecordsRequest):
     try:
-        return await delete_records_from_table(
-            db,
-            table_id=data.table_id,
-            record_ids=data.record_ids,
-            delete_from_total=data.delete_from_total,
+        return await _execute_operation(
+            "delete_application_records", data.model_dump()
         )
     except ValueError as exc:
         raise _bad_request(exc) from exc
@@ -321,10 +269,12 @@ async def delete_records(data: DeleteRecordsRequest, db: AsyncSession = Depends(
 async def update_table_schema_route(
     table_id: int,
     data: TableSchemaUpdateRequest,
-    db: AsyncSession = Depends(get_db),
 ):
     try:
-        return await update_table_schema(db, table_id=table_id, schema=data.schema_payload)
+        return await _execute_operation(
+            "update_application_table_schema",
+            {"table_id": table_id, "schema": data.schema_payload},
+        )
     except ValueError as exc:
         raise _bad_request(exc) from exc
 
@@ -336,24 +286,18 @@ async def get_template(db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/template")
-async def put_template(data: TemplateUpdateRequest, db: AsyncSession = Depends(get_db)):
-    result = await save_template_schema_and_apply(
-        db,
-        schema=data.schema_payload,
-        purge_non_template_fields=data.purge_non_template_fields,
+async def put_template(data: TemplateUpdateRequest):
+    result = await _execute_operation(
+        "update_application_template",
+        {"schema": data.schema_payload, "purge_non_template_fields": data.purge_non_template_fields},
     )
-    return {
-        "schema": result["template_schema"],
-        "updated_tables": result["updated_tables"],
-        "purged_keys": result["purged_keys"],
-    }
+    return result
 
 
 @router.post("/template/apply-to-all")
-async def apply_template(data: TemplateApplyRequest, db: AsyncSession = Depends(get_db)):
-    return await apply_template_to_all_tables(
-        db,
-        purge_non_template_fields=data.purge_non_template_fields,
+async def apply_template(data: TemplateApplyRequest):
+    return await _execute_operation(
+        "apply_application_template_to_all", data.model_dump()
     )
 
 
@@ -364,19 +308,16 @@ async def get_settings(db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/settings")
-async def put_settings(data: SettingsUpdateRequest, db: AsyncSession = Depends(get_db)):
-    return await update_settings(
-        db,
-        auto_row_height=data.auto_row_height,
-        auto_column_width=data.auto_column_width,
-        delete_subtable_sync_total_default=data.delete_subtable_sync_total_default,
+async def put_settings(data: SettingsUpdateRequest):
+    return await _execute_operation(
+        "update_application_settings", data.model_dump(exclude_none=True)
     )
 
 
 @router.post("/auto-write")
-async def auto_write(data: AutoWriteRequest, db: AsyncSession = Depends(get_db)):
+async def auto_write(data: AutoWriteRequest):
     try:
-        return await auto_write_job_to_total(db, job_id=data.job_id)
+        return await _execute_operation("auto_write_application_job", data.model_dump())
     except ValueError as exc:
         raise _bad_request(exc) from exc
 
@@ -429,47 +370,13 @@ async def list_applications(
 
 
 @router.post("/")
-async def create_application(data: ApplicationCreate, db: AsyncSession = Depends(get_db)):
-    job = (await db.execute(select(Job).where(Job.id == data.job_id))).scalar_one_or_none()
-    app = Application(
-        job_id=data.job_id,
-        apply_url=job.apply_url if job else "",
-        notes=data.notes,
-        status="pending",
-    )
-    db.add(app)
-    await db.commit()
-    await db.refresh(app)
-
-    try:
-        await auto_write_job_to_total(db, job_id=data.job_id)
-    except ValueError:
-        pass
-
-    return {"id": app.id, "message": "Application created"}
+async def create_application(data: ApplicationCreate):
+    return await _execute_operation("create_legacy_application", data.model_dump())
 
 
 @router.post("/generate")
-async def generate(data: GenerateRequest, db: AsyncSession = Depends(get_db)):
-    job = (await db.execute(select(Job).where(Job.id == data.job_id))).scalar_one_or_none()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-
-    resume = (await db.execute(select(Resume).where(Resume.id == data.resume_id))).scalar_one_or_none()
-    if not resume:
-        raise HTTPException(status_code=404, detail="Resume not found")
-
-    content = resume.content_json or {}
-    resume_text = f"姓名: {content.get('name', '')}\n"
-    resume_text += f"技能: {content.get('skills', '')}\n"
-    for exp in content.get("experience", []):
-        resume_text += f"工作经历: {exp.get('company', '')} - {exp.get('position', '')}\n"
-        resume_text += f"  描述: {exp.get('description', '')}\n"
-
-    return await generate_cover_letter(
-        jd=job.raw_description or job.summary,
-        resume=resume_text,
-    )
+async def generate(data: GenerateRequest):
+    return await _execute_operation("generate_legacy_cover_letter", data.model_dump())
 
 
 @router.get("/stats")
@@ -483,19 +390,8 @@ async def application_stats(db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/{app_id}")
-async def update_application(app_id: int, data: ApplicationUpdate, db: AsyncSession = Depends(get_db)):
-    app = (await db.execute(select(Application).where(Application.id == app_id))).scalar_one_or_none()
-    if not app:
-        raise HTTPException(status_code=404, detail="Application not found")
-
-    if data.status is not None:
-        app.status = data.status
-        if data.status == "submitted":
-            app.submitted_at = datetime.utcnow()
-    if data.notes is not None:
-        app.notes = data.notes
-    if data.cover_letter is not None:
-        app.cover_letter = data.cover_letter
-
-    await db.commit()
-    return {"id": app.id, "message": "Updated"}
+async def update_application(app_id: int, data: ApplicationUpdate):
+    return await _execute_operation(
+        "update_legacy_application",
+        {"application_id": app_id, **data.model_dump(exclude_none=True)},
+    )

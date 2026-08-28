@@ -46,6 +46,18 @@ class JobResearchReviewRequest(BaseModel):
     note: str = Field("", max_length=2000)
 
 
+class RoleBenchmarkRequest(BaseModel):
+    runtime_id: str = Field(
+        "codex",
+        pattern=r"^(codex|claude|gemini|omp|pi|opencode|fixture|replay|boss-fixture|plugin:[a-z0-9][a-z0-9_-]{0,63})$",
+    )
+    role_family: str = Field("", max_length=120)
+    specialization: str = Field("", max_length=160)
+    seniority: str = Field("", max_length=60)
+    region: str = Field("", max_length=300)
+    industry: str = Field("", max_length=200)
+
+
 class PreApplicationDecisionPrepareRequest(BaseModel):
     research_run_id: Optional[str] = Field(default=None, min_length=1, max_length=80)
 
@@ -100,6 +112,50 @@ async def review_job_research_run(
         "review_job_research",
         {"run_id": run_id, **data.model_dump()},
     )
+
+
+@router.post("/role-benchmarks/{job_id}/build")
+async def build_role_benchmark(
+    job_id: int,
+    data: RoleBenchmarkRequest,
+):
+    return await _execute(
+        "build_role_benchmark",
+        {"job_id": job_id, **data.model_dump()},
+    )
+
+
+@router.post("/role-benchmarks/{job_id}/refresh")
+async def refresh_role_benchmark(
+    job_id: int,
+    data: RoleBenchmarkRequest,
+):
+    return await _execute(
+        "refresh_role_benchmark",
+        {"job_id": job_id, **data.model_dump()},
+    )
+
+
+@router.get("/role-benchmarks/job/{job_id}")
+async def role_benchmark_for_job(job_id: int):
+    return await _execute("get_role_benchmark", {"job_id": job_id})
+
+
+@router.get("/role-benchmarks/{run_id}/signals")
+async def role_benchmark_signals(
+    run_id: str,
+    direction: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=200),
+):
+    return await _execute(
+        "list_role_delta_signals",
+        {"run_id": run_id, "direction": direction, "limit": limit},
+    )
+
+
+@router.get("/role-benchmarks/{run_id}")
+async def role_benchmark(run_id: str):
+    return await _execute("get_role_benchmark", {"run_id": run_id})
 
 
 @router.get("/pre-application/{job_id}")

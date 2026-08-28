@@ -19,8 +19,9 @@ from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db, async_session
-from app.models.models import Job, Batch, Pool
+from app.database import get_db
+from app.models.models import Job, Batch
+from app.ops import execute_operation
 from app.services.scrapers.base import get_all_scrapers, get_scraper
 from app.services.campus_detector import detect_campus
 
@@ -72,15 +73,15 @@ def _build_pool_name(source_key: str, keywords: list[str]) -> str:
     return f"{source_label}{date_label}+{keyword_text}"
 
 
-async def _ensure_unique_pool_name(db: AsyncSession, base_name: str) -> str:
-    candidate = base_name
-    index = 2
-    while True:
-        existing = (await db.execute(select(Pool).where(Pool.name == candidate))).scalar_one_or_none()
-        if not existing:
-            return candidate
-        candidate = f"{base_name}（{index}）"
-        index += 1
+async def _operation_outputs(name: str, args: dict) -> dict:
+    result = await execute_operation(name, args, surface="scraper_api")
+    if not result.get("ok"):
+        detail = "；".join(str(item) for item in result.get("errors") or [])
+        raise HTTPException(status_code=400, detail=detail or "操作失败")
+    outputs = result.get("outputs")
+    if not isinstance(outputs, dict):
+        raise HTTPException(status_code=502, detail="操作返回了无效结果")
+    return outputs
 
 
 @router.get("/sources")
@@ -100,7 +101,7 @@ async def list_sources():
 
 
 @router.post("/run")
-async def run_scraper(req: RunRequest, db: AsyncSession = Depends(get_db)):
+async def run_scraper(req: RunRequest):
     """
     手动触发爬取任务
     返回任务 ID，任务异步执行
@@ -115,28 +116,23 @@ async def run_scraper(req: RunRequest, db: AsyncSession = Depends(get_db)):
     task_id = hashlib.md5(f"{req.source}-{datetime.utcnow().isoformat()}".encode()).hexdigest()[:12]
     batch_id = f"batch-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}-{task_id[:4]}"
     pool_base_name = _build_pool_name(req.source, req.keywords)
-    pool_name = await _ensure_unique_pool_name(db, pool_base_name)
-    pool = Pool(name=pool_name, scope="inbox")
-    db.add(pool)
-    await db.flush()
-
-    db.add(
-        Batch(
-            id=batch_id,
-            source=req.source,
-            keywords=req.keywords,
-            location=req.location,
-            max_results=req.max_results,
-            status="running",
-        )
+    batch = await _operation_outputs(
+        "start_scraper_batch",
+        {
+            "batch_id": batch_id,
+            "source": req.source,
+            "keywords": req.keywords,
+            "location": req.location,
+            "max_results": req.max_results,
+            "pool_name": pool_base_name,
+        },
     )
-    await db.commit()
 
     task_info = {
         "id": task_id,
         "batch_id": batch_id,
-        "pool_id": pool.id,
-        "pool_name": pool.name,
+        "pool_id": batch["pool_id"],
+        "pool_name": batch["pool_name"],
         "source": req.source,
         "keywords": req.keywords,
         "location": req.location,
@@ -152,8 +148,8 @@ async def run_scraper(req: RunRequest, db: AsyncSession = Depends(get_db)):
     return {
         "task_id": task_id,
         "batch_id": batch_id,
-        "pool_id": pool.id,
-        "pool_name": pool.name,
+        "pool_id": batch["pool_id"],
+        "pool_name": batch["pool_name"],
         "status": "running",
     }
 
@@ -184,56 +180,68 @@ async def _execute_scraper(task_info: dict, scraper, req: RunRequest):
             if not warning:
                 warning = "本次任务没有抓到新岗位，可能是关键词/城市无结果，或平台反爬拦截。"
 
-        created = 0
-        skipped = 0
-        # 后台任务必须使用独立会话，避免复用请求生命周期内已关闭的 session。
-        async with async_session() as db:
-            for item in items:
-                # 生成 hash_key 用于去重
-                if not item.hash_key:
-                    raw = f"{item.title}-{item.company}-{item.url}"
-                    item.hash_key = hashlib.md5(raw.encode()).hexdigest()
-
-                existing = await db.execute(select(Job).where(Job.hash_key == item.hash_key))
-                if existing.scalar_one_or_none():
-                    skipped += 1
-                    continue
-
-                job = Job(
-                    title=item.title,
-                    company=item.company,
-                    location=item.location,
-                    url=item.url,
-                    apply_url=item.apply_url,
-                    source=item.source or scraper.source_name,
-                    raw_description=item.raw_description,
-                    hash_key=item.hash_key,
-                    triage_status="inbox",
-                    pool_id=task_info.get("pool_id"),
-                    batch_id=task_info.get("batch_id", "legacy-import"),
-                    salary_text=item.salary,
-                    job_type=item.employment_type,
-                    company_industry=item.industries,
-                    is_campus=detect_campus(
+        job_payloads = []
+        for item in items:
+            raw = f"{item.title}-{item.company}-{item.url}"
+            source = item.source or scraper.source_name
+            job_payloads.append(
+                {
+                    "title": item.title,
+                    "company": item.company,
+                    "location": item.location,
+                    "url": item.url,
+                    "apply_url": item.apply_url,
+                    "source": source,
+                    "raw_description": item.raw_description,
+                    "posted_at": item.posted_at or None,
+                    "batch_id": task_info.get("batch_id", "legacy-import"),
+                    "hash_key": item.hash_key or hashlib.md5(raw.encode()).hexdigest(),
+                    "salary_text": item.salary,
+                    "job_type": item.employment_type,
+                    "company_industry": item.industries,
+                    "is_campus": detect_campus(
                         title=item.title,
-                        source=item.source or scraper.source_name,
-                        experience="",
+                        source=source,
+                        experience=item.seniority_level,
                         job_type=item.employment_type,
                         raw_description=item.raw_description,
                     ),
-                )
-                db.add(job)
-                created += 1
+                }
+            )
 
-            batch = (
-                await db.execute(select(Batch).where(Batch.id == task_info.get("batch_id")))
-            ).scalar_one_or_none()
-            if batch:
-                batch.total_fetched = (batch.total_fetched or 0) + len(items)
-                batch.job_count = created
-                batch.status = "completed"
+        if job_payloads:
+            ingest = await execute_operation(
+                "import_job_batch",
+                {
+                    "jobs": job_payloads,
+                    "source": req.source,
+                    "batch_id": task_info.get("batch_id"),
+                    "keywords": req.keywords,
+                    "location": req.location,
+                    "pool_id": task_info.get("pool_id"),
+                },
+                surface="scraper_background",
+            )
+            if not ingest.get("ok"):
+                raise RuntimeError("；".join(str(item) for item in ingest.get("errors") or []) or "岗位导入失败")
+            ingest_output = ingest.get("outputs") if isinstance(ingest.get("outputs"), dict) else {}
+        else:
+            ingest_output = {"created": 0, "skipped": 0, "failed": []}
 
-            await db.commit()
+        created = int(ingest_output.get("created") or 0)
+        skipped = int(ingest_output.get("skipped") or 0)
+        finalized = await execute_operation(
+            "finalize_scraper_batch",
+            {
+                "batch_id": task_info.get("batch_id"),
+                "total_fetched": len(items),
+                "job_count": created,
+                "status": "completed",
+            },
+            surface="scraper_background",
+        )
+        if not finalized.get("ok"):
+            raise RuntimeError("；".join(str(item) for item in finalized.get("errors") or []) or "批次收口失败")
 
         task_info["status"] = "completed"
         task_info["result"] = {
@@ -249,14 +257,19 @@ async def _execute_scraper(task_info: dict, scraper, req: RunRequest):
         logger.error("[scraper] task failed: %s", e)
         task_info["status"] = "failed"
         task_info["result"] = {"error": str(e)}
-
-        async with async_session() as db:
-            batch = (
-                await db.execute(select(Batch).where(Batch.id == task_info.get("batch_id")))
-            ).scalar_one_or_none()
-            if batch:
-                batch.status = "failed"
-                await db.commit()
+        try:
+            await execute_operation(
+                "finalize_scraper_batch",
+                {
+                    "batch_id": task_info.get("batch_id"),
+                    "total_fetched": 0,
+                    "job_count": 0,
+                    "status": "failed",
+                },
+                surface="scraper_background",
+            )
+        except Exception:
+            logger.exception("[scraper] failed to persist batch failure")
 
 
 @router.get("/tasks")

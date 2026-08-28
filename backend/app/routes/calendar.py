@@ -7,7 +7,7 @@
 # =============================================
 
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -29,6 +29,17 @@ class EventCreate(BaseModel):
     location: str = ""
     related_job_id: Optional[int] = None
     related_notification_id: Optional[int] = None
+
+
+async def _execute_operation(name: str, args: dict[str, Any]) -> Any:
+    from app.ops import execute_operation
+
+    result = await execute_operation(name, args, surface="calendar_api")
+    if not result.get("ok"):
+        message = "；".join(str(item) for item in result.get("errors") or [])
+        status = 404 if "不存在" in message or "not found" in message.lower() else 400
+        raise HTTPException(status_code=status, detail=message or "操作失败")
+    return result.get("outputs")
 
 
 @router.get("/events")
@@ -72,74 +83,15 @@ async def list_events(
 
 
 @router.post("/events")
-async def create_event(data: EventCreate, db: AsyncSession = Depends(get_db)):
+async def create_event(data: EventCreate):
     """手动创建日程事件"""
-    event = CalendarEvent(
-        title=data.title,
-        description=data.description,
-        event_type=data.event_type,
-        start_time=data.start_time,
-        end_time=data.end_time,
-        location=data.location,
-        related_job_id=data.related_job_id,
-        related_notification_id=data.related_notification_id,
-    )
-    db.add(event)
-    await db.commit()
-    await db.refresh(event)
-    return {"id": event.id, "message": "Event created"}
+    return await _execute_operation("create_calendar_event", data.model_dump())
 
 
 @router.post("/auto-fill")
-async def auto_fill_events(db: AsyncSession = Depends(get_db)):
+async def auto_fill_events():
     """
     自动补建日历事件：扫描所有有 interview_time 但尚未关联 CalendarEvent 的通知。
     作为兜底机制 —— 正常 sync 时已自动创建，此接口处理遗漏。
     """
-    from datetime import timedelta
-    from app.models.models import InterviewNotification
-
-    # 需要自动创建日历的分类
-    auto_categories = {
-        "written_test", "assessment",
-        "interview_1", "interview_2", "interview_hr",
-    }
-    category_display = {
-        "written_test": "笔试通知", "assessment": "在线测评",
-        "interview_1": "初面/技术面", "interview_2": "复面/交叉面",
-        "interview_hr": "HR面/终面",
-    }
-
-    # 找出有 interview_time 且未关联日历事件的通知
-    subq = select(CalendarEvent.related_notification_id).where(
-        CalendarEvent.related_notification_id.is_not(None)
-    )
-    stmt = (
-        select(InterviewNotification)
-        .where(
-            InterviewNotification.interview_time.is_not(None),
-            InterviewNotification.id.not_in(subq),
-        )
-    )
-    result = await db.execute(stmt)
-    notifications = result.scalars().all()
-
-    created = 0
-    for n in notifications:
-        category = getattr(n, "category", "unknown")
-        if category not in auto_categories:
-            continue
-        event = CalendarEvent(
-            title=f"{category_display.get(category, '面试')} - {n.company}",
-            description=f"岗位: {n.position}\n{getattr(n, 'action_required', '')}",
-            event_type="interview",
-            start_time=n.interview_time,
-            end_time=n.interview_time + timedelta(hours=1),
-            location=n.location or "",
-            related_notification_id=n.id,
-        )
-        db.add(event)
-        created += 1
-
-    await db.commit()
-    return {"created": created, "scanned": len(notifications)}
+    return await _execute_operation("auto_fill_calendar_events", {})

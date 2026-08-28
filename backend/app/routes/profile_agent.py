@@ -6,20 +6,13 @@ import json
 import re
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.llm import chat_completion, extract_json
-from app.database import get_db
-from app.models.models import ProfileChatSession, ProfileSection, ProfileTargetRole
 from app.routes.profile import (
     _extract_resume_base_info,
     _extract_resume_candidates,
-    _get_or_create_default_profile,
-    _load_profile_bundle,
-    _serialize_profile,
 )
 from app.services.profile_builder_agent import (
     FIELD_LABELS,
@@ -29,7 +22,6 @@ from app.services.profile_builder_agent import (
     normalize_profile_agent_patch,
     run_profile_agent_loop,
 )
-from app.services.profile_schema import normalize_base_info_payload
 from app.services.resume_parser import parse_resume_file
 
 router = APIRouter()
@@ -37,6 +29,17 @@ router = APIRouter()
 MAX_AGENT_RESUME_FILE_SIZE = 10 * 1024 * 1024
 PROFILE_AGENT_TOPIC = "profile_builder"
 PERSONAL_ARCHIVE_SCHEMA_VERSION = "personal.archive.v1"
+
+
+async def _execute_operation(name: str, args: dict[str, Any]) -> Any:
+    from app.ops import execute_operation
+
+    result = await execute_operation(name, args, surface="profile_agent_api")
+    if not result.get("ok"):
+        detail = "；".join(str(item) for item in result.get("errors") or [])
+        status = 404 if "not found" in detail.lower() or "不存在" in detail else 400
+        raise HTTPException(status_code=status, detail=detail or "操作失败")
+    return result.get("outputs")
 
 
 class ProfileAgentMessageRequest(BaseModel):
@@ -581,118 +584,6 @@ async def _generate_raw_turn_patch(state: dict[str, Any], messages_json: list[An
     return parsed
 
 
-async def _load_agent_session(db: AsyncSession, session_id: int) -> ProfileChatSession:
-    profile = await _get_or_create_default_profile(db)
-    session = (
-        await db.execute(
-            select(ProfileChatSession).where(
-                ProfileChatSession.id == session_id,
-                ProfileChatSession.profile_id == profile.id,
-                ProfileChatSession.topic == PROFILE_AGENT_TOPIC,
-            )
-        )
-    ).scalar_one_or_none()
-    if not session:
-        raise HTTPException(status_code=404, detail="profile agent session not found")
-    return session
-
-
-async def _apply_patch_to_profile(db: AsyncSession, patch: dict[str, Any]) -> dict[str, Any]:
-    profile = await _get_or_create_default_profile(db)
-    existing_base_info = profile.base_info_json if isinstance(profile.base_info_json, dict) else {}
-    base_info = patch.get("base_info") if isinstance(patch.get("base_info"), dict) else {}
-    if base_info:
-        merged_base = normalize_base_info_payload({**existing_base_info, **base_info})
-        profile.base_info_json = {**existing_base_info, **merged_base, **base_info}
-        if base_info.get("name"):
-            profile.name = str(base_info["name"])[:120]
-        if base_info.get("summary") and not profile.headline:
-            profile.headline = str(base_info["summary"])[:300]
-
-    existing_roles = {
-        role.role_name
-        for role in (
-            await db.execute(select(ProfileTargetRole).where(ProfileTargetRole.profile_id == profile.id))
-        ).scalars().all()
-    }
-    for index, role_name in enumerate(patch.get("target_roles") or []):
-        role = str(role_name).strip()
-        if not role or role in existing_roles:
-            continue
-        db.add(
-            ProfileTargetRole(
-                profile_id=profile.id,
-                role_name=role[:120],
-                role_level="",
-                fit="primary" if index == 0 else "secondary",
-            )
-        )
-        existing_roles.add(role)
-
-    applied_sections: list[ProfileSection] = []
-    max_sort = (
-        await db.execute(select(func.max(ProfileSection.sort_order)).where(ProfileSection.profile_id == profile.id))
-    ).scalar()
-    next_sort = int(max_sort or 0) + 1
-
-    for item in patch.get("sections") or []:
-        if not isinstance(item, dict):
-            continue
-        existing_sections = (
-            await db.execute(
-                select(ProfileSection)
-                .where(
-                    ProfileSection.profile_id == profile.id,
-                    ProfileSection.section_type == item["section_type"],
-                    ProfileSection.title == item["title"],
-                    ProfileSection.status == "active",
-                )
-                .order_by(ProfileSection.id.desc())
-            )
-        ).scalars().all()
-        duplicate = next(
-            (section for section in existing_sections if (section.content_json or {}) == item["content_json"]),
-            None,
-        )
-        if duplicate:
-            applied_sections.append(duplicate)
-            continue
-
-        section = ProfileSection(
-            profile_id=profile.id,
-            section_type=item["section_type"],
-            title=item["title"],
-            sort_order=next_sort,
-            content_json=item["content_json"],
-            source="ai_profile_agent",
-            confidence=float(item.get("confidence") or 0.7),
-        )
-        next_sort += 1
-        db.add(section)
-        applied_sections.append(section)
-
-    latest_base_info = profile.base_info_json if isinstance(profile.base_info_json, dict) else existing_base_info
-    profile.base_info_json = {
-        **latest_base_info,
-        "personal_archive": build_personal_archive_from_agent_patch(
-            existing_base_info=latest_base_info,
-            patch=patch,
-            existing_archive=latest_base_info.get("personal_archive") if isinstance(latest_base_info, dict) else None,
-        ),
-    }
-
-    await db.commit()
-    for section in applied_sections:
-        await db.refresh(section)
-
-    profile, roles, sections = await _load_profile_bundle(db, profile.id)
-    return {
-        "applied": True,
-        "applied_sections_count": len(applied_sections),
-        "profile": _serialize_profile(profile, roles, sections),
-    }
-
-
 @router.post("/start")
 async def start_profile_agent(
     target_role: str = Form(default=""),
@@ -700,11 +591,9 @@ async def start_profile_agent(
     job_goal: str = Form(default=""),
     resume_text: str = Form(default=""),
     file: UploadFile | None = File(default=None),
-    db: AsyncSession = Depends(get_db),
 ):
     filename, parsed_text = await _parse_uploaded_resume(file)
     source_text = (parsed_text or resume_text or "").strip()
-    profile = await _get_or_create_default_profile(db)
 
     base_info = _extract_resume_base_info(source_text) if source_text else {}
     candidates = await _extract_resume_candidates(source_text) if source_text else []
@@ -737,99 +626,31 @@ async def start_profile_agent(
         _profile_agent_item("profile_agent_patch", patch=patch, applied=False),
     ]
 
-    session = ProfileChatSession(
-        profile_id=profile.id,
-        topic=PROFILE_AGENT_TOPIC,
-        status="active",
-        messages_json=messages_json,
-        extracted_bullets_count=len(patch.get("sections") or []),
+    return await _execute_operation(
+        "start_profile_agent_session",
+        {"state": state, "patch": patch, "messages_json": messages_json},
     )
-    db.add(session)
-    await db.commit()
-    await db.refresh(session)
-
-    return {
-        "session_id": session.id,
-        "state": state,
-        "assistant_message": patch["assistant_message"],
-        "patch": patch,
-    }
 
 
 @router.post("/message")
-async def continue_profile_agent(data: ProfileAgentMessageRequest, db: AsyncSession = Depends(get_db)):
-    session = await _load_agent_session(db, data.session_id)
-    messages_json = list(session.messages_json or [])
-    state = _extract_agent_state(messages_json)
-    user_message = data.message.strip()
-
-    messages_json.append({"role": "user", "topic": PROFILE_AGENT_TOPIC, "content": user_message})
-    loop_result = await run_profile_agent_loop(
-        state=state,
-        messages_json=messages_json,
-        user_message=user_message,
-        generate_patch=_generate_raw_turn_patch,
+async def continue_profile_agent(data: ProfileAgentMessageRequest):
+    return await _execute_operation(
+        "continue_profile_agent_session",
+        data.model_dump(),
     )
-    patch = loop_result["patch"]
-    next_state = _update_missing_after_patch(state, patch) if patch.get("sections") or patch.get("base_info") else state
-
-    messages_json.append({"role": "assistant", "topic": PROFILE_AGENT_TOPIC, "content": patch["assistant_message"]})
-    messages_json.append(_profile_agent_item("profile_agent_patch", patch=patch, applied=False))
-    messages_json.append(
-        _profile_agent_item(
-            "profile_agent_loop",
-            trace=loop_result["trace"],
-            stop_reason=loop_result["stop_reason"],
-        )
-    )
-    messages_json.append(_profile_agent_item("profile_agent_state", state=next_state))
-    session.messages_json = messages_json
-    session.extracted_bullets_count = int(session.extracted_bullets_count or 0) + len(patch.get("sections") or [])
-    if patch["action"] == "finish":
-        session.status = "completed"
-
-    await db.commit()
-
-    return {
-        "session_id": session.id,
-        "state": next_state,
-        "assistant_message": patch["assistant_message"],
-        "patch": patch,
-        "agent_trace": loop_result["trace"],
-        "stop_reason": loop_result["stop_reason"],
-    }
 
 
 @router.post("/apply-patch")
-async def apply_profile_agent_patch(data: ProfileAgentApplyRequest, db: AsyncSession = Depends(get_db)):
-    session = await _load_agent_session(db, data.session_id)
-    messages_json = list(session.messages_json or [])
-    raw_patch = data.patch if isinstance(data.patch, dict) else _extract_pending_patch(messages_json)
-    if not raw_patch:
-        raise HTTPException(status_code=400, detail="no pending patch")
-
-    patch = normalize_profile_agent_patch(raw_patch)
-    result = await _apply_patch_to_profile(db, patch)
-
-    for item in reversed(messages_json):
-        if isinstance(item, dict) and item.get("kind") == "profile_agent_patch" and not item.get("applied"):
-            item["applied"] = True
-            break
-    messages_json.append(_profile_agent_item("profile_agent_apply", patch=patch, result={"applied": True}))
-    session.messages_json = messages_json
-    await db.commit()
-
-    return result
+async def apply_profile_agent_patch(data: ProfileAgentApplyRequest):
+    return await _execute_operation(
+        "apply_profile_agent_patch",
+        data.model_dump(exclude_none=True),
+    )
 
 
 @router.get("/sessions/{session_id}")
-async def get_profile_agent_session(session_id: int, db: AsyncSession = Depends(get_db)):
-    session = await _load_agent_session(db, session_id)
-    messages_json = list(session.messages_json or [])
-    return {
-        "id": session.id,
-        "status": session.status,
-        "state": _extract_agent_state(messages_json),
-        "pending_patch": _extract_pending_patch(messages_json),
-        "messages_json": messages_json,
-    }
+async def get_profile_agent_session(session_id: int):
+    return await _execute_operation(
+        "get_profile_agent_session",
+        {"session_id": session_id},
+    )

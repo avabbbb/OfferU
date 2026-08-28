@@ -10,18 +10,18 @@ from sse_starlette.sse import EventSourceResponse
 
 from app.ops import list_operations
 from app.services.harness_history import (
-    delete_conversation,
     get_conversation,
     list_conversations,
-    save_conversation_messages,
 )
 from app.services.harness_memory import (
     export_agent_memory_markdown,
-    import_agent_memory_payload,
     load_agent_memory,
-    save_agent_memory,
 )
 from app.services.agent_skill_registry import registry_snapshot
+from app.services.agent_runtime import (
+    canonical_agent_run_event,
+    get_agent_run_provider,
+)
 
 router = APIRouter()
 runtime_router = APIRouter()
@@ -53,6 +53,12 @@ class PiAgentRunRequest(BaseModel):
         default=None,
         pattern=r"^run_[a-f0-9]{16,32}$",
     )
+    runtime_provider: str = Field(
+        default="pi",
+        min_length=1,
+        max_length=40,
+        pattern=r"^[a-z0-9][a-z0-9_-]*$",
+    )
 
 
 class PiAgentConfirmationRequest(BaseModel):
@@ -61,6 +67,32 @@ class PiAgentConfirmationRequest(BaseModel):
 
 class HostedSessionActionRequest(BaseModel):
     confirmed: bool
+
+
+class AutomationEventRequest(BaseModel):
+    event_type: str = Field(min_length=1, max_length=80)
+    source: str = Field(default="ui", min_length=1, max_length=80)
+    target_type: str = ""
+    target_id: str = ""
+    payload: dict[str, Any] = Field(default_factory=dict)
+    dedupe_key: str = ""
+
+
+class AutomationInboxActionRequest(BaseModel):
+    action: str = Field(pattern="^(resolve|dismiss|reopen)$")
+
+
+class CareerTaskStartRequest(BaseModel):
+    task_type: str = Field(min_length=1, max_length=100)
+    source: str = Field(default="ui", min_length=1, max_length=80)
+    target_type: str = ""
+    target_id: str = ""
+    runtime_provider: str = "replay"
+    input: dict[str, Any] = Field(default_factory=dict)
+    output_contract: dict[str, Any] = Field(default_factory=dict)
+    run_id: str = ""
+    idempotency_key: str = ""
+    max_attempts: int = Field(default=3, ge=1, le=10)
 
 
 async def _ui_operation_outputs(
@@ -81,6 +113,47 @@ async def _ui_operation_outputs(
     if not isinstance(outputs, dict):
         raise HTTPException(status_code=502, detail="Operation returned invalid outputs")
     return outputs
+
+
+async def _ui_operation_projection(
+    operation: str,
+    args: dict[str, Any],
+) -> dict[str, Any]:
+    """Use the same proposal boundary for UI-triggered runtime mutations."""
+    from app.services.operation_projection import execute_or_propose_operation
+
+    result = await execute_or_propose_operation(
+        operation,
+        args,
+        surface="agent_runtime_ui",
+    )
+    if not result.get("ok"):
+        detail = "；".join(str(item) for item in result.get("errors") or [])
+        raise HTTPException(status_code=400, detail=detail or "Operation failed")
+    outputs = result.get("outputs")
+    if not isinstance(outputs, dict):
+        raise HTTPException(status_code=502, detail="Operation returned invalid outputs")
+    return outputs
+
+
+def _main_agent_provider(provider_id: str = "pi"):
+    """Resolve the provider at the anti-corruption boundary only."""
+
+    try:
+        return get_agent_run_provider(provider_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+async def _provider_for_run(run_id: str):
+    from app.services.agent_run_state import load_agent_run
+
+    run = await load_agent_run(run_id)
+    provider_id = "pi"
+    if run is not None:
+        runtime = run.get("llm_runtime") if isinstance(run.get("llm_runtime"), dict) else {}
+        provider_id = str(runtime.get("provider_id") or "pi")
+    return _main_agent_provider(provider_id)
 
 
 @router.get("/skills")
@@ -135,7 +208,7 @@ async def agent_run_events(
     )
     return {
         "run_id": run_id,
-        "events": events,
+        "events": [canonical_agent_run_event(event) for event in events],
         "last_sequence": events[-1]["sequence"] if events else after_sequence,
     }
 
@@ -248,13 +321,11 @@ async def follow_runtime_run_events(
             )
             for event in batch:
                 cursor = int(event["sequence"])
+                canonical = canonical_agent_run_event(event)
                 yield {
                     "id": str(cursor),
-                    "event": str(event.get("type") or "runtime.event"),
-                    "data": json.dumps(
-                        {**event, "durable": True},
-                        ensure_ascii=False,
-                    ),
+                    "event": str(canonical.get("type") or "reasoning.status"),
+                    "data": json.dumps({**canonical, "durable": True}, ensure_ascii=False),
                 }
 
             run = await load_agent_run(run_id)
@@ -286,19 +357,152 @@ async def follow_runtime_run_events(
 
 @runtime_router.get("/runtime")
 async def runtime_status() -> dict[str, Any]:
-    """Probe the OfferU-owned Pi SDK Worker without starting an Agent Run."""
-    from app.services.pi_agent_worker import get_pi_agent_worker
+    """Probe the configured Main Agent provider without leaking its implementation."""
 
-    try:
-        return {"available": True, "runtime": "pi_sdk_worker", **(await get_pi_agent_worker().probe())}
-    except Exception as exc:
-        return {"available": False, "runtime": "pi_sdk_worker", "error": str(exc)[:500]}
+    provider = _main_agent_provider("pi")
+    return await provider.status()
+
+
+@runtime_router.get("/runtime/providers/health")
+async def agent_provider_health() -> dict[str, Any]:
+    return await _ui_operation_outputs("list_agent_provider_health", {})
+
+
+@runtime_router.get("/runtime/career-tasks")
+async def career_tasks(
+    status: str | None = None,
+    task_type: str | None = None,
+    target_type: str | None = None,
+    target_id: str | None = None,
+    limit: int = 50,
+) -> dict[str, Any]:
+    return await _ui_operation_outputs(
+        "list_career_tasks",
+        {
+            "status": status,
+            "task_type": task_type,
+            "target_type": target_type,
+            "target_id": target_id,
+            "limit": limit,
+        },
+    )
+
+
+@runtime_router.post("/runtime/career-tasks")
+async def start_career_task(body: CareerTaskStartRequest) -> dict[str, Any]:
+    return await _ui_operation_projection(
+        "start_career_task",
+        body.model_dump(),
+    )
+
+
+@runtime_router.get("/runtime/career-tasks/{task_id}")
+async def career_task(task_id: str) -> dict[str, Any]:
+    return await _ui_operation_outputs("get_career_task", {"task_id": task_id})
+
+
+@runtime_router.get("/runtime/career-tasks/{task_id}/events")
+async def career_task_events(task_id: str, after: int = 0, limit: int = 100) -> dict[str, Any]:
+    return await _ui_operation_outputs(
+        "list_career_task_events",
+        {"task_id": task_id, "after": after, "limit": limit},
+    )
+
+
+@runtime_router.get("/runtime/career-tasks/{task_id}/result")
+async def career_task_result(task_id: str) -> dict[str, Any]:
+    return await _ui_operation_outputs("get_career_task_result", {"task_id": task_id})
+
+
+@runtime_router.post("/runtime/career-tasks/{task_id}/cancel")
+async def cancel_career_task(task_id: str) -> dict[str, Any]:
+    return await _ui_operation_projection("cancel_career_task", {"task_id": task_id})
+
+
+@runtime_router.post("/runtime/career-tasks/{task_id}/retry")
+async def retry_career_task(task_id: str) -> dict[str, Any]:
+    return await _ui_operation_projection("retry_career_task", {"task_id": task_id})
+
+
+@runtime_router.post("/runtime/career-tasks/{task_id}/resume")
+async def resume_career_task(task_id: str) -> dict[str, Any]:
+    return await _ui_operation_projection("resume_career_task", {"task_id": task_id})
+
+
+@runtime_router.get("/runtime/plugins")
+async def capability_plugins() -> dict[str, Any]:
+    return await _ui_operation_outputs("list_capability_plugins", {})
+
+
+@runtime_router.get("/runtime/plugins/capabilities")
+async def plugin_capabilities() -> dict[str, Any]:
+    return await _ui_operation_outputs("list_plugin_capabilities", {})
+
+
+@runtime_router.post("/runtime/plugins/{plugin}/install")
+async def install_plugin(plugin: str) -> dict[str, Any]:
+    return await _ui_operation_projection("install_capability_plugin", {"plugin": plugin})
+
+
+@runtime_router.delete("/runtime/plugins/{plugin}")
+async def uninstall_plugin(plugin: str) -> dict[str, Any]:
+    return await _ui_operation_projection("uninstall_capability_plugin", {"plugin": plugin})
+
+
+@runtime_router.get("/runtime/automation/events")
+async def automation_events(
+    event_type: str | None = None,
+    status: str | None = None,
+    limit: int = 100,
+) -> dict[str, Any]:
+    return await _ui_operation_outputs(
+        "list_automation_events",
+        {"event_type": event_type, "status": status, "limit": limit},
+    )
+
+
+@runtime_router.get("/runtime/automation/inbox")
+async def automation_inbox(
+    status: str = "pending",
+    category: str | None = None,
+    limit: int = 100,
+) -> dict[str, Any]:
+    return await _ui_operation_outputs(
+        "list_automation_inbox",
+        {"status": status, "category": category, "limit": limit},
+    )
+
+
+@runtime_router.get("/runtime/automation/rules")
+async def automation_rules(enabled: bool | None = None) -> dict[str, Any]:
+    return await _ui_operation_outputs(
+        "list_automation_rules",
+        {"enabled": enabled},
+    )
+
+
+@runtime_router.post("/runtime/automation/events")
+async def record_automation_event(body: AutomationEventRequest) -> dict[str, Any]:
+    return await _ui_operation_projection(
+        "record_automation_event",
+        body.model_dump(),
+    )
+
+
+@runtime_router.post("/runtime/automation/inbox/{item_id}")
+async def resolve_automation_inbox_item(
+    item_id: str,
+    body: AutomationInboxActionRequest,
+) -> dict[str, Any]:
+    return await _ui_operation_projection(
+        "resolve_automation_inbox_item",
+        {"item_id": item_id, "action": body.action},
+    )
 
 
 @runtime_router.post("/runtime/runs")
 async def start_runtime_run(body: PiAgentRunRequest) -> dict[str, Any]:
-    """Start one task-bound Pi Session with a frozen Skill grant."""
-    from app.services.pi_agent_host import start_pi_agent_run
+    """Start one task-bound Agent Run through the configured provider seam."""
 
     try:
         if body.run_id:
@@ -313,14 +517,18 @@ async def start_runtime_run(body: PiAgentRunRequest) -> dict[str, Any]:
             else None
         )
         previous_messages = list((previous or {}).get("messages") or [])
-        conversation = save_conversation_messages(
-            conversation_id=body.conversation_id,
-            messages=[
-                *previous_messages,
-                {"role": "user", "content": body.message},
-            ],
+        conversation = await _ui_operation_outputs(
+            "save_harness_conversation",
+            {
+                "conversation_id": body.conversation_id,
+                "messages": [
+                    *previous_messages,
+                    {"role": "user", "content": body.message},
+                ],
+            },
         )
-        result = await start_pi_agent_run(
+        provider = _main_agent_provider(body.runtime_provider)
+        result = await provider.start_run(
             message=body.message,
             skill_id=body.skill_id,
             conversation_id=conversation["id"],
@@ -330,12 +538,15 @@ async def start_runtime_run(body: PiAgentRunRequest) -> dict[str, Any]:
         )
         assistant_message = str(result.get("assistant_message") or "").strip()
         if assistant_message:
-            conversation = save_conversation_messages(
-                conversation_id=conversation["id"],
-                messages=[
-                    *conversation["messages"],
-                    {"role": "assistant", "content": assistant_message},
-                ],
+            conversation = await _ui_operation_outputs(
+                "save_harness_conversation",
+                {
+                    "conversation_id": conversation["id"],
+                    "messages": [
+                        *conversation["messages"],
+                        {"role": "assistant", "content": assistant_message},
+                    ],
+                },
             )
         result["conversation_id"] = conversation["id"]
         result["conversation_title"] = conversation["title"]
@@ -346,8 +557,7 @@ async def start_runtime_run(body: PiAgentRunRequest) -> dict[str, Any]:
 
 @runtime_router.post("/runtime/runs/stream")
 async def stream_runtime_run(body: PiAgentRunRequest):
-    """Stream persisted, provider-neutral Pi Run events and the final response."""
-    from app.services.pi_agent_host import start_pi_agent_run
+    """Stream stable OfferU Agent Run events from the selected provider."""
     from app.services.agent_run_state import load_agent_run
 
     if body.run_id and await load_agent_run(body.run_id) is not None:
@@ -359,13 +569,17 @@ async def stream_runtime_run(body: PiAgentRunRequest):
         else None
     )
     previous_messages = list((previous or {}).get("messages") or [])
-    conversation = save_conversation_messages(
-        conversation_id=body.conversation_id,
-        messages=[
-            *previous_messages,
-            {"role": "user", "content": body.message},
-        ],
+    conversation = await _ui_operation_outputs(
+        "save_harness_conversation",
+        {
+            "conversation_id": body.conversation_id,
+            "messages": [
+                *previous_messages,
+                {"role": "user", "content": body.message},
+            ],
+        },
     )
+    provider = _main_agent_provider(body.runtime_provider)
 
     async def events():
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=1000)
@@ -379,7 +593,7 @@ async def stream_runtime_run(body: PiAgentRunRequest):
                 pass
 
         async def run_and_record() -> dict[str, Any]:
-            result = await start_pi_agent_run(
+            result = await provider.start_run(
                 message=body.message,
                 skill_id=body.skill_id,
                 conversation_id=conversation["id"],
@@ -391,12 +605,15 @@ async def stream_runtime_run(body: PiAgentRunRequest):
             assistant_message = str(result.get("assistant_message") or "").strip()
             completed_conversation = conversation
             if assistant_message:
-                completed_conversation = save_conversation_messages(
-                    conversation_id=conversation["id"],
-                    messages=[
-                        *conversation["messages"],
-                        {"role": "assistant", "content": assistant_message},
-                    ],
+                completed_conversation = await _ui_operation_outputs(
+                    "save_harness_conversation",
+                    {
+                        "conversation_id": conversation["id"],
+                        "messages": [
+                            *conversation["messages"],
+                            {"role": "assistant", "content": assistant_message},
+                        ],
+                    },
                 )
             result["conversation_id"] = completed_conversation["id"]
             result["conversation_title"] = completed_conversation["title"]
@@ -414,14 +631,15 @@ async def stream_runtime_run(body: PiAgentRunRequest):
                     event = await asyncio.wait_for(queue.get(), timeout=0.25)
                 except asyncio.TimeoutError:
                     continue
+                canonical = canonical_agent_run_event(event)
                 yield {
                     **(
-                        {"id": str(event["sequence"])}
-                        if event.get("sequence") is not None
+                        {"id": str(canonical["sequence"])}
+                        if canonical.get("sequence") is not None
                         else {}
                     ),
-                    "event": str(event.get("type") or "runtime.event"),
-                    "data": json.dumps(event, ensure_ascii=False),
+                    "event": str(canonical.get("type") or "reasoning.status"),
+                    "data": json.dumps(canonical, ensure_ascii=False),
                 }
             result = await task
             yield {
@@ -442,29 +660,32 @@ async def confirm_runtime_action(
     run_id: str,
     body: PiAgentConfirmationRequest,
 ) -> dict[str, Any]:
-    """Confirm one persisted action; Pi itself never receives write authority."""
-    from app.services.pi_agent_host import confirm_pi_agent_action
+    """Confirm one persisted action through the selected Agent provider."""
 
-    return await confirm_pi_agent_action(run_id, action_id=body.action_id)
+    provider = await _provider_for_run(run_id)
+    return await provider.confirm_run(run_id, action_id=body.action_id)
 
 
 @runtime_router.post("/runtime/runs/{run_id}/resume")
 async def resume_runtime_run(run_id: str) -> dict[str, Any]:
-    """Explicitly restore the persisted Pi Session for an interrupted Run."""
-    from app.services.pi_agent_host import resume_pi_agent_run
+    """Explicitly restore the persisted Agent Session for an interrupted Run."""
 
     try:
-        result = await resume_pi_agent_run(run_id)
+        provider = await _provider_for_run(run_id)
+        result = await provider.resume_run(run_id)
         conversation_id = str(result.get("run", {}).get("conversation_id") or "")
         conversation = get_conversation(conversation_id) if conversation_id else None
         assistant_message = str(result.get("assistant_message") or "").strip()
         if conversation is not None and assistant_message:
-            conversation = save_conversation_messages(
-                conversation_id=conversation_id,
-                messages=[
-                    *(conversation.get("messages") or []),
-                    {"role": "assistant", "content": assistant_message},
-                ],
+            conversation = await _ui_operation_outputs(
+                "save_harness_conversation",
+                {
+                    "conversation_id": conversation_id,
+                    "messages": [
+                        *(conversation.get("messages") or []),
+                        {"role": "assistant", "content": assistant_message},
+                    ],
+                },
             )
             result["conversation_id"] = conversation["id"]
             result["conversation_title"] = conversation["title"]
@@ -475,10 +696,9 @@ async def resume_runtime_run(run_id: str) -> dict[str, Any]:
 
 @runtime_router.post("/runtime/runs/{run_id}/abort")
 async def abort_runtime_run(run_id: str) -> dict[str, Any]:
-    from app.services.pi_agent_host import abort_pi_agent_run
-
     try:
-        return await abort_pi_agent_run(run_id)
+        provider = await _provider_for_run(run_id)
+        return await provider.abort_run(run_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
@@ -586,38 +806,24 @@ async def conversation_detail(conversation_id: str) -> dict[str, Any]:
 
 @router.delete("/conversations/{conversation_id}")
 async def remove_conversation(conversation_id: str) -> dict[str, Any]:
-    return {"ok": delete_conversation(conversation_id)}
+    return await _ui_operation_outputs(
+        "delete_harness_conversation",
+        {"conversation_id": conversation_id},
+    )
 
 
 @router.post("/conversations/{conversation_id}/distill")
 async def distill_conversation_memory(conversation_id: str) -> dict[str, Any]:
-    """会话结束钩子：把对话中的用户要点提炼进记忆收件箱（HITL，不直接写 Profile）。"""
-    conversation = get_conversation(conversation_id)
-    if conversation is None:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-    user_lines = [
-        str(item.get("content") or "").strip()
-        for item in conversation.get("messages", [])
-        if isinstance(item, dict) and item.get("role") == "user"
-    ]
-    text = "\n".join(line for line in user_lines if line)
-    if not text:
-        return {"recorded": False, "reason": "conversation has no user messages"}
-    from app.services.memory_distiller import distill_conversation
-
-    return await distill_conversation(
-        conversation_text=text,
-        session_key=conversation_id,
-        metadata={"turns": len(user_lines)},
+    return await _ui_operation_outputs(
+        "distill_harness_conversation",
+        {"conversation_id": conversation_id},
     )
 
 
 @router.post("/memory/promote")
 async def promote_memory() -> dict[str, Any]:
     """把 harness 会话记忆快照送入职业记忆管线（提案进收件箱，需人工确认）。"""
-    from app.services.memory_distiller import promote_session_memory
-
-    return await promote_session_memory()
+    return await _ui_operation_outputs("promote_harness_memory", {})
 
 
 @router.get("/memory/search")
@@ -641,6 +847,7 @@ async def export_memory(format: str = "json") -> dict[str, Any]:
 
 @router.post("/memory/import")
 async def import_memory(body: AgentMemoryImportRequest) -> dict[str, Any]:
-    memory = import_agent_memory_payload(body.content)
-    saved = save_agent_memory(memory)
-    return {"ok": True, "memory": saved}
+    return await _ui_operation_outputs(
+        "import_harness_memory",
+        {"content": body.content},
+    )
