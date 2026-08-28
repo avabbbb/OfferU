@@ -3,38 +3,38 @@
 @tailwind utilities;
 
 :root {
-  /* ── Editorial / Notion 极简令牌 ── */
-  --background: #fbfaf8;
-  --foreground: #37352f;
-  --foreground-soft: #6b6963;
-  --foreground-muted: #9b9993;
-  --foreground-faint: #c5c3bd;
+  /* ── OfferU 工作台令牌：安静、清晰、可扫描 ── */
+  --background: #f4f6f7;
+  --foreground: #243039;
+  --foreground-soft: #5d6b73;
+  --foreground-muted: #829098;
+  --foreground-faint: #aeb9be;
   --surface: #ffffff;
-  --surface-muted: #f7f6f2;
-  --surface-hover: #f1efea;
-  --status-blush: #fbf2ee;
-  --status-sage: #eef3ee;
-  --accent-clay: #b87e6b;
-  --fabric-base: #f4f1ea;
-  --fabric-thread: rgba(92, 78, 64, 0.055);
-  --fabric-highlight: rgba(255, 255, 255, 0.52);
-  --focus-ring: rgba(68, 85, 138, 0.32);
+  --surface-muted: #eef2f3;
+  --surface-hover: #e6ecee;
+  --status-blush: #fff0ed;
+  --status-sage: #e9f3ed;
+  --accent-clay: #c77867;
+  --fabric-base: #f0ebe5;
+  --fabric-thread: rgba(104, 88, 72, 0.045);
+  --fabric-highlight: rgba(255, 255, 255, 0.62);
+  --focus-ring: rgba(59, 95, 155, 0.38);
 
   /* 语义色 — 仅用于关键状态提示, 去饱和 */
-  --primary-red: #b4451f;
-  --primary-yellow: #946200;
-  --primary-green: #2f6e4f;
-  --primary-blue: #44558a;
+  --primary-red: #b95146;
+  --primary-yellow: #966b12;
+  --primary-green: #3c765a;
+  --primary-blue: #3b5f9b;
   --auxiliary-blue: var(--primary-blue);
   --auxiliary-green: var(--primary-green);
   --accent: var(--foreground);
   --accent-bg: var(--surface-hover);
 
-  /* hairline 边框 — 拒绝 2px 黑实线 + 硬偏移阴影 */
-  --border: rgba(55, 53, 47, 0.06);
-  --border-strong: rgba(55, 53, 47, 0.12);
-  --shadow-soft: rgba(55, 53, 47, 0.04);
-  --shadow-medium: rgba(55, 53, 47, 0.08);
+  /* 细边框和轻层次，不用大块黑线制造层级 */
+  --border: rgba(36, 48, 57, 0.1);
+  --border-strong: rgba(36, 48, 57, 0.22);
+  --shadow-soft: rgba(24, 40, 48, 0.06);
+  --shadow-medium: rgba(24, 40, 48, 0.12);
 
   /* ── Animation Tokens ── */
   --dur-instant: 100ms;
@@ -61,7 +61,9 @@ html {
 
 body {
   min-height: 100vh;
-  background-color: var(--background);
+  background:
+    radial-gradient(circle at 100% 0, rgba(199, 120, 103, 0.08), transparent 28rem),
+    var(--background);
   color: var(--foreground);
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   font-family: var(--font-display), "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
@@ -82,7 +84,7 @@ select {
 }
 
 ::selection {
-  background: rgba(68, 85, 138, 0.18);
+  background: rgba(59, 95, 155, 0.18);
   color: var(--foreground);
 }
 
@@ -92,18 +94,18 @@ select {
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(18, 18, 18, 0.06);
+  background: rgba(36, 48, 57, 0.04);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(55, 53, 47, 0.14);
+  background: rgba(36, 48, 57, 0.16);
   border: 2px solid transparent;
   background-clip: content-box;
   border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(55, 53, 47, 0.22);
+  background: rgba(36, 48, 57, 0.26);
   background-clip: content-box;
 }
 
@@ -227,15 +229,15 @@ select {
   .bauhaus-panel {
     border: 1px solid var(--border);
     background: var(--surface);
-    border-radius: 10px;
-    box-shadow: none;
+    border-radius: 14px;
+    box-shadow: 0 1px 2px var(--shadow-soft), 0 10px 24px rgba(24, 40, 48, 0.025);
   }
 
   .bauhaus-panel-sm {
     border: 1px solid var(--border);
     background: var(--surface);
-    border-radius: 8px;
-    box-shadow: none;
+    border-radius: 10px;
+    box-shadow: 0 1px 2px var(--shadow-soft);
   }
 }
 
@@ -265,14 +267,14 @@ select {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  border: 1px solid transparent;
-  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
   padding: 0.5rem 0.875rem;
   font-size: 0.84rem;
   font-weight: 500;
   letter-spacing: 0;
   text-transform: none;
-  background: transparent;
+  background: var(--surface);
   color: var(--foreground);
   transition:
     transform var(--dur-snappy) var(--ease-precise),
@@ -283,13 +285,15 @@ select {
 }
 
 .bauhaus-button:focus-visible {
-  outline: 2px solid var(--primary-blue);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(59, 95, 155, 0.1);
 }
 
 .bauhaus-button:hover {
   transform: translateY(-1px);
   background: var(--surface-muted);
+  border-color: var(--border-strong);
 }
 
 .bauhaus-button:active {
@@ -302,33 +306,60 @@ select {
 .bauhaus-button-blue,
 .bauhaus-button-green,
 .bauhaus-button-yellow {
-  background: transparent;
-  color: var(--foreground);
+  border-color: transparent;
 }
 
-.bauhaus-button-red:hover {
+.bauhaus-button-red {
   background: var(--status-blush);
   color: var(--primary-red);
 }
 
-.bauhaus-button-blue:hover {
-  background: rgba(68, 85, 138, 0.08);
+.bauhaus-button-blue {
+  background: rgba(59, 95, 155, 0.1);
   color: var(--primary-blue);
 }
 
-.bauhaus-button-green:hover {
+.bauhaus-button-green {
   background: var(--status-sage);
   color: var(--primary-green);
 }
 
+.bauhaus-button-yellow {
+  background: #fbf3d8;
+  color: var(--primary-yellow);
+}
+
+.bauhaus-button-red:hover {
+  background: #ffe3de;
+  color: var(--primary-red);
+}
+
+.bauhaus-button-blue:hover {
+  background: rgba(59, 95, 155, 0.17);
+  color: var(--primary-blue);
+}
+
+.bauhaus-button-green:hover {
+  background: #dceee4;
+  color: var(--primary-green);
+}
+
 .bauhaus-button-yellow:hover {
-  background: rgba(148, 98, 0, 0.08);
+  background: #f7e9bd;
   color: var(--primary-yellow);
 }
 
 .bauhaus-button-outline {
   background: var(--surface);
   border-color: var(--border-strong);
+  color: var(--foreground);
+}
+
+.bauhaus-button:disabled,
+.bauhaus-button[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.48;
+  transform: none;
 }
 
 .bauhaus-button-sm {
@@ -351,9 +382,9 @@ select {
 }
 
 .bauhaus-label {
-  font-size: 0.74rem;
+  font-size: 0.7rem;
   font-weight: 500;
-  letter-spacing: 0;
+  letter-spacing: 0.06em;
   text-transform: none;
   color: var(--foreground-soft);
 }
@@ -366,7 +397,7 @@ select {
     border: 1px solid var(--border);
     background: var(--surface-muted);
     padding: 0.25rem 0.6rem;
-    border-radius: 6px;
+    border-radius: 999px;
     font-size: 0.74rem;
     font-weight: 500;
     letter-spacing: 0;
@@ -463,7 +494,7 @@ select {
   .bauhaus-panel-sm,
   .bauhaus-button {
     border-width: 1px;
-    box-shadow: none;
+    box-shadow: 0 1px 2px var(--shadow-soft);
   }
 }
 
@@ -570,7 +601,7 @@ select {
 /* ── OfferU flat workbench: Notion interaction base + local woven material ── */
 .workbench-main {
   background:
-    radial-gradient(circle at 88% 4%, rgba(184, 126, 107, 0.045), transparent 24rem),
+    radial-gradient(circle at 88% 4%, rgba(199, 120, 103, 0.055), transparent 28rem),
     var(--background);
 }
 
@@ -589,6 +620,8 @@ select {
   isolation: isolate;
   overflow: hidden;
   border-color: var(--border-strong);
+  border-radius: 16px;
+  box-shadow: 0 1px 2px var(--shadow-soft), 0 12px 28px rgba(24, 40, 48, 0.035);
 }
 
 .stage-hero::after,
@@ -599,7 +632,7 @@ select {
   width: min(42%, 34rem);
   content: "";
   pointer-events: none;
-  opacity: 0.72;
+  opacity: 0.44;
   background-color: var(--fabric-base);
   background-image:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.09'/%3E%3C/svg%3E"),
@@ -615,31 +648,90 @@ select {
 }
 
 .stage-hero h1 {
-  max-width: 16ch;
-  font-size: clamp(2rem, 4vw, 3rem);
-  font-weight: 650;
-  line-height: 1.05;
-  letter-spacing: -0.045em;
+  max-width: 18ch;
+  font-size: clamp(1.9rem, 3.3vw, 2.65rem);
+  font-weight: 720;
+  line-height: 1.12;
+  letter-spacing: -0.035em;
   text-transform: none;
   text-wrap: balance;
 }
 
 .stage-hero .bauhaus-panel-sm {
-  background: rgba(255, 255, 255, 0.82);
-  backdrop-filter: blur(4px);
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(36, 48, 57, 0.12);
+  backdrop-filter: blur(8px);
+}
+
+/* 页头只回答三件事：我在哪、现在有多少、下一步是什么。 */
+.stage-hero > div:first-child {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(240px, 0.8fr);
+  align-items: center;
+  gap: 2rem;
+}
+
+.stage-hero > div:first-child > div:last-child {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.stage-hero > div:first-child > div:last-child > div {
+  min-width: 0;
+}
+
+.stage-hero .bauhaus-panel-sm {
+  min-height: 108px;
+}
+
+.stage-hero .bauhaus-panel-sm > p:not(.bauhaus-label) {
+  font-size: clamp(1.25rem, 2vw, 1.9rem);
+  line-height: 1.12;
+  letter-spacing: -0.025em;
+}
+
+.stage-page--today {
+  max-width: 980px;
+}
+
+.stage-page--today > header {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 1rem;
+}
+
+.stage-page--today > header h1 {
+  font-size: clamp(1.75rem, 3vw, 2.2rem);
+}
+
+.stage-page--today > section > .bauhaus-panel-sm {
+  overflow: hidden;
+}
+
+.stage-page--today > section > .bauhaus-panel-sm > button {
+  min-height: 58px;
 }
 
 .stage-toolbar,
 .data-toolbar {
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--surface) 94%, var(--fabric-base));
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 1px 2px var(--shadow-soft);
 }
 
 .data-workspace {
   border-color: var(--border-strong);
-  border-radius: 8px;
-  box-shadow: 0 1px 0 var(--shadow-soft);
+  border-radius: 14px;
+  box-shadow: 0 1px 2px var(--shadow-soft), 0 10px 24px rgba(24, 40, 48, 0.025);
+}
+
+.bauhaus-panel.rounded-none {
+  border-radius: 14px;
+}
+
+.bauhaus-panel.shadow-none {
+  box-shadow: 0 1px 2px var(--shadow-soft);
 }
 
 .offeru-data-table {
@@ -759,6 +851,15 @@ select {
     width: 68%;
     opacity: 0.45;
   }
+
+  .stage-hero > div:first-child {
+    display: block;
+  }
+
+  .stage-hero > div:first-child > div:last-child {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-top: 1.25rem;
+  }
 }
 
 @container (min-width: 640px) {
@@ -800,6 +901,70 @@ select {
 
   .data-toolbar-status {
     justify-content: flex-end;
+  }
+}
+
+/* 岗位卡：信息优先，装饰只做状态提示。 */
+.job-card {
+  border-color: var(--border) !important;
+  border-radius: 14px;
+  background: var(--surface) !important;
+  box-shadow: 0 1px 2px var(--shadow-soft), 0 8px 20px rgba(24, 40, 48, 0.025) !important;
+  transition:
+    transform var(--dur-quick) var(--ease-precise),
+    border-color var(--dur-quick) var(--ease-snap),
+    box-shadow var(--dur-quick) var(--ease-snap),
+    background-color var(--dur-quick) var(--ease-snap);
+}
+
+.job-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-strong) !important;
+  box-shadow: 0 5px 12px var(--shadow-soft), 0 14px 28px rgba(24, 40, 48, 0.05) !important;
+}
+
+.job-card img {
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
+  object-fit: cover;
+}
+
+.job-card .bauhaus-chip {
+  border-color: var(--border);
+  background: var(--surface-muted);
+  color: var(--foreground-soft);
+}
+
+.job-card .bauhaus-button {
+  min-height: 32px;
+  border-radius: 8px;
+  font-size: 0.72rem;
+}
+
+.job-card > button[aria-pressed="true"],
+.job-card > button[aria-pressed="false"] {
+  border-radius: 10px;
+  border-color: var(--border-strong);
+  background: var(--surface);
+}
+
+.job-card > button[aria-pressed="true"] {
+  background: var(--status-sage);
+  color: var(--foreground);
+}
+
+@media (max-width: 640px) {
+  .job-card {
+    min-height: 0;
+  }
+
+  .job-card > div.relative {
+    padding: 1rem;
+  }
+
+  .job-card h3 {
+    font-size: 1.05rem;
   }
 }
 
@@ -856,4 +1021,464 @@ select {
 
 .ProseMirror li p {
   margin: 0;
+}
+
+/* ─────────────────────────────────────────────
+   OfferU reference skin
+   Paper grid + ink lines + restrained frosted layers.
+   The business surfaces stay the same; only their material language changes.
+   ───────────────────────────────────────────── */
+:root {
+  --background: #edf0eb;
+  --foreground: #191919;
+  --foreground-soft: rgba(25, 25, 25, 0.68);
+  --foreground-muted: rgba(25, 25, 25, 0.46);
+  --foreground-faint: rgba(25, 25, 25, 0.28);
+  --surface: rgba(248, 249, 246, 0.78);
+  --surface-opaque: #f8f9f6;
+  --surface-muted: rgba(232, 236, 231, 0.78);
+  --surface-hover: rgba(220, 225, 220, 0.9);
+  --status-blush: rgba(192, 57, 43, 0.1);
+  --status-sage: rgba(73, 104, 82, 0.12);
+  --accent-clay: #c0392b;
+  --fabric-base: rgba(225, 228, 222, 0.7);
+  --fabric-thread: rgba(25, 25, 25, 0.045);
+  --fabric-highlight: rgba(255, 255, 255, 0.48);
+  --focus-ring: rgba(46, 76, 109, 0.42);
+
+  --primary-red: #c0392b;
+  --primary-yellow: #80632b;
+  --primary-green: #496852;
+  --primary-blue: #2e4c6d;
+  --auxiliary-blue: var(--primary-blue);
+  --auxiliary-green: var(--primary-green);
+  --accent: var(--foreground);
+  --accent-bg: var(--surface-hover);
+
+  --border: rgba(25, 25, 25, 0.13);
+  --border-strong: rgba(25, 25, 25, 0.3);
+  --shadow-soft: rgba(25, 25, 25, 0.1);
+  --shadow-medium: rgba(25, 25, 25, 0.18);
+  --shadow-paper: 4px 5px 0 rgba(25, 25, 25, 0.12);
+  --glass: rgba(245, 247, 243, 0.68);
+  --glass-strong: rgba(250, 251, 248, 0.88);
+  --grid-size: 28px;
+
+  --font-serif: "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif;
+  --font-mono: "JetBrains Mono", "Sarasa Mono SC", ui-monospace, "Courier New", monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-display: var(--font-sans);
+}
+
+html,
+body {
+  background-color: var(--background);
+}
+
+body {
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  background-image:
+    linear-gradient(to right, rgba(25, 25, 25, 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(25, 25, 25, 0.045) 1px, transparent 1px),
+    radial-gradient(circle at 92% 0%, rgba(192, 57, 43, 0.07), transparent 24rem),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.78' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E");
+  background-size: var(--grid-size) var(--grid-size), var(--grid-size) var(--grid-size), auto, 180px 180px;
+  background-attachment: fixed;
+}
+
+[class~="font-mono"] {
+  font-family: var(--font-mono);
+  letter-spacing: 0.015em;
+}
+
+.offeru-workbench-shell,
+.offeru-focus-shell {
+  background: transparent;
+}
+
+.workbench-main {
+  background-color: transparent;
+  background-image:
+    linear-gradient(to right, rgba(25, 25, 25, 0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(25, 25, 25, 0.035) 1px, transparent 1px);
+  background-size: var(--grid-size) var(--grid-size);
+}
+
+.workbench-main h1,
+.workbench-main h2,
+.workbench-main h3,
+.stage-hero h1 {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  letter-spacing: -0.045em;
+}
+
+.workbench-main h1::after,
+.stage-hero h1::after {
+  display: block;
+  width: 2.9rem;
+  height: 3px;
+  margin-top: 0.45rem;
+  content: "";
+  background: var(--primary-red);
+  transform: rotate(-1.5deg);
+  transform-origin: left center;
+}
+
+.workbench-main h2::after,
+.workbench-main h3::after {
+  display: none;
+}
+
+.bauhaus-panel,
+.bauhaus-panel-sm {
+  border-color: var(--border-strong) !important;
+  border-radius: 3px !important;
+  background: var(--glass-strong) !important;
+  box-shadow: var(--shadow-paper) !important;
+  backdrop-filter: blur(12px) saturate(108%);
+}
+
+.bauhaus-panel-sm {
+  box-shadow: 3px 4px 0 rgba(25, 25, 25, 0.1) !important;
+}
+
+.bauhaus-button {
+  border-color: var(--border-strong) !important;
+  border-radius: 2px !important;
+  background: var(--glass-strong) !important;
+  color: var(--foreground) !important;
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  letter-spacing: 0.035em;
+  box-shadow: 2px 2px 0 rgba(25, 25, 25, 0.12);
+  backdrop-filter: blur(10px);
+}
+
+.bauhaus-button:hover {
+  border-color: var(--foreground) !important;
+  background: var(--surface-opaque) !important;
+  box-shadow: 3px 3px 0 rgba(25, 25, 25, 0.16);
+}
+
+.bauhaus-button:active {
+  box-shadow: 1px 1px 0 rgba(25, 25, 25, 0.12);
+}
+
+.bauhaus-button-red {
+  border-color: var(--foreground) !important;
+  background: var(--foreground) !important;
+  color: var(--surface-opaque) !important;
+}
+
+.bauhaus-button-blue {
+  border-color: var(--primary-blue) !important;
+  background: rgba(46, 76, 109, 0.1) !important;
+  color: var(--primary-blue) !important;
+}
+
+.bauhaus-button-green {
+  background: var(--status-sage) !important;
+  color: var(--primary-green) !important;
+}
+
+.bauhaus-button-yellow {
+  background: rgba(128, 99, 43, 0.12) !important;
+  color: var(--primary-yellow) !important;
+}
+
+.bauhaus-chip {
+  border-color: var(--border-strong) !important;
+  border-radius: 999px !important;
+  background: rgba(250, 251, 248, 0.62) !important;
+  color: var(--foreground-soft) !important;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.025em;
+  backdrop-filter: blur(8px);
+}
+
+.stage-hero {
+  border-radius: 3px !important;
+  border-color: var(--border-strong) !important;
+  background: var(--glass-strong);
+  box-shadow: 6px 7px 0 rgba(25, 25, 25, 0.12) !important;
+}
+
+.stage-hero > div:first-child > div:last-child {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.stage-hero .bauhaus-panel-sm {
+  min-height: 0;
+  padding: 1rem !important;
+}
+
+.stage-hero .bauhaus-panel-sm > p:not(.bauhaus-label) {
+  font-family: var(--font-sans);
+  font-size: 0.96rem;
+  letter-spacing: 0;
+  line-height: 1.4;
+}
+
+.stage-hero .bauhaus-panel-sm > .bauhaus-label + p {
+  margin-top: 0.55rem;
+  font-size: clamp(1.7rem, 2.6vw, 2.25rem);
+  font-weight: 650;
+  line-height: 1;
+}
+
+.stage-hero .bauhaus-panel-sm > p:last-child {
+  margin-top: 0.55rem;
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.stage-hero::after,
+.surface-fabric::after {
+  background-color: transparent;
+  background-image:
+    linear-gradient(to right, rgba(25, 25, 25, 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(25, 25, 25, 0.045) 1px, transparent 1px),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.55), transparent 62%);
+  background-size: 18px 18px, 18px 18px, auto;
+  opacity: 0.68;
+}
+
+.stage-page--today > header {
+  border-bottom-color: var(--border-strong);
+}
+
+.stage-toolbar,
+.data-toolbar,
+.data-workspace {
+  border-color: var(--border-strong) !important;
+  border-radius: 3px !important;
+  background: var(--glass-strong) !important;
+  box-shadow: var(--shadow-paper) !important;
+  backdrop-filter: blur(12px) saturate(108%);
+}
+
+.stage-page [data-slot="input-wrapper"],
+.stage-page [data-slot="trigger"] {
+  border-color: var(--border-strong) !important;
+  border-radius: 3px !important;
+  background: rgba(250, 251, 248, 0.72) !important;
+  box-shadow: none !important;
+}
+
+.stage-page [role="tablist"] {
+  border-bottom: 1px solid var(--border-strong);
+  border-radius: 0;
+  background: transparent;
+}
+
+.stage-page [role="tab"] {
+  border-radius: 0 !important;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.025em;
+}
+
+.job-card {
+  border-color: var(--border-strong) !important;
+  border-radius: 3px !important;
+  background: var(--glass-strong) !important;
+  box-shadow: 4px 5px 0 rgba(25, 25, 25, 0.1) !important;
+}
+
+.job-card:hover {
+  transform: translate(-1px, -2px);
+  box-shadow: 6px 7px 0 rgba(25, 25, 25, 0.15) !important;
+}
+
+.offeru-sidebar {
+  border-right-color: var(--border-strong) !important;
+  background: var(--glass) !important;
+  backdrop-filter: blur(18px) saturate(112%);
+}
+
+.offeru-sidebar-brand {
+  border-bottom-color: var(--border-strong) !important;
+  background: rgba(250, 251, 248, 0.38);
+}
+
+.offeru-sidebar-brand p:last-child {
+  font-family: var(--font-serif);
+  font-size: 1.1rem;
+  letter-spacing: -0.04em;
+}
+
+.offeru-sidebar-mark {
+  border-radius: 50% !important;
+  background: var(--foreground) !important;
+  box-shadow: 3px 3px 0 rgba(25, 25, 25, 0.2);
+  font-family: var(--font-mono);
+}
+
+.offeru-sidebar-search button {
+  border-color: var(--border-strong) !important;
+  border-radius: 2px !important;
+  background: rgba(250, 251, 248, 0.58) !important;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
+  backdrop-filter: blur(10px);
+}
+
+.offeru-nav-link {
+  min-height: 40px;
+  border-radius: 2px !important;
+  border-bottom: 1px solid transparent;
+}
+
+.offeru-nav-link[aria-current="page"] {
+  background: rgba(250, 251, 248, 0.68) !important;
+  border-bottom-color: var(--border);
+  color: var(--foreground) !important;
+  box-shadow: 2px 2px 0 rgba(25, 25, 25, 0.08);
+}
+
+.offeru-nav-link[aria-current="page"] > span:first-child {
+  width: 3px;
+  border-radius: 0;
+  background: var(--primary-red) !important;
+}
+
+.offeru-nav-link > div p {
+  font-family: var(--font-sans);
+}
+
+.offeru-nav-link > span:last-child {
+  font-family: var(--font-mono);
+  font-size: 0.59rem;
+  letter-spacing: 0.015em;
+}
+
+.offeru-mobile-nav {
+  border-top-color: var(--border-strong) !important;
+  background: rgba(245, 247, 243, 0.86) !important;
+  backdrop-filter: blur(18px);
+}
+
+.offeru-mobile-nav a {
+  border-right-color: var(--border) !important;
+}
+
+.offeru-mobile-nav a[aria-current="page"] {
+  color: var(--foreground) !important;
+}
+
+.offeru-mobile-nav a[aria-current="page"] > span:first-child {
+  background: var(--primary-red) !important;
+}
+
+.context-rail.offeru-context-rail {
+  border-left-color: var(--border-strong) !important;
+  background: var(--glass) !important;
+  box-shadow: -8px 0 0 rgba(25, 25, 25, 0.04) !important;
+  backdrop-filter: blur(18px) saturate(112%);
+}
+
+.context-rail-header {
+  border-bottom-color: var(--border-strong) !important;
+  background: rgba(250, 251, 248, 0.74) !important;
+  backdrop-filter: blur(18px);
+}
+
+.offeru-rail-tabs {
+  border-bottom: 1px solid var(--border);
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+.offeru-rail-tab {
+  border-radius: 0 !important;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
+}
+
+.offeru-rail-indicator {
+  border-bottom: 2px solid var(--primary-red);
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.offeru-agent-panel {
+  background: rgba(245, 247, 243, 0.34);
+}
+
+.offeru-agent-panel [class~="rounded-lg"],
+.offeru-agent-panel [class~="rounded-md"] {
+  border-radius: 3px !important;
+}
+
+.offeru-command-backdrop {
+  background: rgba(25, 25, 25, 0.22) !important;
+  backdrop-filter: blur(12px) saturate(85%);
+}
+
+.offeru-command-surface {
+  border-color: var(--border-strong) !important;
+  border-radius: 3px !important;
+  background: rgba(248, 249, 246, 0.9) !important;
+  box-shadow: 8px 10px 0 rgba(25, 25, 25, 0.16) !important;
+  backdrop-filter: blur(20px) saturate(110%);
+}
+
+.offeru-command-surface kbd {
+  border-radius: 2px !important;
+  background: var(--surface-muted) !important;
+  font-family: var(--font-mono);
+}
+
+.offeru-focus-topbar {
+  border-bottom-color: var(--border-strong) !important;
+  background: rgba(245, 247, 243, 0.82) !important;
+  backdrop-filter: blur(18px);
+}
+
+.offeru-focus-agent {
+  border-color: var(--border-strong) !important;
+  border-radius: 3px !important;
+  background: rgba(248, 249, 246, 0.9) !important;
+  box-shadow: 8px 10px 0 rgba(25, 25, 25, 0.16) !important;
+  backdrop-filter: blur(20px);
+}
+
+.inspector-hero {
+  border-bottom-color: var(--border-strong) !important;
+  background: rgba(250, 251, 248, 0.62) !important;
+}
+
+.inspector-fields {
+  background: rgba(250, 251, 248, 0.38) !important;
+}
+
+@container (max-width: 760px) {
+  .stage-hero > div:first-child > div:last-child {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container (max-width: 500px) {
+  .stage-hero > div:first-child > div:last-child {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 767px) {
+  body,
+  .workbench-main {
+    background-size: 22px 22px;
+  }
+
+  .workbench-main h1::after,
+  .stage-hero h1::after {
+    width: 2.25rem;
+  }
 }

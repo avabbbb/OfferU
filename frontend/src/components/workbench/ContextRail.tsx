@@ -68,12 +68,12 @@ export function ContextRail() {
             animate={{ width: RAIL_WIDTH, opacity: 1 }}
             exit={{ width: 0, opacity: 0, pointerEvents: "none" }}
             transition={{ type: "spring", stiffness: 380, damping: 36 }}
-            className="context-rail fixed inset-y-0 right-0 z-50 hidden h-screen shrink-0 overflow-hidden border-l border-[var(--border)] bg-[var(--background)] shadow-[-12px_0_32px_var(--shadow-medium)] md:block xl:relative xl:inset-auto xl:z-auto xl:shadow-none"
+            className="context-rail offeru-context-rail fixed inset-y-0 right-0 z-50 hidden h-screen shrink-0 overflow-hidden border-l border-[var(--border)] bg-[var(--background)] shadow-[-12px_0_32px_var(--shadow-medium)] md:block xl:relative xl:inset-auto xl:z-auto xl:shadow-none"
           >
             <div className="flex h-full flex-col" style={{ width: RAIL_WIDTH }}>
               {/* 模式切换头 */}
               <div className="context-rail-header flex items-center gap-1 border-b border-[var(--border)] px-3 py-2.5">
-                <div className="relative flex flex-1 rounded-md bg-[var(--surface-muted)] p-0.5">
+                <div className="offeru-rail-tabs relative flex flex-1 rounded-md bg-[var(--surface-muted)] p-0.5">
                   {(
                     [
                       { key: "inspector", label: selection ? "详情" : "详情 · 空" },
@@ -87,7 +87,7 @@ export function ContextRail() {
                         type="button"
                         onClick={() => setRailMode(mode.key)}
                         aria-pressed={active}
-                        className={`relative flex-1 rounded px-2 py-1 text-[12px] font-medium transition-colors duration-[var(--dur-quick)] ${
+                        className={`offeru-rail-tab relative flex-1 rounded px-2 py-1 text-[12px] font-medium transition-colors duration-[var(--dur-quick)] ${
                           active
                             ? "text-[var(--foreground)]"
                             : "text-[var(--foreground-muted)] hover:text-[var(--foreground)]"
@@ -96,7 +96,7 @@ export function ContextRail() {
                         {active && (
                           <motion.span
                             layoutId="rail-mode-indicator"
-                            className="absolute inset-0 rounded bg-[var(--surface)] shadow-[0_1px_2px_var(--shadow-soft)]"
+                            className="offeru-rail-indicator absolute inset-0 rounded bg-[var(--surface)] shadow-[0_1px_2px_var(--shadow-soft)]"
                             transition={{ type: "spring", stiffness: 480, damping: 38 }}
                           />
                         )}

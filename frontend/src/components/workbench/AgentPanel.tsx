@@ -1,7 +1,7 @@
 "use client";
 
 // =============================================
-// OfferU 主 Agent 面板 — Python Run Host → Pi SDK Worker
+// OfferU 主 Agent 面板 — Python Run Host → Harness Agent
 // 对话仍是交互记录；任务、Run、事件、提案、确认和审计由后端控制。
 // =============================================
 
@@ -29,7 +29,7 @@ import {
 import {
   agentSupportApi,
   hostedExecutorApi,
-  piAgentApi,
+  agentRuntimeApi,
   type AgentCareerPath,
   type AgentConversationSummary,
   type AgentJobCard,
@@ -41,7 +41,7 @@ import {
   type HostedExecutorEvent,
   type HostedExecutorSession,
   type HostedExecutorSessionDetail,
-  type PiAgentRunResponse,
+  type AgentRunResponse,
 } from "@/lib/api";
 import { presentAgentToolCall } from "@/lib/agentToolPresentation";
 import { bauhausFieldClassNames } from "@/lib/bauhaus";
@@ -93,6 +93,12 @@ const HOSTED_STATUS_LABELS: Record<string, string> = {
 };
 
 const HOSTED_ACTIVE_STATUSES = new Set(["created", "starting", "running"]);
+
+function executorLabel(executorId: string) {
+  return executorId
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
 
 function hostedEventLabel(event: HostedExecutorEvent) {
   const payload = event.payload || {};
@@ -152,7 +158,7 @@ function previewJson(value: unknown) {
   }
 }
 
-function toPanelResponse(response: PiAgentRunResponse): AgentResponse {
+function toPanelResponse(response: AgentRunResponse): AgentResponse {
   const guardian = response.guardian || {};
   return {
     assistant_message: response.assistant_message,
@@ -203,6 +209,7 @@ export function AgentPanel() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversationTitle, setConversationTitle] = useState("新对话");
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const [activeRun, setActiveRun] = useState<AgentRunRecord | null>(null);
   const [interruptedRunId, setInterruptedRunId] = useState<string | null>(null);
   const [activeSkillId, setActiveSkillId] = useState("discovery");
   const [skills, setSkills] = useState<AgentSkill[]>([]);
@@ -239,7 +246,7 @@ export function AgentPanel() {
 
   useEffect(() => {
     refreshConversations();
-    piAgentApi
+    agentRuntimeApi
       .skills()
       .then((result) => setSkills(result.skills || []))
       .catch(() => setSkills([]));
@@ -308,12 +315,12 @@ export function AgentPanel() {
     setMessages(nextMessages);
     setInput("");
     setLoading(true);
-    setProgressText("正在创建任务 Run 并启动 Pi Session...");
+    setProgressText("正在创建任务 Run 并启动 Harness Session...");
     setStreamingText("");
     setError("");
 
     try {
-      const runtimeResponse = await piAgentApi.start(
+      const runtimeResponse = await agentRuntimeApi.start(
         {
           message: content,
           skill_id: selectedSkillId,
@@ -322,12 +329,12 @@ export function AgentPanel() {
         (event, data) => {
           const eventRunId = String(data?.run_id || "");
           if (eventRunId) setActiveRunId(eventRunId);
-          if (event === "run.created") {
-            setProgressText("Run 已持久化，正在启动 Pi Session...");
-          } else if (event === "runtime.session_started") {
-            setProgressText("Pi Session 已就绪，正在执行当前 Skill...");
-          } else if (event === "runtime.tool_started") {
-            setProgressText("Pi 正在调用 OfferU Operation...");
+          if (event === "run.started" || event === "run.created") {
+            setProgressText("Run 已持久化，正在启动 Harness Session...");
+          } else if (event === "executor.started" || event === "runtime.session_started") {
+            setProgressText("Harness Session 已就绪，正在执行当前 Skill...");
+          } else if (event === "tool.started" || event === "runtime.tool_started") {
+            setProgressText("Harness 正在调用 OfferU Operation...");
           } else if (event === "operation.started") {
             setProgressText(`正在读取：${data?.payload?.operation || "OfferU 数据"}`);
           } else if (event === "operation.proposed") {
@@ -338,14 +345,14 @@ export function AgentPanel() {
             setProgressText("正在压缩本 Run 的模型上下文...");
           } else if (event === "stream.reconnecting") {
             setProgressText("连接中断，正在按事件游标恢复同一个 Run...");
-          } else if (event === "message.delta") {
+          } else if (event === "assistant.delta" || event === "message.delta") {
             const delta = String(data?.payload?.delta || "");
             if (delta) setStreamingText((current) => current + delta);
           }
         }
       );
       if (!runtimeResponse.ok) {
-        throw new Error(runtimeResponse.errors?.join("；") || "Pi Agent Run 执行失败");
+        throw new Error(runtimeResponse.errors?.join("；") || "Harness Agent Run 执行失败");
       }
       const response = toPanelResponse(runtimeResponse);
       const assistantMessage: PanelMessage = {
@@ -357,6 +364,7 @@ export function AgentPanel() {
       if (response.conversation_id) setConversationId(response.conversation_id);
       if (response.conversation_title) setConversationTitle(response.conversation_title);
       setActiveRunId(runtimeResponse.run.id);
+      setActiveRun(runtimeResponse.run);
       setActiveSkillId(runtimeResponse.active_skill.id);
       setMessages((prev) => [...prev, assistantMessage]);
       setPendingActions(response.proposed_actions || []);
@@ -372,7 +380,7 @@ export function AgentPanel() {
   const startNewConversation = async () => {
     if (activeRunId && (hasPendingActions || interruptedRunId)) {
       try {
-        await piAgentApi.abort(activeRunId);
+        await agentRuntimeApi.abort(activeRunId);
       } catch {
         // 新对话仍可开始；后端会让残留 Worker 冲突显式失败。
       }
@@ -380,6 +388,7 @@ export function AgentPanel() {
     setConversationId(null);
     setConversationTitle("新对话");
     setActiveRunId(null);
+    setActiveRun(null);
     setInterruptedRunId(null);
     setActiveSkillId("discovery");
     setPendingActions([]);
@@ -397,12 +406,13 @@ export function AgentPanel() {
     setError("");
     try {
       if (activeRunId && (hasPendingActions || interruptedRunId)) {
-        await piAgentApi.abort(activeRunId);
+        await agentRuntimeApi.abort(activeRunId);
       }
       const conversation = await agentSupportApi.conversation(id);
       setConversationId(conversation.id);
       setConversationTitle(conversation.title || "历史对话");
       setActiveRunId(null);
+      setActiveRun(null);
       setInterruptedRunId(null);
       setActiveSkillId("discovery");
       setPendingActions([]);
@@ -414,11 +424,12 @@ export function AgentPanel() {
           content: message.content,
         }))
       );
-      const runResult = await piAgentApi.runs({
+      const runResult = await agentRuntimeApi.runs({
         conversation_id: conversation.id,
         limit: 1,
       });
       const latestRun = runResult.runs[0];
+      setActiveRun(latestRun || null);
       if (latestRun?.status === "waiting_confirmation") {
         setActiveRunId(latestRun.id);
         setActiveSkillId(latestRun.skill_id || "discovery");
@@ -439,7 +450,7 @@ export function AgentPanel() {
     const restoreLatestActiveRun = async () => {
       const latestConversation = conversations[0];
       try {
-        const result = await piAgentApi.runs({
+        const result = await agentRuntimeApi.runs({
           conversation_id: latestConversation.id,
           limit: 1,
         });
@@ -480,7 +491,7 @@ export function AgentPanel() {
       let finalRun: AgentRunRecord | null = null;
       const toolCalls: AgentToolCall[] = [];
       for (const action of pendingActions) {
-        const result = await piAgentApi.confirm(activeRunId, action.id);
+        const result = await agentRuntimeApi.confirm(activeRunId, action.id);
         finalRun = result.run;
         toolCalls.push(...(result.tool_calls || []));
         if (result.errors?.length) {
@@ -524,7 +535,7 @@ export function AgentPanel() {
     setProgressText("正在取消当前 Run...");
     setError("");
     try {
-      await piAgentApi.abort(activeRunId);
+      await agentRuntimeApi.abort(activeRunId);
       setActiveRunId(null);
       setInterruptedRunId(null);
       setPendingActions([]);
@@ -546,10 +557,10 @@ export function AgentPanel() {
   const resumeInterruptedRun = async () => {
     if (!interruptedRunId || loading) return;
     setLoading(true);
-    setProgressText("正在从持久化 Pi Session 恢复 Run...");
+    setProgressText("正在从持久化 Harness Session 恢复 Run...");
     setError("");
     try {
-      const runtimeResponse = await piAgentApi.resume(interruptedRunId);
+      const runtimeResponse = await agentRuntimeApi.resume(interruptedRunId);
       if (!runtimeResponse.ok) {
         throw new Error(runtimeResponse.errors?.join("；") || "恢复 Run 失败");
       }
@@ -656,7 +667,7 @@ export function AgentPanel() {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="offeru-agent-panel flex h-full min-h-0 flex-col">
       {/* 对话状态行 */}
       <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] px-3 py-2">
         <button
@@ -681,7 +692,15 @@ export function AgentPanel() {
             托管 {hostedSessions.filter((item) => HOSTED_ACTIVE_STATUSES.has(item.status)).length || hostedSessions.length}
             {hostedOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
           </button>
-          <span className="bauhaus-chip !py-0.5 !text-[10.5px]">Pi</span>
+          <span className="bauhaus-chip !py-0.5 !text-[10.5px]">Harness</span>
+          {activeRun && activeRun.harness_name && (
+            <span
+              className="bauhaus-chip !py-0.5 !text-[10.5px]"
+              title={`harness=${activeRun.harness_name} v${activeRun.harness_version || "?"} · adapter=${activeRun.adapter_name || "?"} v${activeRun.adapter_version || "?"} · lease=${activeRun.lease_id ? activeRun.lease_id.slice(0, 12) + "…" : "无"}`}
+            >
+              {activeRun.harness_name} {activeRun.lease_id ? "· 已配对" : "· 未配对"}
+            </span>
+          )}
           <span className="bauhaus-chip !py-0.5 !text-[10.5px]">{STAGE_LABELS[latestStage] || latestStage}</span>
           <span className="bauhaus-chip !py-0.5 !text-[10.5px]">{latestMode}</span>
         </div>
@@ -762,7 +781,7 @@ export function AgentPanel() {
 
           {hostedSessions.length === 0 && !hostedLoading ? (
             <div className="mt-2 rounded-md border border-dashed border-[var(--border-strong)] bg-[var(--surface)] px-2.5 py-2 text-[11.5px] leading-5 text-[var(--foreground-soft)]">
-              还没有托管任务。确认“岗位公开调研”后，Codex 或 Claude 的会话、授权范围和事件会显示在这里。
+              还没有托管任务。确认深度任务后，执行器会话、授权范围和事件会显示在这里。
             </div>
           ) : (
             <>
@@ -779,7 +798,7 @@ export function AgentPanel() {
                     }`}
                   >
                     <span className="block truncate text-[11.5px] font-semibold text-[var(--foreground)]">
-                      {session.executor_id === "claude" ? "Claude" : "Codex"} · {HOSTED_STATUS_LABELS[session.status] || session.status}
+                      {executorLabel(session.executor_id)} · {HOSTED_STATUS_LABELS[session.status] || session.status}
                     </span>
                     <span className="mt-0.5 block truncate text-[10px] text-[var(--foreground-muted)]">
                       {session.task_type} / {shortTime(session.updated_at)}
@@ -934,7 +953,7 @@ export function AgentPanel() {
           <button
             type="button"
             aria-label="导入本地记忆"
-            title="导入 Codex / Claude Code / 本地 Markdown 或 JSON 记忆"
+            title="导入外部 Harness / 本地 Markdown 或 JSON 记忆"
             onClick={() => fileInputRef.current?.click()}
             className="rounded-md p-1.5 text-[var(--foreground-muted)] transition-colors duration-[var(--dur-quick)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
           >
@@ -978,7 +997,7 @@ export function AgentPanel() {
         <div className="border-t border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2.5">
           <p className="text-[12px] font-semibold text-[var(--foreground)]">检测到中断的 Agent Run</p>
           <p className="mt-1 text-[11.5px] leading-5 text-[var(--foreground-soft)]">
-            OfferU 不会自动重放工具。你可以从已持久化的 Pi Session 显式恢复，或取消本次 Run。
+            OfferU 不会自动重放工具。你可以从已持久化的 Harness Session 显式恢复，或取消本次 Run。
           </p>
           <div className="mt-2 flex gap-1.5">
             <Button

@@ -568,11 +568,7 @@ export default function JobsPage() {
             <span className={`bauhaus-chip ${triageMeta.tone}`}>{triageMeta.label}</span>
             <div>
               <p className="bauhaus-label text-[var(--foreground-muted)]">岗位操作台</p>
-              <h1 className="mt-2 text-4xl font-bold leading-tight md:text-5xl">
-                快速筛选
-                <br />
-                稳定推进
-              </h1>
+              <h1 className="mt-2 text-4xl font-bold leading-tight md:text-5xl">岗位</h1>
               <p className="mt-3 max-w-2xl text-sm font-medium leading-relaxed text-[var(--foreground-soft)] md:text-base">
                 {triageMeta.description}
               </p>

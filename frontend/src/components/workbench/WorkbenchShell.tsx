@@ -51,7 +51,7 @@ function FocusTopBar({ rule }: { rule: FocusRule }) {
 
   return (
     <>
-      <div className="sticky top-0 z-40 flex items-center justify-between border-b border-[var(--border)] bg-[var(--background)]/95 px-4 py-2 backdrop-blur">
+      <div className="offeru-focus-topbar sticky top-0 z-40 flex items-center justify-between border-b border-[var(--border)] bg-[var(--background)]/95 px-4 py-2 backdrop-blur">
         <Link
           href={rule.backHref}
           className="flex items-center gap-1.5 rounded-md px-2 py-1 text-[13px] font-medium text-[var(--foreground-soft)] transition-colors duration-[var(--dur-quick)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
@@ -83,7 +83,7 @@ function FocusTopBar({ rule }: { rule: FocusRule }) {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 24 }}
             transition={{ type: "spring", stiffness: 400, damping: 34 }}
-            className="fixed bottom-4 right-4 top-14 z-50 w-[min(92vw,340px)] overflow-hidden rounded-lg border border-[var(--border-strong)] bg-[var(--background)] shadow-[0_12px_36px_var(--shadow-medium)]"
+            className="offeru-focus-agent fixed bottom-4 right-4 top-14 z-50 w-[min(92vw,340px)] overflow-hidden rounded-lg border border-[var(--border-strong)] bg-[var(--background)] shadow-[0_12px_36px_var(--shadow-medium)]"
           >
             <Suspense fallback={null}>
               <AgentPanel />
@@ -151,7 +151,7 @@ function WorkbenchFrame({ children }: { children: React.ReactNode }) {
 
   if (focusRule) {
     return (
-      <div className="flex h-screen w-full flex-col overflow-hidden">
+      <div className="offeru-focus-shell flex h-screen w-full flex-col overflow-hidden">
         <FocusTopBar rule={focusRule} />
         <main className="workbench-main relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 md:px-6">
           {children}
@@ -161,7 +161,7 @@ function WorkbenchFrame({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="relative flex h-screen w-full overflow-hidden">
+    <div className="offeru-workbench-shell relative flex h-screen w-full overflow-hidden">
       <Sidebar />
       <main className="workbench-main relative h-screen min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-5 pb-28 md:px-6 md:py-6 md:pb-8">
         <div className="mx-auto max-w-[1600px]">{children}</div>

@@ -24,6 +24,7 @@ import {
   OnboardingTriggerButton,
 } from "@/components/onboarding/OnboardingChecklist";
 import {
+  useAutomationInbox,
   useCalendarEvents,
   useJobs,
   useJobStats,
@@ -61,6 +62,16 @@ function formatEventTime(value: string) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function automationCategoryLabel(category: string) {
+  return {
+    needs_approval: "需要确认",
+    needs_review: "需要复核",
+    fyi: "已完成",
+    completed: "已完成",
+    failed: "执行失败",
+  }[category] ?? category;
 }
 
 function SectionHeader({
@@ -113,6 +124,7 @@ export default function TodayPage() {
 
   const { data: events } = useCalendarEvents(range.start, range.end);
   const { data: notifications } = useNotifications();
+  const { data: automationInbox } = useAutomationInbox();
   const { data: jobsData } = useJobs({ page: 1, period: "week" });
   const { data: stats } = useJobStats("week");
   const { data: trendData } = useJobTrend("week");
@@ -120,6 +132,10 @@ export default function TodayPage() {
   const pendingSignals = useMemo(
     () => (notifications ?? []).filter((n) => Boolean(n.action_required)).slice(0, 6),
     [notifications]
+  );
+  const pendingAutomation = useMemo(
+    () => (automationInbox?.items ?? []).filter((entry) => entry.status === "pending").slice(0, 5),
+    [automationInbox],
   );
   const upcomingEvents = useMemo(() => (events ?? []).slice(0, 6), [events]);
   const recentJobs = useMemo(() => (jobsData?.items ?? []).slice(0, 5), [jobsData]);
@@ -132,7 +148,10 @@ export default function TodayPage() {
   });
 
   const isEmptyWorkspace =
-    pendingSignals.length === 0 && upcomingEvents.length === 0 && recentJobs.length === 0;
+    pendingSignals.length === 0
+    && pendingAutomation.length === 0
+    && upcomingEvents.length === 0
+    && recentJobs.length === 0;
 
   return (
     <motion.div variants={container} initial="hidden" animate="show" className="stage-page stage-page--today mx-auto max-w-[860px] space-y-6">
@@ -148,6 +167,79 @@ export default function TodayPage() {
       <motion.div variants={item}>
         <OnboardingChecklist hasJobs={Boolean(jobsData?.items?.length)} />
       </motion.div>
+
+      {/* 后台自动化收件箱：只呈现候选/提案，不在首页静默提交外部操作 */}
+      <motion.section variants={item}>
+        <SectionHeader
+          icon={Inbox}
+          title="OfferU 自动工作"
+          count={pendingAutomation.length}
+        />
+        <div className="bauhaus-panel-sm divide-y divide-[var(--border)] overflow-hidden">
+          {pendingAutomation.length === 0 && (
+            <p className="px-4 py-4 text-[13px] text-[var(--foreground-muted)]">
+              暂无需要你处理的后台任务。
+            </p>
+          )}
+          {pendingAutomation.map((entry) => {
+            const benchmark = entry.payload?.benchmark as Record<string, any> | undefined;
+            const packet = entry.payload?.application_packet as Record<string, any> | undefined;
+            const sample = benchmark?.valid_sample_count;
+            return (
+              <button
+                key={entry.item_id}
+                type="button"
+                onClick={() =>
+                  select({
+                    kind: "task",
+                    id: entry.item_id,
+                    title: entry.title,
+                    subtitle: [automationCategoryLabel(entry.category), entry.target_type && entry.target_id
+                      ? `${entry.target_type} #${entry.target_id}`
+                      : ""].filter(Boolean).join(" · "),
+                    data: {
+                      fields: [
+                        { label: "状态", value: automationCategoryLabel(entry.category) },
+                        { label: "说明", value: entry.body },
+                        { label: "有效样本", value: sample == null ? "-" : String(sample) },
+                        { label: "Benchmark", value: String(benchmark?.data_mode || "-") },
+                        { label: "Application Packet", value: String(packet?.status || "-") },
+                        { label: "Task", value: entry.task_id || "-" },
+                      ],
+                      fullscreenHref:
+                        entry.target_type === "job" && entry.target_id
+                          ? `/jobs/${entry.target_id}`
+                          : undefined,
+                    },
+                  })
+                }
+                className="press-feedback flex w-full items-center gap-3 px-4 py-2.5 text-left"
+              >
+                <span
+                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                    entry.category === "failed"
+                      ? "bg-[var(--primary-red)]"
+                      : entry.category === "needs_approval"
+                        ? "bg-[var(--primary-yellow)]"
+                        : "bg-[var(--primary-blue)]"
+                  }`}
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] font-medium text-[var(--foreground)]">
+                    {entry.title}
+                  </span>
+                  <span className="mt-0.5 block truncate text-[12px] text-[var(--foreground-muted)]">
+                    {[automationCategoryLabel(entry.category), sample == null ? "" : `${sample} 个有效样本`]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                </span>
+                <ArrowRight size={13} className="shrink-0 text-[var(--foreground-faint)]" />
+              </button>
+            );
+          })}
+        </div>
+      </motion.section>
 
       {/* 待确认信号 */}
       <motion.section variants={item}>

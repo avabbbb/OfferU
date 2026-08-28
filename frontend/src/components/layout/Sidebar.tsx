@@ -76,7 +76,7 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
     <Link
       href={item.href}
       aria-current={active ? "page" : undefined}
-      className={`group relative flex items-center gap-2.5 rounded-md px-2.5 py-2 transition-colors duration-[var(--dur-quick)] ${
+      className={`offeru-nav-link group relative flex items-center gap-2.5 rounded-md px-2.5 py-2 transition-colors duration-[var(--dur-quick)] ${
         active
           ? "bg-[var(--surface-muted)] text-[var(--foreground)]"
           : "text-[var(--foreground-muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
@@ -120,10 +120,10 @@ export function Sidebar() {
 
   return (
     <>
-      <aside className="relative hidden h-screen w-[15rem] shrink-0 overflow-hidden border-r border-[var(--border)] bg-[var(--background)] md:flex md:flex-col">
-        <div className="relative z-10 border-b border-[var(--border)] px-5 py-5">
+      <aside className="offeru-sidebar relative hidden h-screen w-[15rem] shrink-0 overflow-hidden border-r border-[var(--border)] bg-[var(--background)] md:flex md:flex-col">
+        <div className="offeru-sidebar-brand relative z-10 border-b border-[var(--border)] px-5 py-5">
           <Link href="/" className="flex items-center gap-3">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[var(--foreground)] text-[var(--surface)]">
+            <div className="offeru-sidebar-mark flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[var(--foreground)] text-[var(--surface)]">
               <span className="text-[13px] font-bold tracking-tight">O</span>
             </div>
             <div className="space-y-0.5">
@@ -134,7 +134,7 @@ export function Sidebar() {
         </div>
 
         {/* Ctrl+K 搜索入口 — 与命令面板联动 */}
-        <div className="px-3 pt-3">
+        <div className="offeru-sidebar-search px-3 pt-3">
           <button
             type="button"
             onClick={() => workbench?.setPaletteOpen(true)}
@@ -152,7 +152,7 @@ export function Sidebar() {
           variants={navContainer}
           initial="hidden"
           animate="show"
-          className="relative z-10 flex-1 space-y-0.5 overflow-y-auto px-3 py-3"
+          className="offeru-sidebar-nav relative z-10 flex-1 space-y-0.5 overflow-y-auto px-3 py-3"
         >
           {stageItems.map((item) => (
             <motion.div key={item.href} variants={navItemVariant}>
@@ -168,7 +168,7 @@ export function Sidebar() {
         </motion.nav>
       </aside>
 
-      <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-[var(--border)] bg-[var(--surface)] md:hidden">
+      <nav className="offeru-mobile-nav fixed inset-x-0 bottom-0 z-50 border-t border-[var(--border)] bg-[var(--surface)] md:hidden">
         <div className="grid grid-cols-6 gap-0">
           {mobileItems.map((item) => {
             const Icon = item.icon;

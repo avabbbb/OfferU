@@ -276,11 +276,7 @@ export default function ResumesListPage() {
             <span className="bauhaus-chip bg-[var(--surface-muted)] text-[var(--foreground)]">简历管理中心</span>
             <div>
               <p className="bauhaus-label text-[var(--foreground-soft)]">创建、管理与迭代</p>
-              <h1 className="mt-2 text-3xl font-bold leading-tight md:text-5xl">
-                建立版本
-                <br />
-                稳定维护
-              </h1>
+              <h1 className="mt-2 text-3xl font-bold leading-tight md:text-5xl">材料</h1>
               <p className="mt-3 max-w-2xl text-sm font-medium leading-relaxed text-[var(--foreground-soft)] md:text-base">
                 在这里集中管理所有简历版本。你可以快速新建、进入编辑器、删除旧稿，并保留不同岗位定制所需的多份副本。
               </p>

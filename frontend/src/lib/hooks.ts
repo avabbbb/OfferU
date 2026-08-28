@@ -157,6 +157,24 @@ export interface Notification {
   parsed_at: string;
 }
 
+export interface AutomationInboxItem {
+  item_id: string;
+  category: "needs_approval" | "needs_review" | "fyi" | "completed" | "failed" | string;
+  status: "pending" | "resolved" | "dismissed" | string;
+  event_id: string;
+  task_id: string;
+  operation: string;
+  proposal_run_id: string;
+  target_type: string;
+  target_id: string;
+  title: string;
+  body: string;
+  payload: Record<string, any>;
+  created_at: string | null;
+  updated_at: string | null;
+  resolved_at: string | null;
+}
+
 // ---- Hooks ----
 
 /**
@@ -260,6 +278,14 @@ export function useCalendarEvents(start?: string, end?: string) {
 export function useNotifications() {
   return useSWR<Notification[]>(
     `${API_BASE}/api/email/notifications`,
+    fetcher
+  );
+}
+
+/** 获取后台自动化收件箱：候选/提案仍需按现有控制边界处理。 */
+export function useAutomationInbox(limit = 20) {
+  return useSWR<{ items: AutomationInboxItem[] }>(
+    `${API_BASE}/api/agent/runtime/automation/inbox?status=pending&limit=${limit}`,
     fetcher
   );
 }
@@ -2266,11 +2292,79 @@ export async function generateAnswer(questionId: number) {
 // AI 模拟面试
 // =============================================
 
+export interface InterviewFocusEvidenceRef {
+  source_ref?: string;
+  observation_id?: number | null;
+  profile_section_id?: number | null;
+  company?: string;
+  title?: string;
+  source_section?: string;
+  evidence_text?: string;
+  excerpt?: string;
+  confidence?: number;
+}
+
+export interface InterviewFocus {
+  capability: string;
+  category: string;
+  role_importance: string;
+  market_frequency: number;
+  role_distinctiveness: number;
+  evidence_strength: number;
+  evidence_gap: number;
+  training_priority: number;
+  signal_confidence: number;
+  direction: string;
+  priority_score: number;
+  priority_percent: number;
+  rationale: string;
+  target_jd_evidence_refs: InterviewFocusEvidenceRef[];
+  comparator_evidence_refs: InterviewFocusEvidenceRef[];
+  candidate_evidence_refs: InterviewFocusEvidenceRef[];
+}
+
+export interface InterviewFocusPlan {
+  schema: string;
+  benchmark_run_id: string;
+  target_job_id: number;
+  profile_id: number | null;
+  source: {
+    data_mode: string;
+    runtime_id: string;
+    valid_sample_count: number;
+    company_count: number;
+    sample_sufficient: boolean;
+  };
+  target_job: { id: number; title: string; company: string; url: string };
+  role_profile: Record<string, any>;
+  focuses: InterviewFocus[];
+  question_blueprint: Array<{
+    question_index: number;
+    capability: string;
+    mode: "proof" | "depth" | "trade_off" | "scenario" | "contradiction";
+  }>;
+  question_count: number;
+  interviewer_mode: {
+    coach_feedback_during_session: false;
+    follow_up_on_vague_or_missing_evidence: true;
+    clarify_evidence_mismatch_neutrally: true;
+  };
+}
+
 export interface AIInterviewQuestion {
   question: string;
   type: "behavioral" | "technical" | "case" | string;
   focus: string;
   tips: string;
+  mode?: "proof" | "depth" | "trade_off" | "scenario" | "contradiction" | "follow_up" | string;
+  why_asked?: string;
+  delta_refs?: string[];
+  target_jd_evidence_refs?: InterviewFocusEvidenceRef[];
+  comparator_evidence_refs?: InterviewFocusEvidenceRef[];
+  candidate_evidence_refs?: InterviewFocusEvidenceRef[];
+  conflict_evidence_refs?: string[];
+  is_follow_up?: boolean;
+  follow_up_reason?: string;
 }
 
 export interface AIInterviewEvaluation {
@@ -2304,6 +2398,45 @@ export interface AIInterviewReport {
   delivery_feedback: Record<string, unknown>;
   combined_score: null;
   boundary: string;
+  role_intelligence_debrief?: {
+    schema: string;
+    mode: string;
+    benchmark_run_id?: string;
+    target_job_id?: number;
+    source: Record<string, unknown>;
+    focuses: Array<{
+      capability: string;
+      role_importance: string;
+      market_frequency: number;
+      role_distinctiveness: number;
+      evidence_strength: number;
+      evidence_gap: number;
+      training_priority: number;
+      priority_percent: number;
+      performance: {
+        average_content_score: number | null;
+        status: string;
+      };
+      why_this_focus: string;
+      target_jd_evidence_refs: InterviewFocusEvidenceRef[];
+      comparator_evidence_refs: InterviewFocusEvidenceRef[];
+      candidate_evidence_refs: InterviewFocusEvidenceRef[];
+      candidate_evidence_not_utilized: InterviewFocusEvidenceRef[];
+      observed_answer_gaps: string[];
+      responses: Array<{
+        question_index: number;
+        mode: string;
+        question: string;
+        why_asked: string;
+        answer_excerpt: string;
+        answer_evidence: string[];
+        content_score?: number;
+        follow_up_reason?: string;
+      }>;
+      next_practice: string;
+    }>;
+    boundary: string;
+  };
 }
 
 export interface AIInterviewSession {
@@ -2311,6 +2444,8 @@ export interface AIInterviewSession {
   title: string;
   target_company: string;
   target_position: string;
+  target_job_id?: number | null;
+  profile_id?: number | null;
   interview_type: string;
   difficulty: string;
   questions: AIInterviewQuestion[];
@@ -2321,6 +2456,9 @@ export interface AIInterviewSession {
   model_runtime: AIInterviewRuntime["runtime"];
   data_consent: Record<string, unknown>;
   behavior_summary: Record<string, unknown>;
+  role_intelligence?: boolean;
+  focus_plan?: InterviewFocusPlan | null;
+  focus_plan_summary?: Partial<InterviewFocusPlan>;
   created_at: string;
 }
 
@@ -2366,13 +2504,38 @@ export interface AIInterviewAnswerResult {
   progress?: { current: number; total: number };
   completed?: boolean;
   report?: AIInterviewReport;
+  adaptive_follow_up?: {
+    required: boolean;
+    reason: string;
+    evidence_refs: string[];
+  } | null;
 }
 
 export async function getAIInterviewRuntime(): Promise<AIInterviewRuntime> {
-  const res = await showcaseFetch(`/api/interviews/runtime`, { cache: "no-store" });
+  const res = await showcaseFetch(`${API_BASE}/api/interviews/runtime`, { cache: "no-store" });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || `读取面试模型配置失败 (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function prepareRoleInterviewFocus(
+  jobId: number,
+  runId?: string,
+  focusCount = 5,
+  questionCount = 5,
+): Promise<InterviewFocusPlan> {
+  const params = new URLSearchParams({
+    job_id: String(jobId),
+    focus_count: String(focusCount),
+    question_count: String(questionCount),
+  });
+  if (runId) params.set("run_id", runId);
+  const res = await showcaseFetch(`${API_BASE}/api/interviews/focus-plan?${params}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `读取专项面试计划失败 (${res.status})`);
   }
   return res.json();
 }
@@ -2381,6 +2544,10 @@ export async function createAIInterview(body: {
   title: string;
   target_company: string;
   target_position: string;
+  target_job_id?: number;
+  resume_id?: number;
+  profile_id?: number;
+  role_benchmark_run_id?: string;
   interview_type: "behavioral" | "technical" | "case" | "mixed";
   difficulty: "easy" | "medium" | "hard";
   question_count: number;
@@ -2393,7 +2560,7 @@ export async function createAIInterview(body: {
 }): Promise<AIInterviewSession> {
   let res: Response;
   try {
-    res = await showcaseFetch(`/api/interviews/`, {
+    res = await showcaseFetch(`${API_BASE}/api/interviews/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -2416,7 +2583,7 @@ export async function submitAIInterviewAnswer(
 ): Promise<AIInterviewAnswerResult> {
   let res: Response;
   try {
-    res = await showcaseFetch(`/api/interviews/${interviewId}/messages`, {
+    res = await showcaseFetch(`${API_BASE}/api/interviews/${interviewId}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -2440,7 +2607,7 @@ export async function ingestAIInterviewBehaviorEvents(
   interviewId: number,
   events: AIInterviewBehaviorEvent[]
 ): Promise<{ accepted: number; duplicates: number; summary: Record<string, unknown> }> {
-  const res = await showcaseFetch(`/api/interviews/${interviewId}/behavior-events`, {
+  const res = await showcaseFetch(`${API_BASE}/api/interviews/${interviewId}/behavior-events`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ events, user_confirmed: true }),

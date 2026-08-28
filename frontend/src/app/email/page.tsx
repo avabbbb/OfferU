@@ -158,13 +158,7 @@ export default function EmailPage() {
             <span className="bauhaus-chip bg-[var(--surface-muted)] text-[var(--foreground)]">邮件接入</span>
             <div>
               <p className="bauhaus-label text-[var(--foreground-muted)]">收件箱解析</p>
-              <h1 className="mt-3 text-5xl font-black uppercase leading-[0.88] tracking-[-0.08em] sm:text-6xl">
-                读取
-                <br />
-                解析
-                <br />
-                路由
-              </h1>
+              <h1 className="mt-3 text-5xl font-black uppercase leading-[0.88] tracking-[-0.08em] sm:text-6xl">进展</h1>
               <p className="mt-4 max-w-2xl text-base font-medium leading-relaxed text-[var(--foreground-muted)]">
                 把邮箱授权、通知分类和日历同步集中到一块面板里，避免面试邮件遗漏，
                 也方便我们把下一步动作自动推进到日程与投递流程。

@@ -128,7 +128,7 @@ export function CommandPalette() {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.12 }}
-          className="fixed inset-0 z-[90] bg-[rgba(55,53,47,0.24)] backdrop-blur-[1px]"
+          className="offeru-command-backdrop fixed inset-0 z-[90] bg-[rgba(55,53,47,0.24)] backdrop-blur-[1px]"
           onClick={close}
         >
           <motion.div
@@ -136,7 +136,7 @@ export function CommandPalette() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -10, scale: 0.98 }}
             transition={{ type: "spring", stiffness: 460, damping: 34 }}
-            className="mx-auto mt-[16vh] w-[min(92vw,560px)] overflow-hidden rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] shadow-[0_12px_36px_var(--shadow-medium)]"
+            className="offeru-command-surface mx-auto mt-[16vh] w-[min(92vw,560px)] overflow-hidden rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] shadow-[0_12px_36px_var(--shadow-medium)]"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-center gap-2.5 border-b border-[var(--border)] px-3.5 py-3">

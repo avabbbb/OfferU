@@ -407,9 +407,15 @@ export interface AgentRunRecord {
   event_sequence: number;
   created_at?: string;
   updated_at?: string;
+  harness_name?: string;
+  harness_version?: string;
+  adapter_name?: string;
+  adapter_version?: string;
+  lease_id?: string;
+  context_version?: number;
 }
 
-export interface PiAgentRunResponse {
+export interface AgentRunResponse {
   ok: boolean;
   run: AgentRunRecord;
   assistant_message: string;
@@ -427,7 +433,7 @@ export interface PiAgentRunResponse {
   conversation_title?: string;
 }
 
-export interface PiAgentConfirmationResponse {
+export interface AgentConfirmationResponse {
   ok: boolean;
   run: AgentRunRecord;
   tool_calls: AgentToolCall[];
@@ -520,6 +526,152 @@ export interface JobResearchRunDetail extends JobResearchRunSummary {
   findings: JobResearchFinding[];
 }
 
+export type RoleBenchmarkDirection =
+  | "common"
+  | "distinctive"
+  | "highly_distinctive"
+  | "missing_common";
+
+export interface RoleBenchmarkObservation {
+  id: number;
+  capability_id: string;
+  raw_capability: string;
+  category: string;
+  importance: "must_have" | "strong" | "nice_to_have";
+  evidence_text: string;
+  source_section: string;
+  confidence: number;
+  canonicalization_status: string;
+}
+
+export interface RoleBenchmarkEvidenceGap {
+  schema: string;
+  role_distinctiveness: number;
+  evidence_strength: number;
+  evidence_gap: number;
+  training_priority: number;
+  status: "missing" | "partial" | "supported" | string;
+  matched_evidence: Array<{
+    profile_section_id: number;
+    section_type: string;
+    title: string;
+    tier: string;
+    confidence: number;
+    excerpt: string;
+  }>;
+}
+
+export interface RoleBenchmarkDocument {
+  id: number;
+  job_id: number | null;
+  document_kind: "target" | "comparator" | string;
+  source_ref: string;
+  source: string;
+  url: string;
+  title: string;
+  company: string;
+  location: string;
+  industry: string;
+  raw_description: string;
+  role_profile: Record<string, any>;
+  inclusion_status: string;
+  exclusion_reason: string;
+  created_at: string;
+  capability_observations: RoleBenchmarkObservation[];
+}
+
+export interface RoleBenchmarkSignal {
+  id: number;
+  capability_id: string;
+  category: string;
+  target_importance: "must_have" | "strong" | "nice_to_have" | "not_present" | string;
+  target_occurrence_count: number;
+  comparator_count: number;
+  comparator_total: number;
+  market_frequency: number;
+  direction: RoleBenchmarkDirection;
+  confidence: number;
+  priority: number;
+  evidence_refs: string[];
+  target_evidence: RoleBenchmarkObservation[];
+  market_evidence: Array<{
+    source_ref: string;
+    url: string;
+    company: string;
+    title: string;
+    observation: RoleBenchmarkObservation;
+  }>;
+  evidence_gap: RoleBenchmarkEvidenceGap;
+}
+
+export interface RoleBenchmarkSummary {
+  found?: boolean;
+  run_id?: string | null;
+  target_job_id: number | null;
+  cohort?: Record<string, string>;
+  requested_sample_count?: number;
+  minimum_sample_count?: number;
+  maximum_sample_count?: number;
+  valid_sample_count?: number;
+  company_count?: number;
+  source_summary?: Record<string, any>;
+  schema_version?: string;
+  algorithm_version?: string;
+  taxonomy_version?: string;
+  runtime_id?: string;
+  runtime_version?: string | null;
+  data_mode?: "fixture" | "live" | string;
+  status?: string;
+  benchmark_status?: "READY" | "INSUFFICIENT_SAMPLE" | "BLOCKED_EXTERNAL" | string;
+  sample_sufficient?: boolean;
+  last_error?: string | null;
+  provider_blocked?: boolean;
+  latest_attempt?: RoleBenchmarkSummary | null;
+  attempts?: number;
+  created_at?: string;
+  updated_at?: string;
+  started_at?: string | null;
+  completed_at?: string | null;
+  scheduled?: boolean;
+  reused_active_run?: boolean;
+}
+
+export interface RoleBenchmarkDetail extends RoleBenchmarkSummary {
+  target_job?: {
+    id: number;
+    title: string;
+    company: string;
+    url: string;
+  } | null;
+  target_profile?: Record<string, any>;
+  documents?: RoleBenchmarkDocument[];
+  signals?: RoleBenchmarkSignal[];
+}
+
+export interface RoleBenchmarkBuildRequest {
+  runtime_id?: "codex" | "claude" | "gemini" | "omp" | "pi" | "opencode" | "fixture" | "replay" | "boss-fixture" | `plugin:${string}`;
+  role_family?: string;
+  specialization?: string;
+  seniority?: string;
+  region?: string;
+  industry?: string;
+}
+
+export const roleBenchmarkApi = {
+  forJob: (jobId: number) =>
+    request<RoleBenchmarkDetail>(`/api/research/role-benchmarks/job/${jobId}`),
+  build: (jobId: number, data: RoleBenchmarkBuildRequest = {}) =>
+    request<RoleBenchmarkSummary>(`/api/research/role-benchmarks/${jobId}/build`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  refresh: (jobId: number, data: RoleBenchmarkBuildRequest = {}) =>
+    request<RoleBenchmarkSummary>(`/api/research/role-benchmarks/${jobId}/refresh`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+};
+
 export type PreApplicationDecisionChoice =
   | "go"
   | "conditional_go"
@@ -575,7 +727,7 @@ export interface PreApplicationState {
   } | null;
 }
 
-export const piAgentApi = {
+export const agentRuntimeApi = {
   skills: () =>
     request<{ skills: AgentSkill[] }>("/api/agent/skills"),
   runtime: () =>
@@ -585,6 +737,7 @@ export const piAgentApi = {
     skill_id: string;
     conversation_id?: string | null;
     task_id?: string | null;
+    runtime_provider?: string;
   }, onEvent?: (event: string, data: any) => void) => {
     const runId = createAgentRunId();
     const requestData = { ...data, run_id: runId };
@@ -597,7 +750,7 @@ export const piAgentApi = {
         lastSequence = sequence;
       }
 
-      if (event !== "message.delta") {
+      if (event !== "assistant.delta" && event !== "message.delta") {
         onEvent?.(event, eventData);
         return;
       }
@@ -609,7 +762,7 @@ export const piAgentApi = {
           const deltaIndex = Number(part?.delta_index);
           if (!Number.isInteger(deltaIndex) || deltaIndex < nextDeltaIndex) continue;
           nextDeltaIndex = deltaIndex + 1;
-          onEvent?.("message.delta", {
+          onEvent?.("assistant.delta", {
             ...eventData,
             payload: {
               ...payload,
@@ -627,14 +780,14 @@ export const piAgentApi = {
         if (deltaIndex < nextDeltaIndex) return;
         nextDeltaIndex = deltaIndex + 1;
       }
-      onEvent?.(event, eventData);
+      onEvent?.("assistant.delta", eventData);
     };
 
     const followExistingRun = async () => {
       let failures = 0;
       while (true) {
         try {
-          return await readEventStream<PiAgentRunResponse>(
+          return await readEventStream<AgentRunResponse>(
             `/api/agent/runtime/runs/${encodeURIComponent(runId)}/events/stream?${buildQuery({
               after_sequence: lastSequence,
             })}`,
@@ -656,14 +809,14 @@ export const piAgentApi = {
     };
 
     try {
-      return await streamResult<PiAgentRunResponse>(
+      return await streamResult<AgentRunResponse>(
         "/api/agent/runtime/runs/stream",
         requestData,
         forwardEvent
       );
     } catch (error) {
       if (error instanceof Error && error.message === "__SSE_UNAVAILABLE__") {
-        return request<PiAgentRunResponse>("/api/agent/runtime/runs", {
+        return request<AgentRunResponse>("/api/agent/runtime/runs", {
           method: "POST",
           body: JSON.stringify(requestData),
         });
@@ -687,7 +840,7 @@ export const piAgentApi = {
     }
   },
   confirm: (runId: string, actionId: string) =>
-    request<PiAgentConfirmationResponse>(
+    request<AgentConfirmationResponse>(
       `/api/agent/runtime/runs/${encodeURIComponent(runId)}/confirm`,
       {
         method: "POST",
@@ -695,7 +848,7 @@ export const piAgentApi = {
       }
     ),
   resume: (runId: string) =>
-    request<PiAgentRunResponse>(
+    request<AgentRunResponse>(
       `/api/agent/runtime/runs/${encodeURIComponent(runId)}/resume`,
       { method: "POST" }
     ),

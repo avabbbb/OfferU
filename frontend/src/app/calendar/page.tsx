@@ -109,13 +109,7 @@ export default function CalendarPage() {
             <span className="bauhaus-chip bg-[var(--surface-muted)] text-[var(--foreground)]">日程日历</span>
             <div>
               <p className="bauhaus-label text-[var(--foreground-muted)]">日程面板</p>
-              <h1 className="mt-3 text-5xl font-black uppercase leading-[0.88] tracking-[-0.08em] sm:text-6xl">
-                规划
-                <br />
-                时间
-                <br />
-                行动
-              </h1>
+              <h1 className="mt-3 text-5xl font-black uppercase leading-[0.88] tracking-[-0.08em] sm:text-6xl">日程</h1>
               <p className="mt-4 max-w-2xl text-base font-medium leading-relaxed text-[var(--foreground-muted)]">
                 把笔试、面试和截止日期收束到一块几何日历板上，避免信息散落在邮件和聊天记录里，
                 让后续准备和时间冲突一眼可见。

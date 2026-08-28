@@ -159,13 +159,7 @@ export default function InterviewPage() {
             <span className="bauhaus-chip bg-[var(--surface-muted)] text-[var(--foreground)]">面试题库</span>
             <div>
               <p className="bauhaus-label text-[var(--foreground-muted)]">题目面板</p>
-              <h1 className="mt-3 text-5xl font-black uppercase leading-[0.88] tracking-[-0.08em] sm:text-6xl">
-                收集
-                <br />
-                提取
-                <br />
-                作答
-              </h1>
+              <h1 className="mt-3 text-5xl font-black uppercase leading-[0.88] tracking-[-0.08em] sm:text-6xl">面试</h1>
               <p className="mt-4 max-w-2xl text-base font-medium leading-relaxed text-[var(--foreground-muted)]">
                 把散落在社群、帖子和个人记录里的面经重新组织成可搜索题库，再基于档案生成回答思路，
                 让准备面试的节奏更稳定，也更容易复盘高频题。

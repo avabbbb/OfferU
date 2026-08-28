@@ -30,6 +30,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { patchJob, useJob, usePools } from "@/lib/hooks";
+import { RoleIntelligencePanel } from "@/components/jobs/RoleIntelligencePanel";
 import {
   jobResearchApi,
   preApplicationApi,
@@ -338,6 +339,8 @@ export default function JobDetailPage() {
           </CardBody>
         </Card>
       )}
+
+      <RoleIntelligencePanel jobId={job.id} />
 
       <Card className="bauhaus-panel rounded-none bg-white shadow-none" data-testid="job-research-handback">
         <CardBody className="space-y-5 p-5">

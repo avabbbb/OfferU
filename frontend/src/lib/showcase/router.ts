@@ -536,6 +536,13 @@ export async function showcaseHandle(path: string, options?: RequestInit): Promi
       }
       return {};
     case "agent":
+      if (
+        method === "GET"
+        && segments[1] === "agent"
+        && segments[2] === "runtime"
+        && segments[3] === "automation"
+        && segments[4] === "inbox"
+      ) return { items: [] };
       if (method === "GET" && sub === "runs") return listAgentRuns();
       return {};
     default:

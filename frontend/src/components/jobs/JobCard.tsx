@@ -78,7 +78,7 @@ export function JobCard({
 
   return (
     <article
-      className={`group relative flex h-full min-h-[280px] max-w-full flex-col overflow-hidden border border-black/15 bg-[var(--surface)] transition-all duration-[var(--dur-quick)] ease-[var(--ease-snap)] ${
+      className={`job-card group relative flex h-full min-h-[280px] max-w-full flex-col overflow-hidden border border-black/15 bg-[var(--surface)] transition-all duration-[var(--dur-quick)] ease-[var(--ease-snap)] ${
         selected
           ? "bg-[var(--surface-muted)] shadow-[1px_1px_0_0_rgba(18,18,18,0.16)]"
           : "shadow-[1px_1px_0_0_rgba(18,18,18,0.08)] hover:-translate-y-0.5 hover:shadow-[2px_2px_0_0_rgba(18,18,18,0.14)]"
@@ -97,6 +97,8 @@ export function JobCard({
               <img
                 src={job.company_logo}
                 alt={`${job.company} logo`}
+                width={56}
+                height={56}
                 className="h-full w-full object-cover"
                 loading="lazy"
                 referrerPolicy="no-referrer"
