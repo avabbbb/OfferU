@@ -1,6 +1,6 @@
 # OfferU DeepSeek Harness integration (Slice 2)
 
-Status: scaffold; requires exact `@deepseek-ai/dsh@0.1.0-rc.8` install to run.
+Status: Slice-2 host/client implementation; requires exact `@deepseek-ai/dsh@0.1.0-rc.8` install and runtime verification.
 
 ## Layout
 
@@ -34,6 +34,20 @@ packages/
 then pairing.request with a one-shot bootstrap token bound to an active Run,
 run.attach (single-writer lease), read-only operation.list/schema/invoke
 (get_pre_application_state / get_job / list_jobs / get_profile), events.
+
+## Slice-2 projection
+
+The host half exposes the Bridge through `harness.handle` for the browser
+client and registers only three model-facing tools through `ctx.tools`:
+
+- `offeru_context` — versioned minimal Run context;
+- `offeru_operations` — the current Run's granted read-only Operation schemas;
+- `offeru_run` — one allowlisted read-only Operation invocation.
+
+The browser half uses `host.call` for status, context, operations and event
+mirroring. It never calls the OfferU HTTP API directly. Proposal creation,
+confirmation and exactly-once commit remain the next slice and are not exposed
+by this tracer.
 
 Bootstrap tokens are issued by `create_bridge_pairing(run_id=...)` — Slice 2
 exposes it on the workbench API so the DSH plugin can fetch a token without DB

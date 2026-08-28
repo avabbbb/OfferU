@@ -7,16 +7,22 @@
   "type": "module",
   "exports": {
     ".": "./lib/index.js",
-    "./client": "./lib/client.js"
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
   },
   "dsh": {
     "client": {
       "platform": "web",
       "inject": [
         "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-api-remotes",
         "@deepseek-ai/dsh-client-ui-conversation",
         "@deepseek-ai/dsh-client-ui-sidebar"
       ]
     }
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-tools": "0.1.0-rc.8",
+    "@deepseek-ai/dsh-typert-protocol": "0.1.0-rc.8"
   }
 }
