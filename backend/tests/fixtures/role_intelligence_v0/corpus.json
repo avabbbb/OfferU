@@ -1,0 +1,281 @@
+{
+  "target": {
+    "source_ref": "job:fixture-target",
+    "source": "fixture",
+    "title": "AI Agent Product Manager",
+    "company": "Target Co",
+    "location": "Shenzhen",
+    "url": "https://jobs.example.org/target-ai-agent-pm?utm_source=fixture",
+    "raw_description": "负责 AI Agent 产品策略、Agent Harness 运行机制、模型评测体系和开发者工作流，推动产品结果落地。",
+    "role_profile": {
+      "schema": "offeru.role_jd.v1",
+      "role_family": "product_manager",
+      "specialization": "ai_agent",
+      "seniority": "senior",
+      "domain": "ai",
+      "responsibilities": ["负责 AI Agent 产品策略和交付"],
+      "hard_skills": ["Agent Harness", "模型评测"],
+      "business_capabilities": ["产品策略"],
+      "behavioral_requirements": ["跨团队协作"],
+      "domain_knowledge": ["生成式 AI"],
+      "outcome_expectations": ["提升产品采用率"],
+      "constraints": ["快速迭代"]
+    },
+    "capability_observations": [
+      {
+        "capability": "Agent Harness",
+        "category": "technical_product",
+        "importance": "must_have",
+        "evidence_text": "负责 Agent Harness 运行机制设计",
+        "source_section": "responsibilities",
+        "confidence": 0.94
+      },
+      {
+        "capability": "Eval Design",
+        "category": "technical_product",
+        "importance": "must_have",
+        "evidence_text": "负责大模型能力评测体系建设",
+        "source_section": "responsibilities",
+        "confidence": 0.93
+      },
+      {
+        "capability": "Developer Workflow",
+        "category": "technical_product",
+        "importance": "strong",
+        "evidence_text": "负责开发者工作流体验和工具链设计",
+        "source_section": "responsibilities",
+        "confidence": 0.91
+      },
+      {
+        "capability": "Product Strategy",
+        "category": "business_capability",
+        "importance": "strong",
+        "evidence_text": "制定 AI Agent 产品策略并推动结果落地",
+        "source_section": "business_capabilities",
+        "confidence": 0.96
+      }
+    ]
+  },
+  "comparators": [
+    {
+      "source_ref": "cmp-01",
+      "source": "public_board_a",
+      "title": "AI Platform Product Manager 01",
+      "company": "Comparator Co 01",
+      "location": "Shenzhen",
+      "url": "https://jobs.example.org/cmp-01",
+      "raw_description": "Comparator Co 01 招聘 AI Agent 产品经理，负责产品策略、增长实验和 Agent Harness 协作。",
+      "role_profile": {"schema": "offeru.role_jd.v1", "role_family": "product_manager", "specialization": "ai_agent", "seniority": "senior", "domain": "ai", "responsibilities": ["负责 AI 产品规划"], "hard_skills": ["Agent Harness"], "business_capabilities": ["产品策略", "增长实验"], "behavioral_requirements": [], "domain_knowledge": ["生成式 AI"], "outcome_expectations": [], "constraints": []},
+      "capability_observations": [{"capability": "Agent Harness", "category": "technical_product", "importance": "strong", "evidence_text": "参与 Agent Harness 协作设计", "source_section": "responsibilities", "confidence": 0.86}, {"capability": "Product Strategy", "category": "business_capability", "importance": "strong", "evidence_text": "负责产品策略规划", "source_section": "responsibilities", "confidence": 0.88}, {"capability": "Growth Experiment", "category": "growth", "importance": "strong", "evidence_text": "负责增长实验迭代", "source_section": "business_capabilities", "confidence": 0.84}]
+    },
+    {
+      "source_ref": "cmp-02",
+      "source": "public_board_a",
+      "title": "AI Platform Product Manager 02",
+      "company": "Comparator Co 02",
+      "location": "Shenzhen",
+      "url": "https://jobs.example.org/cmp-02",
+      "raw_description": "Comparator Co 02 招聘 AI Agent 产品经理，负责产品策略、增长实验和 Agent Harness 协作。",
+      "role_profile": {"schema": "offeru.role_jd.v1", "role_family": "product_manager", "specialization": "ai_agent", "seniority": "senior", "domain": "ai", "responsibilities": ["负责 AI 产品规划"], "hard_skills": ["Agent Harness"], "business_capabilities": ["产品策略", "增长实验"], "behavioral_requirements": [], "domain_knowledge": ["生成式 AI"], "outcome_expectations": [], "constraints": []},
+      "capability_observations": [{"capability": "Agent Harness", "category": "technical_product", "importance": "strong", "evidence_text": "参与 Agent Harness 协作设计", "source_section": "responsibilities", "confidence": 0.86}, {"capability": "Product Strategy", "category": "business_capability", "importance": "strong", "evidence_text": "负责产品策略规划", "source_section": "responsibilities", "confidence": 0.88}, {"capability": "Growth Experiment", "category": "growth", "importance": "strong", "evidence_text": "负责增长实验迭代", "source_section": "business_capabilities", "confidence": 0.84}]
+    },
+    {
+      "source_ref": "cmp-03",
+      "source": "public_board_a",
+      "title": "AI Platform Product Manager 03",
+      "company": "Comparator Co 03",
+      "location": "Shenzhen",
+      "url": "https://jobs.example.org/cmp-03",
+      "raw_description": "Comparator Co 03 招聘 AI Agent 产品经理，负责产品策略、增长实验和模型评测。",
+      "role_profile": {"schema": "offeru.role_jd.v1", "role_family": "product_manager", "specialization": "ai_agent", "seniority": "senior", "domain": "ai", "responsibilities": ["负责 AI 产品规划"], "hard_skills": ["模型评测"], "business_capabilities": ["产品策略", "增长实验"], "behavioral_requirements": [], "domain_knowledge": ["生成式 AI"], "outcome_expectations": [], "constraints": []},
+      "capability_observations": [{"capability": "Eval Design", "category": "technical_product", "importance": "strong", "evidence_text": "参与模型评测方案设计", "source_section": "responsibilities", "confidence": 0.86}, {"capability": "Product Strategy", "category": "business_capability", "importance": "strong", "evidence_text": "负责产品策略规划", "source_section": "responsibilities", "confidence": 0.88}, {"capability": "Growth Experiment", "category": "growth", "importance": "strong", "evidence_text": "负责增长实验迭代", "source_section": "business_capabilities", "confidence": 0.84}]
+    },
+    {
+      "source_ref": "cmp-04",
+      "source": "public_board_a",
+      "title": "AI Platform Product Manager 04",
+      "company": "Comparator Co 04",
+      "location": "Shenzhen",
+      "url": "https://jobs.example.org/cmp-04",
+      "raw_description": "Comparator Co 04 招聘 AI Agent 产品经理，负责产品策略、增长实验和模型评测。",
+      "role_profile": {"schema": "offeru.role_jd.v1", "role_family": "product_manager", "specialization": "ai_agent", "seniority": "senior", "domain": "ai", "responsibilities": ["负责 AI 产品规划"], "hard_skills": ["模型评测"], "business_capabilities": ["产品策略", "增长实验"], "behavioral_requirements": [], "domain_knowledge": ["生成式 AI"], "outcome_expectations": [], "constraints": []},
+      "capability_observations": [{"capability": "Eval Design", "category": "technical_product", "importance": "strong", "evidence_text": "参与模型评测方案设计", "source_section": "responsibilities", "confidence": 0.86}, {"capability": "Product Strategy", "category": "business_capability", "importance": "strong", "evidence_text": "负责产品策略规划", "source_section": "responsibilities", "confidence": 0.88}, {"capability": "Growth Experiment", "category": "growth", "importance": "strong", "evidence_text": "负责增长实验迭代", "source_section": "business_capabilities", "confidence": 0.84}]
+    },
+    {
+      "source_ref": "cmp-05",
+      "source": "public_board_b",
+      "title": "AI Platform Product Manager 05",
+      "company": "Comparator Co 05",
+      "location": "Shenzhen",
+      "url": "https://jobs.example.org/cmp-05",
+      "raw_description": "Comparator Co 05 招聘 AI Agent 产品经理，负责产品策略、增长实验和开发者体验。",
+      "role_profile": {"schema": "offeru.role_jd.v1", "role_family": "product_manager", "specialization": "ai_agent", "seniority": "senior", "domain": "ai", "responsibilities": ["负责 AI 产品规划"], "hard_skills": ["开发者体验"], "business_capabilities": ["产品策略", "增长实验"], "behavioral_requirements": [], "domain_knowledge": ["生成式 AI"], "outcome_expectations": [], "constraints": []},
+      "capability_observations": [{"capability": "Developer Experience", "category": "technical_product", "importance": "strong", "evidence_text": "优化开发者体验和工作流", "source_section": "responsibilities", "confidence": 0.86}, {"capability": "Product Strategy", "category": "business_capability", "importance": "strong", "evidence_text": "负责产品策略规划", "source_section": "responsibilities", "confidence": 0.88}, {"capability": "Growth Experiment", "category": "growth", "importance": "strong", "evidence_text": "负责增长实验迭代", "source_section": "business_capabilities", "confidence": 0.84}]
+    },
+    {
+      "source_ref": "cmp-06",
+      "source": "public_board_b",
+      "title": "AI Platform Product Manager 06",
+      "company": "Comparator Co 06",
+      "location": "Shenzhen",
+      "url": "https://jobs.example.org/cmp-06",
+      "raw_description": "Comparator Co 06 招聘 AI Agent 产品经理，负责产品策略、增长实验和开发者体验。",
+      "role_profile": {"schema": "offeru.role_jd.v1", "role_family": "product_manager", "specialization": "ai_agent", "seniority": "senior", "domain": "ai", "responsibilities": ["负责 AI 产品规划"], "hard_skills": ["开发者体验"], "business_capabilities": ["产品策略", "增长实验"], "behavioral_requirements": [], "domain_knowledge": ["生成式 AI"], "outcome_expectations": [], "constraints": []},
+      "capability_observations": [{"capability": "Developer Experience", "category": "technical_product", "importance": "strong", "evidence_text": "优化开发者体验和工作流", "source_section": "responsibilities", "confidence": 0.86}, {"capability": "Product Strategy", "category": "business_capability", "importance": "strong", "evidence_text": "负责产品策略规划", "source_section": "responsibilities", "confidence": 0.88}, {"capability": "Growth Experiment", "category": "growth", "importance": "strong", "evidence_text": "负责增长实验迭代", "source_section": "business_capabilities", "confidence": 0.84}]
+    },
+    {
+      "source_ref": "cmp-07",
+      "source": "public_board_b",
+      "title": "AI Platform Product Manager 07",
+      "company": "Comparator Co 07",
+      "location": "Shenzhen",
+      "url": "https://jobs.example.org/cmp-07",
+      "raw_description": "Comparator Co 07 招聘 AI Agent 产品经理，负责产品策略、增长实验和开发者体验。",
+      "role_profile": {"schema": "offeru.role_jd.v1", "role_family": "product_manager", "specialization": "ai_agent", "seniority": "senior", "domain": "ai", "responsibilities": ["负责 AI 产品规划"], "hard_skills": ["开发者体验"], "business_capabilities": ["产品策略", "增长实验"], "behavioral_requirements": [], "domain_knowledge": ["生成式 AI"], "outcome_expectations": [], "constraints": []},
+      "capability_observations": [{"capability": "Developer Experience", "category": "technical_product", "importance": "strong", "evidence_text": "优化开发者体验和工作流", "source_section": "responsibilities", "confidence": 0.86}, {"capability": "Product Strategy", "category": "business_capability", "importance": "strong", "evidence_text": "负责产品策略规划", "source_section": "responsibilities", "confidence": 0.88}, {"capability": "Growth Experiment", "category": "growth", "importance": "strong", "evidence_text": "负责增长实验迭代", "source_section": "business_capabilities", "confidence": 0.84}]
+    },
+    {
+      "source_ref": "cmp-08",
+      "source": "public_board_b",
+      "title": "AI Platform Product Manager 08",
+      "company": "Comparator Co 08",
+      "location": "Shenzhen",
+      "url": "https://jobs.example.org/cmp-08",
+      "raw_description": "Comparator Co 08 招聘 AI Agent 产品经理，负责产品策略、增长实验和开发者体验。",
+      "role_profile": {"schema": "offeru.role_jd.v1", "role_family": "product_manager", "specialization": "ai_agent", "seniority": "senior", "domain": "ai", "responsibilities": ["负责 AI 产品规划"], "hard_skills": ["开发者体验"], "business_capabilities": ["产品策略", "增长实验"], "behavioral_requirements": [], "domain_knowledge": ["生成式 AI"], "outcome_expectations": [], "constraints": []},
+      "capability_observations": [{"capability": "Developer Experience", "category": "technical_product", "importance": "strong", "evidence_text": "优化开发者体验和工作流", "source_section": "responsibilities", "confidence": 0.86}, {"capability": "Product Strategy", "category": "business_capability", "importance": "strong", "evidence_text": "负责产品策略规划", "source_section": "responsibilities", "confidence": 0.88}, {"capability": "Growth Experiment", "category": "growth", "importance": "strong", "evidence_text": "负责增长实验迭代", "source_section": "business_capabilities", "confidence": 0.84}]
+    },
+    {
+      "source_ref": "cmp-09",
+      "source": "public_board_b",
+      "title": "AI Platform Product Manager 09",
+      "company": "Comparator Co 09",
+      "location": "Shenzhen",
+      "url": "https://jobs.example.org/cmp-09",
+      "raw_description": "Comparator Co 09 招聘 AI Agent 产品经理，负责产品策略、增长实验。",
+      "role_profile": {"schema": "offeru.role_jd.v1", "role_family": "product_manager", "specialization": "ai_agent", "seniority": "senior", "domain": "ai", "responsibilities": ["负责 AI 产品规划"], "hard_skills": [], "business_capabilities": ["产品策略", "增长实验"], "behavioral_requirements": [], "domain_knowledge": ["生成式 AI"], "outcome_expectations": [], "constraints": []},
+      "capability_observations": [{"capability": "Product Strategy", "category": "business_capability", "importance": "strong", "evidence_text": "负责产品策略规划", "source_section": "responsibilities", "confidence": 0.88}, {"capability": "Growth Experiment", "category": "growth", "importance": "strong", "evidence_text": "负责增长实验迭代", "source_section": "business_capabilities", "confidence": 0.84}]
+    },
+    {
+      "source_ref": "cmp-10",
+      "source": "public_board_b",
+      "title": "AI Platform Product Manager 10",
+      "company": "Comparator Co 10",
+      "location": "Shenzhen",
+      "url": "https://jobs.example.org/cmp-10",
+      "raw_description": "Comparator Co 10 招聘 AI Agent 产品经理，负责产品策略、增长实验。",
+      "role_profile": {"schema": "offeru.role_jd.v1", "role_family": "product_manager", "specialization": "ai_agent", "seniority": "senior", "domain": "ai", "responsibilities": ["负责 AI 产品规划"], "hard_skills": [], "business_capabilities": ["产品策略", "增长实验"], "behavioral_requirements": [], "domain_knowledge": ["生成式 AI"], "outcome_expectations": [], "constraints": []},
+      "capability_observations": [{"capability": "Product Strategy", "category": "business_capability", "importance": "strong", "evidence_text": "负责产品策略规划", "source_section": "responsibilities", "confidence": 0.88}, {"capability": "Growth Experiment", "category": "growth", "importance": "strong", "evidence_text": "负责增长实验迭代", "source_section": "business_capabilities", "confidence": 0.84}]
+    },
+    {
+      "source_ref": "cmp-11",
+      "source": "public_board_b",
+      "title": "AI Platform Product Manager 11",
+      "company": "Comparator Co 11",
+      "location": "Shenzhen",
+      "url": "https://jobs.example.org/cmp-11",
+      "raw_description": "Comparator Co 11 招聘 AI Agent 产品经理，负责产品策略、增长实验。",
+      "role_profile": {"schema": "offeru.role_jd.v1", "role_family": "product_manager", "specialization": "ai_agent", "seniority": "senior", "domain": "ai", "responsibilities": ["负责 AI 产品规划"], "hard_skills": [], "business_capabilities": ["产品策略", "增长实验"], "behavioral_requirements": [], "domain_knowledge": ["生成式 AI"], "outcome_expectations": [], "constraints": []},
+      "capability_observations": [{"capability": "Product Strategy", "category": "business_capability", "importance": "strong", "evidence_text": "负责产品策略规划", "source_section": "responsibilities", "confidence": 0.88}, {"capability": "Growth Experiment", "category": "growth", "importance": "strong", "evidence_text": "负责增长实验迭代", "source_section": "business_capabilities", "confidence": 0.84}]
+    },
+    {
+      "source_ref": "cmp-12",
+      "source": "public_board_b",
+      "title": "AI Platform Product Manager 12",
+      "company": "Comparator Co 12",
+      "location": "Shenzhen",
+      "url": "https://jobs.example.org/cmp-12",
+      "raw_description": "Comparator Co 12 招聘 AI Agent 产品经理，负责产品策略、增长实验。",
+      "role_profile": {"schema": "offeru.role_jd.v1", "role_family": "product_manager", "specialization": "ai_agent", "seniority": "senior", "domain": "ai", "responsibilities": ["负责 AI 产品规划"], "hard_skills": [], "business_capabilities": ["产品策略", "增长实验"], "behavioral_requirements": [], "domain_knowledge": ["生成式 AI"], "outcome_expectations": [], "constraints": []},
+      "capability_observations": [{"capability": "Product Strategy", "category": "business_capability", "importance": "strong", "evidence_text": "负责产品策略规划", "source_section": "responsibilities", "confidence": 0.88}, {"capability": "Growth Experiment", "category": "growth", "importance": "strong", "evidence_text": "负责增长实验迭代", "source_section": "business_capabilities", "confidence": 0.84}]
+    },
+    {
+      "source_ref": "cmp-13",
+      "source": "public_board_c",
+      "title": "AI Platform Product Manager 13",
+      "company": "Comparator Co 13",
+      "location": "Shenzhen",
+      "url": "https://jobs.example.org/cmp-13",
+      "raw_description": "Comparator Co 13 招聘 AI Agent 产品经理，负责产品策略。",
+      "role_profile": {"schema": "offeru.role_jd.v1", "role_family": "product_manager", "specialization": "ai_agent", "seniority": "senior", "domain": "ai", "responsibilities": ["负责 AI 产品规划"], "hard_skills": [], "business_capabilities": ["产品策略"], "behavioral_requirements": [], "domain_knowledge": ["生成式 AI"], "outcome_expectations": [], "constraints": []},
+      "capability_observations": [{"capability": "Product Strategy", "category": "business_capability", "importance": "strong", "evidence_text": "负责产品策略规划", "source_section": "responsibilities", "confidence": 0.88}]
+    },
+    {
+      "source_ref": "cmp-14",
+      "source": "public_board_c",
+      "title": "AI Platform Product Manager 14",
+      "company": "Comparator Co 14",
+      "location": "Shenzhen",
+      "url": "https://jobs.example.org/cmp-14",
+      "raw_description": "Comparator Co 14 招聘 AI Agent 产品经理，负责产品策略。",
+      "role_profile": {"schema": "offeru.role_jd.v1", "role_family": "product_manager", "specialization": "ai_agent", "seniority": "senior", "domain": "ai", "responsibilities": ["负责 AI 产品规划"], "hard_skills": [], "business_capabilities": ["产品策略"], "behavioral_requirements": [], "domain_knowledge": ["生成式 AI"], "outcome_expectations": [], "constraints": []},
+      "capability_observations": [{"capability": "Product Strategy", "category": "business_capability", "importance": "strong", "evidence_text": "负责产品策略规划", "source_section": "responsibilities", "confidence": 0.88}]
+    },
+    {
+      "source_ref": "cmp-15",
+      "source": "public_board_c",
+      "title": "AI Platform Product Manager 15",
+      "company": "Comparator Co 15",
+      "location": "Shenzhen",
+      "url": "https://jobs.example.org/cmp-15",
+      "raw_description": "Comparator Co 15 招聘 AI Agent 产品经理，负责产品策略。",
+      "role_profile": {"schema": "offeru.role_jd.v1", "role_family": "product_manager", "specialization": "ai_agent", "seniority": "senior", "domain": "ai", "responsibilities": ["负责 AI 产品规划"], "hard_skills": [], "business_capabilities": ["产品策略"], "behavioral_requirements": [], "domain_knowledge": ["生成式 AI"], "outcome_expectations": [], "constraints": []},
+      "capability_observations": [{"capability": "Product Strategy", "category": "business_capability", "importance": "strong", "evidence_text": "负责产品策略规划", "source_section": "responsibilities", "confidence": 0.88}]
+    },
+    {
+      "source_ref": "cmp-16",
+      "source": "public_board_c",
+      "title": "AI Platform Product Manager 16",
+      "company": "Comparator Co 16",
+      "location": "Shenzhen",
+      "url": "https://jobs.example.org/cmp-16",
+      "raw_description": "Comparator Co 16 招聘 AI Agent 产品经理，负责产品策略。",
+      "role_profile": {"schema": "offeru.role_jd.v1", "role_family": "product_manager", "specialization": "ai_agent", "seniority": "senior", "domain": "ai", "responsibilities": ["负责 AI 产品规划"], "hard_skills": [], "business_capabilities": ["产品策略"], "behavioral_requirements": [], "domain_knowledge": ["生成式 AI"], "outcome_expectations": [], "constraints": []},
+      "capability_observations": [{"capability": "Product Strategy", "category": "business_capability", "importance": "strong", "evidence_text": "负责产品策略规划", "source_section": "responsibilities", "confidence": 0.88}]
+    },
+    {
+      "source_ref": "cmp-17",
+      "source": "public_board_c",
+      "title": "AI Platform Product Manager 17",
+      "company": "Comparator Co 17",
+      "location": "Shenzhen",
+      "url": "https://jobs.example.org/cmp-17",
+      "raw_description": "Comparator Co 17 招聘 AI Agent 产品经理，负责产品策略。",
+      "role_profile": {"schema": "offeru.role_jd.v1", "role_family": "product_manager", "specialization": "ai_agent", "seniority": "senior", "domain": "ai", "responsibilities": ["负责 AI 产品规划"], "hard_skills": [], "business_capabilities": ["产品策略"], "behavioral_requirements": [], "domain_knowledge": ["生成式 AI"], "outcome_expectations": [], "constraints": []},
+      "capability_observations": [{"capability": "Product Strategy", "category": "business_capability", "importance": "strong", "evidence_text": "负责产品策略规划", "source_section": "responsibilities", "confidence": 0.88}]
+    },
+    {
+      "source_ref": "cmp-18",
+      "source": "public_board_c",
+      "title": "AI Platform Product Manager 18",
+      "company": "Comparator Co 18",
+      "location": "Shenzhen",
+      "url": "https://jobs.example.org/cmp-18",
+      "raw_description": "Comparator Co 18 招聘 AI Agent 产品经理，负责产品策略。",
+      "role_profile": {"schema": "offeru.role_jd.v1", "role_family": "product_manager", "specialization": "ai_agent", "seniority": "senior", "domain": "ai", "responsibilities": ["负责 AI 产品规划"], "hard_skills": [], "business_capabilities": ["产品策略"], "behavioral_requirements": [], "domain_knowledge": ["生成式 AI"], "outcome_expectations": [], "constraints": []},
+      "capability_observations": [{"capability": "Product Strategy", "category": "business_capability", "importance": "strong", "evidence_text": "负责产品策略规划", "source_section": "responsibilities", "confidence": 0.88}]
+    },
+    {
+      "source_ref": "cmp-19",
+      "source": "public_board_c",
+      "title": "AI Platform Product Manager 19",
+      "company": "Comparator Co 19",
+      "location": "Shenzhen",
+      "url": "https://jobs.example.org/cmp-19",
+      "raw_description": "Comparator Co 19 招聘 AI Agent 产品经理，负责产品策略。",
+      "role_profile": {"schema": "offeru.role_jd.v1", "role_family": "product_manager", "specialization": "ai_agent", "seniority": "senior", "domain": "ai", "responsibilities": ["负责 AI 产品规划"], "hard_skills": [], "business_capabilities": ["产品策略"], "behavioral_requirements": [], "domain_knowledge": ["生成式 AI"], "outcome_expectations": [], "constraints": []},
+      "capability_observations": [{"capability": "Product Strategy", "category": "business_capability", "importance": "strong", "evidence_text": "负责产品策略规划", "source_section": "responsibilities", "confidence": 0.88}]
+    },
+    {
+      "source_ref": "cmp-20",
+      "source": "public_board_c",
+      "title": "AI Platform Product Manager 20",
+      "company": "Comparator Co 20",
+      "location": "Shenzhen",
+      "url": "https://jobs.example.org/cmp-20",
+      "raw_description": "Comparator Co 20 招聘 AI Agent 产品经理，负责产品策略。",
+      "role_profile": {"schema": "offeru.role_jd.v1", "role_family": "product_manager", "specialization": "ai_agent", "seniority": "senior", "domain": "ai", "responsibilities": ["负责 AI 产品规划"], "hard_skills": [], "business_capabilities": ["产品策略"], "behavioral_requirements": [], "domain_knowledge": ["生成式 AI"], "outcome_expectations": [], "constraints": []},
+      "capability_observations": [{"capability": "Product Strategy", "category": "business_capability", "importance": "strong", "evidence_text": "负责产品策略规划", "source_section": "responsibilities", "confidence": 0.88}]
+    }
+  ]
+}

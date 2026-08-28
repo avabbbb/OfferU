@@ -1,0 +1,89 @@
+{
+  "schema": "offeru.capability_plugin.v1",
+  "name": "job-search",
+  "version": "0.1.0",
+  "description": "公开岗位搜索能力：从 Arbeitnow 公共 Job Board API 获取候选岗位，不登录、不提交申请。",
+  "cli": {
+    "command": "python",
+    "args": ["bin/job-search-cli.py"]
+  },
+  "executable": {
+    "command": "python",
+    "args": ["bin/job-search-cli.py"]
+  },
+  "skill_entry": "skills",
+  "skills": "skills",
+  "health_check": {
+    "capability": "jobs.search",
+    "arguments": {
+      "query": "product manager",
+      "limit": 1,
+      "page_limit": 1
+    }
+  },
+  "capabilities": [
+    {
+      "name": "jobs.search",
+      "description": "在允许的公开岗位源中检索并返回候选 JD；不会写入 OfferU。",
+      "side_effects": ["external_read", "local_compute"],
+      "input_contract": {
+        "type": "object",
+        "properties": {
+          "query": {"type": "string", "maxLength": 240},
+          "target": {"type": "object"},
+          "target_job_id": {"type": "integer", "minimum": 1},
+          "role_family": {"type": "string", "maxLength": 120},
+          "specialization": {"type": "string", "maxLength": 160},
+          "seniority": {"type": "string", "maxLength": 60},
+          "region": {"type": "string", "maxLength": 300},
+          "industry": {"type": "string", "maxLength": 200},
+          "limit": {"type": "integer", "minimum": 1, "maximum": 50},
+          "page_limit": {"type": "integer", "minimum": 1, "maximum": 8}
+        },
+        "additionalProperties": false
+      },
+      "output_contract": {
+        "type": "object",
+        "required": ["schema", "source", "target", "comparators", "gaps"]
+      }
+    },
+    {
+      "name": "jobs.get",
+      "description": "从允许的公开岗位源读取一份岗位的结构化候选文档。",
+      "side_effects": ["external_read", "local_compute"],
+      "input_contract": {
+        "type": "object",
+        "properties": {
+          "source_ref": {"type": "string", "maxLength": 240},
+          "job_id": {"type": "string", "maxLength": 240},
+          "slug": {"type": "string", "maxLength": 240}
+        },
+        "additionalProperties": false
+      },
+      "output_contract": {
+        "type": "object",
+        "required": ["schema", "source", "job"]
+      }
+    },
+    {
+      "name": "jobs.snapshot",
+      "description": "读取公开岗位源的原始快照，用于可追溯研究和后续重放。",
+      "side_effects": ["external_read", "local_compute"],
+      "input_contract": {
+        "type": "object",
+        "properties": {
+          "page_limit": {"type": "integer", "minimum": 1, "maximum": 8}
+        },
+        "additionalProperties": false
+      },
+      "output_contract": {
+        "type": "object",
+        "required": ["schema", "source", "fetched_at", "jobs"]
+      }
+    }
+  ],
+  "permissions": {
+    "network": ["www.arbeitnow.com"],
+    "externalWrite": "deny"
+  }
+}

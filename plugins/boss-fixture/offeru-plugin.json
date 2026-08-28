@@ -1,0 +1,52 @@
+{
+  "schema": "offeru.capability_plugin.v1",
+  "name": "boss-fixture",
+  "version": "0.1.0",
+  "description": "Deterministic fixture job-search capability for local Role Intelligence proofs.",
+  "cli": {
+    "command": "python",
+    "args": ["bin/boss-fixture-cli.py"]
+  },
+  "executable": {
+    "command": "python",
+    "args": ["bin/boss-fixture-cli.py"]
+  },
+  "skill_entry": "skills",
+  "health_check": {
+    "capability": "jobs.search",
+    "arguments": {}
+  },
+  "skills": "skills",
+  "capabilities": [
+    {
+      "name": "jobs.search",
+      "description": "Return the versioned Role Intelligence fixture corpus.",
+      "input_contract": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "side_effects": ["external_read"],
+      "output_contract": {
+        "type": "object",
+        "required": ["schema", "target", "comparators"]
+      }
+    },
+    {
+      "name": "job.get",
+      "description": "Return one job document from the fixture corpus.",
+      "input_contract": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "side_effects": ["external_read"],
+      "output_contract": {
+        "type": "object",
+        "required": ["job"]
+      }
+    }
+  ],
+  "permissions": {
+    "network": [],
+    "externalWrite": "deny"
+  }
+}

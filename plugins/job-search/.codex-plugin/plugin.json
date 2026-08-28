@@ -1,0 +1,18 @@
+{
+  "name": "job-search",
+  "version": "0.1.0",
+  "description": "OfferU public job-search capability backed by a legal public job-board API.",
+  "author": {
+    "name": "Local developer"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Job Search",
+    "shortDescription": "Search public jobs for OfferU.",
+    "longDescription": "Searches public job postings and returns structured candidate documents for OfferU Role Intelligence. It does not submit applications.",
+    "developerName": "Local developer",
+    "category": "Productivity",
+    "capabilities": ["jobs.search", "jobs.get", "jobs.snapshot"],
+    "defaultPrompt": "Use the OfferU job-search capability to find public job postings."
+  }
+}
