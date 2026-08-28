@@ -1,9 +1,0 @@
-{
-  "name": "@offeru/dsh-bundle",
-  "version": "0.1.0",
-  "private": true,
-  "description": "OfferU bundle for DeepSeek Harness rc8: patch rows + offeru agent preset pointer",
-  "dsh": {
-    "bundle": true
-  }
-}
