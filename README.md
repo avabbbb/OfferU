@@ -57,17 +57,16 @@ flowchart LR
     P --> W[OfferU 工作台确认]
 ```
 
-- **唯一主控 Loop 在外部 Harness**：规划、对话和工具循环由 DeepSeek Harness、Codex 等宿主持有。
+- **唯一主控 Loop 在外部 Harness**：规划、对话和工具循环由 Codex 等外部 Harness 宿主持有。
 - **OfferU 是确定性控制面**：提供任务上下文、原子 Operation、权限、提案、确认、工件和审计。
 - **CLI-first，不采用 MCP 业务接口**：目标 Bridge 是私有 stdio JSONL 协议；Harness 通过薄插件或 adapter 接入。
-- **DeepSeek Harness 与 Codex 优先**：首个交互面是 DSH Web；Codex 采用官方 App Server 边界。Claude Code、OpenCode 和 Pi 通过同一一致性契约后再标记支持。
+- **DeepSeek Harness 与 Codex 优先**：Codex 采用官方 App Server 边界。Claude Code、OpenCode 和 Pi 通过同一一致性契约后再标记支持。
 - **确认权不交给模型**：Harness 原生审批只管理其文件或 shell 工具；OfferU 的业务副作用只能在工作台批准一次。
 
-上面是已接受的架构边界。当前 Main Agent UI 通过 provider-neutral `AgentRuntimeProvider` 消费 Pi/Replay 等适配器；C1 全局控制面审计已证明正式业务 mutation 没有已知的 Route 级 Registry 旁路。旧 Pi Worker、CLI `confirm` 和实验性 MCP 仍属于迁移期/兼容表面，不能作为新的业务集成契约。Codex App Server 的结构适配与 fixture/replay 路径已有验证，但本机真实 Codex 仍受认证阻塞；DSH 仍待独立 Provider 验收。真实 `job-search` Capability Plugin 已有 Manifest、Skill、CLI 和契约测试，live Role Intelligence 采集仍需单独验证。具体差距见[迁移路线](./docs/implementation/migration-roadmap.md)。
+上面是已接受的架构边界。当前 Main Agent UI 通过 provider-neutral `AgentRuntimeProvider` 消费 Pi/Replay 等适配器；C1 全局控制面审计已证明正式业务 mutation 没有已知的 Route 级 Registry 旁路。旧 Pi Worker、CLI `confirm` 和实验性 MCP 仍属于迁移期/兼容表面，不能作为新的业务集成契约。Codex App Server 的结构适配与 fixture/replay 路径已有验证，但本机真实 Codex 仍受认证阻塞；真实 `job-search` Capability Plugin 已有 Manifest、Skill、CLI 和契约测试，live Role Intelligence 采集仍需单独验证。具体差距见[迁移路线](./docs/implementation/migration-roadmap.md)。
 
 上游现状以官方资料为准：
 
-- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 仍处于 Developer Preview，接入必须锁定并探测兼容能力。
 - [Codex App Server](https://developers.openai.com/codex/app-server) 提供官方 stdio JSONL 深度集成边界；实验能力必须版本门控。
 
 ## 快速开始
@@ -183,7 +182,7 @@ npm run build
 - [领域词汇与不变量](./CONTEXT.md)
 - [ADR 决策账本](./docs/adr/README.md)
 - [外部 Harness 主控总览](./docs/architecture/agent-system.md)
-- [DSH / Codex 等接入策略](./docs/architecture/harness-integrations.md)
+- [Harness接入策略](./docs/architecture/harness-integrations.md)
 - [纵向迁移路线](./docs/implementation/migration-roadmap.md)
 
 仓库不再保存日期化的旧计划、审计和失效报告；Git 历史就是归档。新的长期决策进入 ADR 账本，现行细节直接更新对应主题文档。

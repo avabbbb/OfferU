@@ -57,7 +57,7 @@ _Avoid_: MCP 业务接口、REST 自动化后端、Shell 脚本协议、固定 P
 _Avoid_: OfferU Harness Host、内置 Agent Runtime、MCP Host、第二主脑
 
 **OfferU Agent Runtime**:
-由 `AgentRuntimeProvider` 暴露的 provider-neutral 执行边界，负责 thread、turn、event、Skill/Plugin 发现、审批中断、取消和恢复等 Harness 生命周期。Codex App Server 是首个主 Provider，Pi/Replay 适配器用于当前本地兼容与确定性验收，DSH 等 Provider 必须通过同一契约后才能标记支持；该边界不拥有 Career Truth，也不能替代 Operation Registry。
+由 `AgentRuntimeProvider` 暴露的 provider-neutral 执行边界，负责 thread、turn、event、Skill/Plugin 发现、审批中断、取消和恢复等 Harness 生命周期。Codex App Server 是首个主 Provider，Pi/Replay 适配器用于当前本地兼容与确定性验收，其他 Provider 必须通过同一契约后才能标记支持；该边界不拥有 Career Truth，也不能替代 Operation Registry。
 _Avoid_: Career Runtime、业务 Agent、第二套 Operation Registry、Codex Core Fork
 
 **CareerTask**:

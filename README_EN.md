@@ -57,17 +57,16 @@ flowchart LR
     P --> W[Approval in OfferU]
 ```
 
-- **The external harness owns the only main loop.** DeepSeek Harness, Codex, and other hosts own reasoning, conversation, planning, and their tool loop.
+- **The external harness owns the only main loop.** Codex and other hosts own reasoning, conversation, planning, and their tool loop.
 - **OfferU is the deterministic control plane.** It provides scoped context, atomic Operations, grants, proposals, approvals, artifacts, and audit.
 - **CLI-first; no MCP business interface.** The target Bridge is a private stdio JSONL protocol, wrapped by a thin harness plugin or adapter.
-- **DeepSeek Harness and Codex come first.** DSH Web is the first interaction surface; Codex uses the official App Server boundary. Claude Code, OpenCode, and Pi become supported only after passing the same conformance contract.
+- **Codex comes first.** Codex uses the official App Server boundary. Claude Code, OpenCode, and Pi become supported only after passing the same conformance contract.
 - **The model never owns business approval.** Harness-native approval governs its file or shell tools only. An OfferU side effect can be approved once, independently, in the OfferU workbench.
 
-This is the accepted **target architecture**, not a completion claim. The repository still contains the Pi worker, the legacy CLI `confirm` surface, an experimental MCP module, and other migration-era entry points; none is a surface for new integrations. The DSH plugin, Codex adapter, and new Bridge have not yet passed an end-to-end vertical-slice acceptance. See the [migration roadmap](./docs/implementation/migration-roadmap.md).
+This is the accepted **target architecture**, not a completion claim. The repository still contains the Pi worker, the legacy CLI `confirm` surface, an experimental MCP module, and other migration-era entry points; none is a surface for new integrations. The Codex adapter and new Bridge have not yet passed an end-to-end vertical-slice acceptance. See the [migration roadmap](./docs/implementation/migration-roadmap.md).
 
 For current upstream boundaries, use the official sources:
 
-- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) is still a Developer Preview, so the adapter must pin and probe compatible capabilities.
 - [Codex App Server](https://developers.openai.com/codex/app-server) is the official stdio JSONL integration boundary; experimental capabilities must be version-gated.
 
 ## Quick start
@@ -183,7 +182,7 @@ Each command validates only its own layer; none is a standalone beta or release 
 - [Domain language and invariants](./CONTEXT.md)
 - [Consolidated ADR ledger](./docs/adr/README.md)
 - [External-harness agent architecture](./docs/architecture/agent-system.md)
-- [DSH, Codex, and other harness integrations](./docs/architecture/harness-integrations.md)
+- [Harness integrations](./docs/architecture/harness-integrations.md)
 - [Vertical migration roadmap](./docs/implementation/migration-roadmap.md)
 
 The repository no longer keeps dated obsolete plans, audits, or invalid reports. Git history is the archive. Durable decisions go into the ADR ledger; current detail is edited in the relevant topic document.

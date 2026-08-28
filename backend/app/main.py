@@ -115,10 +115,6 @@ cors_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()
 for _offeru_frontend_origin in ("http://localhost:7410", "http://127.0.0.1:7410"):
     if _offeru_frontend_origin not in cors_origins:
         cors_origins.append(_offeru_frontend_origin)
-# DSH Web 浮层（Slice 3 确认浮层）运行在 3080，需要直接轮询/提交提案决定。
-for _dsh_web_origin in ("http://localhost:3737", "http://127.0.0.1:3737"):
-    if _dsh_web_origin not in cors_origins:
-        cors_origins.append(_dsh_web_origin)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,

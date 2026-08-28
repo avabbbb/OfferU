@@ -35,10 +35,10 @@ docs/adr/README.md
 | 1 | [Agent 系统总览](./architecture/agent-system.md) | 全局拓扑、事实源、主控权与迁移状态 |
 | 2 | [Agent 操作控制面](./architecture/agent-control-plane.md) | OfferU 内部深模块、接口与责任边界 |
 | 3 | [Agent Bridge 协议](./architecture/agent-bridge-protocol.md) | CLI-first stdio JSONL、消息与错误契约 |
-| 4 | [Harness 接入](./architecture/harness-integrations.md) | DSH、Codex、Claude Code、OpenCode、Pi 的 adapter 与一致性门 |
+| 4 | [Harness 接入](./architecture/harness-integrations.md) | Codex、Claude Code、OpenCode、Pi 的 adapter 与一致性门 |
 | 5 | [Operation 与安全](./architecture/operation-security.md) | 授权、确认、隔离、事实门与失败策略 |
 | 6 | [Run 生命周期](./architecture/run-lifecycle.md) | Task/Run/Session、事件、恢复、中断与交接 |
-| 7 | [工作台交互](./architecture/workbench-interaction.md) | DSH Web / Harness 原生界面、控制栏与用户确认 |
+| 7 | [工作台交互](./architecture/workbench-interaction.md) | Harness 原生界面、控制栏与用户确认 |
 | 8 | [浏览器扩展](./architecture/browser-extension.md) | 岗位采集、安全填表与回执候选 |
 | 9 | [SiteRulePack v1](./architecture/site-rule-pack-v1.md) | 浏览器站点规则的机器契约 |
 | 10 | [迁移路线](./implementation/migration-roadmap.md) | 从 Pi 内置主 Agent 到外部 Harness 的纵向切片 |
@@ -57,10 +57,10 @@ docs/adr/README.md
 - 外部 Coding Agent Harness 持有唯一主控 Loop；
 - OfferU 是本地确定性操作台与控制面；
 - 业务接入 CLI-first，不提供 MCP 业务入口；
-- DeepSeek Harness 与 Codex 优先，DSH Web 是第一个主交互面；
+- Codex 优先，采用官方 App Server 边界；
 - Claude Code、OpenCode 与 Pi 通过同一行为契约后再声明支持。
 
-这不是完成度声明。当前代码仍含 Pi Worker 主路径、Pi 命名 API、旧 CLI `confirm` 和其他迁移期入口。DSH plugin、新 Bridge 与 Codex adapter 尚未通过纵向切片验收，实际差距以[迁移路线](./implementation/migration-roadmap.md)为准。
+这不是完成度声明。当前代码仍含 Pi Worker 主路径、Pi 命名 API、旧 CLI `confirm` 和其他迁移期入口。新 Bridge 与 Codex adapter 尚未通过纵向切片验收，实际差距以[迁移路线](./implementation/migration-roadmap.md)为准。
 
 ## 文档生命周期
 

@@ -26,7 +26,7 @@ def _hello_request() -> dict[str, object]:
         "id": "req_hello",
         "type": "hello",
         "payload": {
-            "adapter": {"name": "@offeru/dsh-plugin", "version": "0.1.0"},
+            "adapter": {"name": "@offeru/codex-plugin", "version": "0.1.0"},
             "harness": {
                 "name": "deepseek-harness",
                 "version": "0.1.0-rc.8",
