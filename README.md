@@ -18,7 +18,7 @@
 </p>
 
 > [!IMPORTANT]
-> OfferU 目前是本地单人内部 Alpha，尚无有效的正式 Eval baseline。它不是自动投递机器人，不会自动提交申请、发送邮件或联系第三方。Agent 的推断、材料和进展更新必须先成为候选或提案，再由使用者审核。
+> OfferU 目前是本地单人 Internal Beta 候选版本，核心 Replay/Fixture 路径已验证，Codex、Gmail 等外部认证仍是可选阻塞。它不是自动投递机器人，不会自动提交申请、发送邮件或联系第三方。Agent 的推断、材料和进展更新必须先成为候选或提案，再由使用者审核。
 
 <table>
   <tr>
@@ -33,13 +33,14 @@
 
 ## OfferU 是什么
 
-OfferU 把求职过程组织成五个连续阶段：
+OfferU 把求职过程收敛成四个用户入口：
 
-1. **今天**：当前行动、待确认信号和进行中的 Agent Run。
-2. **机会**：岗位采集、JD 核对、公司研究和投前判断。
-3. **材料**：经确认的职业档案、基础简历和岗位定制提案。
-4. **进展**：每次投递尝试、阶段事件、邮件信号和后续行动。
-5. **面试**：问题准备、轮次练习和可解释的学习观察。
+1. **Today**：当前行动、待确认信号、自动任务和下一步。
+2. **Pipeline**：所有目标岗位、投递阶段、事件时间线和下一动作。
+3. **Opportunity / Job**：岗位研究、证据缺口、材料候选和面试训练。
+4. **Profile**：长期职业事实、证据、偏好、目标和待审核学习候选。
+
+Memory 是 Profile 的演进机制；Agent 是全局能力；Role Intelligence、Resume、Application Packet 和 Interview 都属于 Job 上下文。
 
 SQLite 与领域服务保存正式事实；React/Tauri 工作台负责呈现和人类控制；所有自动化业务操作统一经过 Python Operation Registry。模型回答本身不是事实，也不是执行成功的证明。
 
@@ -158,8 +159,8 @@ Set-Location backend
 
 OfferU 的发布结论由版本化任务、轨迹证据和真实 outcome 决定，不能由截图、构建成功或模型自评代替。
 
-- 当前状态：**内部 Alpha**
-- 当前 baseline：**尚未建立**
+- 当前状态：**Internal Beta Ready with external blockers**
+- 当前验证状态：**核心新用户、失败、重启和重复操作路径已通过；完整证据见 [STATUS.md](./STATUS.md)**
 - 核心套件：[offeru-core-v1](./docs/evals/offeru-core-v1.md)
 - Eval 规则：[docs/evals/README.md](./docs/evals/README.md)
 
@@ -178,6 +179,11 @@ npm run build
 
 ## 文档
 
+- [Internal Beta 快速开始](./QUICKSTART.md)
+- [Internal Beta 验收与 Golden Path](./INTERNAL_BETA.md)
+- [当前验证状态](./STATUS.md)
+- [已知限制](./KNOWN_ISSUES.md)
+- [架构边界](./ARCHITECTURE.md)
 - [文档导航与 10 份活跃设计](./docs/README.md)
 - [领域词汇与不变量](./CONTEXT.md)
 - [ADR 决策账本](./docs/adr/README.md)
