@@ -40,7 +40,11 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     const reason = error instanceof Error ? error.message : String(error);
     throw new Error(`无法连接本地后端 ${API_BASE}，请确认后端服务已启动。原始错误：${reason}`);
   }
-  if (!res.ok) throw new Error(`API Error: ${res.status}`);
+  if (!res.ok) {
+    const payload = await res.json().catch(() => ({}));
+    const detail = payload?.detail || payload?.message;
+    throw new Error(detail ? String(detail) : `API Error: ${res.status}`);
+  }
   return res.json();
 }
 
@@ -479,6 +483,7 @@ export interface JobResearchRunSummary {
   job_id: number;
   runtime_id: string;
   runtime_version?: string | null;
+  data_mode?: "fixture" | "live" | string;
   status: string;
   review_status: "pending" | "candidate" | "accepted" | "rejected" | "not_available";
   review_note: string;
@@ -524,6 +529,41 @@ export interface JobResearchRunDetail extends JobResearchRunSummary {
   trace: Record<string, any>;
   evidence: JobResearchEvidence[];
   findings: JobResearchFinding[];
+}
+
+export interface ResumeOptimizationProposalSummary {
+  proposal_id: string;
+  status: string;
+  job_id: number;
+  job_title: string;
+  company: string;
+  profile_id: number;
+  research_run_id: string;
+  reference_resume_id?: number | null;
+  change_count: number;
+  fact_gate_status: string;
+  fact_gate_warnings_count: number;
+  accepted_resume_id?: number | null;
+  accepted_resume_version_id?: number | null;
+  review_note: string;
+  created_at: string;
+  updated_at: string;
+  reviewed_at?: string | null;
+}
+
+export interface ResumeOptimizationProposalDetail extends ResumeOptimizationProposalSummary {
+  source_section_ids: number[];
+  source_snapshot_hash: string;
+  research_snapshot_hash: string;
+  original_summary: string;
+  proposed_summary: string;
+  original_rows: Array<Record<string, any>>;
+  proposed_rows: Array<Record<string, any>>;
+  diff: Array<Record<string, any>>;
+  strategy: Record<string, any>;
+  presentation: Record<string, any>;
+  fact_gates: Record<string, any>;
+  trace: Record<string, any>;
 }
 
 export type RoleBenchmarkDirection =
@@ -727,11 +767,27 @@ export interface PreApplicationState {
   } | null;
 }
 
+export interface AgentProviderHealth {
+  provider_id: string;
+  available: boolean;
+  authenticated: boolean | null;
+  blocked: boolean;
+  status: "ready" | "blocked" | "auth_required" | "unavailable" | "unprobed" | string;
+  version: string;
+  auth_mode: string;
+  protocol_version: string;
+  capabilities: Record<string, any>;
+  last_error: string;
+  checked_at?: string | null;
+}
+
 export const agentRuntimeApi = {
   skills: () =>
     request<{ skills: AgentSkill[] }>("/api/agent/skills"),
   runtime: () =>
     request<Record<string, any> & { available: boolean; runtime: string }>("/api/agent/runtime"),
+  providerHealth: () =>
+    request<{ providers: AgentProviderHealth[] }>("/api/agent/runtime/providers/health"),
   start: async (data: {
     message: string;
     skill_id: string;
@@ -931,6 +987,28 @@ export const jobResearchApi = {
   ),
 };
 
+export const resumeOptimizationApi = {
+  list: (jobId: number, params?: { status?: string; limit?: number }) =>
+    request<{ total: number; items: ResumeOptimizationProposalSummary[] }>(
+      `/api/optimize/proposals?${buildQuery({ job_id: jobId, ...params })}`
+    ),
+  detail: (proposalId: string) =>
+    request<ResumeOptimizationProposalDetail>(
+      `/api/optimize/proposals/${encodeURIComponent(proposalId)}`
+    ),
+  review: (
+    proposalId: string,
+    data: { action: "accept" | "reject"; note?: string }
+  ) =>
+    request<ResumeOptimizationProposalDetail>(
+      `/api/optimize/proposals/${encodeURIComponent(proposalId)}/review`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      }
+    ),
+};
+
 export const preApplicationApi = {
   state: (jobId: number) =>
     request<PreApplicationState>(`/api/research/pre-application/${jobId}`),
@@ -978,6 +1056,19 @@ export const agentSupportApi = {
     }),
   skills: () =>
     request<{ skills: AgentSkill[] }>("/api/agent/skills"),
+};
+
+export interface UserDataExport {
+  schema_version: string;
+  exported_at: string;
+  scope: string;
+  redactions: string[];
+  counts: Record<string, number>;
+  data: Record<string, unknown[]>;
+}
+
+export const dataSafetyApi = {
+  exportUserData: () => request<UserDataExport>("/api/agent/data/export"),
 };
 
 // ---- Profile API ----

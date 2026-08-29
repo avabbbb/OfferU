@@ -29,7 +29,8 @@ import {
   ModalHeader,
   useDisclosure,
 } from "@nextui-org/react";
-import { Search, Sparkles, X, CheckSquare, FolderPlus, Trash2, PencilLine } from "lucide-react";
+import { Search, Sparkles, X, CheckSquare, FolderPlus, Trash2, PencilLine, Plus } from "lucide-react";
+import { AddJobModal } from "@/components/jobs/AddJobModal";
 import { JobCard } from "@/components/jobs/JobCard";
 import { jobsApi } from "@/lib/api";
 import {
@@ -178,6 +179,7 @@ export default function JobsPage() {
   const [pointerSelectionMode, setPointerSelectionMode] = useState<"select" | "deselect">("select");
   const [isScraperSyncing, setIsScraperSyncing] = useState(fromScraper && !!scraperTaskId);
   const [actionError, setActionError] = useState("");
+  const [addJobOpen, setAddJobOpen] = useState(false);
 
   // 错误横幅 5.5s 自动消失
   useEffect(() => {
@@ -399,6 +401,11 @@ export default function JobsPage() {
   const refreshAfterMutation = useCallback(async () => {
     await Promise.all([mutateJobs(), mutatePools(), mutatePickedPools()]);
   }, [mutateJobs, mutatePools, mutatePickedPools]);
+
+  const handleJobCreated = useCallback(async (jobId: number | null) => {
+    await refreshAfterMutation();
+    if (jobId) router.push(`/jobs/${jobId}`);
+  }, [refreshAfterMutation, router]);
 
   const runBatchAction = useCallback(
     async (payload: { triage_status?: "inbox" | "picked" | "ignored"; pool_id?: number; clear_pool?: boolean }) => {
@@ -679,8 +686,17 @@ export default function JobsPage() {
                 </Tabs>
               </div>
 
-              <div className="flex flex-wrap gap-3">
-                <Button
+          <div className="flex flex-wrap gap-3">
+            <Button
+              size="sm"
+              startContent={<Plus size={14} />}
+              onPress={() => setAddJobOpen(true)}
+              className="bauhaus-button bauhaus-button-red !px-4 !py-3 !text-[11px]"
+              data-testid="open-add-job"
+            >
+              保存岗位
+            </Button>
+            <Button
                   size="sm"
                   startContent={<CheckSquare size={14} />}
                   onPress={() => {
@@ -1240,8 +1256,16 @@ export default function JobsPage() {
                 没有命中
               </h2>
               <p className="max-w-xl text-sm font-medium leading-relaxed text-[var(--foreground-soft)] md:text-base">
-                暂无符合当前筛选条件的岗位。可以调整筛选条件，或者前往爬虫控制台继续抓取并同步最新机会。
+                还没有符合当前筛选条件的岗位。你可以直接保存一个目标岗位，OfferU 会从这里开始准备；也可以调整筛选条件。
               </p>
+              <Button
+                startContent={<Plus size={16} />}
+                onPress={() => setAddJobOpen(true)}
+                className="bauhaus-button bauhaus-button-red !px-5 !py-3 !text-[11px]"
+                data-testid="empty-add-job"
+              >
+                保存第一个岗位
+              </Button>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
@@ -1254,15 +1278,29 @@ export default function JobsPage() {
               </div>
               <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-5 text-[var(--foreground)]">
                 <p className="bauhaus-label text-[var(--foreground-muted)]">下一步</p>
-                <p className="mt-2 text-lg font-semibold">继续抓取</p>
-                <p className="mt-2 text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
-                  如果列表本身为空，回到爬虫控制台触发一次新抓取会更直接。
-                </p>
+                  <p className="mt-2 text-lg font-semibold">继续添加</p>
+                  <p className="mt-2 text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
+                  也可以从岗位链接或职位描述开始，不需要先配置抓取器。
+                  </p>
               </div>
             </div>
           </div>
         </section>
       )}
+
+      <AddJobModal
+        isOpen={addJobOpen}
+        onClose={() => setAddJobOpen(false)}
+        onCreated={(jobId) => {
+          void handleJobCreated(jobId).catch((error) => {
+            setActionError(
+              error instanceof Error
+                ? error.message
+                : "岗位已保存，但详情页打开失败。请从 Pipeline 进入。",
+            );
+          });
+        }}
+      />
 
       <Modal isOpen={moveToPickedOpen} onClose={closeMoveToPickedModal} size="md">
         <ModalContent className={bauhausModalContentClassName}>

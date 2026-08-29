@@ -259,7 +259,7 @@ export function RoleIntelligencePanel({ jobId }: { jobId: number }) {
   const targetProfile = benchmark?.target_profile || documents.find((document) => document.document_kind === "target")?.role_profile || {};
 
   return (
-    <Card className="bauhaus-panel rounded-none bg-white shadow-none" data-testid="role-intelligence-panel">
+    <Card id="role-intelligence-panel" className="bauhaus-panel rounded-none bg-white shadow-none" data-testid="role-intelligence-panel">
       <CardBody className="space-y-5 p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>

@@ -29,14 +29,16 @@ import {
   Send,
   XCircle,
 } from "lucide-react";
-import { patchJob, useJob, usePools } from "@/lib/hooks";
+import { patchJob, useJob, usePools, useProgressBoard, useProgressTimeline } from "@/lib/hooks";
 import { RoleIntelligencePanel } from "@/components/jobs/RoleIntelligencePanel";
 import {
   jobResearchApi,
   preApplicationApi,
+  resumeOptimizationApi,
   type JobResearchRunDetail,
   type PreApplicationDecisionChoice,
   type PreApplicationState,
+  type ResumeOptimizationProposalDetail,
 } from "@/lib/api";
 import {
   bauhausModalContentClassName,
@@ -71,12 +73,78 @@ const PRE_APPLICATION_DECISION_OPTIONS: Array<{
   { value: "insufficient_evidence", label: "证据不足" },
 ];
 
+const APPLICATION_STAGE_LABELS: Record<string, string> = {
+  saved: "已保存",
+  preparing: "准备中",
+  ready: "待投递",
+  prepared: "待投递",
+  applied: "已投递",
+  written_test: "笔试",
+  assessment: "测评",
+  interview_1: "一面",
+  interview_2: "二面/终面",
+  interview_hr: "HR 面",
+  offer: "Offer",
+  rejected: "已结束",
+};
+
+const INTERVIEW_STAGES = new Set(["interview_1", "interview_2", "interview_hr"]);
+
+function applicationStageLabel(stage: string) {
+  return APPLICATION_STAGE_LABELS[stage] ?? (stage || "未知");
+}
+
+function formatProgressTimestamp(value: string | null) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("zh-CN", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function resumeProposalRowText(row: Record<string, any> | null | undefined) {
+  if (!row) return "无";
+  const labels: Record<string, string> = {
+    section_type: "类型",
+    title: "标题",
+    company: "公司",
+    position: "职位",
+    school: "学校",
+    degree: "学位",
+    major: "专业",
+    name: "项目",
+    role: "角色",
+    description: "内容",
+  };
+  return Object.entries(row)
+    .filter(([key]) => key !== "source_section_ids" && key !== "content_json")
+    .map(([key, value]) => {
+      if (value === null || value === undefined || value === "") return "";
+      const text = Array.isArray(value) ? value.join("、") : String(value);
+      return `${labels[key] || key}: ${text}`;
+    })
+    .filter(Boolean)
+    .join(" · ");
+}
+
 export default function JobDetailPage() {
   const params = useParams();
   const router = useRouter();
   const jobId = params.id ? Number(params.id) : null;
   const { data: job, isLoading, error } = useJob(jobId);
   const { data: pickedPools } = usePools("picked");
+  const {
+    data: progressBoard,
+    error: progressError,
+    isLoading: progressLoading,
+  } = useProgressBoard("all");
+  const [selectedAttemptId, setSelectedAttemptId] = useState<number | null>(null);
+  const { data: progressTimeline, error: progressTimelineError, isLoading: progressTimelineLoading } =
+    useProgressTimeline(selectedAttemptId);
   const [joinModalOpen, setJoinModalOpen] = useState(false);
   const [trashConfirmOpen, setTrashConfirmOpen] = useState(false);
   const [targetPool, setTargetPool] = useState<string>("ungrouped");
@@ -92,11 +160,48 @@ export default function JobDetailPage() {
   const [preApplicationAction, setPreApplicationAction] = useState<"prepare" | "review" | null>(null);
   const [decisionChoice, setDecisionChoice] = useState<PreApplicationDecisionChoice | "">("");
   const [decisionNote, setDecisionNote] = useState("");
+  const [resumeProposal, setResumeProposal] = useState<ResumeOptimizationProposalDetail | null>(null);
+  const [resumeProposalLoading, setResumeProposalLoading] = useState(false);
+  const [resumeProposalError, setResumeProposalError] = useState("");
+  const [resumeProposalAction, setResumeProposalAction] = useState<"accept" | "reject" | null>(null);
+  const [resumeProposalNote, setResumeProposalNote] = useState("");
 
   const poolOptions = useMemo(
     () => [{ key: "ungrouped", label: "未分组" }, ...((pickedPools || []).map((pool) => ({ key: String(pool.id), label: pool.name })))],
     [pickedPools]
   );
+
+  const progressRecords = useMemo(
+    () =>
+      (progressBoard?.companies ?? [])
+        .flatMap((company) => company.records)
+        .filter((record) => record.job_id === jobId)
+        .sort((left, right) =>
+          String(right.last_event_at ?? right.attempt_created_at).localeCompare(
+            String(left.last_event_at ?? left.attempt_created_at)
+          )
+        ),
+    [jobId, progressBoard]
+  );
+
+  const selectedProgressRecord = useMemo(
+    () => progressRecords.find((record) => record.application_attempt_id === selectedAttemptId) ?? progressRecords[0] ?? null,
+    [progressRecords, selectedAttemptId]
+  );
+
+  const currentApplicationStage =
+    progressTimeline?.current_stage || selectedProgressRecord?.current_stage || "";
+  const currentNextAction =
+    progressTimeline?.next_action || selectedProgressRecord?.next_action || "";
+  const hasConfirmedStageEvent = Boolean(progressTimeline?.timeline?.length);
+  const selectedRecordIsOpportunity = selectedProgressRecord?.application_attempt_id == null;
+  const interviewPreparationPriority = INTERVIEW_STAGES.has(currentApplicationStage);
+
+  useEffect(() => {
+    if (!progressRecords.some((record) => record.application_attempt_id === selectedAttemptId)) {
+      setSelectedAttemptId(progressRecords[0]?.application_attempt_id ?? null);
+    }
+  }, [progressRecords, selectedAttemptId]);
 
   const loadResearch = useCallback(async () => {
     if (!jobId || !Number.isInteger(jobId) || jobId <= 0) return;
@@ -120,6 +225,25 @@ export default function JobDetailPage() {
     }
   }, [jobId]);
 
+  const loadResumeProposal = useCallback(async () => {
+    if (!jobId || !Number.isInteger(jobId) || jobId <= 0) return;
+    setResumeProposalLoading(true);
+    setResumeProposalError("");
+    try {
+      const proposals = await resumeOptimizationApi.list(jobId, { limit: 1 });
+      const latest = proposals.items[0];
+      if (!latest) {
+        setResumeProposal(null);
+        return;
+      }
+      setResumeProposal(await resumeOptimizationApi.detail(latest.proposal_id));
+    } catch (err) {
+      setResumeProposalError(err instanceof Error ? err.message : "材料候选加载失败");
+    } finally {
+      setResumeProposalLoading(false);
+    }
+  }, [jobId]);
+
   const loadPreApplication = useCallback(async () => {
     if (!jobId || !Number.isInteger(jobId) || jobId <= 0) return;
     setPreApplicationLoading(true);
@@ -140,6 +264,10 @@ export default function JobDetailPage() {
   useEffect(() => {
     void loadResearch();
   }, [loadResearch]);
+
+  useEffect(() => {
+    void loadResumeProposal();
+  }, [loadResumeProposal]);
 
   useEffect(() => {
     void loadPreApplication();
@@ -202,6 +330,26 @@ export default function JobDetailPage() {
       setPreApplicationError(err instanceof Error ? err.message : "投前决策审核失败");
     } finally {
       setPreApplicationAction(null);
+    }
+  };
+
+  const handleResumeProposalReview = async (action: "accept" | "reject") => {
+    if (!resumeProposal || resumeProposalAction) return;
+    const note = resumeProposalNote.trim();
+    if (action === "reject" && !note) {
+      setResumeProposalError("拒绝材料候选时必须填写原因。");
+      return;
+    }
+    setResumeProposalAction(action);
+    setResumeProposalError("");
+    try {
+      const reviewed = await resumeOptimizationApi.review(resumeProposal.proposal_id, { action, note });
+      setResumeProposal(reviewed);
+      setResumeProposalNote(reviewed.review_note || "");
+    } catch (err) {
+      setResumeProposalError(err instanceof Error ? err.message : "材料候选审核失败");
+    } finally {
+      setResumeProposalAction(null);
     }
   };
 
@@ -340,7 +488,381 @@ export default function JobDetailPage() {
         </Card>
       )}
 
+      <Card className="bauhaus-panel rounded-none bg-white shadow-none" data-testid="job-application-context">
+        <CardBody className="space-y-5 p-5">
+          <div>
+            <p className="bauhaus-label text-[var(--foreground-muted)]">Application context</p>
+            <h2 className="mt-2 text-2xl font-black uppercase tracking-[-0.05em] text-[var(--foreground)]">
+              投递进展
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
+              这里读取已确认的投递阶段事件。外部邮件形成的候选不会直接改变正式状态，必须在进展页审核后才会进入时间线。
+            </p>
+          </div>
+
+          {progressError && (
+            <div className="bauhaus-panel-sm border-[var(--primary-red)] bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
+              投递进展加载失败：{progressError instanceof Error ? progressError.message : "请稍后重试"}
+            </div>
+          )}
+
+          {progressLoading && !progressBoard ? (
+            <div className="bauhaus-panel-sm flex items-center gap-3 bg-[var(--surface-muted)] px-4 py-4">
+              <Spinner size="sm" color="warning" />
+              <span className="text-sm font-semibold text-[var(--foreground-soft)]">正在读取该岗位的投递进展...</span>
+            </div>
+          ) : progressRecords.length === 0 ? (
+            <div className="bauhaus-panel-sm bg-[var(--surface-muted)] px-4 py-4">
+              <p className="text-sm font-black text-[var(--foreground)]">
+                {progressError ? "暂时无法读取投递尝试" : "尚未创建投递尝试"}
+              </p>
+              <p className="mt-1 text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
+                {progressError
+                  ? "请稍后刷新；当前不会根据不完整的读取结果推断投递状态。"
+                  : "外部提交后，只有经过确认的回执候选才会创建投递尝试并出现在这里。"}
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
+                  <p className="bauhaus-label text-[var(--foreground-muted)]">
+                    {selectedRecordIsOpportunity ? "目标岗位" : "投递尝试"}
+                  </p>
+                  <p className="mt-2 text-2xl font-black text-[var(--foreground)]">{progressRecords.length}</p>
+                </div>
+                <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
+                  <p className="bauhaus-label text-[var(--foreground-muted)]">当前阶段</p>
+                  <p className="mt-2 text-sm font-black text-[var(--foreground)]">
+                    {progressTimeline?.current_stage
+                      ? applicationStageLabel(progressTimeline.current_stage)
+                      : selectedProgressRecord
+                        ? applicationStageLabel(selectedProgressRecord.current_stage)
+                        : "-"}
+                  </p>
+                </div>
+                <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
+                  <p className="bauhaus-label text-[var(--foreground-muted)]">下一动作</p>
+                  <p className="mt-2 text-sm font-black leading-relaxed text-[var(--foreground)]">
+                    {progressTimeline?.next_action || selectedProgressRecord?.next_action || "-"}
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <p className="bauhaus-label text-[var(--foreground-muted)]">
+                  {selectedRecordIsOpportunity ? "目标岗位" : "投递尝试"}
+                </p>
+                <div className="mt-3 grid gap-2">
+                  {progressRecords.map((record) => {
+                    const selected = record.application_attempt_id === selectedAttemptId;
+                    return (
+                      <button
+                        key={record.application_attempt_id ?? `job-${record.job_id}`}
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => setSelectedAttemptId(record.application_attempt_id)}
+                        className={`bauhaus-panel-sm flex items-center justify-between gap-3 px-4 py-3 text-left transition-colors ${
+                          selected
+                            ? "border-[var(--primary-blue)] bg-[var(--surface-muted)]"
+                            : "bg-white hover:bg-[var(--surface-muted)]"
+                        }`}
+                      >
+                        <span>
+                          <span className="block text-sm font-black text-[var(--foreground)]">
+                            {record.application_attempt_id == null
+                              ? `目标岗位 · ${applicationStageLabel(record.current_stage)}`
+                              : `#${record.application_attempt_id} · ${applicationStageLabel(record.current_stage)}`}
+                          </span>
+                          <span className="mt-1 block text-xs font-semibold text-[var(--foreground-muted)]">
+                            最近更新 {formatProgressTimestamp(record.last_event_at || record.attempt_created_at)}
+                          </span>
+                        </span>
+                        <span className="max-w-[46%] text-right text-xs font-bold leading-relaxed text-[var(--foreground-soft)]">
+                          {record.next_action || "-"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <p className="bauhaus-label text-[var(--foreground-muted)]">
+                  {selectedRecordIsOpportunity ? "岗位准备时间线" : "已确认阶段时间线"}
+                </p>
+                {selectedRecordIsOpportunity ? (
+                  <div className="bauhaus-panel-sm mt-3 bg-[var(--surface-muted)] px-4 py-4 text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
+                    这是目标岗位的准备状态。完成实际投递并确认回执后，阶段事件会继续出现在这里。
+                  </div>
+                ) : progressTimelineLoading ? (
+                  <div className="bauhaus-panel-sm mt-3 flex items-center gap-3 bg-[var(--surface-muted)] px-4 py-4">
+                    <Spinner size="sm" color="warning" />
+                    <span className="text-sm font-semibold text-[var(--foreground-soft)]">正在读取时间线...</span>
+                  </div>
+                ) : progressTimelineError ? (
+                  <div className="bauhaus-panel-sm mt-3 border-[var(--primary-red)] bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
+                    时间线加载失败：{progressTimelineError instanceof Error ? progressTimelineError.message : "请稍后重试"}
+                  </div>
+                ) : progressTimeline?.timeline?.length ? (
+                  <div className="mt-3 space-y-2">
+                    {progressTimeline.timeline.map((event) => (
+                      <article key={event.event_id} className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-sm font-black text-[var(--foreground)]">
+                            {applicationStageLabel(event.previous_stage)} → {applicationStageLabel(event.stage)}
+                          </p>
+                          <p className="text-xs font-bold text-[var(--foreground-muted)]">
+                            {formatProgressTimestamp(event.occurred_at)}
+                          </p>
+                        </div>
+                        <p className="mt-2 text-xs font-bold uppercase tracking-[0.08em] text-[var(--primary-blue)]">
+                          {event.source_channel}
+                        </p>
+                        {event.snippet && (
+                          <p className="mt-2 text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
+                            {event.snippet}
+                          </p>
+                        )}
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="bauhaus-panel-sm mt-3 bg-[var(--surface-muted)] px-4 py-4 text-sm font-medium text-[var(--foreground-muted)]">
+                    这次投递暂时没有已确认的阶段事件。
+                  </div>
+                )}
+              </div>
+
+              {progressTimeline?.pending_candidates?.length ? (
+                <div className="bauhaus-panel-sm border-amber-500 bg-amber-50 px-4 py-4 text-sm font-semibold leading-relaxed text-amber-950">
+                  还有 {progressTimeline.pending_candidates.length} 条外部进展候选待审核；它们尚未改变正式投递状态。
+                </div>
+              ) : null}
+            </>
+          )}
+        </CardBody>
+      </Card>
+
+      <Card className="bauhaus-panel rounded-none bg-white shadow-none" data-testid="job-next-preparation">
+        <CardBody className="space-y-4 p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="bauhaus-label text-[var(--foreground-muted)]">Next preparation</p>
+              <h2 className="mt-2 text-2xl font-black tracking-[-0.05em] text-[var(--foreground)]">
+                {interviewPreparationPriority ? "面试准备优先" : "下一步准备"}
+              </h2>
+              <p className="mt-2 max-w-2xl text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
+                {currentApplicationStage
+                  ? `${selectedRecordIsOpportunity ? "当前目标岗位状态为" : `当前阶段${hasConfirmedStageEvent ? "已由确认事件确定为" : "在投递记录中显示为"}`}「${applicationStageLabel(currentApplicationStage)}」。${currentNextAction || "先核对下一动作。"}`
+                  : "尚未有已确认的投递阶段；先完成投递或审核最新进展，再生成岗位上下文。"}
+              </p>
+            </div>
+            {interviewPreparationPriority && (
+              <Chip color="primary" variant="flat" className="font-black">
+                {applicationStageLabel(currentApplicationStage)}
+              </Chip>
+            )}
+          </div>
+          {interviewPreparationPriority && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border)] pt-4">
+              <p className="max-w-xl text-xs font-semibold leading-relaxed text-[var(--foreground-muted)]">
+                下面的岗位情报会提供 Role Delta 与 Career Evidence Gap；专项训练的 Focus Plan 仍由这些已验证数据确定。
+              </p>
+              <Button
+                data-testid="job-open-interview-focus"
+                onPress={() => document.getElementById("role-intelligence-panel")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                className="bauhaus-button bauhaus-button-blue !px-4 !py-3 !text-[11px]"
+              >
+                查看岗位情报与专项训练
+              </Button>
+            </div>
+          )}
+        </CardBody>
+      </Card>
+
       <RoleIntelligencePanel jobId={job.id} />
+
+      <Card className="bauhaus-panel rounded-none bg-white shadow-none" data-testid="resume-proposal">
+        <CardBody className="space-y-5 p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="bauhaus-label text-[var(--foreground-muted)]">Material candidate</p>
+              <h2 className="mt-2 text-2xl font-black uppercase tracking-[-0.05em] text-[var(--foreground)]">
+                材料候选
+              </h2>
+              <p className="mt-2 max-w-2xl text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
+                岗位准备完成后，OfferU 会从已验证职业事实生成可审核的简历候选。接受前不会覆盖正式简历。
+              </p>
+            </div>
+            <Button
+              isIconOnly
+              aria-label="刷新材料候选"
+              variant="light"
+              isLoading={resumeProposalLoading}
+              onPress={() => void loadResumeProposal()}
+              className="min-h-11 min-w-11 border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)]"
+            >
+              <RefreshCw size={17} />
+            </Button>
+          </div>
+
+          {resumeProposalError && (
+            <div role="alert" className="bauhaus-panel-sm border-[var(--primary-red)] bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
+              {resumeProposalError}
+            </div>
+          )}
+
+          {resumeProposalLoading && !resumeProposal ? (
+            <div className="bauhaus-panel-sm flex items-center gap-3 bg-[var(--surface-muted)] px-4 py-4">
+              <Spinner size="sm" color="warning" />
+              <span className="text-sm font-semibold text-[var(--foreground-soft)]">正在读取材料候选...</span>
+            </div>
+          ) : !resumeProposal ? (
+            <div className="bauhaus-panel-sm bg-[var(--surface-muted)] px-4 py-4">
+              <p className="text-sm font-black text-[var(--foreground)]">材料候选尚未生成</p>
+              <p className="mt-1 text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
+                岗位情报和已验证职业事实准备好后，这里会出现一份带依据的候选简历。
+              </p>
+            </div>
+          ) : (
+            (() => {
+              const proposalIsFixture =
+                resumeProposal.strategy?.research?.data_mode === "fixture" ||
+                Boolean(resumeProposal.trace?.pipeline?.fixture_replay);
+              const missingCapabilities = Array.isArray(resumeProposal.strategy?.missing_capabilities)
+                ? resumeProposal.strategy.missing_capabilities.filter(Boolean).slice(0, 8)
+                : [];
+              const diffItems = Array.isArray(resumeProposal.diff) ? resumeProposal.diff : [];
+              return (
+                <>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
+                      <p className="bauhaus-label text-[var(--foreground-muted)]">状态</p>
+                      <p className="mt-2 text-sm font-black text-[var(--foreground)]">
+                        {resumeProposal.status === "ready"
+                          ? "等待审核"
+                          : resumeProposal.status === "accepted"
+                            ? "已接受"
+                            : resumeProposal.status === "rejected"
+                              ? "已拒绝"
+                              : resumeProposal.status}
+                      </p>
+                    </div>
+                    <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
+                      <p className="bauhaus-label text-[var(--foreground-muted)]">事实门</p>
+                      <p className="mt-2 text-sm font-black text-[var(--foreground)]">
+                        {resumeProposal.fact_gate_status === "passed" ? "已通过" : resumeProposal.fact_gate_status}
+                      </p>
+                    </div>
+                    <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
+                      <p className="bauhaus-label text-[var(--foreground-muted)]">候选变化</p>
+                      <p className="mt-2 text-sm font-black text-[var(--foreground)]">
+                        {resumeProposal.change_count > 0
+                          ? `${resumeProposal.change_count} 项可审核变化`
+                          : "保留已验证事实"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {proposalIsFixture && (
+                    <div className="bauhaus-panel-sm border-amber-500 bg-amber-50 px-4 py-3 text-sm font-semibold leading-relaxed text-amber-950">
+                      本地 Fixture / Replay 已生成候选，仅用于内测链路验证，不代表真实市场研究或未经证实的能力。
+                    </div>
+                  )}
+
+                  {resumeProposal.status === "accepted" && (
+                    <div className="bauhaus-panel-sm flex items-start gap-3 border-emerald-600 bg-emerald-50 px-4 py-4 text-sm font-semibold text-emerald-900">
+                      <CheckCircle2 className="mt-0.5 shrink-0" size={18} />
+                      资料已生成，正式简历和版本快照已保存（Resume #{resumeProposal.accepted_resume_id}）。
+                    </div>
+                  )}
+
+                  {resumeProposal.status === "rejected" && (
+                    <div className="bauhaus-panel-sm flex items-start gap-3 border-[var(--primary-red)] bg-red-50 px-4 py-4 text-sm font-semibold text-red-900">
+                      <XCircle className="mt-0.5 shrink-0" size={18} />
+                      材料候选已拒绝，不会改动正式简历。{resumeProposal.review_note ? `原因：${resumeProposal.review_note}` : ""}
+                    </div>
+                  )}
+
+                  {resumeProposal.status === "ready" && (
+                    <>
+                      {diffItems.length > 0 ? (
+                        <div>
+                          <p className="bauhaus-label text-[var(--foreground-muted)]">变更预览</p>
+                          <div className="mt-3 space-y-3">
+                            {diffItems.map((change, index) => (
+                              <article key={String(change.change_id || index)} className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Chip size="sm" variant="flat" className="border border-[var(--border)] bg-white font-bold text-[var(--foreground)]">
+                                    {change.change_type === "added" ? "新增" : change.change_type === "removed" ? "移除" : "修改"}
+                                  </Chip>
+                                  <span className="text-sm font-black text-[var(--foreground)]">{change.title || "简历条目"}</span>
+                                </div>
+                                <p className="mt-3 text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
+                                  原内容：{resumeProposalRowText(change.before)}
+                                </p>
+                                <p className="mt-2 text-sm font-medium leading-relaxed text-[var(--foreground)]">
+                                  候选内容：{resumeProposalRowText(change.after)}
+                                </p>
+                              </article>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
+                          <p className="text-sm font-black text-[var(--foreground)]">当前没有安全的事实改写</p>
+                          <p className="mt-2 text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
+                            OfferU 保留了你的已验证事实，没有为了匹配岗位而编造新经历。{missingCapabilities.length > 0 ? ` 当前仍缺少：${missingCapabilities.join("、")}` : ""}
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="space-y-3">
+                        <label htmlFor="resume-proposal-review-note" className="bauhaus-label text-[var(--foreground-muted)]">
+                          审核备注（拒绝时必填）
+                        </label>
+                        <textarea
+                          id="resume-proposal-review-note"
+                          data-testid="resume-proposal-review-note"
+                          value={resumeProposalNote}
+                          onChange={(event) => setResumeProposalNote(event.target.value)}
+                          maxLength={2000}
+                          rows={3}
+                          placeholder="记录你接受或拒绝这份候选的依据。"
+                          className="w-full border border-[var(--border-strong)] bg-white px-4 py-3 text-sm font-medium text-[var(--foreground)] outline-none focus:border-[var(--primary-blue)]"
+                        />
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <Button
+                            data-testid="resume-proposal-accept"
+                            onPress={() => void handleResumeProposalReview("accept")}
+                            isLoading={resumeProposalAction === "accept"}
+                            isDisabled={resumeProposalAction === "reject" || resumeProposal.fact_gate_status !== "passed"}
+                            startContent={<CheckCircle2 size={17} />}
+                            className="bauhaus-button bauhaus-button-blue !justify-center !px-4 !py-3 !text-[11px]"
+                          >
+                            接受并生成简历
+                          </Button>
+                          <Button
+                            data-testid="resume-proposal-reject"
+                            onPress={() => void handleResumeProposalReview("reject")}
+                            isLoading={resumeProposalAction === "reject"}
+                            isDisabled={resumeProposalAction === "accept"}
+                            startContent={<XCircle size={17} />}
+                            className="bauhaus-button bauhaus-button-outline !justify-center !px-4 !py-3 !text-[11px]"
+                          >
+                            拒绝候选
+                          </Button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </>
+              );
+            })()
+          )}
+        </CardBody>
+      </Card>
 
       <Card className="bauhaus-panel rounded-none bg-white shadow-none" data-testid="job-research-handback">
         <CardBody className="space-y-5 p-5">
@@ -429,7 +951,9 @@ export default function JobDetailPage() {
                   {research.review_status === "accepted" && (
                     <div className="bauhaus-panel-sm flex items-start gap-3 border-emerald-600 bg-emerald-50 px-4 py-4 text-sm font-semibold text-emerald-900">
                       <CheckCircle2 className="mt-0.5 shrink-0" size={18} />
-                      已发布到公司与岗位档案，下游 Agent 可以引用这些证据。
+                      {research.data_mode === "fixture"
+                        ? "本地 Fixture 已预审核，仅用于内测链路验证，不代表真实市场证据。"
+                        : "已发布到公司与岗位档案，下游 Agent 可以引用这些证据。"}
                     </div>
                   )}
                   {research.review_status === "rejected" && (
