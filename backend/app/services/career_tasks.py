@@ -461,10 +461,29 @@ async def _run_role_intelligence_task(task: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError(
             str(benchmark.get("last_error") or f"Role benchmark status={status}")
         )
+    fixture_research_run_id = ""
+    if task["runtime_provider"] in {"fixture", "replay"}:
+        fixture_research = await execute_operation(
+            "create_fixture_job_research",
+            {"job_id": job_id},
+            surface="career_task_runtime",
+        )
+        if not fixture_research.get("ok"):
+            raise RuntimeError(
+                "; ".join(str(item) for item in fixture_research.get("errors") or [])
+                or "create_fixture_job_research failed"
+            )
+        fixture_outputs = (
+            fixture_research.get("outputs")
+            if isinstance(fixture_research.get("outputs"), dict)
+            else {}
+        )
+        fixture_research_run_id = str(fixture_outputs.get("run_id") or "")
     return {
         "benchmark_run_id": run_id,
         "job_id": job_id,
         "benchmark": benchmark,
+        "fixture_research_run_id": fixture_research_run_id,
     }
 
 

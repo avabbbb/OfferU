@@ -76,6 +76,7 @@ def _serialize_section(section: ProfileSection) -> dict[str, Any]:
         "normalized": normalized,
         "source": section.source,
         "confidence": section.confidence,
+        "tier": section.tier,
         "created_at": str(section.created_at),
         "updated_at": str(section.updated_at),
     }
@@ -545,6 +546,7 @@ def _canonical_section_payload(
     category_label: Optional[str],
     title: str,
     content_json: Optional[dict[str, Any]],
+    tier: Optional[str] = None,
 ) -> tuple[str, str, dict[str, Any]]:
     normalized_type = normalize_section_type_alias(section_type)
     if normalized_type in {"general", "activity", "competition"} or not is_valid_profile_section_type(normalized_type):
@@ -554,6 +556,7 @@ def _canonical_section_payload(
         category_label=category_label,
         title=title,
         raw_content_json=content_json or {},
+        tier=tier,
     )
     return resolved_type, resolved_label, canonical
 
@@ -566,12 +569,28 @@ async def create_profile_section(
     content_json: Optional[dict[str, Any]] = None,
     source: str = "manual",
     confidence: float = 1.0,
+    tier: Optional[str] = None,
 ) -> dict[str, Any]:
     async with async_session() as db:
         profile = await _get_or_create_default_profile(db)
         resolved_type, resolved_label, canonical = _canonical_section_payload(
-            section_type, category_label, title.strip(), content_json
+            section_type, category_label, title.strip(), content_json, tier
         )
+        if source == "onboarding":
+            existing_sections = (
+                await db.execute(
+                    select(ProfileSection).where(
+                        ProfileSection.profile_id == profile.id,
+                        ProfileSection.source == source,
+                        ProfileSection.section_type == resolved_type,
+                        ProfileSection.title == (title.strip() or get_category_label(resolved_type, canonical)),
+                        ProfileSection.status == "active",
+                    )
+                )
+            ).scalars().all()
+            for existing in existing_sections:
+                if (existing.content_json or {}) == canonical:
+                    return _serialize_section(existing)
         if sort_order <= 0:
             max_sort = (
                 await db.execute(
@@ -589,6 +608,7 @@ async def create_profile_section(
             content_json=canonical,
             source=source,
             confidence=confidence,
+            tier=canonical.get("tier"),
         )
         db.add(section)
         await db.commit()

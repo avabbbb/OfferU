@@ -494,6 +494,8 @@ async def handle_career_task_finished(task_id: str) -> dict[str, Any] | None:
         "status": packet_status,
         "job_id": int(task.get("target_id") or input_payload.get("job_id") or 0),
         "benchmark_run_id": result.get("benchmark_run_id"),
+        "research_run_id": resume_candidate.get("research_run_id")
+        or result.get("fixture_research_run_id"),
         "resume_candidate": resume_candidate,
         "interview_focus_plan": focus_plan,
     }

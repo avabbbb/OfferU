@@ -112,6 +112,10 @@ class ProfileSectionCreateRequest(BaseModel):
     content_json: dict = Field(default_factory=dict)
     source: str = Field(default="manual", max_length=30)
     confidence: float = Field(default=1.0, ge=0, le=1)
+    tier: Optional[str] = Field(
+        default=None,
+        pattern="^(verified_fact|preference|career_hypothesis)$",
+    )
 
 
 class ProfileSectionUpdateRequest(BaseModel):
@@ -253,6 +257,7 @@ def _serialize_section(section: ProfileSection) -> dict:
         "normalized": normalized,
         "source": section.source,
         "confidence": section.confidence,
+        "tier": section.tier,
         "created_at": str(section.created_at),
         "updated_at": str(section.updated_at),
     }

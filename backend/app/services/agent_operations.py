@@ -710,6 +710,12 @@ async def get_application_progress_board(
     return await _board(status=status, include_timeline=include_timeline)
 
 
+async def get_application_progress_timeline(application_attempt_id: int) -> dict:
+    from app.services.application_progress import get_application_progress_timeline as _timeline
+
+    return await _timeline(application_attempt_id=application_attempt_id)
+
+
 async def classify_progress_signal(candidate_id: str) -> dict:
     from app.services.application_progress import classify_progress_signal as _classify
 
@@ -835,6 +841,12 @@ async def start_job_research(
     from app.services.job_research import start_job_research as _start
 
     return await _start(job_id=job_id, runtime_id=runtime_id)
+
+
+async def create_fixture_job_research(job_id: int) -> dict:
+    from app.services.job_research import create_fixture_job_research as _create
+
+    return await _create(job_id=job_id)
 
 
 async def resume_job_research(run_id: str) -> dict:

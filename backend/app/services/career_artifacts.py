@@ -86,6 +86,13 @@ class CareerArtifactStore:
         with self._lock:
             return self._read(self.directory / f"{clean_id}.json")
 
+    def export_all(self) -> dict[str, Any]:
+        """Return full local artifact documents for the user data export."""
+        with self._lock:
+            items = [item for path in self.directory.glob("artifact_*.json") if (item := self._read(path))]
+        items.sort(key=lambda item: str(item.get("created_at") or ""))
+        return {"total": len(items), "items": items}
+
     def save(
         self,
         *,

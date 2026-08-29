@@ -20,6 +20,7 @@ from sqlalchemy import select
 from app.database import async_session, init_db
 from app.models.models import (
     CareerSource,
+    Interview,
     Job,
     LearningObservation,
     MemoryProposal,
@@ -242,6 +243,61 @@ class CareerMemoryTests(unittest.TestCase):
         self.assertIsNotNone(section_after_revoke)
         self.assertEqual(section_after_revoke.status, "revoked")
         self.assertIsNotNone(section_after_revoke.invalidated_at)
+
+    def test_interview_learning_projection_tracks_memory_review(self) -> None:
+        async def run() -> tuple[dict, dict]:
+            await init_db()
+            async with async_session() as db:
+                interview = Interview(
+                    title=_uniq("面试"),
+                    target_position="AIGC 产品经理",
+                    status="completed",
+                    report_json={"learning_candidate": {"status": "pending"}},
+                )
+                db.add(interview)
+                await db.commit()
+                await db.refresh(interview)
+                interview_id = interview.id
+
+            observation = await record_learning_observation(
+                source_type="ai_interview",
+                source_external_id=str(interview_id),
+                source_title="OfferU AI 面试学习观察",
+                source_locator=f"ai_interview:{interview_id}",
+                observation_type="interview_completed",
+                content={
+                    "interview_id": interview_id,
+                    "summary": "面试观察：补充评测指标。",
+                },
+                idempotency_key=_uniq("interview-observation"),
+            )
+            proposal = await create_memory_proposal(
+                observation_id=observation["id"],
+                target_tier="career_hypothesis",
+                section_type="skill",
+                title=_uniq("面试学习观察"),
+                after={"bullet": "面试观察：补充评测指标。"},
+                reason="用于验证 Interview 与 Profile 投影一致。",
+                impact=["作为训练参考"],
+            )
+            accepted = await review_memory_proposal(
+                proposal_id=proposal["id"],
+                action="accept",
+            )
+            async with async_session() as db:
+                interview = await db.get(Interview, interview_id)
+                assert interview is not None
+                report = interview.report_json or {}
+            return accepted, report["learning_candidate"]
+
+        accepted, learning_candidate = asyncio.run(run())
+
+        self.assertEqual(accepted["status"], "accepted")
+        self.assertEqual(learning_candidate["status"], "accepted")
+        self.assertEqual(
+            learning_candidate["profile_section_id"],
+            accepted["applied_profile_section_id"],
+        )
 
     def test_reject_keeps_profile_unchanged(self) -> None:
         async def run() -> tuple[dict, int]:

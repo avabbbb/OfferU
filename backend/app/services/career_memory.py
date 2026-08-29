@@ -14,6 +14,7 @@ from app.database import async_session
 from app.models.models import (
     CareerSource,
     EvidenceLink,
+    Interview,
     LearningObservation,
     MemoryProposal,
     Profile,
@@ -697,6 +698,44 @@ def _observation_source_excerpt(
     return _canonical_json(content)
 
 
+async def _sync_interview_learning_candidate(
+    db: Any,
+    *,
+    observation_id: int,
+    proposal_id: int,
+    status: str,
+    profile_section_id: int | None = None,
+) -> None:
+    """Keep the interview report projection aligned with memory review."""
+
+    observation = await db.get(LearningObservation, int(observation_id))
+    if observation is None or not isinstance(observation.content_json, dict):
+        return
+    try:
+        interview_id = int(observation.content_json.get("interview_id") or 0)
+    except (TypeError, ValueError):
+        return
+    if interview_id <= 0:
+        return
+    interview = await db.get(Interview, interview_id)
+    if interview is None or not isinstance(interview.report_json, dict):
+        return
+    report = dict(interview.report_json)
+    candidate = report.get("learning_candidate")
+    candidate_payload = dict(candidate) if isinstance(candidate, dict) else {}
+    candidate_payload.update(
+        {
+            "status": status,
+            "proposal_id": proposal_id,
+            "observation_id": observation_id,
+        }
+    )
+    if profile_section_id is not None:
+        candidate_payload["profile_section_id"] = profile_section_id
+    report["learning_candidate"] = candidate_payload
+    interview.report_json = report
+
+
 async def review_memory_proposal(
     *,
     proposal_id: int,
@@ -725,6 +764,18 @@ async def review_memory_proposal(
             proposal.status = "deferred"
             proposal.review_note = clean_note
             proposal.reviewed_at = _now()
+            observation_ids = [
+                int(item["observation"]["id"])
+                for item in evidence.get(proposal.id, [])
+                if item.get("observation", {}).get("id")
+            ]
+            if observation_ids:
+                await _sync_interview_learning_candidate(
+                    db,
+                    observation_id=observation_ids[0],
+                    proposal_id=proposal.id,
+                    status="deferred",
+                )
             await db.commit()
             await db.refresh(proposal)
             refreshed_evidence = await _proposal_evidence(db, [proposal.id])
@@ -739,6 +790,18 @@ async def review_memory_proposal(
             proposal.status = "rejected"
             proposal.review_note = clean_note
             proposal.reviewed_at = _now()
+            observation_ids = [
+                int(item["observation"]["id"])
+                for item in evidence.get(proposal.id, [])
+                if item.get("observation", {}).get("id")
+            ]
+            if observation_ids:
+                await _sync_interview_learning_candidate(
+                    db,
+                    observation_id=observation_ids[0],
+                    proposal_id=proposal.id,
+                    status="rejected",
+                )
             await db.commit()
             await db.refresh(proposal)
             refreshed_evidence = await _proposal_evidence(db, [proposal.id])
@@ -780,6 +843,14 @@ async def review_memory_proposal(
             proposal.status = "revoked"
             proposal.review_note = clean_note
             proposal.reviewed_at = _now()
+            for observation_id in linked_observation_ids:
+                await _sync_interview_learning_candidate(
+                    db,
+                    observation_id=observation_id,
+                    proposal_id=proposal.id,
+                    status="revoked",
+                    profile_section_id=section_id,
+                )
             await db.commit()
             await db.refresh(proposal)
             refreshed_evidence = await _proposal_evidence(db, [proposal.id])
@@ -789,6 +860,20 @@ async def review_memory_proposal(
             )
 
         if proposal.status == "accepted":
+            linked_observation_ids = [
+                int(item["observation"]["id"])
+                for item in evidence.get(proposal.id, [])
+                if item.get("observation", {}).get("id")
+            ]
+            for observation_id in linked_observation_ids:
+                await _sync_interview_learning_candidate(
+                    db,
+                    observation_id=observation_id,
+                    proposal_id=proposal.id,
+                    status="accepted",
+                    profile_section_id=proposal.applied_profile_section_id,
+                )
+            await db.commit()
             return {
                 **_serialize_proposal(proposal, evidence.get(proposal.id, [])),
                 "duplicate": True,
@@ -917,6 +1002,13 @@ async def review_memory_proposal(
         proposal.applied_at = _now()
         proposal.review_note = clean_note
         proposal.reviewed_at = _now()
+        await _sync_interview_learning_candidate(
+            db,
+            observation_id=snapshot["observation_id"],
+            proposal_id=proposal.id,
+            status="accepted",
+            profile_section_id=profile_section_id,
+        )
         if proposal.supersedes_proposal_id is not None:
             superseded_target = (
                 await db.execute(

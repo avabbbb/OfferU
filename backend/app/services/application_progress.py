@@ -14,8 +14,11 @@ from app.models.models import (
     ApplicationProgressCandidate,
     ApplicationRecord,
     ApplicationStageEvent,
+    AutomationEvent,
+    CareerTask,
     ExternalProgressSignal,
     Job,
+    ResumeOptimizationProposal,
 )
 from app.services.career_memory import record_learning_observation
 
@@ -1211,6 +1214,9 @@ async def _maybe_create_interview_calendar_event(
 
 def _next_action(stage: str) -> str:
     return {
+        "saved": "等待 OfferU 开始准备",
+        "preparing": "查看岗位准备进度",
+        "ready": "审核材料并决定是否投递",
         "prepared": "确认材料并完成投递",
         "applied": "等待回复；到期后决定是否跟进",
         "written_test": "完成笔试并记录截止时间",
@@ -1298,6 +1304,9 @@ async def get_application_progress_overview(
 # ---------------------------------------------------------------------------
 
 _STAGE_ORDER = (
+    "saved",
+    "preparing",
+    "ready",
     "prepared",
     "applied",
     "written_test",
@@ -1527,6 +1536,110 @@ async def get_application_progress_board(
         board_rows = await _attempt_board_rows(db)
         unlinked_candidates = await _unlinked_progress_candidates(db)
 
+        # Pipeline is also the target-job projection. Jobs without an
+        # ApplicationAttempt still need a visible saved/preparing/ready row;
+        # the stage is derived from the durable JOB_SAVED event, CareerTask,
+        # and ResumeOptimizationProposal rather than a second state table.
+        attempt_job_ids = {int(row["job_id"]) for row in board_rows}
+        job_rows = (
+            await db.execute(
+                select(Job)
+                .where(Job.triage_status != "ignored")
+                .order_by(Job.created_at.desc())
+                .limit(500)
+            )
+        ).scalars().all()
+        opportunity_jobs = [job for job in job_rows if int(job.id) not in attempt_job_ids]
+        opportunity_ids = [int(job.id) for job in opportunity_jobs]
+        if opportunity_ids:
+            task_rows = (
+                await db.execute(
+                    select(CareerTask)
+                    .where(CareerTask.task_type == "role_intelligence")
+                    .where(CareerTask.target_type == "job")
+                    .where(CareerTask.target_id.in_([str(job_id) for job_id in opportunity_ids]))
+                    .order_by(CareerTask.updated_at.desc(), CareerTask.created_at.desc())
+                )
+            ).scalars().all()
+            proposal_rows = (
+                await db.execute(
+                    select(ResumeOptimizationProposal)
+                    .where(ResumeOptimizationProposal.job_id.in_(opportunity_ids))
+                    .order_by(
+                        ResumeOptimizationProposal.updated_at.desc(),
+                        ResumeOptimizationProposal.created_at.desc(),
+                    )
+                )
+            ).scalars().all()
+            saved_event_rows = (
+                await db.execute(
+                    select(AutomationEvent)
+                    .where(AutomationEvent.event_type == "JOB_SAVED")
+                    .where(AutomationEvent.target_type == "job")
+                    .where(AutomationEvent.target_id.in_([str(job_id) for job_id in opportunity_ids]))
+                    .order_by(AutomationEvent.created_at.desc())
+                )
+            ).scalars().all()
+        else:
+            task_rows = []
+            proposal_rows = []
+            saved_event_rows = []
+
+        latest_tasks: dict[int, CareerTask] = {}
+        for task in task_rows:
+            latest_tasks.setdefault(int(task.target_id), task)
+        latest_proposals: dict[int, ResumeOptimizationProposal] = {}
+        for proposal in proposal_rows:
+            latest_proposals.setdefault(int(proposal.job_id), proposal)
+        latest_saved_events: dict[int, AutomationEvent] = {}
+        for event in saved_event_rows:
+            latest_saved_events.setdefault(int(event.target_id), event)
+
+        for job in opportunity_jobs:
+            job_id = int(job.id)
+            task = latest_tasks.get(job_id)
+            proposal = latest_proposals.get(job_id)
+            if proposal is not None and proposal.status in {"ready", "accepted"}:
+                current_stage = "ready"
+            elif task is not None and task.status in {"queued", "running", "waiting_for_approval", "completed"}:
+                current_stage = "preparing" if task.status != "completed" else "ready"
+            else:
+                current_stage = "saved"
+            saved_event = latest_saved_events.get(job_id)
+            last_at = max(
+                [
+                    value
+                    for value in (
+                        job.created_at,
+                        saved_event.created_at if saved_event else None,
+                        task.updated_at if task else None,
+                        proposal.updated_at if proposal else None,
+                    )
+                    if value is not None
+                ],
+                default=job.created_at,
+            )
+            board_rows.append(
+                {
+                    "application_attempt_id": None,
+                    "job_id": job_id,
+                    "company": (job.company or "").strip() or "(未知公司)",
+                    "job_title": job.title or "",
+                    "location": job.location or "",
+                    "current_stage": current_stage,
+                    "next_action": _next_action(current_stage),
+                    "last_event_at": last_at.isoformat() if last_at else None,
+                    "timeline_count": 1 if saved_event else 0,
+                    "pending_candidates": 0,
+                    "upcoming_interview": None,
+                    "attempt_created_at": str(job.created_at),
+                    "is_opportunity": True,
+                    "automation_status": task.status if task else "",
+                    "automation_error": (task.error if task else "") or "",
+                    "_timeline": [],
+                }
+            )
+
     if clean_status == "active":
         board_rows = [row for row in board_rows if row["current_stage"] not in _TERMINAL_STAGES]
     elif clean_status == "closed":
@@ -1546,7 +1659,7 @@ async def get_application_progress_board(
             {
                 "company": company_key,
                 "records": [],
-                "max_stage": "prepared",
+                "max_stage": "saved",
                 "pending_candidates": 0,
                 "last_event_at": None,
             },

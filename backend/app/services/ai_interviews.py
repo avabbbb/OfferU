@@ -1249,7 +1249,7 @@ async def _record_completion_observation(interview_id: int) -> None:
                     if isinstance(item, dict)
                 ],
             }
-    await record_learning_observation(
+    observation = await record_learning_observation(
         source_type="ai_interview",
         source_external_id=str(interview_id),
         source_title="OfferU AI 面试学习观察",
@@ -1259,6 +1259,61 @@ async def _record_completion_observation(interview_id: int) -> None:
         content=content,
         idempotency_key=f"ai_interview:{interview_id}:{report_hash}",
     )
+    observation_id = int(observation.get("id") or 0)
+    if not observation_id:
+        return
+
+    # Interview learning is a candidate, not a Career Truth write. Route the
+    # proposal through the same registry used by the Profile memory inbox so
+    # the user can review the source and accept/reject it explicitly.
+    target_position = str(interview.target_position or "目标岗位").strip()
+    learning_summary = str(content.get("summary") or "").strip()
+    proposal_result: dict[str, Any]
+    try:
+        from app.ops import execute_operation
+
+        proposal_result = await execute_operation(
+            "create_memory_proposal",
+            {
+                "observation_id": observation_id,
+                "target_tier": "career_hypothesis",
+                "section_type": "skill",
+                "title": f"面试学习观察 · {target_position}",
+                "after": {
+                    "bullet": learning_summary,
+                    "description": learning_summary,
+                },
+                "reason": "来自一场已完成的目标岗位模拟面试；这是训练假设，接受前不会成为职业事实。",
+                "impact": ["作为后续岗位准备和面试训练的参考"],
+            },
+            surface="interview_runtime",
+        )
+    except Exception:
+        proposal_result = {"ok": False}
+
+    async with async_session() as db:
+        interview = (
+            await db.execute(select(Interview).where(Interview.id == interview_id))
+        ).scalar_one_or_none()
+        if interview is None or not isinstance(interview.report_json, dict):
+            return
+        report = dict(interview.report_json)
+        if proposal_result.get("ok") and isinstance(proposal_result.get("outputs"), dict):
+            proposal = proposal_result["outputs"]
+            report["learning_candidate"] = {
+                "status": "pending",
+                "proposal_id": proposal.get("id"),
+                "observation_id": observation_id,
+                "target_tier": "career_hypothesis",
+            }
+        else:
+            report["learning_candidate"] = {
+                "status": "failed",
+                "observation_id": observation_id,
+                "message": "学习候选暂时未生成；可在 Profile 的记忆收件箱稍后重试。",
+            }
+        interview.report_json = report
+        await db.commit()
 
 
 def _follow_up_decision(

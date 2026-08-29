@@ -574,6 +574,7 @@ def _run_summary(run: JobResearchRun) -> dict[str, Any]:
         "role_dossier_id": run.role_dossier_id,
         "runtime_id": run.runtime_id,
         "runtime_version": run.runtime_version or None,
+        "data_mode": "fixture" if run.runtime_id in {"fixture", "replay"} else "live",
         "status": run.status,
         "review_status": run.review_status,
         "review_note": run.review_note or "",
@@ -1107,6 +1108,154 @@ async def start_job_research(
         "research_scope": "public_web_only",
         "login_gated_platforms": "require_user_authorized_browser_slice",
     }
+
+
+async def create_fixture_job_research(job_id: int) -> dict[str, Any]:
+    """Create the explicit, synthetic research slice used by local replay.
+
+    This is deliberately separate from live research: it never calls the web,
+    never creates a user-authored career fact, and is only used to let a clean
+    local workspace exercise the downstream material workflow.
+    """
+
+    clean_job_id = int(job_id)
+    if clean_job_id <= 0:
+        raise ValueError("job_id 必须是正整数")
+    run_id = f"fixture_job_research_{clean_job_id}"
+
+    async with async_session() as db:
+        existing = (
+            await db.execute(
+                select(JobResearchRun).where(JobResearchRun.run_id == run_id)
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            if existing.job_id != clean_job_id:
+                raise ValueError("fixture research run_id 与岗位不一致")
+            if existing.status != "completed" or existing.review_status != "accepted":
+                raise ValueError("fixture research 已存在但未完成，不能静默覆盖")
+            return _run_summary(existing)
+
+        job = (
+            await db.execute(select(Job).where(Job.id == clean_job_id))
+        ).scalar_one_or_none()
+        if job is None:
+            raise ValueError(f"job #{clean_job_id} 不存在")
+        company, role = await _get_or_create_dossiers(db, job)
+        jd_excerpt = (job.raw_description or "").strip()[:1500]
+        if not jd_excerpt:
+            jd_excerpt = f"{job.company} · {job.title} 的本地岗位样例描述。"
+        result = _validated_research_result(
+            {
+                "sources": [
+                    {
+                        "source_ref": "S1",
+                        "dossier_scope": "role",
+                        "url": f"https://example.com/offeru-fixture/jobs/{clean_job_id}",
+                        "title": "OfferU Fixture · target job description",
+                        "publisher": "OfferU Fixture",
+                        "source_class": "other_public",
+                        "published_at": None,
+                        "excerpt": jd_excerpt,
+                    },
+                    {
+                        "source_ref": "S2",
+                        "dossier_scope": "company",
+                        "url": f"https://example.com/offeru-fixture/companies/{clean_job_id}",
+                        "title": "OfferU Fixture · company context",
+                        "publisher": "OfferU Fixture",
+                        "source_class": "other_public",
+                        "published_at": None,
+                        "excerpt": (
+                            f"Synthetic company context for {job.company}; this fixture is not live market data."
+                        ),
+                    },
+                ],
+                "findings": [
+                    {
+                        "dossier_scope": "role",
+                        "finding_type": "role_requirement",
+                        "statement": f"本地 fixture 将岗位描述作为材料准备输入：{jd_excerpt[:900]}",
+                        "details": {
+                            "pattern": "",
+                            "applicable_when": "",
+                            "constraints": [],
+                        },
+                        "source_refs": ["S1"],
+                    },
+                    {
+                        "dossier_scope": "company",
+                        "finding_type": "company_business",
+                        "statement": "这是用于内测链路的合成公司背景，不代表真实公司事实。",
+                        "details": {
+                            "pattern": "",
+                            "applicable_when": "",
+                            "constraints": [],
+                        },
+                        "source_refs": ["S2"],
+                    },
+                ],
+                "gaps": [
+                    "本次结果来自 OfferU Fixture，不代表实时市场调研；需要实时研究时连接可用 Provider。",
+                ],
+            }
+        )
+        run = JobResearchRun(
+            run_id=run_id,
+            job_id=job.id,
+            company_dossier_id=company.id,
+            role_dossier_id=role.id,
+            runtime_id="replay",
+            runtime_version="fixture-replay.v1",
+            status="completed",
+            review_status="candidate",
+            attempts=1,
+            started_at=_utc_now(),
+        )
+        db.add(run)
+        await db.flush()
+        report = _build_report(
+            job={"company": job.company, "title": job.title},
+            result=result,
+        )
+        await _persist_completed_run(
+            db=db,
+            run=run,
+            result=result,
+            report_markdown=report,
+            trace={
+                "provider": "fixture_replay",
+                "fixture_id": "job_research_v0",
+                "synthetic": True,
+                "pre_reviewed": True,
+            },
+            runtime_version="fixture-replay.v1",
+        )
+        run.review_status = "accepted"
+        run.review_note = "本地 fixture 已预审核；不代表真实市场证据。"
+        run.reviewed_at = _utc_now()
+        for dossier in (company, role):
+            dossier.latest_run_id = run.run_id
+            dossier.summary_json = _dossier_summary(
+                run_id=run.run_id,
+                findings=[
+                    ResearchFinding(
+                        dossier_id=(
+                            company.id if item["dossier_scope"] == "company" else role.id
+                        ),
+                        finding_type=item["finding_type"],
+                        statement=item["statement"],
+                        details_json=item["details"],
+                        source_refs_json=item["source_refs"],
+                        evidence_level=item["evidence_level"],
+                    )
+                    for item in result["findings"]
+                ],
+                dossier_id=dossier.id,
+            )
+        await db.commit()
+        await db.refresh(run)
+        return _run_summary(run)
 
 
 async def recover_interrupted_research_runs() -> int:

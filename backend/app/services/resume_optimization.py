@@ -292,6 +292,9 @@ async def _load_research_context(
     research = {
         "run_id": run.run_id,
         "job_id": run.job_id,
+        "runtime_id": run.runtime_id,
+        "data_mode": "fixture" if run.runtime_id in {"fixture", "replay"} else "live",
+        "trace": run.trace_json if isinstance(run.trace_json, dict) else {},
         "sources": source_rows,
         "findings": finding_rows,
         "gaps": gaps,
@@ -337,6 +340,26 @@ async def _generate_candidate(
         _select_sections_structured,
         _skills_pipeline_rewrite,
     )
+
+    if research_context.get("data_mode") == "fixture":
+        selected = list(sections[:12])
+        original_rows = _build_resume_sections(sections)
+        proposed_rows = _build_resume_sections(selected)
+        used_texts = [_bullet_text(section) for section in selected]
+        return {
+            "selected": selected,
+            "original_rows": original_rows,
+            "proposed_rows": proposed_rows,
+            "rewrite_applied": False,
+            "pipeline": {
+                "fixture_replay": {
+                    "status": "completed",
+                    "provider": "replay",
+                    "rewrite_applied": False,
+                }
+            },
+            "missing_capabilities": _missing_keywords(jd_text, used_texts),
+        }
 
     ranked = await _select_sections_structured(
         sections,
@@ -554,7 +577,11 @@ async def prepare_resume_optimization(
                 profile=profile,
                 sections=sections,
                 jd_text=jd_text,
-                research_context=research["skill_context"],
+                research_context={
+                    **research["skill_context"],
+                    "data_mode": research["data_mode"],
+                    "runtime_id": research["runtime_id"],
+                },
             )
             candidate["original_rows"] = _validated_resume_rows(
                 candidate["original_rows"],

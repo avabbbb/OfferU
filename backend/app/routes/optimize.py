@@ -981,6 +981,47 @@ async def optimize_generate(data: OptimizeGenerateRequest):
     )
 
 
+class ResumeProposalReviewRequest(BaseModel):
+    action: Literal["accept", "reject"]
+    note: str = Field(default="", max_length=2000)
+
+
+@router.get("/proposals")
+async def list_resume_proposals(
+    job_id: int | None = None,
+    status: str | None = None,
+    limit: int = 20,
+):
+    """Expose proposal review through the same operation-controlled gateway as Agent UI."""
+    return await _execute_agent_operation(
+        "list_resume_optimizations",
+        {"job_id": job_id, "status": status, "limit": limit},
+    )
+
+
+@router.get("/proposals/{proposal_id}")
+async def get_resume_proposal(proposal_id: str):
+    return await _execute_agent_operation(
+        "get_resume_optimization",
+        {"proposal_id": proposal_id},
+    )
+
+
+@router.post("/proposals/{proposal_id}/review")
+async def review_resume_proposal(
+    proposal_id: str,
+    body: ResumeProposalReviewRequest,
+):
+    return await _execute_agent_operation(
+        "review_resume_optimization",
+        {
+            "proposal_id": proposal_id,
+            "action": body.action,
+            "note": body.note,
+        },
+    )
+
+
 # =============================================
 # 对话式优化 API
 # =============================================

@@ -122,6 +122,7 @@ class IngestRequest(BaseModel):
     jobs: list[JobPayload]
     batch_id: Optional[str] = Field(default=None, max_length=64)
     source: str = "manual"
+    runtime_provider: Optional[str] = None
     keywords: list[str] = []
     location: str = ""
 
@@ -513,15 +514,16 @@ async def ingest_jobs(req: IngestRequest):
     薄 Adapter：统一调用 import_job_batch Operation。
     逐条按 hash_key 幂等去重；同 batch_id 重放不重复计数；审计 surface=browser_extension_ui。
     """
+    ingest_payload = req.model_dump(exclude={"runtime_provider"})
     result = await execute_operation(
         "import_job_batch",
-        req.model_dump(),
+        ingest_payload,
         surface="browser_extension_ui",
     )
     output = _operation_output_or_error(result)
     automation_events: list[dict] = []
     automation_errors: list[str] = []
-    runtime_provider = _automation_runtime_for_source(req.source)
+    runtime_provider = str(req.runtime_provider or _automation_runtime_for_source(req.source)).strip()
     for job_id in output.get("created_job_ids") or []:
         event = await execute_operation(
             "record_automation_event",

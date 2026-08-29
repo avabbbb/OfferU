@@ -15,6 +15,8 @@ from sqlalchemy import select
 from app.database import async_session
 from app.models.models import AgentProviderHealth
 
+KNOWN_PROVIDER_IDS = ("pi", "replay", "codex", "deepseek-harness")
+
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
@@ -124,7 +126,12 @@ async def list_provider_health() -> dict[str, Any]:
                 select(AgentProviderHealth).order_by(AgentProviderHealth.provider_id.asc())
             )
         ).scalars().all()
-    return {"providers": [provider_health_view(row) for row in rows]}
+    by_id = {row.provider_id: provider_health_view(row) for row in rows}
+    providers = []
+    for provider_id in KNOWN_PROVIDER_IDS:
+        providers.append(by_id.get(provider_id) or {**provider_health_view(None), "provider_id": provider_id})
+    providers.extend(view for provider_id, view in by_id.items() if provider_id not in KNOWN_PROVIDER_IDS)
+    return {"providers": providers}
 
 
 __all__ = [
