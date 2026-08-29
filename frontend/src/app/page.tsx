@@ -30,6 +30,8 @@ import {
   useJobStats,
   useJobTrend,
   useNotifications,
+  useProgressBoard,
+  useProgressCandidates,
 } from "@/lib/hooks";
 import { useWorkbench } from "@/lib/workbench";
 
@@ -72,6 +74,42 @@ function automationCategoryLabel(category: string) {
     completed: "已完成",
     failed: "执行失败",
   }[category] ?? category;
+}
+
+const APPLICATION_STAGE_LABELS: Record<string, string> = {
+  saved: "已保存",
+  preparing: "准备中",
+  ready: "待投递",
+  prepared: "待投递",
+  applied: "已投递",
+  written_test: "笔试",
+  assessment: "测评",
+  interview_1: "一面",
+  interview_2: "二面/终面",
+  interview_hr: "HR 面",
+  offer: "Offer",
+  rejected: "已结束",
+};
+
+const INTERVIEW_STAGES = new Set(["interview_1", "interview_2", "interview_hr"]);
+
+function applicationStageLabel(stage: string) {
+  return APPLICATION_STAGE_LABELS[stage] ?? (stage || "未知");
+}
+
+function isInterviewStage(stage: string) {
+  return INTERVIEW_STAGES.has(stage);
+}
+
+function pipelinePriorityLabel(record: {
+  current_stage: string;
+  pending_candidates: number;
+  upcoming_interview: unknown;
+}) {
+  if (record.pending_candidates > 0) return "待审核";
+  if (record.upcoming_interview) return "临近面试";
+  if (isInterviewStage(record.current_stage)) return "面试准备";
+  return "";
 }
 
 function SectionHeader({
@@ -128,6 +166,16 @@ export default function TodayPage() {
   const { data: jobsData } = useJobs({ page: 1, period: "week" });
   const { data: stats } = useJobStats("week");
   const { data: trendData } = useJobTrend("week");
+  const {
+    data: pipeline,
+    error: pipelineError,
+    isLoading: pipelineLoading,
+  } = useProgressBoard("active");
+  const {
+    data: progressCandidates,
+    error: progressCandidatesError,
+    isLoading: progressCandidatesLoading,
+  } = useProgressCandidates("pending", 6);
 
   const pendingSignals = useMemo(
     () => (notifications ?? []).filter((n) => Boolean(n.action_required)).slice(0, 6),
@@ -137,8 +185,35 @@ export default function TodayPage() {
     () => (automationInbox?.items ?? []).filter((entry) => entry.status === "pending").slice(0, 5),
     [automationInbox],
   );
+  const pipelineRecords = useMemo(
+    () =>
+      (pipeline?.companies ?? [])
+        .flatMap((company) => company.records)
+        .sort((left, right) => {
+          const leftPriority = left.pending_candidates > 0
+            ? 0
+            : left.upcoming_interview
+              ? 1
+              : isInterviewStage(left.current_stage)
+                ? 2
+                : 3;
+          const rightPriority = right.pending_candidates > 0
+            ? 0
+            : right.upcoming_interview
+              ? 1
+              : isInterviewStage(right.current_stage)
+                ? 2
+                : 3;
+          if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+          return String(right.last_event_at ?? "").localeCompare(String(left.last_event_at ?? ""));
+        })
+        .slice(0, 6),
+    [pipeline],
+  );
   const upcomingEvents = useMemo(() => (events ?? []).slice(0, 6), [events]);
   const recentJobs = useMemo(() => (jobsData?.items ?? []).slice(0, 5), [jobsData]);
+  const pendingProgress = progressCandidates?.items ?? [];
+  const pendingProgressCount = pipeline?.summary.pending_review ?? progressCandidates?.total ?? 0;
 
   const today = new Date();
   const dateLabel = today.toLocaleDateString("zh-CN", {
@@ -150,6 +225,9 @@ export default function TodayPage() {
   const isEmptyWorkspace =
     pendingSignals.length === 0
     && pendingAutomation.length === 0
+    && pipelineLoading === false
+    && pipelineRecords.length === 0
+    && pendingProgress.length === 0
     && upcomingEvents.length === 0
     && recentJobs.length === 0;
 
@@ -239,6 +317,188 @@ export default function TodayPage() {
             );
           })}
         </div>
+      </motion.section>
+
+      {(pendingProgressCount > 0 || pendingProgress.length > 0) && (
+        <motion.section variants={item}>
+          <SectionHeader
+            icon={Inbox}
+            title="待确认进展"
+            count={pendingProgressCount}
+            href="/applications?view=board"
+            hrefLabel="去审核"
+          />
+          <div className="bauhaus-panel-sm divide-y divide-[var(--border)] overflow-hidden">
+            {progressCandidatesError && (
+              <p className="px-4 py-4 text-[13px] text-[var(--primary-red)]">
+                待确认进展暂时无法读取：请进入进展页重试。
+              </p>
+            )}
+            {!progressCandidatesError && progressCandidatesLoading && (
+              <p className="px-4 py-4 text-[13px] text-[var(--foreground-muted)]">
+                正在读取待确认进展…
+              </p>
+            )}
+            {!progressCandidatesError && !progressCandidatesLoading && pendingProgress.length === 0 && (
+              <p className="px-4 py-4 text-[13px] text-[var(--foreground-muted)]">
+                待确认进展已更新，请进入进展页查看最新列表。
+              </p>
+            )}
+            {pendingProgress.map((candidate) => {
+              const application = candidate.application;
+              const stage = applicationStageLabel(candidate.suggested_stage);
+              const subject = candidate.signal.subject || candidate.signal.sender || "未命名进展";
+              return (
+                <button
+                  key={candidate.candidate_id}
+                  type="button"
+                  onClick={() =>
+                    select({
+                      kind: "task",
+                      id: candidate.candidate_id,
+                      title: subject,
+                      subtitle: [
+                        application ? `${application.company} · ${application.job_title}` : "尚未关联投递",
+                        `建议阶段：${stage}`,
+                      ].join(" · "),
+                      data: {
+                        fields: [
+                          { label: "状态", value: "待确认", emphasis: true },
+                          { label: "建议阶段", value: stage },
+                          {
+                            label: "关联投递",
+                            value: application
+                              ? `${application.company} · ${application.job_title}`
+                              : "尚未关联",
+                          },
+                          { label: "来源", value: `${candidate.signal.channel} · ${candidate.signal.sender}` },
+                          {
+                            label: "收到时间",
+                            value: candidate.signal.received_at
+                              ? formatEventTime(candidate.signal.received_at)
+                              : "-",
+                          },
+                          { label: "候选 ID", value: candidate.candidate_id },
+                        ],
+                        fullscreenHref: "/applications?view=board",
+                      },
+                    })
+                  }
+                  className="press-feedback flex w-full items-center gap-3 px-4 py-2.5 text-left"
+                >
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--primary-yellow)]" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[13px] font-medium text-[var(--foreground)]">
+                      {subject}
+                    </span>
+                    <span className="mt-0.5 block truncate text-[12px] text-[var(--foreground-muted)]">
+                      {[application ? `${application.company} · ${application.job_title}` : "尚未关联投递", `建议${stage}`]
+                        .join(" · ")}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-[11px] font-medium text-[var(--primary-yellow)]">待确认</span>
+                  <ArrowRight size={13} className="shrink-0 text-[var(--foreground-faint)]" />
+                </button>
+              );
+            })}
+          </div>
+          {pendingProgressCount > pendingProgress.length && (
+            <p className="mt-2 px-1 text-[12px] text-[var(--foreground-muted)]">
+              仅显示最近 {pendingProgress.length} 条，进入进展页审核全部 {pendingProgressCount} 条候选。
+            </p>
+          )}
+        </motion.section>
+      )}
+
+      {/* Pipeline: 与投递看板共享同一份状态投影，不在 Today 维护副本 */}
+      <motion.section variants={item}>
+        <SectionHeader
+          icon={Briefcase}
+          title="Pipeline"
+          count={pipeline?.total_records}
+          href="/applications?view=board"
+          hrefLabel="进展"
+        />
+        <div className="bauhaus-panel-sm divide-y divide-[var(--border)] overflow-hidden">
+          {pipelineError && (
+            <p className="px-4 py-4 text-[13px] text-[var(--primary-red)]">
+              Pipeline 暂时无法读取：{pipelineError instanceof Error ? pipelineError.message : "请稍后重试"}
+            </p>
+          )}
+          {!pipelineError && pipelineLoading && (
+            <p className="px-4 py-4 text-[13px] text-[var(--foreground-muted)]">正在读取投递进度…</p>
+          )}
+          {!pipelineError && !pipelineLoading && pipelineRecords.length === 0 && (
+            <p className="px-4 py-4 text-[13px] text-[var(--foreground-muted)]">暂无进行中的投递。</p>
+          )}
+          {pipelineRecords.map((record) => {
+            const stage = applicationStageLabel(record.current_stage);
+            const interview = record.upcoming_interview;
+            const priorityLabel = pipelinePriorityLabel(record);
+            return (
+              <button
+                key={record.application_attempt_id ?? `job-${record.job_id}`}
+                type="button"
+                onClick={() =>
+                  select({
+                    kind: "application",
+                    id: record.application_attempt_id ?? record.job_id,
+                    title: `${record.company} · ${record.job_title}`,
+                    subtitle: [stage, record.next_action].filter(Boolean).join(" · "),
+                    data: {
+                      fields: [
+                        { label: "公司", value: record.company, emphasis: true },
+                        { label: "岗位", value: record.job_title },
+                        { label: "状态", value: stage, emphasis: true },
+                        { label: "下一动作", value: record.next_action || "-" },
+                        {
+                          label: "最近更新",
+                          value: record.last_event_at ? formatEventTime(record.last_event_at) : "-",
+                        },
+                        {
+                          label: "面试",
+                          value: interview
+                            ? `${interview.title} · ${formatEventTime(interview.start_time)}`
+                            : "-",
+                        },
+                        { label: "待确认", value: String(record.pending_candidates) },
+                      ],
+                      fullscreenHref: `/jobs/${record.job_id}`,
+                    },
+                  })
+                }
+                className="press-feedback flex w-full items-center gap-3 px-4 py-2.5 text-left"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] font-medium text-[var(--foreground)]">
+                    {record.company} · {record.job_title}
+                  </span>
+                  <span className="mt-0.5 block truncate text-[12px] text-[var(--foreground-muted)]">
+                    {[stage, record.next_action, interview ? `面试 ${formatEventTime(interview.start_time)}` : ""]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                </span>
+                {priorityLabel && (
+                  <span className="shrink-0 rounded-full bg-[var(--primary-blue)]/10 px-2 py-0.5 text-[11px] font-medium text-[var(--primary-blue)]">
+                    {priorityLabel}
+                  </span>
+                )}
+                {record.pending_candidates > 0 && (
+                  <span className="shrink-0 rounded-full bg-[var(--primary-yellow)]/15 px-2 py-0.5 text-[11px] font-medium text-[var(--primary-yellow)]">
+                    {record.pending_candidates} 待确认
+                  </span>
+                )}
+                <ArrowRight size={13} className="shrink-0 text-[var(--foreground-faint)]" />
+              </button>
+            );
+          })}
+        </div>
+        {(pipeline?.summary?.pending_review ?? 0) > 0 && (
+          <p className="mt-2 px-1 text-[12px] text-[var(--foreground-muted)]">
+            还有 {pipeline?.summary?.pending_review ?? 0} 条进展候选待确认，确认后才会改变正式状态。
+          </p>
+        )}
       </motion.section>
 
       {/* 待确认信号 */}
@@ -362,14 +622,11 @@ export default function TodayPage() {
             <div className="px-4 py-6 text-center">
               <p className="text-[13px] font-medium text-[var(--foreground)]">还没有岗位数据</p>
               <p className="mt-1 text-[12px] leading-5 text-[var(--foreground-muted)]">
-                先在设置页配置来源,再从"机会"导入岗位,这里会出现值得处理的新机会。
+                先保存一个目标岗位，OfferU 会从岗位描述开始准备后续材料。
               </p>
               <div className="mt-3 flex justify-center gap-2">
-                <Link href="/settings" className="bauhaus-button bauhaus-button-sm bauhaus-button-outline">
-                  去配置
-                </Link>
-                <Link href="/jobs" className="bauhaus-button bauhaus-button-sm bauhaus-button-outline">
-                  去机会
+                <Link href="/jobs" className="bauhaus-button bauhaus-button-sm bauhaus-button-red">
+                  保存第一个岗位
                 </Link>
               </div>
             </div>

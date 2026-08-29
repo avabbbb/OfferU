@@ -9,6 +9,8 @@
 // =============================================
 
 import { useMemo, useState } from "react";
+import { useSWRConfig } from "swr";
+import Link from "next/link";
 import { Button, Chip, Spinner, Tooltip } from "@nextui-org/react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -30,6 +32,9 @@ import {
 } from "@/lib/hooks";
 
 const STAGE_LABELS: Record<string, string> = {
+  saved: "已保存",
+  preparing: "准备中",
+  ready: "待投递",
   prepared: "待投递",
   applied: "已投递",
   written_test: "笔试",
@@ -43,6 +48,9 @@ const STAGE_LABELS: Record<string, string> = {
 };
 
 const STAGE_COLORS: Record<string, string> = {
+  saved: "bg-[var(--surface-muted)] text-[var(--foreground-soft)]",
+  preparing: "bg-amber-100 text-amber-800",
+  ready: "bg-blue-100 text-blue-800",
   prepared: "bg-[var(--surface-muted)] text-[var(--foreground-soft)]",
   applied: "bg-blue-100 text-blue-800",
   written_test: "bg-amber-100 text-amber-800",
@@ -92,7 +100,7 @@ function UnlinkedCandidateCard({
   onReviewed,
 }: {
   candidate: ProgressUnlinkedCandidate;
-  onReviewed: () => void;
+  onReviewed: () => Promise<void>;
 }) {
   const [reviewing, setReviewing] = useState(false);
   const [selectedAttemptId, setSelectedAttemptId] = useState("");
@@ -261,7 +269,7 @@ function UnlinkedCandidateQueue({
   onReviewed,
 }: {
   candidates: ProgressUnlinkedCandidate[];
-  onReviewed: () => void;
+  onReviewed: () => Promise<void>;
 }) {
   if (candidates.length === 0) return null;
   return (
@@ -288,9 +296,9 @@ function RecordTimeline({
   onReviewed,
 }: {
   attemptId: number;
-  onReviewed: () => void;
+  onReviewed: () => Promise<void>;
 }) {
-  const { data, isLoading, mutate } = useProgressTimeline(attemptId);
+  const { data, isLoading } = useProgressTimeline(attemptId);
   const [reviewing, setReviewing] = useState<string | null>(null);
   const [selectedStages, setSelectedStages] = useState<Record<string, string>>({});
   const [calendarSelections, setCalendarSelections] = useState<Record<string, boolean>>({});
@@ -308,8 +316,7 @@ function RecordTimeline({
         stage: action === "accept" ? stage : undefined,
         add_calendar: action === "accept" && addCalendar,
       });
-      await mutate();
-      onReviewed();
+      await onReviewed();
       const eventWarning = result.workspace_record?.event_warning;
       if (eventWarning) {
         window.alert(`进展已确认，但工作区事件日志写入失败：${eventWarning}`);
@@ -457,9 +464,56 @@ function RecordRow({
   onReviewed,
 }: {
   record: ProgressBoardRecord;
-  onReviewed: () => void;
+  onReviewed: () => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const attemptId = record.application_attempt_id;
+  const isOpportunity = attemptId == null;
+  const rowContent = (
+    <>
+      {isOpportunity || !expanded ? (
+        <ChevronRight size={14} className="shrink-0 text-[var(--foreground-muted)]" />
+      ) : (
+        <ChevronDown size={14} className="shrink-0 text-[var(--foreground-muted)]" />
+      )}
+      <span className="min-w-0 flex-1 truncate text-sm font-medium">
+        {record.job_title || "(未命名岗位)"}
+      </span>
+      <StagePill stage={record.current_stage} />
+      {record.pending_candidates > 0 && (
+        <Chip size="sm" color="warning" variant="flat">
+          {record.pending_candidates} 待确认
+        </Chip>
+      )}
+      {record.upcoming_interview && (
+        <Tooltip
+          content={`${record.upcoming_interview.title} · ${formatDateTime(
+            record.upcoming_interview.start_time
+          )}${record.upcoming_interview.location ? ` · ${record.upcoming_interview.location}` : ""}`}
+          placement="top"
+          closeDelay={100}
+        >
+          <span className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-violet-700">
+            <CalendarClock size={13} />
+            {formatDateTime(record.upcoming_interview.start_time)}
+          </span>
+        </Tooltip>
+      )}
+      <span className="hidden max-w-[260px] shrink-0 truncate text-xs text-[var(--foreground-muted)] lg:inline">
+        {record.next_action}
+      </span>
+    </>
+  );
+  if (isOpportunity) {
+    return (
+      <Link
+        href={`/jobs/${record.job_id}`}
+        className="press-feedback flex w-full items-center gap-3 border-t border-[var(--border)] px-6 py-2.5 text-left"
+      >
+        {rowContent}
+      </Link>
+    );
+  }
   return (
     <div className="border-t border-[var(--border)]">
       <button
@@ -467,37 +521,7 @@ function RecordRow({
         className="press-feedback flex w-full items-center gap-3 px-6 py-2.5 text-left"
         onClick={() => setExpanded((prev) => !prev)}
       >
-        {expanded ? (
-          <ChevronDown size={14} className="shrink-0 text-[var(--foreground-muted)]" />
-        ) : (
-          <ChevronRight size={14} className="shrink-0 text-[var(--foreground-muted)]" />
-        )}
-        <span className="min-w-0 flex-1 truncate text-sm font-medium">
-          {record.job_title || "(未命名岗位)"}
-        </span>
-        <StagePill stage={record.current_stage} />
-        {record.pending_candidates > 0 && (
-          <Chip size="sm" color="warning" variant="flat">
-            {record.pending_candidates} 待确认
-          </Chip>
-        )}
-        {record.upcoming_interview && (
-          <Tooltip
-            content={`${record.upcoming_interview.title} · ${formatDateTime(
-              record.upcoming_interview.start_time
-            )}${record.upcoming_interview.location ? ` · ${record.upcoming_interview.location}` : ""}`}
-            placement="top"
-            closeDelay={100}
-          >
-            <span className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-violet-700">
-              <CalendarClock size={13} />
-              {formatDateTime(record.upcoming_interview.start_time)}
-            </span>
-          </Tooltip>
-        )}
-        <span className="hidden max-w-[260px] shrink-0 truncate text-xs text-[var(--foreground-muted)] lg:inline">
-          {record.next_action}
-        </span>
+        {rowContent}
       </button>
       <AnimatePresence initial={false}>
         {expanded && (
@@ -509,7 +533,7 @@ function RecordRow({
             className="overflow-hidden"
           >
             <RecordTimeline
-              attemptId={record.application_attempt_id}
+              attemptId={attemptId}
               onReviewed={onReviewed}
             />
           </motion.div>
@@ -524,7 +548,7 @@ function CompanyGroup({
   onReviewed,
 }: {
   group: ProgressBoardCompany;
-  onReviewed: () => void;
+  onReviewed: () => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(group.pending_candidates > 0);
   return (
@@ -578,7 +602,17 @@ function CompanyGroup({
 
 export default function ProgressBoard() {
   const [status, setStatus] = useState<"active" | "closed" | "all">("active");
-  const { data, isLoading, mutate } = useProgressBoard(status);
+  const { data, isLoading } = useProgressBoard(status);
+  const { mutate: mutateCache } = useSWRConfig();
+
+  const refreshProgressProjections = async () => {
+    await mutateCache(
+      (key) =>
+        typeof key === "string" &&
+        (key.includes("/api/applications/progress-board") ||
+          key.includes("/api/email/progress-candidates")),
+    );
+  };
 
   const summaryEntries = useMemo(() => {
     if (!data) return [] as [string, number][];
@@ -640,7 +674,7 @@ export default function ProgressBoard() {
       {data && (
         <UnlinkedCandidateQueue
           candidates={data.unlinked_candidates}
-          onReviewed={() => void mutate()}
+          onReviewed={refreshProgressProjections}
         />
       )}
       <div className="space-y-3">
@@ -648,7 +682,7 @@ export default function ProgressBoard() {
           <CompanyGroup
             key={group.company}
             group={group}
-            onReviewed={() => void mutate()}
+            onReviewed={refreshProgressProjections}
           />
         ))}
       </div>

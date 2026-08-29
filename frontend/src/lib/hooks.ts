@@ -50,7 +50,12 @@ const fetcher = async (url: string) => {  if (SHOWCASE) {
  * 合成标准 Response，调用方无需感知后端是否存在。
  */
 async function showcaseFetch(url: string, init?: RequestInit): Promise<Response> {
-  if (!SHOWCASE) return fetch(url, init);
+  if (!SHOWCASE) {
+    const target = /^https?:\/\//i.test(url)
+      ? url
+      : `${API_BASE}${url.startsWith("/") ? url : `/${url}`}`;
+    return fetch(target, init);
+  }
   const method = String(init?.method || "GET").toUpperCase();
   if (method === "POST" && url.includes("/api/profile/chat") && !url.includes("confirm")) {
     // 对话式 Agent：本地模板或浏览器直连 LLM 的合成 SSE 流
@@ -155,6 +160,19 @@ export interface Notification {
   location: string;
   action_required: string;
   parsed_at: string;
+}
+
+export type JobPreparationMode = "local" | "live";
+
+export interface JobIngestResult {
+  created: number;
+  skipped: number;
+  created_job_ids: number[];
+  failed: Array<{ title: string; error: string }>;
+  automation?: {
+    events: unknown[];
+    errors: string[];
+  };
 }
 
 export interface AutomationInboxItem {
@@ -646,6 +664,7 @@ export interface ProfileSection {
   normalized?: Record<string, any>;
   source: string;
   confidence: number;
+  tier?: "verified_fact" | "preference" | "career_hypothesis" | null;
   created_at: string;
   updated_at: string;
 }
@@ -838,6 +857,7 @@ export async function createProfileSection(data: {
   content_json?: Record<string, any>;
   source?: string;
   confidence?: number;
+  tier?: "verified_fact" | "preference" | "career_hypothesis";
 }) {
   const res = await showcaseFetch(`/api/profile/sections`, {
     method: "POST",
@@ -2304,6 +2324,65 @@ export interface InterviewFocusEvidenceRef {
   confidence?: number;
 }
 
+async function hashJobInput(value: string): Promise<string> {
+  const encoded = new TextEncoder().encode(value);
+  if (typeof crypto !== "undefined" && crypto.subtle) {
+    const digest = await crypto.subtle.digest("SHA-256", encoded);
+    return Array.from(new Uint8Array(digest))
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+  }
+  return value
+    .split("")
+    .reduce((hash, char) => ((hash * 31 + char.charCodeAt(0)) >>> 0), 2166136261)
+    .toString(16);
+}
+
+export async function ingestJob(data: {
+  title: string;
+  company: string;
+  location?: string;
+  url?: string;
+  raw_description: string;
+  source?: string;
+  runtime_provider?: string;
+}): Promise<JobIngestResult> {
+  const normalized = [data.title, data.company, data.location, data.url, data.raw_description]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .join("\n");
+  const hashKey = `manual:${await hashJobInput(normalized)}`;
+  const res = await showcaseFetch(`/api/jobs/ingest`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      source: data.source || "manual",
+      runtime_provider: data.runtime_provider || "replay",
+      jobs: [
+        {
+          title: data.title.trim(),
+          company: data.company.trim(),
+          location: data.location?.trim() || "",
+          url: data.url?.trim() || "",
+          apply_url: data.url?.trim() || "",
+          source: data.source || "manual",
+          raw_description: data.raw_description.trim(),
+          summary: data.raw_description.trim().slice(0, 500),
+          hash_key: hashKey,
+        },
+      ],
+    }),
+  });
+  const payload = (await res.json().catch(() => ({}))) as Partial<JobIngestResult> & {
+    detail?: string;
+    error?: string;
+    ok?: boolean;
+  };
+  if (!res.ok || payload.ok === false || payload.error || payload.detail) {
+    throw new Error(payload.detail || payload.error || `保存岗位失败 (${res.status})`);
+  }
+  return payload as JobIngestResult;
+}
+
 export interface InterviewFocus {
   capability: string;
   category: string;
@@ -2713,7 +2792,7 @@ export async function streamGenerateResumeDraft(
 // =============================================
 
 export interface ProgressBoardRecord {
-  application_attempt_id: number;
+  application_attempt_id: number | null;
   job_id: number;
   company: string;
   job_title: string;
@@ -2730,6 +2809,9 @@ export interface ProgressBoardRecord {
     location: string;
   } | null;
   attempt_created_at: string;
+  is_opportunity?: boolean;
+  automation_status?: string;
+  automation_error?: string;
 }
 
 export interface ProgressBoardCompany {
@@ -2751,6 +2833,12 @@ export interface ProgressBoardPayload {
     pending_review: number;
     unlinked_review: number;
   };
+}
+
+export interface ProgressCandidatesPayload {
+  total: number;
+  disclosure: string;
+  items: ProgressPendingCandidate[];
 }
 
 export interface ProgressTimelineEntry {
@@ -2859,6 +2947,16 @@ export function useProgressBoard(status: "active" | "closed" | "all" = "active")
   );
 }
 
+export function useProgressCandidates(
+  status: "pending" | "confirmed" | "rejected" | "all" = "pending",
+  limit = 20,
+) {
+  return useSWR<ProgressCandidatesPayload>(
+    `${API_BASE}/api/email/progress-candidates?status=${status}&disclosure=summary&limit=${limit}`,
+    fetcher,
+  );
+}
+
 export function useProgressTimeline(attemptId: number | null) {
   return useSWR<ProgressTimelinePayload>(
     attemptId
@@ -2890,5 +2988,12 @@ export async function reviewProgressCandidate(
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || `审核候选进展失败 (${res.status})`);
   }
-  return (await res.json()) as ProgressReviewResult;
+  const result = (await res.json()) as ProgressReviewResult & {
+    ok?: boolean;
+    errors?: string[];
+  };
+  if (result.ok === false) {
+    throw new Error(result.errors?.join("；") || "审核候选进展失败");
+  }
+  return result;
 }

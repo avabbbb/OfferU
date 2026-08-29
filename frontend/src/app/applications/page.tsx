@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Button,
   Checkbox,
@@ -327,7 +328,11 @@ export default function ApplicationsPage() {
 const { data: workspace, mutate: mutateWorkspace } = useApplicationWorkspace();
 const { data: emailStatus, mutate: mutateEmailStatus } = useEmailStatus();
 const { select } = useWorkbench();
-const [viewMode, setViewMode] = useState<"table" | "board">("table");
+const searchParams = useSearchParams();
+const requestedView = searchParams.get("view");
+const [viewMode, setViewMode] = useState<"table" | "board">(
+  requestedView === "board" ? "board" : "table",
+);
 const [currentTableId, setCurrentTableId] = useState<number | null>(null);
   const [keyword, setKeyword] = useState("");
   const [debouncedKeyword, setDebouncedKeyword] = useState("");
@@ -379,6 +384,10 @@ const [emailSyncing, setEmailSyncing] = useState(false);
   const [moveDialogTargetTableId, setMoveDialogTargetTableId] = useState<number | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
   const [operationFeedback, setOperationFeedback] = useState<OperationFeedback | null>(null);
+
+  useEffect(() => {
+    setViewMode(requestedView === "board" ? "board" : "table");
+  }, [requestedView]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedKeyword(keyword.trim()), 220);
@@ -922,10 +931,16 @@ const [emailSyncing, setEmailSyncing] = useState(false);
       <section className="stage-hero bauhaus-panel overflow-hidden bg-[var(--surface)]">
         <div className="grid gap-4 p-6 md:grid-cols-3">
           <div className="md:col-span-2">
-            <span className="bauhaus-chip bg-[var(--surface-muted)] text-[var(--foreground)]">投递管理工作台</span>
-            <h1 className="mt-4 text-4xl font-semibold tracking-tight text-[var(--foreground)]">投递</h1>
+            <span className="bauhaus-chip bg-[var(--surface-muted)] text-[var(--foreground)]">
+              {viewMode === "board" ? "求职状态主面板" : "投递管理工作台"}
+            </span>
+            <h1 className="mt-4 text-4xl font-semibold tracking-tight text-[var(--foreground)]">
+              {viewMode === "board" ? "Pipeline" : "投递"}
+            </h1>
             <p className="mt-3 text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
-              总表承接全量记录，子表用于分类管理。你可以在任意表编辑记录值，系统会同步到同一业务记录的其他视图。
+              {viewMode === "board"
+                ? "岗位准备与实际投递共享同一份状态投影；只有确认过的事件才会改变正式阶段。"
+                : "总表承接全量记录，子表用于分类管理。你可以在任意表编辑记录值，系统会同步到同一业务记录的其他视图。"}
             </p>
             <div className="mt-4 flex items-center gap-1">
               <Button
@@ -950,20 +965,30 @@ const [emailSyncing, setEmailSyncing] = useState(false);
               </Button>
             </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-3 md:grid-cols-1">
+          {viewMode === "board" ? (
             <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-3">
-              <p className="bauhaus-label text-[var(--foreground-muted)]">总记录</p>
-              <p className="mt-2 text-2xl font-semibold">{workspace?.stats.total_records ?? 0}</p>
+              <p className="bauhaus-label text-[var(--foreground-muted)]">状态来源</p>
+              <p className="mt-2 text-base font-semibold">Job · Application · Event</p>
+              <p className="mt-1 text-xs font-medium leading-relaxed text-[var(--foreground-muted)]">
+                Today、Pipeline 和岗位详情读取同一份事实。
+              </p>
             </div>
-            <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-3">
-              <p className="bauhaus-label text-[var(--foreground-muted)]">重复记录</p>
-              <p className="mt-2 text-2xl font-semibold">{workspace?.stats.duplicate_records ?? 0}</p>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-3 md:grid-cols-1">
+              <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-3">
+                <p className="bauhaus-label text-[var(--foreground-muted)]">总记录</p>
+                <p className="mt-2 text-2xl font-semibold">{workspace?.stats.total_records ?? 0}</p>
+              </div>
+              <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-3">
+                <p className="bauhaus-label text-[var(--foreground-muted)]">重复记录</p>
+                <p className="mt-2 text-2xl font-semibold">{workspace?.stats.duplicate_records ?? 0}</p>
+              </div>
+              <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-3">
+                <p className="bauhaus-label text-[var(--foreground-muted)]">当前表</p>
+                <p className="mt-2 text-base font-semibold">{currentTable?.name ?? "-"}</p>
+              </div>
             </div>
-            <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-3">
-              <p className="bauhaus-label text-[var(--foreground-muted)]">当前表</p>
-              <p className="mt-2 text-base font-semibold">{currentTable?.name ?? "-"}</p>
-            </div>
-          </div>
+          )}
         </div>
       </section>
 

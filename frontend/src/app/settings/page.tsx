@@ -25,15 +25,18 @@ import {
   AlertCircle,
   Check,
   Cookie,
+  Download,
   Eye,
   EyeOff,
   Key,
+  MessageSquare,
   Plus,
   Save,
   Search,
   SquarePen,
   Trash2,
 } from "lucide-react";
+import { agentRuntimeApi, dataSafetyApi, type AgentProviderHealth } from "@/lib/api";
 import { useConfig, updateConfig } from "@/lib/hooks";
 
 interface ProviderModelPreset {
@@ -323,6 +326,276 @@ function TestLlmButton() {
         </span>
       )}
     </>
+  );
+}
+
+const AGENT_PROVIDER_LABELS: Record<string, string> = {
+  pi: "Pi",
+  replay: "Replay",
+  codex: "Codex",
+  "deepseek-harness": "DeepSeek Harness",
+};
+
+function providerStatusLabel(status: string) {
+  return {
+    ready: "就绪",
+    blocked: "已阻塞",
+    auth_required: "需要认证",
+    unavailable: "不可用",
+    unprobed: "未验证",
+  }[status] || status;
+}
+
+function AgentProviderHealthCard() {
+  const [providers, setProviders] = useState<AgentProviderHealth[]>([]);
+  const [runtime, setRuntime] = useState<Record<string, any> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const load = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const [health, runtimeStatus] = await Promise.all([
+        agentRuntimeApi.providerHealth(),
+        agentRuntimeApi.runtime(),
+      ]);
+      setProviders(health.providers || []);
+      setRuntime(runtimeStatus);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Agent Runtime 健康状态读取失败");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const byId = useMemo(() => new Map(providers.map((item) => [item.provider_id, item])), [providers]);
+  const items = ["pi", "replay", "codex", "deepseek-harness"].map((providerId) => {
+    const saved = byId.get(providerId);
+    if (providerId === "pi" && runtime?.available) {
+      return { ...(saved || {}), provider_id: providerId, status: "ready", last_error: "" } as AgentProviderHealth;
+    }
+    if (providerId === "replay") {
+      return { ...(saved || {}), provider_id: providerId, status: "ready", available: true, last_error: "" } as AgentProviderHealth;
+    }
+    return saved || {
+      provider_id: providerId,
+      available: false,
+      authenticated: null,
+      blocked: false,
+      status: "unprobed",
+      version: "",
+      auth_mode: "unknown",
+      protocol_version: "",
+      capabilities: {},
+      last_error: "",
+    };
+  });
+
+  return (
+    <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none" data-testid="agent-provider-health">
+      <CardBody className="space-y-4 p-5 md:p-6">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="bauhaus-label text-[var(--foreground-muted)]">Agent Runtime</p>
+            <h3 className="mt-2 text-2xl font-bold text-[var(--foreground)]">运行时健康状态</h3>
+            <p className="mt-2 max-w-2xl text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
+              Replay 是本地内测路径；Codex、DeepSeek Harness 等外部能力不可用时，不会阻塞核心 Career OS。
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="light"
+            onPress={() => void load()}
+            isLoading={loading}
+            className="border border-[var(--border)] bg-[var(--surface-muted)] font-bold text-[var(--foreground)]"
+          >
+            刷新
+          </Button>
+        </div>
+        {error && (
+          <div role="alert" className="bauhaus-panel-sm border-[var(--primary-red)] bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
+            {error}
+          </div>
+        )}
+        <div className="grid gap-3 sm:grid-cols-2">
+          {items.map((item) => (
+            <div key={item.provider_id} className="bauhaus-panel-sm flex items-start justify-between gap-3 bg-[var(--surface-muted)] p-4">
+              <div>
+                <p className="text-sm font-black text-[var(--foreground)]">{AGENT_PROVIDER_LABELS[item.provider_id] || item.provider_id}</p>
+                <p className="mt-1 text-xs font-medium text-[var(--foreground-muted)]">
+                  {item.last_error || (item.provider_id === "deepseek-harness" ? "实验性 Provider，需单独验收" : "")}
+                </p>
+              </div>
+              <Chip
+                size="sm"
+                variant="flat"
+                className={`border font-black ${
+                  item.status === "ready"
+                    ? "border-emerald-600 bg-emerald-50 text-emerald-800"
+                    : item.status === "blocked" || item.status === "auth_required"
+                      ? "border-[var(--primary-red)] bg-red-50 text-red-800"
+                      : "border-amber-500 bg-amber-50 text-amber-900"
+                }`}
+              >
+                {providerStatusLabel(item.status)}
+              </Chip>
+            </div>
+          ))}
+        </div>
+      </CardBody>
+    </Card>
+  );
+}
+
+function LocalDataSafetyCard() {
+  const [exporting, setExporting] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  const handleExport = async () => {
+    setExporting(true);
+    setFeedback(null);
+    try {
+      const payload = await dataSafetyApi.exportUserData();
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      const stamp = new Date().toISOString().replace(/[T:.Z]/g, "-").replace(/-+$/, "");
+      anchor.href = url;
+      anchor.download = `offeru-data-${stamp}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(url);
+      const total = Object.values(payload.counts || {}).reduce((sum, count) => sum + Number(count || 0), 0);
+      setFeedback({ type: "success", message: `已导出 ${total} 条本地职业数据。` });
+    } catch (cause) {
+      setFeedback({ type: "error", message: cause instanceof Error ? cause.message : "数据导出失败，请稍后重试" });
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  return (
+    <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none" data-testid="local-data-safety">
+      <CardBody className="space-y-4 p-5 md:p-6">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="bauhaus-label text-[var(--foreground-muted)]">本地数据安全</p>
+            <h3 className="mt-2 text-2xl font-bold text-[var(--foreground)]">导出你的 OfferU 数据</h3>
+            <p className="mt-2 max-w-2xl text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
+              导出 Profile、岗位、投递、材料、面试和学习记录。Provider 密钥、邮箱凭据、分享密码和浏览器会话不会包含在文件中。
+            </p>
+          </div>
+          <Button
+            className="bauhaus-button bauhaus-button-blue !px-4 !py-3 !text-[11px]"
+            onPress={() => void handleExport()}
+            isLoading={exporting}
+            startContent={!exporting ? <Download size={15} /> : undefined}
+          >
+            导出本地数据
+          </Button>
+        </div>
+        {feedback && (
+          <div
+            role={feedback.type === "error" ? "alert" : "status"}
+            className={`bauhaus-panel-sm px-4 py-3 text-sm font-semibold ${
+              feedback.type === "error"
+                ? "border-[var(--primary-red)] bg-red-50 text-red-800"
+                : "border-emerald-600 bg-emerald-50 text-emerald-800"
+            }`}
+          >
+            {feedback.message}
+          </div>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+function LocalFeedbackCard() {
+  const [note, setNote] = useState("");
+  const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  const handleExport = () => {
+    const trimmed = note.trim();
+    if (!trimmed) {
+      setFeedback({ type: "error", message: "请先描述遇到的问题。" });
+      return;
+    }
+    const payload = {
+      schema_version: "offeru.internal-beta.feedback.v1",
+      created_at: new Date().toISOString(),
+      current_page: window.location.hash || "#/",
+      app_version: "frontend@0.1.0",
+      build_mode: import.meta.env.MODE || "unknown",
+      runtime_mode: import.meta.env.VITE_SHOWCASE === "true" ? "showcase" : "local",
+      user_note: trimmed,
+      diagnostics: {
+        user_agent: navigator.userAgent,
+        language: navigator.language,
+        viewport: `${window.innerWidth}x${window.innerHeight}`,
+      },
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    const stamp = new Date().toISOString().replace(/[T:.Z]/g, "-").replace(/-+$/, "");
+    anchor.href = url;
+    anchor.download = `offeru-feedback-${stamp}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.URL.revokeObjectURL(url);
+    setFeedback({ type: "success", message: "诊断包已下载。请确认其中没有你不想分享的文字后再发送。" });
+  };
+
+  return (
+    <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none" data-testid="local-feedback">
+      <CardBody className="space-y-4 p-5 md:p-6">
+        <div className="flex items-start gap-3">
+          <div className="bauhaus-panel-sm flex h-11 w-11 shrink-0 items-center justify-center bg-[var(--surface-muted)] text-[var(--foreground)]">
+            <MessageSquare size={18} />
+          </div>
+          <div>
+            <p className="bauhaus-label text-[var(--foreground-muted)]">内测反馈</p>
+            <h3 className="mt-2 text-2xl font-bold text-[var(--foreground)]">报告一个问题</h3>
+            <p className="mt-2 text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
+              只生成本地诊断包，包含当前页面、版本、构建模式和你的描述；不会自动上传，也不会附带 Profile 或 Provider 密钥。
+            </p>
+          </div>
+        </div>
+        <Textarea
+          label="问题描述"
+          placeholder="例如：保存岗位后，Today 没有出现岗位情报。"
+          value={note}
+          onValueChange={setNote}
+          minRows={3}
+          data-testid="feedback-note"
+        />
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
+            onPress={handleExport}
+            startContent={<MessageSquare size={15} />}
+          >
+            下载问题诊断包
+          </Button>
+          {feedback && (
+            <span
+              role={feedback.type === "error" ? "alert" : "status"}
+              className={`text-sm font-semibold ${feedback.type === "error" ? "text-red-700" : "text-emerald-700"}`}
+            >
+              {feedback.message}
+            </span>
+          )}
+        </div>
+      </CardBody>
+    </Card>
   );
 }
 
@@ -1004,6 +1277,12 @@ export default function SettingsPage() {
           </div>
         </div>
       </section>
+
+      <AgentProviderHealthCard />
+
+      <LocalDataSafetyCard />
+
+      <LocalFeedbackCard />
 
       <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
         <CardBody className="space-y-5 p-5 md:p-6">

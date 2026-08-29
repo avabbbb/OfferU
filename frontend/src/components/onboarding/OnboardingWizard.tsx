@@ -29,6 +29,7 @@ import {
 import { bauhausFieldClassNames } from "@/lib/bauhaus";
 import {
   createResume,
+  createProfileSection,
   importProfileResume,
   updateConfig,
   useConfig,
@@ -386,6 +387,7 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
   const [selectedTemplate, setSelectedTemplate] = useState("general");
   const [creatingResume, setCreatingResume] = useState(false);
   const [resumeCreated, setResumeCreated] = useState(false);
+  const [resumeCreateError, setResumeCreateError] = useState("");
   const [uploadingFile, setUploadingFile] = useState(false);
   const [uploadResult, setUploadResult] = useState<string | null>(null);
   const [resumeImportResult, setResumeImportResult] = useState<ProfileImportResult | null>(null);
@@ -676,6 +678,7 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
   const handleQuickCreate = async () => {
     if (!userName.trim()) return;
     setCreatingResume(true);
+    setResumeCreateError("");
 
     try {
       const proofNotes = experienceNotes.map((item) => item.trim()).filter(Boolean);
@@ -704,6 +707,38 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
           career_profile: careerProfilePayload,
         },
       });
+
+      const profileEvidence = [
+        ...(school.trim() || major.trim()
+          ? [{
+              section_type: "education",
+              title: school.trim() || "教育经历",
+              content_json: {
+                school: school.trim(),
+                major: major.trim(),
+                bullet: [school.trim(), major.trim()].filter(Boolean).join(" · "),
+              },
+            }]
+          : []),
+        ...proofNotes.map((note, index) => ({
+          section_type: "experience",
+          title: `经历素材 ${index + 1}`,
+          content_json: {
+            company: "",
+            position: "",
+            description: note,
+            bullet: note,
+          },
+        })),
+      ];
+      for (const evidence of profileEvidence) {
+        await createProfileSection({
+          ...evidence,
+          source: "onboarding",
+          confidence: 1,
+          tier: "verified_fact",
+        });
+      }
 
       for (const role of careerProfile.suggestedRoles.slice(0, 3)) {
         try {
@@ -766,8 +801,8 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
 
       setResumeCreated(true);
       setTimeout(goNext, 800);
-    } catch {
-      goNext();
+    } catch (error) {
+      setResumeCreateError(error instanceof Error ? error.message : "创建失败，请检查后重试。");
     } finally {
       setCreatingResume(false);
     }
@@ -1064,7 +1099,7 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                 {step < TOTAL_STEPS - 1 && (
                   <button
                     type="button"
-                    onClick={onSkip}
+                    onClick={goNext}
                     className="text-sm font-semibold text-black/60 underline underline-offset-4"
                   >
                     暂不设置
@@ -1689,6 +1724,11 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                             创建简历
                           </Button>
                         </div>
+                        {resumeCreateError && (
+                          <div className="border border-[var(--primary-red)]/40 bg-[#f7ece9] px-4 py-3 text-sm font-medium leading-relaxed text-black" role="alert">
+                            {resumeCreateError}
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div className="space-y-6">
@@ -1946,29 +1986,29 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                     <div className="space-y-3">
                       <span className="bauhaus-chip bg-[#efe3bc] text-black">开始使用</span>
                       <h2 className="text-4xl font-bold leading-tight md:text-6xl">
-                        采集
+                        保存
                         <br />
                         匹配
                         <br />
                         推进
                       </h2>
                       <p className="max-w-2xl text-sm font-medium leading-relaxed text-black/72 md:text-base">
-                        现在去采集你感兴趣的岗位，OfferU 会用智能分析帮你做匹配、定制简历并继续推进投递节奏。
+                        现在保存一个你真正想投的岗位。OfferU 会围绕它做岗位研究、准备材料并持续整理下一步。
                       </p>
                     </div>
 
                     <div className="grid gap-4 md:grid-cols-3">
                       <div className="bauhaus-panel-sm bg-[#d8e2da] p-4 text-black">
-                        <p className="bauhaus-label text-black/55">采集</p>
-                        <p className="mt-3 text-2xl font-semibold">抓取器</p>
+                        <p className="bauhaus-label text-black/55">第一步</p>
+                        <p className="mt-3 text-2xl font-semibold">保存岗位</p>
                       </div>
                       <div className="bauhaus-panel-sm bg-[#efe3bc] p-4 text-black">
-                        <p className="bauhaus-label text-black/55">筛选</p>
-                        <p className="mt-3 text-2xl font-semibold">岗位池</p>
+                        <p className="bauhaus-label text-black/55">然后</p>
+                        <p className="mt-3 text-2xl font-semibold">自动准备</p>
                       </div>
                       <div className="bauhaus-panel-sm bg-[#f7ece9] p-4 text-black">
-                        <p className="bauhaus-label text-black/55">优化</p>
-                        <p className="mt-3 text-2xl font-semibold">简历循环</p>
+                        <p className="bauhaus-label text-black/55">最后</p>
+                        <p className="mt-3 text-2xl font-semibold">Today 跟进</p>
                       </div>
                     </div>
 
@@ -1976,9 +2016,9 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                       <Button
                         className="bauhaus-button bauhaus-button-red"
                         endContent={<Briefcase size={16} />}
-                        onPress={() => handleFinish("/scraper")}
+                        onPress={() => handleFinish("/jobs")}
                       >
-                        去采集岗位
+                        保存第一个岗位
                       </Button>
                       <Button
                         className="bauhaus-button bauhaus-button-blue"

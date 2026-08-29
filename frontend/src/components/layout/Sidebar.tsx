@@ -1,9 +1,8 @@
 "use client";
 
 // =============================================
-// 五阶段求职流程导航 (ADR 0030 / 0033)
-// 一级入口:今日 / 机会 / 材料 / 进展 / 面试
-// 支持入口:档案 / 设置;主 Agent 由右侧上下文栏承接,不在此并列。
+// Internal Beta 核心导航：Today / Pipeline / Opportunity / Profile。
+// 材料、岗位情报和面试训练属于 Job 上下文；设置保留为支持入口。
 // =============================================
 
 import Link from "next/link";
@@ -11,9 +10,6 @@ import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   Briefcase,
-  Calendar,
-  FileText,
-  GraduationCap,
   Search,
   Settings,
   Send,
@@ -31,21 +27,19 @@ interface NavItem {
   match: string[];
 }
 
-// 五个求职阶段 + 支持入口。旧路由通过 next.config redirects 收敛。
+// 四个核心入口 + 支持入口。子资源仍保留原路由，由 Job Detail / Today 承接。
 const stageItems: NavItem[] = [
-  { href: "/", label: "今日", hint: "行动队列", icon: Sun, match: ["/"] },
-  { href: "/jobs", label: "机会", hint: "岗位与调研", icon: Briefcase, match: ["/jobs"] },
-  { href: "/resume", label: "材料", hint: "简历与定制", icon: FileText, match: ["/resume", "/optimize", "/studio"] },
-  { href: "/applications", label: "进展", hint: "投递与信号", icon: Send, match: ["/applications", "/email", "/calendar"] },
-  { href: "/interview", label: "面试", hint: "训练与日程", icon: GraduationCap, match: ["/interview"] },
+  { href: "/", label: "Today", hint: "下一步", icon: Sun, match: ["/"] },
+  { href: "/applications?view=board", label: "Pipeline", hint: "投递进展", icon: Send, match: ["/applications", "/email", "/calendar"] },
+  { href: "/jobs", label: "Opportunity", hint: "目标岗位", icon: Briefcase, match: ["/jobs"] },
+  { href: "/profile", label: "Profile", hint: "职业档案", icon: UserRound, match: ["/profile"] },
 ];
 
 const supportItems: NavItem[] = [
-  { href: "/profile", label: "档案", hint: "职业模型", icon: UserRound, match: ["/profile"] },
   { href: "/settings", label: "设置", hint: "来源与授权", icon: Settings, match: ["/settings"] },
 ];
 
-const mobileItems = [...stageItems, supportItems[0]];
+const mobileItems = stageItems;
 
 function isStageActive(item: NavItem, pathname: string): boolean {
   return item.match.some((prefix) =>
@@ -169,7 +163,7 @@ export function Sidebar() {
       </aside>
 
       <nav className="offeru-mobile-nav fixed inset-x-0 bottom-0 z-50 border-t border-[var(--border)] bg-[var(--surface)] md:hidden">
-        <div className="grid grid-cols-6 gap-0">
+        <div className="grid grid-cols-4 gap-0">
           {mobileItems.map((item) => {
             const Icon = item.icon;
             const active = isStageActive(item, pathname);
