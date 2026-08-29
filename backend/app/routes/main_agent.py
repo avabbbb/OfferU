@@ -845,6 +845,12 @@ async def export_memory(format: str = "json") -> dict[str, Any]:
     return {"format": "json", "content": memory, "memory": memory}
 
 
+@router.get("/data/export")
+async def export_user_data() -> dict[str, Any]:
+    """Downloadable local core career state through the Operation Registry."""
+    return await _ui_operation_outputs("export_user_data", {})
+
+
 @router.post("/memory/import")
 async def import_memory(body: AgentMemoryImportRequest) -> dict[str, Any]:
     return await _ui_operation_outputs(

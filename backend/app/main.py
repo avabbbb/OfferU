@@ -100,7 +100,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="OfferU API",
     description="AI 驱动的智能求职助手后端",
-    version="0.2.0",
+    version="0.4.0",
     lifespan=lifespan,
 )
 
@@ -166,9 +166,19 @@ if _HAS_MCP and mcp_server is not None:
 
 @app.get("/api/health")
 async def health_check():
+    database_url = settings.database_url
+    database_path = (
+        database_url.rsplit("///", 1)[-1]
+        if database_url.startswith("sqlite") and "///" in database_url
+        else "configured external database"
+    )
     return {
         "status": "ok",
         "service": "OfferU",
+        "version": app.version,
+        "build_mode": os.getenv("OFFERU_BUILD_MODE", "local-development"),
+        "database_path": database_path,
+        "runtime_mode": os.getenv("OFFERU_RUNTIME_MODE") or os.getenv("OFFERU_INTERVIEW_RUNTIME") or "local",
         "runtime": "python",
         "architecture": "file-first-agent-kernel",
         "mcp_enabled": _HAS_MCP,

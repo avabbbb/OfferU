@@ -39,6 +39,7 @@ from app.services.agent_operations import (
     complete_authorized_research_session,
     connect_imap_account,
     cancel_job_research,
+    create_fixture_job_research,
     cancel_career_task,
     create_ai_interview,
     create_application,
@@ -58,6 +59,7 @@ from app.services.agent_operations import (
     get_application_workspace,
     get_application_progress_candidate,
     get_application_progress_board,
+    get_application_progress_timeline,
     get_application_progress_overview,
     get_ai_interview,
     get_ai_interview_runtime,
@@ -245,6 +247,7 @@ from app.services.resume_route_operations import (
     upload_resume_logo,
     upload_resume_photo,
 )
+from app.services.data_export import export_user_data
 from app.models.models import AgentWorkspaceState, Job, OperationAuditLog, Pool
 
 
@@ -281,6 +284,10 @@ class StartJobResearchInput(_StrictOperationInput):
         default="codex",
         pattern="^(codex|claude|omp|pi|opencode)$",
     )
+
+
+class FixtureJobResearchInput(_StrictOperationInput):
+    job_id: int = Field(gt=0)
 
 
 class RoleBenchmarkRunInput(_StrictOperationInput):
@@ -823,6 +830,10 @@ class ProfileSectionCreateInput(_StrictOperationInput):
     content_json: dict[str, Any] = Field(default_factory=dict)
     source: str = Field(default="manual", max_length=30)
     confidence: float = Field(default=1.0, ge=0, le=1)
+    tier: str | None = Field(
+        default=None,
+        pattern="^(verified_fact|preference|career_hypothesis)$",
+    )
 
 
 class ProfileSectionUpdateInput(_StrictOperationInput):
@@ -1303,6 +1314,10 @@ class GetApplicationProgressOverviewInput(_StrictOperationInput):
     limit: int = Field(default=200, ge=1, le=500)
 
 
+class GetApplicationProgressTimelineInput(_StrictOperationInput):
+    application_attempt_id: int = Field(gt=0)
+
+
 class GetApplicationWorkspaceInput(_StrictOperationInput):
     pass
 
@@ -1502,12 +1517,31 @@ async def _prepare_resume_optimization_after_pre_application(
         proposal_id = proposal.get("proposal_id")
         if proposal_id:
             return await get_resume_optimization(proposal_id=proposal_id)
+    research_run_id = str(kwargs.get("research_run_id") or "").strip()
+    if stage != "ready_for_resume_proposal" and research_run_id:
+        fixture_research = await get_job_research(run_id=research_run_id)
+        trace = fixture_research.get("trace")
+        if (
+            fixture_research.get("data_mode") == "fixture"
+            and isinstance(trace, dict)
+            and trace.get("synthetic") is True
+            and trace.get("pre_reviewed") is True
+        ):
+            return await prepare_resume_optimization(**kwargs)
     if stage != "ready_for_resume_proposal":
         raise ValueError("只有审核通过投或有条件投的岗位才能生成简历提案")
     return await prepare_resume_optimization(**kwargs)
 
 
 OPERATIONS: dict[str, Operation] = {
+    "export_user_data": Operation(
+        name="export_user_data",
+        fn=export_user_data,
+        description="导出本地核心职业数据；自动排除 Provider 凭据、连接凭据和浏览器会话状态。",
+        group="governance",
+        audit_redacted_output_parameters=("data",),
+        version="2026-08-29",
+    ),
     "get_profile": Operation(
         name="get_profile",
         fn=get_profile,
@@ -2034,6 +2068,15 @@ OPERATIONS: dict[str, Operation] = {
         group="research",
         side_effects=("write", "external"),
         input_model=StartJobResearchInput,
+    ),
+    "create_fixture_job_research": Operation(
+        name="create_fixture_job_research",
+        fn=create_fixture_job_research,
+        description="仅为 replay 内测链路创建明确标记的合成岗位调研；不访问网络、不代表真实市场事实。",
+        parameters={"job_id": "int"},
+        group="research",
+        side_effects=("write",),
+        input_model=FixtureJobResearchInput,
     ),
     "resume_job_research": Operation(
         name="resume_job_research",
@@ -4240,6 +4283,15 @@ OPERATIONS.update(
             description="读取公司→岗位二级分组的求职进度看板，含未关联候选、阶段、下一步动作与面试时间。",
             parameters={"status": "str=active (active|closed|all)", "include_timeline": "bool=false"},
             group="applications",
+            version="2026-08-13",
+        ),
+        "get_application_progress_timeline": Operation(
+            name="get_application_progress_timeline",
+            fn=get_application_progress_timeline,
+            description="读取单条投递的追加式阶段时间线、邮件证据与待确认候选。",
+            parameters={"application_attempt_id": "int"},
+            group="applications",
+            input_model=GetApplicationProgressTimelineInput,
             version="2026-08-13",
         ),
         "classify_progress_signal": Operation(

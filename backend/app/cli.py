@@ -152,6 +152,7 @@ def _commands() -> list[str]:
 
 def _doctor() -> dict[str, Any]:
     settings = get_settings()
+    provider_health = _doctor_provider_health()
     return {
         "ok": True,
         "service": "OfferU CLI",
@@ -159,6 +160,22 @@ def _doctor() -> dict[str, Any]:
         "commands": _commands(),
         "operation_count": len(list_operations()),
         "database_url_configured": bool(settings.database_url),
+        "backend": {
+            "status": "ready",
+            "runtime": "python",
+            "health_url": "http://127.0.0.1:8765/api/health",
+        },
+        "frontend": {
+            "status": "not_probed",
+            "url": "http://127.0.0.1:7410",
+            "note": "打开该地址完成浏览器检查",
+        },
+        "agent_providers": provider_health,
+        "optional_integrations": {
+            "codex_oauth": "optional",
+            "gmail_oauth": "optional",
+            "deepseek_harness": "experimental",
+        },
         "llm_provider": settings.llm_provider,
         "llm_model": settings.llm_model,
         "resume_import": {
@@ -172,6 +189,35 @@ def _doctor() -> dict[str, Any]:
             "auto_submit_applications": False,
         },
     }
+
+
+def _doctor_provider_health() -> list[dict[str, Any]]:
+    """Read safe persisted Provider health without making Doctor depend on DB setup."""
+    from app.services.agent_provider_health import KNOWN_PROVIDER_IDS, list_provider_health
+
+    try:
+        payload = asyncio.run(list_provider_health())
+        providers = payload.get("providers") if isinstance(payload, dict) else None
+        if isinstance(providers, list):
+            return providers
+    except Exception:
+        pass
+    return [
+        {
+            "provider_id": provider_id,
+            "available": False,
+            "authenticated": None,
+            "blocked": False,
+            "status": "unavailable",
+            "version": "",
+            "auth_mode": "unknown",
+            "protocol_version": "",
+            "capabilities": {},
+            "last_error": "database unavailable",
+            "checked_at": None,
+        }
+        for provider_id in KNOWN_PROVIDER_IDS
+    ]
 
 
 def _manifest() -> dict[str, Any]:
