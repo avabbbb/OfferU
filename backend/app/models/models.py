@@ -657,6 +657,19 @@ class Resume(Base):
     source_profile_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("profiles.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    # Workspace provenance: a tailored resume remains linked to its source and target job.
+    source_resume_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("resumes.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    target_job_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("jobs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # Legacy Application is optional; the newer ApplicationAttempt keeps its own version link.
+    application_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("applications.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    current_version_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    workspace_revision: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
@@ -736,6 +749,13 @@ class ResumeOptimizationProposal(Base):
     presentation_json: Mapped[dict] = mapped_column(JSON, default=dict)
     fact_gates_json: Mapped[dict] = mapped_column(JSON, default=dict)
     trace_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    # Item-level review state for the Resume Workspace. The original proposal
+    # remains immutable; this records only user decisions and the workspace base.
+    workspace_resume_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("resumes.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    workspace_snapshot_hash: Mapped[str] = mapped_column(String(64), default="", index=True)
+    item_reviews_json: Mapped[dict] = mapped_column(JSON, default=dict)
     review_note: Mapped[str] = mapped_column(Text, default="")
     accepted_resume_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("resumes.id", ondelete="SET NULL"), nullable=True, index=True

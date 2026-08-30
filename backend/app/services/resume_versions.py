@@ -20,6 +20,11 @@ def snapshot_resume(resume: Resume) -> dict:
             "language": resume.language,
             "source_mode": resume.source_mode,
             "source_job_ids": resume.source_job_ids,
+            "source_profile_snapshot": resume.source_profile_snapshot,
+            "source_profile_id": resume.source_profile_id,
+            "source_resume_id": resume.source_resume_id,
+            "target_job_id": resume.target_job_id,
+            "application_id": resume.application_id,
         },
         "sections": [
             {
@@ -29,6 +34,7 @@ def snapshot_resume(resume: Resume) -> dict:
                 "title": section.title,
                 "visible": section.visible,
                 "content_json": section.content_json,
+                "source_section_ids": section.source_section_ids,
             }
             for section in resume.sections
         ],

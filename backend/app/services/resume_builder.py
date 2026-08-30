@@ -44,6 +44,9 @@ async def stage_generated_resume(
     source_profile_snapshot: dict,
     rows: list[dict],
     language: str = "zh",
+    source_resume_id: int | None = None,
+    target_job_id: int | None = None,
+    application_id: int | None = None,
 ) -> Resume:
     """Stage a generated resume inside the caller's transaction."""
     resume = Resume(
@@ -59,6 +62,9 @@ async def stage_generated_resume(
         source_job_ids=source_job_ids,
         source_profile_snapshot=source_profile_snapshot,
         source_profile_id=profile.id,
+        source_resume_id=source_resume_id,
+        target_job_id=target_job_id,
+        application_id=application_id,
     )
     db.add(resume)
 

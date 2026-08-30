@@ -31,7 +31,7 @@ from app.services.resume_fact_gates import validate_resume_fact_gates
 from app.services.resume_versions import create_version_snapshot
 
 
-PROPOSAL_STATUSES = frozenset({"ready", "blocked", "stale", "accepted", "rejected"})
+PROPOSAL_STATUSES = frozenset({"ready", "blocked", "in_review", "stale", "accepted", "rejected"})
 REVIEW_ACTIONS = frozenset({"accept", "reject"})
 _TERMINAL_STATUSES = frozenset({"stale", "accepted", "rejected"})
 
@@ -408,6 +408,9 @@ def _proposal_summary(
         "fact_gate_warnings_count": int(fact_gates.get("warnings_count") or 0),
         "accepted_resume_id": proposal.accepted_resume_id,
         "accepted_resume_version_id": proposal.accepted_resume_version_id,
+        "workspace_resume_id": proposal.workspace_resume_id,
+        "workspace_snapshot_hash": proposal.workspace_snapshot_hash or "",
+        "item_reviews": proposal.item_reviews_json or {},
         "review_note": proposal.review_note or "",
         "created_at": str(proposal.created_at),
         "updated_at": str(proposal.updated_at),
@@ -433,6 +436,9 @@ def _proposal_detail(
         "presentation": proposal.presentation_json or {},
         "fact_gates": proposal.fact_gates_json or {},
         "trace": proposal.trace_json or {},
+        "workspace_resume_id": proposal.workspace_resume_id,
+        "workspace_snapshot_hash": proposal.workspace_snapshot_hash or "",
+        "item_reviews": proposal.item_reviews_json or {},
     }
 
 
@@ -935,6 +941,8 @@ async def review_resume_optimization(
             source_profile_snapshot=source_snapshot,
             rows=proposed_rows,
             language=str(presentation.get("language") or "zh"),
+            source_resume_id=proposal.reference_resume_id,
+            target_job_id=job.id,
         )
         version = await create_version_snapshot(
             db,
@@ -960,6 +968,7 @@ async def review_resume_optimization(
             key = f"{item.get('section_type') or ''}:{item.get('title') or ''}"
             item["source_section_ids"] = source_ids_by_type.get(key, [])
         version.content_snapshot = snapshot
+        resume.current_version_id = version.id
 
         proposal.status = "accepted"
         proposal.accepted_resume_id = resume.id

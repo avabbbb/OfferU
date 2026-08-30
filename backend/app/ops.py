@@ -247,6 +247,11 @@ from app.services.resume_route_operations import (
     upload_resume_logo,
     upload_resume_photo,
 )
+from app.services.resume_workspace import (
+    ensure_resume_workspace,
+    get_resume_workspace,
+    review_resume_proposal_item,
+)
 from app.services.data_export import export_user_data
 from app.models.models import AgentWorkspaceState, Job, OperationAuditLog, Pool
 
@@ -969,6 +974,9 @@ class ResumeCreateRecordInput(_StrictOperationInput):
     source_mode: str = Field(default="manual", max_length=30)
     source_job_ids: list[int] = Field(default_factory=list, max_length=100)
     source_profile_snapshot: dict[str, Any] = Field(default_factory=dict)
+    source_resume_id: int | None = Field(default=None, gt=0)
+    target_job_id: int | None = Field(default=None, gt=0)
+    application_id: int | None = Field(default=None, gt=0)
 
 
 class ResumeApplyTemplateInput(_StrictOperationInput):
@@ -1046,6 +1054,24 @@ class ResumeVersionCreateInput(_StrictOperationInput):
 class ResumeVersionRestoreInput(_StrictOperationInput):
     resume_id: int = Field(gt=0)
     version_id: int = Field(gt=0)
+
+
+class ResumeWorkspaceInput(_StrictOperationInput):
+    resume_id: int = Field(gt=0)
+
+
+class ResumeWorkspaceEnsureInput(_StrictOperationInput):
+    job_id: int = Field(gt=0)
+    proposal_id: str | None = Field(default=None, min_length=1, max_length=80)
+    reference_resume_id: int | None = Field(default=None, gt=0)
+
+
+class ResumeProposalItemReviewInput(_StrictOperationInput):
+    proposal_id: str = Field(min_length=1, max_length=80)
+    resume_id: int = Field(gt=0)
+    change_id: str = Field(min_length=1, max_length=120)
+    action: str = Field(pattern="^(accept|reject)$")
+    edited_text: str = Field(default="", max_length=20_000)
 
 
 class ResumeShareCreateInput(_StrictOperationInput):
@@ -2539,6 +2565,40 @@ OPERATIONS: dict[str, Operation] = {
         description="渐进披露一个简历优化提案的原文、候选稿、逐项 diff、事实门与调研证据。",
         parameters={"proposal_id": "str"},
         group="resume",
+    ),
+    "get_resume_workspace": Operation(
+        name="get_resume_workspace",
+        fn=get_resume_workspace,
+        description="读取岗位简历工作区：编辑内容、目标岗位、Proposal 队列、版本和 Application Packet 引用。",
+        parameters={"resume_id": "int"},
+        group="resume",
+        input_model=ResumeWorkspaceInput,
+    ),
+    "ensure_resume_workspace": Operation(
+        name="ensure_resume_workspace",
+        fn=ensure_resume_workspace,
+        description="为目标岗位幂等建立或复用 Tailored Resume Workspace；保留原简历，不直接接受 AI Proposal。",
+        parameters={"job_id": "int", "proposal_id": "str?", "reference_resume_id": "int?"},
+        group="resume",
+        side_effects=("write",),
+        permissions=("resume_write", "job_description"),
+        input_model=ResumeWorkspaceEnsureInput,
+    ),
+    "review_resume_proposal_item": Operation(
+        name="review_resume_proposal_item",
+        fn=review_resume_proposal_item,
+        description="在 Resume Workspace 中逐条接受或拒绝 AI Proposal；检测手工修改造成的 stale，不能覆盖最新内容。",
+        parameters={
+            "proposal_id": "str",
+            "resume_id": "int",
+            "change_id": "str",
+            "action": "str (accept|reject)",
+            "edited_text": "str?",
+        },
+        group="resume",
+        side_effects=("write",),
+        permissions=("resume_write",),
+        input_model=ResumeProposalItemReviewInput,
     ),
     "review_resume_optimization": Operation(
         name="review_resume_optimization",

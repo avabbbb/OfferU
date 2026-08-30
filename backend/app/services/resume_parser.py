@@ -59,7 +59,7 @@ def _tessdata_candidates() -> list[Path]:
         root = Path(configured).expanduser()
         candidates.extend((root, root / "tessdata"))
     try:
-        import fitz
+        import pymupdf as fitz
 
         get_tessdata = getattr(fitz, "get_tessdata", None)
         if callable(get_tessdata):
@@ -419,7 +419,7 @@ def _ocr_page_blocks(page: Any) -> tuple[list[_PdfTextBlock], str]:
 
 
 def _parse_pdf_with_pymupdf(file_bytes: bytes) -> ResumeParseResult:
-    import fitz
+    import pymupdf as fitz
 
     doc = fitz.open(stream=file_bytes, filetype="pdf")
     native_pages: list[tuple[list[_PdfTextBlock], float]] = []

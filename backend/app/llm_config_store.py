@@ -375,36 +375,39 @@ async def discover_local_llms(
     known = {str(c.get("provider_id") or "") for c in configs}
     discovered: list[str] = []
     errors: list[str] = []
-    for provider_id, base_url, probe_path in _LOCAL_ENGINE_PROBES:
-        if provider_id in known:
-            continue
-        try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                resp = await client.get(f"{base_url}/{probe_path}")
-            if resp.status_code != 200:
+    # Local engine discovery must not inherit the user's outbound proxy. A
+    # proxy can turn a refused localhost connection into a multi-second hang,
+    # which defeats the "discovery never blocks startup" contract.
+    async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
+        for provider_id, base_url, probe_path in _LOCAL_ENGINE_PROBES:
+            if provider_id in known:
                 continue
-        except Exception:
-            continue
-        target = {
-            "id": uuid4().hex,
-            "provider_id": provider_id,
-            "service_name": provider_name(provider_id) or provider_id,
-            "model": provider_default_model(provider_id) or "",
-            "base_url": base_url.rstrip("/") + "/v1",
-            "api_key": "",
-            "is_active": False,
-            "extra_params": {},
-            "models": provider_tier_models(provider_id) or {},
-            "api_format": "openai",
-            "supports_json_mode": True,
-            "default_headers": {},
-            "icon": provider_id,
-            "website_url": "",
-            "notes": "本地自动发现（keyless）",
-        }
-        configs.append(target)
-        known.add(provider_id)
-        discovered.append(provider_id)
+            try:
+                resp = await client.get(f"{base_url}/{probe_path}")
+                if resp.status_code != 200:
+                    continue
+            except Exception:
+                continue
+            target = {
+                "id": uuid4().hex,
+                "provider_id": provider_id,
+                "service_name": provider_name(provider_id) or provider_id,
+                "model": provider_default_model(provider_id) or "",
+                "base_url": base_url.rstrip("/") + "/v1",
+                "api_key": "",
+                "is_active": False,
+                "extra_params": {},
+                "models": provider_tier_models(provider_id) or {},
+                "api_format": "openai",
+                "supports_json_mode": True,
+                "default_headers": {},
+                "icon": provider_id,
+                "website_url": "",
+                "notes": "本地自动发现（keyless）",
+            }
+            configs.append(target)
+            known.add(provider_id)
+            discovered.append(provider_id)
     if not discovered:
         return {"discovered": [], "errors": errors}
     raw["llm_api_configs"] = configs

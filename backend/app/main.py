@@ -49,12 +49,9 @@ async def lifespan(app: FastAPI):
         await recover_interrupted_research_runs()
     except Exception:
         pass  # 调研恢复失败不阻塞启动
-    from app.llm_config_store import discover_local_llms
-
-    try:
-        await discover_local_llms()
-    except Exception:
-        pass  # 本地引擎发现失败不阻塞启动
+    # Local engine discovery is optional and performs network probes. Keep it
+    # out of the critical startup path so a stopped local engine or inherited
+    # network policy can never hold the API before it begins serving requests.
     from app.services.coding_agent_runtime import recover_hosted_executor_sessions
 
     await recover_hosted_executor_sessions()

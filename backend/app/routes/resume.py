@@ -102,6 +102,9 @@ class ResumeCreate(BaseModel):
     source_mode: str = "manual"
     source_job_ids: list[int] = Field(default_factory=list)
     source_profile_snapshot: dict = Field(default_factory=dict)
+    source_resume_id: Optional[int] = None
+    target_job_id: Optional[int] = None
+    application_id: Optional[int] = None
 
 
 class ResumeSectionInput(BaseModel):
@@ -112,6 +115,7 @@ class ResumeSectionInput(BaseModel):
     title: str = ""
     visible: bool = True
     content_json: list = Field(default_factory=list)
+    source_section_ids: Optional[list[int]] = None
 
 
 class ResumeUpdate(BaseModel):
@@ -131,6 +135,9 @@ class ResumeUpdate(BaseModel):
     source_mode: Optional[str] = None
     source_job_ids: Optional[list[int]] = None
     source_profile_snapshot: Optional[dict] = None
+    source_resume_id: Optional[int] = None
+    target_job_id: Optional[int] = None
+    application_id: Optional[int] = None
     sections: Optional[list[ResumeSectionInput]] = None
 
 
@@ -188,6 +195,12 @@ def _serialize_resume_brief(r: Resume, source_jobs_map: dict[int, dict] | None =
         "source_job_ids": source_ids,
         "source_jobs": source_jobs,
         "source_profile_snapshot": r.source_profile_snapshot or {},
+        "source_profile_id": r.source_profile_id,
+        "source_resume_id": r.source_resume_id,
+        "target_job_id": r.target_job_id,
+        "application_id": r.application_id,
+        "current_version_id": r.current_version_id,
+        "workspace_revision": r.workspace_revision,
         "created_at": str(r.created_at),
         "updated_at": str(r.updated_at),
     }
@@ -262,6 +275,12 @@ def _serialize_resume_full(r: Resume, source_jobs_map: dict[int, dict] | None = 
         "source_job_ids": source_ids,
         "source_jobs": source_jobs,
         "source_profile_snapshot": r.source_profile_snapshot or {},
+        "source_profile_id": r.source_profile_id,
+        "source_resume_id": r.source_resume_id,
+        "target_job_id": r.target_job_id,
+        "application_id": r.application_id,
+        "current_version_id": r.current_version_id,
+        "workspace_revision": r.workspace_revision,
         "sections": [_serialize_section(s) for s in r.sections],
         "created_at": str(r.created_at),
         "updated_at": str(r.updated_at),
@@ -332,6 +351,43 @@ async def list_templates(db: AsyncSession = Depends(get_db)):
         }
         for t in templates
     ]
+
+
+class ResumeWorkspaceEnsureRequest(BaseModel):
+    job_id: int = Field(..., gt=0)
+    proposal_id: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    reference_resume_id: Optional[int] = Field(default=None, gt=0)
+
+
+class ResumeProposalItemReviewRequest(BaseModel):
+    resume_id: int = Field(..., gt=0)
+    change_id: str = Field(..., min_length=1, max_length=120)
+    action: str = Field(..., pattern="^(accept|reject)$")
+    edited_text: str = Field(default="", max_length=20_000)
+
+
+@router.get("/workspace/{resume_id}")
+async def get_resume_workspace(resume_id: int):
+    return await _execute_operation("get_resume_workspace", {"resume_id": resume_id})
+
+
+@router.post("/workspace/ensure")
+async def ensure_resume_workspace(body: ResumeWorkspaceEnsureRequest):
+    return await _execute_operation(
+        "ensure_resume_workspace",
+        body.model_dump(exclude_none=True),
+    )
+
+
+@router.post("/workspace/proposals/{proposal_id}/review-item")
+async def review_resume_proposal_item(
+    proposal_id: str,
+    body: ResumeProposalItemReviewRequest,
+):
+    return await _execute_operation(
+        "review_resume_proposal_item",
+        {"proposal_id": proposal_id, **body.model_dump()},
+    )
 
 
 @router.post("/{resume_id}/apply-template/{template_id}")
@@ -1115,7 +1171,7 @@ async def _render_resume_html_for_export(resume: Resume, db: AsyncSession) -> st
 
 def _render_resume_png_from_pdf(pdf_bytes: bytes, scale: float) -> bytes:
     try:
-        import fitz  # PyMuPDF
+        import pymupdf as fitz  # PyMuPDF
     except ImportError:
         raise HTTPException(status_code=500, detail="PyMuPDF not installed")
 
@@ -1333,7 +1389,9 @@ async def _render_resume_pdf_with_playwright(resume_id: int, resume: Resume) -> 
     except Exception as exc:
         raise RuntimeError(f"Playwright is not installed: {exc}") from exc
 
-    print_url = f"{FRONTEND_BASE_URL}/resume/print/{resume_id}"
+    # OfferU 的桌面 Web 壳使用 HashRouter；必须保留 hash，否则 Vite
+    # 入口会把无 hash 的打印地址解析成 Today，Playwright 只能等到超时。
+    print_url = f"{FRONTEND_BASE_URL}/#/resume/print/{resume_id}"
     async with async_playwright() as p:
         # 尝试按优先级使用系统浏览器：Chrome > Edge > Playwright Chromium
         launched = False
@@ -1432,7 +1490,9 @@ def _set_cached_export_image(cache_key: tuple[int, str, str], png_bytes: bytes) 
                 _export_image_cache.pop(key, None)
 
 
-@router.post("/{resume_id}/export/pdf")
+# GET is also exposed for the browser's native download path. POST remains
+# supported for existing API callers and explicit export actions.
+@router.api_route("/{resume_id}/export/pdf", methods=["GET", "POST"])
 async def export_pdf(resume_id: int, db: AsyncSession = Depends(get_db)):
     """
     导出简历为 PDF

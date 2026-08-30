@@ -29,6 +29,7 @@ from app.models.models import (
     Profile,
     ProfileSection,
     Resume,
+    ResumeOptimizationProposal,
     ResumeSection,
     ResumeShare,
     ResumeTemplate,
@@ -74,6 +75,7 @@ def _section_dict(section: ResumeSection) -> dict[str, Any]:
         "title": section.title,
         "visible": section.visible,
         "content_json": section.content_json,
+        "source_section_ids": section.source_section_ids or [],
     }
 
 
@@ -95,6 +97,12 @@ def _resume_dict(resume: Resume, source_jobs: dict[int, dict[str, Any]] | None =
         "source_job_ids": ids,
         "source_jobs": [source_map[item] for item in ids if item in source_map],
         "source_profile_snapshot": resume.source_profile_snapshot or {},
+        "source_profile_id": resume.source_profile_id,
+        "source_resume_id": resume.source_resume_id,
+        "target_job_id": resume.target_job_id,
+        "application_id": resume.application_id,
+        "current_version_id": resume.current_version_id,
+        "workspace_revision": resume.workspace_revision,
         "sections": [_section_dict(section) for section in resume.sections],
         "created_at": str(resume.created_at),
         "updated_at": str(resume.updated_at),
@@ -122,6 +130,9 @@ async def create_resume_record(
     source_mode: str = "manual",
     source_job_ids: list[int] | None = None,
     source_profile_snapshot: dict[str, Any] | None = None,
+    source_resume_id: int | None = None,
+    target_job_id: int | None = None,
+    application_id: int | None = None,
 ) -> dict[str, Any]:
     clean_name = (user_name or "").strip()
     contact = {
@@ -155,6 +166,9 @@ async def create_resume_record(
             source_mode=source_mode,
             source_job_ids=source_job_ids or [],
             source_profile_snapshot=source_profile_snapshot or {},
+            source_resume_id=source_resume_id,
+            target_job_id=target_job_id,
+            application_id=application_id,
         )
         db.add(resume)
         await db.flush()
@@ -192,6 +206,9 @@ async def update_resume_record(resume_id: int, update_data: dict[str, Any]) -> d
             if hasattr(resume, key):
                 setattr(resume, key, value)
 
+        if values or sections is not None:
+            resume.workspace_revision = int(resume.workspace_revision or 0) + 1
+
         if sections is not None:
             existing = {section.id: section for section in resume.sections}
             seen: set[int] = set()
@@ -212,6 +229,7 @@ async def update_resume_record(resume_id: int, update_data: dict[str, Any]) -> d
                 section.title = row.get("title", "")
                 section.visible = row.get("visible", True)
                 section.content_json = row.get("content_json", [])
+                section.source_section_ids = row.get("source_section_ids") or section.source_section_ids
             for section_id, section in existing.items():
                 if section_id not in seen:
                     await db.delete(section)
@@ -230,7 +248,7 @@ async def delete_resume_record(resume_id: int) -> dict[str, Any]:
 
 async def reorder_resume_sections(resume_id: int, items: list[dict[str, Any]]) -> dict[str, Any]:
     async with async_session() as db:
-        await _get_resume(db, resume_id)
+        resume = await _get_resume(db, resume_id)
         for item in items:
             section = (
                 await db.execute(
@@ -242,6 +260,7 @@ async def reorder_resume_sections(resume_id: int, items: list[dict[str, Any]]) -
             ).scalar_one_or_none()
             if section:
                 section.sort_order = int(item["sort_order"])
+        resume.workspace_revision = int(resume.workspace_revision or 0) + 1
         await db.commit()
         return {"message": "Sections reordered"}
 
@@ -255,7 +274,7 @@ async def create_resume_section(
     content_json: list[Any] | None = None,
 ) -> dict[str, Any]:
     async with async_session() as db:
-        await _get_resume(db, resume_id)
+        resume = await _get_resume(db, resume_id)
         section = ResumeSection(
             resume_id=resume_id,
             section_type=section_type,
@@ -265,6 +284,7 @@ async def create_resume_section(
             content_json=content_json or [],
         )
         db.add(section)
+        resume.workspace_revision = int(resume.workspace_revision or 0) + 1
         await db.commit()
         await db.refresh(section)
         return _section_dict(section)
@@ -289,6 +309,8 @@ async def update_resume_section(
         for key, value in (update_data or {}).items():
             if hasattr(section, key):
                 setattr(section, key, value)
+        resume = await _get_resume(db, resume_id)
+        resume.workspace_revision = int(resume.workspace_revision or 0) + 1
         await db.commit()
         await db.refresh(section)
         return _section_dict(section)
@@ -306,7 +328,9 @@ async def delete_resume_section(resume_id: int, section_id: int) -> dict[str, An
         ).scalar_one_or_none()
         if section is None:
             raise ValueError("Section not found")
+        resume = await _get_resume(db, resume_id)
         await db.delete(section)
+        resume.workspace_revision = int(resume.workspace_revision or 0) + 1
         await db.commit()
         return {"message": "Section deleted"}
 
@@ -695,6 +719,29 @@ async def create_resume_version_record(
             change_summary=change_summary or "手动保存版本",
             created_by=created_by,
         )
+        resume.current_version_id = version.id
+        pending_proposals = list(
+            (
+                await db.execute(
+                    select(ResumeOptimizationProposal).where(
+                        ResumeOptimizationProposal.workspace_resume_id == resume.id,
+                        ResumeOptimizationProposal.status.in_(("ready", "in_review")),
+                    )
+                )
+            ).scalars().all()
+        )
+        for proposal in pending_proposals:
+            change_ids = {
+                item.get("change_id")
+                for item in (proposal.diff_json or [])
+                if isinstance(item, dict) and item.get("change_id")
+            }
+            reviewed_ids = set((proposal.item_reviews_json or {}).keys())
+            if change_ids.issubset(reviewed_ids):
+                proposal.status = "accepted"
+                proposal.accepted_resume_id = resume.id
+                proposal.accepted_resume_version_id = version.id
+                proposal.reviewed_at = datetime.utcnow()
         await db.commit()
         await db.refresh(version)
         return {
@@ -704,6 +751,7 @@ async def create_resume_version_record(
             "change_summary": version.change_summary,
             "created_by": version.created_by,
             "created_at": version.created_at.isoformat(),
+            "is_current": True,
         }
 
 
@@ -725,7 +773,7 @@ async def restore_resume_version_record(resume_id: int, version_id: int) -> dict
         )
         data = version.content_snapshot or {}
         resume_data = data.get("resume") or {}
-        for key in ("user_name", "title", "photo_url", "summary", "contact_json", "template_id", "style_config", "is_primary", "language", "source_mode", "source_job_ids"):
+        for key in ("user_name", "title", "photo_url", "summary", "contact_json", "template_id", "style_config", "is_primary", "language", "source_mode", "source_job_ids", "source_profile_snapshot", "source_profile_id", "source_resume_id", "target_job_id", "application_id"):
             if key in resume_data:
                 setattr(resume, key, resume_data[key])
         for section in list(resume.sections):
@@ -739,8 +787,11 @@ async def restore_resume_version_record(resume_id: int, version_id: int) -> dict
                     title=row["title"],
                     visible=row["visible"],
                     content_json=row["content_json"],
+                    source_section_ids=row.get("source_section_ids"),
                 )
             )
+        resume.current_version_id = version.id
+        resume.workspace_revision = int(resume.workspace_revision or 0) + 1
         await db.commit()
         return {"success": True, "message": f"已回滚到版本 {version.version_number}", "backup_version_number": backup.version_number}
 
