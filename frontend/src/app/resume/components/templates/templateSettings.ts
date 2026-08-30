@@ -83,6 +83,21 @@ export const TEMPLATE_OPTIONS: Array<{
     name: "附件同款·紧凑",
     description: "保持附件样式，压缩段落间距，适合内容较多的简历。",
   },
+  {
+    id: "modern",
+    name: "Modern",
+    description: "清晰的现代单栏布局，适合 ATS 阅读。",
+  },
+  {
+    id: "swiss-single",
+    name: "Classic",
+    description: "克制的经典单栏布局，突出经历层级。",
+  },
+  {
+    id: "modern-two-column",
+    name: "Compact",
+    description: "双栏紧凑布局，适合信息密度较高的岗位版本。",
+  },
 ];
 
 export const DEFAULT_TEMPLATE_SETTINGS: ResumeTemplateSettings = {
@@ -164,7 +179,14 @@ function asSpacingLevel(value: unknown, fallback: SpacingLevel): SpacingLevel {
 }
 
 function asTemplate(value: unknown): ResumeTemplateType {
-  if (value === "reference" || value === "reference-compact") {
+  if (
+    value === "reference" ||
+    value === "reference-compact" ||
+    value === "swiss-single" ||
+    value === "swiss-two-column" ||
+    value === "modern" ||
+    value === "modern-two-column"
+  ) {
     return value;
   }
   return DEFAULT_TEMPLATE_SETTINGS.template;

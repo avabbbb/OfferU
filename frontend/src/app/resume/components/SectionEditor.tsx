@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Input, Button, Textarea } from "@nextui-org/react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ChevronDown, ChevronUp, Plus, Trash2, GripVertical } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Eye, EyeOff, Plus, Trash2, GripVertical } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -22,6 +22,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import RichTextEditor from "./RichTextEditor";
+import { reorderBullets, splitBullets } from "@/lib/resumeText";
 
 const inputStyle = {
   inputWrapper:
@@ -72,6 +73,50 @@ function addButtonLabel(sectionType: string): string {
   if (sectionType === "certificates") return "添加证书条目";
   if (sectionType === "awards") return "添加获奖条目";
   return "添加个人经历";
+}
+
+function BulletControls({ item, onChange }: { item: any; onChange: (next: any) => void }) {
+  const bullets = splitBullets(String(item.description || ""));
+  if (!bullets.length) return null;
+  const hidden = new Set<number>(
+    Array.isArray(item.hidden_bullet_indexes)
+      ? item.hidden_bullet_indexes.map((value: unknown) => Number(value)).filter(Number.isInteger)
+      : [],
+  );
+  const toggle = (index: number) => {
+    const next = hidden.has(index)
+      ? [...hidden].filter((value) => value !== index)
+      : [...hidden, index];
+    onChange({ ...item, hidden_bullet_indexes: next.sort((a, b) => a - b) });
+  };
+  const move = (from: number, to: number) => {
+    const next = reorderBullets(item.description || "", [...hidden], from, to);
+    onChange({ ...item, description: next.description, hidden_bullet_indexes: next.hiddenBulletIndexes });
+  };
+
+  return (
+    <div className="rounded-lg border border-dashed border-[var(--border-strong)]/20 bg-[var(--surface)] p-2" data-testid="resume-bullet-controls">
+      <p className="mb-1.5 text-[10px] font-bold text-[var(--foreground-muted)]">简历中显示的要点</p>
+      <div className="space-y-1">
+        {bullets.map((bullet, index) => (
+          <div key={`${index}-${bullet}`} className="flex items-center gap-1.5 text-[10px]" data-testid={`resume-bullet-${index}`}>
+            <button
+              type="button"
+              onClick={() => toggle(index)}
+              aria-label={hidden.has(index) ? `显示要点 ${index + 1}` : `隐藏要点 ${index + 1}`}
+              className={`flex min-w-0 flex-1 items-center gap-1.5 rounded px-1.5 py-1 text-left ${hidden.has(index) ? "text-[var(--foreground-muted)] line-through" : "text-[var(--foreground)]"}`}
+              data-testid={`resume-bullet-toggle-${index}`}
+            >
+              {hidden.has(index) ? <EyeOff size={11} /> : <Eye size={11} />}
+              <span className="truncate">{bullet}</span>
+            </button>
+            <button type="button" onClick={() => move(index, index - 1)} disabled={index === 0} aria-label={`上移要点 ${index + 1}`} className="rounded p-1 hover:bg-black/5 disabled:opacity-30"><ArrowUp size={11} /></button>
+            <button type="button" onClick={() => move(index, index + 1)} disabled={index === bullets.length - 1} aria-label={`下移要点 ${index + 1}`} className="rounded p-1 hover:bg-black/5 disabled:opacity-30"><ArrowDown size={11} /></button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function DraggableListItem({ id, children }: { id: string; children: ReactNode }) {
@@ -232,6 +277,7 @@ export default function SectionEditor({
                     <div>
                       <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-[var(--foreground-muted)]">描述</label>
                       <RichTextEditor content={item.description || ""} onChange={(v) => updateItem(i, "description", v)} minHeight={80} placeholder="补充说明（可选）" />
+                      <BulletControls item={item} onChange={(next) => { const arr = [...contentJson]; arr[i] = next; onChange(arr); }} />
                     </div>
                   </>
                 )}
@@ -249,6 +295,7 @@ export default function SectionEditor({
                     <div>
                       <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-[var(--foreground-muted)]">工作描述</label>
                       <RichTextEditor content={item.description || ""} onChange={(v) => updateItem(i, "description", v)} placeholder="描述你的工作职责和成果..." />
+                      <BulletControls item={item} onChange={(next) => { const arr = [...contentJson]; arr[i] = next; onChange(arr); }} />
                     </div>
                   </>
                 )}
@@ -266,6 +313,7 @@ export default function SectionEditor({
                     <div>
                       <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-[var(--foreground-muted)]">实习描述</label>
                       <RichTextEditor content={item.description || ""} onChange={(v) => updateItem(i, "description", v)} placeholder="描述实习职责和成果..." />
+                      <BulletControls item={item} onChange={(next) => { const arr = [...contentJson]; arr[i] = next; onChange(arr); }} />
                     </div>
                   </>
                 )}
@@ -284,6 +332,7 @@ export default function SectionEditor({
                     <div>
                       <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-[var(--foreground-muted)]">项目描述</label>
                       <RichTextEditor content={item.description || ""} onChange={(v) => updateItem(i, "description", v)} placeholder="描述项目亮点和你的贡献..." />
+                      <BulletControls item={item} onChange={(next) => { const arr = [...contentJson]; arr[i] = next; onChange(arr); }} />
                     </div>
                   </>
                 )}
@@ -344,6 +393,7 @@ export default function SectionEditor({
                     <div>
                       <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-[var(--foreground-muted)]">获奖描述</label>
                       <RichTextEditor content={item.description || ""} onChange={(v) => updateItem(i, "description", v)} placeholder="补充奖项背景与成果..." />
+                      <BulletControls item={item} onChange={(next) => { const arr = [...contentJson]; arr[i] = next; onChange(arr); }} />
                     </div>
                   </>
                 )}
@@ -365,6 +415,7 @@ export default function SectionEditor({
                     <div>
                       <label className="mb-1 block text-xs font-semibold tracking-[0.06em] text-[var(--foreground-muted)]">内容</label>
                       <RichTextEditor content={item.description || ""} onChange={(v) => updateItem(i, "description", v)} placeholder="输入个人经历内容..." />
+                      <BulletControls item={item} onChange={(next) => { const arr = [...contentJson]; arr[i] = next; onChange(arr); }} />
                     </div>
                   </>
                 )}

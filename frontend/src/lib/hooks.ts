@@ -534,6 +534,12 @@ export interface ResumeBrief {
   source_job_ids: number[];
   source_jobs: ResumeSourceJob[];
   source_profile_snapshot: Record<string, any>;
+  source_profile_id?: number | null;
+  source_resume_id?: number | null;
+  target_job_id?: number | null;
+  application_id?: number | null;
+  current_version_id?: number | null;
+  workspace_revision?: number;
   created_at: string;
   updated_at: string;
 }
@@ -546,6 +552,7 @@ export interface ResumeSectionBlock {
   title: string;
   visible: boolean;
   content_json: any[];
+  source_section_ids?: number[];
 }
 
 export interface ResumeDetail extends ResumeBrief {

@@ -13,7 +13,8 @@ import {
   type NormalizedResumeItem,
   type NormalizedResumeSection,
 } from "./templates/templateSettings";
-import { dateRange, splitBullets, textFromHtml } from "./templates/shared";
+import { dateRange, textFromHtml } from "./templates/shared";
+import { visibleBullets } from "@/lib/resumeText";
 
 interface Section {
   id: number;
@@ -75,7 +76,7 @@ function normalizeSectionItem(sectionType: string, item: any, index: number): No
       subtitle: [item.degree, item.major, item.gpa ? `GPA ${item.gpa}` : ""].filter(Boolean).join(" / "),
       date: dateRange(item.startDate, item.endDate),
       descriptionHtml: item.description || "",
-      bullets: splitBullets(item.description || ""),
+      bullets: visibleBullets(item.description || "", item.hidden_bullet_indexes),
     };
   }
   if (sectionType === "experience" || sectionType === "workExperiences") {
@@ -86,7 +87,7 @@ function normalizeSectionItem(sectionType: string, item: any, index: number): No
       location: item.location || "",
       date: dateRange(item.startDate, item.endDate),
       descriptionHtml: item.description || "",
-      bullets: splitBullets(item.description || ""),
+      bullets: visibleBullets(item.description || "", item.hidden_bullet_indexes),
     };
   }
   if (sectionType === "internshipExperiences") {
@@ -97,7 +98,7 @@ function normalizeSectionItem(sectionType: string, item: any, index: number): No
       location: item.location || "",
       date: dateRange(item.startDate, item.endDate),
       descriptionHtml: item.description || "",
-      bullets: splitBullets(item.description || ""),
+      bullets: visibleBullets(item.description || "", item.hidden_bullet_indexes),
     };
   }
   if (sectionType === "project" || sectionType === "projects") {
@@ -108,7 +109,7 @@ function normalizeSectionItem(sectionType: string, item: any, index: number): No
       date: dateRange(item.startDate, item.endDate),
       url: item.url || "",
       descriptionHtml: item.description || "",
-      bullets: splitBullets(item.description || ""),
+      bullets: visibleBullets(item.description || "", item.hidden_bullet_indexes),
     };
   }
   if (sectionType === "skill" || sectionType === "skills") {
@@ -131,7 +132,7 @@ function normalizeSectionItem(sectionType: string, item: any, index: number): No
       subtitle: item.issuer || "",
       date: item.awardedAt || item.date || "",
       descriptionHtml: item.description || "",
-      bullets: splitBullets(item.description || ""),
+      bullets: visibleBullets(item.description || "", item.hidden_bullet_indexes),
     };
   }
   if (sectionType === "personalExperiences" || sectionType === "custom") {
@@ -140,7 +141,7 @@ function normalizeSectionItem(sectionType: string, item: any, index: number): No
       title: item.experienceTitle || item.subtitle || item.title || `Experience ${index + 1}`,
       date: dateRange(item.startDate, item.endDate),
       descriptionHtml: item.description || "",
-      bullets: splitBullets(item.description || ""),
+      bullets: visibleBullets(item.description || "", item.hidden_bullet_indexes),
     };
   }
   return {
@@ -150,7 +151,7 @@ function normalizeSectionItem(sectionType: string, item: any, index: number): No
     date: dateRange(item.startDate, item.endDate),
     url: item.url || "",
     descriptionHtml: item.description || item.content || "",
-    bullets: splitBullets(item.description || item.content || ""),
+    bullets: visibleBullets(item.description || item.content || "", item.hidden_bullet_indexes),
   };
 }
 

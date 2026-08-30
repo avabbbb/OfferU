@@ -229,9 +229,106 @@ export const resumeApi = {
   exportPdf: (id: number) =>
     fetch(`${API_BASE}/api/resume/${id}/export/pdf`, { method: "POST" }),
 
+  exportPdfUrl: (id: number) => `${API_BASE}/api/resume/${id}/export/pdf`,
+
+  workspace: (id: number) =>
+    request<ResumeWorkspace>(`/api/resume/workspace/${id}`),
+
+  ensureWorkspace: (data: {
+    job_id: number;
+    proposal_id?: string;
+    reference_resume_id?: number;
+  }) =>
+    request<ResumeWorkspace>("/api/resume/workspace/ensure", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  reviewProposalItem: (
+    proposalId: string,
+    data: {
+      resume_id: number;
+      change_id: string;
+      action: "accept" | "reject";
+      edited_text?: string;
+    },
+  ) =>
+    request<ResumeWorkspace>(
+      `/api/resume/workspace/proposals/${encodeURIComponent(proposalId)}/review-item`,
+      { method: "POST", body: JSON.stringify(data) },
+    ),
+
+  createVersion: (id: number, data?: { change_summary?: string; created_by?: string }) =>
+    request<ResumeVersionSummary>(`/api/resume/${id}/versions`, {
+      method: "POST",
+      body: JSON.stringify(data || {}),
+    }),
+
+  listVersions: (id: number) =>
+    request<ResumeVersionSummary[]>(`/api/resume/${id}/versions`),
+
+  getVersion: (id: number, versionId: number) =>
+    request<ResumeVersionDetail>(`/api/resume/${id}/versions/${versionId}`),
+
+  restoreVersion: (id: number, versionId: number) =>
+    request<Record<string, any>>(`/api/resume/${id}/versions/${versionId}/restore`, {
+      method: "POST",
+    }),
+
   // 模板
   templates: () => request("/api/resume/templates"),
 };
+
+export interface ResumeVersionSummary {
+  id: number;
+  resume_id: number;
+  version_number: number;
+  change_summary: string;
+  created_by: string;
+  created_at: string;
+  is_current?: boolean;
+}
+
+export interface ResumeVersionDetail extends ResumeVersionSummary {
+  content_snapshot: Record<string, any>;
+}
+
+export interface ResumeWorkspace {
+  resume: Record<string, any> & {
+    id: number;
+    target_job_id?: number | null;
+    current_version_id?: number | null;
+    workspace_revision?: number;
+  };
+  job: {
+    id: number;
+    title: string;
+    company: string;
+    location?: string;
+    url?: string;
+    apply_url?: string;
+    summary?: string;
+    raw_description?: string;
+    keywords?: string[];
+  } | null;
+  workspace: {
+    revision: number;
+    content_hash: string;
+    is_tailored: boolean;
+  };
+  application_packet: {
+    job_id: number | null;
+    resume_id: number;
+    current_version_id: number | null;
+    current_version_number: number | null;
+    status: string;
+    application_id: number | null;
+    application_attempt_id: number | null;
+    artifacts: Record<string, boolean>;
+  };
+  proposals: ResumeOptimizationProposalDetail[];
+  versions: ResumeVersionSummary[];
+}
 
 // ---- Calendar API ----
 export const calendarApi = {
@@ -549,6 +646,9 @@ export interface ResumeOptimizationProposalSummary {
   created_at: string;
   updated_at: string;
   reviewed_at?: string | null;
+  workspace_resume_id?: number | null;
+  workspace_snapshot_hash?: string;
+  item_reviews?: Record<string, { action: "accept" | "reject"; edited_text?: string; reviewed_at?: string }>;
 }
 
 export interface ResumeOptimizationProposalDetail extends ResumeOptimizationProposalSummary {
@@ -564,6 +664,9 @@ export interface ResumeOptimizationProposalDetail extends ResumeOptimizationProp
   presentation: Record<string, any>;
   fact_gates: Record<string, any>;
   trace: Record<string, any>;
+  workspace_resume_id?: number | null;
+  workspace_snapshot_hash?: string;
+  item_reviews?: Record<string, { action: "accept" | "reject"; edited_text?: string; reviewed_at?: string }>;
 }
 
 export type RoleBenchmarkDirection =

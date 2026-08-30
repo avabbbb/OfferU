@@ -48,6 +48,60 @@ export function splitBullets(value: string): string[] {
   return result;
 }
 
+export function visibleBullets(value: string, hiddenIndexes: unknown): string[] {
+  const hidden = new Set(
+    Array.isArray(hiddenIndexes)
+      ? hiddenIndexes.map((item) => Number(item)).filter((item) => Number.isInteger(item))
+      : [],
+  );
+  return splitBullets(value).filter((_, index) => !hidden.has(index));
+}
+
+export function reorderBullets(
+  value: string,
+  hiddenIndexes: unknown,
+  from: number,
+  to: number,
+): { description: string; hiddenBulletIndexes: number[] } {
+  const bullets = splitBullets(value);
+  if (from < 0 || to < 0 || from >= bullets.length || to >= bullets.length || from === to) {
+    return {
+      description: value,
+      hiddenBulletIndexes: Array.isArray(hiddenIndexes) ? hiddenIndexes.map(Number) : [],
+    };
+  }
+
+  const hidden = new Set(
+    Array.isArray(hiddenIndexes)
+      ? hiddenIndexes.map((item) => Number(item)).filter((item) => Number.isInteger(item))
+      : [],
+  );
+  const entries = bullets.map((text, index) => ({ text, hidden: hidden.has(index) }));
+  const [entry] = entries.splice(from, 1);
+  entries.splice(to, 0, entry);
+
+  let description = entries.map((item) => item.text).join("\n");
+  if (typeof DOMParser !== "undefined" && /<\s*li\b/i.test(value)) {
+    const document = new DOMParser().parseFromString(`<div>${value}</div>`, "text/html");
+    const root = document.body.firstElementChild;
+    const list = root?.querySelector("ul,ol");
+    const listItems = list
+      ? Array.from(list.children).filter((item): item is HTMLElement => item.tagName.toLowerCase() === "li")
+      : [];
+    if (root && list && listItems.length === bullets.length) {
+      const moving = listItems[from];
+      const reference = listItems[to];
+      list.insertBefore(moving, from < to ? reference.nextSibling : reference);
+      description = root.innerHTML;
+    }
+  }
+
+  return {
+    description,
+    hiddenBulletIndexes: entries.flatMap((item, index) => (item.hidden ? [index] : [])),
+  };
+}
+
 export function descriptionLinesToPlainText(lines: string[]) {
   return (lines || [])
     .map((item) => stripBulletMarker(String(item || "")))

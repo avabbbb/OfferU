@@ -34,6 +34,7 @@ import { RoleIntelligencePanel } from "@/components/jobs/RoleIntelligencePanel";
 import {
   jobResearchApi,
   preApplicationApi,
+  resumeApi,
   resumeOptimizationApi,
   type JobResearchRunDetail,
   type PreApplicationDecisionChoice,
@@ -163,8 +164,6 @@ export default function JobDetailPage() {
   const [resumeProposal, setResumeProposal] = useState<ResumeOptimizationProposalDetail | null>(null);
   const [resumeProposalLoading, setResumeProposalLoading] = useState(false);
   const [resumeProposalError, setResumeProposalError] = useState("");
-  const [resumeProposalAction, setResumeProposalAction] = useState<"accept" | "reject" | null>(null);
-  const [resumeProposalNote, setResumeProposalNote] = useState("");
 
   const poolOptions = useMemo(
     () => [{ key: "ungrouped", label: "未分组" }, ...((pickedPools || []).map((pool) => ({ key: String(pool.id), label: pool.name })))],
@@ -333,23 +332,17 @@ export default function JobDetailPage() {
     }
   };
 
-  const handleResumeProposalReview = async (action: "accept" | "reject") => {
-    if (!resumeProposal || resumeProposalAction) return;
-    const note = resumeProposalNote.trim();
-    if (action === "reject" && !note) {
-      setResumeProposalError("拒绝材料候选时必须填写原因。");
-      return;
-    }
-    setResumeProposalAction(action);
-    setResumeProposalError("");
+  const openResumeWorkspace = async () => {
+    if (!jobId || !resumeProposal) return;
     try {
-      const reviewed = await resumeOptimizationApi.review(resumeProposal.proposal_id, { action, note });
-      setResumeProposal(reviewed);
-      setResumeProposalNote(reviewed.review_note || "");
+      const workspace = await resumeApi.ensureWorkspace({
+        job_id: jobId,
+        proposal_id: resumeProposal.proposal_id,
+        reference_resume_id: resumeProposal.reference_resume_id || undefined,
+      });
+      router.push(`/resume/${workspace.resume.id}`);
     } catch (err) {
-      setResumeProposalError(err instanceof Error ? err.message : "材料候选审核失败");
-    } finally {
-      setResumeProposalAction(null);
+      setResumeProposalError(err instanceof Error ? err.message : "简历工作区打开失败");
     }
   };
 
@@ -774,7 +767,30 @@ export default function JobDetailPage() {
                   {resumeProposal.status === "accepted" && (
                     <div className="bauhaus-panel-sm flex items-start gap-3 border-emerald-600 bg-emerald-50 px-4 py-4 text-sm font-semibold text-emerald-900">
                       <CheckCircle2 className="mt-0.5 shrink-0" size={18} />
-                      资料已生成，正式简历和版本快照已保存（Resume #{resumeProposal.accepted_resume_id}）。
+                      <div className="flex-1">
+                        资料已生成，正式简历和版本快照已保存（Resume #{resumeProposal.accepted_resume_id}）。
+                        {resumeProposal.accepted_resume_id && (
+                          <Button
+                            size="sm"
+                            onPress={() => router.push(`/resume/${resumeProposal.accepted_resume_id}`)}
+                            className="bauhaus-button bauhaus-button-blue mt-3 !px-3 !py-2 !text-[10px]"
+                          >
+                            打开 Resume Workspace
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {(resumeProposal.status === "ready" || resumeProposal.status === "in_review") && (
+                    <div className="bauhaus-panel-sm flex flex-wrap items-center justify-between gap-3 border-blue-600 bg-blue-50 px-4 py-4 text-sm font-semibold text-blue-900">
+                      <span>可以在岗位上下文中逐条审核 Proposal，并继续手动编辑。</span>
+                      <Button
+                        onPress={() => void openResumeWorkspace()}
+                        className="bauhaus-button bauhaus-button-blue !px-3 !py-2 !text-[10px]"
+                      >
+                        打开 Resume Workspace
+                      </Button>
                     </div>
                   )}
 
@@ -818,42 +834,18 @@ export default function JobDetailPage() {
                         </div>
                       )}
 
-                      <div className="space-y-3">
-                        <label htmlFor="resume-proposal-review-note" className="bauhaus-label text-[var(--foreground-muted)]">
-                          审核备注（拒绝时必填）
-                        </label>
-                        <textarea
-                          id="resume-proposal-review-note"
-                          data-testid="resume-proposal-review-note"
-                          value={resumeProposalNote}
-                          onChange={(event) => setResumeProposalNote(event.target.value)}
-                          maxLength={2000}
-                          rows={3}
-                          placeholder="记录你接受或拒绝这份候选的依据。"
-                          className="w-full border border-[var(--border-strong)] bg-white px-4 py-3 text-sm font-medium text-[var(--foreground)] outline-none focus:border-[var(--primary-blue)]"
-                        />
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <Button
-                            data-testid="resume-proposal-accept"
-                            onPress={() => void handleResumeProposalReview("accept")}
-                            isLoading={resumeProposalAction === "accept"}
-                            isDisabled={resumeProposalAction === "reject" || resumeProposal.fact_gate_status !== "passed"}
-                            startContent={<CheckCircle2 size={17} />}
-                            className="bauhaus-button bauhaus-button-blue !justify-center !px-4 !py-3 !text-[11px]"
-                          >
-                            接受并生成简历
-                          </Button>
-                          <Button
-                            data-testid="resume-proposal-reject"
-                            onPress={() => void handleResumeProposalReview("reject")}
-                            isLoading={resumeProposalAction === "reject"}
-                            isDisabled={resumeProposalAction === "accept"}
-                            startContent={<XCircle size={17} />}
-                            className="bauhaus-button bauhaus-button-outline !justify-center !px-4 !py-3 !text-[11px]"
-                          >
-                            拒绝候选
-                          </Button>
+                      <div className="bauhaus-panel-sm flex flex-wrap items-center justify-between gap-3 border-blue-600 bg-blue-50 px-4 py-4 text-sm font-semibold text-blue-900">
+                        <div>
+                          <p>打开岗位简历工作区，逐条审核并继续手动编辑。</p>
+                          <p className="mt-1 text-xs font-medium text-blue-800">原简历会保留；接受后才会生成岗位版本。</p>
                         </div>
+                        <Button
+                          data-testid="resume-open-workspace"
+                          onPress={() => void openResumeWorkspace()}
+                          className="bauhaus-button bauhaus-button-blue !px-3 !py-2 !text-[10px]"
+                        >
+                          打开 Resume Workspace
+                        </Button>
                       </div>
                     </>
                   )}
@@ -1349,7 +1341,15 @@ export default function JobDetailPage() {
             查看原文
           </Button>
         )}
-        {preApplication?.stage === "ready_for_resume_proposal" || preApplication?.stage === "resume_proposal_ready" ? (
+        {resumeProposal ? (
+          <Button
+            onPress={() => void openResumeWorkspace()}
+            endContent={<Send size={16} />}
+            className="bauhaus-button bauhaus-button-blue !justify-center !px-4 !py-3 !text-[11px]"
+          >
+            打开 Resume Workspace
+          </Button>
+        ) : preApplication?.stage === "ready_for_resume_proposal" || preApplication?.stage === "resume_proposal_ready" ? (
           <Button
             as={Link}
             href={`/optimize?job_ids=${job.id}`}
