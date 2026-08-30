@@ -14,6 +14,12 @@
 - Settings 的本地数据导出是核心职业数据 JSON，不包含 Provider/邮箱凭据，也不替代完整 SQLite 备份。
 - Showcase 是独立的浏览器 IndexedDB 展示模式，数据是虚构的，不能代表后端真实运行能力。
 
+## Resume Workspace
+
+- Resume Workspace 是桌面优先的三栏编辑器，小窗口会压缩布局，但暂不提供完整移动端体验。
+- PDF 首选使用 Python Playwright 调用本机 Chrome，使打印页与预览共用 React renderer；如果 Windows 缺少浏览器或字体，后端会尝试 ReportLab fallback，仍失败时界面会显示可重试错误。
+- Resume 手动编辑不会自动写入 Profile；检测到新职业事实时，后续应通过 Candidate / Evidence review 回流。
+
 ## 研究与面试
 
 - Fixture benchmark 和合成公司只用于回归与产品体验，不代表实时市场百分比或真实公司结论。

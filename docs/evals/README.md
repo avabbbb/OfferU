@@ -2,7 +2,7 @@
 
 本目录是 OfferU 的验收事实入口。功能是否可用、Harness 是否受支持、版本是否可供内测，必须由可复现任务、脱敏轨迹和最终业务状态共同证明，不能由功能清单、截图、构建成功或模型自评决定。
 
-当前候选套件是 [`offeru-core-v1`](./offeru-core-v1.md)。在产生符合本手册与 [`report-schema.json`](./report-schema.json) 的有效报告前，OfferU 统一表述为：**内部 Alpha；尚无正式 baseline**。
+当前基础候选套件是 [`offeru-core-v1`](./offeru-core-v1.md)，Public Release 总 Gate 见 [`RELEASE_CHECKLIST.md`](../../RELEASE_CHECKLIST.md)。在产生符合本手册与 [`report-schema.json`](./report-schema.json) 的有效 Public Release 报告前，统一表述为：**Internal Beta 检查点存在；Public Release NOT READY；尚无正式 Public Release baseline**。
 
 ## 事实源分工
 
@@ -69,7 +69,7 @@ DSH、Codex、Claude Code、OpenCode 和 Pi 共用同一业务任务与安全断
 - 初始 suite 保留 20–50 个高价值真实任务，不追求题量。
 - 确定性任务至少运行一次。
 - 涉及模型、网络、检索或 Agent 路由的 required task 从相同 fixture 初态独立运行三次。
-- 核心旅程以连续 3/3 通过作为可靠性信号；一次成功不能外推稳定支持。
+- Internal Beta 核心旅程以连续 3/3 作为最低可靠性信号；Public Release critical journey 必须连续 10/10，并完成至少 50 个扩展组合、first-run pass ≥98%。一次成功不能外推稳定支持，retry 后变绿不能掩盖 flaky。
 
 `offeru-core-v1` 的 required tasks 必须全部实际执行并有效通过。Integration tasks 只有在对外声称对应真实集成可用时才进入目标范围，但声称时不得跳过。
 

@@ -39,6 +39,24 @@ Agent 负责 reasoning、planning、tool selection 和研究编排；不能直�
 
 优先围绕 `Profile`、`Job`、`Application`、`Artifact`、`Event`、`Candidate`、`CareerTask` 表达需求。Today、Pipeline 和 Agent UI 是 projection 或执行界面，不复制同一业务状态。
 
+## Resume Workspace
+
+岗位简历工作区复用现有 `Resume`、`ResumeSection`、`ResumeOptimizationProposal` 和 `ResumeVersion`，不创建平行的文档状态：
+
+```text
+Career Evidence / Profile
+        ↓
+Master Resume
+        ↓ source_resume_id + target_job_id
+Job Tailored Resume
+        ↓
+Application Packet projection
+```
+
+编辑器、实时预览和 PDF 都读取同一份结构化 Resume 内容。AI 只生成 Proposal；逐条接受/拒绝、手动编辑、排序、可见性和模板修改都通过 Resume Operation Registry。`workspace_snapshot_hash` 用于阻止过期 Proposal 覆盖用户最新修改，`ResumeVersion` 保存可回看的岗位版本与来源。
+
+OfferU 不创建 `ResumeAgent`。岗位简历准备是 `CareerTask`，由现有 Agent Runtime 选择受控 Operation 执行。Job Detail 是进入 Workspace 的主要入口，Today / Pipeline 只投影同一 Application、Event 和 Packet 状态。
+
 ## 自动化
 
 ```text

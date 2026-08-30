@@ -11,14 +11,14 @@
 
 <p align="center">
   <a href="./README_EN.md">English</a> ·
-  <a href="#快速开始">快速开始</a> ·
+  <a href="./QUICKSTART.md">Quickstart</a> ·
   <a href="#cli-first-控制面">CLI-first</a> ·
   <a href="#架构方向">架构</a> ·
   <a href="./docs/README.md">设计文档</a>
 </p>
 
 > [!IMPORTANT]
-> OfferU 目前是本地单人 Internal Beta 候选版本，核心 Replay/Fixture 路径已验证，Codex、Gmail 等外部认证仍是可选阻塞。它不是自动投递机器人，不会自动提交申请、发送邮件或联系第三方。Agent 的推断、材料和进展更新必须先成为候选或提案，再由使用者审核。
+> OfferU 目前是本地单人 Internal Beta 候选版本，核心 Replay/Fixture 路径已验证；Public Release readiness program 已启动，但 signed installer、migration/backup/restore、security、clean-machine、live provider、soak 与重复 E2E Gate 尚未通过，当前不是公开发布版。它不是自动投递机器人，不会自动提交申请、发送邮件或联系第三方。Agent 的推断、材料和进展更新必须先成为候选或提案，再由使用者审核。
 
 <table>
   <tr>
@@ -41,6 +41,8 @@ OfferU 把求职过程收敛成四个用户入口：
 4. **Profile**：长期职业事实、证据、偏好、目标和待审核学习候选。
 
 Memory 是 Profile 的演进机制；Agent 是全局能力；Role Intelligence、Resume、Application Packet 和 Interview 都属于 Job 上下文。
+
+岗位材料从 Job Detail 进入 Resume Workspace：左侧编辑结构化内容，中间实时预览 A4/Letter，右侧审核 AI Proposal、样式和版本。原简历始终保留，岗位版本通过 `source_resume_id` / `target_job_id` 关联，Application Packet 引用当前 `ResumeVersion`。
 
 SQLite 与领域服务保存正式事实；React/Tauri 工作台负责呈现和人类控制；所有自动化业务操作统一经过 Python Operation Registry。模型回答本身不是事实，也不是执行成功的证明。
 
@@ -70,7 +72,9 @@ flowchart LR
 
 - [Codex App Server](https://developers.openai.com/codex/app-server) 提供官方 stdio JSONL 深度集成边界；实验能力必须版本门控。
 
-## 快速开始
+## 当前获取方式（仅源码开发）
+
+Public 用户的最终路径只能是 Download → Install → Launch → Onboarding。当前尚无通过 Release Gate 的 installer；以下命令只用于源码开发，完整说明见 [DEVELOPMENT.md](./DEVELOPMENT.md)，不要把它当作普通用户安装流程。
 
 ### 环境
 
@@ -159,8 +163,8 @@ Set-Location backend
 
 OfferU 的发布结论由版本化任务、轨迹证据和真实 outcome 决定，不能由截图、构建成功或模型自评代替。
 
-- 当前状态：**Internal Beta Ready with external blockers**
-- 当前验证状态：**核心新用户、失败、重启和重复操作路径已通过；完整证据见 [STATUS.md](./STATUS.md)**
+- 上一检查点：**Resume Workspace Beta Ready（Internal Beta / Replay / Fixture only）**
+- 当前状态：**Public Release NOT READY**；完整 Gate 与证据分级见 [STATUS.md](./STATUS.md) 和 [RELEASE_CHECKLIST.md](./RELEASE_CHECKLIST.md)
 - 核心套件：[offeru-core-v1](./docs/evals/offeru-core-v1.md)
 - Eval 规则：[docs/evals/README.md](./docs/evals/README.md)
 
@@ -179,8 +183,12 @@ npm run build
 
 ## 文档
 
-- [Internal Beta 快速开始](./QUICKSTART.md)
+- [Public Quickstart（当前未发布）](./QUICKSTART.md)
+- [源码开发说明](./DEVELOPMENT.md)
 - [Internal Beta 验收与 Golden Path](./INTERNAL_BETA.md)
+- [Public Release Goal](./GOAL.md)
+- [Public Release Checklist](./RELEASE_CHECKLIST.md)
+- [Quality Score](./QUALITY_SCORE.md)
 - [当前验证状态](./STATUS.md)
 - [已知限制](./KNOWN_ISSUES.md)
 - [架构边界](./ARCHITECTURE.md)

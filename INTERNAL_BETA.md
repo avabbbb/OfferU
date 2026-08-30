@@ -1,5 +1,8 @@
 # OfferU Internal Beta
 
+> [!IMPORTANT]
+> 本文件只记录已完成的 Internal Beta 检查点，不再是最终发布目标。当前唯一终点与 Release Gate 见 [`GOAL.md`](./GOAL.md)、[`STATUS.md`](./STATUS.md) 和 [`RELEASE_CHECKLIST.md`](./RELEASE_CHECKLIST.md)。Replay/Fixture 内测通过不能继承为 Public Release PASS。
+
 ## 目标
 
 一个不了解代码结构的内测用户，应能独立启动 OfferU，建立 Career Profile，保存一个目标岗位，让系统自动完成主要准备工作，查看 Pipeline，完成一次针对岗位的模拟面试，并把面试学习作为候选更新回到 Profile。
@@ -27,7 +30,11 @@ Today 显示自动工作与待处理事项
 ↓
 Job Detail 显示 Role Intelligence、Evidence Gap、材料候选
 ↓
-审核材料候选并生成 Resume Version
+打开 Resume Workspace
+↓
+在三栏工作区查看 Before / After、手动编辑、接受或拒绝 Proposal
+↓
+保存岗位版本并导出 PDF
 ↓
 Pipeline 显示目标岗位和下一动作
 ↓
@@ -51,7 +58,7 @@ Profile / 职业模型 / 记忆收件箱接受 Learning Candidate
 | Pipeline | Job、Application、Event 同源；目标岗位不会伪装成已投递 |
 | Job | 情报、Evidence Gap、材料、Interview、Timeline 聚合在岗位上下文 |
 | Role Intelligence | Replay/Fixture 有来源、样本量、数据模式和可展开证据；统计由 Runtime 计算 |
-| Resume | Candidate → Review → Resume Version；不静默覆盖正式简历 |
+| Resume Workspace | Job → 三栏编辑器 → AI Proposal Diff → 手动修改 → Version → PDF；不静默覆盖原简历 |
 | Interview | Focus → Interviewer Mode → Debrief → Learning Candidate |
 | Profile | Memory Inbox 可接受、拒绝、稍后；接受后明确写入分层模型 |
 | 失败 | Provider 401、超时、取消和无效候选可见、可解释，不返回假成功或无限空白加载 |
@@ -59,6 +66,30 @@ Profile / 职业模型 / 记忆收件箱接受 Learning Candidate
 | 重复 | 重复保存岗位不会增加 Job、JOB_SAVED Event 或 CareerTask |
 | 数据安全 | Settings 可导出核心数据；默认 SQLite 可备份，恢复步骤有文档；日志不输出凭据和完整敏感内容 |
 | 浏览器 | 新用户路径和失败路径从真实 UI 操作完成，不直接改数据库跳步 |
+
+## Resume Workspace 验收路径
+
+在隔离数据库中，测试者应从 Job Detail 进入岗位简历工作区，完成：
+
+```text
+查看 AI Proposal Before / After
+↓
+逐条 Accept / Reject
+↓
+手动编辑 Summary 或经历描述
+↓
+调整段落、经历/项目和要点顺序，切换可见性和模板
+↓
+等待自动保存
+↓
+保存 V2
+↓
+导出 PDF
+↓
+重新打开，确认 Application Packet 引用当前版本
+```
+
+如果先手动编辑再接受旧 Proposal，必须看到 stale/过期提示，且手动内容不能被覆盖。AI Proposal 中事实门为 blocked 的条目不可直接接受。
 
 ## Provider 规则
 
