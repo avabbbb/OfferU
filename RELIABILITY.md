@@ -8,7 +8,20 @@
 RELIABILITY_NOT_VERIFIED
 ```
 
-上一 Internal Beta 检查点证明了部分重复保存防护和重启后读取。Reliability-02 又在隔离 SQLite 上覆盖了真实 FastAPI 进程强退/重启、浏览器启动状态恢复和中文 Resume autosave 刷新读取，但仍没有覆盖 Public Release 所需的面试中断、Learning Candidate 恢复、soak、资源泄漏和重复业务效果矩阵。
+上一 Internal Beta 检查点证明了部分重复保存防护和重启后读取。Reliability-02 又在隔离 SQLite 上覆盖了真实 FastAPI 进程强退/重启、浏览器启动状态恢复和中文 Resume autosave 刷新读取。Reliability-03 进一步验证了 Resume 保存失败可见、编辑内容保留和手动重试成功，但仍没有覆盖 Public Release 所需的面试中断、Learning Candidate 恢复、soak、资源泄漏和重复业务效果矩阵。
+
+## Reliability 03 current evidence
+
+当前报告：[2026-08-31-codex-offeru-core-v1-reliability-03](docs/evals/reports/2026-08-31-codex-offeru-core-v1-reliability-03.md)，实现 checkout `25b6a49`。
+
+本轮在隔离 SQLite 和真实 7410/8765 进程上验证：
+
+- 中文 Resume 编辑 autosave 后刷新内容保留，成功路径只发出 1 次更新；
+- 第一次保存被注入为 503 时，页面显示失败状态和“重试保存”；
+- 失败期间 draft 内容仍保留，第二次手动重试成功，未出现 JavaScript page error；
+- autosave 使用 candidate signature 防止晚到的旧响应覆盖更新后的 draft。
+
+因此 Resume save failure 从 `NOT_VERIFIED` 推进为 `PARTIAL`，但 Reliability 总 Gate 继续保持 `RELIABILITY_NOT_VERIFIED`。
 
 ## Reliability 02 current evidence
 
@@ -55,13 +68,13 @@ RELIABILITY_NOT_VERIFIED
 | --- | --- | --- |
 | CareerTask running | PARTIAL | Reliability-02 已用真实进程 force-stop/restart 证明 running→blocked/retryable；完整 provider/UI 矩阵仍缺 |
 | Waiting for approval | PARTIAL | 真实重启保留 waiting checkpoint；浏览器审批动作恢复仍缺 |
-| Resume autosave | PARTIAL | 隔离中文 Resume 浏览器编辑→autosave→reload 通过 1 次样本；保存失败、高频输入和 0 lost edit 矩阵仍缺 |
+| Resume autosave | PARTIAL | Reliability-03 已验证中文编辑→autosave→reload、503 可见、draft 保留和手动 retry；高频输入、跨标签冲突和 0 lost edit 矩阵仍缺 |
 | Interview in progress | NOT_VERIFIED | transcript/round 状态准确恢复或明确终止 |
 | Learning Candidate pending | NOT_VERIFIED | 候选不丢失、不静默接受 |
 | Provider timeout/auth | Internal Beta only | Public failure E2E 尚未建立 |
 | Backend restart | PARTIAL | Reliability-02 已验证真实 force-stop/restart、durable state 和浏览器启动 overlay/core UI recovery |
 | Duplicate click/retry | NOT_VERIFIED | CareerTask/AutomationEvent 已通过；Resume/Application/Interview/Memory 全矩阵仍缺 |
-| Save failure | NOT_VERIFIED | 用户内容保留、可重试、错误可关联 |
+| Save failure | PARTIAL | Reliability-03 注入 503 后内容保留、失败可见、手动 retry 成功；真实网络抖动、错误关联和全 mutation 矩阵仍缺 |
 
 ## Performance SLO
 
@@ -79,7 +92,7 @@ RELIABILITY_NOT_VERIFIED
 
 ## Soak and resource gate
 
-正式 RC 执行至少 2 小时或 100 representative cycles，覆盖 read、candidate write、accept/reject、job navigation、resume edit、automation、agent task、short interview。当前已完成 100 个 Replay CareerTask cycles，但尚未覆盖上述混合用户工作负载。
+正式 RC 执行至少 2 小时或 100 representative cycles，覆盖 read、candidate write、accept/reject、job navigation、resume edit、automation、agent task、short interview。当前已完成 100 个 Replay CareerTask cycles，Resume 单次成功/失败重试已补证，但尚未覆盖上述混合用户工作负载。
 
 通过条件：0 crash、0 corrupted DB、0 duplicate mutation、0 unbounded queue growth；warm-up 后 100 cycles RSS growth <20%。当前 task/event/worker 计数满足局部条件，但未测量 RSS，也未完成混合工作负载；超出时必须区分设计缓存与实际 leak，并提供证据。
 

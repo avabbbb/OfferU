@@ -25,12 +25,12 @@
 | 14 | Today State Consistency | NOT_VERIFIED | 无 `INTERVIEW_INVITED` 全页面一致性正式报告 |
 | 15 | Pipeline | NOT_VERIFIED | Internal Beta only；stage/source/next action matrix 缺失 |
 | 16 | Job Detail | NOT_VERIFIED | 聚合结构存在；需真实新用户 outcome |
-| 17 | Resume Workspace | NOT_VERIFIED | 当前未提交实现与历史内测证据；Public stress/E2E 未跑 |
+| 17 | Resume Workspace | NOT_VERIFIED | 当前 commit `25b6a49` 已有编辑、autosave、失败提示和 retry 的隔离浏览器证据；Public stress/E2E 未跑 |
 | 18 | Resume Truth Model | NOT_VERIFIED | 模型关系存在；需 original no-overwrite outcome |
 | 19 | Resume Proposal | NOT_VERIFIED | Before/After 等存在；需全部交互 repeatability |
 | 20 | Fact Gate | NOT_VERIFIED | 历史 blocked path；需 100% unsupported enforcement suite |
 | 21 | Stale Proposal | NOT_VERIFIED | 历史路径通过；需当前 commit conflict E2E |
-| 22 | Resume Metrics | NOT_VERIFIED | 缺 99.9% autosave stress、0 lost edit 与语言 PDF matrix |
+| 22 | Resume Metrics | PARTIAL | Reliability-03 通过成功 autosave、单次更新、503 可见、draft 保留和 retry；缺 99.9% autosave stress、0 lost edit、跨标签冲突与语言 PDF matrix |
 | 23 | Role Intelligence authority split | NOT_VERIFIED | 设计对齐；需统计 provenance audit |
 | 24 | Fixture vs Live labels | NOT_VERIFIED | 部分标识存在；需全 UI/README claim scan |
 | 25 | Live Provider Gate | NOT_VERIFIED | 无 live external research E2E；否则必须降级 claim |
@@ -44,7 +44,7 @@
 | 33 | Single Automation model | NOT_VERIFIED | 架构对齐；需 duplicate loop/drift scan |
 | 34 | Automation Reliability | PARTIAL | Reliability-02 真实进程重启验证 queued AutomationEvent 恢复；provider timeout 与全部业务 mutation exactly-once 仍缺 |
 | 35 | CareerTask lifecycle | PARTIAL | Reliability-02 真实进程验证 running/queued/waiting 状态边界；完整 UI/provider/approval lifecycle 仍缺 |
-| 36 | Restart Recovery | PARTIAL | Reliability-02 覆盖真实 Python force-stop/restart、durable state 和浏览器启动 overlay/core UI recovery；五场景矩阵仍缺 |
+| 36 | Restart Recovery | PARTIAL | Reliability-02 覆盖真实 Python force-stop/restart、durable state 和浏览器启动 overlay/core UI recovery；Reliability-03 补 Resume save failure retry；五场景矩阵仍缺 |
 | 37 | AgentRuntimeProvider UI seam | NOT_VERIFIED | provider-neutral 设计存在；需 UI branch scan |
 | 38 | Minimum Live Agent Gate | NOT_VERIFIED | Replay only；至少一个真实 Provider `LIVE_PASS` 缺失 |
 | 39 | Operation Registry Audit | NOT_VERIFIED | 历史称 0 bypass；无当前 commit 全 surface report |

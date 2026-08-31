@@ -19,13 +19,13 @@ OFFERU_PUBLIC_RELEASE_NOT_READY
 ## Current Gate
 
 ```text
-SECURITY_02_RESIDUAL
-full artifact canary → Rust advisory → permission diff → logging/PII → privacy/consent
+RELIABILITY_03_AND_SECURITY_02_RESIDUAL
+Interview/Learning recovery → RSS/mixed soak → full artifact canary → Rust advisory → permission diff → logging/PII → privacy/consent
 ```
 
 状态：`NOT_VERIFIED`
 
-原因：`DATA_SAFETY_03` 已通过结构化导出完整性、递归敏感字段排除、Demo Reset scope 和隔离 Settings 浏览器路径。`SECURITY_02` 已补齐 error ID、脱敏 diagnostic bundle、validation 输入隔离、确认的原始错误路径修复、Python/npm dependency 和浏览器 feedback canary；但完整 artifact canary、Rust advisory、权限 diff、全量 logging/PII、历史行 scrub、privacy/consent 仍未验证。Reliability 的真实进程/浏览器强退、RSS 与全业务 mutation 矩阵也未完成。Public Release 继续保持 `NOT_READY`。
+原因：`DATA_SAFETY_03` 已通过结构化导出完整性、递归敏感字段排除、Demo Reset scope 和隔离 Settings 浏览器路径。`SECURITY_02` 已补齐 error ID、脱敏 diagnostic bundle、validation 输入隔离、确认的原始错误路径修复、Python/npm dependency 和浏览器 feedback canary；但完整 artifact canary、Rust advisory、权限 diff、全量 logging/PII、历史行 scrub、privacy/consent 仍未验证。Reliability-03 已补齐 Resume 保存失败可见、draft 保留和手动重试，但 Interview/Learning 恢复、RSS、混合 workload 和全业务 mutation 矩阵仍未完成。Public Release 继续保持 `NOT_READY`。
 
 ## Release dashboard
 
@@ -34,7 +34,7 @@ full artifact canary → Rust advisory → permission diff → logging/PII → p
 | Core Product | NOT_VERIFIED | Internal Beta Replay/Fixture 路径曾通过；没有 Public RC 级 10/10 与 50-run 证据 |
 | Data Safety | PASS | R43–R49、R76 已由 `data-safety-01`、`data-safety-02`、`data-safety-03` 报告覆盖 |
 | Security | NOT_VERIFIED | [Security 01](docs/evals/reports/2026-08-31-codex-offeru-core-v1-security-01.md) + [Security 02](docs/evals/reports/2026-08-31-codex-offeru-core-v1-security-02.md)；error/diagnostic/Python/npm 子项已有 PARTIAL 证据，完整 artifact canary、Rust、权限、logging/PII 和 privacy/consent 仍缺 |
-| Reliability | NOT_VERIFIED | [Reliability 01](docs/evals/reports/2026-08-31-codex-offeru-core-v1-reliability-01.md) + [Reliability 02](docs/evals/reports/2026-08-31-codex-offeru-core-v1-reliability-02.md)；真实 restart/browser/Resume autosave 已有 PARTIAL 证据，Interview/Learning/RSS/全 mutation 仍缺 |
+| Reliability | NOT_VERIFIED | [Reliability 01](docs/evals/reports/2026-08-31-codex-offeru-core-v1-reliability-01.md) + [Reliability 02](docs/evals/reports/2026-08-31-codex-offeru-core-v1-reliability-02.md) + [Reliability 03](docs/evals/reports/2026-08-31-codex-offeru-core-v1-reliability-03.md)；Resume save failure 已有 PARTIAL 证据，Interview/Learning/RSS/全 mutation 仍缺 |
 | Packaging | FAIL | Tauri release launcher 仍依赖 repo 与 `.venv312`，无可发布 sidecar/installer |
 | Live Runtime | NOT_VERIFIED | Replay 可用；没有至少一个真实 Agent Runtime `LIVE_PASS` |
 | E2E | NOT_VERIFIED | 无当前 commit 的正式 Eval baseline、10/10 critical path 或 50-run report |
@@ -136,7 +136,20 @@ Security 仍保持 `NOT_VERIFIED`：Rust advisory DB、完整 release artifact m
 - 中文 Resume 编辑 autosave 后刷新内容保留，单次更新请求，page errors 为 0；
 - 测试后正常 `djm.db` health 200，真实职业数据未被修改。
 
-Reliability 仍为 `NOT_VERIFIED`：Interview/Learning 恢复、保存失败重试、全业务 mutation exactly-once、RSS 与混合用户 soak 未完成。
+在 Reliability-02 结束时，Reliability 仍为 `NOT_VERIFIED`：Interview/Learning 恢复、保存失败重试、全业务 mutation exactly-once、RSS 与混合用户 soak 未完成；保存失败重试已由后续 Reliability-03 补证为 `PARTIAL`。
+
+## Completed RELIABILITY_03 slice
+
+正式报告：[2026-08-31-codex-offeru-core-v1-reliability-03](docs/evals/reports/2026-08-31-codex-offeru-core-v1-reliability-03.md)
+
+本轮在隔离 SQLite 和真实 Resume Workspace 浏览器路径完成并验证：
+
+- 中文 Resume autosave 成功后刷新内容保留，单次更新请求；
+- 注入第一次 503 保存失败后，失败状态可见、编辑内容保留；
+- 用户点击“重试保存”后第二次请求成功，无 JavaScript page error；
+- 当前 draft signature guard 防止晚到旧响应覆盖新编辑。
+
+该切片只把 Resume 保存失败推进为 `PARTIAL`，不改变 Reliability 总 Gate，也不继承为 Resume 冲突、Interview/Learning 恢复或 Public Release 通过。
 
 ## Evidence policy
 
@@ -151,7 +164,7 @@ Reliability 仍为 `NOT_VERIFIED`：Interview/Learning 恢复、保存失败重�
 ## Next action
 
 ```text
-1. 继续 Reliability：Interview/Learning pending 恢复、Resume 保存失败重试、全业务 mutation exactly-once、RSS 和混合用户 workload。
+1. 继续 Reliability：Interview/Learning pending 恢复、全业务 mutation exactly-once、RSS 和混合用户 workload。
 2. 并行收口 Security 02 residual：完整 artifact canary、Rust advisory、权限 diff、logging/PII、privacy/consent。
 3. 再继续 Packaging、Live Runtime 和 E2E 最高 blocker。
 ```
