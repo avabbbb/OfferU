@@ -22,7 +22,7 @@ from app.models.models import (
     AutomationRule,
     JobResearchRun,
 )
-from app.services.security_redaction import safe_error_message
+from app.services.security_redaction import redact_secret_text, redact_secret_value, safe_error_message
 
 
 AUTOMATION_EVENT_TYPES = frozenset(
@@ -70,6 +70,7 @@ def _now() -> datetime:
 
 
 def _bounded(value: Any, limit: int = 120_000) -> Any:
+    value = redact_secret_value(value, max_length=limit)
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
     try:
@@ -88,11 +89,11 @@ def _event_view(row: AutomationEvent) -> dict[str, Any]:
         "source": row.source or "",
         "target_type": row.target_type or "",
         "target_id": row.target_id or "",
-        "payload": row.payload_json if isinstance(row.payload_json, dict) else {},
+        "payload": redact_secret_value(row.payload_json if isinstance(row.payload_json, dict) else {}),
         "dedupe_key": row.dedupe_key,
         "status": row.status,
-        "result": row.result_json if isinstance(row.result_json, dict) else {},
-        "error": row.error or "",
+        "result": redact_secret_value(row.result_json if isinstance(row.result_json, dict) else {}),
+        "error": redact_secret_text(row.error or "", max_length=2000),
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "processed_at": row.processed_at.isoformat() if row.processed_at else None,
     }
@@ -109,9 +110,9 @@ def _inbox_view(row: AutomationInboxItem) -> dict[str, Any]:
         "proposal_run_id": row.proposal_run_id or "",
         "target_type": row.target_type or "",
         "target_id": row.target_id or "",
-        "title": row.title or "",
-        "body": row.body or "",
-        "payload": row.payload_json if isinstance(row.payload_json, dict) else {},
+        "title": redact_secret_text(row.title or "", max_length=300),
+        "body": redact_secret_text(row.body or "", max_length=20_000),
+        "payload": redact_secret_value(row.payload_json if isinstance(row.payload_json, dict) else {}),
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
         "resolved_at": row.resolved_at.isoformat() if row.resolved_at else None,
@@ -214,8 +215,8 @@ async def _upsert_inbox(
                 proposal_run_id=proposal_run_id,
                 target_type=target_type,
                 target_id=target_id,
-                title=title[:300],
-                body=body[:20_000],
+                title=redact_secret_text(title, max_length=300),
+                body=redact_secret_text(body, max_length=20_000),
                 payload_json=_bounded(payload or {}),
             )
             db.add(row)
@@ -227,8 +228,8 @@ async def _upsert_inbox(
             row.proposal_run_id = proposal_run_id or row.proposal_run_id
             row.target_type = target_type or row.target_type
             row.target_id = target_id or row.target_id
-            row.title = title[:300]
-            row.body = body[:20_000]
+            row.title = redact_secret_text(title, max_length=300)
+            row.body = redact_secret_text(body, max_length=20_000)
             row.payload_json = _bounded(payload or {})
             if row.status in {"resolved", "dismissed"}:
                 row.status = "pending"
@@ -295,7 +296,7 @@ async def _update_event(
             raise ValueError(f"AutomationEvent {event_id} 不存在")
         row.status = status
         row.result_json = _bounded(result or {})
-        row.error = str(error or "")[:2000]
+        row.error = redact_secret_text(error or "", max_length=2000)
         row.processed_at = _now()
         await db.commit()
         await db.refresh(row)
@@ -365,7 +366,7 @@ async def record_automation_event(
     clean_source = str(source or "system").strip()[:80]
     clean_target_type = str(target_type or "").strip()[:80]
     clean_target_id = str(target_id or "").strip()[:160]
-    clean_payload = payload if isinstance(payload, dict) else {}
+    clean_payload = redact_secret_value(payload if isinstance(payload, dict) else {})
     clean_key = str(dedupe_key or "").strip() or _dedupe_key(
         event_type=clean_type,
         source=clean_source,

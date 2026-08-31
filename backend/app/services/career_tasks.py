@@ -20,6 +20,11 @@ from sqlalchemy import select
 
 from app.database import async_session
 from app.models.models import CareerTask, CareerTaskEvent
+from app.services.security_redaction import (
+    redact_secret_text,
+    redact_secret_value,
+    safe_error_message,
+)
 
 TASK_STATUSES = {
     "queued",
@@ -47,6 +52,7 @@ def _utc_now() -> datetime:
 
 
 def _bounded_json(value: Any, limit: int = 120_000) -> Any:
+    value = redact_secret_value(value, max_length=limit)
     if not isinstance(value, (dict, list, str, int, float, bool)) and value is not None:
         return str(value)[:limit]
     try:
@@ -59,7 +65,10 @@ def _bounded_json(value: Any, limit: int = 120_000) -> Any:
 
 
 def _safe_error(value: Any) -> str:
-    text = str(value or "").strip()
+    text = safe_error_message(
+        value if isinstance(value, BaseException) else RuntimeError(str(value or "")),
+        max_length=2000,
+    )
     lowered = text.casefold()
     if any(marker in lowered for marker in ("api_key", "apikey", "bearer", "token")):
         return "provider authentication failed"
@@ -79,17 +88,17 @@ def _task_view(row: CareerTask) -> dict[str, Any]:
         "target_type": row.target_type or "",
         "target_id": row.target_id or "",
         "runtime_provider": row.runtime_provider or "",
-        "input": row.input_json if isinstance(row.input_json, dict) else {},
-        "output_contract": row.output_contract_json if isinstance(row.output_contract_json, dict) else {},
+        "input": redact_secret_value(row.input_json if isinstance(row.input_json, dict) else {}),
+        "output_contract": redact_secret_value(row.output_contract_json if isinstance(row.output_contract_json, dict) else {}),
         "status": row.status,
-        "progress": row.progress_json if isinstance(row.progress_json, dict) else {},
+        "progress": redact_secret_value(row.progress_json if isinstance(row.progress_json, dict) else {}),
         "agent_thread_id": row.agent_thread_id or "",
         "agent_turn_id": row.agent_turn_id or "",
         "run_id": row.run_id or "",
         "result_ref": row.result_ref or "",
-        "result": row.result_json if isinstance(row.result_json, dict) else {},
-        "checkpoint": row.checkpoint_json if isinstance(row.checkpoint_json, dict) else {},
-        "error": row.error or "",
+        "result": redact_secret_value(row.result_json if isinstance(row.result_json, dict) else {}),
+        "checkpoint": redact_secret_value(row.checkpoint_json if isinstance(row.checkpoint_json, dict) else {}),
+        "error": redact_secret_text(row.error or "", max_length=2000),
         "retryable": bool(row.retryable),
         "attempt_count": int(row.attempt_count or 0),
         "max_attempts": int(row.max_attempts or 0),
@@ -153,6 +162,16 @@ async def _update_task(task_id: str, **values: Any) -> dict[str, Any]:
                 raise ValueError(f"CareerTask {task_id} 不存在")
             for key, value in values.items():
                 if hasattr(row, key):
+                    if key in {
+                        "input_json",
+                        "output_contract_json",
+                        "progress_json",
+                        "result_json",
+                        "checkpoint_json",
+                    }:
+                        value = redact_secret_value(value)
+                    elif key == "error":
+                        value = redact_secret_text(value or "", max_length=2000)
                     setattr(row, key, value)
             await db.commit()
             await db.refresh(row)
@@ -286,7 +305,7 @@ async def start_career_task(
     if clean_type not in TASK_TYPES:
         raise ValueError(f"不支持的 CareerTask 类型: {clean_type}")
     clean_provider = str(runtime_provider or "replay").strip().casefold()
-    payload = input if isinstance(input, dict) else {}
+    payload = redact_secret_value(input if isinstance(input, dict) else {})
     contract = output_contract if isinstance(output_contract, dict) else {}
     key = str(idempotency_key or "").strip() or _idempotency_key(
         task_type=clean_type,

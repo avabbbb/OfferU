@@ -15,6 +15,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func, select, update
 
 from app.database import async_session
+from app.services.security_redaction import (
+    redact_sensitive_value,
+    safe_error_message,
+)
 from app.services.job_ingest import JobIngestItem, import_job_batch
 from app.services.scraper_operations import finalize_scraper_batch, start_scraper_batch
 from app.services.harness_operations import (
@@ -4130,9 +4134,9 @@ async def list_operation_audit(
                     "ok": row.ok,
                     "dry_run": row.dry_run,
                     "side_effects": row.side_effects,
-                    "inputs": row.inputs_json,
-                    "warnings": row.warnings_json,
-                    "errors": row.errors_json,
+                    "inputs": redact_sensitive_value(row.inputs_json or {}),
+                    "warnings": redact_sensitive_value(row.warnings_json or []),
+                    "errors": redact_sensitive_value(row.errors_json or []),
                     "elapsed_ms": row.elapsed_ms,
                     "created_at": str(row.created_at),
                 }
@@ -4566,7 +4570,11 @@ async def execute_operation(
             inputs=audit_inputs,
             started=started,
             outputs=result,
-            errors=[result["error"]] if isinstance(result, dict) and result.get("error") else [],
+            errors=[
+                safe_error_message(RuntimeError(str(result["error"])))
+            ]
+            if isinstance(result, dict) and result.get("error")
+            else [],
             op=op,
         )
     except Exception as exc:
@@ -4575,7 +4583,7 @@ async def execute_operation(
             operation=name,
             inputs=audit_inputs,
             started=started,
-            errors=[str(exc)],
+            errors=[safe_error_message(exc)],
             op=op,
         )
 
@@ -4696,6 +4704,7 @@ async def _claim_authorized_execution(
     authorization: OperationAuthorization,
     started: float,
 ) -> tuple[int | None, dict[str, Any] | None]:
+    safe_inputs = redact_sensitive_value(inputs)
     row = OperationAuditLog(
         operation=op.name,
         operation_version=op.version,
@@ -4706,7 +4715,7 @@ async def _claim_authorized_execution(
         ok=False,
         dry_run=False,
         side_effects=list(op.side_effects),
-        inputs_json=_json_object(inputs),
+        inputs_json=_json_object(safe_inputs),
         outputs_json={},
         warnings_json=[],
         errors_json=[],
@@ -4740,7 +4749,7 @@ async def _claim_authorized_execution(
     if (
         existing.operation != op.name
         or existing.confirmation_ref != authorization.confirmation_ref[:160]
-        or existing.inputs_json != _json_object(inputs)
+        or existing.inputs_json != _json_object(safe_inputs)
     ):
         return None, _envelope(
             ok=False,
@@ -4804,8 +4813,12 @@ async def _complete_authorized_audit(
                     outputs_json=_json_object(
                         _audit_outputs(op, envelope.get("outputs"))
                     ),
-                    warnings_json=list(envelope.get("warnings") or []),
-                    errors_json=list(envelope.get("errors") or []),
+                    warnings_json=redact_sensitive_value(
+                        envelope.get("warnings") or []
+                    ),
+                    errors_json=redact_sensitive_value(
+                        envelope.get("errors") or []
+                    ),
                     elapsed_ms=float(envelope.get("elapsed_ms") or 0),
                 )
             )
@@ -4841,7 +4854,7 @@ def _audit_failure_envelope(
     *,
     side_effect_may_have_completed: bool,
 ) -> dict[str, Any]:
-    message = str(error)
+    message = safe_error_message(error, fallback="审计记录失败")
     if side_effect_may_have_completed:
         message = f"{message}；副作用可能已完成，需要人工核对，系统不会自动重放。"
     return {
@@ -4856,13 +4869,17 @@ def _audit_failure_envelope(
 
 
 def _audit_inputs(op: Operation, inputs: dict[str, Any]) -> dict[str, Any]:
-    return _redact_mapping(inputs, set(op.audit_redacted_parameters))
+    return redact_sensitive_value(
+        _redact_mapping(inputs, set(op.audit_redacted_parameters))
+    )
 
 
 def _audit_outputs(op: Optional[Operation], outputs: Any) -> Any:
-    if op is None or not isinstance(outputs, dict):
-        return outputs
-    return _redact_mapping(outputs, set(op.audit_redacted_output_parameters))
+    if op is not None and isinstance(outputs, dict):
+        outputs = _redact_mapping(
+            outputs, set(op.audit_redacted_output_parameters)
+        )
+    return redact_sensitive_value(outputs)
 
 
 def _redact_mapping(
@@ -4939,12 +4956,18 @@ async def _record_audit(
                 ok=bool(envelope.get("ok")),
                 dry_run=bool(dry_run),
                 side_effects=list(envelope.get("side_effects") or []),
-                inputs_json=_json_object(envelope.get("inputs")),
+                inputs_json=_json_object(
+                    redact_sensitive_value(envelope.get("inputs"))
+                ),
                 outputs_json=_json_object(
                     _audit_outputs(op, envelope.get("outputs"))
                 ),
-                warnings_json=list(envelope.get("warnings") or []),
-                errors_json=list(envelope.get("errors") or []),
+                warnings_json=redact_sensitive_value(
+                    envelope.get("warnings") or []
+                ),
+                errors_json=redact_sensitive_value(
+                    envelope.get("errors") or []
+                ),
                 elapsed_ms=float(envelope.get("elapsed_ms") or 0),
             )
             db.add(row)

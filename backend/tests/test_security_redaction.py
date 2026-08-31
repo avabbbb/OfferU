@@ -4,12 +4,17 @@ import unittest
 from unittest.mock import patch
 
 from app.routes import config as config_route
+from app.ops import OPERATIONS, _audit_inputs, _audit_outputs
 from app.services.security_redaction import (
+    redact_secret_value,
     redact_sensitive_text,
     redact_sensitive_value,
     safe_error_message,
 )
 from app.services.agent_run_state import _clean_action, _clean_run
+from app.services.automation import _bounded as _bounded_automation
+from app.services.career_tasks import _bounded_json
+from app.services.coding_agent_runtime import _bounded_payload
 
 
 class SecurityRedactionTests(unittest.TestCase):
@@ -40,6 +45,17 @@ class SecurityRedactionTests(unittest.TestCase):
         self.assertEqual(redacted["items"][0]["password"], "[redacted]")
         self.assertNotIn("owner@example.com", str(redacted))
         self.assertEqual(len(redact_sensitive_text("x" * 20, max_length=10)), 10)
+
+    def test_secret_only_redaction_preserves_user_content(self) -> None:
+        payload = {
+            "email": "owner@example.com",
+            "note": "Contact owner@example.com",
+            "authorization": "Bearer canary-token",
+        }
+        redacted = redact_secret_value(payload)
+        self.assertEqual(redacted["email"], "owner@example.com")
+        self.assertEqual(redacted["note"], "Contact owner@example.com")
+        self.assertEqual(redacted["authorization"], "[redacted]")
 
     def test_safe_error_message_never_returns_empty_or_raw_secret(self) -> None:
         error = RuntimeError("request failed api_token=canary-token")
@@ -83,6 +99,39 @@ class SecurityRedactionTests(unittest.TestCase):
         self.assertEqual(cleaned["steps"][0]["args"]["api_token"], "[redacted]")
         self.assertEqual(cleaned["skill_snapshot"]["secret"], "[redacted]")
         self.assertEqual(cleaned["llm_runtime"]["session_token"], "[redacted]")
+
+    def test_operation_audit_boundary_redacts_generic_secret_keys(self) -> None:
+        canary = "offeru-security-canary-audit-secret"
+        operation = OPERATIONS["get_job"]
+
+        inputs = _audit_inputs(
+            operation,
+            {"token": canary, "nested": {"client_secret": canary}},
+        )
+        outputs = _audit_outputs(
+            operation,
+            {"authorization": f"Bearer {canary}", "result": "ok"},
+        )
+
+        self.assertNotIn(canary, str(inputs))
+        self.assertNotIn(canary, str(outputs))
+        self.assertEqual(inputs["token"], "[redacted]")
+        self.assertEqual(inputs["nested"]["client_secret"], "[redacted]")
+        self.assertEqual(outputs["authorization"], "[redacted]")
+
+    def test_durable_task_and_event_payload_bounds_redact_secrets_only(self) -> None:
+        canary = "offeru-security-canary-durable-secret"
+        payload = {
+            "email": "owner@example.com",
+            "note": "Keep owner@example.com in the career payload",
+            "api_key": canary,
+        }
+
+        for bounded in (_bounded_automation, _bounded_json, _bounded_payload):
+            stored = bounded(payload)
+            self.assertNotIn(canary, str(stored))
+            self.assertEqual(stored["email"], "owner@example.com")
+            self.assertEqual(stored["note"], "Keep owner@example.com in the career payload")
 
     def test_config_projection_does_not_expose_nested_provider_credentials(self) -> None:
         config = config_route.ConfigUpdate(

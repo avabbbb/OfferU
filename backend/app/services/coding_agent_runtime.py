@@ -18,7 +18,11 @@ from sqlalchemy import select
 from app.database import async_session
 from app.models.models import HostedExecutorEvent, HostedExecutorSession
 from app.services.agent_files import atomic_write_json
-from app.services.security_redaction import safe_error_message
+from app.services.security_redaction import (
+    redact_secret_text,
+    redact_secret_value,
+    safe_error_message,
+)
 
 
 RUNTIME_DEFINITIONS = {
@@ -615,6 +619,7 @@ def _utc_now() -> datetime:
 
 
 def _bounded_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    payload = redact_secret_value(payload)
     try:
         encoded = json.dumps(payload, ensure_ascii=False, default=str)
     except (TypeError, ValueError):
@@ -712,9 +717,9 @@ def _session_view(row: HostedExecutorSession) -> dict[str, Any]:
         "external_turn_id": row.external_turn_id,
         "status": row.status,
         "cwd": row.cwd,
-        "capability_grant": row.capability_grant_json or {},
-        "recovery_cursor": row.recovery_cursor_json or {},
-        "error": row.error,
+        "capability_grant": redact_secret_value(row.capability_grant_json or {}),
+        "recovery_cursor": redact_secret_value(row.recovery_cursor_json or {}),
+        "error": redact_secret_text(row.error or "", max_length=2000),
         "event_sequence": row.event_sequence,
         "created_at": str(row.created_at),
         "updated_at": str(row.updated_at),
@@ -762,7 +767,7 @@ async def _prepare_hosted_session(
                 protocol=str(runtime.get("protocol") or "unknown"),
                 status="created",
                 cwd=cwd,
-                capability_grant_json=capability_grant,
+                capability_grant_json=redact_secret_value(capability_grant),
                 input_json=input_json,
                 output_schema_json=task.output_schema,
                 result_json={},
@@ -797,7 +802,7 @@ async def _prepare_hosted_session(
                 await db.refresh(row)
                 return {
                     **_session_view(row),
-                    "result": row.result_json or {},
+                    "result": redact_secret_value(row.result_json or {}),
                 }, True
             if row.status == "cancelled":
                 raise ValueError("Cancelled hosted executor sessions cannot be resumed")
@@ -853,7 +858,7 @@ async def _finish_hosted_session(
             if row.status == "cancelled" and status != "cancelled":
                 return
             row.status = status
-            row.error = str(error or "")[:20_000]
+            row.error = redact_secret_text(error or "", max_length=20_000)
             if result is not None:
                 row.result_json = _bounded_payload(result)
             if status in {"completed", "failed", "cancelled", "interrupted"}:
@@ -1326,7 +1331,7 @@ async def get_hosted_executor_session(session_id: str) -> dict[str, Any]:
         ).scalars().all()
         return {
             **_session_view(row),
-            "result": row.result_json or {},
+            "result": redact_secret_value(row.result_json or {}),
             "events": [
                 {
                     "event_id": event.event_id,
