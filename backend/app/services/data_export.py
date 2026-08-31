@@ -52,6 +52,7 @@ from app.models.models import (
     RoleDeltaSignal,
 )
 from app.services.career_artifacts import career_artifact_store
+from app.services.security_redaction import redact_secret_text
 
 
 _REDACTED_KEY = re.compile(
@@ -116,7 +117,7 @@ def _safe_value(value: Any, key: str = "") -> Any:
     if isinstance(value, (list, tuple)):
         return [_safe_value(item, key) for item in value]
     if isinstance(value, (str, int, float, bool)) or value is None:
-        return value
+        return redact_secret_text(value) if isinstance(value, str) else value
     return str(value)
 
 

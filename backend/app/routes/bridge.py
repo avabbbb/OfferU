@@ -69,7 +69,7 @@ async def list_pending_proposals() -> dict[str, Any]:
         items.append(
             {
                 "runId": row.run_id,
-                "goal": row.goal or "",
+                "goal": redact_sensitive_value(row.goal or "", max_length=4000),
                 "steps": steps,
                 "createdAt": str(row.created_at),
             }
