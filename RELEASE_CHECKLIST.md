@@ -42,9 +42,9 @@
 | 31 | Memory Lifecycle | NOT_VERIFIED | 需六态、source/evidence/confidence/history matrix |
 | 32 | PotentialHypothesis isolation | NOT_VERIFIED | 需永不自动变 Career Fact 的 deterministic test |
 | 33 | Single Automation model | NOT_VERIFIED | 架构对齐；需 duplicate loop/drift scan |
-| 34 | Automation Reliability | NOT_VERIFIED | Reliability-01 覆盖并发 AutomationEvent、queued recovery 和 CareerTask retry/cancel；provider timeout 与全部业务 mutation exactly-once 仍缺 |
-| 35 | CareerTask lifecycle | NOT_VERIFIED | Reliability-01 覆盖 start/status/events/cancel/result/retry/recovery 的隔离后端路径；真实 UI/process lifecycle 仍缺 |
-| 36 | Restart Recovery | NOT_VERIFIED | Reliability-01 覆盖 queued/running/waiting 控制面恢复；真实进程强退、浏览器可见恢复和五场景矩阵仍缺 |
+| 34 | Automation Reliability | PARTIAL | Reliability-02 真实进程重启验证 queued AutomationEvent 恢复；provider timeout 与全部业务 mutation exactly-once 仍缺 |
+| 35 | CareerTask lifecycle | PARTIAL | Reliability-02 真实进程验证 running/queued/waiting 状态边界；完整 UI/provider/approval lifecycle 仍缺 |
+| 36 | Restart Recovery | PARTIAL | Reliability-02 覆盖真实 Python force-stop/restart、durable state 和浏览器启动 overlay/core UI recovery；五场景矩阵仍缺 |
 | 37 | AgentRuntimeProvider UI seam | NOT_VERIFIED | provider-neutral 设计存在；需 UI branch scan |
 | 38 | Minimum Live Agent Gate | NOT_VERIFIED | Replay only；至少一个真实 Provider `LIVE_PASS` 缺失 |
 | 39 | Operation Registry Audit | NOT_VERIFIED | 历史称 0 bypass；无当前 commit 全 surface report |
@@ -70,7 +70,7 @@
 | 59 | Performance Baseline | NOT_VERIFIED | 无固定 Reference Environment 报告 |
 | 60 | UI Performance SLO | NOT_VERIFIED | 五项 production measurements 缺失 |
 | 61 | Long Task UX | NOT_VERIFIED | 需所有 >2s 路径 status/progress/cancel/failure audit |
-| 62 | Soak Test | NOT_VERIFIED | Reliability-01 已完成 100 个 Replay CareerTask cycles（100 completed/500 events/0 live workers）；混合用户工作负载和 Public soak 仍缺 |
+| 62 | Soak Test | NOT_VERIFIED | Reliability-01 已完成 100 个 Replay CareerTask cycles，Reliability-02 增加真实进程恢复；混合用户工作负载和 Public soak 仍缺 |
 | 63 | Memory / Resource Leak | NOT_VERIFIED | 100-cycle task 计数通过；未记录 warm-up 后 RSS growth |
 | 64 | Testing Pyramid | NOT_VERIFIED | 有多类 tests；Migration/Packaging/Failure 完整覆盖未证明 |
 | 65 | Unit / Deterministic Tests | NOT_VERIFIED | 需七类核心规则 coverage mapping |

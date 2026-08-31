@@ -34,7 +34,7 @@ full artifact canary → Rust advisory → permission diff → logging/PII → p
 | Core Product | NOT_VERIFIED | Internal Beta Replay/Fixture 路径曾通过；没有 Public RC 级 10/10 与 50-run 证据 |
 | Data Safety | PASS | R43–R49、R76 已由 `data-safety-01`、`data-safety-02`、`data-safety-03` 报告覆盖 |
 | Security | NOT_VERIFIED | [Security 01](docs/evals/reports/2026-08-31-codex-offeru-core-v1-security-01.md) + [Security 02](docs/evals/reports/2026-08-31-codex-offeru-core-v1-security-02.md)；error/diagnostic/Python/npm 子项已有 PARTIAL 证据，完整 artifact canary、Rust、权限、logging/PII 和 privacy/consent 仍缺 |
-| Reliability | NOT_VERIFIED | [Reliability 01 当前报告](docs/evals/reports/2026-08-31-codex-offeru-core-v1-reliability-01.md)；后端控制面与 100-cycle Replay 已通过，真实 restart/browser/RSS/全 mutation 仍缺 |
+| Reliability | NOT_VERIFIED | [Reliability 01](docs/evals/reports/2026-08-31-codex-offeru-core-v1-reliability-01.md) + [Reliability 02](docs/evals/reports/2026-08-31-codex-offeru-core-v1-reliability-02.md)；真实 restart/browser/Resume autosave 已有 PARTIAL 证据，Interview/Learning/RSS/全 mutation 仍缺 |
 | Packaging | FAIL | Tauri release launcher 仍依赖 repo 与 `.venv312`，无可发布 sidecar/installer |
 | Live Runtime | NOT_VERIFIED | Replay 可用；没有至少一个真实 Agent Runtime `LIVE_PASS` |
 | E2E | NOT_VERIFIED | 无当前 commit 的正式 Eval baseline、10/10 critical path 或 50-run report |
@@ -124,6 +124,20 @@ date: 2026-08-30
 
 Security 仍保持 `NOT_VERIFIED`：Rust advisory DB、完整 release artifact matrix、权限 diff、全量 logging/PII、历史 Agent Run scrub、privacy/consent 和签名未完成。
 
+## Completed RELIABILITY_02 slice
+
+正式报告：[2026-08-31-codex-offeru-core-v1-reliability-02](docs/evals/reports/2026-08-31-codex-offeru-core-v1-reliability-02.md)
+
+本轮在隔离 SQLite、真实 backend 进程和真实 7410 浏览器页面完成：
+
+- force-stop/restart 后 running CareerTask blocked/retryable、waiting checkpoint 保留、queued Replay 完成；
+- queued AutomationEvent startup recovery 安全处理；
+- backend outage 时显示启动状态，恢复后 Today 核心 UI 回来；
+- 中文 Resume 编辑 autosave 后刷新内容保留，单次更新请求，page errors 为 0；
+- 测试后正常 `djm.db` health 200，真实职业数据未被修改。
+
+Reliability 仍为 `NOT_VERIFIED`：Interview/Learning 恢复、保存失败重试、全业务 mutation exactly-once、RSS 与混合用户 soak 未完成。
+
 ## Evidence policy
 
 - `PASS`：当前可定位 commit 的权威证据覆盖整个 Gate；
@@ -137,7 +151,7 @@ Security 仍保持 `NOT_VERIFIED`：Rust advisory DB、完整 release artifact m
 ## Next action
 
 ```text
-1. 继续 Reliability：真实进程/浏览器强退恢复、Resume/Interview/Learning 恢复、RSS 和全业务 mutation exactly-once 矩阵。
+1. 继续 Reliability：Interview/Learning pending 恢复、Resume 保存失败重试、全业务 mutation exactly-once、RSS 和混合用户 workload。
 2. 并行收口 Security 02 residual：完整 artifact canary、Rust advisory、权限 diff、logging/PII、privacy/consent。
 3. 再继续 Packaging、Live Runtime 和 E2E 最高 blocker。
 ```

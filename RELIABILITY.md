@@ -8,7 +8,21 @@
 RELIABILITY_NOT_VERIFIED
 ```
 
-上一 Internal Beta 检查点证明了部分重复保存防护和重启后读取，但没有覆盖 Public Release 所需的强制退出、等待审批、自动保存、面试中断、恢复、soak、资源泄漏和重复业务效果矩阵。
+上一 Internal Beta 检查点证明了部分重复保存防护和重启后读取。Reliability-02 又在隔离 SQLite 上覆盖了真实 FastAPI 进程强退/重启、浏览器启动状态恢复和中文 Resume autosave 刷新读取，但仍没有覆盖 Public Release 所需的面试中断、Learning Candidate 恢复、soak、资源泄漏和重复业务效果矩阵。
+
+## Reliability 02 current evidence
+
+当前报告：[2026-08-31-codex-offeru-core-v1-reliability-02](docs/evals/reports/2026-08-31-codex-offeru-core-v1-reliability-02.md)，对应当前文档 checkout `05041ee`，实现基线 `485871b`。
+
+本轮在唯一临时 SQLite 和真实 8765/7410 进程上验证：
+
+- force-stop 后重启：running CareerTask 变成 `blocked/retryable`，waiting-for-approval 保留 checkpoint，queued Replay 自动完成；
+- queued AutomationEvent 在 startup recovery 中安全处理，未知禁用规则变成 `skipped`；
+- backend 不可用时浏览器显示“正在启动 Python 工作台…”，恢复后回到 Today 核心 UI；
+- 中文 Resume Workspace 编辑后 autosave 只发出 1 次更新，刷新后摘要完整保留，page errors 为 0；
+- 测试结束后正常 `djm.db` backend health 200，未改动真实职业数据。
+
+这些证据将 R34/R35/R36 推进为 `PARTIAL`，但 Reliability 总 Gate 继续保持 `RELIABILITY_NOT_VERIFIED`。Interview/Learning 恢复、保存失败重试、全业务 mutation exactly-once、RSS 和混合用户 soak 仍未验证。
 
 ## Reliability 01 current evidence
 
@@ -39,13 +53,13 @@ RELIABILITY_NOT_VERIFIED
 
 | Scenario | Status | Release proof |
 | --- | --- | --- |
-| CareerTask running | NOT_VERIFIED | 隔离恢复 harness 已证明 running→blocked/retryable；真实强制退出/重启仍缺 |
-| Waiting for approval | NOT_VERIFIED | 隔离恢复已保留 waiting 状态；浏览器审批恢复仍缺 |
-| Resume autosave | NOT_VERIFIED | 0 lost edit，旧 Proposal stale |
+| CareerTask running | PARTIAL | Reliability-02 已用真实进程 force-stop/restart 证明 running→blocked/retryable；完整 provider/UI 矩阵仍缺 |
+| Waiting for approval | PARTIAL | 真实重启保留 waiting checkpoint；浏览器审批动作恢复仍缺 |
+| Resume autosave | PARTIAL | 隔离中文 Resume 浏览器编辑→autosave→reload 通过 1 次样本；保存失败、高频输入和 0 lost edit 矩阵仍缺 |
 | Interview in progress | NOT_VERIFIED | transcript/round 状态准确恢复或明确终止 |
 | Learning Candidate pending | NOT_VERIFIED | 候选不丢失、不静默接受 |
 | Provider timeout/auth | Internal Beta only | Public failure E2E 尚未建立 |
-| Backend restart | NOT_VERIFIED | queued/running/waiting 控制面 harness 已通过；真实进程/浏览器恢复仍缺 |
+| Backend restart | PARTIAL | Reliability-02 已验证真实 force-stop/restart、durable state 和浏览器启动 overlay/core UI recovery |
 | Duplicate click/retry | NOT_VERIFIED | CareerTask/AutomationEvent 已通过；Resume/Application/Interview/Memory 全矩阵仍缺 |
 | Save failure | NOT_VERIFIED | 用户内容保留、可重试、错误可关联 |
 
