@@ -19,20 +19,20 @@ OFFERU_PUBLIC_RELEASE_NOT_READY
 ## Current Gate
 
 ```text
-DATA_SAFETY_02
-versioned migration → backup-before-migration → integrity → smoke → rollback
+SECURITY_01
+secret scan → dependency audit → permissions/CSP/logging baseline
 ```
 
-状态：`FAIL`
+状态：`NOT_VERIFIED`
 
-原因：`DATA_SAFETY_01` 已完成一致性备份、manifest/hash、恢复暂存、启动前恢复、失败回滚和三次隔离恢复循环；当前仍没有版本化 migration、migration 前自动备份、migration 后 smoke/integrity 和失败回滚证据。
+原因：`DATA_SAFETY_03` 已通过结构化导出完整性、递归敏感字段排除、Demo Reset scope 和隔离 Settings 浏览器路径。Public Release 仍缺当前 Security、Reliability、Packaging、Live Runtime 和 E2E 证据；下一条可自主执行的纵向 Gate 是 Security baseline。
 
 ## Release dashboard
 
 | Gate | Status | Current evidence |
 | --- | --- | --- |
 | Core Product | NOT_VERIFIED | Internal Beta Replay/Fixture 路径曾通过；没有 Public RC 级 10/10 与 50-run 证据 |
-| Data Safety | FAIL | R45/R46/R49/R76 已由 `2026-08-31-codex-offeru-core-v1-data-safety-01` 通过；R43/R44 migration safety 仍失败 |
+| Data Safety | PASS | R43–R49、R76 已由 `data-safety-01`、`data-safety-02`、`data-safety-03` 报告覆盖 |
 | Security | NOT_VERIFIED | 无 canary、dependency、permission、logging、CSP 全套报告 |
 | Reliability | NOT_VERIFIED | 无正式 restart matrix、2h/100-cycle soak 与 RSS 报告 |
 | Packaging | FAIL | Tauri release launcher 仍依赖 repo 与 `.venv312`，无可发布 sidecar/installer |
@@ -62,7 +62,37 @@ date: 2026-08-30
 - Operation Registry、CLI Doctor、Settings UI 和浏览器 restart/cancel 路径；
 - 三次 backup → mutate → restore → restart 循环，以及恢复后的真实 Profile/Job 查询。
 
-因此当前只将 R45、R46、R49、R76 标记为 PASS；这不改变 Public Release 总结论。
+因此当前将 R43、R44、R45、R46、R49、R76 标记为 PASS；这不改变 Public Release 总结论。
+
+## Completed DATA_SAFETY_02 slice
+
+正式报告：[2026-08-31-codex-offeru-core-v1-data-safety-02](docs/evals/reports/2026-08-31-codex-offeru-core-v1-data-safety-02.md)
+
+本轮已在隔离的 old-schema A/B fixtures 和正常本地启动路径验证：
+
+- `PRAGMA user_version` 的 v1/v2 编号迁移路径；
+- migration 前 verified Online Backup API 备份；
+- migration 后 integrity、foreign-key 和 required-table smoke；
+- migration 失败释放 ORM 引擎、恢复 pre-migration snapshot 并停止启动；
+- future schema version fail-closed；
+- 正常 `djm.db` 启动从 version 0 到 2，`integrity_check=ok`，Doctor migration `ready`。
+
+因此 R43、R44 现标记为 PASS；R47/R48 仍是 Data Safety 的剩余验收项。
+
+## Completed DATA_SAFETY_03 slice
+
+正式报告：[2026-08-31-codex-offeru-core-v1-data-safety-03](docs/evals/reports/2026-08-31-codex-offeru-core-v1-data-safety-03.md)
+
+本轮已在隔离数据库、真实 Settings UI 和正常运行库上完成并验证：
+
+- JSON structured export 包含 Profile、Job、Application、Resume、Interview 及 CareerArtifact 等核心集合，并保留可读记录与 counts；
+- 嵌套 metadata 中的 `api_key`、`api_token` 等凭据字段会递归排除；
+- Demo Reset 只匹配 `source=offeru-demo` 且 `batch_id=offeru-demo-v1` 的合成 Job；
+- 明确确认门、子记录清理、重复 reset no-op，以及真实 Profile/未标记 Job 保留；
+- 浏览器路径从 2 条 Job 重置到 1 条真实 Job，Settings 成功提示可见，console errors 为 0；
+- 正常 `djm.db` 已恢复，HTTP health 200，Doctor 报告 schema 2/2、integrity `ok`、FK violations 0。
+
+因此 R47、R48 现标记为 PASS，Data Safety domain 完整通过；这不改变 Public Release 总结论。
 
 ## Evidence policy
 
@@ -77,10 +107,9 @@ date: 2026-08-30
 ## Next action
 
 ```text
-1. 为现有 SQLite schema 建立版本化 migration path 和 old-schema A/B fixtures。
-2. 实现 migration 前自动 backup、migration 后 integrity/smoke 检查和失败原子回滚。
-3. 用隔离数据库验证升级、失败、重启和恢复，不触碰真实用户数据。
-4. 通过 R43/R44 后，再继续最高优先级 Security / Reliability / Packaging blocker。
+1. 建立 Security 01：secret/canary scan、依赖审计、PII/logging data-flow 和当前权限/CSP 基线。
+2. 将每项 Security 结果落到可复核报告，并修复本轮发现的 P0/P1 风险。
+3. 通过 Security 后继续 Reliability、Packaging、Live Runtime 和 E2E 最高 blocker。
 ```
 
 ## External requirements (not yet the current blocker)

@@ -51,12 +51,12 @@
 | 40 | Application Pipeline stages | NOT_VERIFIED | 需所有正式 stage 与 timeline outcome |
 | 41 | External Signals as Candidate | NOT_VERIFIED | 需 email/browser/calendar 未授权不改 Truth 的 tests |
 | 42 | Browser Autofill boundary | NOT_VERIFIED | 若保留 claim，需 Fill≠Submit E2E；否则 Experimental |
-| 43 | Database Migration | FAIL | 只有 `_auto_migrate`；无版本化 path 和 old DB A/B fixtures |
-| 44 | Migration Safety | FAIL | 无 backup→migration→integrity→smoke 原子失败回滚 |
+| 43 | Database Migration | PASS | `docs/evals/reports/2026-08-31-codex-offeru-core-v1-data-safety-02.md`：v1/v2 编号迁移、old-schema A/B fixtures、future version fail-closed |
+| 44 | Migration Safety | PASS | 同一报告：migration 前 verified backup、migration 后 integrity/smoke、强制失败恢复旧快照并停止启动 |
 | 45 | Consistent Backup | PASS | `docs/evals/reports/2026-08-31-codex-offeru-core-v1-data-safety-01.md`：SQLite Online Backup API、managed assets、manifest/hash、integrity 验证 |
 | 46 | Restore 3 cycles | PASS | 同一报告：隔离数据库完成 3 次 create→backup→mutate→stage→restart→verify，含数据库、资产与 pre-restore 备份 |
-| 47 | Structured Data Export | NOT_VERIFIED | JSON export 存在；需五类数据完整性/可读性审计 |
-| 48 | Reset Demo vs Delete Data | NOT_VERIFIED | 需 UI 文案、scope、不可误删真实 workspace 的 E2E |
+| 47 | Structured Data Export | PASS | `docs/evals/reports/2026-08-31-codex-offeru-core-v1-data-safety-03.md`：Profile/Job/Application/Resume/Interview/CareerArtifact 结构化集合、counts、可读性、嵌套敏感字段排除和 Settings 下载 |
+| 48 | Reset Demo vs Delete Data | PASS | 同一报告：明确 `source=offeru-demo` + `batch_id=offeru-demo-v1` scope、确认门、子记录清理、真实 Profile/未标记 Job 保留和隔离浏览器 E2E |
 | 49 | SQLite Integrity | PASS | 同一报告：Doctor 与每次恢复后的 `PRAGMA integrity_check=ok`，foreign-key violations 为 0 |
 | 50 | Security Baseline | NOT_VERIFIED | 六类审计均无正式当前报告 |
 | 51 | Secrets exclusion | NOT_VERIFIED | 设计/局部 redaction 存在；需全 artifact scan |
@@ -126,7 +126,7 @@
 ## Current highest-priority blocker
 
 ```text
-R43–R44 Migration Safety
+Security baseline: secret scan, dependency audit, logging/PII, Tauri CSP/capabilities
 ```
 
-`DATA_SAFETY_01` 已通过 R45/R46/R49/R76。当前纵向切片是版本化 migration、migration 前 backup、migration 后 integrity/smoke、失败原子回滚和 old-schema A/B fixtures；在此之前不得宣称完整 Data Safety 或 Public Release PASS。
+`DATA_SAFETY_01` 已通过 R45/R46/R49/R76，`DATA_SAFETY_02` 已通过 R43/R44，`DATA_SAFETY_03` 已通过 R47/R48。Data Safety 已完整通过，但 Security 及其他硬 Gate 未通过前不得宣称 Public Release PASS。
