@@ -45,6 +45,7 @@ _QUESTION_MODES = {"proof", "depth", "trade_off", "scenario", "contradiction"}
 _FOLLOW_UP_REASONS = {"none", "vague", "missing_evidence", "contradiction"}
 _MAX_ROLE_INTERVIEW_QUESTIONS = 8
 _LOCKS: dict[int, asyncio.Lock] = {}
+_INTERRUPTED_EVALUATION_ERROR = "面试评价在应用重启时中断，请重新提交该回答"
 
 
 def _replay_enabled() -> bool:
@@ -1315,6 +1316,80 @@ async def _record_completion_observation(interview_id: int) -> None:
             }
         interview.report_json = report
         await db.commit()
+
+
+async def recover_interrupted_interview_state() -> dict[str, int]:
+    """Make interrupted evaluation and learning handoff state recoverable.
+
+    Interview progress is durable in the Interview/InterviewMessage rows. The
+    only in-flight boundary that can be left behind by a process stop is an
+    evaluation run committed as ``running`` before the provider call. Marking
+    it failed makes the existing answer retry path explicit instead of leaving
+    an invisible pending run. A completed interview without a learning
+    candidate means the post-completion handoff may have been interrupted;
+    replaying the idempotent observation/proposal handoff repairs its report.
+    """
+
+    interrupted_evaluations = 0
+    learning_repair_ids: list[int] = []
+    async with async_session() as db:
+        running_runs = (
+            await db.execute(
+                select(InterviewEvaluationRun).where(
+                    InterviewEvaluationRun.status == "running"
+                )
+            )
+        ).scalars().all()
+        for run in running_runs:
+            run.status = "failed"
+            run.error = _INTERRUPTED_EVALUATION_ERROR
+            run.completed_at = _now()
+            interrupted_evaluations += 1
+
+        completed_interviews = (
+            await db.execute(
+                select(Interview).where(Interview.status == "completed")
+            )
+        ).scalars().all()
+        for interview in completed_interviews:
+            report = interview.report_json
+            candidate = (
+                report.get("learning_candidate")
+                if isinstance(report, dict)
+                else None
+            )
+            candidate_status = (
+                candidate.get("status") if isinstance(candidate, dict) else None
+            )
+            if candidate_status not in {
+                "pending",
+                "accepted",
+                "rejected",
+                "deferred",
+                "revoked",
+                "invalidated",
+            }:
+                learning_repair_ids.append(interview.id)
+
+        if running_runs:
+            await db.commit()
+
+    repaired_learning = 0
+    failed_learning = 0
+    for interview_id in learning_repair_ids:
+        try:
+            await _record_completion_observation(interview_id)
+            repaired_learning += 1
+        except Exception:
+            # Do not block application startup; the completed Interview and
+            # its durable transcript remain available for a later retry.
+            failed_learning += 1
+
+    return {
+        "interrupted_evaluations": interrupted_evaluations,
+        "learning_repaired": repaired_learning,
+        "learning_failed": failed_learning,
+    }
 
 
 def _follow_up_decision(

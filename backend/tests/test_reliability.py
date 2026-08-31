@@ -5,7 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -15,8 +15,14 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from app.database import Base  # noqa: E402
-from app.models.models import AutomationEvent, CareerTask, CareerTaskEvent  # noqa: E402
-from app.services import automation, career_tasks  # noqa: E402
+from app.models.models import (  # noqa: E402
+    AutomationEvent,
+    CareerTask,
+    CareerTaskEvent,
+    Interview,
+    InterviewEvaluationRun,
+)
+from app.services import ai_interviews, automation, career_tasks  # noqa: E402
 
 
 class ReliabilityTests(unittest.TestCase):
@@ -406,6 +412,100 @@ class ReliabilityTests(unittest.TestCase):
             )
         self.assertEqual(result, {"recovered": 1, "completed": 1, "failed": 0})
         self.assertEqual(event.status, "skipped")
+
+    def test_interrupted_interview_state_is_recoverable(self) -> None:
+        async def flow(database_path: Path) -> tuple[dict, dict, dict, list[int]]:
+            engine = create_async_engine(
+                f"sqlite+aiosqlite:///{database_path.as_posix()}",
+                connect_args={"timeout": 30},
+            )
+            session = async_sessionmaker(engine, expire_on_commit=False)
+            try:
+                async with engine.begin() as connection:
+                    await connection.run_sync(Base.metadata.create_all)
+                async with session() as db:
+                    active = Interview(
+                        title="中断中的模拟面试",
+                        status="active",
+                        questions_json=[{"question": "请说明一个项目。"}],
+                        current_question_index=0,
+                    )
+                    completed = Interview(
+                        title="已完成但未交接学习",
+                        status="completed",
+                        report_json={"content_score": 80},
+                    )
+                    db.add_all([active, completed])
+                    await db.flush()
+                    db.add(
+                        InterviewEvaluationRun(
+                            evaluation_id="evaluation-recovery",
+                            idempotency_key="answer:recovery",
+                            interview_id=active.id,
+                            scope="content_only",
+                            scoring_skill_id="evidence-interview-score",
+                            scoring_skill_version=1,
+                            input_hash="a" * 64,
+                            status="running",
+                        )
+                    )
+                    await db.commit()
+
+                repaired_ids: list[int] = []
+
+                async def fake_repair(interview_id: int) -> None:
+                    repaired_ids.append(interview_id)
+
+                with (
+                    patch.object(ai_interviews, "async_session", session),
+                    patch.object(
+                        ai_interviews,
+                        "_record_completion_observation",
+                        new=AsyncMock(side_effect=fake_repair),
+                    ),
+                ):
+                    result = await ai_interviews.recover_interrupted_interview_state()
+                async with session() as db:
+                    evaluation = await db.get(InterviewEvaluationRun, "evaluation-recovery")
+                    stored_active = await db.get(Interview, active.id)
+                assert evaluation is not None
+                assert stored_active is not None
+                return (
+                    result,
+                    {
+                        "status": evaluation.status,
+                        "error": evaluation.error,
+                        "completed_at": evaluation.completed_at is not None,
+                    },
+                    {
+                        "status": stored_active.status,
+                        "question_index": stored_active.current_question_index,
+                    },
+                    repaired_ids,
+                )
+            finally:
+                await engine.dispose()
+
+        with tempfile.TemporaryDirectory() as directory:
+            result, evaluation, active, repaired_ids = asyncio.run(
+                flow(Path(directory) / "interview-recovery.db")
+            )
+        self.assertEqual(
+            result,
+            {
+                "interrupted_evaluations": 1,
+                "learning_repaired": 1,
+                "learning_failed": 0,
+            },
+        )
+        self.assertEqual(evaluation["status"], "failed")
+        self.assertEqual(
+            evaluation["error"],
+            "面试评价在应用重启时中断，请重新提交该回答",
+        )
+        self.assertTrue(evaluation["completed_at"])
+        self.assertEqual(active, {"status": "active", "question_index": 0})
+        self.assertEqual(len(repaired_ids), 1)
 
 
 if __name__ == "__main__":

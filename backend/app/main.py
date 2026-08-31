@@ -76,6 +76,12 @@ async def lifespan(app: FastAPI):
         await recover_interrupted_research_runs()
     except Exception:
         pass  # 调研恢复失败不阻塞启动
+    from app.services.ai_interviews import recover_interrupted_interview_state
+
+    try:
+        await recover_interrupted_interview_state()
+    except Exception:
+        pass  # 面试恢复失败不阻塞启动；面试状态仍可由控制面查询
     # Local engine discovery is optional and performs network probes. Keep it
     # out of the critical startup path so a stopped local engine or inherited
     # network policy can never hold the API before it begins serving requests.
