@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from app.database import async_session
 from app.models.models import AgentRunEvent, AgentRunRecord, JobSearchTask
+from app.services.security_redaction import redact_sensitive_value
 
 RUN_SCHEMA_VERSION = "offeru.agent_runs.v2"
 ACTIVE_STATUSES = {
@@ -28,6 +29,7 @@ def _now_iso() -> str:
 
 
 def safe_result_preview(value: Any, limit: int = 6000) -> Any:
+    value = redact_sensitive_value(value)
     try:
         text = json.dumps(value, ensure_ascii=False)
     except Exception:
@@ -40,14 +42,15 @@ def safe_result_preview(value: Any, limit: int = 6000) -> Any:
 def _clean_action(action: dict[str, Any], index: int) -> dict[str, Any]:
     tool = str(action.get("tool") or "").strip()
     action_id = str(action.get("id") or f"{tool}:{index}").strip()
-    args = action.get("args") if isinstance(action.get("args"), dict) else {}
+    raw_args = action.get("args") if isinstance(action.get("args"), dict) else {}
+    args = redact_sensitive_value(raw_args)
     requires_confirmation = bool(action.get("requires_confirmation", True))
     return {
         "id": action_id,
         "idempotency_key": str(action.get("idempotency_key") or ""),
         "tool": tool,
         "args": args,
-        "summary": str(action.get("summary") or tool),
+        "summary": redact_sensitive_value(str(action.get("summary") or tool)),
         "risk_level": str(action.get("risk_level") or "confirm"),
         "requires_confirmation": requires_confirmation,
         "status": "waiting_confirmation" if requires_confirmation else "pending",
@@ -67,7 +70,7 @@ def _clean_run(run: Any) -> dict[str, Any] | None:
     if not run_id or not task_id:
         return None
     steps = [
-        step
+        redact_sensitive_value(step)
         for step in (run.get("steps") or [])
         if isinstance(step, dict) and str(step.get("id") or "").strip()
     ]
@@ -76,12 +79,12 @@ def _clean_run(run: Any) -> dict[str, Any] | None:
         "id": run_id,
         "task_id": task_id,
         "conversation_id": str(run.get("conversation_id") or ""),
-        "goal": str(run.get("goal") or ""),
+        "goal": redact_sensitive_value(str(run.get("goal") or ""), max_length=4000),
         "mode": str(run.get("mode") or "general"),
         "skill_id": str(run.get("skill_id") or ""),
         "skill_version": str(run.get("skill_version") or ""),
         "skill_snapshot": (
-            run.get("skill_snapshot")
+            redact_sensitive_value(run.get("skill_snapshot"))
             if isinstance(run.get("skill_snapshot"), dict)
             else {}
         ),
@@ -93,21 +96,23 @@ def _clean_run(run: Any) -> dict[str, Any] | None:
         ],
         "steps": steps,
         "llm_runtime": (
-            run.get("llm_runtime")
+            redact_sensitive_value(run.get("llm_runtime"))
             if isinstance(run.get("llm_runtime"), dict)
             else {}
         ),
         "recovery_cursor": (
-            run.get("recovery_cursor")
+            redact_sensitive_value(run.get("recovery_cursor"))
             if isinstance(run.get("recovery_cursor"), dict)
             else {}
         ),
         "final_result": (
-            run.get("final_result")
+            redact_sensitive_value(run.get("final_result"))
             if isinstance(run.get("final_result"), dict)
             else {}
         ),
-        "failure_reason": str(run.get("failure_reason") or ""),
+        "failure_reason": redact_sensitive_value(
+            str(run.get("failure_reason") or ""), max_length=1000
+        ),
         "event_sequence": int(run.get("event_sequence") or 0),
         "created_at": str(run.get("created_at") or _now_iso()),
         "updated_at": str(run.get("updated_at") or _now_iso()),
@@ -120,18 +125,18 @@ def _row_to_run(row: AgentRunRecord) -> dict[str, Any]:
         "id": row.run_id,
         "task_id": row.task_id,
         "conversation_id": row.conversation_id or "",
-        "goal": row.goal or "",
+        "goal": redact_sensitive_value(row.goal or "", max_length=4000),
         "mode": row.mode or "general",
         "skill_id": row.skill_id or "",
         "skill_version": row.skill_version or "",
-        "skill_snapshot": row.skill_snapshot_json or {},
+        "skill_snapshot": redact_sensitive_value(row.skill_snapshot_json or {}),
         "status": row.status or "created",
         "exit_criteria": row.exit_criteria_json or [],
-        "steps": row.steps_json or [],
-        "llm_runtime": row.llm_runtime_json or {},
-        "recovery_cursor": row.recovery_cursor_json or {},
-        "final_result": row.final_result_json or {},
-        "failure_reason": row.failure_reason or "",
+        "steps": redact_sensitive_value(row.steps_json or []),
+        "llm_runtime": redact_sensitive_value(row.llm_runtime_json or {}),
+        "recovery_cursor": redact_sensitive_value(row.recovery_cursor_json or {}),
+        "final_result": redact_sensitive_value(row.final_result_json or {}),
+        "failure_reason": redact_sensitive_value(row.failure_reason or "", max_length=1000),
         "event_sequence": int(row.event_sequence or 0),
         "created_at": str(row.created_at) if row.created_at else None,
         "updated_at": str(row.updated_at) if row.updated_at else None,

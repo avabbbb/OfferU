@@ -8,6 +8,7 @@ from sqlalchemy import select
 from app.database import async_session
 from app.models.models import CareerSource, LearningObservation, ProfileSection
 from app.services.career_memory import create_memory_proposal
+from app.services.security_redaction import safe_error_message
 
 
 TARGET_TIERS = frozenset({"verified_fact", "preference", "career_hypothesis"})
@@ -161,7 +162,7 @@ async def consolidate_memory_observations(
                     {
                         "observation_id": observation.id,
                         "candidate_index": index,
-                        "error": str(exc)[:1000],
+                        "error": safe_error_message(exc),
                     }
                 )
     return {

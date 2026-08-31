@@ -33,6 +33,7 @@ from app.services.coding_agent_runtime import (
     execute_deep_task,
     select_local_executor,
 )
+from app.services.security_redaction import safe_error_message
 
 
 ROLE_JD_SCHEMA = "offeru.role_jd.v1"
@@ -977,7 +978,7 @@ def _validated_worker_result(value: Any) -> dict[str, Any]:
                 normalize_benchmark_document(item, document_kind="comparator")
             )
         except ValueError as exc:
-            rejected.append({"index": index, "error": str(exc)[:500]})
+            rejected.append({"index": index, "error": safe_error_message(exc)})
     gaps = _clean_list(value.get("gaps"), "gaps", max_items=30)
     return {
         "schema": ROLE_BENCHMARK_OUTPUT_SCHEMA_ID,
@@ -1630,7 +1631,7 @@ async def _mark_failed(run_id: str, error: str, *, status: str = "failed") -> No
         if run is None:
             return
         run.status = status
-        run.error = str(error)[:4000]
+        run.error = safe_error_message(ValueError(str(error)))
         run.completed_at = _utc_now()
         await db.commit()
 
@@ -1706,7 +1707,7 @@ async def _execute_benchmark(run_id: str) -> None:
         await _mark_failed(run_id, "岗位基准任务被运行环境中断", status="interrupted")
         raise
     except Exception as exc:
-        message = str(exc)
+        message = safe_error_message(exc)
         lowered = message.casefold()
         blocked = any(
             marker in lowered

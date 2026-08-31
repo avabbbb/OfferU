@@ -39,6 +39,7 @@ from app.services.application_workspace import auto_write_job_to_total
 from app.services.resume_drafts import save_resume_draft
 from app.services.resume_fact_gates import validate_generated_content
 from app.services.resume_versions import create_version_snapshot, snapshot_resume
+from app.services.security_redaction import safe_error_message
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
@@ -672,10 +673,10 @@ async def batch_optimize_resume_records(
                 try:
                     await auto_write_job_to_total(db, job_id=job_id)
                 except Exception as exc:
-                    entry["error"] = f"自动写入投递总表失败: {exc}"
+                    entry["error"] = f"自动写入投递总表失败: {safe_error_message(exc)}"
             except Exception as exc:
                 await db.rollback()
-                entry.update(status="failed", error=str(exc))
+                entry.update(status="failed", error=safe_error_message(exc))
             results.append(entry)
         return {
             "total": len(job_ids),

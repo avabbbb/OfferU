@@ -20,6 +20,7 @@ from uuid import uuid4
 import zipfile
 
 from sqlalchemy.engine import make_url
+from app.services.security_redaction import safe_error_message
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
@@ -698,7 +699,7 @@ def list_backups(layout: DataSafetyLayout) -> dict[str, Any]:
                     }
                 )
             except DataSafetyError as exc:
-                invalid.append({"backup_id": backup_id, "error": str(exc)})
+                invalid.append({"backup_id": backup_id, "error": safe_error_message(exc)})
         items.sort(key=lambda item: str(item["created_at"]), reverse=True)
         return {"items": items, "invalid": invalid}
 

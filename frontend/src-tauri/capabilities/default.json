@@ -4,18 +4,6 @@
   "description": "OfferU default capabilities",
   "windows": ["main"],
   "permissions": [
-    "core:default",
-    "shell:allow-execute",
-    "shell:allow-spawn",
-    "shell:allow-kill",
-    {
-      "identifier": "shell:allow-execute",
-      "allow": [
-        {
-          "name": "binaries/backend",
-          "sidecar": true
-        }
-      ]
-    }
+    "core:default"
   ]
 }

@@ -14,6 +14,7 @@ from app.services.application_workspace import (
     list_table_records,
     get_workspace_payload,
 )
+from app.services.security_redaction import safe_error_message
 
 router = APIRouter()
 
@@ -102,7 +103,7 @@ class AutoWriteRequest(BaseModel):
 
 
 def _bad_request(error: ValueError) -> HTTPException:
-    return HTTPException(status_code=400, detail=str(error))
+    return HTTPException(status_code=400, detail=safe_error_message(error))
 
 
 async def _execute_operation(name: str, args: dict[str, Any]) -> Any:
@@ -110,7 +111,10 @@ async def _execute_operation(name: str, args: dict[str, Any]) -> Any:
 
     result = await execute_operation(name, args, surface="applications_api")
     if not result.get("ok"):
-        message = "；".join(str(item) for item in result.get("errors") or [])
+        message = "；".join(
+            safe_error_message(ValueError(str(item)))
+            for item in result.get("errors") or []
+        )
         lowered = message.lower()
         status = 404 if "不存在" in message or "not found" in lowered else 400
         raise HTTPException(status_code=status, detail=message or "操作失败")

@@ -16,6 +16,7 @@ from sqlalchemy import select
 from app.database import async_session
 from app.models.models import Batch, Job
 from app.services.campus_detector import detect_campus
+from app.services.security_redaction import safe_error_message
 
 
 class JobIngestItem(BaseModel):
@@ -94,7 +95,7 @@ async def import_job_batch(
                     "title": str(
                         raw_item.get("title") or raw_item.get("company") or "?"
                     ),
-                    "error": str(exc)[:300],
+                    "error": safe_error_message(exc),
                 }
             )
     clean_keywords = keywords or []

@@ -22,6 +22,7 @@ from app.models.models import (
     AutomationRule,
     JobResearchRun,
 )
+from app.services.security_redaction import safe_error_message
 
 
 AUTOMATION_EVENT_TYPES = frozenset(
@@ -417,7 +418,7 @@ async def record_automation_event(
                 await _update_event(
                     event.event_id,
                     status="blocked" if blocked else "failed",
-                    error="provider authentication failed" if blocked else str(exc),
+                    error="provider authentication failed" if blocked else safe_error_message(exc),
                 )
             ),
             "reused": False,

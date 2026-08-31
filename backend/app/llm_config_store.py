@@ -15,6 +15,7 @@ from typing import Any
 from uuid import uuid4
 
 from app.config import get_settings
+from app.services.security_redaction import safe_error_message
 from app.llm_presets import (
     provider_default_model,
     provider_default_url,
@@ -343,7 +344,11 @@ def import_provider(
             encoding="utf-8",
         )
     except OSError as exc:
-        return {"ok": False, "config": None, "errors": [f"保存配置失败: {exc}"]}
+        return {
+            "ok": False,
+            "config": None,
+            "errors": [f"保存配置失败: {safe_error_message(exc)}"],
+        }
     sync_runtime_settings_from_file()
     return {"ok": True, "config": target, "errors": []}
 

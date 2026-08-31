@@ -18,6 +18,7 @@ from qdrant_client.models import Distance, PointStruct, VectorParams, FieldCondi
 
 from app.agents.llm import chat_completion
 from app.config import get_settings
+from app.services.security_redaction import redact_sensitive_text
 
 _logger = logging.getLogger(__name__)
 
@@ -111,7 +112,10 @@ class SemanticSearchService:
             return vector
 
         except Exception as e:
-            _logger.error(f"Embedding failed: {e}")
+            _logger.error(
+                "Embedding failed: %s",
+                redact_sensitive_text(e, max_length=500),
+            )
             # Fallback: 返回零向量（不影响系统运行）
             return [0.0] * EMBEDDING_DIMENSION
 

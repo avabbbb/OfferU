@@ -25,6 +25,7 @@ from app.services.job_research import (
     _host,
     persist_authorized_research_result,
 )
+from app.services.security_redaction import safe_error_message
 
 
 _ACTIVE_STATUSES = {"starting", "authenticating", "read_only"}
@@ -386,7 +387,7 @@ async def start_authorized_research_session(
             ).scalar_one_or_none()
             if stored is not None:
                 stored.status = "failed"
-                stored.error = str(exc)[:2000]
+                stored.error = safe_error_message(exc)
                 stored.completed_at = _utc_now()
                 await db.commit()
         raise

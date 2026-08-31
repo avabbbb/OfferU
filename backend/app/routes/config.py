@@ -26,6 +26,11 @@ from app.llm_presets import (
     provider_name as _provider_name,
     provider_tier_models as _provider_tier_models,
 )
+from app.services.security_redaction import (
+    redact_sensitive_text,
+    redact_sensitive_value,
+    safe_error_message,
+)
 
 router = APIRouter()
 
@@ -616,6 +621,8 @@ def _response_payload() -> dict[str, Any]:
     for item in _current_config.llm_api_configs:
         row = item.model_dump()
         row["api_key"] = _mask_key(row.get("api_key", ""))
+        row["extra_params"] = redact_sensitive_value(row.get("extra_params") or {})
+        row["default_headers"] = redact_sensitive_value(row.get("default_headers") or {})
         masked_configs.append(row)
     data["llm_api_configs"] = masked_configs
 
@@ -642,7 +649,10 @@ def _response_payload() -> dict[str, Any]:
         "provider_id": active_cfg.provider_id if active_cfg else _current_config.llm_provider,
         "service_name": active_cfg.service_name if active_cfg else _provider_name(_current_config.llm_provider),
         "model": active_cfg.model if active_cfg else _current_config.llm_model,
-        "base_url": active_cfg.base_url if active_cfg else _provider_default_url(_current_config.llm_provider),
+        "base_url": redact_sensitive_text(
+            active_cfg.base_url if active_cfg else _provider_default_url(_current_config.llm_provider),
+            max_length=300,
+        ),
         "source": source,
     }
 
@@ -676,7 +686,7 @@ async def update_config(data: ConfigUpdate):
     _save_config(_current_config)
     _sync_runtime_settings(_current_config)
 
-    return {"message": "Config updated", "config": _current_config.model_dump()}
+    return {"message": "Config updated", "config": _response_payload()}
 
 
 @router.get("/boss-status")
@@ -732,7 +742,7 @@ async def test_llm_connection():
             "success": False,
             "provider": provider,
             "model": model,
-            "message": str(exc),
+            "message": safe_error_message(exc),
         }
 
     result = await _probe_llm_endpoint(base_url, api_key, resolved_model, provider)
@@ -777,7 +787,10 @@ async def import_llm_provider(body: LlmProviderImportRequest) -> dict[str, Any]:
         models=body.models or None,
         activate=body.activate,
     )
-    payload: dict[str, Any] = {"ok": result["ok"], "errors": result["errors"]}
+    payload: dict[str, Any] = {
+        "ok": result["ok"],
+        "errors": [redact_sensitive_text(item, max_length=500) for item in result["errors"]],
+    }
     config = result.get("config")
     if config is None:
         payload["config"] = None
@@ -803,7 +816,7 @@ async def import_llm_provider(body: LlmProviderImportRequest) -> dict[str, Any]:
         "provider_id": active.provider_id if active else _current_config.llm_provider,
         "service_name": active.service_name if active else _current_config.llm_provider,
         "model": active.model if active else _current_config.llm_model,
-        "base_url": active.base_url if active else "",
+        "base_url": redact_sensitive_text(active.base_url if active else "", max_length=300),
         "is_active": bool(active),
     }
     payload["test_result"] = None
@@ -842,7 +855,7 @@ async def fetch_models(body: FetchModelsRequest):
             return {
                 "success": False,
                 "models": [],
-                "message": f"获取模型列表失败 ({resp.status_code}): {err_msg}",
+                "message": f"获取模型列表失败 ({resp.status_code}): {redact_sensitive_text(err_msg, max_length=300)}",
             }
 
         data = resp.json()
@@ -873,17 +886,17 @@ async def fetch_models(body: FetchModelsRequest):
         return {
             "success": False,
             "models": [],
-            "message": f"无法连接到 {base_url}，请检查 Base URL 是否正确。",
+            "message": f"无法连接到 {redact_sensitive_text(base_url, max_length=300)}，请检查 Base URL 是否正确。",
         }
     except httpx.TimeoutException:
         return {
             "success": False,
             "models": [],
-            "message": f"连接超时 ({base_url})，请检查网络。",
+            "message": f"连接超时 ({redact_sensitive_text(base_url, max_length=300)})，请检查网络。",
         }
     except Exception as exc:
         return {
             "success": False,
             "models": [],
-            "message": f"获取失败: {exc}",
+            "message": f"获取失败: {safe_error_message(exc)}",
         }

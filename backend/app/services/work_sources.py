@@ -27,6 +27,7 @@ from app.services.coding_agent_runtime import (
     execute_deep_task,
     select_local_executor,
 )
+from app.services.security_redaction import safe_error_message
 
 
 SOURCE_TYPES = frozenset({"directory", "git_repository"})
@@ -860,7 +861,7 @@ async def _execute_sync(run_id: str) -> None:
             ).scalar_one_or_none()
             if stored is not None:
                 stored.status = "failed"
-                stored.error = str(exc)[:4000]
+                stored.error = safe_error_message(exc)
                 stored.completed_at = _now()
                 stored_source = (
                     await db.execute(

@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from openai import AsyncOpenAI
 
 from app.config import get_settings
+from app.services.security_redaction import redact_sensitive_text
 
 _logger = logging.getLogger(__name__)
 
@@ -328,7 +329,7 @@ def _get_client() -> tuple[Any, str]:
         resolved["source"],
         resolved["provider"],
         resolved["model"],
-        resolved["base_url"],
+        redact_sensitive_text(resolved["base_url"], max_length=300),
     )
     return client, resolved["model"]
 
@@ -425,7 +426,13 @@ async def chat_completion(
         _logger.error(f"[LLM Timeout] {provider}/{model} (tier={tier}): 超过 {settings.llm_timeout}s")
         return None
     except Exception as e:
-        _logger.error(f"[LLM Error] {provider}/{model} (tier={tier}): {e}")
+        _logger.error(
+            "[LLM Error] %s/%s (tier=%s): %s",
+            provider,
+            model,
+            tier,
+            redact_sensitive_text(e, max_length=500),
+        )
         return None
 
 
@@ -519,7 +526,13 @@ async def chat_completion_stream(
         _logger.error(f"[LLM Timeout] {provider}/{model} (tier={tier}, stream): 超过 {settings.llm_timeout}s")
         return
     except Exception as e:
-        _logger.error(f"[LLM Error] {provider}/{model} (tier={tier}, stream): {e}")
+        _logger.error(
+            "[LLM Error] %s/%s (tier=%s, stream): %s",
+            provider,
+            model,
+            tier,
+            redact_sensitive_text(e, max_length=500),
+        )
         return
 
 
@@ -604,5 +617,9 @@ async def get_embedding(text: str, model: str = "text-embedding-v3") -> list[flo
         _logger.error(f"[Embedding Timeout] model={model}: 超过 {settings.llm_timeout}s")
         return [0.0] * 1024
     except Exception as e:
-        _logger.error(f"[Embedding Error] model={model}: {e}")
+        _logger.error(
+            "[Embedding Error] model=%s: %s",
+            model,
+            redact_sensitive_text(e, max_length=500),
+        )
         return [0.0] * 1024

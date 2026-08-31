@@ -851,7 +851,9 @@ async def draft_scoring_skill(
                 }
             )
         except ValueError as exc:
-            last_error = str(exc)[:500]
+            from app.services.security_redaction import safe_error_message
+
+            last_error = safe_error_message(exc)
             continue
         return {
             "draft": {

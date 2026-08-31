@@ -53,6 +53,7 @@ from sse_starlette import EventSourceResponse, ServerSentEvent
 from app.database import get_db
 from app.models.models import Resume, ResumeSection, ResumeTemplate, Job, Profile
 from app.services.application_workspace import auto_write_job_to_total
+from app.services.security_redaction import safe_error_message
 
 router = APIRouter()
 
@@ -1652,7 +1653,7 @@ async def ai_optimize_resume(
     try:
         ai_result = await optimize_resume_with_context(resume_data, jd_text)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=safe_error_message(e))
 
     if not ai_result:
         raise HTTPException(
@@ -1679,7 +1680,7 @@ async def ai_optimize_text(data: AiOptimizeTextRequest):
     try:
         ai_result = await optimize_resume(data.resume_text.strip(), data.jd_text.strip())
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=safe_error_message(e))
 
     if not ai_result:
         raise HTTPException(
@@ -1759,7 +1760,7 @@ async def ai_analyze_resume(
             jd_text=jd_text,
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=safe_error_message(e))
 
     # 检查是否有致命错误
     for key, val in result.items():
@@ -1794,7 +1795,7 @@ async def ai_analyze_text(data: AiOptimizeTextRequest):
             jd_text=data.jd_text.strip(),
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=safe_error_message(e))
 
     return result
 

@@ -16,6 +16,7 @@ from app.models.models import (
     ApplicationWorkspaceSettings,
     Job,
 )
+from app.services.security_redaction import safe_error_message
 
 FIELD_TYPES = {
     "text",
@@ -679,7 +680,7 @@ async def create_record(
             metadata={"job_id": record.job_ref_id, "table_id": table_id},
         )
     except Exception as exc:
-        event_warning = str(exc)[:500]
+        event_warning = safe_error_message(exc)
     return {
         "id": record.id,
         "values": _record_to_values(record),
@@ -754,7 +755,7 @@ async def create_records_from_jobs(
     try:
         from app.services.application_events import application_event_store
     except Exception as exc:
-        event_warnings.append(str(exc)[:500])
+        event_warnings.append(safe_error_message(exc))
     else:
         for record in created_records:
             try:
@@ -769,7 +770,7 @@ async def create_records_from_jobs(
                     metadata={"job_id": record.job_ref_id, "table_id": table_id},
                 )
             except Exception as exc:
-                event_warnings.append(str(exc)[:500])
+                event_warnings.append(safe_error_message(exc))
 
     duplicate_count = sum(1 for record in created_records if record.is_duplicate)
     return {
@@ -867,7 +868,7 @@ async def update_record_value(
                 metadata={"job_id": record.job_ref_id},
             )
         except Exception as exc:
-            event_warning = str(exc)[:500]
+            event_warning = safe_error_message(exc)
     return {
         "id": record.id,
         "values": _record_to_values(record),

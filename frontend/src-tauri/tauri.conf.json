@@ -23,7 +23,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' asset: http://asset.localhost data: blob: https:; media-src 'self' blob: data:; connect-src 'self' http://localhost:8765 http://127.0.0.1:8765 ws://localhost:7411 ws://127.0.0.1:7411 https:;"
     }
   },
   "bundle": {

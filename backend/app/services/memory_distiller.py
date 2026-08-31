@@ -24,6 +24,7 @@ from typing import Any, Optional
 from sqlalchemy import select
 
 from app.config import get_settings
+from app.services.security_redaction import safe_error_message
 from app.database import async_session
 from app.models.models import CareerSource, LearningObservation, ProfileSection
 
@@ -511,11 +512,15 @@ async def _distill_loop(interval_seconds: int) -> None:
         try:
             result = await distill_observations(limit=10)
             if result.get("distilled"):
-                _logger.info("memory distiller: %s", result)
+                _logger.info(
+                    "memory distiller completed: distilled=%s observations=%s",
+                    len(result.get("distilled") or []),
+                    int(result.get("observations") or 0),
+                )
         except asyncio.CancelledError:
             raise
-        except Exception:
-            _logger.exception("memory distiller loop failed")
+        except Exception as exc:
+            _logger.error("memory distiller loop failed: %s", safe_error_message(exc))
 
 
 def start_memory_distill_service() -> None:

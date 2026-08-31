@@ -11,6 +11,8 @@ import asyncio
 import uuid
 from typing import Any, Awaitable, Callable, Protocol
 
+from app.services.security_redaction import safe_error_message
+
 
 AgentOperationCallback = Callable[[str, dict[str, Any]], Awaitable[dict[str, Any]]]
 
@@ -204,7 +206,7 @@ class PiAgentRuntimeProvider:
                 "blocked": False,
                 "version": self.version,
                 "protocol_version": self.protocol_version,
-                "last_error": str(exc)[:500],
+                "last_error": safe_error_message(exc),
             }
         return {
             "provider_id": self.provider_id,
@@ -643,7 +645,7 @@ class CodexAgentRuntimeProvider:
             await self.adapter.start()
         except Exception as exc:
             self._state = "blocked" if self._is_auth_error(exc) else "failed"
-            self._last_error = str(exc)[:1000]
+            self._last_error = safe_error_message(exc)
             await self._record_health(
                 available=False,
                 authenticated=False if self._is_auth_error(exc) else None,
@@ -719,7 +721,7 @@ class CodexAgentRuntimeProvider:
             self._result = await self.adapter.start_turn(prompt=prompt, cwd=cwd)
         except Exception as exc:
             self._state = "blocked" if self._is_auth_error(exc) else "failed"
-            self._last_error = str(exc)[:1000]
+            self._last_error = safe_error_message(exc)
             if self._is_auth_error(exc):
                 await self._record_health(
                     available=False,

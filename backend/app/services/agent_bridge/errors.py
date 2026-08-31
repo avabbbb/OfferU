@@ -4,6 +4,8 @@ from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Any, Literal, TypeAlias, cast
 
+from app.services.security_redaction import redact_sensitive_text, redact_sensitive_value
+
 
 ErrorCode: TypeAlias = Literal[
     "protocol_mismatch",
@@ -103,11 +105,11 @@ class BridgeProtocolError(ValueError):
             resolved_retryability = False if retryable is None else retryable
 
         self.code = typed_code
-        self.message = message
+        self.message = redact_sensitive_text(message, max_length=1000)
         self.retryable = resolved_retryability
-        self.details = dict(details or {})
+        self.details = redact_sensitive_value(dict(details or {}))
         self.request_id = request_id
-        super().__init__(message)
+        super().__init__(self.message)
 
     def to_payload(self) -> dict[str, Any]:
         return {

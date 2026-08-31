@@ -20,6 +20,7 @@ from app.models.models import (
     Profile,
     ProfileSection,
 )
+from app.services.security_redaction import safe_error_message
 
 
 TARGET_TIERS = frozenset({"verified_fact", "preference", "career_hypothesis"})
@@ -943,7 +944,7 @@ async def review_memory_proposal(
             ).scalar_one()
             if proposal.status == "applying":
                 proposal.status = "pending"
-                proposal.review_note = str(exc)[:2000]
+                proposal.review_note = safe_error_message(exc)
                 await db.commit()
         raise
     if applied.get("error"):
@@ -954,7 +955,7 @@ async def review_memory_proposal(
                 )
             ).scalar_one()
             proposal.status = "pending"
-            proposal.review_note = str(applied["error"])[:2000]
+            proposal.review_note = safe_error_message(ValueError(str(applied["error"])))
             await db.commit()
         return {"error": applied["error"], "fact_gate": applied.get("fact_gate")}
 

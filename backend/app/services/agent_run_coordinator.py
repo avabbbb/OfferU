@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable
 
 from app.services.agent_run_state import pending_actions_for_run, safe_result_preview, save_agent_run
+from app.services.security_redaction import safe_error_message
 
 ToolRunner = Callable[[str, dict[str, Any]], Awaitable[Any]]
 
@@ -85,7 +86,7 @@ class AgentRunCoordinator:
                 ):
                     result = await tool_runner(str(step.get("tool") or ""), args)
             except Exception as exc:
-                result = {"error": str(exc)[:500]}
+                result = {"error": safe_error_message(exc)}
             has_error = isinstance(result, dict) and bool(result.get("error"))
             step["status"] = "failed" if has_error else "completed"
             step["completed_at"] = _now_iso()

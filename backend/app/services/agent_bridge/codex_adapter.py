@@ -35,6 +35,7 @@ import json
 from typing import Any
 
 from app.services.agent_bridge.errors import BridgeProtocolError
+from app.services.security_redaction import safe_error_message
 
 _CUSTOM_TOOL_PROMPT = """\
 可用 OfferU 业务工具（通过 custom_tool_call 调用，直接返回结果，不要用 shell/CLI）：
@@ -402,7 +403,7 @@ class CodexMainLoopAdapter:
                 {"threadId": self.thread_id, "turnId": self.turn_id},
             )
         except Exception as exc:  # cancellation remains best-effort
-            return {"cancelled": False, "error": str(exc)[:500]}
+            return {"cancelled": False, "error": safe_error_message(exc)}
         return {"cancelled": True, "threadId": self.thread_id, "turnId": self.turn_id}
 
     def events(self, *, after: int = 0) -> list[dict[str, Any]]:

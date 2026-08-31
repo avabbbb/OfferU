@@ -18,6 +18,7 @@ from sqlalchemy import select
 from app.database import async_session
 from app.models.models import HostedExecutorEvent, HostedExecutorSession
 from app.services.agent_files import atomic_write_json
+from app.services.security_redaction import safe_error_message
 
 
 RUNTIME_DEFINITIONS = {
@@ -1567,7 +1568,7 @@ async def execute_deep_task(task: DeepTaskSpec) -> dict[str, Any]:
             await _finish_hosted_session(
                 hosted_session_id,
                 status="failed",
-                error=str(exc),
+                error=safe_error_message(exc),
             )
             raise
         finally:

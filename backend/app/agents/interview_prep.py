@@ -93,7 +93,10 @@ async def extract_questions(
 
     result = extract_json(raw)
     if not result or "questions" not in result:
-        _logger.warning("extract_questions: invalid JSON structure: %s", raw[:300])
+        _logger.warning(
+            "extract_questions: invalid JSON structure; response_chars=%s",
+            len(raw),
+        )
         return None
 
     return result

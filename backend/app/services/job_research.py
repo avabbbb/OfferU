@@ -28,6 +28,7 @@ from app.services.coding_agent_runtime import (
     execute_deep_task,
     select_local_executor,
 )
+from app.services.security_redaction import safe_error_message
 
 
 RESEARCH_RESULT_SCHEMA = "offeru.job_research_result.v1"
@@ -867,7 +868,7 @@ async def _attach_memory_observation(
     except Exception as exc:
         observation_status = {
             "status": "failed",
-            "error": str(exc)[:1000],
+            "error": safe_error_message(exc),
         }
     async with async_session() as db:
         stored_run = (
@@ -1037,7 +1038,7 @@ async def _execute_run(run_id: str) -> None:
         raise
     except Exception as exc:
         if not research_completed:
-            await _mark_run_status(run_id, "failed", str(exc))
+            await _mark_run_status(run_id, "failed", safe_error_message(exc))
 
 
 def _schedule(run_id: str) -> None:

@@ -8,6 +8,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
+from app.services.security_redaction import safe_error_message
+
 
 _BULLET_LINE_RE = re.compile(r"^\s*(?:[\u2022\u00b7\u25cf\u25aa\u25e6*+-]|\d+[.)\u3001]|[\uff08(]?\d+[\uff09)])\s+")
 _SECTION_HEADINGS = (
@@ -414,7 +416,7 @@ def _ocr_page_blocks(page: Any) -> tuple[list[_PdfTextBlock], str]:
             textpage = page.get_textpage_ocr(**kwargs)
             return _extract_page_blocks(page, textpage=textpage), language
         except Exception as exc:
-            last_error = str(exc)
+            last_error = safe_error_message(exc)
     raise RuntimeError(last_error or "OCR unavailable")
 
 

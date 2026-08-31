@@ -17,6 +17,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from app.agents.llm import chat_completion, extract_json
 from app.ops import OPERATIONS, build_tools_description, execute_operation
+from app.services.security_redaction import safe_error_message
 
 router = APIRouter()
 PROPOSAL_TTL_SECONDS = 15 * 60
@@ -261,7 +262,7 @@ async def _execute_tool(tool_name: str, args: dict) -> dict:
             result["confirmation_hint"] = "该操作包含副作用，Web Agent 已强制 dry-run；确认后调用 POST /api/agent/confirm 执行。"
         return result
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": safe_error_message(e)}
 
 
 def _store_proposal(tool_name: str, args: dict, side_effects: tuple[str, ...]) -> str:

@@ -20,6 +20,7 @@ from app.services.coding_agent_runtime import (
     execute_deep_task,
     list_local_executors,
 )
+from app.services.security_redaction import safe_error_message
 
 
 BATCH_SCHEMA = "offeru.batch_job_evaluation.v1"
@@ -414,7 +415,7 @@ async def _execute_job(batch_id: str, job_id: int, semaphore: asyncio.Semaphore)
                         "status": "failed",
                         "completed_at": _now(),
                         "review_status": "not_available",
-                        "error": str(exc)[:2000],
+                        "error": safe_error_message(exc),
                     }
                 )
 
@@ -452,7 +453,7 @@ async def _execute_batch(batch_id: str) -> None:
     except Exception as exc:
         def mark_batch_failed(payload: dict[str, Any]) -> None:
             payload["status"] = "failed"
-            payload["batch_error"] = str(exc)[:2000]
+            payload["batch_error"] = safe_error_message(exc)
             payload["completed_at"] = _now()
 
         try:

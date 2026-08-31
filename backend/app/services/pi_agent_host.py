@@ -28,6 +28,7 @@ from app.services.pi_agent_worker import (
     PiAgentWorkerClient,
     get_pi_agent_worker,
 )
+from app.services.security_redaction import safe_error_message
 
 
 _EVENT_TYPES = {
@@ -222,7 +223,7 @@ async def _prepare_guardian_advice(
         except Exception as exc:
             observation = {
                 "recorded": False,
-                "error": str(exc)[:500],
+                "error": safe_error_message(exc),
             }
     return guardian, observation
 
@@ -232,11 +233,11 @@ async def _fail_run(run_id: str, error: Exception) -> dict[str, Any]:
     if run is None:
         raise error
     run["status"] = "failed"
-    run["failure_reason"] = str(error)[:1000]
+    run["failure_reason"] = safe_error_message(error)
     return await save_agent_run(
         run,
         event_type="runtime.failed",
-        event_payload={"error": str(error)[:1000]},
+        event_payload={"error": safe_error_message(error)},
     )
 
 
@@ -781,7 +782,7 @@ async def start_pi_agent_run(
         failed = await save_agent_run(failed)
         await publish(
             "run.failed",
-            {"status": "failed", "error": str(exc)[:1000]},
+            {"status": "failed", "error": safe_error_message(exc)},
         )
         await persist_and_publish(
             "guardian.reviewed",
@@ -811,7 +812,7 @@ async def start_pi_agent_run(
             "pending_actions": [],
             "active_skill": skill.summary(),
             "guardian": guardian_result,
-            "errors": [str(exc)[:1000]],
+            "errors": [safe_error_message(exc)],
         }
 
 
@@ -885,7 +886,7 @@ async def confirm_pi_agent_action(
             await append_agent_run_event(
                 run_id,
                 event_type="runtime.failed",
-                payload={"error": str(exc)[:1000], "phase": "dispose_after_confirm"},
+                payload={"error": safe_error_message(exc), "phase": "dispose_after_confirm"},
             )
             result.setdefault("warnings", []).append(
                 "操作已处理，但 Pi Session 释放失败；Worker 会在下次启动时显式报错。"

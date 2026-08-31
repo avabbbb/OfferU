@@ -21,6 +21,7 @@ from app.models.models import (
     ResumeOptimizationProposal,
 )
 from app.services.career_memory import record_learning_observation
+from app.services.security_redaction import safe_error_message
 
 
 CHANNELS = frozenset({"email", "sms_forward"})
@@ -1000,7 +1001,7 @@ async def review_application_progress(
                     },
                 )
             except Exception as exc:
-                workspace_record_payload["event_warning"] = str(exc)[:500]
+                workspace_record_payload["event_warning"] = safe_error_message(exc)
         return {
             **await _candidate_payload(db, candidate, signal, detail=True),
             "duplicate": False,

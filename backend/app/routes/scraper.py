@@ -24,6 +24,7 @@ from app.models.models import Job, Batch
 from app.ops import execute_operation
 from app.services.scrapers.base import get_all_scrapers, get_scraper
 from app.services.campus_detector import detect_campus
+from app.services.security_redaction import safe_error_message
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -76,7 +77,10 @@ def _build_pool_name(source_key: str, keywords: list[str]) -> str:
 async def _operation_outputs(name: str, args: dict) -> dict:
     result = await execute_operation(name, args, surface="scraper_api")
     if not result.get("ok"):
-        detail = "；".join(str(item) for item in result.get("errors") or [])
+        detail = "；".join(
+            safe_error_message(ValueError(str(item)))
+            for item in result.get("errors") or []
+        )
         raise HTTPException(status_code=400, detail=detail or "操作失败")
     outputs = result.get("outputs")
     if not isinstance(outputs, dict):
@@ -254,9 +258,9 @@ async def _execute_scraper(task_info: dict, scraper, req: RunRequest):
             "warning": warning,
         }
     except Exception as e:
-        logger.error("[scraper] task failed: %s", e)
+        logger.error("[scraper] task failed: %s", safe_error_message(e))
         task_info["status"] = "failed"
-        task_info["result"] = {"error": str(e)}
+        task_info["result"] = {"error": safe_error_message(e)}
         try:
             await execute_operation(
                 "finalize_scraper_batch",

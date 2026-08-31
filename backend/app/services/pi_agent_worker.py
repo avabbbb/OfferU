@@ -11,6 +11,8 @@ import uuid
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
+from app.services.security_redaction import safe_error_message
+
 
 _logger = logging.getLogger(__name__)
 
@@ -248,7 +250,7 @@ class PiAgentWorkerClient:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            self._fail_pending(PiAgentWorkerError(str(exc)))
+            self._fail_pending(PiAgentWorkerError(safe_error_message(exc)))
         finally:
             returncode = await process.wait()
             detail = "; ".join(self._stderr_tail[-3:])
@@ -285,7 +287,7 @@ class PiAgentWorkerClient:
             try:
                 result = await runner(operation, arguments)
             except Exception as exc:
-                result = {"ok": False, "errors": [str(exc)[:500]]}
+                result = {"ok": False, "errors": [safe_error_message(exc)]}
         try:
             await self._command(
                 "operation.result",

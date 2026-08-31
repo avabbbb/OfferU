@@ -20,6 +20,7 @@ from typing import AsyncGenerator
 
 from app.agents.skills.content_rewriter import ContentRewriterSkill
 from app.agents.llm import chat_completion, extract_json
+from app.services.security_redaction import redact_sensitive_text, safe_error_message
 
 _logger = logging.getLogger(__name__)
 
@@ -666,8 +667,8 @@ async def _tool_rewrite_section(session: OptimizeSession, args: dict, db) -> dic
             extra_instruction=extra_instruction,
         )
     except Exception as exc:
-        _logger.warning("Section rewrite failed: %s", exc)
-        return {"error": str(exc)}
+        _logger.warning("Section rewrite failed: %s", redact_sensitive_text(exc, max_length=500))
+        return {"error": safe_error_message(exc)}
 
     if isinstance(result, dict) and "error" not in result:
         session.phase = PHASE_REWRITING
@@ -699,8 +700,8 @@ async def _tool_rewrite_section(session: OptimizeSession, args: dict, db) -> dic
                 # 重建 suggestions 引用已被 humanizer 原地修改
                 suggestions = result.get("suggestions", [])
             except Exception as exc:
-                _logger.warning("Humanizer failed: %s", exc)
-                result["humanizer"] = {"applied": False, "error": str(exc)}
+                _logger.warning("Humanizer failed: %s", redact_sensitive_text(exc, max_length=500))
+                result["humanizer"] = {"applied": False, "error": safe_error_message(exc)}
 
             rewritten = _apply_suggestions_to_rows(single_row, suggestions)
             if rewritten and isinstance(rewritten[0].get("content_json"), list):
@@ -715,8 +716,8 @@ async def _tool_rewrite_section(session: OptimizeSession, args: dict, db) -> dic
                 )
                 result["fact_gates"] = gate_result
             except Exception as exc:
-                _logger.warning("FactGates validate failed: %s", exc)
-                result["fact_gates"] = {"error": str(exc)}
+                _logger.warning("FactGates validate failed: %s", redact_sensitive_text(exc, max_length=500))
+                result["fact_gates"] = {"error": safe_error_message(exc)}
 
     return result
 
@@ -1045,8 +1046,11 @@ async def _tool_prepare_resume_optimization(
             session.resume_optimization_proposal_id = result.get("proposal_id")
         return result
     except Exception as exc:
-        _logger.warning("Resume proposal preparation failed: %s", exc, exc_info=True)
-        return {"error": f"简历提案准备失败: {str(exc)}"}
+        _logger.warning(
+            "Resume proposal preparation failed: %s",
+            redact_sensitive_text(exc, max_length=500),
+        )
+        return {"error": f"简历提案准备失败: {safe_error_message(exc)}"}
 
 
 async def _tool_get_resume_optimization(
@@ -1119,8 +1123,12 @@ async def _execute_tool(session: OptimizeSession, tool_name: str, args: dict, db
     try:
         return await handler(session, args, db)
     except Exception as exc:
-        _logger.warning("Tool %s execution failed: %s", tool_name, exc, exc_info=True)
-        return {"error": str(exc)}
+        _logger.warning(
+            "Tool %s execution failed: %s",
+            tool_name,
+            redact_sensitive_text(exc, max_length=500),
+        )
+        return {"error": safe_error_message(exc)}
 
 
 def _build_action_summary(tool_name: str, args: dict) -> str:

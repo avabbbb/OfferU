@@ -74,7 +74,6 @@ fn wait_for_python_backend(timeout_secs: u64) -> bool {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
         .manage(Children(Mutex::new(Vec::new())))
         .setup(|app| {
             if cfg!(debug_assertions) {

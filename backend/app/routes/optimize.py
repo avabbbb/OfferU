@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.models import Job, Profile, ProfileSection
+from app.services.security_redaction import redact_sensitive_text, safe_error_message
 
 router = APIRouter()
 _logger = logging.getLogger(__name__)
@@ -226,7 +227,10 @@ async def _rank_profile_sections_semantic(
         return [(section, score) for section, score, _ in scored[:limit]]
 
     except Exception as e:
-        _logger.error(f"[Semantic Search Failed] {e}, fallback to jieba")
+        _logger.error(
+            "[Semantic Search Failed] %s, fallback to jieba",
+            redact_sensitive_text(e, max_length=500),
+        )
         # Fallback 到 jieba 分词
         return _rank_profile_sections(sections, jd_text, limit)
 
@@ -310,7 +314,10 @@ async def _select_sections_structured(
         return ranked[:limit]
 
     except Exception as e:
-        _logger.warning("[SectionSelector] 失败: %s，fallback jieba", e)
+        _logger.warning(
+            "[SectionSelector] 失败: %s，fallback jieba",
+            redact_sensitive_text(e, max_length=500),
+        )
         return _rank_profile_sections(sections, jd_text, limit)
 
 
@@ -475,7 +482,10 @@ async def _llm_rewrite_sections(rows: list[dict], jd_text: str) -> tuple[list[di
             tier="standard",
         )
     except Exception as exc:
-        _logger.warning("LLM rewrite failed, using original rows: %s", exc)
+        _logger.warning(
+            "LLM rewrite failed, using original rows: %s",
+            redact_sensitive_text(exc, max_length=500),
+        )
         return rows, False
 
     parsed = extract_json(raw or "")
@@ -746,10 +756,13 @@ async def _skills_pipeline_rewrite(
             research_context=research_context,
         )
     except Exception as exc:
-        _logger.warning("SkillPipeline.run failed: %s", exc)
+        _logger.warning(
+            "SkillPipeline.run failed: %s",
+            redact_sensitive_text(exc, max_length=500),
+        )
         pipeline_result = {
             "pipeline_error": {
-                "error": str(exc)[:1000],
+                "error": safe_error_message(exc),
             }
         }
 

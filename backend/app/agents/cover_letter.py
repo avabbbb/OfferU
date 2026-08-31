@@ -58,5 +58,8 @@ async def generate_cover_letter(jd: str, resume: str) -> dict:
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
-        _logger.warning("Cover letter JSON decode failed: %s", raw[:200])
+        _logger.warning(
+            "Cover letter JSON decode failed; response_chars=%s",
+            len(raw),
+        )
         return {"cover_letter": "", "language": "zh", "key_highlights": []}

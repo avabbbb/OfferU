@@ -26,6 +26,7 @@ from app.models.models import (
     Resume,
     ResumeSection,
 )
+from app.services.security_redaction import safe_error_message
 
 
 def _public_job_filter():
@@ -2062,7 +2063,7 @@ async def update_application_status(
                     metadata={"job_id": record.job_ref_id},
                 )
             except Exception as exc:
-                event_warning = str(exc)[:500]
+                event_warning = safe_error_message(exc)
         return {
             "id": record.id,
             "application_type": "application_record",
@@ -2402,7 +2403,7 @@ async def record_follow_up(
         )
         event["event_warning"] = None
     except Exception as exc:
-        event["event_warning"] = str(exc)[:500]
+        event["event_warning"] = safe_error_message(exc)
     return event
 
 

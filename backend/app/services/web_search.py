@@ -22,6 +22,7 @@ from urllib.parse import urlparse
 import httpx
 
 from app.config import get_settings
+from app.services.security_redaction import redact_sensitive_text, safe_error_message
 
 _logger = logging.getLogger(__name__)
 
@@ -195,12 +196,15 @@ async def web_search(query: str, *, limit: int = 8) -> list[SearchResult]:
         try:
             results = await runner()
         except Exception as exc:
-            errors.append(f"{name}: {str(exc)[:200]}")
+            errors.append(f"{name}: {safe_error_message(exc, max_length=200)}")
             continue
         if results:
             return results
     if errors:
-        _logger.warning("web_search all providers failed: %s", "; ".join(errors))
+        _logger.warning(
+            "web_search all providers failed: %s",
+            redact_sensitive_text("; ".join(errors), max_length=1000),
+        )
     return []
 
 

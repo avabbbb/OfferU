@@ -14,7 +14,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 const PROTOCOL_VERSION = "offeru.pi-worker.v1";
-const SDK_VERSION = "0.82.1";
+const SDK_VERSION = "0.84.4";
 const MAX_INPUT_BYTES = 2 * 1024 * 1024;
 const OPERATION_TIMEOUT_MS = 120_000;
 

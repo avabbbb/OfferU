@@ -22,6 +22,7 @@ from app.services.agent_runtime import (
     canonical_agent_run_event,
     get_agent_run_provider,
 )
+from app.services.security_redaction import safe_error_message
 
 router = APIRouter()
 runtime_router = APIRouter()
@@ -116,7 +117,9 @@ async def _ui_operation_outputs(
         surface="hosted_session_ui",
     )
     if not result.get("ok"):
-        detail = "；".join(str(item) for item in result.get("errors") or [])
+        detail = "；".join(
+            safe_error_message(ValueError(item)) for item in result.get("errors") or []
+        )
         raise HTTPException(status_code=400, detail=detail or "Operation failed")
     outputs = result.get("outputs")
     if not isinstance(outputs, dict):
@@ -137,7 +140,9 @@ async def _ui_operation_projection(
         surface="agent_runtime_ui",
     )
     if not result.get("ok"):
-        detail = "；".join(str(item) for item in result.get("errors") or [])
+        detail = "；".join(
+            safe_error_message(ValueError(item)) for item in result.get("errors") or []
+        )
         raise HTTPException(status_code=400, detail=detail or "Operation failed")
     outputs = result.get("outputs")
     if not isinstance(outputs, dict):
@@ -151,7 +156,7 @@ def _main_agent_provider(provider_id: str = "pi"):
     try:
         return get_agent_run_provider(provider_id)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=safe_error_message(exc)) from exc
 
 
 async def _provider_for_run(run_id: str):
@@ -561,7 +566,7 @@ async def start_runtime_run(body: PiAgentRunRequest) -> dict[str, Any]:
         result["conversation_title"] = conversation["title"]
         return result
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=safe_error_message(exc))
 
 
 @runtime_router.post("/runtime/runs/stream")
@@ -658,7 +663,7 @@ async def stream_runtime_run(body: PiAgentRunRequest):
         except Exception as exc:
             yield {
                 "event": "error",
-                "data": json.dumps({"error": str(exc)[:1000]}, ensure_ascii=False),
+                "data": json.dumps({"error": safe_error_message(exc)}, ensure_ascii=False),
             }
 
     return EventSourceResponse(events())
@@ -700,7 +705,7 @@ async def resume_runtime_run(run_id: str) -> dict[str, Any]:
             result["conversation_title"] = conversation["title"]
         return result
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=safe_error_message(exc))
 
 
 @runtime_router.post("/runtime/runs/{run_id}/abort")
@@ -709,7 +714,7 @@ async def abort_runtime_run(run_id: str) -> dict[str, Any]:
         provider = await _provider_for_run(run_id)
         return await provider.abort_run(run_id)
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+        raise HTTPException(status_code=404, detail=safe_error_message(exc))
 
 
 @runtime_router.get("/runtime/hosted-sessions")
@@ -735,7 +740,10 @@ async def hosted_executor_session(session_id: str) -> dict[str, Any]:
         {"session_id": session_id},
     )
     if session.get("error"):
-        raise HTTPException(status_code=404, detail=str(session["error"]))
+        raise HTTPException(
+            status_code=404,
+            detail=safe_error_message(ValueError(session["error"])),
+        )
     return session
 
 
@@ -843,7 +851,7 @@ async def memory_search(query: str, limit: int = 8) -> dict[str, Any]:
     try:
         return await search_memory(query=query, limit=limit)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=safe_error_message(exc))
 
 
 @router.get("/memory/export")

@@ -35,6 +35,7 @@ from app.services.interview_scoring import (
     validate_behavior_events,
     validate_content_evaluation,
 )
+from app.services.security_redaction import safe_error_message
 
 
 _INTERVIEW_TYPES = {"behavioral", "technical", "case", "mixed"}
@@ -1565,7 +1566,7 @@ async def submit_ai_interview_answer(
                     )
                 ).scalar_one()
                 run.status = "failed"
-                run.error = str(exc)[:2000]
+                run.error = safe_error_message(exc)
                 await db.commit()
             raise
 

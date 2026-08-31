@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from app.services.agent_files import atomic_write_json
+from app.services.security_redaction import safe_error_message
 
 
 PLUGIN_MANIFEST = "offeru-plugin.json"
@@ -162,7 +163,7 @@ def discover_plugins(*, root: Path | None = None, state_path: Path | None = None
             try:
                 manifest = _manifest_from_dir(plugin_dir)
             except ValueError as exc:
-                rows.append({"name": plugin_dir.name, "status": "invalid", "error": str(exc)})
+                rows.append({"name": plugin_dir.name, "status": "invalid", "error": safe_error_message(exc)})
                 continue
             rows.append(
                 {
