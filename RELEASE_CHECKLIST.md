@@ -42,9 +42,9 @@
 | 31 | Memory Lifecycle | NOT_VERIFIED | 需六态、source/evidence/confidence/history matrix |
 | 32 | PotentialHypothesis isolation | NOT_VERIFIED | 需永不自动变 Career Fact 的 deterministic test |
 | 33 | Single Automation model | NOT_VERIFIED | 架构对齐；需 duplicate loop/drift scan |
-| 34 | Automation Reliability | NOT_VERIFIED | 缺 duplicate/retry/restart/provider timeout exactly-once matrix |
-| 35 | CareerTask lifecycle | NOT_VERIFIED | API 存在；需 start/status/events/cancel/result/retry/resume outcome |
-| 36 | Restart Recovery | NOT_VERIFIED | 仅部分内测；五场景强退恢复矩阵缺失 |
+| 34 | Automation Reliability | NOT_VERIFIED | Reliability-01 覆盖并发 AutomationEvent、queued recovery 和 CareerTask retry/cancel；provider timeout 与全部业务 mutation exactly-once 仍缺 |
+| 35 | CareerTask lifecycle | NOT_VERIFIED | Reliability-01 覆盖 start/status/events/cancel/result/retry/recovery 的隔离后端路径；真实 UI/process lifecycle 仍缺 |
+| 36 | Restart Recovery | NOT_VERIFIED | Reliability-01 覆盖 queued/running/waiting 控制面恢复；真实进程强退、浏览器可见恢复和五场景矩阵仍缺 |
 | 37 | AgentRuntimeProvider UI seam | NOT_VERIFIED | provider-neutral 设计存在；需 UI branch scan |
 | 38 | Minimum Live Agent Gate | NOT_VERIFIED | Replay only；至少一个真实 Provider `LIVE_PASS` 缺失 |
 | 39 | Operation Registry Audit | NOT_VERIFIED | 历史称 0 bypass；无当前 commit 全 surface report |
@@ -70,8 +70,8 @@
 | 59 | Performance Baseline | NOT_VERIFIED | 无固定 Reference Environment 报告 |
 | 60 | UI Performance SLO | NOT_VERIFIED | 五项 production measurements 缺失 |
 | 61 | Long Task UX | NOT_VERIFIED | 需所有 >2s 路径 status/progress/cancel/failure audit |
-| 62 | Soak Test | NOT_VERIFIED | 未执行 2h 或 100 cycles |
-| 63 | Memory / Resource Leak | NOT_VERIFIED | 未记录 warm-up 后 100 cycles RSS growth |
+| 62 | Soak Test | NOT_VERIFIED | Reliability-01 已完成 100 个 Replay CareerTask cycles（100 completed/500 events/0 live workers）；混合用户工作负载和 Public soak 仍缺 |
+| 63 | Memory / Resource Leak | NOT_VERIFIED | 100-cycle task 计数通过；未记录 warm-up 后 RSS growth |
 | 64 | Testing Pyramid | NOT_VERIFIED | 有多类 tests；Migration/Packaging/Failure 完整覆盖未证明 |
 | 65 | Unit / Deterministic Tests | NOT_VERIFIED | 需七类核心规则 coverage mapping |
 | 66 | Operation Contract Tests | NOT_VERIFIED | 需 manifest/schema/side effects/permission/dry-run/output 全量 |
@@ -87,7 +87,7 @@
 | 76 | Golden Path F — Data Recovery | PASS | 同一报告：隔离 Settings UI 暂存/取消、真实重启恢复和恢复后健康检查通过；不继承其他 Public E2E 结论 |
 | 77 | Critical Repeatability 10/10 | NOT_VERIFIED | 无连续 10 次证据 |
 | 78 | Extended Stability 50 runs ≥98% | NOT_VERIFIED | 无 50-run report |
-| 79 | Full Test Gate | NOT_VERIFIED | 上一内测结果不可继承，当前 worktree 未验证 |
+| 79 | Full Test Gate | NOT_VERIFIED | 当前 commit 后端 `297 passed, 10 warnings, 1 subtest passed`；前端/桌面/浏览器全栈 Release gate 仍未完成 |
 | 80 | Pre-existing Failure policy | PASS | 当前 Status 不把历史失败排除出 Release |
 | 81 | Release Severity | PASS | P0–P3 已在 `KNOWN_ISSUES.md` 使用 |
 | 82 | Release Bug Gate | NOT_VERIFIED | 未完成全产品 P0/P1 triage 与 0/0 证明 |
@@ -131,4 +131,4 @@ Security residual baseline: full release canary, Python/Rust dependency audit, c
 
 `DATA_SAFETY_01` 已通过 R45/R46/R49/R76，`DATA_SAFETY_02` 已通过 R43/R44，`DATA_SAFETY_03` 已通过 R47/R48。Data Safety 已完整通过，但 Security 及其他硬 Gate 未通过前不得宣称 Public Release PASS。
 
-当前 Security 证据：[2026-08-31-codex-offeru-core-v1-security-01](docs/evals/reports/2026-08-31-codex-offeru-core-v1-security-01.md)。该报告把 R54 更新为 PASS，但明确 Security domain 仍为 `NOT_VERIFIED`。
+当前 Security 证据：[2026-08-31-codex-offeru-core-v1-security-01](docs/evals/reports/2026-08-31-codex-offeru-core-v1-security-01.md)。Reliability 当前证据：[2026-08-31-codex-offeru-core-v1-reliability-01](docs/evals/reports/2026-08-31-codex-offeru-core-v1-reliability-01.md)。两个 domain 仍未完整通过；Security residual 仍是下一优先级 blocker。

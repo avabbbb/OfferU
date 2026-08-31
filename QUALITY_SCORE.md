@@ -19,14 +19,14 @@
 | Agent Runtime | 35/100 | Replay only | provider-neutral seam 存在；没有 live provider PASS |
 | Automation | 45/100 | Partial evidence | Event/CareerTask/Operation 链存在；exactly-once、cancel/retry/resume 全矩阵不足 |
 | Data Safety | 88/100 | Current deterministic migration + export/reset | Online Backup API、manifest/hash、三次恢复、restart、migration rollback、integrity、structured export redaction、Demo Reset scope 和 Settings/Doctor 路径均有当前报告 |
-| Reliability | 22/100 | NOT_VERIFIED | 少量重复/重启内测证据；无 soak、resource、failure/recovery report |
+| Reliability | 38/100 | Partial current backend proof | Reliability-01 已覆盖 CareerTask/AutomationEvent 去重、queued/running/waiting 恢复、cancel/retry 和 100-cycle Replay；真实进程/浏览器恢复、RSS、混合用户 soak 与全业务 mutation 仍缺 |
 | Security | 35/100 | Security 01 partial | Tauri capability/CSP、三处 npm audit、CORS/响应头、配置投影、Agent Run 新元数据脱敏和 Pi worker smoke 已有当前证据；完整 canary、Python/Rust audit、全量 PII/logging、diagnostic 和 privacy/consent 仍缺 |
 | Installer / Update | 5/100 | FAIL | Tauri dev shell 存在；无 release sidecar、signed installer、updater、clean-machine 或 upgrade evidence |
 
 ## Weighted release score
 
 ```text
-Current unweighted average: 47/100
+Current unweighted average: 48/100
 Release verdict: NOT READY
 ```
 
