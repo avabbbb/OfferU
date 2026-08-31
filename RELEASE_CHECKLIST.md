@@ -58,15 +58,15 @@
 | 47 | Structured Data Export | PASS | `docs/evals/reports/2026-08-31-codex-offeru-core-v1-data-safety-03.md`：Profile/Job/Application/Resume/Interview/CareerArtifact 结构化集合、counts、可读性、嵌套敏感字段排除和 Settings 下载 |
 | 48 | Reset Demo vs Delete Data | PASS | 同一报告：明确 `source=offeru-demo` + `batch_id=offeru-demo-v1` scope、确认门、子记录清理、真实 Profile/未标记 Job 保留和隔离浏览器 E2E |
 | 49 | SQLite Integrity | PASS | 同一报告：Doctor 与每次恢复后的 `PRAGMA integrity_check=ok`，foreign-key violations 为 0 |
-| 50 | Security Baseline | NOT_VERIFIED | `security-01` 已有当前子项报告；完整 canary、Python/Rust dependency、全量 PII/logging 和 diagnostic 证据仍缺 |
-| 51 | Secrets exclusion | NOT_VERIFIED | 新增 redaction、config projection、Agent Run 新元数据和 tracked scan 已验证；历史行与全 artifact scan 未完成 |
-| 52 | Canary Secret Test | NOT_VERIFIED | 未执行完整 canary protocol |
-| 53 | PII Logging | NOT_VERIFIED | 未做完整 logging/data-flow audit |
+| 50 | Security Baseline | NOT_VERIFIED | `security-01`/`security-02` 已有当前子项报告；错误关联、诊断包和 Python/npm dependency 已补证，完整 canary、Rust dependency、全量 PII/logging、权限 diff 和 privacy/consent 仍缺 |
+| 51 | Secrets exclusion | PARTIAL | `security-02` 覆盖 API validation/error、diagnostic、browser feedback、config/Run/export 路径；历史行、Temp、trace、log 和完整 artifact scan 未完成 |
+| 52 | Canary Secret Test | PARTIAL | durable Agent/Audit/export、API validation/error、diagnostic 和 browser feedback canary 通过；完整 release artifact matrix 未签署 |
+| 53 | PII Logging | NOT_VERIFIED | 已收口确认的原始异常/远端响应路径；全部 logger、历史持久化行和 data-flow inventory 尚未完成 |
 | 54 | Tauri Security | PASS | `docs/evals/reports/2026-08-31-codex-offeru-core-v1-security-01.md`：capability 仅 `core:default`、shell plugin 已移除、CSP 非 `null`，`cargo check` 通过；broad HTTPS limitation 已记录 |
-| 55 | Dependency Gate | NOT_VERIFIED | Agent-runtime、frontend、extension npm production audit 为 0 vulnerabilities；Python/Rust audit 工具不可用 |
-| 56 | Structured Observability | NOT_VERIFIED | 部分 Run/Task/Audit 存在；统一 schema/correlation 未证明 |
-| 57 | Error Correlation | NOT_VERIFIED | 用户可见失败没有系统性 error_id 证明 |
-| 58 | Diagnostic Bundle | NOT_VERIFIED | 基础下载存在；缺 doctor/errors/provider/secret scan 完整验证，Security 01 仅记录残余风险 |
+| 55 | Dependency Gate | PARTIAL | Agent-runtime、frontend、extension npm production audit 与 Python `pip-audit` 为 0 vulnerabilities；RustSec advisory DB 在当前环境不可用 |
+| 56 | Structured Observability | PARTIAL | `security-02` 已覆盖 bounded error metadata 与 error ID；完整 Run/Task/Audit schema/correlation 矩阵仍缺 |
+| 57 | Error Correlation | PARTIAL | HTTP、Starlette 404、validation、frontend request/SSE 与浏览器 feedback 路径已有 `error_id`；全部 provider/stream/audit surface 未完成 |
+| 58 | Diagnostic Bundle | PARTIAL | Registry-backed bundle、provider/DB/error 摘要与浏览器下载 canary 通过；完整 artifact/PII review 与 retention policy 仍缺 |
 | 59 | Performance Baseline | NOT_VERIFIED | 无固定 Reference Environment 报告 |
 | 60 | UI Performance SLO | NOT_VERIFIED | 五项 production measurements 缺失 |
 | 61 | Long Task UX | NOT_VERIFIED | 需所有 >2s 路径 status/progress/cancel/failure audit |
@@ -126,9 +126,9 @@
 ## Current highest-priority blocker
 
 ```text
-Security residual baseline: full release canary, Python/Rust dependency audit, complete logging/PII and diagnostic/error correlation
+Security residual baseline: full release artifact canary, Rust advisory, permission diff, complete logging/PII and privacy/consent
 ```
 
 `DATA_SAFETY_01` 已通过 R45/R46/R49/R76，`DATA_SAFETY_02` 已通过 R43/R44，`DATA_SAFETY_03` 已通过 R47/R48。Data Safety 已完整通过，但 Security 及其他硬 Gate 未通过前不得宣称 Public Release PASS。
 
-当前 Security 证据：[2026-08-31-codex-offeru-core-v1-security-01](docs/evals/reports/2026-08-31-codex-offeru-core-v1-security-01.md)。Reliability 当前证据：[2026-08-31-codex-offeru-core-v1-reliability-01](docs/evals/reports/2026-08-31-codex-offeru-core-v1-reliability-01.md)。两个 domain 仍未完整通过；Security residual 仍是下一优先级 blocker。
+当前 Security 证据：[Security 01](docs/evals/reports/2026-08-31-codex-offeru-core-v1-security-01.md) 与 [Security 02](docs/evals/reports/2026-08-31-codex-offeru-core-v1-security-02.md)。Security 02 已将错误关联、脱敏诊断包、Python/npm dependency 和若干 canary 推进到 PARTIAL，但两个 domain 仍未完整通过；下一执行顺序回到 Reliability 真实进程/浏览器恢复与资源测量，同时保留 Security residual。

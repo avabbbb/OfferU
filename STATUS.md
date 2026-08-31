@@ -19,13 +19,13 @@ OFFERU_PUBLIC_RELEASE_NOT_READY
 ## Current Gate
 
 ```text
-SECURITY_01_RESIDUAL
-full canary → Python/Rust dependency audit → logging/PII → diagnostic correlation
+SECURITY_02_RESIDUAL
+full artifact canary → Rust advisory → permission diff → logging/PII → privacy/consent
 ```
 
 状态：`NOT_VERIFIED`
 
-原因：`DATA_SAFETY_03` 已通过结构化导出完整性、递归敏感字段排除、Demo Reset scope 和隔离 Settings 浏览器路径。`SECURITY_01` 已完成当前 checkout 的首轮边界硬化；Reliability-01 又完成了 CareerTask/AutomationEvent 并发去重、queued/running/waiting 恢复、取消竞态、重复 retry 和 100-cycle Replay 证据。但 Security 完整 canary、Python/Rust dependency、全量 logging/PII、diagnostic/error correlation 和 privacy/consent 仍未验证；Reliability 的真实进程/浏览器强退、RSS 与全业务 mutation 矩阵也未完成。Public Release 继续保持 `NOT_READY`。
+原因：`DATA_SAFETY_03` 已通过结构化导出完整性、递归敏感字段排除、Demo Reset scope 和隔离 Settings 浏览器路径。`SECURITY_02` 已补齐 error ID、脱敏 diagnostic bundle、validation 输入隔离、确认的原始错误路径修复、Python/npm dependency 和浏览器 feedback canary；但完整 artifact canary、Rust advisory、权限 diff、全量 logging/PII、历史行 scrub、privacy/consent 仍未验证。Reliability 的真实进程/浏览器强退、RSS 与全业务 mutation 矩阵也未完成。Public Release 继续保持 `NOT_READY`。
 
 ## Release dashboard
 
@@ -33,7 +33,7 @@ full canary → Python/Rust dependency audit → logging/PII → diagnostic corr
 | --- | --- | --- |
 | Core Product | NOT_VERIFIED | Internal Beta Replay/Fixture 路径曾通过；没有 Public RC 级 10/10 与 50-run 证据 |
 | Data Safety | PASS | R43–R49、R76 已由 `data-safety-01`、`data-safety-02`、`data-safety-03` 报告覆盖 |
-| Security | NOT_VERIFIED | [Security 01 当前子项报告](docs/evals/reports/2026-08-31-codex-offeru-core-v1-security-01.md)；完整 canary、Python/Rust dependency、全量 logging/PII、diagnostic 和 privacy/consent 仍缺 |
+| Security | NOT_VERIFIED | [Security 01](docs/evals/reports/2026-08-31-codex-offeru-core-v1-security-01.md) + [Security 02](docs/evals/reports/2026-08-31-codex-offeru-core-v1-security-02.md)；error/diagnostic/Python/npm 子项已有 PARTIAL 证据，完整 artifact canary、Rust、权限、logging/PII 和 privacy/consent 仍缺 |
 | Reliability | NOT_VERIFIED | [Reliability 01 当前报告](docs/evals/reports/2026-08-31-codex-offeru-core-v1-reliability-01.md)；后端控制面与 100-cycle Replay 已通过，真实 restart/browser/RSS/全 mutation 仍缺 |
 | Packaging | FAIL | Tauri release launcher 仍依赖 repo 与 `.venv312`，无可发布 sidecar/installer |
 | Live Runtime | NOT_VERIFIED | Replay 可用；没有至少一个真实 Agent Runtime `LIVE_PASS` |
@@ -109,6 +109,21 @@ date: 2026-08-30
 
 这只证明控制面和确定性后端切片；Reliability domain 仍为 `NOT_VERIFIED`，因为真实进程强退/浏览器恢复、Resume/Interview/Learning 恢复、全业务 mutation exactly-once、RSS 和混合用户 soak 尚未完成。
 
+## Completed SECURITY_02 slice
+
+正式报告：[2026-08-31-codex-offeru-core-v1-security-02](docs/evals/reports/2026-08-31-codex-offeru-core-v1-security-02.md)
+
+本轮已在当前 checkout 和隔离 canary 上完成并验证：
+
+- HTTP、Starlette 404、validation、未处理异常与前端 request/SSE 的 error ID 关联；
+- Registry-backed 脱敏 diagnostic bundle 与 Settings 浏览器反馈下载；
+- API validation、diagnostic、browser feedback、durable Agent/Audit/export canary；
+- Profile/Resume/Doctor/database migration/scraper 已确认的原始异常路径收口；
+- Python `pip-audit`、`pip check`、JobSpy markdown conversion 与 npm production audit；
+- 后端全量 `298 passed, 10 warnings, 1 subtest passed`，前端 typecheck/build 通过。
+
+Security 仍保持 `NOT_VERIFIED`：Rust advisory DB、完整 release artifact matrix、权限 diff、全量 logging/PII、历史 Agent Run scrub、privacy/consent 和签名未完成。
+
 ## Evidence policy
 
 - `PASS`：当前可定位 commit 的权威证据覆盖整个 Gate；
@@ -122,9 +137,9 @@ date: 2026-08-30
 ## Next action
 
 ```text
-1. 完成 Security 01 residual：隔离 release canary、Python/Rust dependency 工具、全量 logging/PII 和 diagnostic/error correlation。
-2. 将 residual 结果落到当前 commit 可复核报告，并修复本轮发现的 P0/P1 风险。
-3. 回到 Reliability 的真实进程/浏览器恢复、RSS 和全业务 mutation 矩阵，再继续 Packaging、Live Runtime 和 E2E 最高 blocker。
+1. 继续 Reliability：真实进程/浏览器强退恢复、Resume/Interview/Learning 恢复、RSS 和全业务 mutation exactly-once 矩阵。
+2. 并行收口 Security 02 residual：完整 artifact canary、Rust advisory、权限 diff、logging/PII、privacy/consent。
+3. 再继续 Packaging、Live Runtime 和 E2E 最高 blocker。
 ```
 
 ## External requirements (not yet the current blocker)
