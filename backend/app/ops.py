@@ -253,6 +253,7 @@ from app.services.resume_workspace import (
     review_resume_proposal_item,
 )
 from app.services.data_export import export_user_data
+from app.services.demo_data import reset_demo_data
 from app.services.data_safety import (
     cancel_data_restore,
     check_database_integrity,
@@ -1635,6 +1636,15 @@ OPERATIONS: dict[str, Operation] = {
         group="governance",
         audit_redacted_output_parameters=("data",),
         version="2026-08-29",
+    ),
+    "reset_demo_data": Operation(
+        name="reset_demo_data",
+        fn=reset_demo_data,
+        description="确认后只清理 reserved offeru-demo/offeru-demo-v1 合成数据，不接收任意 ID，也不删除真实用户数据。",
+        group="governance",
+        side_effects=("write",),
+        input_model=DataSafetyConfirmationInput,
+        version="2026-08-31",
     ),
     "get_profile": Operation(
         name="get_profile",

@@ -4,7 +4,7 @@
 // api.ts 在 SHOWCASE 模式下把请求转发到这里。只覆盖展示站核心
 // 页面所需端点；未覆盖的路径返回空结构（页面显示空态）。
 
-import { readTable, writeTable, SHOWCASE, type TableName } from "./db";
+import { clearAll, readTable, writeTable, SHOWCASE, type TableName } from "./db";
 import { seeds } from "./seed";
 import {
   validateTriageUpdate,
@@ -937,6 +937,51 @@ async function listAgentRuns(): Promise<unknown> {
   return readTable("agent_runs", seeds.agent_runs);
 }
 
+const SHOWCASE_DATA_TABLES: Array<[TableName, unknown]> = [
+  ["jobs", seeds.jobs],
+  ["pools", seeds.pools],
+  ["profile", seeds.profile],
+  ["resumes", seeds.resumes],
+  ["workspace", seeds.workspace],
+  ["calendar_events", seeds.calendar_events],
+  ["progress_candidates", seeds.progress_candidates],
+  ["agent_runs", seeds.agent_runs],
+  ["app_records", seeds.app_records],
+];
+
+async function showcaseDataExport(): Promise<unknown> {
+  const data: Record<string, unknown[]> = {};
+  for (const [name, fallback] of SHOWCASE_DATA_TABLES) {
+    const value = await readTable(name, fallback);
+    data[name] = Array.isArray(value) ? value : [value];
+  }
+  const counts = Object.fromEntries(Object.entries(data).map(([name, items]) => [name, items.length]));
+  return {
+    schema_version: "offeru.internal-beta.export.v1",
+    exported_at: new Date().toISOString(),
+    scope: "showcase_fixture_workspace",
+    redactions: ["showcase mode has no provider credentials"],
+    counts,
+    data,
+  };
+}
+
+async function resetShowcaseDemoData(body: unknown): Promise<unknown> {
+  if (!body || typeof body !== "object" || (body as { confirmed?: unknown }).confirmed !== true) {
+    return { ok: false, errors: ["重置 Demo 数据必须由使用者明确确认"] };
+  }
+  const before = await showcaseDataExport() as {
+    counts: Record<string, number>;
+  };
+  await clearAll();
+  return {
+    reset: true,
+    scope: "showcase_fixture_workspace",
+    cleared: before.counts,
+    real_data_preserved: true,
+  };
+}
+
 // ---- 入口 ----
 
 export async function showcaseHandle(path: string, options?: RequestInit): Promise<unknown> {
@@ -1010,14 +1055,31 @@ export async function showcaseHandle(path: string, options?: RequestInit): Promi
       return {};
     case "agent":
       if (method === "GET" && sub === "data" && segments[3] === "export") {
+        return showcaseDataExport();
+      }
+      if (method === "POST" && sub === "data" && segments[3] === "demo" && segments[4] === "reset") {
+        return resetShowcaseDemoData(body);
+      }
+      if (method === "GET" && sub === "data" && segments[3] === "safety" && segments[4] === "status") {
         return {
-          schema_version: "offeru.internal-beta.export.v1",
-          exported_at: new Date().toISOString(),
-          scope: "showcase_fixture_workspace",
-          redactions: ["showcase mode has no provider credentials"],
-          counts: {},
-          data: {},
+          database: { exists: true, filename: "offeru-showcase (IndexedDB)" },
+          backup_count: 0,
+          invalid_backup_count: 0,
+          pending_restore: null,
+          storage_mode: "showcase_indexeddb",
         };
+      }
+      if (method === "GET" && sub === "data" && segments[3] === "safety" && segments[4] === "integrity") {
+        return {
+          status: "ok",
+          integrity_check: ["IndexedDB fixture stores available"],
+          foreign_key_violations: [],
+          schema: { user_version: 0, schema_version: 1 },
+          checked_at: new Date().toISOString(),
+        };
+      }
+      if (method === "GET" && sub === "data" && segments[3] === "backups") {
+        return { items: [], invalid: [] };
       }
       if (
         method === "GET"

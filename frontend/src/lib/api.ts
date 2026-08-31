@@ -1196,7 +1196,7 @@ export interface DataBackupItem {
   schema: { user_version: number; schema_version: number };
   hash: string;
   created_at: string;
-  reason: "user" | "pre_restore" | string;
+  reason: "user" | "pre_restore" | "pre_migration" | string;
   size_bytes: number;
 }
 
@@ -1207,6 +1207,18 @@ export interface DataBackupList {
 
 export const dataSafetyApi = {
   exportUserData: () => request<UserDataExport>("/api/agent/data/export"),
+  resetDemoData: (confirmed: boolean) =>
+    request<{
+      reset: boolean;
+      scope: { source: string; batch_id: string };
+      matched_jobs?: number;
+      reason?: string;
+      deleted: Record<string, number>;
+      real_data_preserved: boolean;
+    }>("/api/agent/data/demo/reset", {
+      method: "POST",
+      body: JSON.stringify({ confirmed }),
+    }),
   status: () => request<DataSafetyStatus>("/api/agent/data/safety/status"),
   checkIntegrity: () => request<DataIntegrityReport>("/api/agent/data/safety/integrity"),
   listBackups: () => request<DataBackupList>("/api/agent/data/backups"),

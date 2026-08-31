@@ -93,6 +93,44 @@ class CareerArtifactStore:
         items.sort(key=lambda item: str(item.get("created_at") or ""))
         return {"total": len(items), "items": items}
 
+    def delete_for_scope(
+        self,
+        *,
+        job_ids: set[int] | None = None,
+        application_ids: set[int] | None = None,
+    ) -> dict[str, int]:
+        """Delete only artifacts explicitly linked to a reset data scope."""
+
+        clean_job_ids = {int(value) for value in (job_ids or set())}
+        clean_application_ids = {int(value) for value in (application_ids or set())}
+        deleted = 0
+        with self._lock:
+            for path in self.directory.glob("artifact_*.json"):
+                item = self._read(path)
+                if not item:
+                    continue
+                related_job_id = item.get("related_job_id")
+                related_application_id = item.get("related_application_id")
+                try:
+                    job_matches = related_job_id is not None and int(related_job_id) in clean_job_ids
+                except (TypeError, ValueError):
+                    job_matches = False
+                try:
+                    application_matches = (
+                        related_application_id is not None
+                        and int(related_application_id) in clean_application_ids
+                    )
+                except (TypeError, ValueError):
+                    application_matches = False
+                if not (
+                    job_matches
+                    or application_matches
+                ):
+                    continue
+                path.unlink(missing_ok=True)
+                deleted += 1
+        return {"deleted": deleted}
+
     def save(
         self,
         *,

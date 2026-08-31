@@ -260,7 +260,7 @@ def create_backup(
 ) -> dict[str, Any]:
     """Create an online SQLite snapshot plus managed assets in a verified archive."""
 
-    if reason not in {"user", "pre_restore"}:
+    if reason not in {"user", "pre_restore", "pre_migration"}:
         raise DataSafetyError("不支持的备份原因。")
     with _LOCK:
         source_report = _sqlite_report(layout.database_path)
@@ -614,6 +614,29 @@ def _install_snapshot(layout: DataSafetyLayout, snapshot_dir: Path, manifest: di
         for temporary, _, rollback, _, _ in prepared:
             _remove_path(temporary)
             _remove_path(rollback)
+
+
+def restore_backup_snapshot(layout: DataSafetyLayout, *, backup_id: str) -> dict[str, Any]:
+    """Restore a verified managed snapshot for an internal startup rollback."""
+
+    with _LOCK:
+        archive_path = _archive_path(layout, backup_id)
+        stage_dir = layout.restore_dir / backup_id
+        manifest = _materialize_archive(
+            archive_path,
+            stage_dir,
+            expected_backup_id=backup_id,
+        )
+        try:
+            _install_snapshot(layout, stage_dir, manifest)
+        finally:
+            _remove_path(stage_dir)
+        return {
+            "backup_id": backup_id,
+            "schema": manifest["schema"],
+            "hash": manifest["hash"],
+            "integrity_check": "ok",
+        }
 
 
 def apply_pending_restore_before_database_connect(

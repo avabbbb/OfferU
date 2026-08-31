@@ -270,6 +270,7 @@ class DataSafetyTests(unittest.TestCase):
             "create_data_backup",
             "stage_data_restore",
             "cancel_data_restore",
+            "reset_demo_data",
         ):
             self.assertIn(name, OPERATIONS)
 

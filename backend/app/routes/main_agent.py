@@ -860,6 +860,15 @@ async def export_user_data() -> dict[str, Any]:
     return await _ui_operation_outputs("export_user_data", {})
 
 
+@router.post("/data/demo/reset")
+async def reset_demo_data(body: DataSafetyConfirmationRequest) -> dict[str, Any]:
+    """Reset only the reserved synthetic Demo scope through the Registry."""
+    return await _ui_operation_outputs(
+        "reset_demo_data",
+        {"user_confirmed": body.confirmed},
+    )
+
+
 @router.get("/data/safety/status")
 async def data_safety_status() -> dict[str, Any]:
     return await _ui_operation_outputs("get_data_safety_status", {})

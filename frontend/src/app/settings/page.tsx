@@ -48,6 +48,7 @@ import {
   type DataIntegrityReport,
   type DataSafetyStatus,
 } from "@/lib/api";
+import { SHOWCASE } from "@/lib/showcase/router";
 import { useConfig, updateConfig } from "@/lib/hooks";
 
 interface ProviderModelPreset {
@@ -466,13 +467,15 @@ function AgentProviderHealthCard() {
 function LocalDataSafetyCard() {
   const [exporting, setExporting] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [action, setAction] = useState<"" | "integrity" | "backup" | "restore" | "cancel">("");
+  const [action, setAction] = useState<"" | "integrity" | "backup" | "restore" | "cancel" | "reset_demo">("");
   const [status, setStatus] = useState<DataSafetyStatus | null>(null);
   const [integrity, setIntegrity] = useState<DataIntegrityReport | null>(null);
   const [backups, setBackups] = useState<DataBackupItem[]>([]);
   const [invalidBackups, setInvalidBackups] = useState(0);
   const [selectedBackup, setSelectedBackup] = useState<DataBackupItem | null>(null);
   const [confirmationText, setConfirmationText] = useState("");
+  const [demoResetOpen, setDemoResetOpen] = useState(false);
+  const [demoConfirmationText, setDemoConfirmationText] = useState("");
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const { isOpen, onOpen, onClose } = useDisclosure();
 
@@ -594,6 +597,29 @@ function LocalDataSafetyCard() {
     }
   };
 
+  const resetDemo = async () => {
+    if (demoConfirmationText !== "重置 Demo") return;
+    setAction("reset_demo");
+    setFeedback(null);
+    try {
+      const result = await dataSafetyApi.resetDemoData(true);
+      setDemoResetOpen(false);
+      setDemoConfirmationText("");
+      const cleared = Object.values(result.deleted || {}).reduce((sum, count) => sum + Number(count || 0), 0);
+      setFeedback({
+        type: "success",
+        message: result.reset
+          ? `Demo 数据已重置，清除了 ${cleared} 条明确标记的合成数据。真实用户数据未改动。`
+          : "当前没有明确标记的 Demo 数据，未改动任何真实数据。",
+      });
+      await load();
+    } catch (cause) {
+      setFeedback({ type: "error", message: cause instanceof Error ? cause.message : "Demo 数据重置失败，请稍后重试" });
+    } finally {
+      setAction("");
+    }
+  };
+
   return (
     <>
       <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none" data-testid="local-data-safety">
@@ -639,7 +665,7 @@ function LocalDataSafetyCard() {
         )}
 
         <div className="flex flex-wrap gap-2">
-          <Button className="bauhaus-button bauhaus-button-blue !px-4 !py-3 !text-[11px]" onPress={() => void createBackup()} isLoading={action === "backup"} startContent={action !== "backup" ? <ShieldCheck size={15} /> : undefined}>
+          <Button className="bauhaus-button bauhaus-button-blue !px-4 !py-3 !text-[11px]" onPress={() => void createBackup()} isDisabled={SHOWCASE} isLoading={action === "backup"} startContent={action !== "backup" ? <ShieldCheck size={15} /> : undefined}>
             创建一致性备份
           </Button>
           <Button variant="bordered" onPress={() => void checkIntegrity()} isLoading={action === "integrity"}>
@@ -648,6 +674,33 @@ function LocalDataSafetyCard() {
           <Button variant="bordered" onPress={() => void handleExport()} isLoading={exporting} startContent={!exporting ? <Download size={15} /> : undefined}>
             导出 JSON
           </Button>
+        </div>
+        {SHOWCASE && <p className="text-xs font-semibold text-[var(--foreground-muted)]">Showcase 使用独立 IndexedDB；此处只提供 JSON 导出、完整性说明和 Demo 重置，不伪装成 SQLite 备份。</p>}
+
+        <div className="bauhaus-panel-sm border-amber-500 bg-amber-50 p-4" data-testid="demo-data-safety">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-3xl">
+              <p className="bauhaus-label text-amber-800">Demo / Fixture 工作区</p>
+              <p className="mt-2 text-sm font-black text-amber-950">重置演示数据与删除真实数据是两件事</p>
+              <p className="mt-2 text-sm font-medium leading-relaxed text-amber-900">
+                {SHOWCASE
+                  ? "当前为独立 Showcase IndexedDB。重置会清除这个虚构展示工作区，下一次读取会回到内置演示数据。"
+                  : "本地模式只会清除 source=offeru-demo 且 batch_id=offeru-demo-v1 的明确合成数据；不会删除 Profile、真实岗位、真实简历、备份或连接信息。这里没有删除真实用户数据的入口。"}
+              </p>
+            </div>
+            <Button
+              color="warning"
+              variant="flat"
+              data-testid="reset-demo"
+              onPress={() => {
+                setDemoConfirmationText("");
+                setDemoResetOpen(true);
+              }}
+              isLoading={action === "reset_demo"}
+            >
+              重置 Demo 数据
+            </Button>
+          </div>
         </div>
 
         {integrity && (
@@ -665,7 +718,9 @@ function LocalDataSafetyCard() {
           {backups.slice(0, 5).map((backup) => (
             <div key={backup.backup_id} className="bauhaus-panel-sm flex flex-wrap items-center justify-between gap-3 bg-[var(--surface-muted)] p-3" data-testid={`data-backup-${backup.backup_id}`}>
               <div>
-                <p className="text-sm font-black">{backup.reason === "pre_restore" ? "恢复前自动备份" : "手动备份"} · {backup.backup_id.slice(0, 8)}</p>
+                <p className="text-sm font-black">
+                  {backup.reason === "pre_restore" ? "恢复前自动备份" : backup.reason === "pre_migration" ? "迁移前自动备份" : "手动备份"} · {backup.backup_id.slice(0, 8)}
+                </p>
                 <p className="mt-1 text-xs font-medium text-[var(--foreground-muted)]">{new Date(backup.created_at).toLocaleString()} · {formatBytes(backup.size_bytes)} · v{backup.version}</p>
               </div>
               <Button size="sm" variant="bordered" isDisabled={Boolean(status?.pending_restore)} onPress={() => openRestore(backup)}>
@@ -704,6 +759,24 @@ function LocalDataSafetyCard() {
             <Button variant="light" onPress={onClose}>取消</Button>
             <Button color="danger" isDisabled={confirmationText !== "恢复"} isLoading={action === "restore"} onPress={() => void stageRestore()} startContent={action !== "restore" ? <RotateCcw size={15} /> : undefined}>
               暂存并在重启时恢复
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal isOpen={demoResetOpen} onClose={() => setDemoResetOpen(false)} size="lg" placement="center">
+        <ModalContent className={bauhausModalContentClassName}>
+          <ModalHeader className="border-b-2 border-[var(--border-strong)] px-6 py-5 text-xl font-black">确认重置 Demo 工作区</ModalHeader>
+          <ModalBody className="space-y-4 px-6 py-6">
+            <div className="bauhaus-panel-sm border-amber-500 bg-amber-50 p-4 text-sm font-semibold leading-relaxed text-amber-950">
+              只处理明确标记的合成数据。不会调用真实岗位删除接口，也不会删除你的 Profile、真实岗位、简历、备份或连接凭据。展示模式只清除独立的 Showcase IndexedDB。
+            </div>
+            <Input label="输入“重置 Demo”以继续" value={demoConfirmationText} onValueChange={setDemoConfirmationText} autoFocus classNames={bauhausFieldClassNames} />
+          </ModalBody>
+          <ModalFooter className="border-t-2 border-[var(--border-strong)] px-6 py-5">
+            <Button variant="light" onPress={() => setDemoResetOpen(false)}>取消</Button>
+            <Button color="warning" data-testid="confirm-reset-demo" isDisabled={demoConfirmationText !== "重置 Demo"} isLoading={action === "reset_demo"} onPress={() => void resetDemo()}>
+              确认重置 Demo
             </Button>
           </ModalFooter>
         </ModalContent>

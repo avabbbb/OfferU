@@ -194,6 +194,7 @@ def _doctor() -> dict[str, Any]:
 
 
 def _doctor_data_safety() -> dict[str, Any]:
+    from app.database import schema_migration_status
     from app.services.data_safety import (
         check_database_integrity,
         get_data_safety_status,
@@ -216,6 +217,7 @@ def _doctor_data_safety() -> dict[str, Any]:
         }
     return {
         "status": "ready" if integrity.get("status") == "ok" else "failed",
+        "schema_migration": schema_migration_status(),
         "integrity_check": integrity.get("status", "failed"),
         "foreign_key_violations": len(integrity.get("foreign_key_violations") or []),
         "backup_count": status.get("backup_count", 0),

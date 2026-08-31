@@ -5,6 +5,11 @@
 # 支持 SQLite（开发）和 PostgreSQL（生产）
 # =============================================
 
+import asyncio
+from pathlib import Path
+import sqlite3
+from typing import Any, Callable
+
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy import event
 from sqlalchemy.orm import DeclarativeBase
@@ -12,6 +17,12 @@ from sqlalchemy.orm import DeclarativeBase
 from app.config import get_settings
 
 settings = get_settings()
+
+CURRENT_SCHEMA_VERSION = 2
+
+
+class DatabaseMigrationError(RuntimeError):
+    """Fail-closed error for an unsupported or failed schema migration."""
 
 # 创建异步数据库引擎
 # echo=False 关闭 SQL 日志；生产环境 database_url 应为 postgresql+asyncpg://...
@@ -45,11 +56,48 @@ async def get_db():
         yield session
 
 
-async def init_db():
-    """创建所有表（首次启动时调用）+ 自动补全缺失列"""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        await conn.run_sync(_auto_migrate)
+async def init_db(*, backend_dir: Path | None = None):
+    """Create the schema and apply versioned SQLite migrations safely."""
+
+    migration = await prepare_schema_migration(
+        database_url=settings.database_url,
+        backend_dir=backend_dir,
+    )
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+            if engine.dialect.name == "sqlite":
+                await conn.run_sync(run_schema_migrations)
+            else:
+                await conn.run_sync(_auto_migrate)
+    except Exception as exc:
+        if migration.get("required"):
+            backup_id = migration.get("backup_id") or "unknown"
+            rollback_error: Exception | None = None
+            try:
+                await engine.dispose()
+                from app.services.data_safety import _runtime_layout, restore_backup_snapshot
+
+                await asyncio.to_thread(
+                    restore_backup_snapshot,
+                    _runtime_layout(
+                        database_url=settings.database_url,
+                        backend_dir=backend_dir or Path(__file__).resolve().parents[1],
+                    ),
+                    backup_id=backup_id,
+                )
+            except Exception as rollback_exc:
+                rollback_error = rollback_exc
+            if rollback_error is not None:
+                raise DatabaseMigrationError(
+                    f"数据库迁移 {migration['from_version']}→{migration['target_version']} 失败；"
+                    f"迁移前备份 {backup_id} 保留，但自动回滚失败，启动已停止。"
+                ) from rollback_error
+            raise DatabaseMigrationError(
+                f"数据库迁移 {migration['from_version']}→{migration['target_version']} 失败；"
+                f"已从迁移前备份 {backup_id} 恢复，启动已停止。"
+            ) from exc
+        raise
     await seed_templates()
     # HTML 简历工作室（studio 路由）使用的 HtmlResumeTemplate 种子；
     # 此前从未被调用，模板表恒空导致 studio 页面无模板可选。
@@ -58,7 +106,6 @@ async def init_db():
     async with async_session() as session:
         await seed_html_templates(session)
     await seed_system_batches()
-    await migrate_triage_status()
 
 
 def _auto_migrate(connection):
@@ -107,6 +154,208 @@ def _auto_migrate(connection):
                 'ON "operation_audit_logs" ("idempotency_key")'
             )
         )
+
+
+def _sqlite_path_for_url(database_url: str) -> Path | None:
+    """Return a file-backed SQLite path; external databases are out of scope."""
+
+    from sqlalchemy.engine import make_url
+
+    url = make_url(database_url)
+    if not url.drivername.startswith("sqlite") or not url.database or url.database == ":memory:":
+        return None
+    path = Path(url.database)
+    if not path.is_absolute():
+        path = Path.cwd() / path
+    return path.resolve()
+
+
+def _read_sqlite_user_version(database_path: Path) -> int:
+    try:
+        connection = sqlite3.connect(str(database_path), timeout=30)
+        try:
+            return int(connection.execute("PRAGMA user_version").fetchone()[0])
+        finally:
+            connection.close()
+    except sqlite3.Error as exc:
+        raise DatabaseMigrationError(f"无法读取 SQLite schema version: {exc}") from exc
+
+
+def schema_migration_status(database_url: str | None = None) -> dict[str, Any]:
+    """Return a read-only version status for Doctor and release diagnostics."""
+
+    url = database_url or settings.database_url
+    database_path = _sqlite_path_for_url(url)
+    if database_path is None:
+        return {
+            "status": "not_applicable",
+            "database_exists": False,
+            "current_version": None,
+            "target_version": CURRENT_SCHEMA_VERSION,
+            "migration_required": False,
+        }
+    if not database_path.is_file():
+        return {
+            "status": "ready",
+            "database_exists": False,
+            "current_version": 0,
+            "target_version": CURRENT_SCHEMA_VERSION,
+            "migration_required": False,
+        }
+    try:
+        current_version = _read_sqlite_user_version(database_path)
+    except DatabaseMigrationError as exc:
+        return {
+            "status": "failed",
+            "database_exists": True,
+            "current_version": None,
+            "target_version": CURRENT_SCHEMA_VERSION,
+            "migration_required": True,
+            "error": str(exc),
+        }
+    if current_version > CURRENT_SCHEMA_VERSION:
+        status = "failed"
+    elif current_version < CURRENT_SCHEMA_VERSION:
+        status = "pending"
+    else:
+        status = "ready"
+    return {
+        "status": status,
+        "database_exists": True,
+        "current_version": current_version,
+        "target_version": CURRENT_SCHEMA_VERSION,
+        "migration_required": current_version < CURRENT_SCHEMA_VERSION,
+    }
+
+
+async def prepare_schema_migration(
+    database_url: str | None = None,
+    *,
+    backend_dir: Path | None = None,
+) -> dict[str, Any]:
+    """Create a verified pre-migration backup before opening the ORM engine."""
+
+    url = database_url or settings.database_url
+    database_path = _sqlite_path_for_url(url)
+    if database_path is None or not database_path.is_file():
+        return {
+            "required": False,
+            "from_version": 0,
+            "target_version": CURRENT_SCHEMA_VERSION,
+        }
+    current_version = _read_sqlite_user_version(database_path)
+    if current_version > CURRENT_SCHEMA_VERSION:
+        raise DatabaseMigrationError(
+            f"SQLite schema version {current_version} 高于当前支持的 {CURRENT_SCHEMA_VERSION}。"
+        )
+    if current_version == CURRENT_SCHEMA_VERSION:
+        return {
+            "required": False,
+            "from_version": current_version,
+            "target_version": CURRENT_SCHEMA_VERSION,
+        }
+
+    from app.services.data_safety import _runtime_layout, create_backup
+
+    backup = await asyncio.to_thread(
+        create_backup,
+        _runtime_layout(
+            database_url=url,
+            backend_dir=backend_dir or Path(__file__).resolve().parents[1],
+        ),
+        reason="pre_migration",
+    )
+    return {
+        "required": True,
+        "from_version": current_version,
+        "target_version": CURRENT_SCHEMA_VERSION,
+        "backup_id": backup["backup_id"],
+    }
+
+
+def _schema_smoke_check(connection) -> None:  # noqa: ANN001
+    """Verify the migrated schema before its version marker is committed."""
+
+    integrity_rows = [str(row[0]) for row in connection.exec_driver_sql("PRAGMA integrity_check")]
+    if integrity_rows != ["ok"]:
+        raise DatabaseMigrationError(
+            f"迁移后的 SQLite integrity_check 未通过: {integrity_rows}"
+        )
+    foreign_key_rows = list(connection.exec_driver_sql("PRAGMA foreign_key_check"))
+    if foreign_key_rows:
+        raise DatabaseMigrationError(
+            f"迁移后的 SQLite foreign_key_check 未通过: {foreign_key_rows[:5]}"
+        )
+    from sqlalchemy import inspect as sa_inspect
+
+    inspector = sa_inspect(connection)
+    missing = [
+        table.name
+        for table in Base.metadata.sorted_tables
+        if not inspector.has_table(table.name)
+    ]
+    if missing:
+        raise DatabaseMigrationError(f"迁移后的 schema 缺少表: {missing[:10]}")
+
+
+def _migrate_schema_v1(connection) -> None:  # noqa: ANN001
+    """Baseline the existing create-all schema and its idempotency index."""
+
+    _auto_migrate(connection)
+
+
+def _migrate_schema_v2(connection) -> None:  # noqa: ANN001
+    """Normalize the historical triage values as a transactional migration."""
+
+    from sqlalchemy import text
+
+    connection.execute(
+        text("UPDATE jobs SET triage_status = 'picked' WHERE triage_status = 'screened'")
+    )
+    connection.execute(
+        text("UPDATE jobs SET triage_status = 'inbox' WHERE triage_status = 'unscreened'")
+    )
+    connection.execute(
+        text("UPDATE pools SET scope = 'picked' WHERE scope = 'screened'")
+    )
+    connection.execute(
+        text("UPDATE pools SET scope = 'inbox' WHERE scope = 'unscreened'")
+    )
+
+
+SCHEMA_MIGRATIONS: dict[int, Callable[[Any], None]] = {
+    1: _migrate_schema_v1,
+    2: _migrate_schema_v2,
+}
+
+
+def run_schema_migrations(connection) -> dict[str, int]:  # noqa: ANN001
+    """Apply each missing SQLite migration in the caller's transaction."""
+
+    from sqlalchemy import text
+
+    current_version = int(connection.execute(text("PRAGMA user_version")).scalar_one())
+    if current_version > CURRENT_SCHEMA_VERSION:
+        raise DatabaseMigrationError(
+            f"SQLite schema version {current_version} 高于当前支持的 {CURRENT_SCHEMA_VERSION}。"
+        )
+    for version in range(current_version + 1, CURRENT_SCHEMA_VERSION + 1):
+        migration = SCHEMA_MIGRATIONS.get(version)
+        if migration is None:
+            raise DatabaseMigrationError(f"缺少 schema migration v{version}。")
+        try:
+            migration(connection)
+        except DatabaseMigrationError:
+            raise
+        except Exception as exc:
+            raise DatabaseMigrationError(f"schema migration v{version} 执行失败。") from exc
+        _schema_smoke_check(connection)
+        connection.execute(text(f"PRAGMA user_version = {version}"))
+    _schema_smoke_check(connection)
+    return {
+        "from_version": current_version,
+        "to_version": CURRENT_SCHEMA_VERSION,
+    }
 
 
 # =============================================
@@ -219,42 +468,3 @@ async def seed_system_batches():
                 )
             )
             await session.commit()
-
-
-async def migrate_triage_status():
-    """将旧的 triage_status 值（screened/unscreened）归一化为 picked/inbox"""
-    import logging
-    from sqlalchemy import text
-
-    logger = logging.getLogger(__name__)
-
-    try:
-        async with async_session() as session:
-            need_migrate = (
-                await session.execute(
-                    text(
-                        "SELECT COUNT(*) FROM jobs WHERE triage_status IN ('screened','unscreened')"
-                        " UNION ALL "
-                        "SELECT COUNT(*) FROM pools WHERE scope IN ('screened','unscreened')"
-                    )
-                )
-            ).all()
-            if all(row[0] == 0 for row in need_migrate):
-                return
-
-            await session.execute(
-                text("UPDATE jobs SET triage_status = 'picked' WHERE triage_status = 'screened'")
-            )
-            await session.execute(
-                text("UPDATE jobs SET triage_status = 'inbox' WHERE triage_status = 'unscreened'")
-            )
-            await session.execute(
-                text("UPDATE pools SET scope = 'picked' WHERE scope = 'screened'")
-            )
-            await session.execute(
-                text("UPDATE pools SET scope = 'inbox' WHERE scope = 'unscreened'")
-            )
-            await session.commit()
-            logger.info("migrate_triage_status: normalized legacy screened/unscreened values")
-    except Exception as exc:
-        logger.error("migrate_triage_status failed: %s", exc)

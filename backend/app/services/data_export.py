@@ -142,7 +142,7 @@ async def export_user_data() -> dict[str, Any]:
             sections[name] = [_serialize_row(row) for row in rows]
 
     artifacts = career_artifact_store.export_all()
-    sections["career_artifacts"] = artifacts["items"]
+    sections["career_artifacts"] = [_safe_value(item) for item in artifacts["items"]]
     counts = {name: len(items) for name, items in sections.items()}
     return {
         "schema_version": "offeru.internal-beta.export.v1",
