@@ -25,7 +25,7 @@ secret scan → dependency audit → permissions/CSP/logging baseline
 
 状态：`NOT_VERIFIED`
 
-原因：`DATA_SAFETY_03` 已通过结构化导出完整性、递归敏感字段排除、Demo Reset scope 和隔离 Settings 浏览器路径。Public Release 仍缺当前 Security、Reliability、Packaging、Live Runtime 和 E2E 证据；下一条可自主执行的纵向 Gate 是 Security baseline。
+原因：`DATA_SAFETY_03` 已通过结构化导出完整性、递归敏感字段排除、Demo Reset scope 和隔离 Settings 浏览器路径。`SECURITY_01` 已完成当前 checkout 的首轮边界硬化：Tauri capability/CSP、三处 npm audit、CORS/响应头、配置投影、Agent Run 新元数据脱敏和 Pi worker protocol smoke 已有证据；但完整 canary、Python/Rust dependency、全量 logging/PII、diagnostic/error correlation 和 privacy/consent 仍未验证。Public Release 继续保持 `NOT_READY`。
 
 ## Release dashboard
 
@@ -33,7 +33,7 @@ secret scan → dependency audit → permissions/CSP/logging baseline
 | --- | --- | --- |
 | Core Product | NOT_VERIFIED | Internal Beta Replay/Fixture 路径曾通过；没有 Public RC 级 10/10 与 50-run 证据 |
 | Data Safety | PASS | R43–R49、R76 已由 `data-safety-01`、`data-safety-02`、`data-safety-03` 报告覆盖 |
-| Security | NOT_VERIFIED | 无 canary、dependency、permission、logging、CSP 全套报告 |
+| Security | NOT_VERIFIED | [Security 01 当前子项报告](docs/evals/reports/2026-08-31-codex-offeru-core-v1-security-01.md)；完整 canary、Python/Rust dependency、全量 logging/PII、diagnostic 和 privacy/consent 仍缺 |
 | Reliability | NOT_VERIFIED | 无正式 restart matrix、2h/100-cycle soak 与 RSS 报告 |
 | Packaging | FAIL | Tauri release launcher 仍依赖 repo 与 `.venv312`，无可发布 sidecar/installer |
 | Live Runtime | NOT_VERIFIED | Replay 可用；没有至少一个真实 Agent Runtime `LIVE_PASS` |
@@ -107,9 +107,9 @@ date: 2026-08-30
 ## Next action
 
 ```text
-1. 建立 Security 01：secret/canary scan、依赖审计、PII/logging data-flow 和当前权限/CSP 基线。
-2. 将每项 Security 结果落到可复核报告，并修复本轮发现的 P0/P1 风险。
-3. 通过 Security 后继续 Reliability、Packaging、Live Runtime 和 E2E 最高 blocker。
+1. 完成 Security 01 residual：隔离 release canary、Python/Rust dependency 工具、全量 logging/PII 和 diagnostic/error correlation。
+2. 将 residual 结果落到当前 commit 可复核报告，并修复本轮发现的 P0/P1 风险。
+3. Security domain 完整通过或形成明确的非 Public Release 限制后，继续 Reliability、Packaging、Live Runtime 和 E2E 最高 blocker。
 ```
 
 ## External requirements (not yet the current blocker)

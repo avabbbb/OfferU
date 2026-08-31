@@ -58,15 +58,15 @@
 | 47 | Structured Data Export | PASS | `docs/evals/reports/2026-08-31-codex-offeru-core-v1-data-safety-03.md`：Profile/Job/Application/Resume/Interview/CareerArtifact 结构化集合、counts、可读性、嵌套敏感字段排除和 Settings 下载 |
 | 48 | Reset Demo vs Delete Data | PASS | 同一报告：明确 `source=offeru-demo` + `batch_id=offeru-demo-v1` scope、确认门、子记录清理、真实 Profile/未标记 Job 保留和隔离浏览器 E2E |
 | 49 | SQLite Integrity | PASS | 同一报告：Doctor 与每次恢复后的 `PRAGMA integrity_check=ok`，foreign-key violations 为 0 |
-| 50 | Security Baseline | NOT_VERIFIED | 六类审计均无正式当前报告 |
-| 51 | Secrets exclusion | NOT_VERIFIED | 设计/局部 redaction 存在；需全 artifact scan |
+| 50 | Security Baseline | NOT_VERIFIED | `security-01` 已有当前子项报告；完整 canary、Python/Rust dependency、全量 PII/logging 和 diagnostic 证据仍缺 |
+| 51 | Secrets exclusion | NOT_VERIFIED | 新增 redaction、config projection、Agent Run 新元数据和 tracked scan 已验证；历史行与全 artifact scan 未完成 |
 | 52 | Canary Secret Test | NOT_VERIFIED | 未执行完整 canary protocol |
 | 53 | PII Logging | NOT_VERIFIED | 未做完整 logging/data-flow audit |
-| 54 | Tauri Security | FAIL | CSP=`null`；shell capability 未最小化 |
-| 55 | Dependency Gate | NOT_VERIFIED | Python/npm/Rust Critical/High audit 未执行 |
+| 54 | Tauri Security | PASS | `docs/evals/reports/2026-08-31-codex-offeru-core-v1-security-01.md`：capability 仅 `core:default`、shell plugin 已移除、CSP 非 `null`，`cargo check` 通过；broad HTTPS limitation 已记录 |
+| 55 | Dependency Gate | NOT_VERIFIED | Agent-runtime、frontend、extension npm production audit 为 0 vulnerabilities；Python/Rust audit 工具不可用 |
 | 56 | Structured Observability | NOT_VERIFIED | 部分 Run/Task/Audit 存在；统一 schema/correlation 未证明 |
 | 57 | Error Correlation | NOT_VERIFIED | 用户可见失败没有系统性 error_id 证明 |
-| 58 | Diagnostic Bundle | NOT_VERIFIED | 基础下载存在；缺 doctor/errors/provider/secret scan 完整验证 |
+| 58 | Diagnostic Bundle | NOT_VERIFIED | 基础下载存在；缺 doctor/errors/provider/secret scan 完整验证，Security 01 仅记录残余风险 |
 | 59 | Performance Baseline | NOT_VERIFIED | 无固定 Reference Environment 报告 |
 | 60 | UI Performance SLO | NOT_VERIFIED | 五项 production measurements 缺失 |
 | 61 | Long Task UX | NOT_VERIFIED | 需所有 >2s 路径 status/progress/cancel/failure audit |
@@ -126,7 +126,9 @@
 ## Current highest-priority blocker
 
 ```text
-Security baseline: secret scan, dependency audit, logging/PII, Tauri CSP/capabilities
+Security residual baseline: full release canary, Python/Rust dependency audit, complete logging/PII and diagnostic/error correlation
 ```
 
 `DATA_SAFETY_01` 已通过 R45/R46/R49/R76，`DATA_SAFETY_02` 已通过 R43/R44，`DATA_SAFETY_03` 已通过 R47/R48。Data Safety 已完整通过，但 Security 及其他硬 Gate 未通过前不得宣称 Public Release PASS。
+
+当前 Security 证据：[2026-08-31-codex-offeru-core-v1-security-01](docs/evals/reports/2026-08-31-codex-offeru-core-v1-security-01.md)。该报告把 R54 更新为 PASS，但明确 Security domain 仍为 `NOT_VERIFIED`。
