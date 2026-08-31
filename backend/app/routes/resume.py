@@ -1445,9 +1445,9 @@ def _render_resume_pdf_bytes(html_str: str) -> bytes:
         raise HTTPException(
             status_code=500,
             detail=(
-                "Failed to render PDF. "
-                f"WeasyPrint error: {weasy_error}; "
-                f"ReportLab fallback error: {exc}"
+                "PDF 渲染失败。"
+                f"（WeasyPrint: {safe_error_message(weasy_error or RuntimeError('unavailable'))}; "
+                f"备用渲染器: {safe_error_message(exc)}）"
             ),
         )
 
@@ -1560,7 +1560,10 @@ async def export_image(
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Failed to render image: {exc}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"图片渲染失败: {safe_error_message(exc)}",
+        ) from exc
 
     _set_cached_export_image(cache_key, png_bytes)
 
@@ -2349,7 +2352,10 @@ async def ai_generate_draft(
             )
             profile_sections = list(sec_result.scalars().all())
         except Exception as e:
-            yield _sse_event("error", {"message": f"读取档案失败: {e}"})
+            yield _sse_event(
+                "error",
+                {"message": f"读取档案失败: {safe_error_message(e)}"},
+            )
             yield _sse_event("done", {})
             return
 
@@ -2374,7 +2380,10 @@ async def ai_generate_draft(
                 tier="standard",
             )
         except Exception as e:
-            yield _sse_event("error", {"message": f"LLM 调用异常: {e}"})
+            yield _sse_event(
+                "error",
+                {"message": f"LLM 调用异常: {safe_error_message(e)}"},
+            )
             yield _sse_event("done", {})
             return
 
@@ -2446,7 +2455,15 @@ async def ai_generate_draft(
                 },
             )
         except Exception as e:
-            yield _sse_event("error", {"message": f"草稿持久化失败，未返回未落盘结果: {e}"})
+            yield _sse_event(
+                "error",
+                {
+                    "message": (
+                        "草稿持久化失败，未返回未落盘结果: "
+                        f"{safe_error_message(e)}"
+                    )
+                },
+            )
             yield _sse_event("done", {})
             return
 

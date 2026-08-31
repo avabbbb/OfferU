@@ -218,8 +218,10 @@ class BossScraper(JobScraperBase):
                             logger.error("[boss] code=37 AUTH_REQUIRED — Cookie 已过期")
                             return results
                         if code != 0:
-                            logger.warning("[boss] API 返回异常 code=%s, message=%s",
-                                           code, data.get("message", ""))
+                            logger.warning(
+                                "[boss] API 返回异常 code=%s",
+                                code,
+                            )
                             break
 
                         # BOSS直聘返回结构：{ zpData: { jobList: [...] } }

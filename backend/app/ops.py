@@ -257,6 +257,7 @@ from app.services.resume_workspace import (
     review_resume_proposal_item,
 )
 from app.services.data_export import export_user_data
+from app.services.diagnostics import export_diagnostic_bundle
 from app.services.demo_data import reset_demo_data
 from app.services.data_safety import (
     cancel_data_restore,
@@ -1640,6 +1641,14 @@ OPERATIONS: dict[str, Operation] = {
         group="governance",
         audit_redacted_output_parameters=("data",),
         version="2026-08-29",
+    ),
+    "export_diagnostic_bundle": Operation(
+        name="export_diagnostic_bundle",
+        fn=export_diagnostic_bundle,
+        description="导出本地脱敏诊断包；只包含运行元数据、错误关联 ID 和安全摘要，不包含 Profile、岗位、简历或凭据。",
+        group="governance",
+        audit_redacted_output_parameters=("recent_errors",),
+        version="2026-08-31",
     ),
     "reset_demo_data": Operation(
         name="reset_demo_data",

@@ -17,6 +17,7 @@ from app.services.operation_projection import (
     execute_or_propose_operation,
 )
 from app.services.resume_parser import get_resume_ocr_capabilities
+from app.services.security_redaction import safe_error_message
 
 
 APP_VERSION = "0.4.0"
@@ -213,7 +214,7 @@ def _doctor_data_safety() -> dict[str, Any]:
         return {
             "status": "unavailable",
             "integrity_check": "not_verified",
-            "error": str(exc),
+            "error": safe_error_message(exc),
         }
     return {
         "status": "ready" if integrity.get("status") == "ok" else "failed",

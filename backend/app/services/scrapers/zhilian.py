@@ -33,6 +33,7 @@ from app.services.scrapers.base import (
     JobItem,
     register_scraper,
 )
+from app.services.security_redaction import safe_error_message
 
 logger = logging.getLogger(__name__)
 
@@ -201,8 +202,8 @@ class ZhilianScraper(JobScraperBase):
 
                         if code != 200:
                             logger.warning(
-                                "[zhilian] API code=%s msg=%s",
-                                code, data.get("message", ""),
+                                "[zhilian] API returned non-success code=%s",
+                                code,
                             )
                             break
 
@@ -231,7 +232,10 @@ class ZhilianScraper(JobScraperBase):
                         logger.warning("[zhilian] 请求超时 kw=%s page=%d", kw, page_idx + 1)
                         break
                     except Exception as e:
-                        logger.warning("[zhilian] 请求异常: %r", e)
+                        logger.warning(
+                            "[zhilian] 请求异常: %s",
+                            safe_error_message(e),
+                        )
                         break
 
                 if len(results) >= max_results:
@@ -337,7 +341,10 @@ class ZhilianScraper(JobScraperBase):
                     hash_key=self._make_hash(title, "", url),
                 )
         except Exception as e:
-            logger.warning("[zhilian] get_detail 异常: %r", e)
+            logger.warning(
+                "[zhilian] get_detail 异常: %s",
+                safe_error_message(e),
+            )
             return None
 
 

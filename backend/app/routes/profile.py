@@ -53,6 +53,7 @@ from app.services.profile_schema import (
     normalize_section_type_alias,
 )
 from app.services.profile_builder_agent import build_initial_agent_state, normalize_profile_agent_patch
+from app.services.security_redaction import safe_error_message
 
 try:
     from app.agents.skills.conversational_extractor import generate_instant_draft as _generate_instant_draft
@@ -2380,7 +2381,10 @@ async def smart_fill_ping(_data: SmartFillPingRequest):
             tier="fast",
         )
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"AI 服务不可用: {exc}") from exc
+        raise HTTPException(
+            status_code=503,
+            detail=f"AI 服务不可用: {safe_error_message(exc)}",
+        ) from exc
 
     if not result:
         raise HTTPException(status_code=503, detail="AI 服务不可用: empty response")
@@ -2572,7 +2576,10 @@ async def smart_fill_map(data: SmartFillMapRequest):
             tier="fast",
         )
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"AI 映射失败: {exc}") from exc
+        raise HTTPException(
+            status_code=503,
+            detail=f"AI 映射失败: {safe_error_message(exc)}",
+        ) from exc
 
     parsed = extract_json(llm_result or "")
     if not isinstance(parsed, dict):

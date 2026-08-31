@@ -15,6 +15,7 @@ from sqlalchemy import event
 from sqlalchemy.orm import DeclarativeBase
 
 from app.config import get_settings
+from app.services.security_redaction import safe_error_message
 
 settings = get_settings()
 
@@ -211,7 +212,7 @@ def schema_migration_status(database_url: str | None = None) -> dict[str, Any]:
             "current_version": None,
             "target_version": CURRENT_SCHEMA_VERSION,
             "migration_required": True,
-            "error": str(exc),
+            "error": safe_error_message(exc),
         }
     if current_version > CURRENT_SCHEMA_VERSION:
         status = "failed"

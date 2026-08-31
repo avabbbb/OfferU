@@ -40,7 +40,10 @@ const fetcher = async (url: string) => {  if (SHOWCASE) {
   } catch (error) {
     throw new Error(formatBackendNetworkError(error));
   }
-  if (!res.ok) throw new Error(`API ${res.status}`);
+  if (!res.ok) {
+    const errorId = res.headers.get("X-OfferU-Error-Id");
+    throw new Error(errorId ? `API ${res.status}（错误 ID: ${errorId}）` : `API ${res.status}`);
+  }
   return res.json();
 };
 

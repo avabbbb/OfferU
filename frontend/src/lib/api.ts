@@ -43,7 +43,9 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   if (!res.ok) {
     const payload = await res.json().catch(() => ({}));
     const detail = payload?.detail || payload?.message;
-    throw new Error(detail ? String(detail) : `API Error: ${res.status}`);
+    const errorId = res.headers.get("X-OfferU-Error-Id") || payload?.error_id;
+    const message = detail ? String(detail) : `API Error: ${res.status}`;
+    throw new Error(errorId ? `${message}（错误 ID: ${errorId}）` : message);
   }
   return res.json();
 }
@@ -66,9 +68,13 @@ async function readEventStream<T>(
     (res.status === 404 || res.status === 405)
     && String(options.method || "GET").toUpperCase() === "POST"
   ) {
-    throw new Error("__SSE_UNAVAILABLE__");
+    const errorId = res.headers.get("X-OfferU-Error-Id");
+    throw new Error(errorId ? `__SSE_UNAVAILABLE__（错误 ID: ${errorId}）` : "__SSE_UNAVAILABLE__");
   }
-  if (!res.ok) throw new Error(`API Error: ${res.status}`);
+  if (!res.ok) {
+    const errorId = res.headers.get("X-OfferU-Error-Id");
+    throw new Error(errorId ? `API Error: ${res.status}（错误 ID: ${errorId}）` : `API Error: ${res.status}`);
+  }
   if (!res.body) throw new Error("Agent 流式响应不可用");
 
   const reader = res.body.getReader();
@@ -89,7 +95,11 @@ async function readEventStream<T>(
     try { data = JSON.parse(raw); } catch { /* keep SSE text payload */ }
     onEvent?.(event, data);
     if (event === "message" && data?.response) result = data.response as T;
-    if (event === "error") throw new Error(data?.error || data?.content || "Agent 流式请求失败");
+    if (event === "error") {
+      const message = data?.error || data?.content || "Agent 流式请求失败";
+      const errorId = data?.error_id;
+      throw new Error(errorId ? `${message}（错误 ID: ${errorId}）` : message);
+    }
   };
 
   while (true) {
@@ -1205,6 +1215,50 @@ export interface DataBackupList {
   invalid: { backup_id: string; error: string }[];
 }
 
+export interface DiagnosticBundle {
+  schema_version: string;
+  created_at: string;
+  app: {
+    version: string;
+    build_mode: string;
+    runtime_mode: string;
+    python: string;
+    platform: string;
+  };
+  database: {
+    status: string;
+    database_exists: boolean;
+    backup_count: number;
+    invalid_backup_count: number;
+    pending_restore: boolean;
+    storage_mode: string;
+    foreign_key_violation_count: number;
+  };
+  agent_providers: {
+    provider_id: string;
+    status: string;
+    available: boolean;
+    authenticated: boolean | null;
+    blocked: boolean;
+    version: string;
+    auth_mode: string;
+    protocol_version: string;
+    capability_names: string[];
+    last_error: string;
+    checked_at: string;
+  }[];
+  recent_errors: {
+    error_id: string;
+    occurred_at: string;
+    method: string;
+    path: string;
+    status_code: number;
+    kind: string;
+    message: string;
+  }[];
+  privacy: Record<string, boolean | string>;
+}
+
 export const dataSafetyApi = {
   exportUserData: () => request<UserDataExport>("/api/agent/data/export"),
   resetDemoData: (confirmed: boolean) =>
@@ -1235,6 +1289,10 @@ export const dataSafetyApi = {
       "/api/agent/data/restore/cancel",
       { method: "POST", body: JSON.stringify({ confirmed }) },
     ),
+};
+
+export const diagnosticsApi = {
+  bundle: () => request<DiagnosticBundle>("/api/agent/diagnostics/bundle"),
 };
 
 // ---- Profile API ----

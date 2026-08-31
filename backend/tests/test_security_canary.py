@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -24,7 +24,7 @@ from app.models.models import (  # noqa: E402
     Profile,
 )
 from app.ops import execute_operation  # noqa: E402
-from app.services import agent_run_state, data_export  # noqa: E402
+from app.services import agent_run_state, data_export, diagnostics  # noqa: E402
 from app.services.agent_run_state import create_agent_run  # noqa: E402
 
 
@@ -130,6 +130,87 @@ class SecurityCanaryTests(unittest.TestCase):
         self.assertGreaterEqual(result["event_count"], 2)
         self.assertEqual(result["audit_count"], 1)
         self.assertEqual(result["export_schema"], "offeru.internal-beta.export.v1")
+
+    def test_diagnostic_bundle_and_error_response_redact_canary(self) -> None:
+        async def run() -> tuple[dict[str, object], bytes, str]:
+            diagnostics.record_error(
+                "err_0123456789abcdef",
+                method="POST",
+                path=f"/api/canary?api_token={RELEASE_CANARY}",
+                status_code=503,
+                kind="provider",
+                message=f"provider failed api_token={RELEASE_CANARY}",
+            )
+            with patch(
+                "app.services.agent_provider_health.list_provider_health",
+                new=AsyncMock(
+                    return_value={
+                        "providers": [
+                            {
+                                "provider_id": "pi",
+                                "status": "blocked",
+                                "available": False,
+                                "authenticated": False,
+                                "blocked": True,
+                                "last_error": f"token={RELEASE_CANARY}",
+                                "capabilities": {},
+                            }
+                        ]
+                    }
+                ),
+            ), patch(
+                "app.services.data_safety.get_data_safety_status",
+                new=AsyncMock(
+                    return_value={
+                        "database": {"exists": True, "filename": "canary.db"},
+                        "backup_count": 1,
+                        "invalid_backup_count": 0,
+                        "pending_restore": None,
+                        "storage_mode": "managed_local",
+                        "error": f"api_token={RELEASE_CANARY}",
+                    }
+                ),
+            ), patch(
+                "app.services.data_safety.check_database_integrity",
+                new=AsyncMock(
+                    return_value={
+                        "status": "ok",
+                        "foreign_key_violations": [],
+                    }
+                ),
+            ):
+                bundle = await diagnostics.export_diagnostic_bundle()
+
+            from app.main import _error_response
+            from starlette.requests import Request
+
+            request = Request(
+                {
+                    "type": "http",
+                    "method": "POST",
+                    "path": "/api/canary",
+                    "headers": [],
+                    "query_string": b"",
+                }
+            )
+            response = _error_response(
+                request,
+                status_code=503,
+                detail=f"provider failed api_token={RELEASE_CANARY}",
+                kind="security_canary",
+            )
+            return bundle, response.body, response.headers.get("X-OfferU-Error-Id", "")
+
+        bundle, response_body, error_id = asyncio.run(run())
+        raw = json.dumps(
+            {"bundle": bundle, "response": response_body.decode("utf-8")},
+            ensure_ascii=False,
+        )
+        self.assertNotIn(RELEASE_CANARY, raw)
+        self.assertEqual(bundle["schema_version"], "offeru.internal-beta.diagnostics.v1")
+        self.assertFalse(bundle["privacy"]["includes_credentials"])
+        self.assertRegex(error_id, r"^err_[a-f0-9]{16}$")
+        self.assertIn(error_id, response_body.decode("utf-8"))
 
 
 if __name__ == "__main__":

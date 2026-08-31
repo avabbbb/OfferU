@@ -6,13 +6,25 @@
 # =============================================
 
 import os
+import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import get_settings
+from app.services.diagnostics import new_error_id, record_error
+from app.services.security_redaction import (
+    redact_sensitive_text,
+    redact_sensitive_value,
+    safe_error_message,
+)
+
+logger = logging.getLogger("offeru.api")
 settings = get_settings()
 from app.services.data_safety import apply_pending_restore_before_database_connect
 
@@ -137,9 +149,153 @@ app.add_middleware(
 )
 
 
+def _safe_http_detail(detail: object) -> object:
+    if isinstance(detail, (dict, list, tuple)):
+        return redact_sensitive_value(detail)
+    return redact_sensitive_text(detail, max_length=500)
+
+
+def _error_response(
+    request: Request,
+    *,
+    status_code: int,
+    detail: object,
+    kind: str,
+    error_id: str | None = None,
+    headers: dict[str, str] | None = None,
+    diagnostic_message: object | None = None,
+) -> JSONResponse:
+    resolved_error_id = error_id or new_error_id()
+    request.state.offeru_error_id = resolved_error_id
+    record_error(
+        resolved_error_id,
+        method=request.method,
+        path=request.url.path,
+        status_code=status_code,
+        kind=kind,
+        message=detail if diagnostic_message is None else diagnostic_message,
+    )
+    response = JSONResponse(
+        status_code=status_code,
+        content={
+            "detail": _safe_http_detail(detail),
+            "error_id": resolved_error_id,
+        },
+        headers=headers,
+    )
+    response.headers["X-OfferU-Error-Id"] = resolved_error_id
+    return response
+
+
+@app.exception_handler(HTTPException)
+async def offeru_http_exception_handler(
+    request: Request,
+    exc: HTTPException,
+) -> JSONResponse:
+    return _error_response(
+        request,
+        status_code=exc.status_code,
+        detail=exc.detail or "请求失败",
+        kind="http_exception",
+        headers=dict(exc.headers or {}),
+    )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def offeru_starlette_http_exception_handler(
+    request: Request,
+    exc: StarletteHTTPException,
+) -> JSONResponse:
+    return _error_response(
+        request,
+        status_code=exc.status_code,
+        detail=exc.detail or "请求失败",
+        kind="starlette_http_exception",
+        headers=dict(exc.headers or {}),
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def offeru_validation_exception_handler(
+    request: Request,
+    exc: RequestValidationError,
+) -> JSONResponse:
+    # Deliberately omit FastAPI's `input` field: it can contain a pasted token,
+    # cookie or other user-provided secret even when the validation message is safe.
+    details = [
+        {
+            "loc": [str(part)[:80] for part in (item.get("loc") or [])[:8]],
+            "type": redact_sensitive_text(item.get("type"), max_length=80),
+            "msg": redact_sensitive_text(item.get("msg"), max_length=240),
+        }
+        for item in exc.errors()
+    ][:20]
+    return _error_response(
+        request,
+        status_code=422,
+        detail=details,
+        kind="validation_error",
+    )
+
+
+@app.exception_handler(Exception)
+async def offeru_unhandled_exception_handler(
+    request: Request,
+    exc: Exception,
+) -> JSONResponse:
+    error_id = new_error_id()
+    safe_message = safe_error_message(exc, fallback="未处理的服务器错误")
+    logger.error(
+        "Unhandled API error id=%s type=%s message=%s",
+        error_id,
+        type(exc).__name__,
+        safe_message,
+    )
+    return _error_response(
+        request,
+        status_code=500,
+        detail="服务器内部错误，请提供错误 ID。",
+        kind="unhandled_exception",
+        error_id=error_id,
+        diagnostic_message=safe_message,
+    )
+
+
 @app.middleware("http")
 async def add_security_headers(request, call_next):
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        # Keep a final fail-closed boundary for exceptions raised by streaming
+        # or middleware code before FastAPI can select an exception handler.
+        response = _error_response(
+            request,
+            status_code=500,
+            detail="服务器内部错误，请提供错误 ID。",
+            kind="middleware_exception",
+            diagnostic_message=safe_error_message(
+                exc,
+                fallback="未处理的服务器错误",
+            ),
+        )
+        logger.error(
+            "Unhandled middleware error id=%s type=%s message=%s",
+            response.headers.get("X-OfferU-Error-Id", ""),
+            type(exc).__name__,
+            safe_error_message(exc, fallback="未处理的服务器错误"),
+        )
+    if response.status_code >= 400 and not response.headers.get("X-OfferU-Error-Id"):
+        error_id = new_error_id()
+        request.state.offeru_error_id = error_id
+        record_error(
+            error_id,
+            method=request.method,
+            path=request.url.path,
+            status_code=response.status_code,
+            kind="http_response",
+            message=f"HTTP {response.status_code}",
+        )
+        response.headers["X-OfferU-Error-Id"] = error_id
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "no-referrer")
@@ -196,12 +352,18 @@ async def health_check():
         if database_url.startswith("sqlite") and "///" in database_url
         else "configured external database"
     )
+    database_filename = (
+        os.path.basename(database_path.replace("\\", "/"))
+        if database_path != "configured external database"
+        else database_path
+    ) or "configured local database"
     return {
         "status": "ok",
         "service": "OfferU",
         "version": app.version,
         "build_mode": os.getenv("OFFERU_BUILD_MODE", "local-development"),
-        "database_path": database_path,
+        "database_path": database_filename,
+        "database_path_redacted": True,
         "runtime_mode": os.getenv("OFFERU_RUNTIME_MODE") or os.getenv("OFFERU_INTERVIEW_RUNTIME") or "local",
         "runtime": "python",
         "architecture": "file-first-agent-kernel",

@@ -43,6 +43,7 @@ import {
 import {
   agentRuntimeApi,
   dataSafetyApi,
+  diagnosticsApi,
   type AgentProviderHealth,
   type DataBackupItem,
   type DataIntegrityReport,
@@ -788,38 +789,62 @@ function LocalDataSafetyCard() {
 function LocalFeedbackCard() {
   const [note, setNote] = useState("");
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [exporting, setExporting] = useState(false);
 
-  const handleExport = () => {
+  const handleExport = async () => {
     const trimmed = note.trim();
     if (!trimmed) {
       setFeedback({ type: "error", message: "请先描述遇到的问题。" });
       return;
     }
-    const payload = {
-      schema_version: "offeru.internal-beta.feedback.v1",
-      created_at: new Date().toISOString(),
-      current_page: window.location.hash || "#/",
-      app_version: "frontend@0.1.0",
-      build_mode: import.meta.env.MODE || "unknown",
-      runtime_mode: import.meta.env.VITE_SHOWCASE === "true" ? "showcase" : "local",
-      user_note: trimmed,
-      diagnostics: {
-        user_agent: navigator.userAgent,
-        language: navigator.language,
-        viewport: `${window.innerWidth}x${window.innerHeight}`,
-      },
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-    const url = window.URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    const stamp = new Date().toISOString().replace(/[T:.Z]/g, "-").replace(/-+$/, "");
-    anchor.href = url;
-    anchor.download = `offeru-feedback-${stamp}.json`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    window.URL.revokeObjectURL(url);
-    setFeedback({ type: "success", message: "诊断包已下载。请确认其中没有你不想分享的文字后再发送。" });
+    setExporting(true);
+    setFeedback(null);
+    try {
+      let backendDiagnostics: Awaited<ReturnType<typeof diagnosticsApi.bundle>> | null = null;
+      let backendDiagnosticsStatus: "included" | "showcase" | "unavailable" = SHOWCASE ? "showcase" : "unavailable";
+      let backendErrorId = "";
+      if (!SHOWCASE) {
+        try {
+          backendDiagnostics = await diagnosticsApi.bundle();
+          backendDiagnosticsStatus = "included";
+        } catch (error) {
+          const errorId = String(error instanceof Error ? error.message : "").match(/err_[a-f0-9]{16}/)?.[0];
+          backendErrorId = errorId || "";
+        }
+      }
+      const safeNote = redactFeedbackText(trimmed);
+      const payload = {
+        schema_version: "offeru.internal-beta.feedback.v2",
+        created_at: new Date().toISOString(),
+        current_page: window.location.hash || "#/",
+        app_version: "frontend@0.1.0",
+        build_mode: import.meta.env.MODE || "unknown",
+        runtime_mode: import.meta.env.VITE_SHOWCASE === "true" ? "showcase" : "local",
+        user_note: safeNote,
+        note_redacted: safeNote !== trimmed,
+        diagnostics: {
+          user_agent: navigator.userAgent,
+          language: navigator.language,
+          viewport: `${window.innerWidth}x${window.innerHeight}`,
+        },
+        backend_diagnostics_status: backendDiagnosticsStatus,
+        backend_error_id: backendErrorId || undefined,
+        backend: backendDiagnostics,
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      const stamp = new Date().toISOString().replace(/[T:.Z]/g, "-").replace(/-+$/, "");
+      anchor.href = url;
+      anchor.download = `offeru-feedback-${stamp}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(url);
+      setFeedback({ type: "success", message: "诊断包已下载。请确认其中没有你不想分享的文字后再发送。" });
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -848,7 +873,8 @@ function LocalFeedbackCard() {
         <div className="flex flex-wrap items-center gap-3">
           <Button
             className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
-            onPress={handleExport}
+            onPress={() => void handleExport()}
+            isLoading={exporting}
             startContent={<MessageSquare size={15} />}
           >
             下载问题诊断包
@@ -865,6 +891,14 @@ function LocalFeedbackCard() {
       </CardBody>
     </Card>
   );
+}
+
+function redactFeedbackText(value: string): string {
+  return value
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
+    .replace(/(\b(?:api[_-]?(?:key|token)|auth[_-]?token|access[_-]?token|refresh[_-]?token|client[_-]?secret|password|secret|credential|cookie|authorization|token)\b\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,;}\]]+)/gi, "$1[redacted]")
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[redacted email]")
+    .replace(/(?<![\w])(?:\+?\d[\d\s().-]{7,}\d)(?![\w])/g, "[redacted phone]");
 }
 
 interface FetchModelsButtonProps {

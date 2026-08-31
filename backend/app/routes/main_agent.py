@@ -868,6 +868,12 @@ async def export_user_data() -> dict[str, Any]:
     return await _ui_operation_outputs("export_user_data", {})
 
 
+@router.get("/diagnostics/bundle")
+async def export_diagnostic_bundle() -> dict[str, Any]:
+    """Downloadable local-only diagnostics through the Operation Registry."""
+    return await _ui_operation_outputs("export_diagnostic_bundle", {})
+
+
 @router.post("/data/demo/reset")
 async def reset_demo_data(body: DataSafetyConfirmationRequest) -> dict[str, Any]:
     """Reset only the reserved synthetic Demo scope through the Registry."""
