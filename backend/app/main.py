@@ -52,6 +52,12 @@ async def lifespan(app: FastAPI):
         await recover_career_tasks()
     except Exception:
         pass  # CareerTask 恢复失败不阻塞启动；任务状态仍可由控制面查询
+    from app.services.automation import recover_automation_events
+
+    try:
+        await recover_automation_events()
+    except Exception:
+        pass  # AutomationEvent 恢复失败不阻塞启动；信号仍可由控制面重试
     from app.services.job_research import recover_interrupted_research_runs
 
     try:

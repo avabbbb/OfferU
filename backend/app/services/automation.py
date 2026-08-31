@@ -7,6 +7,7 @@ Registry remain the only execution/control boundaries.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import uuid
@@ -14,6 +15,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.database import async_session
 from app.models.models import (
@@ -63,6 +65,9 @@ _DEFAULT_RULES: dict[str, dict[str, Any]] = {
         "description": "保存岗位后后台建立岗位情报；结果仍是候选/提案。",
     },
 }
+
+_AUTOMATION_EVENT_CREATE_LOCK = asyncio.Lock()
+_AUTOMATION_EVENT_PROCESS_LOCK = asyncio.Lock()
 
 
 def _now() -> datetime:
@@ -374,66 +379,106 @@ async def record_automation_event(
         target_id=clean_target_id,
         payload=clean_payload,
     )
-    async with async_session() as db:
-        existing = (
-            await db.execute(
-                select(AutomationEvent).where(AutomationEvent.dedupe_key == clean_key)
-            )
-        ).scalar_one_or_none()
-        if existing is not None:
-            return {**_event_view(existing), "reused": True}
-        event = AutomationEvent(
-            event_id=f"automation_evt_{uuid.uuid4().hex[:24]}",
-            event_type=clean_type,
-            source=clean_source,
-            target_type=clean_target_type,
-            target_id=clean_target_id,
-            payload_json=_bounded(clean_payload),
-            dedupe_key=clean_key[:180],
-            status="queued",
-        )
-        db.add(event)
-        await db.commit()
-        await db.refresh(event)
-
-    rule = await _rule(clean_type)
-    if not rule["enabled"]:
-        return {
-            **(await _update_event(event.event_id, status="skipped", result={"rule": rule})),
-            "reused": False,
-        }
-    if clean_type != "JOB_SAVED":
-        return {
-            **(await _update_event(event.event_id, status="completed", result={"rule": rule})),
-            "reused": False,
-        }
-    try:
-        result = await _dispatch_job_saved(event, rule)
-    except Exception as exc:  # keep the signal visible; never claim success
-        blocked = any(
-            marker in str(exc).casefold()
-            for marker in ("401", "unauthorized", "invalid_api_key", "authentication")
-        )
-        return {
-            **(
-                await _update_event(
-                    event.event_id,
-                    status="blocked" if blocked else "failed",
-                    error="provider authentication failed" if blocked else safe_error_message(exc),
+    stored_key = clean_key[:180]
+    async with _AUTOMATION_EVENT_CREATE_LOCK:
+        async with async_session() as db:
+            existing = (
+                await db.execute(
+                    select(AutomationEvent).where(AutomationEvent.dedupe_key == stored_key)
                 )
-            ),
-            "reused": False,
-        }
-    return {
-        **(
-            await _update_event(
-                event.event_id,
-                status="dispatched",
-                result=result,
+            ).scalar_one_or_none()
+            if existing is not None:
+                event_id = existing.event_id
+                reused = True
+            else:
+                event = AutomationEvent(
+                    event_id=f"automation_evt_{uuid.uuid4().hex[:24]}",
+                    event_type=clean_type,
+                    source=clean_source,
+                    target_type=clean_target_type,
+                    target_id=clean_target_id,
+                    payload_json=_bounded(clean_payload),
+                    dedupe_key=stored_key,
+                    status="queued",
+                )
+                db.add(event)
+                try:
+                    await db.commit()
+                except IntegrityError:
+                    # The unique constraint remains authoritative across
+                    # multiple backend processes; reuse the committed winner.
+                    await db.rollback()
+                    existing = (
+                        await db.execute(
+                            select(AutomationEvent).where(
+                                AutomationEvent.dedupe_key == stored_key
+                            )
+                        )
+                    ).scalar_one_or_none()
+                    if existing is None:
+                        raise
+                    event_id = existing.event_id
+                    reused = True
+                else:
+                    event_id = event.event_id
+                    reused = False
+    return {**(await _process_automation_event(event_id)), "reused": reused}
+
+
+async def _process_automation_event(event_id: str) -> dict[str, Any]:
+    """Process one queued signal exactly once within this backend process."""
+
+    async with _AUTOMATION_EVENT_PROCESS_LOCK:
+        async with async_session() as db:
+            event = await db.get(AutomationEvent, str(event_id or ""))
+        if event is None:
+            raise ValueError(f"AutomationEvent {event_id} 不存在")
+        if event.status != "queued":
+            return _event_view(event)
+
+        rule = await _rule(event.event_type)
+        if not rule["enabled"]:
+            return await _update_event(event.event_id, status="skipped", result={"rule": rule})
+        if event.event_type != "JOB_SAVED":
+            return await _update_event(event.event_id, status="completed", result={"rule": rule})
+        try:
+            result = await _dispatch_job_saved(event, rule)
+        except Exception as exc:  # keep the signal visible; never claim success
+            blocked = any(
+                marker in str(exc).casefold()
+                for marker in ("401", "unauthorized", "invalid_api_key", "authentication")
             )
-        ),
-        "reused": False,
-    }
+            return await _update_event(
+                event.event_id,
+                status="blocked" if blocked else "failed",
+                error="provider authentication failed" if blocked else safe_error_message(exc),
+            )
+        return await _update_event(event.event_id, status="dispatched", result=result)
+
+
+async def recover_automation_events() -> dict[str, int]:
+    """Resume signals committed before a backend restart but not yet processed."""
+
+    async with async_session() as db:
+        rows = (
+            await db.execute(
+                select(AutomationEvent)
+                .where(AutomationEvent.status == "queued")
+                .order_by(AutomationEvent.created_at.asc())
+            )
+        ).scalars().all()
+        event_ids = [row.event_id for row in rows]
+    recovered = 0
+    completed = 0
+    failed = 0
+    for event_id in event_ids:
+        result = await _process_automation_event(event_id)
+        recovered += 1
+        if result["status"] in {"failed", "blocked"}:
+            failed += 1
+        elif result["status"] in {"completed", "dispatched", "skipped"}:
+            completed += 1
+    return {"recovered": recovered, "completed": completed, "failed": failed}
 
 
 async def handle_career_task_finished(task_id: str) -> dict[str, Any] | None:
