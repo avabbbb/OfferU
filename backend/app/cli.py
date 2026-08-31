@@ -153,6 +153,7 @@ def _commands() -> list[str]:
 def _doctor() -> dict[str, Any]:
     settings = get_settings()
     provider_health = _doctor_provider_health()
+    data_safety = _doctor_data_safety()
     return {
         "ok": True,
         "service": "OfferU CLI",
@@ -171,6 +172,7 @@ def _doctor() -> dict[str, Any]:
             "note": "打开该地址完成浏览器检查",
         },
         "agent_providers": provider_health,
+        "data_safety": data_safety,
         "optional_integrations": {
             "codex_oauth": "optional",
             "gmail_oauth": "optional",
@@ -188,6 +190,37 @@ def _doctor() -> dict[str, Any]:
             "dry_run_for_mutations": True,
             "auto_submit_applications": False,
         },
+    }
+
+
+def _doctor_data_safety() -> dict[str, Any]:
+    from app.services.data_safety import (
+        check_database_integrity,
+        get_data_safety_status,
+    )
+
+    async def collect() -> tuple[dict[str, Any], dict[str, Any]]:
+        status, integrity = await asyncio.gather(
+            get_data_safety_status(),
+            check_database_integrity(),
+        )
+        return status, integrity
+
+    try:
+        status, integrity = asyncio.run(collect())
+    except Exception as exc:
+        return {
+            "status": "unavailable",
+            "integrity_check": "not_verified",
+            "error": str(exc),
+        }
+    return {
+        "status": "ready" if integrity.get("status") == "ok" else "failed",
+        "integrity_check": integrity.get("status", "failed"),
+        "foreign_key_violations": len(integrity.get("foreign_key_violations") or []),
+        "backup_count": status.get("backup_count", 0),
+        "invalid_backup_count": status.get("invalid_backup_count", 0),
+        "pending_restore": status.get("pending_restore"),
     }
 
 

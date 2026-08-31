@@ -25,18 +25,29 @@ import {
   AlertCircle,
   Check,
   Cookie,
+  Database,
   Download,
   Eye,
   EyeOff,
   Key,
   MessageSquare,
   Plus,
+  RefreshCw,
+  RotateCcw,
   Save,
   Search,
+  ShieldCheck,
   SquarePen,
   Trash2,
 } from "lucide-react";
-import { agentRuntimeApi, dataSafetyApi, type AgentProviderHealth } from "@/lib/api";
+import {
+  agentRuntimeApi,
+  dataSafetyApi,
+  type AgentProviderHealth,
+  type DataBackupItem,
+  type DataIntegrityReport,
+  type DataSafetyStatus,
+} from "@/lib/api";
 import { useConfig, updateConfig } from "@/lib/hooks";
 
 interface ProviderModelPreset {
@@ -454,7 +465,110 @@ function AgentProviderHealthCard() {
 
 function LocalDataSafetyCard() {
   const [exporting, setExporting] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [action, setAction] = useState<"" | "integrity" | "backup" | "restore" | "cancel">("");
+  const [status, setStatus] = useState<DataSafetyStatus | null>(null);
+  const [integrity, setIntegrity] = useState<DataIntegrityReport | null>(null);
+  const [backups, setBackups] = useState<DataBackupItem[]>([]);
+  const [invalidBackups, setInvalidBackups] = useState(0);
+  const [selectedBackup, setSelectedBackup] = useState<DataBackupItem | null>(null);
+  const [confirmationText, setConfirmationText] = useState("");
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const { isOpen, onOpen, onClose } = useDisclosure();
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [nextStatus, nextBackups] = await Promise.all([
+        dataSafetyApi.status(),
+        dataSafetyApi.listBackups(),
+      ]);
+      setStatus(nextStatus);
+      setBackups(nextBackups.items || []);
+      setInvalidBackups((nextBackups.invalid || []).length);
+    } catch (cause) {
+      setFeedback({ type: "error", message: cause instanceof Error ? cause.message : "数据安全状态读取失败" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const formatBytes = (size: number) => {
+    if (size < 1024) return `${size} B`;
+    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+    return `${(size / 1024 / 1024).toFixed(1)} MB`;
+  };
+
+  const checkIntegrity = async () => {
+    setAction("integrity");
+    setFeedback(null);
+    try {
+      const report = await dataSafetyApi.checkIntegrity();
+      setIntegrity(report);
+      setFeedback({
+        type: report.status === "ok" ? "success" : "error",
+        message: report.status === "ok" ? "数据库与外键完整性检查通过。" : "数据库完整性检查未通过，请先不要恢复或升级。",
+      });
+    } catch (cause) {
+      setFeedback({ type: "error", message: cause instanceof Error ? cause.message : "完整性检查失败" });
+    } finally {
+      setAction("");
+    }
+  };
+
+  const createBackup = async () => {
+    setAction("backup");
+    setFeedback(null);
+    try {
+      await dataSafetyApi.createBackup();
+      setFeedback({ type: "success", message: "一致性备份已创建，并通过 manifest 与完整性校验。" });
+      await load();
+    } catch (cause) {
+      setFeedback({ type: "error", message: cause instanceof Error ? cause.message : "备份创建失败" });
+    } finally {
+      setAction("");
+    }
+  };
+
+  const openRestore = (backup: DataBackupItem) => {
+    setSelectedBackup(backup);
+    setConfirmationText("");
+    setFeedback(null);
+    onOpen();
+  };
+
+  const stageRestore = async () => {
+    if (!selectedBackup || confirmationText !== "恢复") return;
+    setAction("restore");
+    try {
+      await dataSafetyApi.stageRestore(selectedBackup.backup_id, true);
+      onClose();
+      setFeedback({ type: "success", message: "恢复已安全暂存。请关闭并重新打开 OfferU；启动前会再次校验并保留 pre-restore 备份。" });
+      await load();
+    } catch (cause) {
+      setFeedback({ type: "error", message: cause instanceof Error ? cause.message : "恢复暂存失败" });
+    } finally {
+      setAction("");
+    }
+  };
+
+  const cancelRestore = async () => {
+    setAction("cancel");
+    setFeedback(null);
+    try {
+      await dataSafetyApi.cancelRestore(true);
+      setFeedback({ type: "success", message: "待恢复任务已取消，原备份仍然保留。" });
+      await load();
+    } catch (cause) {
+      setFeedback({ type: "error", message: cause instanceof Error ? cause.message : "取消恢复失败" });
+    } finally {
+      setAction("");
+    }
+  };
 
   const handleExport = async () => {
     setExporting(true);
@@ -481,25 +595,86 @@ function LocalDataSafetyCard() {
   };
 
   return (
-    <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none" data-testid="local-data-safety">
-      <CardBody className="space-y-4 p-5 md:p-6">
+    <>
+      <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none" data-testid="local-data-safety">
+        <CardBody className="space-y-5 p-5 md:p-6">
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="bauhaus-label text-[var(--foreground-muted)]">本地数据安全</p>
-            <h3 className="mt-2 text-2xl font-bold text-[var(--foreground)]">导出你的 OfferU 数据</h3>
+            <h3 className="mt-2 text-2xl font-bold text-[var(--foreground)]">备份、恢复与数据导出</h3>
             <p className="mt-2 max-w-2xl text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
-              导出 Profile、岗位、投递、材料、面试和学习记录。Provider 密钥、邮箱凭据、分享密码和浏览器会话不会包含在文件中。
+              一致性备份包含 SQLite、上传文件和受管产物；恢复只会先暂存，下次启动前校验并替换。JSON 导出不包含 Provider 密钥、邮箱凭据或浏览器会话。
             </p>
           </div>
-          <Button
-            className="bauhaus-button bauhaus-button-blue !px-4 !py-3 !text-[11px]"
-            onPress={() => void handleExport()}
-            isLoading={exporting}
-            startContent={!exporting ? <Download size={15} /> : undefined}
-          >
-            导出本地数据
+          <Button size="sm" variant="light" onPress={() => void load()} isLoading={loading} startContent={!loading ? <RefreshCw size={14} /> : undefined}>
+            刷新
           </Button>
         </div>
+
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
+            <p className="bauhaus-label text-[var(--foreground-muted)]">数据库</p>
+            <p className="mt-2 flex items-center gap-2 text-sm font-black"><Database size={16} />{status?.database.filename || "读取中"}</p>
+          </div>
+          <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
+            <p className="bauhaus-label text-[var(--foreground-muted)]">可恢复备份</p>
+            <p className="mt-2 text-3xl font-black">{status?.backup_count ?? "—"}</p>
+          </div>
+          <div className={`bauhaus-panel-sm p-4 ${status?.pending_restore ? "bg-amber-50" : "bg-emerald-50"}`}>
+            <p className="bauhaus-label text-[var(--foreground-muted)]">恢复状态</p>
+            <p className="mt-2 flex items-center gap-2 text-sm font-black">
+              {status?.pending_restore ? <RotateCcw size={16} /> : <ShieldCheck size={16} />}
+              {status?.pending_restore ? "等待重启" : "无待恢复任务"}
+            </p>
+          </div>
+        </div>
+
+        {status?.pending_restore && (
+          <div role="status" className="bauhaus-panel-sm flex flex-wrap items-center justify-between gap-3 border-amber-500 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-950">
+            <span>备份 {status.pending_restore.backup_id.slice(0, 8)}… 已暂存。关闭并重新打开 OfferU 后恢复。</span>
+            <Button size="sm" variant="light" color="warning" isLoading={action === "cancel"} onPress={() => void cancelRestore()}>
+              取消待恢复
+            </Button>
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-2">
+          <Button className="bauhaus-button bauhaus-button-blue !px-4 !py-3 !text-[11px]" onPress={() => void createBackup()} isLoading={action === "backup"} startContent={action !== "backup" ? <ShieldCheck size={15} /> : undefined}>
+            创建一致性备份
+          </Button>
+          <Button variant="bordered" onPress={() => void checkIntegrity()} isLoading={action === "integrity"}>
+            检查数据库完整性
+          </Button>
+          <Button variant="bordered" onPress={() => void handleExport()} isLoading={exporting} startContent={!exporting ? <Download size={15} /> : undefined}>
+            导出 JSON
+          </Button>
+        </div>
+
+        {integrity && (
+          <div className={`bauhaus-panel-sm px-4 py-3 text-sm font-semibold ${integrity.status === "ok" ? "border-emerald-600 bg-emerald-50 text-emerald-900" : "border-[var(--primary-red)] bg-red-50 text-red-800"}`}>
+            {integrity.status === "ok" ? "Integrity OK" : "Integrity Failed"} · schema {integrity.schema.schema_version} · 外键异常 {integrity.foreign_key_violations.length}
+          </div>
+        )}
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-black text-[var(--foreground)]">最近备份</p>
+            {invalidBackups > 0 && <Chip color="danger" size="sm">{invalidBackups} 个无效归档</Chip>}
+          </div>
+          {!loading && backups.length === 0 && <p className="text-sm font-medium text-[var(--foreground-muted)]">还没有备份。创建第一份一致性备份后，可以从这里选择恢复。</p>}
+          {backups.slice(0, 5).map((backup) => (
+            <div key={backup.backup_id} className="bauhaus-panel-sm flex flex-wrap items-center justify-between gap-3 bg-[var(--surface-muted)] p-3" data-testid={`data-backup-${backup.backup_id}`}>
+              <div>
+                <p className="text-sm font-black">{backup.reason === "pre_restore" ? "恢复前自动备份" : "手动备份"} · {backup.backup_id.slice(0, 8)}</p>
+                <p className="mt-1 text-xs font-medium text-[var(--foreground-muted)]">{new Date(backup.created_at).toLocaleString()} · {formatBytes(backup.size_bytes)} · v{backup.version}</p>
+              </div>
+              <Button size="sm" variant="bordered" isDisabled={Boolean(status?.pending_restore)} onPress={() => openRestore(backup)}>
+                恢复此备份
+              </Button>
+            </div>
+          ))}
+        </div>
+
         {feedback && (
           <div
             role={feedback.type === "error" ? "alert" : "status"}
@@ -512,8 +687,28 @@ function LocalDataSafetyCard() {
             {feedback.message}
           </div>
         )}
-      </CardBody>
-    </Card>
+        </CardBody>
+      </Card>
+
+      <Modal isOpen={isOpen} onClose={onClose} size="lg" placement="center">
+        <ModalContent className={bauhausModalContentClassName}>
+          <ModalHeader className="border-b-2 border-[var(--border-strong)] px-6 py-5 text-xl font-black">确认恢复本地数据</ModalHeader>
+          <ModalBody className="space-y-4 px-6 py-6">
+            <div className="bauhaus-panel-sm border-amber-500 bg-amber-50 p-4 text-sm font-semibold leading-relaxed text-amber-950">
+              当前运行中的数据不会立刻改变。OfferU 会校验并暂存备份；下次启动前先创建恢复前备份，再替换 SQLite 与受管资产。恢复失败会自动回滚并停止启动。
+            </div>
+            <p className="text-sm font-bold">备份：{selectedBackup?.backup_id}</p>
+            <Input label="输入“恢复”以继续" value={confirmationText} onValueChange={setConfirmationText} autoFocus classNames={bauhausFieldClassNames} />
+          </ModalBody>
+          <ModalFooter className="border-t-2 border-[var(--border-strong)] px-6 py-5">
+            <Button variant="light" onPress={onClose}>取消</Button>
+            <Button color="danger" isDisabled={confirmationText !== "恢复"} isLoading={action === "restore"} onPress={() => void stageRestore()} startContent={action !== "restore" ? <RotateCcw size={15} /> : undefined}>
+              暂存并在重启时恢复
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+    </>
   );
 }
 

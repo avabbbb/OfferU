@@ -542,6 +542,8 @@ class CliBlackBoxTests(unittest.TestCase):
         self.assertEqual(payload["backend"]["runtime"], "python")
         self.assertEqual(payload["frontend"]["url"], "http://127.0.0.1:7410")
         self.assertTrue(payload["agent_providers"])
+        self.assertIn(payload["data_safety"]["status"], {"ready", "failed", "unavailable"})
+        self.assertIn("integrity_check", payload["data_safety"])
 
     def test_ops_lists_machine_readable_operation_metadata(self) -> None:
         payload = self.run_cli("ops")

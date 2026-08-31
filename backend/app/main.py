@@ -13,8 +13,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
-from app.database import init_db
 settings = get_settings()
+from app.services.data_safety import apply_pending_restore_before_database_connect
+
+# A staged restore must replace the SQLite file before app.database creates its
+# engine. Validation failures deliberately abort startup and leave both the live
+# data and the staged recovery material available for diagnosis.
+startup_restore = apply_pending_restore_before_database_connect(
+    database_url=settings.database_url,
+)
+
+from app.database import init_db
 if settings.offeru_enable_mcp:
     try:
         from app.mcp_server import HAS_MCP_SERVER, mcp as mcp_server
@@ -179,4 +188,5 @@ async def health_check():
         "runtime": "python",
         "architecture": "file-first-agent-kernel",
         "mcp_enabled": _HAS_MCP,
+        "startup_restore": startup_restore,
     }

@@ -1,6 +1,6 @@
 # OfferU Public Release Checklist
 
-更新时间：2026-08-30
+更新时间：2026-08-31
 
 状态只允许：`PASS`、`FAIL`、`BLOCKED_EXTERNAL`、`PRE_EXISTING_FAILURE`、`NOT_VERIFIED`。`BLOCKED_EXTERNAL` 仅限签名证书、本人 OAuth、法律/隐私决策或第三方生产账号；未运行与证据不足统一为 `NOT_VERIFIED`，不能计入通过率。
 
@@ -53,11 +53,11 @@
 | 42 | Browser Autofill boundary | NOT_VERIFIED | 若保留 claim，需 Fill≠Submit E2E；否则 Experimental |
 | 43 | Database Migration | FAIL | 只有 `_auto_migrate`；无版本化 path 和 old DB A/B fixtures |
 | 44 | Migration Safety | FAIL | 无 backup→migration→integrity→smoke 原子失败回滚 |
-| 45 | Consistent Backup | FAIL | 现有文档只复制 DB；Online Backup 实现/验证进行中 |
-| 46 | Restore 3 cycles | FAIL | 无真实 create→backup→mutate→restore→restart 三连 PASS |
+| 45 | Consistent Backup | PASS | `docs/evals/reports/2026-08-31-codex-offeru-core-v1-data-safety-01.md`：SQLite Online Backup API、managed assets、manifest/hash、integrity 验证 |
+| 46 | Restore 3 cycles | PASS | 同一报告：隔离数据库完成 3 次 create→backup→mutate→stage→restart→verify，含数据库、资产与 pre-restore 备份 |
 | 47 | Structured Data Export | NOT_VERIFIED | JSON export 存在；需五类数据完整性/可读性审计 |
 | 48 | Reset Demo vs Delete Data | NOT_VERIFIED | 需 UI 文案、scope、不可误删真实 workspace 的 E2E |
-| 49 | SQLite Integrity | FAIL | Doctor/restore 尚未提供正式 `integrity_check=ok` Gate |
+| 49 | SQLite Integrity | PASS | 同一报告：Doctor 与每次恢复后的 `PRAGMA integrity_check=ok`，foreign-key violations 为 0 |
 | 50 | Security Baseline | NOT_VERIFIED | 六类审计均无正式当前报告 |
 | 51 | Secrets exclusion | NOT_VERIFIED | 设计/局部 redaction 存在；需全 artifact scan |
 | 52 | Canary Secret Test | NOT_VERIFIED | 未执行完整 canary protocol |
@@ -84,7 +84,7 @@
 | 73 | Golden Path C — Failure | NOT_VERIFIED | 部分 Provider 失败；六类可恢复 E2E 未齐 |
 | 74 | Golden Path D — Duplicate | NOT_VERIFIED | Job save 有线索；全部关键 mutation 未齐 |
 | 75 | Golden Path E — Resume Conflict | NOT_VERIFIED | 历史路径有线索；当前 RC 重复性未证明 |
-| 76 | Golden Path F — Data Recovery | FAIL | 正式 backup/restore 尚未实现并运行 |
+| 76 | Golden Path F — Data Recovery | PASS | 同一报告：隔离 Settings UI 暂存/取消、真实重启恢复和恢复后健康检查通过；不继承其他 Public E2E 结论 |
 | 77 | Critical Repeatability 10/10 | NOT_VERIFIED | 无连续 10 次证据 |
 | 78 | Extended Stability 50 runs ≥98% | NOT_VERIFIED | 无 50-run report |
 | 79 | Full Test Gate | NOT_VERIFIED | 上一内测结果不可继承，当前 worktree 未验证 |
@@ -112,7 +112,7 @@
 | 101 | README Update only after Final Gate | PASS | 当前仍明确为 Internal Beta，未提前宣称 Public Release |
 | 102 | Public QUICKSTART / DEVELOPMENT split | FAIL | 当前 QUICKSTART 是开发者双终端流程，无 DEVELOPMENT.md |
 | 103 | Support Diagnostics | NOT_VERIFIED | 基础诊断下载存在；Doctor/error_id 定位矩阵缺失 |
-| 104 | Doctor Release Gate | FAIL | 当前 doctor 不检查 DB integrity、desktop bridge、storage、version consistency，未返回 CORE_READY |
+| 104 | Doctor Release Gate | FAIL | Doctor 已检查 DB integrity、backup count 和 pending restore；desktop bridge、storage、version consistency 仍未完整覆盖，未返回 CORE_READY |
 | 105 | Release Dashboard | PASS | `STATUS.md` 已建立七域 dashboard，但各域尚未通过 |
 | 106 | Release Blocker Rule | PASS | 当前 FAIL/NOT_VERIFIED 已阻止发布 |
 | 107 | Optional Integration Rule | NOT_VERIFIED | 文档对齐；需 UI label 与真实 core provider outcome |
@@ -126,7 +126,7 @@
 ## Current highest-priority blocker
 
 ```text
-R43–R49 Data Safety
+R43–R44 Migration Safety
 ```
 
-当前纵向切片：SQLite Online Backup API 一致性备份、版本化 manifest/hash、`PRAGMA integrity_check`、安全 restore staging、下次启动原子恢复与失败回滚。完成后仍需真实执行三次恢复循环和恢复后的 core Golden Path，才能把 R45/R46/R49 改为 PASS。
+`DATA_SAFETY_01` 已通过 R45/R46/R49/R76。当前纵向切片是版本化 migration、migration 前 backup、migration 后 integrity/smoke、失败原子回滚和 old-schema A/B fixtures；在此之前不得宣称完整 Data Safety 或 Public Release PASS。

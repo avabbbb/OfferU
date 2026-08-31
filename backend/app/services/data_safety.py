@@ -329,7 +329,7 @@ def _validate_member(info: zipfile.ZipInfo) -> bool:
     if not name or "\\" in name or "\x00" in name:
         raise DataSafetyError("备份归档包含非法成员名称。")
     pure = PurePosixPath(name)
-    if pure.is_absolute() or ".." in pure.parts or ":" in pure.parts[0]:
+    if pure.is_absolute() or ".." in pure.parts or any(":" in part for part in pure.parts):
         raise DataSafetyError("备份归档包含越界路径。")
     mode = info.external_attr >> 16
     if stat.S_ISLNK(mode):
@@ -456,6 +456,27 @@ def stage_restore(layout: DataSafetyLayout, *, backup_id: str) -> dict[str, Any]
     with _LOCK:
         archive_path = _archive_path(layout, backup_id)
         archive_hash = _sha256_file(archive_path) if archive_path.is_file() else ""
+        pending = _read_pending(layout)
+        if pending is not None:
+            pending_id = str(pending["backup_id"])
+            if pending_id != backup_id:
+                raise DataSafetyError("已有待重启恢复任务，请先取消后再选择其他备份。")
+            if archive_hash != pending["archive_sha256"]:
+                raise DataSafetyError("待恢复归档已变化，请取消本次恢复并重新选择备份。")
+            manifest, _ = _validated_archive(archive_path, expected_backup_id=backup_id)
+            stage_dir = layout.restore_dir / backup_id
+            if not stage_dir.is_dir():
+                raise DataSafetyError("待恢复暂存目录不存在，请取消本次恢复并重新选择备份。")
+            _validate_snapshot(stage_dir, manifest)
+            return {
+                "backup_id": backup_id,
+                "version": manifest["version"],
+                "schema": manifest["schema"],
+                "hash": manifest["hash"],
+                "staged_at": pending["staged_at"],
+                "pending_restart": True,
+                "database_replaced": False,
+            }
         stage_dir = layout.restore_dir / backup_id
         manifest = _materialize_archive(
             archive_path,
@@ -659,12 +680,70 @@ def list_backups(layout: DataSafetyLayout) -> dict[str, Any]:
         return {"items": items, "invalid": invalid}
 
 
+def data_safety_status(layout: DataSafetyLayout) -> dict[str, Any]:
+    with _LOCK:
+        pending = _read_pending(layout)
+        backups = list_backups(layout)
+        return {
+            "database": {
+                "exists": layout.database_path.is_file(),
+                "filename": layout.database_path.name,
+            },
+            "backup_count": len(backups["items"]),
+            "invalid_backup_count": len(backups["invalid"]),
+            "pending_restore": (
+                {
+                    "backup_id": pending["backup_id"],
+                    "staged_at": pending["staged_at"],
+                    "pending_restart": True,
+                }
+                if pending is not None
+                else None
+            ),
+            "storage_mode": "managed_local",
+        }
+
+
+def cancel_pending_restore(layout: DataSafetyLayout) -> dict[str, Any]:
+    """Cancel only staged restore state; the backup archive remains untouched."""
+
+    with _LOCK:
+        try:
+            pending = _read_pending(layout)
+        except DataSafetyError:
+            quarantine_dir = layout.root / "cancelled_restore_markers"
+            quarantine_dir.mkdir(parents=True, exist_ok=True)
+            quarantine = quarantine_dir / f"invalid-{uuid4().hex}.json"
+            os.replace(layout.pending_file, quarantine)
+            return {
+                "cancelled": True,
+                "invalid_marker_quarantined": True,
+                "staging_preserved": True,
+                "backup_preserved": True,
+            }
+        if pending is None:
+            return {"cancelled": False, "reason": "no_pending_restore"}
+        backup_id = str(pending["backup_id"])
+        _remove_path(layout.restore_dir / backup_id)
+        layout.pending_file.unlink(missing_ok=True)
+        return {
+            "cancelled": True,
+            "backup_id": backup_id,
+            "backup_preserved": True,
+        }
+
+
 async def check_database_integrity() -> dict[str, Any]:
     return await asyncio.to_thread(database_integrity_report, _runtime_layout())
 
 
+async def get_data_safety_status() -> dict[str, Any]:
+    return await asyncio.to_thread(data_safety_status, _runtime_layout())
+
+
 async def create_data_backup() -> dict[str, Any]:
-    return await asyncio.to_thread(create_backup, _runtime_layout())
+    result = await asyncio.to_thread(create_backup, _runtime_layout())
+    return {key: value for key, value in result.items() if key != "archive_path"}
 
 
 async def list_data_backups() -> dict[str, Any]:
@@ -675,3 +754,9 @@ async def stage_data_restore(*, backup_id: str, user_confirmed: bool) -> dict[st
     if user_confirmed is not True:
         raise DataSafetyError("恢复暂存必须由使用者明确确认。")
     return await asyncio.to_thread(stage_restore, _runtime_layout(), backup_id=backup_id)
+
+
+async def cancel_data_restore(*, user_confirmed: bool) -> dict[str, Any]:
+    if user_confirmed is not True:
+        raise DataSafetyError("取消待恢复任务必须由使用者明确确认。")
+    return await asyncio.to_thread(cancel_pending_restore, _runtime_layout())

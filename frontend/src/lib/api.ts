@@ -1170,8 +1170,59 @@ export interface UserDataExport {
   data: Record<string, unknown[]>;
 }
 
+export interface DataSafetyStatus {
+  database: { exists: boolean; filename: string };
+  backup_count: number;
+  invalid_backup_count: number;
+  pending_restore: {
+    backup_id: string;
+    staged_at: string;
+    pending_restart: boolean;
+  } | null;
+  storage_mode: "managed_local" | string;
+}
+
+export interface DataIntegrityReport {
+  status: "ok" | "failed" | string;
+  integrity_check: string[];
+  foreign_key_violations: unknown[][];
+  schema: { user_version: number; schema_version: number };
+  checked_at: string;
+}
+
+export interface DataBackupItem {
+  backup_id: string;
+  version: string;
+  schema: { user_version: number; schema_version: number };
+  hash: string;
+  created_at: string;
+  reason: "user" | "pre_restore" | string;
+  size_bytes: number;
+}
+
+export interface DataBackupList {
+  items: DataBackupItem[];
+  invalid: { backup_id: string; error: string }[];
+}
+
 export const dataSafetyApi = {
   exportUserData: () => request<UserDataExport>("/api/agent/data/export"),
+  status: () => request<DataSafetyStatus>("/api/agent/data/safety/status"),
+  checkIntegrity: () => request<DataIntegrityReport>("/api/agent/data/safety/integrity"),
+  listBackups: () => request<DataBackupList>("/api/agent/data/backups"),
+  createBackup: () => request<DataBackupItem & { archive_sha256: string }>("/api/agent/data/backups", {
+    method: "POST",
+  }),
+  stageRestore: (backupId: string, confirmed: boolean) =>
+    request<{ backup_id: string; staged_at: string; pending_restart: boolean; database_replaced: boolean }>(
+      "/api/agent/data/restore",
+      { method: "POST", body: JSON.stringify({ backup_id: backupId, confirmed }) },
+    ),
+  cancelRestore: (confirmed: boolean) =>
+    request<{ cancelled: boolean; backup_id?: string; backup_preserved?: boolean }>(
+      "/api/agent/data/restore/cancel",
+      { method: "POST", body: JSON.stringify({ confirmed }) },
+    ),
 };
 
 // ---- Profile API ----

@@ -253,6 +253,14 @@ from app.services.resume_workspace import (
     review_resume_proposal_item,
 )
 from app.services.data_export import export_user_data
+from app.services.data_safety import (
+    cancel_data_restore,
+    check_database_integrity,
+    create_data_backup,
+    get_data_safety_status,
+    list_data_backups,
+    stage_data_restore,
+)
 from app.models.models import AgentWorkspaceState, Job, OperationAuditLog, Pool
 
 
@@ -261,6 +269,15 @@ OperationFn = Callable[..., Awaitable[Any]]
 
 class _StrictOperationInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class DataRestoreInput(_StrictOperationInput):
+    backup_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+    user_confirmed: bool = False
+
+
+class DataSafetyConfirmationInput(_StrictOperationInput):
+    user_confirmed: bool = False
 
 
 class GetJobInput(_StrictOperationInput):
@@ -1560,6 +1577,57 @@ async def _prepare_resume_optimization_after_pre_application(
 
 
 OPERATIONS: dict[str, Operation] = {
+    "get_data_safety_status": Operation(
+        name="get_data_safety_status",
+        fn=get_data_safety_status,
+        description="读取本地数据库、受管备份数量与待重启恢复状态；不返回本机绝对路径。",
+        group="governance",
+        input_model=_StrictOperationInput,
+        version="2026-08-30",
+    ),
+    "check_database_integrity": Operation(
+        name="check_database_integrity",
+        fn=check_database_integrity,
+        description="运行 SQLite integrity_check 与 foreign_key_check，不修改业务数据。",
+        group="governance",
+        input_model=_StrictOperationInput,
+        version="2026-08-30",
+    ),
+    "list_data_backups": Operation(
+        name="list_data_backups",
+        fn=list_data_backups,
+        description="列出通过 manifest 与归档结构校验的本地受管备份。",
+        group="governance",
+        input_model=_StrictOperationInput,
+        version="2026-08-30",
+    ),
+    "create_data_backup": Operation(
+        name="create_data_backup",
+        fn=create_data_backup,
+        description="确认后使用 SQLite Online Backup API 创建一致性快照，并保存受管资产 manifest 与哈希。",
+        group="governance",
+        side_effects=("write",),
+        input_model=_StrictOperationInput,
+        version="2026-08-30",
+    ),
+    "stage_data_restore": Operation(
+        name="stage_data_restore",
+        fn=stage_data_restore,
+        description="确认后校验并暂存指定备份；当前进程不替换数据库，下次启动前执行恢复。",
+        group="governance",
+        side_effects=("write",),
+        input_model=DataRestoreInput,
+        version="2026-08-30",
+    ),
+    "cancel_data_restore": Operation(
+        name="cancel_data_restore",
+        fn=cancel_data_restore,
+        description="确认后取消待重启恢复任务；已创建的备份归档保持不变。",
+        group="governance",
+        side_effects=("write",),
+        input_model=DataSafetyConfirmationInput,
+        version="2026-08-30",
+    ),
     "export_user_data": Operation(
         name="export_user_data",
         fn=export_user_data,

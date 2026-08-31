@@ -1,6 +1,6 @@
 # OfferU Public Release Quality Score
 
-更新时间：2026-08-30
+更新时间：2026-08-31
 
 ## Scoring rule
 
@@ -18,7 +18,7 @@
 | Profile / Memory | 52/100 | Internal Beta only | Candidate → accept 路径存在；完整 lifecycle/history/conflict 未验证 |
 | Agent Runtime | 35/100 | Replay only | provider-neutral seam 存在；没有 live provider PASS |
 | Automation | 45/100 | Partial evidence | Event/CareerTask/Operation 链存在；exactly-once、cancel/retry/resume 全矩阵不足 |
-| Data Safety | 12/100 | FAIL | JSON export 存在；正式 backup/restore/migration/integrity Gate 未通过 |
+| Data Safety | 52/100 | Current deterministic + isolated browser | Online Backup API、manifest/hash、三次恢复、restart、rollback、integrity 和 Settings/Doctor 路径已有当前报告；R43/R44 migration safety 仍 FAIL |
 | Reliability | 22/100 | NOT_VERIFIED | 少量重复/重启内测证据；无 soak、resource、failure/recovery report |
 | Security | 18/100 | NOT_VERIFIED | 有权限/审计设计；无 canary、dependency、CSP、capability、logging 全套证据 |
 | Installer / Update | 5/100 | FAIL | Tauri dev shell 存在；无 release sidecar、signed installer、updater、clean-machine 或 upgrade evidence |
@@ -26,7 +26,7 @@
 ## Weighted release score
 
 ```text
-Current unweighted average: 40/100
+Current unweighted average: 43/100
 Release verdict: NOT READY
 ```
 

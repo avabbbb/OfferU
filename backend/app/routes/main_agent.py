@@ -32,6 +32,15 @@ class AgentMemoryImportRequest(BaseModel):
     content: dict[str, Any] | str
 
 
+class DataRestoreRequest(BaseModel):
+    backup_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+    confirmed: bool = False
+
+
+class DataSafetyConfirmationRequest(BaseModel):
+    confirmed: bool = False
+
+
 class AgentContextRequest(BaseModel):
     scope: str = "default"
     route: str = ""
@@ -849,6 +858,42 @@ async def export_memory(format: str = "json") -> dict[str, Any]:
 async def export_user_data() -> dict[str, Any]:
     """Downloadable local core career state through the Operation Registry."""
     return await _ui_operation_outputs("export_user_data", {})
+
+
+@router.get("/data/safety/status")
+async def data_safety_status() -> dict[str, Any]:
+    return await _ui_operation_outputs("get_data_safety_status", {})
+
+
+@router.get("/data/safety/integrity")
+async def data_integrity() -> dict[str, Any]:
+    return await _ui_operation_outputs("check_database_integrity", {})
+
+
+@router.get("/data/backups")
+async def data_backups() -> dict[str, Any]:
+    return await _ui_operation_outputs("list_data_backups", {})
+
+
+@router.post("/data/backups")
+async def create_data_backup() -> dict[str, Any]:
+    return await _ui_operation_outputs("create_data_backup", {})
+
+
+@router.post("/data/restore")
+async def stage_data_restore(body: DataRestoreRequest) -> dict[str, Any]:
+    return await _ui_operation_outputs(
+        "stage_data_restore",
+        {"backup_id": body.backup_id, "user_confirmed": body.confirmed},
+    )
+
+
+@router.post("/data/restore/cancel")
+async def cancel_data_restore(body: DataSafetyConfirmationRequest) -> dict[str, Any]:
+    return await _ui_operation_outputs(
+        "cancel_data_restore",
+        {"user_confirmed": body.confirmed},
+    )
 
 
 @router.post("/memory/import")
