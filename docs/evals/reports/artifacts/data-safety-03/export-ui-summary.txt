@@ -1,0 +1,8 @@
+OfferU DATA_SAFETY_03 structured export browser evidence
+
+schema: offeru.internal-beta.export.v1
+collections: profiles=1, jobs=1, applications=0, resumes=0, interviews=0
+required collections checked: profiles, jobs, applications, resumes, resume_sections, interviews, interview_messages, career_artifacts
+redactions checked: provider and connection credentials; email account credentials and browser session state; resume share tokens and passwords; operation audit payloads
+console errors: 0
+download: JSON export completed from Settings UI
