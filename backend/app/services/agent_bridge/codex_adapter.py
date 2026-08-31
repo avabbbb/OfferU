@@ -130,7 +130,10 @@ class CodexMainLoopAdapter:
         )
         # codex 0.149 returns a flat server descriptor (no serverInfo wrapper).
         if not initialize.get("userAgent") and not initialize.get("codexHome"):
-            raise RuntimeError(f"codex app-server initialize failed: {initialize}")
+            raise RuntimeError(
+                "codex app-server initialize failed: "
+                + safe_error_message(RuntimeError(str(initialize)))
+            )
         self.server_info = initialize
         self.protocol_version = str(
             initialize.get("protocolVersion")
@@ -216,7 +219,12 @@ class CodexMainLoopAdapter:
                     if not future.done():
                         if msg.get("error"):
                             future.set_exception(
-                                RuntimeError(f"codex: {msg['error']}")
+                                RuntimeError(
+                                    "codex: "
+                                    + safe_error_message(
+                                        RuntimeError(str(msg["error"]))
+                                    )
+                                )
                             )
                         else:
                             future.set_result(msg.get("result") or {})

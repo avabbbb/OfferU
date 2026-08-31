@@ -27,6 +27,7 @@ from app.services.scrapers.base import (
     JobItem,
     register_scraper,
 )
+from app.services.security_redaction import safe_error_message
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +125,10 @@ class ShixisengScraper(JobScraperBase):
 
                             page += 1
                         except Exception as exc:
-                            logger.warning("[shixiseng] search error: %r", exc)
+                            logger.warning(
+                                "[shixiseng] search error: %s",
+                                safe_error_message(exc),
+                            )
                             break
 
                     if len(results) >= max_results:
@@ -169,7 +173,10 @@ class ShixisengScraper(JobScraperBase):
 
                 await asyncio.gather(*[_enrich(item) for item in results])
         except Exception as exc:
-            logger.warning("[shixiseng] unexpected error: %r", exc)
+            logger.warning(
+                "[shixiseng] unexpected error: %s",
+                safe_error_message(exc),
+            )
 
         return results[:max_results]
 

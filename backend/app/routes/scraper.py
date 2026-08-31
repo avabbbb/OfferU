@@ -272,8 +272,11 @@ async def _execute_scraper(task_info: dict, scraper, req: RunRequest):
                 },
                 surface="scraper_background",
             )
-        except Exception:
-            logger.exception("[scraper] failed to persist batch failure")
+        except Exception as exc:
+            logger.error(
+                "[scraper] failed to persist batch failure: %s",
+                safe_error_message(exc),
+            )
 
 
 @router.get("/tasks")

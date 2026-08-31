@@ -151,7 +151,11 @@ class SemanticSearchService:
                 )
             ],
         )
-        _logger.debug(f"Indexed section {section_id}: {combined_text[:50]}...")
+        _logger.debug(
+            "Indexed section %s (content_len=%d)",
+            section_id,
+            len(combined_text),
+        )
 
     async def batch_index_profile_sections(self, sections: list[dict]):
         """

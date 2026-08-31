@@ -17,6 +17,7 @@ from app.services.agent_bridge.operation_gateway import (
     confirm_proposal,
     load_proposal_state,
 )
+from app.services.security_redaction import redact_sensitive_value
 
 router = APIRouter()
 
@@ -57,7 +58,7 @@ async def list_pending_proposals() -> dict[str, Any]:
             {
                 "actionId": str(step.get("id") or ""),
                 "operation": str(step.get("tool") or ""),
-                "args": step.get("args") or {},
+                "args": redact_sensitive_value(step.get("args") or {}),
                 "summary": str(step.get("summary") or ""),
             }
             for step in (row.steps_json or [])

@@ -7,6 +7,7 @@ from typing import Any
 import yaml
 
 from app.services.agent_skill_registry import AgentSkill
+from app.services.security_redaction import safe_error_message
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +86,11 @@ def _parse_skill_file(skill_dir: Path, skill_file: Path) -> AgentSkill | None:
     try:
         meta = yaml.safe_load(text[3:end]) or {}
     except yaml.YAMLError as exc:
-        logger.warning("[directory-skill] %s frontmatter 解析失败: %s", skill_dir.name, exc)
+        logger.warning(
+            "[directory-skill] %s frontmatter 解析失败: %s",
+            skill_dir.name,
+            safe_error_message(exc),
+        )
         return None
     if not isinstance(meta, dict):
         return None

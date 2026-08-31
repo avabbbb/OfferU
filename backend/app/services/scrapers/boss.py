@@ -31,6 +31,7 @@ from app.services.scrapers.base import (
     JobItem,
     register_scraper,
 )
+from app.services.security_redaction import safe_error_message
 
 logger = logging.getLogger(__name__)
 
@@ -243,7 +244,7 @@ class BossScraper(JobScraperBase):
                         logger.warning("[boss] 请求超时 keyword=%s page=%d", kw, page)
                         break
                     except Exception as e:
-                        logger.error("[boss] 请求异常: %s", e)
+                        logger.error("[boss] 请求异常: %s", safe_error_message(e))
                         break
 
                 if len(results) >= max_results:
@@ -349,7 +350,7 @@ class BossScraper(JobScraperBase):
                     ),
                 )
         except Exception as e:
-            logger.error("[boss] get_detail 异常: %s", e)
+            logger.error("[boss] get_detail 异常: %s", safe_error_message(e))
             return None
 
 

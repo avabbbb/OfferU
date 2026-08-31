@@ -553,7 +553,10 @@ def extract_json(text: str) -> Optional[dict]:
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        _logger.debug("extract_json: direct parse failed, trying fallback: %s", text[:200])
+        _logger.debug(
+            "extract_json: direct parse failed, trying fallback (response_len=%d)",
+            len(text),
+        )
 
     # 尝试从 markdown code block 中提取
     match = re.search(r'```(?:json)?\s*\n(.*?)\n```', text, re.DOTALL)

@@ -11,7 +11,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
-from app.services.security_redaction import safe_error_message
+from app.services.security_redaction import redact_sensitive_text, safe_error_message
 
 
 _logger = logging.getLogger(__name__)
@@ -139,8 +139,11 @@ class PiAgentWorkerClient:
         if process.returncode is None:
             try:
                 await self._command("shutdown", timeout=5)
-            except Exception:
-                _logger.warning("Pi Worker did not acknowledge shutdown", exc_info=True)
+            except Exception as exc:
+                _logger.warning(
+                    "Pi Worker did not acknowledge shutdown: %s",
+                    safe_error_message(exc),
+                )
             try:
                 await asyncio.wait_for(process.wait(), timeout=5)
             except asyncio.TimeoutError:
@@ -253,7 +256,9 @@ class PiAgentWorkerClient:
             self._fail_pending(PiAgentWorkerError(safe_error_message(exc)))
         finally:
             returncode = await process.wait()
-            detail = "; ".join(self._stderr_tail[-3:])
+            detail = redact_sensitive_text(
+                "; ".join(self._stderr_tail[-3:]), max_length=1500
+            )
             message = f"Pi Worker exited with code {returncode}"
             if detail:
                 message = f"{message}: {detail}"
@@ -269,7 +274,7 @@ class PiAgentWorkerClient:
             while raw := await process.stderr.readline():
                 line = raw.decode("utf-8", errors="replace").strip()
                 if line:
-                    self._stderr_tail.append(line[:500])
+                    self._stderr_tail.append(redact_sensitive_text(line, max_length=500))
                     self._stderr_tail = self._stderr_tail[-20:]
         except asyncio.CancelledError:
             raise
@@ -296,8 +301,11 @@ class PiAgentWorkerClient:
                 request_id=request_id,
                 result=result,
             )
-        except Exception:
-            _logger.exception("Failed to return Operation result to Pi Worker")
+        except Exception as exc:
+            _logger.error(
+                "Failed to return Operation result to Pi Worker: %s",
+                safe_error_message(exc),
+            )
 
     async def _notify_event(self, message: dict[str, Any]) -> None:
         listener = self._event_listener
@@ -307,8 +315,8 @@ class PiAgentWorkerClient:
             result = listener(message)
             if inspect.isawaitable(result):
                 await result
-        except Exception:
-            _logger.exception("Pi Worker event listener failed")
+        except Exception as exc:
+            _logger.error("Pi Worker event listener failed: %s", safe_error_message(exc))
 
     def _fail_pending(self, error: Exception) -> None:
         for future in self._pending.values():

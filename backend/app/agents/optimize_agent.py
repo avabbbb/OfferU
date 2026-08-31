@@ -1378,7 +1378,7 @@ async def agent_turn_stream(
                 tier="standard",
             )
         except Exception as exc:
-            _logger.warning("LLM call failed: %s", exc)
+            _logger.warning("LLM call failed: %s", safe_error_message(exc))
             yield _sse_event("error", {"message": "AI 暂时无法响应，请稍后重试"})
             return
 
