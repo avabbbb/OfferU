@@ -190,6 +190,7 @@ export default function ResumeEditorPage() {
   const hydratedRef = useRef(false);
   const skipAutosaveRef = useRef(false);
   const lastSavedSignatureRef = useRef("");
+  const draftRef = useRef<DraftResume | null>(null);
   const undoStackRef = useRef<DraftResume[]>([]);
 
   const recordUndo = useCallback((resume: DraftResume) => {
@@ -212,7 +213,7 @@ export default function ResumeEditorPage() {
     try {
       const next = await resumeApi.workspace(resumeId);
       skipAutosaveRef.current = true; hydratedRef.current = true;
-      setWorkspace(next); setDraft(next.resume as DraftResume);
+      setWorkspace(next); setDraft(next.resume as DraftResume); draftRef.current = next.resume as DraftResume;
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "简历工作区加载失败");
     } finally { setLoading(false); }
@@ -222,22 +223,31 @@ export default function ResumeEditorPage() {
   const draftSignature = useMemo(() => draft ? resumeSignature(draft) : "", [draft]);
 
   useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
+
+  useEffect(() => {
     if (!draft || !hydratedRef.current) return;
     if (skipAutosaveRef.current) { skipAutosaveRef.current = false; lastSavedSignatureRef.current = draftSignature; return; }
     if (!draftSignature || draftSignature === lastSavedSignatureRef.current) return;
+    const candidateSignature = draftSignature;
     setSaveState("saving");
     const timer = window.setTimeout(async () => {
       try {
         const saved = await resumeApi.update(draft.id, { user_name: draft.user_name, title: draft.title, summary: draft.summary, contact_json: draft.contact_json, template_id: draft.template_id, style_config: draft.style_config, language: draft.language, sections: draft.sections }) as DraftResume;
+        if (draftRef.current && resumeSignature(draftRef.current) !== candidateSignature) return;
         lastSavedSignatureRef.current = resumeSignature(saved); skipAutosaveRef.current = true;
-        setDraft(saved); setWorkspace((current) => current ? { ...current, resume: saved } : current); setSaveState("saved");
-      } catch (error) { setSaveState("failed"); setWorkspaceError(error instanceof Error ? error.message : "无法保存简历修改"); }
+        draftRef.current = saved; setDraft(saved); setWorkspace((current) => current ? { ...current, resume: saved } : current); setSaveState("saved");
+      } catch (error) {
+        if (draftRef.current && resumeSignature(draftRef.current) !== candidateSignature) return;
+        setSaveState("failed"); setWorkspaceError(error instanceof Error ? error.message : "无法保存简历修改");
+      }
     }, 800);
     return () => window.clearTimeout(timer);
   }, [draft, draftSignature]);
 
   const setFromWorkspace = useCallback((next: ResumeWorkspace) => {
-    skipAutosaveRef.current = true; setWorkspace(next); setDraft(next.resume as DraftResume); setSaveState("saved"); setWorkspaceError(null);
+    skipAutosaveRef.current = true; draftRef.current = next.resume as DraftResume; setWorkspace(next); setDraft(next.resume as DraftResume); setSaveState("saved"); setWorkspaceError(null);
   }, []);
   const updateDraft = useCallback((patch: Partial<DraftResume>) => { setDraft((current) => { if (!current) return current; recordUndo(current); return { ...current, ...patch }; }); setSaveState("idle"); }, [recordUndo]);
   const updateSection = useCallback((section: ResumeSectionBlock) => { setDraft((current) => { if (!current) return current; recordUndo(current); return { ...current, sections: current.sections.map((item) => item.id === section.id ? section : item) }; }); setSaveState("idle"); }, [recordUndo]);
@@ -253,7 +263,21 @@ export default function ResumeEditorPage() {
   const persistDraft = useCallback(async () => {
     if (!draft) return null;
     const saved = await resumeApi.update(draft.id, { user_name: draft.user_name, title: draft.title, summary: draft.summary, contact_json: draft.contact_json, template_id: draft.template_id, style_config: draft.style_config, language: draft.language, sections: draft.sections }) as DraftResume;
-    skipAutosaveRef.current = true; lastSavedSignatureRef.current = resumeSignature(saved); setDraft(saved); setWorkspace((current) => current ? { ...current, resume: saved } : current); setSaveState("saved"); return saved;
+    skipAutosaveRef.current = true; lastSavedSignatureRef.current = resumeSignature(saved); draftRef.current = saved; setDraft(saved); setWorkspace((current) => current ? { ...current, resume: saved } : current); setSaveState("saved"); return saved;
+  }, [draft]);
+
+  const retryAutosave = useCallback(async () => {
+    if (!draft) return;
+    const candidate = draft;
+    const candidateSignature = resumeSignature(candidate);
+    setSaveState("saving"); setWorkspaceError(null);
+    try {
+      const saved = await resumeApi.update(candidate.id, { user_name: candidate.user_name, title: candidate.title, summary: candidate.summary, contact_json: candidate.contact_json, template_id: candidate.template_id, style_config: candidate.style_config, language: candidate.language, sections: candidate.sections }) as DraftResume;
+      if (draftRef.current && resumeSignature(draftRef.current) !== candidateSignature) return;
+      skipAutosaveRef.current = true; lastSavedSignatureRef.current = resumeSignature(saved); draftRef.current = saved; setDraft(saved); setWorkspace((current) => current ? { ...current, resume: saved } : current); setSaveState("saved");
+    } catch (error) {
+      setSaveState("failed"); setWorkspaceError(error instanceof Error ? error.message : "无法保存简历修改");
+    }
   }, [draft]);
 
   const handleSaveVersion = async () => {
@@ -311,7 +335,7 @@ export default function ResumeEditorPage() {
         <div className="flex flex-wrap items-center gap-2"><span className={`text-[11px] ${saveState === "failed" ? "text-red-600" : "text-[var(--foreground-muted)]"}`} data-testid="resume-save-status">{saveState === "saving" && "正在保存…"}{saveState === "saved" && "已保存"}{saveState === "failed" && "保存失败"}</span><button type="button" onClick={handleUndo} disabled={!canUndo} aria-label="撤销最近一次编辑" className="inline-flex items-center gap-1 rounded-lg border border-[var(--border-strong)]/20 px-3 py-2 text-xs font-bold hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40" data-testid="resume-undo"><Undo2 size={13} />撤销</button><button type="button" onClick={() => void handleSaveVersion()} disabled={pendingAction === "version"} className="inline-flex items-center gap-1 rounded-lg border border-[var(--border-strong)]/20 px-3 py-2 text-xs font-bold hover:bg-black/5 disabled:opacity-50" data-testid="resume-save-version">{pendingAction === "version" ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}保存版本</button><button type="button" onClick={() => void handleExport()} disabled={exporting} className="inline-flex items-center gap-1 rounded-lg bg-black px-3 py-2 text-xs font-bold text-white disabled:opacity-50" data-testid="resume-export-pdf">{exporting ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}导出 PDF</button></div>
       </header>
 
-      {(workspaceError || staleProposal) && <div className="mx-auto mt-3 flex max-w-[1800px] items-center justify-between rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900" data-testid="resume-workspace-error"><span>{workspaceError || "这条 AI Proposal 已过期，因为简历内容发生了变化。请重新生成建议或继续手动编辑。"}</span><button type="button" onClick={() => void loadWorkspace()} className="font-bold underline">刷新</button></div>}
+      {(workspaceError || staleProposal) && <div className="mx-auto mt-3 flex max-w-[1800px] items-center justify-between rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900" data-testid="resume-workspace-error"><span>{workspaceError || "这条 AI Proposal 已过期，因为简历内容发生了变化。请重新生成建议或继续手动编辑。"}</span>{saveState === "failed" ? <button type="button" onClick={() => void retryAutosave()} className="font-bold underline" data-testid="resume-retry-save">重试保存</button> : <button type="button" onClick={() => void loadWorkspace()} className="font-bold underline">刷新</button>}</div>}
 
       <div className="mx-auto mt-4 grid max-w-[1800px] gap-4 xl:grid-cols-[minmax(300px,0.9fr)_minmax(480px,1.35fr)_minmax(300px,0.8fr)]">
         <section className="min-w-0 space-y-3" aria-label="简历内容编辑">
