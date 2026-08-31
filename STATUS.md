@@ -19,13 +19,13 @@ OFFERU_PUBLIC_RELEASE_NOT_READY
 ## Current Gate
 
 ```text
-RELIABILITY_03_AND_SECURITY_02_RESIDUAL
-Interview/Learning recovery → RSS/mixed soak → full artifact canary → Rust advisory → permission diff → logging/PII → privacy/consent
+RELIABILITY_04_AND_SECURITY_02_RESIDUAL
+RSS/mixed soak → full mutation matrix → full artifact canary → Rust advisory → permission diff → logging/PII → privacy/consent
 ```
 
 状态：`NOT_VERIFIED`
 
-原因：`DATA_SAFETY_03` 已通过结构化导出完整性、递归敏感字段排除、Demo Reset scope 和隔离 Settings 浏览器路径。`SECURITY_02` 已补齐 error ID、脱敏 diagnostic bundle、validation 输入隔离、确认的原始错误路径修复、Python/npm dependency 和浏览器 feedback canary；但完整 artifact canary、Rust advisory、权限 diff、全量 logging/PII、历史行 scrub、privacy/consent 仍未验证。Reliability-03 已补齐 Resume 保存失败可见、draft 保留和手动重试，但 Interview/Learning 恢复、RSS、混合 workload 和全业务 mutation 矩阵仍未完成。Public Release 继续保持 `NOT_READY`。
+原因：`DATA_SAFETY_03` 已通过结构化导出完整性、递归敏感字段排除、Demo Reset scope 和隔离 Settings 浏览器路径。`SECURITY_02` 已补齐 error ID、脱敏 diagnostic bundle、validation 输入隔离、确认的原始错误路径修复、Python/npm dependency 和浏览器 feedback canary；但完整 artifact canary、Rust advisory、权限 diff、全量 logging/PII、历史行 scrub、privacy/consent 仍未验证。Reliability-03 已补齐 Resume 保存失败可见、draft 保留和手动重试，Reliability-04 又补齐 Interview evaluation 与 Learning handoff 的真实启动恢复和重复启动幂等；RSS、混合 workload、全业务 mutation 矩阵及 Security residual 仍未完成。Public Release 继续保持 `NOT_READY`。
 
 ## Release dashboard
 
@@ -34,7 +34,7 @@ Interview/Learning recovery → RSS/mixed soak → full artifact canary → Rust
 | Core Product | NOT_VERIFIED | Internal Beta Replay/Fixture 路径曾通过；没有 Public RC 级 10/10 与 50-run 证据 |
 | Data Safety | PASS | R43–R49、R76 已由 `data-safety-01`、`data-safety-02`、`data-safety-03` 报告覆盖 |
 | Security | NOT_VERIFIED | [Security 01](docs/evals/reports/2026-08-31-codex-offeru-core-v1-security-01.md) + [Security 02](docs/evals/reports/2026-08-31-codex-offeru-core-v1-security-02.md)；error/diagnostic/Python/npm 子项已有 PARTIAL 证据，完整 artifact canary、Rust、权限、logging/PII 和 privacy/consent 仍缺 |
-| Reliability | NOT_VERIFIED | [Reliability 01](docs/evals/reports/2026-08-31-codex-offeru-core-v1-reliability-01.md) + [Reliability 02](docs/evals/reports/2026-08-31-codex-offeru-core-v1-reliability-02.md) + [Reliability 03](docs/evals/reports/2026-08-31-codex-offeru-core-v1-reliability-03.md)；Resume save failure 已有 PARTIAL 证据，Interview/Learning/RSS/全 mutation 仍缺 |
+| Reliability | NOT_VERIFIED | [Reliability 01](docs/evals/reports/2026-08-31-codex-offeru-core-v1-reliability-01.md) + [Reliability 02](docs/evals/reports/2026-08-31-codex-offeru-core-v1-reliability-02.md) + [Reliability 03](docs/evals/reports/2026-08-31-codex-offeru-core-v1-reliability-03.md) + [Reliability 04](docs/evals/reports/2026-08-31-codex-offeru-core-v1-reliability-04.md)；Resume save failure、Interview/Learning startup recovery 已有 PARTIAL 证据，RSS/混合 workload/全 mutation 仍缺 |
 | Packaging | FAIL | Tauri release launcher 仍依赖 repo 与 `.venv312`，无可发布 sidecar/installer |
 | Live Runtime | NOT_VERIFIED | Replay 可用；没有至少一个真实 Agent Runtime `LIVE_PASS` |
 | E2E | NOT_VERIFIED | 无当前 commit 的正式 Eval baseline、10/10 critical path 或 50-run report |
@@ -151,6 +151,20 @@ Security 仍保持 `NOT_VERIFIED`：Rust advisory DB、完整 release artifact m
 
 该切片只把 Resume 保存失败推进为 `PARTIAL`，不改变 Reliability 总 Gate，也不继承为 Resume 冲突、Interview/Learning 恢复或 Public Release 通过。
 
+## Completed RELIABILITY_04 slice
+
+正式报告：[2026-08-31-codex-offeru-core-v1-reliability-04](docs/evals/reports/2026-08-31-codex-offeru-core-v1-reliability-04.md)
+
+本轮在全新隔离 SQLite 和两次真实 backend 进程启动上完成并验证：
+
+- active Interview 保留当前轮次；
+- running EvaluationRun 在启动恢复时标为 failed，并保留明确 retry 语义；
+- completed Interview 缺少 learning candidate 时补齐 Observation 与 pending Proposal；
+- 第二次启动不重复新增 Evaluation、Observation 或 Proposal；
+- 正常 `djm.db` 在测试结束后恢复健康。
+
+该切片只把 Interview/Learning recovery 和本地 handoff duplicate prevention 推进为 `PARTIAL`，不改变 Reliability 总 Gate，也不等于 live Provider、完整 UI 或 Public Release 通过。
+
 ## Evidence policy
 
 - `PASS`：当前可定位 commit 的权威证据覆盖整个 Gate；
@@ -164,7 +178,7 @@ Security 仍保持 `NOT_VERIFIED`：Rust advisory DB、完整 release artifact m
 ## Next action
 
 ```text
-1. 继续 Reliability：Interview/Learning pending 恢复、全业务 mutation exactly-once、RSS 和混合用户 workload。
+1. 继续 Reliability：RSS/mixed workload、全业务 mutation exactly-once、Browser E2E failure/duplicate 矩阵。
 2. 并行收口 Security 02 residual：完整 artifact canary、Rust advisory、权限 diff、logging/PII、privacy/consent。
 3. 再继续 Packaging、Live Runtime 和 E2E 最高 blocker。
 ```

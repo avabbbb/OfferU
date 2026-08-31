@@ -8,7 +8,21 @@
 RELIABILITY_NOT_VERIFIED
 ```
 
-上一 Internal Beta 检查点证明了部分重复保存防护和重启后读取。Reliability-02 又在隔离 SQLite 上覆盖了真实 FastAPI 进程强退/重启、浏览器启动状态恢复和中文 Resume autosave 刷新读取。Reliability-03 进一步验证了 Resume 保存失败可见、编辑内容保留和手动重试成功，但仍没有覆盖 Public Release 所需的面试中断、Learning Candidate 恢复、soak、资源泄漏和重复业务效果矩阵。
+上一 Internal Beta 检查点证明了部分重复保存防护和重启后读取。Reliability-02 又在隔离 SQLite 上覆盖了真实 FastAPI 进程强退/重启、浏览器启动状态恢复和中文 Resume autosave 刷新读取。Reliability-03 进一步验证了 Resume 保存失败可见、编辑内容保留和手动重试成功。Reliability-04 又补齐了 Interview evaluation 中断和完成面试 Learning handoff 的真实启动恢复与重复启动幂等，但仍没有覆盖 Public Release 所需的 soak、资源泄漏和重复业务效果矩阵。
+
+## Reliability 04 current evidence
+
+当前报告：[2026-08-31-codex-offeru-core-v1-reliability-04](docs/evals/reports/2026-08-31-codex-offeru-core-v1-reliability-04.md)，实现 checkout `ae1445d`。
+
+本轮在隔离 SQLite 和两次真实 backend 进程启动上验证：
+
+- active Interview 保留当前题目和轮次；
+- 中断的 running EvaluationRun 变为明确 failed，可重新提交回答；
+- completed Interview 缺少 Candidate 时补齐 active Observation 和 pending Memory Proposal，不直接写 Profile；
+- 第二次启动不重复生成 Evaluation、Observation 或 Proposal；
+- 测试结束后正常 `djm.db` health 与诊断包均为 200。
+
+因此 Interview in progress、Learning Candidate pending 和本地 handoff 重复启动分别推进为 `PARTIAL`，但 Reliability 总 Gate 继续保持 `RELIABILITY_NOT_VERIFIED`。
 
 ## Reliability 03 current evidence
 
@@ -69,11 +83,11 @@ RELIABILITY_NOT_VERIFIED
 | CareerTask running | PARTIAL | Reliability-02 已用真实进程 force-stop/restart 证明 running→blocked/retryable；完整 provider/UI 矩阵仍缺 |
 | Waiting for approval | PARTIAL | 真实重启保留 waiting checkpoint；浏览器审批动作恢复仍缺 |
 | Resume autosave | PARTIAL | Reliability-03 已验证中文编辑→autosave→reload、503 可见、draft 保留和手动 retry；高频输入、跨标签冲突和 0 lost edit 矩阵仍缺 |
-| Interview in progress | NOT_VERIFIED | transcript/round 状态准确恢复或明确终止 |
-| Learning Candidate pending | NOT_VERIFIED | 候选不丢失、不静默接受 |
+| Interview in progress | PARTIAL | Reliability-04 真实启动恢复保留 active round，并把 running evaluation 标为明确 failed/retryable；live provider/UI transcript 矩阵仍缺 |
+| Learning Candidate pending | PARTIAL | Reliability-04 真实启动补齐 pending Observation/Proposal，重复启动不新增；Accept/Reject UI 和全来源矩阵仍缺 |
 | Provider timeout/auth | Internal Beta only | Public failure E2E 尚未建立 |
 | Backend restart | PARTIAL | Reliability-02 已验证真实 force-stop/restart、durable state 和浏览器启动 overlay/core UI recovery |
-| Duplicate click/retry | NOT_VERIFIED | CareerTask/AutomationEvent 已通过；Resume/Application/Interview/Memory 全矩阵仍缺 |
+| Duplicate click/retry | PARTIAL | CareerTask/AutomationEvent 与 Interview Learning handoff repeated startup 已通过；Resume/Application/Interview answer/Memory review 全矩阵仍缺 |
 | Save failure | PARTIAL | Reliability-03 注入 503 后内容保留、失败可见、手动 retry 成功；真实网络抖动、错误关联和全 mutation 矩阵仍缺 |
 
 ## Performance SLO

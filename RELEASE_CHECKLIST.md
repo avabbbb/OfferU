@@ -38,13 +38,13 @@
 | 27 | Interview Focus | NOT_VERIFIED | 需证明 Delta × Gap × Learning，而非 generic bank |
 | 28 | Interviewer Behavior | NOT_VERIFIED | 缺 no-praise/no-completion/no-premature-coaching tests |
 | 29 | Interview Debrief | NOT_VERIFIED | 历史 UI path；需 transcript citation coverage |
-| 30 | Interview Learning | NOT_VERIFIED | Candidate path 有线索；需不直写 verified Profile 证明 |
-| 31 | Memory Lifecycle | NOT_VERIFIED | 需六态、source/evidence/confidence/history matrix |
+| 30 | Interview Learning | PARTIAL | Reliability-04 真实启动恢复 Observation + pending Proposal 且不直写 Profile；完整完成面试、Accept/Reject 和 UI 回流仍缺 |
+| 31 | Memory Lifecycle | PARTIAL | Reliability-04 覆盖 pending Candidate 重启保留与重复防护；六态、source/evidence/confidence/history matrix 仍缺 |
 | 32 | PotentialHypothesis isolation | NOT_VERIFIED | 需永不自动变 Career Fact 的 deterministic test |
 | 33 | Single Automation model | NOT_VERIFIED | 架构对齐；需 duplicate loop/drift scan |
 | 34 | Automation Reliability | PARTIAL | Reliability-02 真实进程重启验证 queued AutomationEvent 恢复；provider timeout 与全部业务 mutation exactly-once 仍缺 |
-| 35 | CareerTask lifecycle | PARTIAL | Reliability-02 真实进程验证 running/queued/waiting 状态边界；完整 UI/provider/approval lifecycle 仍缺 |
-| 36 | Restart Recovery | PARTIAL | Reliability-02 覆盖真实 Python force-stop/restart、durable state 和浏览器启动 overlay/core UI recovery；Reliability-03 补 Resume save failure retry；五场景矩阵仍缺 |
+| 35 | CareerTask lifecycle | PARTIAL | Reliability-02 真实进程验证 running/queued/waiting 状态边界；Reliability-04 补 Interview EvaluationRun interruption；完整 UI/provider/approval lifecycle 仍缺 |
+| 36 | Restart Recovery | PARTIAL | Reliability-02 覆盖真实 Python force-stop/restart、durable state 和浏览器启动 overlay/core UI recovery；Reliability-03/04 补 Resume retry 与 Interview/Learning recovery；五场景矩阵仍缺 |
 | 37 | AgentRuntimeProvider UI seam | NOT_VERIFIED | provider-neutral 设计存在；需 UI branch scan |
 | 38 | Minimum Live Agent Gate | NOT_VERIFIED | Replay only；至少一个真实 Provider `LIVE_PASS` 缺失 |
 | 39 | Operation Registry Audit | NOT_VERIFIED | 历史称 0 bypass；无当前 commit 全 surface report |
@@ -70,7 +70,7 @@
 | 59 | Performance Baseline | NOT_VERIFIED | 无固定 Reference Environment 报告 |
 | 60 | UI Performance SLO | NOT_VERIFIED | 五项 production measurements 缺失 |
 | 61 | Long Task UX | NOT_VERIFIED | 需所有 >2s 路径 status/progress/cancel/failure audit |
-| 62 | Soak Test | NOT_VERIFIED | Reliability-01 已完成 100 个 Replay CareerTask cycles，Reliability-02 增加真实进程恢复；混合用户工作负载和 Public soak 仍缺 |
+| 62 | Soak Test | NOT_VERIFIED | Reliability-01 已完成 100 个 Replay CareerTask cycles，Reliability-02/04 增加真实进程恢复；混合用户工作负载和 Public soak 仍缺 |
 | 63 | Memory / Resource Leak | NOT_VERIFIED | 100-cycle task 计数通过；未记录 warm-up 后 RSS growth |
 | 64 | Testing Pyramid | NOT_VERIFIED | 有多类 tests；Migration/Packaging/Failure 完整覆盖未证明 |
 | 65 | Unit / Deterministic Tests | NOT_VERIFIED | 需七类核心规则 coverage mapping |
@@ -81,8 +81,8 @@
 | 70 | Playwright Failure Artifacts | NOT_VERIFIED | 无 CI failure-only artifact retention 证明 |
 | 71 | Golden Path A — New User | NOT_VERIFIED | Internal Beta partial evidence；完整链与 installer 缺失 |
 | 72 | Golden Path B — Existing User | NOT_VERIFIED | 无旧版本 DB migration journey |
-| 73 | Golden Path C — Failure | NOT_VERIFIED | 部分 Provider 失败；六类可恢复 E2E 未齐 |
-| 74 | Golden Path D — Duplicate | NOT_VERIFIED | Job save 有线索；全部关键 mutation 未齐 |
+| 73 | Golden Path C — Failure | PARTIAL | Reliability-03 Resume 503 retry、Reliability-04 Interview evaluation interruption 已有隔离证据；六类可恢复 E2E 未齐 |
+| 74 | Golden Path D — Duplicate | PARTIAL | CareerTask/AutomationEvent 与 Interview Learning repeated startup 已通过；全部关键 mutation 未齐 |
 | 75 | Golden Path E — Resume Conflict | NOT_VERIFIED | 历史路径有线索；当前 RC 重复性未证明 |
 | 76 | Golden Path F — Data Recovery | PASS | 同一报告：隔离 Settings UI 暂存/取消、真实重启恢复和恢复后健康检查通过；不继承其他 Public E2E 结论 |
 | 77 | Critical Repeatability 10/10 | NOT_VERIFIED | 无连续 10 次证据 |

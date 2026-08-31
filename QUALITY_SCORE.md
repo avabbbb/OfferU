@@ -14,12 +14,12 @@
 | Job | 58/100 | Internal Beta only | Job Context 与自动准备可用；live research 与失败矩阵不足 |
 | Resume | 64/100 | Internal Beta only | 手工编辑、Proposal、stale、version、PDF 已有较强证据；99.9% autosave、0 lost edit 与 10/10 未验证 |
 | Role Intelligence | 38/100 | Fixture only | Runtime 统计边界存在；至少一个 live provider 与 10-role matrix 缺失 |
-| Interview | 48/100 | Internal Beta only | Interview/Debrief/Learning 路径存在；专项 focus、行为约束与恢复矩阵不足 |
-| Profile / Memory | 52/100 | Internal Beta only | Candidate → accept 路径存在；完整 lifecycle/history/conflict 未验证 |
+| Interview | 53/100 | Reliability 04 partial | Interview/Debrief/Learning 路径存在；中断 evaluation 与 Learning handoff 启动恢复已有证据，专项 focus、行为约束、UI 和完整恢复矩阵仍不足 |
+| Profile / Memory | 57/100 | Reliability 04 partial | Candidate → accept 路径存在；pending handoff 重启保留且不重复，完整 lifecycle/history/conflict 未验证 |
 | Agent Runtime | 35/100 | Replay only | provider-neutral seam 存在；没有 live provider PASS |
 | Automation | 45/100 | Partial evidence | Event/CareerTask/Operation 链存在；exactly-once、cancel/retry/resume 全矩阵不足 |
 | Data Safety | 88/100 | Current deterministic migration + export/reset | Online Backup API、manifest/hash、三次恢复、restart、migration rollback、integrity、structured export redaction、Demo Reset scope 和 Settings/Doctor 路径均有当前报告 |
-| Reliability | 58/100 | Reliability 03 partial | 真实 Python force-stop/restart、queued/running/waiting durable recovery、浏览器 outage/core UI recovery、中文 Resume autosave reload、保存失败可见/draft 保留/retry 已有当前证据；Interview/Learning、RSS、混合用户 soak 与全业务 mutation 仍缺 |
+| Reliability | 63/100 | Reliability 04 partial | 真实 Python force-stop/restart、queued/running/waiting durable recovery、浏览器 outage/core UI recovery、中文 Resume autosave reload、保存失败 retry、Interview evaluation/Learning handoff startup recovery 已有当前证据；RSS、混合用户 soak 与全业务 mutation 仍缺 |
 | Security | 52/100 | Security 02 partial | error ID、Registry-backed diagnostic、API/browser canary、确认的原始路径收口、Python `pip-audit` 与 npm audit 已有当前证据；Rust advisory、完整 artifact canary、权限 diff、全量 PII/logging、历史 scrub 和 privacy/consent 仍缺 |
 | Installer / Update | 5/100 | FAIL | Tauri dev shell 存在；无 release sidecar、signed installer、updater、clean-machine 或 upgrade evidence |
 
