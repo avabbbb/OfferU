@@ -10,29 +10,37 @@ import { lazy, Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
+  AlertTriangle,
   ArrowRight,
   BarChart3,
   Briefcase,
   Calendar,
   ChevronDown,
   Inbox,
+  LoaderCircle,
   Mail,
+  RotateCcw,
   Sparkles,
+  X,
 } from "lucide-react";
 import {
   OnboardingChecklist,
   OnboardingTriggerButton,
 } from "@/components/onboarding/OnboardingChecklist";
 import {
+  controlCareerTask,
+  type CareerTask,
   useAutomationInbox,
   useCalendarEvents,
   useJobs,
   useJobStats,
   useJobTrend,
   useNotifications,
+  useCareerTasks,
   useProgressBoard,
   useProgressCandidates,
 } from "@/lib/hooks";
+import { safeClientErrorMessage } from "@/lib/safe-error";
 import { useWorkbench } from "@/lib/workbench";
 
 const TrendChart = lazy(() =>
@@ -112,6 +120,134 @@ function pipelinePriorityLabel(record: {
   return "";
 }
 
+const CAREER_TASK_VISIBLE_STATUSES = new Set([
+  "queued",
+  "running",
+  "waiting_for_approval",
+  "failed",
+  "blocked",
+  "cancelled",
+]);
+
+const CAREER_TASK_STATUS_LABELS: Record<string, string> = {
+  queued: "排队中",
+  running: "执行中",
+  waiting_for_approval: "等待确认",
+  completed: "已完成",
+  failed: "执行失败",
+  blocked: "需要处理",
+  cancelled: "已取消",
+};
+
+const CAREER_TASK_STAGE_LABELS: Record<string, string> = {
+  queued: "等待开始",
+  running: "正在执行",
+  role_benchmark_running: "正在分析岗位情报",
+  agent_turn_completed: "Agent 已完成",
+  completed: "已完成",
+  failed: "执行失败",
+  blocked: "任务被阻塞",
+  cancelled: "已取消",
+};
+
+function careerTaskStatusLabel(status: string) {
+  return CAREER_TASK_STATUS_LABELS[status] ?? (status || "未知状态");
+}
+
+function careerTaskStageLabel(status: string, progress: Record<string, any>) {
+  const stage = String(progress.stage || "").trim();
+  return CAREER_TASK_STAGE_LABELS[stage] ?? CAREER_TASK_STAGE_LABELS[status] ?? (stage || "等待更新");
+}
+
+function careerTaskPercent(progress: Record<string, any>) {
+  const value = Number(progress.percent);
+  if (!Number.isFinite(value)) return null;
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function careerTaskTypeLabel(taskType: string) {
+  return {
+    role_intelligence: "岗位情报",
+    agent_turn: "Agent 任务",
+    run_artifact: "材料任务",
+    plugin_capability: "能力任务",
+  }[taskType] ?? "后台任务";
+}
+
+function AutomationTaskControls({
+  taskId,
+  status,
+  retryable,
+  busy,
+  onAction,
+}: {
+  taskId: string;
+  status: string;
+  retryable: boolean;
+  busy: string | null;
+  onAction: (taskId: string, action: "cancel" | "retry") => void;
+}) {
+  if (!taskId) return null;
+  const cancelable = status === "queued" || status === "running" || status === "waiting_for_approval";
+  const retryableStatus = (status === "failed" || status === "blocked") && retryable;
+  if (!cancelable && !retryableStatus) return null;
+  const action = cancelable ? "cancel" : "retry";
+  const actionKey = `${taskId}:${action}`;
+  return (
+    <div className="flex shrink-0 items-center gap-1.5">
+      <button
+        type="button"
+        aria-label={action === "cancel" ? "取消后台任务" : "重试后台任务"}
+        title={action === "cancel" ? "取消任务" : "重试任务"}
+        disabled={busy !== null}
+        onClick={() => onAction(taskId, action)}
+        className={`inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[11px] font-medium transition-colors duration-[var(--dur-quick)] disabled:cursor-wait disabled:opacity-60 ${
+          action === "cancel"
+            ? "border-[var(--border)] text-[var(--foreground-muted)] hover:border-[var(--border-strong)] hover:text-[var(--foreground)]"
+            : "border-[var(--primary-red)]/35 text-[var(--primary-red)] hover:bg-[var(--primary-red)]/8"
+        }`}
+      >
+        {busy === actionKey ? (
+          <LoaderCircle size={12} className="animate-spin" />
+        ) : action === "cancel" ? (
+          <X size={12} />
+        ) : (
+          <RotateCcw size={12} />
+        )}
+        {action === "cancel" ? "取消" : "重试"}
+      </button>
+    </div>
+  );
+}
+
+function taskSnapshotFromInbox(entry: {
+  task_status: string | null;
+  task_progress: Record<string, any>;
+  task_error_id: string;
+  task_error: string;
+  task_retryable: boolean;
+  task_attempt_count: number;
+  task_max_attempts: number;
+  category: string;
+  payload: Record<string, any>;
+}) {
+  const payloadTask = entry.payload?.task as Record<string, any> | undefined;
+  const status = entry.task_status || String(payloadTask?.status || "") || (
+    entry.category === "failed" ? "failed" : entry.category === "needs_review" ? "completed" : "queued"
+  );
+  return {
+    status,
+    progress: entry.task_progress && Object.keys(entry.task_progress).length > 0
+      ? entry.task_progress
+      : (payloadTask?.progress as Record<string, any> | undefined) ?? {},
+    errorId: entry.task_error_id || String(payloadTask?.error_id || entry.payload?.projection_error_id || ""),
+    error: entry.task_error || String(payloadTask?.error || ""),
+    retryable: entry.task_retryable || Boolean(payloadTask?.retryable),
+    attemptCount: entry.task_attempt_count || Number(payloadTask?.attempt_count || 0),
+    maxAttempts: entry.task_max_attempts || Number(payloadTask?.max_attempts || 0),
+  };
+}
+
 function SectionHeader({
   icon: Icon,
   title,
@@ -162,7 +298,18 @@ export default function TodayPage() {
 
   const { data: events } = useCalendarEvents(range.start, range.end);
   const { data: notifications } = useNotifications();
-  const { data: automationInbox } = useAutomationInbox();
+  const {
+    data: automationInbox,
+    error: automationInboxError,
+    isLoading: automationInboxLoading,
+    mutate: mutateAutomationInbox,
+  } = useAutomationInbox();
+  const {
+    data: careerTasks,
+    error: careerTasksError,
+    isLoading: careerTasksLoading,
+    mutate: mutateCareerTasks,
+  } = useCareerTasks();
   const { data: jobsData } = useJobs({ page: 1, period: "week" });
   const { data: stats } = useJobStats("week");
   const { data: trendData } = useJobTrend("week");
@@ -185,6 +332,33 @@ export default function TodayPage() {
     () => (automationInbox?.items ?? []).filter((entry) => entry.status === "pending").slice(0, 5),
     [automationInbox],
   );
+  const taskIdsInInbox = useMemo(
+    () => new Set(pendingAutomation.map((entry) => entry.task_id).filter(Boolean)),
+    [pendingAutomation],
+  );
+  const standaloneCareerTasks = useMemo(
+    () => (careerTasks?.tasks ?? [])
+      .filter((task) => CAREER_TASK_VISIBLE_STATUSES.has(task.status) && !taskIdsInInbox.has(task.task_id))
+      .slice(0, 5),
+    [careerTasks, taskIdsInInbox],
+  );
+  const visibleAutomationCount = pendingAutomation.length + standaloneCareerTasks.length;
+  const [taskAction, setTaskAction] = useState<string | null>(null);
+  const [taskActionError, setTaskActionError] = useState<string | null>(null);
+
+  const handleCareerTaskAction = async (taskId: string, action: "cancel" | "retry") => {
+    const actionKey = `${taskId}:${action}`;
+    setTaskAction(actionKey);
+    setTaskActionError(null);
+    try {
+      await controlCareerTask(taskId, action);
+      await Promise.all([mutateCareerTasks(), mutateAutomationInbox()]);
+    } catch (error) {
+      setTaskActionError(safeClientErrorMessage(error, "任务操作失败，请稍后重试"));
+    } finally {
+      setTaskAction(null);
+    }
+  };
   const pipelineRecords = useMemo(
     () =>
       (pipeline?.companies ?? [])
@@ -225,6 +399,7 @@ export default function TodayPage() {
   const isEmptyWorkspace =
     pendingSignals.length === 0
     && pendingAutomation.length === 0
+    && standaloneCareerTasks.length === 0
     && pipelineLoading === false
     && pipelineRecords.length === 0
     && pendingProgress.length === 0
@@ -251,10 +426,28 @@ export default function TodayPage() {
         <SectionHeader
           icon={Inbox}
           title="OfferU 自动工作"
-          count={pendingAutomation.length}
+          count={visibleAutomationCount}
         />
         <div className="bauhaus-panel-sm divide-y divide-[var(--border)] overflow-hidden">
-          {pendingAutomation.length === 0 && (
+          {(automationInboxError || careerTasksError) && (
+            <p className="flex items-center gap-2 px-4 py-3 text-[13px] text-[var(--primary-red)]">
+              <AlertTriangle size={14} />
+              后台任务状态暂时无法完整读取，请稍后重试。
+            </p>
+          )}
+          {taskActionError && (
+            <p role="alert" className="flex items-center gap-2 border-t border-[var(--border)] px-4 py-3 text-[13px] text-[var(--primary-red)]">
+              <AlertTriangle size={14} />
+              {taskActionError}
+            </p>
+          )}
+          {visibleAutomationCount === 0 && (automationInboxLoading || careerTasksLoading) && (
+            <p className="flex items-center gap-2 px-4 py-4 text-[13px] text-[var(--foreground-muted)]">
+              <LoaderCircle size={14} className="animate-spin" />
+              正在同步后台任务…
+            </p>
+          )}
+          {visibleAutomationCount === 0 && !automationInboxLoading && !careerTasksLoading && (
             <p className="px-4 py-4 text-[13px] text-[var(--foreground-muted)]">
               暂无需要你处理的后台任务。
             </p>
@@ -263,57 +456,169 @@ export default function TodayPage() {
             const benchmark = entry.payload?.benchmark as Record<string, any> | undefined;
             const packet = entry.payload?.application_packet as Record<string, any> | undefined;
             const sample = benchmark?.valid_sample_count;
+            const task = taskSnapshotFromInbox(entry);
+            const percent = careerTaskPercent(task.progress);
             return (
-              <button
+              <div
                 key={entry.item_id}
-                type="button"
-                onClick={() =>
-                  select({
-                    kind: "task",
-                    id: entry.item_id,
-                    title: entry.title,
-                    subtitle: [automationCategoryLabel(entry.category), entry.target_type && entry.target_id
-                      ? `${entry.target_type} #${entry.target_id}`
-                      : ""].filter(Boolean).join(" · "),
-                    data: {
-                      fields: [
-                        { label: "状态", value: automationCategoryLabel(entry.category) },
-                        { label: "说明", value: entry.body },
-                        { label: "有效样本", value: sample == null ? "-" : String(sample) },
-                        { label: "Benchmark", value: String(benchmark?.data_mode || "-") },
-                        { label: "Application Packet", value: String(packet?.status || "-") },
-                        { label: "Task", value: entry.task_id || "-" },
-                      ],
-                      fullscreenHref:
-                        entry.target_type === "job" && entry.target_id
-                          ? `/jobs/${entry.target_id}`
-                          : undefined,
-                    },
-                  })
-                }
-                className="press-feedback flex w-full items-center gap-3 px-4 py-2.5 text-left"
+                className="px-4 py-3"
               >
-                <span
-                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                    entry.category === "failed"
+                <div className="flex items-start gap-3">
+                  <span
+                    className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
+                      task.status === "failed" || task.status === "blocked" || entry.category === "failed"
+                        ? "bg-[var(--primary-red)]"
+                        : task.status === "waiting_for_approval" || entry.category === "needs_approval"
+                          ? "bg-[var(--primary-yellow)]"
+                          : "bg-[var(--primary-blue)]"
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      select({
+                        kind: "task",
+                        id: entry.item_id,
+                        title: entry.title,
+                        subtitle: [careerTaskStatusLabel(task.status), entry.target_type && entry.target_id
+                          ? `${entry.target_type} #${entry.target_id}`
+                          : ""].filter(Boolean).join(" · "),
+                        data: {
+                          fields: [
+                            { label: "状态", value: careerTaskStatusLabel(task.status), emphasis: true },
+                            { label: "阶段", value: careerTaskStageLabel(task.status, task.progress) },
+                            { label: "说明", value: entry.body },
+                            { label: "错误", value: task.error || "-" },
+                            { label: "错误 ID", value: task.errorId || "-" },
+                            { label: "尝试次数", value: `${task.attemptCount}/${task.maxAttempts || "-"}` },
+                            { label: "有效样本", value: sample == null ? "-" : String(sample) },
+                            { label: "Benchmark", value: String(benchmark?.data_mode || "-") },
+                            { label: "Application Packet", value: String(packet?.status || "-") },
+                            { label: "Task", value: entry.task_id || "-" },
+                          ],
+                          fullscreenHref:
+                            entry.target_type === "job" && entry.target_id
+                              ? `/jobs/${entry.target_id}`
+                              : undefined,
+                        },
+                      })
+                    }
+                    className="min-w-0 flex-1 text-left"
+                  >
+                    <span className="block truncate text-[13px] font-medium text-[var(--foreground)]">
+                      {entry.title}
+                    </span>
+                    <span className="mt-0.5 block truncate text-[12px] text-[var(--foreground-muted)]">
+                      {[careerTaskStatusLabel(task.status), careerTaskStageLabel(task.status, task.progress), percent === null ? "" : `${percent}%`, sample == null ? "" : `${sample} 个有效样本`]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </span>
+                    {task.error && (
+                      <span className="mt-1 block truncate text-[12px] text-[var(--primary-red)]">
+                        {task.error}
+                      </span>
+                    )}
+                    {task.errorId && (
+                      <span className="mt-1 block truncate text-[11px] text-[var(--foreground-muted)]">
+                        错误 ID：{task.errorId}
+                      </span>
+                    )}
+                    {percent !== null && task.status !== "completed" && (
+                      <span className="mt-2 block h-1 overflow-hidden rounded-full bg-[var(--surface-hover)]">
+                        <span
+                          className="block h-full rounded-full bg-[var(--primary-blue)] transition-[width] duration-300"
+                          style={{ width: `${percent}%` }}
+                        />
+                      </span>
+                    )}
+                  </button>
+                  <AutomationTaskControls
+                    taskId={entry.task_id}
+                    status={task.status}
+                    retryable={task.retryable}
+                    busy={taskAction}
+                    onAction={handleCareerTaskAction}
+                  />
+                  <ArrowRight size={13} className="mt-1.5 shrink-0 text-[var(--foreground-faint)]" />
+                </div>
+              </div>
+            );
+          })}
+          {standaloneCareerTasks.map((task: CareerTask) => {
+            const percent = careerTaskPercent(task.progress);
+            const title = `${careerTaskTypeLabel(task.task_type)}${task.target_type && task.target_id
+              ? ` · ${task.target_type} #${task.target_id}`
+              : ""}`;
+            return (
+              <div key={task.task_id} className="px-4 py-3">
+                <div className="flex items-start gap-3">
+                  <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
+                    task.status === "failed" || task.status === "blocked"
                       ? "bg-[var(--primary-red)]"
-                      : entry.category === "needs_approval"
+                      : task.status === "waiting_for_approval"
                         ? "bg-[var(--primary-yellow)]"
                         : "bg-[var(--primary-blue)]"
-                  }`}
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13px] font-medium text-[var(--foreground)]">
-                    {entry.title}
-                  </span>
-                  <span className="mt-0.5 block truncate text-[12px] text-[var(--foreground-muted)]">
-                    {[automationCategoryLabel(entry.category), sample == null ? "" : `${sample} 个有效样本`]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </span>
-                </span>
-                <ArrowRight size={13} className="shrink-0 text-[var(--foreground-faint)]" />
-              </button>
+                  }`} />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      select({
+                        kind: "task",
+                        id: task.task_id,
+                        title,
+                        subtitle: [careerTaskStatusLabel(task.status), task.runtime_provider].filter(Boolean).join(" · "),
+                        data: {
+                          fields: [
+                            { label: "状态", value: careerTaskStatusLabel(task.status), emphasis: true },
+                            { label: "阶段", value: careerTaskStageLabel(task.status, task.progress) },
+                            { label: "提供方", value: task.runtime_provider || "-" },
+                            { label: "错误", value: task.error || "-" },
+                            { label: "错误 ID", value: task.error_id || "-" },
+                            { label: "尝试次数", value: `${task.attempt_count}/${task.max_attempts || "-"}` },
+                            { label: "Task", value: task.task_id },
+                          ],
+                          fullscreenHref:
+                            task.target_type === "job" && task.target_id
+                              ? `/jobs/${task.target_id}`
+                              : undefined,
+                        },
+                      })
+                    }
+                    className="min-w-0 flex-1 text-left"
+                  >
+                    <span className="block truncate text-[13px] font-medium text-[var(--foreground)]">{title}</span>
+                    <span className="mt-0.5 block truncate text-[12px] text-[var(--foreground-muted)]">
+                      {[careerTaskStatusLabel(task.status), careerTaskStageLabel(task.status, task.progress), percent === null ? "" : `${percent}%`, task.runtime_provider]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </span>
+                    {task.error && (
+                      <span className="mt-1 block truncate text-[12px] text-[var(--primary-red)]">{task.error}</span>
+                    )}
+                    {task.error_id && (
+                      <span className="mt-1 block truncate text-[11px] text-[var(--foreground-muted)]">
+                        错误 ID：{task.error_id}
+                      </span>
+                    )}
+                    {percent !== null && (
+                      <span className="mt-2 block h-1 overflow-hidden rounded-full bg-[var(--surface-hover)]">
+                        <span
+                          className="block h-full rounded-full bg-[var(--primary-blue)] transition-[width] duration-300"
+                          style={{ width: `${percent}%` }}
+                        />
+                      </span>
+                    )}
+                  </button>
+                  <AutomationTaskControls
+                    taskId={task.task_id}
+                    status={task.status}
+                    retryable={task.retryable}
+                    busy={taskAction}
+                    onAction={handleCareerTaskAction}
+                  />
+                  <ArrowRight size={13} className="mt-1.5 shrink-0 text-[var(--foreground-faint)]" />
+                </div>
+              </div>
             );
           })}
         </div>

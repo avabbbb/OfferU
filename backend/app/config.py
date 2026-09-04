@@ -5,15 +5,18 @@
 # 使用 pydantic-settings 自动从 .env / 环境变量加载
 # =============================================
 
+from pydantic import Field
 from pydantic_settings import BaseSettings
 from functools import lru_cache
+
+from app.runtime_paths import default_database_url
 
 
 class Settings(BaseSettings):
     """应用全局配置，字段自动绑定同名环境变量"""
 
     # ---- 数据库 ----
-    database_url: str = "sqlite+aiosqlite:///./djm.db"
+    database_url: str = Field(default_factory=default_database_url)
 
     # ---- API Keys（多 LLM 提供商） ----
     openai_api_key: str = ""
@@ -53,22 +56,18 @@ class Settings(BaseSettings):
     # ---- 安全 ----
     # 本地单人应用：无登录/会话体系，不设服务端对称密钥。
     cors_origins: str = (
-        "http://localhost:3011,"
-        "http://127.0.0.1:3011,"
-"http://localhost:7410,"
+        "http://localhost:7410,"
         "http://127.0.0.1:7410,"
-        "http://localhost:3000,"
-        "http://127.0.0.1:3000,"
-        "http://localhost:3001,"
-        "http://127.0.0.1:3001,"
-        "http://localhost:5140,"
-        "http://127.0.0.1:5140"
+        "http://tauri.localhost,"
+        "https://tauri.localhost,"
+        "tauri://localhost"
     )
 
     # ---- Gmail OAuth ----
     gmail_client_id: str = ""
     gmail_client_secret: str = ""
-    gmail_redirect_uri: str = ""  # 自定义回调地址，为空则自动从 cors_origins 推导
+    # 留空使用固定本地 callback；自定义值仅接受安全 HTTPS，或本机 8765 callback。
+    gmail_redirect_uri: str = ""
     email_sync_interval_seconds: int = 300
 
     # ---- Coding agent runtime ----

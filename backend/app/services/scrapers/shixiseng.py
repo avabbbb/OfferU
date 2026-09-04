@@ -102,8 +102,8 @@ class ShixisengScraper(JobScraperBase):
                                 headers=self.HEADERS,
                             )
                             logger.warning(
-                                "[shixiseng] kw=%s page=%s status=%s len=%s",
-                                kw, page, resp.status_code, len(resp.text),
+                                "[shixiseng] keyword_len=%s page=%s status=%s len=%s",
+                                len(kw), page, resp.status_code, len(resp.text),
                             )
                             if resp.status_code != 200:
                                 break

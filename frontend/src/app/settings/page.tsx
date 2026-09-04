@@ -48,7 +48,10 @@ import {
   type DataBackupItem,
   type DataIntegrityReport,
   type DataSafetyStatus,
+  type PrivacyHygieneStatus,
 } from "@/lib/api";
+import { resolveApiBase } from "@/lib/apiBase";
+import { safeClientErrorMessage } from "@/lib/safe-error";
 import { SHOWCASE } from "@/lib/showcase/router";
 import { useConfig, updateConfig } from "@/lib/hooks";
 
@@ -308,16 +311,15 @@ function TestLlmButton() {
     setTesting(true);
     setResult(null);
     try {
-      const API_BASE =
-        process.env.NEXT_PUBLIC_API_URL ||
-        (typeof window !== "undefined"
-          ? `${window.location.protocol}//${window.location.hostname}:8765`
-          : "http://127.0.0.1:8765");
-      const res = await fetch(`${API_BASE}/api/config/test-llm`, { method: "POST" });
+      const API_BASE = resolveApiBase();
+      const res = await fetch(`${API_BASE}/api/config/test-llm`, {
+        method: "POST",
+        redirect: "error",
+      });
       const data = await res.json();
-      setResult({ success: data.success, message: data.message });
+      setResult({ success: data.success, message: safeClientErrorMessage(data.message, "模型连接测试完成") });
     } catch (err: any) {
-      setResult({ success: false, message: `请求失败: ${err.message}` });
+      setResult({ success: false, message: `请求失败: ${safeClientErrorMessage(err, "请稍后重试")}` });
     } finally {
       setTesting(false);
     }
@@ -376,7 +378,7 @@ function AgentProviderHealthCard() {
       setProviders(health.providers || []);
       setRuntime(runtimeStatus);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Agent Runtime 健康状态读取失败");
+      setError(safeClientErrorMessage(cause, "Agent Runtime 健康状态读取失败"));
     } finally {
       setLoading(false);
     }
@@ -390,7 +392,13 @@ function AgentProviderHealthCard() {
   const items = ["pi", "replay", "codex", "deepseek-harness"].map((providerId) => {
     const saved = byId.get(providerId);
     if (providerId === "pi" && runtime?.available) {
-      return { ...(saved || {}), provider_id: providerId, status: "ready", last_error: "" } as AgentProviderHealth;
+      return {
+        ...(saved || {}),
+        provider_id: providerId,
+        status: "ready",
+        capabilities: runtime.capabilities || saved?.capabilities || {},
+        last_error: "",
+      } as AgentProviderHealth;
     }
     if (providerId === "replay") {
       return { ...(saved || {}), provider_id: providerId, status: "ready", available: true, last_error: "" } as AgentProviderHealth;
@@ -441,7 +449,7 @@ function AgentProviderHealthCard() {
               <div>
                 <p className="text-sm font-black text-[var(--foreground)]">{AGENT_PROVIDER_LABELS[item.provider_id] || item.provider_id}</p>
                 <p className="mt-1 text-xs font-medium text-[var(--foreground-muted)]">
-                  {item.last_error || (item.provider_id === "deepseek-harness" ? "实验性 Provider，需单独验收" : "")}
+                  {item.last_error || (item.provider_id === "deepseek-harness" ? "实验性 Provider，需单独验收" : item.capabilities?.live_web_search === false ? "不提供实时网页研究" : "")}
                 </p>
               </div>
               <Chip
@@ -468,7 +476,7 @@ function AgentProviderHealthCard() {
 function LocalDataSafetyCard() {
   const [exporting, setExporting] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [action, setAction] = useState<"" | "integrity" | "backup" | "restore" | "cancel" | "reset_demo">("");
+  const [action, setAction] = useState<"" | "integrity" | "backup" | "restore" | "cancel" | "reset_demo" | "privacy_scrub" | "privacy_purge_synthetic">("");
   const [status, setStatus] = useState<DataSafetyStatus | null>(null);
   const [integrity, setIntegrity] = useState<DataIntegrityReport | null>(null);
   const [backups, setBackups] = useState<DataBackupItem[]>([]);
@@ -477,21 +485,28 @@ function LocalDataSafetyCard() {
   const [confirmationText, setConfirmationText] = useState("");
   const [demoResetOpen, setDemoResetOpen] = useState(false);
   const [demoConfirmationText, setDemoConfirmationText] = useState("");
+  const [privacyHygiene, setPrivacyHygiene] = useState<PrivacyHygieneStatus | null>(null);
+  const [privacyScrubOpen, setPrivacyScrubOpen] = useState(false);
+  const [privacyConfirmationText, setPrivacyConfirmationText] = useState("");
+  const [syntheticPurgeOpen, setSyntheticPurgeOpen] = useState(false);
+  const [syntheticConfirmationText, setSyntheticConfirmationText] = useState("");
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const { isOpen, onOpen, onClose } = useDisclosure();
 
   const load = async () => {
     setLoading(true);
     try {
-      const [nextStatus, nextBackups] = await Promise.all([
+      const [nextStatus, nextBackups, nextPrivacyHygiene] = await Promise.all([
         dataSafetyApi.status(),
         dataSafetyApi.listBackups(),
+        SHOWCASE ? Promise.resolve<PrivacyHygieneStatus | null>(null) : dataSafetyApi.privacyHygieneStatus(),
       ]);
       setStatus(nextStatus);
       setBackups(nextBackups.items || []);
       setInvalidBackups((nextBackups.invalid || []).length);
+      setPrivacyHygiene(nextPrivacyHygiene);
     } catch (cause) {
-      setFeedback({ type: "error", message: cause instanceof Error ? cause.message : "数据安全状态读取失败" });
+      setFeedback({ type: "error", message: safeClientErrorMessage(cause, "数据安全状态读取失败") });
     } finally {
       setLoading(false);
     }
@@ -518,7 +533,7 @@ function LocalDataSafetyCard() {
         message: report.status === "ok" ? "数据库与外键完整性检查通过。" : "数据库完整性检查未通过，请先不要恢复或升级。",
       });
     } catch (cause) {
-      setFeedback({ type: "error", message: cause instanceof Error ? cause.message : "完整性检查失败" });
+      setFeedback({ type: "error", message: safeClientErrorMessage(cause, "完整性检查失败") });
     } finally {
       setAction("");
     }
@@ -532,7 +547,7 @@ function LocalDataSafetyCard() {
       setFeedback({ type: "success", message: "一致性备份已创建，并通过 manifest 与完整性校验。" });
       await load();
     } catch (cause) {
-      setFeedback({ type: "error", message: cause instanceof Error ? cause.message : "备份创建失败" });
+      setFeedback({ type: "error", message: safeClientErrorMessage(cause, "备份创建失败") });
     } finally {
       setAction("");
     }
@@ -554,7 +569,7 @@ function LocalDataSafetyCard() {
       setFeedback({ type: "success", message: "恢复已安全暂存。请关闭并重新打开 OfferU；启动前会再次校验并保留 pre-restore 备份。" });
       await load();
     } catch (cause) {
-      setFeedback({ type: "error", message: cause instanceof Error ? cause.message : "恢复暂存失败" });
+      setFeedback({ type: "error", message: safeClientErrorMessage(cause, "恢复暂存失败") });
     } finally {
       setAction("");
     }
@@ -568,7 +583,7 @@ function LocalDataSafetyCard() {
       setFeedback({ type: "success", message: "待恢复任务已取消，原备份仍然保留。" });
       await load();
     } catch (cause) {
-      setFeedback({ type: "error", message: cause instanceof Error ? cause.message : "取消恢复失败" });
+      setFeedback({ type: "error", message: safeClientErrorMessage(cause, "取消恢复失败") });
     } finally {
       setAction("");
     }
@@ -592,7 +607,7 @@ function LocalDataSafetyCard() {
       const total = Object.values(payload.counts || {}).reduce((sum, count) => sum + Number(count || 0), 0);
       setFeedback({ type: "success", message: `已导出 ${total} 条本地职业数据。` });
     } catch (cause) {
-      setFeedback({ type: "error", message: cause instanceof Error ? cause.message : "数据导出失败，请稍后重试" });
+      setFeedback({ type: "error", message: safeClientErrorMessage(cause, "数据导出失败，请稍后重试") });
     } finally {
       setExporting(false);
     }
@@ -615,11 +630,58 @@ function LocalDataSafetyCard() {
       });
       await load();
     } catch (cause) {
-      setFeedback({ type: "error", message: cause instanceof Error ? cause.message : "Demo 数据重置失败，请稍后重试" });
+      setFeedback({ type: "error", message: safeClientErrorMessage(cause, "Demo 数据重置失败，请稍后重试") });
     } finally {
       setAction("");
     }
   };
+
+  const scrubLegacyEmailBodies = async () => {
+    if (privacyConfirmationText !== "清理旧正文") return;
+    setAction("privacy_scrub");
+    setFeedback(null);
+    try {
+      const result = await dataSafetyApi.scrubLegacyEmailBodies(true);
+      setPrivacyScrubOpen(false);
+      setPrivacyConfirmationText("");
+      setPrivacyHygiene(result.status);
+      setFeedback({
+        type: "success",
+        message: `已清理 ${result.scrubbed_records} 条冗余旧邮件正文；结构化面试通知记录仍保留。`,
+      });
+    } catch (cause) {
+      setFeedback({ type: "error", message: safeClientErrorMessage(cause, "旧邮件正文清理失败，请稍后重试") });
+    } finally {
+      setAction("");
+    }
+  };
+
+  const purgeSyntheticEmailTestData = async () => {
+    if (syntheticConfirmationText !== "清理合成邮箱") return;
+    setAction("privacy_purge_synthetic");
+    setFeedback(null);
+    try {
+      const result = await dataSafetyApi.purgeSyntheticEmailTestData(true);
+      setSyntheticPurgeOpen(false);
+      setSyntheticConfirmationText("");
+      setPrivacyHygiene((current) => current ? { ...current, synthetic_email_test_data: result.status } : current);
+      const purged = Object.values(result.purged).reduce((sum, count) => sum + Number(count || 0), 0);
+      setFeedback({
+        type: "success",
+        message: `已清理 ${purged} 条严格限定的合成邮箱测试数据；真实邮箱、岗位和投递状态未改动。`,
+      });
+    } catch (cause) {
+      setFeedback({ type: "error", message: safeClientErrorMessage(cause, "合成邮箱测试数据清理失败，请稍后重试") });
+    } finally {
+      setAction("");
+    }
+  };
+
+  const legacyEmailBodyCount = privacyHygiene?.legacy_email_notification_bodies.records ?? 0;
+  const legacyEmailBodyCharacters = privacyHygiene?.legacy_email_notification_bodies.characters ?? 0;
+  const syntheticEmailDataCount = privacyHygiene
+    ? Object.values(privacyHygiene.synthetic_email_test_data).reduce((sum, count) => sum + Number(count || 0), 0)
+    : 0;
 
   return (
     <>
@@ -704,6 +766,57 @@ function LocalDataSafetyCard() {
           </div>
         </div>
 
+        {!SHOWCASE && privacyHygiene && (
+          <div
+            className={`bauhaus-panel-sm p-4 ${legacyEmailBodyCount || syntheticEmailDataCount ? "border-amber-500 bg-amber-50" : "border-emerald-600 bg-emerald-50"}`}
+            data-testid="privacy-hygiene"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="max-w-3xl">
+                <p className="bauhaus-label text-[var(--foreground-muted)]">隐私卫生</p>
+                <p className="mt-2 text-sm font-black text-[var(--foreground)]">
+                  {legacyEmailBodyCount ? `有 ${legacyEmailBodyCount} 条历史邮件正文待处理` : "没有待清理的历史邮件正文"}
+                </p>
+                <p className="mt-2 text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
+                  OfferU 这里只显示计数，不会在 Settings 读取或展示邮件正文。清理只会移除已经完成结构化解析的冗余正文，保留面试通知的结构化字段；该操作不可恢复，需要你明确确认。
+                  {legacyEmailBodyCount ? `当前共 ${legacyEmailBodyCharacters} 个字符。` : ""}
+                  {syntheticEmailDataCount ? `另有 ${syntheticEmailDataCount} 条严格命名空间的合成邮箱测试数据，可单独清理；它不属于岗位 Demo Reset。` : ""}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {legacyEmailBodyCount > 0 && (
+                  <Button
+                    color="warning"
+                    variant="flat"
+                    data-testid="scrub-legacy-email-bodies"
+                    isLoading={action === "privacy_scrub"}
+                    onPress={() => {
+                      setPrivacyConfirmationText("");
+                      setPrivacyScrubOpen(true);
+                    }}
+                  >
+                    清理旧邮件正文
+                  </Button>
+                )}
+                {syntheticEmailDataCount > 0 && (
+                  <Button
+                    color="warning"
+                    variant="bordered"
+                    data-testid="purge-synthetic-email-data"
+                    isLoading={action === "privacy_purge_synthetic"}
+                    onPress={() => {
+                      setSyntheticConfirmationText("");
+                      setSyntheticPurgeOpen(true);
+                    }}
+                  >
+                    清理合成邮箱数据
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {integrity && (
           <div className={`bauhaus-panel-sm px-4 py-3 text-sm font-semibold ${integrity.status === "ok" ? "border-emerald-600 bg-emerald-50 text-emerald-900" : "border-[var(--primary-red)] bg-red-50 text-red-800"}`}>
             {integrity.status === "ok" ? "Integrity OK" : "Integrity Failed"} · schema {integrity.schema.schema_version} · 外键异常 {integrity.foreign_key_violations.length}
@@ -782,6 +895,44 @@ function LocalDataSafetyCard() {
           </ModalFooter>
         </ModalContent>
       </Modal>
+
+      <Modal isOpen={privacyScrubOpen} onClose={() => setPrivacyScrubOpen(false)} size="lg" placement="center">
+        <ModalContent className={bauhausModalContentClassName}>
+          <ModalHeader className="border-b-2 border-[var(--border-strong)] px-6 py-5 text-xl font-black">确认清理历史邮件正文</ModalHeader>
+          <ModalBody className="space-y-4 px-6 py-6">
+            <div className="bauhaus-panel-sm border-amber-500 bg-amber-50 p-4 text-sm font-semibold leading-relaxed text-amber-950">
+              这会清空已完成结构化解析的旧面试通知正文，但保留通知时间、岗位关联和结构化状态。正文不会进入备份恢复，也不能在清理后恢复。OfferU 不会展示待清理正文内容。
+            </div>
+            <p className="text-sm font-bold">待处理：{legacyEmailBodyCount} 条记录 · {legacyEmailBodyCharacters} 个字符</p>
+            <Input label="输入“清理旧正文”以继续" value={privacyConfirmationText} onValueChange={setPrivacyConfirmationText} autoFocus classNames={bauhausFieldClassNames} />
+          </ModalBody>
+          <ModalFooter className="border-t-2 border-[var(--border-strong)] px-6 py-5">
+            <Button variant="light" onPress={() => setPrivacyScrubOpen(false)}>取消</Button>
+            <Button color="danger" isDisabled={privacyConfirmationText !== "清理旧正文"} isLoading={action === "privacy_scrub"} onPress={() => void scrubLegacyEmailBodies()}>
+              确认清理
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal isOpen={syntheticPurgeOpen} onClose={() => setSyntheticPurgeOpen(false)} size="lg" placement="center">
+        <ModalContent className={bauhausModalContentClassName}>
+          <ModalHeader className="border-b-2 border-[var(--border-strong)] px-6 py-5 text-xl font-black">确认清理合成邮箱测试数据</ModalHeader>
+          <ModalBody className="space-y-4 px-6 py-6">
+            <div className="bauhaus-panel-sm border-amber-500 bg-amber-50 p-4 text-sm font-semibold leading-relaxed text-amber-950">
+              只会处理 OfferU 保留的合成邮箱测试账号、同步运行、信号、候选和本机凭据引用。若它们已经关联正式时间线，系统会拒绝清理；真实邮箱、岗位和投递状态不会被处理。
+            </div>
+            <p className="text-sm font-bold">待处理：{syntheticEmailDataCount} 条合成邮箱测试数据</p>
+            <Input label="输入“清理合成邮箱”以继续" value={syntheticConfirmationText} onValueChange={setSyntheticConfirmationText} autoFocus classNames={bauhausFieldClassNames} />
+          </ModalBody>
+          <ModalFooter className="border-t-2 border-[var(--border-strong)] px-6 py-5">
+            <Button variant="light" onPress={() => setSyntheticPurgeOpen(false)}>取消</Button>
+            <Button color="danger" isDisabled={syntheticConfirmationText !== "清理合成邮箱"} isLoading={action === "privacy_purge_synthetic"} onPress={() => void purgeSyntheticEmailTestData()}>
+              确认清理
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </>
   );
 }
@@ -808,7 +959,7 @@ function LocalFeedbackCard() {
           backendDiagnostics = await diagnosticsApi.bundle();
           backendDiagnosticsStatus = "included";
         } catch (error) {
-          const errorId = String(error instanceof Error ? error.message : "").match(/err_[a-f0-9]{16}/)?.[0];
+          const errorId = safeClientErrorMessage(error, "").match(/err_[a-f0-9]{16}/)?.[0];
           backendErrorId = errorId || "";
         }
       }
@@ -817,7 +968,7 @@ function LocalFeedbackCard() {
         schema_version: "offeru.internal-beta.feedback.v2",
         created_at: new Date().toISOString(),
         current_page: window.location.hash || "#/",
-        app_version: "frontend@0.1.0",
+        app_version: `frontend@${import.meta.env.VITE_APP_VERSION || "unknown"}`,
         build_mode: import.meta.env.MODE || "unknown",
         runtime_mode: import.meta.env.VITE_SHOWCASE === "true" ? "showcase" : "local",
         user_note: safeNote,
@@ -858,7 +1009,7 @@ function LocalFeedbackCard() {
             <p className="bauhaus-label text-[var(--foreground-muted)]">内测反馈</p>
             <h3 className="mt-2 text-2xl font-bold text-[var(--foreground)]">报告一个问题</h3>
             <p className="mt-2 text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
-              只生成本地诊断包，包含当前页面、版本、构建模式和你的描述；不会自动上传，也不会附带 Profile 或 Provider 密钥。
+              只生成本地诊断包，包含当前页面、版本、构建模式、你的描述和最近的脱敏错误关联信息；不会自动上传，也不会附带 Profile、岗位正文或 Provider 密钥。
             </p>
           </div>
         </div>
@@ -919,13 +1070,10 @@ function FetchModelsButton({ baseUrl, apiKey, onModelsFetched }: FetchModelsButt
     setFetching(true);
     setMessage(null);
     try {
-      const API_BASE =
-        process.env.NEXT_PUBLIC_API_URL ||
-        (typeof window !== "undefined"
-          ? `${window.location.protocol}//${window.location.hostname}:8765`
-          : "http://127.0.0.1:8765");
+      const API_BASE = resolveApiBase();
       const res = await fetch(`${API_BASE}/api/config/fetch-models`, {
         method: "POST",
+        redirect: "error",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ base_url: baseUrl, api_key: apiKey }),
       });
@@ -934,10 +1082,10 @@ function FetchModelsButton({ baseUrl, apiKey, onModelsFetched }: FetchModelsButt
         setMessage(`获取到 ${data.models.length} 个模型`);
         onModelsFetched(data.models);
       } else {
-        setMessage(data.message || "未获取到模型");
+        setMessage(safeClientErrorMessage(data.message, "未获取到模型"));
       }
     } catch (err: any) {
-      setMessage(`请求失败: ${err.message}`);
+      setMessage(`请求失败: ${safeClientErrorMessage(err, "请稍后重试")}`);
     } finally {
       setFetching(false);
     }
@@ -1504,7 +1652,7 @@ export default function SettingsPage() {
         message: normalizedConfigs.length > 0 ? "模型配置已保存" : "模型配置已清空并保存",
       });
     } catch (error) {
-      setApiSaveError(error instanceof Error ? error.message : "模型配置保存失败，请稍后重试");
+      setApiSaveError(safeClientErrorMessage(error, "模型配置保存失败，请稍后重试"));
     } finally {
       setApiSaving(false);
     }
@@ -1532,7 +1680,7 @@ export default function SettingsPage() {
       setSettingsDirty(false);
       setTimeout(() => setSettingsSaved(false), 2000);
     } catch (error) {
-      setSettingsSaveError(error instanceof Error ? error.message : "其他设置保存失败，请稍后重试");
+      setSettingsSaveError(safeClientErrorMessage(error, "其他设置保存失败，请稍后重试"));
     } finally {
       setSettingsSaving(false);
     }
@@ -1600,6 +1748,9 @@ export default function SettingsPage() {
           <p className="text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
             请在此处配置模型接口信息。新增、删除、编辑后，仍需点击本模块底部的“保存模型配置”完成提交。
           </p>
+          <p className="bauhaus-panel-sm bg-[var(--surface-muted)] px-4 py-3 text-xs font-semibold leading-relaxed text-[var(--foreground-muted)]">
+            这里的地址是模型服务端点，不是 OfferU 网页地址。若看到 <code>http://127.0.0.1:8080</code>，它只代表可选的 llama.cpp 模型接口；网页入口始终是 <code>http://127.0.0.1:7410</code>。
+          </p>
 
           {/* 当前生效配置摘要 (PRD §7.1 Req 4) */}
           {config?.active_llm_summary && (
@@ -1626,7 +1777,7 @@ export default function SettingsPage() {
               <div className="ml-4 grid grid-cols-1 gap-x-6 gap-y-1 text-white/70 sm:grid-cols-3">
                 <span>服务商: <span className="text-white">{config.active_llm_summary.service_name}</span></span>
                 <span>模型: <span className="text-white">{config.active_llm_summary.model}</span></span>
-                <span className="truncate">地址: <span className="text-white">{config.active_llm_summary.base_url}</span></span>
+                <span className="truncate">模型接口（非网页）: <span className="text-white">{config.active_llm_summary.base_url}</span></span>
               </div>
               <div className="mt-3 ml-4 flex items-center gap-3">
                 <TestLlmButton />
@@ -1640,7 +1791,7 @@ export default function SettingsPage() {
                 <tr>
                   <th className="px-3 py-3 text-left font-semibold tracking-[0.06em]">服务商</th>
                   <th className="px-3 py-3 text-left font-semibold tracking-[0.04em]">模型名称</th>
-                  <th className="px-3 py-3 text-left font-semibold tracking-[0.04em]">接口地址</th>
+                  <th className="px-3 py-3 text-left font-semibold tracking-[0.04em]">模型接口地址（非网页）</th>
                   <th className="px-3 py-3 text-left font-semibold tracking-[0.04em]">密钥状态</th>
                   <th className="px-3 py-3 text-center font-semibold tracking-[0.06em]">禁用</th>
                   <th className="px-3 py-3 text-center font-semibold tracking-[0.06em]">是否激活</th>

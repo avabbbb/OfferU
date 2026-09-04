@@ -28,11 +28,14 @@ from app.services.coding_agent_runtime import (
     execute_deep_task,
     select_local_executor,
 )
+from app.services.diagnostics import new_error_id, record_error
 from app.services.security_redaction import safe_error_message
 
 
 RESEARCH_RESULT_SCHEMA = "offeru.job_research_result.v1"
-_WORKER_DIR = Path(__file__).resolve().parents[2] / "data" / "job_research_workers"
+from app.runtime_paths import runtime_data_path
+
+_WORKER_DIR = runtime_data_path("job_research_workers")
 _LIVE_TASKS: dict[str, asyncio.Task[Any]] = {}
 _DOSSIER_SCOPES = {"company", "role"}
 _REVIEW_ACTIONS = {"accept", "reject"}
@@ -60,6 +63,9 @@ _FINDING_TYPES = {
 }
 _HARD_FINDINGS = {"company_business", "company_product", "role_requirement"}
 _SUBJECTIVE_FINDINGS = {"team_culture", "interview_process", "interview_question"}
+_BACKEND_SEARCH_RUNTIME_ID = "backend_search"
+_BACKEND_SEARCH_RUNTIME_VERSION = "backend-search-v1"
+_BACKEND_SEARCH_MAX_PAGES = 8
 _FORBIDDEN_RESUME_KEYS = {
     "candidate_email",
     "candidate_name",
@@ -568,6 +574,7 @@ def _company_dossier_key(company: str) -> str:
 
 def _run_summary(run: JobResearchRun) -> dict[str, Any]:
     result = run.result_json if isinstance(run.result_json, dict) else {}
+    trace = run.trace_json if isinstance(run.trace_json, dict) else {}
     return {
         "run_id": run.run_id,
         "job_id": run.job_id,
@@ -584,6 +591,7 @@ def _run_summary(run: JobResearchRun) -> dict[str, Any]:
         "source_count": len(result.get("sources") or []),
         "finding_count": len(result.get("findings") or []),
         "error": run.error or None,
+        "error_id": str(trace.get("error_id") or "")[:40] or None,
         "created_at": str(run.created_at),
         "updated_at": str(run.updated_at),
         "started_at": str(run.started_at) if run.started_at else None,
@@ -679,14 +687,93 @@ Local job input:
 """.strip()
 
 
-async def _compatible_research_runtime(runtime_id: str | None = None) -> dict[str, Any]:
-    """选择可执行公开网页调研的 runtime：任何 contract_compatible 且声明
-    live web search 能力的 CLI（claude/codex/gemini）均可；不指定时按
-    settings.coding_agent_priority 自动选择。"""
-    return await select_local_executor(
-        runtime_id,
-        requirements=ExecutorRequirements(web_search=True),
+def _backend_search_runtime() -> dict[str, Any]:
+    """Describe the bounded HTTP fallback without pretending it is a CLI."""
+
+    return {
+        "id": _BACKEND_SEARCH_RUNTIME_ID,
+        "name": "OfferU public web HTTP fallback",
+        "version": _BACKEND_SEARCH_RUNTIME_VERSION,
+        "available": True,
+        "supported": True,
+        "contract_compatible": True,
+        "protocol": "offeru-public-web-http-v1",
+        "isolation": "direct HTTP, bounded redirects, public DNS only",
+    }
+
+
+def _backend_search_is_configured() -> bool:
+    """Return whether the non-browser fallback has both sides configured.
+
+    This is a configuration check only.  It does not contact a search or LLM
+    endpoint, and it intentionally excludes the uncontrolled ddgs fallback.
+    """
+
+    from app.agents.llm import resolve_llm_client_config
+    from app.config import get_settings
+
+    settings = get_settings()
+    provider = str(settings.search_provider or "auto").strip().lower()
+    search_keys = {
+        "bocha": bool(settings.bocha_api_key),
+        "tavily": bool(settings.tavily_api_key),
+        "serper": bool(settings.serper_api_key),
+    }
+    if provider not in {"auto", "bocha", "tavily", "serper"}:
+        return False
+    has_search = any(search_keys.values()) if provider == "auto" else search_keys[provider]
+    if not has_search:
+        return False
+    try:
+        resolved = resolve_llm_client_config()
+    except Exception:
+        return False
+    return bool(str(resolved.get("base_url") or "").strip()) and bool(
+        str(resolved.get("model") or "").strip()
     )
+
+
+def _backend_search_job_payload(job: Job) -> dict[str, str]:
+    return {
+        "company": (job.company or "").strip(),
+        "title": (job.title or "").strip(),
+        "description": (job.raw_description or "")[:10_000],
+    }
+
+
+def _backend_search_page_limit(value: Any) -> int:
+    try:
+        return max(1, min(int(value), _BACKEND_SEARCH_MAX_PAGES))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("max_pages 必须是正整数") from exc
+
+
+async def _compatible_research_runtime(runtime_id: str | None = None) -> dict[str, Any]:
+    """选择公开网页调研路径；无 live CLI 时才选择受控后端兜底。"""
+
+    clean_runtime_id = str(runtime_id or "").strip().lower()
+    if clean_runtime_id == _BACKEND_SEARCH_RUNTIME_ID:
+        if not _backend_search_is_configured():
+            raise ValueError(
+                "后端检索模式不可用：请配置 bocha、tavily 或 serper 搜索 API，"
+                "以及一个可用的 LLM Provider"
+            )
+        return _backend_search_runtime()
+
+    try:
+        return await select_local_executor(
+            runtime_id,
+            requirements=ExecutorRequirements(web_search=True),
+        )
+    except ValueError as exc:
+        # Explicitly requested runtimes must fail closed.  Automatic selection
+        # may use the bounded HTTP+LLM path, but it is never mislabeled as a
+        # coding-agent runtime.
+        if clean_runtime_id:
+            raise
+        if _backend_search_is_configured():
+            return _backend_search_runtime()
+        raise exc
 
 
 async def _get_or_create_dossiers(
@@ -742,9 +829,23 @@ async def _mark_run_status(
         ).scalar_one_or_none()
         if run is None:
             return
+        message = safe_error_message(ValueError(str(error)))
+        error_id = new_error_id()
+        record_error(
+            error_id,
+            method="JOB_RESEARCH",
+            path=f"/api/research/job-runs/{run_id}",
+            status_code=503 if status == "interrupted" else 500,
+            kind="job_research",
+            message=message,
+            run_id=run_id,
+            provider_id=run.runtime_id,
+        )
+        trace = run.trace_json if isinstance(run.trace_json, dict) else {}
+        run.trace_json = {**trace, "error_id": error_id}
         run.status = status
         run.review_status = "not_available"
-        run.error = str(error or "")[:4000]
+        run.error = message
         run.completed_at = _utc_now()
         await db.commit()
 
@@ -982,26 +1083,51 @@ async def _execute_run(run_id: str) -> None:
             run.completed_at = None
             run.attempts += 1
             run.error = ""
+            trace = run.trace_json if isinstance(run.trace_json, dict) else {}
+            if trace.get("error_id"):
+                run.trace_json = {
+                    key: value for key, value in trace.items() if key != "error_id"
+                }
+                trace = run.trace_json
             await db.commit()
 
-            worker = await execute_deep_task(DeepTaskSpec(
-                runtime_id=run.runtime_id,
-                prompt=_worker_prompt(job),
-                cwd=_WORKER_DIR / run.run_id,
-                output_schema=JOB_RESEARCH_OUTPUT_SCHEMA,
-                timeout_seconds=1800,
-                max_turns=50,
-                web_search_mode="live",
-                task_type="job_research",
-                task_id=run.run_id,
-                capability_grant={
-                    "offeru_operations": [],
-                    "data_scope": {"job_id": run.job_id},
-                    "filesystem": "task_cwd_read_only",
-                    "network": "public_web_only",
-                },
-            ))
-            result = _validated_research_result(worker.get("structured"))
+            if run.runtime_id == _BACKEND_SEARCH_RUNTIME_ID:
+                result, provider_trace = await _collect_backend_research(
+                    job=_backend_search_job_payload(job),
+                    max_pages=trace.get("max_pages", 6),
+                )
+                worker_trace = {
+                    **trace,
+                    **provider_trace,
+                    "runtime_id": _BACKEND_SEARCH_RUNTIME_ID,
+                    "runtime_version": _BACKEND_SEARCH_RUNTIME_VERSION,
+                }
+                worker_runtime_version = _BACKEND_SEARCH_RUNTIME_VERSION
+            else:
+                worker = await execute_deep_task(DeepTaskSpec(
+                    runtime_id=run.runtime_id,
+                    prompt=_worker_prompt(job),
+                    cwd=_WORKER_DIR / run.run_id,
+                    output_schema=JOB_RESEARCH_OUTPUT_SCHEMA,
+                    timeout_seconds=1800,
+                    max_turns=50,
+                    web_search_mode="live",
+                    task_type="job_research",
+                    task_id=run.run_id,
+                    capability_grant={
+                        "offeru_operations": [],
+                        "data_scope": {"job_id": run.job_id},
+                        "filesystem": "task_cwd_read_only",
+                        "network": "public_web_only",
+                    },
+                ))
+                result = _validated_research_result(worker.get("structured"))
+                worker_trace = {
+                    **(worker.get("trace") or {}),
+                    "runtime_id": worker.get("runtime_id"),
+                    "runtime_version": worker.get("runtime_version"),
+                }
+                worker_runtime_version = str(worker.get("runtime_version") or "")
             narrative = await _compose_narrative(
                 job={"company": job.company, "title": job.title},
                 result=result,
@@ -1017,12 +1143,8 @@ async def _execute_run(run_id: str) -> None:
                 run=run,
                 result=result,
                 report_markdown=report,
-                trace={
-                    **(worker.get("trace") or {}),
-                    "runtime_id": worker.get("runtime_id"),
-                    "runtime_version": worker.get("runtime_version"),
-                },
-                runtime_version=str(worker.get("runtime_version") or ""),
+                trace=worker_trace,
+                runtime_version=worker_runtime_version,
             )
             await db.commit()
             research_completed = True
@@ -1055,6 +1177,8 @@ def _schedule(run_id: str) -> None:
 async def start_job_research(
     job_id: int,
     runtime_id: str | None = None,
+    *,
+    max_pages: int = 6,
 ) -> dict[str, Any]:
     try:
         clean_job_id = int(job_id)
@@ -1062,6 +1186,7 @@ async def start_job_research(
         raise ValueError("job_id 必须是正整数") from exc
     if clean_job_id <= 0:
         raise ValueError("job_id 必须是正整数")
+    safe_max_pages = _backend_search_page_limit(max_pages)
     selected = await _compatible_research_runtime(runtime_id)
 
     async with async_session() as db:
@@ -1098,6 +1223,11 @@ async def start_job_research(
             runtime_version=str(selected.get("version") or ""),
             status="pending",
             review_status="pending",
+            trace_json=(
+                {"mode": "backend_search", "max_pages": safe_max_pages}
+                if selected.get("id") == _BACKEND_SEARCH_RUNTIME_ID
+                else {}
+            ),
         )
         db.add(run)
         await db.commit()
@@ -1643,31 +1773,20 @@ Rules (same contract as the live worker):
 6. Return ONLY the JSON object, no prose."""
 
 
-async def run_backend_research(job_id: int, *, max_pages: int = 6) -> dict[str, Any]:
-    """后端检索模式：search API 兜底链采集 → LLM 归纳 → 同一事实门 → 同一 dossier。
+async def _collect_backend_research(
+    *,
+    job: dict[str, str],
+    max_pages: int = 6,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Collect and validate backend-search evidence without touching domain state."""
 
-    仅当没有 live-capable CLI runtime 时使用（select_local_executor 失败的兜底）。"""
     from app.agents.llm import chat_completion, extract_json
     from app.services.web_search import fetch_readable, web_search
 
-    try:
-        clean_job_id = int(job_id)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("job_id 必须是正整数") from exc
-
-    async with async_session() as db:
-        job = (
-            await db.execute(select(Job).where(Job.id == clean_job_id))
-        ).scalar_one_or_none()
-        if job is None:
-            raise ValueError(f"job #{clean_job_id} 不存在")
-        if not (job.company or "").strip() or not (job.title or "").strip():
-            raise ValueError("岗位缺少公司或岗位名称")
-        company_name = job.company.strip()
-        job_title = job.title.strip()
-        job_description = (job.raw_description or "")[:10_000]
-
-    # 多角度检索（公司官方 / 岗位要求 / 团队氛围 / 面经）
+    safe_max_pages = _backend_search_page_limit(max_pages)
+    company_name = job["company"]
+    job_title = job["title"]
+    job_description = job.get("description", "")
     queries = [
         f"{company_name} 官网 公司介绍",
         f"{company_name} {job_title} 岗位要求",
@@ -1677,34 +1796,41 @@ async def run_backend_research(job_id: int, *, max_pages: int = 6) -> dict[str, 
     seen_urls: set[str] = set()
     pages: list[dict[str, str]] = []
     for query in queries:
-        if len(pages) >= max_pages:
+        if len(pages) >= safe_max_pages:
             break
         try:
-            results = await web_search(query, limit=4)
+            results = await web_search(
+                query,
+                limit=4,
+                allow_optional_ddgs=False,
+            )
         except Exception:
             continue
         for item in results:
-            if len(pages) >= max_pages or item["url"] in seen_urls:
+            if not isinstance(item, dict):
                 continue
-            seen_urls.add(item["url"])
+            url = str(item.get("url") or "").strip()
+            if len(pages) >= safe_max_pages or not url or url in seen_urls:
+                continue
+            seen_urls.add(url)
             try:
-                text = await fetch_readable(item["url"], max_chars=6000)
+                text = await fetch_readable(url, max_chars=6000)
             except Exception:
                 continue
             if len(text) < 200:
                 continue
             pages.append(
                 {
-                    "url": item["url"],
-                    "title": item["title"] or item["url"],
-                    "engine": item["engine"],
+                    "url": url,
+                    "title": str(item.get("title") or url),
+                    "engine": str(item.get("engine") or "unknown"),
                     "content": text,
                 }
             )
     if not pages:
         raise ValueError(
             "后端检索模式没有取到任何可用页面；请配置搜索 API key"
-            "（bocha/tavily/serper）或安装支持 live web search 的 CLI runtime"
+            "（bocha/tavily/serper）或选择支持 live web search 的 CLI runtime"
         )
 
     pages_digest = "\n\n".join(
@@ -1733,34 +1859,39 @@ async def run_backend_research(job_id: int, *, max_pages: int = 6) -> dict[str, 
     payload = extract_json(raw) if isinstance(raw, str) else None
     if payload is None:
         raise ValueError("LLM 未返回可解析的调研结果")
-    # 同一事实门；LLM 引用的 URL 必须来自我们抓取的页面（防编造来源）
     result = _validated_research_result(payload)
     supplied_urls = {page["url"] for page in pages}
     for source in result["sources"]:
         if source["url"] not in supplied_urls:
             raise ValueError(f"LLM 引用了未提供的页面: {source['url'][:200]}")
+    return result, {
+        "mode": "backend_search",
+        "engines": sorted({page["engine"] for page in pages}),
+        "page_count": len(pages),
+        "schema_enforced": False,
+        "public_web_transport": "httpx-direct-manual-redirect-dns-v1",
+    }
 
-    return await persist_authorized_research_result(
-        job_id=clean_job_id,
-        result_payload={
-            "sources": result["sources"],
-            "findings": [
-                {
-                    "dossier_scope": item["dossier_scope"],
-                    "finding_type": item["finding_type"],
-                    "statement": item["statement"],
-                    "details": item["details"],
-                    "source_refs": item["source_refs"],
-                }
-                for item in result["findings"]
-            ],
-            "gaps": result["gaps"],
-        },
-        trace={
-            "mode": "backend_search",
-            "engines": sorted({page["engine"] for page in pages}),
-            "page_count": len(pages),
-            "schema_enforced": False,
-        },
-        runtime_version="backend-search-v1",
+
+async def run_backend_research(job_id: int, *, max_pages: int = 6) -> dict[str, Any]:
+    """Run the canonical backend-search lifecycle synchronously for callers that need it."""
+
+    try:
+        clean_job_id = int(job_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("job_id 必须是正整数") from exc
+    if clean_job_id <= 0:
+        raise ValueError("job_id 必须是正整数")
+    safe_max_pages = _backend_search_page_limit(max_pages)
+    started = await start_job_research(
+        clean_job_id,
+        runtime_id=_BACKEND_SEARCH_RUNTIME_ID,
+        max_pages=safe_max_pages,
     )
+    run_id = str(started.get("run_id") or "")
+    if not run_id:
+        return started
+    task = _LIVE_TASKS.get(run_id)
+    if task is not None and not task.done():
+        await task
+    return await get_job_research(run_id)

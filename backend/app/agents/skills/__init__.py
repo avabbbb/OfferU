@@ -27,6 +27,7 @@ from app.agents.skills.content_rewriter import ContentRewriterSkill
 from app.agents.skills.humanizer import HumanizerSkill
 from app.agents.skills.section_reorder import SectionReorderSkill
 from app.config import get_settings
+from app.services.security_redaction import safe_error_message
 
 import json
 
@@ -108,7 +109,7 @@ class SkillPipeline:
                 if output:
                     context[skill.name] = output
             except Exception as e:
-                context[skill.name] = {"error": str(e)}
+                context[skill.name] = {"error": safe_error_message(e)}
 
         # 从 context 中提取结果（移除原始输入）
         result = {

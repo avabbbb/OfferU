@@ -333,16 +333,18 @@ async def _generate_candidate(
     jd_text: str,
     research_context: dict[str, Any],
 ) -> dict[str, Any]:
-    from app.routes.optimize import (
+    from app.services.resume_optimize_support import (
         _build_resume_sections,
         _bullet_text,
         _missing_keywords,
+        _rank_profile_sections,
         _select_sections_structured,
         _skills_pipeline_rewrite,
     )
 
     if research_context.get("data_mode") == "fixture":
-        selected = list(sections[:12])
+        ranked = _rank_profile_sections(sections, jd_text, limit=12)
+        selected = [section for section, _ in ranked] or list(sections[:12])
         original_rows = _build_resume_sections(sections)
         proposed_rows = _build_resume_sections(selected)
         used_texts = [_bullet_text(section) for section in selected]
@@ -516,10 +518,12 @@ async def prepare_resume_optimization(
                 .where(ProfileSection.profile_id == profile.id)
                 .where(ProfileSection.tier == "verified_fact")
                 .where(ProfileSection.status == "active")
+                .order_by(ProfileSection.sort_order.asc(), ProfileSection.id.asc())
             )
         ).scalars().all())
         if not sections:
             raise ValueError("Profile 中没有 tier=verified_fact 的可用职业事实")
+        baseline_sections = list(sections)
         from app.services.job_projection import reorder_sections_by_job_relevance
 
         reorder_sections_by_job_relevance(
@@ -560,7 +564,7 @@ async def prepare_resume_optimization(
                     + ", ".join(str(item) for item in missing_source_ids)
                 )
             selected = [section_by_id[source_id] for source_id in source_ids]
-            from app.routes.optimize import _bullet_text, _missing_keywords
+            from app.services.resume_optimize_support import _bullet_text, _missing_keywords
 
             candidate = {
                 "selected": selected,
@@ -589,6 +593,13 @@ async def prepare_resume_optimization(
                     "runtime_id": research["runtime_id"],
                 },
             )
+            from app.services.resume_optimize_support import _build_resume_sections
+
+            # `sections` is intentionally ordered for job relevance above so
+            # the generated candidate can use that order.  The Before side of
+            # a proposal must remain the user's current Profile order; using
+            # the ranked list here would hide legitimate reorder-only diffs.
+            candidate["original_rows"] = _build_resume_sections(baseline_sections)
             candidate["original_rows"] = _validated_resume_rows(
                 candidate["original_rows"],
                 "generated_original_rows",

@@ -10,7 +10,6 @@ from __future__ import annotations
 import base64
 import binascii
 import copy
-import os
 import re
 import secrets
 import uuid
@@ -40,12 +39,14 @@ from app.services.resume_drafts import save_resume_draft
 from app.services.resume_fact_gates import validate_generated_content
 from app.services.resume_versions import create_version_snapshot, snapshot_resume
 from app.services.security_redaction import safe_error_message
+from app.runtime_paths import runtime_uploads_dir
 
 
-BACKEND_DIR = Path(__file__).resolve().parents[2]
-PHOTO_DIR = BACKEND_DIR / "uploads" / "photos"
-LOGO_DIR = BACKEND_DIR / "uploads" / "logos"
-FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://127.0.0.1:7410").rstrip("/")
+BACKEND_DIR = runtime_uploads_dir().parent
+PHOTO_DIR = runtime_uploads_dir("photos")
+LOGO_DIR = runtime_uploads_dir("logos")
+# Keep user-facing share links on the single supported local web origin.
+FRONTEND_BASE_URL = "http://127.0.0.1:7410"
 
 
 def _source_job_ids(value: Any) -> list[int]:
@@ -203,12 +204,12 @@ async def update_resume_record(resume_id: int, update_data: dict[str, Any]) -> d
         resume = await _get_resume(db, resume_id, load_sections=True)
         values = dict(update_data or {})
         sections = values.pop("sections", None)
+        changed = False
         for key, value in values.items():
             if hasattr(resume, key):
-                setattr(resume, key, value)
-
-        if values or sections is not None:
-            resume.workspace_revision = int(resume.workspace_revision or 0) + 1
+                if getattr(resume, key) != value:
+                    setattr(resume, key, value)
+                    changed = True
 
         if sections is not None:
             existing = {section.id: section for section in resume.sections}
@@ -225,18 +226,35 @@ async def update_resume_record(resume_id: int, update_data: dict[str, Any]) -> d
                     await db.flush()
                     seen.add(section.id)
                     existing[section.id] = section
-                section.section_type = row["section_type"]
-                section.sort_order = row.get("sort_order", index)
-                section.title = row.get("title", "")
-                section.visible = row.get("visible", True)
-                section.content_json = row.get("content_json", [])
-                section.source_section_ids = row.get("source_section_ids") or section.source_section_ids
+                    changed = True
+                next_values = {
+                    "section_type": row["section_type"],
+                    "sort_order": row.get("sort_order", index),
+                    "title": row.get("title", ""),
+                    "visible": row.get("visible", True),
+                    "content_json": row.get("content_json", []),
+                }
+                for key, value in next_values.items():
+                    if getattr(section, key) != value:
+                        setattr(section, key, value)
+                        changed = True
+                source_section_ids = row.get("source_section_ids")
+                if source_section_ids:
+                    if section.source_section_ids != source_section_ids:
+                        section.source_section_ids = source_section_ids
+                        changed = True
             for section_id, section in existing.items():
                 if section_id not in seen:
                     await db.delete(section)
+                    changed = True
+        if changed:
+            resume.workspace_revision = int(resume.workspace_revision or 0) + 1
         await db.commit()
         fresh = await _get_resume(db, resume_id, load_sections=True)
-        return _resume_dict(fresh, await _source_jobs(db, _source_job_ids(fresh.source_job_ids)))
+        return {
+            **_resume_dict(fresh, await _source_jobs(db, _source_job_ids(fresh.source_job_ids))),
+            "duplicate": not changed,
+        }
 
 
 async def delete_resume_record(resume_id: int) -> dict[str, Any]:

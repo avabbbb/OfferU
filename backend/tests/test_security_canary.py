@@ -24,14 +24,100 @@ from app.models.models import (  # noqa: E402
     Profile,
 )
 from app.ops import execute_operation  # noqa: E402
-from app.services import agent_run_state, data_export, diagnostics  # noqa: E402
+from app.services import (  # noqa: E402
+    agent_run_state,
+    application_events,
+    application_followups,
+    career_artifacts,
+    data_export,
+    diagnostics,
+    harness_history,
+    harness_memory,
+    pre_application_decisions,
+    resume_drafts,
+)
+from app.services.agent_files import atomic_write_json  # noqa: E402
 from app.services.agent_run_state import create_agent_run  # noqa: E402
+from app.services.artifact_workspace import ArtifactWorkspaceManager  # noqa: E402
 
 
 RELEASE_CANARY = "OFFERU_RELEASE_CANARY_SECRET_20260831_7f5c"
 
 
 class SecurityCanaryTests(unittest.TestCase):
+    def test_isolated_json_artifact_matrix_redacts_canary(self) -> None:
+        canary = "OFFERU_ARTIFACT_CANARY_SECRET_20260831_9ab3"
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            atomic_write_json(
+                root / "generic.json",
+                {
+                    "content": f"api_token={canary}",
+                    "owner": "owner@example.com",
+                    "nested": {"Authorization": f"Bearer {canary}"},
+                },
+            )
+            career_artifacts.CareerArtifactStore(root / "artifacts").save(
+                artifact_type="cover_letter",
+                title=f"token={canary}",
+                content_markdown=f"正文 api_key={canary}",
+                metadata={"client_secret": canary},
+            )
+            application_events.ApplicationEventStore(root / "application-events").record(
+                application_type="application",
+                application_id=1,
+                event_type="field_updated",
+                source="security-canary",
+                value=f"secret={canary}",
+                metadata={"refresh_token": canary},
+            )
+            application_followups.FollowUpStore(root / "follow-ups").record(
+                application_type="application",
+                application_id=1,
+                channel="email",
+                contact=f"token={canary}",
+                notes=f"password={canary}",
+            )
+            pre_application_decisions.PreApplicationDecisionStore(
+                root / "pre-application"
+            ).create({"job_id": 1, "rationale": f"credential={canary}"})
+
+            workspace = ArtifactWorkspaceManager("run_artifact_canary", root=root / "runs")
+            workspace.create(owner="security-canary")
+            workspace.write_artifact(
+                "inbox/result.json",
+                {"result": f"Bearer {canary}", "note": "owner@example.com"},
+            )
+
+            harness_history.save_conversation_messages(
+                conversation_id="canary",
+                messages=[{"role": "user", "content": f"cookie={canary}"}],
+                path=root / "history.json",
+            )
+            harness_memory.save_agent_memory(
+                {"facts": [f"session_token={canary}"]},
+                path=root / "memory.json",
+            )
+            with patch.object(resume_drafts, "DRAFT_DIR", root / "resume-drafts"):
+                resume_drafts.save_resume_draft(
+                    resume_id=1,
+                    profile_id=1,
+                    jd_text=f"authorization={canary}",
+                    summary="保留职业内容",
+                    sections=[{"content": f"api_token={canary}"}],
+                    fact_gates={"status": f"token={canary}"},
+                )
+
+            persisted = "\n".join(
+                path.read_text(encoding="utf-8")
+                for path in root.rglob("*")
+                if path.is_file() and not path.name.endswith(".tmp")
+            )
+
+        self.assertNotIn(canary, persisted)
+        self.assertIn("owner@example.com", persisted)
+
     def test_isolated_canary_does_not_enter_durable_run_audit_or_export(self) -> None:
         async def run(database_path: Path) -> dict[str, object]:
             engine = create_async_engine(

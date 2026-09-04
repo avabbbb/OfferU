@@ -6,6 +6,7 @@
 
 import type { SiteRuleRegistry } from "./registry.js";
 import { validatePack } from "./validator.js";
+import { safeExtensionError } from "../lib/safe-error.js";
 
 export const REMOTE_RULE_BUNDLE_URL =
   "https://offeru-rule-packs.pages.dev/bundle.json";
@@ -129,6 +130,7 @@ export async function fetchRemoteRulePacks(
     try {
       response = await fetch(REMOTE_RULE_BUNDLE_URL, {
         cache: "no-store",
+        redirect: "error",
         signal: controller.signal,
       });
     } finally {
@@ -202,7 +204,7 @@ export async function fetchRemoteRulePacks(
     }
     return summary;
   } catch (error) {
-    summary.reason = error instanceof Error ? error.message : String(error);
+    summary.reason = safeExtensionError(error, "远程规则包暂不可用");
     return summary;
   }
 }

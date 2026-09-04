@@ -8,8 +8,10 @@ import re
 from typing import Optional
 
 from sqlalchemy import func, select, desc
+from sqlalchemy.orm import selectinload
 
 from app.database import async_session
+from app.runtime_paths import runtime_data_path
 from app.models.models import (
     Application,
     ApplicationRecord,
@@ -739,10 +741,16 @@ async def invalidate_work_source(work_source_id: int, reason: str) -> dict:
     return await _invalidate(work_source_id=work_source_id, reason=reason)
 
 
-async def begin_gmail_oauth(redirect_uri: str) -> dict:
+async def begin_gmail_oauth(
+    redirect_uri: str,
+    user_confirmed: bool = False,
+) -> dict:
     from app.services.email_sync import begin_gmail_oauth as _begin
 
-    return await _begin(redirect_uri=redirect_uri)
+    return await _begin(
+        redirect_uri=redirect_uri,
+        user_confirmed=user_confirmed,
+    )
 
 
 async def complete_gmail_oauth(code: str, state: str) -> dict:
@@ -757,6 +765,7 @@ async def connect_imap_account(
     provider: str = "",
     host: str = "",
     port: int = 993,
+    user_confirmed: bool = False,
 ) -> dict:
     from app.services.email_sync import connect_imap_account as _connect
 
@@ -766,6 +775,7 @@ async def connect_imap_account(
         provider=provider,
         host=host,
         port=port,
+        user_confirmed=user_confirmed,
     )
 
 
@@ -837,7 +847,7 @@ async def review_job_research(
 
 async def start_job_research(
     job_id: int,
-    runtime_id: str = "codex",
+    runtime_id: str | None = None,
 ) -> dict:
     from app.services.job_research import start_job_research as _start
 
@@ -864,7 +874,7 @@ async def cancel_job_research(run_id: str) -> dict:
 
 async def build_role_benchmark(
     job_id: int,
-    runtime_id: str = "codex",
+    runtime_id: str = "auto",
     role_family: str = "",
     specialization: str = "",
     seniority: str = "",
@@ -886,7 +896,7 @@ async def build_role_benchmark(
 
 async def refresh_role_benchmark(
     job_id: int,
-    runtime_id: str = "codex",
+    runtime_id: str = "auto",
     role_family: str = "",
     specialization: str = "",
     seniority: str = "",
@@ -1840,28 +1850,22 @@ async def get_resume(resume_id: int) -> dict:
 
 async def export_resume_pdf(resume_id: int) -> dict:
     """Render and atomically persist an ATS-readable PDF on explicit confirmation."""
-    import anyio
-
-    from app.routes.resume import (
-        _get_resume_or_404,
-        _render_resume_html_for_export,
-        _render_resume_pdf_bytes,
-        _render_resume_pdf_with_playwright,
-    )
     from app.services.agent_files import atomic_write_bytes
+    from app.services.resume_export import render_resume_pdf
 
     async with async_session() as db:
-        resume = await _get_resume_or_404(int(resume_id), db, load_sections=True)
-        try:
-            pdf_bytes = await _render_resume_pdf_with_playwright(int(resume_id), resume)
-            renderer = "playwright"
-        except Exception:
-            html = await _render_resume_html_for_export(resume, db)
-            pdf_bytes = await anyio.to_thread.run_sync(_render_resume_pdf_bytes, html)
-            renderer = "python_fallback"
+        result = await db.execute(
+            select(Resume)
+            .options(selectinload(Resume.sections), selectinload(Resume.template))
+            .where(Resume.id == int(resume_id))
+        )
+        resume = result.scalar_one_or_none()
+        if resume is None:
+            raise ValueError("Resume not found")
+        pdf_bytes, renderer = await render_resume_pdf(resume)
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    export_dir = Path(__file__).resolve().parents[2] / "data" / "exports"
+    export_dir = runtime_data_path("exports")
     path = export_dir / f"resume_{int(resume_id)}_{timestamp}.pdf"
     atomic_write_bytes(path, pdf_bytes)
     return {

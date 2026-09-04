@@ -11,14 +11,14 @@ description: Run evidence-gated research on one target job (company, role, team 
 
 - `job_id`：岗位必须已有 `company` 与 `title`，且有 JD 文本或来源 URL
 - 可选 focus：`work_content` | `team_culture` | `interview_process` | `resume_fit`
-- 可选 `runtime_id`：不指定时按 `coding_agent_priority`（默认 claude,codex,gemini）自动选择首个支持 live web search 且契约兼容的本地 CLI runtime
+- 可选 `runtime_id`：不指定时按 `coding_agent_priority` 自动选择首个支持 live web search 且契约兼容的本地 CLI runtime；没有可用 CLI 时可使用受控 `backend_search`
 
 ## Required workflow
 
 所有动作必须通过 Operation Registry：
 
 1. `get_job` — 确认岗位与 JD 完整
-2. `start_job_research` — 启动公开网页调研（runtime 自动选择；后台执行）
+2. `start_job_research` — 启动公开网页调研（runtime 自动选择；无 live CLI 时进入受控后端 HTTP 兜底；后台执行）
 3. `get_job_research` / `list_job_research_runs` — 轮询 run 状态直至 `completed`
 4. 检查报告的 `## 信息缺口`：
    - 若缺口指向小红书 / 脉脉 / 牛客 / BOSS 等登录态平台内容，引导用户发起授权浏览切片
@@ -31,9 +31,9 @@ description: Run evidence-gated research on one target job (company, role, team 
 
 ### Fallback（没有 live-capable CLI runtime 时）
 
-- `run_backend_research` — 后端检索模式：搜索 API 兜底链（bocha → tavily → serper → ddgs）
+- `start_job_research(runtime_id=backend_search)` — 后端检索模式：已配置的搜索 API（bocha / tavily / serper）
   检索公开页面 → 抓取正文 → LLM 归纳 → **同一个事实门** → 同一 dossier
-- 该模式 `schema_enforced=false`，事实门是唯一防线；LLM 引用未提供页面即整体拒绝
+- 该模式 `schema_enforced=false`，事实门是唯一防线；LLM 引用未提供页面即整体拒绝；它不是 Agent Runtime，也不会使用浏览器或未经控制的 ddgs 网络路径
 
 ## Evidence gates（与实现一致，不可绕过）
 

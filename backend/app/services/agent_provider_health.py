@@ -14,8 +14,27 @@ from sqlalchemy import select
 
 from app.database import async_session
 from app.models.models import AgentProviderHealth
+from app.services.security_redaction import redact_sensitive_text
 
 KNOWN_PROVIDER_IDS = ("pi", "replay", "codex", "deepseek-harness")
+
+
+def _builtin_provider_view(provider_id: str) -> dict[str, Any] | None:
+    if provider_id != "replay":
+        return None
+    return {
+        "provider_id": "replay",
+        "available": True,
+        "authenticated": True,
+        "blocked": False,
+        "status": "ready",
+        "version": "offeru-main-agent-replay.v1",
+        "auth_mode": "builtin",
+        "protocol_version": "offeru.agent-runtime.v1",
+        "capabilities": {"stream": True, "resume": True, "approval": True},
+        "last_error": "",
+        "checked_at": None,
+    }
 
 
 def _utc_now() -> datetime:
@@ -23,9 +42,9 @@ def _utc_now() -> datetime:
 
 
 def _clean_error(value: Any) -> str:
-    """Return a bounded, credential-safe provider error string."""
+    """Return a bounded, credential/PII-safe provider error string."""
 
-    text = str(value or "").strip()
+    text = redact_sensitive_text(value, max_length=1000).strip()
     if not text:
         return ""
     lowered = text.casefold()
@@ -67,7 +86,10 @@ def provider_health_view(row: AgentProviderHealth | None) -> dict[str, Any]:
         "auth_mode": row.auth_mode or "unknown",
         "protocol_version": row.protocol_version or "",
         "capabilities": row.capabilities_json if isinstance(row.capabilities_json, dict) else {},
-        "last_error": row.last_error or "",
+        # A health row may predate the current writer or come from a direct
+        # recovery/import path.  Sanitize on read as well as on write so a
+        # stale row cannot leak a token through the provider-health API.
+        "last_error": _clean_error(row.last_error),
         "checked_at": row.checked_at.isoformat() if row.checked_at else None,
     }
 
@@ -115,7 +137,7 @@ async def get_provider_health(provider_id: str) -> dict[str, Any]:
         row = await db.get(AgentProviderHealth, clean_id)
         view = provider_health_view(row)
     if not view["provider_id"]:
-        view["provider_id"] = clean_id
+        view = _builtin_provider_view(clean_id) or {**view, "provider_id": clean_id}
     return view
 
 
@@ -129,7 +151,11 @@ async def list_provider_health() -> dict[str, Any]:
     by_id = {row.provider_id: provider_health_view(row) for row in rows}
     providers = []
     for provider_id in KNOWN_PROVIDER_IDS:
-        providers.append(by_id.get(provider_id) or {**provider_health_view(None), "provider_id": provider_id})
+        providers.append(
+            by_id.get(provider_id)
+            or _builtin_provider_view(provider_id)
+            or {**provider_health_view(None), "provider_id": provider_id}
+        )
     providers.extend(view for provider_id, view in by_id.items() if provider_id not in KNOWN_PROVIDER_IDS)
     return {"providers": providers}
 

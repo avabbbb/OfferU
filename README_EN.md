@@ -112,7 +112,7 @@ Terminal B:
 npm --prefix frontend run dev
 ```
 
-Open [http://localhost:7410](http://localhost:7410). The backend uses `127.0.0.1:8765`.
+Open [http://127.0.0.1:7410](http://127.0.0.1:7410). The backend uses `127.0.0.1:8765`. Port `8080` is not the OfferU web UI; it is reserved for the optional local llama.cpp provider endpoint and should not be opened in a browser.
 
 If the browser reports `Failed to fetch` or a CORS error, inspect the Windows user environment variable `CORS_ORIGINS` first. System environment variables override `backend/.env`; the value must include `http://localhost:7410` and `http://127.0.0.1:7410`.
 

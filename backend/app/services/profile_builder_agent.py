@@ -402,3 +402,55 @@ def build_profile_agent_system_prompt(state: dict[str, Any]) -> str:
 3. 如果信息不足，action 用 ask_user，只问一个最关键的问题。
 4. 所有数字必须来自简历或用户消息。
 5. 目标是能生成拿得出手的简历和投递材料，要围绕目标岗位追问项目职责、成果数据、技能关键词、作品证据和求职偏好。"""
+
+
+async def generate_raw_turn_patch(
+    state: dict[str, Any],
+    messages_json: list[Any],
+    user_message: str,
+) -> dict[str, Any] | None:
+    """Generate one untrusted profile patch for the guarded agent loop."""
+
+    from app.agents.llm import chat_completion, extract_json
+
+    recent = [
+        item
+        for item in messages_json[-12:]
+        if isinstance(item, dict) and item.get("role") in {"user", "assistant"}
+    ]
+    user_payload = {
+        "state": state,
+        "recent_messages": recent,
+        "latest_user_message": user_message,
+    }
+    try:
+        llm_result = await chat_completion(
+            messages=[
+                {"role": "system", "content": build_profile_agent_system_prompt(state)},
+                {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
+            ],
+            temperature=0.25,
+            json_mode=True,
+            max_tokens=1800,
+            tier="standard",
+        )
+        parsed = extract_json(llm_result or "")
+    except Exception:
+        parsed = None
+
+    if not isinstance(parsed, dict):
+        clean_message = user_message.strip()
+        parsed = {
+            "action": "propose_patch" if len(clean_message) >= 8 else "ask_user",
+            "assistant_message": "我先把你刚补充的内容整理成一条候选档案，你确认后我再写入。",
+            "sections": [
+                {
+                    "section_type": "custom",
+                    "title": "补充经历",
+                    "content_json": {"description": clean_message, "bullet": clean_message},
+                    "confidence": 0.55,
+                }
+            ] if len(clean_message) >= 8 else [],
+            "next_question": state.get("next_question") or "你可以再补充一段具体经历吗？",
+        }
+    return parsed

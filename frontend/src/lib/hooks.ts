@@ -9,16 +9,13 @@
 import useSWR from "swr";
 import { SHOWCASE, showcaseHandle } from "@/lib/showcase/router";
 import { showcaseChatResponse } from "@/lib/showcase/llm";
+import { resolveApiBase } from "@/lib/apiBase";
+import { safeClientErrorMessage } from "@/lib/safe-error";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ||
-  (typeof window !== "undefined"
-    ? `${window.location.protocol}//${window.location.hostname}:8765`
-    : "http://127.0.0.1:8765");
+const API_BASE = resolveApiBase();
 
-function formatBackendNetworkError(error: unknown) {
-  const reason = error instanceof Error ? error.message : String(error);
-  return `无法连接本地后端 ${API_BASE}，请确认后端服务已启动。配置 API Key 时浏览器只会请求本地后端，不会直接连接 DeepSeek。原始错误：${reason}`;
+function formatBackendNetworkError() {
+  return "无法连接本地后端，请确认 8765 服务已启动。配置 API Key 时浏览器只会请求本地后端，不会直接连接 DeepSeek。";
 }
 
 /**
@@ -36,9 +33,9 @@ const fetcher = async (url: string) => {  if (SHOWCASE) {
   }
   let res: Response;
   try {
-    res = await fetch(url);
-  } catch (error) {
-    throw new Error(formatBackendNetworkError(error));
+    res = await fetch(url, { redirect: "error" });
+  } catch {
+    throw new Error(formatBackendNetworkError());
   }
   if (!res.ok) {
     const errorId = res.headers.get("X-OfferU-Error-Id");
@@ -57,7 +54,7 @@ async function showcaseFetch(url: string, init?: RequestInit): Promise<Response>
     const target = /^https?:\/\//i.test(url)
       ? url
       : `${API_BASE}${url.startsWith("/") ? url : `/${url}`}`;
-    return fetch(target, init);
+    return fetch(target, { ...init, redirect: "error" });
   }
   const method = String(init?.method || "GET").toUpperCase();
   if (method === "POST" && url.includes("/api/profile/chat") && !url.includes("confirm")) {
@@ -194,6 +191,43 @@ export interface AutomationInboxItem {
   created_at: string | null;
   updated_at: string | null;
   resolved_at: string | null;
+  task_status: CareerTaskStatus | null;
+  task_progress: Record<string, any>;
+  task_error_id: string;
+  task_error: string;
+  task_retryable: boolean;
+  task_attempt_count: number;
+  task_max_attempts: number;
+}
+
+export type CareerTaskStatus =
+  | "queued"
+  | "running"
+  | "waiting_for_approval"
+  | "completed"
+  | "failed"
+  | "blocked"
+  | "cancelled"
+  | string;
+
+export interface CareerTask {
+  task_id: string;
+  task_type: string;
+  source: string;
+  target_type: string;
+  target_id: string;
+  runtime_provider: string;
+  status: CareerTaskStatus;
+  progress: Record<string, any>;
+  error_id: string;
+  error: string;
+  retryable: boolean;
+  attempt_count: number;
+  max_attempts: number;
+  result_ref: string;
+  created_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
 }
 
 // ---- Hooks ----
@@ -311,6 +345,62 @@ export function useAutomationInbox(limit = 20) {
   );
 }
 
+/** 获取持久化 CareerTask；Today 用它展示所有后台任务的实时生命周期。 */
+export function useCareerTasks(limit = 50) {
+  return useSWR<{ tasks: CareerTask[] }>(
+    `${API_BASE}/api/agent/runtime/career-tasks?limit=${limit}`,
+    fetcher,
+    { refreshInterval: 2000, revalidateOnFocus: true },
+  );
+}
+
+/** 通过 UI Operation projection 执行任务控制；显式确认投影才会提交 mutation。 */
+export async function controlCareerTask(
+  taskId: string,
+  action: "cancel" | "retry" | "resume",
+): Promise<Record<string, any>> {
+  const cleanId = encodeURIComponent(String(taskId || ""));
+  let response: Response;
+  try {
+    response = await showcaseFetch(`/api/agent/runtime/career-tasks/${cleanId}/${action}`, {
+      method: "POST",
+    });
+  } catch {
+    throw new Error(formatBackendNetworkError());
+  }
+  const payload = (await response.json().catch(() => ({}))) as Record<string, any>;
+  if (!response.ok || payload.ok === false || payload.error || payload.detail) {
+    throw new Error(safeClientErrorMessage(payload.detail || payload.error, `任务${action}失败 (${response.status})`));
+  }
+
+  const projection = payload.outputs && typeof payload.outputs === "object"
+    ? payload.outputs
+    : payload;
+  const proposal = projection.proposal;
+  if (!projection.requires_confirmation || !proposal?.run_id || !proposal?.action_id) {
+    return payload;
+  }
+
+  let confirmation: Response;
+  try {
+    confirmation = await showcaseFetch(
+      `/api/agent/runtime/runs/${encodeURIComponent(String(proposal.run_id))}/confirm`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action_id: String(proposal.action_id) }),
+      },
+    );
+  } catch (error) {
+    throw new Error(formatBackendNetworkError(error));
+  }
+  const confirmed = (await confirmation.json().catch(() => ({}))) as Record<string, any>;
+  if (!confirmation.ok || confirmed.ok === false || confirmed.error || confirmed.detail) {
+    throw new Error(safeClientErrorMessage(confirmed.detail || confirmed.error, `确认任务${action}失败 (${confirmation.status})`));
+  }
+  return confirmed;
+}
+
 /** 获取系统配置 */
 export function useConfig() {
   return useSWR(
@@ -335,7 +425,7 @@ export async function patchJob(
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `更新岗位失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `更新岗位失败 (${res.status})`));
   }
   return res.json();
 }
@@ -354,7 +444,7 @@ export async function patchJobsBatch(data: {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `批量更新失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `批量更新失败 (${res.status})`));
   }
   return res.json();
 }
@@ -368,7 +458,7 @@ export async function deleteJobsBatch(data: { job_ids: number[] }) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `批量删除失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `批量删除失败 (${res.status})`));
   }
   return res.json();
 }
@@ -382,7 +472,7 @@ export async function createPool(name: string, scope: "inbox" | "picked" | "igno
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `创建池失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `创建池失败 (${res.status})`));
   }
   return res.json();
 }
@@ -397,7 +487,7 @@ export async function updatePoolName(poolId: number, name: string, scope?: "inbo
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `重命名池失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `重命名池失败 (${res.status})`));
   }
   return res.json();
 }
@@ -410,7 +500,7 @@ export async function deletePoolById(poolId: number, scope?: "inbox" | "picked" 
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `删除池失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `删除池失败 (${res.status})`));
   }
   return res.json();
 }
@@ -431,7 +521,7 @@ export async function updateConfig(data: any) {
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `更新配置失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `更新配置失败 (${res.status})`));
   }
   return res.json();
 }
@@ -445,7 +535,7 @@ export async function createCalendarEvent(data: any) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `创建日历事件失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `创建日历事件失败 (${res.status})`));
   }
   return res.json();
 }
@@ -455,18 +545,33 @@ export async function syncEmails() {
   const res = await showcaseFetch(`/api/email/sync`, { method: "POST" });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || err.message || `邮件同步失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail || err.message, `邮件同步失败 (${res.status})`));
   }
   return res.json();
 }
 
 /** 获取 Gmail 授权链接 */
-export async function getEmailAuthUrl(): Promise<{ auth_url?: string; message?: string }> {
-  const res = await showcaseFetch(`/api/email/auth-url`);
+export async function getEmailAuthUrl(userConfirmed = false): Promise<{ auth_url?: string; message?: string }> {
+  const params = new URLSearchParams({ user_confirmed: String(userConfirmed) });
+  const res = await showcaseFetch(`/api/email/auth-url?${params.toString()}`);
   return res.json();
 }
 
 /** 获取邮箱授权状态（双通道） */
+export interface EmailAccountSummary {
+  account_id: string;
+  provider: string;
+  email_address: string;
+  host: string;
+  port: number;
+  auth_type: string;
+  scopes: string[];
+  status: string;
+  sync_enabled: boolean;
+  cursor_type?: string | null;
+  last_synced_at?: string | null;
+  last_error?: string;
+}
 export interface EmailStatus {
   connected: boolean;
   gmail_connected: boolean;
@@ -474,6 +579,7 @@ export interface EmailStatus {
   imap_connected: boolean;
   imap_host: string;
   imap_user: string;
+  accounts: EmailAccountSummary[];
 }
 export function useEmailStatus() {
   return useSWR<EmailStatus>(`${API_BASE}/api/email/status`, fetcher);
@@ -486,6 +592,7 @@ export async function imapConnect(data: {
   provider?: string;
   host?: string;
   port?: number;
+  user_confirmed?: boolean;
 }) {
   const res = await showcaseFetch(`/api/email/imap-connect`, {
     method: "POST",
@@ -500,7 +607,7 @@ export async function autoFillCalendar() {
   const res = await showcaseFetch(`/api/calendar/auto-fill`, { method: "POST" });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `自动补建日历失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `自动补建日历失败 (${res.status})`));
   }
   return res.json();
 }
@@ -514,7 +621,7 @@ export async function createResume(data: any) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `创建简历失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `创建简历失败 (${res.status})`));
   }
   return res.json();
 }
@@ -558,6 +665,20 @@ export interface ResumeSectionBlock {
   source_section_ids?: number[];
 }
 
+/** 撤销邮箱授权并删除本地凭据 */
+export async function revokeEmailAccount(accountId: string, reason: string) {
+  const res = await showcaseFetch(`/api/email/accounts/${encodeURIComponent(accountId)}/revoke`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(safeClientErrorMessage(err.detail, `撤销邮箱授权失败 (${res.status})`));
+  }
+  return res.json();
+}
+
 export interface ResumeDetail extends ResumeBrief {
   summary: string;
   contact_json: Record<string, any>;
@@ -574,7 +695,7 @@ export async function updateResume(id: number, data: any) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `更新简历失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `更新简历失败 (${res.status})`));
   }
   return res.json();
 }
@@ -584,7 +705,7 @@ export async function deleteResume(id: number) {
   const res = await showcaseFetch(`/api/resume/${id}`, { method: "DELETE" });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `删除简历失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `删除简历失败 (${res.status})`));
   }
   return res.json();
 }
@@ -608,7 +729,7 @@ export async function updateSection(resumeId: number, sectionId: number, data: a
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `更新段落失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `更新段落失败 (${res.status})`));
   }
   return res.json();
 }
@@ -622,7 +743,7 @@ export async function createSection(resumeId: number, data: any) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `创建段落失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `创建段落失败 (${res.status})`));
   }
   return res.json();
 }
@@ -634,7 +755,7 @@ export async function deleteSection(resumeId: number, sectionId: number) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `删除段落失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `删除段落失败 (${res.status})`));
   }
   return res.json();
 }
@@ -826,7 +947,7 @@ export async function updateProfileData(data: {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `更新档案失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `更新档案失败 (${res.status})`));
   }
   return res.json() as Promise<ProfileData>;
 }
@@ -843,7 +964,7 @@ export async function createProfileTargetRole(data: {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `新增目标岗位失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `新增目标岗位失败 (${res.status})`));
   }
   return res.json() as Promise<ProfileTargetRole>;
 }
@@ -854,7 +975,7 @@ export async function deleteProfileTargetRole(roleId: number) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `删除目标岗位失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `删除目标岗位失败 (${res.status})`));
   }
   return res.json();
 }
@@ -876,7 +997,7 @@ export async function createProfileSection(data: {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `创建档案条目失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `创建档案条目失败 (${res.status})`));
   }
   return res.json() as Promise<ProfileSection>;
 }
@@ -900,7 +1021,7 @@ export async function updateProfileSectionData(
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `更新档案条目失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `更新档案条目失败 (${res.status})`));
   }
   return res.json() as Promise<ProfileSection>;
 }
@@ -911,7 +1032,7 @@ export async function deleteProfileSectionData(sectionId: number) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `删除档案条目失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `删除档案条目失败 (${res.status})`));
   }
   return res.json();
 }
@@ -932,7 +1053,7 @@ export async function streamProfileChat(
 
   if (!res.ok || !res.body) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `档案对话失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `档案对话失败 (${res.status})`));
   }
 
   const reader = res.body.getReader();
@@ -1000,7 +1121,7 @@ export async function importProfileResume(file: File, parseMode: ResumeImportPar
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `导入简历失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `导入简历失败 (${res.status})`));
   }
   return res.json() as Promise<ProfileImportResult>;
 }
@@ -1017,7 +1138,7 @@ export async function confirmProfileCandidate(data: {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `确认条目失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `确认条目失败 (${res.status})`));
   }
   return res.json() as Promise<ProfileSection>;
 }
@@ -1028,7 +1149,7 @@ export async function generateProfileNarrative() {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `生成叙事失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `生成叙事失败 (${res.status})`));
   }
   return res.json() as Promise<{
     headline: string;
@@ -1073,7 +1194,7 @@ export async function aiOptimizeResume(
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `AI 优化失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `AI 优化失败 (${res.status})`));
   }
   return res.json();
 }
@@ -1089,7 +1210,7 @@ export async function aiOptimizeText(
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `AI 优化失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `AI 优化失败 (${res.status})`));
   }
   return res.json();
 }
@@ -1122,7 +1243,7 @@ export async function aiApplyBatch(
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || "批量应用失败");
+    throw new Error(safeClientErrorMessage(err.detail, "批量应用失败"));
   }
   return res.json();
 }
@@ -1137,7 +1258,7 @@ export async function parseResumeFile(file: File): Promise<{ filename: string; t
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `文件解析失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `文件解析失败 (${res.status})`));
   }
   return res.json();
 }
@@ -1182,8 +1303,12 @@ export async function resolveResumeLogo(resumeId: number, schoolName: string) {
     body: JSON.stringify({ school_name: schoolName }),
   });
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(text || `Logo resolve failed with ${res.status}`);
+    const errorId = res.headers.get("X-OfferU-Error-Id");
+    throw new Error(
+      errorId
+        ? `校徽获取失败（HTTP ${res.status}，错误 ID: ${errorId}）`
+        : `校徽获取失败（HTTP ${res.status}）`,
+    );
   }
   return res.json();
 }
@@ -1283,7 +1408,7 @@ export async function aiAnalyzeResume(
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `AI 分析失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `AI 分析失败 (${res.status})`));
   }
   return res.json();
 }
@@ -1299,7 +1424,7 @@ export async function aiAnalyzeText(
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `AI 分析失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `AI 分析失败 (${res.status})`));
   }
   return res.json();
 }
@@ -1351,7 +1476,7 @@ export async function createApplication(jobId: number, notes = "") {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `创建投递记录失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `创建投递记录失败 (${res.status})`));
   }
   return res.json();
 }
@@ -1469,7 +1594,7 @@ export async function createApplicationTable(name: string) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `创建表失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `创建表失败 (${res.status})`));
   }
   return res.json();
 }
@@ -1482,7 +1607,7 @@ export async function renameApplicationTable(tableId: number, name: string) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `重命名表失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `重命名表失败 (${res.status})`));
   }
   return res.json();
 }
@@ -1493,7 +1618,7 @@ export async function deleteApplicationTable(tableId: number) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `删除表失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `删除表失败 (${res.status})`));
   }
   return res.json();
 }
@@ -1506,7 +1631,7 @@ export async function importJobsToApplicationTable(tableId: number, jobIds: numb
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `快捷导入失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `快捷导入失败 (${res.status})`));
   }
   return res.json();
 }
@@ -1527,7 +1652,7 @@ export async function importLatestExtensionBatchToApplicationTable(
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `导入最近插件同步失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `导入最近插件同步失败 (${res.status})`));
   }
   return res.json();
 }
@@ -1540,7 +1665,7 @@ export async function createApplicationRecord(tableId: number, values: Record<st
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `新增记录失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `新增记录失败 (${res.status})`));
   }
   return res.json();
 }
@@ -1609,7 +1734,7 @@ export async function updateApplicationRecordCell(recordId: number, fieldKey: st
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `更新记录失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `更新记录失败 (${res.status})`));
   }
   return res.json();
 }
@@ -1626,7 +1751,7 @@ export async function moveApplicationRecords(sourceTableId: number, targetTableI
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `批量移动失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `批量移动失败 (${res.status})`));
   }
   return res.json();
 }
@@ -1643,7 +1768,7 @@ export async function deleteApplicationRecords(tableId: number, recordIds: numbe
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `批量删除失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `批量删除失败 (${res.status})`));
   }
   return res.json();
 }
@@ -1656,7 +1781,7 @@ export async function updateApplicationTableSchema(tableId: number, schema: Appl
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `更新表结构失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `更新表结构失败 (${res.status})`));
   }
   return res.json();
 }
@@ -1672,7 +1797,7 @@ export async function updateApplicationTemplate(
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `更新默认模板失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `更新默认模板失败 (${res.status})`));
   }
   return res.json();
 }
@@ -1685,7 +1810,7 @@ export async function applyApplicationTemplateToAll(purgeNonTemplateFields = fal
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `覆盖全部表结构失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `覆盖全部表结构失败 (${res.status})`));
   }
   return res.json();
 }
@@ -1702,7 +1827,7 @@ export async function updateApplicationWorkspaceSettings(data: {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `更新投递设置失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `更新投递设置失败 (${res.status})`));
   }
   return res.json();
 }
@@ -1768,7 +1893,7 @@ export async function runScraper(source: string, keywords: string[], location = 
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || "启动爬取失败");
+    throw new Error(safeClientErrorMessage(err.detail, "启动爬取失败"));
   }
   return res.json();
 }
@@ -1842,7 +1967,7 @@ export async function batchOptimizeResume(
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `批量优化失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `批量优化失败 (${res.status})`));
   }
 
   // 解析 SSE 流
@@ -1990,7 +2115,7 @@ export async function streamOptimizeAgentChat(
 
   if (!res.ok || !res.body) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `请求失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `请求失败 (${res.status})`));
   }
 
   const reader = res.body.getReader();
@@ -2121,7 +2246,7 @@ export async function fetchOptimizeSessions(): Promise<OptimizeSessionSummary[]>
   const res = await showcaseFetch(`/api/optimize/agent/sessions`);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `获取会话列表失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `获取会话列表失败 (${res.status})`));
   }
   const data = await res.json();
   return Array.isArray(data?.sessions) ? data.sessions : [];
@@ -2131,7 +2256,7 @@ export async function fetchOptimizeSessionDetail(sessionId: string): Promise<Opt
   const res = await showcaseFetch(`/api/optimize/agent/sessions/${sessionId}`);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `获取会话详情失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `获取会话详情失败 (${res.status})`));
   }
   return res.json();
 }
@@ -2142,7 +2267,7 @@ export async function deleteOptimizeSession(sessionId: string): Promise<void> {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `删除会话失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `删除会话失败 (${res.status})`));
   }
 }
 
@@ -2162,7 +2287,7 @@ export async function streamOptimizeGenerate(
 
   if (!res.ok || !res.body) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `定制生成失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `定制生成失败 (${res.status})`));
   }
 
   const reader = res.body.getReader();
@@ -2287,7 +2412,7 @@ export async function collectExperience(body: {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `提交面经失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `提交面经失败 (${res.status})`));
   }
   return res.json();
 }
@@ -2300,7 +2425,7 @@ export async function extractQuestions(experienceId: number) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `提炼问题失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `提炼问题失败 (${res.status})`));
   }
   return res.json();
 }
@@ -2313,7 +2438,7 @@ export async function generateAnswer(questionId: number) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `生成回答失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `生成回答失败 (${res.status})`));
   }
   return res.json();
 }
@@ -2388,7 +2513,7 @@ export async function ingestJob(data: {
     ok?: boolean;
   };
   if (!res.ok || payload.ok === false || payload.error || payload.detail) {
-    throw new Error(payload.detail || payload.error || `保存岗位失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(payload.detail || payload.error, `保存岗位失败 (${res.status})`));
   }
   return payload as JobIngestResult;
 }
@@ -2518,6 +2643,7 @@ export interface AIInterviewReport {
         question: string;
         why_asked: string;
         answer_excerpt: string;
+        transcript_excerpt: string;
         answer_evidence: string[];
         content_score?: number;
         follow_up_reason?: string;
@@ -2604,7 +2730,7 @@ export async function getAIInterviewRuntime(): Promise<AIInterviewRuntime> {
   const res = await showcaseFetch(`${API_BASE}/api/interviews/runtime`, { cache: "no-store" });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `读取面试模型配置失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `读取面试模型配置失败 (${res.status})`));
   }
   return res.json();
 }
@@ -2624,7 +2750,7 @@ export async function prepareRoleInterviewFocus(
   const res = await showcaseFetch(`${API_BASE}/api/interviews/focus-plan?${params}`);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `读取专项面试计划失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `读取专项面试计划失败 (${res.status})`));
   }
   return res.json();
 }
@@ -2659,7 +2785,7 @@ export async function createAIInterview(body: {
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `创建模拟面试失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `创建模拟面试失败 (${res.status})`));
   }
   return res.json();
 }
@@ -2687,7 +2813,7 @@ export async function submitAIInterviewAnswer(
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `提交回答失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `提交回答失败 (${res.status})`));
   }
   return res.json();
 }
@@ -2703,7 +2829,7 @@ export async function ingestAIInterviewBehaviorEvents(
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `上传派生表达行为事件失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `上传派生表达行为事件失败 (${res.status})`));
   }
   return res.json();
 }
@@ -2747,7 +2873,7 @@ export async function streamGenerateResumeDraft(
   });
   if (!res.ok || !res.body) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `生成初稿失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `生成初稿失败 (${res.status})`));
   }
   const reader = res.body.getReader();
   const decoder = new TextDecoder("utf-8");
@@ -2771,9 +2897,14 @@ export async function streamGenerateResumeDraft(
     try {
       const data = JSON.parse(dataLines.join("\n"));
       const ev: DraftStreamEvent = {};
-      if (event === "progress") ev.progress = { stage: data.stage, message: data.message };
+      if (event === "progress") {
+        ev.progress = {
+          stage: data.stage,
+          message: safeClientErrorMessage(data.message, "处理中"),
+        };
+      }
       else if (event === "result") ev.result = data as DraftResult;
-      else if (event === "error") ev.error = data.message;
+      else if (event === "error") ev.error = safeClientErrorMessage(data.message, "Agent 流式请求失败");
       else if (event === "done") ev.done = true;
       options?.onEvent?.(ev);
     } catch {
@@ -2996,14 +3127,14 @@ export async function reviewProgressCandidate(
   );
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `审核候选进展失败 (${res.status})`);
+    throw new Error(safeClientErrorMessage(err.detail, `审核候选进展失败 (${res.status})`));
   }
   const result = (await res.json()) as ProgressReviewResult & {
     ok?: boolean;
     errors?: string[];
   };
   if (result.ok === false) {
-    throw new Error(result.errors?.join("；") || "审核候选进展失败");
+    throw new Error(safeClientErrorMessage(result.errors?.join("；"), "审核候选进展失败"));
   }
   return result;
 }

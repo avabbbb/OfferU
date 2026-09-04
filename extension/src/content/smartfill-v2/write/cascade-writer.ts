@@ -1,5 +1,6 @@
 import type { CascaderConfig } from "../ats/adapters/adapter.interface.js";
 import { normalizeText } from "../shared/text-utils.js";
+import { safeExtensionError } from "../../../lib/safe-error.js";
 
 const DEFAULT_NEXT_LEVEL_DELAY_MS = 300;
 const MAX_CASCADE_DEPTH = 4;
@@ -91,7 +92,7 @@ export async function writeCascader(
 
     return { success: true, depth };
   } catch (error) {
-    return { success: false, depth: 0, error: error instanceof Error ? error.message : String(error) };
+    return { success: false, depth: 0, error: safeExtensionError(error, "级联选择失败") };
   }
 }
 

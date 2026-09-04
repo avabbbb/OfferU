@@ -20,4 +20,6 @@ Download
 
 在 installer、Python sidecar、签名、clean-machine、upgrade、backup/restore 和关键 Golden Path 全部通过前，本文件不会提供虚假的公开下载或“忽略未知开发者警告”步骤。
 
+如果仓库根目录存在 `OfferU.exe`，请不要双击它：当前发现的该文件版本是历史 `0.1.0`，不是当前 `0.4.0` Release Candidate，也不是有效的 Public Release 入口。源码开发时只按 [`DEVELOPMENT.md`](./DEVELOPMENT.md) 启动，网页入口固定为 `http://127.0.0.1:7410`；`8080` 不是网页地址。
+
 开发者请使用 [`DEVELOPMENT.md`](./DEVELOPMENT.md)。当前 Release 状态与阻塞项见 [`STATUS.md`](./STATUS.md) 和 [`RELEASE_CHECKLIST.md`](./RELEASE_CHECKLIST.md)。

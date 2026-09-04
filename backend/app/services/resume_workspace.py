@@ -372,9 +372,28 @@ async def ensure_resume_workspace(
         if profile is None:
             raise ValueError("未找到可用于简历工作区的 Profile")
 
+        if resume is None and source_resume is None:
+            source_resume = (
+                await db.execute(
+                    select(Resume)
+                    .where(Resume.source_mode != "job_tailored_workspace")
+                    .order_by(
+                        Resume.is_primary.desc(),
+                        Resume.updated_at.desc(),
+                        Resume.id.desc(),
+                    )
+                    .options(selectinload(Resume.sections))
+                )
+            ).scalars().first()
+
         if resume is None:
             presentation = proposal.presentation_json if proposal else {}
-            if source_resume:
+            if proposal and proposal.original_rows_json:
+                # A proposal is built from verified Profile evidence.  Keep
+                # that generated content while linking the workspace back to
+                # the user's master resume for provenance and future refresh.
+                content_sections = copy.deepcopy(proposal.original_rows_json)
+            elif source_resume:
                 content_sections = [
                     {
                         "section_type": section.section_type,
@@ -386,8 +405,6 @@ async def ensure_resume_workspace(
                     }
                     for section in source_resume.sections
                 ]
-            elif proposal:
-                content_sections = copy.deepcopy(proposal.original_rows_json or [])
             else:
                 content_sections = []
             resume = Resume(

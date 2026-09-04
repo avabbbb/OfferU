@@ -60,6 +60,12 @@ async def get_db():
 async def init_db(*, backend_dir: Path | None = None):
     """Create the schema and apply versioned SQLite migrations safely."""
 
+    # Keep schema creation independent from route import order.  The runtime
+    # entrypoint normally imports these modules as a side effect of registering
+    # routers, but recovery/doctor/e2e callers may invoke init_db directly.
+    from app.models import html_resume as _html_resume  # noqa: F401
+    from app.models import models as _models  # noqa: F401
+
     migration = await prepare_schema_migration(
         database_url=settings.database_url,
         backend_dir=backend_dir,

@@ -12,6 +12,7 @@ import { motion } from "framer-motion";
 import { Button, Textarea, Chip } from "@nextui-org/react";
 import { CheckCircle2, Edit3, X, Pin } from "lucide-react";
 import { profileApi } from "@/lib/api";
+import { safeClientErrorMessage } from "@/lib/safe-error";
 
 export interface BulletCandidate {
   session_id: number;
@@ -74,7 +75,7 @@ export function BulletConfirmCard({
     } catch (e) {
       // 失败必须如实展示：标记成功会误导用户认为条目已入库，
       // 实际未持久化且没有重试路径。
-      setConfirmError(e instanceof Error ? e.message : String(e));
+      setConfirmError(safeClientErrorMessage(e, "确认职业经历失败，请重试。"));
     } finally {
       setConfirming(false);
     }

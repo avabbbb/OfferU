@@ -16,6 +16,10 @@ npm --prefix frontend ci
 
 `backend/.env` 与 `backend/config.json` 可能包含本地 Provider 配置，不得提交或放入日志、trace、诊断包和公开 Issue。
 
+如果使用 `docker compose up -d`，必须先在仓库根目录 `.env` 中自行填写唯一的
+`DB_PASSWORD` 和 `SECRET_KEY`；Compose 不再提供固定默认凭据，缺少任一项会直接拒绝启动。
+Docker Compose 的 PostgreSQL 仅属于开发编排；OfferU 的 Data Safety 暂存恢复是本地 SQLite 能力，容器不会把外部数据库伪装成本地可恢复备份目标。
+
 ## Browser development
 
 终端 A：
@@ -32,7 +36,14 @@ Set-Location <OfferU>
 npm --prefix frontend run dev
 ```
 
-前端固定为 <http://localhost:7410>，后端固定为 <http://127.0.0.1:8765>。出现 `Failed to fetch` / CORS 时，先检查 Windows 用户环境变量 `CORS_ORIGINS`；系统环境变量优先于 `backend/.env`，必须包含 `http://localhost:7410,http://127.0.0.1:7410`。
+前端固定为 <http://127.0.0.1:7410>，后端固定为 <http://127.0.0.1:8765>。不要打开 `8080`：它不是网页服务，只是可选本地 llama.cpp Provider endpoint。OfferU 不会自动启动 Edge；自动化验收只使用隔离的 managed Chromium 无头模式。出现 `Failed to fetch` / CORS 时，先检查 Windows 用户环境变量 `CORS_ORIGINS`；系统环境变量优先于 `backend/.env`，必须包含 `http://localhost:7410,http://127.0.0.1:7410`。
+
+只读检查不需要浏览器：
+
+```powershell
+Set-Location backend
+.\.venv312\Scripts\python.exe -m app.cli doctor --pretty
+```
 
 ## Desktop development
 
@@ -40,7 +51,7 @@ npm --prefix frontend run dev
 npm --prefix frontend run tauri -- dev
 ```
 
-桌面开发壳会启动自己的前端与后端，不要同时保留浏览器开发的两个进程。当前 release 壳仍依赖源码仓库与 `.venv312`，只能用于开发，不能当作 production sidecar 或 clean-machine installer。
+桌面开发壳会启动自己的前端与后端，不要同时保留浏览器开发的两个进程。`tauri build` 生成的 release 壳使用打包 Python sidecar、Node runtime 和 agent-runtime；当前 bundle/lifecycle smoke 已有证据，但在签名、previous-release upgrade 和 clean-machine 人工验收完成前，仍不能当作公开发行版。
 
 ## Internal Beta fixture journey
 

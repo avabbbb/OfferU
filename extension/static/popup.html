@@ -88,8 +88,9 @@
         <section class="settings-card">
           <h2 class="section-title">服务连接设置</h2>
           <div class="settings-body">
-            <label for="serverUrl">OfferU 后端地址</label>
-            <input type="url" id="serverUrl" placeholder="http://127.0.0.1:8000" spellcheck="false" />
+            <label for="serverUrl">OfferU 后端 API 地址（非网页）</label>
+            <input type="url" id="serverUrl" placeholder="http://127.0.0.1:8765" spellcheck="false" />
+            <p class="help-text">网页入口固定为 http://127.0.0.1:7410；8080 只可能是模型服务端点，不要在浏览器中打开。</p>
             <div class="row-actions">
               <button class="btn btn-sm" id="saveSettingsBtn" type="button">保存</button>
               <button class="btn btn-sm btn-ghost" id="checkServerBtn" type="button">检查连接</button>

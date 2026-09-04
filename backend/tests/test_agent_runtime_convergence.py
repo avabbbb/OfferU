@@ -19,21 +19,69 @@ if str(BACKEND_DIR) not in sys.path:
 from app.database import Base  # noqa: E402
 from app.models.models import Job  # noqa: E402
 import app.ops as operation_registry  # noqa: E402
-from app.ops import OPERATIONS, get_operation_schema  # noqa: E402
+from app.ops import OPERATIONS, execute_operation, get_operation_schema  # noqa: E402
 from app.services import automation, capability_plugins, career_tasks, role_intelligence  # noqa: E402
 from app.services.agent_bridge.server import BridgeSession  # noqa: E402
 from app.services.agent_runtime import (  # noqa: E402
+    CANONICAL_AGENT_RUN_EVENT_TYPES,
     PiAgentRuntimeProvider,
     ReplayAgentRunProvider,
     ReplayAgentRuntimeProvider,
     canonical_agent_run_event,
 )
 from app.services.agent_run_state import create_agent_run, save_agent_run  # noqa: E402
+from app.services.harness_operations import save_harness_conversation  # noqa: E402
 
 FIXTURE_PATH = BACKEND_DIR / "tests" / "fixtures" / "role_intelligence_v0" / "corpus.json"
 
 
 class AgentRuntimeConvergenceTests(unittest.TestCase):
+    def test_builtin_provider_status_exposes_live_web_capability_boundary(self) -> None:
+        async def flow() -> tuple[dict, dict]:
+            pi = await PiAgentRuntimeProvider().status()
+            replay = await ReplayAgentRunProvider().status()
+            return pi, replay
+
+        with patch(
+            "app.services.pi_agent_worker.get_pi_agent_worker",
+            return_value=type(
+                "ProbeWorker",
+                (),
+                {"probe": AsyncMock(return_value={"available": True})},
+            )(),
+        ):
+            pi, replay = asyncio.run(flow())
+
+        self.assertFalse(pi["capabilities"]["live_web_search"])
+        self.assertFalse(replay["capabilities"]["live_web_search"])
+
+    def test_new_agent_turn_can_create_a_conversation_without_an_id(self) -> None:
+        with patch(
+            "app.services.harness_operations.save_conversation_messages",
+            return_value={"id": "conv_fixture", "messages": []},
+        ) as save:
+            result = save_harness_conversation(messages=[])
+
+        self.assertEqual(result["id"], "conv_fixture")
+        save.assert_called_once_with(conversation_id=None, messages=[])
+
+    def test_registry_executes_sync_operations_without_awaiting_a_dict(self) -> None:
+        with patch(
+            "app.services.harness_operations.save_conversation_messages",
+            return_value={"id": "conv_fixture", "messages": []},
+        ) as save:
+            result = asyncio.run(
+                execute_operation(
+                    "save_harness_conversation",
+                    {"messages": []},
+                    audit=False,
+                )
+            )
+
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(result["outputs"]["id"], "conv_fixture")
+        save.assert_called_once_with(conversation_id=None, messages=[])
+
     def test_main_agent_provider_seam_delegates_to_pi_adapter(self) -> None:
         async def flow() -> dict:
             result = {
@@ -198,6 +246,66 @@ class AgentRuntimeConvergenceTests(unittest.TestCase):
         self.assertEqual(result["restarted"]["status"], "ready")
         self.assertEqual(result["lifecycle"]["next"], 7)
 
+    def test_replay_runtime_covers_stream_tool_approval_cancel_failure_and_resume_contract(self) -> None:
+        async def flow() -> dict:
+            provider = ReplayAgentRuntimeProvider(output={"answer": "fixture"})
+            started = await provider.start()
+            thread = await provider.create_thread(cwd="", tool_descriptions=["get_job"])
+            turn = await provider.start_turn(prompt="run fixture", cwd="")
+            streamed = await provider.events(after=0)
+            incremental = await provider.events(after=1)
+            approved = await provider.approve(action_id="fixture-action")
+            rejected = await provider.reject(action_id="fixture-action")
+            cancelled = await provider.cancel()
+            resumed = await provider.resume_turn(prompt="resume fixture", cwd="")
+            result = await provider.result()
+            stopped = await provider.shutdown()
+            restarted = await provider.restart()
+            return {
+                "started": started,
+                "thread": thread,
+                "turn": turn,
+                "streamed": streamed,
+                "incremental": incremental,
+                "approved": approved,
+                "rejected": rejected,
+                "cancelled": cancelled,
+                "resumed": resumed,
+                "result": result,
+                "stopped": stopped,
+                "restarted": restarted,
+            }
+
+        result = asyncio.run(flow())
+        self.assertEqual(result["started"]["status"], "ready")
+        self.assertTrue(result["thread"]["thread_id"].startswith("replay_thread_"))
+        self.assertEqual(result["turn"]["structured"], {"answer": "fixture"})
+        self.assertGreaterEqual(result["streamed"]["next"], 4)
+        self.assertLessEqual(result["incremental"]["next"], result["streamed"]["next"])
+        self.assertFalse(result["approved"]["approved"])
+        self.assertTrue(result["rejected"]["rejected"])
+        self.assertTrue(result["cancelled"]["cancelled"])
+        self.assertEqual(result["resumed"]["structured"], {"answer": "fixture"})
+        self.assertEqual(result["result"]["structured"], {"answer": "fixture"})
+        self.assertEqual(result["stopped"]["status"], "stopped")
+        self.assertEqual(result["restarted"]["status"], "ready")
+
+        for event_type in CANONICAL_AGENT_RUN_EVENT_TYPES:
+            canonical = canonical_agent_run_event({"type": event_type, "payload": {}})
+            self.assertEqual(canonical["type"], event_type)
+        self.assertEqual(
+            canonical_agent_run_event({"type": "run.turn_finished", "payload": {"status": "failed"}})["type"],
+            "run.failed",
+        )
+        self.assertEqual(
+            canonical_agent_run_event({"type": "runtime.blocked", "payload": {}})["type"],
+            "run.blocked",
+        )
+        self.assertEqual(
+            canonical_agent_run_event({"type": "unknown.provider.event", "payload": {}})["type"],
+            "reasoning.status",
+        )
+
     def test_career_task_persists_and_reuses_idempotent_replay(self) -> None:
         async def flow(database_path: Path) -> tuple[dict, dict, dict]:
             engine = create_async_engine(f"sqlite+aiosqlite:///{database_path.as_posix()}")
@@ -223,9 +331,18 @@ class AgentRuntimeConvergenceTests(unittest.TestCase):
                     self.assertTrue(first_envelope["ok"], first_envelope)
                     first = first_envelope["outputs"]
                     worker = career_tasks._LIVE_TASKS.get(first["task_id"])
-                    self.assertIsNotNone(worker)
-                    assert worker is not None
-                    await worker
+                    if worker is not None:
+                        await worker
+                    else:
+                        # Replay tasks can finish between the operation
+                        # response and this inspection.  The durable row is
+                        # the lifecycle contract; do not make the test depend
+                        # on the private in-memory handle still being present.
+                        for _ in range(20):
+                            current = await career_tasks.get_career_task(first["task_id"])
+                            if current["status"] in career_tasks.TERMINAL_STATUSES:
+                                break
+                            await asyncio.sleep(0)
                     loaded = await career_tasks.get_career_task(first["task_id"])
                     replay_envelope = await operation_registry.execute_operation(
                         "start_career_task",

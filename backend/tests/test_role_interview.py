@@ -156,9 +156,54 @@ class RoleInterviewTests(unittest.TestCase):
 
         focus = debrief["focuses"][0]
         self.assertEqual(focus["responses"][0]["answer_excerpt"], "我负责模型评测，使用两周数据验证结果。")
+        self.assertEqual(focus["responses"][0]["transcript_excerpt"], "我负责模型评测，使用两周数据验证结果。")
         self.assertEqual(focus["responses"][0]["answer_evidence"], ["我负责模型评测"])
         self.assertEqual(focus["target_jd_evidence_refs"][0]["source_ref"], "job:50")
         self.assertIn("不会把训练观察自动写入正式 Profile", debrief["boundary"])
+
+    def test_debrief_keeps_transcript_citation_when_evidence_is_missing(self) -> None:
+        plan = _plan()
+        questions = _decorate_focus_questions(
+            [
+                {
+                    "question": "你如何设计评测维度？",
+                    "type": "technical",
+                    "focus": "model_evaluation",
+                    "tips": "",
+                }
+            ],
+            plan,
+        )
+        interview = Interview(
+            target_job_id=50,
+            target_position="AIGC 产品经理",
+            questions_json=questions,
+            focus_plan_json=plan,
+        )
+        message = InterviewMessage(
+            role="candidate",
+            question_index=0,
+            content="主要看业务效果。",
+            evaluation_json={
+                "content_score": 40,
+                "dimensions": {
+                    "relevance": {
+                        "evidence": [],
+                        "missing_evidence": True,
+                    },
+                },
+                "improvements": ["补充评测指标"],
+            },
+        )
+
+        debrief = _role_intelligence_debrief(
+            interview=interview,
+            messages=[message],
+        )
+
+        response = debrief["focuses"][0]["responses"][0]
+        self.assertEqual(response["transcript_excerpt"], "主要看业务效果。")
+        self.assertEqual(response["answer_evidence"], [])
 
     def test_focus_operation_is_registered_and_whitelisted(self) -> None:
         self.assertIn("prepare_role_interview_focus", OPERATIONS)

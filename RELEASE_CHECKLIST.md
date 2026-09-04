@@ -1,6 +1,6 @@
 # OfferU Public Release Checklist
 
-更新时间：2026-08-31
+更新时间：2026-09-03
 
 状态只允许：`PASS`、`FAIL`、`BLOCKED_EXTERNAL`、`PRE_EXISTING_FAILURE`、`NOT_VERIFIED`。`BLOCKED_EXTERNAL` 仅限签名证书、本人 OAuth、法律/隐私决策或第三方生产账号；未运行与证据不足统一为 `NOT_VERIFIED`，不能计入通过率。
 
@@ -18,104 +18,104 @@
 | 7 | Hard Stop Conditions | PASS | `GOAL.md` 已限定真实人工阻塞 |
 | 8 | Two-Failure Rule | PASS | `GOAL.md` 已记录；后续每个假设按此执行 |
 | 9 | Release Scope Freeze | PASS | `GOAL.md` 已冻结非核心新功能 |
-| 10 | First Run Journey | NOT_VERIFIED | Internal Beta UI 有线索；无安装包/clean-machine 证据 |
-| 11 | First Run Metrics | NOT_VERIFIED | 无当前 RC 100% onboarding report |
-| 12 | Empty States | NOT_VERIFIED | 需 Today/Pipeline/Profile/Job/Resume 实际 UI matrix |
-| 13 | Today projection | NOT_VERIFIED | Internal Beta only；需全 source projection outcome |
-| 14 | Today State Consistency | NOT_VERIFIED | 无 `INTERVIEW_INVITED` 全页面一致性正式报告 |
-| 15 | Pipeline | NOT_VERIFIED | Internal Beta only；stage/source/next action matrix 缺失 |
-| 16 | Job Detail | NOT_VERIFIED | 聚合结构存在；需真实新用户 outcome |
-| 17 | Resume Workspace | NOT_VERIFIED | 当前 commit `25b6a49` 已有编辑、autosave、失败提示和 retry 的隔离浏览器证据；Public stress/E2E 未跑 |
-| 18 | Resume Truth Model | NOT_VERIFIED | 模型关系存在；需 original no-overwrite outcome |
-| 19 | Resume Proposal | NOT_VERIFIED | Before/After 等存在；需全部交互 repeatability |
-| 20 | Fact Gate | NOT_VERIFIED | 历史 blocked path；需 100% unsupported enforcement suite |
-| 21 | Stale Proposal | NOT_VERIFIED | 历史路径通过；需当前 commit conflict E2E |
-| 22 | Resume Metrics | PARTIAL | Reliability-03 通过成功 autosave、单次更新、503 可见、draft 保留和 retry；缺 99.9% autosave stress、0 lost edit、跨标签冲突与语言 PDF matrix |
-| 23 | Role Intelligence authority split | NOT_VERIFIED | 设计对齐；需统计 provenance audit |
-| 24 | Fixture vs Live labels | NOT_VERIFIED | 部分标识存在；需全 UI/README claim scan |
-| 25 | Live Provider Gate | NOT_VERIFIED | 无 live external research E2E；否则必须降级 claim |
+| 10 | First Run Journey | NOT_VERIFIED | 50/50 isolated first-run + 10/10 composite browser path；完整安装包 clean-machine 人工路径仍缺 |
+| 11 | First Run Metrics | NOT_VERIFIED | 50/50 first-run 无 page error/完整性问题；非 clean-machine、非陌生用户人工验收 |
+| 12 | Empty States | NOT_VERIFIED | [Portable browser smoke](docs/evals/reports/2026-09-01-codex-offeru-public-release-ci-browser-smoke.md) 在隔离数据库真实覆盖 Today、Pipeline、Opportunity、Profile、Resume，均有可操作文案且无 HTTP/console/page error；完整安装包与陌生用户验收仍缺 |
+| 13 | Today projection | NOT_VERIFIED | [Long Task UX](docs/evals/reports/2026-09-01-codex-offeru-public-release-long-task-ux.md) 补 Automation Inbox + CareerTask 实时投影；10/10、50/50 Job/Resume/Interview 路径和全 source projection matrix 仍缺 |
+| 14 | Today State Consistency | NOT_VERIFIED | 当前组合路径验证 Job/Packet/Timeline/Today 联动；`INTERVIEW_INVITED` 全事件矩阵仍缺 |
+| 15 | Pipeline | NOT_VERIFIED | 10/10 组合路径验证 Pipeline/Job/Packet；全 stage、existing-user migration 仍缺 |
+| 16 | Job Detail | NOT_VERIFIED | 新用户和 Resume Workspace E2E 已通过；live research/完整失败矩阵仍缺 |
+| 17 | Resume Workspace | NOT_VERIFIED | [Public Release E2E](docs/evals/reports/2026-09-01-codex-offeru-public-release-e2e.md) 覆盖编辑、Proposal、stale、version、PDF、失败 retry、10/10；Tauri clean UI 仍缺 |
+| 18 | Resume Truth Model | PASS | 当前 E2E 断言 source resume 保留、Master 内容未被 Tailored 修改覆盖 |
+| 19 | Resume Proposal | PASS | 当前 E2E/10 次重复覆盖 proposal review、accept、手工编辑和版本落盘 |
+| 20 | Fact Gate | PASS | `test_resume_optimization.py` 覆盖 strict structured facts、missing provenance、unverified metric/fact/org/placeholder；`test_slice_01.py` 覆盖 blocked 时不写入 Profile/ResumeVersion；相关测试 28/28 通过 |
+| 21 | Stale Proposal | PASS | `test_resume_workspace.py` 覆盖手工编辑后旧 Proposal 标记 stale；Resume Workspace E2E 覆盖 stale proposal 不覆盖最新编辑 |
+| 22 | Resume Metrics | NOT_VERIFIED | Reliability-03 通过成功 autosave、单次更新、503 可见、draft 保留和 retry；缺 99.9% autosave stress、0 lost edit、跨标签冲突与语言 PDF matrix |
+| 23 | Role Intelligence authority split | PASS | [Role authority evidence](docs/evals/reports/2026-09-01-codex-offeru-public-release-role-authority.md)：Agent/Provider 只返回候选结构，Runtime 负责 normalization、dedupe、cohort、sample、frequency、Delta、Evidence Gap 与持久化；无 LLM 统计数字直写 |
+| 24 | Fixture vs Live labels | NOT_VERIFIED | `dataModeLabel` 已统一区分 Fixture、Fixture Plugin、Live、Live Plugin、受控后端检索和未知模式；Role/Interview/Job 页面不再把未知或 fixture plugin 误标为 Live；仍需完整 installer/网站人工 claim review |
+| 25 | Live Provider Gate | NOT_VERIFIED | Packaged Pi Agent live smoke 在 staged provider config 下通过；[live Role Intelligence report](docs/evals/reports/2026-09-01-codex-offeru-public-release-live-role.md) 记录 Pi CLI 无受控网页工具且结构化任务失败；OpenCode `1.17.11` 虽可执行但当前没有 OfferU 控制的公开网页 host/redirect/private-address seam，已 fail-closed；Role Intelligence `auto` 现在会在无 live-capable CLI 且搜索 API/LLM 已配置时选择受控 `backend_search` adapter，Role/JobResearch 两条后端 HTTP 路径均统一直连、拒绝自动重定向、校验 DNS 公网地址并要求来源 URL 来自已提供页面；`job-search` Capability 也已固定 Arbeitnow API、禁用系统代理和自动重定向，并过滤输出的本机/私有/凭据岗位 URL；正式 architecture audit 已覆盖上述传输边界；真实 Provider/LLM 配置与 10-role matrix 仍未执行；Codex live 仍受外部认证阻塞 |
 | 26 | 10-role Live Acceptance | NOT_VERIFIED | 无 10-role raw→dedupe→cohort→Delta matrix |
-| 27 | Interview Focus | NOT_VERIFIED | 需证明 Delta × Gap × Learning，而非 generic bank |
-| 28 | Interviewer Behavior | NOT_VERIFIED | 缺 no-praise/no-completion/no-premature-coaching tests |
-| 29 | Interview Debrief | NOT_VERIFIED | 历史 UI path；需 transcript citation coverage |
-| 30 | Interview Learning | PARTIAL | Reliability-04 真实启动恢复 Observation + pending Proposal 且不直写 Profile；完整完成面试、Accept/Reject 和 UI 回流仍缺 |
-| 31 | Memory Lifecycle | PARTIAL | Reliability-04 覆盖 pending Candidate 重启保留与重复防护；六态、source/evidence/confidence/history matrix 仍缺 |
-| 32 | PotentialHypothesis isolation | NOT_VERIFIED | 需永不自动变 Career Fact 的 deterministic test |
-| 33 | Single Automation model | NOT_VERIFIED | 架构对齐；需 duplicate loop/drift scan |
-| 34 | Automation Reliability | PARTIAL | Reliability-02 真实进程重启验证 queued AutomationEvent 恢复；provider timeout 与全部业务 mutation exactly-once 仍缺 |
-| 35 | CareerTask lifecycle | PARTIAL | Reliability-02 真实进程验证 running/queued/waiting 状态边界；Reliability-04 补 Interview EvaluationRun interruption；完整 UI/provider/approval lifecycle 仍缺 |
-| 36 | Restart Recovery | PARTIAL | Reliability-02 覆盖真实 Python force-stop/restart、durable state 和浏览器启动 overlay/core UI recovery；Reliability-03/04 补 Resume retry 与 Interview/Learning recovery；五场景矩阵仍缺 |
-| 37 | AgentRuntimeProvider UI seam | NOT_VERIFIED | provider-neutral 设计存在；需 UI branch scan |
-| 38 | Minimum Live Agent Gate | NOT_VERIFIED | Replay only；至少一个真实 Provider `LIVE_PASS` 缺失 |
-| 39 | Operation Registry Audit | NOT_VERIFIED | 历史称 0 bypass；无当前 commit 全 surface report |
-| 40 | Application Pipeline stages | NOT_VERIFIED | 需所有正式 stage 与 timeline outcome |
-| 41 | External Signals as Candidate | NOT_VERIFIED | 需 email/browser/calendar 未授权不改 Truth 的 tests |
+| 27 | Interview Focus | NOT_VERIFIED | [Interview learning E2E](docs/evals/reports/2026-09-01-codex-offeru-public-release-interview.md) 在隔离浏览器通过 persisted Role Intelligence Focus Plan → 专项问题；当前为 Replay fixture，live provider 仍缺 |
+| 28 | Interviewer Behavior | NOT_VERIFIED | 同一 E2E 的模糊首答触发 `Adaptive follow-up`，活跃页保持 Interviewer Mode 且无即时夸奖/答案补全/Coach 面板；完整 provider/行为矩阵仍缺 |
+| 29 | Interview Debrief | NOT_VERIFIED | 同一 E2E 展开报告并显示 transcript-backed `评价引用（实际回答）`；完整报告矩阵与 live provider 仍缺 |
+| 30 | Interview Learning | NOT_VERIFIED | 同一 E2E 完成 Interview → pending Learning Candidate → Profile UI accept → applied Profile section；Reliability-04 补启动恢复，完整六态/跨重启/live provider 仍缺 |
+| 31 | Memory Lifecycle | NOT_VERIFIED | Reliability-04 覆盖 pending Candidate 重启保留与重复防护；六态、source/evidence/confidence/history matrix 仍缺 |
+| 32 | PotentialHypothesis isolation | PASS | [Hypothesis boundary](docs/evals/reports/2026-09-01-codex-offeru-public-release-hypothesis-boundary.md)：Accept 前不入模型，Accept 后保持 `career_hypothesis`，不进入 `verified_fact` |
+| 33 | Single Automation model | PASS | [Architecture audit](docs/evals/reports/2026-09-01-codex-offeru-public-release-architecture-audit.md) 确认唯一 `automation._process_automation_event` durable Event→Rule→CareerTask dispatcher；无私有 async loop/provider bypass，静态 contract 为 0 finding |
+| 34 | Automation Reliability | NOT_VERIFIED | [Long Task UX](docs/evals/reports/2026-09-01-codex-offeru-public-release-long-task-ux.md) 补 Inbox/CareerTask snapshot 与 UI cancel/retry confirmation；[Reliability-08](docs/evals/reports/2026-09-01-codex-offeru-public-release-reliability-08.md) 补浏览器双击/已提交后传输重试唯一性；[Reliability-09](docs/evals/reports/2026-09-01-codex-offeru-public-release-reliability-09.md) 补 100 个真实 worker 周期；[Reliability-10](docs/evals/reports/2026-09-01-codex-offeru-public-release-reliability-10.md) 补两个独立进程的 CareerTask 原子 claim；[Reliability-11](docs/evals/reports/2026-09-01-codex-offeru-public-release-reliability-11.md) 补两个独立进程的 AutomationEvent 原子 claim、唯一任务和唯一 Inbox；Reliability-13/14 补 durable provider auth/timeout、跨进程 retry/restart recovery contract；真实跨进程 provider/network cancel/resume 与全部业务 mutation 仍缺 |
+| 35 | CareerTask lifecycle | NOT_VERIFIED | [Long Task UX](docs/evals/reports/2026-09-01-codex-offeru-public-release-long-task-ux.md) 覆盖 queued/running/waiting/failed/blocked/cancelled 可见状态；Reliability-02/04/05/06/09/10 已有 durable/recovery/retry/100-cycle worker/跨进程 claim evidence，Reliability-11 补完成任务在投影取消后的 terminal 保护，Reliability-13/14 补 auth/timeout 与跨进程 restart 的 blocked/failed lifecycle；完整 UI/provider/approval lifecycle 仍缺 |
+| 36 | Restart Recovery | NOT_VERIFIED | Reliability-02 覆盖真实 Python force-stop/restart、durable state 和浏览器启动 overlay/core UI recovery；Reliability-03/04 补 Resume retry 与 Interview/Learning recovery；Reliability-05 恢复 normal writable backend；Reliability-06 通过 Interview answer restart retry；Reliability-11 处理重启前 processing AutomationEvent 的幂等 requeue；[Reliability-14](docs/evals/reports/2026-09-02-codex-offeru-public-release-reliability-14.md) 新增独立进程 running task 终止→recovery→retry contract；[Startup recovery evidence](docs/evals/reports/2026-09-01-codex-offeru-public-release-startup-recovery.md) 补 health/diagnostics `ready/degraded + error_id` 与可选服务边界；Tauri 8765 health client 现在显式绕过代理，真实桌面/provider/network/browser 全矩阵仍缺 |
+| 37 | AgentRuntimeProvider UI seam | NOT_VERIFIED | [Architecture audit](docs/evals/reports/2026-09-01-codex-offeru-public-release-architecture-audit.md) 未发现主 Agent UI 的 provider-specific execution branch；仍需完整构建产物与所有入口的长期 contract 固化 |
+| 38 | Minimum Live Agent Gate | PASS | source Pi 与 packaged Pi 在 staged config/env + 可用模型下均完成真实 Run；默认当前模型不可用不被伪装成成功 |
+| 39 | Operation Registry Audit | NOT_VERIFIED | [Architecture audit](docs/evals/reports/2026-09-01-codex-offeru-public-release-architecture-audit.md) 与正式 `backend/scripts/release/audit_architecture.py` 证明 route-level direct mutation、Registry bypass、CLI/MCP/plugin escape hatch 均为 0；browser/legacy 全 surface runtime audit 仍需固化 |
+| 40 | Application Pipeline stages | PASS | [Application stage matrix](docs/evals/reports/2026-09-01-codex-offeru-public-release-application-stage-matrix.md)：8 个外部 stage 全部进入 Timeline，并投影到 Pipeline/overview/workspace |
+| 41 | External Signals as Candidate | NOT_VERIFIED | Security-06：邮箱服务端确认门、只读 scope、revoke 后 signal/candidate 失效；完整 email/browser/calendar 未授权矩阵和真实浏览器证据仍缺 |
 | 42 | Browser Autofill boundary | NOT_VERIFIED | 若保留 claim，需 Fill≠Submit E2E；否则 Experimental |
 | 43 | Database Migration | PASS | `docs/evals/reports/2026-08-31-codex-offeru-core-v1-data-safety-02.md`：v1/v2 编号迁移、old-schema A/B fixtures、future version fail-closed |
-| 44 | Migration Safety | PASS | 同一报告：migration 前 verified backup、migration 后 integrity/smoke、强制失败恢复旧快照并停止启动 |
+| 44 | Migration Safety | NOT_VERIFIED | 既有报告覆盖 migration 前 verified backup、migration 后 integrity/smoke、强制失败恢复旧快照并停止启动；本轮将 SQLite `-wal/-shm` sidecar 移动纳入统一 rollback scope，并新增中途失败测试，但修改后的 contract 尚未执行 |
 | 45 | Consistent Backup | PASS | `docs/evals/reports/2026-08-31-codex-offeru-core-v1-data-safety-01.md`：SQLite Online Backup API、managed assets、manifest/hash、integrity 验证 |
-| 46 | Restore 3 cycles | PASS | 同一报告：隔离数据库完成 3 次 create→backup→mutate→stage→restart→verify，含数据库、资产与 pre-restore 备份 |
+| 46 | Restore 3 cycles | NOT_VERIFIED | 既有报告完成 3 次隔离 create→backup→mutate→stage→restart→verify，含数据库、资产与 pre-restore 备份；本轮恢复替换逻辑有修改，需重新执行恢复与 sidecar 故障矩阵 |
 | 47 | Structured Data Export | PASS | `docs/evals/reports/2026-08-31-codex-offeru-core-v1-data-safety-03.md`：Profile/Job/Application/Resume/Interview/CareerArtifact 结构化集合、counts、可读性、嵌套敏感字段排除和 Settings 下载 |
 | 48 | Reset Demo vs Delete Data | PASS | 同一报告：明确 `source=offeru-demo` + `batch_id=offeru-demo-v1` scope、确认门、子记录清理、真实 Profile/未标记 Job 保留和隔离浏览器 E2E |
 | 49 | SQLite Integrity | PASS | 同一报告：Doctor 与每次恢复后的 `PRAGMA integrity_check=ok`，foreign-key violations 为 0 |
-| 50 | Security Baseline | NOT_VERIFIED | `security-01`/`security-02` 已有当前子项报告；错误关联、诊断包和 Python/npm dependency 已补证，完整 canary、Rust dependency、全量 PII/logging、权限 diff 和 privacy/consent 仍缺 |
-| 51 | Secrets exclusion | PARTIAL | `security-02` 覆盖 API validation/error、diagnostic、browser feedback、config/Run/export 路径；历史行、Temp、trace、log 和完整 artifact scan 未完成 |
-| 52 | Canary Secret Test | PARTIAL | durable Agent/Audit/export、API validation/error、diagnostic 和 browser feedback canary 通过；完整 release artifact matrix 未签署 |
-| 53 | PII Logging | NOT_VERIFIED | 已收口确认的原始异常/远端响应路径；全部 logger、历史持久化行和 data-flow inventory 尚未完成 |
-| 54 | Tauri Security | PASS | `docs/evals/reports/2026-08-31-codex-offeru-core-v1-security-01.md`：capability 仅 `core:default`、shell plugin 已移除、CSP 非 `null`，`cargo check` 通过；broad HTTPS limitation 已记录 |
-| 55 | Dependency Gate | PARTIAL | Agent-runtime、frontend、extension npm production audit 与 Python `pip-audit` 为 0 vulnerabilities；RustSec advisory DB 在当前环境不可用 |
-| 56 | Structured Observability | PARTIAL | `security-02` 已覆盖 bounded error metadata 与 error ID；完整 Run/Task/Audit schema/correlation 矩阵仍缺 |
-| 57 | Error Correlation | PARTIAL | HTTP、Starlette 404、validation、frontend request/SSE 与浏览器 feedback 路径已有 `error_id`；全部 provider/stream/audit surface 未完成 |
-| 58 | Diagnostic Bundle | PARTIAL | Registry-backed bundle、provider/DB/error 摘要与浏览器下载 canary 通过；完整 artifact/PII review 与 retention policy 仍缺 |
-| 59 | Performance Baseline | NOT_VERIFIED | 无固定 Reference Environment 报告 |
-| 60 | UI Performance SLO | NOT_VERIFIED | 五项 production measurements 缺失 |
-| 61 | Long Task UX | NOT_VERIFIED | 需所有 >2s 路径 status/progress/cancel/failure audit |
-| 62 | Soak Test | NOT_VERIFIED | Reliability-01 已完成 100 个 Replay CareerTask cycles，Reliability-02/04 增加真实进程恢复；混合用户工作负载和 Public soak 仍缺 |
-| 63 | Memory / Resource Leak | NOT_VERIFIED | 100-cycle task 计数通过；未记录 warm-up 后 RSS growth |
-| 64 | Testing Pyramid | NOT_VERIFIED | 有多类 tests；Migration/Packaging/Failure 完整覆盖未证明 |
-| 65 | Unit / Deterministic Tests | NOT_VERIFIED | 需七类核心规则 coverage mapping |
-| 66 | Operation Contract Tests | NOT_VERIFIED | 需 manifest/schema/side effects/permission/dry-run/output 全量 |
-| 67 | Agent Contract Tests | NOT_VERIFIED | 需 stream/tool/approval/cancel/failure/resume 全矩阵 |
-| 68 | Browser E2E Philosophy | NOT_VERIFIED | 历史脚本不在仓库；需用户可见行为审计 |
-| 69 | Playwright Isolation | NOT_VERIFIED | 无每测 isolated DB/workspace/browser 的正式配置证明 |
-| 70 | Playwright Failure Artifacts | NOT_VERIFIED | 无 CI failure-only artifact retention 证明 |
-| 71 | Golden Path A — New User | NOT_VERIFIED | Internal Beta partial evidence；完整链与 installer 缺失 |
-| 72 | Golden Path B — Existing User | NOT_VERIFIED | 无旧版本 DB migration journey |
-| 73 | Golden Path C — Failure | PARTIAL | Reliability-03 Resume 503 retry、Reliability-04 Interview evaluation interruption 已有隔离证据；六类可恢复 E2E 未齐 |
-| 74 | Golden Path D — Duplicate | PARTIAL | CareerTask/AutomationEvent 与 Interview Learning repeated startup 已通过；全部关键 mutation 未齐 |
-| 75 | Golden Path E — Resume Conflict | NOT_VERIFIED | 历史路径有线索；当前 RC 重复性未证明 |
+| 50 | Security Baseline | NOT_VERIFIED | `security-01`–`security-11` 加 [artifact audit](docs/evals/reports/2026-09-01-codex-offeru-public-release-artifact-audit.md) 已覆盖当前子项；错误关联、诊断包、JSON canary、bundle/sidecar 高置信 secret scan、最新 RustSec 普通 audit、Tauri permission contract、logger contract、云端类别同意、邮箱撤回、合成数据清理、Provider health、durable error projection、Agent/插件/扩展错误边界和独立常见 credential redaction 已有实现/部分证据；严格 RustSec unsound policy、3 条历史旧正文、完整 runtime PII-data-flow、retention、真实 OAuth/浏览器和签名仍缺 |
+| 51 | Secrets exclusion | NOT_VERIFIED | `security-02` 覆盖 API validation/error、diagnostic、browser feedback、config/Run/export 路径；`security-03` 补共用 JSON 与 Run artifact 落盘 canary；`security-07` 增加历史旧邮件正文计数与明确确认清理；`security-08` 清理严格命名空间的合成邮箱、信号、候选、同步运行和凭据引用；`security-11` 收紧 Provider/Task/Event/Hosted Executor 错误与 Provider event payload projection 的直接 PII；本轮又收紧扩展 HTTP/Smart Fill、Capability Plugin、Agent Runtime、Pi Guardian 和独立 `sk/rk/pk`/GitHub/Google credential 错误边界；artifact audit 已扫描本地 bundle/sidecar，并拒绝跟随 artifact 目录内的符号链接；artifact verifier 也拒绝 symlink root/metadata，文本型 artifact 另有 email/phone value-free guard，CI 现同时扫描上传前与安装/Draft Release 下载后的 artifact；历史行、Temp、trace、log、binary/PDF 完整 matrix 仍缺 |
+| 52 | Canary Secret Test | NOT_VERIFIED | Security-02/03/07/08 canary 路径通过；[artifact audit](docs/evals/reports/2026-09-01-codex-offeru-public-release-artifact-audit.md) 本地 bundle/sidecar findings 为 0，CI 已接入 release bundle/sidecar、browser trace/screenshot/log 以及安装/Draft Release 下载目录 audit；远程 runner、signed/PDF/clean-machine artifact matrix 仍缺 |
+| 53 | PII Logging | NOT_VERIFIED | `security-05` 用 AST 覆盖 `backend/app` 标准 logger，当前敏感动态参数为 0，并收口已知原始异常/搜索/路径日志；`security-06` 补邮箱撤回清理；`security-08` 清理合成测试遗留凭据引用；`security-11` 收紧 durable error projection、Agent Runtime、Capability Plugin、Pi Guardian 和扩展 HTTP 错误的直接 PII/credential；扩展错误 projection 现在只把有界脱敏文本进入用户提示/跨消息响应/bootstrap console；前端主 API/SWR、直接 fetch、SSE、Showcase LLM、Agent/Chat 与核心页面错误也统一经过有界脱敏投影；artifact audit 新增文本型 email/phone finding 且不输出值；历史持久化行、桌面/第三方日志和完整 runtime data-flow 尚未完成 |
+| 54 | Tauri Security | PASS | `security-01` 基线加 `security-04` permission contract：capability 仅 `core:default`、shell plugin 已移除、CSP 非 `null`，依赖更新后 `cargo check` 通过；broad HTTPS limitation 已记录 |
+| 55 | Dependency Gate | NOT_VERIFIED | Agent-runtime、frontend、extension npm production audit、Python `pip-audit` 与当前 RustSec `cargo audit` 均报告 0 known vulnerabilities；但 `cargo audit --deny unsound` 失败于 `glib 0.18.5 / RUSTSEC-2024-0429`，另有 16 条 unmaintained warnings；严格 RustSec job 已接入 CI，远程 runner 尚未执行 |
+| 56 | Structured Observability | NOT_VERIFIED | `security-02` 已覆盖 bounded error metadata 与 error ID，`security-05` 增加 logger payload contract，`security-07` 增加 bounded privacy hygiene summary，`security-08` 增加合成测试数据清理/诊断计数；[startup recovery](docs/evals/reports/2026-09-01-codex-offeru-public-release-startup-recovery.md) 又补 health/diagnostics 的统一 check projection；Diagnostic Bundle 现纳入 bounded durable CareerTask、AutomationEvent、RoleBenchmarkRun 和 JobResearchRun failure summary，`security-11` 又收紧这些错误及 Hosted Provider event projection 的直接 PII；扩展、插件、Agent Runtime、Guardian、Skill Pipeline 和历史 RoleBenchmarkRun/研究 CLI 错误边界已有代码收口但新契约尚未执行；完整 Run/Task/Audit schema/correlation/retention 矩阵仍缺 |
+| 57 | Error Correlation | NOT_VERIFIED | HTTP、Starlette 404、validation、frontend request/SSE、浏览器 feedback、startup recovery、Agent SSE failure/disappearance、CareerTask durable failure、结果投影失败、RoleBenchmarkRun failure 和 JobResearchRun failure 已实现 bounded `error_id`；扩展 HTTP/Smart Fill、Agent Runtime、Capability Plugin、Pi Guardian、Skill Pipeline、历史研究错误与前端 direct-fetch redirect boundary 新增了统一错误/传输边界，但本轮契约测试尚未执行，真实 provider/stream/worker/desktop/audit matrix 仍未完成 |
+| 58 | Diagnostic Bundle | NOT_VERIFIED | Registry-backed bundle、provider/DB/error 摘要、privacy hygiene summary、startup recovery state、bounded durable CareerTask/AutomationEvent/RoleBenchmarkRun/JobResearchRun failure summary 与浏览器下载 canary 已有实现/既有隔离证据；artifact audit 新增文本型 email/phone value-free finding；扩展/插件/Agent Runtime/Guardian/Skill Pipeline/历史研究错误边界和独立 credential redaction 已落盘但契约尚未执行，完整 artifact/PII review 与 retention policy 仍缺 |
+| 59 | Performance Baseline | PASS | [Performance report](docs/evals/reports/2026-09-01-codex-offeru-public-release-performance.md)：Windows reference environment、cold/warm/cache/action/progress measurements |
+| 60 | UI Performance SLO | PASS | cold `993.239ms`、warm `1071.201ms`、navigation p95 `339.558ms`、action `35.123ms`、progress `661.186ms` 均低于阈值 |
+| 61 | Long Task UX | NOT_VERIFIED | [Long Task UX](docs/evals/reports/2026-09-01-codex-offeru-public-release-long-task-ux.md)：Today 实时 status/progress/error/cancel/retry confirmation path 通过；startup recovery、CareerTask、RoleBenchmarkRun 和 JobResearchRun durable failure 不再静默且提供 error ID；所有 >2s 路径、真实 provider/network/restart failure audit 仍缺 |
+| 62 | Soak Test | PASS | [Reliability-12](docs/evals/reports/2026-09-01-codex-offeru-public-release-reliability-12.md) 按 Goal 的“2 小时或 100 个代表性 task cycles”解释，使用 Reliability-09 的 100 个真实 CareerTask worker cycles 通过替代门槛；Reliability-05/08/10/11 继续提供混合 workload、浏览器重复/重试和跨进程 claim 证据；2 小时是未执行的等价验证方式，不是叠加硬要求 |
+| 63 | Memory / Resource Leak | PASS | [Reliability-12](docs/evals/reports/2026-09-01-codex-offeru-public-release-reliability-12.md) 复核 Reliability-05 的 100 个真实混合 backend cycles，warm-up 后 RSS 增长 `3.01% < 20%`，无 workload error；不宣称任意长时 workload 均无泄漏 |
+| 64 | Testing Pyramid | NOT_VERIFIED | backend unit/contract/integration、browser E2E、failure、migration、packaging 均有证据；CI/全 release matrix 仍缺 |
+| 65 | Unit / Deterministic Tests | NOT_VERIFIED | Application stage classification/projection 已由 stage matrix 覆盖；[Role authority evidence](docs/evals/reports/2026-09-01-codex-offeru-public-release-role-authority.md) 补 normalization、Delta、Evidence Gap deterministic tests；Fact Gate、Today priority、Candidate lifecycle 等完整 mapping 仍缺 |
+| 66 | Operation Contract Tests | PASS | 全量 250 operations 均发布 closed `input_schema`；`tests/test_cli_ops.py` 校验 input properties/required、output envelope、side effects、dry-run/confirmation 与 operation version |
+| 67 | Agent Contract Tests | PASS | [Agent Runtime contract](docs/evals/reports/2026-09-01-codex-offeru-public-release-agent-runtime-contract.md)：Replay interface 与 canonical stream/tool/approval/cancel/failure/resume matrix 通过 |
+| 68 | Browser E2E Philosophy | NOT_VERIFIED | [Portable CI browser smoke](docs/evals/reports/2026-09-01-codex-offeru-public-release-ci-browser-smoke.md) 与 [Reliability-08](docs/evals/reports/2026-09-01-codex-offeru-public-release-reliability-08.md) 使用用户可见 UI、场景隔离 DB/browser，并覆盖双击/传输重试；public-release 五个 E2E 入口现在共享固定 `127.0.0.1:7410/8765` guard，误指向 8080/其它端口会在网络或 Playwright 前失败；smoke、Interview、Empty State 还会在创建 managed Chromium 前核对页面/health identity；仓库自动浏览器静态审计已覆盖根目录临时脚本、E2E、PDF 与扩展 fixture，当前无系统 Chrome/Edge 选择器；前端与扩展直接 fetch 也拒绝 HTTP 重定向；新增 contract 与远程 runner 尚未执行 |
+| 69 | Playwright Isolation | PASS | 50 个 first-run DB、10 个 composite DB、Interview learning fresh DB 与 CI empty/smoke/interview 三场景独立 DB/browser context 均隔离，integrity/FK 通过 |
+| 70 | Playwright Failure Artifacts | NOT_VERIFIED | Portable smoke 在失败时保存 trace/screenshot、成功不保存；三个 CI browser job 已在上传前对 trace/screenshot/log 执行 secret audit，E2E 地址 guard 也拒绝错误网页端口，但 failure-only upload 与新增 contract 尚未在远程 runner 验证 |
+| 71 | Golden Path A — New User | NOT_VERIFIED | 50/50 isolated browser first-run、10/10 composite、portable preparation/empty-state CI-smoke、[Interview learning](docs/evals/reports/2026-09-01-codex-offeru-public-release-interview.md) PASS；CI 已新增 10 个彼此隔离的 critical new-user repeatability runner，但本轮未执行远程 runner；installer clean-machine 完整 UI 仍缺 |
+| 72 | Golden Path B — Existing User | NOT_VERIFIED | 历史 migration 报告只作为背景；当前仓库已新增 `backend/scripts/e2e/test_public_release_migration.py` 与独立 `migration-browser-smoke` job，使用临时 schema v1 数据库、真实 lifespan migration 和 Playwright managed Chromium 无头 UI 验收；脚本现在要求 7410 返回含 OfferU 的 2xx 页面，8765 返回当前 checkout 版本、`OfferU`/`python` 和 `local-development` health identity，拒绝旧服务或错误端口；本轮未执行 runner，installer upgrade 仍由 R88 单独覆盖 |
+| 73 | Golden Path C — Failure | NOT_VERIFIED | [Long Task UX](docs/evals/reports/2026-09-01-codex-offeru-public-release-long-task-ux.md) 补 task error/action failure 可见；当前浏览器 Resume save/PDF 503、[Reliability-08](docs/evals/reports/2026-09-01-codex-offeru-public-release-reliability-08.md) 的 Job ingest 503 可见/可重试，Reliability-04/06 evaluation/restart evidence 保留，Provider/task/backend 全 failure matrix 仍缺 |
+| 74 | Golden Path D — Duplicate | NOT_VERIFIED | Application stage matrix 走真实 review path；Reliability-06 通过 Resume/Application/Interview answer/Memory review 服务层重复请求和 restart retry；[Reliability-08](docs/evals/reports/2026-09-01-codex-offeru-public-release-reliability-08.md) 通过浏览器 double-click、已提交后 transport retry 且 Job/task 各唯一；[Reliability-09](docs/evals/reports/2026-09-01-codex-offeru-public-release-reliability-09.md) 确认 100 个 worker Job/task/event 各唯一；[Reliability-10](docs/evals/reports/2026-09-01-codex-offeru-public-release-reliability-10.md) 确认两个独立进程同一 task 只有一次 attempt；[Reliability-11](docs/evals/reports/2026-09-01-codex-offeru-public-release-reliability-11.md) 确认两个独立进程同一 AutomationEvent 只有一个任务和 Inbox projection；Reliability-13/14 确认 failure retry contract 不伪造成功，并覆盖跨进程 retry/restart；Job ingest、provider/network 和全部 mutation 并发矩阵仍缺 |
+| 75 | Golden Path E — Resume Conflict | PASS | 当前 10/10 composite 均验证手工编辑后旧 Proposal 变 stale，不能覆盖新内容 |
 | 76 | Golden Path F — Data Recovery | PASS | 同一报告：隔离 Settings UI 暂存/取消、真实重启恢复和恢复后健康检查通过；不继承其他 Public E2E 结论 |
-| 77 | Critical Repeatability 10/10 | NOT_VERIFIED | 无连续 10 次证据 |
-| 78 | Extended Stability 50 runs ≥98% | NOT_VERIFIED | 无 50-run report |
-| 79 | Full Test Gate | NOT_VERIFIED | 当前 commit 后端 `297 passed, 10 warnings, 1 subtest passed`；前端/桌面/浏览器全栈 Release gate 仍未完成 |
+| 77 | Critical Repeatability 10/10 | PASS | [E2E report](docs/evals/reports/2026-09-01-codex-offeru-public-release-e2e.md)：10/10 complete composite iterations |
+| 78 | Extended Stability 50 runs ≥98% | PASS | [E2E report](docs/evals/reports/2026-09-01-codex-offeru-public-release-e2e.md)：50/50 isolated first-run，integrity 50/50 |
+| 79 | Full Test Gate | NOT_VERIFIED | backend 授权本地工作区最新全量回归 `362 passed, 19 warnings, 1 subtests passed in 329.19s`；architecture/recovery contract 为 `9 passed in 1.32s`，startup/security/Doctor 为 `11 passed in 6.71s`，`tests/test_reliability.py` 为 `12 passed in 72.75s`，Provider failure matrix 为 `1 passed in 5.04s`，AutomationEvent cross-process script 与 Interview browser path PASS；frontend typecheck/build、Tauri bundle 通过；本轮新增 Tauri direct-loopback contract 尚未执行，CI/clean-machine full matrix 未验证 |
 | 80 | Pre-existing Failure policy | PASS | 当前 Status 不把历史失败排除出 Release |
 | 81 | Release Severity | PASS | P0–P3 已在 `KNOWN_ISSUES.md` 使用 |
-| 82 | Release Bug Gate | NOT_VERIFIED | 未完成全产品 P0/P1 triage 与 0/0 证明 |
-| 83 | Production Packaging | FAIL | 当前 Tauri launcher 仍是 dev-mode repository launcher |
-| 84 | Clean Machine | FAIL | Quickstart 要求 Python/Node/repo/terminal |
-| 85 | Python Sidecar | FAIL | `externalBin` 未配置；release 生命周期未实现 |
-| 86 | Installer lifecycle | NOT_VERIFIED | fresh install/launch/uninstall/reinstall 未跑 |
-| 87 | Unified Versioning | FAIL | backend 0.4.0、frontend/Tauri/Rust 0.1.0 不一致 |
+| 82 | Release Bug Gate | PASS | [Severity gate](docs/evals/reports/2026-09-01-codex-offeru-public-release-severity.md)：当前 `KNOWN_ISSUES.md` 的 7 条已知项全部分类，P0=0、P1=0、audit findings=0；未完成的 GATE 仍继续阻止 Public Release |
+| 83 | Production Packaging | PASS | [Packaging report](docs/evals/reports/2026-09-01-codex-offeru-public-release-packaging.md)：Tauri `0.4.0` NSIS/MSI + sidecar 生成 |
+| 84 | Clean Machine | NOT_VERIFIED | workflow 已新增独立 `desktop-installed-smoke`：先校验下载的 NSIS/MSI artifact manifest/hash/version/signature，再拒绝复用已占用的 `8765`、安装到 runner 临时目录、启动已安装 app、直连 `127.0.0.1:8765/api/health` 并严格核对 `status=ok`、`service=OfferU`、`runtime=python`、监听 owner 来自该安装目录、卸载并上传结果；本轮未执行远程 runner，仍不是无开发工具 clean OS/独立用户人工验收 |
+| 85 | Python Sidecar | PASS | installed `offeru-backend.exe`、`node.exe`、`agent-runtime`、health/integrity/skills smoke 通过 |
+| 86 | Installer lifecycle | PASS | uninstall → reinstall → launch/smoke → final uninstall 全通过，用户 appdata 保留 |
+| 87 | Unified Versioning | PASS | backend/frontend/Tauri/Rust 当前均为 `0.4.0`，FastAPI health 使用的 `backend/app/main.py` 也纳入版本审计；`audit_version_consistency.py` 对五处声明做 fail-closed 机械核对，远程 Release runner 尚未重验 |
 | 88 | Upgrade | NOT_VERIFIED | previous installer→current→migration→Golden Path 未跑 |
 | 89 | Update Signing | NOT_VERIFIED | updater 未启用；启用时签名不可关闭 |
 | 90 | Code Signing | BLOCKED_EXTERNAL | 代码/installer 尚未 ready；最终证书需要所有者 |
-| 91 | Release Artifact set | NOT_VERIFIED | installer/checksum/metadata/notes/notices 缺失 |
-| 92 | CI Release Pipeline | FAIL | 无 release tag 全 Gate 自动 pipeline 证明 |
+| 91 | Release Artifact set | NOT_VERIFIED | NSIS/MSI/sidecar、大小和 SHA-256 已记录；`RELEASE_NOTES.md`、`THIRD_PARTY_NOTICES.md`、`LICENSE` 已加入 CI 收集，收集前增加 artifact audit；新增 `verify_release_artifacts.py` 对 manifest、checksum、bytes、version、target、NSIS/MSI 集合、签名标记和 symlink root/metadata 做 fail-closed 校验；签名后的最终 artifact 尚未生成 |
+| 92 | CI Release Pipeline | NOT_VERIFIED | workflow 已包含 backend/frontend/extension（typecheck、test、WXT build、生产依赖 audit）/RustSec strict unsound audit/product-claim/architecture audit（含 Automation/startup recovery boundary）、含 FastAPI health 的 release version consistency audit、7410 网页正文与 8765 版本/build mode 身份等待、empty/smoke/interview 三场景隔离 browser-smoke、独立 cross-process provider failure/restart recovery、10 个隔离 `critical-browser-repeatability` runner、独立 previous-release `migration-browser-smoke`、Windows NSIS+MSI package、独立 `desktop-installed-smoke`（8765 preflight、release 版本/build mode 与 installed-sidecar owner 验证）、100-cycle worker、CareerTask/AutomationEvent cross-process claim、bundle/sidecar/artifact/浏览器诊断 secret audit、正式 tag signing/verification、artifact hash、打包上传前和安装/Draft Release 下载后 manifest verification 与 secret audit，以及打包前和 Draft Release 前的 `--require-ready` fail-closed gate；未在远程 runner/tag 执行 |
 | 93 | Release Candidate | NOT_VERIFIED | 尚未产生 `vX.Y.Z-rc.1` |
 | 94 | RC Iteration Loop | NOT_VERIFIED | 无每 RC 全量重验报告 |
-| 95 | Three-perspective Self Review | NOT_VERIFIED | 当前 Workstream 完成后需三轮记录 |
-| 96 | Architecture Drift Scan | NOT_VERIFIED | 需自动检查六类 drift 并留证据 |
-| 97 | Dependency Direction | NOT_VERIFIED | 架构声明存在；需 cross-layer import audit |
-| 98 | Privacy Disclosure | NOT_VERIFIED | Public UI disclosure 未完成 |
-| 99 | Consent | NOT_VERIFIED | 四类 consent outcome matrix 缺失 |
-| 100 | Product Claims Gate | NOT_VERIFIED | 需 README/UI/site 对照 live evidence 全量扫描 |
+| 95 | Three-perspective Self Review | PASS | [Three-perspective review](docs/evals/reports/2026-09-02-codex-offeru-public-release-self-review.md)：Product、Architecture、Reliability/Security 三轮均记录当前证据、残余和 0 个新增 P0/P1；不替代最终人工发布批准 |
+| 96 | Architecture Drift Scan | NOT_VERIFIED | [Architecture audit](docs/evals/reports/2026-09-01-codex-offeru-public-release-architecture-audit.md) 与正式 CI audit 覆盖 route mutation、Registry boundary、Provider execution branch、CLI/MCP/plugin boundary、Python cross-layer/import、唯一 Automation dispatcher 和 startup recovery boundary；当前 architecture audit 另已覆盖本地 `7410/8765` 入口、`backend/Dockerfile`、`run_server.py`/sidecar 固定端口、Vite `server.open=false`、根扩展 `popup.html`、WXT popup entrypoint bridge、扩展 `src/popup.ts` 与端口归一化模块、旧端口、根目录历史 `OfferU.exe` 可执行名、public-release E2E 共享 endpoint guard 和自动 E2E/PDF/临时脚本系统浏览器选择器，新增扩展网页导航 readiness gate；扩展 build 完成后另执行 tracked generated extension artifact guard，拒绝旧 background/popup bundle，远程 runner、动态 browser/legacy runtime audit 和全部 drift 类别仍缺。详见 [generated extension guard](docs/evals/reports/2026-09-03-codex-offeru-public-release-generated-extension-guard.md) |
+| 97 | Dependency Direction | PASS | Architecture audit：test_control_plane_global.py 对 app/models、app/agents、app/services 执行 lower-layer → route 与 model → application/control-plane import contract，结果为 0 违规；其它 surface 仍由对应边界测试覆盖 |
+| 98 | Privacy Disclosure | NOT_VERIFIED | `docs/PRIVACY_CONSENT.md` 与 Email UI 已披露 local/cloud、邮箱只读、授权浏览器和媒体边界；最终公开法律政策与历史 retention 仍未完成 |
+| 99 | Consent | NOT_VERIFIED | Security-06 覆盖 local/cloud Interview 类别、Gmail、IMAP 和 authorized browser 的 deterministic boundary；真实 OAuth/媒体授权、完整 outcome matrix 和最终政策仍缺 |
+| 100 | Product Claims Gate | NOT_VERIFIED | `backend/scripts/release/audit_product_claims.py` 已扫描 118 个 README/Quickstart/Release Notes/前端 TS/TSX surface，当前高风险自动外部写入、无界实时市场和正向 Public Release claim 为 0，并接入 backend CI；仍需最终 installer/网站人工语义 review 与真实 live claim 验证 |
 | 101 | README Update only after Final Gate | PASS | 当前仍明确为 Internal Beta，未提前宣称 Public Release |
-| 102 | Public QUICKSTART / DEVELOPMENT split | FAIL | 当前 QUICKSTART 是开发者双终端流程，无 DEVELOPMENT.md |
-| 103 | Support Diagnostics | NOT_VERIFIED | 基础诊断下载存在；Doctor/error_id 定位矩阵缺失 |
-| 104 | Doctor Release Gate | FAIL | Doctor 已检查 DB integrity、backup count 和 pending restore；desktop bridge、storage、version consistency 仍未完整覆盖，未返回 CORE_READY |
-| 105 | Release Dashboard | PASS | `STATUS.md` 已建立七域 dashboard，但各域尚未通过 |
+| 102 | Public QUICKSTART / DEVELOPMENT split | NOT_VERIFIED | `DEVELOPMENT.md` 与不伪造 Public install 的 QUICKSTART 已存在；installer-first 普通用户文案仍需最终发布版完善 |
+| 103 | Support Diagnostics | NOT_VERIFIED | Doctor、error_id、Agent SSE/CareerTask/projection failure correlation、startup recovery check、持久化 durable failure summary、diagnostic bundle 和 installed smoke 有证据；Doctor、扩展网页启动器和 public-release 五个 E2E 入口都会在网络探测/导航前拒绝 8080 及其它错误网页端口，当前入口/自动浏览器静态审计为 `0 findings`；Doctor 还验证 7410 HTML 的 OfferU 标识和 8765 的版本/build mode，前端启动门有界超时、可读错误和重试，前端/扩展探测拒绝重定向；完整支持人员 error_id 定位矩阵仍缺 |
+| 104 | Doctor Release Gate | NOT_VERIFIED | release-mode Doctor 设计为返回 `CORE_READY` 前检查 backend/database/storage/desktop/version/runtime 与固定 `http://127.0.0.1:8765/api/health`、`http://127.0.0.1:7410` frontend，要求 OfferU health identity、当前 APP_VERSION/build mode 和网页正文标识；Doctor 另有 `--require-ready` fail-closed 退出模式；Doctor、Tauri、前端和扩展 sidecar readiness 均拒绝 8080、credentials、path/query、错误服务和重定向，Tauri 还严格要求 HTTP 成功、`status=ok`、`service=OfferU`、`runtime=python`、release version/build mode；2026-09-03 本机 runtime Doctor 已返回 `CORE_READY`，但新增 contract、Rust/packaged smoke、clean-machine 与远程 runner 尚未执行，故 Gate 仍为 `NOT_VERIFIED` |
+| 105 | Release Dashboard | PASS | `STATUS.md` 已更新七域当前证据、残余和下一动作 |
 | 106 | Release Blocker Rule | PASS | 当前 FAIL/NOT_VERIFIED 已阻止发布 |
-| 107 | Optional Integration Rule | NOT_VERIFIED | 文档对齐；需 UI label 与真实 core provider outcome |
+| 107 | Optional Integration Rule | PASS | [Provider health matrix](docs/evals/reports/2026-09-02-codex-offeru-public-release-provider-health.md) 验证 `unprobed/ready/auth_required/blocked/unavailable` 五种投影、四个 known Provider、read-side credential redaction；扩展 HTTP Adapter 另要求 OfferU/Python、非空版本和合法 build mode；真实 Provider availability 仍按 R25/R38 单独判定 |
 | 108 | Final Human Acceptance | NOT_VERIFIED | 未在陌生用户 clean machine 执行 |
 | 109 | Production Definition of Done | NOT_VERIFIED | 多项硬 Gate FAIL/NOT_VERIFIED |
 | 110 | Final Status Rule | PASS | 当前保持 active，不因技术问题停止 |
@@ -126,9 +126,9 @@
 ## Current highest-priority blocker
 
 ```text
-Security residual baseline: full release artifact canary, Rust advisory, permission diff, complete logging/PII and privacy/consent
+Release completion residual: historical privacy decision and full PII/artifact/retention audit; code signing; previous-release upgrade; clean-machine independent UI acceptance; CI/RC artifact verification; provider/network/restart reliability matrix
 ```
 
 `DATA_SAFETY_01` 已通过 R45/R46/R49/R76，`DATA_SAFETY_02` 已通过 R43/R44，`DATA_SAFETY_03` 已通过 R47/R48。Data Safety 已完整通过，但 Security 及其他硬 Gate 未通过前不得宣称 Public Release PASS。
 
-当前 Security 证据：[Security 01](docs/evals/reports/2026-08-31-codex-offeru-core-v1-security-01.md) 与 [Security 02](docs/evals/reports/2026-08-31-codex-offeru-core-v1-security-02.md)。Security 02 已将错误关联、脱敏诊断包、Python/npm dependency 和若干 canary 推进到 PARTIAL，但两个 domain 仍未完整通过；下一执行顺序回到 Reliability 真实进程/浏览器恢复与资源测量，同时保留 Security residual。
+当前 Security 证据：[Security 01](docs/evals/reports/2026-08-31-codex-offeru-core-v1-security-01.md) 至 [Security 08](docs/evals/reports/2026-08-31-codex-offeru-core-v1-security-08.md)。Security-08 已清理正常工作区中确认属于本轮测试的合成邮箱数据，但历史旧正文与完整发布安全矩阵仍未完成。Public Release E2E、性能和 Packaging 证据见 [E2E](docs/evals/reports/2026-09-01-codex-offeru-public-release-e2e.md)、[Performance](docs/evals/reports/2026-09-01-codex-offeru-public-release-performance.md)、[Packaging](docs/evals/reports/2026-09-01-codex-offeru-public-release-packaging.md)；下一执行顺序继续隐私/发布工程、可靠性长时/worker 矩阵和独立 clean-machine 验收。

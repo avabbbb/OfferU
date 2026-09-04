@@ -133,7 +133,7 @@ TOOL_REGISTRY: dict[str, dict] = {
     },
     "start_job_research": {
         "description": "通过 Operation Registry 启动当前岗位的公开网页证据化调研",
-        "parameters": {"runtime_id": "本地 coding agent runtime，默认 codex"},
+        "parameters": {"runtime_id": "可选；按优先级选择 live runtime，也可指定 backend_search"},
         "risk_level": "confirm",
     },
     "get_job_research": {
@@ -566,7 +566,7 @@ async def _tool_match_resume(session: OptimizeSession, args: dict, db) -> dict:
     if not session.rows:
         return {"error": "简历数据为空，请先确认岗位并完成分析"}
 
-    from app.routes.optimize import _rows_to_resume_json
+    from app.services.resume_optimize_support import _rows_to_resume_json
     resume_text = _rows_to_resume_json(session.rows)
 
     from app.agents.skills.resume_matcher import ResumeMatcherSkill
@@ -679,7 +679,7 @@ async def _tool_rewrite_section(session: OptimizeSession, args: dict, db) -> dic
         # Apply suggestions to session.rows in-place so confirm_section saves rewritten data
         suggestions = result.get("suggestions", [])
         if suggestions:
-            from app.routes.optimize import _apply_suggestions_to_rows
+            from app.services.resume_optimize_support import _apply_suggestions_to_rows
             # Save original content before first rewrite (for rollback)
             idx_key = str(section_index)
             if idx_key not in session.original_rows:
@@ -709,7 +709,7 @@ async def _tool_rewrite_section(session: OptimizeSession, args: dict, db) -> dic
 
             # ── FactGates: 确定性事实验证（校验数字/机构名是否捏造） ──
             try:
-                from app.routes.optimize import _fact_gates_validate
+                from app.services.resume_optimize_support import _fact_gates_validate
                 source_sections = await _get_source_sections(session, db) if db is not None else []
                 gate_result = _fact_gates_validate(
                     [session.rows[section_index]], source_sections
@@ -949,7 +949,7 @@ async def _tool_start_job_research(
         "start_job_research",
         {
             "job_id": session.job_ids[0],
-            "runtime_id": args.get("runtime_id") or "codex",
+            "runtime_id": args.get("runtime_id") or None,
         },
     )
     if result.get("run_id"):
@@ -1583,7 +1583,10 @@ async def start_session(
 
             # Build session.rows from profile sections so that
             # match_resume / rewrite_section / proposal preparation work immediately
-            from app.routes.optimize import _rank_profile_sections, _build_resume_sections
+            from app.services.resume_optimize_support import (
+                _rank_profile_sections,
+                _build_resume_sections,
+            )
             if sections and session.raw_jd:
                 ranked = _rank_profile_sections(sections, session.raw_jd, limit=12)
                 selected = [item[0] for item in ranked]

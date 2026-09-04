@@ -50,7 +50,7 @@ class SemanticSearchService:
             qdrant_host = getattr(self.settings, "qdrant_host", None)
             if qdrant_host:
                 self.client = AsyncQdrantClient(host=qdrant_host, port=6333)
-                _logger.info(f"Connected to Qdrant at {qdrant_host}:6333")
+                _logger.info("Connected to configured remote Qdrant")
             else:
                 self.client = AsyncQdrantClient(":memory:")
                 _logger.warning("Using in-memory Qdrant (data will be lost on restart)")

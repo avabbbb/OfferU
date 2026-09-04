@@ -20,6 +20,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import type { ProfileImportResult } from "@/lib/hooks";
+import { safeClientErrorMessage } from "@/lib/safe-error";
 
 // ---------------------------------------------------------------------------
 // 提示词常量
@@ -449,7 +450,7 @@ export default function AIImportModal({ open, onClose, onImport }: AIImportModal
       onImport(result);
       resetAndClose();
     } catch (err: any) {
-      setError(err.message || "解析失败，请确认 JSON 格式正确。");
+      setError(safeClientErrorMessage(err, "解析失败，请确认 JSON 格式正确。"));
     } finally {
       setParsing(false);
     }

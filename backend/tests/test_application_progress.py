@@ -28,7 +28,13 @@ from app.models.models import (
 from app.routes.email import ProgressReviewRequest, review_progress_candidate
 from app.services.application_events import application_event_store
 from app.services.application_progress import (
+    APPLICATION_STAGES,
+    _STAGE_ORDER,
+    _classify_stage,
+    _next_action,
+    _workspace_status_for_stage,
     get_application_progress_board,
+    get_application_progress_overview,
     review_application_progress,
 )
 
@@ -75,6 +81,153 @@ def _candidate(
 
 
 class ApplicationProgressTests(unittest.TestCase):
+    def test_deterministic_signal_keywords_cover_each_external_stage(self) -> None:
+        examples = {
+            "感谢投递": "applied",
+            "笔试邀请": "written_test",
+            "在线测评邀请": "assessment",
+            "技术面试邀请": "interview_1",
+            "二面安排": "interview_2",
+            "HR面安排": "interview_hr",
+            "正式录用通知": "offer",
+            "很遗憾未通过": "rejected",
+        }
+
+        for text, expected_stage in examples.items():
+            stage, evidence = _classify_stage(text)
+            self.assertEqual(stage, expected_stage, text)
+            self.assertEqual(evidence["method"], "deterministic_keyword", text)
+
+        self.assertEqual(APPLICATION_STAGES - {"prepared", "unknown"}, set(examples.values()))
+
+    def test_all_external_stages_project_to_timeline_board_and_workspace(self) -> None:
+        stages = [
+            "applied",
+            "written_test",
+            "assessment",
+            "interview_1",
+            "interview_2",
+            "interview_hr",
+            "offer",
+            "rejected",
+        ]
+
+        async def run(database_path: Path) -> tuple[list[dict], dict, dict, list[dict]]:
+            engine = create_async_engine(
+                f"sqlite+aiosqlite:///{database_path.as_posix()}"
+            )
+            session = async_sessionmaker(
+                engine,
+                class_=AsyncSession,
+                expire_on_commit=False,
+            )
+            try:
+                async with engine.begin() as connection:
+                    await connection.run_sync(Base.metadata.create_all)
+                token = uuid.uuid4().hex[:10]
+                candidate_ids: list[str] = []
+                async with session() as db:
+                    for index, stage in enumerate(stages):
+                        job = Job(
+                            title=f"{stage} Role",
+                            company=f"Stage Company {index}",
+                            source="stage-matrix-test",
+                            hash_key=uuid.uuid4().hex,
+                        )
+                        db.add(job)
+                        await db.flush()
+                        attempt = ApplicationAttempt(job_id=job.id, status="applied")
+                        db.add(attempt)
+                        await db.flush()
+                        signal = _signal(
+                            f"{token}-{index}",
+                            datetime(2026, 8, 13, 9 + index, 0, 0),
+                        )
+                        signal.subject = f"stage={stage}"
+                        db.add(signal)
+                        await db.flush()
+                        candidate = _candidate(
+                            f"{token}-{index}",
+                            signal.id,
+                            stage=stage,
+                            match_state="suggested",
+                            attempt_id=attempt.id,
+                        )
+                        db.add(candidate)
+                        candidate_ids.append(candidate.candidate_id)
+                    await db.commit()
+
+                with patch(
+                    "app.services.application_progress.async_session",
+                    session,
+                ):
+                    results = [
+                        await review_application_progress(
+                            candidate_id=candidate_id,
+                            action="accept",
+                            add_calendar=False,
+                        )
+                        for candidate_id in candidate_ids
+                    ]
+                    board = await get_application_progress_board(
+                        status="all",
+                        include_timeline=True,
+                    )
+                    overview = await get_application_progress_overview(
+                        disclosure="detail",
+                        limit=100,
+                    )
+
+                async with session() as db:
+                    records = [
+                        {
+                            "stage": event.stage,
+                            "previous_stage": event.previous_stage,
+                        }
+                        for event in (
+                            await db.execute(
+                                select(ApplicationStageEvent).order_by(
+                                    ApplicationStageEvent.id.asc()
+                                )
+                            )
+                        ).scalars().all()
+                    ]
+                return results, board, overview, records
+            finally:
+                await engine.dispose()
+
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+            application_event_store,
+            "directory",
+            Path(directory) / "events",
+        ):
+            results, board, overview, events = asyncio.run(
+                run(Path(directory) / "stage-matrix.db")
+            )
+
+        self.assertEqual([item["stage_event"]["stage"] for item in results], stages)
+        self.assertEqual(
+            [item["workspace_record"]["status"] for item in results],
+            [_workspace_status_for_stage(stage) for stage in stages],
+        )
+        self.assertEqual([item["stage"] for item in events], stages)
+        self.assertTrue(all(item["previous_stage"] == "applied" for item in events))
+
+        board_rows = [
+            record
+            for company in board["companies"]
+            for record in company["records"]
+        ]
+        self.assertEqual(
+            {record["current_stage"] for record in board_rows},
+            set(stages),
+        )
+        self.assertEqual(
+            {record["current_stage"] for record in overview["items"]},
+            set(stages),
+        )
+        self.assertTrue(all(_next_action(stage) for stage in _STAGE_ORDER))
+
     def test_review_route_forwards_record_and_calendar_options(self) -> None:
         execute = AsyncMock(
             return_value={

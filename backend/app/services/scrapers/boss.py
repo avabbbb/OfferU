@@ -18,7 +18,6 @@
 
 import asyncio
 import hashlib
-import json
 import logging
 import random
 from pathlib import Path
@@ -32,32 +31,12 @@ from app.services.scrapers.base import (
     register_scraper,
 )
 from app.services.security_redaction import safe_error_message
+from app.services.runtime_credentials import load_scraper_cookie
 
 logger = logging.getLogger(__name__)
 
-# --- Cookie 读取：优先从内存配置读取，回退到文件 ---
-_BOSS_COOKIE_FILE = Path(__file__).resolve().parent.parent.parent.parent / "config.json"
-
-
 def _load_boss_cookie() -> str:
-    """
-    获取 boss_cookie：
-    1. 优先从路由模块的内存配置读取（运行时热更新）
-    2. 回退到 config.json 文件（冷启动兼容）
-    """
-    try:
-        from app.routes.config import _current_config
-        if _current_config.boss_cookie:
-            return _current_config.boss_cookie
-    except Exception:
-        pass
-    try:
-        if _BOSS_COOKIE_FILE.exists():
-            data = json.loads(_BOSS_COOKIE_FILE.read_text(encoding="utf-8"))
-            return data.get("boss_cookie", "")
-    except Exception:
-        pass
-    return ""
+    return load_scraper_cookie("boss_cookie")
 
 
 class BossScraper(JobScraperBase):
@@ -235,15 +214,15 @@ class BossScraper(JobScraperBase):
                             if len(results) >= max_results:
                                 break
 
-                        logger.info("[boss] keyword=%s page=%d got %d items (total %d)",
-                                    kw, page, len(job_list), len(results))
+                        logger.info("[boss] keyword_len=%d page=%d got %d items (total %d)",
+                                    len(kw), page, len(job_list), len(results))
 
                         # 翻页延迟 — 避免触发频率限制
                         if page < max_pages and len(results) < max_results:
                             await self._delay()
 
                     except httpx.TimeoutException:
-                        logger.warning("[boss] 请求超时 keyword=%s page=%d", kw, page)
+                        logger.warning("[boss] 请求超时 keyword_len=%d page=%d", len(kw), page)
                         break
                     except Exception as e:
                         logger.error("[boss] 请求异常: %s", safe_error_message(e))

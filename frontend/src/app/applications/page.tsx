@@ -66,6 +66,7 @@ import {
   useEmailStatus,
   useJobs,
 } from "@/lib/hooks";
+import { safeClientErrorMessage } from "@/lib/safe-error";
 
 type EditingCell = {
   recordId: number;
@@ -196,7 +197,7 @@ function InlineCellEditor({
     } catch (e) {
       // 提交失败：保留编辑器与草稿，展示错误；不能静默关闭
       //（用户会以为已保存，且异常会变成 unhandled rejection）。
-      setCommitError(e instanceof Error ? e.message : String(e));
+      setCommitError(safeClientErrorMessage(e, "保存失败，请重试。"));
     } finally {
       savingRef.current = false;
     }
@@ -705,7 +706,7 @@ const [emailSyncing, setEmailSyncing] = useState(false);
     } catch (error) {
       setOperationFeedback({
         tone: "error",
-        message: error instanceof Error ? error.message : "导入失败，请稍后重试。",
+        message: safeClientErrorMessage(error, "导入失败，请稍后重试。"),
       });
     } finally {
       setImporting(false);
@@ -733,7 +734,7 @@ const [emailSyncing, setEmailSyncing] = useState(false);
     } catch (error) {
       setOperationFeedback({
         tone: "error",
-        message: error instanceof Error ? error.message : "没有找到插件购物车同步批次，请先在插件购物车点击同步。",
+        message: safeClientErrorMessage(error, "没有找到插件购物车同步批次，请先在插件购物车点击同步。"),
       });
     } finally {
       setLatestExtensionImporting(false);
@@ -756,10 +757,7 @@ const [emailSyncing, setEmailSyncing] = useState(false);
     } catch (error) {
       setOperationFeedback({
         tone: "error",
-        message:
-          error instanceof Error
-            ? `邮箱同步失败：${error.message}`
-            : "邮箱同步失败，请稍后重试。",
+        message: `邮箱同步失败：${safeClientErrorMessage(error, "请稍后重试。")}`,
       });
     } finally {
       setEmailSyncing(false);
@@ -817,7 +815,7 @@ const [emailSyncing, setEmailSyncing] = useState(false);
     } catch (error) {
       setOperationFeedback({
         tone: "error",
-        message: error instanceof Error ? error.message : "批量移动失败，请稍后重试。",
+        message: safeClientErrorMessage(error, "批量移动失败，请稍后重试。"),
       });
     } finally {
       setBulkLoading(false);

@@ -1,4 +1,5 @@
 import { TAG } from "./constants.js";
+import { safeExtensionDebugPayload } from "../../../lib/safe-error.js";
 
 let debugEnabled = false;
 
@@ -18,7 +19,7 @@ export function logDebug(tag: string, payload: unknown): void {
   if (!debugEnabled) return;
   try {
     console.groupCollapsed(`[OfferU SmartFill] ${tag}`);
-    console.log(payload);
+    console.log(safeExtensionDebugPayload(payload));
     console.groupEnd();
   } catch {
     // ignore logging errors

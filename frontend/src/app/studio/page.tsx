@@ -4,14 +4,11 @@
 import { useState, useEffect } from "react";
 import { Card, Button, Spinner } from "@nextui-org/react";
 import { SHOWCASE, showcaseHandle } from "@/lib/showcase/router";
+import { resolveApiBase } from "@/lib/apiBase";
 
 // 与 lib/api.ts 同款后端地址解析；vite dev 无 proxy，
 // 相对路径 /api/... 会打到 Vite 自身（7410）返回 index.html。
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ||
-  (typeof window !== "undefined"
-    ? `${window.location.protocol}//${window.location.hostname}:8765`
-    : "http://127.0.0.1:8765");
+const API_BASE = resolveApiBase();
 
 interface Template {
   id: number;
@@ -35,7 +32,7 @@ export default function StudioPage() {
       });
       return;
     }
-    fetch(`${API_BASE}/api/studio/templates`)
+    fetch(`${API_BASE}/api/studio/templates`, { redirect: "error" })
       .then(res => res.json())
       .then(setTemplates);
   }, []);
@@ -46,6 +43,7 @@ export default function StudioPage() {
     setLoading(true);
     const res = await fetch(`${API_BASE}/api/studio/generate`, {
       method: "POST",
+      redirect: "error",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         profile_id: 1, // 本地单人应用：固定默认 profile

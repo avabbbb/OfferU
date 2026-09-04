@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+import shutil
 import sqlite3
 import tempfile
 import unittest
@@ -169,6 +170,41 @@ class DataSafetyTests(unittest.TestCase):
             self.assertTrue((layout.restore_dir / backup["backup_id"]).is_dir())
             self.assertGreaterEqual(len(list_backups(layout)["items"]), 2)
 
+    def test_sidecar_move_failure_restores_already_moved_sidecars(self) -> None:
+        import app.services.data_safety as data_safety
+
+        with tempfile.TemporaryDirectory() as directory:
+            layout = self._layout(Path(directory))
+            _write_state(layout, "backup")
+            backup = create_backup(layout, app_version="test")
+            _write_state(layout, "live")
+            stage_restore(layout, backup_id=backup["backup_id"])
+
+            wal_path = Path(f"{layout.database_path}-wal")
+            shm_path = Path(f"{layout.database_path}-shm")
+            wal_path.write_bytes(b"wal-before-failure")
+            shm_path.write_bytes(b"shm-before-failure")
+            real_replace = data_safety.os.replace
+            sidecar_moves = 0
+
+            def fail_second_sidecar_move(source, destination) -> None:  # noqa: ANN001
+                nonlocal sidecar_moves
+                if str(source).endswith(("-wal", "-shm")):
+                    sidecar_moves += 1
+                    if sidecar_moves == 2:
+                        raise OSError("forced second sidecar move failure")
+                real_replace(source, destination)
+
+            with patch.object(data_safety.os, "replace", side_effect=fail_second_sidecar_move):
+                with self.assertRaisesRegex(DataSafetyError, "原数据已自动回滚"):
+                    apply_pending_restore_before_database_connect(
+                        database_url=f"sqlite+aiosqlite:///{layout.database_path.as_posix()}",
+                        backend_dir=layout.backend_dir,
+                    )
+
+            self.assertEqual(wal_path.read_bytes(), b"wal-before-failure")
+            self.assertEqual(shm_path.read_bytes(), b"shm-before-failure")
+
     def test_windows_alternate_data_stream_member_is_rejected(self) -> None:
         with self.assertRaisesRegex(DataSafetyError, "越界路径"):
             _validate_member(zipfile.ZipInfo("uploads/resume.txt:secret"))
@@ -196,6 +232,109 @@ class DataSafetyTests(unittest.TestCase):
             with self.assertRaisesRegex(DataSafetyError, "哈希校验失败"):
                 stage_restore(layout, backup_id=backup["backup_id"])
             self.assertFalse(layout.pending_file.exists())
+
+    def test_backup_symlink_is_rejected_without_reading_target(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            layout = self._layout(Path(directory))
+            _write_state(layout, "symlink-source")
+            backup = create_backup(layout, app_version="test")
+            archive_path = layout.backup_dir / f'{backup["backup_id"]}.offeru-backup'
+            outside = Path(directory) / "outside.offeru-backup"
+            outside.write_bytes(archive_path.read_bytes())
+            archive_path.unlink()
+            try:
+                archive_path.symlink_to(outside)
+            except (OSError, NotImplementedError) as exc:
+                self.skipTest(f"symlink creation unavailable: {exc}")
+
+            with self.assertRaisesRegex(DataSafetyError, "符号链接"):
+                stage_restore(layout, backup_id=backup["backup_id"])
+            listed = list_backups(layout)
+            self.assertEqual(listed["items"], [])
+            self.assertEqual(len(listed["invalid"]), 1)
+
+    def test_database_symlink_is_rejected_before_integrity_or_backup(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            layout = self._layout(Path(directory))
+            real_database = Path(directory) / "outside.sqlite3"
+            connection = sqlite3.connect(real_database)
+            connection.execute("CREATE TABLE probe (value TEXT NOT NULL)")
+            connection.execute("INSERT INTO probe(value) VALUES ('outside')")
+            connection.commit()
+            connection.close()
+            try:
+                layout.database_path.symlink_to(real_database)
+            except (OSError, NotImplementedError) as exc:
+                self.skipTest(f"symlink creation unavailable: {exc}")
+
+            with self.assertRaisesRegex(DataSafetyError, "不能是符号链接"):
+                database_integrity_report(layout)
+            with self.assertRaisesRegex(DataSafetyError, "不能是符号链接"):
+                create_backup(layout, app_version="test")
+            self.assertFalse(data_safety_status(layout)["database"]["exists"])
+
+    def test_data_safety_directory_symlink_is_rejected_before_read_or_write(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            layout = self._layout(root)
+            outside = root / "outside-data-safety"
+            outside.mkdir()
+            data_dir = layout.backend_dir / "data"
+            try:
+                data_dir.symlink_to(outside, target_is_directory=True)
+            except (OSError, NotImplementedError) as exc:
+                self.skipTest(f"symlink creation unavailable: {exc}")
+
+            with self.assertRaisesRegex(DataSafetyError, "符号链接"):
+                create_backup(layout, app_version="test")
+            self.assertEqual(list(outside.iterdir()), [])
+
+    def test_invalid_marker_quarantine_symlink_is_rejected_before_move(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            layout = self._layout(root)
+            layout.pending_file.parent.mkdir(parents=True, exist_ok=True)
+            layout.pending_file.write_text("{not-json", encoding="utf-8")
+            outside = root / "outside-quarantine"
+            outside.mkdir()
+            quarantine_dir = layout.root / "cancelled_restore_markers"
+            try:
+                quarantine_dir.symlink_to(outside, target_is_directory=True)
+            except (OSError, NotImplementedError) as exc:
+                self.skipTest(f"symlink creation unavailable: {exc}")
+
+            with self.assertRaisesRegex(DataSafetyError, "符号链接"):
+                cancel_pending_restore(layout)
+            self.assertTrue(layout.pending_file.is_file())
+            self.assertEqual(list(outside.iterdir()), [])
+
+    def test_staged_restore_symlink_is_rejected_before_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            layout = self._layout(root)
+            _write_state(layout, "staged-source")
+            backup = create_backup(layout, app_version="test")
+            stage_restore(layout, backup_id=backup["backup_id"])
+
+            outside = root / "outside-staged-restore"
+            outside.mkdir()
+            shutil.rmtree(layout.restore_dir / backup["backup_id"])
+            try:
+                (layout.restore_dir / backup["backup_id"]).symlink_to(
+                    outside,
+                    target_is_directory=True,
+                )
+            except (OSError, NotImplementedError) as exc:
+                self.skipTest(f"symlink creation unavailable: {exc}")
+
+            with self.assertRaisesRegex(DataSafetyError, "符号链接"):
+                apply_pending_restore_before_database_connect(
+                    database_url=f"sqlite+aiosqlite:///{layout.database_path.as_posix()}",
+                    backend_dir=layout.backend_dir,
+                )
+
+            self.assertTrue(layout.pending_file.is_file())
+            self.assertEqual(list(outside.iterdir()), [])
 
     def test_restore_preserves_real_profile_and_job_state_after_new_engine_connects(self) -> None:
         async def seed(database_path: Path) -> None:

@@ -4,48 +4,17 @@ on:
   push:
     branches: [main]
     tags: ['v*']
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build-frontend:
-    name: Build Frontend
+  backend-tests:
+    name: Backend tests
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build Next.js
-        run: npm run build
-
-      - name: Upload frontend artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: offeru-frontend
-          path: frontend/out
-          if-no-files-found: warn
-
-  build-backend:
-    name: Build Backend
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
 
     steps:
       - uses: actions/checkout@v4
@@ -54,48 +23,977 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          cache: 'pip'
+          cache: pip
           cache-dependency-path: backend/requirements.txt
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements.txt pytest
 
-      - name: Check syntax
-        run: python -m py_compile run_server.py
+      - name: Run backend tests
+        working-directory: backend
+        run: python -m pytest tests -q
 
-      - name: Upload backend artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: offeru-backend
-          path: |
-            backend/
-            !backend/__pycache__/
-            !backend/**/__pycache__/
-            !backend/**/*.pyc
-          if-no-files-found: warn
+      - name: Audit release-facing product claims
+        run: python backend/scripts/release/audit_product_claims.py --repo-root . --json
 
-  release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build-frontend, build-backend]
+      - name: Audit architecture and Operation Registry boundaries
+        run: python backend/scripts/release/audit_architecture.py --json
+
+      - name: Audit release severity ledger
+        run: python backend/scripts/release/audit_release_severity.py --repo-root . --json
+
+      - name: Audit release checklist semantics
+        run: python backend/scripts/release/audit_release_readiness.py --repo-root . --json
+
+      - name: Audit release version consistency
+        run: python backend/scripts/release/audit_version_consistency.py --repo-root . --json
+
+  frontend-quality:
+    name: Frontend typecheck and build
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
-      - name: Create archive
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: frontend
+        run: npm run typecheck
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Audit production dependencies
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Audit Agent runtime production dependencies
+        working-directory: agent-runtime
         run: |
-          mkdir -p release
-          tar czf release/offeru-frontend.tar.gz -C offeru-frontend .
-          tar czf release/offeru-backend.tar.gz -C offeru-backend .
+          npm ci
+          npm audit --omit=dev --audit-level=high
 
-      - name: Create Release
+  rust-security-audit:
+    name: RustSec dependency audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked --version 0.22.2
+
+      - name: Audit Rust dependencies with current RustSec data
+        working-directory: frontend/src-tauri
+        run: cargo audit --format json
+
+      - name: Deny unsound RustSec findings
+        working-directory: frontend/src-tauri
+        run: cargo audit --deny unsound --format json
+
+  extension-quality:
+    name: Browser extension typecheck, test and build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+
+      - name: Install extension dependencies
+        working-directory: extension
+        run: npm ci
+
+      - name: Typecheck extension
+        working-directory: extension
+        run: npm run typecheck
+
+      - name: Test extension
+        working-directory: extension
+        run: npm test
+
+      - name: Build extension
+        working-directory: extension
+        run: npm run build
+
+      - name: Audit generated extension artifacts
+        working-directory: extension
+        run: python ../backend/scripts/release/audit_architecture.py --generated-extension-artifacts --json
+
+      - name: Audit extension production dependencies
+        working-directory: extension
+        run: npm audit --omit=dev --audit-level=high
+
+  browser-smoke:
+    name: Isolated browser release smoke (${{ matrix.scenario }})
+    runs-on: ubuntu-latest
+    needs: [backend-tests, frontend-quality]
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [empty, smoke, interview]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install browser smoke dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements.txt
+          npm --prefix frontend ci
+          python -m playwright install --with-deps chromium
+
+      - name: Start isolated backend
+        shell: bash
+        env:
+          DATABASE_URL: sqlite+aiosqlite:////tmp/offeru-public-release-${{ github.run_id }}-${{ matrix.scenario }}.db
+          OFFERU_PORT: '8765'
+          OFFERU_ENABLE_MCP: 'false'
+          OFFERU_INTERVIEW_RUNTIME: replay
+          MEMORY_DISTILL_INTERVAL_SECONDS: '0'
+          WORK_SOURCE_AUTO_SYNC_INTERVAL_SECONDS: '0'
+        run: |
+          nohup python backend/run_server.py > "$RUNNER_TEMP/offeru-backend.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/offeru-backend.pid"
+
+      - name: Start isolated frontend
+        shell: bash
+        run: |
+          nohup npm --prefix frontend run dev -- --host 127.0.0.1 > "$RUNNER_TEMP/offeru-frontend.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/offeru-frontend.pid"
+
+      - name: Wait for local services
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import time
+          import urllib.request
+          from pathlib import Path
+
+          class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+
+          opener = urllib.request.build_opener(
+              urllib.request.ProxyHandler({}),
+              NoRedirectHandler(),
+          )
+
+          checks = {
+              "backend": "http://127.0.0.1:8765/api/health",
+              "frontend": "http://127.0.0.1:7410/",
+          }
+          expected_version = json.loads(
+              Path("frontend/package.json").read_text(encoding="utf-8")
+          )["version"]
+          deadline = time.time() + 90
+          while time.time() < deadline:
+              ready = True
+              for name, url in checks.items():
+                  try:
+                      with opener.open(url, timeout=3) as response:
+                          if not 200 <= response.status < 300:
+                              ready = False
+                          body = response.read(8192)
+                          if name == "frontend" and b"OfferU" not in body:
+                              ready = False
+                          if name == "backend":
+                              payload = json.loads(body[:4097])
+                              if (
+                                  payload.get("status") != "ok"
+                                  or payload.get("service") != "OfferU"
+                                  or payload.get("runtime") != "python"
+                                  or payload.get("build_mode") != "local-development"
+                                  or payload.get("version") != expected_version
+                              ):
+                                  ready = False
+                  except Exception:
+                      ready = False
+              if ready:
+                  print("local services ready")
+                  raise SystemExit(0)
+              time.sleep(1)
+          raise SystemExit("local services did not become ready")
+          PY
+
+      - name: Run new-user browser smoke
+        if: matrix.scenario == 'smoke'
+        shell: bash
+        env:
+          OFFERU_E2E_BASE_URL: http://127.0.0.1:7410
+          OFFERU_E2E_API_URL: http://127.0.0.1:8765
+          OFFERU_E2E_ARTIFACT_DIR: ${{ runner.temp }}/offeru-e2e-artifacts
+        run: python backend/scripts/e2e/test_public_release_smoke.py
+
+      - name: Run actionable empty-state browser matrix
+        if: matrix.scenario == 'empty'
+        shell: bash
+        env:
+          OFFERU_E2E_BASE_URL: http://127.0.0.1:7410
+        run: python backend/scripts/e2e/test_public_release_empty_states.py
+
+      - name: Run targeted interview learning browser path
+        if: matrix.scenario == 'interview'
+        shell: bash
+        env:
+          OFFERU_E2E_BASE_URL: http://127.0.0.1:7410
+          OFFERU_E2E_API_URL: http://127.0.0.1:8765
+          OFFERU_E2E_ARTIFACT_DIR: ${{ runner.temp }}/offeru-e2e-artifacts
+        run: python backend/scripts/e2e/test_public_release_interview.py
+
+      - name: Run CareerTask worker matrix
+        if: matrix.scenario == 'smoke'
+        shell: bash
+        env:
+          OFFERU_E2E_API_URL: http://127.0.0.1:8765
+          OFFERU_WORKER_SOAK_CYCLES: '100'
+        run: python backend/scripts/e2e/test_public_release_worker_soak.py
+
+      - name: Run cross-process CareerTask claim matrix
+        if: matrix.scenario == 'smoke'
+        shell: bash
+        run: python backend/scripts/e2e/test_public_release_worker_concurrency.py
+
+      - name: Run cross-process AutomationEvent claim matrix
+        if: matrix.scenario == 'smoke'
+        shell: bash
+        run: python backend/scripts/e2e/test_public_release_automation_concurrency.py
+
+      - name: Audit browser and runtime diagnostics for secrets
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          audit_root="$RUNNER_TEMP/offeru-browser-diagnostics-${{ matrix.scenario }}"
+          mkdir -p "$audit_root"
+          if [ -d "$RUNNER_TEMP/offeru-e2e-artifacts" ]; then
+            cp -R "$RUNNER_TEMP/offeru-e2e-artifacts" "$audit_root/e2e-artifacts"
+          fi
+          if [ -f "$RUNNER_TEMP/offeru-backend.log" ]; then
+            cp "$RUNNER_TEMP/offeru-backend.log" "$audit_root/backend.log"
+          fi
+          if [ -f "$RUNNER_TEMP/offeru-frontend.log" ]; then
+            cp "$RUNNER_TEMP/offeru-frontend.log" "$audit_root/frontend.log"
+          fi
+          python backend/scripts/release/audit_artifacts.py "$audit_root" --json |
+            tee "$audit_root/audit.json"
+
+      - name: Upload browser failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: offeru-browser-smoke-failure-${{ github.run_id }}-${{ matrix.scenario }}
+          path: |
+            ${{ runner.temp }}/offeru-e2e-artifacts/**
+            ${{ runner.temp }}/offeru-backend.log
+            ${{ runner.temp }}/offeru-frontend.log
+            ${{ runner.temp }}/offeru-browser-diagnostics-${{ matrix.scenario }}/audit.json
+          if-no-files-found: ignore
+
+  reliability-failure-recovery:
+    name: Cross-process provider failure and restart recovery
+    runs-on: ubuntu-latest
+    needs: [backend-tests]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install reliability dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements.txt
+
+      - name: Run isolated failure and restart recovery matrix
+        shell: bash
+        run: python backend/scripts/e2e/test_public_release_failure_recovery.py
+
+  critical-browser-repeatability:
+    name: Critical new-user browser repeatability (${{ matrix.repeat }})
+    runs-on: ubuntu-latest
+    needs: [backend-tests, frontend-quality]
+    strategy:
+      fail-fast: false
+      matrix:
+        repeat: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install repeatability dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements.txt
+          npm --prefix frontend ci
+          python -m playwright install --with-deps chromium
+
+      - name: Start isolated backend
+        shell: bash
+        env:
+          DATABASE_URL: sqlite+aiosqlite:////tmp/offeru-public-release-repeat-${{ github.run_id }}-${{ matrix.repeat }}.db
+          OFFERU_PORT: '8765'
+          CORS_ORIGINS: http://127.0.0.1:7410,http://localhost:7410
+          OFFERU_ENABLE_MCP: 'false'
+          OFFERU_INTERVIEW_RUNTIME: replay
+          MEMORY_DISTILL_INTERVAL_SECONDS: '0'
+          WORK_SOURCE_AUTO_SYNC_INTERVAL_SECONDS: '0'
+        run: |
+          nohup python backend/run_server.py > "$RUNNER_TEMP/offeru-repeat-backend.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/offeru-repeat-backend.pid"
+
+      - name: Start isolated frontend
+        shell: bash
+        run: |
+          nohup npm --prefix frontend run dev -- --host 127.0.0.1 > "$RUNNER_TEMP/offeru-repeat-frontend.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/offeru-repeat-frontend.pid"
+
+      - name: Wait for local services
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import time
+          import urllib.request
+          from pathlib import Path
+
+          class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+
+          opener = urllib.request.build_opener(
+              urllib.request.ProxyHandler({}),
+              NoRedirectHandler(),
+          )
+
+          checks = {
+              "backend": "http://127.0.0.1:8765/api/health",
+              "frontend": "http://127.0.0.1:7410/",
+          }
+          expected_version = json.loads(
+              Path("frontend/package.json").read_text(encoding="utf-8")
+          )["version"]
+          deadline = time.time() + 90
+          while time.time() < deadline:
+              try:
+                  for name, url in checks.items():
+                      with opener.open(url, timeout=3) as response:
+                          if not 200 <= response.status < 300:
+                              raise RuntimeError(f"unhealthy response: {response.status} {url}")
+                          body = response.read(8192)
+                          if name == "frontend" and b"OfferU" not in body:
+                              raise RuntimeError(f"unexpected OfferU frontend identity: {url}")
+                          if name == "backend":
+                              payload = json.loads(body[:4097])
+                              if (
+                                  payload.get("status") != "ok"
+                                  or payload.get("service") != "OfferU"
+                                  or payload.get("runtime") != "python"
+                                  or payload.get("build_mode") != "local-development"
+                                  or payload.get("version") != expected_version
+                              ):
+                                  raise RuntimeError(f"unexpected OfferU health identity: {url}")
+              except Exception:
+                  time.sleep(1)
+                  continue
+              print("local services ready")
+              raise SystemExit(0)
+          raise SystemExit("local services did not become ready")
+          PY
+
+      - name: Run one isolated critical browser journey
+        shell: bash
+        env:
+          OFFERU_E2E_BASE_URL: http://127.0.0.1:7410
+          OFFERU_E2E_API_URL: http://127.0.0.1:8765
+          OFFERU_E2E_ARTIFACT_DIR: ${{ runner.temp }}/offeru-repeat-e2e-artifacts
+        run: python backend/scripts/e2e/test_public_release_smoke.py
+
+      - name: Audit repeatability diagnostics for secrets
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          audit_root="$RUNNER_TEMP/offeru-repeat-diagnostics-${{ matrix.repeat }}"
+          mkdir -p "$audit_root"
+          if [ -d "$RUNNER_TEMP/offeru-repeat-e2e-artifacts" ]; then
+            cp -R "$RUNNER_TEMP/offeru-repeat-e2e-artifacts" "$audit_root/e2e-artifacts"
+          fi
+          if [ -f "$RUNNER_TEMP/offeru-repeat-backend.log" ]; then
+            cp "$RUNNER_TEMP/offeru-repeat-backend.log" "$audit_root/backend.log"
+          fi
+          if [ -f "$RUNNER_TEMP/offeru-repeat-frontend.log" ]; then
+            cp "$RUNNER_TEMP/offeru-repeat-frontend.log" "$audit_root/frontend.log"
+          fi
+          python backend/scripts/release/audit_artifacts.py "$audit_root" --json |
+            tee "$audit_root/audit.json"
+
+      - name: Upload repeatability failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: offeru-repeatability-failure-${{ github.run_id }}-${{ matrix.repeat }}
+          path: |
+            ${{ runner.temp }}/offeru-repeat-e2e-artifacts/**
+            ${{ runner.temp }}/offeru-repeat-backend.log
+            ${{ runner.temp }}/offeru-repeat-frontend.log
+            ${{ runner.temp }}/offeru-repeat-diagnostics-${{ matrix.repeat }}/audit.json
+          if-no-files-found: ignore
+
+      - name: Stop isolated services
+        if: always()
+        shell: bash
+        run: |
+          for pid_file in "$RUNNER_TEMP/offeru-repeat-backend.pid" "$RUNNER_TEMP/offeru-repeat-frontend.pid"; do
+            if [ -f "$pid_file" ]; then
+              kill "$(cat "$pid_file")" 2>/dev/null || true
+            fi
+          done
+
+  migration-browser-smoke:
+    name: Previous-release migration browser smoke
+    runs-on: ubuntu-latest
+    needs: [backend-tests, frontend-quality]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install migration smoke dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements.txt
+          npm --prefix frontend ci
+          python -m playwright install --with-deps chromium
+
+      - name: Start isolated frontend only
+        shell: bash
+        run: |
+          nohup npm --prefix frontend run dev -- --host 127.0.0.1 > "$RUNNER_TEMP/offeru-migration-frontend.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/offeru-migration-frontend.pid"
+
+      - name: Wait for local frontend
+        shell: bash
+        run: |
+          python - <<'PY'
+          import time
+          import urllib.request
+
+          class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+
+          opener = urllib.request.build_opener(
+              urllib.request.ProxyHandler({}),
+              NoRedirectHandler(),
+          )
+
+          deadline = time.time() + 90
+          while time.time() < deadline:
+              try:
+                  with opener.open("http://127.0.0.1:7410/", timeout=3) as response:
+                      if 200 <= response.status < 300 and b"OfferU" in response.read(8192):
+                          print("frontend ready")
+                          raise SystemExit(0)
+              except Exception:
+                  pass
+              time.sleep(1)
+          raise SystemExit("frontend did not become ready")
+          PY
+
+      - name: Run previous-release migration browser smoke
+        shell: bash
+        env:
+          OFFERU_E2E_BASE_URL: http://127.0.0.1:7410
+          OFFERU_E2E_API_URL: http://127.0.0.1:8765
+          OFFERU_E2E_ARTIFACT_DIR: ${{ runner.temp }}/offeru-migration-e2e-artifacts
+        run: python backend/scripts/e2e/test_public_release_migration.py
+
+      - name: Audit migration diagnostics for secrets
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          audit_root="$RUNNER_TEMP/offeru-migration-diagnostics"
+          mkdir -p "$audit_root"
+          if [ -d "$RUNNER_TEMP/offeru-migration-e2e-artifacts" ]; then
+            cp -R "$RUNNER_TEMP/offeru-migration-e2e-artifacts" "$audit_root/e2e-artifacts"
+          fi
+          if [ -f "$RUNNER_TEMP/offeru-migration-frontend.log" ]; then
+            cp "$RUNNER_TEMP/offeru-migration-frontend.log" "$audit_root/frontend.log"
+          fi
+          python backend/scripts/release/audit_artifacts.py "$audit_root" --json |
+            tee "$audit_root/audit.json"
+
+      - name: Upload migration smoke failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: offeru-migration-smoke-failure-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/offeru-migration-e2e-artifacts/**
+            ${{ runner.temp }}/offeru-migration-frontend.log
+            ${{ runner.temp }}/offeru-migration-diagnostics/audit.json
+          if-no-files-found: ignore
+
+      - name: Stop isolated frontend
+        if: always()
+        shell: bash
+        run: |
+          if [ -f "$RUNNER_TEMP/offeru-migration-frontend.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/offeru-migration-frontend.pid")" 2>/dev/null || true
+          fi
+
+  desktop-package:
+    name: Windows desktop package
+    runs-on: windows-latest
+    needs: [backend-tests, frontend-quality, extension-quality, browser-smoke, reliability-failure-recovery, critical-browser-repeatability, migration-browser-smoke]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            agent-runtime/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements.txt pytest pyinstaller==6.21.0
+          npm --prefix frontend ci
+          npm --prefix agent-runtime ci
+
+      - name: Enforce Public Release readiness before packaging
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: python backend/scripts/release/audit_release_readiness.py --repo-root . --require-ready
+
+      - name: Audit release version consistency before packaging
+        shell: pwsh
+        run: python backend/scripts/release/audit_version_consistency.py --repo-root .
+
+      - name: Build and verify Windows installer
+        shell: pwsh
+        run: |
+          npm --prefix frontend run typecheck
+          npm --prefix frontend run tauri -- build --bundles nsis,msi
+
+      - name: Sign Windows release binaries
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          OFFERU_WINDOWS_CERTIFICATE_BASE64: ${{ secrets.OFFERU_WINDOWS_CERTIFICATE_BASE64 }}
+          OFFERU_WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.OFFERU_WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ([string]::IsNullOrWhiteSpace($env:OFFERU_WINDOWS_CERTIFICATE_BASE64) -or
+              [string]::IsNullOrWhiteSpace($env:OFFERU_WINDOWS_CERTIFICATE_PASSWORD)) {
+            throw 'Release tags require OFFERU_WINDOWS_CERTIFICATE_BASE64 and OFFERU_WINDOWS_CERTIFICATE_PASSWORD; refusing to publish unsigned binaries.'
+          }
+          $certificatePath = Join-Path $env:RUNNER_TEMP 'offeru-signing.pfx'
+          try {
+            [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:OFFERU_WINDOWS_CERTIFICATE_BASE64))
+            $signtoolCommand = Get-Command signtool.exe -ErrorAction SilentlyContinue
+            if ($null -ne $signtoolCommand) {
+              $signtoolPath = $signtoolCommand.Source
+            } else {
+              $windowsKitRoots = @(
+                (Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\bin'),
+                (Join-Path $env:ProgramFiles 'Windows Kits\10\bin')
+              ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) }
+              $signtoolPath = Get-ChildItem -Path $windowsKitRoots -Filter signtool.exe -File -Recurse -ErrorAction SilentlyContinue |
+                Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+                Sort-Object FullName -Descending |
+                Select-Object -First 1 -ExpandProperty FullName
+            }
+            if ([string]::IsNullOrWhiteSpace($signtoolPath)) {
+              throw 'signtool.exe was not found on the Windows runner'
+            }
+            $files = @(
+              Get-ChildItem frontend/src-tauri/target/release/bundle -Recurse -File -Include *.exe,*.msi
+              Get-ChildItem frontend/src-tauri/binaries -File -Include *.exe
+            ) | Sort-Object FullName -Unique
+            if ($files.Count -eq 0) { throw 'No Windows binaries were found to sign' }
+            foreach ($file in $files) {
+              & $signtoolPath sign /fd SHA256 /f $certificatePath /p $env:OFFERU_WINDOWS_CERTIFICATE_PASSWORD /tr http://timestamp.digicert.com /td SHA256 $file.FullName
+              if ($LASTEXITCODE -ne 0) { throw "signtool failed for $($file.Name)" }
+            }
+          } finally {
+            if (Test-Path -LiteralPath $certificatePath) { Remove-Item -LiteralPath $certificatePath -Force }
+          }
+
+      - name: Verify Windows release signatures
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $files = @(
+            Get-ChildItem frontend/src-tauri/target/release/bundle -Recurse -File -Include *.exe,*.msi
+            Get-ChildItem frontend/src-tauri/binaries -File -Include *.exe
+          ) | Sort-Object FullName -Unique
+          foreach ($file in $files) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $file.FullName
+            if ($signature.Status -ne 'Valid') { throw "Unsigned or invalid signature: $($file.FullName) [$($signature.Status)]" }
+          }
+
+      - name: Collect release artifacts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = (Get-Content frontend/package.json -Raw | ConvertFrom-Json).version
+          $artifactDir = Join-Path $env:GITHUB_WORKSPACE 'release-artifacts'
+          New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
+          $artifacts = @(
+            Get-ChildItem frontend/src-tauri/target/release/bundle/nsis -Filter '*-setup.exe' -File
+            Get-ChildItem frontend/src-tauri/target/release/bundle/msi -Filter '*.msi' -File
+          ) | Sort-Object Name -Unique
+          if ($artifacts.Count -lt 2) { throw 'NSIS and MSI installers were not both produced' }
+          Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'RELEASE_NOTES.md') -Destination (Join-Path $artifactDir 'RELEASE_NOTES.md') -Force
+          Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'THIRD_PARTY_NOTICES.md') -Destination (Join-Path $artifactDir 'THIRD_PARTY_NOTICES.md') -Force
+          Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'LICENSE') -Destination (Join-Path $artifactDir 'LICENSE') -Force
+          $manifest = foreach ($artifact in $artifacts) {
+            Copy-Item -LiteralPath $artifact.FullName -Destination (Join-Path $artifactDir $artifact.Name) -Force
+            $hash = Get-FileHash -LiteralPath $artifact.FullName -Algorithm SHA256
+            [pscustomobject]@{ name = $artifact.Name; bytes = $artifact.Length; sha256 = $hash.Hash }
+          }
+          $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $artifactDir 'artifacts.json') -Encoding utf8
+          $checksums = foreach ($artifact in $artifacts) {
+            $hash = Get-FileHash -LiteralPath $artifact.FullName -Algorithm SHA256
+            "$($hash.Hash)  $($artifact.Name)"
+          }
+          $checksums | Set-Content -LiteralPath (Join-Path $artifactDir 'SHA256SUMS.txt') -Encoding utf8
+          [pscustomobject]@{ product = 'OfferU'; version = $version; target = 'windows-x64'; installers = @($artifacts.Name); signed = [bool]( $env:GITHUB_REF -like 'refs/tags/v*' ) } |
+            ConvertTo-Json | Set-Content -LiteralPath (Join-Path $artifactDir 'version.json') -Encoding utf8
+
+      - name: Verify release artifact manifest and checksums
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = (Get-Content frontend/package.json -Raw | ConvertFrom-Json).version
+          $arguments = @('release-artifacts', '--expected-version', [string]$version)
+          if ($env:GITHUB_REF -like 'refs/tags/v*') { $arguments += '--require-signed' }
+          python backend/scripts/release/verify_release_artifacts.py @arguments
+          if ($LASTEXITCODE -ne 0) { throw "release artifact verification failed with exit code $LASTEXITCODE" }
+
+      - name: Audit release artifacts for secrets
+        shell: pwsh
+        run: |
+          python backend/scripts/release/audit_artifacts.py frontend/src-tauri/target/release/bundle --json
+          python backend/scripts/release/audit_artifacts.py frontend/src-tauri/binaries --json
+          python backend/scripts/release/audit_artifacts.py release-artifacts --json
+
+      - name: Upload Windows release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: offeru-windows-x64
+          path: release-artifacts
+          if-no-files-found: error
+
+  desktop-installed-smoke:
+    name: Windows installed-app and sidecar smoke
+    runs-on: windows-latest
+    needs: [desktop-package]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Windows installer artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: offeru-windows-x64
+          path: release-assets
+
+      - name: Verify downloaded installer artifact before install
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = (Get-Content release-assets/version.json -Raw | ConvertFrom-Json).version
+          $arguments = @('release-assets', '--expected-version', [string]$version)
+          if ($env:GITHUB_REF -like 'refs/tags/v*') { $arguments += '--require-signed' }
+          python backend/scripts/release/verify_release_artifacts.py @arguments
+          if ($LASTEXITCODE -ne 0) { throw "downloaded installer artifact verification failed with exit code $LASTEXITCODE" }
+
+      - name: Audit downloaded installer artifact for secrets
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python backend/scripts/release/audit_artifacts.py release-assets --json
+          if ($LASTEXITCODE -ne 0) { throw "downloaded installer artifact secret audit failed with exit code $LASTEXITCODE" }
+
+      - name: Install, launch, health-check and uninstall NSIS package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $artifactRoot = Join-Path $env:RUNNER_TEMP 'offeru-clean-machine'
+          $installRoot = Join-Path $artifactRoot 'installed'
+          $resultPath = Join-Path $artifactRoot 'result.json'
+          $expectedVersion = [string]((Get-Content (Join-Path $env:GITHUB_WORKSPACE 'release-assets/version.json') -Raw | ConvertFrom-Json).version)
+          if ([string]::IsNullOrWhiteSpace($expectedVersion)) { throw 'release artifact version is missing' }
+          New-Item -ItemType Directory -Force -Path $artifactRoot | Out-Null
+          if (Test-Path -LiteralPath $installRoot) {
+            Remove-Item -LiteralPath $installRoot -Recurse -Force
+          }
+          New-Item -ItemType Directory -Force -Path $installRoot | Out-Null
+          $appProcess = $null
+          $healthHandler = [System.Net.Http.HttpClientHandler]::new()
+          $healthHandler.AllowAutoRedirect = $false
+          $healthHandler.UseProxy = $false
+          $healthClient = [System.Net.Http.HttpClient]::new($healthHandler)
+          $healthClient.Timeout = [TimeSpan]::FromSeconds(3)
+          $summary = [ordered]@{
+            status = 'FAIL'
+            mode = 'windows_installed_app_smoke'
+            browser = 'none'
+            web_url = 'not_used'
+            api_url = 'http://127.0.0.1:8765'
+            expected_version = $expectedVersion
+          }
+          try {
+            $preexistingListeners = @(
+              Get-NetTCPConnection -State Listen -LocalPort 8765 -ErrorAction SilentlyContinue
+            )
+            if ($preexistingListeners.Count -gt 0) {
+              $ownerIds = @($preexistingListeners | Select-Object -ExpandProperty OwningProcess -Unique)
+              throw "port 8765 is already occupied before installed-app smoke (PID(s): $($ownerIds -join ', '))"
+            }
+
+            $installer = Get-ChildItem -Path (Join-Path $env:GITHUB_WORKSPACE 'release-assets') -Filter '*-setup.exe' -File -Recurse |
+              Select-Object -First 1
+            if ($null -eq $installer) { throw 'NSIS installer artifact was not found' }
+            $installerRun = Start-Process -FilePath $installer.FullName -ArgumentList @('/S', "/D=$installRoot") -WindowStyle Hidden -PassThru -Wait
+            if ($installerRun.ExitCode -ne 0) { throw "NSIS installer failed with exit code $($installerRun.ExitCode)" }
+
+            $app = Get-ChildItem -Path $installRoot -Filter 'OfferU.exe' -File -Recurse | Select-Object -First 1
+            if ($null -eq $app) { throw "installed OfferU.exe was not found under $installRoot" }
+            $appProcess = Start-Process -FilePath $app.FullName -WindowStyle Hidden -PassThru
+
+            $deadline = (Get-Date).AddSeconds(60)
+            $health = $null
+            while ((Get-Date) -lt $deadline) {
+              try {
+                $healthResponse = $healthClient.GetAsync('http://127.0.0.1:8765/api/health').GetAwaiter().GetResult()
+                if ($healthResponse.IsSuccessStatusCode) {
+                  $health = $healthResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
+                  if ($health.status -eq 'ok' -and
+                      $health.service -eq 'OfferU' -and
+                      $health.runtime -eq 'python' -and
+                      $health.build_mode -eq 'release' -and
+                      $health.version -eq $expectedVersion) { break }
+                }
+                $healthResponse.Dispose()
+              } catch {
+                # The sidecar can take a few seconds to unpack and bind. A
+                # redirect is deliberately treated as a failed probe.
+              }
+              Start-Sleep -Milliseconds 500
+            }
+            if ($null -eq $health -or
+                $health.status -ne 'ok' -or
+                $health.service -ne 'OfferU' -or
+                $health.runtime -ne 'python' -or
+                $health.build_mode -ne 'release' -or
+                $health.version -ne $expectedVersion) {
+              throw 'installed app did not expose a healthy 8765 sidecar within 60 seconds'
+            }
+            $listeners = @(
+              Get-NetTCPConnection -State Listen -LocalPort 8765 -ErrorAction SilentlyContinue
+            )
+            $sidecarOwnerPaths = @(
+              foreach ($listener in $listeners) {
+                $owner = Get-CimInstance Win32_Process -Filter "ProcessId = $($listener.OwningProcess)" -ErrorAction SilentlyContinue
+                if ($null -ne $owner -and $owner.ExecutablePath) { $owner.ExecutablePath }
+              }
+            )
+            $ownedSidecarPath = $sidecarOwnerPaths |
+              Where-Object { $_.StartsWith($installRoot, [System.StringComparison]::OrdinalIgnoreCase) } |
+              Select-Object -First 1
+            if ([string]::IsNullOrWhiteSpace($ownedSidecarPath)) {
+              throw 'healthy 8765 endpoint is not owned by the installed app directory'
+            }
+            $summary.status = 'PASS'
+            $summary.installer = $installer.Name
+            $summary.installed_executable = $app.FullName
+            $summary.health_status = $health.status
+            $summary.health_service = $health.service
+            $summary.health_runtime = $health.runtime
+            $summary.health_build_mode = $health.build_mode
+            $summary.health_version = $health.version
+            $summary.sidecar_port = 8765
+            $summary.sidecar_executable = $ownedSidecarPath
+          } catch {
+            $summary.error = $_.Exception.Message
+            throw
+          } finally {
+            $ownedPids = @()
+            if ($null -ne $appProcess) { $ownedPids += $appProcess.Id }
+            $ownedPids += @(
+              Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+                Where-Object {
+                  $_.ExecutablePath -and
+                  $_.ExecutablePath.StartsWith($installRoot, [System.StringComparison]::OrdinalIgnoreCase)
+                } |
+                Select-Object -ExpandProperty ProcessId
+            )
+            foreach ($processId in ($ownedPids | Sort-Object -Unique)) {
+              Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
+            }
+            $uninstaller = Get-ChildItem -Path $installRoot -Filter 'uninstall.exe' -File -Recurse -ErrorAction SilentlyContinue |
+              Select-Object -First 1
+            if ($null -ne $uninstaller) {
+              $uninstallRun = Start-Process -FilePath $uninstaller.FullName -ArgumentList @('/S') -WindowStyle Hidden -PassThru -Wait
+              if ($uninstallRun.ExitCode -ne 0 -and $summary.status -eq 'PASS') {
+                $summary.status = 'FAIL'
+                $summary.error = "NSIS uninstaller failed with exit code $($uninstallRun.ExitCode)"
+              }
+            } elseif ($summary.status -eq 'PASS') {
+              $summary.status = 'FAIL'
+              $summary.error = 'installed NSIS uninstaller was not found'
+            }
+            $healthClient.Dispose()
+            $healthHandler.Dispose()
+            $summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $resultPath -Encoding utf8
+          }
+          if ($summary.status -ne 'PASS') {
+            throw [System.InvalidOperationException]::new([string]($summary.error ?? 'installed-app smoke failed'))
+          }
+
+      - name: Upload installed-app smoke result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: offeru-installed-smoke-${{ github.run_id }}
+          path: ${{ runner.temp }}/offeru-clean-machine/result.json
+          if-no-files-found: ignore
+
+  release:
+    name: Draft GitHub release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [backend-tests, frontend-quality, rust-security-audit, browser-smoke, reliability-failure-recovery, critical-browser-repeatability, migration-browser-smoke, desktop-package, desktop-installed-smoke]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enforce Public Release readiness before publishing
+        run: python backend/scripts/release/audit_release_readiness.py --repo-root . --require-ready
+
+      - name: Download Windows release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: offeru-windows-x64
+          path: release-assets
+
+      - name: Verify downloaded release artifact manifest and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_version="${GITHUB_REF_NAME#v}"
+          python backend/scripts/release/verify_release_artifacts.py \
+            release-assets \
+            --expected-version "$expected_version" \
+            --require-signed
+
+      - name: Audit downloaded release artifact for secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python backend/scripts/release/audit_artifacts.py release-assets --json
+
+      - name: Create draft release
         uses: softprops/action-gh-release@v2
         with:
           name: OfferU ${{ github.ref_name }}
           draft: true
-          files: |
-            release/offeru-frontend.tar.gz
-            release/offeru-backend.tar.gz
+          generate_release_notes: true
+          files: release-assets/*

@@ -1,4 +1,5 @@
 import type { AgentToolCall } from "@/lib/api";
+import { safeClientErrorMessage } from "@/lib/safe-error";
 
 function record(value: unknown): Record<string, any> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -20,7 +21,7 @@ export function presentAgentToolCall(call: AgentToolCall): string | null {
   if (!result) return null;
 
   if (call.tool === "start_batch_job_evaluation" || call.tool === "resume_batch_job_evaluation") {
-    const state = result.accepted ? "已进入后台队列" : result.message || "未启动";
+    const state = result.accepted ? "已进入后台队列" : safeClientErrorMessage(result.message, "未启动");
     return `${state} · ${result.runtime_id || "coding-agent"} · ${result.job_count || 0} 个岗位 · ${result.id || ""}`;
   }
   if (call.tool === "get_batch_job_evaluation") {

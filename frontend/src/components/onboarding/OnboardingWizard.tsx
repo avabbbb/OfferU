@@ -36,6 +36,7 @@ import {
   type ProfileImportResult,
 } from "@/lib/hooks";
 import { profileApi, resumeApi } from "@/lib/api";
+import { safeClientErrorMessage } from "@/lib/safe-error";
 import { AI_IMPORT_PROMPT, parseAiImportJson } from "@/app/profile/components/AIImportModal";
 import {
   groupProfileCandidatesForResume,
@@ -669,7 +670,7 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
       setConfigSaved(true);
       setTimeout(goNext, 600);
     } catch (error) {
-      setConfigSaveError(error instanceof Error ? error.message : "保存失败，请稍后重试");
+      setConfigSaveError(safeClientErrorMessage(error, "保存失败，请稍后重试"));
     } finally {
       setSavingConfig(false);
     }
@@ -802,7 +803,7 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
       setResumeCreated(true);
       setTimeout(goNext, 800);
     } catch (error) {
-      setResumeCreateError(error instanceof Error ? error.message : "创建失败，请检查后重试。");
+      setResumeCreateError(safeClientErrorMessage(error, "创建失败，请检查后重试。"));
     } finally {
       setCreatingResume(false);
     }
@@ -828,9 +829,7 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
       );
     } catch (error) {
       setUploadResult(
-        error instanceof Error
-          ? error.message
-          : "文件解析失败，请确认上传的是有效的 PDF 或 Word 文档。"
+        safeClientErrorMessage(error, "文件解析失败，请确认上传的是有效的 PDF 或 Word 文档。")
       );
     } finally {
       setUploadingFile(false);
@@ -907,9 +906,7 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
       setTimeout(goNext, 1000);
     } catch (error) {
       setUploadResult(
-        error instanceof Error
-          ? `导入创建失败：${error.message}`
-          : "导入创建失败，请重试或选择快速创建。"
+        `导入创建失败：${safeClientErrorMessage(error, "请重试或选择快速创建。")}`
       );
     } finally {
       setCreatingResume(false);
@@ -960,7 +957,7 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
       setSelectedImportCandidates((result.bullets || []).map((_, index) => index));
       setUploadResult("JSON 已解析，请核对并选择要写入简历的候选内容。");
     } catch (err: any) {
-      setAiImportError(err.message || "解析失败，请确认 JSON 格式正确。");
+      setAiImportError(safeClientErrorMessage(err, "解析失败，请确认 JSON 格式正确。"));
     } finally {
       setAiImportParsing(false);
     }

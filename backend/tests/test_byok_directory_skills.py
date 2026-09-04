@@ -21,6 +21,7 @@ from app.llm_config_store import (
     _sanitize_api_key,
     import_provider,
     resolve_api_key,
+    save_llm_config_file,
 )
 from app.services.agent_skill_registry import (
     catalog,
@@ -172,6 +173,26 @@ class DisabledProviderTests(unittest.TestCase):
         self.assertEqual(len(configs), 1)
         self.assertEqual(configs[0]["api_key"], "env:MY_DEEPSEEK_KEY")
         self.assertTrue(configs[0]["is_active"])
+
+    def test_config_file_is_replaced_atomically(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config_file = Path(tmp) / "config.json"
+            config_file.write_text(json.dumps({"version": 1}), encoding="utf-8")
+            with patch("app.llm_config_store._CONFIG_FILE", config_file), patch(
+                "app.llm_config_store.os.replace",
+                wraps=os.replace,
+            ) as replace:
+                save_llm_config_file({"version": 2, "provider": "replay"})
+
+            self.assertEqual(
+                json.loads(config_file.read_text(encoding="utf-8")),
+                {"version": 2, "provider": "replay"},
+            )
+            self.assertEqual(replace.call_count, 1)
+            source, destination = replace.call_args.args
+            self.assertNotEqual(Path(source), config_file)
+            self.assertEqual(Path(destination), config_file)
+            self.assertEqual(list(Path(tmp).glob("*.tmp")), [])
 
 
 class DirectorySkillTests(unittest.TestCase):

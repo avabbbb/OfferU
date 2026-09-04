@@ -20,6 +20,7 @@ import {
 import { useSWRConfig } from "swr";
 import { bauhausFieldClassNames } from "@/lib/bauhaus";
 import { profileApi, type ProfileAgentPatch } from "@/lib/api";
+import { safeClientErrorMessage } from "@/lib/safe-error";
 import { useDraggableDock } from "./useDraggableDock";
 
 interface AgentMessage {
@@ -147,7 +148,7 @@ export function ProfileAgentDock() {
       });
       applyAgentResponse(result);
     } catch (err: any) {
-      setError(err.message || "AI 建档启动失败");
+      setError(safeClientErrorMessage(err, "AI 建档启动失败"));
     } finally {
       setLoading(false);
     }
@@ -171,7 +172,7 @@ export function ProfileAgentDock() {
       });
       applyAgentResponse(result);
     } catch (err: any) {
-      setError(err.message || "AI 回复失败");
+      setError(safeClientErrorMessage(err, "AI 回复失败"));
     } finally {
       setLoading(false);
     }
@@ -189,7 +190,7 @@ export function ProfileAgentDock() {
       setStopReason("needs_more_input");
       refreshHistory();
     } catch (err: any) {
-      setError(err.message || "写入档案失败");
+      setError(safeClientErrorMessage(err, "写入档案失败"));
     } finally {
       setApplying(false);
     }
@@ -234,7 +235,7 @@ export function ProfileAgentDock() {
       setTraceCount(0);
       setHistoryOpen(false);
     } catch (err: any) {
-      setError(err.message || "加载历史对话失败");
+      setError(safeClientErrorMessage(err, "加载历史对话失败"));
     }
   };
 

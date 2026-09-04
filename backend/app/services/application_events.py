@@ -9,12 +9,13 @@ from pathlib import Path
 from typing import Any
 
 from app.services.agent_files import atomic_write_json
+from app.runtime_paths import runtime_data_path
 
 
 APPLICATION_EVENT_SCHEMA = "offeru.application_event.v1"
 APPLICATION_TYPES = frozenset({"application", "application_record"})
 EVENT_TYPES = frozenset({"created", "status_changed", "field_updated", "follow_up_sent"})
-_DEFAULT_DIR = Path(__file__).resolve().parents[2] / "data" / "application_events"
+_DEFAULT_DIR = runtime_data_path("application_events")
 
 
 def _now() -> str:

@@ -156,7 +156,7 @@ Manifest 不声明 `<all_urls>` 静态内容脚本；使用 `activeTab + scripti
 
 ## 规则质量门
 
-规则从 `experimental` 升为 `verified` 必须同时通过：schema/selector 校验、driver 存在、每个 page kind 的脱敏 fixture、正例/近似反例/冲突例、只读预览零 DOM 写入、已有值和敏感字段保护、真实 Edge/Chrome 测试账号验收，以及版本化兼容性报告。
+规则从 `experimental` 升为 `verified` 必须同时通过：schema/selector 校验、driver 存在、每个 page kind 的脱敏 fixture、正例/近似反例/冲突例、只读预览零 DOM 写入、已有值和敏感字段保护、受支持 Chromium 浏览器中的用户主动验收，以及版本化兼容性报告。自动化验收统一使用隔离的 Playwright managed Chromium 无头模式，不启动系统 Edge/Chrome。
 
 “支持某网站”只表示某个 pack/version 的声明能力通过，不代表所有公司、页面版本和控件 100% 支持。
 
@@ -189,7 +189,7 @@ Manifest 不声明 `<all_urls>` 静态内容脚本；使用 `activeTab + scripti
 
 复用候选进展领域模型增加 `browser_receipt` 来源；成功页只生成 pending candidate；确认后原子创建一次投递尝试与 Submitted 事件，并通过刷新/重启/重复确认幂等测试。
 
-每个切片只在真实 Edge/Chrome 侧载 `.output/chrome-mv3` 后才完成。类型检查、单测和构建通过都不能替代浏览器行为、manifest 权限快照和 Operation audit。
+每个切片都必须有浏览器行为、manifest 权限快照和 Operation audit；受支持 Chromium 浏览器的真实侧载验收由用户主动执行，不能由类型检查、单测或构建替代。Agent 自动化只使用隔离的 Playwright managed Chromium 无头路径，不打开 Edge 或 Chrome。
 
 ## 明确不做
 

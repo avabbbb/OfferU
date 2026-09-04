@@ -299,6 +299,52 @@ class CareerMemoryTests(unittest.TestCase):
             accepted["applied_profile_section_id"],
         )
 
+    def test_career_hypothesis_stays_separate_from_verified_facts(self) -> None:
+        async def run() -> tuple[dict, dict, dict]:
+            await init_db()
+            observation = await record_learning_observation(
+                source_type="interview_debrief",
+                source_external_id=_uniq("hypothesis-source"),
+                source_title="模拟面试复盘",
+                source_locator="interview-debrief:test",
+                observation_type="potential_strength",
+                content={
+                    "source_excerpt": "在评测设计问题中表现出潜在的系统化思考能力。",
+                },
+            )
+            proposal = await create_memory_proposal(
+                observation_id=observation["id"],
+                target_tier="career_hypothesis",
+                section_type="skill",
+                title=_uniq("潜在能力假设"),
+                after={
+                    "bullet": "可能擅长系统化评测设计",
+                },
+                reason="该结论来自一次面试观察，仍需更多证据验证。",
+                impact=["仅用于后续训练优先级，不作为已验证事实"],
+            )
+            before = await derive_career_model()
+            accepted = await review_memory_proposal(
+                proposal_id=proposal["id"],
+                action="accept",
+            )
+            after = await derive_career_model()
+            return before, accepted, after
+
+        before, accepted, after = asyncio.run(run())
+
+        title = accepted["title"]
+        self.assertNotIn(title, {item["title"] for item in before["entries"]})
+        self.assertEqual(accepted["profile_write"]["tier"], "career_hypothesis")
+        hypothesis_entries = after["by_tier"].get("career_hypothesis", [])
+        fact_entries = after["by_tier"].get("verified_fact", [])
+        self.assertIn(title, {item["title"] for item in hypothesis_entries})
+        self.assertNotIn(title, {item["title"] for item in fact_entries})
+        self.assertEqual(
+            next(item for item in hypothesis_entries if item["title"] == title)["tier"],
+            "career_hypothesis",
+        )
+
     def test_reject_keeps_profile_unchanged(self) -> None:
         async def run() -> tuple[dict, int]:
             await init_db()

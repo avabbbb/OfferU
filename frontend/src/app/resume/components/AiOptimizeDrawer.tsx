@@ -8,6 +8,7 @@ import {
   type AiOptimizeResult,
   type AiSuggestion,
 } from "@/lib/hooks";
+import { safeClientErrorMessage } from "@/lib/safe-error";
 import type { PuckResumeData } from "@/lib/puckMigration";
 
 interface Props {
@@ -44,7 +45,7 @@ export default function AiOptimizeDrawer({
       const r = await aiOptimizeResume(resumeId, { jd_text: jdText.trim() });
       setResult(r);
     } catch (e: any) {
-      setError(e?.message || "AI 分析失败");
+      setError(safeClientErrorMessage(e, "AI 分析失败"));
     } finally {
       setLoading(false);
     }

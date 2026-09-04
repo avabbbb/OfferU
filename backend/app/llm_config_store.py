@@ -9,13 +9,15 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 from app.config import get_settings
-from app.services.security_redaction import safe_error_message
+from app.services.security_redaction import redact_sensitive_text, safe_error_message
+from app.runtime_paths import runtime_config_file, runtime_env_file
 from app.llm_presets import (
     provider_default_model,
     provider_default_url,
@@ -24,7 +26,7 @@ from app.llm_presets import (
 )
 
 # backend/config.json
-_CONFIG_FILE = Path(__file__).resolve().parent.parent / "config.json"
+_CONFIG_FILE = runtime_config_file()
 
 # 从 config.json 同步进全局 Settings 的 LLM 相关字段。
 # 与 app/routes/config.py 的 _sync_runtime_settings 保持一致。
@@ -62,6 +64,26 @@ def load_llm_config_file() -> dict[str, Any] | None:
         return raw if isinstance(raw, dict) else None
     except (json.JSONDecodeError, OSError):
         return None
+
+
+def save_llm_config_file(payload: dict[str, Any]) -> None:
+    """Atomically replace config.json so an interrupted write cannot truncate it."""
+
+    temporary = _CONFIG_FILE.with_name(f".{_CONFIG_FILE.name}.{uuid4().hex}.tmp")
+    try:
+        temporary.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        os.replace(temporary, _CONFIG_FILE)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError:
+            # The original write/replace error is more useful to the caller.
+            pass
 
 
 def sync_runtime_settings_from_file() -> bool:
@@ -115,7 +137,7 @@ def _sanitize_api_key(raw: str) -> str:
     return value
 
 
-_ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+_ENV_FILE = runtime_env_file()
 _ENV_FILE_VALUES: dict[str, str] | None = None
 
 
@@ -175,7 +197,7 @@ async def probe_llm_endpoint(
 ) -> dict[str, Any]:
     """对指定 base_url / api_key / model 做一次真实连接探测。
 
-    失败时如实暴露 HTTP 状态与错误消息（如无效 API Key 401），便于用户定位。
+    失败时保留 HTTP 状态并返回脱敏后的错误摘要（如无效 API Key 401），便于用户定位。
     无 FastAPI 依赖，CLI / 服务器 / 一键导入共用。
     """
     import httpx
@@ -196,11 +218,16 @@ async def probe_llm_endpoint(
             "model": model,
             "message": "Base URL 未配置。",
         }
+    safe_base = redact_sensitive_text(clean_base, max_length=300)
     test_url = f"{clean_base}/chat/completions"
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {resolved_key}"}
     payload = {"model": model, "messages": [{"role": "user", "content": "Hi"}], "max_tokens": 5}
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(
+            timeout=15.0,
+            follow_redirects=False,
+            trust_env=False,
+        ) as client:
             resp = await client.post(test_url, json=payload, headers=headers)
         if resp.status_code == 200:
             body = resp.json()
@@ -216,6 +243,7 @@ async def probe_llm_endpoint(
             err_msg = err_body.get("error", {}).get("message", "") or err_body.get("message", "")
         except Exception:
             err_msg = resp.text[:200]
+        err_msg = redact_sensitive_text(err_msg, max_length=300)
         return {
             "success": False,
             "provider": provider,
@@ -227,21 +255,21 @@ async def probe_llm_endpoint(
             "success": False,
             "provider": provider,
             "model": model,
-            "message": f"无法连接到 {clean_base}，请检查 Base URL 是否正确以及网络是否畅通。",
+            "message": f"无法连接到 {safe_base}，请检查 Base URL 是否正确以及网络是否畅通。",
         }
     except httpx.TimeoutException:
         return {
             "success": False,
             "provider": provider,
             "model": model,
-            "message": f"连接超时 ({clean_base})，请检查网络或更换 Base URL。",
+            "message": f"连接超时 ({safe_base})，请检查网络或更换 Base URL。",
         }
     except Exception as exc:
         return {
             "success": False,
             "provider": provider,
             "model": model,
-            "message": f"检测失败: {exc}",
+            "message": f"检测失败: {safe_error_message(exc)}",
         }
 
 
@@ -339,10 +367,7 @@ def import_provider(
 
     raw["llm_api_configs"] = configs
     try:
-        _CONFIG_FILE.write_text(
-            json.dumps(raw, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        save_llm_config_file(raw)
     except OSError as exc:
         return {
             "ok": False,
@@ -417,11 +442,8 @@ async def discover_local_llms(
         return {"discovered": [], "errors": errors}
     raw["llm_api_configs"] = configs
     try:
-        _CONFIG_FILE.write_text(
-            json.dumps(raw, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        save_llm_config_file(raw)
         sync_runtime_settings_from_file()
     except OSError as exc:
-        errors.append(f"保存配置失败: {exc}")
+        errors.append(f"保存配置失败: {safe_error_message(exc)}")
     return {"discovered": discovered, "errors": errors}

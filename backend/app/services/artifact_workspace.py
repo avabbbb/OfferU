@@ -23,9 +23,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from app.services.security_redaction import redact_secret_value
+
 _RUN_ID = re.compile(r"^[A-Za-z0-9_-]{1,120}$")
 WORKSPACE_SCHEMA = "offeru.run_workspace.v1"
-_RUNS_ROOT = Path(__file__).resolve().parents[2] / "data" / "run_workspaces"
+from app.runtime_paths import runtime_data_path
+
+_RUNS_ROOT = runtime_data_path("run_workspaces")
 
 
 def _utc_now() -> str:
@@ -135,7 +139,8 @@ class ArtifactWorkspaceManager:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(f".{path.name}.{os.urandom(4).hex()}.tmp")
         tmp.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+            json.dumps(redact_secret_value(payload), ensure_ascii=False, indent=2),
+            encoding="utf-8",
         )
         os.replace(tmp, path)
         manifest = self._read_json(self.manifest_path)

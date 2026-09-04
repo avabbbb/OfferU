@@ -275,7 +275,7 @@ class CodexMainLoopAdapter:
             output = {"type": "text", "text": f"error: {exc.code} {exc.message}"}
             success = False
         except Exception as exc:  # noqa: BLE001 - answer the model, never crash the loop
-            output = {"type": "text", "text": f"error: {type(exc).__name__}: {exc}"}
+            output = {"type": "text", "text": f"error: {safe_error_message(exc)}"}
             success = False
         if request_id is not None:
             # JSON-RPC-style server request: answer with the SAME id and the

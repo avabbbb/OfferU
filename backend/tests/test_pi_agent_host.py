@@ -202,6 +202,95 @@ class PiAgentHostTests(unittest.TestCase):
         self.assertEqual(items[-1]["event"], "message")
         self.assertIn("增量回答", items[-1]["data"])
 
+    def test_stream_route_emits_redacted_error_id_when_provider_fails(self) -> None:
+        from app.routes.main_agent import PiAgentRunRequest, stream_runtime_run
+
+        class FailingProvider:
+            async def start_run(self, **kwargs: Any) -> dict[str, Any]:
+                raise RuntimeError("provider token=OFFERU_RELEASE_CANARY_SECRET_123")
+
+        def fake_save(*, conversation_id, messages):
+            return {
+                "id": conversation_id or "conv_stream_failure_test",
+                "title": "流式失败测试",
+                "messages": messages,
+            }
+
+        async def fake_operation(operation: str, args: dict[str, Any]) -> dict[str, Any]:
+            self.assertEqual(operation, "save_harness_conversation")
+            return fake_save(
+                conversation_id=args.get("conversation_id"),
+                messages=args.get("messages") or [],
+            )
+
+        async def run() -> list[dict[str, Any]]:
+            response = await stream_runtime_run(
+                PiAgentRunRequest(
+                    message="测试流式失败",
+                    skill_id="discovery",
+                    task_id="task_stream_failure",
+                    runtime_provider="pi",
+                )
+            )
+            items: list[dict[str, Any]] = []
+            async for item in response.body_iterator:
+                items.append(item)
+            return items
+
+        with (
+            patch(
+                "app.routes.main_agent._main_agent_provider",
+                return_value=FailingProvider(),
+            ),
+            patch(
+                "app.routes.main_agent._ui_operation_outputs",
+                side_effect=fake_operation,
+            ),
+        ):
+            items = asyncio.run(run())
+
+        self.assertEqual(items[-1]["event"], "error")
+        payload = json.loads(items[-1]["data"])
+        self.assertRegex(payload["error_id"], r"^err_[a-f0-9]{16}$")
+        self.assertEqual(payload["task_id"], "task_stream_failure")
+        self.assertEqual(payload["provider_id"], "pi")
+        self.assertNotIn("OFFERU_RELEASE_CANARY_SECRET_123", items[-1]["data"])
+        from app.services.diagnostics import recent_errors
+
+        record = next(
+            item for item in recent_errors() if item["error_id"] == payload["error_id"]
+        )
+        self.assertEqual(record["task_id"], "task_stream_failure")
+        self.assertEqual(record["provider_id"], "pi")
+        self.assertNotIn("OFFERU_RELEASE_CANARY_SECRET_123", str(record))
+
+    def test_cursor_stream_emits_error_id_when_run_disappears(self) -> None:
+        from app.routes.main_agent import follow_runtime_run_events
+
+        async def run() -> list[dict[str, Any]]:
+            response = await follow_runtime_run_events("run_disappeared_test")
+            items: list[dict[str, Any]] = []
+            async for item in response.body_iterator:
+                items.append(item)
+            return items
+
+        with (
+            patch(
+                "app.services.agent_run_state.load_agent_run",
+                new=AsyncMock(side_effect=[{"id": "run_disappeared_test"}, None]),
+            ),
+            patch(
+                "app.services.agent_run_state.list_agent_run_events",
+                new=AsyncMock(return_value=[]),
+            ),
+        ):
+            items = asyncio.run(run())
+
+        self.assertEqual(items[-1]["event"], "error")
+        payload = json.loads(items[-1]["data"])
+        self.assertRegex(payload["error_id"], r"^err_[a-f0-9]{16}$")
+        self.assertEqual(payload["run_id"], "run_disappeared_test")
+
     def test_pi_runtime_routes_are_canonical_agent_routes(self) -> None:
         from app.main import app
 

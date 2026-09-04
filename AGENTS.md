@@ -23,6 +23,13 @@ Playwright MCP 或Browser 来访问/截图/识别/探索网站的视觉和代码
 - 如果工作区已有用户改动，不要回滚，不要覆盖；只在必要范围内追加修改。
 - **前端 dev 端口固定 7410，后端固定 8765**：两个端口均避开 AI/框架常用端口（3000/3300/5173/8000/8080/11434 等）与当前 winnat 动态排除段。winnat 排除段会漂移（曾见 2942-3041，后又出现 4229-4328，4321 因此 EACCES），改端口前必须先执行 `netsh interface ipv4 show excludedportrange protocol=tcp` 确认不在任何段内。改前端端口必须同步 `frontend/package.json` 的 `scripts.dev` / `scripts.start`、`frontend/vite.config.ts`（含 TAURI HMR 端口 7411）、`frontend/src-tauri/tauri.conf.json` 的 `devUrl`、`backend/app/config.py` 默认 CORS、`backend/app/routes/email.py`、`backend/app/routes/resume.py` 的 `FRONTEND_BASE_URL`、`.env.example` 与 `backend/.env`；`frontendDist` 必须继续指向静态目录 `../dist`，不能改成 localhost URL。
 - **系统环境变量 `CORS_ORIGINS` 会覆盖 `backend/.env`**：本机 Windows 用户环境变量里存在 `CORS_ORIGINS`（旧值仅 5140/3000），pydantic-settings 环境变量优先级高于 .env，导致 .env 的 CORS 修改不生效、前端（7410）请求后端被拦。出现「浏览器 Failed to fetch / CORS blocked」时先查 `env | grep CORS` 与 `setx CORS_ORIGINS`（含 `http://localhost:7410,http://127.0.0.1:7410`），再改 .env。
+- **浏览器验收必须无头且隔离**：Playwright 只允许使用 managed Chromium 的 `headless=true`；禁止调用系统 Edge、默认浏览器或任何 `headless=false` 调试脚本。OfferU 网页只使用 `http://127.0.0.1:7410`，`8080` 仅是可选本地 llama.cpp Provider endpoint，不是网页地址；发现脚本试图打开可见浏览器或访问 8080 时，先停止并修正。
+- **Public Release E2E 地址必须 fail-closed**：`backend/scripts/e2e/test_public_release_*.py` 的网页/API 地址统一通过 `backend/scripts/e2e/release_endpoints.py` 解析；禁止直接拼接 `OFFERU_E2E_BASE_URL`/`OFFERU_E2E_API_URL`。解析器只接受 `http://127.0.0.1:7410` 和 `http://127.0.0.1:8765`，任何 `8080`、其它端口、外部主机或带 credentials/path/query 的值必须在网络请求或 Playwright 导航前报错。
+- **日常诊断不得打开浏览器窗口**：启动、端口/CORS/Provider 排障和代码检查默认只使用 HTTP/进程/日志证据，不调用 Edge、系统默认浏览器、`Start-Process`、`window.open` 或浏览器扩展的网页导航。只有用户明确要求进行网页验收时，才允许使用隔离的 managed Chromium 无头流程；产品里的 `chrome.tabs.create` 只能由真实用户点击触发，不能作为 Agent 的诊断手段。
+- **网页导航必须先确认服务就绪**：扩展或其它用户入口在创建 `7410` 网页标签前，必须使用有界超时检查 `http://127.0.0.1:7410`；检查失败、超时或返回错误时只显示提示，不创建浏览器标签。后端 `8765` 和模型 `8080` 永远不能作为网页导航目标。
+- **扩展验收同样不得选系统浏览器**：`extension/scripts/` 下的 fixture、smoke 和 E2E 脚本必须使用 Playwright 自带的 managed Chromium、临时隔离 profile 与 `headless: true`；不得扫描或传入 Chrome/Edge 可执行文件路径。
+- **仓库内所有自动浏览器脚本都遵守同一边界**：包括根目录临时/历史脚本；统一使用 Playwright managed Chromium 与 `headless: true`，不得保留系统 Chrome/Edge 的 `executablePath`、channel 或可见窗口入口。用户主动触发的授权登录窗口是唯一例外，且不属于自动验收。
+- **旧二进制不得作为入口**：仓库根目录若存在版本低于当前 Release 的 `OfferU.exe`（当前发现为历史 `0.1.0`），不得自动启动、覆盖或作为验收依据；当前源码开发只使用 `DEVELOPMENT.md` 的 `7410/8765` 进程，正式使用只接受经过 Release Gate 的安装包。
 
 ## Agent skills
 

@@ -7,12 +7,10 @@ import { Button } from "@nextui-org/react";
 import { FileText, MessageSquare, Play, SendHorizonal, Square } from "lucide-react";
 import { streamOptimizeAgentChat, OptimizeAgentStreamEvent } from "@/lib/hooks";
 import { cleanRichHtml } from "@/app/resume/components/templates/shared";
+import { resolveApiBase } from "@/lib/apiBase";
+import { safeClientErrorMessage } from "@/lib/safe-error";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ||
-  (typeof window !== "undefined"
-    ? `${window.location.protocol}//${window.location.hostname}:8765`
-    : "http://127.0.0.1:8765");
+const API_BASE = resolveApiBase();
 
 const md = new MarkdownIt({
   html: false,
@@ -119,10 +117,12 @@ export function OptimizeChatPanel({ jobIds, mode, disabled, profileId, reference
     const load = async () => {
       setLoading(true);
       try {
-        const res = await fetch(`${API_BASE}/api/optimize/agent/sessions/${loadSessionId}`);
+        const res = await fetch(`${API_BASE}/api/optimize/agent/sessions/${loadSessionId}`, {
+          redirect: "error",
+        });
         if (!res.ok) {
           const errBody = await res.json().catch(() => null);
-          throw new Error(errBody?.detail || `加载会话失败 (${res.status})`);
+          throw new Error(safeClientErrorMessage(errBody?.detail, `加载会话失败 (${res.status})`));
         }
         const data = await res.json();
         if (!cancelled) {
@@ -169,7 +169,7 @@ export function OptimizeChatPanel({ jobIds, mode, disabled, profileId, reference
         }
       } catch (err: any) {
         if (!cancelled) {
-          setMessages([{ id: nextMsgId(), role: "assistant", content: `加载会话失败: ${err.message}` }]);
+          setMessages([{ id: nextMsgId(), role: "assistant", content: `加载会话失败: ${safeClientErrorMessage(err, "请稍后重试")}` }]);
         }
       } finally {
         if (!cancelled) {
@@ -189,6 +189,7 @@ export function OptimizeChatPanel({ jobIds, mode, disabled, profileId, reference
     try {
       const res = await fetch(`${API_BASE}/api/optimize/agent/start`, {
         method: "POST",
+        redirect: "error",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           job_ids: jobIds,
@@ -199,7 +200,7 @@ export function OptimizeChatPanel({ jobIds, mode, disabled, profileId, reference
       });
       if (!res.ok) {
         const errBody = await res.json().catch(() => null);
-        throw new Error(errBody?.detail || `请求失败 (${res.status})`);
+        throw new Error(safeClientErrorMessage(errBody?.detail, `请求失败 (${res.status})`));
       }
       const data = await res.json();
       if (data.session_id) {
@@ -210,7 +211,7 @@ export function OptimizeChatPanel({ jobIds, mode, disabled, profileId, reference
         }
       }
     } catch (err: any) {
-      setMessages([{ id: nextMsgId(), role: "assistant", content: `启动失败: ${err.message}` }]);
+      setMessages([{ id: nextMsgId(), role: "assistant", content: `启动失败: ${safeClientErrorMessage(err, "请稍后重试")}` }]);
     } finally {
       setLoading(false);
     }
@@ -251,7 +252,7 @@ export function OptimizeChatPanel({ jobIds, mode, disabled, profileId, reference
         {
           id: nextMsgId(),
           role: "assistant",
-          content: event.message || `分析出错: ${event.error}`,
+          content: safeClientErrorMessage(event.message || event.error, "分析出错，请稍后重试"),
         },
       ]);
     }
@@ -343,7 +344,7 @@ export function OptimizeChatPanel({ jobIds, mode, disabled, profileId, reference
       if (err.name === "AbortError") return;
       setMessages((prev) => [
         ...prev,
-        { id: nextMsgId(), role: "assistant", content: `发送失败: ${err.message}` },
+        { id: nextMsgId(), role: "assistant", content: `发送失败: ${safeClientErrorMessage(err, "请稍后重试")}` },
       ]);
     } finally {
       setLoading(false);
@@ -390,7 +391,7 @@ export function OptimizeChatPanel({ jobIds, mode, disabled, profileId, reference
       if (err.name === "AbortError") return;
       setMessages((prev) => [
         ...prev,
-        { id: nextMsgId(), role: "assistant", content: `操作失败: ${err.message}` },
+        { id: nextMsgId(), role: "assistant", content: `操作失败: ${safeClientErrorMessage(err, "请稍后重试")}` },
       ]);
     } finally {
       setLoading(false);

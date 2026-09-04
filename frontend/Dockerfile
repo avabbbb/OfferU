@@ -12,6 +12,6 @@ RUN npm config set registry https://registry.npmmirror.com/ \
 
 COPY . .
 
-EXPOSE 3300
+EXPOSE 7410
 
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

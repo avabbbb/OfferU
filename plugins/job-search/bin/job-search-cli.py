@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import html
+import ipaddress
 import json
 import re
 import sys
@@ -15,8 +16,8 @@ from datetime import datetime, timezone
 from html.parser import HTMLParser
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
-from urllib.request import Request, urlopen
+from urllib.parse import urlencode, urlsplit
+from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 
 VERSION = "0.1.0"
@@ -27,6 +28,14 @@ EXIT_USAGE = 2
 EXIT_INPUT = 3
 EXIT_SOURCE = 4
 EXIT_OUTPUT = 5
+
+
+class _NoRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_DIRECT_OPENER = build_opener(ProxyHandler({}), _NoRedirectHandler())
 
 _KNOWN_CAPABILITIES = {
     "agent_runtime": (
@@ -123,6 +132,25 @@ def _iso_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _public_job_url(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    parsed = urlsplit(raw)
+    hostname = (parsed.hostname or "").lower().rstrip(".")
+    if parsed.scheme.lower() not in {"http", "https"} or not hostname:
+        return ""
+    if parsed.username or parsed.password or hostname == "localhost" or hostname.endswith(".local"):
+        return ""
+    try:
+        address = ipaddress.ip_address(hostname)
+    except ValueError:
+        address = None
+    if address is not None and not address.is_global:
+        return ""
+    return raw[:4000]
+
+
 def _request_page(page: int) -> list[dict[str, Any]]:
     query = urlencode({"page": page})
     request = Request(
@@ -133,7 +161,7 @@ def _request_page(page: int) -> list[dict[str, Any]]:
         },
     )
     try:
-        with urlopen(request, timeout=20) as response:
+        with _DIRECT_OPENER.open(request, timeout=20) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
         raise RuntimeError(f"public source unavailable: {SOURCE_HOST}: {exc}") from exc
@@ -299,7 +327,7 @@ def _profile(text: str, payload: dict[str, Any], *, target: bool = False) -> dic
 
 def _job_document(row: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     slug = str(row.get("slug") or "").strip()
-    url = str(row.get("url") or "").strip()
+    url = _public_job_url(row.get("url"))
     description = _plain_text(row.get("description"), 50_000)
     title = str(row.get("title") or "").strip()
     company = str(row.get("company_name") or "").strip()
@@ -428,7 +456,7 @@ def _snapshot(payload: dict[str, Any]) -> dict[str, Any]:
             "company_name": row.get("company_name"),
             "title": row.get("title"),
             "description": _plain_text(row.get("description"), 50_000),
-            "url": row.get("url"),
+            "url": _public_job_url(row.get("url")),
             "location": row.get("location"),
             "tags": row.get("tags") or [],
             "job_types": row.get("job_types") or [],

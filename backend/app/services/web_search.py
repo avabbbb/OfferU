@@ -13,11 +13,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import logging
 import re
+import socket
 from typing import Any, Optional, TypedDict
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
@@ -27,6 +29,8 @@ from app.services.security_redaction import redact_sensitive_text, safe_error_me
 _logger = logging.getLogger(__name__)
 
 _TIMEOUT = 20.0
+_MAX_REDIRECTS = 3
+_REDIRECT_STATUSES = {301, 302, 303, 307, 308}
 
 # 反爬/需登录平台域名黑名单 → 必须走 authorized_research 授权浏览
 RESTRICTED_DOMAINS = (
@@ -60,6 +64,8 @@ def _is_public_http_url(url: str) -> bool:
         return False
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         return False
+    if parsed.username or parsed.password:
+        return False
     host = parsed.hostname.lower()
     if host in {"localhost"} or host.endswith(".local"):
         return False
@@ -72,6 +78,51 @@ def _is_public_http_url(url: str) -> bool:
         or address.is_loopback
         or address.is_link_local
         or address.is_reserved
+    )
+
+
+async def _assert_public_destination(url: str) -> None:
+    """Reject private DNS answers before opening a public research URL."""
+
+    if not _is_public_http_url(url):
+        raise ValueError("仅支持公开 HTTP(S) URL")
+    parsed = urlparse(url)
+    host = parsed.hostname
+    if not host:
+        raise ValueError("URL 缺少主机名")
+    try:
+        port = parsed.port or (443 if parsed.scheme.lower() == "https" else 80)
+    except ValueError as exc:
+        raise ValueError("URL 端口无效") from exc
+    try:
+        addresses = await asyncio.to_thread(
+            socket.getaddrinfo,
+            host,
+            port,
+            type=socket.SOCK_STREAM,
+        )
+    except OSError as exc:
+        raise ValueError("目标域名无法解析") from exc
+    if not addresses:
+        raise ValueError("目标域名没有可用地址")
+    for address in addresses:
+        raw_ip = address[4][0]
+        try:
+            ip = ipaddress.ip_address(raw_ip)
+        except ValueError as exc:
+            raise ValueError("目标域名解析到了无效地址") from exc
+        if not ip.is_global:
+            raise ValueError("目标域名解析到了非公网地址")
+
+
+def _http_client(**kwargs: Any) -> httpx.AsyncClient:
+    """Use direct, non-redirecting HTTP for the public research boundary."""
+
+    return httpx.AsyncClient(
+        timeout=_TIMEOUT,
+        follow_redirects=False,
+        trust_env=False,
+        **kwargs,
     )
 
 
@@ -91,7 +142,7 @@ def _clean_result(
 
 async def _search_bocha(query: str, limit: int, api_key: str) -> list[SearchResult]:
     """博查 AI Search（国内合规，覆盖百度系内容）。"""
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+    async with _http_client() as client:
         response = await client.post(
             "https://api.bochaai.com/v1/web-search",
             headers={"Authorization": f"Bearer {api_key}"},
@@ -111,7 +162,7 @@ async def _search_bocha(query: str, limit: int, api_key: str) -> list[SearchResu
 
 
 async def _search_tavily(query: str, limit: int, api_key: str) -> list[SearchResult]:
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+    async with _http_client() as client:
         response = await client.post(
             "https://api.tavily.com/search",
             json={"api_key": api_key, "query": query, "max_results": limit},
@@ -127,7 +178,7 @@ async def _search_tavily(query: str, limit: int, api_key: str) -> list[SearchRes
 
 
 async def _search_serper(query: str, limit: int, api_key: str) -> list[SearchResult]:
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+    async with _http_client() as client:
         response = await client.post(
             "https://google.serper.dev/search",
             headers={"X-API-KEY": api_key},
@@ -168,10 +219,16 @@ async def _search_ddgs(query: str, limit: int) -> list[SearchResult]:
     return await asyncio.to_thread(_run)
 
 
-async def web_search(query: str, *, limit: int = 8) -> list[SearchResult]:
+async def web_search(
+    query: str,
+    *,
+    limit: int = 8,
+    allow_optional_ddgs: bool = True,
+) -> list[SearchResult]:
     """按兜底链依次尝试搜索 provider，返回首个非空结果。
 
-    settings.search_provider 显式指定时只走该 provider。"""
+    settings.search_provider 显式指定时只走该 provider；受控发布路径可关闭
+    ddgs 这个无法证明代理/重定向边界的可选依赖。"""
     clean_query = str(query or "").strip()
     if not clean_query:
         raise ValueError("query 不能为空")
@@ -186,7 +243,7 @@ async def web_search(query: str, *, limit: int = 8) -> list[SearchResult]:
         chain.append(("tavily", lambda: _search_tavily(clean_query, safe_limit, settings.tavily_api_key)))
     if provider in {"auto", "serper"} and settings.serper_api_key:
         chain.append(("serper", lambda: _search_serper(clean_query, safe_limit, settings.serper_api_key)))
-    if provider in {"auto", "ddgs"}:
+    if allow_optional_ddgs and provider in {"auto", "ddgs"}:
         chain.append(("ddgs", lambda: _search_ddgs(clean_query, safe_limit)))
     if provider not in {"auto", "bocha", "tavily", "serper", "ddgs"}:
         raise ValueError(f"未知 search_provider: {provider}")
@@ -218,18 +275,33 @@ async def fetch_readable(url: str, *, max_chars: int = 20_000) -> str:
             "该站点（小红书/脉脉/牛客/BOSS）需登录且受访问控制保护，"
             "请使用授权浏览切片（authorized_research）由用户登录后逐页确认采集"
         )
-    async with httpx.AsyncClient(
-        timeout=_TIMEOUT,
-        follow_redirects=True,
+    current_url = clean_url
+    async with _http_client(
         headers={"User-Agent": "Mozilla/5.0 (OfferU research; public pages only)"},
     ) as client:
-        response = await client.get(clean_url)
+        for redirect_count in range(_MAX_REDIRECTS + 1):
+            await _assert_public_destination(current_url)
+            if _is_restricted(current_url):
+                raise ValueError("目标经重定向指向受限站点，已拒绝抓取")
+            response = await client.get(current_url)
+            if response.status_code not in _REDIRECT_STATUSES:
+                break
+            location = response.headers.get("location")
+            response.close()
+            if not location:
+                raise ValueError("公开网页重定向缺少目标地址")
+            if redirect_count >= _MAX_REDIRECTS:
+                raise ValueError("公开网页重定向次数超过限制")
+            next_url = urljoin(current_url, location)
+            if not _is_public_http_url(next_url):
+                raise ValueError("目标经重定向指向非公网地址，已拒绝抓取")
+            current_url = next_url
+        else:
+            raise ValueError("公开网页重定向次数超过限制")
+
         response.raise_for_status()
-        # 重定向后再次检查：目标可能已跳到内网 IP/非公网地址（SSRF 防护），
-        # 或跳到受限站点（防跳转绕过黑名单）。
         final_url = str(response.url)
-        if not _is_public_http_url(final_url):
-            raise ValueError("目标经重定向指向非公网地址，已拒绝抓取")
+        await _assert_public_destination(final_url)
         if _is_restricted(final_url):
             raise ValueError("目标经重定向指向受限站点，已拒绝抓取")
         html = response.text

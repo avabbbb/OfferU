@@ -23,6 +23,7 @@ import {
   type ResumeParseDiagnostics,
 } from "@/lib/hooks";
 import { resumeApi } from "@/lib/api";
+import { safeClientErrorMessage } from "@/lib/safe-error";
 import {
   getProfileBulletText,
   groupProfileCandidatesForResume,
@@ -128,7 +129,7 @@ export default function ResumesListPage() {
         router.push(`/resume/${res.id}`);
       }
     } catch (err: any) {
-      setActionError(err.message || "创建失败，请重试");
+      setActionError(safeClientErrorMessage(err, "创建失败，请重试"));
     } finally {
       setCreating(false);
     }
@@ -151,7 +152,7 @@ export default function ResumesListPage() {
       await deleteResume(deleteTargetId);
       mutate();
     } catch (err: any) {
-      setActionError(err.message || "删除失败，请重试");
+      setActionError(safeClientErrorMessage(err, "删除失败，请重试"));
     } finally {
       setDeletingId(null);
       setDeleteTargetId(null);
@@ -197,7 +198,7 @@ export default function ResumesListPage() {
       setUploadTitle(baseName || "上传简历");
       setUploadModalOpen(true);
     } catch (err: any) {
-      setActionError(err.message || "简历解析失败，请重试");
+      setActionError(safeClientErrorMessage(err, "简历解析失败，请重试"));
     } finally {
       setUploading(false);
     }
@@ -255,7 +256,7 @@ export default function ResumesListPage() {
       mutate();
       router.push(`/resume/${newResume.id}`);
     } catch (err: any) {
-      setActionError(err.message || "创建简历失败，请重试");
+      setActionError(safeClientErrorMessage(err, "创建简历失败，请重试"));
     } finally {
       setUploadingToDb(false);
     }

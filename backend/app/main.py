@@ -23,17 +23,26 @@ from app.services.security_redaction import (
     redact_sensitive_value,
     safe_error_message,
 )
+from app.runtime_paths import runtime_uploads_dir
 
 logger = logging.getLogger("offeru.api")
 settings = get_settings()
 from app.services.data_safety import apply_pending_restore_before_database_connect
 
 # A staged restore must replace the SQLite file before app.database creates its
-# engine. Validation failures deliberately abort startup and leave both the live
-# data and the staged recovery material available for diagnosis.
-startup_restore = apply_pending_restore_before_database_connect(
-    database_url=settings.database_url,
-)
+# engine. Data Safety is deliberately local SQLite-only; Docker development can
+# use an external database and must not fail during import just because there is
+# no local restore target. External database backup/restore belongs to that
+# database's own operational boundary and is never reported as applied here.
+if settings.database_url.strip().lower().startswith("sqlite"):
+    startup_restore = apply_pending_restore_before_database_connect(
+        database_url=settings.database_url,
+    )
+else:
+    startup_restore = {
+        "applied": False,
+        "reason": "external_database_data_safety_not_applicable",
+    }
 
 from app.database import init_db
 if settings.offeru_enable_mcp:
@@ -52,42 +61,34 @@ from app.routes import jobs, resume, calendar, email, config, applications, scra
 async def lifespan(app: FastAPI):
     """应用启动时初始化数据库表与 MCP 会话管理器。"""
     await init_db()
+    from app.services.startup_recovery import (
+        finish_startup_recovery,
+        reset_startup_recovery,
+        run_startup_recovery,
+    )
+
+    reset_startup_recovery()
     from app.services.agent_run_state import recover_interrupted_agent_runs
 
-    try:
-        await recover_interrupted_agent_runs()
-    except Exception:
-        pass  # Agent Run 恢复失败不阻塞启动（与相邻恢复逻辑一致）
+    await run_startup_recovery("agent_runs", recover_interrupted_agent_runs)
     from app.services.career_tasks import recover_career_tasks
 
-    try:
-        await recover_career_tasks()
-    except Exception:
-        pass  # CareerTask 恢复失败不阻塞启动；任务状态仍可由控制面查询
+    await run_startup_recovery("career_tasks", recover_career_tasks)
     from app.services.automation import recover_automation_events
 
-    try:
-        await recover_automation_events()
-    except Exception:
-        pass  # AutomationEvent 恢复失败不阻塞启动；信号仍可由控制面重试
+    await run_startup_recovery("automation_events", recover_automation_events)
     from app.services.job_research import recover_interrupted_research_runs
 
-    try:
-        await recover_interrupted_research_runs()
-    except Exception:
-        pass  # 调研恢复失败不阻塞启动
+    await run_startup_recovery("research_runs", recover_interrupted_research_runs)
     from app.services.ai_interviews import recover_interrupted_interview_state
 
-    try:
-        await recover_interrupted_interview_state()
-    except Exception:
-        pass  # 面试恢复失败不阻塞启动；面试状态仍可由控制面查询
+    await run_startup_recovery("interview_state", recover_interrupted_interview_state)
     # Local engine discovery is optional and performs network probes. Keep it
     # out of the critical startup path so a stopped local engine or inherited
     # network policy can never hold the API before it begins serving requests.
     from app.services.coding_agent_runtime import recover_hosted_executor_sessions
 
-    await recover_hosted_executor_sessions()
+    await run_startup_recovery("hosted_executors", recover_hosted_executor_sessions)
     from app.services.email_sync import (
         start_email_sync_service,
         stop_email_sync_service,
@@ -105,10 +106,24 @@ async def lifespan(app: FastAPI):
         stop_work_source_auto_sync,
     )
 
-    await recover_authorized_research_sessions()
-    await start_email_sync_service()
-    start_memory_distill_service()
-    start_work_source_auto_sync()
+    await run_startup_recovery(
+        "authorized_research",
+        recover_authorized_research_sessions,
+    )
+
+    async def _start_memory_distill() -> None:
+        start_memory_distill_service()
+
+    async def _start_work_source_auto_sync() -> None:
+        start_work_source_auto_sync()
+
+    await run_startup_recovery("email_sync", start_email_sync_service)
+    await run_startup_recovery("memory_distill", _start_memory_distill)
+    await run_startup_recovery(
+        "work_source_auto_sync",
+        _start_work_source_auto_sync,
+    )
+    finish_startup_recovery()
     try:
         if _HAS_MCP and mcp_server is not None:
             async with mcp_server.session_manager.run():
@@ -137,7 +152,7 @@ app = FastAPI(
 cors_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
 
 # ---- CORS 允许前端跨域访问 ----
-# cors_origins 以逗号分隔多个来源，如 "http://localhost:3000,http://localhost:8080"
+# cors_origins 以逗号分隔多个来源，如 "http://localhost:7410,http://127.0.0.1:7410"
 # allow_credentials=True 允许带 cookie 的跨域请求（Gmail OAuth 回调需要）
 cors_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
 # 前端 dev 端口 7410 无条件可用：系统环境变量 CORS_ORIGINS 会覆盖 settings，
@@ -334,7 +349,7 @@ app.include_router(studio.router)
 app.include_router(bridge.router, prefix="/api/bridge", tags=["Bridge"])
 
 # ---- 静态文件（头像等上传文件） ----
-UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
+UPLOAD_DIR = os.fspath(runtime_uploads_dir())
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
@@ -352,6 +367,8 @@ if _HAS_MCP and mcp_server is not None:
 
 @app.get("/api/health")
 async def health_check():
+    from app.services.startup_recovery import get_startup_recovery_status
+
     database_url = settings.database_url
     database_path = (
         database_url.rsplit("///", 1)[-1]
@@ -375,4 +392,5 @@ async def health_check():
         "architecture": "file-first-agent-kernel",
         "mcp_enabled": _HAS_MCP,
         "startup_restore": startup_restore,
+        "startup_recovery": get_startup_recovery_status(),
     }

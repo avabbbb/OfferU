@@ -760,6 +760,11 @@ async def review_memory_proposal(
         evidence = await _proposal_evidence(db, [proposal.id])
 
         if clean_action == "defer":
+            if proposal.status == "deferred":
+                return {
+                    **_serialize_proposal(proposal, evidence.get(proposal.id, [])),
+                    "duplicate": True,
+                }
             if proposal.status not in {"pending", "deferred"}:
                 raise ValueError("只有待处理提案可以稍后处理")
             proposal.status = "deferred"
@@ -786,6 +791,11 @@ async def review_memory_proposal(
             )
 
         if clean_action == "reject":
+            if proposal.status == "rejected":
+                return {
+                    **_serialize_proposal(proposal, evidence.get(proposal.id, [])),
+                    "duplicate": True,
+                }
             if proposal.status not in {"pending", "deferred"}:
                 raise ValueError("只有待处理提案可以拒绝")
             proposal.status = "rejected"
@@ -812,6 +822,11 @@ async def review_memory_proposal(
             )
 
         if clean_action == "revoke":
+            if proposal.status == "revoked":
+                return {
+                    **_serialize_proposal(proposal, evidence.get(proposal.id, [])),
+                    "duplicate": True,
+                }
             if proposal.status != "accepted":
                 raise ValueError("只有已接受提案可以撤销")
             section_id = proposal.applied_profile_section_id

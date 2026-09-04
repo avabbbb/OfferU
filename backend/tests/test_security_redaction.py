@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.routes import config as config_route
@@ -13,8 +14,12 @@ from app.services.security_redaction import (
 )
 from app.services.agent_run_state import _clean_action, _clean_run
 from app.services.automation import _bounded as _bounded_automation
+from app.services.automation import _event_view
 from app.services.career_tasks import _bounded_json
+from app.services.career_tasks import _task_view
 from app.services.coding_agent_runtime import _bounded_payload
+from app.services.coding_agent_runtime import _append_hosted_event_row
+from app.services.coding_agent_runtime import _session_view
 
 
 class SecurityRedactionTests(unittest.TestCase):
@@ -32,6 +37,17 @@ class SecurityRedactionTests(unittest.TestCase):
         self.assertNotIn("canary-state", redacted)
         self.assertNotIn("owner@example.com", redacted)
         self.assertNotIn("13812345678", redacted)
+
+    def test_text_redacts_standalone_provider_credentials(self) -> None:
+        source = (
+            "sk-proj-abcdefghijklmnopqrstuvwxyz1234567890 "
+            "ghp_abcdefghijklmnopqrstuvwxyz1234567890 "
+            "AIzaSyabcdefghijklmnopqrstuvwxyz1234567890"
+        )
+        redacted = redact_sensitive_text(source)
+        self.assertNotIn("sk-proj-abcdefghijklmnopqrstuvwxyz1234567890", redacted)
+        self.assertNotIn("ghp_abcdefghijklmnopqrstuvwxyz1234567890", redacted)
+        self.assertNotIn("AIzaSyabcdefghijklmnopqrstuvwxyz1234567890", redacted)
 
     def test_nested_values_redact_by_key_and_bound_length(self) -> None:
         payload = {
@@ -132,6 +148,114 @@ class SecurityRedactionTests(unittest.TestCase):
             self.assertNotIn(canary, str(stored))
             self.assertEqual(stored["email"], "owner@example.com")
             self.assertEqual(stored["note"], "Keep owner@example.com in the career payload")
+
+    def test_durable_error_views_redact_pii_without_redacting_normal_payloads(self) -> None:
+        error = "provider failed for owner@example.com at +86 13812345678"
+        event = _event_view(
+            type(
+                "Event",
+                (),
+                {
+                    "event_id": "event-security",
+                    "event_type": "JOB_SAVED",
+                    "source": "test",
+                    "target_type": "job",
+                    "target_id": "1",
+                    "payload_json": {"note": "owner@example.com"},
+                    "dedupe_key": "dedupe",
+                    "status": "failed",
+                    "result_json": {},
+                    "error": error,
+                    "created_at": None,
+                    "processed_at": None,
+                },
+            )()
+        )
+        task = _task_view(
+            type(
+                "Task",
+                (),
+                {
+                    "task_id": "task-security",
+                    "task_type": "agent_turn",
+                    "source": "test",
+                    "target_type": "job",
+                    "target_id": "1",
+                    "runtime_provider": "replay",
+                    "input_json": {"note": "owner@example.com"},
+                    "output_contract_json": {},
+                    "status": "failed",
+                    "progress_json": {},
+                    "agent_thread_id": "",
+                    "agent_turn_id": "",
+                    "run_id": "",
+                    "result_ref": "",
+                    "result_json": {},
+                    "checkpoint_json": {},
+                    "error": error,
+                    "retryable": True,
+                    "attempt_count": 1,
+                    "max_attempts": 3,
+                    "next_retry_at": None,
+                    "created_at": None,
+                    "started_at": None,
+                    "finished_at": None,
+                },
+            )()
+        )
+        session = _session_view(
+            type(
+                "Session",
+                (),
+                {
+                    "session_id": "session-security",
+                    "task_type": "run_artifact",
+                    "task_id": "task-security",
+                    "executor_id": "replay",
+                    "protocol": "test",
+                    "external_session_id": "",
+                    "external_turn_id": "",
+                    "status": "failed",
+                    "cwd": "",
+                    "capability_grant_json": {},
+                    "recovery_cursor_json": {},
+                    "error": error,
+                    "event_sequence": 0,
+                    "created_at": None,
+                    "updated_at": None,
+                    "started_at": None,
+                    "completed_at": None,
+                },
+            )()
+        )
+
+        for view in (event, task, session):
+            self.assertNotIn("owner@example.com", view["error"])
+            self.assertNotIn("13812345678", view["error"])
+            self.assertIn("[redacted email]", view["error"])
+            self.assertIn("[redacted phone]", view["error"])
+
+        self.assertEqual(event["payload"]["note"], "owner@example.com")
+        self.assertEqual(task["input"]["note"], "owner@example.com")
+
+    def test_hosted_provider_event_payload_redacts_pii_at_persistence_boundary(self) -> None:
+        row = SimpleNamespace(session_id="session-security", event_sequence=0)
+        event = _append_hosted_event_row(
+            row,
+            event_type="provider.event",
+            provider_event="message.delta",
+            payload={
+                "text": "Contact owner@example.com at +86 13812345678",
+                "note": "normal provider metadata",
+                "api_token": "canary-token",
+            },
+        )
+
+        self.assertEqual(row.event_sequence, 1)
+        self.assertNotIn("owner@example.com", str(event.payload_json))
+        self.assertNotIn("13812345678", str(event.payload_json))
+        self.assertNotIn("canary-token", str(event.payload_json))
+        self.assertEqual(event.payload_json["note"], "normal provider metadata")
 
     def test_config_projection_does_not_expose_nested_provider_credentials(self) -> None:
         config = config_route.ConfigUpdate(

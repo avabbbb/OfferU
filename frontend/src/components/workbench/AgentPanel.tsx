@@ -45,6 +45,7 @@ import {
 } from "@/lib/api";
 import { presentAgentToolCall } from "@/lib/agentToolPresentation";
 import { bauhausFieldClassNames } from "@/lib/bauhaus";
+import { safeClientErrorMessage } from "@/lib/safe-error";
 
 interface PanelMessage {
   id: string;
@@ -285,7 +286,7 @@ export function AgentPanel() {
           timer = window.setTimeout(() => void refresh(true), 3000);
         }
       } catch (err: any) {
-        if (!stopped) setHostedError(err.message || "读取托管会话失败");
+        if (!stopped) setHostedError(safeClientErrorMessage(err, "读取托管会话失败"));
       } finally {
         if (!stopped && !silent) setHostedLoading(false);
       }
@@ -370,7 +371,7 @@ export function AgentPanel() {
       setPendingActions(response.proposed_actions || []);
       refreshConversations();
     } catch (err: any) {
-      setError(err.message || "OfferU 请求失败");
+      setError(safeClientErrorMessage(err, "OfferU 请求失败"));
     } finally {
       setStreamingText("");
       setLoading(false);
@@ -440,7 +441,7 @@ export function AgentPanel() {
         setActiveSkillId(latestRun.skill_id || "discovery");
       }
     } catch (err: any) {
-      setError(err.message || "加载历史对话失败");
+      setError(safeClientErrorMessage(err, "加载历史对话失败"));
     }
   };
 
@@ -478,7 +479,7 @@ export function AgentPanel() {
       if (conversationId === id) await startNewConversation();
       await refreshConversations();
     } catch (err: any) {
-      setError(err.message || "删除历史对话失败");
+      setError(safeClientErrorMessage(err, "删除历史对话失败"));
     }
   };
 
@@ -495,7 +496,7 @@ export function AgentPanel() {
         finalRun = result.run;
         toolCalls.push(...(result.tool_calls || []));
         if (result.errors?.length) {
-          throw new Error(result.errors.join("；"));
+          throw new Error(safeClientErrorMessage(result.errors.join("；"), "确认动作执行失败"));
         }
       }
       if (!finalRun) throw new Error("确认结果缺少 Agent Run");
@@ -523,7 +524,7 @@ export function AgentPanel() {
       setPendingActions(remaining);
       if (remaining.length === 0) setActiveRunId(null);
     } catch (err: any) {
-      setError(err.message || "确认动作失败");
+      setError(safeClientErrorMessage(err, "确认动作失败"));
     } finally {
       setLoading(false);
     }
@@ -548,7 +549,7 @@ export function AgentPanel() {
         },
       ]);
     } catch (err: any) {
-      setError(err.message || "取消 Run 失败");
+      setError(safeClientErrorMessage(err, "取消 Run 失败"));
     } finally {
       setLoading(false);
     }
@@ -582,7 +583,7 @@ export function AgentPanel() {
       }
       refreshConversations();
     } catch (err: any) {
-      setError(err.message || "恢复 Run 失败");
+      setError(safeClientErrorMessage(err, "恢复 Run 失败"));
     } finally {
       setLoading(false);
     }
@@ -595,7 +596,7 @@ export function AgentPanel() {
     try {
       setHostedDetail(await hostedExecutorApi.session(sessionId));
     } catch (err: any) {
-      setHostedError(err.message || "读取托管会话失败");
+      setHostedError(safeClientErrorMessage(err, "读取托管会话失败"));
     } finally {
       setHostedLoading(false);
     }
@@ -621,7 +622,7 @@ export function AgentPanel() {
       setHostedSessions(list.items || []);
       setHostedDetail(await hostedExecutorApi.session(hostedDetail.session_id));
     } catch (err: any) {
-      setHostedError(err.message || `${action === "cancel" ? "取消" : "恢复"}托管任务失败`);
+      setHostedError(safeClientErrorMessage(err, `${action === "cancel" ? "取消" : "恢复"}托管任务失败`));
     } finally {
       setHostedAction(null);
     }
@@ -641,7 +642,7 @@ export function AgentPanel() {
         },
       ]);
     } catch (err: any) {
-      setError(err.message || "导出记忆失败");
+      setError(safeClientErrorMessage(err, "导出记忆失败"));
     }
   };
 
@@ -660,7 +661,7 @@ export function AgentPanel() {
         },
       ]);
     } catch (err: any) {
-      setError(err.message || "导入记忆失败");
+      setError(safeClientErrorMessage(err, "导入记忆失败"));
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = "";
     }

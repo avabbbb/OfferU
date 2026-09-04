@@ -9,13 +9,14 @@ from pathlib import Path
 from typing import Any
 
 from app.services.agent_files import atomic_write_json
+from app.runtime_paths import runtime_data_path
 
 
 FOLLOW_UP_SCHEMA = "offeru.follow_up_event.v1"
 APPLICATION_TYPES = frozenset({"application", "application_record"})
 CHANNELS = frozenset({"email", "linkedin", "phone", "wechat", "other"})
 _EVENT_ID = re.compile(r"^followup_[0-9a-f]{32}$")
-_DEFAULT_DIR = Path(__file__).resolve().parents[2] / "data" / "follow_ups"
+_DEFAULT_DIR = runtime_data_path("follow_ups")
 
 
 def _utc_now() -> str:

@@ -26,8 +26,10 @@ from app.services.security_redaction import safe_error_message
 BATCH_SCHEMA = "offeru.batch_job_evaluation.v1"
 RESULT_SCHEMA = "offeru.job_evaluation_result.v1"
 _BATCH_ID = re.compile(r"^batch_eval_[0-9a-f]{32}$")
-_BATCH_DIR = Path(__file__).resolve().parents[2] / "data" / "batch_evaluations"
-_WORKER_DIR = Path(__file__).resolve().parents[2] / "data" / "batch_workers"
+from app.runtime_paths import runtime_data_path
+
+_BATCH_DIR = runtime_data_path("batch_evaluations")
+_WORKER_DIR = runtime_data_path("batch_workers")
 _LIVE_TASKS: set[asyncio.Task] = set()
 
 JOB_EVALUATION_OUTPUT_SCHEMA: dict[str, Any] = {

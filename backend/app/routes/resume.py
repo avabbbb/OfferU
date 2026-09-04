@@ -54,6 +54,7 @@ from app.database import get_db
 from app.models.models import Resume, ResumeSection, ResumeTemplate, Job, Profile
 from app.services.application_workspace import auto_write_job_to_total
 from app.services.security_redaction import safe_error_message
+from app.runtime_paths import runtime_backend_dir
 
 router = APIRouter()
 
@@ -76,7 +77,9 @@ async def _execute_operation(name: str, args: dict[str, Any]) -> Any:
         raise HTTPException(status_code=status, detail=message or "操作失败")
     return result.get("outputs")
 
-FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://127.0.0.1:7410").rstrip("/")
+# OfferU is a local-first desktop/web app. User-facing print/share routes must
+# never inherit a stale model endpoint such as :8080 from the environment.
+FRONTEND_BASE_URL = "http://127.0.0.1:7410"
 _EXPORT_IMAGE_CACHE_TTL_SECONDS = 120
 _EXPORT_IMAGE_CACHE_MAX_ENTRIES = 8
 _export_image_cache: dict[tuple[int, str, str], tuple[float, bytes]] = {}
@@ -495,9 +498,7 @@ async def delete_section(resume_id: int, section_id: int):
 # =============================================
 
 # 头像存储目录（后端本地），生产环境可替换为云存储
-BACKEND_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-)
+BACKEND_DIR = os.fspath(runtime_backend_dir())
 
 UPLOAD_DIR = os.path.join(
     BACKEND_DIR,
@@ -1382,31 +1383,21 @@ def _can_try_weasyprint() -> bool:
 async def _render_resume_pdf_with_playwright(resume_id: int, resume: Resume) -> bytes:
     """
     Render the dedicated frontend print route so PDF output matches the React preview.
-    Falls back to the legacy HTML renderer when Playwright or Chromium is unavailable.
-    优先使用系统已安装的 Chrome/Edge 浏览器，避免需要下载 Playwright 自带的 Chromium。
+    Falls back to the legacy HTML renderer when managed Chromium is unavailable.
+    浏览器验收与 PDF 渲染只使用 Playwright managed Chromium，不探测系统 Edge。
     """
     try:
         from playwright.async_api import async_playwright
     except Exception as exc:
-        raise RuntimeError(f"Playwright is not installed: {exc}") from exc
+        raise RuntimeError(
+            f"Playwright is not installed: {safe_error_message(exc)}"
+        ) from exc
 
     # OfferU 的桌面 Web 壳使用 HashRouter；必须保留 hash，否则 Vite
     # 入口会把无 hash 的打印地址解析成 Today，Playwright 只能等到超时。
     print_url = f"{FRONTEND_BASE_URL}/#/resume/print/{resume_id}"
     async with async_playwright() as p:
-        # 尝试按优先级使用系统浏览器：Chrome > Edge > Playwright Chromium
-        launched = False
-        browser = None
-        for channel in ["chrome", "msedge", "chromium"]:
-            try:
-                browser = await p.chromium.launch(channel=channel)
-                launched = True
-                break
-            except Exception:
-                continue
-        if not launched:
-            # 最后尝试不指定 channel（使用 Playwright 自带浏览器）
-            browser = await p.chromium.launch()
+        browser = await p.chromium.launch(headless=True)
         try:
             page = await browser.new_page(viewport={"width": 1240, "height": 1754}, device_scale_factor=1)
             await page.goto(print_url, wait_until="networkidle", timeout=30000)

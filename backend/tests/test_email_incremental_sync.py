@@ -4,6 +4,7 @@ import asyncio
 from pathlib import Path
 import secrets
 import sys
+import tempfile
 import unittest
 from unittest.mock import AsyncMock, patch
 
@@ -12,8 +13,9 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.database import async_session, init_db
+from app.database import Base, async_session
 from app.models.models import (
     ApplicationProgressCandidate,
     EmailAccount,
@@ -25,6 +27,7 @@ from app.services.agent_skill_registry import resolve_skill
 from app.services.email_sync import (
     GmailHistoryExpired,
     _fetch_gmail_delta,
+    begin_gmail_oauth,
     connect_imap_account,
     revoke_email_account,
     sync_email_account,
@@ -83,6 +86,39 @@ async def _gmail_account(cursor: dict | None = None) -> EmailAccount:
 
 
 class EmailIncrementalSyncTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._temp_dir = tempfile.TemporaryDirectory()
+        database_path = Path(self._temp_dir.name) / "email-sync.db"
+        self._engine = create_async_engine(
+            f"sqlite+aiosqlite:///{database_path.as_posix()}"
+        )
+        self._test_session = async_sessionmaker(
+            self._engine,
+            class_=AsyncSession,
+            expire_on_commit=False,
+        )
+        asyncio.run(self._create_schema())
+        self._session_patches = [
+            patch.object(sys.modules[__name__], "async_session", self._test_session),
+            patch("app.services.email_sync.async_session", self._test_session),
+            patch(
+                "app.services.application_progress.async_session",
+                self._test_session,
+            ),
+        ]
+        for session_patch in self._session_patches:
+            session_patch.start()
+
+    async def _create_schema(self) -> None:
+        async with self._engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+
+    def tearDown(self) -> None:
+        for session_patch in reversed(self._session_patches):
+            session_patch.stop()
+        asyncio.run(self._engine.dispose())
+        self._temp_dir.cleanup()
+
     def test_registry_skill_and_audit_contracts_do_not_expose_connection_secrets(self) -> None:
         expected = {
             "email_connection_status",
@@ -115,6 +151,14 @@ class EmailIncrementalSyncTests(unittest.TestCase):
             "auth_url",
             OPERATIONS["begin_gmail_oauth"].audit_redacted_output_parameters,
         )
+        self.assertEqual(
+            OPERATIONS["begin_gmail_oauth"].parameters["user_confirmed"],
+            "bool (must be true)",
+        )
+        self.assertEqual(
+            OPERATIONS["connect_imap_account"].parameters["user_confirmed"],
+            "bool (must be true)",
+        )
         skill = resolve_skill("回复识别")
         self.assertIsNotNone(skill)
         assert skill is not None
@@ -122,7 +166,6 @@ class EmailIncrementalSyncTests(unittest.TestCase):
 
     def test_imap_connection_persists_only_metadata_and_opaque_reference(self) -> None:
         async def run() -> tuple[dict, EmailAccount]:
-            await init_db()
             with patch(
                 "app.services.email_sync._probe_imap",
                 return_value={"uidvalidity": 77, "uidnext": 10},
@@ -134,6 +177,7 @@ class EmailIncrementalSyncTests(unittest.TestCase):
                     user=f"{_unique('imap')}@qq.com",
                     password="never-store-this-password",
                     provider="qq",
+                    user_confirmed=True,
                 )
             self.assertEqual(store.await_count, 1)
             async with async_session() as db:
@@ -163,6 +207,19 @@ class EmailIncrementalSyncTests(unittest.TestCase):
             )
         )
 
+    def test_mailbox_connection_requires_explicit_user_confirmation(self) -> None:
+        async def run() -> None:
+            with self.assertRaises(ValueError):
+                await connect_imap_account(
+                    user="candidate@example.com",
+                    password="transient-password",
+                    provider="qq",
+                )
+            with self.assertRaises(ValueError):
+                await begin_gmail_oauth("http://localhost:7410/email")
+
+        asyncio.run(run())
+
     def test_expired_gmail_history_recovers_with_full_backfill_cursor(self) -> None:
         async def run() -> tuple[list[dict], dict, dict]:
             with patch(
@@ -191,7 +248,6 @@ class EmailIncrementalSyncTests(unittest.TestCase):
 
     def test_success_advances_cursor_and_duplicate_poll_does_not_duplicate_signal(self) -> None:
         async def run() -> tuple[dict, dict, int, ExternalProgressSignal, dict]:
-            await init_db()
             account = await _gmail_account(
                 {"type": "gmail_history", "history_id": "100"}
             )
@@ -245,7 +301,6 @@ class EmailIncrementalSyncTests(unittest.TestCase):
 
     def test_failed_ingest_does_not_advance_cursor(self) -> None:
         async def run() -> tuple[dict, EmailSyncRun]:
-            await init_db()
             account = await _gmail_account(
                 {"type": "gmail_history", "history_id": "300"}
             )
@@ -289,7 +344,6 @@ class EmailIncrementalSyncTests(unittest.TestCase):
 
     def test_revoke_deletes_keychain_secret_and_invalidates_unconfirmed_signal(self) -> None:
         async def run() -> tuple[dict, EmailAccount, ExternalProgressSignal, ApplicationProgressCandidate]:
-            await init_db()
             account = await _gmail_account(
                 {"type": "gmail_history", "history_id": "400"}
             )
@@ -345,8 +399,16 @@ class EmailIncrementalSyncTests(unittest.TestCase):
         self.assertEqual(account.credential_ref, "")
         self.assertEqual(account.sync_cursor_json, {})
         self.assertEqual(signal.status, "invalidated")
+        self.assertTrue(signal.external_message_id.startswith("revoked:"))
+        self.assertEqual(signal.external_thread_id, "")
+        self.assertEqual(signal.sender, "")
+        self.assertEqual(signal.subject, "")
         self.assertEqual(signal.snippet, "")
+        self.assertEqual(signal.body_sha256, "")
+        self.assertEqual(signal.classification_json, {})
         self.assertEqual(candidate.status, "invalidated")
+        self.assertEqual(candidate.match_candidates_json, [])
+        self.assertEqual(candidate.reasons_json, [])
 
 
 if __name__ == "__main__":

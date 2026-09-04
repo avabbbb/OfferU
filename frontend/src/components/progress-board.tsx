@@ -30,6 +30,7 @@ import {
   useProgressBoard,
   useProgressTimeline,
 } from "@/lib/hooks";
+import { safeClientErrorMessage } from "@/lib/safe-error";
 
 const STAGE_LABELS: Record<string, string> = {
   saved: "已保存",
@@ -137,10 +138,12 @@ function UnlinkedCandidateCard({
       await onReviewed();
       const eventWarning = result.workspace_record?.event_warning;
       if (eventWarning) {
-        window.alert(`进展已确认，但工作区事件日志写入失败：${eventWarning}`);
+        window.alert(
+          `进展已确认，但工作区事件日志写入失败：${safeClientErrorMessage(eventWarning, "请稍后检查时间线。")}`,
+        );
       }
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : "审核失败");
+      window.alert(safeClientErrorMessage(error, "审核失败"));
     } finally {
       setReviewing(false);
     }
@@ -319,10 +322,12 @@ function RecordTimeline({
       await onReviewed();
       const eventWarning = result.workspace_record?.event_warning;
       if (eventWarning) {
-        window.alert(`进展已确认，但工作区事件日志写入失败：${eventWarning}`);
+        window.alert(
+          `进展已确认，但工作区事件日志写入失败：${safeClientErrorMessage(eventWarning, "请稍后检查时间线。")}`,
+        );
       }
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : "审核失败");
+      window.alert(safeClientErrorMessage(error, "审核失败"));
     } finally {
       setReviewing(null);
     }

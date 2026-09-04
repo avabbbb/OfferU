@@ -19,6 +19,7 @@ from app.database import async_session
 from app.models.models import JobResearchRun
 from app.services import job_research
 from app.services.job_research import start_job_research
+from app.services.security_redaction import safe_error_message
 
 JOB_ID = 6
 RUNTIME_ID = "claude"
@@ -43,7 +44,7 @@ async def main() -> None:
         except asyncio.TimeoutError:
             print("TASK_TIMEOUT", flush=True)
         except Exception as exc:  # noqa: BLE001
-            print("TASK_EXC=" + str(exc)[:500], flush=True)
+            print("TASK_EXC=" + safe_error_message(exc), flush=True)
     else:
         print("NO_LIVE_TASK", flush=True)
 

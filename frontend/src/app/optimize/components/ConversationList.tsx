@@ -9,6 +9,7 @@ import {
   fetchOptimizeSessions,
   deleteOptimizeSession,
 } from "@/lib/hooks";
+import { safeClientErrorMessage } from "@/lib/safe-error";
 
 interface ConversationListProps {
   onSelect: (sessionId: string) => void;
@@ -69,7 +70,7 @@ export function ConversationList({ onSelect, onClose }: ConversationListProps) {
       const data = await fetchOptimizeSessions();
       setSessions(Array.isArray(data) ? data : []);
     } catch (err: any) {
-      setError(err.message || "加载失败");
+      setError(safeClientErrorMessage(err, "加载失败"));
     } finally {
       setLoading(false);
     }
@@ -87,7 +88,7 @@ export function ConversationList({ onSelect, onClose }: ConversationListProps) {
       await deleteOptimizeSession(sessionId);
       setSessions((prev) => prev.filter((s) => s.session_id !== sessionId));
     } catch (err: any) {
-      setDeleteError(err.message || "删除失败");
+      setDeleteError(safeClientErrorMessage(err, "删除失败"));
     } finally {
       setDeleting(null);
     }

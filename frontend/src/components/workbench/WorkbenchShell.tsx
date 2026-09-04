@@ -13,6 +13,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, Bot } from "lucide-react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { WorkbenchProvider, useWorkbench } from "@/lib/workbench";
+import { resolveApiBase } from "@/lib/apiBase";
 
 const ContextRail = lazy(() =>
   import("./ContextRail").then((module) => ({ default: module.ContextRail })),
@@ -40,11 +41,7 @@ const FOCUS_RULES: FocusRule[] = [
   { pattern: /^\/interview\/pose(\/|$)/, backHref: "/interview", backLabel: "返回面试" },
 ];
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ||
-  (typeof window !== "undefined"
-    ? `${window.location.protocol}//${window.location.hostname}:8765`
-    : "http://127.0.0.1:8765");
+const API_BASE = resolveApiBase();
 
 function FocusTopBar({ rule }: { rule: FocusRule }) {
   const [agentOpen, setAgentOpen] = useState(false);
@@ -135,9 +132,10 @@ function WorkbenchFrame({ children }: { children: React.ReactNode }) {
             ...agentContext,
           },
           reported_at: new Date().toISOString(),
-        },
-        updated_by: "ui",
-      }),
+          },
+          updated_by: "ui",
+        }),
+      redirect: "error",
       signal: controller.signal,
     }).catch(() => {
       // 上下文同步失败不能阻塞本地编辑。

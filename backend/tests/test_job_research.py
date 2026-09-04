@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import copy
 import os
 from pathlib import Path
 import sys
+import tempfile
 import unittest
+from unittest.mock import patch
+
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 os.chdir(BACKEND_DIR)
@@ -12,7 +17,10 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from app.ops import OPERATIONS
+from app.database import Base
+from app.models.models import Job, JobResearchRun, ResearchDossier
 from app.services.agent_skill_registry import resolve_skill
+from app.services import job_research
 from app.services.job_research import _build_report, _validated_research_result
 
 
@@ -155,6 +163,88 @@ class JobResearchValidationTests(unittest.TestCase):
         self.assertIn("corroborated", report)
         self.assertIn("匿名简历表达模式", report)
         self.assertNotIn("full candidate resume", report)
+
+    def test_backend_search_runtime_is_bounded_and_not_a_cli_provider(self) -> None:
+        runtime = job_research._backend_search_runtime()
+
+        self.assertEqual(runtime["id"], "backend_search")
+        self.assertEqual(runtime["version"], "backend-search-v1")
+        self.assertEqual(runtime["protocol"], "offeru-public-web-http-v1")
+        self.assertEqual(job_research._backend_search_page_limit(99), 8)
+        self.assertEqual(job_research._backend_search_page_limit(0), 1)
+        with self.assertRaises(ValueError):
+            job_research._backend_search_page_limit("not-a-number")
+
+    def test_failed_research_run_persists_bounded_error_id(self) -> None:
+        async def flow(database_path: Path) -> dict:
+            engine = create_async_engine(
+                f"sqlite+aiosqlite:///{database_path.as_posix()}",
+                connect_args={"timeout": 30},
+            )
+            session = async_sessionmaker(engine, expire_on_commit=False)
+            try:
+                async with engine.begin() as connection:
+                    await connection.run_sync(Base.metadata.create_all)
+                async with session() as db:
+                    job = Job(
+                        title="Research Failure Role",
+                        company="Research Failure Co",
+                        source="fixture",
+                        raw_description="A research failure fixture role.",
+                        hash_key="job-research-validation-failure-id",
+                    )
+                    db.add(job)
+                    await db.flush()
+                    company_dossier = ResearchDossier(
+                        dossier_key="company:research-validation-failure",
+                        dossier_type="company",
+                        company_name="Research Failure Co",
+                    )
+                    db.add(company_dossier)
+                    await db.flush()
+                    role_dossier = ResearchDossier(
+                        dossier_key="role:research-validation-failure",
+                        dossier_type="role",
+                        company_name="Research Failure Co",
+                        job_id=job.id,
+                        parent_dossier_id=company_dossier.id,
+                    )
+                    db.add(role_dossier)
+                    await db.flush()
+                    db.add(
+                        JobResearchRun(
+                            run_id="job_research_validation_failure",
+                            job_id=job.id,
+                            company_dossier_id=company_dossier.id,
+                            role_dossier_id=role_dossier.id,
+                            runtime_id="replay",
+                            status="running",
+                        )
+                    )
+                    await db.commit()
+                with patch.object(job_research, "async_session", session):
+                    await job_research._mark_run_status(
+                        "job_research_validation_failure",
+                        "failed",
+                        "research failed api_token=not-a-real-secret",
+                    )
+                    async with session() as db:
+                        row = await db.get(
+                            JobResearchRun,
+                            "job_research_validation_failure",
+                        )
+                assert row is not None
+                return job_research._run_summary(row)
+            finally:
+                await engine.dispose()
+
+        with tempfile.TemporaryDirectory() as directory:
+            result = asyncio.run(
+                flow(Path(directory) / "job-research-failure-id.db")
+            )
+        self.assertEqual(result["status"], "failed")
+        self.assertRegex(result["error_id"], r"^err_[0-9a-f]{16}$")
+        self.assertNotIn("api_token=not-a-real-secret", result["error"] or "")
 
     def test_operations_and_skill_share_the_same_research_boundary(self) -> None:
         operation_names = {

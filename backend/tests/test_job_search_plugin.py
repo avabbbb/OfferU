@@ -120,6 +120,23 @@ class JobSearchPluginTests(unittest.TestCase):
             self.assertNotIn("irreversible", capability["side_effects"])
         self.assertEqual(manifest["permissions"]["externalWrite"], "deny")
 
+    def test_job_document_drops_non_public_source_urls(self) -> None:
+        payload = {"role_family": "product_manager", "specialization": "ai_agent"}
+        row = _row(
+            "private-url",
+            "Senior AI Product Manager",
+            "Alpha AI",
+            "Required: own AI agent workflow and model evaluation for developers.",
+        )
+        for url in (
+            "http://127.0.0.1:8080/model",
+            "http://localhost/jobs/private",
+            "file:///C:/secret.txt",
+            "https://user:password@example.com/jobs/private",
+        ):
+            row["url"] = url
+            self.assertEqual(self.cli._job_document(row, payload)["url"], "")
+
     def test_plugin_install_discovery_skill_and_uninstall_lifecycle(self) -> None:
         if str(BACKEND_DIR) not in sys.path:
             sys.path.insert(0, str(BACKEND_DIR))

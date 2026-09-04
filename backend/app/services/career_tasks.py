@@ -16,16 +16,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 
 from app.database import async_session
 from app.models.models import CareerTask, CareerTaskEvent
 from app.services.security_redaction import (
-    redact_secret_text,
     redact_secret_value,
+    redact_sensitive_text,
     safe_error_message,
 )
+from app.services.diagnostics import new_error_id, record_error
 
 TASK_STATUSES = {
     "queued",
@@ -82,7 +83,31 @@ def _is_provider_blocked(value: Any) -> bool:
     return any(marker in text for marker in ("401", "unauthorized", "invalid_api_key", "authentication"))
 
 
+def _record_task_error(
+    task_id: str,
+    *,
+    message: Any,
+    provider_id: str = "",
+    run_id: str = "",
+    kind: str = "career_task",
+) -> str:
+    error_id = new_error_id()
+    record_error(
+        error_id,
+        method="TASK",
+        path=f"/api/agent/runtime/career-tasks/{task_id}",
+        status_code=503 if kind in {"task_restart", "provider_blocked"} else 500,
+        kind=kind,
+        message=message,
+        task_id=task_id,
+        run_id=run_id,
+        provider_id=provider_id,
+    )
+    return error_id
+
+
 def _task_view(row: CareerTask) -> dict[str, Any]:
+    progress = row.progress_json if isinstance(row.progress_json, dict) else {}
     return {
         "task_id": row.task_id,
         "task_type": row.task_type,
@@ -93,14 +118,15 @@ def _task_view(row: CareerTask) -> dict[str, Any]:
         "input": redact_secret_value(row.input_json if isinstance(row.input_json, dict) else {}),
         "output_contract": redact_secret_value(row.output_contract_json if isinstance(row.output_contract_json, dict) else {}),
         "status": row.status,
-        "progress": redact_secret_value(row.progress_json if isinstance(row.progress_json, dict) else {}),
+        "progress": redact_secret_value(progress),
+        "error_id": str(progress.get("error_id") or "")[:40],
         "agent_thread_id": row.agent_thread_id or "",
         "agent_turn_id": row.agent_turn_id or "",
         "run_id": row.run_id or "",
         "result_ref": row.result_ref or "",
         "result": redact_secret_value(row.result_json if isinstance(row.result_json, dict) else {}),
         "checkpoint": redact_secret_value(row.checkpoint_json if isinstance(row.checkpoint_json, dict) else {}),
-        "error": redact_secret_text(row.error or "", max_length=2000),
+        "error": redact_sensitive_text(row.error or "", max_length=2000),
         "retryable": bool(row.retryable),
         "attempt_count": int(row.attempt_count or 0),
         "max_attempts": int(row.max_attempts or 0),
@@ -115,15 +141,54 @@ def _task_lock(task_id: str) -> asyncio.Lock:
     return _TASK_LOCKS.setdefault(task_id, asyncio.Lock())
 
 
+async def _claim_task(task_id: str) -> dict[str, Any] | None:
+    """Atomically claim a queued task across backend processes.
+
+    The in-process task map prevents duplicate scheduling inside one event
+    loop, but it cannot coordinate two local backend processes.  The durable
+    queued -> running transition is therefore the execution lease: exactly
+    one process may increment the attempt counter and run the provider.
+    """
+
+    async with async_session() as db:
+        result = await db.execute(
+            update(CareerTask)
+            .where(CareerTask.task_id == str(task_id or ""))
+            .where(CareerTask.status == "queued")
+            .values(
+                status="running",
+                attempt_count=CareerTask.attempt_count + 1,
+                started_at=_utc_now(),
+                finished_at=None,
+                next_retry_at=None,
+                error="",
+                progress_json={"stage": "running", "percent": 10},
+            )
+        )
+        if int(result.rowcount or 0) != 1:
+            await db.rollback()
+            return None
+        await db.commit()
+        row = await db.get(CareerTask, str(task_id or ""))
+        return _task_view(row) if row is not None else None
+
+
 async def _notify_automation(task_id: str) -> None:
     try:
         from app.services.automation import handle_career_task_finished
 
         await handle_career_task_finished(task_id)
-    except Exception:
-        # A notification projection must never turn a completed task into a
-        # false failure; the task and its primary result remain authoritative.
-        return
+    except Exception as exc:
+        # A projection failure must not rewrite the completed task, but it
+        # must remain visible on the AutomationEvent/Inbox control surface.
+        try:
+            from app.services.automation import handle_career_task_projection_failure
+
+            await handle_career_task_projection_failure(task_id, exc)
+        except Exception:
+            # Failure reporting is best effort and must not change the task's
+            # already-persisted Career Truth.
+            return
 
 
 async def _append_event(
@@ -173,7 +238,7 @@ async def _update_task(task_id: str, **values: Any) -> dict[str, Any]:
                     }:
                         value = redact_secret_value(value)
                     elif key == "error":
-                        value = redact_secret_text(value or "", max_length=2000)
+                        value = redact_sensitive_text(value or "", max_length=2000)
                     setattr(row, key, value)
             await db.commit()
             await db.refresh(row)
@@ -246,6 +311,7 @@ async def get_career_task_result(task_id: str) -> dict[str, Any]:
         "result": task["result"],
         "result_ref": task["result_ref"],
         "error": task["error"],
+        "error_id": task["error_id"],
         "retryable": task["retryable"],
     }
 
@@ -564,19 +630,12 @@ async def _complete_task(task_id: str, result: dict[str, Any]) -> dict[str, Any]
 
 
 async def _run_task(task_id: str) -> None:
-    task = await get_career_task(task_id)
-    if task["status"] == "cancelled":
+    task = await _claim_task(task_id)
+    if task is None:
+        # Another process either claimed the task or moved it to a terminal
+        # state.  It owns execution and durable completion.
         return
     try:
-        task = await _update_task(
-            task_id,
-            status="running",
-            attempt_count=int(task["attempt_count"]) + 1,
-            started_at=_utc_now(),
-            finished_at=None,
-            error="",
-            progress_json={"stage": "running", "percent": 10},
-        )
         await _append_event(task_id, "task.started", {"attempt": task["attempt_count"]})
         if task["task_type"] == "agent_turn":
             result = await _run_agent_turn(task)
@@ -598,34 +657,61 @@ async def _run_task(task_id: str) -> None:
         await _notify_automation(task_id)
     except asyncio.CancelledError:
         current = await get_career_task(task_id)
-        if current["status"] != "cancelled":
+        if current["status"] not in TERMINAL_STATUSES:
+            error_message = "任务被运行环境中断；未自动重放外部副作用"
+            error_id = _record_task_error(
+                task_id,
+                message=error_message,
+                provider_id=current.get("runtime_provider") or "",
+                run_id=current.get("run_id") or "",
+                kind="task_cancelled",
+            )
             await _update_task(
                 task_id,
                 status="blocked",
-                error="任务被运行环境中断；未自动重放外部副作用",
+                error=error_message,
                 retryable=True,
                 finished_at=_utc_now(),
-                progress_json={"stage": "blocked", "percent": 0},
+                progress_json={"stage": "blocked", "percent": 0, "error_id": error_id},
             )
-            await _append_event(task_id, "task.blocked", {"reason": "cancelled_by_runtime"})
+            await _append_event(
+                task_id,
+                "task.blocked",
+                {"reason": "cancelled_by_runtime", "error_id": error_id},
+            )
         raise
     except Exception as exc:  # noqa: BLE001 - persisted task failure is explicit
         blocked = _is_provider_blocked(exc)
         current = await get_career_task(task_id)
         if current["status"] == "cancelled":
             return
+        error_message = "provider authentication failed" if blocked else _safe_error(exc)
+        error_id = _record_task_error(
+            task_id,
+            message=error_message,
+            provider_id=current.get("runtime_provider") or "",
+            run_id=current.get("run_id") or "",
+            kind="provider_blocked" if blocked else "career_task",
+        )
         await _update_task(
             task_id,
             status="blocked" if blocked else "failed",
-            error="provider authentication failed" if blocked else _safe_error(exc),
+            error=error_message,
             retryable=bool(blocked or current["attempt_count"] < current["max_attempts"]),
             finished_at=_utc_now(),
-            progress_json={"stage": "blocked" if blocked else "failed", "percent": 0},
+            progress_json={
+                "stage": "blocked" if blocked else "failed",
+                "percent": 0,
+                "error_id": error_id,
+            },
         )
         await _append_event(
             task_id,
             "task.blocked" if blocked else "task.failed",
-            {"retryable": bool(blocked or current["attempt_count"] < current["max_attempts"])},
+            {
+                "retryable": bool(blocked or current["attempt_count"] < current["max_attempts"]),
+                "error_id": error_id,
+            },
         )
         await _notify_automation(task_id)
 
@@ -640,16 +726,31 @@ async def cancel_career_task(task_id: str) -> dict[str, Any]:
             if row.status in TERMINAL_STATUSES:
                 return {**_task_view(row), "reused": True}
             progress = row.progress_json if isinstance(row.progress_json, dict) else {}
-            row.status = "cancelled"
-            row.retryable = False
-            row.finished_at = _utc_now()
-            row.progress_json = {
-                "stage": "cancelled",
-                "percent": progress.get("percent", 0),
-            }
+            result = await db.execute(
+                update(CareerTask)
+                .where(CareerTask.task_id == task_key)
+                .where(~CareerTask.status.in_(TERMINAL_STATUSES))
+                .values(
+                    status="cancelled",
+                    retryable=False,
+                    finished_at=_utc_now(),
+                    progress_json={
+                        "stage": "cancelled",
+                        "percent": progress.get("percent", 0),
+                    },
+                )
+            )
+            if int(result.rowcount or 0) != 1:
+                await db.rollback()
+                latest = await db.get(CareerTask, task_key)
+                if latest is None:
+                    raise ValueError(f"CareerTask {task_key} 不存在")
+                return {**_task_view(latest), "reused": True}
             await db.commit()
-            await db.refresh(row)
-            cancelled = _task_view(row)
+            cancelled_row = await db.get(CareerTask, task_key)
+            if cancelled_row is None:
+                raise ValueError(f"CareerTask {task_key} 不存在")
+            cancelled = _task_view(cancelled_row)
     worker = _LIVE_TASKS.get(task_key)
     if worker is not None and not worker.done():
         worker.cancel()
@@ -673,13 +774,39 @@ async def retry_career_task(task_id: str) -> dict[str, Any]:
                 raise ValueError("该 CareerTask 不允许 retry")
             if current["attempt_count"] >= current["max_attempts"]:
                 raise ValueError("CareerTask 已达到最大 retry 次数")
-            row.status = "queued"
-            row.error = ""
-            row.finished_at = None
-            row.progress_json = {"stage": "queued", "percent": 0}
+            result = await db.execute(
+                update(CareerTask)
+                .where(CareerTask.task_id == task_key)
+                .where(CareerTask.status.in_(("failed", "blocked")))
+                .where(CareerTask.retryable.is_(True))
+                .where(CareerTask.attempt_count < CareerTask.max_attempts)
+                .values(
+                    status="queued",
+                    error="",
+                    finished_at=None,
+                    next_retry_at=None,
+                    progress_json={"stage": "queued", "percent": 0},
+                )
+            )
+            if int(result.rowcount or 0) != 1:
+                await db.rollback()
+                latest = await db.get(CareerTask, task_key)
+                if latest is None:
+                    raise ValueError(f"CareerTask {task_key} 不存在")
+                latest_view = _task_view(latest)
+                if latest_view["status"] in {
+                    "queued",
+                    "running",
+                    "waiting_for_approval",
+                    "completed",
+                }:
+                    return {**latest_view, "reused": True}
+                raise ValueError("该 CareerTask 已被其他进程处理，无法重复 retry")
             await db.commit()
-            await db.refresh(row)
-            queued = _task_view(row)
+            queued_row = await db.get(CareerTask, task_key)
+            if queued_row is None:
+                raise ValueError(f"CareerTask {task_key} 不存在")
+            queued = _task_view(queued_row)
     await _append_event(task_key, "task.retry_requested", {"attempt": current["attempt_count"] + 1})
     _schedule(task_key)
     return {**queued, "reused": False}
@@ -703,11 +830,23 @@ async def recover_career_tasks() -> dict[str, Any]:
         ).scalars().all()
         for row in rows:
             if row.status == "running":
+                error_message = "OfferU backend restarted while task was running"
+                error_id = _record_task_error(
+                    row.task_id,
+                    message=error_message,
+                    provider_id=row.runtime_provider or "",
+                    run_id=row.run_id or "",
+                    kind="task_restart",
+                )
                 row.status = "blocked"
-                row.error = "OfferU backend restarted while task was running"
+                row.error = error_message
                 row.retryable = True
                 row.finished_at = _utc_now()
-                row.progress_json = {"stage": "blocked", "percent": 0}
+                row.progress_json = {
+                    "stage": "blocked",
+                    "percent": 0,
+                    "error_id": error_id,
+                }
                 recovered += 1
             elif row.status == "waiting_for_approval":
                 waiting += 1
@@ -716,7 +855,15 @@ async def recover_career_tasks() -> dict[str, Any]:
         await db.commit()
     for row in rows:
         if row.status == "blocked":
-            await _append_event(row.task_id, "task.blocked", {"reason": "backend_restart"})
+            progress = row.progress_json if isinstance(row.progress_json, dict) else {}
+            await _append_event(
+                row.task_id,
+                "task.blocked",
+                {
+                    "reason": "backend_restart",
+                    "error_id": str(progress.get("error_id") or "")[:40],
+                },
+            )
         elif row.status == "queued":
             await _append_event(row.task_id, "task.recovered", {"reason": "backend_restart"})
             _schedule(row.task_id)

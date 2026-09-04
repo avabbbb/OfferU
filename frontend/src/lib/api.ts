@@ -7,12 +7,32 @@
 
 import { SHOWCASE, showcaseHandle } from "./showcase/router";
 import { showcaseChatResponse } from "./showcase/llm";
+import { resolveApiBase } from "./apiBase";
+import { safeClientErrorMessage } from "./safe-error";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ||
-  (typeof window !== "undefined"
-    ? `${window.location.protocol}//${window.location.hostname}:8765`
-    : "http://127.0.0.1:8765");
+const API_BASE = resolveApiBase();
+
+export function dataModeLabel(mode?: unknown): string {
+  switch (String(mode || "").trim().toLowerCase()) {
+    case "fixture":
+      return "Fixture benchmark";
+    case "fixture_plugin":
+      return "Fixture Plugin";
+    case "live":
+      return "Live benchmark";
+    case "live_backend":
+      return "受控后端检索";
+    case "live_plugin":
+      return "Live Plugin";
+    default:
+      return "未验证数据模式";
+  }
+}
+
+export function isFixtureDataMode(mode?: unknown): boolean {
+  const value = String(mode || "").trim().toLowerCase();
+  return value === "fixture" || value === "fixture_plugin";
+}
 
 function buildQuery(params?: Record<string, unknown>) {
   const sp = new URLSearchParams();
@@ -35,16 +55,16 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     res = await fetch(`${API_BASE}${path}`, {
       headers: { "Content-Type": "application/json" },
       ...options,
+      redirect: "error",
     });
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    throw new Error(`无法连接本地后端 ${API_BASE}，请确认后端服务已启动。原始错误：${reason}`);
+  } catch {
+    throw new Error("无法连接本地后端，请确认 8765 服务已启动。");
   }
   if (!res.ok) {
     const payload = await res.json().catch(() => ({}));
     const detail = payload?.detail || payload?.message;
     const errorId = res.headers.get("X-OfferU-Error-Id") || payload?.error_id;
-    const message = detail ? String(detail) : `API Error: ${res.status}`;
+    const message = safeClientErrorMessage(detail, `API Error: ${res.status}`);
     throw new Error(errorId ? `${message}（错误 ID: ${errorId}）` : message);
   }
   return res.json();
@@ -63,6 +83,7 @@ async function readEventStream<T>(
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers: { Accept: "text/event-stream", ...options.headers },
+    redirect: "error",
   });
   if (
     (res.status === 404 || res.status === 405)
@@ -96,7 +117,10 @@ async function readEventStream<T>(
     onEvent?.(event, data);
     if (event === "message" && data?.response) result = data.response as T;
     if (event === "error") {
-      const message = data?.error || data?.content || "Agent 流式请求失败";
+      const message = safeClientErrorMessage(
+        data?.error || data?.content,
+        "Agent 流式请求失败",
+      );
       const errorId = data?.error_id;
       throw new Error(errorId ? `${message}（错误 ID: ${errorId}）` : message);
     }
@@ -230,6 +254,7 @@ export const resumeApi = {
     const res = await fetch(`${API_BASE}/api/resume/${resumeId}/photo`, {
       method: "POST",
       body: formData,
+      redirect: "error",
     });
     if (!res.ok) throw new Error(`API Error: ${res.status}`);
     return res.json();
@@ -237,7 +262,7 @@ export const resumeApi = {
 
   // 导出
   exportPdf: (id: number) =>
-    fetch(`${API_BASE}/api/resume/${id}/export/pdf`, { method: "POST" }),
+    fetch(`${API_BASE}/api/resume/${id}/export/pdf`, { method: "POST", redirect: "error" }),
 
   exportPdfUrl: (id: number) => `${API_BASE}/api/resume/${id}/export/pdf`,
 
@@ -599,6 +624,7 @@ export interface JobResearchRunSummary {
   source_count: number;
   finding_count: number;
   error?: string | null;
+  error_id?: string | null;
   created_at: string;
   updated_at: string;
   started_at?: string | null;
@@ -778,6 +804,7 @@ export interface RoleBenchmarkSummary {
   benchmark_status?: "READY" | "INSUFFICIENT_SAMPLE" | "BLOCKED_EXTERNAL" | string;
   sample_sufficient?: boolean;
   last_error?: string | null;
+  error_id?: string | null;
   provider_blocked?: boolean;
   latest_attempt?: RoleBenchmarkSummary | null;
   attempts?: number;
@@ -869,6 +896,7 @@ export interface PreApplicationState {
     finding_count?: number;
     source_count?: number;
     error?: string;
+    error_id?: string;
     attempts?: number;
   } | null;
   stale_decision_id?: string | null;
@@ -1192,6 +1220,17 @@ export interface DataSafetyStatus {
   storage_mode: "managed_local" | string;
 }
 
+export interface PrivacyHygieneStatus {
+  schema_version: string;
+  status: "attention_required" | "clear" | string;
+  legacy_email_notification_bodies: {
+    records: number;
+    characters: number;
+  };
+  synthetic_email_test_data: Record<string, number>;
+  safe_to_publish: boolean;
+}
+
 export interface DataIntegrityReport {
   status: "ok" | "failed" | string;
   integrity_check: string[];
@@ -1234,6 +1273,11 @@ export interface DiagnosticBundle {
     storage_mode: string;
     foreign_key_violation_count: number;
   };
+  startup_recovery: {
+    status: string;
+    checks: Record<string, { status: string; error_id?: string }>;
+    failed_checks: string[];
+  };
   agent_providers: {
     provider_id: string;
     status: string;
@@ -1247,6 +1291,59 @@ export interface DiagnosticBundle {
     last_error: string;
     checked_at: string;
   }[];
+  durable_failures:
+    | {
+        status: string;
+        career_tasks: {
+          task_id: string;
+          task_type: string;
+          status: string;
+          runtime_provider: string;
+          run_id: string;
+          error_id: string;
+          error: string;
+          retryable: boolean;
+          attempt_count: number;
+          updated_at: string;
+          finished_at: string;
+        }[];
+        automation_events: {
+          event_id: string;
+          event_type: string;
+          status: string;
+          error_id: string;
+          error: string;
+          created_at: string;
+          processed_at: string;
+        }[];
+        role_benchmarks: {
+          run_id: string;
+          status: string;
+          runtime_id: string;
+          error_id: string;
+          error: string;
+          attempts: number;
+          updated_at: string;
+          completed_at: string;
+        }[];
+        job_research: {
+          run_id: string;
+          status: string;
+          runtime_id: string;
+          error_id: string;
+          error: string;
+          attempts: number;
+          updated_at: string;
+          completed_at: string;
+        }[];
+        counts: {
+          career_tasks: number;
+          automation_events: number;
+          role_benchmarks: number;
+          job_research: number;
+        };
+      }
+    | { status: string; error: string };
   recent_errors: {
     error_id: string;
     occurred_at: string;
@@ -1255,6 +1352,10 @@ export interface DiagnosticBundle {
     status_code: number;
     kind: string;
     message: string;
+    run_id?: string;
+    task_id?: string;
+    operation_id?: string;
+    provider_id?: string;
   }[];
   privacy: Record<string, boolean | string>;
 }
@@ -1274,6 +1375,23 @@ export const dataSafetyApi = {
       body: JSON.stringify({ confirmed }),
     }),
   status: () => request<DataSafetyStatus>("/api/agent/data/safety/status"),
+  privacyHygieneStatus: () => request<PrivacyHygieneStatus>("/api/agent/data/privacy-hygiene"),
+  scrubLegacyEmailBodies: (confirmed: boolean) =>
+    request<{
+      scrubbed_records: number;
+      status: PrivacyHygieneStatus;
+    }>("/api/agent/data/privacy-hygiene/scrub", {
+      method: "POST",
+      body: JSON.stringify({ confirmed }),
+    }),
+  purgeSyntheticEmailTestData: (confirmed: boolean) =>
+    request<{
+      purged: Record<string, number>;
+      status: Record<string, number>;
+    }>("/api/agent/data/privacy-hygiene/purge-synthetic", {
+      method: "POST",
+      body: JSON.stringify({ confirmed }),
+    }),
   checkIntegrity: () => request<DataIntegrityReport>("/api/agent/data/safety/integrity"),
   listBackups: () => request<DataBackupList>("/api/agent/data/backups"),
   createBackup: () => request<DataBackupItem & { archive_sha256: string }>("/api/agent/data/backups", {
@@ -1372,6 +1490,7 @@ export const profileApi = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
+      redirect: "error",
     });
     if (!res.ok) throw new Error(`API Error: ${res.status}`);
     return res;
@@ -1384,6 +1503,7 @@ export const profileApi = {
     const res = await fetch(`${API_BASE}/api/profile/import-resume?${params.toString()}`, {
       method: "POST",
       body: formData,
+      redirect: "error",
     });
     if (!res.ok) throw new Error(`API Error: ${res.status}`);
     return res.json();
@@ -1421,6 +1541,7 @@ export const profileApi = {
     const res = await fetch(`${API_BASE}/api/profile/agent/start`, {
       method: "POST",
       body: formData,
+      redirect: "error",
     });
     if (!res.ok) throw new Error(`API Error: ${res.status}`);
     return res.json();

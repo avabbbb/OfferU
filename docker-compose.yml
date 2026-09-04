@@ -13,7 +13,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${DB_USER:-offeru}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-QX7OeA7bzp0m07u03m18CJUMXRY9Y1OZ}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env before starting Docker Compose}
       POSTGRES_DB: ${DB_NAME:-offeru}
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -33,7 +33,7 @@ services:
     container_name: offeru-backend
     restart: unless-stopped
     environment:
-      - DATABASE_URL=postgresql+asyncpg://${DB_USER:-offeru}:${DB_PASSWORD:-QX7OeA7bzp0m07u03m18CJUMXRY9Y1OZ}@db:5432/${DB_NAME:-offeru}
+      - DATABASE_URL=postgresql+asyncpg://${DB_USER:-offeru}:${DB_PASSWORD:?Set DB_PASSWORD in .env before starting Docker Compose}@db:5432/${DB_NAME:-offeru}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
       - QWEN_API_KEY=${QWEN_API_KEY:-}
@@ -41,11 +41,11 @@ services:
       - APIFY_API_KEY=${APIFY_API_KEY:-}
       - LLM_PROVIDER=${LLM_PROVIDER:-qwen}
       - LLM_MODEL=${LLM_MODEL:-qwen-flash}
-      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
-      - CORS_ORIGINS=http://localhost:3011,http://127.0.0.1:3011
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app
+      - SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY in .env before starting Docker Compose}
+      - CORS_ORIGINS=http://localhost:7410,http://127.0.0.1:7410
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8765 --reload --reload-dir /app
     ports:
-      - "9000:8000"
+      - "8765:8765"
     depends_on:
       db:
         condition: service_healthy
@@ -61,11 +61,11 @@ services:
     container_name: offeru-frontend
     restart: unless-stopped
     environment:
-      - VITE_API_URL=http://127.0.0.1:9000
+      - VITE_API_URL=http://127.0.0.1:8765
       - CHOKIDAR_USEPOLLING=true
     command: npm run dev -- --host 0.0.0.0
     ports:
-      - "3011:3300"
+      - "7410:7410"
     depends_on:
       - backend
     volumes:

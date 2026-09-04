@@ -19,6 +19,7 @@ import {
   buildProfileBaseInfoForSave,
 } from "@/lib/personalArchive";
 import { updateProfileData, useProfile, type ProfileImportResult } from "@/lib/hooks";
+import { safeClientErrorMessage } from "@/lib/safe-error";
 import ArchiveIntroCard from "./components/archive/ArchiveIntroCard";
 import ArchiveTabsHeader, {
   type ProfileArchiveView,
@@ -81,7 +82,7 @@ export default function ProfilePage() {
       await mutate();
       setNotice("档案已保存");
     } catch (err: any) {
-      setError(err.message || "保存失败");
+      setError(safeClientErrorMessage(err, "保存失败"));
     } finally {
       setSaving(false);
     }
@@ -150,7 +151,7 @@ export default function ProfilePage() {
       setArchive(nextArchive);
       setNotice(syncedPaths.length > 0 ? `已同步 ${syncedPaths.length} 个字段` : "无需同步");
     } catch (err: any) {
-      setError(err.message || "同步失败");
+      setError(safeClientErrorMessage(err, "同步失败"));
     } finally {
       setSyncing(false);
     }

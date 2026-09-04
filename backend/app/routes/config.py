@@ -31,11 +31,13 @@ from app.services.security_redaction import (
     redact_sensitive_value,
     safe_error_message,
 )
+from app.llm_config_store import save_llm_config_file
+from app.runtime_paths import runtime_config_file
 
 router = APIRouter()
 
 # backend/config.json
-_CONFIG_FILE = Path(__file__).resolve().parent.parent.parent / "config.json"
+_CONFIG_FILE = runtime_config_file()
 _DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
 _PLACEHOLDER_API_KEYS = {
     "sk-your-openai-key-here",
@@ -463,10 +465,7 @@ def _load_config() -> ConfigUpdate:
 
 
 def _save_config(cfg: ConfigUpdate) -> None:
-    _CONFIG_FILE.write_text(
-        json.dumps(cfg.model_dump(), ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    save_llm_config_file(cfg.model_dump())
 
 
 def _sync_runtime_settings(cfg: ConfigUpdate) -> None:
@@ -842,8 +841,14 @@ async def fetch_models(body: FetchModelsRequest):
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
 
+    safe_base_url = redact_sensitive_text(base_url, max_length=300)
+
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(
+            timeout=15.0,
+            follow_redirects=False,
+            trust_env=False,
+        ) as client:
             resp = await client.get(models_url, headers=headers)
 
         if resp.status_code != 200:
@@ -852,10 +857,11 @@ async def fetch_models(body: FetchModelsRequest):
                 err_msg = err_body.get("error", {}).get("message", "") or err_body.get("message", "")
             except Exception:
                 err_msg = resp.text[:200]
+            err_msg = redact_sensitive_text(err_msg, max_length=300)
             return {
                 "success": False,
                 "models": [],
-                "message": f"获取模型列表失败 ({resp.status_code}): {redact_sensitive_text(err_msg, max_length=300)}",
+                "message": f"获取模型列表失败 ({resp.status_code}): {err_msg}",
             }
 
         data = resp.json()
@@ -886,13 +892,13 @@ async def fetch_models(body: FetchModelsRequest):
         return {
             "success": False,
             "models": [],
-            "message": f"无法连接到 {redact_sensitive_text(base_url, max_length=300)}，请检查 Base URL 是否正确。",
+            "message": f"无法连接到 {safe_base_url}，请检查 Base URL 是否正确。",
         }
     except httpx.TimeoutException:
         return {
             "success": False,
             "models": [],
-            "message": f"连接超时 ({redact_sensitive_text(base_url, max_length=300)})，请检查网络。",
+            "message": f"连接超时 ({safe_base_url})，请检查网络。",
         }
     except Exception as exc:
         return {

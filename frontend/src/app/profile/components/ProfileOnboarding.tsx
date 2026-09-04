@@ -30,6 +30,7 @@ import {
   type ProfileImportResult,
   type ResumeImportParseMode,
 } from "@/lib/hooks";
+import { safeClientErrorMessage } from "@/lib/safe-error";
 import AIImportModal from "./AIImportModal";
 
 interface ProfileOnboardingProps {
@@ -367,7 +368,7 @@ export function ProfileOnboarding({ currentArchive, profile, onComplete, onClose
         );
       }
     } catch (err: any) {
-      setError(err.message || "导入失败，请改用手填经历。");
+      setError(safeClientErrorMessage(err, "导入失败，请改用手填经历。"));
     } finally {
       setImporting(null);
     }
@@ -389,7 +390,7 @@ export function ProfileOnboarding({ currentArchive, profile, onComplete, onClose
       });
       await onComplete(archive);
     } catch (err: any) {
-      setError(err.message || "保存失败，请稍后重试。");
+      setError(safeClientErrorMessage(err, "保存失败，请稍后重试。"));
     } finally {
       setSaving(false);
     }

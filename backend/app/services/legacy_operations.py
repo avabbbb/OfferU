@@ -7,6 +7,7 @@ behind the same Operation Registry used by the Agent, CLI, and MCP surfaces.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
@@ -44,6 +45,9 @@ from app.services.application_workspace import (
     update_settings,
     update_table_schema,
 )
+
+
+_LEGACY_APPLICATION_CREATE_LOCKS: dict[int, asyncio.Lock] = {}
 
 
 async def create_application_table(name: str) -> dict[str, Any]:
@@ -239,24 +243,40 @@ async def auto_write_application_job(job_id: int) -> dict[str, Any]:
 
 
 async def create_legacy_application(job_id: int, notes: str = "") -> dict[str, Any]:
-    async with async_session() as db:
-        job = (await db.execute(select(Job).where(Job.id == job_id))).scalar_one_or_none()
-        application = Application(
-            job_id=job_id,
-            apply_url=job.apply_url if job else "",
-            notes=notes,
-            status="pending",
-        )
-        db.add(application)
-        await db.commit()
-        await db.refresh(application)
+    lock = _LEGACY_APPLICATION_CREATE_LOCKS.setdefault(int(job_id), asyncio.Lock())
+    async with lock:
+        async with async_session() as db:
+            job = (await db.execute(select(Job).where(Job.id == job_id))).scalar_one_or_none()
+            existing = (
+                await db.execute(
+                    select(Application)
+                    .where(Application.job_id == job_id)
+                    .order_by(Application.id.asc())
+                )
+            ).scalars().first()
+            if existing is not None:
+                return {
+                    "id": existing.id,
+                    "message": "Application already exists",
+                    "duplicate": True,
+                }
 
-        try:
-            await auto_write_job_to_total(db, job_id=job_id)
-        except ValueError:
-            pass
+            application = Application(
+                job_id=job_id,
+                apply_url=job.apply_url if job else "",
+                notes=notes,
+                status="pending",
+            )
+            db.add(application)
+            await db.commit()
+            await db.refresh(application)
 
-        return {"id": application.id, "message": "Application created"}
+            try:
+                await auto_write_job_to_total(db, job_id=job_id)
+            except ValueError:
+                pass
+
+            return {"id": application.id, "message": "Application created", "duplicate": False}
 
 
 async def update_legacy_application(
@@ -272,17 +292,30 @@ async def update_legacy_application(
         if not application:
             raise ValueError("Application not found")
 
+        changed = False
         if status is not None:
-            application.status = status
-            if status == "submitted":
+            if application.status != status:
+                application.status = status
+                changed = True
+            if status == "submitted" and application.submitted_at is None:
                 application.submitted_at = datetime.utcnow()
+                changed = True
         if notes is not None:
-            application.notes = notes
+            if application.notes != notes:
+                application.notes = notes
+                changed = True
         if cover_letter is not None:
-            application.cover_letter = cover_letter
+            if application.cover_letter != cover_letter:
+                application.cover_letter = cover_letter
+                changed = True
 
-        await db.commit()
-        return {"id": application.id, "message": "Updated"}
+        if changed:
+            await db.commit()
+        return {
+            "id": application.id,
+            "message": "Updated" if changed else "Already up to date",
+            "duplicate": not changed,
+        }
 
 
 async def create_calendar_event(

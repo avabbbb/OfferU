@@ -408,6 +408,52 @@ asyncio.run(main())
             "provider authentication failed",
         )
 
+    def test_failed_role_benchmark_persists_bounded_error_id(self) -> None:
+        async def flow(database_path: Path) -> dict:
+            engine = create_async_engine(f"sqlite+aiosqlite:///{database_path.as_posix()}")
+            session = async_sessionmaker(engine, expire_on_commit=False)
+            try:
+                async with engine.begin() as connection:
+                    await connection.run_sync(Base.metadata.create_all)
+                async with session() as db:
+                    job = Job(
+                        title="AIGC Product Manager",
+                        company="Failure Fixture Co",
+                        source="fixture",
+                        raw_description="Build evaluation and agent workflows.",
+                        hash_key="role-benchmark-failure-id",
+                    )
+                    db.add(job)
+                    await db.flush()
+                    db.add(
+                        RoleBenchmarkRun(
+                            run_id="role_benchmark_failure_id",
+                            target_job_id=job.id,
+                            runtime_id="replay",
+                            status="running",
+                        )
+                    )
+                    await db.commit()
+                with patch.object(role_intelligence, "async_session", session):
+                    await role_intelligence._mark_failed(
+                        "role_benchmark_failure_id",
+                        "provider failed api_token=not-a-real-secret",
+                    )
+                    result = await role_intelligence.get_role_benchmark(
+                        run_id="role_benchmark_failure_id"
+                    )
+                return result
+            finally:
+                await engine.dispose()
+
+        with tempfile.TemporaryDirectory() as directory:
+            result = asyncio.run(
+                flow(Path(directory) / "role-benchmark-failure-id.db")
+            )
+        self.assertEqual(result["status"], "failed")
+        self.assertRegex(result["error_id"], r"^err_[0-9a-f]{16}$")
+        self.assertNotIn("api_token=not-a-real-secret", result["last_error"] or "")
+
     def test_operation_registry_golden_path_persists_and_reads_fixture_benchmark(self) -> None:
         fixture_payload = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
         worker_payload = {

@@ -5,12 +5,14 @@ import { useRouter } from "next/navigation";
 import { Button, Card, CardBody, Chip, Link, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Spinner } from "@nextui-org/react";
 import { AlertTriangle, CheckCircle2, ExternalLink, RefreshCw } from "lucide-react";
 import {
+  dataModeLabel,
   roleBenchmarkApi,
   type RoleBenchmarkDetail,
   type RoleBenchmarkDocument,
   type RoleBenchmarkSignal,
 } from "@/lib/api";
 import { bauhausModalContentClassName } from "@/lib/bauhaus";
+import { safeClientErrorMessage } from "@/lib/safe-error";
 
 const DIRECTION_LABELS: Record<string, string> = {
   highly_distinctive: "高度特殊",
@@ -50,11 +52,6 @@ function statusLabel(status?: string) {
   if (status === "failed") return "执行失败";
   if (status === "blocked") return "Provider 被阻塞";
   return status || "未开始";
-}
-
-function dataModeLabel(mode?: string) {
-  if (mode === "fixture" || mode === "fixture_plugin") return mode === "fixture_plugin" ? "Fixture Plugin" : "Fixture";
-  return "Live";
 }
 
 function SignalEvidence({ signal, documents }: { signal: RoleBenchmarkSignal; documents: RoleBenchmarkDocument[] }) {
@@ -217,7 +214,7 @@ export function RoleIntelligencePanel({ jobId }: { jobId: number }) {
       const result = await roleBenchmarkApi.forJob(jobId);
       setBenchmark(result.found === false || !result.run_id ? null : result);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "岗位情报加载失败");
+      setError(safeClientErrorMessage(cause, "岗位情报加载失败"));
     } finally {
       setLoading(false);
     }
@@ -228,7 +225,10 @@ export function RoleIntelligencePanel({ jobId }: { jobId: number }) {
   }, [loadBenchmark]);
 
   useEffect(() => {
-    if (!benchmark || !["pending", "running"].includes(benchmark.status || "")) return;
+    // A freshly saved Job may render before the automation worker commits its
+    // first RoleBenchmarkRun. Keep the page live during that hand-off instead
+    // of leaving the user with a permanent "not started" empty state.
+    if (benchmark && !["pending", "running"].includes(benchmark.status || "")) return;
     const timer = window.setTimeout(() => void loadBenchmark(), 1500);
     return () => window.clearTimeout(timer);
   }, [benchmark, loadBenchmark]);
@@ -241,7 +241,7 @@ export function RoleIntelligencePanel({ jobId }: { jobId: number }) {
       setFixtureConfirmOpen(false);
       await loadBenchmark();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "fixture benchmark 创建失败");
+      setError(safeClientErrorMessage(cause, "fixture benchmark 创建失败"));
     } finally {
       setBuilding(false);
     }
@@ -296,6 +296,7 @@ export function RoleIntelligencePanel({ jobId }: { jobId: number }) {
               <div>
                 <p className="text-sm font-black text-[var(--foreground)]">{statusLabel(benchmark.status)}</p>
                 <p className="mt-1 text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">{benchmark.last_error || `运行 ${benchmark.run_id || ""} 尚未产出可展示的 benchmark snapshot。`}</p>
+                {benchmark.error_id && <p className="mt-2 text-xs font-bold text-[var(--foreground-muted)]">错误 ID：{benchmark.error_id}</p>}
                 {(benchmark.status === "failed" || benchmark.status === "blocked") && fixtureEnabled && <Button onPress={() => setFixtureConfirmOpen(true)} className="bauhaus-button bauhaus-button-yellow mt-4 !px-4 !py-3 !text-[11px]">用 fixture 验证 UI</Button>}
               </div>
             </div>
@@ -308,6 +309,7 @@ export function RoleIntelligencePanel({ jobId }: { jobId: number }) {
                 <div>
                   <p>正在展示上一份可用岗位基准；最近一次刷新{benchmark.latest_attempt.provider_blocked ? "因 Provider 认证被阻塞" : "未完成"}。</p>
                   {benchmark.latest_attempt.last_error && <p className="mt-1 font-medium">{benchmark.latest_attempt.last_error}</p>}
+                  {benchmark.latest_attempt.error_id && <p className="mt-1 text-xs font-bold">错误 ID：{benchmark.latest_attempt.error_id}</p>}
                 </div>
               </div>
             )}

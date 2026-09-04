@@ -11,6 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.database import get_db
 from app.models.models import InterviewNotification
+from app.services.email_sync import (
+    DEFAULT_GMAIL_CALLBACK_URL,
+    validate_gmail_redirect_uri,
+)
+from app.services.security_redaction import safe_error_message
 
 
 router = APIRouter()
@@ -34,6 +39,7 @@ class ImapConnectRequest(BaseModel):
     user: str
     password: str
     provider: str = ""
+    user_confirmed: bool = False
 
 
 class EmailSyncRequest(BaseModel):
@@ -76,30 +82,36 @@ def _operation_outputs(result: dict) -> dict:
 
 
 def _frontend_url() -> str:
-    origins = [
-        item.strip()
-        for item in get_settings().cors_origins.split(",")
-        if item.strip()
-    ]
-    return next(
-        (item for item in origins if item.rstrip("/").endswith(":7410")),
-        origins[0] if origins else "http://localhost:7410",
-    )
+    # OAuth callbacks are user-facing local navigation, not a configurable
+    # provider endpoint. Keep them on the one supported OfferU web origin.
+    return "http://127.0.0.1:7410"
 
 
-def _redirect_uri(request: Request) -> str:
-    return get_settings().gmail_redirect_uri or str(
-        request.url_for("oauth_callback")
-    )
+def _redirect_uri(_request: Request) -> str:
+    configured = get_settings().gmail_redirect_uri.strip()
+    if not configured:
+        return DEFAULT_GMAIL_CALLBACK_URL
+    return validate_gmail_redirect_uri(configured)
 
 
 @router.get("/auth-url")
-async def get_auth_url(request: Request):
+async def get_auth_url(
+    request: Request,
+    user_confirmed: bool = Query(False),
+):
     from app.ops import execute_operation
+
+    try:
+        redirect_uri = _redirect_uri(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=safe_error_message(exc)) from exc
 
     result = await execute_operation(
         "begin_gmail_oauth",
-        {"redirect_uri": _redirect_uri(request)},
+        {
+            "redirect_uri": redirect_uri,
+            "user_confirmed": user_confirmed,
+        },
         surface="email_api",
     )
     return _operation_outputs(result)

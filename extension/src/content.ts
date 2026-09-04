@@ -19,6 +19,7 @@ import {
 import { PendingFieldHighlighter } from "./content/smartfill-v2/ui/highlighter.js";
 import { setDebugEnabled, logDebug as logSmartFillDebug } from "./content/smartfill-v2/shared/logger.js";
 import type { CriticalSmartFillPlan, ScannedField } from "./content/smartfill-v2/core/types.js";
+import { safeExtensionError } from "./lib/safe-error.js";
 
 const PLATFORMS: PlatformConfig[] = PLATFORM_CONFIGS;
 
@@ -1350,6 +1351,7 @@ async function enrichBossDraftJob(job: ExtractedJob, platform: PlatformConfig): 
       method: "GET",
       credentials: "include",
       cache: "no-store",
+      redirect: "error",
     });
 
     if (!response.ok) return job;
@@ -2931,7 +2933,7 @@ function createFloatingDock(platform: PlatformConfig | null): void {
     } catch (error: unknown) {
       if (runToken !== smartFillRunToken) return;
       smartFillStatus = "failed";
-      const text = error instanceof Error ? error.message : String(error);
+      const text = safeExtensionError(error, "请求失败");
       if (smartFillPendingCount > 0) {
         smartFillSubText = "查看待补字段 ›";
       } else {
@@ -3676,7 +3678,7 @@ function sendRuntimeMessage<T>(message: Message): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     chrome.runtime.sendMessage(message, (resp: T) => {
       if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
+        reject(new Error(safeExtensionError(chrome.runtime.lastError.message, "扩展后台无响应")));
         return;
       }
       resolve(resp);

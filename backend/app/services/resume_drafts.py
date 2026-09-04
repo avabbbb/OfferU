@@ -10,7 +10,9 @@ from typing import Any
 from app.services.agent_files import atomic_write_json
 
 DRAFT_SCHEMA_VERSION = "offeru.resume_draft.v1"
-DRAFT_DIR = Path(__file__).resolve().parents[2] / "data" / "resume_drafts"
+from app.runtime_paths import runtime_data_path
+
+DRAFT_DIR = runtime_data_path("resume_drafts")
 
 
 def _now_iso() -> str:

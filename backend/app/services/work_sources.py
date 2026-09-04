@@ -111,7 +111,9 @@ MAX_FILES = 2_000
 MAX_FILE_BYTES = 2_000_000
 MAX_EXCERPT_CHARS_PER_FILE = 12_000
 MAX_PROMPT_EXCERPT_CHARS = 120_000
-RUN_ROOT = Path(__file__).resolve().parents[2] / "data" / "work-source-runs"
+from app.runtime_paths import runtime_data_path
+
+RUN_ROOT = runtime_data_path("work-source-runs")
 _RUN_TASKS: dict[str, asyncio.Task[None]] = {}
 
 

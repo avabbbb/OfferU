@@ -45,6 +45,7 @@ import {
   type Job,
   type Pool,
 } from "@/lib/hooks";
+import { safeClientErrorMessage } from "@/lib/safe-error";
 
 const container = {
   hidden: { opacity: 0 },
@@ -386,7 +387,7 @@ export default function JobsPage() {
       setSelectedIds(new Set(allIds));
       setLastSelectedAnchorId(allIds.length > 0 ? allIds[allIds.length - 1] : null);
     } catch (err: any) {
-      setActionError(err?.message || "全选失败，请重试");
+      setActionError(safeClientErrorMessage(err, "全选失败，请重试"));
     } finally {
       setSelectAllLoading(false);
     }
@@ -420,7 +421,7 @@ export default function JobsPage() {
         setSelectedIds(new Set());
         await refreshAfterMutation();
       } catch (err: any) {
-        setActionError(err.message || "批量操作失败");
+        setActionError(safeClientErrorMessage(err, "批量操作失败"));
       } finally {
         setActionLoading(false);
       }
@@ -446,7 +447,7 @@ export default function JobsPage() {
         setLastSelectedAnchorId(null);
         await refreshAfterMutation();
       } catch (err: any) {
-        setActionError(err.message || "彻底删除失败");
+        setActionError(safeClientErrorMessage(err, "彻底删除失败"));
       } finally {
         setActionLoading(false);
       }
@@ -457,7 +458,7 @@ export default function JobsPage() {
         await deletePoolById(confirmDeleteContext.pool.id, poolScope);
         await refreshAfterMutation();
       } catch (err: any) {
-        setPoolError(err.message || "删除池失败");
+        setPoolError(safeClientErrorMessage(err, "删除池失败"));
       } finally {
         setPoolBusy(false);
       }
@@ -478,7 +479,7 @@ export default function JobsPage() {
       setNewPoolName("");
       await refreshAfterMutation();
     } catch (err: any) {
-      setPoolError(err.message || "创建池失败");
+      setPoolError(safeClientErrorMessage(err, "创建池失败"));
     } finally {
       setPoolBusy(false);
     }
@@ -495,7 +496,7 @@ export default function JobsPage() {
         setEditingPoolName("");
         await refreshAfterMutation();
       } catch (err: any) {
-        setPoolError(err.message || "重命名失败");
+        setPoolError(safeClientErrorMessage(err, "重命名失败"));
       } finally {
         setPoolBusy(false);
       }
@@ -1294,9 +1295,7 @@ export default function JobsPage() {
         onCreated={(jobId) => {
           void handleJobCreated(jobId).catch((error) => {
             setActionError(
-              error instanceof Error
-                ? error.message
-                : "岗位已保存，但详情页打开失败。请从 Pipeline 进入。",
+              safeClientErrorMessage(error, "岗位已保存，但详情页打开失败。请从 Pipeline 进入。"),
             );
           });
         }}

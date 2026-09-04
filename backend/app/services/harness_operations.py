@@ -13,12 +13,12 @@ from app.services.harness_memory import import_agent_memory_payload, save_agent_
 
 
 def save_harness_conversation(
-    conversation_id: str | None,
-    messages: list[dict[str, str]],
+    conversation_id: str | None = None,
+    messages: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     return save_conversation_messages(
         conversation_id=conversation_id,
-        messages=messages,
+        messages=messages or [],
     )
 
 
@@ -61,4 +61,3 @@ async def promote_harness_memory() -> dict[str, Any]:
 def import_harness_memory(content: dict[str, Any] | str) -> dict[str, Any]:
     memory = import_agent_memory_payload(content)
     return {"ok": True, "memory": save_agent_memory(memory)}
-

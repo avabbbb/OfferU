@@ -84,6 +84,10 @@ docs/implementation/*
 docs/evals/reports/artifacts/
 artifacts/
 
+# ---- 本地 E2E / Playwright / 发布诊断临时产物（可能含敏感数据） ----
+.tmp/
+.e2e-artifacts/
+
 # ---- 备份文件 ----
 *.bak
 backup/
@@ -113,5 +117,9 @@ launcher/dist/
 launcher/*.spec
 launcher/__pycache__/
 /OfferU.exe
+/frontend/src-tauri/binaries/*
+!/frontend/src-tauri/binaries/.gitkeep
+/frontend/src-tauri/resources/*
+!/frontend/src-tauri/resources/.gitkeep
 /package-lock.json
 .wrangler/

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OfferU 浏览器助手</title>
     <link rel="stylesheet" href="popup.css">
-    <script type="module" crossorigin src="/chunks/popup-DKt8WnMn.js"></script>
+    <script type="module" src="src/popup.ts"></script>
   </head>
   <body>
     <div class="popup-shell">
@@ -25,7 +25,7 @@
       <div class="main-shell">
         <div class="topbar">
           <h2 class="top-title">OfferU</h2>
-          <button class="open-button" id="openServerBtn" type="button" aria-label="打开服务">↗</button>
+          <button class="open-button" id="openServerBtn" type="button" aria-label="打开 OfferU 网页">↗</button>
         </div>
 
         <div class="message" id="message"></div>
@@ -142,9 +142,10 @@
 
           <section class="settings-card stack">
             <div class="settings-row">
-              <span class="settings-label">OfferU 后端地址</span>
+              <span class="settings-label">OfferU 后端 API 地址（非网页）</span>
             </div>
-            <input type="url" id="serverUrl" placeholder="http://127.0.0.1:9000" spellcheck="false">
+            <input type="url" id="serverUrl" placeholder="http://127.0.0.1:8765" spellcheck="false">
+            <p class="help-text">网页入口固定为 http://127.0.0.1:7410；8080 只可能是模型服务端点，不要在浏览器中打开。</p>
             <div class="inline-actions">
               <button class="mini-tag" id="saveSettingsBtn" type="button">保存</button>
               <button class="mini-tag" id="checkServerBtn" type="button">检查连接</button>
@@ -202,7 +203,7 @@
               </label>
               <div class="desktop-launcher-config" id="desktopDockerConfig">
                 <div class="desktop-launcher-row">
-                  <input type="text" id="desktopDockerPort" placeholder="端口号" value="3000">
+                  <input type="text" id="desktopDockerPort" placeholder="网页端口固定为 7410" value="7410" readonly>
                   <button class="mini-tag" id="saveDesktopDockerPortBtn" type="button">保存</button>
                   <button class="mini-tag" id="checkDesktopDockerBtn" type="button">检测</button>
                 </div>

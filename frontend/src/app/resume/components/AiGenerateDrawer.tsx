@@ -7,6 +7,7 @@ import {
   streamGenerateResumeDraft,
   type DraftResult,
 } from "@/lib/hooks";
+import { safeClientErrorMessage } from "@/lib/safe-error";
 
 interface Props {
   resumeId: number;
@@ -60,14 +61,14 @@ export default function AiGenerateDrawer({ resumeId, open, onClose, onApply }: P
               setDraft(ev.result);
               setStage("result");
             } else if (ev.error) {
-              setErrorMsg(ev.error);
+              setErrorMsg(safeClientErrorMessage(ev.error, "简历草稿生成失败"));
               setStage("error");
             }
           },
         }
       );
     } catch (e) {
-      setErrorMsg(e instanceof Error ? e.message : String(e));
+      setErrorMsg(safeClientErrorMessage(e, "简历草稿生成失败"));
       setStage("error");
     }
   };

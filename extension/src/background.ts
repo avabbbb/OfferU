@@ -48,6 +48,11 @@ import {
   selectAuthoritativeCatalog,
 } from "./background/smartfill-catalog-contract.js";
 import {
+  DEFAULT_OFFERU_SERVER_URL,
+  normalizeOfferUServerUrl,
+} from "./background/server-url.js";
+import { safeExtensionDebugPayload, safeExtensionError } from "./lib/safe-error.js";
+import {
   buildSmartFillProfileFieldValues,
   countSmartFillAvailableFields,
   normalizeSmartFillProfile,
@@ -57,7 +62,7 @@ import {
 } from "./background/smartfill-profile.js";
 
 const DEFAULT_SETTINGS: ExtensionSettings = {
-  serverUrl: "http://127.0.0.1:8765",
+  serverUrl: DEFAULT_OFFERU_SERVER_URL,
 };
 
 const SETTINGS_KEY = "settings";
@@ -206,8 +211,7 @@ async function copyImageToClipboardViaOffscreen(imageUrl: string): Promise<Clipb
 
     return await waitResult;
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    return { ok: false, error: message || "离屏复制失败" };
+    return { ok: false, error: safeExtensionError(error, "离屏复制失败") };
   }
 }
 
@@ -339,7 +343,11 @@ async function saveJobs(jobs: ExtractedJob[]): Promise<void> {
 
 async function getSettings(): Promise<ExtensionSettings> {
   const result = await chrome.storage.local.get(SETTINGS_KEY);
-  return (result[SETTINGS_KEY] as ExtensionSettings) || DEFAULT_SETTINGS;
+  const stored = (result[SETTINGS_KEY] as Partial<ExtensionSettings> | undefined) || {};
+  return {
+    ...DEFAULT_SETTINGS,
+    serverUrl: normalizeOfferUServerUrl(stored.serverUrl),
+  };
 }
 
 function sanitizeSmartFillSettings(input: unknown): SmartFillAiSettings {
@@ -395,7 +403,7 @@ async function logSmartFillBackground(stage: string, payload: unknown): Promise<
     // eslint-disable-next-line no-console
     console.groupCollapsed(`[OfferU SmartFill Background] ${stage}`);
     // eslint-disable-next-line no-console
-    console.log(payload);
+    console.log(safeExtensionDebugPayload(payload));
     // eslint-disable-next-line no-console
     console.groupEnd();
   } catch {
@@ -666,10 +674,14 @@ async function fetchJsonWithTimeout<T>(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(url, { ...init, signal: controller.signal });
+    const response = await fetch(url, {
+      ...init,
+      redirect: "error",
+      signal: controller.signal,
+    });
     if (!response.ok) {
-      const text = await response.text();
-      throw new Error(text || `HTTP ${response.status}`);
+      const errorId = response.headers.get("X-OfferU-Error-Id")?.trim();
+      throw new Error(errorId ? `HTTP ${response.status}（错误 ID: ${errorId}）` : `HTTP ${response.status}`);
     }
     return (await response.json()) as T;
   } finally {
@@ -1095,7 +1107,7 @@ async function runPingWithFallback(settings: SmartFillAiSettings): Promise<{
     }
     return { ok: true, channel: preferred, fallbackUsed: false };
   } catch (error: unknown) {
-    errors.push(error instanceof Error ? error.message : String(error));
+    errors.push(safeExtensionError(error, "主通道失败"));
   }
 
   if (!settings.enableFallback || !secondary) {
@@ -1110,7 +1122,7 @@ async function runPingWithFallback(settings: SmartFillAiSettings): Promise<{
     }
     return { ok: true, channel: secondary, fallbackUsed: true };
   } catch (error: unknown) {
-    errors.push(error instanceof Error ? error.message : String(error));
+    errors.push(safeExtensionError(error, "备用通道失败"));
     return { ok: false, channel: "none", fallbackUsed: true, error: errors.join(" | ") };
   }
 }
@@ -1159,7 +1171,7 @@ async function runAiMapWithFallback(
       runId,
     };
   } catch (error: unknown) {
-    errors.push(error instanceof Error ? error.message : String(error));
+    errors.push(safeExtensionError(error, "AI 映射主通道失败"));
   }
 
   if (!settings.enableFallback || !secondary) {
@@ -1184,7 +1196,7 @@ async function runAiMapWithFallback(
       runId,
     };
   } catch (error: unknown) {
-    errors.push(error instanceof Error ? error.message : String(error));
+    errors.push(safeExtensionError(error, "AI 映射备用通道失败"));
     return { ok: false, channel: "none", fallbackUsed: true, mappings: [], error: errors.join(" | ") };
   }
 }
@@ -1328,8 +1340,7 @@ async function syncToServer(): Promise<SyncResponse> {
     if (err instanceof DOMException && err.name === "AbortError") {
       return { ok: false, synced: 0, skippedDraft, error: "同步超时，请检查后端服务是否可访问" };
     }
-    const msg = err instanceof Error ? err.message : String(err);
-    return { ok: false, synced: 0, skippedDraft, error: msg };
+    return { ok: false, synced: 0, skippedDraft, error: safeExtensionError(err, "同步失败") };
   }
 }
 
@@ -1359,7 +1370,7 @@ async function collectViaPageAgent(): Promise<PageAgentCollectViaResponse> {
   } catch (error: unknown) {
     return {
       ok: false,
-      message: `注入失败：${error instanceof Error ? error.message : String(error)}`,
+      message: `注入失败：${safeExtensionError(error, "页面注入失败")}`,
       fallback: true,
     };
   }
@@ -1372,7 +1383,7 @@ async function collectViaPageAgent(): Promise<PageAgentCollectViaResponse> {
         { type: "PAGE_AGENT_COLLECT", url: tab.url! },
         (response: CollectResult | undefined) => {
           if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message));
+            reject(new Error(safeExtensionError(chrome.runtime.lastError.message, "采集无响应")));
             return;
           }
           resolve(response as CollectResult);
@@ -1382,7 +1393,7 @@ async function collectViaPageAgent(): Promise<PageAgentCollectViaResponse> {
   } catch (error: unknown) {
     return {
       ok: false,
-      message: `采集无响应：${error instanceof Error ? error.message : String(error)}`,
+      message: `采集无响应：${safeExtensionError(error, "页面没有响应")}`,
       fallback: true,
     };
   }
@@ -1457,7 +1468,7 @@ chrome.runtime.onMessage.addListener(
           (error: unknown) => {
             sendResponse({
               ok: false,
-              error: error instanceof Error ? error.message : String(error),
+              error: safeExtensionError(error, "AI 运行失败"),
             });
           },
         );
@@ -1481,7 +1492,7 @@ chrome.runtime.onMessage.addListener(
           (error: unknown) =>
             sendResponse({
               ok: false,
-              error: error instanceof Error ? error.message : String(error),
+              error: safeExtensionError(error, "权限申请失败"),
             }),
         );
         return true;
@@ -1652,7 +1663,7 @@ chrome.runtime.onMessage.addListener(
               channel: "none",
               fallbackUsed: false,
               mappings: [],
-              error: error instanceof Error ? error.message : String(error),
+              error: safeExtensionError(error, "AI 映射失败"),
             });
           }
         });
@@ -1693,7 +1704,7 @@ chrome.runtime.onMessage.addListener(
               value: "",
               matchType: "NONE",
               confidence: 0,
-              error: error instanceof Error ? error.message : String(error),
+              error: safeExtensionError(error, "字段匹配失败"),
             });
           }
         })();
@@ -1732,7 +1743,7 @@ chrome.runtime.onMessage.addListener(
             sendResponse({
               ok: false,
               mappings: [],
-              error: error instanceof Error ? error.message : String(error),
+              error: safeExtensionError(error, "字段匹配失败"),
             });
           }
         })();
@@ -1766,7 +1777,7 @@ chrome.runtime.onMessage.addListener(
             sendResponse({
               ok: false,
               modules: [],
-              error: error instanceof Error ? error.message : String(error),
+              error: safeExtensionError(error, "模块统计失败"),
             });
           }
         })();
@@ -1780,7 +1791,7 @@ chrome.runtime.onMessage.addListener(
           () => sendResponse({ ok: true }),
           (error: unknown) => sendResponse({
             ok: false,
-            error: error instanceof Error ? error.message : String(error),
+            error: safeExtensionError(error, "智能填充日志失败"),
           }),
         );
         return true;
@@ -1808,7 +1819,7 @@ chrome.runtime.onMessage.addListener(
         const url = chrome.runtime.getURL(`popup.html?tab=${tab}`);
         chrome.tabs.create({ url }, () => {
           if (chrome.runtime.lastError) {
-            sendResponse({ ok: false, error: chrome.runtime.lastError.message });
+            sendResponse({ ok: false, error: safeExtensionError(chrome.runtime.lastError.message, "无法打开扩展面板") });
             return;
           }
           sendResponse({ ok: true });

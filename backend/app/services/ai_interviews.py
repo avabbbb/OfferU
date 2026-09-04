@@ -987,6 +987,7 @@ def _role_intelligence_debrief(
         question = questions.get(int(message.question_index or 0), {})
         capability = str(question.get("focus") or "unmapped")
         evaluation = message.evaluation_json if isinstance(message.evaluation_json, dict) else {}
+        answer_excerpt = _answer_excerpt(message.content)
         answer_evidence = [
             quote
             for dimension in (evaluation.get("dimensions") or {}).values()
@@ -1000,7 +1001,12 @@ def _role_intelligence_debrief(
                 "mode": question.get("mode") or "standard",
                 "question": question.get("question") or "",
                 "why_asked": question.get("why_asked") or "",
-                "answer_excerpt": _answer_excerpt(message.content),
+                "answer_excerpt": answer_excerpt,
+                # Keep the exact transcript citation explicit even when the
+                # evaluator correctly reports missing evidence for a vague
+                # answer. This lets the UI trace every observation back to
+                # what the candidate actually said without inventing proof.
+                "transcript_excerpt": answer_excerpt,
                 "answer_evidence": answer_evidence[:8],
                 "content_score": evaluation.get("content_score"),
                 "follow_up_reason": question.get("follow_up_reason"),

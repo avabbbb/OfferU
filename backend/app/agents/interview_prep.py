@@ -88,7 +88,7 @@ async def extract_questions(
     )
 
     if not raw:
-        _logger.warning("extract_questions: LLM returned None for %s/%s", company, role)
+        _logger.warning("extract_questions: LLM returned no content")
         return None
 
     result = extract_json(raw)

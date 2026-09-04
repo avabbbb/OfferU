@@ -31,6 +31,7 @@ import {
   type Job,
   type BatchOptimizeEntry,
 } from "@/lib/hooks";
+import { safeClientErrorMessage } from "@/lib/safe-error";
 
 interface BatchOptimizeModalProps {
   isOpen: boolean;
@@ -85,7 +86,7 @@ export function BatchOptimizeModal({
         // 用户主动关闭弹窗，不算失败
         return;
       }
-      setError(e instanceof Error ? e.message : String(e));
+      setError(safeClientErrorMessage(e, "批量优化失败，请稍后重试。"));
       setPhase("done");
     }
   };

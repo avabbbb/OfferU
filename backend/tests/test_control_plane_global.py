@@ -16,6 +16,11 @@ from typing import Iterable
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 ROUTES_DIR = BACKEND_DIR / "app" / "routes"
+CONTROL_SURFACE_FILES = {
+    "cli": BACKEND_DIR / "app" / "cli.py",
+    "mcp": BACKEND_DIR / "app" / "mcp_server.py",
+    "plugins": BACKEND_DIR / "app" / "services" / "capability_plugins.py",
+}
 
 REGISTRY_HELPERS = {
     "execute_operation",
@@ -200,3 +205,101 @@ def test_mutating_service_imports_are_not_called_directly_from_domain_routes() -
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in imported_mutators:
                 violations.append(f"{path.name}:{node.lineno}: {node.func.id}(...)")
     assert not violations, "Direct mutating service call from route layer:\n" + "\n".join(violations)
+
+
+def _imported_modules(tree: ast.Module) -> set[str]:
+    modules: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, ast.ImportFrom) and node.module:
+            modules.add(node.module)
+        elif isinstance(node, ast.Import):
+            modules.update(alias.name for alias in node.names)
+    return modules
+
+
+def _function_calls(tree: ast.Module, function_name: str) -> set[str]:
+    for node in tree.body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) or node.name != function_name:
+            continue
+        return {
+            call.func.id
+            for call in ast.walk(node)
+            if isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
+        }
+    return set()
+
+
+def test_cli_mcp_and_plugin_surfaces_do_not_create_a_domain_write_escape_hatch() -> None:
+    cli_tree = ast.parse(CONTROL_SURFACE_FILES["cli"].read_text(encoding="utf-8"))
+    mcp_tree = ast.parse(CONTROL_SURFACE_FILES["mcp"].read_text(encoding="utf-8"))
+    plugin_tree = ast.parse(CONTROL_SURFACE_FILES["plugins"].read_text(encoding="utf-8"))
+
+    cli_modules = _imported_modules(cli_tree)
+    assert "app.models" not in cli_modules
+    assert "app.services.agent_operations" not in cli_modules
+    assert "execute_or_propose_operation" in _function_calls(cli_tree, "_run_operation")
+    assert "confirm_operation_proposal" in _function_calls(cli_tree, "_confirm_operation")
+
+    mcp_modules = _imported_modules(mcp_tree)
+    assert "app.database" not in mcp_modules
+    assert "app.models.models" not in mcp_modules
+    assert "app.services.agent_operations" not in mcp_modules
+    assert "execute_or_propose_operation" in _function_calls(mcp_tree, "offeru_operation")
+    assert "confirm_operation_proposal" in _function_calls(mcp_tree, "confirm_operation")
+    assert "execute_or_propose_operation" in _function_calls(mcp_tree, "resource_profile")
+
+    plugin_modules = _imported_modules(plugin_tree)
+    assert "app.models.models" not in plugin_modules
+    assert "app.database" not in plugin_modules
+    assert "sqlalchemy" not in plugin_modules
+
+
+def _module_imports(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    imports: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            imports.add(node.module)
+        elif isinstance(node, ast.Import):
+            imports.update(alias.name for alias in node.names)
+    return imports
+
+
+def test_lower_layers_do_not_import_web_route_modules() -> None:
+    """Keep the HTTP layer at the top of the domain dependency graph.
+
+    Services may use the Registry as an explicit control-plane seam and
+    agents may use domain services, but neither lower layer may reach back into
+    FastAPI routes.  This is intentionally narrow so it protects direction
+    without pretending that read-only route projections are domain services.
+    """
+
+    violations: list[str] = []
+    lower_layers = {
+        "models": BACKEND_DIR / "app" / "models",
+        "agents": BACKEND_DIR / "app" / "agents",
+        "services": BACKEND_DIR / "app" / "services",
+    }
+    for layer, root in lower_layers.items():
+        for path in sorted(root.rglob("*.py")):
+            imported = _module_imports(path)
+            forbidden = sorted(module for module in imported if module == "app.routes" or module.startswith("app.routes."))
+            violations.extend(f"{layer}: {path.relative_to(BACKEND_DIR)} -> {module}" for module in forbidden)
+    assert not violations, "Lower-layer module imports a FastAPI route:\n" + "\n".join(violations)
+
+
+def test_data_layer_does_not_depend_on_application_or_control_plane_modules() -> None:
+    """ORM models remain leaf modules and cannot acquire business seams."""
+
+    violations: list[str] = []
+    data_roots = [BACKEND_DIR / "app" / "models"]
+    forbidden_prefixes = ("app.routes", "app.services", "app.agents", "app.ops")
+    for root in data_roots:
+        paths = [root] if root.is_file() else sorted(root.rglob("*.py"))
+        for path in paths:
+            imported = _module_imports(path)
+            forbidden = sorted(
+                module for module in imported if module.startswith(forbidden_prefixes)
+            )
+            violations.extend(f"{path.relative_to(BACKEND_DIR)} -> {module}" for module in forbidden)
+    assert not violations, "Data-layer module imports an application/control-plane module:\n" + "\n".join(violations)

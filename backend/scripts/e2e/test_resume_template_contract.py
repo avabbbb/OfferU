@@ -3,7 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[2]
+# backend/scripts/e2e/test_*.py -> repository root
+ROOT = Path(__file__).resolve().parents[3]
 
 
 def read(path: str) -> str:
@@ -37,7 +38,7 @@ def main() -> None:
     settings = read("frontend/src/app/resume/components/templates/templateSettings.ts")
     assert_contains(
         settings,
-        ["reference", "reference-compact", "reference-no-photo", "settingsToCssVars"],
+        ["reference", "reference-compact", "settingsToCssVars"],
         "template settings",
     )
 
@@ -51,7 +52,7 @@ def main() -> None:
     preview = read("frontend/src/app/resume/components/ResumePreview.tsx")
     assert_contains(
         preview,
-        ["ResumeReference", "highlightKeywords", "reference-compact", "reference-no-photo"],
+        ["ResumeReference", "highlightKeywords", "reference-compact"],
         "resume preview",
     )
 
@@ -72,6 +73,7 @@ def main() -> None:
             "_render_resume_pdf_with_playwright",
             "FRONTEND_BASE_URL",
             "/resume/print/",
+            "headless=True",
             '@router.post("/{resume_id}/logo")',
             '@router.post("/{resume_id}/logo/resolve")',
             "_resolve_university_logo_url",
@@ -79,6 +81,8 @@ def main() -> None:
         ],
         "playwright pdf export",
     )
+    if "msedge" in backend_resume or "headless=False" in backend_resume:
+        raise AssertionError("resume PDF rendering must not probe Edge or launch a visible browser")
 
     editor = read("frontend/src/app/resume/[id]/page.tsx")
     assert_contains(

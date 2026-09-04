@@ -7,9 +7,10 @@ from pathlib import Path
 from typing import Any
 
 from app.services.agent_files import atomic_write_json
+from app.runtime_paths import runtime_data_path
 
 MEMORY_SCHEMA_VERSION = "offeru.agent_memory.v1"
-MEMORY_DIR = Path(__file__).resolve().parents[2] / "data"
+MEMORY_DIR = runtime_data_path()
 MEMORY_PATH = MEMORY_DIR / "harness_agent_memory.json"
 LIST_FIELDS = ("facts", "preferences", "goals", "risks", "events")
 VALID_STAGES = {"unknown", "campus", "experienced"}

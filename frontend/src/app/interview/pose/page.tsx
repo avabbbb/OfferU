@@ -23,6 +23,7 @@ import {
 } from "./postureMath";
 import { LandmarkSmoother, ScalarSmoother } from "./smoothing";
 import { createPoseEngine, type PoseEngineHandle } from "./poseEngine";
+import { safeClientErrorMessage } from "@/lib/safe-error";
 
 const CALIBRATION_FRAMES = 60; // ~2s @30fps
 const SESSION_TARGET_SECONDS = 60;
@@ -161,7 +162,7 @@ export default function PosePage() {
       lastLandmarkTs.current = performance.now();
       setState("calibrating");
     } catch (e: any) {
-      setError(e?.message || "摄像头/模型初始化失败");
+      setError(safeClientErrorMessage(e, "摄像头/模型初始化失败"));
       cleanup();
       setState("idle");
     }

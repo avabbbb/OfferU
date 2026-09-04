@@ -18,7 +18,7 @@
 </p>
 
 > [!IMPORTANT]
-> OfferU 目前是本地单人 Internal Beta 候选版本，核心 Replay/Fixture 路径已验证；Public Release readiness program 已启动，但 signed installer、migration/backup/restore、security、clean-machine、live provider、soak 与重复 E2E Gate 尚未通过，当前不是公开发布版。它不是自动投递机器人，不会自动提交申请、发送邮件或联系第三方。Agent 的推断、材料和进展更新必须先成为候选或提案，再由使用者审核。
+> OfferU 目前是本地单人 Internal Beta 候选版本，核心 Replay/Fixture 路径、Windows 本地 bundle/lifecycle 和一组重复 E2E 已有当前证据；Public Release readiness 仍未通过，因为 signed installer、previous-release upgrade、clean-machine 独立验收、完整 security/privacy、长时 reliability 和 live Role Intelligence claim 仍未完成。当前不是公开发布版。它不是自动投递机器人，不会自动提交申请、发送邮件或联系第三方。Agent 的推断、材料和进展更新必须先成为候选或提案，再由使用者审核。
 
 <table>
   <tr>
@@ -74,7 +74,9 @@ flowchart LR
 
 ## 当前获取方式（仅源码开发）
 
-Public 用户的最终路径只能是 Download → Install → Launch → Onboarding。当前尚无通过 Release Gate 的 installer；以下命令只用于源码开发，完整说明见 [DEVELOPMENT.md](./DEVELOPMENT.md)，不要把它当作普通用户安装流程。
+Public 用户的最终路径只能是 Download → Verify publisher/checksum → Install → Launch → Onboarding。当前只有未签名的本地 Windows bundle evidence，尚无通过 Release Gate 的公开 installer；以下命令只用于源码开发，完整说明见 [DEVELOPMENT.md](./DEVELOPMENT.md)，不要把它当作普通用户安装流程。
+
+注意：如果仓库根目录有 `OfferU.exe`，当前发现它是历史 `0.1.0` 二进制，不是当前 `0.4.0` Release Candidate；不要双击该文件。当前网页开发入口固定为 `http://127.0.0.1:7410`，`8080` 不是 OfferU 网页服务。
 
 ### 环境
 
@@ -117,7 +119,7 @@ backend\.venv312\Scripts\python.exe backend\run_server.py
 npm --prefix frontend run dev
 ```
 
-打开 [http://localhost:7410](http://localhost:7410)。后端固定使用 `127.0.0.1:8765`。
+打开 [http://127.0.0.1:7410](http://127.0.0.1:7410)。后端固定使用 `127.0.0.1:8765`。`8080` 不是 OfferU 网页地址，只是可选本地 llama.cpp Provider 接口；不要在浏览器中打开它。
 
 若出现 `Failed to fetch` 或 CORS 错误，先检查 Windows 用户环境变量 `CORS_ORIGINS`。系统环境变量优先于 `backend/.env`，其中必须包含 `http://localhost:7410` 与 `http://127.0.0.1:7410`。
 

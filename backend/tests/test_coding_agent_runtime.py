@@ -66,6 +66,14 @@ class CodingAgentRuntimeTests(unittest.TestCase):
         self.assertEqual(config["mcp_servers"], {})
         self.assertEqual(config["project_doc_max_bytes"], 0)
 
+    def test_pi_cli_is_not_advertised_as_bounded_live_web_provider(self) -> None:
+        self.assertFalse(
+            runtime.RUNTIME_DEFINITIONS["pi"]["capabilities_decl"]["supports_live_web_search"]
+        )
+        self.assertFalse(
+            runtime.RUNTIME_DEFINITIONS["omp"]["capabilities_decl"]["supports_live_web_search"]
+        )
+
     def test_claude_uses_sdk_worker_instead_of_print_mode(self) -> None:
         args = runtime._runtime_args(
             "claude",

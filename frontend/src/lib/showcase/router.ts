@@ -1088,6 +1088,21 @@ export async function showcaseHandle(path: string, options?: RequestInit): Promi
         && segments[3] === "automation"
         && segments[4] === "inbox"
       ) return { items: [] };
+      if (
+        method === "GET"
+        && segments[1] === "agent"
+        && segments[2] === "runtime"
+        && segments[3] === "career-tasks"
+      ) return { tasks: [] };
+      if (
+        method === "POST"
+        && segments[1] === "agent"
+        && segments[2] === "runtime"
+        && segments[3] === "career-tasks"
+      ) return {
+        ok: false,
+        error: "展示模式不执行后台 CareerTask，请在本地应用中运行。",
+      };
       if (method === "GET" && sub === "runs") return listAgentRuns();
       return {};
     default:

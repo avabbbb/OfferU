@@ -4,7 +4,7 @@
 import json
 import urllib.request
 
-BASE = "http://localhost:8000"
+BASE = "http://127.0.0.1:8765"
 
 def api(method, path, data=None):
     body = json.dumps(data, ensure_ascii=False).encode() if data else None

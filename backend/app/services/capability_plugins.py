@@ -17,14 +17,15 @@ from pathlib import Path
 from typing import Any
 
 from app.services.agent_files import atomic_write_json
-from app.services.security_redaction import safe_error_message
+from app.services.security_redaction import redact_sensitive_text, safe_error_message
+from app.runtime_paths import runtime_data_path
 
 
 PLUGIN_MANIFEST = "offeru-plugin.json"
 PLUGIN_SCHEMA = "offeru.capability_plugin.v1"
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 PLUGIN_ROOT = _REPO_ROOT / "plugins"
-PLUGIN_STATE_PATH = Path(__file__).resolve().parents[2] / "data" / "installed_plugins.json"
+PLUGIN_STATE_PATH = runtime_data_path("installed_plugins.json")
 
 
 def _clean_name(value: str) -> str:
@@ -306,7 +307,10 @@ async def invoke_plugin_capability(
             process.kill()
         raise RuntimeError(f"插件 {plugin} capability {clean_capability} 超时") from exc
     output_text = stdout.decode("utf-8", errors="replace").strip()
-    diagnostics = stderr.decode("utf-8", errors="replace")[-2000:]
+    diagnostics = redact_sensitive_text(
+        stderr.decode("utf-8", errors="replace"),
+        max_length=2000,
+    )
     if process.returncode != 0:
         raise RuntimeError(
             f"插件 {plugin} capability {clean_capability} 退出码 {process.returncode}: {diagnostics}"

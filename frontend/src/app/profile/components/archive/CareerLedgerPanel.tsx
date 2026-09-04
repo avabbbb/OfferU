@@ -18,6 +18,7 @@ import {
   type MemoryInboxItem,
   memoryApi,
 } from "@/lib/api";
+import { safeClientErrorMessage } from "@/lib/safe-error";
 
 const TIER_LABELS: Record<string, string> = {
   verified_fact: "职业证据",
@@ -118,7 +119,7 @@ export default function CareerLedgerPanel() {
       setLedger(ledgerData.entries);
       setError("");
     } catch (err: any) {
-      setError(err.message || "加载职业模型失败");
+      setError(safeClientErrorMessage(err, "加载职业模型失败"));
     } finally {
       setLoading(false);
     }
@@ -134,7 +135,7 @@ export default function CareerLedgerPanel() {
       await memoryApi.reviewProposal(proposalId, action);
       await reload();
     } catch (err: any) {
-      setError(err.message || "审核失败");
+      setError(safeClientErrorMessage(err, "审核失败"));
     } finally {
       setBusyId(null);
     }

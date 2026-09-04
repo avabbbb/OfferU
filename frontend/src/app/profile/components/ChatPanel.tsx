@@ -5,6 +5,7 @@ import { Button, Card, CardBody, Textarea } from "@nextui-org/react";
 import { ArrowLeft, ArrowRight, Bot, SkipForward } from "lucide-react";
 import { BulletConfirmCard, type BulletCandidate } from "./BulletConfirmCard";
 import { profileApi } from "@/lib/api";
+import { safeClientErrorMessage } from "@/lib/safe-error";
 
 export type ChatTopic = "education" | "internship" | "project" | "activity" | "skill";
 
@@ -230,7 +231,10 @@ export function ChatPanel({
             }
 
             if (eventType === "error") {
-              pushMessage("ai", `⚠️ ${String(parsed.message || parsed.detail || "请求失败")}`);
+              pushMessage(
+                "ai",
+                `⚠️ ${safeClientErrorMessage(parsed.message || parsed.detail, "请求失败")}`,
+              );
             }
           } catch {
             // 忽略单个坏事件

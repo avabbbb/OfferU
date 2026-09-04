@@ -6,6 +6,8 @@
 //    （DeepSeek / SiliconFlow 已确认允许浏览器 CORS 直连）
 // 2) 未配置 → 返回内置演示回答（本地模板，无需任何外部服务）
 
+import { safeClientErrorMessage } from "../safe-error";
+
 const KEY = "offeru_showcase_llm_key";
 const BASE = "offeru_showcase_llm_base";
 const MODEL = "offeru_showcase_llm_model";
@@ -146,6 +148,7 @@ export async function showcaseChatText(
         { role: "user", content: `主题：${topic}\n${message}` },
       ],
     }),
+    redirect: "error",
     signal,
   });
   if (!response.ok || !response.body) {
@@ -227,7 +230,7 @@ export function showcaseChatResponse(topic: string, message: string): Response {
           settled = true;
           controller.enqueue(
             emit("error", {
-              message: error instanceof Error ? error.message : String(error),
+              message: safeClientErrorMessage(error, "模型请求失败，请稍后重试"),
             }),
           );
           controller.close();

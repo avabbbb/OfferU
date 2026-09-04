@@ -29,6 +29,7 @@ from app.services.pi_agent_worker import (
     get_pi_agent_worker,
 )
 from app.services.security_redaction import safe_error_message
+from app.runtime_paths import runtime_data_path
 
 
 _EVENT_TYPES = {
@@ -49,7 +50,7 @@ _EVENT_TYPES = {
     "pi.auto_retry_start": "runtime.retry_started",
     "pi.auto_retry_end": "runtime.retry_completed",
 }
-_SESSION_DIRECTORY = Path(__file__).resolve().parents[2] / "data" / "pi_sessions"
+_SESSION_DIRECTORY = runtime_data_path("pi_sessions")
 StreamListener = Callable[[dict[str, Any]], Awaitable[None]]
 
 
@@ -426,6 +427,7 @@ async def start_pi_agent_run(
                 },
             )
         except Exception as guardian_error:
+            guardian_error_message = safe_error_message(guardian_error)
             guardian_result = {
                 **guardian_result,
                 "alerts": [
@@ -440,11 +442,11 @@ async def start_pi_agent_run(
             }
             learning_observation = {
                 "recorded": False,
-                "error": str(guardian_error)[:500],
+                "error": guardian_error_message,
             }
             await persist_and_publish(
                 "guardian.failed",
-                {"error": str(guardian_error)[:500]},
+                {"error": guardian_error_message},
             )
         if resume_run_id and not resume_session_file:
             raise ValueError("Run 没有可恢复的 Pi Session 文件。")

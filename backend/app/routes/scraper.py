@@ -24,6 +24,7 @@ from app.models.models import Job, Batch
 from app.ops import execute_operation
 from app.services.scrapers.base import get_all_scrapers, get_scraper
 from app.services.campus_detector import detect_campus
+from app.services.runtime_credentials import load_scraper_cookie
 from app.services.security_redaction import safe_error_message
 
 router = APIRouter()
@@ -172,14 +173,12 @@ async def _execute_scraper(task_info: dict, scraper, req: RunRequest):
         warning = ""
         if not items:
             if req.source == "boss":
-                from app.routes.config import _current_config
-                if _current_config.boss_cookie:
+                if load_scraper_cookie("boss_cookie"):
                     warning = "Cookie 可能已过期，请重新登录 zhipin.com 并更新 Cookie"
                 else:
                     warning = "未配置 Cookie，请在设置页粘贴 BOSS直聘 Cookie"
             elif req.source == "zhilian":
-                from app.routes.config import _current_config
-                if not _current_config.zhilian_cookie:
+                if not load_scraper_cookie("zhilian_cookie"):
                     warning = "未获取到数据，可尝试在设置页配置智联招聘 Cookie"
             if not warning:
                 warning = "本次任务没有抓到新岗位，可能是关键词/城市无结果，或平台反爬拦截。"

@@ -12,6 +12,7 @@ import {
   Textarea,
 } from "@nextui-org/react";
 import { ingestJob, type JobPreparationMode } from "@/lib/hooks";
+import { safeClientErrorMessage } from "@/lib/safe-error";
 
 type AddJobModalProps = {
   isOpen: boolean;
@@ -50,6 +51,8 @@ export function AddJobModal({ isOpen, onClose, onCreated }: AddJobModalProps) {
   };
 
   const handleSubmit = async () => {
+    if (saving) return;
+
     const title = form.title.trim();
     const company = form.company.trim();
     const rawDescription = form.rawDescription.trim();
@@ -68,14 +71,14 @@ export function AddJobModal({ isOpen, onClose, onCreated }: AddJobModalProps) {
         url: form.url.trim(),
         raw_description: rawDescription,
         source: "manual",
-        runtime_provider: form.preparationMode === "local" ? "replay" : "codex",
+        runtime_provider: form.preparationMode === "local" ? "replay" : "auto",
       });
       const createdId = Number(result?.created_job_ids?.[0] || 0);
       setForm(initialForm);
       onClose();
       onCreated(createdId > 0 ? createdId : null);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "保存岗位失败，请重试。");
+      setError(safeClientErrorMessage(reason, "保存岗位失败，请重试。"));
     } finally {
       setSaving(false);
     }

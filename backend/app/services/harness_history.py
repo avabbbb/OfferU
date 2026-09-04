@@ -8,8 +8,9 @@ from pathlib import Path
 from typing import Any
 
 from app.services.agent_files import atomic_write_json
+from app.runtime_paths import runtime_data_path
 
-HISTORY_DIR = Path(__file__).resolve().parents[2] / "data"
+HISTORY_DIR = runtime_data_path()
 HISTORY_PATH = HISTORY_DIR / "harness_agent_conversations.json"
 MAX_TITLE_LENGTH = 32
 MAX_MESSAGES_PER_CONVERSATION = 120

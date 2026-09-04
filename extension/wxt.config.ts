@@ -1,6 +1,24 @@
+import path from "node:path";
+
 import { defineConfig } from "wxt";
 
 export default defineConfig({
+  webExt: {
+    // Development must never open the system default browser or Edge.
+    // Load the built extension manually only when a developer explicitly asks.
+    disabled: true,
+  },
+  hooks: {
+    "entrypoints:found": (wxt, entrypoints) => {
+      const popupPath = path.resolve(wxt.config.root, "popup.html");
+      if (entrypoints.some((entrypoint) => entrypoint.name === "popup")) return;
+      entrypoints.push({
+        name: "popup",
+        inputPath: popupPath,
+        type: "popup",
+      });
+    },
+  },
   manifest: {
     name: "OfferU 简历购物车助手",
     description: "在招聘站列表页/详情页手动采集岗位并同步到 OfferU",

@@ -19,9 +19,11 @@ from app.services.profile_builder_agent import (
     build_initial_agent_state,
     build_next_question,
     build_profile_agent_system_prompt,
+    generate_raw_turn_patch as _generate_raw_turn_patch,
     normalize_profile_agent_patch,
     run_profile_agent_loop,
 )
+from app.services.profile_archive import build_personal_archive_from_agent_patch as _build_personal_archive
 from app.services.resume_parser import parse_resume_file
 
 router = APIRouter()
@@ -384,62 +386,11 @@ def build_personal_archive_from_agent_patch(
     patch: dict[str, Any],
     existing_archive: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    archive = _valid_personal_archive(existing_archive) or _default_personal_archive()
-    resume_archive = archive.get("resumeArchive") if isinstance(archive.get("resumeArchive"), dict) else {}
-    if not resume_archive:
-        resume_archive = _default_resume_archive()
-        archive["resumeArchive"] = resume_archive
-
-    base = existing_base_info if isinstance(existing_base_info, dict) else {}
-    patch_base = patch.get("base_info") if isinstance(patch.get("base_info"), dict) else {}
-    merged_base = {**base, **patch_base}
-    basic = resume_archive.setdefault("basicInfo", _default_resume_archive()["basicInfo"])
-    basic["name"] = _as_str(merged_base.get("name") or basic.get("name"))
-    basic["phone"] = _as_str(merged_base.get("phone") or basic.get("phone"))
-    basic["email"] = _as_str(merged_base.get("email") or basic.get("email"))
-    basic["currentCity"] = _as_str(merged_base.get("current_city") or merged_base.get("currentCity") or basic.get("currentCity"))
-    basic["jobIntention"] = _as_str(
-        merged_base.get("job_intention")
-        or merged_base.get("jobIntention")
-        or (patch.get("target_roles") or [""])[0]
-        or basic.get("jobIntention")
+    return _build_personal_archive(
+        existing_base_info=existing_base_info,
+        patch=patch,
+        existing_archive=existing_archive,
     )
-    basic["website"] = _as_str(merged_base.get("website") or basic.get("website"))
-    basic["github"] = _as_str(merged_base.get("github") or basic.get("github"))
-    resume_archive["personalSummary"] = _as_str(
-        merged_base.get("summary")
-        or merged_base.get("personal_summary")
-        or resume_archive.get("personalSummary")
-    )
-
-    for key in (
-        "education",
-        "workExperiences",
-        "internshipExperiences",
-        "projects",
-        "skills",
-        "certificates",
-        "awards",
-        "personalExperiences",
-    ):
-        if not isinstance(resume_archive.get(key), list):
-            resume_archive[key] = []
-
-    for section in patch.get("sections") or []:
-        _merge_archive_section(resume_archive, section)
-
-    archive["schemaVersion"] = PERSONAL_ARCHIVE_SCHEMA_VERSION
-    archive["updatedAt"] = _now_iso()
-    archive["resumeArchive"] = resume_archive
-    archive["applicationArchive"] = _default_application_archive(resume_archive)
-    sync_settings = archive.get("syncSettings") if isinstance(archive.get("syncSettings"), dict) else {}
-    archive["syncSettings"] = {
-        "autoSyncEnabled": bool(sync_settings.get("autoSyncEnabled", True)),
-        "overriddenFieldPaths": sync_settings.get("overriddenFieldPaths")
-        if isinstance(sync_settings.get("overriddenFieldPaths"), list)
-        else [],
-    }
-    return archive
 
 
 def _extract_agent_state(messages_json: list[Any]) -> dict[str, Any]:
@@ -535,53 +486,6 @@ def _build_start_patch(
             "confidence": 0.75,
         }
     )
-
-
-async def _generate_raw_turn_patch(state: dict[str, Any], messages_json: list[Any], user_message: str) -> dict[str, Any] | None:
-    recent = [
-        item
-        for item in messages_json[-12:]
-        if isinstance(item, dict) and item.get("role") in {"user", "assistant"}
-    ]
-    prompt = build_profile_agent_system_prompt(state)
-    user_payload = {
-        "state": state,
-        "recent_messages": recent,
-        "latest_user_message": user_message,
-    }
-    try:
-        llm_result = await chat_completion(
-            messages=[
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
-            ],
-            temperature=0.25,
-            json_mode=True,
-            max_tokens=1800,
-            tier="standard",
-        )
-        parsed = extract_json(llm_result or "")
-    except Exception:
-        parsed = None
-
-    if not isinstance(parsed, dict):
-        parsed = {
-            "action": "propose_patch" if len(user_message.strip()) >= 8 else "ask_user",
-            "assistant_message": "我先把你刚补充的内容整理成一条候选档案，你确认后我再写入。",
-            "sections": [
-                {
-                    "section_type": "custom",
-                    "title": "补充经历",
-                    "content_json": {"description": user_message.strip(), "bullet": user_message.strip()},
-                    "confidence": 0.55,
-                }
-            ]
-            if len(user_message.strip()) >= 8
-            else [],
-            "next_question": state.get("next_question") or "你可以再补充一段具体经历吗？",
-        }
-
-    return parsed
 
 
 @router.post("/start")

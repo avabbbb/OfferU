@@ -61,15 +61,19 @@ _RUN_EVENT_MAP = {
     "assistant.delta": "assistant.delta",
     "message.completed": "assistant.message",
     "assistant.message": "assistant.message",
+    "reasoning.status": "reasoning.status",
     "runtime.agent_completed": "assistant.message",
     "pi.agent_end": "assistant.message",
     "runtime.tool_started": "tool.started",
+    "tool.started": "tool.started",
     "pi.tool_execution_start": "tool.started",
     "runtime.tool_progress": "tool.progress",
     "tool.progress": "tool.progress",
     "runtime.tool_completed": "tool.completed",
+    "tool.completed": "tool.completed",
     "pi.tool_execution_end": "tool.completed",
     "runtime.tool_failed": "tool.failed",
+    "tool.failed": "tool.failed",
     "operation.started": "tool.started",
     "operation.completed": "tool.completed",
     "operation.failed": "tool.failed",
@@ -78,6 +82,7 @@ _RUN_EVENT_MAP = {
     "approval.resolved": "approval.resolved",
     "task.progress": "task.progress",
     "run.completed": "run.completed",
+    "run.blocked": "run.blocked",
     "run.failed": "run.failed",
     "runtime.failed": "run.failed",
     "runtime.fatal": "run.failed",
@@ -206,6 +211,12 @@ class PiAgentRuntimeProvider:
                 "blocked": False,
                 "version": self.version,
                 "protocol_version": self.protocol_version,
+                "capabilities": {
+                    "stream": True,
+                    "resume": True,
+                    "approval": True,
+                    "live_web_search": False,
+                },
                 "last_error": safe_error_message(exc),
             }
         return {
@@ -217,6 +228,12 @@ class PiAgentRuntimeProvider:
             "blocked": False,
             "version": self.version,
             "protocol_version": self.protocol_version,
+            "capabilities": {
+                "stream": True,
+                "resume": True,
+                "approval": True,
+                "live_web_search": False,
+            },
             **probe,
         }
 
@@ -276,6 +293,12 @@ class ReplayAgentRunProvider:
             "blocked": False,
             "version": self.version,
             "protocol_version": self.protocol_version,
+            "capabilities": {
+                "stream": True,
+                "resume": True,
+                "approval": True,
+                "live_web_search": False,
+            },
         }
 
     async def start_run(

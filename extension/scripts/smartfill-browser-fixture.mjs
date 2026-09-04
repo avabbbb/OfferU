@@ -274,44 +274,15 @@ async function startServer() {
   return server;
 }
 
-function findSystemChromiumExecutable() {
-  if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE) {
-    return process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE;
-  }
-  const candidates = process.platform === "win32"
-    ? [
-        join(process.env.PROGRAMFILES || "", "Google", "Chrome", "Application", "chrome.exe"),
-        join(process.env["PROGRAMFILES(X86)"] || "", "Google", "Chrome", "Application", "chrome.exe"),
-        join(process.env.LOCALAPPDATA || "", "Google", "Chrome", "Application", "chrome.exe"),
-        join(process.env.PROGRAMFILES || "", "Microsoft", "Edge", "Application", "msedge.exe"),
-        join(process.env["PROGRAMFILES(X86)"] || "", "Microsoft", "Edge", "Application", "msedge.exe"),
-      ]
-    : process.platform === "darwin"
-      ? [
-          "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-          "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-          "/Applications/Chromium.app/Contents/MacOS/Chromium",
-        ]
-      : [
-          "/usr/bin/google-chrome",
-          "/usr/bin/google-chrome-stable",
-          "/usr/bin/microsoft-edge",
-          "/usr/bin/chromium",
-          "/usr/bin/chromium-browser",
-        ];
-  return candidates.find((candidate) => candidate && existsSync(candidate)) || undefined;
-}
-
 async function main() {
   const server = await startServer();
   const port = server.address().port;
   const userDataDir = mkdtempSync(join(tmpdir(), "offeru-smartfill-"));
   let browser;
   try {
-    const executablePath = findSystemChromiumExecutable();
     browser = await chromium.launchPersistentContext(userDataDir, {
-      headless: false,
-      ...(executablePath ? { executablePath } : {}),
+      // Keep fixture runs isolated and never attach to a system browser.
+      headless: true,
       ignoreDefaultArgs: true,
       args: [
         "--remote-debugging-pipe",

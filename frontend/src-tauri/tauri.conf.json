@@ -1,13 +1,13 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "OfferU",
-  "version": "0.1.0",
+  "version": "0.4.0",
   "identifier": "com.offeru.app",
   "build": {
     "frontendDist": "../dist",
-    "devUrl": "http://localhost:7410",
+    "devUrl": "http://127.0.0.1:7410",
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build"
+    "beforeBuildCommand": "npm run build && npm run build:sidecar"
   },
   "app": {
     "windows": [
@@ -28,6 +28,11 @@
   },
   "bundle": {
     "active": true,
+    "externalBin": ["binaries/offeru-backend"],
+    "resources": {
+      "../../.tmp/p/": "agent-runtime/",
+      "../../.tmp/offeru-node-runtime.exe": "node.exe"
+    },
     "targets": "all",
     "icon": [
       "icons/32x32.png",

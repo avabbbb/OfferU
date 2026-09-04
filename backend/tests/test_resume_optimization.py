@@ -117,6 +117,59 @@ class ResumeOptimizationContractTests(unittest.TestCase):
 
         self.assertEqual(getattr(raised.exception, "status_code", None), 409)
 
+    def test_fixture_candidate_keeps_relevance_reorder_reviewable(self) -> None:
+        async def run() -> dict:
+            profile = Profile(id=7, name="Fixture candidate")
+            sections = [
+                ProfileSection(
+                    id=1,
+                    profile_id=7,
+                    section_type="experience",
+                    title="Delivery Operations",
+                    sort_order=0,
+                    tier="verified_fact",
+                    status="active",
+                    confidence=1.0,
+                    content_json={
+                        "normalized": {
+                            "company": "Alpha",
+                            "position": "Product Manager",
+                            "description": "Managed team delivery and launch coordination.",
+                        }
+                    },
+                ),
+                ProfileSection(
+                    id=2,
+                    profile_id=7,
+                    section_type="experience",
+                    title="Model Evaluation",
+                    sort_order=1,
+                    tier="verified_fact",
+                    status="active",
+                    confidence=1.0,
+                    content_json={
+                        "normalized": {
+                            "company": "Beta",
+                            "position": "AI Product Manager",
+                            "description": "Built a model evaluation workflow for an AI product.",
+                        }
+                    },
+                ),
+            ]
+            return await resume_optimization._generate_candidate(
+                profile=profile,
+                sections=sections,
+                jd_text="Build a model evaluation workflow for an AI product.",
+                research_context={"data_mode": "fixture"},
+            )
+
+        candidate = asyncio.run(run())
+        before = candidate["original_rows"][0]["content_json"]
+        after = candidate["proposed_rows"][0]["content_json"]
+        self.assertEqual([item["company"] for item in before], ["Alpha", "Beta"])
+        self.assertEqual([item["company"] for item in after], ["Beta", "Alpha"])
+        self.assertFalse(candidate["rewrite_applied"])
+
     def test_optimize_agent_reuses_latest_completed_research(self) -> None:
         async def run() -> tuple[dict, optimize_agent.OptimizeSession, AsyncMock]:
             session = optimize_agent.OptimizeSession(

@@ -30,7 +30,9 @@ ARTIFACT_TYPES = frozenset(
     }
 )
 _ARTIFACT_ID = re.compile(r"^artifact_[0-9a-f]{32}$")
-_DEFAULT_DIR = Path(__file__).resolve().parents[2] / "data" / "artifacts"
+from app.runtime_paths import runtime_data_path
+
+_DEFAULT_DIR = runtime_data_path("artifacts")
 
 
 def _utc_now() -> str:

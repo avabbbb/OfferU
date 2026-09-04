@@ -24,6 +24,7 @@ import {
   ingestAIInterviewBehaviorEvents,
   type AIInterviewBehaviorEvent,
 } from "@/lib/hooks";
+import { safeClientErrorMessage } from "@/lib/safe-error";
 import ReactionAvatar from "./ReactionAvatar";
 
 type CameraState = "idle" | "requesting" | "loading" | "calibrating" | "live" | "error";
@@ -200,7 +201,7 @@ export default function InterviewStage({ interviewId, questionIndex, onBehaviorS
       setEventSyncError("");
     } catch (cause) {
       pendingEventsRef.current = [...batch, ...pendingEventsRef.current];
-      setEventSyncError(cause instanceof Error ? cause.message : "派生事件同步失败");
+      setEventSyncError(safeClientErrorMessage(cause, "派生事件同步失败"));
     } finally {
       eventUploadRef.current = false;
     }
@@ -501,7 +502,7 @@ export default function InterviewStage({ interviewId, questionIndex, onBehaviorS
       runLoop();
     } catch (cause) {
       releaseResources();
-      const message = cause instanceof Error ? cause.message : "摄像头或视觉模型初始化失败";
+      const message = safeClientErrorMessage(cause, "摄像头或视觉模型初始化失败");
       setError(message);
       setReaction("missing");
       setPhase("error");

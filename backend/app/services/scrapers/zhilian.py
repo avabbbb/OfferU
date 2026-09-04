@@ -19,7 +19,6 @@
 
 import asyncio
 import hashlib
-import json
 import logging
 import random
 from pathlib import Path
@@ -34,28 +33,12 @@ from app.services.scrapers.base import (
     register_scraper,
 )
 from app.services.security_redaction import safe_error_message
+from app.services.runtime_credentials import load_scraper_cookie
 
 logger = logging.getLogger(__name__)
 
-# --- Cookie 读取：优先从内存配置，回退到 config.json ---
-_ZL_CONFIG_FILE = Path(__file__).resolve().parent.parent.parent.parent / "config.json"
-
-
 def _load_zhilian_cookie() -> str:
-    """获取智联招聘 Cookie"""
-    try:
-        from app.routes.config import _current_config
-        if _current_config.zhilian_cookie:
-            return _current_config.zhilian_cookie
-    except Exception:
-        pass
-    try:
-        if _ZL_CONFIG_FILE.exists():
-            data = json.loads(_ZL_CONFIG_FILE.read_text(encoding="utf-8"))
-            return data.get("zhilian_cookie", "")
-    except Exception:
-        pass
-    return ""
+    return load_scraper_cookie("zhilian_cookie")
 
 
 class ZhilianScraper(JobScraperBase):
@@ -186,8 +169,8 @@ class ZhilianScraper(JobScraperBase):
                             headers=headers,
                         )
                         logger.info(
-                            "[zhilian] kw=%s page=%d status=%d",
-                            kw, page_idx + 1, resp.status_code,
+                            "[zhilian] keyword_len=%d page=%d status=%d",
+                            len(kw), page_idx + 1, resp.status_code,
                         )
 
                         if resp.status_code == 403:
@@ -220,8 +203,8 @@ class ZhilianScraper(JobScraperBase):
                                 break
 
                         logger.info(
-                            "[zhilian] kw=%s page=%d got %d items (total %d)",
-                            kw, page_idx + 1, len(job_list), len(results),
+                            "[zhilian] keyword_len=%d page=%d got %d items (total %d)",
+                            len(kw), page_idx + 1, len(job_list), len(results),
                         )
 
                         # 翻页延迟
@@ -229,7 +212,7 @@ class ZhilianScraper(JobScraperBase):
                             await self._delay()
 
                     except httpx.TimeoutException:
-                        logger.warning("[zhilian] 请求超时 kw=%s page=%d", kw, page_idx + 1)
+                        logger.warning("[zhilian] 请求超时 keyword_len=%d page=%d", len(kw), page_idx + 1)
                         break
                     except Exception as e:
                         logger.warning(

@@ -15,6 +15,7 @@ import {
 } from "./templates/templateSettings";
 import { dateRange, textFromHtml } from "./templates/shared";
 import { visibleBullets } from "@/lib/resumeText";
+import { resolveApiBase } from "@/lib/apiBase";
 
 interface Section {
   id: number;
@@ -158,7 +159,7 @@ function normalizeSectionItem(sectionType: string, item: any, index: number): No
 function resolveAssetUrl(url?: string) {
   if (!url) return "";
   return url.startsWith("/")
-    ? `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8765"}${url}`
+    ? `${resolveApiBase()}${url}`
     : url;
 }
 

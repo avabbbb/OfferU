@@ -800,7 +800,12 @@ async def auto_write_job_to_total(
     if not job:
         raise ValueError("岗位不存在")
     total_table = await _get_total_table(db)
-    result = await create_records_from_jobs(db, table_id=total_table.id, job_ids=[job_id])
+    result = await create_records_from_jobs(
+        db,
+        table_id=total_table.id,
+        job_ids=[job_id],
+        skip_existing_in_table=True,
+    )
     return {"total_table_id": total_table.id, **result}
 
 

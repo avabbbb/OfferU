@@ -19,8 +19,8 @@ from app.database import async_session
 from app.models.models import HostedExecutorEvent, HostedExecutorSession
 from app.services.agent_files import atomic_write_json
 from app.services.security_redaction import (
-    redact_secret_text,
     redact_secret_value,
+    redact_sensitive_text,
     safe_error_message,
 )
 
@@ -90,7 +90,11 @@ RUNTIME_DEFINITIONS = {
         "isolation": "non-interactive run, pure mode, ephemeral session, task cwd, prompt via stdin",
         "capabilities_decl": {
             "schema_mode": "prompt",
-            "supports_live_web_search": True,
+            # OpenCode's stock web tools are not currently projected through
+            # an OfferU-controlled public-web adapter.  In particular, the
+            # ``run --pure`` seam does not prove redirect/private-address
+            # enforcement, so never use it for Role Intelligence live data.
+            "supports_live_web_search": False,
             "supports_resume": False,
             "supports_cancel": False,
         },
@@ -110,7 +114,11 @@ RUNTIME_DEFINITIONS = {
         "isolation": "non-interactive print, ephemeral session, task cwd, prompt via stdin",
         "capabilities_decl": {
             "schema_mode": "prompt",
-            "supports_live_web_search": True,
+            # The stock Pi CLI exposes local coding tools, not the bounded
+            # WebSearch/WebFetch surface required by Role Intelligence. Do not
+            # advertise live web research until an explicit web capability is
+            # projected and enforced by the adapter.
+            "supports_live_web_search": False,
             "supports_resume": True,
             "supports_cancel": True,
         },
@@ -131,7 +139,9 @@ RUNTIME_DEFINITIONS = {
         "isolation": "non-interactive print, ephemeral session, no PTY, task cwd, prompt via stdin",
         "capabilities_decl": {
             "schema_mode": "prompt",
-            "supports_live_web_search": True,
+            # OMP shares the Pi CLI tool surface; a generic CLI probe is not
+            # evidence of the restricted public-web capability.
+            "supports_live_web_search": False,
             "supports_resume": True,
             "supports_cancel": True,
         },
@@ -140,10 +150,12 @@ RUNTIME_DEFINITIONS = {
 
 _PROBE_CACHE: dict[str, tuple[str, int, dict[str, Any]]] = {}
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
-_CLAUDE_SDK_WORKER = _PROJECT_ROOT / "agent-runtime" / "src" / "hosted-executor-worker.mjs"
+_AGENT_RUNTIME_DIR = Path(
+    os.environ.get("OFFERU_AGENT_RUNTIME_DIR") or (_PROJECT_ROOT / "agent-runtime")
+).resolve()
+_CLAUDE_SDK_WORKER = _AGENT_RUNTIME_DIR / "src" / "hosted-executor-worker.mjs"
 _CLAUDE_SDK_PACKAGE = (
-    _PROJECT_ROOT
-    / "agent-runtime"
+    _AGENT_RUNTIME_DIR
     / "node_modules"
     / "@anthropic-ai"
     / "claude-agent-sdk"
@@ -206,7 +218,8 @@ def _command(executable: str, args: list[str]) -> tuple[str, list[str]]:
 
 
 def _resolve_executable(binary: str) -> str | None:
-    executable = shutil.which(binary)
+    configured = os.environ.get("OFFERU_NODE_PATH") if binary == "node" else None
+    executable = configured if configured and Path(configured).is_file() else shutil.which(binary)
     if os.name != "nt" or not executable or Path(executable).suffix:
         return executable
 
@@ -662,7 +675,10 @@ def _append_hosted_event_row(
         sequence=row.event_sequence,
         event_type=str(event_type)[:100],
         provider_event=str(provider_event or "")[:120],
-        payload_json=_bounded_payload(payload or {}),
+        # Provider events are durable execution history.  Keep structured
+        # fields useful for recovery, but do not persist direct PII from a
+        # provider message or event payload.
+        payload_json=_bounded_payload(redact_sensitive_value(payload or {})),
     )
 
 
@@ -719,7 +735,7 @@ def _session_view(row: HostedExecutorSession) -> dict[str, Any]:
         "cwd": row.cwd,
         "capability_grant": redact_secret_value(row.capability_grant_json or {}),
         "recovery_cursor": redact_secret_value(row.recovery_cursor_json or {}),
-        "error": redact_secret_text(row.error or "", max_length=2000),
+        "error": redact_sensitive_text(row.error or "", max_length=2000),
         "event_sequence": row.event_sequence,
         "created_at": str(row.created_at),
         "updated_at": str(row.updated_at),
@@ -858,7 +874,7 @@ async def _finish_hosted_session(
             if row.status == "cancelled" and status != "cancelled":
                 return
             row.status = status
-            row.error = redact_secret_text(error or "", max_length=20_000)
+            row.error = redact_sensitive_text(error or "", max_length=20_000)
             if result is not None:
                 row.result_json = _bounded_payload(result)
             if status in {"completed", "failed", "cancelled", "interrupted"}:
@@ -1159,7 +1175,9 @@ class CodexAppServerAdapter:
             status = str(completed_turn.get("status") or "")
             if status != "completed":
                 error = completed_turn.get("error") or status or "unknown error"
-                raise RuntimeError(f"Codex turn did not complete: {error}")
+                raise RuntimeError(
+                    f"Codex turn did not complete: {redact_sensitive_text(error, max_length=1000)}"
+                )
             text = self._final_message or "".join(self._message_parts)
             structured = _decode_structured_output(text)
             return {
@@ -1274,9 +1292,13 @@ class ClaudeAgentSdkAdapter:
             elif record.get("type") == "failed":
                 failure = str(record.get("error") or "Claude SDK worker failed")
         return_code = await self.process.wait()
-        stderr = (await stderr_task).decode("utf-8", errors="replace")[-20_000:]
+        stderr = redact_sensitive_text(
+            (await stderr_task).decode("utf-8", errors="replace"),
+            max_length=4_000,
+        )
         if return_code != 0 or completed is None:
-            raise RuntimeError(failure or stderr[-1000:] or "Claude SDK worker failed")
+            failure_message = failure or stderr[-1000:] or "Claude SDK worker failed"
+            raise RuntimeError(redact_sensitive_text(failure_message, max_length=1000))
         structured = completed.get("structured")
         if not isinstance(structured, dict):
             raise RuntimeError("Claude Agent SDK returned no structured object")
@@ -1338,7 +1360,9 @@ async def get_hosted_executor_session(session_id: str) -> dict[str, Any]:
                     "sequence": event.sequence,
                     "type": event.event_type,
                     "provider_event": event.provider_event,
-                    "payload": event.payload_json or {},
+                    # Sanitize on read as well so events written by an older
+                    # worker cannot bypass the current persistence boundary.
+                    "payload": redact_sensitive_value(event.payload_json or {}),
                     "created_at": str(event.created_at),
                 }
                 for event in events
@@ -1625,9 +1649,15 @@ async def execute_deep_task(task: DeepTaskSpec) -> dict[str, Any]:
         raise RuntimeError(f"{definition['name']} worker 超时")
 
     stdout = stdout_bytes.decode("utf-8", errors="replace")[-2_000_000:]
-    stderr = stderr_bytes.decode("utf-8", errors="replace")[-20_000:]
+    stderr = redact_sensitive_text(
+        stderr_bytes.decode("utf-8", errors="replace"),
+        max_length=4_000,
+    )
     if process.returncode != 0:
-        raise RuntimeError(f"{definition['name']} worker 退出码 {process.returncode}: {stderr[-1000:]}")
+        raise RuntimeError(
+            f"{definition['name']} worker 退出码 {process.returncode}: "
+            f"{redact_sensitive_text(stderr[-1000:], max_length=1000)}"
+        )
 
     text, event_count = _extract_worker_text(runtime_id, stdout)
     structured = _decode_structured_output(text, schema_mode=schema_mode)

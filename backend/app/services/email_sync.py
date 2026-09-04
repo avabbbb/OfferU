@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from email.header import decode_header
 from email.utils import parsedate_to_datetime
 from typing import Any, Optional
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import httpx
 from sqlalchemy import select
@@ -21,6 +21,7 @@ from app.config import get_settings
 from app.database import async_session
 from app.models.models import (
     ApplicationProgressCandidate,
+    ApplicationStageEvent,
     EmailAccount,
     EmailSyncRun,
     ExternalProgressSignal,
@@ -33,6 +34,8 @@ GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GMAIL_API_URL = "https://gmail.googleapis.com/gmail/v1"
 GMAIL_SCOPES = ("https://www.googleapis.com/auth/gmail.readonly",)
+DEFAULT_GMAIL_CALLBACK_URL = "http://127.0.0.1:8765/api/email/callback"
+_LOCAL_CALLBACK_HOSTS = {"127.0.0.1", "localhost"}
 ACCOUNT_STATUSES = frozenset({"active", "revoked", "error"})
 SYNC_STATUSES = frozenset({"pending", "running", "completed", "failed"})
 IMAP_PRESETS = {
@@ -82,6 +85,38 @@ def _clean_text(value: Any, field: str, *, limit: int, required: bool = False) -
     if len(text) > limit:
         raise ValueError(f"{field} 最长 {limit} 个字符")
     return text
+
+
+def validate_gmail_redirect_uri(value: str) -> str:
+    raw = value.strip()
+    try:
+        parsed = urlsplit(raw)
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("GMAIL_REDIRECT_URI 配置无效") from exc
+
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError("GMAIL_REDIRECT_URI 配置无效")
+
+    if parsed.scheme == "http":
+        if (
+            parsed.hostname.lower() not in _LOCAL_CALLBACK_HOSTS
+            or port != 8765
+            or parsed.path != "/api/email/callback"
+        ):
+            raise ValueError(
+                "GMAIL_REDIRECT_URI 本地回调必须使用 127.0.0.1:8765/api/email/callback"
+            )
+        return DEFAULT_GMAIL_CALLBACK_URL
+
+    return raw
 
 
 def _account_lock(account_id: str) -> asyncio.Lock:
@@ -237,7 +272,10 @@ async def connect_imap_account(
     provider: str = "",
     host: str = "",
     port: int = 993,
+    user_confirmed: bool = False,
 ) -> dict[str, Any]:
+    if user_confirmed is not True:
+        raise ValueError("连接邮箱前必须确认只读同步范围和本地保存策略")
     clean_user = _clean_text(user, "user", limit=320, required=True)
     clean_password = _clean_text(password, "password", limit=4000, required=True)
     clean_host, clean_port = _resolve_imap_host(
@@ -327,15 +365,22 @@ def _oauth_state_ref(state: str) -> str:
     return f"email-oauth-state:{digest}"
 
 
-async def begin_gmail_oauth(redirect_uri: str) -> dict[str, Any]:
+async def begin_gmail_oauth(
+    redirect_uri: str,
+    user_confirmed: bool = False,
+) -> dict[str, Any]:
+    if user_confirmed is not True:
+        raise ValueError("开始 Gmail 授权前必须确认只读同步范围和本地保存策略")
     settings = get_settings()
     if not settings.gmail_client_id:
         raise ValueError("GMAIL_CLIENT_ID 未配置")
-    clean_redirect = _clean_text(
-        redirect_uri,
-        "redirect_uri",
-        limit=2000,
-        required=True,
+    clean_redirect = validate_gmail_redirect_uri(
+        _clean_text(
+            redirect_uri,
+            "redirect_uri",
+            limit=2000,
+            required=True,
+        )
     )
     state = secrets.token_urlsafe(32)
     verifier = secrets.token_urlsafe(64)
@@ -348,6 +393,8 @@ async def begin_gmail_oauth(redirect_uri: str) -> dict[str, Any]:
             "code_verifier": verifier,
             "redirect_uri": clean_redirect,
             "created_at": _now().isoformat(),
+            "user_confirmed": True,
+            "consent_scope": "gmail.readonly",
         },
     )
     params = {
@@ -370,6 +417,8 @@ async def complete_gmail_oauth(*, code: str, state: str) -> dict[str, Any]:
     state_ref = _oauth_state_ref(clean_state)
     state_secret = await load_secret(state_ref)
     await delete_secret(state_ref)
+    if state_secret.get("user_confirmed") is not True:
+        raise ValueError("OAuth state 缺少本次只读同步确认，请重新授权")
     try:
         created_at = datetime.fromisoformat(str(state_secret.get("created_at") or ""))
     except ValueError as exc:
@@ -1228,17 +1277,41 @@ async def revoke_email_account(
                         )
                     )
                 ).scalars().all()
+            stage_events: list[ApplicationStageEvent] = []
+            if signal_ids:
+                stage_events = (
+                    await db.execute(
+                        select(ApplicationStageEvent).where(
+                            ApplicationStageEvent.signal_id.in_(signal_ids)
+                        )
+                    )
+                ).scalars().all()
             invalidated_candidates = 0
             for signal in signals:
                 signal.status = "invalidated"
+                signal.external_message_id = f"revoked:{signal.signal_id}"
+                signal.external_thread_id = ""
+                signal.sender = ""
+                signal.subject = ""
                 signal.snippet = ""
+                signal.body_sha256 = ""
                 signal.classification_json = {}
             for candidate in candidates:
+                candidate.match_candidates_json = []
+                candidate.reasons_json = []
+                candidate.llm_extracted_json = {}
+                candidate.llm_stage = ""
+                candidate.llm_confidence = None
                 if candidate.status == "pending":
                     candidate.status = "invalidated"
-                    candidate.match_candidates_json = []
-                    candidate.reasons_json = []
+                    candidate.suggested_stage = "unknown"
+                    candidate.match_state = "unassigned"
                     invalidated_candidates += 1
+            for event in stage_events:
+                event.evidence_json = {
+                    "source_revoked": True,
+                    "signal_id": event.signal_id,
+                }
             stored.credential_ref = ""
             stored.sync_cursor_json = {}
             stored.sync_enabled = False

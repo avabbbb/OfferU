@@ -8,9 +8,18 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any, Awaitable, Callable, Optional, get_type_hints
 
-from pydantic import BaseModel, ConfigDict, Field, PositiveInt, ValidationError, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PositiveInt,
+    TypeAdapter,
+    ValidationError,
+    model_validator,
+)
+from pydantic.errors import PydanticSchemaGenerationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func, select, update
 
@@ -18,6 +27,12 @@ from app.database import async_session
 from app.services.security_redaction import (
     redact_sensitive_value,
     safe_error_message,
+)
+from app.services.privacy_hygiene import (
+    get_privacy_hygiene_status,
+    get_synthetic_email_test_data_status,
+    purge_synthetic_email_test_data,
+    scrub_legacy_email_notification_bodies,
 )
 from app.services.job_ingest import JobIngestItem, import_job_batch
 from app.services.scraper_operations import finalize_scraper_batch, start_scraper_batch
@@ -308,9 +323,9 @@ class ReviewJobResearchInput(_StrictOperationInput):
 
 class StartJobResearchInput(_StrictOperationInput):
     job_id: int = Field(gt=0)
-    runtime_id: str = Field(
-        default="codex",
-        pattern="^(codex|claude|omp|pi|opencode)$",
+    runtime_id: str | None = Field(
+        default=None,
+        pattern="^(codex|claude|omp|pi|opencode|backend_search)$",
     )
 
 
@@ -321,8 +336,8 @@ class FixtureJobResearchInput(_StrictOperationInput):
 class RoleBenchmarkRunInput(_StrictOperationInput):
     job_id: int = Field(gt=0)
     runtime_id: str = Field(
-        default="codex",
-        pattern="^(codex|claude|gemini|omp|pi|opencode|fixture|replay|boss-fixture|plugin:[A-Za-z0-9_.-]+)$",
+        default="auto",
+        pattern="^(auto|backend_search|codex|claude|gemini|omp|pi|opencode|fixture|replay|boss-fixture|plugin:[A-Za-z0-9_.-]+)$",
     )
     role_family: str = Field(default="", max_length=120)
     specialization: str = Field(default="", max_length=160)
@@ -340,7 +355,7 @@ class CareerTaskStartInput(_StrictOperationInput):
     target_id: str = Field(default="", max_length=160)
     runtime_provider: str = Field(
         default="replay",
-        pattern="^(codex|codex-app-server|claude|fixture|replay|mock|boss-fixture|plugin:[A-Za-z0-9_.-]+)$",
+        pattern="^(auto|backend_search|codex|codex-app-server|claude|fixture|replay|mock|boss-fixture|plugin:[A-Za-z0-9_.-]+)$",
     )
     input: dict[str, Any] = Field(default_factory=dict)
     output_contract: dict[str, Any] = Field(default_factory=dict)
@@ -414,7 +429,7 @@ class ListAutomationEventsInput(_StrictOperationInput):
     event_type: str | None = Field(default=None, max_length=80)
     status: str | None = Field(
         default=None,
-        pattern="^(queued|dispatched|completed|failed|blocked|skipped)$",
+        pattern="^(queued|processing|dispatched|completed|failed|blocked|skipped)$",
     )
     limit: int = Field(default=100, ge=1, le=500)
 
@@ -724,11 +739,19 @@ class DeleteApplicationRecordsInput(_StrictOperationInput):
 
 class ApplicationTableSchemaInput(_StrictOperationInput):
     table_id: int = Field(gt=0)
-    schema: list[dict[str, Any]] = Field(min_length=1, max_length=200)
+    schema_: list[dict[str, Any]] = Field(
+        alias="schema",
+        min_length=1,
+        max_length=200,
+    )
 
 
 class ApplicationTemplateInput(_StrictOperationInput):
-    schema: list[dict[str, Any]] = Field(min_length=1, max_length=200)
+    schema_: list[dict[str, Any]] = Field(
+        alias="schema",
+        min_length=1,
+        max_length=200,
+    )
     purge_non_template_fields: bool = False
 
 
@@ -1331,6 +1354,14 @@ class ListApplicationProgressCandidatesInput(_StrictOperationInput):
     limit: int = Field(default=100, ge=1, le=500)
 
 
+class ScrubLegacyEmailBodiesInput(_StrictOperationInput):
+    user_confirmed: bool = False
+
+
+class PurgeSyntheticEmailTestDataInput(_StrictOperationInput):
+    user_confirmed: bool = False
+
+
 class ApplicationProgressCandidateInput(_StrictOperationInput):
     candidate_id: str = Field(min_length=1, max_length=64)
 
@@ -1491,18 +1522,60 @@ class Operation:
     def is_mutation(self) -> bool:
         return any(effect in self.side_effects for effect in ("write", "llm", "external"))
 
+    def _signature_input_schema(self) -> dict[str, Any]:
+        """Expose a closed JSON schema for legacy signature-validated operations.
+
+        Newer operations use an explicit Pydantic input model.  A few older
+        registry entries intentionally retain their function-signature
+        validation, but an external Agent still needs the same machine-readable
+        contract to discover their arguments.  Derive that contract once at
+        projection time instead of advertising ``null`` as the input schema.
+        """
+
+        try:
+            type_hints = get_type_hints(self.fn)
+        except (NameError, TypeError):
+            type_hints = {}
+
+        properties: dict[str, Any] = {}
+        required: list[str] = []
+        for name, parameter in inspect.signature(self.fn).parameters.items():
+            if parameter.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+                continue
+            annotation = type_hints.get(name, parameter.annotation)
+            if annotation is inspect.Parameter.empty:
+                annotation = Any
+            try:
+                property_schema = TypeAdapter(annotation).json_schema()
+            except (PydanticSchemaGenerationError, TypeError, ValueError):
+                property_schema = {}
+            if parameter.default is inspect.Parameter.empty:
+                required.append(name)
+            elif parameter.default is not None:
+                property_schema["default"] = parameter.default
+            properties[name] = property_schema
+
+        schema: dict[str, Any] = {
+            "type": "object",
+            "properties": properties,
+            "additionalProperties": False,
+        }
+        if required:
+            schema["required"] = required
+        return schema
+
     def schema(self) -> dict[str, Any]:
         input_schema = (
             self.input_model.model_json_schema()
             if self.input_model is not None
-            else None
+            else self._signature_input_schema()
         )
         return {
             "name": self.name,
             "description": self.description,
             "parameters": (
                 input_schema.get("properties", {})
-                if input_schema is not None
+                if self.input_model is not None
                 else self.parameters
             ),
             "input_schema": input_schema,
@@ -1647,7 +1720,7 @@ OPERATIONS: dict[str, Operation] = {
         fn=export_diagnostic_bundle,
         description="导出本地脱敏诊断包；只包含运行元数据、错误关联 ID 和安全摘要，不包含 Profile、岗位、简历或凭据。",
         group="governance",
-        audit_redacted_output_parameters=("recent_errors",),
+        audit_redacted_output_parameters=("recent_errors", "durable_failures"),
         version="2026-08-31",
     ),
     "reset_demo_data": Operation(
@@ -2180,8 +2253,8 @@ OPERATIONS: dict[str, Operation] = {
     "start_job_research": Operation(
         name="start_job_research",
         fn=start_job_research,
-        description="确认后由只读临时 Codex worker 实时检索公开网页并建立公司与岗位档案。",
-        parameters={"job_id": "int", "runtime_id": "str=codex"},
+        description="确认后通过可用的 live web runtime，或受控后端 HTTP 兜底链，建立公司与岗位档案。",
+        parameters={"job_id": "int", "runtime_id": "str? (按优先级自动选择；可显式指定 backend_search)"},
         group="research",
         side_effects=("write", "external"),
         input_model=StartJobResearchInput,
@@ -2216,10 +2289,10 @@ OPERATIONS: dict[str, Operation] = {
     "build_role_benchmark": Operation(
         name="build_role_benchmark",
         fn=build_role_benchmark,
-        description="确认后使用受限 deep executor 收集同类 JD，并由 Runtime 持久化去重后的岗位基准与确定性 Delta；fixture/replay 仅用于本地验收。",
+        description="确认后按优先级使用 live runtime 或受控后端 HTTP 搜索收集同类 JD，并由 Runtime 持久化去重后的岗位基准与确定性 Delta；fixture/replay 仅用于本地验收。",
         parameters={
             "job_id": "int",
-            "runtime_id": "str=codex",
+            "runtime_id": "str=auto (live runtime, fallback backend_search)",
             "role_family": "str?",
             "specialization": "str?",
             "seniority": "str?",
@@ -2237,7 +2310,7 @@ OPERATIONS: dict[str, Operation] = {
         description="确认后重新收集并计算目标岗位的同类岗位基准；历史运行保持不变。",
         parameters={
             "job_id": "int",
-            "runtime_id": "str=codex",
+            "runtime_id": "str=auto (live runtime, fallback backend_search)",
             "role_family": "str?",
             "specialization": "str?",
             "seniority": "str?",
@@ -2762,8 +2835,8 @@ OPERATIONS: dict[str, Operation] = {
     "begin_gmail_oauth": Operation(
         name="begin_gmail_oauth",
         fn=begin_gmail_oauth,
-        description="生成带 PKCE 与一次性 state 的 Gmail 只读授权链接；verifier 只进入系统钥匙串。",
-        parameters={"redirect_uri": "str"},
+        description="在使用者确认只读同步范围后，生成带 PKCE 与一次性 state 的 Gmail 只读授权链接；verifier 只进入系统钥匙串。",
+        parameters={"redirect_uri": "str", "user_confirmed": "bool (must be true)"},
         group="email",
         side_effects=("write",),
         permissions=("credential:keychain",),
@@ -2789,6 +2862,7 @@ OPERATIONS: dict[str, Operation] = {
             "provider": "str?",
             "host": "str?",
             "port": "int=993",
+            "user_confirmed": "bool (must be true)",
         },
         group="email",
         side_effects=("external", "write"),
@@ -2839,6 +2913,42 @@ OPERATIONS: dict[str, Operation] = {
         group="email",
         side_effects=("external", "write"),
         permissions=("credential:keychain",),
+    ),
+    "get_privacy_hygiene_status": Operation(
+        name="get_privacy_hygiene_status",
+        fn=get_privacy_hygiene_status,
+        description="读取隐私卫生计数；只返回旧邮件正文待清理的记录数和字符数，不返回内容。",
+        group="governance",
+        version="2026-08-31",
+    ),
+    "get_synthetic_email_test_data_status": Operation(
+        name="get_synthetic_email_test_data_status",
+        fn=get_synthetic_email_test_data_status,
+        description="读取严格限定的合成邮箱测试数据计数，不返回账号地址或邮件内容。",
+        group="governance",
+        version="2026-08-31",
+    ),
+    "scrub_legacy_email_notification_bodies": Operation(
+        name="scrub_legacy_email_notification_bodies",
+        fn=scrub_legacy_email_notification_bodies,
+        description="明确确认后清理已解析旧面试通知中的冗余邮件正文；保留结构化解析字段。该操作不可恢复。",
+        parameters={"user_confirmed": "bool (must be true)"},
+        group="governance",
+        side_effects=("write",),
+        permissions=("privacy:maintenance",),
+        input_model=ScrubLegacyEmailBodiesInput,
+        version="2026-08-31",
+    ),
+    "purge_synthetic_email_test_data": Operation(
+        name="purge_synthetic_email_test_data",
+        fn=purge_synthetic_email_test_data,
+        description="明确确认后清理严格模式命中的合成邮箱测试账号及其同步数据；关联正式阶段事件时自动拒绝。",
+        parameters={"user_confirmed": "bool (must be true)"},
+        group="governance",
+        side_effects=("external", "write"),
+        permissions=("credential:keychain", "privacy:maintenance"),
+        input_model=PurgeSyntheticEmailTestDataInput,
+        version="2026-08-31",
     ),
     "ingest_application_signal": Operation(
         name="ingest_application_signal",
@@ -4572,7 +4682,9 @@ async def execute_operation(
             return replay
 
     try:
-        result = await op.fn(**clean_args)
+        result = op.fn(**clean_args)
+        if inspect.isawaitable(result):
+            result = await result
         envelope = _envelope(
             ok=not (isinstance(result, dict) and result.get("error")),
             operation=name,
@@ -4639,7 +4751,7 @@ def _validated_args(
                 for error in exc.errors()
             )
             return args, f"参数校验失败: {details}"
-        return value.model_dump(exclude_none=True), None
+        return value.model_dump(by_alias=True, exclude_none=True), None
 
     signature = inspect.signature(op.fn)
     required = [

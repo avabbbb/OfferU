@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import os
 from pathlib import Path
@@ -203,6 +204,73 @@ class OperationRegistryTests(unittest.TestCase):
             assert schema is not None
             self.assertEqual(schema["input_schema"]["type"], "object")
             self.assertFalse(schema["input_schema"]["additionalProperties"])
+
+    def test_every_operation_publishes_a_closed_machine_readable_contract(self) -> None:
+        required_output_keys = {
+            "ok",
+            "operation",
+            "operation_version",
+            "inputs",
+            "outputs",
+            "warnings",
+            "errors",
+            "side_effects",
+            "elapsed_ms",
+        }
+
+        for name, operation in OPERATIONS.items():
+            schema = operation.schema()
+            input_schema = schema["input_schema"]
+
+            self.assertIsInstance(input_schema, dict, name)
+            self.assertEqual(input_schema.get("type"), "object", name)
+            self.assertIs(input_schema.get("additionalProperties"), False, name)
+            self.assertIsInstance(input_schema.get("properties"), dict, name)
+            self.assertTrue(required_output_keys.issubset(schema["output_contract"]), name)
+            self.assertEqual(schema["requires_confirmation"], operation.is_mutation, name)
+            self.assertEqual(schema["supports_dry_run"], operation.is_mutation, name)
+            self.assertTrue(schema["operation_version"], name)
+
+            if operation.input_model is None:
+                parameters = inspect.signature(operation.fn).parameters
+                schema_names = set(input_schema["properties"])
+                expected_names = {
+                    parameter_name
+                    for parameter_name, parameter in parameters.items()
+                    if parameter.kind
+                    not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+                }
+                self.assertEqual(schema_names, expected_names, name)
+                expected_required = {
+                    parameter_name
+                    for parameter_name, parameter in parameters.items()
+                    if parameter.kind
+                    not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+                    and parameter.default is inspect.Parameter.empty
+                }
+                self.assertEqual(set(input_schema.get("required", [])), expected_required, name)
+
+    def test_application_schema_wire_name_is_preserved_after_reserved_name_fix(self) -> None:
+        for name in ("update_application_table_schema", "update_application_template"):
+            schema = get_operation_schema(name)
+            assert schema is not None
+            properties = schema["input_schema"]["properties"]
+            self.assertIn("schema", properties)
+            self.assertNotIn("schema_", properties)
+
+    def test_application_schema_alias_reaches_operation_as_schema(self) -> None:
+        payload = [{"key": "stage", "label": "Stage"}]
+        result = asyncio.run(
+            execute_operation(
+                "update_application_template",
+                {"schema": payload},
+                dry_run=True,
+            )
+        )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["inputs"]["schema"], payload)
+        self.assertNotIn("schema_", result["inputs"])
 
     def test_unknown_operation_returns_error_envelope(self) -> None:
         result = asyncio.run(execute_operation("does_not_exist", {}))

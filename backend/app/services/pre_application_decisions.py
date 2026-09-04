@@ -29,7 +29,9 @@ DECISION_SCHEMA = "offeru.pre_application_decision.v1"
 RECOMMENDATIONS = frozenset({"go", "conditional_go", "no_go", "insufficient_evidence"})
 FINAL_DECISIONS = RECOMMENDATIONS
 _DECISION_ID = re.compile(r"^pre_app_[0-9a-f]{32}$")
-_DEFAULT_DIR = Path(__file__).resolve().parents[2] / "data" / "pre_application_decisions"
+from app.runtime_paths import runtime_data_path
+
+_DEFAULT_DIR = runtime_data_path("pre_application_decisions")
 
 DECISION_OUTPUT_SCHEMA: dict[str, Any] = {
     "required": (

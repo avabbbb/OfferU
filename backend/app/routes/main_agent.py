@@ -22,6 +22,7 @@ from app.services.agent_runtime import (
     canonical_agent_run_event,
     get_agent_run_provider,
 )
+from app.services.diagnostics import new_error_id, record_error
 from app.services.security_redaction import safe_error_message
 
 router = APIRouter()
@@ -168,6 +169,38 @@ async def _provider_for_run(run_id: str):
         runtime = run.get("llm_runtime") if isinstance(run.get("llm_runtime"), dict) else {}
         provider_id = str(runtime.get("provider_id") or "pi")
     return _main_agent_provider(provider_id)
+
+
+def _runtime_stream_error_payload(
+    exc: BaseException,
+    *,
+    path: str,
+    run_id: str = "",
+    task_id: str = "",
+    provider_id: str = "",
+) -> dict[str, str]:
+    """Return a user-safe SSE error and keep one support correlation handle."""
+
+    error_id = new_error_id()
+    message = safe_error_message(exc, fallback="Agent 流式请求失败")
+    record_error(
+        error_id,
+        method="SSE",
+        path=path,
+        status_code=500,
+        kind="agent_stream",
+        message=message,
+        run_id=run_id,
+        task_id=task_id,
+        provider_id=provider_id,
+    )
+    return {
+        "error": message,
+        "error_id": error_id,
+        **({"run_id": str(run_id)} if run_id else {}),
+        **({"task_id": str(task_id)} if task_id else {}),
+        **({"provider_id": str(provider_id)} if provider_id else {}),
+    }
 
 
 @router.get("/skills")
@@ -327,44 +360,57 @@ async def follow_runtime_run_events(
 
     async def events():
         cursor = max(0, int(after_sequence or 0))
-        while True:
-            batch = await list_agent_run_events(
-                run_id,
-                after_sequence=cursor,
-                limit=500,
-            )
-            for event in batch:
-                cursor = int(event["sequence"])
-                canonical = canonical_agent_run_event(event)
-                yield {
-                    "id": str(cursor),
-                    "event": str(canonical.get("type") or "reasoning.status"),
-                    "data": json.dumps({**canonical, "durable": True}, ensure_ascii=False),
-                }
+        try:
+            while True:
+                batch = await list_agent_run_events(
+                    run_id,
+                    after_sequence=cursor,
+                    limit=500,
+                )
+                for event in batch:
+                    cursor = int(event["sequence"])
+                    canonical = canonical_agent_run_event(event)
+                    yield {
+                        "id": str(cursor),
+                        "event": str(canonical.get("type") or "reasoning.status"),
+                        "data": json.dumps({**canonical, "durable": True}, ensure_ascii=False),
+                    }
 
-            run = await load_agent_run(run_id)
-            if run is None:
-                yield {
-                    "event": "error",
-                    "data": json.dumps(
-                        {"error": "Agent Run disappeared"},
-                        ensure_ascii=False,
-                    ),
-                }
-                return
-            if (
-                _runtime_turn_is_finished(run)
-                and cursor >= int(run.get("event_sequence") or 0)
-            ):
-                yield {
-                    "event": "message",
-                    "data": json.dumps(
-                        {"response": _runtime_response_from_run(run)},
-                        ensure_ascii=False,
-                    ),
-                }
-                return
-            await asyncio.sleep(0.25)
+                run = await load_agent_run(run_id)
+                if run is None:
+                    payload = _runtime_stream_error_payload(
+                        RuntimeError("Agent Run disappeared"),
+                        path="/api/agent/runtime/runs/{run_id}/events/stream",
+                        run_id=run_id,
+                    )
+                    yield {
+                        "event": "error",
+                        "data": json.dumps(payload, ensure_ascii=False),
+                    }
+                    return
+                if (
+                    _runtime_turn_is_finished(run)
+                    and cursor >= int(run.get("event_sequence") or 0)
+                ):
+                    yield {
+                        "event": "message",
+                        "data": json.dumps(
+                            {"response": _runtime_response_from_run(run)},
+                            ensure_ascii=False,
+                        ),
+                    }
+                    return
+                await asyncio.sleep(0.25)
+        except Exception as exc:
+            payload = _runtime_stream_error_payload(
+                exc,
+                path="/api/agent/runtime/runs/{run_id}/events/stream",
+                run_id=run_id,
+            )
+            yield {
+                "event": "error",
+                "data": json.dumps(payload, ensure_ascii=False),
+            }
 
     return EventSourceResponse(events())
 
@@ -597,8 +643,12 @@ async def stream_runtime_run(body: PiAgentRunRequest):
 
     async def events():
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=1000)
+        active_run_id = str(body.run_id or "")
 
         async def listener(event: dict[str, Any]) -> None:
+            nonlocal active_run_id
+            if event.get("run_id"):
+                active_run_id = str(event["run_id"])
             try:
                 queue.put_nowait(event)
             except asyncio.QueueFull:
@@ -661,9 +711,16 @@ async def stream_runtime_run(body: PiAgentRunRequest):
                 "data": json.dumps({"response": result}, ensure_ascii=False),
             }
         except Exception as exc:
+            payload = _runtime_stream_error_payload(
+                exc,
+                path="/api/agent/runtime/runs/stream",
+                run_id=active_run_id,
+                task_id=str(body.task_id or ""),
+                provider_id=str(body.runtime_provider or ""),
+            )
             yield {
                 "event": "error",
-                "data": json.dumps({"error": safe_error_message(exc)}, ensure_ascii=False),
+                "data": json.dumps(payload, ensure_ascii=False),
             }
 
     return EventSourceResponse(events())
@@ -886,6 +943,30 @@ async def reset_demo_data(body: DataSafetyConfirmationRequest) -> dict[str, Any]
 @router.get("/data/safety/status")
 async def data_safety_status() -> dict[str, Any]:
     return await _ui_operation_outputs("get_data_safety_status", {})
+
+
+@router.get("/data/privacy-hygiene")
+async def privacy_hygiene_status() -> dict[str, Any]:
+    """Expose privacy counts without exposing legacy message contents."""
+    return await _ui_operation_outputs("get_privacy_hygiene_status", {})
+
+
+@router.post("/data/privacy-hygiene/scrub")
+async def scrub_privacy_hygiene(body: DataSafetyConfirmationRequest) -> dict[str, Any]:
+    """Clear redundant legacy email bodies only after explicit confirmation."""
+    return await _ui_operation_outputs(
+        "scrub_legacy_email_notification_bodies",
+        {"user_confirmed": body.confirmed},
+    )
+
+
+@router.post("/data/privacy-hygiene/purge-synthetic")
+async def purge_synthetic_privacy_data(body: DataSafetyConfirmationRequest) -> dict[str, Any]:
+    """Remove only the reserved synthetic mailbox namespace after confirmation."""
+    return await _ui_operation_outputs(
+        "purge_synthetic_email_test_data",
+        {"user_confirmed": body.confirmed},
+    )
 
 
 @router.get("/data/safety/integrity")

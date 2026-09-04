@@ -40,6 +40,7 @@ import {
   bauhausModalContentClassName,
   bauhausTabsClassNames,
 } from "@/lib/bauhaus";
+import { safeClientErrorMessage } from "@/lib/safe-error";
 
 const container = {
   hidden: { opacity: 0 },
@@ -118,7 +119,7 @@ export default function InterviewPage() {
       setNewRole("");
       setNewRawText("");
     } catch (error: any) {
-      setInterviewError(error.message || "提交失败");
+      setInterviewError(safeClientErrorMessage(error, "提交失败"));
     } finally {
       setSubmitting(false);
     }
@@ -130,7 +131,7 @@ export default function InterviewPage() {
       await extractQuestions(experienceId);
       mutateQuestions();
     } catch (error: any) {
-      setInterviewError(error.message || "提炼失败");
+      setInterviewError(safeClientErrorMessage(error, "提炼失败"));
     } finally {
       setExtractingId(null);
     }
@@ -143,7 +144,7 @@ export default function InterviewPage() {
       setAnswerMap((prev) => ({ ...prev, [questionId]: result.suggested_answer }));
       mutateQuestions();
     } catch (error: any) {
-      setInterviewError(error.message || "生成失败");
+      setInterviewError(safeClientErrorMessage(error, "生成失败"));
     } finally {
       setGeneratingId(null);
     }

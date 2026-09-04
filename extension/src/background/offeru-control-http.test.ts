@@ -33,13 +33,63 @@ describe("HttpOfferUControl", () => {
   });
 
   it("probe reports ok on healthy backend", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ status: "ok", service: "offeru" }));
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        status: "ok",
+        service: "OfferU",
+        runtime: "python",
+        version: "0.4.0",
+        build_mode: "local-development",
+      }),
+    );
     vi.stubGlobal("fetch", fetchMock);
     const control = new HttpOfferUControl("http://127.0.0.1:8765");
     const state = await control.probe();
     expect(state.ok).toBe(true);
     expect(state.backendUrl).toBe("http://127.0.0.1:8765");
     expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:8765/api/health");
+  });
+
+  it("normalizes a legacy local endpoint before making requests", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        status: "ok",
+        service: "OfferU",
+        runtime: "python",
+        version: "0.4.0",
+        build_mode: "local-development",
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const control = new HttpOfferUControl("http://127.0.0.1:8080");
+    const state = await control.probe();
+
+    expect(state.ok).toBe(true);
+    expect(state.backendUrl).toBe("http://127.0.0.1:8765");
+    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:8765/api/health");
+  });
+
+  it("rejects a wrong health identity instead of reporting a ready backend", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({ status: "ok", service: "other-service", runtime: "python" }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const control = new HttpOfferUControl("http://127.0.0.1:8765");
+
+    const state = await control.probe();
+
+    expect(state.ok).toBe(false);
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ redirect: "error" });
+  });
+
+  it("rejects a partial health payload without release identity", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({ status: "ok", service: "OfferU", runtime: "python" }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const state = await new HttpOfferUControl().probe();
+
+    expect(state.ok).toBe(false);
   });
 
   it("probe reports failure when backend unreachable", async () => {
@@ -92,10 +142,16 @@ describe("HttpOfferUControl", () => {
   });
 
   it("throws on non-ok http status", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ detail: "boom" }, false, 500)));
+    const response = jsonResponse({ detail: "OFFERU_RELEASE_CANARY_SECRET_SHOULD_NOT_LEAK" }, false, 500);
+    response.headers.set("X-OfferU-Error-Id", "err-123");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
     const control = new HttpOfferUControl("http://127.0.0.1:8765");
     const plan = await control.prepareJobImport([candidate()]);
-    await expect(control.confirmJobImport(plan.planId)).rejects.toThrow("HTTP 500");
+    const error = await control.confirmJobImport(plan.planId).catch((value: unknown) => value as Error);
+    expect(error).toBeInstanceOf(Error);
+    expect(error.message).toContain("HTTP 500");
+    expect(error.message).toContain("err-123");
+    expect(error.message).not.toContain("OFFERU_RELEASE_CANARY_SECRET_SHOULD_NOT_LEAK");
   });
 
   it("returns empty result for unknown plan id", async () => {

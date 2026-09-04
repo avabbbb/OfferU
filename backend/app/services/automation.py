@@ -14,17 +14,24 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 
 from app.database import async_session
+from app.services.diagnostics import new_error_id, record_error
 from app.models.models import (
     AutomationEvent,
     AutomationInboxItem,
+    CareerTask,
     AutomationRule,
     JobResearchRun,
 )
-from app.services.security_redaction import redact_secret_text, redact_secret_value, safe_error_message
+from app.services.security_redaction import (
+    redact_secret_text,
+    redact_secret_value,
+    redact_sensitive_text,
+    safe_error_message,
+)
 
 
 AUTOMATION_EVENT_TYPES = frozenset(
@@ -49,7 +56,7 @@ AUTOMATION_EVENT_TYPES = frozenset(
     }
 )
 AUTOMATION_EVENT_STATUSES = frozenset(
-    {"queued", "dispatched", "completed", "failed", "blocked", "skipped"}
+    {"queued", "processing", "dispatched", "completed", "failed", "blocked", "skipped"}
 )
 INBOX_CATEGORIES = frozenset(
     {"needs_approval", "needs_review", "fyi", "completed", "failed"}
@@ -59,7 +66,7 @@ INBOX_STATUSES = frozenset({"pending", "resolved", "dismissed"})
 _DEFAULT_RULES: dict[str, dict[str, Any]] = {
     "JOB_SAVED": {
         "task_type": "role_intelligence",
-        "runtime_provider": "codex",
+        "runtime_provider": "auto",
         "enabled": True,
         "automation_level": "derived_candidate",
         "description": "保存岗位后后台建立岗位情报；结果仍是候选/提案。",
@@ -98,14 +105,14 @@ def _event_view(row: AutomationEvent) -> dict[str, Any]:
         "dedupe_key": row.dedupe_key,
         "status": row.status,
         "result": redact_secret_value(row.result_json if isinstance(row.result_json, dict) else {}),
-        "error": redact_secret_text(row.error or "", max_length=2000),
+        "error": redact_sensitive_text(row.error or "", max_length=2000),
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "processed_at": row.processed_at.isoformat() if row.processed_at else None,
     }
 
 
-def _inbox_view(row: AutomationInboxItem) -> dict[str, Any]:
-    return {
+def _inbox_view(row: AutomationInboxItem, task: CareerTask | None = None) -> dict[str, Any]:
+    view = {
         "item_id": row.item_id,
         "category": row.category,
         "status": row.status,
@@ -122,6 +129,26 @@ def _inbox_view(row: AutomationInboxItem) -> dict[str, Any]:
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
         "resolved_at": row.resolved_at.isoformat() if row.resolved_at else None,
     }
+    # The inbox row is durable user-facing workflow state, while the linked
+    # CareerTask owns the live execution state.  Project a bounded snapshot so
+    # Today can show progress/retryability without duplicating task truth.
+    task_progress = (
+        task.progress_json
+        if task is not None and isinstance(task.progress_json, dict)
+        else {}
+    )
+    view.update(
+        {
+            "task_status": task.status if task is not None else None,
+            "task_progress": redact_secret_value(task_progress),
+            "task_error_id": str(task_progress.get("error_id") or "")[:40],
+            "task_error": redact_sensitive_text(task.error or "", max_length=2000) if task is not None else "",
+            "task_retryable": bool(task.retryable) if task is not None else False,
+            "task_attempt_count": int(task.attempt_count or 0) if task is not None else 0,
+            "task_max_attempts": int(task.max_attempts or 0) if task is not None else 0,
+        }
+    )
+    return view
 
 
 def _rule_view(row: AutomationRule | None, event_type: str) -> dict[str, Any]:
@@ -239,7 +266,17 @@ async def _upsert_inbox(
             if row.status in {"resolved", "dismissed"}:
                 row.status = "pending"
                 row.resolved_at = None
-        await db.commit()
+        try:
+            await db.commit()
+        except IntegrityError:
+            # The primary key is the cross-process authority when two
+            # recovery paths project the same task at once.  Reuse the row
+            # committed by the winner instead of reporting a false failure.
+            await db.rollback()
+            existing = await db.get(AutomationInboxItem, item_id)
+            if existing is None:
+                raise
+            row = existing
         await db.refresh(row)
         return _inbox_view(row)
 
@@ -252,7 +289,7 @@ async def _dispatch_job_saved(event: AutomationEvent, rule: dict[str, Any]) -> d
     if job_id <= 0:
         raise ValueError("JOB_SAVED 缺少有效 job_id")
     policy = rule.get("policy") if isinstance(rule.get("policy"), dict) else {}
-    provider = str(payload.get("runtime_provider") or policy.get("runtime_provider") or "codex")
+    provider = str(payload.get("runtime_provider") or policy.get("runtime_provider") or "auto")
     task = await start_career_task(
         task_type="role_intelligence",
         source="automation",
@@ -294,18 +331,55 @@ async def _update_event(
     status: str,
     result: dict[str, Any] | None = None,
     error: str = "",
+    expected_statuses: tuple[str, ...] = ("processing",),
 ) -> dict[str, Any]:
     async with async_session() as db:
+        db_result = await db.execute(
+            update(AutomationEvent)
+            .where(AutomationEvent.event_id == event_id)
+            .where(AutomationEvent.status.in_(expected_statuses))
+            .values(
+                status=status,
+                result_json=_bounded(result or {}),
+                error=redact_sensitive_text(error or "", max_length=2000),
+                processed_at=_now(),
+            )
+        )
+        if int(db_result.rowcount or 0) != 1:
+            await db.rollback()
+            row = await db.get(AutomationEvent, event_id)
+            if row is None:
+                raise ValueError(f"AutomationEvent {event_id} 不存在")
+            return _event_view(row)
+        await db.commit()
         row = await db.get(AutomationEvent, event_id)
         if row is None:
             raise ValueError(f"AutomationEvent {event_id} 不存在")
-        row.status = status
-        row.result_json = _bounded(result or {})
-        row.error = redact_secret_text(error or "", max_length=2000)
-        row.processed_at = _now()
-        await db.commit()
         await db.refresh(row)
         return _event_view(row)
+
+
+async def _claim_automation_event(event_id: str) -> AutomationEvent | None:
+    """Atomically claim one queued signal across backend processes."""
+
+    async with async_session() as db:
+        db_result = await db.execute(
+            update(AutomationEvent)
+            .where(AutomationEvent.event_id == str(event_id or ""))
+            .where(AutomationEvent.status == "queued")
+            .values(
+                status="processing",
+                error="",
+                # While processing, this is a lease timestamp. Terminal
+                # transitions overwrite it with the completion timestamp.
+                processed_at=_now(),
+            )
+        )
+        if int(db_result.rowcount or 0) != 1:
+            await db.rollback()
+            return None
+        await db.commit()
+        return await db.get(AutomationEvent, str(event_id or ""))
 
 
 async def _prepare_resume_candidate(job_id: int) -> dict[str, Any]:
@@ -429,12 +503,13 @@ async def _process_automation_event(event_id: str) -> dict[str, Any]:
     """Process one queued signal exactly once within this backend process."""
 
     async with _AUTOMATION_EVENT_PROCESS_LOCK:
-        async with async_session() as db:
-            event = await db.get(AutomationEvent, str(event_id or ""))
+        event = await _claim_automation_event(event_id)
         if event is None:
-            raise ValueError(f"AutomationEvent {event_id} 不存在")
-        if event.status != "queued":
-            return _event_view(event)
+            async with async_session() as db:
+                current = await db.get(AutomationEvent, str(event_id or ""))
+            if current is None:
+                raise ValueError(f"AutomationEvent {event_id} 不存在")
+            return _event_view(current)
 
         rule = await _rule(event.event_type)
         if not rule["enabled"]:
@@ -448,10 +523,26 @@ async def _process_automation_event(event_id: str) -> dict[str, Any]:
                 marker in str(exc).casefold()
                 for marker in ("401", "unauthorized", "invalid_api_key", "authentication")
             )
+            error_message = "provider authentication failed" if blocked else safe_error_message(exc)
+            error_id = new_error_id()
+            record_error(
+                error_id,
+                method="AUTOMATION",
+                path=f"/api/agent/automation/events/{event.event_id}",
+                status_code=503 if blocked else 500,
+                kind="automation_provider_blocked" if blocked else "automation_dispatch",
+                message=error_message,
+                provider_id=(
+                    str(event.payload_json.get("runtime_provider") or "")
+                    if isinstance(event.payload_json, dict)
+                    else ""
+                ),
+            )
             return await _update_event(
                 event.event_id,
                 status="blocked" if blocked else "failed",
-                error="provider authentication failed" if blocked else safe_error_message(exc),
+                result={"error_id": error_id},
+                error=error_message,
             )
         return await _update_event(event.event_id, status="dispatched", result=result)
 
@@ -463,11 +554,26 @@ async def recover_automation_events() -> dict[str, int]:
         rows = (
             await db.execute(
                 select(AutomationEvent)
-                .where(AutomationEvent.status == "queued")
+                .where(AutomationEvent.status.in_(("queued", "processing")))
                 .order_by(AutomationEvent.created_at.asc())
             )
         ).scalars().all()
-        event_ids = [row.event_id for row in rows]
+        event_ids: list[str] = []
+        for row in rows:
+            if row.status == "processing":
+                # A processing event has no durable provider-side commit of
+                # its own. Requeue it after startup so the idempotent task
+                # boundary can safely finish the dispatch.
+                db_result = await db.execute(
+                    update(AutomationEvent)
+                    .where(AutomationEvent.event_id == row.event_id)
+                    .where(AutomationEvent.status == "processing")
+                    .values(status="queued", processed_at=None, error="")
+                )
+                if int(db_result.rowcount or 0) != 1:
+                    continue
+            event_ids.append(row.event_id)
+        await db.commit()
     recovered = 0
     completed = 0
     failed = 0
@@ -623,8 +729,62 @@ async def handle_career_task_finished(task_id: str) -> dict[str, Any] | None:
                 "application_packet_status": packet_status,
             },
             error=task.get("error") or "",
+            expected_statuses=("processing", "dispatched"),
         )
     return item
+
+
+async def handle_career_task_projection_failure(
+    task_id: str,
+    error: Any,
+) -> dict[str, Any] | None:
+    """Make a post-task automation projection failure user-visible."""
+
+    from app.services.career_tasks import get_career_task
+
+    task = await get_career_task(task_id)
+    input_payload = task.get("input") if isinstance(task.get("input"), dict) else {}
+    event_id = str(input_payload.get("automation_event_id") or "")
+    if not event_id:
+        return None
+    message = safe_error_message(
+        error if isinstance(error, BaseException) else RuntimeError(str(error or "")),
+    )
+    error_id = new_error_id()
+    record_error(
+        error_id,
+        method="TASK",
+        path=f"/api/agent/runtime/career-tasks/{task_id}/projection",
+        status_code=500,
+        kind="career_task_projection",
+        message=message,
+        task_id=task_id,
+    )
+    event = await _update_event(
+        event_id,
+        status="failed",
+        result={"task_id": task_id, "projection": "failed", "error_id": error_id},
+        error=message,
+        expected_statuses=("processing", "dispatched"),
+    )
+    if event["status"] != "failed":
+        return None
+    return await _upsert_inbox(
+        item_id=f"automation_task_{task_id}",
+        category="failed",
+        event_id=event_id,
+        task_id=task_id,
+        target_type=task.get("target_type") or "",
+        target_id=task.get("target_id") or "",
+        title="自动化结果投影失败",
+        body=f"CareerTask 已完成，但结果没有完整进入 Today/岗位收件箱：{message}（错误 ID：{error_id}）",
+        payload={
+            "task": {"task_id": task_id, "error_id": error_id},
+            "task_id": task_id,
+            "projection_error": message,
+            "projection_error_id": error_id,
+        },
+    )
 
 
 async def list_automation_events(
@@ -662,7 +822,14 @@ async def list_automation_inbox(
         if category:
             query = query.where(AutomationInboxItem.category == category)
         rows = (await db.execute(query)).scalars().all()
-    return {"items": [_inbox_view(row) for row in rows]}
+        task_ids = {row.task_id for row in rows if row.task_id}
+        task_map: dict[str, CareerTask] = {}
+        if task_ids:
+            task_rows = (
+                await db.execute(select(CareerTask).where(CareerTask.task_id.in_(task_ids)))
+            ).scalars().all()
+            task_map = {task.task_id: task for task in task_rows}
+    return {"items": [_inbox_view(row, task_map.get(row.task_id)) for row in rows]}
 
 
 async def resolve_automation_inbox_item(*, item_id: str, action: str) -> dict[str, Any]:
@@ -692,6 +859,7 @@ __all__ = [
     "AUTOMATION_EVENT_TYPES",
     "INBOX_CATEGORIES",
     "handle_career_task_finished",
+    "handle_career_task_projection_failure",
     "list_automation_events",
     "list_automation_inbox",
     "list_automation_rules",

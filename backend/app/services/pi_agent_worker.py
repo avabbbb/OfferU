@@ -36,8 +36,18 @@ class PiAgentWorkerClient:
 
     def __init__(self, *, node_path: str | None = None, worker_path: Path | None = None) -> None:
         project_root = Path(__file__).resolve().parents[3]
-        self._runtime_dir = project_root / "agent-runtime"
-        self._worker_path = worker_path or self._runtime_dir / "src" / "worker.mjs"
+        configured_runtime_dir = os.environ.get("OFFERU_AGENT_RUNTIME_DIR")
+        self._runtime_dir = (
+            Path(configured_runtime_dir).resolve()
+            if configured_runtime_dir
+            else project_root / "agent-runtime"
+        )
+        configured_worker_path = os.environ.get("OFFERU_PI_WORKER_PATH")
+        self._worker_path = worker_path or (
+            Path(configured_worker_path).resolve()
+            if configured_worker_path
+            else self._runtime_dir / "src" / "worker.mjs"
+        )
         self._node_path = node_path or os.environ.get("OFFERU_NODE_PATH") or shutil.which("node")
         self._process: asyncio.subprocess.Process | None = None
         self._reader_task: asyncio.Task[None] | None = None

@@ -19,8 +19,13 @@ import type {
   SubmissionResult,
   SyncJobCandidate,
 } from "../framework/workflow.js";
+import {
+  DEFAULT_OFFERU_SERVER_URL,
+  normalizeOfferUServerUrl,
+} from "./server-url.js";
+import { safeExtensionError } from "../lib/safe-error.js";
 
-export const DEFAULT_BACKEND_URL = "http://127.0.0.1:8765";
+export const DEFAULT_BACKEND_URL = DEFAULT_OFFERU_SERVER_URL;
 const SYNC_TIMEOUT_MS = 15000;
 
 interface IngestPayloadItem {
@@ -52,19 +57,43 @@ interface IngestResponse {
   skipped_hash_keys?: string[];
 }
 
+function isOfferUHealthIdentity(payload: {
+  status?: unknown;
+  service?: unknown;
+  runtime?: unknown;
+  version?: unknown;
+  build_mode?: unknown;
+}): boolean {
+  return (
+    payload.status === "ok" &&
+    payload.service === "OfferU" &&
+    payload.runtime === "python" &&
+    typeof payload.version === "string" &&
+    payload.version.trim().length > 0 &&
+    (payload.build_mode === "local-development" || payload.build_mode === "release")
+  );
+}
+
 export class HttpOfferUControl implements OfferUControl {
   private readonly plans = new Map<string, { candidates: SyncJobCandidate[]; createdAt: number }>();
+  private readonly baseUrl: string;
 
-  constructor(private readonly baseUrl: string = DEFAULT_BACKEND_URL) {}
+  constructor(baseUrl: string = DEFAULT_BACKEND_URL) {
+    this.baseUrl = normalizeOfferUServerUrl(baseUrl || DEFAULT_OFFERU_SERVER_URL);
+  }
 
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), SYNC_TIMEOUT_MS);
     try {
-      const resp = await fetch(`${this.baseUrl}${path}`, { ...init, signal: controller.signal });
+      const resp = await fetch(`${this.baseUrl}${path}`, {
+        ...init,
+        redirect: "error",
+        signal: controller.signal,
+      });
       if (!resp.ok) {
-        const text = await resp.text().catch(() => "");
-        throw new Error(`HTTP ${resp.status}: ${text.slice(0, 300)}`);
+        const errorId = resp.headers.get("X-OfferU-Error-Id")?.trim();
+        throw new Error(errorId ? `HTTP ${resp.status}（错误 ID: ${errorId}）` : `HTTP ${resp.status}`);
       }
       return (await resp.json()) as T;
     } finally {
@@ -74,9 +103,15 @@ export class HttpOfferUControl implements OfferUControl {
 
   async probe(): Promise<ConnectionState> {
     try {
-      const health = await this.request<{ status?: string; service?: string }>("/api/health");
+      const health = await this.request<{
+        status?: string;
+        service?: string;
+        runtime?: string;
+        version?: string;
+        build_mode?: string;
+      }>("/api/health");
       return {
-        ok: health.status === "ok" || health.status === undefined,
+        ok: isOfferUHealthIdentity(health),
         backendUrl: this.baseUrl,
         error: undefined,
       };
@@ -84,7 +119,7 @@ export class HttpOfferUControl implements OfferUControl {
       return {
         ok: false,
         backendUrl: this.baseUrl,
-        error: error instanceof Error ? error.message : String(error),
+        error: safeExtensionError(error, "无法连接 OfferU 后端"),
       };
     }
   }

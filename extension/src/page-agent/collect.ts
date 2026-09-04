@@ -11,6 +11,7 @@ import { SiteRuleRegistry } from "../rule-packs/registry.js";
 import { resolveSite } from "../rule-packs/resolver.js";
 import { fetchRemoteRulePacks } from "../rule-packs/remote.js";
 import bossJobDetailPack from "../rule-packs/packs/portal.boss-job-detail.json";
+import { safeExtensionError } from "../lib/safe-error.js";
 
 export type CollectStatus = "collected" | "unsupported" | "ambiguous" | "diagnostic" | "error";
 
@@ -42,7 +43,7 @@ export function collectFromDocument(url: string, doc: Document): CollectResult {
     return {
       status: "error",
       missing: [],
-      reason: error instanceof Error ? error.message : String(error),
+      reason: safeExtensionError(error, "当前页面采集失败"),
     };
   }
 

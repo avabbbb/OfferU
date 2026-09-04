@@ -21,9 +21,10 @@ import zipfile
 
 from sqlalchemy.engine import make_url
 from app.services.security_redaction import safe_error_message
+from app.runtime_paths import runtime_backend_dir
 
 
-BACKEND_DIR = Path(__file__).resolve().parents[2]
+BACKEND_DIR = runtime_backend_dir()
 BACKUP_FORMAT = "offeru.data-backup.v1"
 PENDING_RESTORE_FORMAT = "offeru.pending-restore.v1"
 ARCHIVE_SUFFIX = ".offeru-backup"
@@ -90,16 +91,62 @@ def _database_path_from_url(database_url: str) -> Path:
     return path.resolve()
 
 
+def _assert_managed_tree(path: Path, boundary: Path) -> None:
+    """Reject symlink components before a managed path is read or written."""
+
+    current = Path(path)
+    root = Path(boundary)
+    if not current.is_absolute():
+        current = Path.cwd() / current
+    if not root.is_absolute():
+        root = Path.cwd() / root
+    while True:
+        if current.is_symlink():
+            raise DataSafetyError("受管数据路径不能包含符号链接。")
+        if current == root:
+            return
+        parent = current.parent
+        if parent == current:
+            raise DataSafetyError("受管数据路径不在 OfferU 运行目录内。")
+        current = parent
+
+
+def _ensure_layout_directories(
+    layout: DataSafetyLayout,
+    *,
+    create_root: bool = False,
+    create_backup: bool = False,
+    create_restore: bool = False,
+) -> None:
+    _assert_managed_tree(layout.root, layout.backend_dir)
+    for directory, create in (
+        (layout.root, create_root),
+        (layout.backup_dir, create_backup),
+        (layout.restore_dir, create_restore),
+    ):
+        _assert_managed_tree(directory, layout.backend_dir)
+        if directory.exists() and not directory.is_dir():
+            raise DataSafetyError(f"受管数据目录不是安全的本地目录: {directory.name}")
+        if create:
+            directory.mkdir(parents=True, exist_ok=True)
+            _assert_managed_tree(directory, layout.backend_dir)
+
+
 def _runtime_layout(*, database_url: str | None = None, backend_dir: Path = BACKEND_DIR) -> DataSafetyLayout:
     if database_url is None:
         # Imported lazily so this module remains safe before app.database creates its engine.
         from app.config import get_settings
 
         database_url = get_settings().database_url
-    return DataSafetyLayout(
-        backend_dir=Path(backend_dir).resolve(),
+    raw_backend_dir = Path(backend_dir)
+    if raw_backend_dir.is_symlink():
+        raise DataSafetyError("OfferU 运行目录不能是符号链接。")
+    layout = DataSafetyLayout(
+        backend_dir=raw_backend_dir.resolve(),
         database_path=_database_path_from_url(database_url),
     )
+    _assert_managed_tree(layout.root, layout.backend_dir)
+    return layout
 
 
 def _sha256_file(path: Path) -> str:
@@ -123,7 +170,10 @@ def _aggregate_hash(files: list[dict[str, Any]]) -> str:
 
 
 def _sqlite_report(database_path: Path) -> dict[str, Any]:
-    database_path = Path(database_path).resolve()
+    database_path = Path(database_path)
+    if database_path.is_symlink():
+        raise DataSafetyError("SQLite 数据库不能是符号链接。")
+    database_path = database_path.resolve()
     if not database_path.is_file():
         raise DataSafetyError("SQLite 数据库不存在，不能检查或备份。")
     try:
@@ -264,10 +314,10 @@ def create_backup(
     if reason not in {"user", "pre_restore", "pre_migration"}:
         raise DataSafetyError("不支持的备份原因。")
     with _LOCK:
+        _ensure_layout_directories(layout, create_root=True, create_backup=True)
         source_report = _sqlite_report(layout.database_path)
         if source_report["status"] != "ok":
             raise DataSafetyError("源数据库完整性检查未通过，拒绝创建可恢复备份。")
-        layout.backup_dir.mkdir(parents=True, exist_ok=True)
         backup_id = uuid4().hex
         archive_path = _archive_path(layout, backup_id)
         with tempfile.TemporaryDirectory(prefix="snapshot-", dir=layout.root) as directory:
@@ -349,6 +399,8 @@ def _validate_member(info: zipfile.ZipInfo) -> bool:
 
 
 def _validated_archive(archive_path: Path, *, expected_backup_id: str | None = None) -> tuple[dict[str, Any], list[zipfile.ZipInfo]]:
+    if archive_path.is_symlink():
+        raise DataSafetyError("备份归档不能是符号链接。")
     if not archive_path.is_file():
         raise DataSafetyError("指定备份不存在。")
     try:
@@ -455,9 +507,14 @@ def stage_restore(layout: DataSafetyLayout, *, backup_id: str) -> dict[str, Any]
     """Validate and stage a managed backup; never replace the live database."""
 
     with _LOCK:
+        _ensure_layout_directories(layout, create_restore=True)
         archive_path = _archive_path(layout, backup_id)
+        if archive_path.is_symlink():
+            raise DataSafetyError("备份归档不能是符号链接。")
         archive_hash = _sha256_file(archive_path) if archive_path.is_file() else ""
         pending = _read_pending(layout)
+        stage_dir = layout.restore_dir / backup_id
+        _assert_managed_tree(stage_dir, layout.backend_dir)
         if pending is not None:
             pending_id = str(pending["backup_id"])
             if pending_id != backup_id:
@@ -465,7 +522,6 @@ def stage_restore(layout: DataSafetyLayout, *, backup_id: str) -> dict[str, Any]
             if archive_hash != pending["archive_sha256"]:
                 raise DataSafetyError("待恢复归档已变化，请取消本次恢复并重新选择备份。")
             manifest, _ = _validated_archive(archive_path, expected_backup_id=backup_id)
-            stage_dir = layout.restore_dir / backup_id
             if not stage_dir.is_dir():
                 raise DataSafetyError("待恢复暂存目录不存在，请取消本次恢复并重新选择备份。")
             _validate_snapshot(stage_dir, manifest)
@@ -478,7 +534,6 @@ def stage_restore(layout: DataSafetyLayout, *, backup_id: str) -> dict[str, Any]
                 "pending_restart": True,
                 "database_replaced": False,
             }
-        stage_dir = layout.restore_dir / backup_id
         manifest = _materialize_archive(
             archive_path,
             stage_dir,
@@ -503,6 +558,9 @@ def stage_restore(layout: DataSafetyLayout, *, backup_id: str) -> dict[str, Any]
 
 
 def _read_pending(layout: DataSafetyLayout) -> dict[str, Any] | None:
+    _assert_managed_tree(layout.pending_file, layout.backend_dir)
+    if layout.pending_file.is_symlink():
+        raise DataSafetyError("pending restore 标记不能是符号链接；启动已停止。")
     if not layout.pending_file.exists():
         return None
     try:
@@ -553,6 +611,7 @@ def _verify_installed_state(layout: DataSafetyLayout, manifest: dict[str, Any]) 
 
 
 def _install_snapshot(layout: DataSafetyLayout, snapshot_dir: Path, manifest: dict[str, Any]) -> None:
+    _assert_managed_tree(snapshot_dir, layout.backend_dir)
     token = uuid4().hex
     targets = (
         (snapshot_dir / "database.sqlite3", layout.database_path, False),
@@ -573,15 +632,15 @@ def _install_snapshot(layout: DataSafetyLayout, snapshot_dir: Path, manifest: di
             else:
                 shutil.copy2(source, temporary)
             prepared.append((temporary, target, rollback, is_directory, target.exists()))
-        for suffix in ("-wal", "-shm"):
-            sidecar = Path(f"{layout.database_path}{suffix}")
-            if sidecar.exists():
-                rollback = sidecar.parent / f".{sidecar.name}.offeru-rollback-{token}"
-                os.replace(sidecar, rollback)
-                moved_sidecars.append((sidecar, rollback))
         installed: list[tuple[Path, Path, bool]] = []
         moved_old: list[tuple[Path, Path]] = []
         try:
+            for suffix in ("-wal", "-shm"):
+                sidecar = Path(f"{layout.database_path}{suffix}")
+                if sidecar.exists():
+                    rollback = sidecar.parent / f".{sidecar.name}.offeru-rollback-{token}"
+                    os.replace(sidecar, rollback)
+                    moved_sidecars.append((sidecar, rollback))
             for temporary, target, rollback, _, existed in prepared:
                 if existed:
                     os.replace(target, rollback)
@@ -621,8 +680,10 @@ def restore_backup_snapshot(layout: DataSafetyLayout, *, backup_id: str) -> dict
     """Restore a verified managed snapshot for an internal startup rollback."""
 
     with _LOCK:
+        _ensure_layout_directories(layout, create_restore=True)
         archive_path = _archive_path(layout, backup_id)
         stage_dir = layout.restore_dir / backup_id
+        _assert_managed_tree(stage_dir, layout.backend_dir)
         manifest = _materialize_archive(
             archive_path,
             stage_dir,
@@ -653,14 +714,20 @@ def apply_pending_restore_before_database_connect(
 
     layout = _runtime_layout(database_url=database_url, backend_dir=backend_dir)
     with _LOCK:
+        _ensure_layout_directories(layout)
         marker = _read_pending(layout)
         if marker is None:
             return {"applied": False, "reason": "no_pending_restore"}
         backup_id = str(marker["backup_id"])
         archive_path = _archive_path(layout, backup_id)
-        if not archive_path.is_file() or _sha256_file(archive_path) != marker["archive_sha256"]:
+        if (
+            archive_path.is_symlink()
+            or not archive_path.is_file()
+            or _sha256_file(archive_path) != marker["archive_sha256"]
+        ):
             raise DataSafetyError("待恢复归档已变化；为保护原数据库，启动已停止。")
         stage_dir = layout.restore_dir / backup_id
+        _assert_managed_tree(stage_dir, layout.backend_dir)
         manifest, _ = _validated_archive(archive_path, expected_backup_id=backup_id)
         if not stage_dir.is_dir():
             raise DataSafetyError("待恢复暂存目录不存在；为保护原数据库，启动已停止。")
@@ -668,7 +735,7 @@ def apply_pending_restore_before_database_connect(
         pre_restore = create_backup(layout, reason="pre_restore")
         _install_snapshot(layout, stage_dir, manifest)
         layout.pending_file.unlink()
-        shutil.rmtree(stage_dir, ignore_errors=True)
+        _remove_path(stage_dir)
         return {
             "applied": True,
             "backup_id": backup_id,
@@ -679,6 +746,7 @@ def apply_pending_restore_before_database_connect(
 
 def list_backups(layout: DataSafetyLayout) -> dict[str, Any]:
     with _LOCK:
+        _ensure_layout_directories(layout)
         if not layout.backup_dir.exists():
             return {"items": [], "invalid": []}
         items: list[dict[str, Any]] = []
@@ -706,11 +774,12 @@ def list_backups(layout: DataSafetyLayout) -> dict[str, Any]:
 
 def data_safety_status(layout: DataSafetyLayout) -> dict[str, Any]:
     with _LOCK:
+        _ensure_layout_directories(layout)
         pending = _read_pending(layout)
         backups = list_backups(layout)
         return {
             "database": {
-                "exists": layout.database_path.is_file(),
+                "exists": layout.database_path.is_file() and not layout.database_path.is_symlink(),
                 "filename": layout.database_path.name,
             },
             "backup_count": len(backups["items"]),
@@ -732,11 +801,16 @@ def cancel_pending_restore(layout: DataSafetyLayout) -> dict[str, Any]:
     """Cancel only staged restore state; the backup archive remains untouched."""
 
     with _LOCK:
+        _ensure_layout_directories(layout)
         try:
             pending = _read_pending(layout)
         except DataSafetyError:
             quarantine_dir = layout.root / "cancelled_restore_markers"
+            _assert_managed_tree(quarantine_dir, layout.backend_dir)
+            if quarantine_dir.exists() and not quarantine_dir.is_dir():
+                raise DataSafetyError("无效恢复标记隔离目录不是安全的本地目录。")
             quarantine_dir.mkdir(parents=True, exist_ok=True)
+            _assert_managed_tree(quarantine_dir, layout.backend_dir)
             quarantine = quarantine_dir / f"invalid-{uuid4().hex}.json"
             os.replace(layout.pending_file, quarantine)
             return {

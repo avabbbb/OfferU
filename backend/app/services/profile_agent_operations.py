@@ -10,9 +10,11 @@ from app.database import async_session
 from app.models.models import Profile, ProfileChatSession, ProfileSection, ProfileTargetRole
 from app.services.profile_builder_agent import (
     build_next_question,
+    generate_raw_turn_patch,
     normalize_profile_agent_patch,
     run_profile_agent_loop,
 )
+from app.services.profile_archive import build_personal_archive_from_agent_patch
 from app.services.profile_operations import (
     _get_or_create_default_profile,
     _load_profile_bundle,
@@ -139,8 +141,6 @@ async def continue_profile_agent_session(
     session_id: int,
     message: str,
 ) -> dict[str, Any]:
-    from app.routes.profile_agent import _generate_raw_turn_patch
-
     async with async_session() as db:
         profile = await _get_or_create_default_profile(db)
         session = (
@@ -162,7 +162,7 @@ async def continue_profile_agent_session(
             state=state,
             messages_json=messages_json,
             user_message=user_message,
-            generate_patch=_generate_raw_turn_patch,
+            generate_patch=generate_raw_turn_patch,
         )
         patch = loop_result["patch"]
         next_state = (
@@ -303,8 +303,6 @@ async def apply_profile_agent_patch(
             applied_sections.append(section)
 
         latest_base_info = profile.base_info_json if isinstance(profile.base_info_json, dict) else existing_base_info
-        from app.routes.profile_agent import build_personal_archive_from_agent_patch
-
         profile.base_info_json = {
             **latest_base_info,
             "personal_archive": build_personal_archive_from_agent_patch(

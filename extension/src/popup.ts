@@ -10,6 +10,14 @@ import type {
   StatusResponse,
   SyncResponse,
 } from "./types.js";
+import {
+  DEFAULT_OFFERU_FRONTEND_PORT,
+  DEFAULT_OFFERU_FRONTEND_URL,
+  DEFAULT_OFFERU_SERVER_URL,
+  normalizeOfferUFrontendPort,
+  normalizeOfferUServerUrl,
+} from "./background/server-url.js";
+import { safeExtensionError } from "./lib/safe-error.js";
 
 type MessageType = "success" | "error" | "info";
 type TabKey = "cart" | "resumes" | "settings";
@@ -78,7 +86,7 @@ interface CollectFromPageResponse {
   skipped: number;
 }
 
-const DEFAULT_SERVER_URL = "http://127.0.0.1:8765";
+const DEFAULT_SERVER_URL = DEFAULT_OFFERU_SERVER_URL;
 const RESUME_IMAGE_EXPORT_SCALE = 1.2;
 const RESUME_THUMB_PREFETCH_LIMIT = 1;
 const SETTINGS_KEY = "settings";
@@ -86,7 +94,7 @@ const JOBS_KEY = "collectedJobs";
 const UI_SETTINGS_KEY = "popupUiSettings";
 const SHORTCUT_SETTINGS_KEY = "shortcutSettingsV1";
 const DESKTOP_OPEN_SETTINGS_KEY = "desktopOpenSettingsV1";
-const DEFAULT_DOCKER_PORT = "7410";
+const DEFAULT_DOCKER_PORT = DEFAULT_OFFERU_FRONTEND_PORT;
 
 const DEFAULT_UI_SETTINGS: PopupUiSettings = {
   autoSync: true,
@@ -242,6 +250,7 @@ let smartFillSettings: SmartFillAiSettings = { ...DEFAULT_SMART_FILL_SETTINGS };
 let shortcutCaptureAction: keyof ShortcutSettings | null = null;
 let resumeFilterVisible = false;
 let cartFilterVisible = false;
+let openingOfferUFrontend = false;
 let statusRefreshTimer: number | null = null;
 
 const resumeFilters: ResumeFilterState = {
@@ -324,7 +333,7 @@ function sendBackgroundMessage<T>(message: Message): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     chrome.runtime.sendMessage(message, (response: T) => {
       if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
+        reject(new Error(safeExtensionError(chrome.runtime.lastError.message, "扩展后台无响应")));
         return;
       }
       resolve(response);
@@ -571,16 +580,7 @@ function refreshShortcutButtons(): void {
 }
 
 function normalizeServerUrl(input: string): string {
-  const value = input.trim() || DEFAULT_SERVER_URL;
-  try {
-    const parsed = new URL(value);
-    if (!/^https?:$/i.test(parsed.protocol)) {
-      return DEFAULT_SERVER_URL;
-    }
-    return parsed.origin;
-  } catch {
-    return DEFAULT_SERVER_URL;
-  }
+  return normalizeOfferUServerUrl(input);
 }
 
 function getServerUrl(): string {
@@ -588,12 +588,7 @@ function getServerUrl(): string {
 }
 
 function normalizeDockerPort(input: string): string {
-  const fallback = Number.parseInt(DEFAULT_DOCKER_PORT, 10);
-  const parsed = Number.parseInt((input || "").trim(), 10);
-  if (!Number.isFinite(parsed) || parsed < 1 || parsed > 65535) {
-    return String(fallback);
-  }
-  return String(parsed);
+  return normalizeOfferUFrontendPort(input);
 }
 
 function normalizeDesktopOpenMode(input: string | undefined): DesktopOpenMode {
@@ -645,6 +640,47 @@ function getDockerDesktopUrl(port: string): string {
   return `http://127.0.0.1:${normalized}`;
 }
 
+async function probeOfferUFrontend(): Promise<boolean> {
+  const url = DEFAULT_OFFERU_FRONTEND_URL;
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 2000);
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      cache: "no-store",
+      redirect: "error",
+      signal: controller.signal,
+    });
+    if (!response.ok) return false;
+    const html = await response.text();
+    return /OfferU/i.test(html);
+  } catch {
+    return false;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
+async function openOfferUFrontend(): Promise<void> {
+  if (openingOfferUFrontend) return;
+  openingOfferUFrontend = true;
+  const url = DEFAULT_OFFERU_FRONTEND_URL;
+  try {
+    if (!(await probeOfferUFrontend())) {
+      showMessage("OfferU 网页服务未启动，已停止打开浏览器窗口。请先启动 7410 服务。", "error");
+      return;
+    }
+
+    try {
+      await chrome.tabs.create({ url });
+    } catch {
+      showMessage("打开 OfferU 网页失败，请稍后重试。", "error");
+    }
+  } finally {
+    openingOfferUFrontend = false;
+  }
+}
+
 function toFileUrl(pathInput: string): string {
   const input = pathInput.trim();
   if (/^file:\/\//i.test(input)) {
@@ -692,6 +728,11 @@ function resolveDesktopOpenUrl(): string | null {
 }
 
 async function openDesktopTarget(): Promise<void> {
+  if (desktopOpenSettings.mode === "docker") {
+    await openOfferUFrontend();
+    return;
+  }
+
   const url = resolveDesktopOpenUrl();
   if (!url) {
     showMessage("请先在设置中配置应用程序路径", "error");
@@ -713,12 +754,11 @@ async function checkDesktopDockerConnection(): Promise<void> {
 
   const url = getDockerDesktopUrl(normalizedPort);
   setDesktopDockerStatus("检查中...", "pending");
-  try {
-    await fetch(url, { method: "GET", mode: "no-cors", cache: "no-store" });
+  if (url === DEFAULT_OFFERU_FRONTEND_URL && (await probeOfferUFrontend())) {
     setDesktopDockerStatus(`连接正常：${url}`, "ok");
-  } catch {
-    setDesktopDockerStatus(`连接失败：${url}`, "error");
+    return;
   }
+  setDesktopDockerStatus(`连接失败：${url}`, "error");
 }
 
 function initDrawerDragBridge(): void {
@@ -1053,7 +1093,7 @@ async function syncJobs(): Promise<void> {
       showMessage(`同步失败：${base}${tips}`, "error");
     }
   } catch (error: unknown) {
-    const text = error instanceof Error ? error.message : "请求失败";
+    const text = safeExtensionError(error, "请求失败");
     showMessage(`同步失败：${text}`, "error");
   } finally {
     syncBtn.textContent = previousText || `一键同步 (${currentReadyCount})`;
@@ -1073,7 +1113,7 @@ async function clearJobs(): Promise<void> {
       showMessage(`已移除 ${resp.removed} 条岗位`, "info");
       await refreshStatus();
     } catch (error: unknown) {
-      const text = error instanceof Error ? error.message : "请求失败";
+      const text = safeExtensionError(error, "请求失败");
       showMessage(`移除失败：${text}`, "error");
     }
     return;
@@ -1085,7 +1125,7 @@ async function clearJobs(): Promise<void> {
     showMessage("购物车已清空", "info");
     await refreshStatus();
   } catch (error: unknown) {
-    const text = error instanceof Error ? error.message : "请求失败";
+    const text = safeExtensionError(error, "请求失败");
     showMessage(`清空失败：${text}`, "error");
   }
 }
@@ -1094,7 +1134,7 @@ function sendCollectCommandToTab(tabId: number): Promise<CollectFromPageResponse
   return new Promise<CollectFromPageResponse>((resolve, reject) => {
     chrome.tabs.sendMessage(tabId, { type: "OFFERU_TRIGGER_COLLECT" }, (resp: CollectFromPageResponse) => {
       if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
+        reject(new Error(safeExtensionError(chrome.runtime.lastError.message, "当前页面无响应")));
         return;
       }
       resolve(resp);
@@ -1135,7 +1175,7 @@ async function collectCurrentPageJob(): Promise<void> {
 
     await refreshStatus();
   } catch (error: unknown) {
-    const text = error instanceof Error ? error.message : "发送失败";
+    const text = safeExtensionError(error, "发送失败");
     showMessage(`加入失败：${text}`, "error");
   } finally {
     addCurrentBtn.disabled = false;
@@ -1279,7 +1319,7 @@ function renderResumes(): void {
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
+  const response = await fetch(url, { ...init, redirect: "error" });
   if (!response.ok) {
     const text = await response.text();
     throw new Error(text || `HTTP ${response.status}`);
@@ -1295,7 +1335,7 @@ async function refreshResumes(): Promise<void> {
     cleanupResumeThumbCache(new Set(currentResumes.map((resume) => resume.id)));
     renderResumes();
   } catch (error: unknown) {
-    const text = error instanceof Error ? error.message : "读取失败";
+    const text = safeExtensionError(error, "读取失败");
     resumeListEl.innerHTML = `<div class="empty-state">读取简历失败：${escapeHtml(text)}</div>`;
   }
 }
@@ -1372,7 +1412,7 @@ async function openResumePreview(resumeId: number): Promise<void> {
     renderResumePreview(detail);
     openResumeModal();
   } catch (error: unknown) {
-    const text = error instanceof Error ? error.message : "读取失败";
+    const text = safeExtensionError(error, "读取失败");
     showMessage(`预览失败：${text}`, "error");
   }
 }
@@ -1538,11 +1578,13 @@ async function fetchResumeImageBlob(resumeId: number): Promise<Blob> {
   const endpoint = buildResumeImageEndpoint(resumeId);
   let response = await fetch(endpoint, {
     method: "GET",
+    redirect: "error",
   });
 
   if (response.status === 405) {
     response = await fetch(endpoint, {
       method: "POST",
+      redirect: "error",
     });
   }
 
@@ -1668,7 +1710,7 @@ async function copySelectedResumeImage(): Promise<void> {
     await copyResumeImage(resumeId);
     showMessage("复制成功", "success");
   } catch (error: unknown) {
-    const text = error instanceof Error ? error.message : "复制失败";
+    const text = safeExtensionError(error, "复制失败");
     showMessage(`复制失败：${text}`, "error");
   } finally {
     copySelectedResumeBtn.disabled = false;
@@ -1688,9 +1730,18 @@ function setServiceStatus(text: string, mode: "pending" | "ok" | "error"): void 
 }
 
 async function checkServerConnection(): Promise<void> {
+  const serverUrl = getServerUrl();
+  serverUrlInput.value = serverUrl;
   setServiceStatus("检查中...", "pending");
   try {
-    const health = await fetchJson<{ status: string; service: string }>(`${getServerUrl()}/api/health`);
+    const health = await fetchJson<{
+      status: string;
+      service: string;
+      runtime: string;
+    }>(`${serverUrl}/api/health`);
+    if (health.status !== "ok" || health.service !== "OfferU" || health.runtime !== "python") {
+      throw new Error("OfferU 后端健康检查失败");
+    }
     setServiceStatus(`连接正常：${health.service} (${health.status})`, "ok");
   } catch {
     setServiceStatus("连接失败：请先启动 OfferU 后端服务", "error");
@@ -1825,7 +1876,7 @@ async function checkSmartFillAiConnection(): Promise<void> {
         : "未知通道";
     setAiServiceStatus(`连接成功：${channelText}${suffix}`, "ok");
   } catch (error: unknown) {
-    const text = error instanceof Error ? error.message : "未知错误";
+    const text = safeExtensionError(error, "未知错误");
     setAiServiceStatus(`连接失败：${text}`, "error");
   }
 }
@@ -1897,6 +1948,7 @@ async function submitFeedback(): Promise<void> {
   try {
     const response = await fetch(`${getServerUrl()}/api/feedback`, {
       method: "POST",
+      redirect: "error",
       headers: {
         "Content-Type": "application/json",
       },
@@ -1936,7 +1988,7 @@ function resolveLatestVersionPayload(payload: unknown): { latestVersion: string;
     return null;
   }
 
-  const downloadUrl = typeof value.download_url === "string"
+  const rawDownloadUrl = typeof value.download_url === "string"
     ? value.download_url
     : typeof value.url === "string"
       ? value.url
@@ -1944,8 +1996,33 @@ function resolveLatestVersionPayload(payload: unknown): { latestVersion: string;
 
   return {
     latestVersion: latest,
-    downloadUrl,
+    downloadUrl: normalizeReleaseDownloadUrl(rawDownloadUrl),
   };
+}
+
+function normalizeReleaseDownloadUrl(input: unknown): string | undefined {
+  if (typeof input !== "string" || !input.trim()) return undefined;
+
+  try {
+    const parsed = new URL(input.trim());
+    const hostname = parsed.hostname.toLowerCase();
+    if (
+      parsed.protocol !== "https:"
+      || parsed.username
+      || parsed.password
+      || parsed.port
+      || hostname === "localhost"
+      || hostname.endsWith(".localhost")
+      || hostname === "127.0.0.1"
+      || hostname === "[::1]"
+      || hostname === "0.0.0.0"
+    ) {
+      return undefined;
+    }
+    return parsed.href;
+  } catch {
+    return undefined;
+  }
 }
 
 async function checkExtensionUpdate(): Promise<void> {
@@ -1972,6 +2049,11 @@ async function checkExtensionUpdate(): Promise<void> {
 
     updateStatusTextEl.textContent = `发现新版本：v${versionInfo.latestVersion}`;
     showMessage(`发现新版本 v${versionInfo.latestVersion}`, "info");
+
+    if (!versionInfo.downloadUrl && (typeof (payload as Record<string, unknown>).download_url === "string" || typeof (payload as Record<string, unknown>).url === "string")) {
+      showMessage("更新地址不安全，已停止打开浏览器窗口", "error");
+      return;
+    }
 
     if (versionInfo.downloadUrl && window.confirm("检测到新版本，是否立即打开更新页面？")) {
       void chrome.tabs.create({ url: versionInfo.downloadUrl });
@@ -2253,7 +2335,7 @@ function bindModalEvents(): void {
         await copyResumeImage(resumeId);
         showMessage("复制成功", "success");
       } catch (error: unknown) {
-        const text = error instanceof Error ? error.message : "复制失败";
+        const text = safeExtensionError(error, "复制失败");
         showMessage(`复制失败：${text}`, "error");
       } finally {
         copyResumeModalBtn.disabled = false;
@@ -2395,7 +2477,7 @@ function bindSettingsEvents(): void {
         await saveSmartFillSettingsToBackground();
         showMessage("AI 服务设置已保存", "success");
       } catch (error: unknown) {
-        const text = error instanceof Error ? error.message : "保存失败";
+        const text = safeExtensionError(error, "保存失败");
         showMessage(`AI 服务设置保存失败：${text}`, "error");
       }
     })();
@@ -2410,7 +2492,7 @@ function bindSettingsEvents(): void {
         }
         await saveSmartFillSettingsToBackground();
       } catch (error: unknown) {
-        const text = error instanceof Error ? error.message : "权限申请失败";
+        const text = safeExtensionError(error, "权限申请失败");
         setAiServiceStatus(`连接失败：${text}`, "error");
         return;
       }
@@ -2532,7 +2614,9 @@ function bindGlobalEvents(): void {
   }
 
   openServerBtn.addEventListener("click", () => {
-    void chrome.tabs.create({ url: getServerUrl() });
+    // This is a user-triggered web navigation; readiness is checked first so a
+    // stopped local service never creates a broken browser tab.
+    void openOfferUFrontend();
   });
 }
 
@@ -2576,9 +2660,9 @@ async function bootstrap(): Promise<void> {
 }
 
 void bootstrap().catch((error: unknown) => {
-  const text = error instanceof Error ? error.message : String(error);
+  const text = safeExtensionError(error, "扩展初始化失败");
   // eslint-disable-next-line no-console
-  console.error("[OfferU Popup] bootstrap failed:", error);
+  console.error("[OfferU Popup] bootstrap failed:", text);
   try {
     if (messageEl) {
       messageEl.textContent = `插件启动失败：${text}`;

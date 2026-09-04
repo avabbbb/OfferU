@@ -49,7 +49,7 @@ def _automation_runtime_for_source(source: str) -> str:
     clean = str(source or "").strip().casefold()
     if clean in {"fixture", "replay", "boss-fixture"} or clean.startswith("plugin:"):
         return clean
-    return "codex"
+    return "auto"
 
 def _to_internal_status(status: str) -> str:
     value = (status or "").strip().lower()

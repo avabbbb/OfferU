@@ -7,6 +7,7 @@ import {
   Card,
   CardBody,
   Chip,
+  Checkbox,
   Input,
   Modal,
   ModalBody,
@@ -29,15 +30,18 @@ import {
   MapPin,
   RefreshCw,
   Shield,
+  Trash2,
 } from "lucide-react";
 import {
   autoFillCalendar,
   getEmailAuthUrl,
   imapConnect,
+  revokeEmailAccount,
   syncEmails,
   useEmailStatus,
   useNotifications,
 } from "@/lib/hooks";
+import { safeClientErrorMessage } from "@/lib/safe-error";
 import {
   bauhausFieldClassNames,
   bauhausModalContentClassName,
@@ -74,12 +78,33 @@ const PROVIDERS = [
   { key: "outlook", label: "Outlook / 365" },
 ];
 
+function isTrustedGmailAuthUrl(value: unknown): value is string {
+  if (typeof value !== "string" || !value.trim()) return false;
+  try {
+    const parsed = new URL(value);
+    return (
+      parsed.protocol === "https:" &&
+      parsed.hostname === "accounts.google.com" &&
+      parsed.port === "" &&
+      parsed.pathname === "/o/oauth2/v2/auth" &&
+      !parsed.username &&
+      !parsed.password &&
+      !parsed.hash
+    );
+  } catch {
+    return false;
+  }
+}
+
 export default function EmailPage() {
   const { data: notifications, mutate } = useNotifications();
   const { data: emailStatus, mutate: mutateStatus } = useEmailStatus();
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState("");
   const [authResult, setAuthResult] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState("");
+  const [emailConsent, setEmailConsent] = useState(false);
+  const [revokingAccountId, setRevokingAccountId] = useState<string | null>(null);
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
 
   // Gmail OAuth 回调：{frontend}/email?auth=success|error → 展示提示并清理 URL
@@ -102,26 +127,63 @@ export default function EmailPage() {
   const isConnected = emailStatus?.connected ?? false;
   const isGmail = emailStatus?.gmail_connected ?? false;
   const isImap = emailStatus?.imap_connected ?? false;
+  const activeAccounts = (emailStatus?.accounts ?? []).filter((account) => account.status === "active");
 
   const handleAuth = async () => {
-    const result = await getEmailAuthUrl();
-    if (result.auth_url) window.location.href = result.auth_url;
+    if (!emailConsent) {
+      setEmailError("请先确认邮箱只读同步范围");
+      return;
+    }
+    setEmailError("");
+    try {
+      const result = await getEmailAuthUrl(true);
+      if (result.auth_url) {
+        if (!isTrustedGmailAuthUrl(result.auth_url)) {
+          setEmailError("Gmail 授权地址异常，已停止跳转");
+          return;
+        }
+        window.location.href = result.auth_url;
+      } else {
+        setEmailError(safeClientErrorMessage(result.message, "无法生成 Gmail 授权链接"));
+      }
+    } catch (cause) {
+      setEmailError(safeClientErrorMessage(cause, "无法生成 Gmail 授权链接"));
+    }
   };
 
   const handleImapConnect = async (onClose: () => void) => {
+    if (!emailConsent) {
+      setImapError("请先确认邮箱只读同步范围");
+      return;
+    }
     setImapLoading(true);
     setImapError("");
     const { ok, data } = await imapConnect({
       user: imapUser,
       password: imapPassword,
       provider: imapProvider,
+      user_confirmed: true,
     });
     setImapLoading(false);
     if (ok) {
       await mutateStatus();
       onClose();
     } else {
-      setImapError(data?.message || "连接失败");
+      setImapError(safeClientErrorMessage(data?.message, "连接失败"));
+    }
+  };
+
+  const handleRevoke = async (account: { account_id: string; email_address: string; provider: string }) => {
+    if (!window.confirm(`确认撤销 ${account.email_address || account.provider} 的邮箱授权？这会停止同步、删除本地凭据，并使未确认的邮件候选失效。`)) return;
+    setRevokingAccountId(account.account_id);
+    setEmailError("");
+    try {
+      await revokeEmailAccount(account.account_id, "使用者在邮箱设置中撤销授权");
+      await mutateStatus();
+    } catch (cause) {
+      setEmailError(safeClientErrorMessage(cause, "撤销邮箱授权失败"));
+    } finally {
+      setRevokingAccountId(null);
     }
   };
 
@@ -135,7 +197,7 @@ export default function EmailPage() {
           `已同步 ${result.synced} 条通知（共发现 ${result.total_found} 封邮件），自动创建 ${result.calendar_created ?? 0} 个日历事件`
         );
       } else {
-        setSyncResult(result.message || "同步完成");
+        setSyncResult(safeClientErrorMessage(result.message, "同步完成"));
       }
     } catch {
       setSyncResult("同步失败，请检查网络");
@@ -185,15 +247,25 @@ export default function EmailPage() {
 
       <motion.section variants={item} className="bauhaus-panel-sm flex items-start gap-3 bg-[var(--surface-muted)] p-4 text-[var(--foreground)]">
         <Info size={16} className="mt-0.5 shrink-0" />
-        <p className="text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
-          本功能仅供个人学习和求职使用，请勿用于商业抓取或批量数据采集。使用前请确认已阅读平台条款和邮件服务规则。
-        </p>
+        <div className="space-y-3">
+          <p className="text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
+            本功能仅供个人学习和求职使用，请勿用于商业抓取或批量数据采集。使用前请确认已阅读平台条款和邮件服务规则。
+          </p>
+          <Checkbox isSelected={emailConsent} onValueChange={setEmailConsent}>
+            <span className="text-xs font-semibold">我确认只读同步邮箱中的求职进展邮件</span>
+          </Checkbox>
+          <p className="pl-7 text-[11px] leading-5 text-[var(--foreground-muted)]">
+            Gmail 使用只读权限；IMAP 仅以只读方式读取 INBOX。OfferU 只为识别面试、笔试和 Offer 等进展暂时读取相关邮件，默认保存最小摘要和哈希，不自动修改投递阶段。可在下方随时撤销授权。
+          </p>
+          {emailError && <p role="alert" className="pl-7 text-xs font-semibold text-[#b7483c]">{emailError}</p>}
+        </div>
       </motion.section>
 
       <motion.section variants={item} className="flex flex-wrap gap-2">
         <Button
           startContent={<Link2 size={16} />}
           onPress={handleAuth}
+          isDisabled={!emailConsent}
           className={`bauhaus-button !px-4 !py-3 !text-[11px] ${
             isGmail ? "bauhaus-button-yellow" : "bauhaus-button-outline"
           }`}
@@ -226,6 +298,38 @@ export default function EmailPage() {
           补建日历
         </Button>
       </motion.section>
+
+      {activeAccounts.length > 0 && (
+        <motion.section variants={item}>
+          <Card className="bauhaus-panel rounded-none bg-white shadow-none">
+            <CardBody className="space-y-4 p-5">
+              <div>
+                <p className="bauhaus-label text-[var(--foreground-muted)]">权限管理</p>
+                <h2 className="mt-2 text-2xl font-black tracking-[-0.05em] text-[var(--foreground)]">已授权邮箱</h2>
+                <p className="mt-2 text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">撤销后会停止后续同步、删除本地钥匙串凭据，并使尚未确认的邮件候选失效。</p>
+              </div>
+              {activeAccounts.map((account) => (
+                <div key={account.account_id} className="bauhaus-panel-sm flex flex-col gap-3 bg-[var(--surface-muted)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-[var(--foreground)]">{account.email_address || account.provider}</p>
+                    <p className="mt-1 text-xs font-medium text-[var(--foreground-muted)]">{account.provider === "gmail" ? "Gmail 只读授权" : `IMAP 只读 · ${account.host}`}</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="light"
+                    startContent={<Trash2 size={14} />}
+                    onPress={() => handleRevoke(account)}
+                    isLoading={revokingAccountId === account.account_id}
+                    className="bauhaus-button bauhaus-button-outline !px-3 !py-2 !text-[11px]"
+                  >
+                    撤销授权
+                  </Button>
+                </div>
+              ))}
+            </CardBody>
+          </Card>
+        </motion.section>
+      )}
 
       <motion.section variants={item}>
         <Card className="bauhaus-panel rounded-none bg-white shadow-none">
@@ -267,7 +371,7 @@ export default function EmailPage() {
               </ModalHeader>
               <ModalBody className="space-y-4 px-6 py-6">
                 <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4 text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
-                  QQ邮箱 / 163邮箱需要使用授权码而不是登录密码。输入完成后会先做连接校验，再保存到本地配置。
+                  QQ邮箱 / 163邮箱需要使用授权码而不是登录密码。OfferU 会先以只读方式校验连接，再把凭据保存到本地钥匙串；不会把密码写入数据库。
                 </div>
                 <Select
                   label="邮箱服务商"
@@ -310,7 +414,7 @@ export default function EmailPage() {
                 <Button
                   onPress={() => handleImapConnect(onClose)}
                   isLoading={imapLoading}
-                  isDisabled={!imapUser || !imapPassword}
+                  isDisabled={!imapUser || !imapPassword || !emailConsent}
                   className="bauhaus-button bauhaus-button-blue !px-4 !py-3 !text-[11px]"
                 >
                   测试并连接

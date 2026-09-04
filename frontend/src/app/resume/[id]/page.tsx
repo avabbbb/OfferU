@@ -43,6 +43,7 @@ import type { ResumeDetail, ResumeSectionBlock } from "@/lib/hooks";
 import SectionEditor from "../components/SectionEditor";
 import ResumePreview from "../components/ResumePreview";
 import { TEMPLATE_OPTIONS } from "../components/templates/templateSettings";
+import { safeClientErrorMessage } from "@/lib/safe-error";
 
 type DraftResume = ResumeDetail & { sections: ResumeSectionBlock[] };
 type SaveState = "idle" | "saving" | "saved" | "failed";
@@ -215,7 +216,7 @@ export default function ResumeEditorPage() {
       skipAutosaveRef.current = true; hydratedRef.current = true;
       setWorkspace(next); setDraft(next.resume as DraftResume); draftRef.current = next.resume as DraftResume;
     } catch (error) {
-      setLoadError(error instanceof Error ? error.message : "简历工作区加载失败");
+      setLoadError(safeClientErrorMessage(error, "简历工作区加载失败"));
     } finally { setLoading(false); }
   }, [resumeId]);
 
@@ -240,7 +241,7 @@ export default function ResumeEditorPage() {
         draftRef.current = saved; setDraft(saved); setWorkspace((current) => current ? { ...current, resume: saved } : current); setSaveState("saved");
       } catch (error) {
         if (draftRef.current && resumeSignature(draftRef.current) !== candidateSignature) return;
-        setSaveState("failed"); setWorkspaceError(error instanceof Error ? error.message : "无法保存简历修改");
+        setSaveState("failed"); setWorkspaceError(safeClientErrorMessage(error, "无法保存简历修改"));
       }
     }, 800);
     return () => window.clearTimeout(timer);
@@ -276,21 +277,34 @@ export default function ResumeEditorPage() {
       if (draftRef.current && resumeSignature(draftRef.current) !== candidateSignature) return;
       skipAutosaveRef.current = true; lastSavedSignatureRef.current = resumeSignature(saved); draftRef.current = saved; setDraft(saved); setWorkspace((current) => current ? { ...current, resume: saved } : current); setSaveState("saved");
     } catch (error) {
-      setSaveState("failed"); setWorkspaceError(error instanceof Error ? error.message : "无法保存简历修改");
+      setSaveState("failed"); setWorkspaceError(safeClientErrorMessage(error, "无法保存简历修改"));
     }
   }, [draft]);
 
   const handleSaveVersion = async () => {
     if (!draft) return; setPendingAction("version");
     try { const saved = await persistDraft(); await resumeApi.createVersion(saved?.id || draft.id, { change_summary: "Resume Workspace 编辑", created_by: "user" }); await loadWorkspace(); }
-    catch (error) { setWorkspaceError(error instanceof Error ? error.message : "无法保存版本"); }
+    catch (error) { setWorkspaceError(safeClientErrorMessage(error, "无法保存版本")); }
     finally { setPendingAction(null); }
   };
 
   const handleExport = async () => {
     if (!draft) return; setExporting(true); setWorkspaceError(null);
-    try { await persistDraft(); const link = document.createElement("a"); link.href = resumeApi.exportPdfUrl(draft.id); link.download = `${draft.title || "resume"}.pdf`; link.style.display = "none"; document.body.appendChild(link); link.click(); window.setTimeout(() => link.remove(), 1000); }
-    catch (error) { setWorkspaceError(error instanceof Error ? error.message : "PDF 导出失败"); }
+    try {
+      await persistDraft();
+      const response = await resumeApi.exportPdf(draft.id);
+      if (!response.ok) throw new Error(`PDF 导出失败（HTTP ${response.status}）`);
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = `${draft.title || "resume"}.pdf`;
+      link.style.display = "none";
+      document.body.appendChild(link);
+      link.click();
+      window.setTimeout(() => { link.remove(); URL.revokeObjectURL(objectUrl); }, 1000);
+    }
+    catch (error) { setWorkspaceError(safeClientErrorMessage(error, "PDF 导出失败")); }
     finally { setExporting(false); }
   };
 
@@ -299,7 +313,7 @@ export default function ResumeEditorPage() {
     const proposal = workspace.proposals.find((item) => ["ready", "in_review", "blocked"].includes(item.status)); if (!proposal) return;
     setPendingAction(changeId); setWorkspaceError(null);
     try { const next = await resumeApi.reviewProposalItem(proposal.proposal_id, { resume_id: draft.id, change_id: changeId, action, edited_text: editedText }); if (action === "accept") recordUndo(draft); setFromWorkspace(next); }
-    catch (error) { setWorkspaceError(error instanceof Error ? error.message : "Proposal 审核失败"); await loadWorkspace(); }
+    catch (error) { setWorkspaceError(safeClientErrorMessage(error, "Proposal 审核失败")); await loadWorkspace(); }
     finally { setPendingAction(null); }
   };
 
@@ -308,14 +322,14 @@ export default function ResumeEditorPage() {
     let current = workspace; const proposal = current.proposals.find((item) => ["ready", "in_review", "blocked"].includes(item.status)); if (!proposal) return;
     const pending = proposal.diff.filter((item) => !proposal.item_reviews?.[String(item.change_id || "")]); setPendingAction(`all-${action}`);
     try { for (const item of pending) { const previous = current.resume as DraftResume; current = await resumeApi.reviewProposalItem(proposal.proposal_id, { resume_id: draft.id, change_id: String(item.change_id), action }); if (action === "accept") recordUndo(previous); setFromWorkspace(current); } }
-    catch (error) { setWorkspaceError(error instanceof Error ? error.message : "批量审核失败"); await loadWorkspace(); }
+    catch (error) { setWorkspaceError(safeClientErrorMessage(error, "批量审核失败")); await loadWorkspace(); }
     finally { setPendingAction(null); }
   };
 
   const handleRestore = async (versionId: number) => {
     if (!draft) return; setRestoring(versionId);
     try { recordUndo(draft); await resumeApi.restoreVersion(draft.id, versionId); await loadWorkspace(); }
-    catch (error) { setWorkspaceError(error instanceof Error ? error.message : "无法恢复版本"); }
+    catch (error) { setWorkspaceError(safeClientErrorMessage(error, "无法恢复版本")); }
     finally { setRestoring(null); }
   };
 

@@ -7,6 +7,10 @@ import { defineConfig, loadEnv } from "vite";
 const REACTION_CATALOG_ID = "virtual:offeru-interview-reactions";
 const RESOLVED_REACTION_CATALOG_ID = `\0${REACTION_CATALOG_ID}`;
 const REACTION_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
+const packageManifest = JSON.parse(
+  fs.readFileSync(path.join(__dirname, "package.json"), "utf8"),
+) as { version?: string };
+const APP_VERSION = packageManifest.version || "0.0.0";
 
 function readReactionCatalog(root: string) {
   const assetRoot = path.join(root, "public", "interview-reactions");
@@ -61,6 +65,7 @@ export default defineConfig(({ mode }) => {
       },
     },
     define: {
+      "import.meta.env.VITE_APP_VERSION": JSON.stringify(APP_VERSION),
       "process.env.NEXT_PUBLIC_API_URL": JSON.stringify(
         env.VITE_API_URL || env.NEXT_PUBLIC_API_URL || "",
       ),
@@ -73,6 +78,7 @@ export default defineConfig(({ mode }) => {
       host: tauriHost || "127.0.0.1",
       port: 7410,
       strictPort: true,
+      open: false,
       hmr: tauriHost
         ? {
             protocol: "ws",

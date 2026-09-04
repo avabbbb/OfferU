@@ -4,7 +4,7 @@ const SITES = [
   { name: 'CF', url: 'https://offeru-showcase.pages.dev/#/jobs' },
 ];
 (async () => {
-  const browser = await chromium.launch({ headless: true, executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe" });
+  const browser = await chromium.launch({ headless: true });
   for (const site of SITES) {
     const page = await browser.newPage();
     const errors = [];

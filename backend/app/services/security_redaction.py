@@ -27,6 +27,12 @@ _KEY_VALUE_SECRET = re.compile(
     r"(\"[^\"]*\"|'[^']*'|[^\s,;}\]]+)",
     re.IGNORECASE,
 )
+_STANDALONE_CREDENTIAL = re.compile(
+    r"\b(?:sk|rk|pk)-[A-Za-z0-9_-]{20,}\b|"
+    r"\bgh[pousr]_[A-Za-z0-9_]{20,}\b|"
+    r"\bAIza[A-Za-z0-9_-]{30,}\b",
+    re.IGNORECASE,
+)
 _EMAIL = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 _PHONE = re.compile(r"(?<![\w])(?:\+?\d[\d\s().-]{7,}\d)(?![\w])")
 
@@ -48,6 +54,7 @@ def redact_secret_text(value: Any, *, max_length: int = 1000) -> str:
     text = _URL_USERINFO.sub(r"\1[redacted]@", text)
     text = _URL_SECRET.sub(r"\1[redacted]", text)
     text = _KEY_VALUE_SECRET.sub(r"\1[redacted]", text)
+    text = _STANDALONE_CREDENTIAL.sub("[redacted]", text)
     if len(text) > max_length:
         return text[: max(0, max_length - 1)] + "…"
     return text

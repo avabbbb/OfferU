@@ -72,10 +72,12 @@ class ResumeWorkspaceTests(unittest.TestCase):
                 "version": version,
                 "proposal": stored,
                 "section": section,
+                "master_resume_id": fixture["master_resume_id"],
             }
 
         result = asyncio.run(run())
         self.assertEqual(result["first"]["resume"]["id"], result["second"]["resume"]["id"])
+        self.assertEqual(result["first"]["resume"]["source_resume_id"], result["master_resume_id"])
         self.assertEqual(len(result["second"]["versions"]), 1)
         self.assertEqual(result["reviewed"]["resume"]["sections"][0]["content_json"][0]["description"], "new evidence")
         self.assertEqual(result["proposal"].status, "accepted")
@@ -147,6 +149,15 @@ async def _seed(sessions, suffix: str) -> dict[str, int | str]:
         )
         db.add_all([profile, job])
         await db.flush()
+        master_resume = Resume(
+            user_name=profile.name,
+            title="Master Resume",
+            source_mode="manual",
+            is_primary=True,
+            source_profile_id=profile.id,
+        )
+        db.add(master_resume)
+        await db.flush()
         source = ProfileSection(
             profile_id=profile.id,
             section_type="experience",
@@ -192,4 +203,9 @@ async def _seed(sessions, suffix: str) -> dict[str, int | str]:
         )
         db.add(proposal)
         await db.commit()
-        return {"job_id": job.id, "proposal_id": proposal_id, "change_id": f"change-{suffix}"}
+        return {
+            "job_id": job.id,
+            "proposal_id": proposal_id,
+            "change_id": f"change-{suffix}",
+            "master_resume_id": master_resume.id,
+        }

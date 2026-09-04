@@ -33,6 +33,8 @@ import { patchJob, useJob, usePools, useProgressBoard, useProgressTimeline } fro
 import { RoleIntelligencePanel } from "@/components/jobs/RoleIntelligencePanel";
 import {
   jobResearchApi,
+  dataModeLabel,
+  isFixtureDataMode,
   preApplicationApi,
   resumeApi,
   resumeOptimizationApi,
@@ -45,6 +47,7 @@ import {
   bauhausModalContentClassName,
   bauhausSelectClassNames,
 } from "@/lib/bauhaus";
+import { safeClientErrorMessage } from "@/lib/safe-error";
 
 const PRE_APPLICATION_STAGE_LABELS: Record<string, string> = {
   research_pending: "等待调研",
@@ -218,7 +221,7 @@ export default function JobDetailPage() {
       setResearch(detail);
       setReviewNote(detail.review_note || "");
     } catch (err) {
-      setResearchError(err instanceof Error ? err.message : "调研证据加载失败");
+      setResearchError(safeClientErrorMessage(err, "调研证据加载失败"));
     } finally {
       setResearchLoading(false);
     }
@@ -237,7 +240,7 @@ export default function JobDetailPage() {
       }
       setResumeProposal(await resumeOptimizationApi.detail(latest.proposal_id));
     } catch (err) {
-      setResumeProposalError(err instanceof Error ? err.message : "材料候选加载失败");
+      setResumeProposalError(safeClientErrorMessage(err, "材料候选加载失败"));
     } finally {
       setResumeProposalLoading(false);
     }
@@ -254,7 +257,7 @@ export default function JobDetailPage() {
       setDecisionChoice(decision?.final_decision || decision?.agent_recommendation || "");
       setDecisionNote(decision?.review_note || "");
     } catch (err) {
-      setPreApplicationError(err instanceof Error ? err.message : "投前决策状态加载失败");
+      setPreApplicationError(safeClientErrorMessage(err, "投前决策状态加载失败"));
     } finally {
       setPreApplicationLoading(false);
     }
@@ -265,8 +268,25 @@ export default function JobDetailPage() {
   }, [loadResearch]);
 
   useEffect(() => {
+    // Research is projected after the Role Intelligence task finishes. Keep
+    // an already-open Job Detail current during that short hand-off.
+    if (research || researchError) return;
+    const timer = window.setTimeout(() => void loadResearch(), 1500);
+    return () => window.clearTimeout(timer);
+  }, [loadResearch, research, researchError]);
+
+  useEffect(() => {
     void loadResumeProposal();
   }, [loadResumeProposal]);
+
+  useEffect(() => {
+    // Role Intelligence creates the Resume Proposal asynchronously. Do not
+    // gate this on the Pipeline stage: a new opportunity can briefly have no
+    // confirmed stage while its preparation task is already finishing.
+    if (resumeProposal || resumeProposalError) return;
+    const timer = window.setTimeout(() => void loadResumeProposal(), 1500);
+    return () => window.clearTimeout(timer);
+  }, [loadResumeProposal, resumeProposal, resumeProposalError]);
 
   useEffect(() => {
     void loadPreApplication();
@@ -287,7 +307,7 @@ export default function JobDetailPage() {
       setReviewNote(detail.review_note || "");
       void loadPreApplication();
     } catch (err) {
-      setResearchError(err instanceof Error ? err.message : "审核操作失败");
+      setResearchError(safeClientErrorMessage(err, "审核操作失败"));
     } finally {
       setReviewAction(null);
     }
@@ -303,7 +323,7 @@ export default function JobDetailPage() {
       setDecisionNote("");
       await loadPreApplication();
     } catch (err) {
-      setPreApplicationError(err instanceof Error ? err.message : "投前决策生成失败");
+      setPreApplicationError(safeClientErrorMessage(err, "投前决策生成失败"));
     } finally {
       setPreApplicationAction(null);
     }
@@ -326,7 +346,7 @@ export default function JobDetailPage() {
       });
       await loadPreApplication();
     } catch (err) {
-      setPreApplicationError(err instanceof Error ? err.message : "投前决策审核失败");
+      setPreApplicationError(safeClientErrorMessage(err, "投前决策审核失败"));
     } finally {
       setPreApplicationAction(null);
     }
@@ -342,7 +362,7 @@ export default function JobDetailPage() {
       });
       router.push(`/resume/${workspace.resume.id}`);
     } catch (err) {
-      setResumeProposalError(err instanceof Error ? err.message : "简历工作区打开失败");
+      setResumeProposalError(safeClientErrorMessage(err, "简历工作区打开失败"));
     }
   };
 
@@ -358,7 +378,7 @@ export default function JobDetailPage() {
       setJoinModalOpen(false);
       router.push("/jobs?tab=picked");
     } catch (err: any) {
-      alert(err?.message || "加入已筛选失败");
+      alert(safeClientErrorMessage(err, "加入已筛选失败"));
     } finally {
       setActionLoading(null);
     }
@@ -372,7 +392,7 @@ export default function JobDetailPage() {
       setTrashConfirmOpen(false);
       router.push("/jobs?tab=ignored");
     } catch (err: any) {
-      alert(err?.message || "移入回收站失败");
+      alert(safeClientErrorMessage(err, "移入回收站失败"));
     } finally {
       setActionLoading(null);
     }
@@ -721,7 +741,7 @@ export default function JobDetailPage() {
           ) : (
             (() => {
               const proposalIsFixture =
-                resumeProposal.strategy?.research?.data_mode === "fixture" ||
+                isFixtureDataMode(resumeProposal.strategy?.research?.data_mode) ||
                 Boolean(resumeProposal.trace?.pipeline?.fixture_replay);
               const missingCapabilities = Array.isArray(resumeProposal.strategy?.missing_capabilities)
                 ? resumeProposal.strategy.missing_capabilities.filter(Boolean).slice(0, 8)
@@ -932,6 +952,7 @@ export default function JobDetailPage() {
                   {research.status === "failed"
                     ? `调研失败：${research.error || "没有可用错误信息"}`
                     : `调研正在处理中，当前状态：${research.status}`}
+                  {research.error_id && <p className="mt-2 text-xs font-bold text-[var(--foreground-muted)]">错误 ID：{research.error_id}</p>}
                 </div>
               ) : (
                 <>
@@ -943,9 +964,11 @@ export default function JobDetailPage() {
                   {research.review_status === "accepted" && (
                     <div className="bauhaus-panel-sm flex items-start gap-3 border-emerald-600 bg-emerald-50 px-4 py-4 text-sm font-semibold text-emerald-900">
                       <CheckCircle2 className="mt-0.5 shrink-0" size={18} />
-                      {research.data_mode === "fixture"
+                      {isFixtureDataMode(research.data_mode)
                         ? "本地 Fixture 已预审核，仅用于内测链路验证，不代表真实市场证据。"
-                        : "已发布到公司与岗位档案，下游 Agent 可以引用这些证据。"}
+                        : research.data_mode === "live" || research.data_mode === "live_plugin" || research.data_mode === "live_backend"
+                          ? "已发布到公司与岗位档案，下游 Agent 可以引用这些证据。"
+                          : `数据模式为“${dataModeLabel(research.data_mode)}”，尚未完成发布验证。`}
                     </div>
                   )}
                   {research.review_status === "rejected" && (
