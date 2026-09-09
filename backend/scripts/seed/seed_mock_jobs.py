@@ -11,7 +11,7 @@ import sys
 
 import httpx
 
-API_BASE = "http://127.0.0.1:8765"
+API_BASE = "http://127.0.0.1:8766"
 
 # ---- 模拟数据池 ----
 COMPANIES = [

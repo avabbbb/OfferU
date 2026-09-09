@@ -33,7 +33,7 @@ export interface ExtractedJob {
 
 /** 插件设置 */
 export interface ExtensionSettings {
-  serverUrl: string; // OfferU 后端地址，默认 http://127.0.0.1:8765
+  serverUrl: string; // OfferU 后端地址，默认 http://127.0.0.1:8766
 }
 
 export interface SmartFillAiSettings {

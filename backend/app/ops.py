@@ -91,6 +91,9 @@ from app.services.agent_operations import (
     get_career_task_result,
     get_agent_provider_health,
     get_agent_connections,
+    get_local_agent_capability_matrix,
+    get_local_agent_capability_report,
+    run_codex_offeru_conformance,
     probe_agent_connection,
     install_capability_plugin,
     invoke_plugin_capability,
@@ -98,6 +101,7 @@ from app.services.agent_operations import (
     get_pre_application_state,
     get_interview_scoring_skill,
     get_profile,
+    get_profile_evolution_report,
     get_resume,
     get_resume_optimization,
     get_work_source,
@@ -276,6 +280,7 @@ from app.services.resume_workspace import (
 from app.services.data_export import export_user_data
 from app.services.diagnostics import export_diagnostic_bundle
 from app.services.demo_data import reset_demo_data
+from app.services.local_data_reset import reset_local_business_data
 from app.services.data_safety import (
     cancel_data_restore,
     check_database_integrity,
@@ -385,6 +390,22 @@ class CareerTaskEventsInput(CareerTaskIdInput):
 
 class ProviderHealthInput(_StrictOperationInput):
     provider_id: str = Field(min_length=1, max_length=80)
+
+
+class LocalAgentCapabilityMatrixInput(_StrictOperationInput):
+    provider_ids: list[str] | None = Field(default=None, max_length=6)
+    live_provider: str | None = Field(default=None, min_length=1, max_length=40)
+    refresh: bool = False
+
+
+class LocalAgentCapabilityReportInput(_StrictOperationInput):
+    provider_id: str = Field(min_length=1, max_length=40)
+    live: bool = False
+    refresh: bool = False
+
+
+class CodexOfferUConformanceInput(_StrictOperationInput):
+    timeout_seconds: int = Field(default=420, ge=30, le=900)
 
 
 class DelegateCareerTaskInput(_StrictOperationInput):
@@ -1226,6 +1247,10 @@ class ListCareerLedgerInput(_StrictOperationInput):
     limit: int = Field(default=100, ge=1, le=500)
 
 
+class ProfileEvolutionReportInput(_StrictOperationInput):
+    limit: int = Field(default=200, ge=1, le=500)
+
+
 class SaveCareerArtifactInput(_StrictOperationInput):
     artifact_type: str = Field(
         pattern=(
@@ -1734,6 +1759,15 @@ OPERATIONS: dict[str, Operation] = {
         input_model=DataSafetyConfirmationInput,
         version="2026-08-31",
     ),
+    "reset_local_business_data": Operation(
+        name="reset_local_business_data",
+        fn=reset_local_business_data,
+        description="确认后清空当前本地业务工作区（岗位、档案、简历、投递、面试、记忆与运行产物），恢复为空白默认档案；保留配置、凭据、OAuth 账户元数据、内置模板、备份和操作审计。",
+        group="governance",
+        side_effects=("write",),
+        input_model=DataSafetyConfirmationInput,
+        version="2026-09-06",
+    ),
     "get_profile": Operation(
         name="get_profile",
         fn=get_profile,
@@ -1836,6 +1870,15 @@ OPERATIONS: dict[str, Operation] = {
         parameters={},
         group="memory",
         input_model=DeriveCareerModelInput,
+    ),
+    "get_profile_evolution_report": Operation(
+        name="get_profile_evolution_report",
+        fn=get_profile_evolution_report,
+        description="读取 Profile 当前快照、记忆账本、来源覆盖、拒绝观察、冲突和潜力假设；只读且不重写历史。",
+        parameters={"limit": "int=200"},
+        group="memory",
+        input_model=ProfileEvolutionReportInput,
+        version="2026-09-09",
     ),
     "list_career_ledger": Operation(
         name="list_career_ledger",
@@ -2469,6 +2512,31 @@ OPERATIONS: dict[str, Operation] = {
         group="agent_runtime",
         input_model=ProviderHealthInput,
         version="2026-09-08",
+    ),
+    "get_local_agent_capability_matrix": Operation(
+        name="get_local_agent_capability_matrix",
+        fn=get_local_agent_capability_matrix,
+        description="读取本机 Codex、Claude、Gemini、OpenCode、Pi、OMP 的声明能力与真实验证状态；默认只做本地发现，不调用模型。",
+        group="agent_runtime",
+        input_model=LocalAgentCapabilityMatrixInput,
+        version="2026-09-09",
+    ),
+    "get_local_agent_capability_report": Operation(
+        name="get_local_agent_capability_report",
+        fn=get_local_agent_capability_report,
+        description="读取一个本地 Agent 的能力证据；live=true 才执行随机 nonce 真实模型探测。",
+        group="agent_runtime",
+        input_model=LocalAgentCapabilityReportInput,
+        version="2026-09-09",
+    ),
+    "run_codex_offeru_conformance": Operation(
+        name="run_codex_offeru_conformance",
+        fn=run_codex_offeru_conformance,
+        description="真实执行 Codex → OfferU Agent Bridge → Operation Registry 的只读职业上下文验收；不会写入业务数据。",
+        group="agent_runtime",
+        side_effects=("external_read", "llm"),
+        input_model=CodexOfferUConformanceInput,
+        version="2026-09-09",
     ),
     "list_capability_plugins": Operation(
         name="list_capability_plugins",
@@ -4319,19 +4387,43 @@ async def set_current_view(
         row = (
             await db.execute(select(AgentWorkspaceState).where(AgentWorkspaceState.scope == normalized_scope))
         ).scalar_one_or_none()
+        created = row is None
         if not row:
             row = AgentWorkspaceState(scope=normalized_scope)
             db.add(row)
-        row.route = (route or "")[:300]
-        row.title = (title or "")[:300]
-        row.entity_type = (entity_type or "")[:80]
-        row.entity_id = (str(entity_id) if entity_id is not None else "")[:120]
-        row.selection_json = selection or {}
-        row.filters_json = filters or {}
-        row.context_json = context or {}
-        row.updated_by = (updated_by or "unknown")[:80]
-        row.version = int(row.version or 0) + 1
-        await db.commit()
+
+        def apply_view(target: AgentWorkspaceState) -> None:
+            target.route = (route or "")[:300]
+            target.title = (title or "")[:300]
+            target.entity_type = (entity_type or "")[:80]
+            target.entity_id = (str(entity_id) if entity_id is not None else "")[:120]
+            target.selection_json = selection or {}
+            target.filters_json = filters or {}
+            target.context_json = context or {}
+            target.updated_by = (updated_by or "unknown")[:80]
+            target.version = int(target.version or 0) + 1
+
+        apply_view(row)
+        try:
+            await db.commit()
+        except IntegrityError:
+            # React StrictMode and multiple UI surfaces can report the same
+            # scope concurrently.  Re-read the winner and apply this update
+            # instead of surfacing a false sync failure to the workbench.
+            if not created:
+                raise
+            await db.rollback()
+            row = (
+                await db.execute(
+                    select(AgentWorkspaceState).where(
+                        AgentWorkspaceState.scope == normalized_scope
+                    )
+                )
+            ).scalar_one_or_none()
+            if row is None:
+                raise
+            apply_view(row)
+            await db.commit()
         await db.refresh(row)
         return _serialize_workspace_state(row)
 

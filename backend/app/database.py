@@ -15,6 +15,7 @@ from sqlalchemy import event
 from sqlalchemy.orm import DeclarativeBase
 
 from app.config import get_settings
+from app.runtime_paths import runtime_backend_dir
 from app.services.security_redaction import safe_error_message
 
 settings = get_settings()
@@ -89,7 +90,7 @@ async def init_db(*, backend_dir: Path | None = None):
                     restore_backup_snapshot,
                     _runtime_layout(
                         database_url=settings.database_url,
-                        backend_dir=backend_dir or Path(__file__).resolve().parents[1],
+                        backend_dir=backend_dir or runtime_backend_dir(),
                     ),
                     backup_id=backup_id,
                 )
@@ -268,7 +269,7 @@ async def prepare_schema_migration(
         create_backup,
         _runtime_layout(
             database_url=url,
-            backend_dir=backend_dir or Path(__file__).resolve().parents[1],
+            backend_dir=backend_dir or runtime_backend_dir(),
         ),
         reason="pre_migration",
     )

@@ -1,5 +1,5 @@
-import { cpSync, mkdirSync, rmSync, existsSync, readdirSync, statSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { cpSync, mkdirSync, rmSync, existsSync, readdirSync, statSync, readFileSync, writeFileSync } from "node:fs";
+import { join, resolve, sep } from "node:path";
 
 const EXT_ROOT = resolve(import.meta.dirname, "..");
 const WXT_OUTPUT = join(EXT_ROOT, ".output", "chrome-mv3");
@@ -39,16 +39,29 @@ if (missingRequiredOutputs.length > 0) {
 
 const popupContent = readFileSync(join(WXT_OUTPUT, "popup.html"), "utf8");
 const backgroundContent = readFileSync(join(WXT_OUTPUT, "background.js"), "utf8");
+const popupScriptSources = Array.from(
+  popupContent.matchAll(/<script\b[^>]*\bsrc=["']([^"']+)["']/gi),
+  (match) => match[1],
+);
+const popupRuntimeContent = popupScriptSources.reduce((content, source) => {
+  const relativeSource = source.replace(/^\/+/, "");
+  const scriptPath = resolve(WXT_OUTPUT, relativeSource);
+  const outputRoot = `${resolve(WXT_OUTPUT)}${sep}`;
+  if (!scriptPath.startsWith(outputRoot) || !existsSync(scriptPath)) {
+    return content;
+  }
+  return `${content}\n${readFileSync(scriptPath, "utf8")}`;
+}, popupContent);
 const requiredPopupMarkers = [
   "7410",
   "OfferU 网页服务未启动",
   "AbortController",
   "redirect",
-  "normalizeReleaseDownloadUrl",
+  "download_url",
   "更新地址不安全",
   "https:",
 ];
-const missingPopupMarkers = requiredPopupMarkers.filter((marker) => !popupContent.includes(marker));
+const missingPopupMarkers = requiredPopupMarkers.filter((marker) => !popupRuntimeContent.includes(marker));
 if (missingPopupMarkers.length > 0) {
   console.error(
     "[sync-root-build] Popup output is missing the fixed 7410 readiness guard:",
@@ -61,7 +74,7 @@ if (missingPopupMarkers.length > 0) {
 }
 
 const requiredBackgroundMarkers = [
-  "127.0.0.1:8765",
+  "127.0.0.1:8766",
   "/api/health",
   "OfferU",
   "python",
@@ -91,7 +104,15 @@ for (const target of SYNC_TARGETS) {
   }
 
   rmSync(dest, { recursive: true, force: true });
-  cpSync(src, dest, { recursive: true, force: true });
+  if (target === "popup.html") {
+    const normalizedPopup = readFileSync(src, "utf8").replace(
+      /(\b(?:src|href)=["'])\/(?=(?:chunks|assets)\/)/g,
+      "$1",
+    );
+    writeFileSync(dest, normalizedPopup, "utf8");
+  } else {
+    cpSync(src, dest, { recursive: true, force: true });
+  }
   console.log("[sync-root-build] Synced:", target);
 }
 

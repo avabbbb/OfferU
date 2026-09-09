@@ -1,6 +1,6 @@
 # OfferU Public Release Status
 
-更新时间：2026-09-03
+更新时间：2026-09-07
 
 ## Current release phase
 
@@ -15,6 +15,14 @@ OFFERU_PUBLIC_RELEASE_NOT_READY
 ```
 
 `RESUME_WORKSPACE_BETA_READY` 是上一阶段的 Internal Beta 检查点，不是 Public Release 结论。当前工作树已经补齐一组可复现的 E2E、性能、Sidecar、安装生命周期、release Doctor、主要页面空状态和 live Agent 证据，但实时 Role Intelligence 的 Pi CLI 适配在真实隔离运行中未形成结构化结果，Codex 仍受认证阻塞；同时仍没有 signed installer、previous-release upgrade、真正 clean-machine 人工验收和完整 security/privacy 决策，因此不得宣称 Public Release Ready。
+
+端口说明：当前 checkout 的现行网页/后端入口固定为 `http://127.0.0.1:7410` / `http://127.0.0.1:8766`；下方历史切片和旧报告中的 `8765` 只保留为历史记录，不是当前验收入口。
+
+## 2026-09-07 真实数据验收
+
+本轮的完整证据已落盘至 [真实数据验收报告](docs/evals/reports/2026-09-07-codex-offeru-public-release-real-data-acceptance.md)。当前 checkout 的 backend 全量回归为 `487 passed, 17 warnings, 1 subtests passed in 354.99s`；空状态 3 次连续通过，smoke、migration、failure/recovery、automation concurrency、Interview Replay 和 worker soak 100/100 通过。Frontend/extension/Tauri 构建与打包 sidecar health smoke 通过，隔离 Doctor `--require-ready` 返回 `ok=true`。
+
+这批证据仍不能升格为 Public Release：默认 Interview runtime 对未配置 provider 明确返回 HTTP 400；严格 RustSec Gate 因 `glib 0.18.5 / RUSTSEC-2024-0429` 失败；Tauri MSI/NSIS 未签名；live external Role Intelligence 10-role、previous-release upgrade、clean-machine/独立人工验收、远程 CI/RC 和隐私/法律 Gate 仍缺。当前 verdict 保持 `OFFERU_PUBLIC_RELEASE_NOT_READY`。
 
 ## Current Gate
 

@@ -23,7 +23,7 @@ def test_release_endpoints_default_to_fixed_loopback_ports(monkeypatch: pytest.M
     monkeypatch.delenv("OFFERU_E2E_API_URL", raising=False)
 
     assert release_frontend_url() == "http://127.0.0.1:7410"
-    assert release_api_url() == "http://127.0.0.1:8765"
+    assert release_api_url() == "http://127.0.0.1:8766"
 
 
 def test_health_identity_accepts_offeru_python() -> None:
@@ -83,11 +83,11 @@ def test_health_identity_rejects_wrong_service_runtime_or_status(payload: object
         ("OFFERU_E2E_BASE_URL", "http://127.0.0.1:8080"),
         ("OFFERU_E2E_API_URL", "http://127.0.0.1:8080"),
         ("OFFERU_E2E_BASE_URL", "http://localhost:7410"),
-        ("OFFERU_E2E_API_URL", "https://127.0.0.1:8765"),
+        ("OFFERU_E2E_API_URL", "https://127.0.0.1:8766"),
         ("OFFERU_E2E_BASE_URL", "http://127.0.0.1:7410/jobs"),
-        ("OFFERU_E2E_API_URL", "http://127.0.0.1:8765?debug=1"),
+        ("OFFERU_E2E_API_URL", "http://127.0.0.1:8766?debug=1"),
         ("OFFERU_E2E_BASE_URL", "http://user:password@127.0.0.1:7410"),
-        ("OFFERU_E2E_API_URL", "http://192.0.2.10:8765"),
+        ("OFFERU_E2E_API_URL", "http://192.0.2.10:8766"),
     ],
 )
 def test_release_endpoint_override_fails_closed(
@@ -127,7 +127,7 @@ def test_browser_smoke_readiness_helpers_are_pre_browser_and_fixed() -> None:
     assert "def assert_release_frontend_ready" in source
     assert "def assert_release_backend_ready" in source
     assert "OfferU frontend is not ready at 127.0.0.1:7410" in source
-    assert "OfferU backend health could not be read at 127.0.0.1:8765" in source
+    assert "OfferU backend health could not be read at 127.0.0.1:8766" in source
     assert "expected_version=release_version()" in source
     assert "expected_build_mode=expected_build_mode" in source
     assert "received {value!r}" not in source

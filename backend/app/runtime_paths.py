@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 PACKAGE_BACKEND_DIR = Path(__file__).resolve().parents[1]
-OFFERU_BACKEND_PORT = 8765
+OFFERU_BACKEND_PORT = 8766
 
 
 def configured_backend_port() -> int:
@@ -24,9 +24,9 @@ def configured_backend_port() -> int:
     try:
         configured = int(raw_port)
     except ValueError as exc:
-        raise RuntimeError("OFFERU_PORT must be 8765") from exc
+        raise RuntimeError("OFFERU_PORT must be 8766") from exc
     if configured != OFFERU_BACKEND_PORT:
-        raise RuntimeError("OfferU backend port is fixed at 8765")
+        raise RuntimeError("OfferU backend port is fixed at 8766")
     return OFFERU_BACKEND_PORT
 
 

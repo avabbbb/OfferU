@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -30,6 +30,10 @@ class ResumeWorkspaceTests(unittest.TestCase):
             fixture = await _seed(sessions, "accept")
             with patch.object(resume_workspace, "async_session", sessions), patch.object(
                 resume_route_operations, "async_session", sessions
+            ), patch.object(
+                resume_workspace,
+                "get_pre_application_state",
+                new=AsyncMock(return_value={"stage": "resume_proposal_ready"}),
             ):
                 first = await resume_workspace.ensure_resume_workspace(
                     job_id=fixture["job_id"], proposal_id=fixture["proposal_id"]
@@ -93,6 +97,10 @@ class ResumeWorkspaceTests(unittest.TestCase):
             fixture = await _seed(sessions, "stale")
             with patch.object(resume_workspace, "async_session", sessions), patch.object(
                 resume_route_operations, "async_session", sessions
+            ), patch.object(
+                resume_workspace,
+                "get_pre_application_state",
+                new=AsyncMock(return_value={"stage": "resume_proposal_ready"}),
             ):
                 workspace = await resume_workspace.ensure_resume_workspace(
                     job_id=fixture["job_id"], proposal_id=fixture["proposal_id"]
@@ -121,7 +129,15 @@ class ResumeWorkspaceTests(unittest.TestCase):
             async with engine.begin() as connection:
                 await connection.run_sync(Base.metadata.create_all)
             fixture = await _seed(sessions, "edited")
-            with patch.object(resume_workspace, "async_session", sessions):
+            with patch.object(
+                resume_workspace,
+                "async_session",
+                sessions,
+            ), patch.object(
+                resume_workspace,
+                "get_pre_application_state",
+                new=AsyncMock(return_value={"stage": "resume_proposal_ready"}),
+            ):
                 workspace = await resume_workspace.ensure_resume_workspace(
                     job_id=fixture["job_id"], proposal_id=fixture["proposal_id"]
                 )
@@ -136,6 +152,18 @@ class ResumeWorkspaceTests(unittest.TestCase):
             return reviewed["resume"]["sections"][0]["content_json"][0]["description"]
 
         self.assertEqual(asyncio.run(run()), "用户确认后的描述")
+
+    def test_workspace_requires_confirmed_pre_application_decision(self) -> None:
+        async def run() -> None:
+            with patch.object(
+                resume_workspace,
+                "get_pre_application_state",
+                new=AsyncMock(return_value={"stage": "needs_decision"}),
+            ):
+                with self.assertRaisesRegex(ValueError, "确认投或有条件投"):
+                    await resume_workspace.ensure_resume_workspace(job_id=7)
+
+        asyncio.run(run())
 
 
 async def _seed(sessions, suffix: str) -> dict[str, int | str]:

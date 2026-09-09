@@ -608,7 +608,7 @@ async def _run_role_intelligence_task(task: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _complete_task(task_id: str, result: dict[str, Any]) -> dict[str, Any]:
-    """Commit success unless a user cancellation won the terminal transition."""
+    """Commit success and its lifecycle event atomically."""
 
     async with _task_lock(task_id):
         async with async_session() as db:
@@ -624,6 +624,16 @@ async def _complete_task(task_id: str, result: dict[str, Any]) -> dict[str, Any]
             row.error = ""
             row.retryable = False
             row.finished_at = _utc_now()
+            row.event_sequence = int(row.event_sequence or 0) + 1
+            db.add(
+                CareerTaskEvent(
+                    event_id=f"career_task_evt_{uuid.uuid4().hex}",
+                    task_id=task_id,
+                    sequence=row.event_sequence,
+                    event_type="task.completed",
+                    payload_json=_bounded_json({"result_ref": f"career-task:{task_id}"}),
+                )
+            )
             await db.commit()
             await db.refresh(row)
             return _task_view(row)
@@ -653,7 +663,6 @@ async def _run_task(task_id: str) -> None:
         completed = await _complete_task(task_id, result)
         if completed["status"] == "cancelled":
             return
-        await _append_event(task_id, "task.completed", {"result_ref": f"career-task:{task_id}"})
         await _notify_automation(task_id)
     except asyncio.CancelledError:
         current = await get_career_task(task_id)

@@ -20,10 +20,11 @@ from release_endpoints import (
     release_api_url,
     release_frontend_url,
 )
+from temp_paths import test_temp_root
 
 BASE_URL = release_frontend_url()
 API_URL = release_api_url()
-ARTIFACT_DIR = Path(os.getenv("OFFERU_E2E_ARTIFACT_DIR", ".e2e-artifacts"))
+ARTIFACT_DIR = Path(os.getenv("OFFERU_E2E_ARTIFACT_DIR") or test_temp_root("e2e-artifacts"))
 
 
 def _json_response(page, url: str) -> dict:

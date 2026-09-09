@@ -36,7 +36,7 @@ Set-Location <OfferU>
 npm --prefix frontend run dev
 ```
 
-前端固定为 <http://127.0.0.1:7410>，后端固定为 <http://127.0.0.1:8765>。不要打开 `8080`：它不是网页服务，只是可选本地 llama.cpp Provider endpoint。OfferU 不会自动启动 Edge；自动化验收只使用隔离的 managed Chromium 无头模式。出现 `Failed to fetch` / CORS 时，先检查 Windows 用户环境变量 `CORS_ORIGINS`；系统环境变量优先于 `backend/.env`，必须包含 `http://localhost:7410,http://127.0.0.1:7410`。
+前端固定为 <http://127.0.0.1:7410>，后端固定为 <http://127.0.0.1:8766>。不要打开 `8080`：它不是网页服务，只是可选本地 llama.cpp Provider endpoint。OfferU 不会自动启动 Edge；自动化验收只使用隔离的 managed Chromium 无头模式。出现 `Failed to fetch` / CORS 时，先检查 Windows 用户环境变量 `CORS_ORIGINS`；系统环境变量优先于 `backend/.env`，必须包含 `http://localhost:7410,http://127.0.0.1:7410`。
 
 只读检查不需要浏览器：
 

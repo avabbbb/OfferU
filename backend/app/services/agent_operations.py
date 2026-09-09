@@ -359,6 +359,46 @@ async def list_learning_observations(
     )
 
 
+async def get_local_agent_capability_matrix(
+    provider_ids: Optional[list[str]] = None,
+    live_provider: Optional[str] = None,
+    refresh: bool = False,
+) -> dict:
+    """Read local Agent capability evidence; live probing is explicit."""
+
+    from app.services.agent_conformance import (
+        get_local_agent_capability_matrix as _matrix,
+    )
+
+    return await _matrix(
+        provider_ids=provider_ids,
+        live_provider=live_provider,
+        refresh=refresh,
+    )
+
+
+async def get_local_agent_capability_report(
+    provider_id: str,
+    live: bool = False,
+    refresh: bool = False,
+) -> dict:
+    from app.services.agent_conformance import (
+        get_local_agent_capability_report as _report,
+    )
+
+    return await _report(provider_id, live=live, refresh=refresh)
+
+
+async def run_codex_offeru_conformance(timeout_seconds: int = 420) -> dict:
+    """Run the real Codex -> Bridge -> Registry read conformance slice."""
+
+    from app.services.agent_bridge.conformance import (
+        run_codex_offeru_conformance as _run,
+    )
+
+    return await _run(timeout_seconds=timeout_seconds)
+
+
 async def list_memory_inbox(
     status: str = "pending",
     limit: int = 100,
@@ -398,6 +438,14 @@ async def derive_career_model() -> dict:
     from app.services.career_memory import derive_career_model as _derive
 
     return await _derive()
+
+
+async def get_profile_evolution_report(limit: int = 200) -> dict:
+    from app.services.career_evolution import (
+        get_profile_evolution_report as _report,
+    )
+
+    return await _report(limit=limit)
 
 
 async def build_job_projection(job_id: int) -> dict:

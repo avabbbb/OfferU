@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     # ---- Gmail OAuth ----
     gmail_client_id: str = ""
     gmail_client_secret: str = ""
-    # 留空使用固定本地 callback；自定义值仅接受安全 HTTPS，或本机 8765 callback。
+    # 留空使用固定本地 callback；自定义值仅接受安全 HTTPS，或本机 8766 callback。
     gmail_redirect_uri: str = ""
     email_sync_interval_seconds: int = 300
 

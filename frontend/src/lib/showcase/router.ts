@@ -61,6 +61,11 @@ type Candidate = {
   selected_attempt_id?: number;
   selected_stage?: string;
   rule_stage?: string;
+  signal_status?: string;
+  created_at?: string;
+  reviewed_at?: string | null;
+  classification_conflict?: boolean;
+  llm_stage?: string;
 };
 
 type CalendarEvent = {
@@ -97,8 +102,55 @@ async function withPools(): Promise<Pool[]> {
   return readTable<Pool[]>("pools", seeds.pools as Pool[]);
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function optionalNumber(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : undefined;
+}
+
+function normalizeCandidate(value: unknown, index: number): Candidate {
+  const raw = asRecord(value);
+  const signal = asRecord(raw.signal);
+  const application = asRecord(raw.application);
+  const candidateId = String(raw.candidate_id || `showcase_candidate_${index + 1}`);
+  const receivedAt = String(signal.received_at ?? raw.received_at ?? raw.created_at ?? "");
+  return {
+    candidate_id: candidateId,
+    signal_id: String(signal.signal_id ?? raw.signal_id ?? `showcase-${candidateId}`),
+    status: String(raw.status ?? signal.status ?? "pending"),
+    suggested_stage: String(raw.suggested_stage ?? "unknown"),
+    match_state: String(raw.match_state ?? "unassigned"),
+    channel: String(signal.channel ?? raw.channel ?? "email"),
+    sender: String(signal.sender ?? raw.sender ?? ""),
+    received_at: receivedAt,
+    subject: String(signal.subject ?? raw.subject ?? ""),
+    snippet: String(signal.snippet ?? raw.snippet ?? ""),
+    suggested_attempt_id: optionalNumber(
+      raw.suggested_attempt_id ?? application.application_attempt_id,
+    ),
+    selected_attempt_id: optionalNumber(raw.selected_attempt_id),
+    selected_stage: raw.selected_stage == null ? undefined : String(raw.selected_stage),
+    rule_stage: String(raw.rule_stage ?? raw.suggested_stage ?? ""),
+    signal_status: String(signal.status ?? raw.signal_status ?? raw.status ?? "pending"),
+    created_at: String(raw.created_at ?? receivedAt),
+    reviewed_at: raw.reviewed_at == null ? null : String(raw.reviewed_at),
+    classification_conflict: raw.classification_conflict === true,
+    llm_stage: String(raw.llm_stage ?? ""),
+  };
+}
+
 async function withCandidates(): Promise<Candidate[]> {
-  return readTable<Candidate[]>("progress_candidates", seeds.progress_candidates as Candidate[]);
+  const candidates = await readTable<unknown[]>(
+    "progress_candidates",
+    seeds.progress_candidates as unknown[],
+  );
+  return candidates.map(normalizeCandidate);
 }
 
 async function withEvents(): Promise<CalendarEvent[]> {
@@ -194,6 +246,68 @@ function candidateMatch(
     company: job.company,
     job_title: job.title,
     match_basis: [subject.includes(job.title) ? "subject_role_match" : "subject_company_match"],
+  };
+}
+
+function showcaseApplicationPayload(
+  candidate: Candidate,
+  jobs: Job[],
+  records: ShowcaseApplicationRow[],
+): Record<string, unknown> | null {
+  const attemptId = candidate.selected_attempt_id ?? candidate.suggested_attempt_id;
+  if (attemptId == null) return null;
+  const record = records.find((item) => Number(item.id) === attemptId);
+  if (!record) return null;
+  const values = record.values || {};
+  const company = String(values.company_name || values.company || "");
+  const jobTitle = String(values.job_title || values.position || "");
+  const jobId = Number(values.job_id || 0);
+  const job = jobs.find((item) => item.id === jobId)
+    || jobs.find((item) => item.company === company && item.title === jobTitle);
+  if (!job) return null;
+  return {
+    application_attempt_id: attemptId,
+    job_id: job.id,
+    company: job.company || company,
+    job_title: job.title || jobTitle,
+    attempt_created_at: String(
+      record.created_at || record.updated_at || candidate.created_at || candidate.received_at || "",
+    ),
+  };
+}
+
+function showcaseCandidatePayload(
+  candidate: Candidate,
+  jobs: Job[],
+  records: ShowcaseApplicationRow[],
+  detail = false,
+): Record<string, unknown> {
+  const signal: Record<string, unknown> = {
+    signal_id: candidate.signal_id || `showcase-${candidate.candidate_id}`,
+    channel: candidate.channel,
+    sender: candidate.sender,
+    received_at: candidate.received_at || null,
+    subject: candidate.subject,
+    status: candidate.signal_status || candidate.status,
+  };
+  if (detail) {
+    signal.external_message_id = `showcase-message-${candidate.candidate_id}`;
+    signal.external_thread_id = "";
+    signal.snippet = candidate.snippet;
+  }
+  return {
+    candidate_id: candidate.candidate_id,
+    status: candidate.status,
+    match_state: candidate.match_state,
+    suggested_stage: candidate.suggested_stage,
+    selected_stage: candidate.selected_stage || null,
+    application: showcaseApplicationPayload(candidate, jobs, records),
+    signal,
+    classification_conflict: candidate.classification_conflict ?? false,
+    rule_stage: candidate.rule_stage || "",
+    llm_stage: candidate.llm_stage || "",
+    created_at: candidate.created_at || candidate.received_at,
+    reviewed_at: candidate.reviewed_at ?? null,
   };
 }
 
@@ -843,14 +957,52 @@ async function listNotifications(): Promise<unknown> {
 }
 
 async function listCandidates(url: URL): Promise<unknown> {
+  const status = (url.searchParams.get("status") || "pending").trim().toLowerCase();
+  const disclosure = url.searchParams.get("disclosure") === "detail" ? "detail" : "summary";
+  const requestedLimit = Number(url.searchParams.get("limit") || 100);
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.min(500, Math.max(1, Math.trunc(requestedLimit)))
+    : 100;
   const candidates = await withCandidates();
-  const status = url.searchParams.get("status");
-  const filtered = status && status !== "all" ? candidates.filter((c) => c.status === status) : candidates;
-  return { total: filtered.length, items: filtered, disclosure: "summary" };
+  const [jobs, records] = await Promise.all([
+    withJobs(),
+    readTable<ShowcaseApplicationRow[]>(
+      "app_records",
+      seeds.app_records as ShowcaseApplicationRow[],
+    ),
+  ]);
+  const filtered = (status === "all" ? candidates : candidates.filter((c) => c.status === status))
+    .sort((left, right) =>
+      String(right.created_at || right.received_at).localeCompare(
+        String(left.created_at || left.received_at),
+      )
+    )
+    .slice(0, limit);
+  return {
+    total: filtered.length,
+    items: filtered.map((candidate) =>
+      showcaseCandidatePayload(candidate, jobs, records, disclosure === "detail")
+    ),
+    disclosure,
+  };
+}
+
+async function getCandidateDetail(url: URL): Promise<unknown> {
+  const candidateId = url.pathname.split("/").filter(Boolean)[3];
+  const candidate = (await withCandidates()).find((item) => item.candidate_id === candidateId);
+  if (!candidate) return { error: `候选进展 ${candidateId || ""} 不存在` };
+  const [jobs, records] = await Promise.all([
+    withJobs(),
+    readTable<ShowcaseApplicationRow[]>(
+      "app_records",
+      seeds.app_records as ShowcaseApplicationRow[],
+    ),
+  ]);
+  return showcaseCandidatePayload(candidate, jobs, records, true);
 }
 
 async function reviewCandidate(url: URL, body: unknown): Promise<unknown> {
-  const candidateId = url.pathname.split("/").filter(Boolean)[2];
+  const candidateId = url.pathname.split("/").filter(Boolean)[3];
   const payload = body as {
     action?: string;
     stage?: string;
@@ -1039,10 +1191,13 @@ export async function showcaseHandle(path: string, options?: RequestInit): Promi
       if (method === "DELETE" && sub === "events" && isNumericSub) return deleteEvent(url);
       return {};
     case "email":
+      if (method === "GET" && sub === "progress-candidates" && segments[3]) return getCandidateDetail(url);
       if (method === "GET" && sub === "progress-candidates") return listCandidates(url);
       if (method === "GET" && sub === "notifications") return listNotifications();
       if (method === "POST" && sub === "progress-candidates" && isNumericSub) return {};
-      if (method === "POST" && segments[3] === "review") return reviewCandidate(url, body);
+      if (method === "POST" && sub === "progress-candidates" && segments[4] === "review") {
+        return reviewCandidate(url, body);
+      }
       return {};
     case "studio":
       if (method === "GET" && sub === "templates") {

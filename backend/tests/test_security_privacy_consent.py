@@ -128,13 +128,13 @@ class PrivacyConsentContractTests(unittest.TestCase):
 
     def test_gmail_callback_rejects_stale_local_ports(self) -> None:
         self.assertEqual(
-            validate_gmail_redirect_uri("http://localhost:8765/api/email/callback"),
+            validate_gmail_redirect_uri("http://localhost:8766/api/email/callback"),
             DEFAULT_GMAIL_CALLBACK_URL,
         )
         with self.assertRaisesRegex(ValueError, "本地回调必须使用"):
             validate_gmail_redirect_uri("http://127.0.0.1:8080/api/email/callback")
         with self.assertRaisesRegex(ValueError, "配置无效"):
-            validate_gmail_redirect_uri("http://user:password@127.0.0.1:8765/api/email/callback")
+            validate_gmail_redirect_uri("http://user:password@127.0.0.1:8766/api/email/callback")
 
 
 if __name__ == "__main__":

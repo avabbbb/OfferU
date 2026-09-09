@@ -12,10 +12,11 @@ import json
 import os
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 from typing import Any
+
+from temp_paths import offeru_temp_directory
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
@@ -351,7 +352,7 @@ def _assert_restart_case(database_url: str, task_key: str, signal_path: Path) ->
 
 def main() -> None:
     started_at = time.perf_counter()
-    with tempfile.TemporaryDirectory(prefix="offeru-release-failure-recovery-") as directory:
+    with offeru_temp_directory("offeru-release-failure-recovery-") as directory:
         database_url = f"sqlite+aiosqlite:///{(Path(directory) / 'failure-recovery.db').as_posix()}"
         cases = [
             _assert_failure_case(

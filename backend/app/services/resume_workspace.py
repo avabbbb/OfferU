@@ -27,6 +27,7 @@ from app.models.models import (
     ResumeSection,
     ResumeVersion,
 )
+from app.services.pre_application_decisions import get_pre_application_state
 from app.services.resume_builder import _profile_to_contact_json
 from app.services.resume_optimization import _proposal_detail
 from app.services.resume_versions import create_version_snapshot
@@ -157,6 +158,12 @@ def _job_dict(job: Optional[Job]) -> Optional[dict[str, Any]]:
     }
 
 
+async def _require_resume_proposal_gate(job_id: int) -> None:
+    state = await get_pre_application_state(job_id)
+    if state.get("stage") != "resume_proposal_ready":
+        raise ValueError("只有用户确认投或有条件投并生成简历提案后才能进入 Resume Workspace")
+
+
 def _version_dict(version: ResumeVersion, current_id: Optional[int]) -> dict[str, Any]:
     return {
         "id": version.id,
@@ -284,6 +291,7 @@ async def get_resume_workspace(resume_id: int) -> dict[str, Any]:
         resume = await _load_resume(db, clean_id)
         job = None
         if resume.target_job_id:
+            await _require_resume_proposal_gate(resume.target_job_id)
             job = await db.get(Job, resume.target_job_id)
         return await _workspace_payload(db, resume, job=job)
 
@@ -320,6 +328,7 @@ async def ensure_resume_workspace(
         if reference_resume_id is not None
         else None
     )
+    await _require_resume_proposal_gate(clean_job_id)
     async with async_session() as db:
         job = await db.get(Job, clean_job_id)
         if job is None:

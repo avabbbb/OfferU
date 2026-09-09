@@ -18,7 +18,6 @@ import socket
 import sqlite3
 import subprocess
 import sys
-import tempfile
 import time
 from typing import Any
 from urllib.error import URLError
@@ -32,11 +31,12 @@ from release_endpoints import (
     release_frontend_url,
     release_version,
 )
+from temp_paths import offeru_temp_directory
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 BASE_URL = release_frontend_url()
 API_URL = release_api_url()
-ARTIFACT_DIR = Path(os.getenv("OFFERU_E2E_ARTIFACT_DIR", ".e2e-artifacts"))
+ARTIFACT_DIR = Path(os.getenv("OFFERU_E2E_ARTIFACT_DIR") or test_temp_root("e2e-artifacts"))
 
 
 def _port_is_open(port: int) -> bool:
@@ -318,9 +318,9 @@ def _start_backend(
     data_dir: Path,
     log_path: Path,
 ) -> tuple[subprocess.Popen[str], Any]:
-    if _port_is_open(8765):
+    if _port_is_open(8766):
         raise RuntimeError(
-            "127.0.0.1:8765 is already occupied; refusing to stop or reuse an "
+            "127.0.0.1:8766 is already occupied; refusing to stop or reuse an "
             "existing OfferU process. Stop it manually before this isolated smoke."
         )
 
@@ -329,7 +329,7 @@ def _start_backend(
         {
             "DATABASE_URL": f"sqlite+aiosqlite:///{database_path.as_posix()}",
             "OFFERU_DATA_DIR": str(data_dir),
-            "OFFERU_PORT": "8765",
+            "OFFERU_PORT": "8766",
             "OFFERU_BUILD_MODE": "local-development",
             "OFFERU_RUNTIME_MODE": "local",
             "OFFERU_ENABLE_MCP": "false",
@@ -368,6 +368,9 @@ def _stop_backend(process: subprocess.Popen[str], log_handle: Any) -> None:
             process.kill()
             process.wait(timeout=5)
     log_handle.close()
+    # Windows can release the child-inherited stdout handle just after wait()
+    # returns; give TemporaryDirectory cleanup a bounded hand-off window.
+    time.sleep(0.25)
 
 
 def _copy_failure_artifacts(log_path: Path, fixture_dir: Path) -> list[str]:
@@ -561,7 +564,7 @@ def main() -> int:
     log_handle: Any = None
     failure_artifacts: list[str] = []
     try:
-        with tempfile.TemporaryDirectory(prefix="offeru-public-release-migration-") as root:
+        with offeru_temp_directory("offeru-public-release-migration-") as root:
             fixture_dir = Path(root)
             database_path = fixture_dir / "previous-release.db"
             data_dir = fixture_dir / "runtime-data"

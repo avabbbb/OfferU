@@ -27,7 +27,7 @@ from app.services.security_redaction import safe_error_message
 
 APP_VERSION = "0.4.0"
 FRONTEND_URL = "http://127.0.0.1:7410"
-BACKEND_HEALTH_URL = "http://127.0.0.1:8765/api/health"
+BACKEND_HEALTH_URL = "http://127.0.0.1:8766/api/health"
 
 
 class _NoRedirectHandler(HTTPRedirectHandler):
@@ -117,6 +117,19 @@ def main(argv: Optional[list[str]] = None) -> int:
                 )
             )
             return _print(result, args.pretty, exit_code=0 if result.get("ok") else 1)
+        if args.command == "conformance":
+            result = asyncio.run(
+                _run_conformance(
+                    provider_ids=args.provider,
+                    live_provider=args.live_provider,
+                    refresh=args.refresh,
+                )
+            )
+            return _print(
+                result,
+                args.pretty,
+                exit_code=0 if result.get("ok") else 1,
+            )
         return _print({"ok": False, "errors": ["缺少命令"], "commands": _commands()}, exit_code=2)
     except KeyboardInterrupt:
         return _print({"ok": False, "errors": ["interrupted"]}, getattr(args, "pretty", False), exit_code=130)
@@ -176,11 +189,31 @@ def _build_parser() -> JsonArgumentParser:
         help="Action ID. Defaults to the first pending action.",
     )
     confirm.add_argument("--pretty", action="store_true", help="Pretty-print JSON.")
+
+    conformance = sub.add_parser(
+        "conformance",
+        help="Read the local Agent capability matrix; --live runs one real nonce probe.",
+        add_help=False,
+    )
+    conformance.add_argument(
+        "--provider",
+        action="append",
+        default=None,
+        help="Limit discovery to a provider; may be repeated.",
+    )
+    conformance.add_argument(
+        "--live",
+        dest="live_provider",
+        default="",
+        help="Run a real model probe for this provider (for example codex).",
+    )
+    conformance.add_argument("--refresh", action="store_true", help="Bypass local version probe cache.")
+    conformance.add_argument("--pretty", action="store_true", help="Pretty-print JSON.")
     return parser
 
 
 def _commands() -> list[str]:
-    return ["doctor", "manifest", "ops", "schema", "run", "confirm", "bridge"]
+    return ["doctor", "manifest", "ops", "schema", "run", "confirm", "conformance", "bridge"]
 
 
 def _doctor() -> dict[str, Any]:
@@ -632,6 +665,34 @@ async def _run_operation(name: str, args: dict[str, Any], *, dry_run: bool) -> d
         dry_run=dry_run,
         surface="cli",
     )
+
+
+async def _run_conformance(
+    *,
+    provider_ids: list[str] | None,
+    live_provider: str,
+    refresh: bool,
+) -> dict[str, Any]:
+    await init_db()
+    from app.services.agent_conformance import get_local_agent_capability_matrix
+
+    try:
+        matrix = await get_local_agent_capability_matrix(
+            provider_ids=provider_ids,
+            live_provider=live_provider or None,
+            refresh=refresh,
+        )
+    except Exception as exc:
+        return {"ok": False, "errors": [safe_error_message(exc)]}
+    live_failed = bool(
+        live_provider
+        and any(
+            item.get("provider_id") == live_provider
+            and item.get("live_model_verified") != "VERIFIED"
+            for item in matrix.get("items") or []
+        )
+    )
+    return {"ok": not live_failed, "capabilities": matrix}
 
 
 async def _confirm_operation(run_id: str, *, action_id: str = "") -> dict[str, Any]:

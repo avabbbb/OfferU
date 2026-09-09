@@ -53,6 +53,19 @@ def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
         status = "failed"
     elif check:
         status = check["status"]
+    capabilities = health.get("capabilities") if isinstance(health.get("capabilities"), dict) else {}
+    conformance = capabilities.get("conformance") if isinstance(capabilities.get("conformance"), dict) else {}
+    conformance_matches = bool(
+        conformance.get("binary_path") == item.get("executable_path")
+        and conformance.get("version") == item.get("version")
+    )
+    persisted_connection_verified = conformance_matches and conformance.get("connection_verified") == "VERIFIED"
+    persisted_authenticated = conformance_matches and conformance.get("native_auth_detected") == "VERIFIED"
+    live_model_verified = bool(
+        conformance_matches and conformance.get("live_model_verified") == "VERIFIED"
+    )
+    if persisted_connection_verified and not check:
+        status = "ready"
     return {
         "id": provider_id,
         "name": item["name"],
@@ -60,10 +73,20 @@ def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
         "compatible": compatible,
         "version": redact_sensitive_text(item.get("version") or "", max_length=160),
         "status": status,
-        "authenticated": check.get("authenticated"),
-        "connection_verified": compatible and check.get("status") == "ready",
-        "auth_mode": check.get("auth_mode", "unknown"),
-        "checked_at": check.get("checked_at"),
+        "authenticated": (
+            check.get("authenticated")
+            if check
+            else True
+            if persisted_authenticated
+            else False
+            if conformance_matches and conformance.get("native_auth_detected") == "BLOCKED_AUTH"
+            else None
+        ),
+        "connection_verified": compatible and (
+            check.get("status") == "ready" or persisted_connection_verified
+        ),
+        "auth_mode": check.get("auth_mode", "native_probe" if persisted_authenticated else "unknown"),
+        "checked_at": check.get("checked_at") or conformance.get("last_probe_at"),
         "detected_at": item.get("checked_at"),
         "last_error": redact_sensitive_text(
             health.get("last_error") or check.get("error") or "", max_length=500,
@@ -71,7 +94,7 @@ def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
         "provider_checked_at": health.get("checked_at"),
         "docs_url": _GUIDES.get(provider_id, ""),
         "can_verify_login": provider_id == "codex",
-        "live_model_verified": False,
+        "live_model_verified": live_model_verified,
     }
 
 

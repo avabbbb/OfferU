@@ -768,6 +768,40 @@ async def confirm_profile_bullet(
     bullet_index: int,
     edits: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
+    # Resume imports attach a MemoryProposal to each candidate. Keep the same
+    # review/evidence gate for confirmation; never write the Profile directly.
+    pending_proposal_id: Optional[int] = None
+    async with async_session() as inspect_db:
+        inspect_profile = await _get_or_create_default_profile(inspect_db)
+        inspect_session = (
+            await inspect_db.execute(
+                select(ProfileChatSession).where(
+                    ProfileChatSession.id == session_id,
+                    ProfileChatSession.profile_id == inspect_profile.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if inspect_session is not None:
+            inspect_candidates = _extract_last_candidates(inspect_session.messages_json or [])
+            if 0 <= bullet_index < len(inspect_candidates):
+                raw_proposal_id = inspect_candidates[bullet_index].get("memory_proposal_id")
+                try:
+                    parsed_proposal_id = int(raw_proposal_id or 0)
+                except (TypeError, ValueError):
+                    parsed_proposal_id = 0
+                if parsed_proposal_id > 0:
+                    pending_proposal_id = parsed_proposal_id
+    if pending_proposal_id is not None:
+        if edits:
+            raise ValueError("Resume 候选如需修改，请先拒绝当前提案后重新导入；确认不会绕过来源证据")
+        from app.services.career_memory import review_memory_proposal
+
+        return await review_memory_proposal(
+            proposal_id=pending_proposal_id,
+            action="accept",
+            note="用户在 Resume 导入审核中确认",
+        )
+
     async with async_session() as db:
         profile = await _get_or_create_default_profile(db)
         session = (
@@ -871,7 +905,7 @@ async def save_profile_resume_import(
         await db.commit()
         await db.refresh(session)
         await db.refresh(agent_session)
-        return {
+        result = {
             "session_id": session.id,
             "agent_session_id": agent_session.id,
             "filename": filename,
@@ -884,6 +918,72 @@ async def save_profile_resume_import(
                 for index, candidate in enumerate(candidates)
             ],
         }
+    # Parsing/import persistence and memory evidence are separate transactions:
+    # a failed proposal can never leave a half-written Profile section.
+    from app.services.career_memory import record_resume_import_evidence
+
+    evidence = await record_resume_import_evidence(
+        filename=filename,
+        parse_mode=parse_mode,
+        parsed_text=parsed_text,
+        parse_diagnostics=parse_diagnostics,
+        candidates=candidates,
+    )
+    by_index = {
+        int(item.get("candidate_index")): item
+        for item in evidence.get("proposals") or []
+        if isinstance(item, dict) and item.get("candidate_index") is not None
+    }
+    for bullet in result["bullets"]:
+        proposal = by_index.get(int(bullet["index"]))
+        if proposal:
+            bullet["memory_proposal_id"] = proposal.get("id")
+            linked = next(
+                (
+                    item
+                    for item in evidence.get("observations") or []
+                    if isinstance(item, dict)
+                    and int(item.get("candidate_index") or -1) == int(bullet["index"])
+                ),
+                None,
+            )
+            if linked:
+                bullet["observation_id"] = linked.get("id")
+            bullet["candidate_state"] = "pending_review"
+    enriched_candidates = [
+        {
+            **candidate,
+            **(
+                {
+                    key: result["bullets"][index][key]
+                    for key in ("memory_proposal_id", "observation_id", "candidate_state")
+                    if key in result["bullets"][index]
+                }
+            ),
+        }
+        for index, candidate in enumerate(candidates)
+    ]
+    if enriched_candidates:
+        async with async_session() as db:
+            stored = (
+                await db.execute(
+                    select(ProfileChatSession).where(ProfileChatSession.id == result["session_id"])
+                )
+            ).scalar_one_or_none()
+            if stored is not None:
+                messages = list(stored.messages_json or [])
+                for item in reversed(messages):
+                    if isinstance(item, dict) and item.get("kind") == "bullet_candidates":
+                        item["candidates"] = enriched_candidates
+                        break
+                stored.messages_json = messages
+                await db.commit()
+    result["memory_evidence"] = {
+        "source_external_id": evidence.get("source_external_id"),
+        "observation_count": evidence.get("observation_count", 0),
+        "proposal_count": evidence.get("proposal_count", 0),
+    }
+    return result
 
 
 async def generate_profile_narrative() -> dict[str, Any]:

@@ -184,7 +184,7 @@ jobs:
         shell: bash
         env:
           DATABASE_URL: sqlite+aiosqlite:////tmp/offeru-public-release-${{ github.run_id }}-${{ matrix.scenario }}.db
-          OFFERU_PORT: '8765'
+          OFFERU_PORT: '8766'
           OFFERU_ENABLE_MCP: 'false'
           OFFERU_INTERVIEW_RUNTIME: replay
           MEMORY_DISTILL_INTERVAL_SECONDS: '0'
@@ -218,7 +218,7 @@ jobs:
           )
 
           checks = {
-              "backend": "http://127.0.0.1:8765/api/health",
+              "backend": "http://127.0.0.1:8766/api/health",
               "frontend": "http://127.0.0.1:7410/",
           }
           expected_version = json.loads(
@@ -259,7 +259,7 @@ jobs:
         shell: bash
         env:
           OFFERU_E2E_BASE_URL: http://127.0.0.1:7410
-          OFFERU_E2E_API_URL: http://127.0.0.1:8765
+          OFFERU_E2E_API_URL: http://127.0.0.1:8766
           OFFERU_E2E_ARTIFACT_DIR: ${{ runner.temp }}/offeru-e2e-artifacts
         run: python backend/scripts/e2e/test_public_release_smoke.py
 
@@ -275,7 +275,7 @@ jobs:
         shell: bash
         env:
           OFFERU_E2E_BASE_URL: http://127.0.0.1:7410
-          OFFERU_E2E_API_URL: http://127.0.0.1:8765
+          OFFERU_E2E_API_URL: http://127.0.0.1:8766
           OFFERU_E2E_ARTIFACT_DIR: ${{ runner.temp }}/offeru-e2e-artifacts
         run: python backend/scripts/e2e/test_public_release_interview.py
 
@@ -283,7 +283,7 @@ jobs:
         if: matrix.scenario == 'smoke'
         shell: bash
         env:
-          OFFERU_E2E_API_URL: http://127.0.0.1:8765
+          OFFERU_E2E_API_URL: http://127.0.0.1:8766
           OFFERU_WORKER_SOAK_CYCLES: '100'
         run: python backend/scripts/e2e/test_public_release_worker_soak.py
 
@@ -389,7 +389,7 @@ jobs:
         shell: bash
         env:
           DATABASE_URL: sqlite+aiosqlite:////tmp/offeru-public-release-repeat-${{ github.run_id }}-${{ matrix.repeat }}.db
-          OFFERU_PORT: '8765'
+          OFFERU_PORT: '8766'
           CORS_ORIGINS: http://127.0.0.1:7410,http://localhost:7410
           OFFERU_ENABLE_MCP: 'false'
           OFFERU_INTERVIEW_RUNTIME: replay
@@ -424,7 +424,7 @@ jobs:
           )
 
           checks = {
-              "backend": "http://127.0.0.1:8765/api/health",
+              "backend": "http://127.0.0.1:8766/api/health",
               "frontend": "http://127.0.0.1:7410/",
           }
           expected_version = json.loads(
@@ -462,7 +462,7 @@ jobs:
         shell: bash
         env:
           OFFERU_E2E_BASE_URL: http://127.0.0.1:7410
-          OFFERU_E2E_API_URL: http://127.0.0.1:8765
+          OFFERU_E2E_API_URL: http://127.0.0.1:8766
           OFFERU_E2E_ARTIFACT_DIR: ${{ runner.temp }}/offeru-repeat-e2e-artifacts
         run: python backend/scripts/e2e/test_public_release_smoke.py
 
@@ -575,7 +575,7 @@ jobs:
         shell: bash
         env:
           OFFERU_E2E_BASE_URL: http://127.0.0.1:7410
-          OFFERU_E2E_API_URL: http://127.0.0.1:8765
+          OFFERU_E2E_API_URL: http://127.0.0.1:8766
           OFFERU_E2E_ARTIFACT_DIR: ${{ runner.temp }}/offeru-migration-e2e-artifacts
         run: python backend/scripts/e2e/test_public_release_migration.py
 
@@ -834,16 +834,16 @@ jobs:
             mode = 'windows_installed_app_smoke'
             browser = 'none'
             web_url = 'not_used'
-            api_url = 'http://127.0.0.1:8765'
+            api_url = 'http://127.0.0.1:8766'
             expected_version = $expectedVersion
           }
           try {
             $preexistingListeners = @(
-              Get-NetTCPConnection -State Listen -LocalPort 8765 -ErrorAction SilentlyContinue
+              Get-NetTCPConnection -State Listen -LocalPort 8766 -ErrorAction SilentlyContinue
             )
             if ($preexistingListeners.Count -gt 0) {
               $ownerIds = @($preexistingListeners | Select-Object -ExpandProperty OwningProcess -Unique)
-              throw "port 8765 is already occupied before installed-app smoke (PID(s): $($ownerIds -join ', '))"
+              throw "port 8766 is already occupied before installed-app smoke (PID(s): $($ownerIds -join ', '))"
             }
 
             $installer = Get-ChildItem -Path (Join-Path $env:GITHUB_WORKSPACE 'release-assets') -Filter '*-setup.exe' -File -Recurse |
@@ -860,7 +860,7 @@ jobs:
             $health = $null
             while ((Get-Date) -lt $deadline) {
               try {
-                $healthResponse = $healthClient.GetAsync('http://127.0.0.1:8765/api/health').GetAwaiter().GetResult()
+                $healthResponse = $healthClient.GetAsync('http://127.0.0.1:8766/api/health').GetAwaiter().GetResult()
                 if ($healthResponse.IsSuccessStatusCode) {
                   $health = $healthResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
                   if ($health.status -eq 'ok' -and
@@ -882,10 +882,10 @@ jobs:
                 $health.runtime -ne 'python' -or
                 $health.build_mode -ne 'release' -or
                 $health.version -ne $expectedVersion) {
-              throw 'installed app did not expose a healthy 8765 sidecar within 60 seconds'
+              throw 'installed app did not expose a healthy 8766 sidecar within 60 seconds'
             }
             $listeners = @(
-              Get-NetTCPConnection -State Listen -LocalPort 8765 -ErrorAction SilentlyContinue
+              Get-NetTCPConnection -State Listen -LocalPort 8766 -ErrorAction SilentlyContinue
             )
             $sidecarOwnerPaths = @(
               foreach ($listener in $listeners) {
@@ -897,7 +897,7 @@ jobs:
               Where-Object { $_.StartsWith($installRoot, [System.StringComparison]::OrdinalIgnoreCase) } |
               Select-Object -First 1
             if ([string]::IsNullOrWhiteSpace($ownedSidecarPath)) {
-              throw 'healthy 8765 endpoint is not owned by the installed app directory'
+              throw 'healthy 8766 endpoint is not owned by the installed app directory'
             }
             $summary.status = 'PASS'
             $summary.installer = $installer.Name
@@ -907,7 +907,7 @@ jobs:
             $summary.health_runtime = $health.runtime
             $summary.health_build_mode = $health.build_mode
             $summary.health_version = $health.version
-            $summary.sidecar_port = 8765
+            $summary.sidecar_port = 8766
             $summary.sidecar_executable = $ownedSidecarPath
           } catch {
             $summary.error = $_.Exception.Message

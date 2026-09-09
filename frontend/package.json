@@ -23,18 +23,20 @@
     "@nextui-org/react": "^2.4.0",
     "@puckeditor/core": "^0.22.0",
     "@react-pdf/renderer": "^3.4.5",
-    "@tiptap/extension-link": "^2.27.2",
-    "@tiptap/extension-placeholder": "^2.6.0",
-    "@tiptap/extension-text-align": "^2.6.0",
-    "@tiptap/extension-underline": "^2.6.0",
-    "@tiptap/react": "^2.6.0",
-    "@tiptap/starter-kit": "^2.6.0",
+    "@tiptap/extension-link": "^3.31.3",
+    "@tiptap/extension-placeholder": "^3.31.3",
+    "@tiptap/extension-text-align": "^3.31.3",
+    "@tiptap/extension-underline": "^3.31.3",
+    "@tiptap/pm": "^3.31.3",
+    "@tiptap/react": "^3.31.3",
+    "@tiptap/starter-kit": "^3.31.3",
     "china-area-data": "^5.0.1",
     "framer-motion": "^11.0.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
     "localforage": "^1.10.0",
     "lucide-react": "^0.400.0",
+    "markdown-it": "14.3.1",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "react-router-dom": "^7.18.2",
@@ -42,6 +44,7 @@
     "swr": "^2.2.0"
   },
   "devDependencies": {
+    "@types/markdown-it": "^14.2.0",
     "@tauri-apps/cli": "^2.11.4",
     "@types/node": "^20",
     "@types/react": "^18",
@@ -54,9 +57,16 @@
     "vite": "^8.1.5"
   },
   "overrides": {
+    "@puckeditor/core": {
+      "@tiptap/core": "3.31.3",
+      "@tiptap/html": "3.31.3",
+      "@tiptap/pm": "3.31.3"
+    },
     "dompurify": "3.4.14",
+    "fflate": "0.8.3",
     "linkify-it": "5.0.2",
     "markdown-it": "14.3.1",
-    "nanoid": "3.3.18"
+    "nanoid": "3.3.18",
+    "postcss-selector-parser": "6.1.4"
   }
 }

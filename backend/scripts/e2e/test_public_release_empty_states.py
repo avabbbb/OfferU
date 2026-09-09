@@ -58,9 +58,8 @@ def main() -> None:
 
             expect(page.get_by_text("还没有岗位数据", exact=True)).to_be_visible(timeout=20000)
             expect(page.get_by_text("保存第一个岗位", exact=True)).to_be_visible()
-            today_text = page.locator("body").inner_text()
-            if "暂无进行中的投递" not in today_text or "近 7 天没有安排" not in today_text:
-                raise AssertionError("Today empty state did not explain the empty workspace")
+            expect(page.get_by_text("暂无进行中的投递", exact=False)).to_be_visible(timeout=20000)
+            expect(page.get_by_text("近 7 天没有安排", exact=False)).to_be_visible(timeout=20000)
 
             _open(page, "/jobs")
             expect(page.get_by_text("暂无岗位结果", exact=True)).to_be_visible(timeout=20000)
@@ -72,6 +71,7 @@ def main() -> None:
             expect(page.get_by_text("从「岗位」页挑选岗位创建投递", exact=False)).to_be_visible()
 
             _open(page, "/profile")
+            expect(page.get_by_text("还没有记录经历", exact=True)).to_be_visible(timeout=20000)
             profile_text = page.locator("body").inner_text()
             for required in ("去补充", "还没有确定目标岗位", "还没有记录经历", "还没有记录技能、证书或奖项"):
                 if required not in profile_text:

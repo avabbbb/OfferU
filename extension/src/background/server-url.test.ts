@@ -16,7 +16,7 @@ describe("OfferU server URL boundary", () => {
   });
 
   it("keeps the current local backend and remote custom origin", () => {
-    expect(normalizeOfferUServerUrl("http://localhost:8765/api")).toBe(DEFAULT_OFFERU_SERVER_URL);
+    expect(normalizeOfferUServerUrl("http://localhost:8766/api")).toBe(DEFAULT_OFFERU_SERVER_URL);
     expect(normalizeOfferUServerUrl("https://example.test:9443/offeru")).toBe(
       "https://example.test:9443",
     );

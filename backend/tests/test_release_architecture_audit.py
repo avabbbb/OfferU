@@ -54,7 +54,7 @@ def test_generated_extension_artifact_guard_accepts_built_output(tmp_path, monke
     extension_root.mkdir()
     (extension_root / "manifest.json").write_text('{"manifest_version":3}', encoding="utf-8")
     (extension_root / "background.js").write_text(
-        "127.0.0.1:8765 /api/health OfferU redirect",
+        "127.0.0.1:8766 /api/health OfferU redirect",
         encoding="utf-8",
     )
     (extension_root / "popup.html").write_text(
@@ -77,17 +77,19 @@ def test_public_release_e2e_endpoint_boundary_is_clear() -> None:
 
 def test_extension_web_navigation_is_readiness_gated() -> None:
     source = (ROOT / "extension" / "src" / "popup.ts").read_text(encoding="utf-8")
-    gate_start = source.index("async function openOfferUFrontend")
-    gate_end = source.index("function toFileUrl", gate_start)
-    gate = source[gate_start:gate_end]
+    probe_start = source.index("async function probeOfferUFrontend")
+    open_start = source.index("async function openOfferUFrontend", probe_start)
+    gate_end = source.index("function toFileUrl", open_start)
+    probe = source[probe_start:open_start]
+    gate = source[probe_start:gate_end]
 
-    assert "DEFAULT_OFFERU_FRONTEND_URL" in gate
-    assert "AbortController" in gate
-    assert "response.ok" in gate
-    assert 'redirect: "error"' in gate
+    assert "DEFAULT_OFFERU_FRONTEND_URL" in probe
+    assert "AbortController" in probe
+    assert "response.ok" in probe
+    assert 'redirect: "error"' in probe
     assert gate.index("await fetch(") < gate.index("await chrome.tabs.create")
     assert "OfferU 网页服务未启动" in gate
-    assert "async function probeOfferUFrontend" in source
+    assert "await probeOfferUFrontend()" in gate
     assert 'fetch(url, { ...init, redirect: "error" })' in source
     assert 'health.service !== "OfferU"' in source
     assert "const html = await response.text()" in source
@@ -141,7 +143,7 @@ def test_release_audit_covers_backend_container_entrypoint() -> None:
     assert "OfferU 网页服务未启动" in sync_source
     assert "Refusing to sync a stale popup" in sync_source
     assert "requiredBackgroundMarkers" in sync_source
-    assert '"127.0.0.1:8765"' in sync_source
+    assert '"127.0.0.1:8766"' in sync_source
     assert "Refusing to sync a stale background" in sync_source
 
     background_source = (ROOT / "extension" / "src" / "background.ts").read_text(
@@ -222,12 +224,12 @@ def test_windows_installed_smoke_requires_release_health_identity() -> None:
 
     assert "browser = 'none'" in smoke
     assert "web_url = 'not_used'" in smoke
-    assert "api_url = 'http://127.0.0.1:8765'" in smoke
+    assert "api_url = 'http://127.0.0.1:8766'" in smoke
     assert "release-assets/version.json" in smoke
     assert "$expectedVersion" in smoke
     assert "$healthHandler.AllowAutoRedirect = $false" in smoke
     assert "$healthHandler.UseProxy = $false" in smoke
-    assert "$healthClient.GetAsync('http://127.0.0.1:8765/api/health')" in smoke
+    assert "$healthClient.GetAsync('http://127.0.0.1:8766/api/health')" in smoke
     assert "$health.status -eq 'ok'" in smoke
     assert "$health.service -eq 'OfferU'" in smoke
     assert "$health.runtime -eq 'python'" in smoke
@@ -273,7 +275,7 @@ def test_worker_soak_requires_current_health_identity() -> None:
 
 def test_frontend_api_base_is_local_only() -> None:
     source = (ROOT / "frontend/src/lib/apiBase.ts").read_text(encoding="utf-8")
-    assert 'const DEFAULT_API_BASE = "http://127.0.0.1:8765"' in source
+    assert 'const DEFAULT_API_BASE = "http://127.0.0.1:8766"' in source
     assert 'return parsed.origin' not in source
     assert "window.location.hostname" not in source
 
@@ -434,10 +436,10 @@ def test_gmail_callback_cannot_use_stale_local_port() -> None:
     assert 'DEFAULT_GMAIL_CALLBACK_URL' in route_source
     assert "validate_gmail_redirect_uri" in route_source
     assert 'raise HTTPException(status_code=503' in route_source
-    assert 'DEFAULT_GMAIL_CALLBACK_URL = "http://127.0.0.1:8765/api/email/callback"' in service_source
+    assert 'DEFAULT_GMAIL_CALLBACK_URL = "http://127.0.0.1:8766/api/email/callback"' in service_source
     assert "def validate_gmail_redirect_uri" in service_source
     assert 'parsed.hostname.lower() not in _LOCAL_CALLBACK_HOSTS' in service_source
-    assert "port != 8765" in service_source
+    assert "port != 8766" in service_source
     assert 'parsed.path != "/api/email/callback"' in service_source
     assert "clean_redirect = validate_gmail_redirect_uri" in service_source
 

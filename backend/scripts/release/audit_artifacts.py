@@ -61,11 +61,22 @@ _TEXT_EXTENSIONS = {
     ".yaml",
     ".yml",
 }
+_ALLOWED_TEXT_MATCHES: dict[tuple[str, str], frozenset[tuple[str, bytes]]] = {
+    (
+        "chrome-mv3",
+        "manifest.json",
+    ): frozenset({("email_address", b"offeru-extension@offeru.local")}),
+}
 _CHUNK_SIZE = 1024 * 1024
 _MAX_PATTERN_LENGTH = 256
 
 
-def _scan_bytes(path: Path, *, scan_text_pii: bool = False) -> set[str]:
+def _scan_bytes(
+    path: Path,
+    *,
+    scan_text_pii: bool = False,
+    allowed_matches: frozenset[tuple[str, bytes]] = frozenset(),
+) -> set[str]:
     findings: set[str] = set()
     overlap = b""
     patterns = _PATTERNS + (_TEXT_PII_PATTERNS if scan_text_pii else ())
@@ -76,7 +87,10 @@ def _scan_bytes(path: Path, *, scan_text_pii: bool = False) -> set[str]:
                 break
             window = overlap + chunk
             for name, pattern in patterns:
-                if pattern.search(window):
+                if any(
+                    (name, match.group(0)) not in allowed_matches
+                    for match in pattern.finditer(window)
+                ):
                     findings.add(name)
             overlap = window[-_MAX_PATTERN_LENGTH:]
     return findings
@@ -106,8 +120,16 @@ def audit_artifact_tree(root: Path) -> dict[str, object]:
         total_bytes += path.stat().st_size
         if path.name.casefold() in _SENSITIVE_FILENAMES:
             findings.append({"path": relative, "kind": "sensitive_filename"})
+        allowed_matches = _ALLOWED_TEXT_MATCHES.get(
+            (root.name, relative),
+            frozenset(),
+        )
         for kind in sorted(
-            _scan_bytes(path, scan_text_pii=path.suffix.casefold() in _TEXT_EXTENSIONS)
+            _scan_bytes(
+                path,
+                scan_text_pii=path.suffix.casefold() in _TEXT_EXTENSIONS,
+                allowed_matches=allowed_matches,
+            )
         ):
             findings.append({"path": relative, "kind": kind})
 

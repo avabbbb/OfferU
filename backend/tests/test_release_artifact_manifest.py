@@ -53,7 +53,7 @@ class ReleaseArtifactManifestTests(unittest.TestCase):
             root = Path(directory)
             self._write_release(root)
             (root / "OfferU_0.4.0_x64-setup.exe").write_bytes(b"changed installer")
-            with self.assertRaisesRegex(ValueError, "SHA-256 mismatch"):
+            with self.assertRaisesRegex(ValueError, "byte count mismatch"):
                 verify_release_artifacts(root)
 
     def test_rejects_unsigned_release_when_signature_is_required(self) -> None:

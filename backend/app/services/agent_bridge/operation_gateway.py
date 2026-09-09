@@ -20,14 +20,25 @@ from app.services.operation_projection import (
     execute_or_propose_operation,
 )
 
-# Slice 1 read-only grant: the pre-application tracer Operation plus the two
-# catalog reads every adapter needs to render its tool list.
+# Read-only career context grant. Discovery, Profile, Resume, Job, progress,
+# and memory observations are all safe reads; every write remains outside the
+# grant and must go through the normal proposal/confirmation path.
 GRANTED_READ_OPERATIONS: frozenset[str] = frozenset(
     {
+        "agent_playbook",
         "get_pre_application_state",
         "get_job",
         "list_jobs",
         "get_profile",
+        "list_resumes",
+        "list_profile_evidence",
+        "list_application_progress_candidates",
+        "list_learning_observations",
+        "list_memory_inbox",
+        "get_profile_evolution_report",
+        "get_current_view",
+        "list_email_accounts",
+        "list_email_sync_runs",
     }
 )
 

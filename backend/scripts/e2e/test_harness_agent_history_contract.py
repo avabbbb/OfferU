@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import pathlib
 import sys
-import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+
+from temp_paths import offeru_temp_directory
 
 from app.services.harness_history import (  # noqa: E402
     delete_conversation,
@@ -16,7 +17,7 @@ from app.services.harness_history import (  # noqa: E402
 
 
 def test_history_creates_lists_and_loads_conversation() -> None:
-    with tempfile.TemporaryDirectory() as tmp:
+    with offeru_temp_directory("harness-agent-history-") as tmp:
         path = pathlib.Path(tmp) / "history.json"
         saved = save_conversation_messages(
             conversation_id=None,
@@ -42,7 +43,7 @@ def test_history_creates_lists_and_loads_conversation() -> None:
 
 
 def test_history_updates_existing_conversation_without_duplicates() -> None:
-    with tempfile.TemporaryDirectory() as tmp:
+    with offeru_temp_directory("harness-agent-history-") as tmp:
         path = pathlib.Path(tmp) / "history.json"
         saved = save_conversation_messages(
             conversation_id=None,
@@ -66,7 +67,7 @@ def test_history_updates_existing_conversation_without_duplicates() -> None:
 
 
 def test_history_deletes_conversation() -> None:
-    with tempfile.TemporaryDirectory() as tmp:
+    with offeru_temp_directory("harness-agent-history-") as tmp:
         path = pathlib.Path(tmp) / "history.json"
         saved = save_conversation_messages(
             conversation_id=None,

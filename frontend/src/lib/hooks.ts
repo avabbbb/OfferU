@@ -14,8 +14,8 @@ import { safeClientErrorMessage } from "@/lib/safe-error";
 
 const API_BASE = resolveApiBase();
 
-function formatBackendNetworkError() {
-  return "无法连接本地后端，请确认 8765 服务已启动。配置 API Key 时浏览器只会请求本地后端，不会直接连接 DeepSeek。";
+function formatBackendNetworkError(_error?: unknown) {
+  return "无法连接本地后端，请确认 8766 服务已启动。配置 API Key 时浏览器只会请求本地后端，不会直接连接 DeepSeek。";
 }
 
 /**

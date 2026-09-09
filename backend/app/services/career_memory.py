@@ -408,6 +408,92 @@ async def record_conversation_observation(
     return {"recorded": True, **observation}
 
 
+async def record_resume_import_evidence(
+    *,
+    filename: str,
+    parse_mode: str,
+    parsed_text: str,
+    parse_diagnostics: Optional[dict[str, Any]],
+    candidates: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Turn parsed Resume candidates into reviewable evidence proposals.
+
+    Parsing is intentionally separate from Profile mutation. Each candidate is
+    an observation plus a pending proposal; only the existing memory review
+    operation can promote it to a Profile section.
+    """
+
+    clean_filename = _clean_text(filename, "filename", limit=300, required=True)
+    clean_text = _clean_text(parsed_text, "parsed_text", limit=2_000_000, required=True)
+    source_external_id = _sha256(f"resume:{clean_filename}:{clean_text}")
+    observations: list[dict[str, Any]] = []
+    proposals: list[dict[str, Any]] = []
+    for index, candidate in enumerate(candidates):
+        if not isinstance(candidate, dict):
+            continue
+        section_type = str(candidate.get("section_type") or "custom").strip().lower()
+        title = str(candidate.get("title") or f"Resume 条目 {index + 1}").strip()[:220]
+        after = candidate.get("content_json")
+        if not isinstance(after, dict) or not after:
+            continue
+        normalized = after.get("normalized") if isinstance(after.get("normalized"), dict) else {}
+        excerpt = str(
+            candidate.get("source_excerpt")
+            or after.get("bullet")
+            or after.get("description")
+            or json.dumps(normalized or after, ensure_ascii=False)
+        ).strip()
+        # Include a bounded piece of the parsed document as independent context
+        # for the fact gate while keeping the stored source projection small.
+        if clean_text and excerpt and excerpt not in clean_text:
+            excerpt = f"{excerpt}\nResume 原文片段：{clean_text[:1800]}"
+        observation = await record_learning_observation(
+            source_type="resume",
+            source_external_id=source_external_id,
+            source_title=clean_filename,
+            source_locator=str(candidate.get("source_ref") or "Resume 正文")[:2000],
+            source_metadata={
+                "parse_mode": str(parse_mode or "unknown")[:40],
+                "parser": (parse_diagnostics or {}).get("parser", "")
+                if isinstance(parse_diagnostics, dict)
+                else "",
+                "candidate_index": index,
+            },
+            observation_type="resume_fact_candidate",
+            content={
+                "fact_type": section_type,
+                "title": title,
+                "source_excerpt": excerpt[:20_000],
+                "candidate": after,
+                "confidence": float(candidate.get("confidence") or 0),
+                "source_ref": str(candidate.get("source_ref") or "")[:2000],
+            },
+            idempotency_key=(
+                f"resume:{source_external_id}:{_sha256(_canonical_json(after))}"
+            ),
+        )
+        proposal = await create_memory_proposal(
+            observation_id=int(observation["id"]),
+            target_tier="verified_fact",
+            section_type=section_type,
+            title=title,
+            after=after,
+            reason="来自用户上传 Resume 的可回溯候选；确认前不会写入 Profile。",
+            impact=["纳入岗位分析、简历策略和面试准备的证据池"],
+        )
+        observation["candidate_index"] = index
+        proposal["candidate_index"] = index
+        observations.append(observation)
+        proposals.append(proposal)
+    return {
+        "source_external_id": source_external_id,
+        "observation_count": len(observations),
+        "proposal_count": len(proposals),
+        "observations": observations,
+        "proposals": proposals,
+    }
+
+
 async def list_learning_observations(
     *,
     status: str = "active",
@@ -493,17 +579,16 @@ async def create_memory_proposal(
     ]
     if len(raw_impact) > 20:
         raise ValueError("impact 最多包含 20 项")
-    proposal_key = _sha256(
-        _canonical_json(
-            {
-                "observation_id": clean_observation_id,
-                "target_tier": clean_tier,
-                "section_type": clean_section_type,
-                "title": clean_title,
-                "after": clean_after,
-            }
-        )
-    )
+    # A proposal represents one candidate fact, so its identity is independent
+    # of the source that first surfaced it. New sources attach evidence to the
+    # same proposal/profile section instead of creating duplicate facts.
+    proposal_identity = {
+        "target_tier": clean_tier,
+        "section_type": clean_section_type,
+        "title": clean_title,
+        "after": clean_after,
+    }
+    proposal_key = _sha256(_canonical_json(proposal_identity))
 
     async with async_session() as db:
         observation = (
@@ -555,7 +640,61 @@ async def create_memory_proposal(
                 select(MemoryProposal).where(MemoryProposal.proposal_key == proposal_key)
             )
         ).scalar_one_or_none()
+        if existing is not None and existing.status in {"rejected", "revoked", "invalidated"}:
+            # A previously rejected candidate may be reconsidered only when a
+            # genuinely new observation supports it. Keep the rejection audit
+            # row and give the new evidence its own proposal identity.
+            proposal_key = _sha256(
+                _canonical_json(
+                    {**proposal_identity, "observation_id": clean_observation_id}
+                )
+            )
+            existing = (
+                await db.execute(
+                    select(MemoryProposal).where(MemoryProposal.proposal_key == proposal_key)
+                )
+            ).scalar_one_or_none()
         if existing is not None:
+            link = (
+                await db.execute(
+                    select(EvidenceLink)
+                    .where(EvidenceLink.observation_id == observation.id)
+                    .where(EvidenceLink.target_type == "memory_proposal")
+                    .where(EvidenceLink.target_id == existing.id)
+                    .where(EvidenceLink.relation == "supports")
+                )
+            ).scalar_one_or_none()
+            if link is None:
+                db.add(
+                    EvidenceLink(
+                        observation_id=observation.id,
+                        target_type="memory_proposal",
+                        target_id=existing.id,
+                        relation="supports",
+                        is_active=True,
+                    )
+                )
+            if existing.applied_profile_section_id is not None:
+                section_link = (
+                    await db.execute(
+                        select(EvidenceLink)
+                        .where(EvidenceLink.observation_id == observation.id)
+                        .where(EvidenceLink.target_type == "profile_section")
+                        .where(EvidenceLink.target_id == existing.applied_profile_section_id)
+                        .where(EvidenceLink.relation == "supports")
+                    )
+                ).scalar_one_or_none()
+                if section_link is None:
+                    db.add(
+                        EvidenceLink(
+                            observation_id=observation.id,
+                            target_type="profile_section",
+                            target_id=existing.applied_profile_section_id,
+                            relation="supports",
+                            is_active=True,
+                        )
+                    )
+            await db.commit()
             evidence = await _proposal_evidence(db, [existing.id])
             return {
                 **_serialize_proposal(existing, evidence.get(existing.id, [])),
@@ -903,8 +1042,8 @@ async def review_memory_proposal(
             and item["observation"]["status"] == "active"
             and item["observation"]["source"]["status"] == "active"
         ]
-        if len(active_evidence) != 1:
-            raise ValueError("提案必须有且仅有一条有效来源观察")
+        if not active_evidence:
+            raise ValueError("提案必须至少有一条有效来源观察")
         snapshot = {
             "target_tier": proposal.target_tier,
             "section_type": proposal.section_type,
@@ -1046,19 +1185,29 @@ async def review_memory_proposal(
                 old_section.status = "superseded"
                 old_section.invalidated_at = _now()
                 old_section.superseded_by_id = profile_section_id
-        existing_link = (
+        # Preserve every independent source that supported the candidate. The
+        # first source is used by the fact gate for the write; all active
+        # sources remain attached to the resulting Profile section.
+        active_observation_ids = {
+            int(item["observation"]["id"])
+            for item in active_evidence
+            if item.get("observation", {}).get("id")
+        }
+        active_observation_ids.add(int(snapshot["observation_id"]))
+        existing_links = (
             await db.execute(
                 select(EvidenceLink)
-                .where(EvidenceLink.observation_id == snapshot["observation_id"])
                 .where(EvidenceLink.target_type == "profile_section")
                 .where(EvidenceLink.target_id == profile_section_id)
+                .where(EvidenceLink.observation_id.in_(active_observation_ids))
                 .where(EvidenceLink.relation == "supports")
             )
-        ).scalar_one_or_none()
-        if existing_link is None:
+        ).scalars().all()
+        linked_observation_ids = {int(link.observation_id) for link in existing_links}
+        for observation_id in sorted(active_observation_ids - linked_observation_ids):
             db.add(
                 EvidenceLink(
-                    observation_id=snapshot["observation_id"],
+                    observation_id=observation_id,
                     target_type="profile_section",
                     target_id=profile_section_id,
                     relation="supports",

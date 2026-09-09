@@ -31,7 +31,7 @@ def test_backend_port_is_fixed_and_ignores_legacy_override(monkeypatch) -> None:
     monkeypatch.delenv("OFFERU_PORT", raising=False)
     monkeypatch.setenv("OFFERU_LEGACY_PORT", "8080")
 
-    assert configured_backend_port() == OFFERU_BACKEND_PORT == 8765
+    assert configured_backend_port() == OFFERU_BACKEND_PORT == 8766
 
 
 def test_backend_port_rejects_non_release_port(monkeypatch) -> None:
@@ -40,9 +40,9 @@ def test_backend_port_rejects_non_release_port(monkeypatch) -> None:
     try:
         configured_backend_port()
     except RuntimeError as exc:
-        assert str(exc) == "OfferU backend port is fixed at 8765"
+        assert str(exc) == "OfferU backend port is fixed at 8766"
     else:
-        raise AssertionError("non-8765 backend port must be rejected")
+        raise AssertionError("non-8766 backend port must be rejected")
 
 
 def test_sidecar_paths_follow_explicit_user_data_dir(monkeypatch, tmp_path: Path) -> None:
@@ -74,4 +74,4 @@ def test_sidecar_entry_configures_writable_runtime(monkeypatch, tmp_path: Path) 
     assert Path(os.environ["OFFERU_DATA_DIR"]).is_dir()
     assert os.environ["OFFERU_BUILD_MODE"] == "release"
     assert os.environ["OFFERU_RUNTIME_MODE"] == "desktop-sidecar"
-    assert os.environ["OFFERU_PORT"] == "8765"
+    assert os.environ["OFFERU_PORT"] == "8766"

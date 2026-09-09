@@ -19,6 +19,22 @@ class ReleaseArtifactAuditTests(unittest.TestCase):
         self.assertEqual(result["findings"], [])
         self.assertEqual(result["file_count"], 2)
 
+    def test_generated_extension_identifier_allowlist_is_exact(self) -> None:
+        cases = (
+            ("manifest.json", b'"id":"offeru-extension@offeru.local"', "clear"),
+            ("other.json", b'"id":"offeru-extension@offeru.local"', "fail"),
+            ("manifest.json", b'"id":"candidate@example.com"', "fail"),
+        )
+        for filename, content, expected_status in cases:
+            with self.subTest(filename=filename, content=content):
+                with tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory) / "chrome-mv3"
+                    root.mkdir()
+                    (root / filename).write_bytes(content)
+                    result = audit_artifact_tree(root)
+
+                self.assertEqual(result["status"], expected_status)
+
     def test_secret_and_sensitive_filename_are_reported_without_values(self) -> None:
         canary = b"OFFERU_RELEASE_CANARY_SECRET_20260901_xxxx"
         with tempfile.TemporaryDirectory() as directory:

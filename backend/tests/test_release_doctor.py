@@ -104,7 +104,7 @@ def test_doctor_probes_backend_health_without_exposing_response_body() -> None:
 
     assert result == {
         "status": "ready",
-        "url": "http://127.0.0.1:8765/api/health",
+        "url": "http://127.0.0.1:8766/api/health",
         "http_status": 200,
     }
     opener.assert_called_once()
@@ -129,7 +129,7 @@ def test_doctor_rejects_wrong_backend_health_payload_without_echoing_body() -> N
 
     assert result == {
         "status": "failed",
-        "url": "http://127.0.0.1:8765/api/health",
+        "url": "http://127.0.0.1:8766/api/health",
         "http_status": 200,
         "error_kind": "backend_health_payload_invalid",
     }
@@ -146,7 +146,7 @@ def test_doctor_rejects_non_python_backend_runtime_without_network_retry() -> No
 
     assert result == {
         "status": "failed",
-        "url": "http://127.0.0.1:8765/api/health",
+        "url": "http://127.0.0.1:8766/api/health",
         "http_status": 200,
         "error_kind": "backend_health_payload_invalid",
     }
@@ -162,7 +162,7 @@ def test_doctor_rejects_backend_version_or_build_mode_drift() -> None:
 
     assert result == {
         "status": "failed",
-        "url": "http://127.0.0.1:8765/api/health",
+        "url": "http://127.0.0.1:8766/api/health",
         "http_status": 200,
         "error_kind": "backend_health_payload_invalid",
     }
@@ -173,7 +173,7 @@ def test_release_doctor_blocks_when_backend_is_not_ready() -> None:
         settings=SimpleNamespace(),
         backend_health={
             "status": "unavailable",
-            "url": "http://127.0.0.1:8765/api/health",
+            "url": "http://127.0.0.1:8766/api/health",
             "error_kind": "backend_not_reachable",
         },
         provider_health=_providers(),

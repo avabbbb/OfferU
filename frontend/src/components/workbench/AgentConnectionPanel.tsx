@@ -174,7 +174,7 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
                 <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 leading-relaxed">
                   <dt>安装与能力</dt><dd>{selected.compatible ? "本机组件检查通过" : "尚未通过"}</dd>
                   <dt>本机登录</dt><dd>{selected.authenticated === true ? "已读取登录信息" : selected.authenticated === false ? "需要登录" : "尚未确认"}</dd>
-                  <dt>服务商响应</dt><dd>将在实际任务中验证</dd>
+                  <dt>服务商响应</dt><dd>{selected.live_model_verified ? "真实模型已验证" : "将在实际任务中验证"}</dd>
                   <dt>最近检测</dt><dd>{connectionTime(selected.detected_at)}</dd>
                 </dl>
                 {state.snapshot?.connect_prompt && <p className="mt-3 select-text whitespace-pre-wrap break-words rounded-lg bg-[var(--surface-muted)] p-3 leading-6">{state.snapshot.connect_prompt}</p>}

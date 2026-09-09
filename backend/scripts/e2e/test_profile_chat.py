@@ -6,7 +6,7 @@
 import json
 import urllib.request
 
-BASE = "http://localhost:8765"
+BASE = "http://localhost:8766"
 
 def api(method, path, data=None):
     body = json.dumps(data, ensure_ascii=False).encode() if data else None

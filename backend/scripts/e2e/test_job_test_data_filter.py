@@ -11,7 +11,7 @@ import json
 import urllib.request
 
 
-BASE = "http://127.0.0.1:8765/api"
+BASE = "http://127.0.0.1:8766/api"
 TEST_BATCH_PREFIXES = ("test-", "test_", "ui-ext-", "mock-")
 
 

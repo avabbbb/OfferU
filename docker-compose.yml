@@ -43,9 +43,9 @@ services:
       - LLM_MODEL=${LLM_MODEL:-qwen-flash}
       - SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY in .env before starting Docker Compose}
       - CORS_ORIGINS=http://localhost:7410,http://127.0.0.1:7410
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8765 --reload --reload-dir /app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8766 --reload --reload-dir /app
     ports:
-      - "8765:8765"
+      - "8766:8766"
     depends_on:
       db:
         condition: service_healthy
@@ -61,7 +61,7 @@ services:
     container_name: offeru-frontend
     restart: unless-stopped
     environment:
-      - VITE_API_URL=http://127.0.0.1:8765
+      - VITE_API_URL=http://127.0.0.1:8766
       - CHOKIDAR_USEPOLLING=true
     command: npm run dev -- --host 0.0.0.0
     ports:

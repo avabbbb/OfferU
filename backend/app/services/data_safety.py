@@ -169,6 +169,24 @@ def _aggregate_hash(files: list[dict[str, Any]]) -> str:
     return digest.hexdigest()
 
 
+def _sqlite_read_uri(database_path: Path) -> str:
+    """Open non-WAL databases without letting stale sidecars be rewritten."""
+
+    try:
+        with database_path.open("rb") as handle:
+            handle.seek(18)
+            journal_header = handle.read(2)
+    except OSError as exc:
+        raise DataSafetyError("SQLite 数据库头无法读取，不能检查或备份。") from exc
+    query = "mode=ro"
+    if journal_header != b"\x02\x02":
+        # SQLite's immutable mode is safe here because the file header proves
+        # this is not a WAL database.  In particular, it prevents a stale
+        # -shm file from being rebuilt during an integrity check.
+        query += "&immutable=1"
+    return f"{database_path.as_uri()}?{query}"
+
+
 def _sqlite_report(database_path: Path) -> dict[str, Any]:
     database_path = Path(database_path)
     if database_path.is_symlink():
@@ -178,7 +196,7 @@ def _sqlite_report(database_path: Path) -> dict[str, Any]:
         raise DataSafetyError("SQLite 数据库不存在，不能检查或备份。")
     try:
         connection = sqlite3.connect(
-            f"{database_path.as_uri()}?mode=ro",
+            _sqlite_read_uri(database_path),
             uri=True,
             timeout=30,
         )
@@ -215,7 +233,7 @@ def _online_backup(source_path: Path, destination_path: Path) -> None:
         destination_path.unlink()
     try:
         source = sqlite3.connect(
-            f"{source_path.resolve().as_uri()}?mode=ro",
+            _sqlite_read_uri(source_path.resolve()),
             uri=True,
             timeout=30,
         )

@@ -51,7 +51,7 @@ Profile / 职业模型 / 记忆收件箱接受 Learning Candidate
 
 | 区域 | 通过条件 |
 | --- | --- |
-| 启动 | 文档命令可启动前端 7410、后端 8765，Doctor 能区分核心和可选 Provider |
+| 启动 | 文档命令可启动前端 7410、后端 8766，Doctor 能区分核心和可选 Provider |
 | Onboarding | 新用户不读工程 README 也知道建立 Profile 和保存第一个岗位 |
 | Demo / Fixture | Showcase 提供虚构 IndexedDB 工作区；正常内测可用 Job 保存后的 Replay/Fixture 链路；清除 Showcase 站点数据即可重置 |
 | Today | 展示已完成工作、待决策、下一动作、失败/阻塞任务；不维护第二套状态 |

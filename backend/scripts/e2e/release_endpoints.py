@@ -22,7 +22,7 @@ _LOCAL_LOOPBACK_OPENER = build_opener(ProxyHandler({}), _NoRedirectHandler())
 _ALLOWED_RELEASE_URLS = frozenset(
     {
         "http://127.0.0.1:7410",
-        "http://127.0.0.1:8765/api/health",
+        "http://127.0.0.1:8766/api/health",
     }
 )
 
@@ -104,8 +104,8 @@ def release_frontend_url() -> str:
 def release_api_url() -> str:
     return _fixed_local_url(
         "OFFERU_E2E_API_URL",
-        "http://127.0.0.1:8765",
-        port=8765,
+        "http://127.0.0.1:8766",
+        port=8766,
         label="release API URL",
     )
 
@@ -149,7 +149,7 @@ def assert_release_backend_ready(
                 raise RuntimeError(f"backend returned HTTP {response.status}")
             payload = json.loads(response.read(8192))
     except (HTTPError, OSError, URLError, ValueError, json.JSONDecodeError) as exc:
-        raise RuntimeError("OfferU backend health could not be read at 127.0.0.1:8765") from exc
+        raise RuntimeError("OfferU backend health could not be read at 127.0.0.1:8766") from exc
 
     if not is_offeru_health_payload(
         payload,

@@ -1,5 +1,5 @@
 // OfferU Tauri desktop launcher (dev mode)
-// 启动时只 spawn FastAPI + Python AgentKernel @ :8765。
+// 启动时只 spawn FastAPI + Python AgentKernel @ :8766。
 // frontend Vite dev @ :7410 由 tauri.conf.json 的 beforeDevCommand 负责，避免重复启动。
 // dev WebView 加载 http://127.0.0.1:7410；release WebView 直接加载嵌入的 dist。
 // 关窗时 kill 后端子进程
@@ -32,11 +32,11 @@ fn spawn_python_backend(root: &std::path::Path) -> Option<Child> {
     let py_str = if py.is_file() { py.to_str().unwrap().to_string() } else { String::from("python") };
     let cwd = root.join("backend");
 
-    println!("[OfferU] spawning Python backend on :8765: run_server.py");
+    println!("[OfferU] spawning Python backend on :8766: run_server.py");
 
     let mut cmd = Command::new(&py_str);
     cmd.arg("run_server.py")
-        .env("OFFERU_PORT", "8765")
+        .env("OFFERU_PORT", "8766")
         .env("OFFERU_BUILD_MODE", "local-development")
         .env("OFFERU_RUNTIME_MODE", "local")
         .env("OFFERU_VERSION", env!("CARGO_PKG_VERSION"))
@@ -97,7 +97,7 @@ fn spawn_release_sidecar(app: &AppHandle) -> Option<Child> {
         "http://localhost:7410,http://127.0.0.1:7410,",
         "http://tauri.localhost,https://tauri.localhost,tauri://localhost"
     );
-    println!("[OfferU] spawning packaged backend sidecar on :8765");
+    println!("[OfferU] spawning packaged backend sidecar on :8766");
     let mut cmd = Command::new(sidecar);
     cmd.env("OFFERU_DATA_DIR", &data_dir)
         .env("OFFERU_AGENT_RUNTIME_DIR", resource_dir.join("agent-runtime"))
@@ -105,7 +105,7 @@ fn spawn_release_sidecar(app: &AppHandle) -> Option<Child> {
         .env("OFFERU_BUILD_MODE", "release")
         .env("OFFERU_RUNTIME_MODE", "desktop-sidecar")
         .env("OFFERU_VERSION", env!("CARGO_PKG_VERSION"))
-        .env("OFFERU_PORT", "8765")
+        .env("OFFERU_PORT", "8766")
         .env("CORS_ORIGINS", cors_origins)
         .current_dir(&data_dir)
         .stdin(Stdio::null())
@@ -150,7 +150,7 @@ fn wait_for_python_backend(timeout_secs: u64) -> bool {
     };
     loop {
         if let Ok(response) = client
-            .get("http://127.0.0.1:8765/api/health")
+            .get("http://127.0.0.1:8766/api/health")
             .timeout(Duration::from_secs(1))
             .send()
         {

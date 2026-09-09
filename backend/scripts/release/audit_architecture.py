@@ -132,7 +132,7 @@ GENERATED_EXTENSION_ARTIFACTS = (
     ROOT / "extension" / "popup.html",
 )
 STALE_LOCAL_ENDPOINTS = re.compile(
-    r"(?:localhost|127\.0\.0\.1):(?!7410\b|8765\b)(?:8080|3011|9000|8000|3300|3000|3001|5140)\b"
+    r"(?:localhost|127\.0\.0\.1):(?!7410\b|8766\b)(?:8080|3011|9000|8000|3300|3000|3001|5140)\b"
 )
 LEGACY_PORT_OVERRIDE = re.compile(r"OFFERU_LEGACY_PORT")
 FORBIDDEN_AUTOMATED_BROWSER_SELECTORS = re.compile(
@@ -203,7 +203,7 @@ def _generated_extension_artifact_bypasses() -> list[dict[str, Any]]:
     if background.is_file():
         background_content = background.read_text(encoding="utf-8")
         required_background_markers = (
-            "127.0.0.1:8765",
+            "127.0.0.1:8766",
             "/api/health",
             "OfferU",
             "redirect",
@@ -531,9 +531,14 @@ def _local_entry_boundary_bypasses() -> list[dict[str, Any]]:
     popup_source = ROOT / "extension" / "popup.html"
     if popup_source.is_file():
         popup_content = popup_source.read_text(encoding="utf-8")
-        if "src/popup.ts" not in popup_content or re.search(
+        has_source_entry = "src/popup.ts" in popup_content
+        has_relative_generated_bundle = re.search(
+            r"(?:^|[\"'])chunks/popup-[^\"']+\.js", popup_content
+        )
+        has_absolute_generated_bundle = re.search(
             r"/chunks/popup-[^\"']+\.js", popup_content
-        ):
+        )
+        if (not has_source_entry and not has_relative_generated_bundle) or has_absolute_generated_bundle:
             findings.append(
                 {
                     "path": _relative(popup_source),
@@ -657,9 +662,9 @@ def _local_entry_boundary_bypasses() -> list[dict[str, Any]]:
         if not all(
             marker in email_service_content
             for marker in (
-                'DEFAULT_GMAIL_CALLBACK_URL = "http://127.0.0.1:8765/api/email/callback"',
+                'DEFAULT_GMAIL_CALLBACK_URL = "http://127.0.0.1:8766/api/email/callback"',
                 "def validate_gmail_redirect_uri",
-                "port != 8765",
+                "port != 8766",
                 'parsed.path != "/api/email/callback"',
                 "clean_redirect = validate_gmail_redirect_uri",
             )
@@ -967,7 +972,7 @@ def run_audit(*, include_generated_extension_artifacts: bool = False) -> dict[st
             "frontend_provider_branch_allowlist": list(PROVIDER_BRANCH_ALLOWLIST),
         "local_web_entry": {
             "frontend": "http://127.0.0.1:7410",
-                "backend": "http://127.0.0.1:8765",
+                "backend": "http://127.0.0.1:8766",
                 "provider_8080_is_not_web": True,
             },
             "automation_dispatcher": "backend/app/services/automation.py::_process_automation_event",

@@ -243,6 +243,42 @@ class CodingAgentRuntimeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             runtime._decode_structured_output("[1, 2, 3]")
 
+    def test_pi_error_event_wins_over_echoed_user_prompt(self) -> None:
+        stdout = "\n".join(
+            [
+                json.dumps({
+                    "type": "message_end",
+                    "message": {"role": "user", "content": [{"type": "text", "text": "prompt"}]},
+                }),
+                json.dumps({
+                    "type": "message_end",
+                    "message": {
+                        "role": "assistant",
+                        "content": [],
+                        "stopReason": "error",
+                        "errorMessage": "401 Insufficient balance",
+                    },
+                }),
+            ]
+        )
+
+        text, event_count = runtime._extract_worker_text("pi", stdout)
+
+        self.assertEqual(event_count, 2)
+        self.assertTrue(text.startswith("[pi error] 401"))
+        with self.assertRaisesRegex(RuntimeError, "401 Insufficient balance"):
+            runtime._decode_structured_output(text, schema_mode="prompt")
+
+    def test_pi_and_omp_disable_global_extensions_for_isolated_probes(self) -> None:
+        for runtime_id in ("pi", "omp"):
+            with self.subTest(runtime_id=runtime_id):
+                args = runtime._runtime_args(
+                    runtime_id,
+                    output_schema=OUTPUT_SCHEMA,
+                    schema_path=Path("worker/output.schema.json"),
+                )
+                self.assertIn("--no-extensions", args)
+
 
 if __name__ == "__main__":
     unittest.main()

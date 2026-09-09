@@ -12,10 +12,11 @@ import json
 import os
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 from typing import Any
+
+from temp_paths import offeru_temp_directory
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
@@ -142,7 +143,7 @@ asyncio.run(main())
 
 def main() -> None:
     started_at = time.perf_counter()
-    with tempfile.TemporaryDirectory(prefix="offeru-release-concurrency-") as directory:
+    with offeru_temp_directory("offeru-release-concurrency-") as directory:
         database_path = Path(directory) / "career-task.db"
         database_url = f"sqlite+aiosqlite:///{database_path.as_posix()}"
         environment = os.environ.copy()

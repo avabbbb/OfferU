@@ -438,6 +438,53 @@ async def probe_agent_connection(provider_id: str) -> dict[str, Any]:
     return await _ui_operation_outputs("probe_agent_connection", {"provider_id": provider_id})
 
 
+@runtime_router.get("/runtime/conformance")
+async def local_agent_conformance(
+    provider: str | None = None,
+    refresh: bool = False,
+) -> dict[str, Any]:
+    """Read the real local-agent capability matrix without starting a model turn."""
+
+    provider_ids = [item.strip() for item in str(provider or "").split(",") if item.strip()]
+    return await _ui_operation_outputs(
+        "get_local_agent_capability_matrix",
+        {"provider_ids": provider_ids or None, "refresh": refresh},
+    )
+
+
+@runtime_router.get("/runtime/profile-evolution")
+async def profile_evolution_report(limit: int = 200) -> dict[str, Any]:
+    """Read the deterministic Profile evolution projection for the UI/report."""
+
+    return await _ui_operation_outputs(
+        "get_profile_evolution_report",
+        {"limit": limit},
+    )
+
+
+@runtime_router.post("/runtime/conformance/{provider_id}/probe")
+async def probe_local_agent_conformance(
+    provider_id: str,
+    refresh: bool = True,
+) -> dict[str, Any]:
+    """Explicitly run one random-nonce live model probe for a provider."""
+
+    return await _ui_operation_outputs(
+        "get_local_agent_capability_report",
+        {"provider_id": provider_id, "live": True, "refresh": refresh},
+    )
+
+
+@runtime_router.post("/runtime/conformance/codex-offeru")
+async def codex_offeru_conformance() -> dict[str, Any]:
+    """Run the real Codex-to-Registry read-only golden path."""
+
+    return await _ui_operation_outputs(
+        "run_codex_offeru_conformance",
+        {},
+    )
+
+
 @runtime_router.get("/runtime/career-tasks")
 async def career_tasks(
     status: str | None = None,

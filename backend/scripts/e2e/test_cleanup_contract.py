@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 
 
 def read(path: str) -> str:
@@ -30,13 +30,17 @@ def main() -> None:
         label="Sidebar navigation",
     )
 
-    scraper_page = read("frontend/src/app/scraper/page.tsx")
-    assert_contains(scraper_page, ['redirect("/jobs")'], label="Scraper route")
+    scraper_route = read("frontend/src/vite/OfferURoutes.tsx")
+    assert_contains(
+        scraper_route,
+        ['path="/scraper"', 'to="/jobs"'],
+        label="Scraper route",
+    )
 
     agent_panel = read("frontend/src/components/workbench/AgentPanel.tsx")
     assert_contains(
         agent_panel,
-        ["piAgentApi.start", "OfferU 主 Agent", "stream.reconnecting"],
+        ["agentRuntimeApi.start", "OfferU 主 Agent", "stream.reconnecting"],
         label="main Agent panel",
     )
     api_client = read("frontend/src/lib/api.ts")

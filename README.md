@@ -119,7 +119,7 @@ backend\.venv312\Scripts\python.exe backend\run_server.py
 npm --prefix frontend run dev
 ```
 
-打开 [http://127.0.0.1:7410](http://127.0.0.1:7410)。后端固定使用 `127.0.0.1:8765`。`8080` 不是 OfferU 网页地址，只是可选本地 llama.cpp Provider 接口；不要在浏览器中打开它。
+打开 [http://127.0.0.1:7410](http://127.0.0.1:7410)。后端固定使用 `127.0.0.1:8766`。`8080` 不是 OfferU 网页地址，只是可选本地 llama.cpp Provider 接口；不要在浏览器中打开它。
 
 若出现 `Failed to fetch` 或 CORS 错误，先检查 Windows 用户环境变量 `CORS_ORIGINS`。系统环境变量优先于 `backend/.env`，其中必须包含 `http://localhost:7410` 与 `http://127.0.0.1:7410`。
 

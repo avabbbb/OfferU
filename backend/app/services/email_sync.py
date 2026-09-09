@@ -34,7 +34,7 @@ GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GMAIL_API_URL = "https://gmail.googleapis.com/gmail/v1"
 GMAIL_SCOPES = ("https://www.googleapis.com/auth/gmail.readonly",)
-DEFAULT_GMAIL_CALLBACK_URL = "http://127.0.0.1:8765/api/email/callback"
+DEFAULT_GMAIL_CALLBACK_URL = "http://127.0.0.1:8766/api/email/callback"
 _LOCAL_CALLBACK_HOSTS = {"127.0.0.1", "localhost"}
 ACCOUNT_STATUSES = frozenset({"active", "revoked", "error"})
 SYNC_STATUSES = frozenset({"pending", "running", "completed", "failed"})
@@ -108,11 +108,11 @@ def validate_gmail_redirect_uri(value: str) -> str:
     if parsed.scheme == "http":
         if (
             parsed.hostname.lower() not in _LOCAL_CALLBACK_HOSTS
-            or port != 8765
+            or port != 8766
             or parsed.path != "/api/email/callback"
         ):
             raise ValueError(
-                "GMAIL_REDIRECT_URI 本地回调必须使用 127.0.0.1:8765/api/email/callback"
+                "GMAIL_REDIRECT_URI 本地回调必须使用 127.0.0.1:8766/api/email/callback"
             )
         return DEFAULT_GMAIL_CALLBACK_URL
 
@@ -1058,17 +1058,20 @@ async def sync_email_account(account_id: str) -> dict[str, Any]:
             synced = 0
             duplicates = 0
             candidate_ids: list[str] = []
+            observation_ids: list[int] = []
+            observation_duplicates = 0
             for message in messages:
                 body = str(message.get("body") or message.get("subject") or "")[
                     :MAX_TRANSIENT_BODY_CHARS
                 ]
+                message_ref = _bounded_identifier(
+                    message.get("message_id"),
+                    fallback=str(message.get("provider_id") or ""),
+                )
                 result = await ingest_application_signal(
                     channel="email",
                     account_ref=account.signal_account_ref,
-                    external_message_id=_bounded_identifier(
-                        message.get("message_id"),
-                        fallback=str(message.get("provider_id") or ""),
-                    ),
+                    external_message_id=message_ref,
                     external_thread_id=_bounded_identifier(
                         message.get("thread_id"),
                     ),
@@ -1084,6 +1087,58 @@ async def sync_email_account(account_id: str) -> dict[str, Any]:
                 if result.get("candidate_id"):
                     candidate_ids.append(str(result["candidate_id"]))
 
+                # Keep email-derived career signals in the same observation
+                # ledger as Resume, interview and conversation evidence.  This
+                # is deliberately read-only: the observation is a candidate
+                # source and never advances an application by itself.
+                signal = result.get("signal") if isinstance(result, dict) else {}
+                signal = signal if isinstance(signal, dict) else {}
+                classification = signal.get("classification")
+                classification = (
+                    classification if isinstance(classification, dict) else {}
+                )
+                message_hash = hashlib.sha256(
+                    f"{account.signal_account_ref}:{message_ref}".encode("utf-8")
+                ).hexdigest()
+                from app.services.career_memory import record_learning_observation
+
+                observation = await record_learning_observation(
+                    source_type="email",
+                    source_external_id=message_hash,
+                    source_title=str(signal.get("subject") or message.get("subject") or "求职邮件")[:300],
+                    source_locator=f"email:message:{message_hash}",
+                    source_metadata={
+                        "provider": account.provider,
+                        "account_ref_hash": hashlib.sha256(
+                            account.signal_account_ref.encode("utf-8")
+                        ).hexdigest(),
+                        "message_ref_hash": message_hash,
+                        "read_only": True,
+                    },
+                    observation_type="email_career_observation",
+                    content={
+                        "classification": str(
+                            classification.get("suggested_stage") or "unknown"
+                        )[:40],
+                        "rule_stage": str(classification.get("rule_stage") or "")[:40],
+                        "candidate_id": str(result.get("candidate_id") or "")[:80],
+                        "subject": str(signal.get("subject") or message.get("subject") or "")[:500],
+                        "sender": str(signal.get("sender") or message.get("from") or "")[:500],
+                        "received_at": str(signal.get("received_at") or message.get("received_at") or "")[:80],
+                        "source_excerpt": str(
+                            signal.get("snippet") or body[:1200]
+                        )[:2000],
+                    },
+                    observed_at=str(
+                        signal.get("received_at") or message.get("received_at") or ""
+                    ),
+                    idempotency_key=f"email-career:{message_hash}",
+                )
+                if observation.get("id") is not None:
+                    observation_ids.append(int(observation["id"]))
+                if observation.get("duplicate"):
+                    observation_duplicates += 1
+
             result_payload = {
                 "account_id": account.account_id,
                 "source": account.provider,
@@ -1094,6 +1149,9 @@ async def sync_email_account(account_id: str) -> dict[str, Any]:
                 "calendar_created": 0,
                 "candidate_ids": candidate_ids,
                 "requires_review": synced,
+                "observation_ids": observation_ids,
+                "career_observations": len(observation_ids),
+                "observation_duplicates": observation_duplicates,
             }
             async with async_session() as db:
                 stored_account = (

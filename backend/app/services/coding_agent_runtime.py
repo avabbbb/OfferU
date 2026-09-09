@@ -21,6 +21,7 @@ from app.models.models import HostedExecutorEvent, HostedExecutorSession
 from app.services.agent_files import atomic_write_json
 from app.services.security_redaction import (
     redact_secret_value,
+    redact_sensitive_value,
     redact_sensitive_text,
     safe_error_message,
 )
@@ -93,8 +94,8 @@ RUNTIME_DEFINITIONS = {
             "schema_mode": "prompt",
             # OpenCode's stock web tools are not currently projected through
             # an OfferU-controlled public-web adapter.  In particular, the
-            # ``run --pure`` seam does not prove redirect/private-address
-            # enforcement, so never use it for Role Intelligence live data.
+            # ``run --pure`` seam does not prove redirect/private-address enforcement,
+            # so never use it for Role Intelligence live data.
             "supports_live_web_search": False,
             "supports_resume": False,
             "supports_cancel": False,
@@ -428,7 +429,7 @@ def _runtime_args(
         # Pi/OMP 非交互 print + JSONL 事件流；prompt 经 stdin 传入。
         # --no-session 保证委托任务的会话不污染用户主会话；
         # omp 额外关 PTY/LSP 加速并避免交互残留。
-        args = ["--print", "--mode", "json", "--no-session"]
+        args = ["--print", "--mode", "json", "--no-session", "--no-extensions"]
         if runtime_id == "omp":
             args += ["--no-pty", "--no-lsp"]
         return args
@@ -490,6 +491,14 @@ def _extract_worker_text(runtime_id: str, stdout: str) -> tuple[str, int]:
             # Pi/OMP JSONL 事件流：assistant message 在 message_end/turn_end/agent_end 的
             # message.content 里（跳过 thinking 块，取 text 块）；用法统计一并收集。
             message = event.get("message")
+            if isinstance(message, dict):
+                stop_reason = str(message.get("stopReason") or "").strip().lower()
+                error_message = str(message.get("errorMessage") or "").strip()
+                if stop_reason == "error" or error_message:
+                    if error_message:
+                        error_candidates.append(
+                            f"[{runtime_id} error] {error_message}"
+                        )
             content = message.get("content") if isinstance(message, dict) else None
             if isinstance(content, list):
                 text_blocks = [
@@ -523,14 +532,16 @@ def _extract_worker_text(runtime_id: str, stdout: str) -> tuple[str, int]:
                 )
     if structured_candidates:
         return structured_candidates[-1], event_count
-    if candidates:
-        return candidates[-1], event_count
     if error_candidates:
         return error_candidates[-1], event_count
+    if candidates:
+        return candidates[-1], event_count
     return stdout.strip(), event_count
 
 
 def _decode_structured_output(text: str, *, schema_mode: str = "flag") -> dict[str, Any]:
+    if str(text or "").lstrip().startswith(("[pi error]", "[omp error]")):
+        raise RuntimeError(str(text).strip())
     try:
         payload = json.loads(str(text or "").strip())
     except json.JSONDecodeError as exc:
@@ -928,6 +939,7 @@ class CodexAppServerAdapter:
         self._message_parts: list[str] = []
         self._final_message = ""
         self._cancel_requested = False
+        self._event_count = 0
 
     async def _write(self, record: dict[str, Any]) -> None:
         if self.process is None or self.process.stdin is None:
@@ -996,6 +1008,7 @@ class CodexAppServerAdapter:
                 continue
             params = record.get("params")
             safe_params = params if isinstance(params, dict) else {}
+            self._event_count += 1
             if method == "item/agentMessage/delta":
                 delta = str(safe_params.get("delta") or "")
                 if delta:
@@ -1074,6 +1087,7 @@ class CodexAppServerAdapter:
         if self._cancel_requested:
             raise asyncio.CancelledError
         self._event_sink = event_sink
+        self._event_count = 0
         command, args = _command(
             self.executable,
             ["app-server", "--stdio"],
@@ -1188,7 +1202,10 @@ class CodexAppServerAdapter:
                 "structured": structured,
                 "external_session_id": self.thread_id,
                 "external_turn_id": self.turn_id,
-                "provider_trace": {"turn_status": status},
+                "provider_trace": {
+                    "turn_status": status,
+                    "event_count": self._event_count,
+                },
             }
         finally:
             await self._close()
@@ -1657,9 +1674,12 @@ async def execute_deep_task(task: DeepTaskSpec) -> dict[str, Any]:
         max_length=4_000,
     )
     if process.returncode != 0:
+        detail = stderr[-1000:] or redact_sensitive_text(
+            stdout[-1000:], max_length=1000
+        )
         raise RuntimeError(
             f"{definition['name']} worker 退出码 {process.returncode}: "
-            f"{redact_sensitive_text(stderr[-1000:], max_length=1000)}"
+            f"{detail}"
         )
 
     text, event_count = _extract_worker_text(runtime_id, stdout)

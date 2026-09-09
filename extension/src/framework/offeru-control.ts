@@ -1,6 +1,6 @@
 // =============================================
 // OfferUControl port：OfferU 是远程但自有依赖
-// 生产使用本机 HTTP Adapter（:8765），测试使用内存 Adapter。
+// 生产使用本机 HTTP Adapter（:8766），测试使用内存 Adapter。
 // 只投影允许的 Registry Operations，不暴露 raw DB 或任意 HTTP。
 // =============================================
 

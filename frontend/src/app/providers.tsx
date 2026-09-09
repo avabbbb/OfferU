@@ -181,7 +181,7 @@ function BackendReadyGate({ children }: { children: React.ReactNode }) {
               <>
                 <p className="text-sm font-semibold">无法连接 OfferU 后端</p>
                 <p className="mt-2 text-xs leading-5 text-[var(--foreground-muted)]">
-                  请确认本地 API 正在 <code>http://127.0.0.1:8765</code> 运行。网页入口是 <code>http://127.0.0.1:7410</code>；8080 只是模型接口，不是网页地址。
+                  请确认本地 API 正在 <code>http://127.0.0.1:8766</code> 运行。网页入口是 <code>http://127.0.0.1:7410</code>；8080 只是模型接口，不是网页地址。
                 </p>
                 <button
                   type="button"

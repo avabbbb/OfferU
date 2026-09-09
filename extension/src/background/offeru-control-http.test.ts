@@ -43,11 +43,11 @@ describe("HttpOfferUControl", () => {
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
-    const control = new HttpOfferUControl("http://127.0.0.1:8765");
+    const control = new HttpOfferUControl("http://127.0.0.1:8766");
     const state = await control.probe();
     expect(state.ok).toBe(true);
-    expect(state.backendUrl).toBe("http://127.0.0.1:8765");
-    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:8765/api/health");
+    expect(state.backendUrl).toBe("http://127.0.0.1:8766");
+    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:8766/api/health");
   });
 
   it("normalizes a legacy local endpoint before making requests", async () => {
@@ -65,8 +65,8 @@ describe("HttpOfferUControl", () => {
     const state = await control.probe();
 
     expect(state.ok).toBe(true);
-    expect(state.backendUrl).toBe("http://127.0.0.1:8765");
-    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:8765/api/health");
+    expect(state.backendUrl).toBe("http://127.0.0.1:8766");
+    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:8766/api/health");
   });
 
   it("rejects a wrong health identity instead of reporting a ready backend", async () => {
@@ -74,7 +74,7 @@ describe("HttpOfferUControl", () => {
       jsonResponse({ status: "ok", service: "other-service", runtime: "python" }),
     );
     vi.stubGlobal("fetch", fetchMock);
-    const control = new HttpOfferUControl("http://127.0.0.1:8765");
+    const control = new HttpOfferUControl("http://127.0.0.1:8766");
 
     const state = await control.probe();
 
@@ -94,7 +94,7 @@ describe("HttpOfferUControl", () => {
 
   it("probe reports failure when backend unreachable", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("fetch failed")));
-    const control = new HttpOfferUControl("http://127.0.0.1:8765");
+    const control = new HttpOfferUControl("http://127.0.0.1:8766");
     const state = await control.probe();
     expect(state.ok).toBe(false);
     expect(state.error).toContain("fetch failed");
@@ -112,12 +112,12 @@ describe("HttpOfferUControl", () => {
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
-    const control = new HttpOfferUControl("http://127.0.0.1:8765");
+    const control = new HttpOfferUControl("http://127.0.0.1:8766");
     const plan = await control.prepareJobImport([candidate(), candidate({ hashKey: "offeru-boss-def456" })]);
     const result = await control.confirmJobImport(plan.planId);
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("http://127.0.0.1:8765/api/jobs/ingest");
+    expect(url).toBe("http://127.0.0.1:8766/api/jobs/ingest");
     const body = JSON.parse(init.body as string);
     expect(body.batch_id).toMatch(/^offeru-ext-/);
     expect(body.source).toBe("offeru-extension");
@@ -136,7 +136,7 @@ describe("HttpOfferUControl", () => {
       "fetch",
       vi.fn().mockResolvedValue(jsonResponse({ created: 1, skipped: 0, accepted_hash_keys: [] })),
     );
-    const control = new HttpOfferUControl("http://127.0.0.1:8765");
+    const control = new HttpOfferUControl("http://127.0.0.1:8766");
     const plan = await control.prepareJobImport([candidate()]);
     await expect(control.confirmJobImport(plan.planId)).rejects.toThrow("逐条同步确认");
   });
@@ -145,17 +145,23 @@ describe("HttpOfferUControl", () => {
     const response = jsonResponse({ detail: "OFFERU_RELEASE_CANARY_SECRET_SHOULD_NOT_LEAK" }, false, 500);
     response.headers.set("X-OfferU-Error-Id", "err-123");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
-    const control = new HttpOfferUControl("http://127.0.0.1:8765");
+    const control = new HttpOfferUControl("http://127.0.0.1:8766");
     const plan = await control.prepareJobImport([candidate()]);
-    const error = await control.confirmJobImport(plan.planId).catch((value: unknown) => value as Error);
+    let error: unknown;
+    try {
+      await control.confirmJobImport(plan.planId);
+    } catch (value: unknown) {
+      error = value;
+    }
     expect(error).toBeInstanceOf(Error);
+    if (!(error instanceof Error)) throw new Error("expected HTTP request to fail");
     expect(error.message).toContain("HTTP 500");
     expect(error.message).toContain("err-123");
     expect(error.message).not.toContain("OFFERU_RELEASE_CANARY_SECRET_SHOULD_NOT_LEAK");
   });
 
   it("returns empty result for unknown plan id", async () => {
-    const control = new HttpOfferUControl("http://127.0.0.1:8765");
+    const control = new HttpOfferUControl("http://127.0.0.1:8766");
     const result = await control.confirmJobImport("import-unknown");
     expect(result.perItem).toEqual([]);
     expect(result.createdCount).toBe(0);
@@ -169,7 +175,7 @@ describe("HttpOfferUControl", () => {
         jsonResponse({ created: 1, skipped: 0, created_hash_keys: ["offeru-boss-abc123"], accepted_hash_keys: ["offeru-boss-abc123"] }),
       );
     vi.stubGlobal("fetch", fetchMock);
-    const control = new HttpOfferUControl("http://127.0.0.1:8765");
+    const control = new HttpOfferUControl("http://127.0.0.1:8766");
     const plan = await control.prepareJobImport([candidate()]);
     await expect(control.confirmJobImport(plan.planId)).rejects.toThrow("network down");
     const retry = await control.confirmJobImport(plan.planId);

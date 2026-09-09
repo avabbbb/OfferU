@@ -22,10 +22,11 @@ from release_endpoints import (
     release_api_url,
     release_frontend_url,
 )
+from temp_paths import test_temp_root
 
 BASE_URL = release_frontend_url()
 API_URL = release_api_url()
-ARTIFACT_DIR = Path(os.getenv("OFFERU_E2E_ARTIFACT_DIR", ".e2e-artifacts"))
+ARTIFACT_DIR = Path(os.getenv("OFFERU_E2E_ARTIFACT_DIR") or test_temp_root("e2e-artifacts"))
 
 
 def _json_response(page, url: str) -> dict:
@@ -206,7 +207,19 @@ def main() -> None:
                     follow_up_seen = True
                 if answer_count > 8:
                     raise AssertionError("targeted interview did not complete within eight answers")
-                page.wait_for_timeout(250)
+                page.wait_for_function(
+                    """
+                    () => {
+                        const reportReady = Array.from(document.querySelectorAll("h1"))
+                            .some((node) => node.textContent?.includes("本场模拟面试报告"));
+                        const textarea = document.querySelector("textarea[aria-label='输入本题回答']");
+                        const submitting = Array.from(document.querySelectorAll("button"))
+                            .some((node) => node.textContent?.includes("AI 正在评估"));
+                        return reportReady || Boolean(textarea && !submitting);
+                    }
+                    """,
+                    timeout=30000,
+                )
 
             expect(page.get_by_test_id("role-interview-debrief")).to_be_visible(timeout=15000)
             page.get_by_test_id("role-interview-debrief").locator("details").first.click()

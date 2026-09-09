@@ -198,6 +198,7 @@ export default function JobDetailPage() {
   const hasConfirmedStageEvent = Boolean(progressTimeline?.timeline?.length);
   const selectedRecordIsOpportunity = selectedProgressRecord?.application_attempt_id == null;
   const interviewPreparationPriority = INTERVIEW_STAGES.has(currentApplicationStage);
+  const canOpenResumeWorkspace = preApplication?.stage === "resume_proposal_ready";
 
   useEffect(() => {
     if (!progressRecords.some((record) => record.application_attempt_id === selectedAttemptId)) {
@@ -354,6 +355,10 @@ export default function JobDetailPage() {
 
   const openResumeWorkspace = async () => {
     if (!jobId || !resumeProposal) return;
+    if (!canOpenResumeWorkspace) {
+      setResumeProposalError("请先确认投或有条件投，完成投前决策后才能进入 Resume Workspace。");
+      return;
+    }
     try {
       const workspace = await resumeApi.ensureWorkspace({
         job_id: jobId,
@@ -789,7 +794,7 @@ export default function JobDetailPage() {
                       <CheckCircle2 className="mt-0.5 shrink-0" size={18} />
                       <div className="flex-1">
                         资料已生成，正式简历和版本快照已保存（Resume #{resumeProposal.accepted_resume_id}）。
-                        {resumeProposal.accepted_resume_id && (
+                        {resumeProposal.accepted_resume_id && canOpenResumeWorkspace && (
                           <Button
                             size="sm"
                             onPress={() => router.push(`/resume/${resumeProposal.accepted_resume_id}`)}
@@ -802,7 +807,7 @@ export default function JobDetailPage() {
                     </div>
                   )}
 
-                  {(resumeProposal.status === "ready" || resumeProposal.status === "in_review") && (
+                  {(resumeProposal.status === "ready" || resumeProposal.status === "in_review") && canOpenResumeWorkspace && (
                     <div className="bauhaus-panel-sm flex flex-wrap items-center justify-between gap-3 border-blue-600 bg-blue-50 px-4 py-4 text-sm font-semibold text-blue-900">
                       <span>可以在岗位上下文中逐条审核 Proposal，并继续手动编辑。</span>
                       <Button
@@ -1364,7 +1369,7 @@ export default function JobDetailPage() {
             查看原文
           </Button>
         )}
-        {resumeProposal ? (
+        {resumeProposal && canOpenResumeWorkspace ? (
           <Button
             onPress={() => void openResumeWorkspace()}
             endContent={<Send size={16} />}

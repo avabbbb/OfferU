@@ -1,5 +1,5 @@
 const LOCAL_API_HOSTS = new Set(["localhost", "127.0.0.1", "tauri.localhost"]);
-const DEFAULT_API_BASE = "http://127.0.0.1:8765";
+const DEFAULT_API_BASE = "http://127.0.0.1:8766";
 
 function normalizeConfiguredApiBase(value: unknown): string | null {
   if (typeof value !== "string" || !value.trim()) return null;
