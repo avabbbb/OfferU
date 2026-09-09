@@ -58,6 +58,106 @@ def _public_entry(entry: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _observation_stage(content: Any) -> tuple[str, str]:
+    """Read canonical or email-derived application stages from an observation."""
+
+    if not isinstance(content, dict):
+        return "", ""
+    classification = content.get("classification")
+    classification = classification if isinstance(classification, dict) else {}
+    stage = str(
+        content.get("stage")
+        or content.get("suggested_stage")
+        or classification.get("suggested_stage")
+        or ""
+    ).strip().lower()
+    previous_stage = str(
+        content.get("previous_stage")
+        or classification.get("previous_stage")
+        or ""
+    ).strip().lower()
+    return stage, previous_stage
+
+
+def _timeline(observations: Iterable[dict[str, Any]], proposals: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Group evidence and ledger changes by observed calendar day.
+
+    A day is intentionally used instead of a process-run id: Gmail history,
+    Resume import and interview observations can arrive through different
+    transports while still needing one chronological audit surface.
+    """
+
+    buckets: dict[str, dict[str, Any]] = {}
+    for item in observations:
+        if not isinstance(item, dict):
+            continue
+        observed_at = str(item.get("observed_at") or "").strip()
+        period = observed_at[:10] if len(observed_at) >= 10 else "unknown"
+        bucket = buckets.setdefault(
+            period,
+            {
+                "period": period,
+                "first_observed_at": observed_at,
+                "last_observed_at": observed_at,
+                "observation_count": 0,
+                "proposal_count": 0,
+                "accepted_count": 0,
+                "rejected_count": 0,
+                "source_types": set(),
+                "observation_types": set(),
+            },
+        )
+        bucket["observation_count"] += 1
+        source = item.get("source")
+        source_type = source.get("source_type") if isinstance(source, dict) else None
+        if source_type:
+            bucket["source_types"].add(str(source_type))
+        if item.get("observation_type"):
+            bucket["observation_types"].add(str(item["observation_type"]))
+        if observed_at and (
+            not bucket["first_observed_at"] or observed_at < bucket["first_observed_at"]
+        ):
+            bucket["first_observed_at"] = observed_at
+        if observed_at > str(bucket["last_observed_at"] or ""):
+            bucket["last_observed_at"] = observed_at
+
+    for proposal in proposals:
+        if not isinstance(proposal, dict):
+            continue
+        created_at = str(proposal.get("created_at") or "").strip()
+        period = created_at[:10] if len(created_at) >= 10 else "unknown"
+        bucket = buckets.setdefault(
+            period,
+            {
+                "period": period,
+                "first_observed_at": created_at,
+                "last_observed_at": created_at,
+                "observation_count": 0,
+                "proposal_count": 0,
+                "accepted_count": 0,
+                "rejected_count": 0,
+                "source_types": set(),
+                "observation_types": set(),
+            },
+        )
+        bucket["proposal_count"] += 1
+        if proposal.get("status") == "accepted":
+            bucket["accepted_count"] += 1
+        if proposal.get("status") in {"rejected", "revoked", "invalidated"}:
+            bucket["rejected_count"] += 1
+
+    result: list[dict[str, Any]] = []
+    for period, bucket in sorted(buckets.items(), reverse=True):
+        result.append(
+            {
+                **bucket,
+                "source_types": sorted(bucket["source_types"]),
+                "observation_types": sorted(bucket["observation_types"]),
+            }
+        )
+    return result
+
+
 def capture_profile_snapshot(model: dict[str, Any], *, label: str = "current") -> dict[str, Any]:
     """Normalize a derived career model into a comparable immutable snapshot."""
 
@@ -213,17 +313,26 @@ async def get_profile_evolution_report(*, limit: int = 200) -> dict[str, Any]:
     ]
     source_counts = Counter(str(item.get("source", {}).get("source_type") or "unknown") for item in observation_items)
     observation_type_counts = Counter(str(item.get("observation_type") or "unknown") for item in observation_items)
-    application_changes = [
-        {
-            "observation_id": item.get("id"),
-            "source_type": item.get("source", {}).get("source_type"),
-            "stage": item.get("content", {}).get("stage"),
-            "previous_stage": item.get("content", {}).get("previous_stage"),
-            "observed_at": item.get("observed_at"),
-        }
-        for item in observation_items
-        if item.get("content", {}).get("stage")
-    ]
+    application_changes = []
+    for item in observation_items:
+        stage, previous_stage = _observation_stage(item.get("content"))
+        if not stage or stage == "unknown":
+            continue
+        source = item.get("source") if isinstance(item.get("source"), dict) else {}
+        application_changes.append(
+            {
+                "observation_id": item.get("id"),
+                "source_type": source.get("source_type"),
+                "stage": stage,
+                "previous_stage": previous_stage or None,
+                "observation_type": item.get("observation_type"),
+                "confirmed": item.get("observation_type") == "application_stage_confirmed",
+                "candidate_id": item.get("content", {}).get("candidate_id")
+                if isinstance(item.get("content"), dict)
+                else None,
+                "observed_at": item.get("observed_at"),
+            }
+        )
     return {
         "schema": "offeru.profile_evolution_report.v1",
         "generated_at": _now(),
@@ -249,6 +358,7 @@ async def get_profile_evolution_report(*, limit: int = 200) -> dict[str, Any]:
         "rejected_observations": rejected,
         "potential_hypotheses": hypotheses,
         "application_status_changes": application_changes,
+        "timeline": _timeline(observation_items, proposal_items),
         "observation_counts": {
             "by_source": dict(source_counts),
             "by_type": dict(observation_type_counts),
