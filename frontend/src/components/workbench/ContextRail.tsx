@@ -68,7 +68,7 @@ export function ContextRail() {
             animate={{ width: RAIL_WIDTH, opacity: 1 }}
             exit={{ width: 0, opacity: 0, pointerEvents: "none" }}
             transition={{ type: "spring", stiffness: 380, damping: 36 }}
-            className="context-rail offeru-context-rail fixed inset-y-0 right-0 z-50 hidden h-screen shrink-0 overflow-hidden border-l border-[var(--border)] bg-[var(--background)] shadow-[-12px_0_32px_var(--shadow-medium)] md:block xl:relative xl:inset-auto xl:z-auto xl:shadow-none"
+            className="context-rail offeru-context-rail fixed inset-y-0 right-0 z-50 hidden min-h-0 shrink-0 overflow-hidden border-l border-[var(--border)] bg-[var(--background)] shadow-[-12px_0_32px_var(--shadow-medium)] md:block xl:relative xl:inset-auto xl:z-auto xl:shadow-none"
           >
             <div className="flex h-full flex-col" style={{ width: RAIL_WIDTH }}>
               {/* 模式切换头 */}

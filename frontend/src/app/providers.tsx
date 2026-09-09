@@ -166,7 +166,7 @@ function BackendReadyGate({ children }: { children: React.ReactNode }) {
 
   if (!ready) {
     return (
-      <div className="grid h-screen w-full place-items-center bg-[var(--background)] px-6">
+      <div className="offeru-viewport-min-height grid w-full place-items-center bg-[var(--background)] px-6">
         <div
           className="bauhaus-panel flex max-w-[520px] items-start gap-4 bg-[var(--surface)] px-6 py-5"
           data-testid="backend-ready-gate"

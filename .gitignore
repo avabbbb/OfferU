@@ -74,6 +74,8 @@ docs/*
 !docs/design/
 docs/design/*
 !docs/design/browser-extension-interaction.md
+!docs/design/adaptive-ui/
+!docs/design/adaptive-ui/**
 !docs/evals/
 !docs/evals/**
 !docs/implementation/

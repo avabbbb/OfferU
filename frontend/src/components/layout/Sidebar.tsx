@@ -115,7 +115,7 @@ export function Sidebar() {
 
   return (
     <>
-      <aside className="offeru-sidebar relative hidden h-screen w-[15rem] shrink-0 overflow-hidden border-r border-[var(--border)] bg-[var(--background)] md:flex md:flex-col">
+      <aside className="offeru-sidebar relative hidden h-full w-[15rem] shrink-0 overflow-hidden border-r border-[var(--border)] bg-[var(--background)] md:flex md:flex-col">
         <div className="offeru-sidebar-brand relative z-10 border-b border-[var(--border)] px-5 py-5">
           <Link href="/" className="flex items-center gap-3">
             <div className="offeru-sidebar-mark flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[var(--foreground)] text-[var(--surface)]">

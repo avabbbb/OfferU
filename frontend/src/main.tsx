@@ -11,7 +11,7 @@ const root = document.getElementById("root");
 if (!root) throw new Error("OfferU root element was not found");
 
 document.body.className =
-  "h-screen overflow-hidden bg-[var(--background)] text-[var(--foreground)] antialiased";
+  "offeru-viewport-min-height overflow-hidden bg-[var(--background)] text-[var(--foreground)] antialiased";
 
 createRoot(root).render(
   <HashRouter>

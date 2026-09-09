@@ -59,8 +59,15 @@ html {
   background: var(--background);
 }
 
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
 body {
   min-height: 100vh;
+  min-height: 100dvh;
   background:
     radial-gradient(circle at 100% 0, rgba(199, 120, 103, 0.08), transparent 28rem),
     var(--background);
@@ -69,6 +76,16 @@ body {
   font-family: var(--font-display), "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
+}
+
+.offeru-viewport-shell {
+  height: 100vh;
+  height: 100dvh;
+}
+
+.offeru-viewport-min-height {
+  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 a {

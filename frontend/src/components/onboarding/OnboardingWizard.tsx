@@ -1034,7 +1034,7 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
         <div className="bauhaus-triangle absolute bottom-8 right-8 h-32 w-32 border border-black/20 bg-[#d8e2da]/65" />
       </div>
 
-      <div className="relative mx-auto flex min-h-screen w-full max-w-7xl items-center px-4 py-6 md:px-8 md:py-10">
+      <div className="offeru-viewport-min-height relative mx-auto flex w-full max-w-7xl items-center px-4 py-6 md:px-8 md:py-10">
         <div className="bauhaus-panel relative w-full overflow-hidden bg-white">
           <div className="grid lg:grid-cols-[0.84fr_1.16fr]">
             <aside className="relative overflow-hidden border-b border-black/15 bg-[var(--surface)] text-black lg:border-b-0 lg:border-r">
