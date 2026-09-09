@@ -41,10 +41,8 @@ import {
   Trash2,
 } from "lucide-react";
 import {
-  agentRuntimeApi,
   dataSafetyApi,
   diagnosticsApi,
-  type AgentProviderHealth,
   type DataBackupItem,
   type DataIntegrityReport,
   type DataSafetyStatus,
@@ -54,6 +52,7 @@ import { resolveApiBase } from "@/lib/apiBase";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { SHOWCASE } from "@/lib/showcase/router";
 import { useConfig, updateConfig } from "@/lib/hooks";
+import { AgentConnectionPanel } from "@/components/workbench/AgentConnectionPanel";
 
 interface ProviderModelPreset {
   id: string;
@@ -341,135 +340,6 @@ function TestLlmButton() {
         </span>
       )}
     </>
-  );
-}
-
-const AGENT_PROVIDER_LABELS: Record<string, string> = {
-  pi: "Pi",
-  replay: "Replay",
-  codex: "Codex",
-  "deepseek-harness": "DeepSeek Harness",
-};
-
-function providerStatusLabel(status: string) {
-  return {
-    ready: "就绪",
-    blocked: "已阻塞",
-    auth_required: "需要认证",
-    unavailable: "不可用",
-    unprobed: "未验证",
-  }[status] || status;
-}
-
-function AgentProviderHealthCard() {
-  const [providers, setProviders] = useState<AgentProviderHealth[]>([]);
-  const [runtime, setRuntime] = useState<Record<string, any> | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  const load = async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const [health, runtimeStatus] = await Promise.all([
-        agentRuntimeApi.providerHealth(),
-        agentRuntimeApi.runtime(),
-      ]);
-      setProviders(health.providers || []);
-      setRuntime(runtimeStatus);
-    } catch (cause) {
-      setError(safeClientErrorMessage(cause, "Agent Runtime 健康状态读取失败"));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void load();
-  }, []);
-
-  const byId = useMemo(() => new Map(providers.map((item) => [item.provider_id, item])), [providers]);
-  const items = ["pi", "replay", "codex", "deepseek-harness"].map((providerId) => {
-    const saved = byId.get(providerId);
-    if (providerId === "pi" && runtime?.available) {
-      return {
-        ...(saved || {}),
-        provider_id: providerId,
-        status: "ready",
-        capabilities: runtime.capabilities || saved?.capabilities || {},
-        last_error: "",
-      } as AgentProviderHealth;
-    }
-    if (providerId === "replay") {
-      return { ...(saved || {}), provider_id: providerId, status: "ready", available: true, last_error: "" } as AgentProviderHealth;
-    }
-    return saved || {
-      provider_id: providerId,
-      available: false,
-      authenticated: null,
-      blocked: false,
-      status: "unprobed",
-      version: "",
-      auth_mode: "unknown",
-      protocol_version: "",
-      capabilities: {},
-      last_error: "",
-    };
-  });
-
-  return (
-    <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none" data-testid="agent-provider-health">
-      <CardBody className="space-y-4 p-5 md:p-6">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="bauhaus-label text-[var(--foreground-muted)]">Agent Runtime</p>
-            <h3 className="mt-2 text-2xl font-bold text-[var(--foreground)]">运行时健康状态</h3>
-            <p className="mt-2 max-w-2xl text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
-              Replay 是本地内测路径；Codex、DeepSeek Harness 等外部能力不可用时，不会阻塞核心 Career OS。
-            </p>
-          </div>
-          <Button
-            size="sm"
-            variant="light"
-            onPress={() => void load()}
-            isLoading={loading}
-            className="border border-[var(--border)] bg-[var(--surface-muted)] font-bold text-[var(--foreground)]"
-          >
-            刷新
-          </Button>
-        </div>
-        {error && (
-          <div role="alert" className="bauhaus-panel-sm border-[var(--primary-red)] bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
-            {error}
-          </div>
-        )}
-        <div className="grid gap-3 sm:grid-cols-2">
-          {items.map((item) => (
-            <div key={item.provider_id} className="bauhaus-panel-sm flex items-start justify-between gap-3 bg-[var(--surface-muted)] p-4">
-              <div>
-                <p className="text-sm font-black text-[var(--foreground)]">{AGENT_PROVIDER_LABELS[item.provider_id] || item.provider_id}</p>
-                <p className="mt-1 text-xs font-medium text-[var(--foreground-muted)]">
-                  {item.last_error || (item.provider_id === "deepseek-harness" ? "实验性 Provider，需单独验收" : item.capabilities?.live_web_search === false ? "不提供实时网页研究" : "")}
-                </p>
-              </div>
-              <Chip
-                size="sm"
-                variant="flat"
-                className={`border font-black ${
-                  item.status === "ready"
-                    ? "border-emerald-600 bg-emerald-50 text-emerald-800"
-                    : item.status === "blocked" || item.status === "auth_required"
-                      ? "border-[var(--primary-red)] bg-red-50 text-red-800"
-                      : "border-amber-500 bg-amber-50 text-amber-900"
-                }`}
-              >
-                {providerStatusLabel(item.status)}
-              </Chip>
-            </div>
-          ))}
-        </div>
-      </CardBody>
-    </Card>
   );
 }
 
@@ -1728,7 +1598,7 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      <AgentProviderHealthCard />
+      <AgentConnectionPanel />
 
       <LocalDataSafetyCard />
 

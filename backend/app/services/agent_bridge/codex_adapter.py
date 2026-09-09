@@ -32,6 +32,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import subprocess
 from typing import Any
 
 from app.services.agent_bridge.errors import BridgeProtocolError
@@ -97,19 +98,21 @@ class CodexMainLoopAdapter:
     async def start(self) -> None:
         """Spawn `codex app-server --stdio` and complete the Initialize handshake."""
         import os
+        from app.services.coding_agent_runtime import _command
 
         if self.process is not None:
             await self.close()
         environment = dict(os.environ)
         environment["NO_COLOR"] = "1"
+        command, args = _command(self.executable, ["app-server", "--stdio"])
         self.process = await asyncio.create_subprocess_exec(
-            self.executable,
-            "app-server",
-            "--stdio",
+            command,
+            *args,
             env=environment,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
         )
         self._reader_task = asyncio.create_task(self._reader())
         assert self.process.stderr is not None
@@ -143,6 +146,8 @@ class CodexMainLoopAdapter:
         await self._write({"method": "initialized", "params": {}})
 
     async def close(self) -> None:
+        from app.services.coding_agent_runtime import _terminate_process
+
         process = self.process
         reader_task = self._reader_task
         stderr_task = self._stderr_task
@@ -152,23 +157,25 @@ class CodexMainLoopAdapter:
             if not future.done():
                 future.set_exception(RuntimeError("codex app-server closed"))
         self._pending.clear()
-        if reader_task is not None and reader_task is not asyncio.current_task():
-            reader_task.cancel()
-        if stderr_task is not None and stderr_task is not asyncio.current_task():
-            stderr_task.cancel()
+        if process is not None and process.stdin is not None:
+            process.stdin.close()
+        if process is not None and process.returncode is None:
+            await _terminate_process(process)
+        # Let both pipe readers observe EOF after the process exits. Cancelling
+        # them first leaves Windows Proactor transports alive until loop close.
         for task in (reader_task, stderr_task):
             if task is not None and task is not asyncio.current_task():
-                with contextlib.suppress(asyncio.CancelledError, Exception):
-                    await task
-        if process is not None and process.returncode is None:
-            with contextlib.suppress(ProcessLookupError):
-                process.terminate()
-            try:
-                await asyncio.wait_for(process.wait(), timeout=5)
-            except asyncio.TimeoutError:
-                with contextlib.suppress(ProcessLookupError):
-                    process.kill()
-                await process.wait()
+                try:
+                    await asyncio.wait_for(task, timeout=2)
+                except (asyncio.TimeoutError, asyncio.CancelledError):
+                    task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError, Exception):
+                        await task
+                except Exception:
+                    pass
+        if process is not None and process.stdin is not None:
+            with contextlib.suppress(Exception):
+                await process.stdin.wait_closed()
         self.process = None
         self.thread_id = ""
         self.turn_id = ""
@@ -176,6 +183,10 @@ class CodexMainLoopAdapter:
         self._turn_completed = None
 
     # ---- protocol ----
+
+    async def read_account(self) -> dict[str, Any]:
+        """Read provider-owned login metadata without refreshing or changing credentials."""
+        return await self._request("account/read", {"refreshToken": False})
 
     async def _request(
         self, method: str, params: dict[str, Any]

@@ -58,7 +58,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
       redirect: "error",
     });
   } catch {
-    throw new Error("无法连接本地后端，请确认 8765 服务已启动。");
+    throw new Error("无法连接本地后端，请确认 8766 服务已启动。");
   }
   if (!res.ok) {
     const payload = await res.json().catch(() => ({}));
@@ -922,7 +922,51 @@ export interface AgentProviderHealth {
   checked_at?: string | null;
 }
 
+export interface AgentConnection {
+  id: string;
+  name: string;
+  installed: boolean;
+  compatible: boolean;
+  version: string;
+  status: "missing" | "incompatible" | "check_required" | "ready" | "auth_required" | "blocked" | "failed";
+  authenticated: boolean | null;
+  connection_verified: boolean;
+  auth_mode: string;
+  checked_at: string | null;
+  detected_at: string | null;
+  last_error: string;
+  provider_checked_at: string | null;
+  docs_url: string;
+  can_verify_login: boolean;
+  live_model_verified: boolean;
+}
+
+export interface AgentConnectionsSnapshot {
+  items: AgentConnection[];
+  checked_at: string;
+  connect_prompt: string;
+}
+
+export interface AgentViewSnapshot {
+  route: string;
+  title: string;
+  entity_id: string;
+  version: number;
+  updated_at: string;
+  context: Record<string, unknown>;
+}
+
 export const agentRuntimeApi = {
+  connections: () => request<AgentConnectionsSnapshot>("/api/agent/runtime/connections", {
+    signal: AbortSignal.timeout(20000),
+  }),
+  probeConnection: (providerId: string) => request<AgentConnectionsSnapshot>(
+    `/api/agent/runtime/connections/${encodeURIComponent(providerId)}/probe`,
+    { method: "POST", signal: AbortSignal.timeout(45000) },
+  ),
+  syncContext: (data: Record<string, unknown>, signal: AbortSignal) => request<{
+    ok: boolean; outputs?: AgentViewSnapshot; errors?: string[];
+  }>("/api/agent/context", { method: "PUT", body: JSON.stringify(data), signal }),
   skills: () =>
     request<{ skills: AgentSkill[] }>("/api/agent/skills"),
   runtime: () =>

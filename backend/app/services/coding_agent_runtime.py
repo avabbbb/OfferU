@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import shutil
+import subprocess
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -239,12 +240,12 @@ async def _capture(executable: str, args: list[str], timeout: int = 5) -> tuple[
         *command_args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
     )
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
-    except asyncio.TimeoutError:
-        process.kill()
-        await process.wait()
+    except (asyncio.TimeoutError, asyncio.CancelledError):
+        await _terminate_process(process)
         raise
     return (
         int(process.returncode or 0),
@@ -291,6 +292,7 @@ async def _probe(runtime_id: str, *, refresh: bool = False) -> dict[str, Any]:
             "version": None,
             "capabilities": {},
             "missing_required_flags": list(definition["required_flags"]),
+            "checked_at": _now(),
         }
 
     try:
@@ -345,15 +347,16 @@ async def _probe(runtime_id: str, *, refresh: bool = False) -> dict[str, Any]:
         "version": version or None,
         "capabilities": capabilities,
         "missing_required_flags": missing,
+        "checked_at": _now(),
     }
     _PROBE_CACHE[runtime_id] = (executable, executable_mtime, result)
     return dict(result)
 
 
-async def list_local_executors() -> dict[str, Any]:
+async def list_local_executors(*, refresh: bool = False) -> dict[str, Any]:
     """Return probed adapters behind the local-executor seam."""
 
-    items = await asyncio.gather(*(_probe(runtime_id) for runtime_id in RUNTIME_DEFINITIONS))
+    items = await asyncio.gather(*(_probe(runtime_id, refresh=refresh) for runtime_id in RUNTIME_DEFINITIONS))
     compatible = [
         item["id"]
         for item in items

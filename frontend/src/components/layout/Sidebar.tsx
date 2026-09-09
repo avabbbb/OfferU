@@ -17,6 +17,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { useWorkbenchOptional } from "@/lib/workbench";
+import { AgentConnectionStatus } from "@/components/workbench/AgentConnectionPanel";
 
 interface NavItem {
   href: string;
@@ -160,6 +161,9 @@ export function Sidebar() {
             ))}
           </motion.div>
         </motion.nav>
+        <div className="border-t border-[var(--border)] p-3">
+          <AgentConnectionStatus />
+        </div>
       </aside>
 
       <nav className="offeru-mobile-nav fixed inset-x-0 bottom-0 z-50 border-t border-[var(--border)] bg-[var(--surface)] md:hidden">

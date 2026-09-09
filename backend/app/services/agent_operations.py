@@ -1075,6 +1075,18 @@ async def list_agent_provider_health() -> dict:
     return await list_provider_health()
 
 
+async def get_agent_connections() -> dict:
+    from app.services.agent_connection import get_agent_connections as _get
+
+    return await _get()
+
+
+async def probe_agent_connection(provider_id: str) -> dict:
+    from app.services.agent_connection import probe_agent_connection as _probe
+
+    return await _probe(provider_id)
+
+
 async def list_capability_plugins() -> dict:
     from app.services.capability_plugins import discover_plugins
 

@@ -428,6 +428,16 @@ async def agent_provider_health() -> dict[str, Any]:
     return await _ui_operation_outputs("list_agent_provider_health", {})
 
 
+@runtime_router.get("/runtime/connections")
+async def agent_connections() -> dict[str, Any]:
+    return await _ui_operation_outputs("get_agent_connections", {})
+
+
+@runtime_router.post("/runtime/connections/{provider_id}/probe")
+async def probe_agent_connection(provider_id: str) -> dict[str, Any]:
+    return await _ui_operation_outputs("probe_agent_connection", {"provider_id": provider_id})
+
+
 @runtime_router.get("/runtime/career-tasks")
 async def career_tasks(
     status: str | None = None,

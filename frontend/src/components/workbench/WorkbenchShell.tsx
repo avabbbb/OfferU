@@ -13,7 +13,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, Bot } from "lucide-react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { WorkbenchProvider, useWorkbench } from "@/lib/workbench";
-import { resolveApiBase } from "@/lib/apiBase";
+import { AgentConnectionProvider } from "@/lib/agentConnection";
+import { AgentConnectionDialog, AgentConnectionStatus } from "./AgentConnectionPanel";
 
 const ContextRail = lazy(() =>
   import("./ContextRail").then((module) => ({ default: module.ContextRail })),
@@ -41,8 +42,6 @@ const FOCUS_RULES: FocusRule[] = [
   { pattern: /^\/interview\/pose(\/|$)/, backHref: "/interview", backLabel: "返回面试" },
 ];
 
-const API_BASE = resolveApiBase();
-
 function FocusTopBar({ rule }: { rule: FocusRule }) {
   const [agentOpen, setAgentOpen] = useState(false);
 
@@ -56,7 +55,7 @@ function FocusTopBar({ rule }: { rule: FocusRule }) {
           <ArrowLeft size={14} strokeWidth={1.75} />
           {rule.backLabel}
         </Link>
-        <p className="text-[12px] text-[var(--foreground-muted)]">专注模式</p>
+        <AgentConnectionStatus compact />
         <button
           type="button"
           onClick={() => setAgentOpen((value) => !value)}
@@ -94,7 +93,7 @@ function FocusTopBar({ rule }: { rule: FocusRule }) {
 
 function WorkbenchFrame({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { clearSelection, selection } = useWorkbench();
+  const { clearSelection } = useWorkbench();
 
   const focusRule = useMemo(
     () => FOCUS_RULES.find((rule) => rule.pattern.test(pathname)) ?? null,
@@ -105,43 +104,6 @@ function WorkbenchFrame({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     clearSelection();
   }, [pathname, clearSelection]);
-
-  // 把当前选中对象同步给本地主 Agent。只上报显式声明的 agentContext，
-  // 不序列化检查器里的编辑回调或完整业务对象。
-  useEffect(() => {
-    if (!selection) return;
-    const controller = new AbortController();
-    const agentContext =
-      selection.data?.agentContext && typeof selection.data.agentContext === "object"
-        ? selection.data.agentContext as Record<string, unknown>
-        : {};
-    fetch(`${API_BASE}/api/agent/context`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        scope: "default",
-        route: pathname,
-        title: selection.title,
-        entity_type: selection.kind,
-        entity_id: String(selection.id),
-        context: {
-          selected_object: {
-            kind: selection.kind,
-            title: selection.title,
-            subtitle: selection.subtitle || "",
-            ...agentContext,
-          },
-          reported_at: new Date().toISOString(),
-          },
-          updated_by: "ui",
-        }),
-      redirect: "error",
-      signal: controller.signal,
-    }).catch(() => {
-      // 上下文同步失败不能阻塞本地编辑。
-    });
-    return () => controller.abort();
-  }, [pathname, selection]);
 
   if (focusRule?.bare) {
     return <>{children}</>;
@@ -161,9 +123,12 @@ function WorkbenchFrame({ children }: { children: React.ReactNode }) {
   return (
     <div className="offeru-workbench-shell relative flex h-screen w-full overflow-hidden">
       <Sidebar />
-      <main className="workbench-main relative h-screen min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-5 pb-28 md:px-6 md:py-6 md:pb-8">
+      <main className="workbench-main relative h-screen min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-5 pb-36 md:px-6 md:py-6 md:pb-8">
         <div className="mx-auto max-w-[1600px]">{children}</div>
       </main>
+      {pathname !== "/settings" && <div className="fixed bottom-[72px] left-4 z-40 max-w-[calc(100vw-2rem)] md:hidden">
+        <AgentConnectionStatus compact />
+      </div>}
       <Suspense fallback={null}>
         <ContextRail />
         <CommandPalette />
@@ -175,7 +140,10 @@ function WorkbenchFrame({ children }: { children: React.ReactNode }) {
 export function WorkbenchShell({ children }: { children: React.ReactNode }) {
   return (
     <WorkbenchProvider>
-      <WorkbenchFrame>{children}</WorkbenchFrame>
+      <AgentConnectionProvider>
+        <WorkbenchFrame>{children}</WorkbenchFrame>
+        <AgentConnectionDialog />
+      </AgentConnectionProvider>
     </WorkbenchProvider>
   );
 }
