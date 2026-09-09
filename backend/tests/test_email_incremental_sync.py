@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from email.message import EmailMessage
 from pathlib import Path
 import secrets
 import sys
@@ -27,6 +28,7 @@ from app.services.agent_skill_registry import resolve_skill
 from app.services.email_sync import (
     GmailHistoryExpired,
     _fetch_gmail_delta,
+    _fetch_imap_delta_blocking,
     begin_gmail_oauth,
     connect_imap_account,
     revoke_email_account,
@@ -245,6 +247,126 @@ class EmailIncrementalSyncTests(unittest.TestCase):
         self.assertEqual(cursor["history_id"], "200")
         self.assertEqual(trace["mode"], "full_backfill_30d")
         self.assertTrue(trace["history_expired_recovered"])
+
+    def test_gmail_transport_is_read_only_get_only(self) -> None:
+        class FakeResponse:
+            status_code = 200
+
+            def __init__(self, payload: dict) -> None:
+                self._payload = payload
+
+            def json(self) -> dict:
+                return self._payload
+
+        class FakeClient:
+            def __init__(self) -> None:
+                self.calls: list[tuple[str, str]] = []
+
+            async def __aenter__(self) -> "FakeClient":
+                return self
+
+            async def __aexit__(self, *args: object) -> None:
+                return None
+
+            async def get(self, url: str, **kwargs: object) -> FakeResponse:
+                self.calls.append(("GET", url))
+                return FakeResponse({"historyId": "101", "history": []})
+
+            async def post(self, url: str, **kwargs: object) -> FakeResponse:
+                raise AssertionError(f"Gmail mailbox sync attempted POST: {url}")
+
+            async def put(self, url: str, **kwargs: object) -> FakeResponse:
+                raise AssertionError(f"Gmail mailbox sync attempted PUT: {url}")
+
+            async def delete(self, url: str, **kwargs: object) -> FakeResponse:
+                raise AssertionError(f"Gmail mailbox sync attempted DELETE: {url}")
+
+        fake_client = FakeClient()
+
+        def factory(*args: object, **kwargs: object) -> FakeClient:
+            return fake_client
+
+        async def run() -> tuple[list[dict], dict, dict]:
+            with patch("app.services.email_sync.httpx.AsyncClient", new=factory):
+                return await _fetch_gmail_delta(
+                    token="transient-token",
+                    cursor={"type": "gmail_history", "history_id": "100"},
+                )
+
+        messages, cursor, trace = asyncio.run(run())
+        self.assertEqual(messages, [])
+        self.assertEqual(cursor["history_id"], "101")
+        self.assertEqual(trace["mode"], "history_incremental")
+        self.assertTrue(fake_client.calls)
+        self.assertTrue(all(method == "GET" for method, _ in fake_client.calls))
+        self.assertTrue(all("/users/me/history" in url for _, url in fake_client.calls))
+
+    def test_imap_transport_uses_readonly_select_and_body_peek(self) -> None:
+        message = EmailMessage()
+        message["Message-ID"] = "<imap-read-only@example.com>"
+        message["Subject"] = "技术面试邀请"
+        message["From"] = "recruiting@example.com"
+        message["Date"] = "Tue, 26 Jul 2026 08:00:00 +0000"
+        message.set_content("请确认面试时间。")
+
+        class FakeImap:
+            instances: list["FakeImap"] = []
+
+            def __init__(self, *args: object, **kwargs: object) -> None:
+                self.calls: list[tuple[str, object]] = []
+                self.__class__.instances.append(self)
+
+            def login(self, user: str, password: str) -> tuple[str, list[bytes]]:
+                self.calls.append(("login", user))
+                return "OK", [b"authenticated"]
+
+            def select(self, mailbox: str, readonly: bool = False) -> tuple[str, list[bytes]]:
+                self.calls.append(("select", readonly))
+                return "OK", [b"1"]
+
+            def response(self, key: str) -> tuple[str, list[bytes]]:
+                self.calls.append(("response", key))
+                values = {"UIDVALIDITY": b"77", "UIDNEXT": b"3"}
+                return "OK", [values[key]]
+
+            def uid(self, command: str, *args: object) -> tuple[str, list[object]]:
+                self.calls.append((command, args))
+                if command == "search":
+                    return "OK", [b"1 2"]
+                if command == "fetch":
+                    return "OK", [(b"meta", message.as_bytes())]
+                raise AssertionError(f"IMAP mailbox sync attempted {command}")
+
+            def logout(self) -> tuple[str, list[bytes]]:
+                self.calls.append(("logout", ""))
+                return "BYE", [b"logout"]
+
+            def store(self, *args: object, **kwargs: object) -> None:
+                raise AssertionError("IMAP mailbox sync attempted STORE")
+
+            def copy(self, *args: object, **kwargs: object) -> None:
+                raise AssertionError("IMAP mailbox sync attempted COPY")
+
+            def expunge(self, *args: object, **kwargs: object) -> None:
+                raise AssertionError("IMAP mailbox sync attempted EXPUNGE")
+
+        with patch("app.services.email_sync.imaplib.IMAP4_SSL", new=FakeImap):
+            messages, cursor, trace = _fetch_imap_delta_blocking(
+                host="imap.example.com",
+                port=993,
+                user="candidate@example.com",
+                password="transient-password",
+                cursor={"type": "imap_uid", "uidvalidity": 77, "last_uid": 0},
+            )
+
+        self.assertEqual(len(messages), 2)
+        self.assertEqual(cursor["last_uid"], 2)
+        self.assertEqual(trace["mode"], "uid_backfill_30d")
+        calls = FakeImap.instances[-1].calls
+        self.assertIn(("select", True), calls)
+        fetch_calls = [args for command, args in calls if command == "fetch"]
+        self.assertEqual(len(fetch_calls), 2)
+        self.assertTrue(all(args[1] == "(BODY.PEEK[])" for args in fetch_calls))
 
     def test_success_advances_cursor_and_duplicate_poll_does_not_duplicate_signal(self) -> None:
         async def run() -> tuple[dict, dict, int, ExternalProgressSignal, dict]:
