@@ -141,6 +141,7 @@
 | Profile → Job/Resume/Interview impact | BLOCKED_EXTERNAL | fixture 已证明 T0/Final 产生差异；真实 Profile Final 和真实 JD/下游闭环尚缺 |
 | Resume import evidence review UI | PASS | `ProfileOnboarding` 最终步骤逐条展示候选来源与证据状态；接受走 `confirm_profile_bullet`，拒绝/稍后走 Memory review，未建立后端提案的真实文件候选 fail-closed；职业记忆/演化定向回归 `21 passed`，frontend typecheck/build PASS |
 | First-run Resume evidence gate | PASS | `OnboardingWizard` 选中的本地文件候选先确认 `MemoryProposal` 再创建 Resume；无 OfferU session/来源提案的外部 AI JSON fail-closed；架构/技能投影定向回归 `53 passed` |
+| Email sync status projection | PASS | 邮箱页轮询只读 `EmailSyncRun` 历史并展示真实状态、attempts、发现/候选/写入计数与有界错误；失败不会投影为 completed，frontend typecheck/build PASS |
 | Regression / architecture / UI evidence | PASS | backend `506 passed, 9 skipped, 17 warnings, 11 subtests`；frontend typecheck/build PASS；architecture `0 findings`；390px/1440px browser errors/overflow `0`。最新 H 盘回归见 `H:\tmp\offeru\full-regression-profile-review-final-20260910.log` |
 | Test storage boundary | PASS | pytest 全局 `tempfile`、E2E helper、Smart Fill fixture、Agent CWD、browser profile、日志和数据库副本统一在 `H:\tmp\offeru`，Windows C 盘临时目录 fail-closed；边界回归 `1 passed`，完整策略证据见 `H:\tmp\offeru\temp-policy-20260909.json`。C 盘仅为既有 Provider executable/auth 路径，不承载测试临时数据 |
 | Extension build / browser fixture | PARTIAL | Extension typecheck、WXT production build、Vitest `208 passed, 7 skipped` 和 generated artifact guard 通过；动态 Smart Fill fixture 因 H 盘 managed Chromium CDN 下载 timeout/`ECONNRESET` 被外部阻塞，未使用系统 Chrome/Edge |

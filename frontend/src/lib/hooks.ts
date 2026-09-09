@@ -585,6 +585,34 @@ export function useEmailStatus() {
   return useSWR<EmailStatus>(`${API_BASE}/api/email/status`, fetcher);
 }
 
+export interface EmailSyncRunSummary {
+  run_id: string;
+  provider: string;
+  status: "pending" | "running" | "completed" | "failed" | "cancelled" | string;
+  attempts: number;
+  result: {
+    synced?: number;
+    total_found?: number;
+    requires_review?: number;
+    calendar_created?: number;
+    [key: string]: any;
+  };
+  trace: Record<string, any>;
+  error: string;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export function useEmailSyncRuns(limit = 20) {
+  const safeLimit = Math.max(1, Math.min(100, Math.round(limit)));
+  return useSWR<{ total: number; items: EmailSyncRunSummary[] }>(
+    `${API_BASE}/api/email/sync-runs?limit=${safeLimit}`,
+    fetcher,
+    { refreshInterval: 5000 }
+  );
+}
+
 /** IMAP 直连（QQ/163/Gmail 等） */
 export async function imapConnect(data: {
   user: string;

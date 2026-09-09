@@ -48,6 +48,7 @@ Role Intelligence controlled backend-search adapter → public web HTTP boundary
 - Extension typecheck、WXT production build 和 Vitest `208 passed, 7 skipped` 通过，根目录生成产物已同步；Smart Fill 动态 fixture 只因 Playwright managed Chromium CDN 下载 timeout/`ECONNRESET` 阻塞，未启动系统 Chrome/Edge，缓存仍限定在 H 盘。服务停止后 7410/8766 均无监听进程。
 - Resume 导入审核已接入 `ProfileOnboarding` 的最终检查步骤：每条有后端 `MemoryProposal` 的候选都必须显式选择“确认事实 / 不是我的经历 / 稍后核对”；确认通过既有 `confirm_profile_bullet` Operation，拒绝与稍后通过记忆审核 Operation，只有 accepted 候选进入本地档案投影。真实文件若缺少证据提案会 fail-closed，避免把未追溯候选伪装成 `PROFILE_T0`；后端职业记忆与演化定向回归 `21 passed`，前端 typecheck/build 通过。
 - 首次启动 `OnboardingWizard` 的 Resume 导入旁路也已收口：勾选候选先确认其 `MemoryProposal`，再创建 Resume；外部 AI JSON（没有 OfferU session/来源提案）不再直接写入 Resume，改为提示上传原始 PDF/DOCX。架构/技能投影定向回归 `53 passed`。
+- 邮箱页新增只读 `EmailSyncRun` 历史投影：状态、尝试次数、发现/候选/写入计数和有界失败信息可回看；同步运行中每 5 秒刷新，失败不会显示为完成。前端 typecheck 与 production build 通过，未扩大邮箱权限或改动只读同步策略。
 
 未完成的硬门：真实 Resume → `PROFILE_T0`、真实邮箱只读 OAuth → Career Observations、分段 Profile 演化、Profile → Job/Resume/Interview 的真实影响，以及其它 Provider 的 live 认证/模型条件。没有这些外部输入，不得输出 `LOCAL_AGENT_REAL_CAREER_GOLDEN_PATH_READY`。
 

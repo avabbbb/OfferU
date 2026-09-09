@@ -39,6 +39,7 @@ import {
   revokeEmailAccount,
   syncEmails,
   useEmailStatus,
+  useEmailSyncRuns,
   useNotifications,
 } from "@/lib/hooks";
 import { safeClientErrorMessage } from "@/lib/safe-error";
@@ -99,6 +100,7 @@ function isTrustedGmailAuthUrl(value: unknown): value is string {
 export default function EmailPage() {
   const { data: notifications, mutate } = useNotifications();
   const { data: emailStatus, mutate: mutateStatus } = useEmailStatus();
+  const { data: syncRuns, mutate: mutateSyncRuns } = useEmailSyncRuns(12);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState("");
   const [authResult, setAuthResult] = useState<string | null>(null);
@@ -204,6 +206,7 @@ export default function EmailPage() {
     }
     await mutate();
     await mutateStatus();
+    await mutateSyncRuns();
     setSyncing(false);
   };
 
@@ -358,6 +361,51 @@ export default function EmailPage() {
           </CardBody>
         </Card>
       </motion.section>
+
+      {syncRuns?.items?.length ? (
+        <motion.section variants={item}>
+          <Card className="bauhaus-panel rounded-none bg-white shadow-none">
+            <CardBody className="space-y-4 p-5">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <p className="bauhaus-label text-[var(--foreground-muted)]">可追溯状态</p>
+                  <h2 className="mt-2 text-2xl font-black tracking-[-0.05em] text-[var(--foreground)]">同步运行记录</h2>
+                  <p className="mt-2 text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">每次同步都会留下状态、尝试次数和候选计数；失败不会被显示成完成。</p>
+                </div>
+                <Chip size="sm" variant="flat" className="border border-[var(--border-strong)] bg-[var(--surface-muted)] font-semibold text-[var(--foreground)]">
+                  最近 {syncRuns.items.length} 次
+                </Chip>
+              </div>
+              <div className="space-y-2">
+                {syncRuns.items.map((run) => {
+                  const isActive = run.status === "pending" || run.status === "running";
+                  const statusLabel = run.status === "completed" ? "已完成" : run.status === "failed" ? "失败" : run.status === "cancelled" ? "已取消" : isActive ? "进行中" : run.status;
+                  const statusClass = run.status === "completed" ? "bg-[var(--status-sage)] text-[var(--primary-green)]" : run.status === "failed" ? "bg-[var(--status-blush)] text-[var(--primary-red)]" : "bg-[var(--surface-muted)] text-[var(--foreground-muted)]";
+                  const result = run.result || {};
+                  return (
+                    <div key={run.run_id} className="bauhaus-panel-sm flex flex-col gap-2 bg-[var(--surface-muted)] px-3.5 py-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${statusClass}`}>{statusLabel}</span>
+                          <span className="text-xs font-semibold">{run.provider === "gmail" ? "Gmail" : "IMAP"}</span>
+                          <span className="text-[11px] text-[var(--foreground-muted)]">{run.created_at ? new Date(run.created_at).toLocaleString("zh-CN") : "时间未知"}</span>
+                        </div>
+                        <p className="mt-1 text-[11px] text-[var(--foreground-muted)]">运行 {run.run_id.slice(0, 18)} · 尝试 {run.attempts || 0} 次</p>
+                        {run.status === "failed" && run.error ? <p className="mt-1 break-words text-[11px] text-[var(--primary-red)]">{safeClientErrorMessage(run.error, "同步失败")}</p> : null}
+                      </div>
+                      <div className="flex shrink-0 flex-wrap gap-x-3 gap-y-1 text-[11px] text-[var(--foreground-muted)]">
+                        <span>发现 {Number(result.total_found || 0)}</span>
+                        <span>候选 {Number(result.requires_review || 0)}</span>
+                        <span>写入 {Number(result.synced || 0)}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardBody>
+          </Card>
+        </motion.section>
+      ) : null}
 
       <Modal isOpen={isOpen} onOpenChange={onOpenChange} placement="center">
         <ModalContent className={bauhausModalContentClassName}>

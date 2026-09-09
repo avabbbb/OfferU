@@ -13,6 +13,7 @@
 - Extension typecheck、WXT production build、Vitest `208 passed, 7 skipped` 和 generated artifact guard 通过；Smart Fill 动态运行只被 managed Chromium CDN timeout/`ECONNRESET` 阻塞，未使用系统浏览器，Playwright cache 保持在 `H:\tmp\offeru\playwright-browsers`。
 - `ProfileOnboarding` 的 Resume 导入最终步骤现在展示来源候选与页码，并要求每条可追溯 `MemoryProposal` 经过接受、拒绝或稍后处理；接受调用既有 Profile/Memory Operation，拒绝与稍后不会写入 Profile，未建立证据提案的真实文件候选 fail-closed。职业记忆/演化定向回归 `21 passed`，前端 typecheck/build 通过。
 - 首次启动 `OnboardingWizard` 的文件导入也先确认选中候选的 `MemoryProposal` 再创建 Resume；无 OfferU session/来源提案的外部 AI JSON 会被阻止直接写入。架构/技能投影定向回归 `53 passed`，前端 typecheck/build 通过。
+- 邮箱页现在读取并轮询最近 `EmailSyncRun`，显示 pending/running/completed/failed/cancelled、尝试次数与发现/候选/写入计数；错误经过前端有界脱敏，失败不会伪装为成功。
 - 下一步只有外部输入后才能继续：提供真实 Resume PDF，完成 Gmail 只读 OAuth，并逐段执行 `PROFILE_T0 → PROFILE_FINAL → Job/Resume/Interview impact`。在此之前不输出 `LOCAL_AGENT_REAL_CAREER_GOLDEN_PATH_READY`。
 
 - 2026-09-03 `OPENCODE_LIVE_CAPABILITY_GUARD_71`：本机 OpenCode `1.17.11` 的 `run`/JSON CLI 探测通过，但未证明 `--pure` 具备 OfferU 所需的公开网页 host、重定向和私网地址约束；OpenCode 的 `supports_live_web_search` 已 fail-closed 为 `False`，不会被 Role Intelligence 当作 live Provider，也没有调用 `opencode web`。通用 Agent adapter 保留；本轮没有启动 Edge、创建浏览器窗口或访问 8080，详见 [report](docs/evals/reports/2026-09-03-codex-offeru-public-release-opencode-live-boundary.md)。
