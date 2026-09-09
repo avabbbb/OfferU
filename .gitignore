@@ -61,6 +61,7 @@ npm-debug.log*
 coverage/
 .pytest_cache/
 .playwright-mcp/
+backend/.playwright-cli/
 # 文档默认保持本地；只版本化当前事实链、Eval、归档索引与 Agent 配置。
 docs/*
 !docs/README.md
