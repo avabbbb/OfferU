@@ -28,6 +28,7 @@ from app.models.models import (
 )
 from app.services.application_progress import ingest_application_signal
 from app.services.credential_store import delete_secret, load_secret, store_secret
+from app.services.security_redaction import redact_sensitive_text
 
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -167,7 +168,7 @@ def _account_payload(account: EmailAccount) -> dict[str, Any]:
         "last_synced_at": (
             account.last_synced_at.isoformat() if account.last_synced_at else None
         ),
-        "last_error": account.last_error or "",
+        "last_error": redact_sensitive_text(account.last_error or "", max_length=500),
         "created_at": str(account.created_at),
         "updated_at": str(account.updated_at),
     }
@@ -181,7 +182,7 @@ def _run_payload(run: EmailSyncRun) -> dict[str, Any]:
         "attempts": run.attempts,
         "result": run.result_json or {},
         "trace": run.trace_json or {},
-        "error": run.error or "",
+        "error": redact_sensitive_text(run.error or "", max_length=500),
         "created_at": str(run.created_at),
         "started_at": run.started_at.isoformat() if run.started_at else None,
         "completed_at": run.completed_at.isoformat() if run.completed_at else None,

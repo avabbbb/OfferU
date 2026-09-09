@@ -7,6 +7,7 @@ import secrets
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -27,9 +28,11 @@ from app.ops import OPERATIONS
 from app.services.agent_skill_registry import resolve_skill
 from app.services.email_sync import (
     GmailHistoryExpired,
+    _account_payload,
     _fetch_gmail_delta,
     _gmail_full_message_ids,
     _fetch_imap_delta_blocking,
+    _run_payload,
     begin_gmail_oauth,
     connect_imap_account,
     revoke_email_account,
@@ -89,6 +92,44 @@ async def _gmail_account(cursor: dict | None = None) -> EmailAccount:
 
 
 class EmailIncrementalSyncTests(unittest.TestCase):
+    def test_sync_status_projection_redacts_legacy_error_text(self) -> None:
+        account = SimpleNamespace(
+            account_id="email-test",
+            provider="gmail",
+            email_address="candidate@example.com",
+            host="gmail.googleapis.com",
+            port=443,
+            auth_type="oauth2_pkce",
+            scopes_json=[],
+            status="active",
+            sync_enabled=True,
+            sync_cursor_json={},
+            last_synced_at=None,
+            last_error="token=legacy-secret owner@example.com +86 13812345678",
+            created_at="2026-07-26T08:00:00",
+            updated_at="2026-07-26T08:00:00",
+        )
+        run = SimpleNamespace(
+            run_id="email-sync-test",
+            provider="gmail",
+            status="failed",
+            attempts=1,
+            result_json={},
+            trace_json={},
+            error="request failed token=legacy-secret owner@example.com +86 13812345678",
+            created_at="2026-07-26T08:00:00",
+            started_at=None,
+            completed_at=None,
+        )
+
+        account_view = _account_payload(account)
+        run_view = _run_payload(run)
+        for value in (account_view["last_error"], run_view["error"]):
+            self.assertNotIn("legacy-secret", value)
+            self.assertNotIn("owner@example.com", value)
+            self.assertNotIn("13812345678", value)
+            self.assertIn("[redacted", value)
+
     def setUp(self) -> None:
         self._temp_dir = tempfile.TemporaryDirectory()
         database_path = Path(self._temp_dir.name) / "email-sync.db"
