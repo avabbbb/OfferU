@@ -92,6 +92,11 @@ class CodexMainLoopAdapter:
         self._events: list[dict[str, Any]] = []
         self.server_info: dict[str, Any] = {}
         self.protocol_version = "1"
+        # Set by the reader when the native app-server exits or its stream
+        # fails.  Keeping this separate from ``returncode`` lets pending
+        # JSON-RPC requests and the turn waiter fail immediately instead of
+        # waiting for their long protocol timeouts.
+        self._reader_exit_error: RuntimeError | None = None
 
     # ---- lifecycle ----
 
@@ -102,6 +107,7 @@ class CodexMainLoopAdapter:
 
         if self.process is not None:
             await self.close()
+        self._reader_exit_error = None
         environment = dict(os.environ)
         environment["NO_COLOR"] = "1"
         command, args = _command(self.executable, ["app-server", "--stdio"])
@@ -210,37 +216,64 @@ class CodexMainLoopAdapter:
 
     async def _reader(self) -> None:
         assert self.process is not None and self.process.stdout is not None
+        process = self.process
         buffer = ""
-        while True:
-            chunk = await self.process.stdout.readline()
-            if not chunk:
-                break
-            buffer += chunk.decode("utf-8", errors="replace")
-            while "\n" in buffer:
-                line, buffer = buffer.split("\n", 1)
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    msg = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if msg.get("id") in self._pending:
-                    future = self._pending.pop(msg["id"])
-                    if not future.done():
-                        if msg.get("error"):
-                            future.set_exception(
-                                RuntimeError(
-                                    "codex: "
-                                    + safe_error_message(
-                                        RuntimeError(str(msg["error"]))
+        reader_error: RuntimeError | None = None
+        try:
+            while True:
+                chunk = await process.stdout.readline()
+                if not chunk:
+                    break
+                buffer += chunk.decode("utf-8", errors="replace")
+                while "\n" in buffer:
+                    line, buffer = buffer.split("\n", 1)
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        msg = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if msg.get("id") in self._pending:
+                        future = self._pending.pop(msg["id"])
+                        if not future.done():
+                            if msg.get("error"):
+                                future.set_exception(
+                                    RuntimeError(
+                                        "codex: "
+                                        + safe_error_message(
+                                            RuntimeError(str(msg["error"]))
+                                        )
                                     )
                                 )
-                            )
-                        else:
-                            future.set_result(msg.get("result") or {})
-                else:
-                    await self._handle_push(msg)
+                            else:
+                                future.set_result(msg.get("result") or {})
+                    else:
+                        await self._handle_push(msg)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - surface a bounded adapter failure
+            reader_error = RuntimeError(
+                "codex app-server reader failed: " + safe_error_message(exc)
+            )
+        finally:
+            if reader_error is None:
+                with contextlib.suppress(Exception):
+                    await process.wait()
+                reader_error = RuntimeError(
+                    "codex app-server exited before completing the request"
+                    + (
+                        f" (exit code {process.returncode})"
+                        if process.returncode is not None
+                        else ""
+                    )
+                )
+            self._reader_exit_error = reader_error
+            for future in self._pending.values():
+                if not future.done():
+                    future.set_exception(reader_error)
+            self._pending.clear()
+
     async def _handle_push(self, msg: dict[str, Any]) -> None:
         """Handle server-initiated requests (e.g. tool calls, approvals)."""
         self._events.append(msg)
@@ -463,6 +496,8 @@ class CodexMainLoopAdapter:
                 item = self._turn_completed
                 self._turn_completed = None
                 return item
+            if self._reader_exit_error is not None:
+                raise self._reader_exit_error
         raise TimeoutError("codex turn did not complete")
 
     # ---- callback (set by the Bridge binding) ----
