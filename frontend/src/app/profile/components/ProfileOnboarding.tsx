@@ -626,6 +626,13 @@ export function ProfileOnboarding({ currentArchive, profile, onComplete, onClose
 
               {step === 2 && (
                 <StepFrame key="experience" direction={direction} icon={FileText} title="导入简历，或者先手填三段经历" subtitle="新人没有完整简历也没关系，先把可投递素材写进档案。">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf,.docx"
+                    className="hidden"
+                    onChange={handleFileChange}
+                  />
                   <div className="grid gap-2 sm:grid-cols-2">
                     <Button
                       className="w-full justify-center"

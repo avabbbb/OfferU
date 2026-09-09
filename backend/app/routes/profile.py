@@ -497,13 +497,55 @@ DATE_RANGE_RE = re.compile(
 )
 
 SECTION_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
-    ("education", re.compile(r"^(教育经历|教育背景|学历|教育|主修课程|课程)$", re.IGNORECASE)),
-    ("internship", re.compile(r"^(实习经历|实习经验|实习)$", re.IGNORECASE)),
-    ("experience", re.compile(r"^(工作经历|工作经验|实践经历|社会实践|校园经历)$", re.IGNORECASE)),
-    ("project", re.compile(r"^(项目经历|项目经验|项目|科研经历|研究经历)$", re.IGNORECASE)),
-    ("skill", re.compile(r"^(技能|技能清单|专业技能|技能与证书|技能特长|技术栈|工具)$", re.IGNORECASE)),
-    ("certificate", re.compile(r"^(证书|证书资质|语言能力|语言|英语|英语水平|语言水平|资质证书)$", re.IGNORECASE)),
-    ("award", re.compile(r"^(获奖经历|荣誉奖项|奖项|荣誉|奖励)$", re.IGNORECASE)),
+    (
+        "education",
+        re.compile(
+            r"^(教育经历|教育背景|学历|教育|主修课程|课程|education|education background|academic background|academic)$",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "internship",
+        re.compile(
+            r"^(实习经历|实习经验|实习|internship|internship experience|intern experiences?)$",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "experience",
+        re.compile(
+            r"^(工作经历|工作经验|实践经历|社会实践|校园经历|experience|work experience|professional experience|employment history|work history)$",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "project",
+        re.compile(
+            r"^(项目经历|项目经验|项目|科研经历|研究经历|projects?|project experience|research experience|selected projects?)$",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "skill",
+        re.compile(
+            r"^(技能|技能清单|专业技能|技能与证书|技能特长|技术栈|工具|skills?|technical skills?|tools?|technologies|tech stack)$",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "certificate",
+        re.compile(
+            r"^(证书|证书资质|语言能力|语言|英语|英语水平|语言水平|资质证书|certificates?|certifications?|languages?)$",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "award",
+        re.compile(
+            r"^(获奖经历|荣誉奖项|奖项|荣誉|奖励|awards?|honors?)$",
+            re.IGNORECASE,
+        ),
+    ),
     ("summary", re.compile(r"^(个人简介|自我评价|个人总结|Profile|Summary)$", re.IGNORECASE)),
 ]
 

@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.database import Base
 from app.models import models as _models  # noqa: F401
+from app.routes.profile import _fallback_resume_candidates
 from app.services.profile_operations import (
     _resume_candidate_state,
     save_profile_resume_import,
@@ -22,6 +23,27 @@ def test_resume_candidate_state_preserves_reviewable_memory_statuses() -> None:
 def test_resume_candidate_state_hides_non_reviewable_transitions() -> None:
     assert _resume_candidate_state({"status": "applying"}) == "pending_review"
     assert _resume_candidate_state({}) == "pending"
+
+
+def test_mechanical_import_recognizes_english_resume_section_headings() -> None:
+    candidates = _fallback_resume_candidates(
+        """EDUCATION
+Example University | Software Engineering | BSc | 2021-2025
+EXPERIENCE
+Example AI Co. | AI Application Engineering Intern | 2024-07 to 2024-12
+PROJECTS
+AI Video Workflow | Project Lead | 2024-10 to 2025-02
+SKILLS
+Python, FastAPI, Prompt Engineering
+"""
+    )
+
+    assert [item["section_type"] for item in candidates] == [
+        "education",
+        "experience",
+        "project",
+        "skill",
+    ]
 
 
 def test_resume_import_keeps_observation_id_for_first_candidate(tmp_path, monkeypatch) -> None:
