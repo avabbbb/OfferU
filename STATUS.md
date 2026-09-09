@@ -43,8 +43,9 @@ Role Intelligence controlled backend-search adapter → public web HTTP boundary
 - Codex 通过 App Server → OfferU Bridge → Operation Registry 自行发现 doctor、manifest、playbook、operation list/schema，并只读调用 `get_profile`、`list_resumes`、`list_jobs`、`list_application_progress_candidates`、`list_profile_evidence`；mutation 为 `0`，事实回答有操作来源。证据：[Codex bridge](H:/tmp/offeru/codex-bridge-autodiscovery-career-20260909.json)。
 - 六个候选 Agent 的安装、认证、live model、JSON、stream、resume、cancel、cwd、web 能力已生成真实状态矩阵；当前仅 Codex 的 live model/lifecycle 全部 `VERIFIED`，其它 Provider 的 `UNAVAILABLE`、`BLOCKED_AUTH` 或 `ERROR` 被保留，未被伪装成成功。证据：[agent matrix](H:/tmp/offeru/agent-matrix-final-20260910.json)。
 - Provider 选择已按能力声明和持久化验证状态 fail-closed；需要继续/取消时会优先选择已验证能力的 Provider。390px 与 1440px 的 Settings Agent 对话框均显示能力状态、同步状态，无横向溢出、console/page/API 错误均为 `0`。证据：[browser capability report](H:/tmp/offeru/browser-agent-capability-state-20260910/report-v4.json)。
-- 全量 backend 回归为 `501 passed, 9 skipped, 17 warnings, 11 subtests passed in 424.42s`；frontend typecheck/build 通过，架构审计 `0 findings`。证据：[full regression](H:/tmp/offeru/full-regression-capability-selection-20260910.log)、[architecture audit](H:/tmp/offeru/architecture-audit-capability-projection-20260910.json)。
-- 所有本轮测试临时目录、Agent CWD、浏览器 profile、日志和数据库副本均位于 `H:\tmp\offeru`；`C:\Users\ava\AppData\Roaming\npm\codex.cmd` 仅是已有 Provider 可执行文件路径，不是测试临时目录。服务停止后 7410/8766 均无监听进程。
+- 全量 backend 回归为 `502 passed, 9 skipped, 17 warnings, 11 subtests passed in 481.00s`；frontend typecheck/build 通过，架构审计 `0 findings`。证据：[full regression](H:/tmp/offeru/full-regression-temp-policy-20260909-r2.log)、[architecture audit](H:/tmp/offeru/architecture-audit-capability-projection-20260910.json)。
+- 已把 H 盘临时存储变成测试基础设施策略：pytest 全局 `tempfile`、E2E helper、Smart Fill 浏览器 fixture、Playwright cache 和子进程环境统一指向 `H:\tmp\offeru`，Windows 下 C 盘临时目录会 fail-closed；边界回归 `1 passed`。证据：[temp policy](H:/tmp/offeru/temp-policy-20260909.json)。
+- Extension typecheck、WXT production build 和 Vitest `208 passed, 7 skipped` 通过，根目录生成产物已同步；Smart Fill 动态 fixture 只因 Playwright managed Chromium CDN 下载 timeout/`ECONNRESET` 阻塞，未启动系统 Chrome/Edge，缓存仍限定在 H 盘。服务停止后 7410/8766 均无监听进程。
 
 未完成的硬门：真实 Resume → `PROFILE_T0`、真实邮箱只读 OAuth → Career Observations、分段 Profile 演化、Profile → Job/Resume/Interview 的真实影响，以及其它 Provider 的 live 认证/模型条件。没有这些外部输入，不得输出 `LOCAL_AGENT_REAL_CAREER_GOLDEN_PATH_READY`。
 

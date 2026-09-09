@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, parse, resolve } from "node:path";
 import { chromium } from "playwright";
 
 const EXTENSION_ROOT = resolve(import.meta.dirname, "..");
@@ -9,6 +9,29 @@ const BUILT_EXTENSION_DIR = resolve(EXTENSION_ROOT, ".output", "chrome-mv3");
 const EXTENSION_DIR = existsSync(join(BUILT_EXTENSION_DIR, "manifest.json"))
   ? BUILT_EXTENSION_DIR
   : EXTENSION_ROOT;
+
+function testTempRoot() {
+  const configured = String(process.env.OFFERU_TEST_TEMP_ROOT || "").trim();
+  const candidate = configured
+    ? resolve(configured)
+    : process.platform === "win32" && existsSync("H:\\")
+      ? resolve("H:\\tmp\\offeru")
+      : resolve(process.env.RUNNER_TEMP || tmpdir(), "offeru-tests");
+  const root = parse(candidate).root.toUpperCase();
+  if (process.platform === "win32" && root === "C:\\" && process.env.OFFERU_ALLOW_C_TEST_TEMP !== "1") {
+    throw new Error("OfferU browser fixture refuses C: temporary storage; set OFFERU_TEST_TEMP_ROOT to a non-system drive");
+  }
+  mkdirSync(candidate, { recursive: true });
+  const tempDirectory = resolve(candidate, "temp");
+  mkdirSync(tempDirectory, { recursive: true });
+  for (const name of ["TEMP", "TMP", "TMPDIR"]) {
+    process.env[name] = tempDirectory;
+  }
+  const browserCache = resolve(candidate, "playwright-browsers");
+  mkdirSync(browserCache, { recursive: true });
+  process.env.PLAYWRIGHT_BROWSERS_PATH = browserCache;
+  return candidate;
+}
 const PROFILE = {
   basic: {
     fullName: "张三",
@@ -277,7 +300,7 @@ async function startServer() {
 async function main() {
   const server = await startServer();
   const port = server.address().port;
-  const userDataDir = mkdtempSync(join(tmpdir(), "offeru-smartfill-"));
+  const userDataDir = mkdtempSync(join(testTempRoot(), "smartfill-"));
   let browser;
   try {
     browser = await chromium.launchPersistentContext(userDataDir, {

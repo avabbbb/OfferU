@@ -9,7 +9,8 @@
 - Codex Bridge：App Server 自行发现 doctor/manifest/playbook/operation list/schema，通过 Registry 只读读取 profile、resumes、jobs、application progress 和 evidence；mutation `0`，grounding `true`。详见 `H:\tmp\offeru\codex-bridge-autodiscovery-career-20260909.json`。
 - 六 Agent capability matrix 已落盘：Codex 是当前唯一 live model/lifecycle 全验证 Provider；Claude、Gemini、OpenCode、Pi、OMP 的 `NOT_VERIFIED`、`UNAVAILABLE`、`BLOCKED_AUTH` 或 `ERROR` 均保持真实投影。需要 resume/cancel 时，选择器优先已持久化验证的 Provider。
 - 390px/1440px Agent connection UI 显示 capability/sync 状态，无横向溢出、console/page/API errors 均为 `0`；frontend typecheck/build 通过，architecture audit `0 findings`。
-- 当前全量 backend 回归：`501 passed, 9 skipped, 17 warnings, 11 subtests passed in 424.42s`。临时数据库、浏览器 profile、Agent CWD、日志和报告全部位于 `H:\tmp\offeru`；C 盘仅保留既有 Provider 可执行文件路径，不承担测试临时数据。
+- 当前全量 backend 回归：`502 passed, 9 skipped, 17 warnings, 11 subtests passed in 481.00s`。pytest `tempfile`、E2E helper、Smart Fill fixture、浏览器 profile、Agent CWD、日志和报告均由 H 盘策略集中到 `H:\tmp\offeru`；Windows C 盘临时目录会 fail-closed。边界回归与完整证据见 `H:\tmp\offeru\temp-policy-20260909.json`。
+- Extension typecheck、WXT production build、Vitest `208 passed, 7 skipped` 和 generated artifact guard 通过；Smart Fill 动态运行只被 managed Chromium CDN timeout/`ECONNRESET` 阻塞，未使用系统浏览器，Playwright cache 保持在 `H:\tmp\offeru\playwright-browsers`。
 - 下一步只有外部输入后才能继续：提供真实 Resume PDF，完成 Gmail 只读 OAuth，并逐段执行 `PROFILE_T0 → PROFILE_FINAL → Job/Resume/Interview impact`。在此之前不输出 `LOCAL_AGENT_REAL_CAREER_GOLDEN_PATH_READY`。
 
 - 2026-09-03 `OPENCODE_LIVE_CAPABILITY_GUARD_71`：本机 OpenCode `1.17.11` 的 `run`/JSON CLI 探测通过，但未证明 `--pure` 具备 OfferU 所需的公开网页 host、重定向和私网地址约束；OpenCode 的 `supports_live_web_search` 已 fail-closed 为 `False`，不会被 Role Intelligence 当作 live Provider，也没有调用 `opencode web`。通用 Agent adapter 保留；本轮没有启动 Edge、创建浏览器窗口或访问 8080，详见 [report](docs/evals/reports/2026-09-03-codex-offeru-public-release-opencode-live-boundary.md)。
