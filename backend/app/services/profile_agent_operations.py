@@ -464,7 +464,7 @@ async def apply_profile_agent_patch(
                     if isinstance(latest_base_info, dict)
                     else None,
                 )
-            )
+            }
             for item in reversed(messages_json):
                 if isinstance(item, dict) and item.get("kind") == "profile_agent_patch" and not item.get("applied"):
                     item["applied"] = True
