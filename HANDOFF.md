@@ -22,6 +22,7 @@
 - H 盘隔离 T0/Final 影响验收已通过：新增事实经 Profile Chat 的 Observation/Proposal/Review 落地后，岗位投影选中事实 `1→2`、简历选中事实 `1→2` 且缺口改变，面试 Focus 重新按当前证据缺口计算；来源提案与 Profile section 均有 ID 可追溯。证据 `H:\tmp\offeru\profile-impact-evidence-20260910.json` 是合成契约，真实 Resume 与 Gmail OAuth 仍未完成。
 - Gate 5/6/7 定向回归已通过：职业记忆、邮箱增量、申请进度、演化报告 `34 passed`；简历优化、Role Intelligence、面试 Focus `26 passed, 1 subtest passed`。日志 `H:\tmp\offeru\gate6-memory-email-20260910.log` 与 `H:\tmp\offeru\gate7-downstream-20260910.log`，均使用 H 盘隔离库。
 - `ProfileOnboarding` 粘贴的 AI JSON 现在只作预览；没有原始 PDF/DOCX 与 OfferU 证据提案时 fail-closed，用户可清除候选后手填。本切片未重跑前端构建或浏览器验收。
+- Gate 汇总与严格 verdict 已写入 `H:\\tmp\\offeru\\local-agent-real-career-golden-path-report-20260910.json`；仅剩真实 Resume、Gmail OAuth 与真实来源的下游浏览器验收。
 - 下一步只有外部输入后才能继续：提供真实 Resume PDF，完成 Gmail 只读 OAuth，并逐段执行 `PROFILE_T0 → PROFILE_FINAL → Job/Resume/Interview impact`。在此之前不输出 `LOCAL_AGENT_REAL_CAREER_GOLDEN_PATH_READY`。
 
 - 2026-09-03 `OPENCODE_LIVE_CAPABILITY_GUARD_71`：本机 OpenCode `1.17.11` 的 `run`/JSON CLI 探测通过，但未证明 `--pure` 具备 OfferU 所需的公开网页 host、重定向和私网地址约束；OpenCode 的 `supports_live_web_search` 已 fail-closed 为 `False`，不会被 Role Intelligence 当作 live Provider，也没有调用 `opencode web`。通用 Agent adapter 保留；本轮没有启动 Edge、创建浏览器窗口或访问 8080，详见 [report](docs/evals/reports/2026-09-03-codex-offeru-public-release-opencode-live-boundary.md)。
