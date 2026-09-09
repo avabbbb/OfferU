@@ -741,6 +741,24 @@ async def create_memory_proposal(
             )
         ).scalar_one_or_none()
         if existing is not None and existing.status in {"rejected", "revoked", "invalidated"}:
+            # A rejected candidate must not be recreated from the same source
+            # observation. A genuinely new observation may reopen the same
+            # idea, but repeating the old source is a terminal idempotent read.
+            same_observation_link = (
+                await db.execute(
+                    select(EvidenceLink)
+                    .where(EvidenceLink.observation_id == clean_observation_id)
+                    .where(EvidenceLink.target_type == "memory_proposal")
+                    .where(EvidenceLink.target_id == existing.id)
+                    .where(EvidenceLink.relation == "supports")
+                )
+            ).scalar_one_or_none()
+            if same_observation_link is not None:
+                evidence = await _proposal_evidence(db, [existing.id])
+                return {
+                    **_serialize_proposal(existing, evidence.get(existing.id, [])),
+                    "duplicate": True,
+                }
             # A previously rejected candidate may be reconsidered only when a
             # genuinely new observation supports it. Keep the rejection audit
             # row and give the new evidence its own proposal identity.

@@ -366,6 +366,49 @@ class CareerMemoryTests(unittest.TestCase):
         self.assertEqual(rejected["status"], "rejected")
         self.assertEqual(profile_delta, 0)
 
+    def test_rejected_candidate_reopens_only_with_new_observation(self) -> None:
+        async def run() -> tuple[dict, dict, dict]:
+            await init_db()
+            observation = await _preference_observation()
+            proposal = await _preference_proposal(observation["id"])
+            rejected = await review_memory_proposal(
+                proposal_id=proposal["id"],
+                action="reject",
+            )
+
+            repeated = await create_memory_proposal(
+                observation_id=observation["id"],
+                target_tier=proposal["target_tier"],
+                section_type=proposal["section_type"],
+                title=proposal["title"],
+                before=proposal["before"],
+                after=proposal["after"],
+                reason=proposal["reason"],
+                impact=proposal["impact"],
+            )
+            new_observation = await _preference_observation()
+            reopened = await create_memory_proposal(
+                observation_id=new_observation["id"],
+                target_tier=proposal["target_tier"],
+                section_type=proposal["section_type"],
+                title=proposal["title"],
+                before=proposal["before"],
+                after=proposal["after"],
+                reason=proposal["reason"],
+                impact=proposal["impact"],
+            )
+            return rejected, repeated, reopened
+
+        rejected, repeated, reopened = asyncio.run(run())
+
+        self.assertEqual(rejected["status"], "rejected")
+        self.assertEqual(repeated["id"], rejected["id"])
+        self.assertEqual(repeated["status"], "rejected")
+        self.assertTrue(repeated["duplicate"])
+        self.assertNotEqual(reopened["id"], rejected["id"])
+        self.assertEqual(reopened["status"], "pending")
+        self.assertFalse(reopened["duplicate"])
+
     def test_deferred_proposal_stays_in_inbox_and_can_be_rejected_later(self) -> None:
         async def run() -> tuple[dict, bool, dict]:
             await init_db()
