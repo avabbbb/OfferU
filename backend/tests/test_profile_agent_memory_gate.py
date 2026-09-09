@@ -10,7 +10,7 @@ from app.services.profile_agent_operations import (
     _profile_agent_candidate_source,
     apply_profile_agent_patch,
 )
-from app.services.career_memory import record_profile_chat_evidence
+from app.services.career_memory import record_profile_chat_evidence, record_resume_import_evidence
 from app.services.profile_operations import confirm_profile_bullet, save_profile_chat_turn
 
 
@@ -57,6 +57,50 @@ def test_profile_chat_turn_persists_candidates_after_memory_evidence() -> None:
     assert "record_profile_chat_evidence" in source
     assert '"memory_proposal_id"' in source
     assert '"memory_evidence"' in source
+
+
+def test_resume_evidence_keeps_source_context_when_candidate_is_a_substring(monkeypatch) -> None:
+    captured: list[dict] = []
+
+    async def record_learning_observation(**kwargs):  # noqa: ANN003
+        captured.append(kwargs)
+        return {"id": 91, "duplicate": False}
+
+    async def create_memory_proposal(**kwargs):  # noqa: ANN003
+        return {"id": 92, "status": "pending"}
+
+    monkeypatch.setattr(
+        "app.services.career_memory.record_learning_observation",
+        record_learning_observation,
+    )
+    monkeypatch.setattr(
+        "app.services.career_memory.create_memory_proposal",
+        create_memory_proposal,
+    )
+
+    result = asyncio.run(
+        record_resume_import_evidence(
+            filename="resume-fixture-en.pdf",
+            parse_mode="mechanical",
+            parsed_text="Project Atlas: I led 4 people and shortened delivery by 40%.",
+            parse_diagnostics={"parser": "fixture"},
+            candidates=[
+                {
+                    "section_type": "project",
+                    "title": "Project Atlas",
+                    "content_json": {
+                        "name": "Project Atlas",
+                        "description": "I led 4 people and shortened delivery by 40%.",
+                        "bullet": "I led 4 people and shortened delivery by 40%.",
+                    },
+                }
+            ],
+        )
+    )
+
+    assert "Project Atlas" in captured[0]["content"]["source_excerpt"]
+    assert result["observation_count"] == 1
+    assert result["proposal_count"] == 1
 
 
 def test_profile_agent_sections_use_observation_proposal_review_gate(monkeypatch) -> None:

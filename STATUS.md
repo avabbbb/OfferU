@@ -51,8 +51,9 @@ Role Intelligence controlled backend-search adapter → public web HTTP boundary
 - 邮箱页新增只读 `EmailSyncRun` 历史投影：状态、尝试次数、发现/候选/写入计数和有界失败信息可回看；同步运行中每 5 秒刷新，失败不会显示为完成。前端 typecheck 与 production build 通过，未扩大邮箱权限或改动只读同步策略。
 - 新鲜 Codex live probe 已在隔离数据库 `H:\tmp\offeru\codex-real-probe-20260910.db` 与 H 盘 CWD 完成：`codex-cli 0.153.4`、随机 nonce、结构化 JSON、58 个流式事件和真实 App Server session 均通过；本次未请求 lifecycle，因此 `resume/cancel` 保留既有验证状态。证据：[codex live probe](H:/tmp/offeru/codex-live-probe-20260910.json)。
 - 新鲜 H 盘全 Provider discovery 与 Codex Bridge conformance 也已重跑：6 个 Provider 被发现、5 个已安装；Codex 自行完成 doctor/manifest/playbook/operation list/schema，读取 5 个只读业务 Operation，`mutations=0`、`grounding_verified=true`。空隔离库中 Codex 明确报告 Profile 事实未知，证据：[capability matrix](H:/tmp/offeru/agent-matrix-real-20260910.json)、[Bridge conformance](H:/tmp/offeru/codex-bridge-real-20260910.json)。
-- `Profile Builder Agent` 的用户确认补丁现在把每个 section 依次送入 `LearningObservation → MemoryProposal → review_memory_proposal(accept)`，不再直接构造 `ProfileSection`；批量确认中途失败会撤销本次新接受条目，保留来源观察/提案用于重试。新增回归契约覆盖来源哈希、Registry 顺序、无直写和失败回滚；定向回归已通过 `7 passed`。
+- `Profile Builder Agent` 的用户确认补丁现在把每个 section 依次送入 `LearningObservation → MemoryProposal → review_memory_proposal(accept)`，不再直接构造 `ProfileSection`；批量确认中途失败会撤销本次新接受条目，保留来源观察/提案用于重试。新增回归契约覆盖来源哈希、Registry 顺序、无直写和失败回滚；定向回归已通过 `8 passed`。
 - Profile AI 对话候选也已收口到同一事实门：保存用户原文观察、稳定幂等键和待审核提案，SSE 返回 proposal/observation ID，确认只能走 `review_memory_proposal`；没有来源提案的历史候选 fail-closed。隔离 H 盘数据库闭环已验证候选持久化、确认、`agent_confirmed` Profile 条目和两条证据链接，未触碰正式数据库。
+- Resume 证据摘录现在始终保留一段有界原文上下文，即使候选 bullet 只是原文子串也不会丢失项目/公司标题；隔离导入→session proposal 持久化→事实门确认闭环通过。该上下文修复后的后端全量回归为 `514 passed, 9 skipped, 17 warnings, 11 subtests passed in 251.78s`。
 - `ProfileOnboarding` 的粘贴 AI JSON 明确标记为“仅预览”，没有原始 PDF/DOCX 与 OfferU 证据提案时最终步骤 fail-closed；用户可清除候选后手填，避免无来源内容伪装成 `PROFILE_T0`。本切片未重跑前端构建或浏览器验收。
 
 未完成的硬门：真实 Resume → `PROFILE_T0`、真实邮箱只读 OAuth → Career Observations、分段 Profile 演化、Profile → Job/Resume/Interview 的真实影响，以及其它 Provider 的 live 认证/模型条件。没有这些外部输入，不得输出 `LOCAL_AGENT_REAL_CAREER_GOLDEN_PATH_READY`。

@@ -9,7 +9,7 @@
 - Codex Bridge：App Server 自行发现 doctor/manifest/playbook/operation list/schema，通过 Registry 只读读取 profile、resumes、jobs、application progress 和 evidence；mutation `0`，grounding `true`。详见 `H:\tmp\offeru\codex-bridge-autodiscovery-career-20260909.json`。
 - 六 Agent capability matrix 已落盘：Codex 是当前唯一 live model/lifecycle 全验证 Provider；Claude、Gemini、OpenCode、Pi、OMP 的 `NOT_VERIFIED`、`UNAVAILABLE`、`BLOCKED_AUTH` 或 `ERROR` 均保持真实投影。需要 resume/cancel 时，选择器优先已持久化验证的 Provider。
 - 390px/1440px Agent connection UI 显示 capability/sync 状态，无横向溢出、console/page/API errors 均为 `0`；frontend typecheck/build 通过，architecture audit `0 findings`。
-- 当前全量 backend 回归：`506 passed, 9 skipped, 17 warnings, 11 subtests passed in 263.47s`。pytest `tempfile`、E2E helper、Smart Fill fixture、浏览器 profile、Agent CWD、日志和报告均由 H 盘策略集中到 `H:\tmp\offeru`；Windows C 盘临时目录会 fail-closed。Resume 审核切片与完整回归证据见 `H:\tmp\offeru\profile-t0-review-20260910.json` 和 `H:\tmp\offeru\full-regression-profile-review-final-20260910.log`。
+- 当前全量 backend 回归：`514 passed, 9 skipped, 17 warnings, 11 subtests passed in 251.78s`。pytest `tempfile`、E2E helper、Smart Fill fixture、浏览器 profile、Agent CWD、日志和报告均由 H 盘策略集中到 `H:\tmp\offeru`；Windows C 盘临时目录会 fail-closed。Resume 审核切片与完整回归证据见 `H:\tmp\offeru\profile-t0-review-20260910.json` 和 `H:\tmp\offeru\full-regression-resume-context-20260910.log`。
 - Extension typecheck、WXT production build、Vitest `208 passed, 7 skipped` 和 generated artifact guard 通过；Smart Fill 动态运行只被 managed Chromium CDN timeout/`ECONNRESET` 阻塞，未使用系统浏览器，Playwright cache 保持在 `H:\tmp\offeru\playwright-browsers`。
 - `ProfileOnboarding` 的 Resume 导入最终步骤现在展示来源候选与页码，并要求每条可追溯 `MemoryProposal` 经过接受、拒绝或稍后处理；接受调用既有 Profile/Memory Operation，拒绝与稍后不会写入 Profile，未建立证据提案的真实文件候选 fail-closed。职业记忆/演化定向回归 `21 passed`，前端 typecheck/build 通过。
 - 首次启动 `OnboardingWizard` 的文件导入也先确认选中候选的 `MemoryProposal` 再创建 Resume；无 OfferU session/来源提案的外部 AI JSON 会被阻止直接写入。架构/技能投影定向回归 `53 passed`，前端 typecheck/build 通过。
@@ -18,6 +18,7 @@
 - 新鲜 H 盘全 Provider discovery 与 Codex Bridge conformance 已重跑：6 个 Provider 被发现、5 个已安装；Codex 自行完成 doctor/manifest/playbook/operation list/schema，读取 5 个只读业务 Operation，`mutations=0`、`grounding_verified=true`。空隔离库中它明确报告 Profile 事实未知；证据见 `H:\tmp\offeru\agent-matrix-real-20260910.json` 与 `H:\tmp\offeru\codex-bridge-real-20260910.json`。
 - Profile Builder Agent 的确认补丁现在通过 `LearningObservation → MemoryProposal → review_memory_proposal(accept)` 进入职业事实门，移除直接 `ProfileSection` 写入；批量确认中途失败会撤销本次新接受条目，保留来源观察与提案供重试。新增契约覆盖来源哈希、Registry 顺序、无直写和回滚；定向回归已通过 `7 passed`。
 - Profile AI 对话候选现在也保存用户原文观察、稳定幂等键和待审核提案；SSE 返回 proposal/observation ID，确认只能走记忆审核，旧的无来源候选直接 fail-closed。隔离 H 盘数据库闭环已验证候选 JSON 持久化、确认、`agent_confirmed` Profile 条目和证据链接，日志见 `H:\tmp\offeru\profile-chat-integration-20260910-e.log`。
+- Resume 证据摘录现在保留有界原文上下文，即使候选 bullet 只是原文子串也能保留项目/公司标题；隔离 Resume 导入→proposal 持久化→事实门确认闭环通过，日志见 `H:\tmp\offeru\resume-chat-integration-20260910-f.log`。
 - `ProfileOnboarding` 粘贴的 AI JSON 现在只作预览；没有原始 PDF/DOCX 与 OfferU 证据提案时 fail-closed，用户可清除候选后手填。本切片未重跑前端构建或浏览器验收。
 - 下一步只有外部输入后才能继续：提供真实 Resume PDF，完成 Gmail 只读 OAuth，并逐段执行 `PROFILE_T0 → PROFILE_FINAL → Job/Resume/Interview impact`。在此之前不输出 `LOCAL_AGENT_REAL_CAREER_GOLDEN_PATH_READY`。
 

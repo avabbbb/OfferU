@@ -445,8 +445,12 @@ async def record_resume_import_evidence(
         ).strip()
         # Include a bounded piece of the parsed document as independent context
         # for the fact gate while keeping the stored source projection small.
-        if clean_text and excerpt and excerpt not in clean_text:
-            excerpt = f"{excerpt}\nResume 原文片段：{clean_text[:1800]}"
+        # A candidate bullet is often only a substring of the source paragraph;
+        # checking ``excerpt not in clean_text`` would then drop the company or
+        # project heading and make a valid structured title look unsupported.
+        source_context = clean_text[:1800]
+        if source_context and source_context not in excerpt:
+            excerpt = f"{excerpt}\nResume 原文片段：{source_context}"
         observation = await record_learning_observation(
             source_type="resume",
             source_external_id=source_external_id,
