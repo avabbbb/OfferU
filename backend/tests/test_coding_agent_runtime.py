@@ -184,6 +184,18 @@ class CodingAgentRuntimeTests(unittest.TestCase):
         self.assertTrue(codex._cancel_requested)
         self.assertTrue(claude._cancel_requested)
 
+    def test_codex_hosted_runtime_requires_native_auth_before_turn(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "authentication required"):
+            runtime._require_codex_auth(
+                {"account": None, "requiresOpenaiAuth": True}
+            )
+        runtime._require_codex_auth(
+            {"account": {"type": "chatgpt"}, "requiresOpenaiAuth": True}
+        )
+        runtime._require_codex_auth(
+            {"account": None, "requiresOpenaiAuth": False}
+        )
+
     def test_public_selector_returns_compatible_adapter(self) -> None:
         selected = {
             "id": "codex",

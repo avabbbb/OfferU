@@ -984,6 +984,17 @@ def _codex_thread_config(web_search_mode: WebSearchMode) -> dict[str, Any]:
     }
 
 
+def _require_codex_auth(account: dict[str, Any]) -> None:
+    """Fail closed before a hosted turn when Codex requires native login."""
+
+    if account.get("requiresOpenaiAuth") is not True:
+        return
+    details = account.get("account")
+    account_type = details.get("type") if isinstance(details, dict) else ""
+    if account_type not in {"chatgpt", "apiKey"}:
+        raise RuntimeError("Codex authentication required")
+
+
 class CodexAppServerAdapter:
     def __init__(self, session_id: str, executable: str):
         self.session_id = session_id
@@ -1119,7 +1130,14 @@ class CodexAppServerAdapter:
             if task is None:
                 continue
             if not task.done():
-                task.cancel()
+                # Let EOF drain the Proactor pipes after the owned process is
+                # terminated.  Cancelling the reader immediately can leave a
+                # Windows pipe transport alive until the event loop is torn
+                # down, which surfaces as a ResourceWarning on auth failure.
+                try:
+                    await asyncio.wait_for(task, timeout=2)
+                except asyncio.TimeoutError:
+                    task.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await task
         if self._completed is not None and self._completed.done():
@@ -1186,6 +1204,10 @@ class CodexAppServerAdapter:
                     },
                 },
             )
+            account = await self._request(
+                "account/read", {"refreshToken": False}
+            )
+            _require_codex_auth(account)
             await self._write({"method": "initialized", "params": {}})
             thread_params = {
                 "cwd": str(cwd),
