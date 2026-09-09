@@ -477,6 +477,12 @@ class CodexMainLoopAdapter:
         tool_descriptions: list[str],
     ) -> dict[str, Any]:
         """Start a thread (once) and one turn bound to the Bridge Run."""
+        from app.services.coding_agent_runtime import _require_codex_auth
+
+        # Keep the direct Bridge path aligned with HostedExecutor: a native
+        # Codex session must prove its provider-owned login before a turn can
+        # wait on the model or invoke any Registry operation.
+        _require_codex_auth(await self.read_account())
         if not self.thread_id:
             await self.create_thread(cwd=cwd, tool_descriptions=tool_descriptions)
         tool_block = (

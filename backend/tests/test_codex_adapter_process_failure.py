@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -36,3 +37,21 @@ def test_native_process_eof_fails_pending_requests_without_protocol_timeout() ->
 
     asyncio.run(flow())
 
+
+def test_bridge_turn_checks_provider_auth_before_discovering_business_tools() -> None:
+    async def flow() -> None:
+        adapter = CodexMainLoopAdapter(executable="test-only")
+        adapter.read_account = AsyncMock(
+            return_value={"account": None, "requiresOpenaiAuth": True}
+        )  # type: ignore[method-assign]
+        adapter.create_thread = AsyncMock()  # type: ignore[method-assign]
+
+        with pytest.raises(RuntimeError, match="authentication required"):
+            await adapter.run_turn(
+                prompt="probe",
+                cwd="H:/tmp/offeru/bridge-auth-test",
+                tool_descriptions=[],
+            )
+        adapter.create_thread.assert_not_awaited()
+
+    asyncio.run(flow())
