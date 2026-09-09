@@ -6,7 +6,7 @@
 
 - 当前严格 verdict：`LOCAL_AGENT_REAL_CAREER_GOLDEN_PATH_FAIL`。fixture 只能证明 Resume、Email、Profile evolution 和 downstream 的流程契约；真实用户 Resume PDF、真实邮箱 OAuth 和人工事实确认尚未完成。
 - Codex `0.153.4`：live model、随机 nonce、structured JSON、streaming、resume、cancel、cwd isolation 均为 `VERIFIED`；kill 测试后是 `cancelled`，没有假 `completed`。详见 `H:\tmp\offeru\codex-lifecycle-final-20260910.json`。
-- Codex Bridge：App Server 自行发现 doctor/manifest/playbook/operation list/schema，通过 Registry 只读读取 profile、resumes、jobs、application progress 和 evidence；mutation `0`，grounding `true`。详见 `H:\tmp\offeru\codex-bridge-autodiscovery-career-20260909.json`。
+- Codex Bridge：App Server 自行发现 doctor/manifest/playbook/operation list/schema，并在非空 H 盘隔离 Career context 中读取 7 条 Profile 事实、1 份 Resume、1 个 Job 和 Evidence；实际调用 5 个只读 Operation，mutation `0`，grounding `true`。证据 `H:\\tmp\\offeru\\codex-bridge-seeded-real-20260910.json`，数据库 `H:\\tmp\\offeru\\bridge-seeded-real-20260910-data\\djm.db`。
 - 六 Agent capability matrix 已落盘：Codex 是当前唯一 live model/lifecycle 全验证 Provider；Claude、Gemini、OpenCode、Pi、OMP 的 `NOT_VERIFIED`、`UNAVAILABLE`、`BLOCKED_AUTH` 或 `ERROR` 均保持真实投影。需要 resume/cancel 时，选择器优先已持久化验证的 Provider。
 - 390px/1440px Agent connection UI 显示 capability/sync 状态，无横向溢出、console/page/API errors 均为 `0`；frontend typecheck/build 通过，architecture audit `0 findings`。
 - 当前全量 backend 回归：`514 passed, 9 skipped, 17 warnings, 11 subtests passed in 251.78s`。pytest `tempfile`、E2E helper、Smart Fill fixture、浏览器 profile、Agent CWD、日志和报告均由 H 盘策略集中到 `H:\tmp\offeru`；Windows C 盘临时目录会 fail-closed。Resume 审核切片与完整回归证据见 `H:\tmp\offeru\profile-t0-review-20260910.json` 和 `H:\tmp\offeru\full-regression-resume-context-20260910.log`。
