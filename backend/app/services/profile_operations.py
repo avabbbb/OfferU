@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+from copy import deepcopy
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
@@ -746,12 +747,68 @@ async def save_profile_chat_turn(
         session.extracted_bullets_count = int(session.extracted_bullets_count or 0) + len(candidates)
         await db.commit()
         await db.refresh(session)
-        return {
-            "session_id": session.id,
-            "assistant_message": assistant_message,
-            "candidates": candidates,
-            "topic_complete": topic_complete,
-        }
+        saved_session_id = int(session.id)
+
+    # A chat candidate is still model output. Persist the user's original
+    # message as evidence and expose the resulting proposal IDs to the review
+    # card; no ProfileSection is written until the user accepts the proposal.
+    from app.services.career_memory import record_profile_chat_evidence
+
+    evidence = await record_profile_chat_evidence(
+        session_id=saved_session_id,
+        topic=topic,
+        user_message=user_message,
+        candidates=candidates,
+    )
+    proposals_by_index = {
+        int(item["candidate_index"]): item
+        for item in evidence.get("proposals") or []
+        if isinstance(item, dict) and item.get("candidate_index") is not None
+    }
+    observations_by_index = {
+        int(item["candidate_index"]): item
+        for item in evidence.get("observations") or []
+        if isinstance(item, dict) and item.get("candidate_index") is not None
+    }
+    enriched_candidates: list[dict[str, Any]] = []
+    for index, candidate in enumerate(candidates):
+        enriched = dict(candidate)
+        proposal = proposals_by_index.get(index)
+        observation = observations_by_index.get(index)
+        if proposal:
+            enriched["memory_proposal_id"] = proposal.get("id")
+            enriched["candidate_state"] = _resume_candidate_state(proposal)
+        if observation:
+            enriched["observation_id"] = observation.get("id")
+        enriched_candidates.append(enriched)
+
+    if enriched_candidates:
+        async with async_session() as db:
+            stored = (
+                await db.execute(
+                    select(ProfileChatSession).where(ProfileChatSession.id == saved_session_id)
+                )
+            ).scalar_one_or_none()
+            if stored is not None:
+                stored_messages = deepcopy(stored.messages_json or [])
+                for item in reversed(stored_messages):
+                    if isinstance(item, dict) and item.get("kind") == "bullet_candidates":
+                        item["candidates"] = enriched_candidates
+                        break
+                stored.messages_json = stored_messages
+                await db.commit()
+
+    return {
+        "session_id": saved_session_id,
+        "assistant_message": assistant_message,
+        "candidates": enriched_candidates,
+        "topic_complete": topic_complete,
+        "memory_evidence": {
+            "source_external_id": evidence.get("source_external_id"),
+            "observation_count": evidence.get("observation_count", 0),
+            "proposal_count": evidence.get("proposal_count", 0),
+        },
+    }
 
 
 def _extract_last_candidates(messages_json: list[Any]) -> list[dict[str, Any]]:
@@ -788,82 +845,32 @@ async def confirm_profile_bullet(
                 )
             )
         ).scalar_one_or_none()
-        if inspect_session is not None:
-            inspect_candidates = _extract_last_candidates(inspect_session.messages_json or [])
-            if 0 <= bullet_index < len(inspect_candidates):
-                raw_proposal_id = inspect_candidates[bullet_index].get("memory_proposal_id")
-                try:
-                    parsed_proposal_id = int(raw_proposal_id or 0)
-                except (TypeError, ValueError):
-                    parsed_proposal_id = 0
-                if parsed_proposal_id > 0:
-                    pending_proposal_id = parsed_proposal_id
+        if inspect_session is None:
+            raise ValueError("chat session not found")
+        inspect_candidates = _extract_last_candidates(inspect_session.messages_json or [])
+        if not 0 <= bullet_index < len(inspect_candidates):
+            raise ValueError("bullet_index out of range")
+        raw_proposal_id = inspect_candidates[bullet_index].get("memory_proposal_id")
+        try:
+            parsed_proposal_id = int(raw_proposal_id or 0)
+        except (TypeError, ValueError):
+            parsed_proposal_id = 0
+        if parsed_proposal_id > 0:
+            pending_proposal_id = parsed_proposal_id
     if pending_proposal_id is not None:
         if edits:
-            raise ValueError("Resume 候选如需修改，请先拒绝当前提案后重新导入；确认不会绕过来源证据")
+            raise ValueError("候选如需修改，请回到 Profile 对话补充原文后重新生成；确认不会绕过来源证据")
         from app.services.career_memory import review_memory_proposal
 
         return await review_memory_proposal(
             proposal_id=pending_proposal_id,
             action="accept",
-            note="用户在 Resume 导入审核中确认",
+            note="用户在 Profile 候选审核中确认",
         )
 
-    async with async_session() as db:
-        profile = await _get_or_create_default_profile(db)
-        session = (
-            await db.execute(
-                select(ProfileChatSession).where(
-                    ProfileChatSession.id == session_id,
-                    ProfileChatSession.profile_id == profile.id,
-                )
-            )
-        ).scalar_one_or_none()
-        if not session:
-            raise ValueError("chat session not found")
-        candidates = _extract_last_candidates(session.messages_json or [])
-        if bullet_index >= len(candidates):
-            raise ValueError("bullet_index out of range")
-        candidate = dict(candidates[bullet_index])
-        for key in ("section_type", "title", "content_json", "confidence"):
-            if isinstance(edits, dict) and key in edits:
-                candidate[key] = edits[key]
-        candidate = _normalize_candidate(session.topic or "general", candidate)
-        existing_sections = (
-            await db.execute(
-                select(ProfileSection)
-                .where(
-                    ProfileSection.profile_id == profile.id,
-                    ProfileSection.section_type == candidate["section_type"],
-                    ProfileSection.title == candidate["title"],
-                    ProfileSection.status == "active",
-                )
-                .order_by(ProfileSection.id.desc())
-            )
-        ).scalars().all()
-        for existing in existing_sections:
-            if (existing.content_json or {}) == candidate["content_json"]:
-                return _serialize_section(existing)
-        max_sort = (
-            await db.execute(
-                select(func.max(ProfileSection.sort_order)).where(
-                    ProfileSection.profile_id == profile.id
-                )
-            )
-        ).scalar()
-        section = ProfileSection(
-            profile_id=profile.id,
-            section_type=candidate["section_type"],
-            title=candidate["title"],
-            sort_order=int(max_sort or 0) + 1,
-            content_json=candidate["content_json"],
-            source="ai_chat",
-            confidence=candidate["confidence"],
-        )
-        db.add(section)
-        await db.commit()
-        await db.refresh(section)
-        return _serialize_section(section)
+    raise ValueError(
+        "该 Profile 候选没有来源观察提案，不能直接写入档案；请重新发起 Profile 对话"
+    )
 
 
 async def save_profile_resume_import(
@@ -978,7 +985,7 @@ async def save_profile_resume_import(
                 )
             ).scalar_one_or_none()
             if stored is not None:
-                messages = list(stored.messages_json or [])
+                messages = deepcopy(stored.messages_json or [])
                 for item in reversed(messages):
                     if isinstance(item, dict) and item.get("kind") == "bullet_candidates":
                         item["candidates"] = enriched_candidates

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 
 import pytest
@@ -9,6 +10,8 @@ from app.services.profile_agent_operations import (
     _profile_agent_candidate_source,
     apply_profile_agent_patch,
 )
+from app.services.career_memory import record_profile_chat_evidence
+from app.services.profile_operations import confirm_profile_bullet, save_profile_chat_turn
 
 
 def test_profile_agent_candidate_source_is_stable_and_bounded() -> None:
@@ -40,8 +43,23 @@ def test_profile_agent_apply_has_no_direct_profile_section_write() -> None:
     assert "ProfileSection(" not in source
 
 
-@pytest.mark.asyncio
-async def test_profile_agent_sections_use_observation_proposal_review_gate(monkeypatch) -> None:
+def test_profile_chat_confirm_has_no_direct_profile_section_write() -> None:
+    source = inspect.getsource(confirm_profile_bullet)
+
+    assert "record_profile_chat_evidence" not in source
+    assert "没有来源观察提案" in source
+    assert "ProfileSection(" not in source
+
+
+def test_profile_chat_turn_persists_candidates_after_memory_evidence() -> None:
+    source = inspect.getsource(save_profile_chat_turn)
+
+    assert "record_profile_chat_evidence" in source
+    assert '"memory_proposal_id"' in source
+    assert '"memory_evidence"' in source
+
+
+def test_profile_agent_sections_use_observation_proposal_review_gate(monkeypatch) -> None:
     calls: list[tuple[str, dict]] = []
 
     async def record_learning_observation(**kwargs):  # noqa: ANN003
@@ -69,19 +87,21 @@ async def test_profile_agent_sections_use_observation_proposal_review_gate(monke
         review_memory_proposal,
     )
 
-    result = await _accept_profile_agent_sections(
-        7,
-        [
-            {
-                "section_type": "project",
-                "title": "AI 视频工作流",
-                "content_json": {
-                    "bullet": "把交付周期缩短 40%。",
-                    "normalized": {"name": "AI 视频工作流"},
-                },
-                "confidence": 0.9,
-            }
-        ],
+    result = asyncio.run(
+        _accept_profile_agent_sections(
+            7,
+            [
+                {
+                    "section_type": "project",
+                    "title": "AI 视频工作流",
+                    "content_json": {
+                        "bullet": "把交付周期缩短 40%。",
+                        "normalized": {"name": "AI 视频工作流"},
+                    },
+                    "confidence": 0.9,
+                }
+            ],
+        )
     )
 
     assert [name for name, _ in calls] == ["observation", "proposal", "review"]
@@ -106,8 +126,59 @@ async def test_profile_agent_sections_use_observation_proposal_review_gate(monke
     ]
 
 
-@pytest.mark.asyncio
-async def test_profile_agent_sections_revoke_new_accepts_when_later_candidate_fails(monkeypatch) -> None:
+def test_profile_chat_evidence_uses_original_user_message(monkeypatch) -> None:
+    calls: list[tuple[str, dict]] = []
+
+    async def record_learning_observation(**kwargs):  # noqa: ANN003
+        calls.append(("observation", kwargs))
+        return {"id": 71, "duplicate": False}
+
+    async def create_memory_proposal(**kwargs):  # noqa: ANN003
+        calls.append(("proposal", kwargs))
+        return {"id": 81, "status": "pending"}
+
+    monkeypatch.setattr(
+        "app.services.career_memory.record_learning_observation",
+        record_learning_observation,
+    )
+    monkeypatch.setattr(
+        "app.services.career_memory.create_memory_proposal",
+        create_memory_proposal,
+    )
+
+    result = asyncio.run(
+        record_profile_chat_evidence(
+            session_id=14,
+            topic="project",
+            user_message="我带 4 人把交付周期缩短 40%。",
+            candidates=[
+                {
+                    "section_type": "project",
+                    "title": "AI 视频工作流",
+                    "content_json": {"bullet": "带团队优化交付"},
+                    "confidence": 0.83,
+                }
+            ],
+        )
+    )
+
+    assert [name for name, _ in calls] == ["observation", "proposal"]
+    observation_payload = calls[0][1]
+    assert observation_payload["source_type"] == "profile_chat"
+    assert observation_payload["observation_type"] == "profile_fact_candidate"
+    assert observation_payload["source_metadata"] == {
+        "session_id": 14,
+        "topic": "project",
+        "candidate_index": 0,
+    }
+    assert observation_payload["content"]["source_excerpt"] == "我带 4 人把交付周期缩短 40%。"
+    assert calls[1][1]["observation_id"] == 71
+    assert result["source_external_id"].startswith("profile-chat:14:")
+    assert result["observations"][0]["candidate_index"] == 0
+    assert result["proposals"][0]["candidate_index"] == 0
+
+
+def test_profile_agent_sections_revoke_new_accepts_when_later_candidate_fails(monkeypatch) -> None:
     calls: list[tuple[str, dict]] = []
     next_observation_id = 40
     next_proposal_id = 50
@@ -150,20 +221,22 @@ async def test_profile_agent_sections_revoke_new_accepts_when_later_candidate_fa
     )
 
     with pytest.raises(ValueError, match="事实门拒绝第二条候选"):
-        await _accept_profile_agent_sections(
-            8,
-            [
-                {
-                    "section_type": "experience",
-                    "title": "第一条",
-                    "content_json": {"bullet": "第一条事实"},
-                },
-                {
-                    "section_type": "project",
-                    "title": "第二条",
-                    "content_json": {"bullet": "第二条事实"},
-                },
-            ],
+        asyncio.run(
+            _accept_profile_agent_sections(
+                8,
+                [
+                    {
+                        "section_type": "experience",
+                        "title": "第一条",
+                        "content_json": {"bullet": "第一条事实"},
+                    },
+                    {
+                        "section_type": "project",
+                        "title": "第二条",
+                        "content_json": {"bullet": "第二条事实"},
+                    },
+                ],
+            )
         )
 
     assert [

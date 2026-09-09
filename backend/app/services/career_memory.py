@@ -494,6 +494,102 @@ async def record_resume_import_evidence(
     }
 
 
+async def record_profile_chat_evidence(
+    *,
+    session_id: int,
+    topic: str,
+    user_message: str,
+    candidates: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Turn one Profile chat turn into source-backed review proposals.
+
+    The assistant may normalize a user's wording, but that output is still an
+    untrusted candidate. Keep the user's message as the source excerpt so the
+    fact gate can verify every accepted entry against the original statement.
+    """
+
+    clean_session_id = _clean_positive_int(session_id, "session_id")
+    clean_topic = _clean_text(topic, "topic", limit=80, required=True)
+    clean_message = _clean_text(user_message, "user_message", limit=50_000, required=True)
+    message_hash = _sha256(clean_message)
+    source_external_id = f"profile-chat:{clean_session_id}:{message_hash}"
+    observations: list[dict[str, Any]] = []
+    proposals: list[dict[str, Any]] = []
+
+    from app.services.profile_schema import (
+        is_valid_profile_section_type,
+        normalize_section_type_alias,
+    )
+
+    for index, candidate in enumerate(candidates):
+        if not isinstance(candidate, dict):
+            continue
+        section_type = normalize_section_type_alias(
+            str(candidate.get("section_type") or "custom:c_generic").strip().lower()
+        )
+        if not is_valid_profile_section_type(section_type):
+            section_type = "custom:c_generic"
+        title = _clean_text(
+            candidate.get("title") or f"Profile 对话条目 {index + 1}",
+            "title",
+            limit=220,
+            required=True,
+        )
+        after = candidate.get("content_json")
+        if not isinstance(after, dict) or not after:
+            continue
+        confidence = candidate.get("confidence")
+        try:
+            normalized_confidence = min(max(float(confidence or 0), 0.0), 1.0)
+        except (TypeError, ValueError):
+            normalized_confidence = 0.0
+        observation = await record_learning_observation(
+            source_type="profile_chat",
+            source_external_id=source_external_id,
+            source_title=f"Profile 对话 · {clean_topic}",
+            source_locator=f"profile-chat:{clean_session_id}",
+            source_metadata={
+                "session_id": clean_session_id,
+                "topic": clean_topic,
+                "candidate_index": index,
+            },
+            observation_type="profile_fact_candidate",
+            content={
+                "fact_type": section_type,
+                "title": title,
+                "source_excerpt": clean_message[:20_000],
+                "candidate": after,
+                "confidence": normalized_confidence,
+                "message_sha256": message_hash,
+            },
+            idempotency_key=(
+                f"profile-chat:{clean_session_id}:{message_hash}:{index}:"
+                f"{_sha256(_canonical_json(after))}"
+            ),
+        )
+        proposal = await create_memory_proposal(
+            observation_id=int(observation["id"]),
+            target_tier="verified_fact",
+            section_type=section_type,
+            title=title,
+            after=after,
+            reason="来自用户在 Profile 对话中的原文；确认前不会写入 Profile。",
+            impact=["纳入岗位分析、简历策略和面试准备的证据池"],
+        )
+        observation["candidate_index"] = index
+        proposal["candidate_index"] = index
+        observations.append(observation)
+        proposals.append(proposal)
+
+    return {
+        "source_external_id": source_external_id,
+        "observation_count": len(observations),
+        "proposal_count": len(proposals),
+        "observations": observations,
+        "proposals": proposals,
+    }
+
+
 async def list_learning_observations(
     *,
     status: str = "active",

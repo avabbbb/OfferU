@@ -1537,14 +1537,17 @@ async def profile_chat(data: ProfileChatRequest):
                 },
             )
             session_id = int(saved["session_id"])
+            saved_candidates = saved.get("candidates") if isinstance(saved, dict) else None
+            if not isinstance(saved_candidates, list):
+                saved_candidates = candidates
 
             yield _sse("ai_message", {"content": assistant_message, "session_id": session_id})
-            for idx, candidate in enumerate(candidates):
+            for idx, candidate in enumerate(saved_candidates):
                 event_payload = {"index": idx, "session_id": session_id, **candidate}
                 yield _sse("bullet_candidate", event_payload)
 
             if topic_complete:
-                yield _sse("topic_complete", {"topic": topic, "bullets_extracted": len(candidates)})
+                yield _sse("topic_complete", {"topic": topic, "bullets_extracted": len(saved_candidates)})
 
             yield _sse("done", {"session_id": session_id})
         except Exception:

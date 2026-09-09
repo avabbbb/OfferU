@@ -888,6 +888,9 @@ export interface ProfileSessionCandidate {
   title: string;
   content_json: Record<string, any>;
   confidence: number;
+  memory_proposal_id?: number;
+  observation_id?: number;
+  candidate_state?: "pending" | "deferred" | "accepted" | "rejected" | "pending_review" | string;
 }
 
 export interface ProfileChatSessionDetail extends ProfileChatSessionSummary {

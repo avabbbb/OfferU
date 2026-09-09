@@ -16,7 +16,8 @@
 - 邮箱页现在读取并轮询最近 `EmailSyncRun`，显示 pending/running/completed/failed/cancelled、尝试次数与发现/候选/写入计数；错误经过前端有界脱敏，失败不会伪装为成功。
 - 新鲜 Codex live probe 已在 `H:\tmp\offeru\codex-real-probe-20260910.db` 与 H 盘隔离 CWD 完成：`codex-cli 0.153.4`、随机 nonce、结构化 JSON、58 个流式事件和真实 App Server session 通过；本次未请求 lifecycle，证据见 `H:\tmp\offeru\codex-live-probe-20260910.json`。
 - 新鲜 H 盘全 Provider discovery 与 Codex Bridge conformance 已重跑：6 个 Provider 被发现、5 个已安装；Codex 自行完成 doctor/manifest/playbook/operation list/schema，读取 5 个只读业务 Operation，`mutations=0`、`grounding_verified=true`。空隔离库中它明确报告 Profile 事实未知；证据见 `H:\tmp\offeru\agent-matrix-real-20260910.json` 与 `H:\tmp\offeru\codex-bridge-real-20260910.json`。
-- Profile Builder Agent 的确认补丁现在通过 `LearningObservation → MemoryProposal → review_memory_proposal(accept)` 进入职业事实门，移除直接 `ProfileSection` 写入；批量确认中途失败会撤销本次新接受条目，保留来源观察与提案供重试。新增契约覆盖来源哈希、Registry 顺序、无直写和回滚；本切片新增测试尚未执行。
+- Profile Builder Agent 的确认补丁现在通过 `LearningObservation → MemoryProposal → review_memory_proposal(accept)` 进入职业事实门，移除直接 `ProfileSection` 写入；批量确认中途失败会撤销本次新接受条目，保留来源观察与提案供重试。新增契约覆盖来源哈希、Registry 顺序、无直写和回滚；定向回归已通过 `7 passed`。
+- Profile AI 对话候选现在也保存用户原文观察、稳定幂等键和待审核提案；SSE 返回 proposal/observation ID，确认只能走记忆审核，旧的无来源候选直接 fail-closed。隔离 H 盘数据库闭环已验证候选 JSON 持久化、确认、`agent_confirmed` Profile 条目和证据链接，日志见 `H:\tmp\offeru\profile-chat-integration-20260910-e.log`。
 - `ProfileOnboarding` 粘贴的 AI JSON 现在只作预览；没有原始 PDF/DOCX 与 OfferU 证据提案时 fail-closed，用户可清除候选后手填。本切片未重跑前端构建或浏览器验收。
 - 下一步只有外部输入后才能继续：提供真实 Resume PDF，完成 Gmail 只读 OAuth，并逐段执行 `PROFILE_T0 → PROFILE_FINAL → Job/Resume/Interview impact`。在此之前不输出 `LOCAL_AGENT_REAL_CAREER_GOLDEN_PATH_READY`。
 

@@ -3533,7 +3533,7 @@ OPERATIONS.update(
         "confirm_profile_bullet": Operation(
             name="confirm_profile_bullet",
             fn=confirm_profile_bullet,
-            description="确认一条 Profile 对话候选并写入档案条目。",
+            description="确认一条带来源观察提案的 Profile 候选并写入档案条目。",
             group="profile",
             side_effects=("write",),
             input_model=ConfirmProfileBulletInput,

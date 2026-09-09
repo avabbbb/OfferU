@@ -2,7 +2,7 @@
 // BulletConfirmCard — AI 生成的 Bullet 确认卡片
 // =============================================
 // 嵌入对话流中，展示 AI 提取的简历条目
-// 用户可以: ✅ 加入档案 | 编辑 | ✗ 跳过
+// 用户可以: ✅ 加入档案 | 补充后重试 | ✗ 跳过
 // =============================================
 
 "use client";
@@ -23,6 +23,9 @@ export interface BulletCandidate {
   date_range?: string;
   description: string;
   confidence: number;
+  memory_proposal_id?: number;
+  observation_id?: number;
+  candidate_state?: string;
 }
 
 interface BulletConfirmCardProps {
@@ -55,6 +58,7 @@ export function BulletConfirmCard({
       : bullet.confidence > 0.5
       ? "中"
       : "低";
+  const evidenceBound = Number(bullet.memory_proposal_id || 0) > 0;
 
   const handleConfirm = async () => {
     setConfirming(true);
@@ -112,6 +116,11 @@ export function BulletConfirmCard({
         <Chip size="sm" variant="flat" color={confidenceColor}>
           置信度 {confidenceLabel}
         </Chip>
+        {evidenceBound && (
+          <Chip size="sm" variant="flat" color="primary">
+            来源已绑定
+          </Chip>
+        )}
       </div>
 
       {/* Content */}
@@ -164,9 +173,10 @@ export function BulletConfirmCard({
           size="sm"
           variant="flat"
           startContent={mode === "view" ? <Edit3 size={14} /> : <CheckCircle2 size={14} />}
+          isDisabled={evidenceBound}
           onPress={() => setMode(mode === "view" ? "edit" : "view")}
         >
-          {mode === "view" ? "编辑" : "确认修改"}
+          {evidenceBound ? "请在对话中补充" : mode === "view" ? "编辑" : "确认修改"}
         </Button>
         <Button
           size="sm"

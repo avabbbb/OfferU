@@ -112,6 +112,15 @@ function toBulletCandidate(payload: any): BulletCandidate | null {
     title: String(payload.title || "待确认条目"),
     description: text,
     confidence: Number(payload.confidence ?? 0.7),
+    memory_proposal_id:
+      Number.isInteger(Number(payload.memory_proposal_id)) && Number(payload.memory_proposal_id) > 0
+        ? Number(payload.memory_proposal_id)
+        : undefined,
+    observation_id:
+      Number.isInteger(Number(payload.observation_id)) && Number(payload.observation_id) > 0
+        ? Number(payload.observation_id)
+        : undefined,
+    candidate_state: typeof payload.candidate_state === "string" ? payload.candidate_state : undefined,
   };
 }
 
