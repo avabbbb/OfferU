@@ -50,6 +50,23 @@ _BUSINESS_TO_OPERATIONS = {
     "offeru_list_email_sync_runs": "list_email_sync_runs",
 }
 
+# A populated Career context is more than a Profile snapshot. Keep this set
+# explicit so a green Bridge conformance run proves that the external Agent
+# can discover and read the source/evolution surfaces it is expected to use.
+# These are all Registry reads; no mutation is granted by this runner.
+_REQUIRED_CONTEXT_READS = frozenset(
+    {
+        "get_profile",
+        "list_resumes",
+        "list_jobs",
+        "list_learning_observations",
+        "list_memory_inbox",
+        "get_profile_evolution_report",
+        "list_email_accounts",
+        "list_email_sync_runs",
+    }
+)
+
 
 def _bridge_cwd(run_id: str) -> Path:
     """Create the isolated Bridge cwd on the configured non-system drive."""
@@ -268,12 +285,14 @@ agent playbook, operation catalogue, and the schema for the read-only Profile
 operation you discover. Decide which tools to call from the supplied tool
 descriptions and their outputs; do not assume an operation name from this
 prompt and do not repeat discovery calls unnecessarily. Then read the current
-Profile and the saved resumes, jobs, active application progress, and linked
-Profile evidence needed to answer the questions below. Use the actual
-Operation Registry outputs as the only source for career facts. Never write,
-triage, confirm, send email, or call a tool that is not granted. If data is
-absent, say it is unknown or evidence is insufficient. Do not infer facts from
-this prompt.
+Profile and the saved resumes, jobs, active application progress, linked
+Profile evidence, learning observations, pending memory candidates, Profile
+evolution report, connected email accounts, and email sync runs. You must call
+the corresponding read-only tools even when a surface is empty, so the result
+proves the complete Career context boundary. Use the actual Operation Registry
+outputs as the only source for career facts. Never write, triage, confirm, send
+email, or call a tool that is not granted. If data is absent, say it is unknown
+or evidence is insufficient. Do not infer facts from this prompt.
 
 Return exactly one JSON object with these keys:
 {
@@ -287,8 +306,10 @@ Return exactly one JSON object with these keys:
 
 Career questions: What career facts are in the current Profile? How many resumes
 and jobs are present? Which application progress candidates are active? Which
-profile evidence is weakest? List the Registry operation names whose outputs you
-actually used in the answer.
+profile evidence is weakest? How many learning observations and pending memory
+candidates are present? What does the Profile evolution report say? What email
+accounts and sync runs are visible, and are they read-only? List the Registry
+operation names whose outputs you actually used in the answer.
 """
         lease_task = asyncio.create_task(renew_lease_while_running())
         try:
@@ -352,6 +373,12 @@ actually used in the answer.
             raise ValueError("Codex 未返回实际使用的 Operation 名称")
         if not all(str(name) in used_operation_names for name in grounded_names):
             raise ValueError("Codex 的职业回答未完全由实际 Operation 输出支撑")
+        missing_context_reads = sorted(_REQUIRED_CONTEXT_READS - used_operation_names)
+        if missing_context_reads:
+            raise ValueError(
+                "Codex 未读取完整 Career context: "
+                + ", ".join(missing_context_reads)
+            )
         if forbidden:
             raise ValueError("Codex 尝试调用未授予的工具")
         await bridge_request(
@@ -384,11 +411,13 @@ actually used in the answer.
     grounded = isinstance(grounded_names, list) and all(
         str(name) in used_operation_names for name in grounded_names
     )
+    missing_context_reads = sorted(_REQUIRED_CONTEXT_READS - used_operation_names)
     return {
         "schema": "offeru.codex_offeru_conformance.v1",
         "ok": not bool(failure)
         and all(name in discovery_seen for name in _DISCOVERY_TOOLS)
         and bool(business_call_names)
+        and not missing_context_reads
         and not forbidden
         and grounded,
         "run_id": run_id,
@@ -410,6 +439,8 @@ actually used in the answer.
         "business_operations": sorted(
             {_BUSINESS_TO_OPERATIONS[name] for name in business_call_names}
         ),
+        "required_context_reads": sorted(_REQUIRED_CONTEXT_READS),
+        "missing_context_reads": missing_context_reads,
         "unnecessary_operations": unnecessary,
         "forbidden_operations": forbidden,
         "mutations": 0,
