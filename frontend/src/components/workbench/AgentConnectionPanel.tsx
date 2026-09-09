@@ -20,6 +20,34 @@ const STATUS = {
   failed: { label: "检查失败", tone: "text-red-700", title: "这次没有连上，可以重试", detail: "确认本机 Agent 能正常启动，再重新检查。" },
 };
 
+const CAPABILITY_LABELS: Array<[keyof AgentConnection, string]> = [
+  ["live_model_state", "真实模型"],
+  ["structured_output_state", "结构化输出"],
+  ["streaming_state", "流式"],
+  ["resume_state", "继续"],
+  ["cancel_state", "取消"],
+  ["web_search_state", "网页搜索"],
+];
+
+const CAPABILITY_STATE_LABEL: Record<string, string> = {
+  SUPPORTED: "已声明",
+  VERIFIED: "已验证",
+  UNSUPPORTED: "不支持",
+  NOT_VERIFIED: "未验证",
+  BLOCKED_AUTH: "认证阻塞",
+  UNAVAILABLE: "不可用",
+  ERROR: "检查失败",
+};
+
+function capabilityState(value: unknown) {
+  const state = String(value || "NOT_VERIFIED");
+  return {
+    state,
+    label: CAPABILITY_STATE_LABEL[state] || "未验证",
+    tone: state === "VERIFIED" ? "text-emerald-700" : state === "SUPPORTED" ? "text-blue-700" : state === "ERROR" || state === "BLOCKED_AUTH" ? "text-red-700" : "text-[var(--foreground-muted)]",
+  };
+}
+
 function currentStatus(item: AgentConnection) {
   if (item.status === "ready" && (!item.checked_at || Date.now() - Date.parse(item.checked_at) > 120000)) {
     return STATUS.check_required;
@@ -150,6 +178,15 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
               <h4 className="mt-3 text-lg font-semibold tracking-tight">{checking ? "正在确认连接与登录状态" : presentation.title}</h4>
               <p className="mt-2 text-xs leading-6 text-[var(--foreground-muted)]">{presentation.detail}</p>
               {selected.last_error && <div role="alert" className="mt-3 break-words rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">{selected.last_error}</div>}
+              <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3" aria-label="本机 Agent 能力验证状态">
+                {CAPABILITY_LABELS.map(([key, label]) => {
+                  const state = capabilityState(selected[key]);
+                  return <div key={String(key)} className="min-w-0 rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2">
+                    <span className="block truncate text-[10px] text-[var(--foreground-muted)]">{label}</span>
+                    <span className={`mt-1 block truncate text-[11px] font-semibold ${state.tone}`} title={state.state}>{state.label}</span>
+                  </div>;
+                })}
+              </div>
               <ol className="my-6 space-y-5" aria-label="接入步骤">
                 <SetupStep index={1} title="找到本机 Agent" done={selected.installed} detail={selected.installed ? selected.version || "已发现本机运行环境" : "安装后，OfferU 会自动发现它。"} />
                 <SetupStep index={2} title="检查连接与登录" done={localReady} busy={checking}
@@ -174,7 +211,10 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
                 <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 leading-relaxed">
                   <dt>安装与能力</dt><dd>{selected.compatible ? "本机组件检查通过" : "尚未通过"}</dd>
                   <dt>本机登录</dt><dd>{selected.authenticated === true ? "已读取登录信息" : selected.authenticated === false ? "需要登录" : "尚未确认"}</dd>
-                  <dt>服务商响应</dt><dd>{selected.live_model_verified ? "真实模型已验证" : "将在实际任务中验证"}</dd>
+                  <dt>服务商响应</dt><dd>{capabilityState(selected.live_model_state).label}</dd>
+                  <dt>生命周期</dt><dd>继续 {capabilityState(selected.resume_state).label} · 取消 {capabilityState(selected.cancel_state).label}</dd>
+                  <dt>流式输出</dt><dd>{capabilityState(selected.streaming_state).label}</dd>
+                  <dt>网页搜索</dt><dd>{capabilityState(selected.web_search_state).label}</dd>
                   <dt>最近检测</dt><dd>{connectionTime(selected.detected_at)}</dd>
                 </dl>
                 {state.snapshot?.connect_prompt && <p className="mt-3 select-text whitespace-pre-wrap break-words rounded-lg bg-[var(--surface-muted)] p-3 leading-6">{state.snapshot.connect_prompt}</p>}

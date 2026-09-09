@@ -939,6 +939,15 @@ export interface AgentConnection {
   docs_url: string;
   can_verify_login: boolean;
   live_model_verified: boolean;
+  native_auth_state: string;
+  live_model_state: string;
+  structured_output_state: string;
+  streaming_state: string;
+  resume_state: string;
+  cancel_state: string;
+  cwd_isolation_state: string;
+  web_search_state: string;
+  conformance_checked_at: string | null;
 }
 
 export interface AgentConnectionsSnapshot {

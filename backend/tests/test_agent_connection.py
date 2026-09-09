@@ -44,6 +44,36 @@ class AgentConnectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(item["authenticated"])
         self.assertFalse(item["connection_verified"])
         self.assertFalse(item["live_model_verified"])
+        self.assertEqual(item["resume_state"], "NOT_VERIFIED")
+        self.assertEqual(item["cancel_state"], "NOT_VERIFIED")
+
+    async def test_persisted_conformance_states_are_projected_without_exposing_credentials(self):
+        item = connection._view(
+            detected(),
+            {
+                "available": True,
+                "authenticated": True,
+                "capabilities": {
+                    "conformance": {
+                        "binary_path": "/agent/codex",
+                        "version": "1.0.0",
+                        "last_probe_at": "2026-09-09T08:00:00Z",
+                        "live_model_verified": "VERIFIED",
+                        "structured_output_verified": "VERIFIED",
+                        "streaming_verified": "VERIFIED",
+                        "resume_verified": "VERIFIED",
+                        "cancel_verified": "ERROR",
+                        "web_search_verified": "SUPPORTED",
+                        "api_key": "must-not-leak",
+                    }
+                },
+            },
+        )
+        self.assertEqual(item["live_model_state"], "VERIFIED")
+        self.assertEqual(item["resume_state"], "VERIFIED")
+        self.assertEqual(item["cancel_state"], "ERROR")
+        self.assertEqual(item["web_search_state"], "SUPPORTED")
+        self.assertNotIn("must-not-leak", json.dumps(item))
 
     async def test_local_handshake_has_no_model_turn_and_does_not_expose_account_details(self):
         result, adapter, probe, _ = await self.run_probe({

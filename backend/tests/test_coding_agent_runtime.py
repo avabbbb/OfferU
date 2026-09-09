@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -203,6 +204,51 @@ class CodingAgentRuntimeTests(unittest.TestCase):
             )
 
         self.assertEqual(result["id"], "codex")
+
+    def test_selector_prefers_persisted_lifecycle_verified_provider(self) -> None:
+        claude = {
+            "id": "claude",
+            **runtime.RUNTIME_DEFINITIONS["claude"],
+            "available": True,
+            "contract_compatible": True,
+            "missing_required_flags": [],
+        }
+        codex = {
+            "id": "codex",
+            **runtime.RUNTIME_DEFINITIONS["codex"],
+            "available": True,
+            "contract_compatible": True,
+            "missing_required_flags": [],
+        }
+
+        async def health(provider_id: str) -> dict[str, object]:
+            return {
+                "capabilities": {
+                    "conformance": {
+                        "resume_verified": "VERIFIED" if provider_id == "codex" else "SUPPORTED",
+                    }
+                }
+            }
+
+        with patch.object(
+            runtime,
+            "_probe",
+            AsyncMock(side_effect=[claude, codex]),
+        ), patch(
+            "app.services.agent_provider_health.get_provider_health",
+            new=AsyncMock(side_effect=health),
+        ), patch(
+            "app.config.get_settings",
+            return_value=SimpleNamespace(coding_agent_priority="claude,codex"),
+        ):
+            result = asyncio.run(
+                runtime.select_local_executor(
+                    requirements=runtime.ExecutorRequirements(resume=True),
+                )
+            )
+
+        self.assertEqual(result["id"], "codex")
+        self.assertEqual(result["verified_capabilities"], {"resume": "VERIFIED"})
 
     def test_extracts_codex_agent_message_from_jsonl(self) -> None:
         stdout = "\n".join(

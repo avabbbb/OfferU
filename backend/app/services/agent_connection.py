@@ -64,6 +64,20 @@ def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
     live_model_verified = bool(
         conformance_matches and conformance.get("live_model_verified") == "VERIFIED"
     )
+    def conformance_state(field: str) -> str:
+        if not conformance_matches:
+            return "NOT_VERIFIED"
+        value = str(conformance.get(field) or "NOT_VERIFIED")
+        return value if value in {
+            "SUPPORTED",
+            "VERIFIED",
+            "UNSUPPORTED",
+            "NOT_VERIFIED",
+            "BLOCKED_AUTH",
+            "UNAVAILABLE",
+            "ERROR",
+        } else "NOT_VERIFIED"
+
     if persisted_connection_verified and not check:
         status = "ready"
     return {
@@ -95,6 +109,15 @@ def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
         "docs_url": _GUIDES.get(provider_id, ""),
         "can_verify_login": provider_id == "codex",
         "live_model_verified": live_model_verified,
+        "native_auth_state": conformance_state("native_auth_detected"),
+        "live_model_state": conformance_state("live_model_verified"),
+        "structured_output_state": conformance_state("structured_output_verified"),
+        "streaming_state": conformance_state("streaming_verified"),
+        "resume_state": conformance_state("resume_verified"),
+        "cancel_state": conformance_state("cancel_verified"),
+        "cwd_isolation_state": conformance_state("cwd_isolation_verified"),
+        "web_search_state": conformance_state("web_search_verified"),
+        "conformance_checked_at": conformance.get("last_probe_at") if conformance_matches else None,
     }
 
 

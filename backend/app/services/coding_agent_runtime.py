@@ -174,6 +174,8 @@ class ExecutorRequirements:
 
     web_search: bool = False
     schema_flag: bool = False
+    resume: bool = False
+    cancel: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -579,7 +581,52 @@ async def select_local_executor(
             return False
         if required.schema_flag and decl.get("schema_mode") != "flag":
             return False
+        if required.resume and not decl.get("supports_resume"):
+            return False
+        if required.cancel and not decl.get("supports_cancel"):
+            return False
         return True
+
+    async def _verified_capability_states(runtime_id: str) -> dict[str, str]:
+        """Read durable probe states without making selection depend on the DB."""
+
+        requested = [
+            capability
+            for capability, enabled in (
+                ("resume", required.resume),
+                ("cancel", required.cancel),
+            )
+            if enabled
+        ]
+        if not requested:
+            return {}
+        try:
+            from app.services.agent_provider_health import get_provider_health
+
+            health = await get_provider_health(runtime_id)
+        except Exception:
+            return {}
+        capabilities = health.get("capabilities")
+        conformance = (
+            capabilities.get("conformance")
+            if isinstance(capabilities, dict)
+            and isinstance(capabilities.get("conformance"), dict)
+            else {}
+        )
+        return {
+            capability: str(conformance.get(f"{capability}_verified") or "")
+            for capability in requested
+        }
+
+    async def _selection_score(runtime_id: str) -> tuple[int, dict[str, str]]:
+        states = await _verified_capability_states(runtime_id)
+        score = 0
+        for state in states.values():
+            if state == "VERIFIED":
+                score += 2
+            elif state in {"ERROR", "BLOCKED_AUTH", "UNAVAILABLE", "UNSUPPORTED"}:
+                score -= 1
+        return score, states
 
     clean_preferred = str(preferred or "").strip().lower()
     if clean_preferred:
@@ -595,6 +642,10 @@ async def select_local_executor(
         if not selected.get("supported") or not selected.get("contract_compatible"):
             missing = ", ".join(selected.get("missing_required_flags") or []) or "unknown capability"
             raise ValueError(f"{selected['name']} 契约不兼容，缺少: {missing}")
+        if required.resume or required.cancel:
+            _, states = await _selection_score(clean_preferred)
+            if states:
+                selected = {**selected, "verified_capabilities": states}
         return selected
 
     priority = [
@@ -603,6 +654,7 @@ async def select_local_executor(
         if item.strip()
     ] or ["claude", "codex", "gemini"]
     tried: list[str] = []
+    candidates: list[tuple[int, int, dict[str, Any], dict[str, str]]] = []
     for runtime_id in priority:
         if runtime_id not in RUNTIME_DEFINITIONS or not _capability_ok(runtime_id):
             continue
@@ -613,7 +665,16 @@ async def select_local_executor(
             and selected.get("supported")
             and selected.get("contract_compatible")
         ):
-            return selected
+            if not (required.resume or required.cancel):
+                return selected
+            score, states = await _selection_score(runtime_id)
+            candidates.append((score, -len(candidates), selected, states))
+    if candidates:
+        candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        _, _, selected, states = candidates[0]
+        if states:
+            selected = {**selected, "verified_capabilities": states}
+        return selected
     raise ValueError(
         "没有可用且契约兼容的 coding-agent runtime"
         + (f"（已尝试: {', '.join(tried)}）" if tried else "")
