@@ -7,7 +7,10 @@ import {
   ArrowLeft,
   ArrowRight,
   BriefcaseBusiness,
+  Check,
   CheckCircle2,
+  CircleAlert,
+  Clock3,
   FileText,
   GraduationCap,
   Sparkles,
@@ -25,11 +28,13 @@ import {
 } from "@/lib/personalArchive";
 import {
   importProfileResume,
+  confirmProfileCandidate,
   updateProfileData,
   type ProfileData,
   type ProfileImportResult,
   type ResumeImportParseMode,
 } from "@/lib/hooks";
+import { memoryApi } from "@/lib/api";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import AIImportModal from "./AIImportModal";
 
@@ -75,6 +80,53 @@ const DEFAULT_FORM: OnboardingFormState = {
   skillsText: "",
   summary: "",
 };
+
+type CandidateReviewState = "pending" | "accepted" | "rejected" | "deferred";
+
+function candidateProposalId(candidate: ProfileImportResult["bullets"][number]): number {
+  const value = Number(candidate.memory_proposal_id || 0);
+  return Number.isInteger(value) && value > 0 ? value : 0;
+}
+
+function normalizeCandidateReviewState(candidate: ProfileImportResult["bullets"][number]): CandidateReviewState {
+  switch (candidate.candidate_state) {
+    case "accepted":
+      return "accepted";
+    case "rejected":
+      return "rejected";
+    case "deferred":
+      return "deferred";
+    default:
+      return "pending";
+  }
+}
+
+function candidateSummary(candidate: ProfileImportResult["bullets"][number]): string {
+  const content = candidate.content_json || {};
+  const direct = [content.bullet, content.description, content.summary].find(
+    (value) => typeof value === "string" && value.trim()
+  );
+  if (direct) return String(direct).trim();
+  const normalized = content.normalized;
+  if (normalized && typeof normalized === "object") {
+    return Object.values(normalized)
+      .filter((value) => typeof value === "string" && value.trim())
+      .join(" · ")
+      .trim();
+  }
+  return JSON.stringify(content, null, 0);
+}
+
+function candidateTypeLabel(sectionType: string): string {
+  return ({
+    education: "教育",
+    experience: "工作经历",
+    internship: "实习经历",
+    project: "项目",
+    skill: "技能",
+    certificate: "证书",
+  } as Record<string, string>)[sectionType] || sectionType || "经历素材";
+}
 
 function clean(value: unknown): string {
   return String(value ?? "").trim();
@@ -274,12 +326,40 @@ export function ProfileOnboarding({ currentArchive, profile, onComplete, onClose
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [aiImportOpen, setAiImportOpen] = useState(false);
+  const [candidateReview, setCandidateReview] = useState<Record<number, CandidateReviewState>>({});
+  const [reviewingCandidateIndex, setReviewingCandidateIndex] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const importModeRef = useRef<ResumeImportParseMode>("ai");
 
-  const previewArchive = useMemo(() => buildOnboardingArchive(form, imported, profile), [form, imported, profile]);
+  const importedForPreview = useMemo(() => {
+    if (!imported) return imported;
+    return {
+      ...imported,
+      bullets: imported.bullets.filter((candidate, index) => {
+        if (!candidateProposalId(candidate)) return true;
+        const state = candidateReview[index] || normalizeCandidateReviewState(candidate);
+        return state !== "rejected" && state !== "deferred";
+      }),
+    };
+  }, [candidateReview, imported]);
+  const previewArchive = useMemo(() => buildOnboardingArchive(form, importedForPreview, profile), [form, importedForPreview, profile]);
   const missing = useMemo(() => getDeliverableMissing(previewArchive), [previewArchive]);
   const deliverableScore = Math.max(0, Math.round(((8 - Math.min(missing.length, 8)) / 8) * 100));
+
+  const trackedCandidates = imported?.bullets.filter(candidateProposalId) || [];
+  const pendingCandidateCount = imported?.bullets.reduce((count, candidate, index) => {
+    if (!candidateProposalId(candidate)) return count;
+    const state = candidateReview[index] || normalizeCandidateReviewState(candidate);
+    return state === "pending" ? count + 1 : count;
+  }, 0) || 0;
+  const missingEvidenceCandidateCount = imported?.filename !== "ai-import"
+    ? imported?.bullets.filter((candidate) => !candidateProposalId(candidate)).length || 0
+    : 0;
+  const acceptedCandidateCount = imported?.bullets.reduce((count, candidate, index) => {
+    if (!candidateProposalId(candidate)) return count;
+    const state = candidateReview[index] || normalizeCandidateReviewState(candidate);
+    return state === "accepted" ? count + 1 : count;
+  }, 0) || 0;
 
   const update = (patch: Partial<OnboardingFormState>) => setForm((prev) => ({ ...prev, ...patch }));
   const canGoNext =
@@ -319,8 +399,19 @@ export function ProfileOnboarding({ currentArchive, profile, onComplete, onClose
     setCustomRole("");
   };
 
-  const handleAiImport = (result: ProfileImportResult) => {
+  const setImportedResult = (result: ProfileImportResult) => {
     setImported(result);
+    const initialReview: Record<number, CandidateReviewState> = {};
+    result.bullets.forEach((candidate, index) => {
+      if (candidateProposalId(candidate)) {
+        initialReview[index] = normalizeCandidateReviewState(candidate);
+      }
+    });
+    setCandidateReview(initialReview);
+  };
+
+  const handleAiImport = (result: ProfileImportResult) => {
+    setImportedResult(result);
     const base = result.base_info || {};
     setForm((prev) => ({
       ...prev,
@@ -346,7 +437,7 @@ export function ProfileOnboarding({ currentArchive, profile, onComplete, onClose
     setError("");
     try {
       const result = await importProfileResume(file, parseMode);
-      setImported(result);
+      setImportedResult(result);
       const base = result.base_info || {};
       setForm((prev) => ({
         ...prev,
@@ -374,11 +465,57 @@ export function ProfileOnboarding({ currentArchive, profile, onComplete, onClose
     }
   };
 
+  const reviewCandidate = async (index: number, action: Exclude<CandidateReviewState, "pending">) => {
+    if (!imported || reviewingCandidateIndex !== null) return;
+    const candidate = imported.bullets[index];
+    const proposalId = candidate && candidateProposalId(candidate);
+    if (!candidate || !proposalId) {
+      setError("这条候选没有建立可审核的来源提案，暂不写入 Profile。请重新上传原始简历。");
+      return;
+    }
+    setReviewingCandidateIndex(index);
+    setError("");
+    try {
+      if (action === "accepted") {
+        await confirmProfileCandidate({ session_id: imported.session_id, bullet_index: index });
+      } else {
+        await memoryApi.reviewProposal(
+          proposalId,
+          action === "rejected" ? "reject" : "defer",
+          action === "rejected" ? "用户在 Resume 导入审核中拒绝" : "用户在 Resume 导入审核中选择稍后处理"
+        );
+      }
+      setCandidateReview((prev) => ({ ...prev, [index]: action }));
+    } catch (err: any) {
+      setError(safeClientErrorMessage(err, "候选审核失败，请重试。"));
+    } finally {
+      setReviewingCandidateIndex(null);
+    }
+  };
+
   const handleFinish = async () => {
+    if (pendingCandidateCount > 0 || missingEvidenceCandidateCount > 0) {
+      setError(
+        missingEvidenceCandidateCount > 0
+          ? "部分简历候选没有建立证据提案，已阻止写入 Profile；请重新上传原始简历。"
+          : `还有 ${pendingCandidateCount} 条 Resume 候选未审核。请逐条选择接受、拒绝或稍后处理。`
+      );
+      return;
+    }
     setSaving(true);
     setError("");
     try {
-      const archive = buildOnboardingArchive(form, imported, profile);
+      const reviewedImported = imported
+        ? {
+            ...imported,
+            bullets: imported.bullets.filter((candidate, index) => {
+              if (!candidateProposalId(candidate)) return true;
+              const state = candidateReview[index] || normalizeCandidateReviewState(candidate);
+              return state === "accepted";
+            }),
+          }
+        : imported;
+      const archive = buildOnboardingArchive(form, reviewedImported, profile);
       const baseInfoPayload = buildProfileBaseInfoForSave(profile?.base_info_json, archive);
       await updateProfileData({
         name: archive.resumeArchive.basicInfo.name || "默认档案",
@@ -554,7 +691,72 @@ export function ProfileOnboarding({ currentArchive, profile, onComplete, onClose
               )}
 
               {step === 3 && (
-                <StepFrame key="review" direction={direction} icon={Sparkles} title="补齐技能，然后生成可投递档案" subtitle="这里会把简历档案和网申档案一起写好。">
+                <StepFrame key="review" direction={direction} icon={Sparkles} title="审核证据，生成可投递档案" subtitle="Resume 候选先进入证据收件箱；逐条确认后，才会进入 Profile T0 和后续岗位分析。">
+                  {imported?.bullets.length ? (
+                    <div className="mb-4 rounded-md border border-[var(--border-strong)]/10 bg-white p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold">Resume 证据审核</p>
+                          <p className="mt-1 text-xs leading-relaxed text-[var(--foreground-muted)]">
+                            已识别 {imported.bullets.length} 条候选 · {trackedCandidates.length} 条可追溯提案 · 已确认 {acceptedCandidateCount} 条
+                          </p>
+                        </div>
+                        <Chip size="sm" color={pendingCandidateCount ? "warning" : "success"} variant="flat">
+                          {pendingCandidateCount ? `待审核 ${pendingCandidateCount}` : "审核完成"}
+                        </Chip>
+                      </div>
+                      <div className="mt-3 space-y-2">
+                        {imported.bullets.map((candidate, index) => {
+                          const proposalId = candidateProposalId(candidate);
+                          const tracked = Boolean(proposalId);
+                          const state = tracked
+                            ? candidateReview[index] || normalizeCandidateReviewState(candidate)
+                            : "pending";
+                          const busy = reviewingCandidateIndex === index;
+                          return (
+                            <div key={`${candidate.index}-${candidate.title}`} className="rounded-md border border-[var(--border-strong)]/10 bg-black/[0.02] p-3">
+                              <div className="flex items-start gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-xs font-semibold">{candidate.title || `候选 ${index + 1}`}</span>
+                                    <Chip size="sm" variant="flat">{candidateTypeLabel(candidate.section_type)}</Chip>
+                                    {candidate.source_pages?.length ? <span className="text-[11px] text-[var(--foreground-muted)]">第 {candidate.source_pages.join("、")} 页</span> : null}
+                                  </div>
+                                  <p className="mt-1 break-words text-xs leading-relaxed text-[var(--foreground-muted)]">{candidateSummary(candidate)}</p>
+                                </div>
+                                {tracked ? (
+                                  state === "pending" ? (
+                                    <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[11px] text-amber-800">待确认</span>
+                                  ) : (
+                                    <span className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] ${state === "accepted" ? "bg-green-100 text-green-700" : state === "rejected" ? "bg-red-100 text-red-700" : "bg-black/5 text-[var(--foreground-muted)]"}`}>
+                                      {state === "accepted" ? "已写入" : state === "rejected" ? "已拒绝" : "稍后处理"}
+                                    </span>
+                                  )
+                                ) : (
+                                  <CircleAlert className="shrink-0 text-amber-600" size={16} />
+                                )}
+                              </div>
+                              {tracked && state === "pending" ? (
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  <Button size="sm" color="success" variant="flat" startContent={<Check size={13} />} isLoading={busy} isDisabled={reviewingCandidateIndex !== null} onPress={() => reviewCandidate(index, "accepted")}>
+                                    确认事实
+                                  </Button>
+                                  <Button size="sm" color="danger" variant="flat" startContent={<X size={13} />} isLoading={busy} isDisabled={reviewingCandidateIndex !== null} onPress={() => reviewCandidate(index, "rejected")}>
+                                    不是我的经历
+                                  </Button>
+                                  <Button size="sm" variant="light" startContent={<Clock3 size={13} />} isLoading={busy} isDisabled={reviewingCandidateIndex !== null} onPress={() => reviewCandidate(index, "deferred")}>
+                                    稍后核对
+                                  </Button>
+                                </div>
+                              ) : !tracked ? (
+                                <p className="mt-2 text-[11px] leading-relaxed text-amber-700">未建立后端证据提案，这条内容不会写入职业模型；请重新上传原始简历以获得可追溯审核。</p>
+                              ) : null}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
                   <Textarea label="技能 / 工具 / 证书" minRows={3} value={form.skillsText} onValueChange={(skillsText) => update({ skillsText })} placeholder="例如：Excel、SQL、Canva、用户访谈、公众号排版、英语六级" variant="bordered" />
                   <Textarea label="个人简介" minRows={3} value={form.summary} onValueChange={(summary) => update({ summary })} placeholder="一句话总结你的方向和优势；不填也会自动生成基础版本。" variant="bordered" className="mt-3" />
                   <div className="mt-4 rounded-md border border-[var(--border-strong)]/10 bg-white p-4">
@@ -599,7 +801,9 @@ export function ProfileOnboarding({ currentArchive, profile, onComplete, onClose
           {step < STEP_LABELS.length - 1 ? (
             <Button color="primary" endContent={<ArrowRight size={16} />} isDisabled={!canGoNext} onPress={goNext}>下一步</Button>
           ) : (
-            <Button color="primary" startContent={<CheckCircle2 size={16} />} isLoading={saving} isDisabled={missing.length > 0} onPress={handleFinish}>生成可投递档案</Button>
+            <Button color="primary" startContent={<CheckCircle2 size={16} />} isLoading={saving} isDisabled={missing.length > 0 || pendingCandidateCount > 0 || missingEvidenceCandidateCount > 0} onPress={handleFinish}>
+              {pendingCandidateCount > 0 ? `先审核 ${pendingCandidateCount} 条候选` : "确认并生成可投递档案"}
+            </Button>
           )}
         </div>
       </div>

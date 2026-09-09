@@ -763,6 +763,13 @@ def _extract_last_candidates(messages_json: list[Any]) -> list[dict[str, Any]]:
     return []
 
 
+def _resume_candidate_state(proposal: dict[str, Any]) -> str:
+    """Project a MemoryProposal status into the Resume review contract."""
+
+    status = str(proposal.get("status") or "pending").strip().lower()
+    return status if status in {"pending", "deferred", "accepted", "rejected"} else "pending_review"
+
+
 async def confirm_profile_bullet(
     session_id: int,
     bullet_index: int,
@@ -949,7 +956,7 @@ async def save_profile_resume_import(
             )
             if linked:
                 bullet["observation_id"] = linked.get("id")
-            bullet["candidate_state"] = "pending_review"
+            bullet["candidate_state"] = _resume_candidate_state(proposal)
     enriched_candidates = [
         {
             **candidate,

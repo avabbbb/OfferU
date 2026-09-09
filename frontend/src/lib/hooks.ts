@@ -835,6 +835,9 @@ export interface ProfileBulletCandidate {
   confidence: number;
   source_pages?: number[];
   source_ref?: string;
+  memory_proposal_id?: number;
+  observation_id?: number;
+  candidate_state?: "pending" | "deferred" | "accepted" | "rejected" | "pending_review" | string;
 }
 
 export interface ProfileStreamEvent {

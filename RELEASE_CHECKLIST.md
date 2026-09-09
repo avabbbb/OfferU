@@ -139,7 +139,8 @@
 | Email read-only → observations | BLOCKED_EXTERNAL | IMAP fixture 的 search/list/read、去重和禁止 mutation 通过；真实邮箱 OAuth 尚未完成 |
 | Longitudinal Profile evolution | BLOCKED_EXTERNAL | fixture 已验证 delta/dedup/conflict/hypothesis/reject 规则；真实分段邮箱输入和人工确认尚缺 |
 | Profile → Job/Resume/Interview impact | BLOCKED_EXTERNAL | fixture 已证明 T0/Final 产生差异；真实 Profile Final 和真实 JD/下游闭环尚缺 |
-| Regression / architecture / UI evidence | PASS | backend `502 passed, 9 skipped, 17 warnings, 11 subtests`；frontend typecheck/build PASS；architecture `0 findings`；390px/1440px browser errors/overflow `0`。最新 H 盘回归见 `H:\tmp\offeru\full-regression-temp-policy-20260909-r2.log` |
+| Resume import evidence review UI | PASS | `ProfileOnboarding` 最终步骤逐条展示候选来源与证据状态；接受走 `confirm_profile_bullet`，拒绝/稍后走 Memory review，未建立后端提案的真实文件候选 fail-closed；职业记忆/演化定向回归 `21 passed`，frontend typecheck/build PASS |
+| Regression / architecture / UI evidence | PASS | backend `506 passed, 9 skipped, 17 warnings, 11 subtests`；frontend typecheck/build PASS；architecture `0 findings`；390px/1440px browser errors/overflow `0`。最新 H 盘回归见 `H:\tmp\offeru\full-regression-profile-review-final-20260910.log` |
 | Test storage boundary | PASS | pytest 全局 `tempfile`、E2E helper、Smart Fill fixture、Agent CWD、browser profile、日志和数据库副本统一在 `H:\tmp\offeru`，Windows C 盘临时目录 fail-closed；边界回归 `1 passed`，完整策略证据见 `H:\tmp\offeru\temp-policy-20260909.json`。C 盘仅为既有 Provider executable/auth 路径，不承载测试临时数据 |
 | Extension build / browser fixture | PARTIAL | Extension typecheck、WXT production build、Vitest `208 passed, 7 skipped` 和 generated artifact guard 通过；动态 Smart Fill fixture 因 H 盘 managed Chromium CDN 下载 timeout/`ECONNRESET` 被外部阻塞，未使用系统 Chrome/Edge |
 
