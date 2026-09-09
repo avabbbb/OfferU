@@ -55,6 +55,7 @@ Role Intelligence controlled backend-search adapter → public web HTTP boundary
 - Profile AI 对话候选也已收口到同一事实门：保存用户原文观察、稳定幂等键和待审核提案，SSE 返回 proposal/observation ID，确认只能走 `review_memory_proposal`；没有来源提案的历史候选 fail-closed。隔离 H 盘数据库闭环已验证候选持久化、确认、`agent_confirmed` Profile 条目和两条证据链接，未触碰正式数据库。
 - Resume 证据摘录现在始终保留一段有界原文上下文，即使候选 bullet 只是原文子串也不会丢失项目/公司标题；隔离导入→session proposal 持久化→事实门确认闭环通过。该上下文修复后的后端全量回归为 `514 passed, 9 skipped, 17 warnings, 11 subtests passed in 251.78s`。
 - 在 H 盘隔离库完成 T0/Final 下游影响契约：新增事实只通过 Profile Chat → LearningObservation → MemoryProposal → 用户确认进入 Profile；快照发生变化，岗位投影选中事实 `1→2`，简历选中事实 `1→2` 且缺口变化，面试 Focus 随证据缺口重新排序，来源确认与落地 section 均可追溯。证据：[synthetic Profile impact](H:/tmp/offeru/profile-impact-evidence-20260910.json)。该证据是合成数据契约，不等同于真实用户 Resume/邮箱闭环，严格 verdict 仍为 `LOCAL_AGENT_REAL_CAREER_GOLDEN_PATH_FAIL`。
+- Gate 5/6/7 的内部定向回归已在 H 盘隔离数据库完成：职业记忆、邮箱增量同步、申请进度与演化报告 `34 passed`；简历优化、Role Intelligence、面试 Focus `26 passed, 1 subtest passed`。日志：[memory/email](H:/tmp/offeru/gate6-memory-email-20260910.log)、[downstream](H:/tmp/offeru/gate7-downstream-20260910.log)。这些是确定性契约证据，不能替代真实邮箱 OAuth 与真实用户 Resume。
 - `ProfileOnboarding` 的粘贴 AI JSON 明确标记为“仅预览”，没有原始 PDF/DOCX 与 OfferU 证据提案时最终步骤 fail-closed；用户可清除候选后手填，避免无来源内容伪装成 `PROFILE_T0`。本切片未重跑前端构建或浏览器验收。
 
 未完成的硬门：真实 Resume → `PROFILE_T0`、真实邮箱只读 OAuth → Career Observations、分段 Profile 演化、Profile → Job/Resume/Interview 的真实影响，以及其它 Provider 的 live 认证/模型条件。没有这些外部输入，不得输出 `LOCAL_AGENT_REAL_CAREER_GOLDEN_PATH_READY`。
