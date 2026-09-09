@@ -19,6 +19,7 @@
 - Profile Builder Agent 的确认补丁现在通过 `LearningObservation → MemoryProposal → review_memory_proposal(accept)` 进入职业事实门，移除直接 `ProfileSection` 写入；批量确认中途失败会撤销本次新接受条目，保留来源观察与提案供重试。新增契约覆盖来源哈希、Registry 顺序、无直写和回滚；定向回归已通过 `7 passed`。
 - Profile AI 对话候选现在也保存用户原文观察、稳定幂等键和待审核提案；SSE 返回 proposal/observation ID，确认只能走记忆审核，旧的无来源候选直接 fail-closed。隔离 H 盘数据库闭环已验证候选 JSON 持久化、确认、`agent_confirmed` Profile 条目和证据链接，日志见 `H:\tmp\offeru\profile-chat-integration-20260910-e.log`。
 - Resume 证据摘录现在保留有界原文上下文，即使候选 bullet 只是原文子串也能保留项目/公司标题；隔离 Resume 导入→proposal 持久化→事实门确认闭环通过，日志见 `H:\tmp\offeru\resume-chat-integration-20260910-f.log`。
+- H 盘隔离 T0/Final 影响验收已通过：新增事实经 Profile Chat 的 Observation/Proposal/Review 落地后，岗位投影选中事实 `1→2`、简历选中事实 `1→2` 且缺口改变，面试 Focus 重新按当前证据缺口计算；来源提案与 Profile section 均有 ID 可追溯。证据 `H:\tmp\offeru\profile-impact-evidence-20260910.json` 是合成契约，真实 Resume 与 Gmail OAuth 仍未完成。
 - `ProfileOnboarding` 粘贴的 AI JSON 现在只作预览；没有原始 PDF/DOCX 与 OfferU 证据提案时 fail-closed，用户可清除候选后手填。本切片未重跑前端构建或浏览器验收。
 - 下一步只有外部输入后才能继续：提供真实 Resume PDF，完成 Gmail 只读 OAuth，并逐段执行 `PROFILE_T0 → PROFILE_FINAL → Job/Resume/Interview impact`。在此之前不输出 `LOCAL_AGENT_REAL_CAREER_GOLDEN_PATH_READY`。
 
