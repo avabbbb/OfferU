@@ -59,6 +59,8 @@ Role Intelligence controlled backend-search adapter → public web HTTP boundary
 - `ProfileOnboarding` 的粘贴 AI JSON 明确标记为“仅预览”，没有原始 PDF/DOCX 与 OfferU 证据提案时最终步骤 fail-closed；用户可清除候选后手填，避免无来源内容伪装成 `PROFILE_T0`。本切片未重跑前端构建或浏览器验收。
 - 当前 Gate 汇总与严格 verdict 已写入 [Local Agent Golden Path report](H:/tmp/offeru/local-agent-real-career-golden-path-report-20260910.json)，所有临时数据仍限定在 `H:\\tmp\\offeru`。
 - 新增 H 盘隔离无头浏览器业务验收已通过：`test_public_release_interview.py` 从 UI 创建 Profile、保存岗位、完成 Replay Role Intelligence、生成 Focus Plan、执行 Interviewer Mode 追问并提交 8 轮回答，Debrief 展示原始回答证据，Learning Candidate 接受后回写 Profile；`console_errors=0`、`page_errors=0`、`bad_responses=0`。证据：[browser business path](H:/tmp/offeru/browser-business-20260910-result.log)，数据库位于 `H:\tmp\offeru\browser-business-20260910-data\djm.db`。该路径仍是合成 Replay，不能替代真实 Resume/Gmail 来源。
+- 新增 H 盘隔离新用户浏览器 smoke 已通过：managed Chromium 无头执行 Profile 创建、岗位保存、双击提交幂等、Replay Role Intelligence，并注入一次已提交后的 503 传输失败后重试；岗位与任务各只产生一份，预期 503 可见且没有未预期响应/页面错误。证据：[browser smoke](H:/tmp/offeru/browser-smoke-20260910-result.log)，数据库位于 `H:\tmp\offeru\browser-smoke-20260910-data\djm.db`。该路径仍为合成 Replay。
+- 同一业务闭环在 390×844 紧凑视口再次通过：managed Chromium 无头完成 Profile、岗位情报、Focus Plan、Interviewer Mode 追问、8 轮回答、Debrief 原文证据、Learning Candidate 接受与 Profile 回写；`console_errors=0`、`page_errors=0`、`bad_responses=0`。证据：[compact browser path](H:/tmp/offeru/browser-compact-390-20260910-result.log)，隔离数据库位于 `H:\tmp\offeru\browser-compact-390-20260910-data\djm.db`；仍是合成 Replay。
 
 未完成的硬门：真实 Resume → `PROFILE_T0`、真实邮箱只读 OAuth → Career Observations、分段 Profile 演化、Profile → Job/Resume/Interview 的真实影响，以及其它 Provider 的 live 认证/模型条件。没有这些外部输入，不得输出 `LOCAL_AGENT_REAL_CAREER_GOLDEN_PATH_READY`。
 

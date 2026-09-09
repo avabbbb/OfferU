@@ -24,6 +24,8 @@
 - `ProfileOnboarding` 粘贴的 AI JSON 现在只作预览；没有原始 PDF/DOCX 与 OfferU 证据提案时 fail-closed，用户可清除候选后手填。本切片未重跑前端构建或浏览器验收。
 - Gate 汇总与严格 verdict 已写入 `H:\\tmp\\offeru\\local-agent-real-career-golden-path-report-20260910.json`；仅剩真实 Resume、Gmail OAuth 与真实来源的下游浏览器验收。
 - H 盘隔离 managed Chromium 无头业务路径已通过：从 UI 创建 Profile、保存岗位、完成 Replay Role Intelligence、Focus Plan、Interviewer Mode 自适应追问、8 轮回答、原文证据 Debrief、Learning Candidate 接受与 Profile 回写；console/page/API 错误均为 0。证据 `H:\tmp\offeru\browser-business-20260910-result.log`，数据库为 `H:\tmp\offeru\browser-business-20260910-data\djm.db`；这是合成 Replay，真实 Resume/Gmail 仍是外部门。
+- 新增 H 盘隔离新用户 browser smoke 已通过：Profile 创建、岗位双击提交、Replay Role Intelligence、提交后 503 可见重试均完成，最终岗位和 Role Intelligence task 各一份，未预期 API/page 错误为 0；证据 `H:\\tmp\\offeru\\browser-smoke-20260910-result.log`。
+- 同一 Interview 业务路径在 390×844 紧凑视口通过：Profile/job/Role Intelligence/Focus Plan/Interviewer Mode/Debrief/Learning Candidate/Profile 回写完成，console/page/API 错误均为 0；证据 `H:\\tmp\\offeru\\browser-compact-390-20260910-result.log`，数据仍为合成 Replay。
 - 下一步只有外部输入后才能继续：提供真实 Resume PDF，完成 Gmail 只读 OAuth，并逐段执行 `PROFILE_T0 → PROFILE_FINAL → Job/Resume/Interview impact`。在此之前不输出 `LOCAL_AGENT_REAL_CAREER_GOLDEN_PATH_READY`。
 
 - 2026-09-03 `OPENCODE_LIVE_CAPABILITY_GUARD_71`：本机 OpenCode `1.17.11` 的 `run`/JSON CLI 探测通过，但未证明 `--pure` 具备 OfferU 所需的公开网页 host、重定向和私网地址约束；OpenCode 的 `supports_live_web_search` 已 fail-closed 为 `False`，不会被 Role Intelligence 当作 live Provider，也没有调用 `opencode web`。通用 Agent adapter 保留；本轮没有启动 Edge、创建浏览器窗口或访问 8080，详见 [report](docs/evals/reports/2026-09-03-codex-offeru-public-release-opencode-live-boundary.md)。
