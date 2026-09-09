@@ -59,16 +59,16 @@ export default function StudioPage() {
   };
 
   return (
-    <div className="container mx-auto p-8">
+    <div className="mx-auto w-full max-w-[1440px] min-w-0 p-4 sm:p-6 lg:p-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-2">HTML 简历工作室</h1>
         <p className="text-gray-600">选择模板，AI 一键生成可视化简历</p>
       </div>
 
-      {/* 三栏布局 */}
-      <div className="grid grid-cols-12 gap-6">
+      {/* 宽屏三栏；中小屏按模板 → 预览 → 设计控制顺序重排。 */}
+      <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-[minmax(190px,0.8fr)_minmax(0,1.6fr)_minmax(190px,0.8fr)] lg:gap-6">
         {/* 左侧：模板列表 */}
-        <div className="col-span-3 space-y-4">
+        <div className="min-w-0 space-y-4">
           <h2 className="font-semibold mb-4">选择模板</h2>
           {templates.map(tpl => (
             <Card
@@ -85,7 +85,7 @@ export default function StudioPage() {
                     {tpl.display_name}
                   </div>
                 ) : (
-                  <img src={`${API_BASE}${tpl.preview_image}`} alt={tpl.display_name} className="w-full h-32 object-cover rounded mb-2" />
+                  <img src={`${API_BASE}${tpl.preview_image}`} alt={tpl.display_name} className="mb-2 h-32 w-full min-w-0 rounded object-cover" />
                 )}
                 <div className="font-medium">{tpl.display_name}</div>
                 <div className="text-xs text-gray-500">{tpl.category}</div>
@@ -95,8 +95,8 @@ export default function StudioPage() {
         </div>
 
         {/* 中间：预览区 */}
-        <div className="col-span-6">
-          <div className="bg-white rounded-lg shadow-lg p-4 h-full">
+        <div className="min-w-0">
+          <div className="h-[min(70dvh,720px)] min-h-[320px] overflow-hidden rounded-lg bg-white p-4 shadow-lg sm:min-h-[400px]">
             {previewUrl ? (
               <iframe src={previewUrl} className="w-full h-full border-0" />
             ) : (
@@ -108,7 +108,7 @@ export default function StudioPage() {
         </div>
 
         {/* 右侧：设计系统 */}
-        <div className="col-span-3 space-y-4">
+        <div className="min-w-0 space-y-4">
           <h2 className="font-semibold mb-4">设计系统</h2>
           <Card>
             <div className="p-4">
