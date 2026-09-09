@@ -28,6 +28,7 @@ from app.services.agent_skill_registry import resolve_skill
 from app.services.email_sync import (
     GmailHistoryExpired,
     _fetch_gmail_delta,
+    _gmail_full_message_ids,
     _fetch_imap_delta_blocking,
     begin_gmail_oauth,
     connect_imap_account,
@@ -300,6 +301,42 @@ class EmailIncrementalSyncTests(unittest.TestCase):
         self.assertTrue(fake_client.calls)
         self.assertTrue(all(method == "GET" for method, _ in fake_client.calls))
         self.assertTrue(all("/users/me/history" in url for _, url in fake_client.calls))
+
+    def test_gmail_backfill_query_is_job_relevant_and_get_only(self) -> None:
+        class FakeResponse:
+            status_code = 200
+
+            def json(self) -> dict:
+                return {"messages": [{"id": "job-message-1"}]}
+
+        class FakeClient:
+            def __init__(self) -> None:
+                self.calls: list[tuple[str, str, dict]] = []
+
+            async def get(self, url: str, **kwargs: object) -> FakeResponse:
+                self.calls.append(("GET", url, kwargs))
+                return FakeResponse()
+
+            async def post(self, url: str, **kwargs: object) -> FakeResponse:
+                raise AssertionError(f"Gmail mailbox backfill attempted POST: {url}")
+
+            async def put(self, url: str, **kwargs: object) -> FakeResponse:
+                raise AssertionError(f"Gmail mailbox backfill attempted PUT: {url}")
+
+            async def delete(self, url: str, **kwargs: object) -> FakeResponse:
+                raise AssertionError(f"Gmail mailbox backfill attempted DELETE: {url}")
+
+        fake_client = FakeClient()
+        ids = asyncio.run(_gmail_full_message_ids(fake_client, headers={}))
+
+        self.assertEqual(ids, ["job-message-1"])
+        self.assertEqual(len(fake_client.calls), 1)
+        method, url, kwargs = fake_client.calls[0]
+        self.assertEqual(method, "GET")
+        self.assertIn("/users/me/messages", url)
+        query = str(kwargs["params"]["q"])
+        for term in ("投递", "招聘", "拒信", "application submitted", "follow up"):
+            self.assertIn(term, query)
 
     def test_imap_transport_uses_readonly_select_and_body_peek(self) -> None:
         message = EmailMessage()

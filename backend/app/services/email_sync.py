@@ -51,9 +51,12 @@ EMAIL_RELEVANCE_TERMS = (
     "笔试",
     "测评",
     "网申",
+    "投递",
+    "招聘",
     "简历已收到",
     "申请已提交",
     "录用",
+    "拒信",
     "offer",
     "interview",
     "assessment",
@@ -62,6 +65,11 @@ EMAIL_RELEVANCE_TERMS = (
     "未通过",
     "遗憾",
     "not moving forward",
+    "rejection",
+    "follow up",
+    "follow-up",
+    "recruit",
+    "hiring",
 )
 MAX_MESSAGES_PER_SYNC = 500
 MAX_GMAIL_MESSAGES_PER_SYNC = 5_000
@@ -856,8 +864,10 @@ async def _gmail_full_message_ids(
     ids: list[str] = []
     page_token = ""
     query = (
-        "subject:(面试 OR 笔试 OR 测评 OR 网申 OR interview OR offer "
-        "OR assessment OR 遗憾) newer_than:30d"
+        'newer_than:30d subject:(面试 OR 笔试 OR 测评 OR 网申 OR 投递 OR 招聘 '
+        'OR 录用 OR 拒信 OR 遗憾 OR offer OR interview OR assessment '
+        'OR "application received" OR "application submitted" '
+        'OR "not moving forward" OR rejection OR "follow up")'
     )
     while True:
         params: dict[str, Any] = {
