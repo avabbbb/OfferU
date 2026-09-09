@@ -185,7 +185,7 @@ export function ProfileAgentDock() {
     try {
       await profileApi.applyProfileAgentPatch({ session_id: sessionId, patch });
       refreshProfile();
-      pushMessage("assistant", "已写入个人档案。你可以继续补充经历，我会接着追问缺口。");
+      pushMessage("assistant", "候选已通过职业事实门并写入个人档案。你可以继续补充经历，我会接着追问缺口。");
       setPatch(null);
       setStopReason("needs_more_input");
       refreshHistory();
@@ -416,7 +416,7 @@ export function ProfileAgentDock() {
               <div className="bauhaus-panel-sm mt-4 space-y-3 bg-[#F9F3DC] p-3">
                 <div className="flex items-center gap-2 text-sm font-bold text-black">
                   <FileText size={16} />
-                  <span>待确认写入</span>
+                  <span>待确认候选（将进入事实门）</span>
                 </div>
                 {Object.keys(patch.base_info || {}).length > 0 && (
                   <div className="border-2 border-black bg-white px-3 py-2 text-xs leading-relaxed text-black/70">
@@ -453,7 +453,7 @@ export function ProfileAgentDock() {
                     onPress={applyPatch}
                     className="bauhaus-button bauhaus-button-red !min-h-10 !px-3 !py-2 !text-xs"
                   >
-                    确认写入
+                    确认并通过事实门
                   </Button>
                   <Button
                     variant="light"

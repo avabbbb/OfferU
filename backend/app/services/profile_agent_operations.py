@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import contextlib
+import hashlib
+import json
 from typing import Any, Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from app.database import async_session
-from app.models.models import Profile, ProfileChatSession, ProfileSection, ProfileTargetRole
+from app.models.models import Profile, ProfileChatSession, ProfileTargetRole
 from app.services.profile_builder_agent import (
     build_next_question,
     generate_raw_turn_patch,
@@ -47,6 +50,170 @@ def _extract_pending_patch(messages_json: list[Any]) -> dict[str, Any] | None:
             if isinstance(patch, dict):
                 return patch
     return None
+
+
+def _profile_agent_candidate_source(
+    session_id: int,
+    index: int,
+    item: dict[str, Any],
+) -> tuple[str, str, dict[str, Any]]:
+    """Build a stable, secret-free evidence envelope for one Agent candidate."""
+
+    section_type = str(item.get("section_type") or "general").strip().lower()
+    title = str(item.get("title") or f"Profile Agent 候选 {index + 1}").strip()[:220]
+    content = item.get("content_json") if isinstance(item.get("content_json"), dict) else {}
+    canonical = json.dumps(
+        {"section_type": section_type, "title": title, "content_json": content},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    external_id = f"profile-agent:{session_id}:{digest}"
+    excerpt = next(
+        (
+            str(content.get(key)).strip()
+            for key in ("bullet", "description", "summary")
+            if isinstance(content.get(key), str) and content.get(key).strip()
+        ),
+        "",
+    )
+    if not excerpt:
+        normalized = content.get("normalized")
+        excerpt = json.dumps(
+            normalized if isinstance(normalized, dict) else content,
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+    observation_content = {
+        "fact_type": section_type,
+        "title": title,
+        "source_excerpt": excerpt[:20_000],
+        "candidate": content,
+        "confidence": float(item.get("confidence") or 0.7),
+        "session_id": session_id,
+        "candidate_index": index,
+    }
+    observation_content["candidate_hash"] = digest
+    return external_id, title, observation_content
+
+
+async def _accept_profile_agent_sections(
+    session_id: int,
+    sections: list[dict[str, Any]],
+    *,
+    rollback_proposal_ids: list[int] | None = None,
+) -> list[dict[str, Any]]:
+    """Promote Agent sections through Career Memory's evidence gate.
+
+    The Profile Builder Agent can suggest facts, but it must not create a
+    ProfileSection directly.  Each user-confirmed section becomes an
+    observation and a pending proposal first; only the memory review path can
+    accept it and attach its source evidence.
+    """
+
+    from app.services.career_memory import (
+        create_memory_proposal,
+        record_learning_observation,
+        review_memory_proposal,
+    )
+
+    accepted: list[dict[str, Any]] = []
+    newly_accepted: list[int] = []
+    try:
+        for index, item in enumerate(sections):
+            if not isinstance(item, dict):
+                continue
+            section_type = str(item.get("section_type") or "general").strip().lower()
+            title = str(item.get("title") or f"Profile Agent 候选 {index + 1}").strip()[:220]
+            content = item.get("content_json")
+            if not isinstance(content, dict) or not content:
+                continue
+            external_id, source_title, observation_content = _profile_agent_candidate_source(
+                session_id,
+                index,
+                item,
+            )
+            observation = await record_learning_observation(
+                source_type="profile_agent",
+                source_external_id=external_id,
+                source_title=source_title,
+                source_locator=f"profile-agent:session:{session_id}:candidate:{index}",
+                source_metadata={"session_id": session_id, "candidate_index": index},
+                observation_type="profile_fact_candidate",
+                content=observation_content,
+                # LearningObservation.idempotency_key is a 64-char column; the
+                # canonical candidate digest already provides the stable identity.
+                idempotency_key=str(observation_content["candidate_hash"]),
+            )
+            proposal = await create_memory_proposal(
+                observation_id=int(observation["id"]),
+                target_tier="verified_fact",
+                section_type=section_type,
+                title=title,
+                after=content,
+                reason="来自 Profile Builder Agent 的候选；用户确认后经过职业事实门写入。",
+                impact=["纳入岗位分析、简历策略和面试准备的证据池"],
+            )
+            status = str(proposal.get("status") or "")
+            proposal_id = int(proposal.get("id") or 0)
+            if not proposal.get("duplicate") and proposal_id:
+                # Register the id before invoking the fact gate. If the gate
+                # fails after creating a ProfileSection but before returning,
+                # the outer rollback still has enough identity to revoke it.
+                newly_accepted.append(proposal_id)
+            if status in {"pending", "deferred"}:
+                reviewed = await review_memory_proposal(
+                    proposal_id=proposal_id,
+                    action="accept",
+                    note="用户在 Profile Builder Agent 中确认候选",
+                )
+            elif status == "accepted":
+                reviewed = proposal
+            else:
+                raise ValueError(
+                    f"Profile Agent 候选「{title}」当前状态为 {status or 'unknown'}，不能写入"
+                )
+            if reviewed.get("error"):
+                raise ValueError(str(reviewed["error"]))
+            reviewed_id = int(reviewed.get("id") or proposal_id)
+            profile_section_id = reviewed.get("applied_profile_section_id")
+            reviewed_status = reviewed.get("status") or status
+            if reviewed_status != "accepted":
+                raise ValueError(
+                    f"Profile Agent 候选「{title}」接受后状态为 {reviewed_status or 'unknown'}"
+                )
+            accepted.append(
+                {
+                    "candidate_index": index,
+                    "observation_id": observation.get("id"),
+                    "proposal_id": reviewed_id,
+                    "profile_section_id": profile_section_id,
+                    "status": reviewed_status,
+                }
+            )
+    except Exception:
+        await _rollback_profile_agent_proposals(newly_accepted)
+        raise
+    if rollback_proposal_ids is not None:
+        rollback_proposal_ids.extend(newly_accepted)
+    return accepted
+
+
+async def _rollback_profile_agent_proposals(proposal_ids: list[int]) -> None:
+    """Revoke only newly accepted candidates after an atomic apply failure."""
+
+    if not proposal_ids:
+        return
+    from app.services.career_memory import review_memory_proposal
+
+    for proposal_id in reversed(dict.fromkeys(proposal_ids)):
+        with contextlib.suppress(Exception):
+            await review_memory_proposal(
+                proposal_id=proposal_id,
+                action="revoke",
+                note="Profile Agent 批量确认失败，撤销本次新写入",
+            )
 
 
 async def get_profile_agent_session(session_id: int) -> dict[str, Any]:
@@ -203,6 +370,9 @@ async def apply_profile_agent_patch(
     session_id: int,
     patch: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
+    # Read and normalize the pending Agent patch before touching the Profile.
+    # The section candidates are promoted through Career Memory below; this
+    # first transaction deliberately performs no ProfileSection mutation.
     async with async_session() as db:
         profile = await _get_or_create_default_profile(db)
         session = (
@@ -221,116 +391,106 @@ async def apply_profile_agent_patch(
         if not raw_patch:
             raise ValueError("no pending patch")
         normalized_patch = normalize_profile_agent_patch(raw_patch)
+        profile_id = profile.id
 
-        existing_base_info = profile.base_info_json if isinstance(profile.base_info_json, dict) else {}
-        base_info = normalized_patch.get("base_info") if isinstance(normalized_patch.get("base_info"), dict) else {}
-        if base_info:
-            merged_base = normalize_base_info_payload({**existing_base_info, **base_info})
-            profile.base_info_json = {**existing_base_info, **merged_base, **base_info}
-            if base_info.get("name"):
-                profile.name = str(base_info["name"])[:120]
-            if base_info.get("summary") and not profile.headline:
-                profile.headline = str(base_info["summary"])[:300]
+    rollback_proposal_ids: list[int] = []
+    evidence = await _accept_profile_agent_sections(
+        session_id,
+        normalized_patch.get("sections") or [],
+        rollback_proposal_ids=rollback_proposal_ids,
+    )
 
-        existing_roles = {
-            role.role_name
-            for role in (
+    # Re-open the session after the evidence gate commits its own records. The
+    # base fields, target roles and archive are user-confirmed profile metadata;
+    # career sections themselves already exist only through accepted proposals.
+    metadata_committed = False
+    try:
+        async with async_session() as db:
+            profile = (
+                await db.execute(select(Profile).where(Profile.id == profile_id))
+            ).scalar_one_or_none()
+            if profile is None:
+                raise ValueError("profile not found")
+            session = (
                 await db.execute(
-                    select(ProfileTargetRole).where(ProfileTargetRole.profile_id == profile.id)
-                )
-            ).scalars().all()
-        }
-        for index, role_name in enumerate(normalized_patch.get("target_roles") or []):
-            role = str(role_name).strip()
-            if not role or role in existing_roles:
-                continue
-            db.add(
-                ProfileTargetRole(
-                    profile_id=profile.id,
-                    role_name=role[:120],
-                    role_level="",
-                    fit="primary" if index == 0 else "secondary",
-                )
-            )
-            existing_roles.add(role)
-
-        max_sort = (
-            await db.execute(
-                select(func.max(ProfileSection.sort_order)).where(
-                    ProfileSection.profile_id == profile.id
-                )
-            )
-        ).scalar()
-        next_sort = int(max_sort or 0) + 1
-        applied_sections: list[ProfileSection] = []
-        for item in normalized_patch.get("sections") or []:
-            if not isinstance(item, dict):
-                continue
-            existing_sections = (
-                await db.execute(
-                    select(ProfileSection)
-                    .where(
-                        ProfileSection.profile_id == profile.id,
-                        ProfileSection.section_type == item["section_type"],
-                        ProfileSection.title == item["title"],
-                        ProfileSection.status == "active",
+                    select(ProfileChatSession).where(
+                        ProfileChatSession.id == session_id,
+                        ProfileChatSession.profile_id == profile.id,
+                        ProfileChatSession.topic == PROFILE_AGENT_TOPIC,
                     )
-                    .order_by(ProfileSection.id.desc())
                 )
-            ).scalars().all()
-            duplicate = next(
-                (
-                    section
-                    for section in existing_sections
-                    if (section.content_json or {}) == item["content_json"]
-                ),
-                None,
-            )
-            if duplicate:
-                applied_sections.append(duplicate)
-                continue
-            section = ProfileSection(
-                profile_id=profile.id,
-                section_type=item["section_type"],
-                title=item["title"],
-                sort_order=next_sort,
-                content_json=item["content_json"],
-                source="ai_profile_agent",
-                confidence=float(item.get("confidence") or 0.7),
-            )
-            next_sort += 1
-            db.add(section)
-            applied_sections.append(section)
+            ).scalar_one_or_none()
+            if session is None:
+                raise ValueError("profile agent session not found")
+            existing_base_info = profile.base_info_json if isinstance(profile.base_info_json, dict) else {}
+            base_info = normalized_patch.get("base_info") if isinstance(normalized_patch.get("base_info"), dict) else {}
+            if base_info:
+                merged_base = normalize_base_info_payload({**existing_base_info, **base_info})
+                profile.base_info_json = {**existing_base_info, **merged_base, **base_info}
+                if base_info.get("name"):
+                    profile.name = str(base_info["name"])[:120]
+                if base_info.get("summary") and not profile.headline:
+                    profile.headline = str(base_info["summary"])[:300]
 
-        latest_base_info = profile.base_info_json if isinstance(profile.base_info_json, dict) else existing_base_info
-        profile.base_info_json = {
-            **latest_base_info,
-            "personal_archive": build_personal_archive_from_agent_patch(
-                existing_base_info=latest_base_info,
-                patch=normalized_patch,
-                existing_archive=latest_base_info.get("personal_archive")
-                if isinstance(latest_base_info, dict)
-                else None,
-            ),
-        }
-        for item in reversed(messages_json):
-            if isinstance(item, dict) and item.get("kind") == "profile_agent_patch" and not item.get("applied"):
-                item["applied"] = True
-                break
-        messages_json.append(
-            _profile_agent_item(
-                "profile_agent_apply",
-                patch=normalized_patch,
-                result={"applied": True},
+            existing_roles = {
+                role.role_name
+                for role in (
+                    await db.execute(
+                        select(ProfileTargetRole).where(ProfileTargetRole.profile_id == profile.id)
+                    )
+                ).scalars().all()
+            }
+            for index, role_name in enumerate(normalized_patch.get("target_roles") or []):
+                role = str(role_name).strip()
+                if not role or role in existing_roles:
+                    continue
+                db.add(
+                    ProfileTargetRole(
+                        profile_id=profile.id,
+                        role_name=role[:120],
+                        role_level="",
+                        fit="primary" if index == 0 else "secondary",
+                    )
+                )
+                existing_roles.add(role)
+
+            latest_base_info = profile.base_info_json if isinstance(profile.base_info_json, dict) else existing_base_info
+            profile.base_info_json = {
+                **latest_base_info,
+                "personal_archive": build_personal_archive_from_agent_patch(
+                    existing_base_info=latest_base_info,
+                    patch=normalized_patch,
+                    existing_archive=latest_base_info.get("personal_archive")
+                    if isinstance(latest_base_info, dict)
+                    else None,
+                )
             )
-        )
-        session.messages_json = messages_json
-        await db.commit()
-        for section in applied_sections:
-            await db.refresh(section)
-        profile, roles, sections = await _load_profile_bundle(db, profile.id)
-        return {
-            "applied": True,
-            "applied_sections_count": len(applied_sections),
-            "profile": _serialize_profile(profile, roles, sections),
-        }
+            for item in reversed(messages_json):
+                if isinstance(item, dict) and item.get("kind") == "profile_agent_patch" and not item.get("applied"):
+                    item["applied"] = True
+                    break
+            messages_json.append(
+                _profile_agent_item(
+                    "profile_agent_apply",
+                    patch=normalized_patch,
+                    result={
+                        "applied": True,
+                        "evidence": evidence,
+                    },
+                )
+            )
+            session.messages_json = messages_json
+            await db.commit()
+            metadata_committed = True
+            profile, roles, sections = await _load_profile_bundle(db, profile.id)
+            result = {
+                "applied": True,
+                "applied_sections_count": len(evidence),
+                "evidence": evidence,
+                "profile": _serialize_profile(profile, roles, sections),
+            }
+    except Exception:
+        if not metadata_committed:
+            await _rollback_profile_agent_proposals(rollback_proposal_ids)
+        raise
+    return result

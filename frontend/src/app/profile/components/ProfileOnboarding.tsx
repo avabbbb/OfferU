@@ -352,9 +352,10 @@ export function ProfileOnboarding({ currentArchive, profile, onComplete, onClose
     const state = candidateReview[index] || normalizeCandidateReviewState(candidate);
     return state === "pending" ? count + 1 : count;
   }, 0) || 0;
-  const missingEvidenceCandidateCount = imported?.filename !== "ai-import"
-    ? imported?.bullets.filter((candidate) => !candidateProposalId(candidate)).length || 0
-    : 0;
+  const missingEvidenceCandidateCount = imported?.bullets.filter(
+    (candidate) => !candidateProposalId(candidate),
+  ).length || 0;
+  const untrustedAiImport = imported?.filename === "ai-import";
   const acceptedCandidateCount = imported?.bullets.reduce((count, candidate, index) => {
     if (!candidateProposalId(candidate)) return count;
     const state = candidateReview[index] || normalizeCandidateReviewState(candidate);
@@ -408,6 +409,12 @@ export function ProfileOnboarding({ currentArchive, profile, onComplete, onClose
       }
     });
     setCandidateReview(initialReview);
+  };
+
+  const clearImportedResult = () => {
+    setImported(null);
+    setCandidateReview({});
+    setError("");
   };
 
   const handleAiImport = (result: ProfileImportResult) => {
@@ -494,6 +501,10 @@ export function ProfileOnboarding({ currentArchive, profile, onComplete, onClose
   };
 
   const handleFinish = async () => {
+    if (untrustedAiImport) {
+      setError("粘贴的 AI JSON 没有 OfferU 原始来源，不能写入职业档案；请上传 PDF/DOCX，或清除候选后手填并确认。");
+      return;
+    }
     if (pendingCandidateCount > 0 || missingEvidenceCandidateCount > 0) {
       setError(
         missingEvidenceCandidateCount > 0
@@ -641,9 +652,15 @@ export function ProfileOnboarding({ currentArchive, profile, onComplete, onClose
                   </div>
                   <div className="mt-2">
                     <Button className="w-full justify-center" variant="bordered" startContent={<Sparkles size={16} />} onPress={() => setAiImportOpen(true)}>
-                      {imported ? `已导入 ${imported.filename === "ai-import" ? "AI 解析结果" : imported.filename}` : "AI 对话导入简历"}
+                      {imported ? `已导入 ${imported.filename === "ai-import" ? "AI 解析结果（仅预览）" : imported.filename}` : "AI 对话导入简历"}
                     </Button>
                   </div>
+                  {untrustedAiImport && (
+                    <div role="alert" className="mt-3 flex flex-wrap items-start justify-between gap-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-3 text-xs leading-relaxed text-amber-900">
+                      <p className="min-w-0 flex-1">这份 AI JSON 没有绑定 OfferU 原始 PDF/DOCX 和证据提案，只能作为临时预览；完成向导前必须清除它并手填，或重新上传原始文件。</p>
+                      <Button size="sm" variant="flat" onPress={clearImportedResult}>清除候选，改为手填</Button>
+                    </div>
+                  )}
                   {imported?.parse_diagnostics && (
                     <div className="mt-3 rounded-md border border-[var(--border-strong)]/10 bg-black/[0.025] px-3 py-2 text-xs text-[var(--foreground-muted)]">
                       <p>
@@ -701,8 +718,8 @@ export function ProfileOnboarding({ currentArchive, profile, onComplete, onClose
                             已识别 {imported.bullets.length} 条候选 · {trackedCandidates.length} 条可追溯提案 · 已确认 {acceptedCandidateCount} 条
                           </p>
                         </div>
-                        <Chip size="sm" color={pendingCandidateCount ? "warning" : "success"} variant="flat">
-                          {pendingCandidateCount ? `待审核 ${pendingCandidateCount}` : "审核完成"}
+                        <Chip size="sm" color={pendingCandidateCount || missingEvidenceCandidateCount ? "warning" : "success"} variant="flat">
+                          {pendingCandidateCount ? `待审核 ${pendingCandidateCount}` : missingEvidenceCandidateCount ? "缺少来源" : "审核完成"}
                         </Chip>
                       </div>
                       <div className="mt-3 space-y-2">

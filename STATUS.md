@@ -49,6 +49,9 @@ Role Intelligence controlled backend-search adapter → public web HTTP boundary
 - Resume 导入审核已接入 `ProfileOnboarding` 的最终检查步骤：每条有后端 `MemoryProposal` 的候选都必须显式选择“确认事实 / 不是我的经历 / 稍后核对”；确认通过既有 `confirm_profile_bullet` Operation，拒绝与稍后通过记忆审核 Operation，只有 accepted 候选进入本地档案投影。真实文件若缺少证据提案会 fail-closed，避免把未追溯候选伪装成 `PROFILE_T0`；后端职业记忆与演化定向回归 `21 passed`，前端 typecheck/build 通过。
 - 首次启动 `OnboardingWizard` 的 Resume 导入旁路也已收口：勾选候选先确认其 `MemoryProposal`，再创建 Resume；外部 AI JSON（没有 OfferU session/来源提案）不再直接写入 Resume，改为提示上传原始 PDF/DOCX。架构/技能投影定向回归 `53 passed`。
 - 邮箱页新增只读 `EmailSyncRun` 历史投影：状态、尝试次数、发现/候选/写入计数和有界失败信息可回看；同步运行中每 5 秒刷新，失败不会显示为完成。前端 typecheck 与 production build 通过，未扩大邮箱权限或改动只读同步策略。
+- 新鲜 Codex live probe 已在隔离数据库 `H:\tmp\offeru\codex-real-probe-20260910.db` 与 H 盘 CWD 完成：`codex-cli 0.153.4`、随机 nonce、结构化 JSON、58 个流式事件和真实 App Server session 均通过；本次未请求 lifecycle，因此 `resume/cancel` 保留既有验证状态。证据：[codex live probe](H:/tmp/offeru/codex-live-probe-20260910.json)。
+- `Profile Builder Agent` 的用户确认补丁现在把每个 section 依次送入 `LearningObservation → MemoryProposal → review_memory_proposal(accept)`，不再直接构造 `ProfileSection`；批量确认中途失败会撤销本次新接受条目，保留来源观察/提案用于重试。新增回归契约覆盖来源哈希、Registry 顺序、无直写和失败回滚；本切片的新增测试尚未执行。
+- `ProfileOnboarding` 的粘贴 AI JSON 明确标记为“仅预览”，没有原始 PDF/DOCX 与 OfferU 证据提案时最终步骤 fail-closed；用户可清除候选后手填，避免无来源内容伪装成 `PROFILE_T0`。本切片未重跑前端构建或浏览器验收。
 
 未完成的硬门：真实 Resume → `PROFILE_T0`、真实邮箱只读 OAuth → Career Observations、分段 Profile 演化、Profile → Job/Resume/Interview 的真实影响，以及其它 Provider 的 live 认证/模型条件。没有这些外部输入，不得输出 `LOCAL_AGENT_REAL_CAREER_GOLDEN_PATH_READY`。
 

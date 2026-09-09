@@ -14,6 +14,9 @@
 - `ProfileOnboarding` 的 Resume 导入最终步骤现在展示来源候选与页码，并要求每条可追溯 `MemoryProposal` 经过接受、拒绝或稍后处理；接受调用既有 Profile/Memory Operation，拒绝与稍后不会写入 Profile，未建立证据提案的真实文件候选 fail-closed。职业记忆/演化定向回归 `21 passed`，前端 typecheck/build 通过。
 - 首次启动 `OnboardingWizard` 的文件导入也先确认选中候选的 `MemoryProposal` 再创建 Resume；无 OfferU session/来源提案的外部 AI JSON 会被阻止直接写入。架构/技能投影定向回归 `53 passed`，前端 typecheck/build 通过。
 - 邮箱页现在读取并轮询最近 `EmailSyncRun`，显示 pending/running/completed/failed/cancelled、尝试次数与发现/候选/写入计数；错误经过前端有界脱敏，失败不会伪装为成功。
+- 新鲜 Codex live probe 已在 `H:\tmp\offeru\codex-real-probe-20260910.db` 与 H 盘隔离 CWD 完成：`codex-cli 0.153.4`、随机 nonce、结构化 JSON、58 个流式事件和真实 App Server session 通过；本次未请求 lifecycle，证据见 `H:\tmp\offeru\codex-live-probe-20260910.json`。
+- Profile Builder Agent 的确认补丁现在通过 `LearningObservation → MemoryProposal → review_memory_proposal(accept)` 进入职业事实门，移除直接 `ProfileSection` 写入；批量确认中途失败会撤销本次新接受条目，保留来源观察与提案供重试。新增契约覆盖来源哈希、Registry 顺序、无直写和回滚；本切片新增测试尚未执行。
+- `ProfileOnboarding` 粘贴的 AI JSON 现在只作预览；没有原始 PDF/DOCX 与 OfferU 证据提案时 fail-closed，用户可清除候选后手填。本切片未重跑前端构建或浏览器验收。
 - 下一步只有外部输入后才能继续：提供真实 Resume PDF，完成 Gmail 只读 OAuth，并逐段执行 `PROFILE_T0 → PROFILE_FINAL → Job/Resume/Interview impact`。在此之前不输出 `LOCAL_AGENT_REAL_CAREER_GOLDEN_PATH_READY`。
 
 - 2026-09-03 `OPENCODE_LIVE_CAPABILITY_GUARD_71`：本机 OpenCode `1.17.11` 的 `run`/JSON CLI 探测通过，但未证明 `--pure` 具备 OfferU 所需的公开网页 host、重定向和私网地址约束；OpenCode 的 `supports_live_web_search` 已 fail-closed 为 `False`，不会被 Role Intelligence 当作 live Provider，也没有调用 `opencode web`。通用 Agent adapter 保留；本轮没有启动 Edge、创建浏览器窗口或访问 8080，详见 [report](docs/evals/reports/2026-09-03-codex-offeru-public-release-opencode-live-boundary.md)。
