@@ -441,6 +441,7 @@ async def probe_agent_connection(provider_id: str) -> dict[str, Any]:
 @runtime_router.get("/runtime/conformance")
 async def local_agent_conformance(
     provider: str | None = None,
+    lifecycle_provider: str | None = None,
     refresh: bool = False,
 ) -> dict[str, Any]:
     """Read the real local-agent capability matrix without starting a model turn."""
@@ -448,7 +449,11 @@ async def local_agent_conformance(
     provider_ids = [item.strip() for item in str(provider or "").split(",") if item.strip()]
     return await _ui_operation_outputs(
         "get_local_agent_capability_matrix",
-        {"provider_ids": provider_ids or None, "refresh": refresh},
+        {
+            "provider_ids": provider_ids or None,
+            "lifecycle_provider": lifecycle_provider,
+            "refresh": refresh,
+        },
     )
 
 
@@ -465,13 +470,19 @@ async def profile_evolution_report(limit: int = 200) -> dict[str, Any]:
 @runtime_router.post("/runtime/conformance/{provider_id}/probe")
 async def probe_local_agent_conformance(
     provider_id: str,
+    lifecycle: bool = False,
     refresh: bool = True,
 ) -> dict[str, Any]:
     """Explicitly run one random-nonce live model probe for a provider."""
 
     return await _ui_operation_outputs(
         "get_local_agent_capability_report",
-        {"provider_id": provider_id, "live": True, "refresh": refresh},
+        {
+            "provider_id": provider_id,
+            "live": True,
+            "lifecycle": lifecycle,
+            "refresh": refresh,
+        },
     )
 
 

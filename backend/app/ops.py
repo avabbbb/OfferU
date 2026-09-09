@@ -395,12 +395,14 @@ class ProviderHealthInput(_StrictOperationInput):
 class LocalAgentCapabilityMatrixInput(_StrictOperationInput):
     provider_ids: list[str] | None = Field(default=None, max_length=6)
     live_provider: str | None = Field(default=None, min_length=1, max_length=40)
+    lifecycle_provider: str | None = Field(default=None, min_length=1, max_length=40)
     refresh: bool = False
 
 
 class LocalAgentCapabilityReportInput(_StrictOperationInput):
     provider_id: str = Field(min_length=1, max_length=40)
     live: bool = False
+    lifecycle: bool = False
     refresh: bool = False
 
 
@@ -2516,7 +2518,7 @@ OPERATIONS: dict[str, Operation] = {
     "get_local_agent_capability_matrix": Operation(
         name="get_local_agent_capability_matrix",
         fn=get_local_agent_capability_matrix,
-        description="读取本机 Codex、Claude、Gemini、OpenCode、Pi、OMP 的声明能力与真实验证状态；默认只做本地发现，不调用模型。",
+        description="读取本机 Codex、Claude、Gemini、OpenCode、Pi、OMP 的声明能力与真实验证状态；默认只做本地发现，不调用模型。显式指定 live_provider/lifecycle_provider 才会执行真实模型与生命周期探测。",
         group="agent_runtime",
         input_model=LocalAgentCapabilityMatrixInput,
         version="2026-09-09",
@@ -2524,7 +2526,7 @@ OPERATIONS: dict[str, Operation] = {
     "get_local_agent_capability_report": Operation(
         name="get_local_agent_capability_report",
         fn=get_local_agent_capability_report,
-        description="读取一个本地 Agent 的能力证据；live=true 才执行随机 nonce 真实模型探测。",
+        description="读取一个本地 Agent 的能力证据；live=true 才执行随机 nonce 真实模型探测，lifecycle=true 才验证 resume/cancel。",
         group="agent_runtime",
         input_model=LocalAgentCapabilityReportInput,
         version="2026-09-09",

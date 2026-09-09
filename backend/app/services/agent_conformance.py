@@ -9,6 +9,8 @@ the Operation Registry, and the runtime status UI.
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import json
 import os
 import secrets
 from datetime import datetime, timezone
@@ -16,7 +18,11 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from app.services import coding_agent_runtime as runtime
-from app.services.agent_provider_health import list_provider_health, record_provider_health
+from app.services.agent_provider_health import (
+    get_provider_health,
+    list_provider_health,
+    record_provider_health,
+)
 from app.services.security_redaction import redact_sensitive_text
 
 CAPABILITY_STATES = frozenset(
@@ -53,6 +59,18 @@ def _probe_event_count(probe: Any) -> int:
         except (TypeError, ValueError):
             return 0
     return 0
+
+
+def _parse_lifecycle_message(value: Any) -> dict[str, Any] | None:
+    """Parse the exact JSON object returned by a lifecycle probe turn."""
+
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = json.loads(value.strip())
+    except (TypeError, ValueError):
+        return None
+    return parsed if isinstance(parsed, dict) else None
 
 
 def _probe_cwd(provider_id: str, task_id: str) -> Path:
@@ -225,6 +243,18 @@ def _base_report(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]
                 )
             else:
                 report["streaming_verified"] = "NOT_VERIFIED"
+        lifecycle = conformance.get("lifecycle_probe")
+        if isinstance(lifecycle, dict):
+            report["lifecycle_probe"] = lifecycle
+            for capability in ("resume", "cancel"):
+                evidence = lifecycle.get(capability)
+                current_state = report.get(f"{capability}_verified")
+                if (
+                    isinstance(evidence, dict)
+                    and evidence.get("verified") is True
+                    and current_state not in {"ERROR", "BLOCKED_AUTH", "UNAVAILABLE"}
+                ):
+                    report[f"{capability}_verified"] = "VERIFIED"
     return report
 
 
@@ -234,9 +264,63 @@ async def _persist_probe_report(
     item: dict[str, Any],
     report: dict[str, Any],
     live_probe: dict[str, Any] | None = None,
+    lifecycle_probe: dict[str, Any] | None = None,
     error: str = "",
 ) -> None:
     """Persist bounded conformance state in the provider diagnostic boundary."""
+
+    existing = await get_provider_health(provider_id)
+    existing_capabilities = (
+        existing.get("capabilities")
+        if isinstance(existing.get("capabilities"), dict)
+        else {}
+    )
+    existing_conformance = (
+        existing_capabilities.get("conformance")
+        if isinstance(existing_capabilities.get("conformance"), dict)
+        else {}
+    )
+    same_executable = (
+        existing_conformance.get("binary_path") == str(item.get("executable_path") or "")
+        and existing_conformance.get("version")
+        == str(item.get("version") or "")[:160]
+    )
+    conformance: dict[str, Any] = (
+        dict(existing_conformance) if same_executable else {}
+    )
+    conformance.update(
+        {
+            field: report.get(field)
+            for field in (
+                "native_auth_detected",
+                "connection_verified",
+                "live_model_verified",
+                "structured_output_verified",
+                "streaming_verified",
+                "resume_verified",
+                "cancel_verified",
+                "cwd_isolation_verified",
+                "web_search_verified",
+                "last_probe_at",
+                "failure_reason",
+            )
+        }
+    )
+    conformance.update(
+        {
+            "binary_path": str(item.get("executable_path") or ""),
+            "version": str(item.get("version") or "")[:160],
+        }
+    )
+    if live_probe is not None:
+        conformance["live_probe"] = live_probe
+    if lifecycle_probe is not None:
+        conformance["lifecycle_probe"] = lifecycle_probe
+    protocol_version = str(
+        (live_probe or {}).get("trace", {}).get("protocol")
+        or existing.get("protocol_version")
+        or ""
+    )[:80]
 
     await record_provider_health(
         provider_id,
@@ -251,32 +335,8 @@ async def _persist_probe_report(
         blocked=report.get("native_auth_detected") == "BLOCKED_AUTH",
         version=str(item.get("version") or "")[:160],
         auth_mode="native_probe",
-        protocol_version=str(
-            (live_probe or {}).get("trace", {}).get("protocol") or ""
-        )[:80],
-        capabilities={
-            "conformance": {
-                field: report.get(field)
-                for field in (
-                    "native_auth_detected",
-                    "connection_verified",
-                    "live_model_verified",
-                    "structured_output_verified",
-                    "streaming_verified",
-                    "resume_verified",
-                    "cancel_verified",
-                    "cwd_isolation_verified",
-                    "web_search_verified",
-                    "last_probe_at",
-                    "failure_reason",
-                )
-            }
-            | {
-                "binary_path": str(item.get("executable_path") or ""),
-                "version": str(item.get("version") or "")[:160],
-                **({"live_probe": live_probe} if live_probe else {}),
-            }
-        },
+        protocol_version=protocol_version,
+        capabilities={"conformance": conformance},
         error=error,
     )
 
@@ -350,10 +410,150 @@ async def _run_live_probe(provider_id: str, item: dict[str, Any]) -> dict[str, A
     }
 
 
+async def _run_codex_lifecycle_probe(item: dict[str, Any]) -> dict[str, Any]:
+    """Verify Codex thread resume and turn interruption on the real adapter."""
+
+    if not item.get("available") or not item.get("contract_compatible"):
+        raise RuntimeError("Codex 未安装或契约不兼容")
+    from app.services.agent_bridge.codex_adapter import (
+        CodexMainLoopAdapter,
+        _resolve_codex_binary,
+    )
+
+    executable = _resolve_codex_binary()
+    root = _probe_cwd("codex", f"lifecycle_{secrets.token_hex(8)}")
+    report: dict[str, Any] = {
+        "verified": False,
+        "binary_path": str(item.get("executable_path") or ""),
+        "version": str(item.get("version") or "")[:160],
+        "cwd": str(root),
+        "resume": {"verified": False},
+        "cancel": {"verified": False},
+    }
+
+    adapter = CodexMainLoopAdapter(executable=executable)
+    try:
+        await adapter.start()
+        first = await asyncio.wait_for(
+            adapter.run_turn(
+                prompt=(
+                    'Return exactly this JSON object and no tools: '
+                    '{"resume_probe":"first"}.'
+                ),
+                cwd=str(root),
+                tool_descriptions=[],
+            ),
+            timeout=300,
+        )
+        first_thread = adapter.thread_id
+        first_turn = adapter.turn_id
+        second = await asyncio.wait_for(
+            adapter.resume_turn(
+                prompt=(
+                    'This is the resumed turn. Return exactly this JSON object '
+                    'and no tools: {"resume_probe":"second"}.'
+                ),
+                cwd=str(root),
+            ),
+            timeout=300,
+        )
+        second_thread = adapter.thread_id
+        second_turn = adapter.turn_id
+        first_payload = _parse_lifecycle_message(first.get("finalMessage"))
+        second_payload = _parse_lifecycle_message(second.get("finalMessage"))
+        resume_verified = bool(
+            first_thread
+            and second_thread
+            and first_thread == second_thread
+            and first_turn
+            and second_turn
+            and first_turn != second_turn
+            and first_payload == {"resume_probe": "first"}
+            and second_payload == {"resume_probe": "second"}
+        )
+        report["resume"] = {
+            "verified": resume_verified,
+            "same_thread": first_thread == second_thread,
+            "first_thread_id": first_thread,
+            "second_thread_id": second_thread,
+            "first_turn_id": first_turn,
+            "second_turn_id": second_turn,
+            "events": len(adapter.events()),
+        }
+    except Exception as exc:
+        report["resume"] = {
+            "verified": False,
+            "failure_reason": _failure_text(exc),
+        }
+    finally:
+        await adapter.close()
+
+    cancel_adapter = CodexMainLoopAdapter(executable=executable)
+    cancel_task: asyncio.Task[dict[str, Any]] | None = None
+    try:
+        await cancel_adapter.start()
+        cancel_task = asyncio.create_task(
+            cancel_adapter.run_turn(
+                prompt=(
+                    "Keep this turn running and do not return an answer yet. "
+                    f"This is a cancellation probe with nonce {secrets.token_hex(8)}."
+                ),
+                cwd=str(root),
+                tool_descriptions=[],
+            )
+        )
+        deadline = asyncio.get_running_loop().time() + 20
+        while not cancel_adapter.turn_id and asyncio.get_running_loop().time() < deadline:
+            await asyncio.sleep(0.1)
+        await asyncio.sleep(0.5)
+        cancel_result = await cancel_adapter.cancel()
+        cancelled_turn: dict[str, Any] | None = None
+        task_error = ""
+        try:
+            cancelled_turn = await asyncio.wait_for(cancel_task, timeout=30)
+        except asyncio.CancelledError:
+            task_error = "cancelled_task"
+        except Exception as exc:
+            task_error = _failure_text(exc)
+        completed_status = str(
+            ((cancelled_turn or {}).get("completed") or {}).get("status") or ""
+        )
+        cancel_verified = bool(
+            cancel_result.get("cancelled")
+            and cancel_adapter.turn_id
+            and completed_status != "completed"
+        )
+        report["cancel"] = {
+            "verified": cancel_verified,
+            "accepted": bool(cancel_result.get("cancelled")),
+            "turn_id": cancel_adapter.turn_id,
+            "completed_status": completed_status,
+            "task_error": task_error,
+            "events": len(cancel_adapter.events()),
+        }
+    except Exception as exc:
+        report["cancel"] = {
+            "verified": False,
+            "failure_reason": _failure_text(exc),
+        }
+    finally:
+        if cancel_task is not None and not cancel_task.done():
+            cancel_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await cancel_task
+        await cancel_adapter.close()
+
+    report["verified"] = bool(
+        report["resume"].get("verified") and report["cancel"].get("verified")
+    )
+    return report
+
+
 async def get_local_agent_capability_matrix(
     *,
     provider_ids: Iterable[str] | None = None,
     live_provider: str | None = None,
+    lifecycle_provider: str | None = None,
     refresh: bool = False,
 ) -> dict[str, Any]:
     """Return the provider-neutral capability matrix.
@@ -377,6 +577,12 @@ async def get_local_agent_capability_matrix(
             selected.add(live_provider)
         if live_provider not in runtime.RUNTIME_DEFINITIONS:
             raise ValueError(f"未知的本地 Agent: {live_provider}")
+    if lifecycle_provider:
+        lifecycle_provider = str(lifecycle_provider).strip().lower()
+        if lifecycle_provider not in selected:
+            selected.add(lifecycle_provider)
+        if lifecycle_provider not in runtime.RUNTIME_DEFINITIONS:
+            raise ValueError(f"未知的本地 Agent: {lifecycle_provider}")
 
     detected = await runtime.list_local_executors(refresh=refresh)
     health_payload = await list_provider_health()
@@ -458,6 +664,7 @@ async def get_local_agent_capability_matrix(
                 report["structured_output_verified"] = failure_state
                 report["last_probe_at"] = _now()
                 report["failure_reason"] = _failure_text(exc)
+                _LIVE_PROBES.pop(provider_id, None)
                 try:
                     await _persist_probe_report(
                         provider_id=provider_id,
@@ -468,6 +675,57 @@ async def get_local_agent_capability_matrix(
                 except Exception:
                     # A diagnostic snapshot must never turn the original
                     # provider failure into a false success or a new crash.
+                    pass
+        if lifecycle_provider == provider_id:
+            try:
+                if provider_id != "codex":
+                    raise RuntimeError(
+                        "当前 lifecycle probe 仅实现 Codex App Server；其他 Agent 保留声明状态"
+                    )
+                async with _PROBE_LOCK:
+                    lifecycle = await _run_codex_lifecycle_probe(item)
+                report["lifecycle_probe"] = lifecycle
+                for capability in ("resume", "cancel"):
+                    evidence = lifecycle.get(capability)
+                    if isinstance(evidence, dict) and evidence.get("verified") is True:
+                        report[f"{capability}_verified"] = "VERIFIED"
+                    else:
+                        report[f"{capability}_verified"] = "ERROR"
+                if not lifecycle.get("verified"):
+                    report["failure_reason"] = _failure_text(
+                        "Codex lifecycle probe did not verify both resume and cancel"
+                    )
+                await _persist_probe_report(
+                    provider_id=provider_id,
+                    item=item,
+                    report=report,
+                    lifecycle_probe=lifecycle,
+                )
+            except Exception as exc:
+                auth_failure = _is_auth_failure(exc)
+                failure_state = "BLOCKED_AUTH" if auth_failure else "ERROR"
+                lifecycle_failure = {
+                    "verified": False,
+                    "binary_path": str(item.get("executable_path") or ""),
+                    "version": str(item.get("version") or "")[:160],
+                    "resume": {"verified": False},
+                    "cancel": {"verified": False},
+                    "failure_reason": _failure_text(exc),
+                }
+                report["resume_verified"] = failure_state
+                report["cancel_verified"] = failure_state
+                report["last_probe_at"] = _now()
+                report["failure_reason"] = lifecycle_failure["failure_reason"]
+                report["lifecycle_probe"] = lifecycle_failure
+                try:
+                    await _persist_probe_report(
+                        provider_id=provider_id,
+                        item=item,
+                        report=report,
+                        lifecycle_probe=lifecycle_failure,
+                        error=report["failure_reason"],
+                    )
+                except Exception:
                     pass
         reports.append(report)
     reports.sort(key=lambda item: item["provider_id"])
@@ -490,6 +748,7 @@ async def get_local_agent_capability_report(
     provider_id: str,
     *,
     live: bool = False,
+    lifecycle: bool = False,
     refresh: bool = False,
 ) -> dict[str, Any]:
     provider = str(provider_id or "").strip().lower()
@@ -498,6 +757,7 @@ async def get_local_agent_capability_report(
     matrix = await get_local_agent_capability_matrix(
         provider_ids=[provider],
         live_provider=provider if live else None,
+        lifecycle_provider=provider if lifecycle else None,
         refresh=refresh,
     )
     return matrix["items"][0] if matrix["items"] else {

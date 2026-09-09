@@ -122,6 +122,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 _run_conformance(
                     provider_ids=args.provider,
                     live_provider=args.live_provider,
+                    lifecycle=args.lifecycle,
                     refresh=args.refresh,
                 )
             )
@@ -192,7 +193,7 @@ def _build_parser() -> JsonArgumentParser:
 
     conformance = sub.add_parser(
         "conformance",
-        help="Read the local Agent capability matrix; --live runs one real nonce probe.",
+        help="Read the local Agent capability matrix; --live runs one real nonce probe and --lifecycle verifies Codex resume/cancel.",
         add_help=False,
     )
     conformance.add_argument(
@@ -206,6 +207,11 @@ def _build_parser() -> JsonArgumentParser:
         dest="live_provider",
         default="",
         help="Run a real model probe for this provider (for example codex).",
+    )
+    conformance.add_argument(
+        "--lifecycle",
+        action="store_true",
+        help="With --live, run the real Codex resume/cancel lifecycle probe.",
     )
     conformance.add_argument("--refresh", action="store_true", help="Bypass local version probe cache.")
     conformance.add_argument("--pretty", action="store_true", help="Pretty-print JSON.")
@@ -671,15 +677,22 @@ async def _run_conformance(
     *,
     provider_ids: list[str] | None,
     live_provider: str,
+    lifecycle: bool,
     refresh: bool,
 ) -> dict[str, Any]:
     await init_db()
     from app.services.agent_conformance import get_local_agent_capability_matrix
 
     try:
+        if lifecycle and not live_provider:
+            return {
+                "ok": False,
+                "errors": ["--lifecycle 必须与 --live <provider> 一起使用"],
+            }
         matrix = await get_local_agent_capability_matrix(
             provider_ids=provider_ids,
             live_provider=live_provider or None,
+            lifecycle_provider=live_provider if lifecycle else None,
             refresh=refresh,
         )
     except Exception as exc:

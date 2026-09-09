@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from app.services.agent_conformance import _base_report, _probe_event_count
+from app.services.agent_conformance import (
+    _base_report,
+    _parse_lifecycle_message,
+    _probe_event_count,
+)
 
 
 def _codex_item() -> dict:
@@ -57,3 +61,36 @@ def test_historical_probe_without_events_does_not_claim_streaming() -> None:
         },
     )
     assert report["streaming_verified"] == "NOT_VERIFIED"
+
+
+def test_lifecycle_message_requires_a_json_object() -> None:
+    assert _parse_lifecycle_message('{"resume_probe":"first"}') == {
+        "resume_probe": "first"
+    }
+    assert _parse_lifecycle_message('["resume_probe"]') is None
+    assert _parse_lifecycle_message("not-json") is None
+
+
+def test_failed_lifecycle_state_cannot_be_promoted_by_old_success_evidence() -> None:
+    report = _base_report(
+        _codex_item(),
+        {
+            "authenticated": True,
+            "status": "ready",
+            "capabilities": {
+                "conformance": {
+                    "binary_path": r"H:\\tools\\codex.cmd",
+                    "version": "codex-cli test",
+                    "resume_verified": "ERROR",
+                    "cancel_verified": "BLOCKED_AUTH",
+                    "lifecycle_probe": {
+                        "verified": True,
+                        "resume": {"verified": True},
+                        "cancel": {"verified": True},
+                    },
+                }
+            },
+        },
+    )
+    assert report["resume_verified"] == "ERROR"
+    assert report["cancel_verified"] == "BLOCKED_AUTH"

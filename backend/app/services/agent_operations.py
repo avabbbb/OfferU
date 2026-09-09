@@ -362,6 +362,7 @@ async def list_learning_observations(
 async def get_local_agent_capability_matrix(
     provider_ids: Optional[list[str]] = None,
     live_provider: Optional[str] = None,
+    lifecycle_provider: Optional[str] = None,
     refresh: bool = False,
 ) -> dict:
     """Read local Agent capability evidence; live probing is explicit."""
@@ -373,6 +374,7 @@ async def get_local_agent_capability_matrix(
     return await _matrix(
         provider_ids=provider_ids,
         live_provider=live_provider,
+        lifecycle_provider=lifecycle_provider,
         refresh=refresh,
     )
 
@@ -380,13 +382,14 @@ async def get_local_agent_capability_matrix(
 async def get_local_agent_capability_report(
     provider_id: str,
     live: bool = False,
+    lifecycle: bool = False,
     refresh: bool = False,
 ) -> dict:
     from app.services.agent_conformance import (
         get_local_agent_capability_report as _report,
     )
 
-    return await _report(provider_id, live=live, refresh=refresh)
+    return await _report(provider_id, live=live, lifecycle=lifecycle, refresh=refresh)
 
 
 async def run_codex_offeru_conformance(timeout_seconds: int = 420) -> dict:
