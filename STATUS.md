@@ -1,6 +1,6 @@
 # OfferU Public Release Status
 
-更新时间：2026-09-07
+更新时间：2026-09-09
 
 ## Current release phase
 
@@ -14,7 +14,7 @@ AUTONOMOUS_PRODUCTION_READINESS
 OFFERU_PUBLIC_RELEASE_NOT_READY
 ```
 
-`RESUME_WORKSPACE_BETA_READY` 是上一阶段的 Internal Beta 检查点，不是 Public Release 结论。当前工作树已经补齐一组可复现的 E2E、性能、Sidecar、安装生命周期、release Doctor、主要页面空状态和 live Agent 证据，但实时 Role Intelligence 的 Pi CLI 适配在真实隔离运行中未形成结构化结果，Codex 仍受认证阻塞；同时仍没有 signed installer、previous-release upgrade、真正 clean-machine 人工验收和完整 security/privacy 决策，因此不得宣称 Public Release Ready。
+`RESUME_WORKSPACE_BETA_READY` 是上一阶段的 Internal Beta 检查点，不是 Public Release 结论。Codex 本轮已通过真实模型、结构化输出、流式、继续、取消、隔离工作目录和 OfferU Operation Registry 只读业务桥接；但真实用户 Resume、邮箱 OAuth、其后的 Profile 长期演化，以及 Public Release 所需的签名、升级、clean-machine、完整安全/隐私和 live Role Intelligence 证据仍未完成，因此不得宣称 Public Release Ready。
 
 端口说明：当前 checkout 的现行网页/后端入口固定为 `http://127.0.0.1:7410` / `http://127.0.0.1:8766`；下方历史切片和旧报告中的 `8765` 只保留为历史记录，不是当前验收入口。
 
@@ -34,6 +34,19 @@ Role Intelligence controlled backend-search adapter → public web HTTP boundary
 状态：`PARTIAL`
 
 原因：`DATA_SAFETY_03` 已通过结构化导出完整性、递归敏感字段排除、Demo Reset scope 和隔离 Settings 浏览器路径。`SECURITY_02` 至 `SECURITY_11` 已补齐 error ID、脱敏诊断、canary、依赖/权限/logger contract、云端类别同意、Gmail/IMAP 只读确认、邮箱撤回、合成数据清理、Provider health 和 durable error projection 的直接 PII redaction；但正常工作区仍有 3 条历史旧正文，历史 artifact/行 scrub、完整 runtime PII data-flow、retention/公开政策、真实 OAuth 和完整外部信号浏览器证据仍未验证。Reliability-03 至 -14 已补齐保存失败重试、Interview/Learning 启动恢复、真实 backend 100-cycle HTTP 与 worker workload、关键 mutation retry/restart、邮箱测试隔离、浏览器双击/已提交后 503 重试唯一性、CareerTask/AutomationEvent 的跨进程原子 claim，以及跨进程 auth/timeout/restart recovery contract；Reliability-12 按 Goal 的“2 小时或 100 个代表性 task cycles”通过 soak 与 100-cycle RSS 门槛。2026-09-01 又完成 10/10 组合 E2E、50/50 first-run、失败路径、主要页面空状态矩阵、Interview Focus/Debrief/Learning 浏览器路径、性能 SLO、Tauri bundle、安装生命周期、release-mode Doctor、打包 PDF、staged-config live Pi smoke、可移植的隔离浏览器 smoke、Role Intelligence authority tests、启动恢复 health/diagnostics 证据，以及正式架构/Registry drift audit；完整后端回归现为 `362 passed, 19 warnings, 1 subtests passed in 329.19s`。但签名、previous-release upgrade、真正 clean-machine 独立验收、完整 provider/browser/network/restart 矩阵、远程 CI runner 和隐私/法律决策仍未完成。OpenCode `1.17.11` 虽可执行，但当前没有 OfferU 控制的公开网页工具边界，已 fail-closed，不计入 live Role Intelligence 通过。Public Release 继续保持 `NOT_READY`。
+
+## 2026-09-09 Local Agent Conformance & Career Golden Path
+
+本阶段严格验收结论仍为 `LOCAL_AGENT_REAL_CAREER_GOLDEN_PATH_FAIL`：真实用户 Resume PDF 与真实邮箱 OAuth 尚未提供，所以 fixture 只能证明流程契约，不能升级为真实业务闭环。
+
+- Codex `0.153.4` 已真实验证 live model、随机 nonce、结构化 JSON、流式事件、同线程继续、取消和 H 盘隔离工作目录；失败 kill 后状态为 `cancelled`，不会伪造 `completed`。证据：[Codex lifecycle](H:/tmp/offeru/codex-lifecycle-final-20260910.json)。
+- Codex 通过 App Server → OfferU Bridge → Operation Registry 自行发现 doctor、manifest、playbook、operation list/schema，并只读调用 `get_profile`、`list_resumes`、`list_jobs`、`list_application_progress_candidates`、`list_profile_evidence`；mutation 为 `0`，事实回答有操作来源。证据：[Codex bridge](H:/tmp/offeru/codex-bridge-autodiscovery-career-20260909.json)。
+- 六个候选 Agent 的安装、认证、live model、JSON、stream、resume、cancel、cwd、web 能力已生成真实状态矩阵；当前仅 Codex 的 live model/lifecycle 全部 `VERIFIED`，其它 Provider 的 `UNAVAILABLE`、`BLOCKED_AUTH` 或 `ERROR` 被保留，未被伪装成成功。证据：[agent matrix](H:/tmp/offeru/agent-matrix-final-20260910.json)。
+- Provider 选择已按能力声明和持久化验证状态 fail-closed；需要继续/取消时会优先选择已验证能力的 Provider。390px 与 1440px 的 Settings Agent 对话框均显示能力状态、同步状态，无横向溢出、console/page/API 错误均为 `0`。证据：[browser capability report](H:/tmp/offeru/browser-agent-capability-state-20260910/report-v4.json)。
+- 全量 backend 回归为 `501 passed, 9 skipped, 17 warnings, 11 subtests passed in 424.42s`；frontend typecheck/build 通过，架构审计 `0 findings`。证据：[full regression](H:/tmp/offeru/full-regression-capability-selection-20260910.log)、[architecture audit](H:/tmp/offeru/architecture-audit-capability-projection-20260910.json)。
+- 所有本轮测试临时目录、Agent CWD、浏览器 profile、日志和数据库副本均位于 `H:\tmp\offeru`；`C:\Users\ava\AppData\Roaming\npm\codex.cmd` 仅是已有 Provider 可执行文件路径，不是测试临时目录。服务停止后 7410/8766 均无监听进程。
+
+未完成的硬门：真实 Resume → `PROFILE_T0`、真实邮箱只读 OAuth → Career Observations、分段 Profile 演化、Profile → Job/Resume/Interview 的真实影响，以及其它 Provider 的 live 认证/模型条件。没有这些外部输入，不得输出 `LOCAL_AGENT_REAL_CAREER_GOLDEN_PATH_READY`。
 
 最新代码切片 `LLM_PROBE_BOUNDARY_54`：共享 LLM 连接探测和模型列表探测均显式绕过系统代理、拒绝 HTTP 重定向，并在返回 UI 前对上游错误、异常和配置 URL 做脱敏与长度限制。`127.0.0.1:8080` 仍只属于可选 llama.cpp 模型端点，不是网页入口；本轮没有启动 Edge、打开任何浏览器窗口或访问 8080。该切片未运行测试、构建、语法检查或 Provider/PDF/browser 验收，不能提升 Public Release 动态 Gate。
 

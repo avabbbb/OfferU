@@ -1,6 +1,16 @@
 # OfferU Public Release Handoff
 
-当前 Public Release 仍为 `OFFERU_PUBLIC_RELEASE_NOT_READY`；Resume Workspace 已达到 `RESUME_WORKSPACE_BETA_READY`。后续工作继续遵守 `STATUS.md` 的验收边界，不重新扩展 Agent 或一级产品模块。
+当前 Public Release 仍为 `OFFERU_PUBLIC_RELEASE_NOT_READY`；Resume Workspace 已达到 `RESUME_WORKSPACE_BETA_READY`。2026-09-09 的 Local Agent Conformance 切片已把 Codex 真实模型/生命周期、Operation Registry 只读桥接、能力状态投影和 Provider 选择证据写入 `STATUS.md`，但真实 Resume 与邮箱 OAuth 仍是外部输入门。后续工作继续遵守 `STATUS.md` 的验收边界，不重新扩展 Agent 或一级产品模块。
+
+## 2026-09-09 Local Agent Conformance & Career Golden Path
+
+- 当前严格 verdict：`LOCAL_AGENT_REAL_CAREER_GOLDEN_PATH_FAIL`。fixture 只能证明 Resume、Email、Profile evolution 和 downstream 的流程契约；真实用户 Resume PDF、真实邮箱 OAuth 和人工事实确认尚未完成。
+- Codex `0.153.4`：live model、随机 nonce、structured JSON、streaming、resume、cancel、cwd isolation 均为 `VERIFIED`；kill 测试后是 `cancelled`，没有假 `completed`。详见 `H:\tmp\offeru\codex-lifecycle-final-20260910.json`。
+- Codex Bridge：App Server 自行发现 doctor/manifest/playbook/operation list/schema，通过 Registry 只读读取 profile、resumes、jobs、application progress 和 evidence；mutation `0`，grounding `true`。详见 `H:\tmp\offeru\codex-bridge-autodiscovery-career-20260909.json`。
+- 六 Agent capability matrix 已落盘：Codex 是当前唯一 live model/lifecycle 全验证 Provider；Claude、Gemini、OpenCode、Pi、OMP 的 `NOT_VERIFIED`、`UNAVAILABLE`、`BLOCKED_AUTH` 或 `ERROR` 均保持真实投影。需要 resume/cancel 时，选择器优先已持久化验证的 Provider。
+- 390px/1440px Agent connection UI 显示 capability/sync 状态，无横向溢出、console/page/API errors 均为 `0`；frontend typecheck/build 通过，architecture audit `0 findings`。
+- 当前全量 backend 回归：`501 passed, 9 skipped, 17 warnings, 11 subtests passed in 424.42s`。临时数据库、浏览器 profile、Agent CWD、日志和报告全部位于 `H:\tmp\offeru`；C 盘仅保留既有 Provider 可执行文件路径，不承担测试临时数据。
+- 下一步只有外部输入后才能继续：提供真实 Resume PDF，完成 Gmail 只读 OAuth，并逐段执行 `PROFILE_T0 → PROFILE_FINAL → Job/Resume/Interview impact`。在此之前不输出 `LOCAL_AGENT_REAL_CAREER_GOLDEN_PATH_READY`。
 
 - 2026-09-03 `OPENCODE_LIVE_CAPABILITY_GUARD_71`：本机 OpenCode `1.17.11` 的 `run`/JSON CLI 探测通过，但未证明 `--pure` 具备 OfferU 所需的公开网页 host、重定向和私网地址约束；OpenCode 的 `supports_live_web_search` 已 fail-closed 为 `False`，不会被 Role Intelligence 当作 live Provider，也没有调用 `opencode web`。通用 Agent adapter 保留；本轮没有启动 Edge、创建浏览器窗口或访问 8080，详见 [report](docs/evals/reports/2026-09-03-codex-offeru-public-release-opencode-live-boundary.md)。
 - 2026-09-03 `EXTENSION_ERROR_PROJECTION_72`：扩展新增统一 `safeExtensionError`，Background/Popup/Content/Page Agent/规则包/Smart Fill/HTTP control 的跨边界错误均做控制字符清理、240 字符上限和 endpoint/credential/email/phone 脱敏；bootstrap console 不再记录原始异常对象，Smart Fill opt-in debug console 只记录安全遥测字段。新增 helper 单元测试与 architecture contract，正式 WXT bundle、typecheck/test、远程 runner 尚未执行；没有启动 Edge、创建浏览器窗口或访问 8080，详见 [report](docs/evals/reports/2026-09-03-codex-offeru-public-release-extension-error-projection.md)。

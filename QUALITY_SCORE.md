@@ -1,6 +1,6 @@
 # OfferU Public Release Quality Score
 
-更新时间：2026-09-03
+更新时间：2026-09-09
 
 ## Scoring rule
 
@@ -16,7 +16,7 @@
 | Role Intelligence | 42/100 | Deterministic authority evidence | Runtime normalization、dedupe、cohort、Delta、Evidence Gap 和 persisted evidence 已有当前测试；至少一个 live provider 与 10-role matrix 缺失 |
 | Interview | 72/100 | Current isolated E2E + recovery | Focus → Interview → Debrief → Learning 进入 10/10 组合路径；live provider、长时恢复和完整行为约束仍不足 |
 | Profile / Memory | 68/100 | E2E partial | Learning Candidate 回流与 review 路径进入 10/10 组合路径；完整六态 lifecycle/history/conflict 未验证 |
-| Agent Runtime | 66/100 | Packaged staged live + provider health matrix | Pi provider seam、Replay、packaged staged-config live Run 和五状态 Provider health projection 均有证据；当前默认模型 unavailable，Codex/DSH 未验证 |
+| Agent Runtime | 76/100 | Current Codex live/lifecycle + Registry bridge + six-agent matrix | Codex `0.153.4` 已真实验证 live model、structured output、streaming、resume、cancel、cwd isolation，并通过 Operation Registry 只读读取 Career Context；六个候选 Agent 的 `NOT_VERIFIED`、`UNAVAILABLE`、`BLOCKED_AUTH`、`ERROR` 状态和 capability-aware provider selection 已有证据；其它 Provider 认证/模型、真实 Resume/Email/Profile downstream 和 Public Release clean-machine 仍缺 |
 | Automation | 72/100 | Current task projection + real worker + architecture evidence | Inbox/CareerTask 实时投影、UI cancel/retry confirmation、双击/已提交后传输重试唯一性、100-cycle Replay worker、两个独立进程的 CareerTask/AutomationEvent claim、跨进程 auth/timeout/restart recovery contract、唯一 Event→Rule→CareerTask dispatcher 和 startup recovery boundary audit 已有实现/部分证据；Reliability-14 尚未执行，provider/network cancel/resume 和全部业务 mutation 并发仍不足 |
 | Data Safety | 88/100 | Current deterministic migration + export/reset | Online Backup API、manifest/hash、三次恢复、restart、migration rollback、integrity、structured export redaction、Demo Reset scope 和 Settings/Doctor 路径均有当前报告 |
 | Reliability | 89/100 | Current E2E + task UX + startup observability | 10/10、50/50、失败浏览器路径、双击/传输重试、真实 backend recovery/mutation matrix、100-cycle worker、双进程 claim、task status/control、startup recovery health/diagnostics 和 100-cycle RSS 门槛均有当前证据；Reliability-14 新增跨进程 failure/retry/restart 矩阵但尚未执行，CI 已配置 10 个隔离 critical new-user runner 但未远程执行；完整 worker/browser/network/restart 矩阵仍缺，2 小时是未执行的等价 endurance 方式 |
@@ -26,13 +26,13 @@
 ## Weighted release score
 
 ```text
-Current unweighted average: 70/100
+Current unweighted average: 71/100
 Release verdict: NOT READY
 ```
 
 该平均分不能抵消硬 Gate。Data Safety、Security、Packaging、Live Runtime 或 E2E 任一未通过，最终状态都不能是 `OFFERU_PUBLIC_RELEASE_READY`。
 
-2026-09-03 Tauri/Doctor/CI health identity 收紧、local loopback 禁用系统代理、简历打印/分享与邮箱回调固定 7410、公共 E2E 健康等待复用 `OfferU/python` predicate，以及 Tauri/CLI/用户 URL 的入口审计扩展没有新增可将硬 Gate 提升为 PASS 的动态证据；`ROLE_INTELLIGENCE_BACKEND_SEARCH_79` 又落盘了 `auto → live CLI → controlled backend_search` 选择链和 `live_backend` 投影，但尚未执行真实搜索 API/LLM、10-role matrix 或 E2E，因此 Role Intelligence 分数保持 42/100，整体分数保持不变，Public Release 仍为 `NOT READY`。
+2026-09-09 Local Agent Conformance 切片新增 Codex live/lifecycle、Registry grounding、六 Agent capability matrix、持久化能力投影、能力感知 Provider 选择和 390px/1440px Agent UI 证据，因此 Agent Runtime 从 66/100 调整为 76/100，整体未加权平均由 70/100 调整为 71/100。该证据不替代真实 Resume、邮箱 OAuth、Profile 长期演化、live Role Intelligence、签名、升级、clean-machine 和完整安全/隐私硬 Gate，Public Release 仍为 `NOT READY`。
 
 ## Recalculation trigger
 

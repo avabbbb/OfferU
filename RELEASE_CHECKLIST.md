@@ -1,6 +1,6 @@
 # OfferU Public Release Checklist
 
-更新时间：2026-09-07
+更新时间：2026-09-09
 
 状态只允许：`PASS`、`FAIL`、`BLOCKED_EXTERNAL`、`PRE_EXISTING_FAILURE`、`NOT_VERIFIED`。`BLOCKED_EXTERNAL` 仅限签名证书、本人 OAuth、法律/隐私决策或第三方生产账号；未运行与证据不足统一为 `NOT_VERIFIED`，不能计入通过率。
 
@@ -35,7 +35,7 @@
 | 22 | Resume Metrics | NOT_VERIFIED | Reliability-03 通过成功 autosave、单次更新、503 可见、draft 保留和 retry；缺 99.9% autosave stress、0 lost edit、跨标签冲突与语言 PDF matrix |
 | 23 | Role Intelligence authority split | PASS | [Role authority evidence](docs/evals/reports/2026-09-01-codex-offeru-public-release-role-authority.md)：Agent/Provider 只返回候选结构，Runtime 负责 normalization、dedupe、cohort、sample、frequency、Delta、Evidence Gap 与持久化；无 LLM 统计数字直写 |
 | 24 | Fixture vs Live labels | NOT_VERIFIED | `dataModeLabel` 已统一区分 Fixture、Fixture Plugin、Live、Live Plugin、受控后端检索和未知模式；Role/Interview/Job 页面不再把未知或 fixture plugin 误标为 Live；仍需完整 installer/网站人工 claim review |
-| 25 | Live Provider Gate | NOT_VERIFIED | Packaged Pi Agent live smoke 在 staged provider config 下通过；[live Role Intelligence report](docs/evals/reports/2026-09-01-codex-offeru-public-release-live-role.md) 记录 Pi CLI 无受控网页工具且结构化任务失败；OpenCode `1.17.11` 虽可执行但当前没有 OfferU 控制的公开网页 host/redirect/private-address seam，已 fail-closed；Role Intelligence `auto` 现在会在无 live-capable CLI 且搜索 API/LLM 已配置时选择受控 `backend_search` adapter，Role/JobResearch 两条后端 HTTP 路径均统一直连、拒绝自动重定向、校验 DNS 公网地址并要求来源 URL 来自已提供页面；`job-search` Capability 也已固定 Arbeitnow API、禁用系统代理和自动重定向，并过滤输出的本机/私有/凭据岗位 URL；正式 architecture audit 已覆盖上述传输边界；真实 Provider/LLM 配置与 10-role matrix 仍未执行；Codex live 仍受外部认证阻塞 |
+| 25 | Live Provider Gate | NOT_VERIFIED | Packaged Pi Agent live smoke 在 staged provider config 下通过；[live Role Intelligence report](docs/evals/reports/2026-09-01-codex-offeru-public-release-live-role.md) 记录 Pi CLI 无受控网页工具且结构化任务失败；OpenCode `1.17.11` 虽可执行但当前没有 OfferU 控制的公开网页 host/redirect/private-address seam，已 fail-closed；Role Intelligence `auto` 现在会在无 live-capable CLI 且搜索 API/LLM 配置齐全时选择受控 `backend_search` adapter，Role/JobResearch 两条后端 HTTP 路径均统一直连、拒绝自动重定向、校验 DNS 公网地址并要求来源 URL 来自已提供页面；`job-search` Capability 也已固定 Arbeitnow API、禁用系统代理和自动重定向，并过滤输出的本机/私有/凭据岗位 URL；正式 architecture audit 已覆盖上述传输边界；真实 Provider/LLM 配置与 10-role matrix 仍未执行。Codex `0.153.4` 的 live model、structured output、streaming、resume、cancel 和 cwd isolation 已在 `H:\tmp\offeru\codex-lifecycle-final-20260910.json` 真实验证，但不等于完整 Role Intelligence live Provider Gate |
 | 26 | 10-role Live Acceptance | NOT_VERIFIED | 无 10-role raw→dedupe→cohort→Delta matrix |
 | 27 | Interview Focus | NOT_VERIFIED | [Interview learning E2E](docs/evals/reports/2026-09-01-codex-offeru-public-release-interview.md) 在隔离浏览器通过 persisted Role Intelligence Focus Plan → 专项问题；当前为 Replay fixture，live provider 仍缺 |
 | 28 | Interviewer Behavior | NOT_VERIFIED | 同一 E2E 的模糊首答触发 `Adaptive follow-up`，活跃页保持 Interviewer Mode 且无即时夸奖/答案补全/Coach 面板；完整 provider/行为矩阵仍缺 |
@@ -124,6 +124,23 @@
 | 111 | Completion Report | NOT_VERIFIED | 只在最终两种合法 verdict 产生 |
 | 112 | Continuous Autonomous Instruction | PASS | STATUS/SCORE/next blocker 循环已开始 |
 | 113 | Final Principle / user control | NOT_VERIFIED | 需最终人类验收、恢复与升级证据 |
+
+## Local Agent Conformance addendum (2026-09-09)
+
+此附录记录用户提出的 Local Agent Conformance & Real Career Golden Path，不改写上方 0–113 的 Public Release 映射。状态仍遵循本清单的五态规则。
+
+| Gate | Status | Evidence / remaining proof |
+| --- | --- | --- |
+| Agent capability matrix | PASS | 六个候选 Agent 已完成真实发现与能力投影；Codex live/lifecycle 全验证，其它 Provider 的 `NOT_VERIFIED`、`UNAVAILABLE`、`BLOCKED_AUTH`、`ERROR` 原样保留。见 `H:\tmp\offeru\agent-matrix-final-20260910.json` |
+| Codex live model + lifecycle | PASS | 随机 nonce、JSON schema、streaming、同线程 resume、interrupt cancel、H 盘 cwd 和失败 kill recovery 均有证据。见 `H:\tmp\offeru\codex-lifecycle-final-20260910.json` |
+| Codex → OfferU Registry | PASS | Agent 自行发现 doctor/manifest/playbook/operation list/schema，读取五个 Career 操作，mutation `0` 且 grounding `true`。见 `H:\tmp\offeru\codex-bridge-autodiscovery-career-20260909.json` |
+| Capability-aware provider selection + UI | PASS | resume/cancel/schema/web 声明 fail-closed；有持久化 `VERIFIED` 能力时优先选择；390px/1440px Agent dialog 显示同步和能力状态，无溢出或浏览器错误。见 `H:\tmp\offeru\browser-agent-capability-state-20260910\report-v4.json` |
+| Resume → PROFILE_T0 | BLOCKED_EXTERNAL | 现有 fixture 流程通过，但真实用户 Resume PDF 尚未提供，不能升级为真实业务 PASS |
+| Email read-only → observations | BLOCKED_EXTERNAL | IMAP fixture 的 search/list/read、去重和禁止 mutation 通过；真实邮箱 OAuth 尚未完成 |
+| Longitudinal Profile evolution | BLOCKED_EXTERNAL | fixture 已验证 delta/dedup/conflict/hypothesis/reject 规则；真实分段邮箱输入和人工确认尚缺 |
+| Profile → Job/Resume/Interview impact | BLOCKED_EXTERNAL | fixture 已证明 T0/Final 产生差异；真实 Profile Final 和真实 JD/下游闭环尚缺 |
+| Regression / architecture / UI evidence | PASS | backend `501 passed, 9 skipped, 17 warnings, 11 subtests`；frontend typecheck/build PASS；architecture `0 findings`；390px/1440px browser errors/overflow `0`。见 `H:\tmp\offeru\full-regression-capability-selection-20260910.log` |
+| Test storage boundary | PASS | 本轮临时数据库、Agent CWD、browser profile、日志和报告统一在 `H:\tmp\offeru`；C 盘仅为既有 Provider executable/auth 路径，不承载测试临时数据 |
 
 ## Current highest-priority blocker
 
