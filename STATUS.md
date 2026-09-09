@@ -40,6 +40,7 @@ Role Intelligence controlled backend-search adapter → public web HTTP boundary
 本阶段严格验收结论仍为 `LOCAL_AGENT_REAL_CAREER_GOLDEN_PATH_FAIL`：真实用户 Resume PDF 与真实邮箱 OAuth 尚未提供，所以 fixture 只能证明流程契约，不能升级为真实业务闭环。
 
 - 2026-09-09 当前 checkout 复核：backend 全量回归 `515 passed, 9 skipped, 17 warnings, 11 subtests passed in 532.02s`；frontend typecheck 与 production build 均 exit `0`。日志和构建临时目录均位于 `H:\tmp\offeru`，未使用 C 盘测试目录。邮箱 Operation Registry 当前审计为 10 个只读操作、同步仅声明 `mailbox:read` 且要求确认，未发现 send/reply/delete/archive/mark-read 等邮箱突变操作。证据：[full regression](H:/tmp/offeru/full-regression-reject-gate-20260911/pytest.log)、[frontend validation](H:/tmp/offeru/frontend-validation-current-20260911)、[email boundary](H:/tmp/offeru/audit-email-boundary-20260911.json)。
+- 外部输入预检已落盘到 [real-input-preflight](H:/tmp/offeru/real-input-preflight-20260909.json)：扫描范围仅为 H 盘仓库与 H 临时目录，发现的 3 个 Resume 文件均为 fixture，真实 Resume 候选为 0；Gmail client 配置与 OAuth 账号均未完成，未读取或输出任何密钥，也未使用 C 盘测试目录。
 - 记忆长期演化边界已修复：同一已拒绝 Proposal 由同一来源观察重复提交时返回终态 `duplicate`，只有新的独立 Observation 才能重新生成 pending Proposal。当前回归为 `515 passed, 9 skipped, 17 warnings, 11 subtests`；H 盘 synthetic stress 通过 3/3 冲突、3 次重放去重、拒绝记忆、新证据重开与潜力假设隔离。证据：[stress](H:/tmp/offeru/profile-evolution-stress-20260911.json)、[full regression](H:/tmp/offeru/full-regression-reject-gate-20260911/pytest.log)。
 
 - Codex `0.153.4` 已真实验证 live model、随机 nonce、结构化 JSON、流式事件、同线程继续、取消和 H 盘隔离工作目录；失败 kill 后状态为 `cancelled`，不会伪造 `completed`。证据：[Codex lifecycle](H:/tmp/offeru/codex-lifecycle-final-20260910.json)。
