@@ -331,6 +331,8 @@ async def _run_live_probe(provider_id: str, item: dict[str, Any]) -> dict[str, A
     event_count = int(trace.get("event_count") or 0)
     return {
         "verified": True,
+        "binary_path": str(item.get("executable_path") or ""),
+        "version": str(item.get("version") or "")[:160],
         "nonce": nonce,
         "task_id": task_id,
         "completed_at": _now(),
@@ -390,7 +392,13 @@ async def get_local_agent_capability_matrix(
             continue
         report = _base_report(item, health_by_id.get(provider_id, {}))
         prior = _LIVE_PROBES.get(provider_id)
-        if prior and prior.get("verified"):
+        prior_matches = bool(
+            prior
+            and prior.get("verified")
+            and prior.get("binary_path") == item.get("executable_path")
+            and prior.get("version") == item.get("version")
+        )
+        if prior_matches:
             report.update(
                 {
                     "native_auth_detected": "VERIFIED",
@@ -437,6 +445,7 @@ async def get_local_agent_capability_matrix(
                     live_probe=live,
                 )
             except Exception as exc:  # probe status is data, not a hidden failure
+                _LIVE_PROBES.pop(provider_id, None)
                 auth_failure = _is_auth_failure(exc)
                 failure_state = "BLOCKED_AUTH" if auth_failure else "ERROR"
                 report["native_auth_detected"] = (
