@@ -16,6 +16,7 @@ import {
   type CareerLedgerEntry,
   type CareerModelEntry,
   type MemoryInboxItem,
+  type ProfileEvolutionReport,
   memoryApi,
 } from "@/lib/api";
 import { safeClientErrorMessage } from "@/lib/safe-error";
@@ -103,20 +104,23 @@ export default function CareerLedgerPanel() {
   } | null>(null);
   const [inbox, setInbox] = useState<MemoryInboxItem[]>([]);
   const [ledger, setLedger] = useState<CareerLedgerEntry[]>([]);
+  const [evolution, setEvolution] = useState<ProfileEvolutionReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState<number | null>(null);
 
   const reload = useCallback(async () => {
     try {
-      const [modelData, inboxData, ledgerData] = await Promise.all([
+      const [modelData, inboxData, ledgerData, evolutionData] = await Promise.all([
         memoryApi.careerModel(),
         memoryApi.inbox({ status: "pending", limit: 50 }),
         memoryApi.ledger({ status: "all", limit: 100 }),
+        memoryApi.evolutionReport().catch(() => null),
       ]);
       setModel(modelData);
       setInbox(inboxData.items);
       setLedger(ledgerData.entries);
+      setEvolution(evolutionData);
       setError("");
     } catch (err: any) {
       setError(safeClientErrorMessage(err, "加载职业模型失败"));
@@ -151,6 +155,14 @@ export default function CareerLedgerPanel() {
 
   const activeCount = model?.entries.length ?? 0;
   const invalidCount = model?.invalidated_entries.length ?? 0;
+  const evolutionChangeCount = evolution
+    ? evolution.new_facts.length
+      + evolution.strengthened_facts.length
+      + evolution.conflicts.length
+      + evolution.replaced_facts.length
+      + evolution.rejected_observations.length
+      + evolution.potential_hypotheses.length
+    : 0;
 
   return (
     <div className="space-y-4">
@@ -162,6 +174,39 @@ export default function CareerLedgerPanel() {
         <div className="rounded-md bg-[var(--status-blush)] px-3 py-2 text-[12.5px] font-medium text-[var(--primary-red)]">
           {error}
         </div>
+      )}
+
+      {evolution && (
+        <LedgerSection icon={History} label="Profile 演化摘要" count={evolutionChangeCount}>
+          <div className="space-y-3 px-3.5 py-3">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <EvolutionMetric label="新增事实" value={evolution.new_facts.length} />
+              <EvolutionMetric label="强化事实" value={evolution.strengthened_facts.length} />
+              <EvolutionMetric label="冲突" value={evolution.conflicts.length} />
+              <EvolutionMetric label="被取代" value={evolution.replaced_facts.length} />
+              <EvolutionMetric label="拒绝观察" value={evolution.rejected_observations.length} />
+              <EvolutionMetric label="潜力假设" value={evolution.potential_hypotheses.length} />
+            </div>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[var(--foreground-muted)]">
+              <span>活跃事实 {evolution.evidence_coverage.active_profile_entries}</span>
+              <span>有来源 {Math.round(evolution.evidence_coverage.source_traceability_ratio * 100)}%</span>
+              <span>求职信号 {evolution.application_status_changes.length}</span>
+            </div>
+            {evolution.timeline.length > 0 && (
+              <div className="space-y-1.5 border-t border-[var(--border)] pt-2">
+                <p className="text-[11px] font-semibold text-[var(--foreground-muted)]">最近证据时间线</p>
+                {evolution.timeline.slice(0, 3).map((item) => (
+                  <div key={item.period} className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                    <span className="font-medium">{item.period}</span>
+                    <span className="text-[var(--foreground-muted)]">
+                      {item.observation_count} 条观察 · {item.proposal_count} 条提案 · 接受 {item.accepted_count}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </LedgerSection>
       )}
 
       {/* 当前职业模型 */}
@@ -323,6 +368,15 @@ function EmptyRow({ text }: { text: string }) {
   return (
     <div className="px-3.5 py-4 text-center text-[12.5px] text-[var(--foreground-muted)]">
       {text}
+    </div>
+  );
+}
+
+function EvolutionMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded border border-[var(--border)] bg-[var(--surface-muted)]/45 px-2.5 py-2">
+      <div className="text-lg font-semibold leading-none">{value}</div>
+      <div className="mt-1 text-[11px] text-[var(--foreground-muted)]">{label}</div>
     </div>
   );
 }

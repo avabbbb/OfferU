@@ -1677,6 +1677,49 @@ export interface CareerLedgerEntry extends MemoryInboxItem {
   } | null;
 }
 
+export interface ProfileEvolutionReport {
+  schema: string;
+  generated_at: string;
+  ledger: {
+    total: number;
+    pending: number;
+    accepted: number;
+    rejected: number;
+  };
+  new_facts: MemoryInboxItem[];
+  strengthened_facts: MemoryInboxItem[];
+  conflicts: MemoryInboxItem[];
+  replaced_facts: MemoryInboxItem[];
+  rejected_observations: MemoryInboxItem[];
+  potential_hypotheses: MemoryInboxItem[];
+  application_status_changes: Array<{
+    observation_id: number;
+    source_type: string;
+    stage: string;
+    previous_stage: string | null;
+    observation_type: string;
+    confirmed: boolean;
+    candidate_id: string | number | null;
+    observed_at: string;
+  }>;
+  timeline: Array<{
+    period: string;
+    first_observed_at: string;
+    last_observed_at: string;
+    observation_count: number;
+    proposal_count: number;
+    accepted_count: number;
+    rejected_count: number;
+    source_types: string[];
+    observation_types: string[];
+  }>;
+  evidence_coverage: {
+    active_profile_entries: number;
+    entries_with_sources: number;
+    source_traceability_ratio: number;
+  };
+}
+
 export const memoryApi = {
   inbox: (params?: { status?: string; limit?: number }) =>
     request<{ items: MemoryInboxItem[] }>(
@@ -1696,6 +1739,11 @@ export const memoryApi = {
       by_tier: Record<string, CareerModelEntry[]>;
       invalidated_entries: CareerModelEntry[];
     }>("/api/memory/career-model"),
+
+  evolutionReport: (limit = 200) =>
+    request<ProfileEvolutionReport>(
+      `/api/agent/runtime/profile-evolution?limit=${Math.max(1, Math.min(500, Math.round(limit)))}`
+    ),
 
   reviewProposal: (proposalId: number, action: string, note = "") =>
     request<MemoryInboxItem>(`/api/memory/proposals/${proposalId}/review`, {
