@@ -1204,11 +1204,11 @@ class CodexAppServerAdapter:
                     },
                 },
             )
+            await self._write({"method": "initialized", "params": {}})
             account = await self._request(
                 "account/read", {"refreshToken": False}
             )
             _require_codex_auth(account)
-            await self._write({"method": "initialized", "params": {}})
             thread_params = {
                 "cwd": str(cwd),
                 "approvalPolicy": "never",
