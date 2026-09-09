@@ -139,6 +139,9 @@ def _is_auth_failure(value: Any) -> bool:
             "invalid_api_key",
             "failed to authenticate",
             "authentication failed",
+            "authentication required",
+            "auth required",
+            "login required",
         )
     )
 

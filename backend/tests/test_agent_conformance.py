@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.services.agent_conformance import (
     _base_report,
+    _is_auth_failure,
     _parse_lifecycle_message,
     _probe_event_count,
 )
@@ -22,6 +23,12 @@ def test_probe_event_count_accepts_nested_trace_and_legacy_top_level() -> None:
     assert _probe_event_count({"trace": {"event_count": 59}}) == 59
     assert _probe_event_count({"event_count": 3}) == 3
     assert _probe_event_count({"trace": {"event_count": "bad"}}) == 0
+
+
+def test_auth_required_runtime_failure_is_classified_as_auth_block() -> None:
+    assert _is_auth_failure("Codex authentication required") is True
+    assert _is_auth_failure("provider login required") is True
+    assert _is_auth_failure("model timed out") is False
 
 
 def test_persisted_live_probe_keeps_streaming_verified_after_restart() -> None:
