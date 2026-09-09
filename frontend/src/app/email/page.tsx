@@ -204,9 +204,7 @@ export default function EmailPage() {
     } catch {
       setSyncResult("同步失败，请检查网络");
     }
-    await mutate();
-    await mutateStatus();
-    await mutateSyncRuns();
+    await Promise.allSettled([mutate(), mutateStatus(), mutateSyncRuns()]);
     setSyncing(false);
   };
 
