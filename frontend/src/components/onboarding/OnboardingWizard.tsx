@@ -30,6 +30,7 @@ import { bauhausFieldClassNames } from "@/lib/bauhaus";
 import {
   createResume,
   createProfileSection,
+  confirmProfileCandidate,
   importProfileResume,
   updateConfig,
   useConfig,
@@ -838,16 +839,25 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
   };
 
   const handleAiImportForWizard = async (result: ProfileImportResult) => {
-    const selected = (result.bullets || []).filter((_, index) =>
-      selectedImportCandidates.includes(index)
-    );
+    const selected = (result.bullets || [])
+      .map((candidate, index) => ({ candidate, index }))
+      .filter(({ index }) => selectedImportCandidates.includes(index));
     if (selected.length === 0) {
       setUploadResult("请至少选择一条候选内容。");
       return;
     }
 
+    const ungrounded = selected.filter(({ candidate }) => Number(candidate.memory_proposal_id || 0) <= 0);
+    if (ungrounded.length > 0 || Number(result.session_id || 0) <= 0) {
+      setUploadResult("这些候选没有 OfferU 来源提案，不能直接写入 Resume；请上传原始 PDF / DOCX，让系统先建立可追溯证据。");
+      return;
+    }
+
     setCreatingResume(true);
     try {
+      for (const { index } of selected) {
+        await confirmProfileCandidate({ session_id: result.session_id, bullet_index: index });
+      }
       const baseInfo = result.base_info || {};
       const titleName = result.filename.replace(/\.(pdf|docx?)$/i, "").trim();
       const created: any = await createResume({
@@ -868,7 +878,7 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
       if (!resumeId) throw new Error("后端没有返回新简历 ID");
 
       const groups = groupProfileCandidatesForResume(
-        selected.map((candidate, index) => {
+        selected.map(({ candidate }, index) => {
           const sectionType = normalizeProfileCategoryKey(candidate.section_type || "custom");
           return {
             id: candidate.index ?? index,
@@ -901,7 +911,7 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
         }
       }
 
-      setUploadResult(`已确认并写入 ${selected.length} 条简历内容。`);
+      setUploadResult(`已确认 ${selected.length} 条职业事实，并写入新简历。`);
       setResumeCreated(true);
       setTimeout(goNext, 1000);
     } catch (error) {
