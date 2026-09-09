@@ -957,7 +957,8 @@ async def save_profile_resume_import(
                     item
                     for item in evidence.get("observations") or []
                     if isinstance(item, dict)
-                    and int(item.get("candidate_index") or -1) == int(bullet["index"])
+                    and item.get("candidate_index") is not None
+                    and int(item["candidate_index"]) == int(bullet["index"])
                 ),
                 None,
             )
