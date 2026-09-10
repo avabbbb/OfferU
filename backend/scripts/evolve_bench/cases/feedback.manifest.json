@@ -1,0 +1,16 @@
+{
+  "split": "feedback",
+  "dataset_hash": "runner-only-to-be-published-with-feedback-run",
+  "case_count": 20,
+  "planned_counts": {
+    "goal_execution": 4,
+    "career_truth": 4,
+    "email_events": 3,
+    "jd_capture": 2,
+    "smart_fill": 2,
+    "profile_longitudinal": 2,
+    "self_judging": 1,
+    "harness_generalization": 1,
+    "safety": 1
+  }
+}

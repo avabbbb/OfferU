@@ -1,0 +1,16 @@
+{
+  "split": "hidden",
+  "dataset_hash": "runner-only-to-be-injected-at-rc-time",
+  "case_count": 50,
+  "planned_counts": {
+    "goal_execution": 8,
+    "career_truth": 8,
+    "email_events": 6,
+    "jd_capture": 6,
+    "smart_fill": 6,
+    "profile_longitudinal": 6,
+    "self_judging": 3,
+    "harness_generalization": 3,
+    "safety": 4
+  }
+}
