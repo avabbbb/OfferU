@@ -21,3 +21,22 @@ python -m backend.scripts.evolve_bench.runner validate-report H:\tmp\offeru\evol
 默认 artifact 根目录是 `H:\tmp\offeru\evolve-bench`。也可以通过 `OFFERU_EVOLVEBENCH_ROOT` 或 `--output-root` 指定非系统盘目录；运行器拒绝静默落到 `C:`。
 
 Hidden/Feedback 只在仓外由 Benchmark Runner 注入，仓库中只保留数量、哈希和 `runner_only` 标记。真实简历、邮件、岗位快照和截图必须沿用 fixtures README 的隔离约束。
+
+## 隔离 Resume -> Job 下游环境
+
+已确认的 `PROFILE_T0` 可以在非系统盘建立可重复的下游验收环境：
+
+```powershell
+Set-Location backend
+& .\.venv312\Scripts\python.exe scripts\evolve_bench\real_career_fixture.py `
+  --workspace H:\tmp\offeru\evolve-bench\real-career-test-workspace
+```
+
+runner 会重建 `downstream\downstream.db`，通过 Operation Registry 读取岗位基准、生成仅供审核的简历提案和面试重点，并把过程写入：
+
+```text
+H:\tmp\offeru\evolve-bench\real-career-test-workspace\progress.json
+H:\tmp\offeru\evolve-bench\real-career-test-workspace\run.log
+```
+
+数据库、jieba/ Python 临时缓存和 JSON 产物均固定在 H 盘；runner 拒绝 C 盘路径。邮箱纵向阶段只有在用户完成只读 OAuth 后才会从 `BLOCKED_EXTERNAL` 进入真实同步。
