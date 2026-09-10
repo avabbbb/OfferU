@@ -67,6 +67,21 @@ _REQUIRED_CONTEXT_READS = frozenset(
     }
 )
 
+# A real Profile can contain a long observation/evolution history.  The
+# conformance turn must read every Career surface, while keeping each tool
+# response bounded enough for a single model context.  These caps apply only
+# to this read-only probe; the underlying Registry operation limits remain
+# unchanged for product callers.
+_CONFORMANCE_READ_LIMITS = {
+    "list_application_progress_candidates": 50,
+    "list_profile_evidence": 50,
+    "list_learning_observations": 25,
+    "list_memory_inbox": 25,
+    "get_profile_evolution_report": 25,
+    "list_email_accounts": 25,
+    "list_email_sync_runs": 25,
+}
+
 
 def _bridge_cwd(run_id: str) -> Path:
     """Create the isolated Bridge cwd on the configured non-system drive."""
@@ -203,11 +218,19 @@ async def run_codex_offeru_conformance(*, timeout_seconds: int = 420) -> dict[st
                 return
 
     async def invoke_registry(operation: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        effective_arguments = dict(arguments)
+        limit_cap = _CONFORMANCE_READ_LIMITS.get(operation)
+        if limit_cap is not None:
+            try:
+                requested_limit = int(effective_arguments.get("limit", limit_cap))
+            except (TypeError, ValueError):
+                requested_limit = limit_cap
+            effective_arguments["limit"] = max(1, min(requested_limit, limit_cap))
         result = await bridge_request(
             "operation.invoke",
             {
                 "operation": operation,
-                "arguments": arguments,
+                "arguments": effective_arguments,
                 "idempotencyKey": f"{run_id}:{len(calls) + 1}",
                 "contextVersion": context_version,
             },
@@ -268,14 +291,23 @@ async def run_codex_offeru_conformance(*, timeout_seconds: int = 420) -> dict[st
             )
         if operation in operation_outputs:
             unnecessary.append({"tool": clean_name, "reason": "duplicate_operation_read"})
+            return {
+                "already_read": True,
+                "operation": operation,
+                "message": "This read-only operation was already completed; use its first result.",
+            }
         result = await invoke_registry(operation, clean_arguments)
         return result.get("result") or {}
 
     adapter: CodexMainLoopAdapter | None = None
     result: dict[str, Any] = {}
     failure = ""
+    runtime_diagnostics: dict[str, Any] = {}
     try:
-        adapter = CodexMainLoopAdapter(executable=_resolve_codex_binary())
+        adapter = CodexMainLoopAdapter(
+            executable=_resolve_codex_binary(),
+            turn_timeout=max(30, min(int(timeout_seconds) - 15, 900)),
+        )
         adapter.on_operation = on_operation
         await adapter.start()
         prompt = """
@@ -284,12 +316,13 @@ available operations as unknown. First inspect the host's own health, manifest,
 agent playbook, operation catalogue, and the schema for the read-only Profile
 operation you discover. Decide which tools to call from the supplied tool
 descriptions and their outputs; do not assume an operation name from this
-prompt and do not repeat discovery calls unnecessarily. Then read the current
-Profile and the saved resumes, jobs, active application progress, linked
-Profile evidence, learning observations, pending memory candidates, Profile
-evolution report, connected email accounts, and email sync runs. You must call
-the corresponding read-only tools even when a surface is empty, so the result
-proves the complete Career context boundary. Use the actual Operation Registry
+prompt. Call each discovery tool at most once. Then read the current Profile
+and the saved resumes, jobs, active application progress, linked Profile
+evidence, learning observations, pending memory candidates, Profile evolution
+report, connected email accounts, and email sync runs. Call each corresponding
+read-only business tool exactly once, even when a surface is empty, and use a
+small limit (no more than 25 items) for list-style reads. After those reads,
+stop calling tools and return the JSON object. Use the actual Operation Registry
 outputs as the only source for career facts. Never write, triage, confirm, send
 email, or call a tool that is not granted. If data is absent, say it is unknown
 or evidence is insufficient. Do not infer facts from this prompt.
@@ -391,6 +424,22 @@ operation names whose outputs you actually used in the answer.
         )
     except Exception as exc:
         failure = safe_error_message(exc)
+        if adapter is not None:
+            event_methods: dict[str, int] = {}
+            for event in adapter.events():
+                method = str(event.get("method") or "<response>")
+                event_methods[method] = event_methods.get(method, 0) + 1
+            runtime_diagnostics = {
+                "event_count": len(adapter.events()),
+                "event_methods": event_methods,
+                "final_message_chars": len(adapter._final_message or ""),
+                "streamed_message_chars": sum(
+                    len(part) for part in adapter._message_parts
+                ),
+                "reader_error": safe_error_message(adapter._reader_exit_error)
+                if adapter._reader_exit_error
+                else "",
+            }
         try:
             await bridge_request(
                 "run.finish",
@@ -447,6 +496,7 @@ operation names whose outputs you actually used in the answer.
         "grounding_verified": grounded,
         "result": result,
         "operation_outputs": redact_sensitive_value(operation_outputs),
+        "runtime_diagnostics": runtime_diagnostics,
         "failure_reason": failure,
     }
 

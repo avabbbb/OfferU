@@ -44,6 +44,13 @@ _CUSTOM_TOOL_PROMPT = """\
 当用户需要读取 OfferU 岗位、档案或投递数据时，优先调用上述工具并报告结果。
 """
 
+# The app-server protocol is JSONL.  Career-context reads can legitimately
+# exceed asyncio's 64 KiB default (the default raises ``LimitOverrunError``
+# before the adapter gets a chance to parse a complete response).  Keep a
+# bounded ceiling while allowing a populated Profile/manifest response to be
+# read as one protocol record.
+MAX_PROTOCOL_LINE_BYTES = 16 * 1024 * 1024
+
 
 def _resolve_codex_binary() -> str:
     """Locate the codex native binary (npm .cmd shims are not spawnable)."""
@@ -76,9 +83,11 @@ class CodexMainLoopAdapter:
         *,
         executable: str | None = None,
         thread_params: dict[str, Any] | None = None,
+        turn_timeout: float = 360,
     ):
         self.executable = executable or _resolve_codex_binary()
         self.thread_params = thread_params or {}
+        self.turn_timeout = max(30.0, min(float(turn_timeout), 900.0))
         self.process: asyncio.subprocess.Process | None = None
         self.thread_id = ""
         self.turn_id = ""
@@ -118,6 +127,7 @@ class CodexMainLoopAdapter:
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            limit=MAX_PROTOCOL_LINE_BYTES,
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
         )
         self._reader_task = asyncio.create_task(self._reader())
@@ -494,7 +504,7 @@ class CodexMainLoopAdapter:
 
     async def _completed_turn(self) -> dict[str, Any]:
         """Wait for the turn/completed push for the current turn."""
-        deadline = asyncio.get_running_loop().time() + 360
+        deadline = asyncio.get_running_loop().time() + self.turn_timeout
         while asyncio.get_running_loop().time() < deadline:
             await asyncio.sleep(0.2)
             # Pushes are handled in _reader; completed state is tracked there.
