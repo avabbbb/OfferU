@@ -4,6 +4,8 @@
 
 当前基础候选套件是 [`offeru-core-v1`](./offeru-core-v1.md)，Public Release 总 Gate 见 [`RELEASE_CHECKLIST.md`](../../RELEASE_CHECKLIST.md)。在产生符合本手册与 [`report-schema.json`](./report-schema.json) 的有效 Public Release 报告前，统一表述为：**Internal Beta 检查点存在；Public Release NOT READY；尚无正式 Public Release baseline**。
 
+长期 Career Profile、模糊目标、跨 Provider Harness 泛化和安全硬门槛由 [`OfferU-EvolveBench v1`](./offeru-evolve-bench-v1.md) 负责。它与 `offeru-core-v1` 分开计分；EvolveBench 的 `NOT_RUN`/`BLOCKED` 不能冒充核心或真实集成通过。
+
 ## 事实源分工
 
 | 问题 | 权威来源 |
