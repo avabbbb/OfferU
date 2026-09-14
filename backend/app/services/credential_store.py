@@ -62,3 +62,46 @@ async def load_secret(reference: str) -> dict[str, Any]:
 
 async def delete_secret(reference: str) -> None:
     await asyncio.to_thread(_delete, reference)
+
+
+def store_secret_sync(reference: str, payload: dict[str, Any]) -> None:
+    """阻塞式写入，供同步的配置加载/保存路径使用。"""
+    _store(reference, payload)
+
+
+def load_secret_sync(reference: str) -> dict[str, Any]:
+    """阻塞式读取，供同步的配置加载/保存路径使用。"""
+    return _load(reference)
+
+
+def delete_secret_sync(reference: str) -> None:
+    """阻塞式删除，供同步的配置加载/保存路径使用。"""
+    _delete(reference)
+
+
+_PROBE_REFERENCE = "offeru/vault-probe"
+
+
+def probe_backend() -> str:
+    """Write/read/delete one throwaway entry to prove the OS vault really works.
+
+    Returns an empty string when the round trip succeeds, otherwise a short
+    reason. Probing matters because keyring can import fine yet silently
+    resolve to a unusable backend on a locked-down machine.
+    """
+    try:
+        keyring = _keyring()
+    except Exception as exc:
+        return str(exc)
+    try:
+        keyring.set_password(SERVICE_NAME, _PROBE_REFERENCE, "probe")
+        if keyring.get_password(SERVICE_NAME, _PROBE_REFERENCE) != "probe":
+            return "系统钥匙串返回的内容与写入不一致"
+    except Exception as exc:
+        return str(exc)
+    finally:
+        try:
+            _delete(_PROBE_REFERENCE)
+        except Exception:
+            pass
+    return ""

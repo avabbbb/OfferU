@@ -103,7 +103,11 @@ if (-not (Test-Path backend\.env)) {
 }
 ```
 
-`backend/.env` 是本地配置，不应提交。当前设置页的模型连接还可能写入被忽略的本地 `backend/config.json`；不要把“未提交”误认为“已由系统钥匙串加密”，试用时优先使用可撤销的测试凭据。模型功能在 provider 未配置时应明确失败；不要把 API Key、简历正文或邮箱内容粘贴到公开 Agent 会话。
+`backend/.env` 是本地配置，不应提交。
+
+模型 API Key 只写入操作系统钥匙串（Windows Credential Manager / macOS Keychain / Linux Secret Service），`backend/config.json` 只保留 `credential_ref` 引用；若钥匙串不可用，保存会直接失败并提示，不回退为明文落盘。`env:VAR_NAME` 形式的引用不是秘密，仍按原样保存在配置文件中。历史 config.json 中的明文 Key 会在首次加载时自动迁移进钥匙串。
+
+模型功能在 provider 未配置时应明确失败；不要把 API Key、简历正文或邮箱内容粘贴到公开 Agent 会话。
 
 ### 浏览器开发版
 

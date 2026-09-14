@@ -69,3 +69,9 @@ Issues 和 PRD 使用当前 Git remote 对应的 GitHub Issues；外部 Pull Req
 - 如果开发过程中总是遇到某个问题，或者用户反复提醒同一个注意事项，需要把该注意事项补充到本文件。
 - 补充时写成明确、可执行的规则，避免只写模糊描述。
 - 新规则应放到最相关的章节；找不到合适章节时放到“项目注意事项”。
+
+## 项目注意事项
+
+- **配置文件路径有两个模块级副本**：`app/routes/config.py` 的 `_CONFIG_FILE` 与 `app/llm_config_store.py` 的 `_CONFIG_FILE` 是两个独立变量。只 patch 前者时，`save_llm_config_file()` 仍会写真实的 `backend/config.json`，验证脚本会用测试数据覆盖用户配置。任何涉及配置读写的临时脚本，必须同时 patch 两处，或先 `cp config.json config.json.<标记>.offeru-backup` 并在确认一致后才删除备份。
+- **清理钥匙串时只能删自己写过的 ref**：不要按 `legacy_ref(...)` / `config_ref(...)` 这类固定 ref 批量删除。用户真实 LLM 凭据就存放在 `llm/legacy/*` 与 `llm/config/*` 下，误删会直接让用户丢失 API Key。测试用 fake vault（`unittest.mock.patch` credential_store 的同步函数），不要碰真实钥匙串。
+- **API Key 只进钥匙串**：`config.json` 只允许出现 `credential_ref` 和 `env:VAR_NAME` 引用。写入钥匙串失败必须 fail-closed（`VaultUnavailableError`），绝不回退为明文落盘；读取失败不阻断启动，但必须经 `/api/config` 的 `vault_status` 暴露给用户。新增任何会写 config.json 的入口，都要经过 `llm_secret_vault.dehydrate()`。

@@ -96,6 +96,14 @@ def sync_runtime_settings_from_file() -> bool:
     raw = load_llm_config_file()
     if not raw:
         return False
+    # config.json 只存 credential_ref；先把真实 Key 从钥匙串补回内存。
+    try:
+        from app.services.llm_secret_vault import hydrate
+
+        hydrate(raw)
+    except Exception:
+        # 钥匙串不可用时保持现状：缺 Key 会在首次调用 LLM 时明确报错。
+        pass
     settings = get_settings()
     for field in _LLM_RUNTIME_FIELDS:
         if field in raw:
@@ -366,8 +374,20 @@ def import_provider(
         raw["llm_model"] = target["model"]
 
     raw["llm_api_configs"] = configs
+    from app.services import llm_secret_vault
+
     try:
+        # 明文 Key 只进钥匙串；写不进去就整体失败，绝不落明文到 config.json。
+        llm_secret_vault.dehydrate(raw)
         save_llm_config_file(raw)
+    except llm_secret_vault.VaultUnavailableError as exc:
+        return {
+            "ok": False,
+            "config": None,
+            "errors": [
+                f"无法写入系统钥匙串，API Key 未被保存：{safe_error_message(exc)}"
+            ],
+        }
     except OSError as exc:
         return {
             "ok": False,

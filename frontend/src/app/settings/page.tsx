@@ -120,6 +120,11 @@ interface SettingsConfigPayload {
 
   boss_cookie?: string;
   zhilian_cookie?: string;
+
+  vault_status?: {
+    available: boolean;
+    error: string;
+  };
 }
 
 const CUSTOM_OPTION = "__custom__";
@@ -1543,6 +1548,19 @@ export default function SettingsPage() {
           <p className="text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
             请在此处配置模型接口信息。新增、删除、编辑后，仍需点击本模块底部的“保存模型配置”完成提交。
           </p>
+          {config?.vault_status && !config.vault_status.available && (
+            <div className="bauhaus-panel-sm flex items-start gap-2 bg-[var(--primary-red)] px-3 py-3 text-xs font-medium text-white">
+              <AlertCircle size={14} className="mt-0.5 shrink-0" />
+              <span>
+                系统钥匙串不可用，密钥不会被保存。请修复后重试：{config.vault_status.error}
+              </span>
+            </div>
+          )}
+          {config?.vault_status?.available && (
+            <p className="text-xs font-medium text-[var(--foreground-muted)]">
+              密钥只写入系统钥匙串，配置文件中仅保留引用。
+            </p>
+          )}
           <p className="bauhaus-panel-sm bg-[var(--surface-muted)] px-4 py-3 text-xs font-semibold leading-relaxed text-[var(--foreground-muted)]">
             这里的地址是模型服务端点，不是 OfferU 网页地址。若看到 <code>http://127.0.0.1:8080</code>，它只代表可选的 llama.cpp 模型接口；网页入口始终是 <code>http://127.0.0.1:7410</code>。
           </p>

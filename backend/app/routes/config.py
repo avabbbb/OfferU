@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.config import get_settings
@@ -33,6 +33,7 @@ from app.services.security_redaction import (
 )
 from app.llm_config_store import save_llm_config_file
 from app.runtime_paths import runtime_config_file
+from app.services import llm_secret_vault
 
 router = APIRouter()
 
@@ -66,6 +67,8 @@ class LlmApiConfig(BaseModel):
     model: str = ""
     base_url: str = ""
     api_key: str = ""
+    # 真实 Key 存放在操作系统钥匙串，这里只保留引用；见 llm_secret_vault。
+    credential_ref: str = ""
     is_active: bool = False
     extra_params: dict[str, str] = Field(default_factory=dict)
     # tier -> model 覆盖（fast / standard / premium），可选
@@ -438,6 +441,11 @@ def _load_config() -> ConfigUpdate:
     if _CONFIG_FILE.exists():
         try:
             raw = json.loads(_CONFIG_FILE.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                # 历史明文 Key 一次性搬进钥匙串，随后从 config.json 抹掉。
+                if llm_secret_vault.migrate_plaintext(raw):
+                    save_llm_config_file(raw)
+                llm_secret_vault.hydrate(raw)
             cfg = ConfigUpdate(**raw)
             _normalize_llm_state(cfg)
             return cfg
@@ -465,7 +473,10 @@ def _load_config() -> ConfigUpdate:
 
 
 def _save_config(cfg: ConfigUpdate) -> None:
-    save_llm_config_file(cfg.model_dump())
+    payload = cfg.model_dump()
+    # 落盘前抽走明文 Key；钥匙串不可用时必须抛错，不静默写回明文。
+    llm_secret_vault.dehydrate(payload)
+    save_llm_config_file(payload)
 
 
 def _sync_runtime_settings(cfg: ConfigUpdate) -> None:
@@ -511,6 +522,19 @@ def _restore_masked_keys(next_cfg: ConfigUpdate, payload_fields: set[str]) -> No
         value = getattr(next_cfg, field, "")
         if isinstance(value, str) and "*" in value:
             setattr(next_cfg, field, getattr(_current_config, field))
+
+    # llm_api_configs：前端回传的是脱敏值，按 id 还原真实 Key，
+    # 否则每次保存都会把未修改的 Key 当成空值清掉，配置随后被 prune。
+    if "llm_api_configs" in payload_fields:
+        current_by_id = {item.id: item for item in _current_config.llm_api_configs}
+        for item in next_cfg.llm_api_configs:
+            value = (item.api_key or "").strip()
+            if not value or "*" not in value:
+                continue
+            previous = current_by_id.get(item.id)
+            item.api_key = previous.api_key if previous else ""
+            if previous and not item.credential_ref:
+                item.credential_ref = previous.credential_ref
 
     # cookie placeholder semantics
     if "boss_cookie" in payload_fields and next_cfg.boss_cookie == "***已配置***":
@@ -657,6 +681,8 @@ def _response_payload() -> dict[str, Any]:
 
     data["provider_presets"] = PROVIDER_PRESETS
     data["available_providers"] = AVAILABLE_PROVIDERS
+    # 钥匙串不可用必须可见：否则用户只会看到"Key 不见了"。
+    data["vault_status"] = llm_secret_vault.status()
     return data
 
 
@@ -681,8 +707,15 @@ async def update_config(data: ConfigUpdate):
     _apply_legacy_updates(next_cfg, payload_fields)
     _normalize_llm_state(next_cfg)
 
+    try:
+        _save_config(next_cfg)
+    except llm_secret_vault.VaultUnavailableError as exc:
+        # 内存配置保持不变，让用户有机会修好钥匙串后重试。
+        raise HTTPException(
+            status_code=503,
+            detail=f"无法写入系统钥匙串，配置未保存到磁盘：{safe_error_message(exc)}",
+        )
     _current_config = next_cfg
-    _save_config(_current_config)
     _sync_runtime_settings(_current_config)
 
     return {"message": "Config updated", "config": _response_payload()}
