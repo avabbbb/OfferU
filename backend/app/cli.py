@@ -87,9 +87,20 @@ def main(argv: Optional[list[str]] = None) -> int:
                 return _print(payload, args.pretty, exit_code=0 if ready else 1)
             return _print(payload, args.pretty)
         if args.command == "manifest":
-            return _print(_manifest(), args.pretty)
+            return _print(_manifest(summary=args.summary, group=args.group), args.pretty)
         if args.command == "ops":
-            return _print({"ok": True, "operations": list_operations()}, args.pretty)
+            operations = _select_operations(summary=args.summary, group=args.group)
+            return _print(
+                {
+                    "ok": True,
+                    "operation_count": len(list_operations()),
+                    "returned_count": len(operations),
+                    "summary_mode": bool(args.summary),
+                    "group_filter": str(args.group or ""),
+                    "operations": operations,
+                },
+                args.pretty,
+            )
         if args.command == "schema":
             schema = get_operation_schema(args.name)
             if not schema:
@@ -161,9 +172,29 @@ def _build_parser() -> JsonArgumentParser:
 
     manifest = sub.add_parser("manifest", help="Print the agent control contract for Claude Code and other CLIs.", add_help=False)
     manifest.add_argument("--pretty", action="store_true", help="Pretty-print JSON.")
+    manifest.add_argument(
+        "--summary",
+        action="store_true",
+        help="Emit compact Operation summaries for discovery instead of full schemas.",
+    )
+    manifest.add_argument(
+        "--group",
+        default="",
+        help="Limit Operations to one capability group; repeat discovery per group.",
+    )
 
     ops = sub.add_parser("ops", help="List all atomic internal operations.", add_help=False)
     ops.add_argument("--pretty", action="store_true", help="Pretty-print JSON.")
+    ops.add_argument(
+        "--summary",
+        action="store_true",
+        help="Emit compact Operation summaries instead of full schemas.",
+    )
+    ops.add_argument(
+        "--group",
+        default="",
+        help="Limit Operations to one capability group.",
+    )
 
     schema = sub.add_parser("schema", help="Show one operation schema.", add_help=False)
     schema.add_argument("name", help="Operation name, for example list_jobs.")
@@ -621,9 +652,79 @@ def _doctor_provider_health() -> list[dict[str, Any]]:
     ]
 
 
-def _manifest() -> dict[str, Any]:
+def _summarize_operation(operation: dict[str, Any], *, detailed: bool) -> dict[str, Any]:
+    """发现用两级摘要。
+
+    不带 group 时是"目录级"总览，只给 name/group（257 条约 7KB）；指定
+    group 后升级为带描述的详细摘要。完整 schema 仍按需走 `schema <name>`。
+    完整 manifest 在 257 个 Operation 下约 588KB，被外部 Harness 当单行
+    事件回读时容易超出缓冲上限。
+    """
+
+    summary: dict[str, Any] = {
+        "name": operation.get("name", ""),
+        "group": operation.get("group", ""),
+    }
+    if detailed:
+        summary.update(
+            {
+                "description": operation.get("description", ""),
+                "side_effects": operation.get("side_effects", []),
+                "requires_confirmation": bool(operation.get("requires_confirmation")),
+                "supports_dry_run": bool(operation.get("supports_dry_run")),
+            }
+        )
+    return summary
+
+
+def _summarize_skill(skill: dict[str, Any]) -> dict[str, Any]:
+    """Skill 目录摘要：保留选择 Skill 所需字段，去掉 allowlist 明细。"""
+
+    return {
+        "id": skill.get("id", ""),
+        "name": skill.get("name", ""),
+        "group": skill.get("group", ""),
+        "status": skill.get("status", ""),
+        "description": skill.get("description", ""),
+        "aliases": skill.get("aliases", []),
+    }
+
+
+def _select_operations(*, summary: bool, group: str = "") -> list[dict[str, Any]]:
     operations = list_operations()
-    skills = registry_snapshot(operations)
+    clean_group = str(group or "").strip()
+    if clean_group:
+        operations = [
+            operation
+            for operation in operations
+            if str(operation.get("group") or "") == clean_group
+        ]
+    if summary:
+        detailed = bool(clean_group)
+        operations = [
+            _summarize_operation(operation, detailed=detailed)
+            for operation in operations
+        ]
+    return operations
+
+
+def _groups(operations: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for operation in operations:
+        key = str(operation.get("group") or "ungrouped")
+        counts[key] = counts.get(key, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _manifest(*, summary: bool = False, group: str = "") -> dict[str, Any]:
+    all_operations = list_operations()
+    operations = _select_operations(summary=summary, group=group)
+    skills = registry_snapshot(all_operations)
+    if summary:
+        skills = {
+            **{key: value for key, value in skills.items() if key != "skills"},
+            "skills": [_summarize_skill(skill) for skill in skills.get("skills", [])],
+        }
     return {
         "ok": True,
         "service": "OfferU CLI",
@@ -633,6 +734,8 @@ def _manifest() -> dict[str, Any]:
             "health": "python -m app.cli doctor --pretty",
             "release_health": "python -m app.cli doctor --require-ready --pretty",
             "manifest": "python -m app.cli manifest --pretty",
+            "manifest_summary": "python -m app.cli manifest --summary --pretty",
+            "manifest_group": "python -m app.cli manifest --summary --group <group> --pretty",
             "list_operations": "python -m app.cli ops --pretty",
             "inspect_operation": "python -m app.cli schema <operation> --pretty",
             "agent_playbook": "python -m app.cli run agent_playbook --arg detail=full --pretty",
@@ -655,9 +758,13 @@ def _manifest() -> dict[str, Any]:
             "side_effect_operations_create_persisted_proposal": True,
             "explicit_confirm_command_required": True,
             "raw_api_capability": False,
-            "side_effect_labels": sorted({effect for op in operations for effect in op.get("side_effects", [])}),
+            "side_effect_labels": sorted({effect for op in all_operations for effect in op.get("side_effects", [])}),
         },
-        "operation_count": len(operations),
+        "operation_count": len(all_operations),
+        "returned_count": len(operations),
+        "summary_mode": bool(summary),
+        "group_filter": str(group or ""),
+        "groups": _groups(all_operations),
         "operations": operations,
         "skill_registry": skills,
     }
