@@ -8,12 +8,12 @@ import {
   Briefcase,
   CheckCircle2,
   FileText,
-  Key,
   RotateCcw,
   Sparkles,
 } from "lucide-react";
 import { useOnboarding } from "@/lib/useOnboarding";
-import { useConfig, useResumes } from "@/lib/hooks";
+import { useResumes } from "@/lib/hooks";
+import { useAgentConnection } from "@/lib/agentConnection";
 
 export function OnboardingChecklist({ hasJobs }: { hasJobs: boolean }) {
   const router = useRouter();
@@ -21,58 +21,35 @@ export function OnboardingChecklist({ hasJobs }: { hasJobs: boolean }) {
   const {
     hydrated,
     allStepsCompleted,
-    apiKeyConfigured,
+    agentConnected,
     resumeCreated,
     jobsScraped,
     syncFromData,
   } = onboarding;
-  const { data: config } = useConfig();
+  const agent = useAgentConnection();
   const { data: resumes } = useResumes();
 
   useEffect(() => {
     if (!hydrated) return;
 
-    const list = Array.isArray((config as { llm_api_configs?: unknown[] } | undefined)?.llm_api_configs)
-      ? ((config as { llm_api_configs?: unknown[] }).llm_api_configs as Record<string, unknown>[])
-      : [];
-
-    const active =
-      list.find((item) => item?.is_active) ||
-      list.find(
-        (item) =>
-          item?.id ===
-          (config as { active_llm_config_id?: string } | undefined)?.active_llm_config_id
-      );
-
-    const configMap = (config as Record<string, unknown> | undefined) || {};
-
-    const hasApiKey = Boolean(
-      (active &&
-        (String(active.provider_id || "").toLowerCase() === "ollama" ||
-          active.api_key)) ||
-        configMap.deepseek_api_key ||
-        configMap.openai_api_key ||
-        configMap.qwen_api_key ||
-        configMap.siliconflow_api_key ||
-        configMap.gemini_api_key ||
-        configMap.zhipu_api_key
-    );
-
     const hasResume = Array.isArray(resumes) && resumes.length > 0;
-    syncFromData({ hasApiKey, hasResume, hasJobs });
-  }, [config, resumes, hasJobs, hydrated, syncFromData]);
+    const hasAgentConnection = (agent.snapshot?.items || []).some(
+      (item) => item.beginner && item.status === "ready" && item.connection_verified
+    );
+    syncFromData({ hasAgentConnection, hasResume, hasJobs });
+  }, [agent.snapshot, resumes, hasJobs, hydrated, syncFromData]);
 
   if (!hydrated || allStepsCompleted) return null;
 
   const steps = [
     {
-      key: "apikey",
-      label: "配置模型能力",
-      description: "先设置访问密钥，再使用简历优化、分析和问答能力。",
-      icon: Key,
-      done: apiKeyConfigured,
+      key: "agent",
+      label: "连接本机 Agent",
+      description: "检查已安装的 Agent；OfferU 不会替你登录，也不会把复制指令当作已连接。",
+      icon: Sparkles,
+      done: agentConnected,
       action: () => router.push("/settings"),
-      actionLabel: "前往设置",
+      actionLabel: "检查连接",
       panel: "bg-[#f3ead2] text-black",
       iconBox: "bg-[#fdfbf7] text-black",
     },
@@ -89,12 +66,12 @@ export function OnboardingChecklist({ hasJobs }: { hasJobs: boolean }) {
     },
     {
       key: "jobs",
-      label: "抓取目标岗位",
-      description: "连接平台并开始同步，让岗位库进入可筛选、可推进状态。",
+      label: "保存首个岗位",
+      description: "先保存一个目标岗位，之后再按需配置数据来源和抓取策略。",
       icon: Briefcase,
       done: jobsScraped,
-      action: () => router.push("/scraper"),
-      actionLabel: "开始抓取",
+      action: () => router.push("/jobs"),
+      actionLabel: "查看岗位",
       panel: "bg-[#e4ece6] text-black",
       iconBox: "bg-[#f3ead2] text-black",
     },

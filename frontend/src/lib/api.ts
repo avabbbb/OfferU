@@ -948,12 +948,16 @@ export interface AgentConnection {
   cwd_isolation_state: string;
   web_search_state: string;
   conformance_checked_at: string | null;
+  beginner?: boolean;
+  recommended?: boolean;
 }
 
 export interface AgentConnectionsSnapshot {
   items: AgentConnection[];
   checked_at: string;
   connect_prompt: string;
+  beginner_provider_ids?: string[];
+  recommended_provider_id?: string | null;
 }
 
 export interface AgentViewSnapshot {

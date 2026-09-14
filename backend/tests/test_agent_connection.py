@@ -133,6 +133,28 @@ class AgentConnectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(item["status"], "failed")
         self.assertTrue(item["connection_verified"])
 
+    async def test_persisted_success_cannot_override_current_auth_failure(self):
+        item = connection._view(
+            detected(),
+            {
+                "provider_id": "codex",
+                "status": "auth_required",
+                "authenticated": False,
+                "capabilities": {"conformance": {
+                    "binary_path": "/agent/codex",
+                    "version": "1.0.0",
+                    "connection_verified": "VERIFIED",
+                    "native_auth_detected": "VERIFIED",
+                }},
+            },
+        )
+        self.assertEqual(item["status"], "auth_required")
+
+    async def test_persisted_success_cannot_override_missing_or_incompatible_agent(self):
+        conformance = {"binary_path": "/agent/codex", "version": "1.0.0", "connection_verified": "VERIFIED"}
+        self.assertEqual(connection._view(detected(executable_path=None, contract_compatible=False), {"capabilities": {"conformance": conformance}})["status"], "missing")
+        self.assertEqual(connection._view(detected(contract_compatible=False), {"capabilities": {"conformance": conformance}})["status"], "incompatible")
+
     async def test_timeout_and_failure_close_the_temporary_process(self):
         for failure in (TimeoutError(), RuntimeError("token=private-value")):
             with self.subTest(failure=type(failure).__name__):

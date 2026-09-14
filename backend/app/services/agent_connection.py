@@ -20,6 +20,7 @@ from app.services.security_redaction import redact_sensitive_text
 _CHECKS: dict[str, dict[str, Any]] = {}
 _CHECK_LOCK = asyncio.Lock()
 _CHECK_TTL = 120
+_BEGINNER_PROVIDER_IDS = ("codex", "claude", "opencode")
 
 _GUIDES = {
     "codex": "https://developers.openai.com/codex/quickstart/",
@@ -79,7 +80,7 @@ def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
             "ERROR",
         } else "NOT_VERIFIED"
 
-    if persisted_connection_verified and not check:
+    if persisted_connection_verified and not check and installed and compatible and status == "check_required":
         status = "ready"
     return {
         "id": provider_id,
@@ -119,6 +120,8 @@ def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
         "cwd_isolation_state": conformance_state("cwd_isolation_verified"),
         "web_search_state": conformance_state("web_search_verified"),
         "conformance_checked_at": conformance.get("last_probe_at") if conformance_matches else None,
+        "beginner": provider_id in _BEGINNER_PROVIDER_IDS,
+        "recommended": provider_id == "codex",
     }
 
 
@@ -143,6 +146,8 @@ async def get_agent_connections() -> dict[str, Any]:
         "items": [_view(item, by_id.get(item["id"], {})) for item in detected["items"]],
         "checked_at": datetime.now(timezone.utc).isoformat(),
         "connect_prompt": connect_prompt,
+        "beginner_provider_ids": list(_BEGINNER_PROVIDER_IDS),
+        "recommended_provider_id": "codex",
     }
 
 

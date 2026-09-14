@@ -16,15 +16,15 @@ const SYNC_EVENT = "offeru_onboarding_sync";
 export interface OnboardingState {
   wizardCompleted: boolean;   // 全屏 Wizard 是否已完成/跳过
   wizardSkipped: boolean;     // 是否跳过 Wizard
-  apiKeyConfigured: boolean;  // Step 1: API Key 是否已配置
+  agentConnected: boolean;    // Step 1: 本机 Agent 检查通过
   resumeCreated: boolean;     // Step 2: 是否已创建简历
-  jobsScraped: boolean;       // Step 3: 是否已采集岗位
+  jobsScraped: boolean;       // Step 3: 是否已保存岗位
 }
 
 const DEFAULT_STATE: OnboardingState = {
   wizardCompleted: false,
   wizardSkipped: false,
-  apiKeyConfigured: false,
+  agentConnected: false,
   resumeCreated: false,
   jobsScraped: false,
 };
@@ -87,11 +87,11 @@ export function useOnboarding() {
 
   /** 根据真实数据刷新步骤状态 */
   const syncFromData = useCallback(
-    (data: { hasApiKey: boolean; hasResume: boolean; hasJobs: boolean }) => {
+    (data: { hasAgentConnection: boolean; hasResume: boolean; hasJobs: boolean }) => {
       const current = loadState();
       const next = {
         ...current,
-        apiKeyConfigured: data.hasApiKey,
+        agentConnected: data.hasAgentConnection,
         resumeCreated: data.hasResume,
         jobsScraped: data.hasJobs,
       };
@@ -103,7 +103,7 @@ export function useOnboarding() {
 
   /** 所有引导步骤完成 */
   const allStepsCompleted =
-    state.apiKeyConfigured && state.resumeCreated && state.jobsScraped;
+    state.agentConnected && state.resumeCreated && state.jobsScraped;
 
   /** 是否应该显示 Wizard */
   const shouldShowWizard = hydrated && !state.wizardCompleted;
