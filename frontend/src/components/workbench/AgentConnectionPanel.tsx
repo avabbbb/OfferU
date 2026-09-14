@@ -111,7 +111,7 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
   const ready = presentation === STATUS.ready;
   const localReady = Boolean(selected?.connection_verified && selected.checked_at && Date.now() - Date.parse(selected.checked_at) <= 120000);
   const checking = Boolean(selected && state.probing === selected.id);
-  const visible = showAll ? candidates : candidates.filter((item) => ["codex", "claude", "gemini", "opencode", "codebuddy"].includes(item.id) || item.installed);
+  const visible = showAll ? candidates : candidates.filter((item) => item.beginner || ["codex", "claude", "opencode"].includes(item.id));
   const syncFailed = state.sync.status === "failed";
   const syncDone = state.sync.status === "synced";
 
@@ -163,7 +163,7 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
                 className={`flex min-w-0 items-center gap-2.5 rounded-xl border px-3 py-3 text-left transition-colors focus-visible:outline focus-visible:outline-2 ${selected?.id === item.id ? "border-[var(--foreground)] bg-[var(--surface-muted)]" : "border-transparent hover:bg-[var(--surface-muted)]"}`}>
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-xs font-bold">{item.id === "codex" ? ">_" : item.name.slice(0, 1)}</span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-xs font-semibold">{item.name.replace(" App Server", "").replace(" Agent SDK", " SDK").replace(" CLI", "")}</span>
+                  <span className="block truncate text-xs font-semibold">{item.name.replace(" App Server", "").replace(" Agent SDK", " SDK").replace(" CLI", "")}{item.recommended ? " · 推荐" : ""}</span>
                   <span className={`mt-1 block text-[10.5px] ${currentStatus(item).tone}`}>{state.probing === item.id ? "正在检查…" : currentStatus(item).label}</span>
                 </span>
               </button>)}
@@ -181,15 +181,6 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
               <h4 className="mt-3 text-lg font-semibold tracking-tight">{checking ? "正在确认连接与登录状态" : presentation.title}</h4>
               <p className="mt-2 text-xs leading-6 text-[var(--foreground-muted)]">{presentation.detail}</p>
               {selected.last_error && <div role="alert" className="mt-3 break-words rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">{selected.last_error}</div>}
-              <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3" aria-label="本机 Agent 能力验证状态">
-                {CAPABILITY_LABELS.map(([key, label]) => {
-                  const state = capabilityState(selected[key]);
-                  return <div key={String(key)} className="min-w-0 rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2">
-                    <span className="block truncate text-[10px] text-[var(--foreground-muted)]">{label}</span>
-                    <span className={`mt-1 block truncate text-[11px] font-semibold ${state.tone}`} title={state.state}>{state.label}</span>
-                  </div>;
-                })}
-              </div>
               <ol className="my-6 space-y-5" aria-label="接入步骤">
                 <SetupStep index={1} title="找到本机 Agent" done={selected.installed} detail={selected.installed ? selected.version || "已发现本机运行环境" : "安装后，OfferU 会自动发现它。"} />
                 <SetupStep index={2} title="检查连接与登录" done={localReady} busy={checking}
@@ -220,6 +211,15 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
                   <dt>网页搜索</dt><dd>{capabilityState(selected.web_search_state).label}</dd>
                   <dt>最近检测</dt><dd>{connectionTime(selected.detected_at)}</dd>
                 </dl>
+                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3" aria-label="本机 Agent 能力验证状态">
+                  {CAPABILITY_LABELS.map(([key, label]) => {
+                    const capability = capabilityState(selected[key]);
+                    return <div key={String(key)} className="min-w-0 rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2">
+                      <span className="block truncate text-[10px] text-[var(--foreground-muted)]">{label}</span>
+                      <span className={`mt-1 block truncate text-[11px] font-semibold ${capability.tone}`} title={capability.state}>{capability.label}</span>
+                    </div>;
+                  })}
+                </div>
                 {state.snapshot?.connect_prompt && <p className="mt-3 select-text whitespace-pre-wrap break-words rounded-lg bg-[var(--surface-muted)] p-3 leading-6">{state.snapshot.connect_prompt}</p>}
               </details>
             </> : <div className="flex min-h-48 flex-col items-center justify-center gap-3 text-center text-[var(--foreground-muted)]"><Laptop size={28} strokeWidth={1.25} /><p className="text-sm">连接工作台后，从这里开始。</p></div>}

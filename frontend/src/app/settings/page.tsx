@@ -136,90 +136,6 @@ const dataSources = [
   { name: "maimai", label: "脉脉", available: false },
 ];
 
-const FALLBACK_PROVIDER_PRESETS: ProviderPreset[] = [
-  {
-    id: "openai",
-    name: "OpenAI",
-    description: "Mainstream global provider",
-    default_base_url: "https://api.openai.com/v1",
-    models: [
-      { id: "gpt-4.1-mini", name: "GPT-4.1 Mini" },
-      { id: "gpt-4o-mini", name: "GPT-4o Mini" },
-      { id: "gpt-4.1", name: "GPT-4.1" },
-    ],
-    key_prefix: "sk-",
-  },
-  {
-    id: "deepseek",
-    name: "DeepSeek",
-    description: "Cost-effective Chinese model",
-    default_base_url: "https://api.deepseek.com",
-    models: [
-      { id: "deepseek-v4-flash", name: "DeepSeek V4 Flash" },
-      { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro" },
-      { id: "deepseek-chat", name: "DeepSeek Chat (deprecated 2026-07-24)" },
-      { id: "deepseek-reasoner", name: "DeepSeek Reasoner (deprecated 2026-07-24)" },
-    ],
-    key_prefix: "sk-",
-  },
-  {
-    id: "qwen",
-    name: "通义千问",
-    description: "Alibaba DashScope",
-    default_base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    models: [
-      { id: "qwen-plus", name: "Qwen Plus" },
-      { id: "qwen-turbo", name: "Qwen Turbo" },
-      { id: "qwen-max", name: "Qwen Max" },
-    ],
-    key_prefix: "sk-",
-  },
-  {
-    id: "siliconflow",
-    name: "硅基流动",
-    description: "Model aggregation provider",
-    default_base_url: "https://api.siliconflow.com/v1",
-    models: [
-      { id: "deepseek-ai/DeepSeek-V3.2", name: "DeepSeek-V3.2" },
-      { id: "Qwen/Qwen3-32B", name: "Qwen3-32B" },
-    ],
-    key_prefix: "sk-",
-  },
-  {
-    id: "gemini",
-    name: "Google Gemini",
-    description: "Gemini OpenAI-compatible endpoint",
-    default_base_url: "https://generativelanguage.googleapis.com/v1beta/openai",
-    models: [
-      { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash" },
-      { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro" },
-    ],
-    key_prefix: "",
-  },
-  {
-    id: "zhipu",
-    name: "智谱",
-    description: "BigModel Open Platform",
-    default_base_url: "https://open.bigmodel.cn/api/paas/v4",
-    models: [
-      { id: "glm-5.1", name: "GLM-5.1" },
-      { id: "glm-4.6", name: "GLM-4.6" },
-    ],
-    key_prefix: "",
-  },
-  {
-    id: "ollama",
-    name: "Ollama",
-    description: "Local inference",
-    default_base_url: "http://localhost:11434/v1",
-    models: [
-      { id: "qwen2.5:7b", name: "Qwen2.5 7B" },
-      { id: "llama3.1:8b", name: "Llama 3.1 8B" },
-    ],
-    key_prefix: "",
-  },
-];
-
 const bauhausFieldClassNames = {
   inputWrapper:
     "border border-[var(--border-strong)] bg-white shadow-[2px_2px_0_0_rgba(18,18,18,0.3)] group-data-[focus=true]:border-[var(--border-strong)] hover:-translate-y-[1px]",
@@ -1012,7 +928,8 @@ export default function SettingsPage() {
   const [showBossCookie, setShowBossCookie] = useState(false);
   const [showZhilianCookie, setShowZhilianCookie] = useState(false);
 
-  const [providerPresets, setProviderPresets] = useState<ProviderPreset[]>(FALLBACK_PROVIDER_PRESETS);
+  const [providerPresets, setProviderPresets] = useState<ProviderPreset[]>([]);
+  const [providerPresetError, setProviderPresetError] = useState("");
   const [apiConfigs, setApiConfigs] = useState<LlmApiConfig[]>([]);
   const [disabledProviders, setDisabledProviders] = useState<string[]>([]);
   const [selectedConfigId, setSelectedConfigId] = useState("");
@@ -1183,10 +1100,9 @@ export default function SettingsPage() {
     setBossCookie(config.boss_cookie || "");
     setZhilianCookie(config.zhilian_cookie || "");
 
-    const presets = Array.isArray(config.provider_presets) && config.provider_presets.length > 0
-      ? config.provider_presets
-      : FALLBACK_PROVIDER_PRESETS;
+    const presets = Array.isArray(config.provider_presets) ? config.provider_presets : [];
     setProviderPresets(presets);
+    setProviderPresetError(presets.length ? "" : "后端未返回可用的模型配置模板，请检查本地后端并重试。 ");
 
     const incoming = Array.isArray(config.llm_api_configs) ? config.llm_api_configs : [];
     const normalized = incoming
@@ -1573,19 +1489,19 @@ export default function SettingsPage() {
           <div className="space-y-4">
             <span className="bauhaus-chip bg-[var(--surface-muted)] text-[var(--foreground)]">系统配置</span>
             <div>
-              <p className="bauhaus-label text-[var(--foreground-muted)]">搜索、来源与模型</p>
-              <h1 className="mt-2 text-4xl font-bold leading-tight md:text-5xl">统一配置工作台</h1>
+              <p className="bauhaus-label text-[var(--foreground-muted)]">AI 与本机连接</p>
+              <h1 className="mt-2 text-4xl font-bold leading-tight md:text-5xl">连接你的工作伙伴</h1>
               <p className="mt-3 max-w-2xl text-sm font-medium leading-relaxed text-[var(--foreground-muted)] md:text-base">
-                在这里配置模型供应商、搜索规则、数据源和同步策略。所有模块延续同一套 Bauhaus 视觉规范，但保持原有配置逻辑不变。
+                优先连接已有的本机 Agent；模型接口、密钥和其他技术设置都收在高级设置中。搜索规则、隐私和数据来源仍可直接调整。
               </p>
             </div>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-1">
             <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4 text-[var(--foreground)]">
-              <p className="bauhaus-label text-[var(--foreground-muted)]">模型配置数</p>
-              <p className="mt-2 text-4xl font-bold">{apiConfigs.length}</p>
-              <p className="mt-2 text-sm font-medium text-[var(--foreground-muted)]">当前已维护的模型供应商配置数量。</p>
+              <p className="bauhaus-label text-[var(--foreground-muted)]">本机连接</p>
+              <p className="mt-2 text-4xl font-bold">Agent</p>
+              <p className="mt-2 text-sm font-medium text-[var(--foreground-muted)]">在上方检查 Codex、Claude Code 或 OpenCode。</p>
             </div>
             <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4 text-[var(--foreground)]">
               <p className="bauhaus-label text-[var(--foreground-muted)]">启用来源</p>
@@ -1609,6 +1525,10 @@ export default function SettingsPage() {
 
       <LocalFeedbackCard />
 
+      <details className="group" data-testid="advanced-model-settings">
+        <summary className="bauhaus-panel cursor-pointer list-none px-5 py-4 text-sm font-bold text-[var(--foreground)] md:px-6">
+          高级设置：模型接口与技术细节 <span className="ml-2 text-xs font-medium text-[var(--foreground-muted)] group-open:hidden">（默认收起）</span>
+        </summary>
       <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
         <CardBody className="space-y-5 p-5 md:p-6">
           <div className="flex items-center gap-3">
@@ -1626,6 +1546,7 @@ export default function SettingsPage() {
           <p className="bauhaus-panel-sm bg-[var(--surface-muted)] px-4 py-3 text-xs font-semibold leading-relaxed text-[var(--foreground-muted)]">
             这里的地址是模型服务端点，不是 OfferU 网页地址。若看到 <code>http://127.0.0.1:8080</code>，它只代表可选的 llama.cpp 模型接口；网页入口始终是 <code>http://127.0.0.1:7410</code>。
           </p>
+          {providerPresetError && <div role="alert" className="bauhaus-panel-sm bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-900">{providerPresetError}</div>}
 
           {/* 当前生效配置摘要 (PRD §7.1 Req 4) */}
           {config?.active_llm_summary && (
@@ -1810,6 +1731,8 @@ export default function SettingsPage() {
           )}
         </CardBody>
       </Card>
+
+      </details>
 
       <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
         <CardBody className="space-y-4 p-5 md:p-6">
