@@ -169,6 +169,24 @@ app.add_middleware(
     allow_headers=["Accept", "Content-Type"],
 )
 
+# Studio 简历预览（/api/studio/resumes/{id}/preview）按设计由本地前端以 iframe 内嵌展示，
+# 因此不能沿用全局的 X-Frame-Options: DENY，否则浏览器会拒绝渲染，预览区永远是空白。
+# 这里只对该端点放开 frame-ancestors，并限定为前端自身来源。
+STUDIO_PREVIEW_EMBED_ORIGINS = tuple(
+    dict.fromkeys(
+        [
+            *cors_origins,
+            "http://tauri.localhost",
+            "https://tauri.localhost",
+            "tauri://localhost",
+        ]
+    )
+)
+
+
+def is_studio_preview_path(path: str) -> bool:
+    return path.startswith("/api/studio/resumes/") and path.endswith("/preview")
+
 
 def _safe_http_detail(detail: object) -> object:
     if isinstance(detail, (dict, list, tuple)):
@@ -318,7 +336,13 @@ async def add_security_headers(request, call_next):
         )
         response.headers["X-OfferU-Error-Id"] = error_id
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
-    response.headers.setdefault("X-Frame-Options", "DENY")
+    if is_studio_preview_path(request.url.path):
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "frame-ancestors " + " ".join(STUDIO_PREVIEW_EMBED_ORIGINS),
+        )
+    else:
+        response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "no-referrer")
     response.headers.setdefault("Permissions-Policy", "camera=(self), microphone=(self), geolocation=()")
     if request.url.path.startswith("/api/"):

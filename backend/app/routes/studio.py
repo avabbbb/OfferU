@@ -21,6 +21,10 @@ class TemplateListResponse(BaseModel):
     display_name: str
     category: str
     preview_image: str
+    # 模板真正消费的设计令牌。各模板的 html_template 引用范围不同
+    # （例如只有 modern-minimal 使用 fontFamily），前端据此判断哪些
+    # 设计控件对当前模板有效，避免出现改了没反应的控件。
+    design_tokens: dict[str, Any] = {}
 
 class GenerateHtmlResumeRequest(BaseModel):
     profile_id: int

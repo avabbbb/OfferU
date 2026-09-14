@@ -668,6 +668,63 @@ def _serialize_resume_template(template: ResumeTemplate) -> dict[str, Any]:
     }
 
 
+# HTML 模板契约（template_seeder 的 html_template）消费 section.theme 与
+# section.bullets[].content，而档案 section 存的是 title + content_json。
+# content_json 有两种形状：条目列表（workExperiences/projects/...）和
+# profile.section.v1 字典（正文在 normalized，顶层 title 是去重用的机器名）。
+_SECTION_MACHINE_KEYS = {
+    "schema_version",
+    "category_key",
+    "tier",
+    "field_values",
+    "_agent_provenance",
+}
+
+
+def _is_profile_section_payload(value: dict) -> bool:
+    return any(key in value for key in ("schema_version", "normalized", "field_values"))
+
+
+def _flatten_text(value: Any) -> list[str]:
+    if isinstance(value, str):
+        text = value.strip()
+        return [text] if text else []
+    if value is None or isinstance(value, bool):
+        return []
+    if isinstance(value, (int, float)):
+        return [str(value)]
+    if isinstance(value, list):
+        return [text for item in value for text in _flatten_text(item)]
+    if isinstance(value, dict):
+        # profile.section.v1 的顶层 title 是机器名，不能当作正文内容。
+        skip_title = _is_profile_section_payload(value)
+        return [
+            text
+            for key, item in value.items()
+            if key not in _SECTION_MACHINE_KEYS and not (skip_title and key == "title")
+            for text in _flatten_text(item)
+        ]
+    return []
+
+
+def _template_section_theme(section: Any) -> str:
+    content_json = section.content_json if isinstance(section.content_json, dict) else {}
+    return str(content_json.get("category_label") or section.title or section.section_type or "").strip()
+
+
+def _template_section_bullets(content_json: Any) -> list[dict[str, str]]:
+    if not isinstance(content_json, (dict, list)):
+        return []
+    seen: set[str] = set()
+    bullets: list[dict[str, str]] = []
+    for text in _flatten_text(content_json):
+        if text in seen:
+            continue
+        seen.add(text)
+        bullets.append({"content": text})
+    return bullets
+
+
 async def generate_html_resume(
     profile_id: int,
     template_id: int,
@@ -692,6 +749,26 @@ async def generate_html_resume(
             raise ValueError("Template not found")
 
         base_info = profile.base_info_json if isinstance(profile.base_info_json, dict) else {}
+
+        template_sections: list[dict[str, Any]] = []
+        for section in sorted(profile.sections, key=lambda item: item.sort_order or 0):
+            # 与 optimize/resume 等入口保持一致：撤回或作废的 section 不进成品简历。
+            if section.status != "active":
+                continue
+            theme = _template_section_theme(section)
+            bullets = _template_section_bullets(section.content_json)
+            # 没有标题或没有正文的段落只会渲染成空壳，直接跳过。
+            if not theme or not bullets:
+                continue
+            template_sections.append(
+                {
+                    "section_type": section.section_type,
+                    "theme": theme,
+                    "bullets": bullets,
+                    "sort_order": section.sort_order,
+                }
+            )
+
         profile_data = {
             "name": profile.name,
             "email": profile.email,
@@ -701,17 +778,7 @@ async def generate_html_resume(
             or base_info.get("summary")
             or profile.headline
             or "",
-            "sections": [
-                {
-                    "section_type": section.section_type,
-                    "title": section.title,
-                    "content_json": section.content_json
-                    if isinstance(section.content_json, dict)
-                    else {},
-                    "sort_order": section.sort_order,
-                }
-                for section in profile.sections
-            ],
+            "sections": template_sections,
             "target_roles": [role.role_name for role in profile.target_roles],
         }
         overrides = design_overrides or {}
