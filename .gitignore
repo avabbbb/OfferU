@@ -93,6 +93,8 @@ artifacts/
 
 # ---- 备份文件 ----
 *.bak
+# 带时间戳后缀的备份（例如 config.json.bak-before-gwkey-202609140907）可能含明文 API Key
+*.bak-*
 backup/
 
 # ---- 敏感替换文件 ----
@@ -108,6 +110,10 @@ md/
 
 # ---- Claude AI 配置 ----
 .claude/
+
+# ---- 本地 Agent 元数据（CodeBuddy / WorkBuddy 工作区状态与记忆） ----
+.codebuddy/
+.workbuddy/
 
 # ---- 本地参考仓库（不入库） ----
 references/
