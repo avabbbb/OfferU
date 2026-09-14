@@ -9,7 +9,7 @@ from pydantic import Field
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 
-from app.runtime_paths import default_database_url
+from app.runtime_paths import default_database_url, runtime_env_file
 
 
 class Settings(BaseSettings):
@@ -93,8 +93,12 @@ class Settings(BaseSettings):
 
     # Ignore unrelated env vars (for example docker-style db_user/db_password/db_name)
     # so local startup does not fail when extra keys exist.
+    #
+    # env_file 必须是绝对路径：相对 ".env" 会按当前工作目录解析，而外部
+    # Coding Agent 常常在仓库根目录运行 CLI。仓库根另有一份历史 .env，会
+    # 把 DATABASE_URL 悄悄指到 ./offeru.db，让 Agent 读到空库却毫无报错。
     model_config = {
-        "env_file": ".env",
+        "env_file": str(runtime_env_file()),
         "env_file_encoding": "utf-8",
         "extra": "ignore",
     }

@@ -315,6 +315,9 @@ function TestLlmButton() {
         method: "POST",
         redirect: "error",
       });
+      // 非 2xx 时后端返回 {detail} 而不是 {success,message}，
+      // 不校验会把失败显示成"模型连接测试完成"。
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setResult({ success: data.success, message: safeClientErrorMessage(data.message, "模型连接测试完成") });
     } catch (err: any) {
@@ -947,6 +950,8 @@ function FetchModelsButton({ baseUrl, apiKey, onModelsFetched }: FetchModelsButt
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ base_url: baseUrl, api_key: apiKey }),
       });
+      // 同上：校验失败（422）返回的是 {detail}，直接抛到统一的请求失败分支。
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (data.success && data.models?.length > 0) {
         setMessage(`获取到 ${data.models.length} 个模型`);

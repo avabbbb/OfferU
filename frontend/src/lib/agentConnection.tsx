@@ -48,6 +48,18 @@ const PAGE_NAMES: Record<string, string> = {
   "/interview": "面试", "/email": "邮箱", "/calendar": "日程",
 };
 
+// 详情页被直接打开时没有列表点选动作，selection 为空。但用户此刻确实在看
+// 一个具体对象，本地 Agent 需要它的标识才能回答"我在看什么"。这里按路由
+// 补出实体，与 providers.tsx 的 AgentContextReporter 保持一致，避免两个
+// 写入者互相覆盖把 entity 清空。
+function entityFromRoute(pathname: string): { entity_type: string; entity_id: string } {
+  const jobMatch = pathname.match(/^\/jobs\/(\d+)/);
+  if (jobMatch) return { entity_type: "job", entity_id: jobMatch[1] };
+  const resumeMatch = pathname.match(/^\/resume\/(\d+)/);
+  if (resumeMatch) return { entity_type: "resume", entity_id: resumeMatch[1] };
+  return { entity_type: "", entity_id: "" };
+}
+
 export function AgentConnectionProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { selection } = useWorkbench();
@@ -136,14 +148,18 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
 
   const payload = useMemo(() => {
     const agentContext = selection?.data?.agentContext;
+    const routeEntity = entityFromRoute(pathname);
     return JSON.stringify({
       scope: "default", route: pathname,
       title: selection?.title || PAGE_NAMES[pathname] || PAGE_NAMES[`/${pathname.split("/")[1]}`] || "当前页面",
-      entity_type: selection?.kind || "", entity_id: selection ? String(selection.id) : "",
+      entity_type: selection?.kind || routeEntity.entity_type,
+      entity_id: selection ? String(selection.id) : routeEntity.entity_id,
       context: selection ? { selected_object: {
         kind: selection.kind, title: selection.title, subtitle: selection.subtitle || "",
         ...(agentContext && typeof agentContext === "object" ? agentContext : {}),
-      } } : {},
+      } } : (routeEntity.entity_type ? { selected_object: {
+        kind: routeEntity.entity_type, title: "", subtitle: "",
+      } } : {}),
       updated_by: "ui",
     });
   }, [pathname, selection]);
