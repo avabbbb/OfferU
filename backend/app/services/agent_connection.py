@@ -28,6 +28,7 @@ _GUIDES = {
     "opencode": "https://opencode.ai/docs/",
     "pi": "https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent",
     "omp": "https://github.com/can1357/oh-my-pi",
+    "codebuddy": "https://www.workbuddy.cn/docs/workbuddy/Overview",
 }
 
 

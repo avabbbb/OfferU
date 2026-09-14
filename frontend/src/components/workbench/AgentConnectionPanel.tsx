@@ -111,7 +111,7 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
   const ready = presentation === STATUS.ready;
   const localReady = Boolean(selected?.connection_verified && selected.checked_at && Date.now() - Date.parse(selected.checked_at) <= 120000);
   const checking = Boolean(selected && state.probing === selected.id);
-  const visible = showAll ? candidates : candidates.filter((item) => ["codex", "claude", "gemini", "opencode"].includes(item.id) || item.installed);
+  const visible = showAll ? candidates : candidates.filter((item) => ["codex", "claude", "gemini", "opencode", "codebuddy"].includes(item.id) || item.installed);
   const syncFailed = state.sync.status === "failed";
   const syncDone = state.sync.status === "synced";
 
@@ -127,7 +127,10 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
 
   return (
     <section id={embedded ? undefined : "agent-connection"} data-testid={embedded ? "agent-provider-health-dialog" : "agent-provider-health"}
-      className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)]">
+      // 嵌入模态框时父级是 flex 列容器：overflow-hidden 会让本节点的
+      // min-height:auto 退化为 0，被压缩后自身内容被裁掉且滚不到。
+      // 加 shrink-0 让它保持完整高度，滚动交给 ModalBody(overflow-y-auto)。
+      className={`${embedded ? "shrink-0 " : ""}overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)]`}>
       <div className="border-b border-[var(--border)] px-5 py-6 sm:px-7">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <span className="inline-flex items-center gap-2 text-[11px] font-semibold tracking-wide text-[var(--foreground-muted)]"><Plug size={14} /> 本机 Agent</span>

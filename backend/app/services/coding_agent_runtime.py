@@ -148,6 +148,37 @@ RUNTIME_DEFINITIONS = {
             "supports_cancel": True,
         },
     },
+    "codebuddy": {
+        "name": "WorkBuddy (CodeBuddy Code)",
+        # 实际入口是 WorkBuddy 桌面版自带的 CodeBuddy Code CLI 脚本，
+        # 不保证在 PATH 上，因此 executable 交给 _resolve_codebuddy_script 解析。
+        "binary": "codebuddy",
+        "version_args": ["--version"],
+        "help_args": ["--help"],
+        "required_flags": (
+            "--print",
+            "--output-format",
+            "--json-schema",
+            "--permission-mode",
+        ),
+        "supported": True,
+        # stream-json 事件与 Claude Agent SDK JSONL 同构（system/init →
+        # assistant.message.content[].text → result.structured_output）。
+        "protocol": "codebuddy-stream-json-v1",
+        "isolation": (
+            "non-interactive print, stream-json events, tool surface restricted to "
+            "StructuredOutput, ephemeral session (--no-session-persistence), "
+            "task cwd, prompt via stdin"
+        ),
+        "capabilities_decl": {
+            "schema_mode": "flag",
+            # CodeBuddy 自带 WebSearch/WebFetch，但 OfferU 尚未为其投影受控的
+            # 公网适配层；与 pi/omp/opencode 一致，不声明 live web search。
+            "supports_live_web_search": False,
+            "supports_resume": True,
+            "supports_cancel": True,
+        },
+    },
 }
 
 _PROBE_CACHE: dict[str, tuple[str, int, dict[str, Any]]] = {}
@@ -212,16 +243,103 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _is_node_script(path: str) -> bool:
+    """无扩展名的脚本是否是以 node 为解释器的 shebang 文件。"""
+
+    try:
+        with open(path, "rb") as handle:
+            first_line = handle.readline(256).decode("utf-8", errors="replace")
+    except OSError:
+        return False
+    return first_line.startswith("#!") and "node" in first_line
+
+
+# WorkBuddy 桌面版会向自身进程树注入会话级环境变量（网关地址与口令、
+# MCP 代理、会话 ID、宿主标识等）。CodeBuddy Code CLI 继承这些变量后会
+# 转而连接桌面版网关，并卡在启动阶段——连 system/init 都不产出，最终
+# 表现为 worker 超时。因此它只以自己的最小白名单环境启动，保持独立
+# CLI 进程身份；CODEBUDDY_CONFIG_DIR 需要保留给 CLI 定位自身凭据。
+_CODEBUDDY_ENV_KEEP = frozenset(
+    {
+        "PATH", "PATHEXT", "SystemRoot", "SYSTEMROOT", "WINDIR", "SYSTEMDRIVE",
+        "ComSpec", "COMSPEC", "TEMP", "TMP", "USERPROFILE", "APPDATA",
+        "LOCALAPPDATA", "ProgramData", "ProgramFiles", "ProgramFiles(x86)",
+        "ProgramW6432", "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE", "OS",
+        "HOMEDRIVE", "HOMEPATH", "USERNAME", "USERDOMAIN", "LOGONSERVER",
+        "SESSIONNAME", "CODEBUDDY_CONFIG_DIR", "NO_COLOR",
+    }
+)
+
+
+def _child_environment(runtime_id: str) -> dict[str, str]:
+    """构建本地执行器子进程的环境变量。"""
+
+    environment = dict(os.environ)
+    environment["NO_COLOR"] = "1"
+    if runtime_id == "codebuddy":
+        environment = {
+            key: value
+            for key, value in environment.items()
+            if key in _CODEBUDDY_ENV_KEEP
+        }
+        environment["NO_COLOR"] = "1"
+    return environment
+
+
 def _command(executable: str, args: list[str]) -> tuple[str, list[str]]:
     suffix = Path(executable).suffix.lower()
     if os.name == "nt" and suffix in {".cmd", ".bat"}:
         return "cmd.exe", ["/d", "/s", "/c", executable, *args]
     if os.name == "nt" and suffix == ".ps1":
         return "powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", executable, *args]
+    if os.name == "nt" and not suffix and _is_node_script(executable):
+        # 无扩展名的 POSIX Node shim（例如 WorkBuddy 桌面版自带的
+        # cli/bin/codebuddy）无法被 CreateProcess 直接执行，必须由 node 启动。
+        node = _resolve_executable("node")
+        if node:
+            return node, [executable, *args]
     return executable, args
 
 
+# WorkBuddy 桌面版把 CodeBuddy Code CLI 放在安装根下的固定相对路径。
+_CODEBUDDY_SCRIPT_RELATIVE = Path("resources/app.asar.unpacked/cli/bin/codebuddy")
+
+
+def _resolve_codebuddy_script() -> str | None:
+    """定位 CodeBuddy Code CLI 入口脚本（WorkBuddy 桌面版自带）。
+
+    解析顺序：显式环境变量 OFFERU_CODEBUDDY_PATH → PATH 上的
+    codebuddy/codebuddy-code/cbc → WorkBuddy 桌面版安装根。
+    入口是无扩展名的 Node 脚本，实际进程启动由 _command 负责。
+    """
+    configured = os.environ.get("OFFERU_CODEBUDDY_PATH")
+    if configured and Path(configured).is_file():
+        return str(Path(configured))
+    for name in ("codebuddy", "codebuddy-code", "cbc"):
+        found = shutil.which(name)
+        if found and Path(found).is_file():
+            return found
+    if os.name != "nt":
+        return None
+    bases: list[Path] = [Path(f"{letter}:\\WorkBuddy") for letter in "CDEFGHIJKLMNOPQRSTUVWXYZAB"]
+    for base in (
+        os.environ.get("ProgramFiles"),
+        os.environ.get("ProgramFiles(x86)"),
+        os.environ.get("LOCALAPPDATA"),
+    ):
+        if base:
+            bases.append(Path(base) / "WorkBuddy")
+            bases.append(Path(base) / "Programs" / "WorkBuddy")
+    for base in bases:
+        candidate = base / _CODEBUDDY_SCRIPT_RELATIVE
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+
 def _resolve_executable(binary: str) -> str | None:
+    if binary == "codebuddy":
+        return _resolve_codebuddy_script()
     configured = os.environ.get("OFFERU_NODE_PATH") if binary == "node" else None
     executable = configured if configured and Path(configured).is_file() else shutil.which(binary)
     if os.name != "nt" or not executable or Path(executable).suffix:
@@ -236,11 +354,17 @@ def _resolve_executable(binary: str) -> str | None:
     return executable
 
 
-async def _capture(executable: str, args: list[str], timeout: int = 5) -> tuple[int, str, str]:
+async def _capture(
+    executable: str,
+    args: list[str],
+    timeout: int = 5,
+    runtime_id: str = "",
+) -> tuple[int, str, str]:
     command, command_args = _command(executable, args)
     process = await asyncio.create_subprocess_exec(
         command,
         *command_args,
+        env=_child_environment(runtime_id),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
@@ -319,12 +443,18 @@ async def _probe(runtime_id: str, *, refresh: bool = False) -> dict[str, Any]:
             version_code, version_stdout, version_stderr = await _capture(
                 executable,
                 list(definition["version_args"]),
+                # 本地 CLI（Node 脚本）冷启动叠加多 provider 并发探测时，
+                # 默认 5 秒不足以跑完一次 --version/--help，会静默判定不可用。
+                timeout=20,
+                runtime_id=runtime_id,
             )
             version_lines = (version_stdout + "\n" + version_stderr).strip().splitlines()
             version = version_lines[0].strip() if version_code == 0 and version_lines else ""
         help_code, help_stdout, help_stderr = await _capture(
             executable,
             list(definition["help_args"]),
+            timeout=20,
+            runtime_id=runtime_id,
         )
         help_text = help_stdout + "\n" + help_stderr if help_code == 0 else ""
     except (OSError, asyncio.TimeoutError):
@@ -438,6 +568,24 @@ def _runtime_args(
     if runtime_id == "opencode":
         # opencode run --format json：非交互 JSONL 事件流；--pure 关闭外部插件。
         return ["run", "--format", "json", "--pure"]
+    if runtime_id == "codebuddy":
+        # CodeBuddy Code 非交互 print + stream-json（事件与 Claude Agent SDK 同构）：
+        # - --json-schema 走原生 schema 强制，由 StructuredOutput 工具产出
+        #   result.structured_output（用 --tools 只保留该工具，收敛本地工具面）；
+        # - --no-session-persistence 保证委托任务不写进用户自己的 WorkBuddy 会话；
+        # - --permission-mode dontAsk 保证无人值守时不产生交互等待。
+        return [
+            "--print",
+            "--output-format",
+            "stream-json",
+            "--json-schema",
+            json.dumps(output_schema, ensure_ascii=False, separators=(",", ":")),
+            "--tools",
+            "StructuredOutput",
+            "--no-session-persistence",
+            "--permission-mode",
+            "dontAsk",
+        ]
     raise ValueError(f"未配置可执行的 coding-agent runtime: {runtime_id}")
 
 
@@ -516,7 +664,18 @@ def _extract_worker_text(runtime_id: str, stdout: str) -> tuple[str, int]:
             item = event.get("item")
             if isinstance(item, dict) and item.get("type") == "agent_message" and item.get("text"):
                 candidates.append(str(item["text"]))
-        elif runtime_id == "claude":
+        elif runtime_id in {"claude", "codebuddy"}:
+            # CodeBuddy Code 的 stream-json 与 Claude Agent SDK JSONL 同构：
+            # result.structured_output / result.result / assistant.message.content[]。
+            # 它即使失败也返回 exit 0，因此错误必须从事件流识别。
+            if (
+                runtime_id == "codebuddy"
+                and event.get("type") == "result"
+                and event.get("is_error")
+            ):
+                error_candidates.append(
+                    f"[codebuddy error] {event.get('result') or event.get('subtype') or 'unknown'}"
+                )
             structured_output = event.get("structured_output")
             if isinstance(structured_output, dict):
                 structured_candidates.append(json.dumps(structured_output, ensure_ascii=False))
@@ -1724,8 +1883,7 @@ async def execute_deep_task(task: DeepTaskSpec) -> dict[str, Any]:
             web_search_mode=clean_web_search_mode,
         ),
     )
-    environment = dict(os.environ)
-    environment["NO_COLOR"] = "1"
+    environment = _child_environment(runtime_id)
     started_at = _now()
     started = time.perf_counter()
     process = await asyncio.create_subprocess_exec(

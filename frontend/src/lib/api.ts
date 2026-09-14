@@ -829,7 +829,7 @@ export interface RoleBenchmarkDetail extends RoleBenchmarkSummary {
 }
 
 export interface RoleBenchmarkBuildRequest {
-  runtime_id?: "codex" | "claude" | "gemini" | "omp" | "pi" | "opencode" | "fixture" | "replay" | "boss-fixture" | `plugin:${string}`;
+  runtime_id?: "codex" | "claude" | "gemini" | "omp" | "pi" | "opencode" | "codebuddy" | "fixture" | "replay" | "boss-fixture" | `plugin:${string}`;
   role_family?: string;
   specialization?: string;
   seniority?: string;
