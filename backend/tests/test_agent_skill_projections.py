@@ -21,22 +21,25 @@ from app.services.agent_skill_registry import resolve_run_skill, resolve_skill, 
 
 class AgentSkillProjectionTests(unittest.TestCase):
     def test_manifest_projects_the_versioned_skill_registry(self) -> None:
-        registry = _manifest()["skill_registry"]
+        manifest = _manifest()
+        registry = manifest["skill_registry"]
 
         self.assertGreaterEqual(len(registry["skills"]), 33)
         self.assertEqual(len(registry["sha256"]), 64)
+        self.assertEqual(manifest["operations"], [])
         scan = next(skill for skill in registry["skills"] if skill["id"] == "scan_jobs")
         self.assertIn("scan", scan["aliases"])
-        self.assertEqual(scan["confirmation_policy"], "operation_registry")
-        self.assertIn("batch_triage", scan["confirmation_required_operations"])
-        prep = next(skill for skill in registry["skills"] if skill["id"] == "interview_prep")
-        self.assertEqual(prep["status"], "native")
-        self.assertTrue({"list_calendar_events", "list_interview_questions"}.issubset(prep["allowed_tools"]))
-        inbox = next(skill for skill in registry["skills"] if skill["id"] == "agent_inbox")
-        self.assertEqual(inbox["status"], "native")
-        self.assertIn("list_agent_runs", inbox["allowed_tools"])
-        operation_names = {operation["name"] for operation in _manifest()["operations"]}
-        self.assertTrue(all(set(skill["allowed_tools"]).issubset(operation_names) for skill in registry["skills"]))
+        self.assertNotIn("allowed_tools", scan)
+        self.assertNotIn("confirmation_required_operations", scan)
+
+        selected = _manifest(skill="scan")
+        selected_skill = selected["skill_registry"]["skills"][0]
+        self.assertEqual(selected_skill["id"], "scan_jobs")
+        self.assertIn("batch_triage", selected_skill["confirmation_required_operations"])
+        self.assertEqual(
+            {operation["name"] for operation in selected["operations"]},
+            set(selected_skill["allowed_tools"]),
+        )
 
     def test_slash_commands_resolve_through_the_registry(self) -> None:
         self.assertEqual(resolve_skill("/offeru").id, "discovery")
@@ -60,12 +63,15 @@ class AgentSkillProjectionTests(unittest.TestCase):
         self.assertEqual(set(rendered), {
             Path(".agents/skills/offeru/SKILL.md"),
             Path(".claude/skills/offeru/SKILL.md"),
+            Path(".claude/agents/offeru-operator.md"),
             Path(".codex/agents/offeru-operator.toml"),
             Path(".copilot/SKILL.md"),
         })
         for content in rendered.values():
             self.assertIn("python -m app.cli manifest --pretty", content)
-            self.assertIn("python -m app.cli confirm", content)
+            self.assertIn("python -m app.cli manifest --skill <skill-id> --pretty", content)
+            self.assertNotIn("python -m app.cli confirm", content)
+            self.assertNotIn("agent_playbook --arg detail=full", content)
             self.assertNotIn("python -m app.cli api ", content)
             self.assertNotIn("python -m app.cli routes", content)
             self.assertNotIn("http://localhost:8000/api", content)

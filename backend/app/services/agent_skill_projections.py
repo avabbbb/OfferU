@@ -10,6 +10,7 @@ from app.services.agent_skill_registry import registry_snapshot
 PROJECTION_PATHS = {
     "agents": Path(".agents/skills/offeru/SKILL.md"),
     "claude": Path(".claude/skills/offeru/SKILL.md"),
+    "claude_agent": Path(".claude/agents/offeru-operator.md"),
     "codex": Path(".codex/agents/offeru-operator.toml"),
     "copilot": Path(".copilot/SKILL.md"),
 }
@@ -42,23 +43,22 @@ Work from `backend/`. The live CLI manifest is the source of truth; this generat
 ```powershell
 python -m app.cli doctor --pretty
 python -m app.cli manifest --pretty
-python -m app.cli run agent_playbook --arg detail=full --pretty
 ```
 
-Read `skill_registry.skills` from the manifest to resolve Skill IDs, aliases, versions, allowed Operations, missing capabilities, and confirmation-required Operations. Inspect each Operation with `python -m app.cli schema <operation> --pretty` before calling it.
+Read `skill_registry.skills` from the compact manifest, choose one Skill, then run `python -m app.cli manifest --skill <skill-id> --pretty`. Inspect each selected Operation with `python -m app.cli schema <operation> --pretty` before calling it.
 
 ## Routing
 
 - No goal or `/offeru`: present the live discovery catalog.
-- A Skill ID or alias: use that live Skill snapshot and only its allowed Operations.
-- A natural-language goal or JD/URL: discover a matching Skill or workflow from the live manifest/playbook. Do not invent an `auto_pipeline` command.
+- A Skill ID or alias: fetch that live Skill snapshot and use only its Operations.
+- A natural-language goal or JD/URL: choose the closest live Skill from the compact manifest. Do not invent an `auto_pipeline` command.
 
 ## Control rules
 
 - Run one atomic Operation per CLI invocation with `python -m app.cli run <operation>`.
 - Read Operations execute directly. Side-effect Operations persist a proposal and do not execute immediately.
 - Use `--dry-run` when a preview is useful. Dry-run is not confirmation.
-- Only after explicit user confirmation, execute the returned proposal once with `python -m app.cli confirm <run_id> --action <action_id> --pretty`.
+- Leave side-effect proposals pending for the user to review and confirm in OfferU.
 - Never use raw HTTP, direct database writes, removed `api/routes` commands, or hidden shell business logic.
 - Never submit applications, send emails, or contact third parties automatically.
 - Report executed reads, persisted proposals, pending confirmations, visible failures, and the next user decision.
@@ -81,16 +81,41 @@ Start every task by running:
 ```powershell
 python -m app.cli doctor --pretty
 python -m app.cli manifest --pretty
-python -m app.cli run agent_playbook --arg detail=full --pretty
 ```
 
-Resolve Skill IDs and aliases from `skill_registry.skills`. Use only the selected Skill's allowed Operations, inspect each schema before use, and run one atomic Operation per CLI command. Reads execute directly; side effects persist proposals. Only after explicit user confirmation may you run `python -m app.cli confirm <run_id> --action <action_id> --pretty` once.
+Resolve Skill IDs and aliases from `skill_registry.skills`, then fetch one Skill with `python -m app.cli manifest --skill <skill-id> --pretty`. Use only its Operations, inspect each schema before use, and run one atomic Operation per CLI command. Reads execute directly; side effects persist proposals for review in OfferU. Never execute the CLI confirm command yourself.
 
-For a natural-language goal or JD/URL, discover the matching Skill or workflow from the live manifest/playbook. Do not invent an `auto_pipeline` command. Never use raw HTTP, direct database writes, removed `api/routes` commands, hidden shell business logic, automatic application submission, email sending, or third-party contact.
+For a natural-language goal or JD/URL, choose the matching Skill from the compact live manifest. Do not invent an `auto_pipeline` command. Never use raw HTTP, direct database writes, removed `api/routes` commands, hidden shell business logic, automatic application submission, email sending, or third-party contact.
 
 Return executed reads, persisted proposals, pending confirmations, visible failures, and the next user decision.
 """
 '''
+
+
+def _claude_agent_projection(snapshot: dict[str, Any]) -> str:
+    marker = (
+        f"<!-- generated: offeru-skill-registry@{snapshot['version']} "
+        f"sha256={snapshot['sha256']} -->"
+    )
+    return f"""---
+name: offeru-operator
+description: Operate OfferU through its live Skill Registry and atomic CLI control contract.
+model: sonnet
+tools: Read, Grep, Glob, PowerShell
+skills:
+  - offeru
+---
+
+{marker}
+
+You are the OfferU operator subagent. Work from `backend/` and treat the live CLI manifest as the only capability source.
+
+Start with `python -m app.cli doctor --pretty` and `python -m app.cli manifest --pretty`. Choose one Skill from `skill_registry.skills`, fetch it with `python -m app.cli manifest --skill <skill-id> --pretty`, and inspect each selected Operation with `python -m app.cli schema <operation> --pretty` before use.
+
+Run one atomic Operation per command. Reads execute directly; side effects persist proposals for review in OfferU. Never execute the CLI confirm command yourself. Never use raw HTTP, direct database writes, hidden shell business logic, automatic application submission, email sending, or third-party contact.
+
+Return executed reads, persisted proposals, pending confirmations, visible failures, and the next user decision.
+"""
 
 
 def render_skill_projections() -> dict[Path, str]:
@@ -98,6 +123,7 @@ def render_skill_projections() -> dict[Path, str]:
     return {
         PROJECTION_PATHS["agents"]: _markdown_projection("Codex or another agent-skill host", snapshot),
         PROJECTION_PATHS["claude"]: _markdown_projection("Claude Code", snapshot),
+        PROJECTION_PATHS["claude_agent"]: _claude_agent_projection(snapshot),
         PROJECTION_PATHS["codex"]: _codex_projection(snapshot),
         PROJECTION_PATHS["copilot"]: _markdown_projection("GitHub Copilot", snapshot),
     }

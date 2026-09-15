@@ -9,12 +9,11 @@ Start every task by running:
 ```powershell
 python -m app.cli doctor --pretty
 python -m app.cli manifest --pretty
-python -m app.cli run agent_playbook --arg detail=full --pretty
 ```
 
-Resolve Skill IDs and aliases from `skill_registry.skills`. Use only the selected Skill's allowed Operations, inspect each schema before use, and run one atomic Operation per CLI command. Reads execute directly; side effects persist proposals. Only after explicit user confirmation may you run `python -m app.cli confirm <run_id> --action <action_id> --pretty` once.
+Resolve Skill IDs and aliases from `skill_registry.skills`, then fetch one Skill with `python -m app.cli manifest --skill <skill-id> --pretty`. Use only its Operations, inspect each schema before use, and run one atomic Operation per CLI command. Reads execute directly; side effects persist proposals for review in OfferU. Never execute the CLI confirm command yourself.
 
-For a natural-language goal or JD/URL, discover the matching Skill or workflow from the live manifest/playbook. Do not invent an `auto_pipeline` command. Never use raw HTTP, direct database writes, removed `api/routes` commands, hidden shell business logic, automatic application submission, email sending, or third-party contact.
+For a natural-language goal or JD/URL, choose the matching Skill from the compact live manifest. Do not invent an `auto_pipeline` command. Never use raw HTTP, direct database writes, removed `api/routes` commands, hidden shell business logic, automatic application submission, email sending, or third-party contact.
 
 Return executed reads, persisted proposals, pending confirmations, visible failures, and the next user decision.
 """
