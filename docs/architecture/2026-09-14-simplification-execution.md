@@ -1,6 +1,6 @@
 # OfferU product and architecture simplification
 
-Date: 2026-09-14. Status: analysis complete for the implementation slices below; execution and acceptance pending.
+Date: 2026-09-14. Status: S1-S4 source implementation complete; runtime and browser acceptance pending under the no-test instruction.
 
 ## Authorized direction
 
@@ -135,16 +135,42 @@ The current beginner path deliberately copies a Skill-reading instruction into t
 | --- | --- | --- | --- |
 | CLI verbs | 8 | CLI unchanged | Preserved |
 | Registered Operations | 257 | Registry source unchanged by S1/S2 | Runtime recount pending |
-| Default full operation schemas | 257 | Discovery changes not started | S4 pending |
+| Default full operation schemas | 257 | 0 schemas; 35 compact Skill cards | Source complete; runtime measurement pending |
 | Legacy implementation Operations | 28 | No removal; current callers preserved | Isolation policy pending S4 |
 | Frontend fallback provider catalogues | 2 | Onboarding removed; Settings uses backend response | Source reviewed |
 | User-visible endpoint templates | 11 backend vendor presets | 2 backend protocol templates | S2 under review |
 | Duplicate runtime URL/tier catalogues | Runtime maps duplicate preset module | Runtime now delegates to preset module | Source reviewed; backend legacy table retained |
 | Beginner API-key prerequisite | Wizard plus Today checklist | Local-Agent connection path | Source reviewed; no browser evidence |
 | Skill installed / Agent readback | Not established | Copy instruction only | Not established |
-| Credential preservation on vault/disk failure | Not established | Static hazards documented | S3 pending |
+| Credential preservation on vault/disk failure | Not established | Atomic save and fake-vault regression tests written | Source complete; tests not run |
 | Backend tests / frontend typecheck | Historical S1 result | No post-S1 execution under latest instructions | Not verified |
 | Browser E2E / live job automation | Not executed | No user-data writes or browser sessions | Not verified |
+
+### Source completion update: 2026-09-15
+
+The user authorized the primary agent to finish after Luna execution repeatedly stalled. The source now implements the agreed progressive-disclosure and credential boundaries without removing product capabilities:
+
+- CLI remains 8 verbs and the registry remains 257 Operations by source inventory. Default `manifest` returns **0 Operation schemas** and **35 compact Skill cards**; `manifest --skill` returns only that Skill's compact Operation summaries, `schema` returns one full schema, and `manifest --all` preserves the complete audit escape hatch.
+- All five checked-in Agent projections, including `.claude/agents/offeru-operator.md`, are generated from the same Skill Registry. Startup no longer requests the giant `agent_playbook`, and external Agents are instructed to leave proposals for review inside OfferU rather than confirming their own work.
+- The 28 legacy implementations remain registered and reachable by their current product routes, but none enter the default manifest. Bridge grants are untouched.
+- Shared config persistence dehydrates API keys, custom connection headers, and BOSS/智联 cookies before atomic replacement. Disk stores only owned references or explicit `env:VAR` references. Replacement refs are unique; failed writes delete only refs created by that attempt; successful rotation deletes only prior OfferU refs present in the replaced config.
+- Vault reads restore secrets only in process memory. Missing configured refs produce a sanitized `vault_status` error. The health probe uses a unique owned ref, and plaintext/null/third-party keyring backends are rejected in favor of the platform-native Windows, macOS, or Linux backends.
+- Tests were added for selector conflicts and unknown selectors, compact manifests, generated projection drift, vault failure rollback, reference-only preservation, header/cookie dehydration, runtime cookie hydration, ref rotation, read-error visibility, and native-backend validation. They were deliberately not executed.
+
+| Measure | Before | Source after | Runtime proof |
+| --- | ---: | ---: | --- |
+| Top-level CLI verbs | 8 | 8 | Recount not run |
+| Registered Operations | 257 | 257, registry declarations unchanged | Recount not run |
+| Operation schemas in default Agent startup manifest | 257 | 0 | Serializer measurement not run |
+| Compact Skill cards in default manifest | 0 | 35 by current registry source | Recount not run |
+| Legacy implementations | 28 | 28, excluded from default startup | Route regression not run |
+| Bridge read grants | 14 | 14, bridge code unchanged | Conformance not run |
+| User-visible endpoint templates | 11 vendor presets | 2 protocols | Browser evidence not run |
+| Raw LLM keys in config persistence | Allowed | Rejected/dehydrated | Fake-vault tests written, not run |
+| Raw custom headers in config persistence | Allowed | Rejected/dehydrated | Fake-vault tests written, not run |
+| Raw scraper cookies in config persistence | Allowed | Rejected/dehydrated | Fake-vault tests written, not run |
+
+The remaining original gap is not hidden: onboarding provides the existing-Agent plus OfferU Skill path, but no runtime evidence proves automatic native Skill installation/update or that Codex, Claude Code, or OpenCode actually read the Skill. Managed-Chromium onboarding and failure-path E2E, live Agent conformance, architecture audit, backend tests, frontend typecheck/build, and product-regression workflows remain acceptance work for the user-requested validation phase.
 
 S2 source changes now cover both SDK execution paths, shared HTTP settings, text-response checks, streaming cleanup, the two-template editor, metadata-preserving edits, and reference-only/keyless configuration retention. The old pruning call was a concrete data-loss bug: a configured credential reference was discarded because no plaintext key was present. Explicit empty connection lists also no longer regenerate legacy connections. Transport and normalization regression tests have been written, including early stream closure, but have not been executed under the latest instructions. S3a is assigned to Luna for immutable credential references and the common atomic-save boundary.
 
