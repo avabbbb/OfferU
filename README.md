@@ -5,176 +5,312 @@
 <h1 align="center">OfferU</h1>
 
 <p align="center">
-  <strong>本地优先、证据驱动的 AI 求职操作台</strong><br />
-  让你选择的 Coding Agent 负责思考和规划，让 OfferU 负责事实、权限、确认与审计。
+  <strong>Your local-first AI Career OS.</strong><br/>
+  Understand every job. Tailor every application. Learn from every interview.
 </p>
 
 <p align="center">
-  <a href="./README_EN.md">English</a> ·
+  <strong>English</strong> ·
+  <a href="./README_ZH.md">简体中文</a> ·
   <a href="./QUICKSTART.md">Quickstart</a> ·
-  <a href="#cli-first-控制面">CLI-first</a> ·
-  <a href="#架构方向">架构</a> ·
-  <a href="./docs/README.md">设计文档</a>
+  <a href="./INTERNAL_BETA.md">Demo</a> ·
+  <a href="./ARCHITECTURE.md">Architecture</a> ·
+  <a href="./docs/README.md">Docs</a>
+</p>
+
+<p align="center">
+  <em>Local-first · Evidence-driven · Human-controlled</em>
 </p>
 
 > [!IMPORTANT]
-> OfferU 目前是本地单人 Internal Beta 候选版本，核心 Replay/Fixture 路径、Windows 本地 bundle/lifecycle 和一组重复 E2E 已有当前证据；Public Release readiness 仍未通过，因为 signed installer、previous-release upgrade、clean-machine 独立验收、完整 security/privacy、长时 reliability 和 live Role Intelligence claim 仍未完成。当前不是公开发布版。它不是自动投递机器人，不会自动提交申请、发送邮件或联系第三方。Agent 的推断、材料和进展更新必须先成为候选或提案，再由使用者审核。
+> OfferU is currently a local single-user **Internal Beta / Public Release Candidate**, not a public release.
+> The core local workflow works, but signed installer, previous-release upgrade, clean-machine validation,
+> full security/privacy gates and live external Role Intelligence evidence are still open, so the release
+> verdict stays `OFFERU_PUBLIC_RELEASE_NOT_READY`. See [STATUS.md](./STATUS.md) for the current evidence.
+> OfferU is **not** an auto-apply bot: it never submits applications, sends mail or contacts third parties
+> on its own. AI output becomes career truth only after you review and approve it.
 
 <table>
   <tr>
-    <td width="50%"><img src="./asset/screenshots/agent-workbench.png" alt="OfferU Agent 工作台" /></td>
-    <td width="50%"><img src="./asset/screenshots/job-research-handback.png" alt="岗位研究证据审核" /></td>
+    <td width="50%"><img src="./asset/screenshots/workbench.png" alt="OfferU workbench" /></td>
+    <td width="50%"><img src="./asset/screenshots/job-research-handback.png" alt="Job research evidence review" /></td>
   </tr>
   <tr>
-    <td align="center"><strong>Run、事件、权限与确认</strong></td>
-    <td align="center"><strong>来源、未知项与候选结论审核</strong></td>
+    <td align="center"><strong>Workbench: jobs, evidence and next actions</strong></td>
+    <td align="center"><strong>Job research: sources, unknowns, candidate review</strong></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="./asset/screenshots/applications.png" alt="Application pipeline" /></td>
+    <td width="50%"><img src="./asset/screenshots/interview.png" alt="Interview preparation" /></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Pipeline: stages, timeline, next action</strong></td>
+    <td align="center"><strong>Interview: targeted practice and debrief</strong></td>
   </tr>
 </table>
 
-## OfferU 是什么
+---
 
-OfferU 把求职过程收敛成四个用户入口：
+## Why OfferU?
 
-1. **Today**：当前行动、待确认信号、自动任务和下一步。
-2. **Pipeline**：所有目标岗位、投递阶段、事件时间线和下一动作。
-3. **Opportunity / Job**：岗位研究、证据缺口、材料候选和面试训练。
-4. **Profile**：长期职业事实、证据、偏好、目标和待审核学习候选。
+Most job-search tools solve one step.
 
-Memory 是 Profile 的演进机制；Agent 是全局能力；Role Intelligence、Resume、Application Packet 和 Interview 都属于 Job 上下文。
+Your resume lives in one place. Job research lives in another. Application tracking becomes a spreadsheet.
+Interview practice starts from zero every single time.
 
-岗位材料从 Job Detail 进入 Resume Workspace：左侧编辑结构化内容，中间实时预览 A4/Letter，右侧审核 AI Proposal、样式和版本。原简历始终保留，岗位版本通过 `source_resume_id` / `target_job_id` 关联，Application Packet 引用当前 `ResumeVersion`。
+OfferU treats the whole search as one evolving system instead of four disconnected chores:
 
-SQLite 与领域服务保存正式事实；React/Tauri 工作台负责呈现和人类控制；所有自动化业务操作统一经过 Python Operation Registry。模型回答本身不是事实，也不是执行成功的证明。
+```text
+Career Profile
+      ↓
+   Save Job
+      ↓
+Role Intelligence
+      ↓
+Evidence Gap
+      ↓
+Tailored Resume
+      ↓
+Application Pipeline
+      ↓
+Targeted Interview
+      ↓
+Debrief & Learning
+      ↺
+```
 
-## 架构方向
+Instead of opening a fresh AI chat for every job, OfferU keeps one persistent, evidence-backed career
+context and carries what it learns across the entire search.
 
-OfferU 正在从内置主 Agent 迁移为“操作台 + 外部 Harness 主脑”：
+### Persistent career context
+
+OfferU maintains structured career evidence — experience, achievements, skills, preferences, goals and
+reviewed learning observations.
+
+AI suggestions never silently become career facts. New information enters a reviewable candidate flow
+before it can update your long-term profile.
+
+### Role Intelligence
+
+OfferU does not only summarize a job description. It compares the target role against a cohort of
+similar jobs, separates what is common from what is distinctive, and maps those signals against your
+own evidence.
+
+```text
+What does this role emphasize?
+           ×
+What can I actually prove?
+           ↓
+What should I prepare next?
+```
+
+### Evidence-grounded resume tailoring
+
+Every target job can have its own tailored resume without overwriting the source resume.
+
+The Resume Workspace supports structured manual editing, live A4 / Letter preview, job-specific resume
+versions, AI proposals with before / after diffs, accept / reject review, stale-proposal protection and
+PDF export.
+
+AI-generated claims are checked against career evidence before they become trusted application content.
+
+### Application pipeline
+
+Today, Pipeline, Job Detail and Timeline all read from the same underlying career state. Application
+progress is modeled as **events** rather than independent UI state, so OfferU can project one truth
+across the product instead of asking you to maintain several trackers.
+
+### Targeted interview practice
+
+Interview preparation is grounded in the intersection of role delta, career evidence gap and previous
+interview learning:
+
+```text
+Role Delta
+×
+Career Evidence Gap
+×
+Previous Interview Learning
+```
+
+OfferU generates targeted focus areas, runs turn-based practice, challenges vague answers, produces
+transcript-backed debriefs and turns useful observations into reviewable learning candidates.
+
+### A controlled agent, not a black box
+
+OfferU lets an AI agent reason and use tools, but the model never owns business truth.
+
+```text
+Agent Runtime
+    ↓
+Operation Registry
+    ↓
+Proposal / Approval
+    ↓
+Career Runtime
+```
+
+The agent reasons. The Operation Registry controls capabilities and side effects. The Career Runtime
+owns persisted truth. You remain the approval authority for sensitive changes and irreversible actions.
+
+---
+
+## Product surfaces
+
+| Surface      | Purpose                                                                                            |
+| ------------ | -------------------------------------------------------------------------------------------------- |
+| **Today**    | What changed, what OfferU finished, what needs your attention, and what matters next              |
+| **Pipeline** | Every opportunity, application stage, timeline and next action                                     |
+| **Job**      | Research, Role Intelligence, evidence gaps, resume, application packet and interview preparation    |
+| **Profile**  | Long-term career evidence, goals, preferences and reviewed learning                                |
+
+Memory is a mechanism for evolving Profile — not a separate product silo.
+The Agent is a system-wide capability — not another disconnected chat window.
+
+---
+
+## AI setup
+
+The product direction is **Connect → Auto → Ready**.
+
+> **Beginner: connect an agent. Advanced: configure the stack.**
+
+Normal users should not have to understand runtimes, protocol versions, model IDs or custom endpoints.
+OfferU detects a local agent you already have, checks it, and consumes its own model and account:
+
+```text
+        OfferU
+
+   AI Connection
+        ↓
+    Auto Detect
+        ↓
+┌───────┼───────┐
+Codex  Claude  OpenCode
+        ↓
+   OfferU Skill
+        ↓
+   OfferU Bridge
+        ↓
+ Operation Registry
+        ↓
+   Career Runtime
+```
+
+If you already use **Codex** with your ChatGPT account, **Claude Code** with your Claude account, or
+**OpenCode**, OfferU does not need an API key from you at all — the agent brings its own model and
+authentication.
+
+API configuration is the fallback for users with no local agent, self-hosting users, and advanced users
+who deliberately want to configure the stack. It lives behind Advanced, where you get two protocols
+rather than dozens of vendor presets:
+
+- OpenAI-compatible endpoint
+- Anthropic-compatible endpoint
+
+Runtime diagnostics, experimental providers and provider health are advanced / developer surfaces.
+
+---
+
+## Architecture
+
+OfferU is split into three authorities on purpose:
 
 ```mermaid
 flowchart LR
-    U[使用者] --> H[Harness 原生界面]
-    H --> B[OfferU CLI / stdio Bridge]
-    B --> O[Operation Registry]
-    O --> F[(职业事实与审计)]
-    O --> P[副作用提案]
-    P --> W[OfferU 工作台确认]
+    U[User] --> UI[OfferU]
+    UI --> A[Agent Runtime]
+    A --> O[Operation Registry]
+    O --> C[Career Runtime]
+    O --> P[Proposal / Approval]
+    P --> U
+    C --> D[(Local Career Data)]
 ```
 
-- **唯一主控 Loop 在外部 Harness**：规划、对话和工具循环由 Codex 等外部 Harness 宿主持有。
-- **OfferU 是确定性控制面**：提供任务上下文、原子 Operation、权限、提案、确认、工件和审计。
-- **CLI-first，不采用 MCP 业务接口**：目标 Bridge 是私有 stdio JSONL 协议；Harness 通过薄插件或 adapter 接入。
-- **DeepSeek Harness 与 Codex 优先**：Codex 采用官方 App Server 边界。Claude Code、OpenCode 和 Pi 通过同一一致性契约后再标记支持。
-- **确认权不交给模型**：Harness 原生审批只管理其文件或 shell 工具；OfferU 的业务副作用只能在工作台批准一次。
+- **Reasoning authority** — replaceable agent runtimes plan, reason and choose capabilities.
+- **Execution authority** — the Operation Registry validates schema, permissions, side effects, dry runs,
+  proposals and audit.
+- **Truth authority** — the Python Career Runtime owns Profile, Jobs, Applications, Resumes, Interviews,
+  Memory and other persisted career state.
 
-上面是已接受的架构边界。当前 Main Agent UI 通过 provider-neutral `AgentRuntimeProvider` 消费 Pi/Replay 等适配器；C1 全局控制面审计已证明正式业务 mutation 没有已知的 Route 级 Registry 旁路。旧 Pi Worker、CLI `confirm` 和实验性 MCP 仍属于迁移期/兼容表面，不能作为新的业务集成契约。Codex App Server 的结构适配与 fixture/replay 路径已有验证，但本机真实 Codex 仍受认证阻塞；真实 `job-search` Capability Plugin 已有 Manifest、Skill、CLI 和契约测试，live Role Intelligence 采集仍需单独验证。具体差距见[迁移路线](./docs/implementation/migration-roadmap.md)。
+This is why the underlying agent harness can evolve without moving career truth into a model or an
+external runtime. Every surface — GUI, CLI, TUI, skills and agent integrations — goes through the same
+Operation Registry; none of them writes business state on its own.
 
-上游现状以官方资料为准：
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full boundaries and [CONTEXT.md](./CONTEXT.md) for
+domain language and invariants.
 
-- [Codex App Server](https://developers.openai.com/codex/app-server) 提供官方 stdio JSONL 深度集成边界；实验能力必须版本门控。
+---
 
-## 当前获取方式（仅源码开发）
+## Current technology
 
-Public 用户的最终路径只能是 Download → Verify publisher/checksum → Install → Launch → Onboarding。当前只有未签名的本地 Windows bundle evidence，尚无通过 Release Gate 的公开 installer；以下命令只用于源码开发，完整说明见 [DEVELOPMENT.md](./DEVELOPMENT.md)，不要把它当作普通用户安装流程。
-
-注意：如果仓库根目录有 `OfferU.exe`，当前发现它是历史 `0.1.0` 二进制，不是当前 `0.4.0` Release Candidate；不要双击该文件。当前网页开发入口固定为 `http://127.0.0.1:7410`，`8080` 不是 OfferU 网页服务。
-
-### 环境
-
-当前主要开发环境是 Windows：
-
-- Git
-- Python 3.12
-- Node.js 22.19 或更高版本，以及 npm
-- Rust/Tauri toolchain（只在运行桌面壳时需要）
-
-```powershell
-git clone https://github.com/avabbbb/OfferU.git
-Set-Location OfferU
-
-py -3.12 -m venv backend\.venv312
-backend\.venv312\Scripts\python.exe -m pip install --upgrade pip
-backend\.venv312\Scripts\python.exe -m pip install -r backend\requirements.txt
-
-npm --prefix agent-runtime ci
-npm --prefix frontend ci
-
-if (-not (Test-Path backend\.env)) {
-  Copy-Item .env.example backend\.env
-}
+```text
+React / TypeScript   → product UI
+Python / FastAPI     → career domain runtime, Operation Registry,
+                       automation, persistence
+Tauri / Rust         → desktop shell, process lifecycle, OS integration
+Agent runtimes       → replaceable reasoning engines
+SQLite               → local career data
 ```
 
-`backend/.env` 是本地配置，不应提交。
+OfferU intentionally does not duplicate business logic across UI, CLI, plugins and agent integrations.
 
-模型 API Key 只写入操作系统钥匙串（Windows Credential Manager / macOS Keychain / Linux Secret Service），`backend/config.json` 只保留 `credential_ref` 引用；若钥匙串不可用，保存会直接失败并提示，不回退为明文落盘。`env:VAR_NAME` 形式的引用不是秘密，仍按原样保存在配置文件中。历史 config.json 中的明文 Key 会在首次加载时自动迁移进钥匙串。
+---
 
-模型功能在 provider 未配置时应明确失败；不要把 API Key、简历正文或邮箱内容粘贴到公开 Agent 会话。
+## Safety principles
 
-### 浏览器开发版
+- AI output is not automatically career truth.
+- Important mutations are reviewable and auditable.
+- External irreversible actions require explicit user control.
+- Browser automation may assist with forms but must not silently submit applications.
+- Career evidence preserves provenance; behaviour signals and model inferences enter a review inbox first.
+- Provider failures must be visible rather than silently returning fake success.
+- API keys live in the OS keyring (Windows Credential Manager / macOS Keychain / Linux Secret Service);
+  the config file keeps only a `credential_ref`. If the keyring is unavailable, saving fails loudly
+  instead of falling back to plaintext.
+- Credentials should stay out of model context, logs and version control.
 
-终端 A：
+See [SECURITY.md](./SECURITY.md) for the current security status.
 
-```powershell
-backend\.venv312\Scripts\python.exe backend\run_server.py
+---
+
+## Getting started
+
+OfferU is not yet published as a signed consumer installer. For source development and internal testing:
+
+- [DEVELOPMENT.md](./DEVELOPMENT.md) — environment and dev setup
+- [QUICKSTART.md](./QUICKSTART.md) — fastest local path
+- [INTERNAL_BETA.md](./INTERNAL_BETA.md) — internal beta walkthrough and golden path
+
+The intended public user path is:
+
+```text
+Download
+→ Install
+→ Launch
+→ Connect your AI agent
+→ Build Profile
+→ Save a Job
+→ Let OfferU prepare the rest
 ```
 
-终端 B：
+> If you find an `OfferU.exe` in the repository root, it is a legacy `0.1.0` binary, not the current
+> release candidate. Do not run it. The web entrypoint is always `http://127.0.0.1:7410`;
+> `8080` is only an optional local llama.cpp model endpoint.
 
-```powershell
-npm --prefix frontend run dev
-```
+---
 
-打开 [http://127.0.0.1:7410](http://127.0.0.1:7410)。后端固定使用 `127.0.0.1:8766`。`8080` 不是 OfferU 网页地址，只是可选本地 llama.cpp Provider 接口；不要在浏览器中打开它。
+## Release status
 
-若出现 `Failed to fetch` 或 CORS 错误，先检查 Windows 用户环境变量 `CORS_ORIGINS`。系统环境变量优先于 `backend/.env`，其中必须包含 `http://localhost:7410` 与 `http://127.0.0.1:7410`。
+OfferU uses evidence-backed release gates rather than treating a successful build as production readiness.
+Current status, validation evidence, known issues and quality scores live in:
 
-### 桌面开发版
+- [STATUS.md](./STATUS.md)
+- [RELEASE_CHECKLIST.md](./RELEASE_CHECKLIST.md)
+- [QUALITY_SCORE.md](./QUALITY_SCORE.md)
+- [KNOWN_ISSUES.md](./KNOWN_ISSUES.md)
 
-安装 Rust/Tauri toolchain 后：
-
-```powershell
-npm --prefix frontend run tauri -- dev
-```
-
-桌面开发壳会启动自己的前端和后端；不要同时保留上一节的两个进程。
-
-## CLI-first 控制面
-
-当前代码的只读能力发现入口位于 `backend`：
-
-```powershell
-Set-Location backend
-
-.\.venv312\Scripts\python.exe -m app.cli doctor --pretty
-.\.venv312\Scripts\python.exe -m app.cli manifest --pretty
-.\.venv312\Scripts\python.exe -m app.cli ops --pretty
-.\.venv312\Scripts\python.exe -m app.cli schema list_jobs --pretty
-.\.venv312\Scripts\python.exe -m app.cli run agent_playbook --arg detail=full --pretty
-```
-
-外部 Agent 必须先读取实时 manifest 与 schema，不能把某个版本的参数写死。当前 CLI 的 mutation/`confirm` 是迁移前表面：不要让模型自动调用确认，也不要据此实现新集成。目标 Harness 协议见 [Agent Bridge](./docs/architecture/agent-bridge-protocol.md)。
-
-## 安全边界
-
-- 仅支持本地单人版；不引入账号、多租户、计费或 SaaS 预埋。
-- GUI、CLI、TUI、Skill 和 Harness 共用一个 Operation Registry。
-- 职业事实必须有来源；行为信号和模型推断先进入候选/记忆收件箱。
-- Mutation 先持久化提案，再由 OfferU 工作台独立批准；断连、过期或权限不明时失败关闭。
-- Harness 文件工具仅可作用于当前 Run 工件区；工件经审核后才能进入正式业务状态。
-- 浏览器扩展可以采集岗位和安全填表，但不得点击最终提交。
-- 目标安全边界要求凭据不进入模型上下文、日志、SQLite 或版本库；在钥匙串存储和对应 Eval 完成前，不把当前实现描述为已加固。
-
-发现安全问题时，请使用 GitHub 的私密安全报告渠道，不要在公开 Issue 中粘贴凭据或个人资料。
-
-## Eval 与项目状态
-
-OfferU 的发布结论由版本化任务、轨迹证据和真实 outcome 决定，不能由截图、构建成功或模型自评代替。
-
-- 上一检查点：**Resume Workspace Beta Ready（Internal Beta / Replay / Fixture only）**
-- 当前状态：**Public Release NOT READY**；完整 Gate 与证据分级见 [STATUS.md](./STATUS.md) 和 [RELEASE_CHECKLIST.md](./RELEASE_CHECKLIST.md)
-- 核心套件：[offeru-core-v1](./docs/evals/offeru-core-v1.md)
-- Eval 规则：[docs/evals/README.md](./docs/evals/README.md)
-
-开发者建议检查命令：
+Suggested developer checks:
 
 ```powershell
 Set-Location backend
@@ -185,27 +321,35 @@ npm run typecheck
 npm run build
 ```
 
-这些命令只验证各自范围，不单独代表可内测或可发布。
+These commands only validate their own scope; they do not mean "ready for beta" or "ready to release".
 
-## 文档
+---
 
-- [Public Quickstart（当前未发布）](./QUICKSTART.md)
-- [源码开发说明](./DEVELOPMENT.md)
-- [Internal Beta 验收与 Golden Path](./INTERNAL_BETA.md)
-- [Public Release Goal](./GOAL.md)
-- [Public Release Checklist](./RELEASE_CHECKLIST.md)
-- [Quality Score](./QUALITY_SCORE.md)
-- [当前验证状态](./STATUS.md)
-- [已知限制](./KNOWN_ISSUES.md)
-- [架构边界](./ARCHITECTURE.md)
-- [文档导航与 10 份活跃设计](./docs/README.md)
-- [领域词汇与不变量](./CONTEXT.md)
-- [ADR 决策账本](./docs/adr/README.md)
-- [外部 Harness 主控总览](./docs/architecture/agent-system.md)
-- [Harness接入策略](./docs/architecture/harness-integrations.md)
-- [纵向迁移路线](./docs/implementation/migration-roadmap.md)
+## Roadmap
 
-仓库不再保存日期化的旧计划、审计和失效报告；Git 历史就是归档。新的长期决策进入 ADR 账本，现行细节直接更新对应主题文档。
+Current priorities are productization, not more top-level features:
+
+1. **Zero-friction AI setup** — connect once, detect capabilities, default to Auto.
+2. **Live Role Intelligence** — validate at least one real external research path end to end.
+3. **Public desktop release** — signed installer, clean-machine setup, migration, backup, restore, upgrade.
+4. **Privacy & security hardening** — finish the remaining security and privacy gates.
+5. **Real-user feedback** — use it in actual job searches and fix the highest-impact issues.
+
+---
+
+## Contributing
+
+OfferU is moving quickly toward a public local-first release. Before contributing, read:
+
+- [CONTEXT.md](./CONTEXT.md) — domain language and invariants
+- [ARCHITECTURE.md](./ARCHITECTURE.md) — system boundaries
+- [docs/adr/README.md](./docs/adr/README.md) — accepted architecture decisions
+- [DEVELOPMENT.md](./DEVELOPMENT.md) — development setup
+
+Please do not bypass the Operation Registry for business mutations, and do not introduce a second source
+of career truth.
+
+---
 
 ## License
 
