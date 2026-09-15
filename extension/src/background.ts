@@ -5,6 +5,7 @@
 // =============================================
 
 import type {
+  BossCookieSyncResponse,
   ClipboardCopyResponse,
   ExtractedJob,
   ExtensionSettings,
@@ -801,6 +802,66 @@ async function requestHostPermissionForUrl(url: string): Promise<void> {
   }
 }
 
+/** BOSS直聘的 Cookie 作用域（含 HttpOnly，只能通过 chrome.cookies 读取）。 */
+const BOSS_COOKIE_DOMAIN = "zhipin.com";
+
+/**
+ * 读取本机浏览器里 BOSS直聘 的登录态并交给 OfferU。
+ *
+ * 三条硬约束：
+ * 1. Cookie 只在本次调用内存在 —— 不写 `chrome.storage.local`，不写日志，
+ *    也不回传给 popup（见 docs/architecture/browser-extension.md）；
+ * 2. 缺少 wt2 时直接失败，不把"写入了别的字段"当成登录成功；
+ * 3. 以后端回读到的状态为准，不以写入请求返回 200 判定成功。
+ */
+async function syncBossScraperSession(): Promise<BossCookieSyncResponse> {
+  const cookieApi = (
+    chrome as typeof chrome & {
+      cookies?: {
+        getAll: (filter: { domain: string }) => Promise<Array<{ name: string; value: string }>>;
+      };
+    }
+  ).cookies;
+  if (!cookieApi) {
+    throw new Error("扩展缺少 Cookie 权限，请重新加载扩展后再试");
+  }
+
+  let cookies: Array<{ name: string; value: string }>;
+  try {
+    cookies = await cookieApi.getAll({ domain: BOSS_COOKIE_DOMAIN });
+  } catch {
+    throw new Error("无法读取 BOSS 登录态，请确认已允许扩展访问 zhipin.com");
+  }
+
+  const usable = cookies.filter((item) => item.name && item.value);
+  if (!usable.some((item) => item.name === "wt2")) {
+    throw new Error("没有读到 BOSS 登录态（缺少 wt2），请先在浏览器登录 zhipin.com 再重试");
+  }
+
+  const cookieHeader = usable.map((item) => `${item.name}=${item.value}`).join("; ");
+  const settings = await getSettings();
+  const control = new HttpOfferUControl(settings.serverUrl);
+  const state = await control.updateScraperSession("boss", cookieHeader);
+
+  if (!state.configured || !state.hasWt2) {
+    return {
+      ok: false,
+      message: "后端未确认 BOSS 登录态已保存，请确认 OfferU 正在运行后重试",
+      hasWt2: state.hasWt2,
+      hasZpToken: state.hasZpToken,
+    };
+  }
+
+  return {
+    ok: true,
+    message: state.hasZpToken
+      ? "BOSS 登录态已连接"
+      : "BOSS 登录态已连接（未检测到 zp_token，采集可能受限）",
+    hasWt2: state.hasWt2,
+    hasZpToken: state.hasZpToken,
+  };
+}
+
 function parseAiMappings(
   payload: unknown,
   source: "plugin-direct" | "backend",
@@ -1493,6 +1554,17 @@ chrome.runtime.onMessage.addListener(
             sendResponse({
               ok: false,
               error: safeExtensionError(error, "权限申请失败"),
+            }),
+        );
+        return true;
+
+      case "SYNC_BOSS_COOKIE":
+        syncBossScraperSession().then(
+          (result) => sendResponse(result),
+          (error: unknown) =>
+            sendResponse({
+              ok: false,
+              message: safeExtensionError(error, "登录态同步失败"),
             }),
         );
         return true;

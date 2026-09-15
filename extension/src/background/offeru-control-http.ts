@@ -9,6 +9,7 @@ import type {
   ConnectionState,
   OfferUControl,
   RedactedFillOutcome,
+  ScraperSessionState,
 } from "../framework/offeru-control.js";
 import type {
   FillProjection,
@@ -27,6 +28,26 @@ import { safeExtensionError } from "../lib/safe-error.js";
 
 export const DEFAULT_BACKEND_URL = DEFAULT_OFFERU_SERVER_URL;
 const SYNC_TIMEOUT_MS = 15000;
+
+/**
+ * 扩展支持的招聘站点 → 后端配置字段。
+ *
+ * 映射写在这里而不是由调用方传入字段名，保证扩展无法把任意键写进
+ * 后端配置（与「规则包不能指定 endpoint」同一约束）。
+ * 只放进已有状态回读端点的站点，避免"写入成功但无法确认"的假成功。
+ */
+const SCRAPER_SESSION_FIELDS: Record<string, string> = {
+  boss: "boss_cookie",
+};
+
+const BOSS_STATUS_PATH = "/api/config/boss-status";
+
+interface BossStatusResponse {
+  configured?: boolean;
+  has_wt2?: boolean;
+  has_zp_token?: boolean;
+  message?: string;
+}
 
 interface IngestPayloadItem {
   title: string;
@@ -187,6 +208,41 @@ export class HttpOfferUControl implements OfferUControl {
       createdCount: perItem.filter((item) => item.status === "created").length,
       skippedCount: perItem.filter((item) => item.status === "skipped").length,
       perItem,
+    };
+  }
+
+  /**
+   * 把浏览器里已有的站点登录态交给 OfferU。
+   *
+   * 写入后重新读取后端状态再返回 —— 不把"写入请求成功"当成"登录态可用"。
+   */
+  async updateScraperSession(provider: string, cookie: string): Promise<ScraperSessionState> {
+    const field = SCRAPER_SESSION_FIELDS[provider];
+    if (!field) {
+      throw new Error(`不支持的招聘站点：${provider}`);
+    }
+    const value = cookie.trim();
+    if (!value) {
+      throw new Error("没有读取到登录态，请先在浏览器登录该站点后重试");
+    }
+    await this.request<{ message?: string }>("/api/config/", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [field]: value }),
+    });
+    return this.getScraperSession(provider);
+  }
+
+  async getScraperSession(provider: string): Promise<ScraperSessionState> {
+    if (provider !== "boss") {
+      throw new Error(`暂不支持查询 ${provider} 的登录态`);
+    }
+    const data = await this.request<BossStatusResponse>(BOSS_STATUS_PATH);
+    return {
+      configured: Boolean(data.configured),
+      hasWt2: Boolean(data.has_wt2),
+      hasZpToken: Boolean(data.has_zp_token),
+      message: data.message ?? "",
     };
   }
 

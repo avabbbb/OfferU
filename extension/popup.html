@@ -159,6 +159,21 @@
 
           <section class="settings-card stack">
             <div class="settings-row">
+              <span class="settings-label">BOSS直聘登录态</span>
+            </div>
+            <p class="help-text">在已登录的浏览器里读取一次登录态并交给本机 OfferU，之后采集岗位不需要再手动复制 Cookie。登录态只发送到 127.0.0.1，不会保存在扩展里。</p>
+            <div class="inline-actions">
+              <button class="mini-tag" id="connectBossSessionBtn" type="button">连接 BOSS 登录态</button>
+              <button class="mini-tag" id="checkBossSessionBtn" type="button">检查状态</button>
+            </div>
+            <div class="service-line">
+              <span class="service-dot" id="bossSessionStatusDot"></span>
+              <span id="bossSessionStatus">未连接</span>
+            </div>
+          </section>
+
+          <section class="settings-card stack">
+            <div class="settings-row">
               <span class="settings-label">AI 智能填充</span>
               <label class="switch">
                 <input type="checkbox" id="aiSmartFillToggle">

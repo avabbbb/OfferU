@@ -1,4 +1,5 @@
 import type {
+  BossCookieSyncResponse,
   ClipboardCopyResponse,
   ExtractedJob,
   Message,
@@ -198,6 +199,10 @@ const saveAiSettingsBtn = document.getElementById("saveAiSettingsBtn") as HTMLBu
 const checkAiConnectionBtn = document.getElementById("checkAiConnectionBtn") as HTMLButtonElement;
 const aiServiceStatusDotEl = document.getElementById("aiServiceStatusDot") as HTMLSpanElement;
 const aiServiceStatusEl = document.getElementById("aiServiceStatus") as HTMLSpanElement;
+const connectBossSessionBtn = document.getElementById("connectBossSessionBtn") as HTMLButtonElement;
+const checkBossSessionBtn = document.getElementById("checkBossSessionBtn") as HTMLButtonElement;
+const bossSessionStatusDotEl = document.getElementById("bossSessionStatusDot") as HTMLSpanElement;
+const bossSessionStatusEl = document.getElementById("bossSessionStatus") as HTMLSpanElement;
 const feedbackBtn = document.getElementById("feedbackBtn") as HTMLButtonElement;
 const checkUpdateBtn = document.getElementById("checkUpdateBtn") as HTMLButtonElement;
 const updateStatusTextEl = document.getElementById("updateStatusText") as HTMLParagraphElement;
@@ -1851,6 +1856,83 @@ async function requestSmartFillHostPermissionIfNeeded(baseUrl: string): Promise<
   }
 }
 
+/** BOSS直聘站点权限：按需申请，不在 manifest 里静态声明。 */
+const BOSS_SITE_ORIGIN = "https://*.zhipin.com/*";
+
+async function requestBossSitePermission(): Promise<void> {
+  const chromeWithPermissions = chrome as typeof chrome & {
+    permissions?: {
+      contains: (permissions: { origins?: string[] }) => Promise<boolean>;
+      request: (permissions: { origins?: string[] }) => Promise<boolean>;
+    };
+  };
+  if (!chromeWithPermissions.permissions) {
+    throw new Error("当前浏览器不支持按需申请站点权限");
+  }
+  // 与 requestSmartFillHostPermissionIfNeeded 同理：request 必须留在同一个
+  // user-gesture 任务里，先 await contains 会在部分 Chromium 版本丢失手势。
+  const granted = await chromeWithPermissions.permissions.request({ origins: [BOSS_SITE_ORIGIN] });
+  if (granted) return;
+  const hasPermission = await chromeWithPermissions.permissions.contains({ origins: [BOSS_SITE_ORIGIN] });
+  if (!hasPermission) {
+    throw new Error("未授予 zhipin.com 访问权限，无法读取 BOSS 登录态");
+  }
+}
+
+function setBossSessionStatus(text: string, mode: "pending" | "ok" | "error"): void {
+  bossSessionStatusEl.textContent = text;
+  bossSessionStatusDotEl.classList.remove("ok", "err");
+  if (mode === "ok") {
+    bossSessionStatusDotEl.classList.add("ok");
+  }
+  if (mode === "error") {
+    bossSessionStatusDotEl.classList.add("err");
+  }
+}
+
+async function checkBossSession(): Promise<void> {
+  setBossSessionStatus("检查中...", "pending");
+  try {
+    const status = await fetchJson<{
+      configured?: boolean;
+      has_wt2?: boolean;
+      has_zp_token?: boolean;
+    }>(`${getServerUrl()}/api/config/boss-status`);
+    if (!status.configured || !status.has_wt2) {
+      setBossSessionStatus("未连接：点击左侧按钮读取浏览器登录态", "error");
+      return;
+    }
+    setBossSessionStatus(
+      status.has_zp_token ? "已连接（wt2 + zp_token）" : "已连接（缺少 zp_token，采集可能受限）",
+      "ok",
+    );
+  } catch {
+    setBossSessionStatus("检查失败：请先启动 OfferU 后端服务", "error");
+  }
+}
+
+async function connectBossSession(): Promise<void> {
+  setBossSessionStatus("正在读取浏览器登录态...", "pending");
+  connectBossSessionBtn.disabled = true;
+  try {
+    await requestBossSitePermission();
+    const result = await sendBackgroundMessage<BossCookieSyncResponse>({ type: "SYNC_BOSS_COOKIE" });
+    if (!result.ok) {
+      setBossSessionStatus(result.message || "登录态同步失败", "error");
+      showMessage(result.message || "BOSS 登录态同步失败", "error");
+      return;
+    }
+    setBossSessionStatus(result.message, "ok");
+    showMessage(result.message, "success");
+  } catch (error: unknown) {
+    const text = safeExtensionError(error, "登录态同步失败");
+    setBossSessionStatus(text, "error");
+    showMessage(text, "error");
+  } finally {
+    connectBossSessionBtn.disabled = false;
+  }
+}
+
 async function checkSmartFillAiConnection(): Promise<void> {
   setAiServiceStatus("检查中...", "pending");
   try {
@@ -2365,6 +2447,14 @@ function bindModalEvents(): void {
 }
 
 function bindSettingsEvents(): void {
+  connectBossSessionBtn.addEventListener("click", () => {
+    void connectBossSession();
+  });
+
+  checkBossSessionBtn.addEventListener("click", () => {
+    void checkBossSession();
+  });
+
   autoSyncToggle.addEventListener("change", () => {
     uiSettings.autoSync = autoSyncToggle.checked;
     saveUiSettings();
@@ -2657,6 +2747,7 @@ async function bootstrap(): Promise<void> {
   activateTab(resolveInitialTab());
   await refreshStatus();
   void checkServerConnection();
+  void checkBossSession();
 }
 
 void bootstrap().catch((error: unknown) => {

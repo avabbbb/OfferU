@@ -27,8 +27,19 @@ export interface RedactedFillOutcome {
   outcome: Array<{ intent: string; result: "written" | "skipped" | "protected" | "failed"; reason?: string }>;
 }
 
+/** 招聘站点登录态的后端状态；只描述"能不能用"，不回传凭据本身。 */
+export interface ScraperSessionState {
+  configured: boolean;
+  hasWt2: boolean;
+  hasZpToken: boolean;
+  message: string;
+}
+
 export interface OfferUControl {
   probe(): Promise<ConnectionState>;
+  /** 把本机浏览器的站点登录态交给 OfferU；凭据只存在于本次调用内。 */
+  updateScraperSession(provider: string, cookie: string): Promise<ScraperSessionState>;
+  getScraperSession(provider: string): Promise<ScraperSessionState>;
   prepareJobImport(input: SyncJobCandidate[]): Promise<JobImportPlan>;
   confirmJobImport(planId: string): Promise<JobImportResult>;
   getFillProjection(jobId: string): Promise<FillProjection>;
