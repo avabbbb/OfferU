@@ -146,6 +146,8 @@ The current beginner path deliberately copies a Skill-reading instruction into t
 | Backend tests / frontend typecheck | Historical S1 result | No post-S1 execution under latest instructions | Not verified |
 | Browser E2E / live job automation | Not executed | No user-data writes or browser sessions | Not verified |
 
+S2 source changes now cover both SDK execution paths, shared HTTP settings, text-response checks, streaming cleanup, the two-template editor, metadata-preserving edits, and reference-only/keyless configuration retention. The old pruning call was a concrete data-loss bug: a configured credential reference was discarded because no plaintext key was present. Explicit empty connection lists also no longer regenerate legacy connections. Transport and normalization regression tests have been written, including early stream closure, but have not been executed under the latest instructions. S3a is assigned to Luna for immutable credential references and the common atomic-save boundary.
+
 The existing README already describes the two-protocol direction and OS keyring storage. Do not use that prose as proof that the implementation or secure-backend checks pass. Preserve the user's README edits and report any mismatch explicitly.
 
 ### S3 implementation constraints

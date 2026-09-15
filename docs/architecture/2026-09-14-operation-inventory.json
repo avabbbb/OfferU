@@ -1,0 +1,5086 @@
+{
+  "counts": {
+    "CORE_DOMAIN_PRIMITIVE": 131,
+    "AGENT_HELPER": 32,
+    "PRODUCT_WORKFLOW": 35,
+    "LEGACY": 28,
+    "INTEGRATION": 16,
+    "DIAGNOSTIC": 15
+  },
+  "method": "Registry implementation metadata + static operation-name surface references + Skill membership; no runtime call-frequency claim",
+  "operations": [
+    {
+      "name": "access_resume_share_record",
+      "group": "resume",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.resume_route_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/resume.py:2211"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "activate_authorized_research_read_only",
+      "group": "research",
+      "effects": [
+        "external",
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "company_research"
+      ],
+      "callers": [
+        "backend/app/routes/research.py:230"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "add_profile_evidence",
+      "group": "profile",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "add_profile_evidence"
+      ],
+      "callers": [
+        "frontend/src/lib/agentToolPresentation.ts:68"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "agent_playbook",
+      "group": "governance",
+      "effects": [
+        "read"
+      ],
+      "module": "app.ops",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/agent.py:51"
+      ],
+      "legacy": false,
+      "category": "AGENT_HELPER",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "analyze_application_patterns",
+      "group": "applications",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "tracker",
+        "pattern_analysis"
+      ],
+      "callers": [
+        "frontend/src/lib/agentToolPresentation.ts:61"
+      ],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "apply_application_template_to_all",
+      "group": "applications",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.legacy_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/applications.py:300"
+      ],
+      "legacy": true,
+      "category": "LEGACY",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "apply_profile_agent_patch",
+      "group": "profile",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.profile_agent_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/profile_agent.py:548",
+        "backend/app/routes/profile_agent.py:550"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "apply_resume_record_template",
+      "group": "resume",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.resume_route_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/resume.py:404"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "apply_resume_suggestion",
+      "group": "resume",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.resume_route_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/resume.py:1840"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "apply_resume_suggestions_batch",
+      "group": "resume",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.resume_route_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/resume.py:1864"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "apply_resume_template",
+      "group": "resume",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.legacy_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/templates.py:170"
+      ],
+      "legacy": true,
+      "category": "LEGACY",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "auto_fill_calendar_events",
+      "group": "calendar",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.legacy_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/calendar.py:97"
+      ],
+      "legacy": true,
+      "category": "LEGACY",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "auto_write_application_job",
+      "group": "applications",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.legacy_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/applications.py:320"
+      ],
+      "legacy": true,
+      "category": "LEGACY",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "batch_optimize_resume_records",
+      "group": "resume",
+      "effects": [
+        "llm",
+        "write"
+      ],
+      "module": "app.services.resume_route_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/resume.py:1899"
+      ],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "batch_triage",
+      "group": "jobs",
+      "effects": [
+        "write"
+      ],
+      "module": "app.ops",
+      "skills": [
+        "compare_jobs",
+        "scan_jobs",
+        "batch_evaluate"
+      ],
+      "callers": [
+        "backend/app/routes/jobs.py:331"
+      ],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "batch_update_jobs",
+      "group": "jobs",
+      "effects": [
+        "write"
+      ],
+      "module": "app.ops",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/jobs.py:312",
+        "backend/app/routes/jobs.py:338",
+        "backend/app/routes/agent.py:60"
+      ],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "begin_gmail_oauth",
+      "group": "email",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/email.py:110"
+      ],
+      "legacy": false,
+      "category": "INTEGRATION",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "build_job_projection",
+      "group": "job",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "build_role_benchmark",
+      "group": "research",
+      "effects": [
+        "external",
+        "llm",
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "role_intelligence"
+      ],
+      "callers": [
+        "backend/app/routes/research.py:118",
+        "backend/app/routes/research.py:123",
+        "frontend/src/components/jobs/RoleIntelligencePanel.tsx:385"
+      ],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "cancel_authorized_research_session",
+      "group": "research",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "company_research"
+      ],
+      "callers": [
+        "backend/app/routes/research.py:272"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "cancel_career_task",
+      "group": "agent_runtime",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:546",
+        "backend/app/routes/main_agent.py:547"
+      ],
+      "legacy": false,
+      "category": "AGENT_HELPER",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "cancel_data_restore",
+      "group": "governance",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.data_safety",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:1064",
+        "backend/app/routes/main_agent.py:1066"
+      ],
+      "legacy": false,
+      "category": "DIAGNOSTIC",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "cancel_job_research",
+      "group": "research",
+      "effects": [
+        "write",
+        "external"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "pre_application_decision",
+        "tailor_resume",
+        "company_research"
+      ],
+      "callers": [
+        "backend/app/routes/main_agent.py:901"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "capture_authorized_research_page",
+      "group": "research",
+      "effects": [
+        "external",
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "company_research"
+      ],
+      "callers": [
+        "backend/app/routes/research.py:244"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "chat_optimize_agent_session",
+      "group": "resume",
+      "effects": [
+        "llm",
+        "write"
+      ],
+      "module": "app.services.optimize_agent_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/optimize.py:1103"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "check_database_integrity",
+      "group": "governance",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.data_safety",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:1042"
+      ],
+      "legacy": false,
+      "category": "DIAGNOSTIC",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "classify_progress_signal",
+      "group": "applications",
+      "effects": [
+        "llm",
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "clear_current_view",
+      "group": "context",
+      "effects": [
+        "write"
+      ],
+      "module": "app.ops",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:933",
+        "backend/app/routes/agent.py:241"
+      ],
+      "legacy": false,
+      "category": "AGENT_HELPER",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "collect_interview_experience",
+      "group": "interview",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.legacy_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/interview.py:127"
+      ],
+      "legacy": true,
+      "category": "LEGACY",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "complete_authorized_research_session",
+      "group": "research",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "company_research"
+      ],
+      "callers": [
+        "backend/app/routes/research.py:258"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "complete_gmail_oauth",
+      "group": "email",
+      "effects": [
+        "external",
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/email.py:128"
+      ],
+      "legacy": false,
+      "category": "INTEGRATION",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "complete_smart_fill_run",
+      "group": "profile",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.profile_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/profile.py:2566",
+        "backend/app/routes/profile.py:2635"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "confirm_profile_bullet",
+      "group": "profile",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.profile_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/profile.py:1622",
+        "backend/app/routes/profile.py:1624"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "connect_imap_account",
+      "group": "email",
+      "effects": [
+        "external",
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/email.py:141"
+      ],
+      "legacy": false,
+      "category": "INTEGRATION",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "consolidate_memory_observations",
+      "group": "memory",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "memory_inbox",
+        "work_source_sync"
+      ],
+      "callers": [],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "continue_profile_agent_session",
+      "group": "profile",
+      "effects": [
+        "llm",
+        "write"
+      ],
+      "module": "app.services.profile_agent_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/profile_agent.py:542"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "create_ai_interview",
+      "group": "interview",
+      "effects": [
+        "llm",
+        "external",
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "interview_practice"
+      ],
+      "callers": [
+        "backend/app/routes/interviews.py:126"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "create_application",
+      "group": "applications",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "application_assistant"
+      ],
+      "callers": [
+        "frontend/src/lib/agentToolPresentation.ts:73",
+        "backend/app/routes/applications.py:373",
+        "backend/app/routes/agent.py:62"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "create_application_attempt",
+      "group": "applications",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "create_application_table",
+      "group": "applications",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.legacy_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/applications.py:171"
+      ],
+      "legacy": true,
+      "category": "LEGACY",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "create_application_table_record",
+      "group": "applications",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.legacy_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/applications.py:228"
+      ],
+      "legacy": true,
+      "category": "LEGACY",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "create_calendar_event",
+      "group": "calendar",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.legacy_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/calendar.py:88"
+      ],
+      "legacy": true,
+      "category": "LEGACY",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "create_data_backup",
+      "group": "governance",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.data_safety",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:1051",
+        "backend/app/routes/main_agent.py:1052"
+      ],
+      "legacy": false,
+      "category": "DIAGNOSTIC",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "create_fixture_job_research",
+      "group": "research",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "create_interview_scoring_skill",
+      "group": "interview",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "interview_scoring"
+      ],
+      "callers": [
+        "backend/app/routes/interviews.py:96"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "create_legacy_application",
+      "group": "applications",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.legacy_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/applications.py:374"
+      ],
+      "legacy": true,
+      "category": "LEGACY",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "create_memory_proposal",
+      "group": "memory",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "profile_onboarding",
+        "memory_inbox"
+      ],
+      "callers": [
+        "backend/app/routes/memory.py:64"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "create_pool",
+      "group": "jobs",
+      "effects": [
+        "write"
+      ],
+      "module": "app.ops",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/pools.py:99",
+        "backend/app/routes/pools.py:102"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "create_profile_section",
+      "group": "profile",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.profile_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/profile.py:1534",
+        "backend/app/routes/profile.py:1535"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "create_resume_record",
+      "group": "resume",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.resume_route_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/resume.py:340"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "create_resume_section",
+      "group": "resume",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.resume_route_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/resume.py:465"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "create_resume_share_record",
+      "group": "resume",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.resume_route_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/resume.py:2126"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "create_resume_template",
+      "group": "resume",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.legacy_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/templates.py:128"
+      ],
+      "legacy": true,
+      "category": "LEGACY",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "create_resume_version_record",
+      "group": "resume",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.resume_route_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/resume.py:2018"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "create_target_role",
+      "group": "profile",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.profile_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/profile.py:1524",
+        "backend/app/routes/profile.py:1525"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "delegate_career_task",
+      "group": "agent_runtime",
+      "effects": [
+        "external",
+        "llm",
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [],
+      "legacy": false,
+      "category": "AGENT_HELPER",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "delete_ai_interview",
+      "group": "interview",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "interview_practice"
+      ],
+      "callers": [
+        "backend/app/routes/interviews.py:196"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "delete_application_records",
+      "group": "applications",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.legacy_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/applications.py:262"
+      ],
+      "legacy": true,
+      "category": "LEGACY",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "delete_application_table",
+      "group": "applications",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.legacy_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/applications.py:192"
+      ],
+      "legacy": true,
+      "category": "LEGACY",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "delete_harness_conversation",
+      "group": "agent_runtime",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.harness_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:952"
+      ],
+      "legacy": false,
+      "category": "AGENT_HELPER",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "delete_jobs_batch",
+      "group": "jobs",
+      "effects": [
+        "write"
+      ],
+      "module": "app.ops",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/jobs.py:319",
+        "backend/app/routes/jobs.py:322"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "delete_optimize_agent_session",
+      "group": "resume",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.optimize_agent_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/optimize.py:1204"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "delete_pool",
+      "group": "jobs",
+      "effects": [
+        "write"
+      ],
+      "module": "app.ops",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/pools.py:124",
+        "backend/app/routes/pools.py:130"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "delete_profile_section",
+      "group": "profile",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.profile_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/profile.py:1550",
+        "backend/app/routes/profile.py:1551"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "delete_resume_record",
+      "group": "resume",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.resume_route_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/resume.py:438"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "delete_resume_section",
+      "group": "resume",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.resume_route_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/resume.py:491"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "delete_resume_share_record",
+      "group": "resume",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.resume_route_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/resume.py:2173"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "delete_resume_template",
+      "group": "resume",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.legacy_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/templates.py:156"
+      ],
+      "legacy": true,
+      "category": "LEGACY",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "delete_target_role",
+      "group": "profile",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.profile_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/profile.py:1529",
+        "backend/app/routes/profile.py:1530"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "derive_career_model",
+      "group": "memory",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/memory.py:58"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "distill_harness_conversation",
+      "group": "agent_runtime",
+      "effects": [
+        "llm",
+        "write"
+      ],
+      "module": "app.services.harness_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:960"
+      ],
+      "legacy": false,
+      "category": "AGENT_HELPER",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "distill_memory",
+      "group": "memory",
+      "effects": [
+        "llm",
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "draft_interview_scoring_skill",
+      "group": "interview",
+      "effects": [
+        "llm"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "duplicate_resume_template",
+      "group": "resume",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.legacy_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/templates.py:186"
+      ],
+      "legacy": true,
+      "category": "LEGACY",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "email_connection_status",
+      "group": "email",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "follow_up",
+        "reply_watch"
+      ],
+      "callers": [
+        "backend/app/routes/email.py:153"
+      ],
+      "legacy": false,
+      "category": "INTEGRATION",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "ensure_resume_workspace",
+      "group": "resume",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.resume_workspace",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/resume.py:379",
+        "backend/app/routes/resume.py:381"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "export_diagnostic_bundle",
+      "group": "governance",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.diagnostics",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:997",
+        "backend/app/routes/main_agent.py:999"
+      ],
+      "legacy": false,
+      "category": "DIAGNOSTIC",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "export_resume_pdf",
+      "group": "resume",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "resume_export"
+      ],
+      "callers": [
+        "frontend/src/lib/agentToolPresentation.ts:46"
+      ],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "export_user_data",
+      "group": "governance",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.data_export",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:991",
+        "backend/app/routes/main_agent.py:993"
+      ],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "extract_interview_questions",
+      "group": "interview",
+      "effects": [
+        "llm",
+        "write"
+      ],
+      "module": "app.services.legacy_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/interview.py:137"
+      ],
+      "legacy": true,
+      "category": "LEGACY",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "finalize_scraper_batch",
+      "group": "jobs",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.scraper_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/scraper.py:237",
+        "backend/app/routes/scraper.py:265"
+      ],
+      "legacy": false,
+      "category": "INTEGRATION",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "generate_cover_letter",
+      "group": "applications",
+      "effects": [
+        "llm"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "cover_letter",
+        "application_assistant"
+      ],
+      "callers": [
+        "backend/app/routes/applications.py:10",
+        "backend/app/routes/agent.py:62"
+      ],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "generate_html_resume",
+      "group": "resume",
+      "effects": [
+        "llm",
+        "write"
+      ],
+      "module": "app.services.legacy_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/studio.py:43",
+        "backend/app/routes/studio.py:50"
+      ],
+      "legacy": true,
+      "category": "LEGACY",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "generate_legacy_cover_letter",
+      "group": "applications",
+      "effects": [
+        "llm"
+      ],
+      "module": "app.services.legacy_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/applications.py:379"
+      ],
+      "legacy": true,
+      "category": "LEGACY",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "generate_legacy_interview_answer",
+      "group": "interview",
+      "effects": [
+        "llm",
+        "write"
+      ],
+      "module": "app.services.legacy_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/interview.py:147"
+      ],
+      "legacy": true,
+      "category": "LEGACY",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "generate_profile_narrative",
+      "group": "profile",
+      "effects": [
+        "llm",
+        "write"
+      ],
+      "module": "app.services.profile_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/profile.py:1729"
+      ],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_agent_connections",
+      "group": "agent_runtime",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:433"
+      ],
+      "legacy": false,
+      "category": "AGENT_HELPER",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_agent_provider_health",
+      "group": "agent_runtime",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [],
+      "legacy": false,
+      "category": "DIAGNOSTIC",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_ai_interview",
+      "group": "interview",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "interview_practice"
+      ],
+      "callers": [
+        "backend/app/routes/interviews.py:155"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_ai_interview_runtime",
+      "group": "interview",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "interview_practice"
+      ],
+      "callers": [
+        "backend/app/routes/interviews.py:79"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_application_progress_board",
+      "group": "applications",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/applications.py:137"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_application_progress_candidate",
+      "group": "applications",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "follow_up",
+        "reply_watch"
+      ],
+      "callers": [
+        "backend/app/routes/email.py:290"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_application_progress_overview",
+      "group": "applications",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "follow_up",
+        "reply_watch"
+      ],
+      "callers": [
+        "backend/app/routes/email.py:321"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_application_progress_timeline",
+      "group": "applications",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/applications.py:149"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_application_workspace",
+      "group": "applications",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "application_email",
+        "application_assistant",
+        "tracker",
+        "follow_up",
+        "reply_watch",
+        "interview_debrief",
+        "interview_risk_review",
+        "pattern_analysis",
+        "offer_review"
+      ],
+      "callers": [],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_authorized_research_session",
+      "group": "research",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "company_research"
+      ],
+      "callers": [
+        "backend/app/routes/research.py:216"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_batch_job_evaluation",
+      "group": "agent_runtime",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "batch_evaluate",
+        "agent_inbox"
+      ],
+      "callers": [
+        "frontend/src/lib/agentToolPresentation.ts:27"
+      ],
+      "legacy": false,
+      "category": "AGENT_HELPER",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_career_artifact",
+      "group": "artifacts",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "cover_letter",
+        "application_email",
+        "application_assistant",
+        "follow_up",
+        "reply_watch",
+        "interview_prep",
+        "interview_debrief",
+        "interview_risk_review",
+        "pattern_analysis",
+        "skill_gap",
+        "offer_review"
+      ],
+      "callers": [],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_career_task",
+      "group": "agent_runtime",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "agent_inbox",
+        "automation_inbox"
+      ],
+      "callers": [
+        "backend/app/routes/main_agent.py:529"
+      ],
+      "legacy": false,
+      "category": "AGENT_HELPER",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_career_task_result",
+      "group": "agent_runtime",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "agent_inbox",
+        "automation_inbox"
+      ],
+      "callers": [
+        "backend/app/routes/main_agent.py:542"
+      ],
+      "legacy": false,
+      "category": "AGENT_HELPER",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_current_view",
+      "group": "context",
+      "effects": [
+        "read"
+      ],
+      "module": "app.ops",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:921",
+        "backend/app/routes/agent.py:63",
+        "backend/app/routes/agent.py:221"
+      ],
+      "legacy": false,
+      "category": "AGENT_HELPER",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_data_safety_status",
+      "group": "governance",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.data_safety",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:1013"
+      ],
+      "legacy": false,
+      "category": "DIAGNOSTIC",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_email_sync_run",
+      "group": "email",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "follow_up",
+        "reply_watch"
+      ],
+      "callers": [
+        "backend/app/routes/email.py:220"
+      ],
+      "legacy": false,
+      "category": "INTEGRATION",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_hosted_executor_session",
+      "group": "agent_runtime",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "company_research"
+      ],
+      "callers": [
+        "backend/app/routes/main_agent.py:864"
+      ],
+      "legacy": false,
+      "category": "AGENT_HELPER",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_interview_scoring_skill",
+      "group": "interview",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "interview_practice",
+        "interview_scoring"
+      ],
+      "callers": [
+        "backend/app/routes/interviews.py:107"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_job",
+      "group": "jobs",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "pre_application_decision",
+        "evaluate_job",
+        "compare_jobs",
+        "batch_evaluate",
+        "tailor_resume",
+        "cover_letter",
+        "application_email",
+        "application_assistant",
+        "company_research",
+        "role_intelligence",
+        "contact_outreach",
+        "interview_prep",
+        "interview_practice",
+        "interview_risk_review",
+        "skill_gap"
+      ],
+      "callers": [
+        "backend/app/routes/jobs.py:501",
+        "backend/app/routes/agent.py:61",
+        "backend/app/routes/agent.py:62"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_job_research",
+      "group": "research",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "tailor_resume",
+        "company_research"
+      ],
+      "callers": [
+        "backend/app/routes/research.py:103",
+        "backend/app/routes/agent.py:61"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_legacy_profile",
+      "group": "profile",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.profile_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/profile.py:1460",
+        "backend/app/routes/profile.py:1465",
+        "backend/app/routes/profile.py:1501",
+        "backend/app/routes/profile.py:2575",
+        "backend/app/routes/profile.py:2683",
+        "backend/app/routes/profile.py:2714"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_local_agent_capability_matrix",
+      "group": "agent_runtime",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:451"
+      ],
+      "legacy": false,
+      "category": "DIAGNOSTIC",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_local_agent_capability_report",
+      "group": "agent_runtime",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:479"
+      ],
+      "legacy": false,
+      "category": "DIAGNOSTIC",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_pre_application_state",
+      "group": "pre_application",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "pre_application_decision"
+      ],
+      "callers": [
+        "backend/app/routes/research.py:163"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_privacy_hygiene_status",
+      "group": "governance",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.privacy_hygiene",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:1019"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_profile",
+      "group": "profile",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "discovery",
+        "pre_application_decision",
+        "evaluate_job",
+        "compare_jobs",
+        "scan_jobs",
+        "batch_evaluate",
+        "tailor_resume",
+        "cover_letter",
+        "application_email",
+        "application_assistant",
+        "follow_up",
+        "role_intelligence",
+        "contact_outreach",
+        "profile_onboarding",
+        "add_profile_evidence",
+        "memory_inbox",
+        "work_source_sync",
+        "interview_prep",
+        "interview_practice",
+        "interview_debrief",
+        "pattern_analysis",
+        "title_discovery",
+        "skill_gap",
+        "training_review",
+        "project_review",
+        "market_calibration",
+        "offer_review"
+      ],
+      "callers": [
+        "backend/app/routes/profile.py:1459",
+        "backend/app/routes/agent.py:60",
+        "backend/app/routes/agent.py:61"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": true,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_profile_agent_session",
+      "group": "profile",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.profile_agent_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/profile_agent.py:556",
+        "backend/app/routes/profile_agent.py:558"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_profile_chat_session",
+      "group": "profile",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.profile_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/profile.py:1617",
+        "backend/app/routes/profile.py:1618"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_profile_evolution_report",
+      "group": "memory",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:465"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_resume",
+      "group": "resume",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "tailor_resume",
+        "resume_export",
+        "cover_letter",
+        "application_email",
+        "application_assistant"
+      ],
+      "callers": [
+        "backend/app/routes/resume.py:410"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_resume_optimization",
+      "group": "resume",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "tailor_resume"
+      ],
+      "callers": [
+        "backend/app/routes/optimize.py:1018",
+        "backend/app/routes/agent.py:61",
+        "backend/app/routes/agent.py:62"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_resume_workspace",
+      "group": "resume",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.resume_workspace",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/resume.py:374",
+        "backend/app/routes/resume.py:375"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_role_benchmark",
+      "group": "research",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "role_intelligence"
+      ],
+      "callers": [
+        "backend/app/routes/research.py:141",
+        "backend/app/routes/research.py:158"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_synthetic_email_test_data_status",
+      "group": "governance",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.privacy_hygiene",
+      "skills": [],
+      "callers": [],
+      "legacy": false,
+      "category": "DIAGNOSTIC",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_work_source",
+      "group": "memory",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "work_source_sync"
+      ],
+      "callers": [],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "get_work_source_sync_run",
+      "group": "memory",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "work_source_sync"
+      ],
+      "callers": [],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "import_harness_memory",
+      "group": "agent_runtime",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.harness_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:1074"
+      ],
+      "legacy": false,
+      "category": "AGENT_HELPER",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "import_jd",
+      "group": "jobs",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "import_job_batch",
+      "group": "jobs",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.job_ingest",
+      "skills": [],
+      "callers": [
+        "extension/src/background/offeru-control-http.ts:140",
+        "backend/app/routes/scraper.py:217",
+        "backend/app/routes/jobs.py:514",
+        "backend/app/routes/jobs.py:519"
+      ],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "import_jobs_to_application_table",
+      "group": "applications",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.legacy_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/applications.py:204"
+      ],
+      "legacy": true,
+      "category": "LEGACY",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "import_latest_extension_batch_to_application_table",
+      "group": "applications",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.legacy_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/applications.py:218"
+      ],
+      "legacy": true,
+      "category": "LEGACY",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "ingest_application_signal",
+      "group": "applications",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/email.py:262"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "ingest_interview_behavior_events",
+      "group": "interview",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "interview_practice"
+      ],
+      "callers": [
+        "backend/app/routes/interviews.py:174"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "inspect_resume_document",
+      "group": "resume",
+      "effects": [
+        "external"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "tailor_resume",
+        "profile_onboarding"
+      ],
+      "callers": [],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "install_capability_plugin",
+      "group": "plugins",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:572"
+      ],
+      "legacy": false,
+      "category": "INTEGRATION",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "invalidate_memory_source",
+      "group": "memory",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "memory_inbox"
+      ],
+      "callers": [],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "invalidate_work_source",
+      "group": "memory",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "work_source_sync"
+      ],
+      "callers": [],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "invoke_plugin_capability",
+      "group": "plugins",
+      "effects": [
+        "external_read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "role_intelligence"
+      ],
+      "callers": [],
+      "legacy": false,
+      "category": "INTEGRATION",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "job_stats",
+      "group": "analytics",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "scan_jobs",
+        "pattern_analysis",
+        "market_calibration"
+      ],
+      "callers": [
+        "backend/app/routes/jobs.py:359",
+        "backend/app/routes/agent.py:59"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_agent_provider_health",
+      "group": "agent_runtime",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "agent_inbox"
+      ],
+      "callers": [
+        "backend/app/routes/main_agent.py:428"
+      ],
+      "legacy": false,
+      "category": "DIAGNOSTIC",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_agent_runs",
+      "group": "agent_runtime",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "agent_inbox"
+      ],
+      "callers": [
+        "backend/app/routes/main_agent.py:217",
+        "backend/app/routes/main_agent.py:220"
+      ],
+      "legacy": false,
+      "category": "AGENT_HELPER",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_ai_interviews",
+      "group": "interview",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "interview_practice"
+      ],
+      "callers": [
+        "backend/app/routes/interviews.py:118"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_application_events",
+      "group": "applications",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "tracker",
+        "follow_up",
+        "reply_watch",
+        "interview_debrief",
+        "pattern_analysis"
+      ],
+      "callers": [
+        "frontend/src/lib/agentToolPresentation.ts:58"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_application_progress_candidates",
+      "group": "applications",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "follow_up",
+        "reply_watch"
+      ],
+      "callers": [
+        "backend/app/routes/email.py:278"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_application_records",
+      "group": "applications",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "tracker"
+      ],
+      "callers": [],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_applications",
+      "group": "applications",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "application_assistant",
+        "tracker",
+        "follow_up",
+        "reply_watch",
+        "interview_debrief",
+        "pattern_analysis",
+        "offer_review"
+      ],
+      "callers": [
+        "backend/app/routes/applications.py:329"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_authorized_research_sessions",
+      "group": "research",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "company_research"
+      ],
+      "callers": [
+        "backend/app/routes/research.py:205"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_automation_events",
+      "group": "automation",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "automation_inbox"
+      ],
+      "callers": [
+        "backend/app/routes/main_agent.py:587"
+      ],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_automation_inbox",
+      "group": "automation",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "automation_inbox"
+      ],
+      "callers": [
+        "backend/app/routes/main_agent.py:599"
+      ],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_automation_rules",
+      "group": "automation",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "automation_inbox"
+      ],
+      "callers": [
+        "backend/app/routes/main_agent.py:607"
+      ],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_batch_job_evaluations",
+      "group": "agent_runtime",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "batch_evaluate",
+        "agent_inbox"
+      ],
+      "callers": [
+        "frontend/src/lib/agentToolPresentation.ts:36"
+      ],
+      "legacy": false,
+      "category": "AGENT_HELPER",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_calendar_events",
+      "group": "interview",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "follow_up",
+        "interview_prep"
+      ],
+      "callers": [],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_capability_plugins",
+      "group": "plugins",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "role_intelligence"
+      ],
+      "callers": [
+        "backend/app/routes/main_agent.py:562"
+      ],
+      "legacy": false,
+      "category": "INTEGRATION",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_career_artifacts",
+      "group": "artifacts",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "evaluate_job",
+        "cover_letter",
+        "application_email",
+        "application_assistant",
+        "follow_up",
+        "reply_watch",
+        "interview_prep",
+        "interview_debrief",
+        "interview_risk_review",
+        "pattern_analysis",
+        "skill_gap",
+        "offer_review"
+      ],
+      "callers": [],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_career_ledger",
+      "group": "memory",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/memory.py:52"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_career_task_events",
+      "group": "agent_runtime",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "agent_inbox",
+        "automation_inbox"
+      ],
+      "callers": [
+        "backend/app/routes/main_agent.py:535"
+      ],
+      "legacy": false,
+      "category": "AGENT_HELPER",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_career_tasks",
+      "group": "agent_runtime",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "agent_inbox"
+      ],
+      "callers": [
+        "backend/app/routes/main_agent.py:508"
+      ],
+      "legacy": false,
+      "category": "AGENT_HELPER",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_coding_agents",
+      "group": "agent_runtime",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "batch_evaluate",
+        "company_research"
+      ],
+      "callers": [
+        "frontend/src/lib/agentToolPresentation.ts:39"
+      ],
+      "legacy": false,
+      "category": "AGENT_HELPER",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_data_backups",
+      "group": "governance",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.data_safety",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:1047"
+      ],
+      "legacy": false,
+      "category": "DIAGNOSTIC",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_email_accounts",
+      "group": "email",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "follow_up",
+        "reply_watch"
+      ],
+      "callers": [
+        "backend/app/routes/email.py:168"
+      ],
+      "legacy": false,
+      "category": "INTEGRATION",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_email_sync_runs",
+      "group": "email",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "follow_up",
+        "reply_watch"
+      ],
+      "callers": [
+        "backend/app/routes/email.py:208"
+      ],
+      "legacy": false,
+      "category": "INTEGRATION",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_follow_up_cadence",
+      "group": "applications",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "tracker",
+        "follow_up"
+      ],
+      "callers": [
+        "frontend/src/lib/agentToolPresentation.ts:50"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_hosted_executor_sessions",
+      "group": "agent_runtime",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "company_research"
+      ],
+      "callers": [
+        "backend/app/routes/main_agent.py:852"
+      ],
+      "legacy": false,
+      "category": "AGENT_HELPER",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_interview_questions",
+      "group": "interview",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "interview_prep",
+        "interview_practice"
+      ],
+      "callers": [],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_interview_scoring_skills",
+      "group": "interview",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "interview_practice",
+        "interview_scoring"
+      ],
+      "callers": [
+        "backend/app/routes/interviews.py:88"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_job_research_runs",
+      "group": "research",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "tailor_resume",
+        "company_research"
+      ],
+      "callers": [
+        "backend/app/routes/research.py:96"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_jobs",
+      "group": "jobs",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "pre_application_decision",
+        "evaluate_job",
+        "compare_jobs",
+        "scan_jobs",
+        "batch_evaluate",
+        "tailor_resume",
+        "cover_letter",
+        "application_email",
+        "application_assistant",
+        "company_research",
+        "contact_outreach",
+        "interview_prep",
+        "interview_practice",
+        "interview_risk_review",
+        "pattern_analysis",
+        "title_discovery",
+        "skill_gap",
+        "training_review",
+        "project_review",
+        "market_calibration"
+      ],
+      "callers": [
+        "backend/app/routes/jobs.py:159",
+        "backend/app/routes/agent.py:59",
+        "backend/app/routes/agent.py:60"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_learning_observations",
+      "group": "memory",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "profile_onboarding",
+        "memory_inbox",
+        "work_source_sync"
+      ],
+      "callers": [],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_memory_inbox",
+      "group": "memory",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "profile_onboarding",
+        "memory_inbox",
+        "work_source_sync"
+      ],
+      "callers": [
+        "backend/app/routes/memory.py:46"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_operation_audit",
+      "group": "governance",
+      "effects": [
+        "read"
+      ],
+      "module": "app.ops",
+      "skills": [],
+      "callers": [],
+      "legacy": false,
+      "category": "DIAGNOSTIC",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_plugin_capabilities",
+      "group": "plugins",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "role_intelligence"
+      ],
+      "callers": [
+        "backend/app/routes/main_agent.py:567"
+      ],
+      "legacy": false,
+      "category": "INTEGRATION",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_pools",
+      "group": "jobs",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "scan_jobs"
+      ],
+      "callers": [
+        "backend/app/routes/pools.py:56",
+        "backend/app/routes/agent.py:59"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_profile_chat_sessions",
+      "group": "profile",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.profile_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/profile.py:1610",
+        "backend/app/routes/profile.py:1613"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_profile_evidence",
+      "group": "profile",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "batch_evaluate",
+        "role_intelligence",
+        "profile_onboarding",
+        "add_profile_evidence",
+        "memory_inbox"
+      ],
+      "callers": [],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_profile_target_roles",
+      "group": "profile",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.profile_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/profile.py:1520"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_resume_optimizations",
+      "group": "resume",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "tailor_resume"
+      ],
+      "callers": [
+        "backend/app/routes/optimize.py:1010",
+        "backend/app/routes/agent.py:62"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_resumes",
+      "group": "resume",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "tailor_resume",
+        "resume_export",
+        "cover_letter",
+        "application_email",
+        "application_assistant"
+      ],
+      "callers": [
+        "backend/app/routes/resume.py:317"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_role_delta_signals",
+      "group": "research",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "role_intelligence"
+      ],
+      "callers": [
+        "backend/app/routes/research.py:151"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_work_source_sync_runs",
+      "group": "memory",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "work_source_sync"
+      ],
+      "callers": [],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "list_work_sources",
+      "group": "memory",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "work_source_sync"
+      ],
+      "callers": [],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "move_application_records",
+      "group": "applications",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.legacy_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/applications.py:252"
+      ],
+      "legacy": true,
+      "category": "LEGACY",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "prepare_pre_application_decision",
+      "group": "pre_application",
+      "effects": [
+        "write",
+        "external"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "pre_application_decision"
+      ],
+      "callers": [
+        "backend/app/routes/research.py:167",
+        "backend/app/routes/research.py:172"
+      ],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "prepare_resume_optimization",
+      "group": "resume",
+      "effects": [
+        "llm",
+        "write"
+      ],
+      "module": "app.ops",
+      "skills": [
+        "pre_application_decision",
+        "tailor_resume"
+      ],
+      "callers": [
+        "backend/app/routes/optimize.py:914",
+        "backend/app/routes/agent.py:61"
+      ],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "prepare_role_interview_focus",
+      "group": "interview",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "role_intelligence",
+        "interview_practice"
+      ],
+      "callers": [
+        "backend/app/routes/interviews.py:130",
+        "backend/app/routes/interviews.py:138"
+      ],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "probe_agent_connection",
+      "group": "agent_runtime",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:437",
+        "backend/app/routes/main_agent.py:438"
+      ],
+      "legacy": false,
+      "category": "AGENT_HELPER",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "promote_harness_memory",
+      "group": "agent_runtime",
+      "effects": [
+        "llm",
+        "write"
+      ],
+      "module": "app.services.harness_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:968"
+      ],
+      "legacy": false,
+      "category": "AGENT_HELPER",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "promote_session_memory",
+      "group": "memory",
+      "effects": [
+        "llm",
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "purge_synthetic_email_test_data",
+      "group": "governance",
+      "effects": [
+        "external",
+        "write"
+      ],
+      "module": "app.services.privacy_hygiene",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:1035"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "record_automation_event",
+      "group": "automation",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:613",
+        "backend/app/routes/main_agent.py:615",
+        "backend/app/routes/jobs.py:529"
+      ],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "record_follow_up",
+      "group": "applications",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "follow_up"
+      ],
+      "callers": [
+        "frontend/src/lib/agentToolPresentation.ts:55"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "refresh_job_research_report",
+      "group": "research",
+      "effects": [
+        "llm",
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "refresh_role_benchmark",
+      "group": "research",
+      "effects": [
+        "external",
+        "llm",
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "role_intelligence"
+      ],
+      "callers": [
+        "backend/app/routes/research.py:129",
+        "backend/app/routes/research.py:134"
+      ],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "register_work_source",
+      "group": "memory",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "work_source_sync"
+      ],
+      "callers": [],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "reject_agent_run",
+      "group": "agent_runtime",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/bridge.py:103"
+      ],
+      "legacy": false,
+      "category": "AGENT_HELPER",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "rename_application_table",
+      "group": "applications",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.legacy_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/applications.py:183"
+      ],
+      "legacy": true,
+      "category": "LEGACY",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "reorder_resume_sections",
+      "group": "resume",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.resume_route_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/resume.py:456"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "reset_demo_data",
+      "group": "governance",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.demo_data",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:1003",
+        "backend/app/routes/main_agent.py:1006"
+      ],
+      "legacy": false,
+      "category": "DIAGNOSTIC",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "reset_local_business_data",
+      "group": "governance",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.local_data_reset",
+      "skills": [],
+      "callers": [],
+      "legacy": false,
+      "category": "DIAGNOSTIC",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "resolve_automation_inbox_item",
+      "group": "automation",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "automation_inbox"
+      ],
+      "callers": [
+        "backend/app/routes/main_agent.py:621",
+        "backend/app/routes/main_agent.py:626"
+      ],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "resolve_resume_logo",
+      "group": "resume",
+      "effects": [
+        "external",
+        "write"
+      ],
+      "module": "app.services.resume_route_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/resume.py:686"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "restart_ai_interview",
+      "group": "interview",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "interview_practice"
+      ],
+      "callers": [
+        "backend/app/routes/interviews.py:185"
+      ],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "restore_resume_version_record",
+      "group": "resume",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.resume_route_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/resume.py:2096"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "resume_batch_job_evaluation",
+      "group": "agent_runtime",
+      "effects": [
+        "write",
+        "external"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "batch_evaluate",
+        "agent_inbox"
+      ],
+      "callers": [
+        "frontend/src/lib/agentToolPresentation.ts:23"
+      ],
+      "legacy": false,
+      "category": "AGENT_HELPER",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "resume_career_task",
+      "group": "agent_runtime",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:556",
+        "backend/app/routes/main_agent.py:557"
+      ],
+      "legacy": false,
+      "category": "AGENT_HELPER",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "resume_job_research",
+      "group": "research",
+      "effects": [
+        "write",
+        "external"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "pre_application_decision",
+        "tailor_resume",
+        "company_research"
+      ],
+      "callers": [
+        "backend/app/routes/main_agent.py:913"
+      ],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "resume_work_source_sync",
+      "group": "memory",
+      "effects": [
+        "external",
+        "llm",
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "work_source_sync"
+      ],
+      "callers": [],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "retry_career_task",
+      "group": "agent_runtime",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:551",
+        "backend/app/routes/main_agent.py:552"
+      ],
+      "legacy": false,
+      "category": "AGENT_HELPER",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "review_application_progress",
+      "group": "applications",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "follow_up",
+        "reply_watch"
+      ],
+      "callers": [
+        "frontend/src/lib/showcase/rules.ts:96",
+        "frontend/src/lib/showcase/router.ts:1025",
+        "backend/app/routes/email.py:305"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "review_job_research",
+      "group": "research",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "pre_application_decision",
+        "tailor_resume",
+        "company_research"
+      ],
+      "callers": [
+        "backend/app/routes/research.py:112"
+      ],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "review_memory_proposal",
+      "group": "memory",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "profile_onboarding",
+        "memory_inbox",
+        "work_source_sync"
+      ],
+      "callers": [
+        "backend/app/routes/memory.py:74"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "review_pre_application_decision",
+      "group": "pre_application",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "pre_application_decision"
+      ],
+      "callers": [
+        "backend/app/routes/research.py:178",
+        "backend/app/routes/research.py:183"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "review_resume_optimization",
+      "group": "resume",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "tailor_resume"
+      ],
+      "callers": [
+        "backend/app/routes/optimize.py:1029",
+        "backend/app/routes/agent.py:61",
+        "backend/app/routes/agent.py:62"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "review_resume_proposal_item",
+      "group": "resume",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.resume_workspace",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/resume.py:387",
+        "backend/app/routes/resume.py:392"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "revoke_email_account",
+      "group": "email",
+      "effects": [
+        "external",
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "follow_up",
+        "reply_watch"
+      ],
+      "callers": [
+        "backend/app/routes/email.py:180"
+      ],
+      "legacy": false,
+      "category": "INTEGRATION",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "run_codex_offeru_conformance",
+      "group": "agent_runtime",
+      "effects": [
+        "external_read",
+        "llm"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:494"
+      ],
+      "legacy": false,
+      "category": "AGENT_HELPER",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "save_career_artifact",
+      "group": "artifacts",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "evaluate_job",
+        "cover_letter",
+        "application_email",
+        "application_assistant",
+        "follow_up",
+        "reply_watch",
+        "interview_prep",
+        "interview_debrief",
+        "interview_risk_review",
+        "pattern_analysis",
+        "skill_gap",
+        "offer_review"
+      ],
+      "callers": [
+        "frontend/src/lib/agentToolPresentation.ts:43"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "save_harness_conversation",
+      "group": "agent_runtime",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.harness_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:649",
+        "backend/app/routes/main_agent.py:670",
+        "backend/app/routes/main_agent.py:701",
+        "backend/app/routes/main_agent.py:741",
+        "backend/app/routes/main_agent.py:820"
+      ],
+      "legacy": false,
+      "category": "AGENT_HELPER",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "save_profile_chat_turn",
+      "group": "profile",
+      "effects": [
+        "llm",
+        "write"
+      ],
+      "module": "app.services.profile_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/profile.py:1571"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "save_profile_resume_import",
+      "group": "profile",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.profile_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/profile.py:1713"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "save_resume_draft_record",
+      "group": "resume",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.resume_route_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/resume.py:2438"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "save_smart_fill_cache",
+      "group": "profile",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.profile_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/profile.py:2468"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "save_smart_fill_run_logs",
+      "group": "profile",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.profile_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/profile.py:2485"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "scrub_legacy_email_notification_bodies",
+      "group": "governance",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.privacy_hygiene",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:1026"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "search_memory",
+      "group": "memory",
+      "effects": [
+        "llm"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:974",
+        "backend/app/routes/main_agent.py:977"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "set_current_view",
+      "group": "context",
+      "effects": [
+        "write"
+      ],
+      "module": "app.ops",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:927",
+        "backend/app/routes/agent.py:231"
+      ],
+      "legacy": false,
+      "category": "AGENT_HELPER",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "stage_data_restore",
+      "group": "governance",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.data_safety",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:1056",
+        "backend/app/routes/main_agent.py:1058"
+      ],
+      "legacy": false,
+      "category": "DIAGNOSTIC",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "start_authorized_research_session",
+      "group": "research",
+      "effects": [
+        "external",
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "company_research"
+      ],
+      "callers": [
+        "backend/app/routes/research.py:193"
+      ],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "start_batch_job_evaluation",
+      "group": "agent_runtime",
+      "effects": [
+        "write",
+        "external"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "batch_evaluate"
+      ],
+      "callers": [
+        "frontend/src/lib/agentToolPresentation.ts:23"
+      ],
+      "legacy": false,
+      "category": "AGENT_HELPER",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "start_career_task",
+      "group": "agent_runtime",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:520",
+        "backend/app/routes/main_agent.py:522"
+      ],
+      "legacy": false,
+      "category": "AGENT_HELPER",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "start_job_research",
+      "group": "research",
+      "effects": [
+        "write",
+        "external"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "pre_application_decision",
+        "tailor_resume",
+        "company_research"
+      ],
+      "callers": [
+        "backend/app/routes/agent.py:61"
+      ],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "start_optimize_agent_session",
+      "group": "resume",
+      "effects": [
+        "llm",
+        "write"
+      ],
+      "module": "app.services.optimize_agent_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/optimize.py:1087"
+      ],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "start_profile_agent_session",
+      "group": "profile",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.profile_agent_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/profile_agent.py:534"
+      ],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "start_scraper_batch",
+      "group": "jobs",
+      "effects": [
+        "external",
+        "write"
+      ],
+      "module": "app.services.scraper_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/scraper.py:125"
+      ],
+      "legacy": false,
+      "category": "INTEGRATION",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "start_smart_fill_run",
+      "group": "profile",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.profile_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/profile.py:2563"
+      ],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "start_work_source_sync",
+      "group": "memory",
+      "effects": [
+        "external",
+        "llm",
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "work_source_sync"
+      ],
+      "callers": [],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "stream_optimize_agent_session",
+      "group": "resume",
+      "effects": [
+        "llm",
+        "write"
+      ],
+      "module": "app.services.optimize_agent_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/optimize.py:1118"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "submit_ai_interview_answer",
+      "group": "interview",
+      "effects": [
+        "llm",
+        "external",
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "interview_practice"
+      ],
+      "callers": [
+        "backend/app/routes/interviews.py:163"
+      ],
+      "legacy": false,
+      "category": "PRODUCT_WORKFLOW",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "sync_email_notifications",
+      "group": "email",
+      "effects": [
+        "external",
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "follow_up",
+        "reply_watch"
+      ],
+      "callers": [
+        "backend/app/routes/email.py:192"
+      ],
+      "legacy": false,
+      "category": "INTEGRATION",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "toggle_resume_share_record",
+      "group": "resume",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.resume_route_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/resume.py:2186"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "triage_job",
+      "group": "jobs",
+      "effects": [
+        "write"
+      ],
+      "module": "app.ops",
+      "skills": [
+        "evaluate_job"
+      ],
+      "callers": [],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "uninstall_capability_plugin",
+      "group": "plugins",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/main_agent.py:577"
+      ],
+      "legacy": false,
+      "category": "INTEGRATION",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "update_application_record",
+      "group": "applications",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "application_assistant",
+        "tracker",
+        "follow_up",
+        "interview_debrief"
+      ],
+      "callers": [],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "update_application_settings",
+      "group": "applications",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.legacy_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/applications.py:313"
+      ],
+      "legacy": true,
+      "category": "LEGACY",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "update_application_status",
+      "group": "applications",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [
+        "tracker",
+        "follow_up",
+        "interview_debrief"
+      ],
+      "callers": [],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Selected Skill scope",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "update_application_table_record",
+      "group": "applications",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.legacy_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/applications.py:241"
+      ],
+      "legacy": true,
+      "category": "LEGACY",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "update_application_table_schema",
+      "group": "applications",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.legacy_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/applications.py:275"
+      ],
+      "legacy": true,
+      "category": "LEGACY",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "update_application_template",
+      "group": "applications",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.legacy_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/applications.py:291"
+      ],
+      "legacy": true,
+      "category": "LEGACY",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "update_job",
+      "group": "jobs",
+      "effects": [
+        "write"
+      ],
+      "module": "app.ops",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/jobs.py:355"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "update_legacy_application",
+      "group": "applications",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.legacy_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/applications.py:395"
+      ],
+      "legacy": true,
+      "category": "LEGACY",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "update_pool",
+      "group": "jobs",
+      "effects": [
+        "write"
+      ],
+      "module": "app.ops",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/pools.py:110",
+        "backend/app/routes/pools.py:119"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "update_profile",
+      "group": "profile",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.profile_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/profile.py:1514",
+        "backend/app/routes/profile.py:1515"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "update_profile_section",
+      "group": "profile",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.profile_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/profile.py:1539",
+        "backend/app/routes/profile.py:1544"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "update_resume_record",
+      "group": "resume",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.resume_route_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/resume.py:430"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "update_resume_section",
+      "group": "resume",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.resume_route_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/resume.py:478"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "update_resume_template",
+      "group": "resume",
+      "effects": [
+        "write"
+      ],
+      "module": "app.services.legacy_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/templates.py:142"
+      ],
+      "legacy": true,
+      "category": "LEGACY",
+      "decision": "ISOLATE",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "upload_resume_logo",
+      "group": "resume",
+      "effects": [
+        "external",
+        "write"
+      ],
+      "module": "app.services.resume_route_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/resume.py:668"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "upload_resume_photo",
+      "group": "resume",
+      "effects": [
+        "external",
+        "write"
+      ],
+      "module": "app.services.resume_route_operations",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/resume.py:649"
+      ],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "validate_fact_gate",
+      "group": "profile",
+      "effects": [
+        "read"
+      ],
+      "module": "app.services.agent_operations",
+      "skills": [],
+      "callers": [],
+      "legacy": false,
+      "category": "CORE_DOMAIN_PRIMITIVE",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "workflow_catalog",
+      "group": "governance",
+      "effects": [
+        "read"
+      ],
+      "module": "app.ops",
+      "skills": [],
+      "callers": [],
+      "legacy": false,
+      "category": "AGENT_HELPER",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    },
+    {
+      "name": "workflow_plan",
+      "group": "governance",
+      "effects": [
+        "read"
+      ],
+      "module": "app.ops",
+      "skills": [],
+      "callers": [
+        "backend/app/routes/agent.py:51"
+      ],
+      "legacy": false,
+      "category": "AGENT_HELPER",
+      "decision": "KEEP",
+      "default_discovery": false,
+      "agent_direct_access": "Explicit group discovery only",
+      "overlap": "No equivalence proven; retain"
+    }
+  ]
+}
