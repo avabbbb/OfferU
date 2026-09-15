@@ -94,6 +94,25 @@ class LlmProtocolTests(unittest.TestCase):
             with self.assertRaises(ValidationError):
                 routes.LlmApiConfig(api_format="other")
 
+    def test_normalization_preserves_reference_only_and_keyless_connections(self):
+        with isolated_config() as routes:
+            cfg = routes.ConfigUpdate(llm_api_configs=[
+                routes.LlmApiConfig(id="locked", provider_id="custom", model="model",
+                                    base_url="https://example.test/v1", credential_ref="llm/config/locked"),
+                routes.LlmApiConfig(id="local", provider_id="custom", model="model",
+                                    base_url="http://127.0.0.1:8080/custom"),
+            ])
+            routes._normalize_llm_state(cfg)
+            self.assertEqual([item.id for item in cfg.llm_api_configs], ["locked", "local"])
+            self.assertEqual(cfg.llm_api_configs[0].credential_ref, "llm/config/locked")
+            self.assertEqual(cfg.llm_api_configs[1].base_url, "http://127.0.0.1:8080/custom")
+
+    def test_explicit_empty_connection_list_does_not_restore_legacy_connections(self):
+        with isolated_config() as routes:
+            cfg = routes.ConfigUpdate(llm_api_configs=[], openai_api_key="test-legacy-secret")
+            routes._normalize_llm_state(cfg)
+            self.assertEqual(cfg.llm_api_configs, [])
+
 
 class LlmProbeTransportTests(unittest.IsolatedAsyncioTestCase):
     async def test_openai_probe_rejects_empty_success_payload(self):

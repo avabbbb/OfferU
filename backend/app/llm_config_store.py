@@ -13,6 +13,7 @@ import os
 import re
 import asyncio
 import ipaddress
+from copy import deepcopy
 from urllib.parse import urlsplit
 from pathlib import Path
 from typing import Any
@@ -69,16 +70,25 @@ def load_llm_config_file() -> dict[str, Any] | None:
         return None
 
 
-def save_llm_config_file(payload: dict[str, Any]) -> None:
+def save_llm_config_file(payload: dict[str, Any]) -> dict[str, Any]:
     """Atomically replace config.json so an interrupted write cannot truncate it."""
 
+    from app.services import llm_secret_vault
+
+    safe_payload = deepcopy(payload)
+    created_refs = llm_secret_vault.dehydrate(safe_payload)
     temporary = _CONFIG_FILE.with_name(f".{_CONFIG_FILE.name}.{uuid4().hex}.tmp")
     try:
         temporary.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2),
+            json.dumps(safe_payload, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
         os.replace(temporary, _CONFIG_FILE)
+        return safe_payload
+    except OSError:
+        for reference in created_refs:
+            llm_secret_vault.delete_key(reference)
+        raise
     finally:
         try:
             temporary.unlink()
@@ -442,7 +452,6 @@ def import_provider(
 
     try:
         # 明文 Key 只进钥匙串；写不进去就整体失败，绝不落明文到 config.json。
-        llm_secret_vault.dehydrate(raw)
         save_llm_config_file(raw)
     except llm_secret_vault.VaultUnavailableError as exc:
         return {

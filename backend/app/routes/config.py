@@ -110,6 +110,7 @@ class ConfigUpdate(BaseModel):
     active_llm_config_id: str = ""
     active_llm_base_url: str = ""
     active_llm_api_key: str = ""
+    secret_refs: dict[str, str] = Field(default_factory=dict)
 
     # tier → model 自定义映射（覆盖 llm.py 中的 TIER_MODEL_MAP）
     # 格式: {"fast": "model-id", "standard": "model-id", "premium": "model-id"}
@@ -446,9 +447,6 @@ def _load_config() -> ConfigUpdate:
         try:
             raw = json.loads(_CONFIG_FILE.read_text(encoding="utf-8"))
             if isinstance(raw, dict):
-                # 历史明文 Key 一次性搬进钥匙串，随后从 config.json 抹掉。
-                if llm_secret_vault.migrate_plaintext(raw):
-                    save_llm_config_file(raw)
                 llm_secret_vault.hydrate(raw)
             cfg = ConfigUpdate(**raw)
             _normalize_llm_state(cfg)
@@ -476,11 +474,9 @@ def _load_config() -> ConfigUpdate:
     return cfg
 
 
-def _save_config(cfg: ConfigUpdate) -> None:
+def _save_config(cfg: ConfigUpdate) -> dict[str, Any]:
     payload = cfg.model_dump()
-    # 落盘前抽走明文 Key；钥匙串不可用时必须抛错，不静默写回明文。
-    llm_secret_vault.dehydrate(payload)
-    save_llm_config_file(payload)
+    return save_llm_config_file(payload)
 
 
 def _sync_runtime_settings(cfg: ConfigUpdate) -> None:
@@ -712,7 +708,12 @@ async def update_config(data: ConfigUpdate):
     _normalize_llm_state(next_cfg)
 
     try:
-        _save_config(next_cfg)
+        safe_payload = _save_config(next_cfg)
+        next_cfg.secret_refs = safe_payload.get("secret_refs") or {}
+        for saved in safe_payload.get("llm_api_configs") or []:
+            current = next((item for item in next_cfg.llm_api_configs if item.id == saved.get("id")), None)
+            if current is not None:
+                current.credential_ref = str(saved.get("credential_ref") or "")
     except llm_secret_vault.VaultUnavailableError as exc:
         # 内存配置保持不变，让用户有机会修好钥匙串后重试。
         raise HTTPException(

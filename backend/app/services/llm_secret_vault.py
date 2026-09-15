@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import time
 from typing import Any
+from uuid import uuid4
 
 from app.services import credential_store
 
@@ -92,15 +93,26 @@ def hydrate(payload: dict[str, Any]) -> None:
             resolved = read_key(str(item.get("credential_ref") or ""))
             if resolved:
                 item["api_key"] = resolved
+    refs = payload.get("secret_refs") if isinstance(payload.get("secret_refs"), dict) else {}
     for field in LEGACY_KEY_FIELDS:
         if str(payload.get(field) or "").strip():
             continue
-        resolved = read_key(legacy_ref(field))
+        resolved = read_key(str(refs.get(field) or "")) if refs.get(field) else ""
+        if not resolved:
+            resolved = read_key(legacy_ref(field))
         if resolved:
             payload[field] = resolved
 
 
-def _dehydrate_config_item(item: dict[str, Any]) -> None:
+def _new_config_ref() -> str:
+    return config_ref(uuid4().hex)
+
+
+def _stored_key_matches(reference: str, api_key: str) -> bool:
+    return bool(reference and api_key and read_key(reference) == api_key)
+
+
+def _dehydrate_config_item(item: dict[str, Any], created_refs: list[str]) -> None:
     config_id = str(item.get("id") or "")
     api_key = str(item.get("api_key") or "").strip()
     existing_ref = str(item.get("credential_ref") or "")
@@ -111,35 +123,51 @@ def _dehydrate_config_item(item: dict[str, Any]) -> None:
         # env:VAR 不是秘密，继续按原样留在配置文件里。
         item["api_key"] = api_key
         item["credential_ref"] = ""
-        delete_key(existing_ref)
         return
     if not api_key:
-        # 用户清空了 Key：凭据一起删掉，不留孤儿。
-        delete_key(existing_ref)
-        item["credential_ref"] = ""
+        # 缺少运行时 Key 不能推断用户明确清空，保留现有引用。
+        item["credential_ref"] = existing_ref
         return
     if _is_masked(api_key):
         # 前端回传的仍是脱敏值，保持既有引用不动。
         item["credential_ref"] = existing_ref or config_ref(config_id)
         return
-    reference = existing_ref or config_ref(config_id)
+    reference = existing_ref if _stored_key_matches(existing_ref, api_key) else _new_config_ref()
     write_key(reference, api_key)
+    if reference != existing_ref:
+        created_refs.append(reference)
     item["credential_ref"] = reference
 
 
-def dehydrate(payload: dict[str, Any]) -> None:
+def dehydrate(payload: dict[str, Any]) -> list[str]:
     """把一份待落盘的 config dict 中的明文 Key 抽走，只留 credential_ref。"""
-    configs = payload.get("llm_api_configs")
-    if isinstance(configs, list):
-        for item in configs:
-            if isinstance(item, dict):
-                _dehydrate_config_item(item)
-    for field in LEGACY_KEY_FIELDS:
-        value = str(payload.get(field) or "").strip()
-        if not value or _is_masked(value) or _is_env_reference(value):
-            continue
-        write_key(legacy_ref(field), value)
-        payload[field] = ""
+    created_refs: list[str] = []
+    try:
+        configs = payload.get("llm_api_configs")
+        if isinstance(configs, list):
+            for item in configs:
+                if isinstance(item, dict):
+                    _dehydrate_config_item(item, created_refs)
+        refs = payload.setdefault("secret_refs", {})
+        if not isinstance(refs, dict):
+            refs = {}
+            payload["secret_refs"] = refs
+        for field in LEGACY_KEY_FIELDS:
+            value = str(payload.get(field) or "").strip()
+            existing_ref = str(refs.get(field) or "")
+            if not value or _is_masked(value) or _is_env_reference(value):
+                continue
+            reference = existing_ref if _stored_key_matches(existing_ref, value) else f"llm/legacy/{uuid4().hex}"
+            write_key(reference, value)
+            if reference != existing_ref:
+                created_refs.append(reference)
+            refs[field] = reference
+            payload[field] = ""
+    except VaultUnavailableError:
+        for reference in created_refs:
+            delete_key(reference)
+        raise
+    return created_refs
 
 
 def migrate_plaintext(raw: dict[str, Any]) -> bool:
@@ -161,7 +189,7 @@ def migrate_plaintext(raw: dict[str, Any]) -> bool:
                 continue
             if _is_masked(api_key) or _is_env_reference(api_key):
                 continue
-            reference = str(item.get("credential_ref") or "") or config_ref(config_id)
+            reference = str(item.get("credential_ref") or "") or _new_config_ref()
             write_key(reference, api_key)
             item["api_key"] = ""
             item["credential_ref"] = reference
