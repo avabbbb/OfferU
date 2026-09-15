@@ -33,11 +33,14 @@ export function OnboardingChecklist({ hasJobs }: { hasJobs: boolean }) {
     if (!hydrated) return;
 
     const hasResume = Array.isArray(resumes) && resumes.length > 0;
-    const hasAgentConnection = (agent.snapshot?.items || []).some(
-      (item) => item.beginner && item.status === "ready" && item.connection_verified
-    );
+    const hasAgentConnection = !agent.error && !agent.stale && !agent.offline
+      && (agent.snapshot?.items || []).some((item) => {
+        if (item.status !== "ready" || !item.connection_verified || !item.checked_at) return false;
+        const checkedAt = Date.parse(item.checked_at);
+        return Number.isFinite(checkedAt) && Date.now() - checkedAt <= 120000;
+      });
     syncFromData({ hasAgentConnection, hasResume, hasJobs });
-  }, [agent.snapshot, resumes, hasJobs, hydrated, syncFromData]);
+  }, [agent.snapshot, agent.error, agent.stale, agent.offline, resumes, hasJobs, hydrated, syncFromData]);
 
   if (!hydrated || allStepsCompleted) return null;
 
@@ -94,7 +97,7 @@ export function OnboardingChecklist({ hasJobs }: { hasJobs: boolean }) {
               <p className="bauhaus-label text-black/55">快速开始</p>
               <h2 className="mt-2 text-2xl font-bold md:text-3xl">完成基础配置</h2>
               <p className="mt-3 max-w-xl text-sm font-medium leading-relaxed text-black/70 md:text-base">
-                完成这三步后，抓取、简历和分析模块会进入稳定可用状态。
+                这三步帮助你建立工作起点；具体能力仍以每次任务的实时检查和确认结果为准。
               </p>
             </div>
 

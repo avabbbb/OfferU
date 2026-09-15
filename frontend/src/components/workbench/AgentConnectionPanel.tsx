@@ -104,14 +104,15 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState("");
   const candidates = state.snapshot?.items || [];
-  const suggested = candidates.find((item) => item.id === "codex" && item.installed)
-    || candidates.find((item) => item.compatible) || candidates[0];
+  const beginnerCandidates = candidates.filter((item) => item.beginner);
+  const suggested = beginnerCandidates.find((item) => item.recommended)
+    || beginnerCandidates[0];
   const selected = candidates.find((item) => item.id === selectedId) || suggested;
   const presentation = selected ? currentStatus(selected) : STATUS.check_required;
   const ready = presentation === STATUS.ready;
   const localReady = Boolean(selected?.connection_verified && selected.checked_at && Date.now() - Date.parse(selected.checked_at) <= 120000);
   const checking = Boolean(selected && state.probing === selected.id);
-  const visible = showAll ? candidates : candidates.filter((item) => item.beginner || ["codex", "claude", "opencode"].includes(item.id));
+  const visible = showAll ? candidates : beginnerCandidates;
   const syncFailed = state.sync.status === "failed";
   const syncDone = state.sync.status === "synced";
 
