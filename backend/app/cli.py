@@ -16,7 +16,7 @@ from app.database import init_db
 from app.ops import get_operation_schema, list_operations
 from app.bridge_cli import main as bridge_main
 from app.runtime_paths import runtime_data_dir, runtime_uploads_dir
-from app.services.agent_skill_registry import registry_snapshot
+from app.services.agent_skill_registry import catalog, registry_snapshot, resolve_skill
 from app.services.operation_projection import (
     confirm_operation_proposal,
     execute_or_propose_operation,
@@ -87,16 +87,27 @@ def main(argv: Optional[list[str]] = None) -> int:
                 return _print(payload, args.pretty, exit_code=0 if ready else 1)
             return _print(payload, args.pretty)
         if args.command == "manifest":
-            return _print(_manifest(summary=args.summary, group=args.group), args.pretty)
+            try:
+                payload = _manifest(skill=args.skill, group=args.group, all_operations=args.all_operations)
+            except ValueError as exc:
+                return _print({"ok": False, "errors": [str(exc)]}, args.pretty, exit_code=1)
+            return _print(payload, args.pretty)
         if args.command == "ops":
-            operations = _select_operations(summary=args.summary, group=args.group)
+            try:
+                operations, selector = _select_operations(
+                    skill=args.skill,
+                    group=args.group,
+                    all_operations=args.all_operations,
+                    default_featured=True,
+                )
+            except ValueError as exc:
+                return _print({"ok": False, "errors": [str(exc)]}, args.pretty, exit_code=1)
             return _print(
                 {
                     "ok": True,
                     "operation_count": len(list_operations()),
                     "returned_count": len(operations),
-                    "summary_mode": bool(args.summary),
-                    "group_filter": str(args.group or ""),
+                    "selector": selector,
                     "operations": operations,
                 },
                 args.pretty,
@@ -172,29 +183,17 @@ def _build_parser() -> JsonArgumentParser:
 
     manifest = sub.add_parser("manifest", help="Print the agent control contract for Claude Code and other CLIs.", add_help=False)
     manifest.add_argument("--pretty", action="store_true", help="Pretty-print JSON.")
-    manifest.add_argument(
-        "--summary",
-        action="store_true",
-        help="Emit compact Operation summaries for discovery instead of full schemas.",
-    )
-    manifest.add_argument(
-        "--group",
-        default="",
-        help="Limit Operations to one capability group; repeat discovery per group.",
-    )
+    manifest_selector = manifest.add_mutually_exclusive_group()
+    manifest_selector.add_argument("--skill", default="", help="Show one Skill and its compact Operation summaries.")
+    manifest_selector.add_argument("--group", default="", help="Show compact Operation summaries for one group.")
+    manifest_selector.add_argument("--all", dest="all_operations", action="store_true", help="Show the full developer audit manifest.")
 
-    ops = sub.add_parser("ops", help="List all atomic internal operations.", add_help=False)
+    ops = sub.add_parser("ops", help="Discover atomic internal operations.", add_help=False)
     ops.add_argument("--pretty", action="store_true", help="Pretty-print JSON.")
-    ops.add_argument(
-        "--summary",
-        action="store_true",
-        help="Emit compact Operation summaries instead of full schemas.",
-    )
-    ops.add_argument(
-        "--group",
-        default="",
-        help="Limit Operations to one capability group.",
-    )
+    ops_selector = ops.add_mutually_exclusive_group()
+    ops_selector.add_argument("--skill", default="", help="List compact Operations for one Skill.")
+    ops_selector.add_argument("--group", default="", help="List compact Operations for one group.")
+    ops_selector.add_argument("--all", dest="all_operations", action="store_true", help="List every full Operation schema for auditing.")
 
     schema = sub.add_parser("schema", help="Show one operation schema.", add_help=False)
     schema.add_argument("name", help="Operation name, for example list_jobs.")
@@ -687,25 +686,58 @@ def _summarize_skill(skill: dict[str, Any]) -> dict[str, Any]:
         "status": skill.get("status", ""),
         "description": skill.get("description", ""),
         "aliases": skill.get("aliases", []),
+        "featured": bool(skill.get("featured")),
+        "order": skill.get("order", 0),
+        "version": skill.get("version", ""),
+        "missing_capabilities": skill.get("missing_capabilities", []),
     }
 
 
-def _select_operations(*, summary: bool, group: str = "") -> list[dict[str, Any]]:
+def _select_operations(
+    *,
+    skill: str = "",
+    group: str = "",
+    all_operations: bool = False,
+    default_featured: bool = False,
+) -> tuple[list[dict[str, Any]], str]:
     operations = list_operations()
+    selected_names: set[str] | None = None
+    selector = "all" if all_operations else "catalog"
+    clean_skill = str(skill or "").strip()
     clean_group = str(group or "").strip()
+    if clean_skill:
+        selected = resolve_skill(clean_skill)
+        if selected is None:
+            raise ValueError(f"未知 Skill: {clean_skill}")
+        selected_names = set(selected.allowed_tools)
+        selector = f"skill:{selected.id}"
+    elif clean_group:
+        known_groups = {str(operation.get("group") or "ungrouped") for operation in operations}
+        if clean_group not in known_groups:
+            raise ValueError(f"未知能力组: {clean_group}")
+        selector = f"group:{clean_group}"
+    elif default_featured and not all_operations:
+        selected_names = {
+            str(operation_name)
+            for skill_item in catalog()
+            if skill_item.get("featured")
+            for operation_name in skill_item.get("allowed_tools", [])
+        }
+        selector = "featured_skills"
+    if selected_names is not None:
+        operations = [operation for operation in operations if operation.get("name") in selected_names]
     if clean_group:
         operations = [
             operation
             for operation in operations
             if str(operation.get("group") or "") == clean_group
         ]
-    if summary:
-        detailed = bool(clean_group)
+    if not all_operations:
         operations = [
-            _summarize_operation(operation, detailed=detailed)
+            _summarize_operation(operation, detailed=True)
             for operation in operations
         ]
-    return operations
+    return operations, selector
 
 
 def _groups(operations: list[dict[str, Any]]) -> dict[str, int]:
@@ -716,34 +748,49 @@ def _groups(operations: list[dict[str, Any]]) -> dict[str, int]:
     return dict(sorted(counts.items()))
 
 
-def _manifest(*, summary: bool = False, group: str = "") -> dict[str, Any]:
-    all_operations = list_operations()
-    operations = _select_operations(summary=summary, group=group)
-    skills = registry_snapshot(all_operations)
-    if summary:
+def _manifest(*, skill: str = "", group: str = "", all_operations: bool = False) -> dict[str, Any]:
+    operation_schemas = list_operations()
+    full_registry = registry_snapshot(operation_schemas)
+    if all_operations:
+        operations = operation_schemas
+        selector = "all"
+        skills = full_registry
+    elif skill:
+        operations, selector = _select_operations(skill=skill)
+        selected_id = selector.removeprefix("skill:")
+        selected_skill = next(item for item in full_registry["skills"] if item["id"] == selected_id)
+        skills = {"version": full_registry["version"], "sha256": full_registry["sha256"], "skills": [selected_skill]}
+    elif group:
+        operations, selector = _select_operations(group=group)
         skills = {
-            **{key: value for key, value in skills.items() if key != "skills"},
-            "skills": [_summarize_skill(skill) for skill in skills.get("skills", [])],
+            "version": full_registry["version"],
+            "sha256": full_registry["sha256"],
+            "skills": [_summarize_skill(item) for item in full_registry["skills"] if item.get("group") == group],
+        }
+    else:
+        operations = []
+        selector = "catalog"
+        skills = {
+            "version": full_registry["version"],
+            "sha256": full_registry["sha256"],
+            "skills": [_summarize_skill(item) for item in full_registry["skills"]],
         }
     return {
         "ok": True,
         "service": "OfferU CLI",
         "version": APP_VERSION,
-        "purpose": "Agent-native control surface for OfferU. External agents discover schemas and run reads; side-effect runs persist a proposal that requires a separate explicit confirm command.",
+        "purpose": "Agent-native control surface for OfferU. External agents discover scoped schemas and run reads; side-effect runs persist proposals for user review inside OfferU.",
         "commands": {
             "health": "python -m app.cli doctor --pretty",
             "release_health": "python -m app.cli doctor --require-ready --pretty",
             "manifest": "python -m app.cli manifest --pretty",
-            "manifest_summary": "python -m app.cli manifest --summary --pretty",
-            "manifest_group": "python -m app.cli manifest --summary --group <group> --pretty",
+            "manifest_skill": "python -m app.cli manifest --skill <skill> --pretty",
+            "manifest_group": "python -m app.cli manifest --group <group> --pretty",
+            "manifest_all": "python -m app.cli manifest --all --pretty",
             "list_operations": "python -m app.cli ops --pretty",
             "inspect_operation": "python -m app.cli schema <operation> --pretty",
-            "agent_playbook": "python -m app.cli run agent_playbook --arg detail=full --pretty",
-            "workflow_catalog": "python -m app.cli run workflow_catalog --pretty",
-            "workflow_plan": "python -m app.cli run workflow_plan --arg goal=\"批量筛选岗位\" --pretty",
             "run_operation": "python -m app.cli run <operation> --arg key=value --pretty",
             "dry_run_mutation": "python -m app.cli run <operation> --arg key=value --dry-run --pretty",
-            "confirm_proposal": "python -m app.cli confirm <run_id> --action <action_id> --pretty",
             "file_input": "python -m app.cli run <operation> --input args.json --pretty",
         },
         "io_contract": {
@@ -756,15 +803,15 @@ def _manifest(*, summary: bool = False, group: str = "") -> dict[str, Any]:
             "auto_submit_applications": False,
             "machine_mode_interactive_prompts": False,
             "side_effect_operations_create_persisted_proposal": True,
-            "explicit_confirm_command_required": True,
+            "user_approval_happens_in_offeru": True,
+            "explicit_user_confirmation_required": True,
             "raw_api_capability": False,
-            "side_effect_labels": sorted({effect for op in all_operations for effect in op.get("side_effects", [])}),
+            "side_effect_labels": sorted({effect for op in operation_schemas for effect in op.get("side_effects", [])}),
         },
-        "operation_count": len(all_operations),
+        "operation_count": len(operation_schemas),
         "returned_count": len(operations),
-        "summary_mode": bool(summary),
-        "group_filter": str(group or ""),
-        "groups": _groups(all_operations),
+        "selector": selector,
+        "groups": _groups(operation_schemas),
         "operations": operations,
         "skill_registry": skills,
     }

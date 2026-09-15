@@ -624,6 +624,27 @@ class CliBlackBoxTests(unittest.TestCase):
         self.assertIn("get_resume_optimization", names)
         self.assertIn("review_resume_optimization", names)
         self.assertNotIn("generate_resume", names)
+        self.assertLess(payload["returned_count"], payload["operation_count"])
+        self.assertTrue(all("input_schema" not in item for item in payload["operations"]))
+
+    def test_operation_discovery_is_progressive_and_selectors_fail_closed(self) -> None:
+        skill = self.run_cli("ops", "--skill", "scan")
+        self.assertEqual(skill["_exit_code"], 0)
+        self.assertEqual(skill["selector"], "skill:scan_jobs")
+        self.assertTrue(skill["operations"])
+
+        group = self.run_cli("ops", "--group", "jobs")
+        self.assertEqual(group["_exit_code"], 0)
+        self.assertTrue(all(item["group"] == "jobs" for item in group["operations"]))
+
+        complete = self.run_cli("ops", "--all")
+        self.assertEqual(complete["returned_count"], len(OPERATIONS))
+        self.assertTrue(all("input_schema" in item for item in complete["operations"]))
+
+        unknown = self.run_cli("ops", "--skill", "missing-skill")
+        self.assertEqual(unknown["_exit_code"], 1)
+        conflict = self.run_cli("ops", "--skill", "scan", "--group", "jobs")
+        self.assertEqual(conflict["_exit_code"], 2)
 
     def test_routes_is_not_an_agent_capability(self) -> None:
         payload = self.run_cli("routes")
@@ -644,15 +665,18 @@ class CliBlackBoxTests(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["service"], "OfferU CLI")
         self.assertIn("run_operation", payload["commands"])
-        self.assertIn("workflow_plan", payload["commands"])
+        self.assertIn("manifest_skill", payload["commands"])
         self.assertEqual(payload["io_contract"]["stdout"], "single JSON object")
         self.assertEqual(payload["operation_count"], len(OPERATIONS))
+        self.assertEqual(payload["operations"], [])
+        self.assertTrue(all("allowed_tools" not in item for item in payload["skill_registry"]["skills"]))
         self.assertFalse(payload["safety"]["auto_submit_applications"])
         self.assertFalse(payload["safety"]["raw_api_capability"])
+        self.assertTrue(payload["safety"]["explicit_user_confirmation_required"])
         self.assertNotIn("call_get_api", payload["commands"])
         self.assertNotIn("call_write_api", payload["commands"])
         self.assertNotIn("list_routes", payload["commands"])
-        self.assertIn("confirm_proposal", payload["commands"])
+        self.assertNotIn("confirm_proposal", payload["commands"])
 
     def test_agent_playbook_exposes_external_agent_contract(self) -> None:
         payload = self.run_cli("run", "agent_playbook", "--arg", "detail=full")
