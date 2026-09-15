@@ -2,10 +2,24 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from typing import Any
+from uuid import uuid4
 
 
 SERVICE_NAME = "OfferU"
+
+
+def _validate_native_backend(keyring: Any) -> None:
+    backend = keyring.get_keyring()
+    backend_name = f"{backend.__class__.__module__}.{backend.__class__.__name__}".lower()
+    allowed = {
+        "win32": ("keyring.backends.windows.",),
+        "darwin": ("keyring.backends.macos.",),
+        "linux": ("keyring.backends.secretservice.", "keyring.backends.kwallet."),
+    }.get(sys.platform, ())
+    if not allowed or not backend_name.startswith(allowed):
+        raise RuntimeError("当前 keyring 后端不是 OfferU 允许的操作系统原生凭据存储")
 
 
 def _keyring():
@@ -15,6 +29,7 @@ def _keyring():
         raise RuntimeError(
             "系统钥匙串支持未安装，请先安装 backend/requirements.txt"
         ) from exc
+    _validate_native_backend(keyring)
     return keyring
 
 
@@ -79,9 +94,6 @@ def delete_secret_sync(reference: str) -> None:
     _delete(reference)
 
 
-_PROBE_REFERENCE = "offeru/vault-probe"
-
-
 def probe_backend() -> str:
     """Write/read/delete one throwaway entry to prove the OS vault really works.
 
@@ -93,15 +105,16 @@ def probe_backend() -> str:
         keyring = _keyring()
     except Exception as exc:
         return str(exc)
+    reference = f"offeru/vault-probe/{uuid4().hex}"
     try:
-        keyring.set_password(SERVICE_NAME, _PROBE_REFERENCE, "probe")
-        if keyring.get_password(SERVICE_NAME, _PROBE_REFERENCE) != "probe":
+        keyring.set_password(SERVICE_NAME, reference, "probe")
+        if keyring.get_password(SERVICE_NAME, reference) != "probe":
             return "系统钥匙串返回的内容与写入不一致"
     except Exception as exc:
         return str(exc)
     finally:
         try:
-            _delete(_PROBE_REFERENCE)
+            _delete(reference)
         except Exception:
             pass
     return ""

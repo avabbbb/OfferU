@@ -536,6 +536,15 @@ def _restore_masked_keys(next_cfg: ConfigUpdate, payload_fields: set[str]) -> No
             if previous and not item.credential_ref:
                 item.credential_ref = previous.credential_ref
 
+        for item in next_cfg.llm_api_configs:
+            previous = current_by_id.get(item.id)
+            if not previous:
+                continue
+            item.default_headers = {
+                key: previous.default_headers.get(key, value) if value == "[redacted]" else value
+                for key, value in item.default_headers.items()
+            }
+
     # cookie placeholder semantics
     if "boss_cookie" in payload_fields and next_cfg.boss_cookie == "***已配置***":
         next_cfg.boss_cookie = _current_config.boss_cookie

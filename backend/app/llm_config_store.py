@@ -77,6 +77,8 @@ def save_llm_config_file(payload: dict[str, Any]) -> dict[str, Any]:
 
     safe_payload = deepcopy(payload)
     created_refs = llm_secret_vault.dehydrate(safe_payload)
+    previous_payload = load_llm_config_file() or {}
+    previous_refs = llm_secret_vault.credential_references(previous_payload)
     temporary = _CONFIG_FILE.with_name(f".{_CONFIG_FILE.name}.{uuid4().hex}.tmp")
     try:
         temporary.write_text(
@@ -84,8 +86,11 @@ def save_llm_config_file(payload: dict[str, Any]) -> dict[str, Any]:
             encoding="utf-8",
         )
         os.replace(temporary, _CONFIG_FILE)
+        current_refs = llm_secret_vault.credential_references(safe_payload)
+        for reference in previous_refs - current_refs:
+            llm_secret_vault.delete_key(reference)
         return safe_payload
-    except OSError:
+    except BaseException:
         for reference in created_refs:
             llm_secret_vault.delete_key(reference)
         raise

@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 
 from app.runtime_paths import runtime_config_file
+from app.services.llm_secret_vault import hydrate
 
 
 _COOKIE_KEYS = frozenset({"boss_cookie", "zhilian_cookie"})
@@ -28,7 +29,10 @@ def load_scraper_cookie(key: str) -> str:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError, TypeError):
         return ""
-    value = payload.get(clean_key) if isinstance(payload, dict) else ""
+    if not isinstance(payload, dict):
+        return ""
+    hydrate(payload)
+    value = payload.get(clean_key)
     return value.strip() if isinstance(value, str) else ""
 
 
