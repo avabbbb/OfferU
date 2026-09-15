@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from app.config import get_settings
 from app.llm_presets import (
     AVAILABLE_PROVIDERS,
+    ENDPOINT_PROTOCOL_TEMPLATES,
     PROVIDER_PRESETS,
     _PRESET_BY_ID,
     provider_default_model as _provider_default_model,
@@ -57,7 +58,7 @@ class LlmApiConfig(BaseModel):
     """A single BYOK provider configuration entry.
 
     provider_id 只作身份 slug 与预设匹配，不参与 LLM 行为分支；
-    base_url / api_key / model 任意组合，支持接入任意 OpenAI 兼容 API。
+    base_url / api_key / model 任意组合，支持 OpenAI 与 Anthropic 兼容协议。
     新字段均带默认值，向后兼容旧 config.json。
     """
 
@@ -73,8 +74,7 @@ class LlmApiConfig(BaseModel):
     extra_params: dict[str, str] = Field(default_factory=dict)
     # tier -> model 覆盖（fast / standard / premium），可选
     models: dict[str, str] = Field(default_factory=dict)
-    # 预留协议字段；当前仅支持 OpenAI 兼容（openai）
-    api_format: str = "openai"
+    api_format: Literal["openai", "anthropic"] = "openai"
     # 是否支持 response_format=json_object（本地/旧版端点可关闭）
     supports_json_mode: bool = True
     default_headers: dict[str, str] = Field(default_factory=dict)
@@ -327,9 +327,6 @@ def _prune_auto_seed_defaults(cfg: ConfigUpdate) -> None:
         base_url = (item.base_url or _provider_default_url(provider_id)).strip().rstrip("/")
         api_key = _sanitize_api_key(item.api_key)
 
-        if provider_id == "ollama" and base_url and not base_url.endswith("/v1"):
-            base_url = f"{base_url}/v1"
-
         item.provider_id = provider_id
         item.service_name = service_name
         item.model = model
@@ -389,7 +386,7 @@ def _sync_legacy_fields_from_configs(cfg: ConfigUpdate) -> None:
 
 
 def _normalize_llm_state(cfg: ConfigUpdate) -> None:
-    if not cfg.llm_api_configs:
+    if not cfg.llm_api_configs and "llm_api_configs" not in cfg.model_fields_set:
         cfg.llm_api_configs = _build_legacy_configs(cfg)
 
     normalized: list[LlmApiConfig] = []
@@ -401,9 +398,9 @@ def _normalize_llm_state(cfg: ConfigUpdate) -> None:
         base_url = (item.base_url or _provider_default_url(provider_id)).strip().rstrip("/")
         api_key = _sanitize_api_key(item.api_key)
 
-        if provider_id == "ollama" and base_url and not base_url.endswith("/v1"):
-            base_url = f"{base_url}/v1"
-
+        api_format = (item.api_format or "openai").strip().lower()
+        if api_format not in {"openai", "anthropic"}:
+            raise ValueError(f"不支持的 API 协议: {api_format}")
         normalized.append(
             LlmApiConfig(
                 id=item.id or uuid4().hex,
@@ -414,11 +411,18 @@ def _normalize_llm_state(cfg: ConfigUpdate) -> None:
                 api_key=api_key,
                 is_active=bool(item.is_active),
                 extra_params=item.extra_params or {},
+                credential_ref=item.credential_ref or "",
+                models=item.models or {},
+                api_format=api_format,
+                supports_json_mode=bool(item.supports_json_mode),
+                default_headers=item.default_headers or {},
+                icon=item.icon or "",
+                website_url=item.website_url or "",
+                notes=item.notes or "",
             )
         )
 
     cfg.llm_api_configs = normalized
-    _prune_auto_seed_defaults(cfg)
 
     active: LlmApiConfig | None = None
     if cfg.active_llm_config_id:
@@ -679,8 +683,8 @@ def _response_payload() -> dict[str, Any]:
         "source": source,
     }
 
-    data["provider_presets"] = PROVIDER_PRESETS
-    data["available_providers"] = AVAILABLE_PROVIDERS
+    data["provider_presets"] = ENDPOINT_PROTOCOL_TEMPLATES
+    data["available_providers"] = ENDPOINT_PROTOCOL_TEMPLATES
     # 钥匙串不可用必须可见：否则用户只会看到"Key 不见了"。
     data["vault_status"] = llm_secret_vault.status()
     return data
@@ -746,6 +750,8 @@ async def _probe_llm_endpoint(
     api_key: str,
     model: str,
     provider: str = "custom",
+    api_format: str = "openai",
+    default_headers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """委托共享探测逻辑（app.llm_config_store.probe_llm_endpoint）。
 
@@ -754,21 +760,31 @@ async def _probe_llm_endpoint(
     """
     from app.llm_config_store import probe_llm_endpoint
 
-    return await probe_llm_endpoint(base_url, api_key, model, provider)
+    return await probe_llm_endpoint(
+        base_url,
+        api_key,
+        model,
+        provider,
+        api_format,
+        default_headers=default_headers,
+        ssl_verify=get_settings().ssl_verify,
+    )
 
 
 @router.post("/test-llm")
 async def test_llm_connection():
-    from app.agents.llm import _get_client
+    from app.agents.llm import resolve_llm_client_config
 
     settings = get_settings()
     provider = settings.llm_provider
     model = settings.llm_model
 
     try:
-        client, resolved_model = _get_client()
-        base_url = str(client.base_url)
-        api_key = client.api_key
+        resolved = resolve_llm_client_config()
+        base_url = resolved["base_url"]
+        api_key = resolved["api_key"]
+        resolved_model = resolved["model"]
+        api_format = resolved.get("api_format", "openai")
     except ValueError as exc:
         return {
             "success": False,
@@ -777,7 +793,14 @@ async def test_llm_connection():
             "message": safe_error_message(exc),
         }
 
-    result = await _probe_llm_endpoint(base_url, api_key, resolved_model, provider)
+    result = await _probe_llm_endpoint(
+        base_url,
+        api_key,
+        resolved_model,
+        provider,
+        api_format,
+        resolved.get("default_headers") or {},
+    )
     return result
 
 

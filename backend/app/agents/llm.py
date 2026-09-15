@@ -17,6 +17,8 @@ import asyncio
 import json
 import logging
 import re
+import ipaddress
+from urllib.parse import urlsplit
 from typing import TYPE_CHECKING, Any, Optional, AsyncGenerator
 
 import httpx
@@ -25,6 +27,7 @@ if TYPE_CHECKING:
 
 from app.config import get_settings
 from app.services.security_redaction import redact_sensitive_text
+from app.llm_presets import provider_default_url, provider_tier_models
 
 _logger = logging.getLogger(__name__)
 
@@ -41,41 +44,12 @@ def _make_http_client() -> httpx.AsyncClient:
     """
     settings = get_settings()
     return httpx.AsyncClient(
-        transport=httpx.AsyncHTTPTransport(local_address="0.0.0.0"),
+        transport=httpx.AsyncHTTPTransport(verify=settings.ssl_verify),
         verify=settings.ssl_verify,
         trust_env=False,
     )
 
 
-DEFAULT_BASE_URLS = {
-    "openai": "https://api.openai.com/v1",
-    "deepseek": "https://api.deepseek.com",
-    "qwen": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    "siliconflow": "https://api.siliconflow.com/v1",
-    "gemini": "https://generativelanguage.googleapis.com/v1beta/openai",
-    "zhipu": "https://open.bigmodel.cn/api/paas/v4",
-}
-
-# ---- tier → model 映射 ----
-# 每个 provider 定义 fast / standard / premium 三档模型
-# 未列出的 provider 或 tier 会 fallback 到 settings.llm_model
-TIER_MODEL_MAP: dict[str, dict[str, str]] = {
-    "qwen": {
-        "fast": "qwen-flash",
-        "standard": "qwen3.5-plus",
-        "premium": "qwen3.5-plus",
-    },
-    "deepseek": {
-        "fast": "deepseek-v4-flash",
-        "standard": "deepseek-v4-flash",
-        "premium": "deepseek-v4-pro",
-    },
-    "openai": {
-        "fast": "gpt-4o-mini",
-        "standard": "gpt-4o",
-        "premium": "gpt-4o",
-    },
-}
 
 
 def _cfg_bool(value: Any, default: bool = True) -> bool:
@@ -87,17 +61,15 @@ def _cfg_bool(value: Any, default: bool = True) -> bool:
     return str(value).strip().lower() in ("1", "true", "yes", "on")
 
 
-def _is_local_llm(base_url: str, provider_id: str) -> bool:
-    """本地推理端点判定：ollama / lmstudio 等或 localhost 地址。
-
-    本地端点不需要真实 API Key（用占位 key），并统一补 /v1 后缀。
-    provider_id 仅在此处作身份提示，不构成行为分支。
-    """
-    pid = (provider_id or "").strip().lower()
-    if pid in ("ollama", "lmstudio", "local", "llamacpp", "vllm-local"):
+def _is_local_llm(base_url: str) -> bool:
+    """仅按端点主机名判定本地推理地址。"""
+    hostname = (urlsplit((base_url or "").strip()).hostname or "").lower().rstrip(".")
+    if hostname == "localhost":
         return True
-    host = (base_url or "").strip().lower()
-    return "localhost" in host or "127.0.0.1" in host or "0.0.0.0" in host
+    try:
+        return ipaddress.ip_address(hostname).is_loopback
+    except ValueError:
+        return False
 
 
 def _active_provider_config(settings: Any) -> dict[str, Any] | None:
@@ -132,6 +104,7 @@ def resolve_llm_client_config(settings: Any | None = None) -> dict[str, Any]:
     source / supports_json_mode / default_headers / models。
     """
     config = settings or get_settings()
+    api_format = "openai"
     active_cfg = _active_provider_config(config)
     legacy_base_url = str(getattr(config, "active_llm_base_url", "") or "").strip().rstrip("/")
     legacy_api_key = str(getattr(config, "active_llm_api_key", "") or "").strip()
@@ -181,19 +154,17 @@ def resolve_llm_client_config(settings: Any | None = None) -> dict[str, Any]:
             raise ValueError(
                 f"当前激活的 LLM 配置缺少 Base URL（{service_name}）。请在设置页面填写完整信息。"
             )
-        if api_format not in ("openai", ""):
+        if api_format not in ("openai", "anthropic"):
             raise ValueError(
-                f"暂不支持的 API 协议 {api_format}（{service_name}）；当前仅支持 OpenAI 兼容接口。"
+                f"暂不支持的 API 协议 {api_format}（{service_name}）。"
             )
-        if not api_key and not _is_local_llm(base_url, provider_id):
+        if not api_key and not _is_local_llm(base_url):
             raise ValueError(
                 f"当前激活的 LLM 配置缺少 API Key（{service_name}）。请在设置页面填写。"
             )
-        if _is_local_llm(base_url, provider_id):
-            base_url = _ensure_ollama_v1(base_url)
-            api_key = api_key or "ollama"
-            if provider_id == "ollama":
-                source = "ollama"
+        if _is_local_llm(base_url):
+            api_key = api_key or "local"
+            source = "ollama" if provider_id == "ollama" else source
         if not model:
             raise ValueError(f"当前激活的 LLM 配置缺少模型名称（{service_name}）。")
     elif legacy_base_url and legacy_api_key:
@@ -202,7 +173,7 @@ def resolve_llm_client_config(settings: Any | None = None) -> dict[str, Any]:
         base_url = legacy_base_url
         api_key = legacy_api_key
         model = default_model
-        supports_json_mode = not _is_local_llm(base_url, provider_id)
+        supports_json_mode = not _is_local_llm(base_url)
         default_headers = {}
         models = {}
         source = "active_config"
@@ -227,7 +198,7 @@ def resolve_llm_client_config(settings: Any | None = None) -> dict[str, Any]:
                 "zhipu": getattr(config, "zhipu_api_key", ""),
             }
             api_key = str(legacy_keys.get(provider, "") or "").strip()
-            base_url = DEFAULT_BASE_URLS.get(provider, "")
+            base_url = provider_default_url(provider)
             supports_json_mode = True
             source = "legacy_fallback"
             if not api_key:
@@ -241,6 +212,10 @@ def resolve_llm_client_config(settings: Any | None = None) -> dict[str, Any]:
     from app.llm_config_store import resolve_api_key
 
     resolved_api_key = resolve_api_key(api_key)
+    if str(api_key).strip().lower().startswith("env:") and not resolved_api_key:
+        raise ValueError(f"LLM API Key 环境变量未解析（{service_name}）。")
+    if not resolved_api_key and not _is_local_llm(base_url):
+        raise ValueError(f"当前激活的 LLM 配置缺少 API Key（{service_name}）。请在设置页面填写。")
     disabled = set(getattr(config, "disabled_llm_providers", None) or [])
     if provider_id in disabled:
         raise ValueError(
@@ -257,6 +232,7 @@ def resolve_llm_client_config(settings: Any | None = None) -> dict[str, Any]:
         "supports_json_mode": supports_json_mode,
         "default_headers": default_headers,
         "models": models,
+        "api_format": api_format,
     }
 
 
@@ -273,6 +249,9 @@ def resolve_model_for_tier(tier: str = "standard", settings: Any | None = None) 
     user_tier_map = getattr(config, "tier_model_map", None) or {}
     if user_tier_map.get(tier):
         return str(user_tier_map[tier])
+    legacy_tiers = provider_tier_models(str(getattr(config, "llm_provider", "") or ""))
+    if legacy_tiers.get(tier):
+        return str(legacy_tiers[tier])
     if active_cfg is not None and str(active_cfg.get("model") or "").strip():
         return str(active_cfg["model"]).strip()
     return str(getattr(config, "llm_model", "") or "").strip()
@@ -312,17 +291,25 @@ def _get_client() -> tuple[Any, str]:
     返回: (client, model_name)
     """
     resolved = resolve_llm_client_config()
-    # openai imports hundreds of generated schema modules. Keep that ~1.2s
-    # cost off the desktop cold-start path and pay it only for the first LLM call.
-    from openai import AsyncOpenAI
+    settings = get_settings()
+    if resolved.get("api_format") == "anthropic":
+        from anthropic import AsyncAnthropic
+    else:
+        from openai import AsyncOpenAI
     http_client = _make_http_client()
     kwargs: dict[str, Any] = {
         "api_key": resolved["api_key"],
         "base_url": resolved["base_url"],
         "http_client": http_client,
+        "timeout": settings.llm_timeout,
     }
     if resolved.get("default_headers"):
         kwargs["default_headers"] = resolved["default_headers"]
+    if resolved.get("api_format") == "anthropic":
+        client = AsyncAnthropic(**kwargs)
+        return client, resolved["model"]
+    # openai imports hundreds of generated schema modules. Keep that ~1.2s
+    # cost off the desktop cold-start path and pay it only for the first LLM call.
     client = AsyncOpenAI(**kwargs)
     _logger.info(
         "[LLM Config] source=%s, provider=%s, model=%s, base_url=%s",
@@ -356,14 +343,41 @@ async def chat_completion(
 
     返回: 模型的文本输出，失败返回 None
     """
-    client, _ = _get_client()
-
     # BYOK: 模型与 json_mode 能力由统一解析决定（provider 可自由配置，
     # provider_id 不参与行为分支；仅本地/明确关闭 json 的 provider 禁用 response_format）。
     settings = get_settings()
     resolved = resolve_llm_client_config()
     provider = resolved["provider"]
     model = resolve_model_for_tier(tier)
+    if not messages:
+        raise ValueError("消息不能为空")
+    if resolved.get("api_format") == "anthropic" and any(
+        item.get("role") not in {"system", "user", "assistant"}
+        or not isinstance(item.get("content"), str) for item in messages
+    ):
+        raise ValueError("Anthropic 消息必须使用 system/user/assistant 角色和文本 content")
+    client, _ = _get_client()
+
+    if resolved.get("api_format") == "anthropic":
+        system = [str(item.get("content") or "") for item in messages if item.get("role") == "system"]
+        anthropic_messages = [
+            {"role": item.get("role", "user"), "content": str(item.get("content") or "")}
+            for item in messages if item.get("role") != "system"
+        ]
+        if json_mode:
+            anthropic_messages.append({"role": "user", "content": "Return JSON only."})
+        try:
+            kwargs = {"model": model, "messages": anthropic_messages, "max_tokens": max_tokens, "temperature": temperature}
+            if system:
+                kwargs["system"] = "\n\n".join(system)
+            response = await asyncio.wait_for(client.messages.create(**kwargs), timeout=settings.llm_timeout)
+            text = "".join(block.text for block in response.content if getattr(block, "type", "") == "text")
+            return text or None
+        except Exception as exc:
+            _logger.error("[LLM Error] %s/%s (anthropic): %s", provider, model, redact_sensitive_text(exc, max_length=500))
+            return None
+        finally:
+            await client.close()
 
     kwargs: dict = {
         "model": model,
@@ -434,6 +448,8 @@ async def chat_completion(
             redact_sensitive_text(e, max_length=500),
         )
         return None
+    finally:
+        await client.close()
 
 
 async def chat_completion_stream(
@@ -447,12 +463,45 @@ async def chat_completion_stream(
 
     参数同 chat_completion，返回 async generator。
     """
-    client, _ = _get_client()
-
     settings = get_settings()
     resolved = resolve_llm_client_config()
     provider = resolved["provider"]
     model = resolve_model_for_tier(tier)
+    if not messages:
+        raise ValueError("消息不能为空")
+    if resolved.get("api_format") == "anthropic" and any(
+        item.get("role") not in {"system", "user", "assistant"}
+        or not isinstance(item.get("content"), str) for item in messages
+    ):
+        raise ValueError("Anthropic 消息必须使用 system/user/assistant 角色和文本 content")
+    client, _ = _get_client()
+
+    if resolved.get("api_format") == "anthropic":
+        system = [str(item.get("content") or "") for item in messages if item.get("role") == "system"]
+        anthropic_messages = [
+            {"role": item.get("role", "user"), "content": str(item.get("content") or "")}
+            for item in messages if item.get("role") != "system"
+        ]
+        if json_mode:
+            anthropic_messages.append({"role": "user", "content": "Return JSON only."})
+        try:
+            kwargs = {"model": model, "messages": anthropic_messages, "max_tokens": max_tokens, "temperature": temperature, "stream": True}
+            if system:
+                kwargs["system"] = "\n\n".join(system)
+            stream = await asyncio.wait_for(client.messages.create(**kwargs), timeout=settings.llm_timeout)
+            async with asyncio.timeout(settings.llm_timeout):
+                async with stream as events:
+                    async for event in events:
+                        if getattr(event, "type", "") == "content_block_delta":
+                            delta = getattr(event, "delta", None)
+                            text = getattr(delta, "text", None)
+                            if text:
+                                yield text
+        except Exception as exc:
+            _logger.error("[LLM Error] %s/%s (anthropic stream): %s", provider, model, redact_sensitive_text(exc, max_length=500))
+        finally:
+            await client.close()
+        return
 
     kwargs: dict = {
         "model": model,
@@ -519,7 +568,9 @@ async def chat_completion_stream(
             close = getattr(stream, "close", None)
             if callable(close):
                 try:
-                    close()
+                    result = close()
+                    if hasattr(result, "__await__"):
+                        await result
                 except Exception:
                     pass
     except asyncio.TimeoutError:
@@ -534,6 +585,8 @@ async def chat_completion_stream(
             redact_sensitive_text(e, max_length=500),
         )
         return
+    finally:
+        await client.close()
 
 
 def extract_json(text: str) -> Optional[dict]:

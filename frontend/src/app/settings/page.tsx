@@ -1,10 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
-  Autocomplete,
-  AutocompleteItem,
   Button,
   Card,
   CardBody,
@@ -35,7 +33,6 @@ import {
   RefreshCw,
   RotateCcw,
   Save,
-  Search,
   ShieldCheck,
   SquarePen,
   Trash2,
@@ -54,19 +51,11 @@ import { SHOWCASE } from "@/lib/showcase/router";
 import { useConfig, updateConfig } from "@/lib/hooks";
 import { AgentConnectionPanel } from "@/components/workbench/AgentConnectionPanel";
 
-interface ProviderModelPreset {
-  id: string;
-  name: string;
-  description?: string;
-}
-
 interface ProviderPreset {
   id: string;
   name: string;
   description?: string;
-  default_base_url: string;
-  models: ProviderModelPreset[];
-  key_prefix?: string;
+  api_format?: string;
 }
 
 interface LlmApiConfig {
@@ -78,12 +67,14 @@ interface LlmApiConfig {
   api_key: string;
   is_active: boolean;
   extra_params?: Record<string, string>;
-}
-
-interface SelectOption {
-  id: string;
-  label: string;
-  description?: string;
+  api_format?: string;
+  credential_ref?: string;
+  models?: Record<string, string>;
+  default_headers?: Record<string, string>;
+  supports_json_mode?: boolean;
+  icon?: string;
+  website_url?: string;
+  notes?: string;
 }
 
 interface SettingsConfigPayload {
@@ -127,8 +118,6 @@ interface SettingsConfigPayload {
   };
 }
 
-const CUSTOM_OPTION = "__custom__";
-
 const dataSources = [
   { name: "shixiseng", label: "实习僧", available: true },
   { name: "boss", label: "BOSS直聘", available: true },
@@ -153,12 +142,6 @@ const bauhausFieldClassNames = {
 const bauhausModalContentClassName =
   "max-h-[88vh] border border-[var(--border-strong)] bg-[var(--surface-muted)] text-[var(--foreground)] shadow-[4px_4px_0_0_rgba(18,18,18,0.45)]";
 
-const bauhausAutocompleteInputClassNames = {
-  ...bauhausFieldClassNames,
-  inputWrapper:
-    "border border-[var(--border-strong)] bg-white shadow-[2px_2px_0_0_rgba(18,18,18,0.3)] group-data-[focus=true]:border-[var(--border-strong)]",
-};
-
 function normalizeProviderId(value: string): string {
   const normalized = value
     .toLowerCase()
@@ -171,13 +154,21 @@ function createConfigId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function normalizeBaseUrl(value: string, providerId: string): string {
+function normalizeBaseUrl(value: string): string {
   const trimmed = value.trim().replace(/\/+$/, "");
   if (!trimmed) return "";
-  if (providerId === "ollama" && !trimmed.endsWith("/v1")) {
-    return `${trimmed}/v1`;
-  }
   return trimmed;
+}
+
+function isLocalEndpoint(value: string): boolean {
+  try {
+    const hostname = new URL(value).hostname.toLowerCase().replace(/[\[\]]/g, "").replace(/\.$/, "");
+    if (hostname === "localhost" || hostname === "::1") return true;
+    const octets = hostname.split(".");
+    return octets.length === 4 && octets.every((octet) => /^\d+$/.test(octet) && Number(octet) >= 0 && Number(octet) <= 255) && Number(octets[0]) === 127;
+  } catch {
+    return false;
+  }
 }
 
 function displayMaskedKey(value: string): string {
@@ -203,9 +194,17 @@ function normalizeApiConfigsForSave(apiConfigs: LlmApiConfig[]) {
       provider_id: providerId,
       service_name: item.service_name.trim(),
       model: item.model.trim(),
-      base_url: normalizeBaseUrl(item.base_url, providerId),
-      api_key: providerId === "ollama" ? "" : item.api_key.trim(),
+      base_url: normalizeBaseUrl(item.base_url),
+      api_key: item.api_key.trim(),
       extra_params: item.extra_params || {},
+      api_format: String(item.api_format || ""),
+      credential_ref: item.credential_ref || "",
+      models: item.models || {},
+      default_headers: item.default_headers || {},
+      supports_json_mode: item.supports_json_mode !== false,
+      icon: item.icon || "",
+      website_url: item.website_url || "",
+      notes: item.notes || "",
     };
   });
 
@@ -846,66 +845,6 @@ function redactFeedbackText(value: string): string {
     .replace(/(?<![\w])(?:\+?\d[\d\s().-]{7,}\d)(?![\w])/g, "[redacted phone]");
 }
 
-interface FetchModelsButtonProps {
-  baseUrl: string;
-  apiKey: string;
-  onModelsFetched: (models: { id: string; name: string; owned_by?: string }[]) => void;
-}
-
-function FetchModelsButton({ baseUrl, apiKey, onModelsFetched }: FetchModelsButtonProps) {
-  const [fetching, setFetching] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-
-  const fetchModels = async () => {
-    if (!baseUrl.trim()) {
-      setMessage("请先填写接口地址");
-      return;
-    }
-    setFetching(true);
-    setMessage(null);
-    try {
-      const API_BASE = resolveApiBase();
-      const res = await fetch(`${API_BASE}/api/config/fetch-models`, {
-        method: "POST",
-        redirect: "error",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ base_url: baseUrl, api_key: apiKey }),
-      });
-      // 同上：校验失败（422）返回的是 {detail}，直接抛到统一的请求失败分支。
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      if (data.success && data.models?.length > 0) {
-        setMessage(`获取到 ${data.models.length} 个模型`);
-        onModelsFetched(data.models);
-      } else {
-        setMessage(safeClientErrorMessage(data.message, "未获取到模型"));
-      }
-    } catch (err: any) {
-      setMessage(`请求失败: ${safeClientErrorMessage(err, "请稍后重试")}`);
-    } finally {
-      setFetching(false);
-    }
-  };
-
-  return (
-    <div className="flex items-center gap-2">
-      <Button
-        size="sm"
-        className="bauhaus-button bauhaus-button-outline !px-3 !py-2 !text-[11px]"
-        onPress={fetchModels}
-        isLoading={fetching}
-        isDisabled={!baseUrl.trim()}
-        startContent={!fetching ? <Search size={14} /> : undefined}
-      >
-        获取模型列表
-      </Button>
-      {message && (
-        <span className="text-xs font-medium text-[var(--foreground-muted)]">{message}</span>
-      )}
-    </div>
-  );
-}
-
 export default function SettingsPage() {
   const { data, mutate } = useConfig();
   const config = data as SettingsConfigPayload | undefined;
@@ -952,20 +891,14 @@ export default function SettingsPage() {
   } = useDisclosure();
 
   const [editingConfigId, setEditingConfigId] = useState<string | null>(null);
-  const [formProviderChoice, setFormProviderChoice] = useState<string>("deepseek");
+  const [formProviderChoice, setFormProviderChoice] = useState<string>("");
   const [formCustomServiceName, setFormCustomServiceName] = useState("");
-  const [formModelChoice, setFormModelChoice] = useState<string>("");
   const [formCustomModel, setFormCustomModel] = useState("");
-  const [fetchedModelOptions, setFetchedModelOptions] = useState<SelectOption[]>([]);
-  const [formUrlChoice, setFormUrlChoice] = useState<string>("");
   const [formBaseUrl, setFormBaseUrl] = useState("");
   const [formApiKey, setFormApiKey] = useState("");
   const [formIsActive, setFormIsActive] = useState<boolean>(false);
   const [showFormApiKey, setShowFormApiKey] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
-  const providerSelectionRef = useRef(false);
-  const modelSelectionRef = useRef(false);
-  const urlSelectionRef = useRef(false);
 
   const selectedConfig = useMemo(
     () => apiConfigs.find((item) => item.id === selectedConfigId) || null,
@@ -977,73 +910,23 @@ export default function SettingsPage() {
     [providerPresets, formProviderChoice]
   );
 
-  const formModelOptions = useMemo(
-    () => currentFormPreset?.models || [],
-    [currentFormPreset]
-  );
-
   const resolvedFormServiceName = useMemo(() => {
-    if (formProviderChoice === CUSTOM_OPTION) {
-      return formCustomServiceName.trim();
-    }
-    return currentFormPreset?.name || "";
-  }, [currentFormPreset, formCustomServiceName, formProviderChoice]);
+    return formCustomServiceName.trim();
+  }, [formCustomServiceName]);
 
   const resolvedFormProviderId = useMemo(() => {
-    if (formProviderChoice === CUSTOM_OPTION) {
-      return normalizeProviderId(formCustomServiceName);
-    }
-    return formProviderChoice;
-  }, [formCustomServiceName, formProviderChoice]);
+    return normalizeProviderId(formCustomServiceName || "custom");
+  }, [formCustomServiceName]);
 
-  const resolvedFormModel = useMemo(() => {
-    if (formModelChoice === CUSTOM_OPTION) {
-      return formCustomModel.trim();
-    }
-    return formModelChoice;
-  }, [formCustomModel, formModelChoice]);
+  const resolvedFormModel = useMemo(() => formCustomModel.trim(), [formCustomModel]);
 
-  const resolvedFormBaseUrl = useMemo(() => {
-    if (formUrlChoice === CUSTOM_OPTION) {
-      return formBaseUrl.trim();
-    }
-    return formUrlChoice.trim();
-  }, [formBaseUrl, formUrlChoice]);
-
-  const providerSelectOptions = useMemo<SelectOption[]>(() => {
-    return providerPresets.map((preset) => ({
-      id: preset.id,
-      label: preset.name,
-      description: preset.description || "",
-    }));
-  }, [providerPresets]);
-
-  const modelSelectOptions = useMemo<SelectOption[]>(() => {
-    const preset = formModelOptions.map((model) => ({
-      id: model.id,
-      label: model.name,
-      description: model.description || "",
-    }));
-    const existingIds = new Set(preset.map((o) => o.id));
-    const fetched = fetchedModelOptions.filter((o) => !existingIds.has(o.id));
-    return [...preset, ...fetched];
-  }, [formModelOptions, fetchedModelOptions]);
-
-  const urlSelectOptions = useMemo<SelectOption[]>(() => {
-    const list: SelectOption[] = [];
-    if (currentFormPreset?.default_base_url) {
-      list.push({
-        id: currentFormPreset.default_base_url,
-        label: `默认 URL（${currentFormPreset.default_base_url}）`,
-      });
-    }
-    return list;
-  }, [currentFormPreset]);
+  const resolvedFormBaseUrl = useMemo(() => formBaseUrl.trim(), [formBaseUrl]);
 
   const validateEditorForm = (): Record<string, string> => {
     const errors: Record<string, string> = {};
-    const providerId = resolvedFormProviderId;
-
+    if (!currentFormPreset || !["openai", "anthropic"].includes(currentFormPreset.api_format || "")) {
+      errors.api_format = "请选择有效的接口协议";
+    }
     if (!resolvedFormServiceName) {
       errors.service_name = "服务名称不能为空";
     }
@@ -1058,7 +941,7 @@ export default function SettingsPage() {
       errors.base_url = "接口地址需以 http:// 或 https:// 开头";
     }
 
-    if (providerId !== "ollama") {
+    if (!isLocalEndpoint(resolvedFormBaseUrl)) {
       if (!formApiKey.trim()) {
         errors.api_key = "访问密钥不能为空";
       }
@@ -1067,10 +950,6 @@ export default function SettingsPage() {
         errors.api_key = "新增配置时不能使用脱敏密钥";
       }
 
-      const prefix = currentFormPreset?.key_prefix || "";
-      if (prefix && formApiKey.trim() && !formApiKey.includes("*") && !formApiKey.trim().startsWith(prefix)) {
-        errors.api_key = `该服务密钥通常以 ${prefix} 开头`;
-      }
     }
 
     return errors;
@@ -1084,9 +963,7 @@ export default function SettingsPage() {
     isEditorOpen,
     formProviderChoice,
     formCustomServiceName,
-    formModelChoice,
     formCustomModel,
-    formUrlChoice,
     formBaseUrl,
     formApiKey,
     formIsActive,
@@ -1116,10 +993,18 @@ export default function SettingsPage() {
         provider_id: normalizeProviderId(item.provider_id || item.service_name || "custom"),
         service_name: (item.service_name || item.provider_id || "Custom").trim(),
         model: (item.model || "").trim(),
-        base_url: normalizeBaseUrl(item.base_url || "", normalizeProviderId(item.provider_id || "")),
+        base_url: normalizeBaseUrl(item.base_url || ""),
         api_key: item.api_key || "",
         is_active: Boolean(item.is_active),
         extra_params: item.extra_params || {},
+        api_format: String(item.api_format || ""),
+        credential_ref: item.credential_ref || "",
+        models: item.models || {},
+        default_headers: item.default_headers || {},
+        supports_json_mode: item.supports_json_mode !== false,
+        icon: item.icon || "",
+        website_url: item.website_url || "",
+        notes: item.notes || "",
       }))
       .filter((item) => item.service_name && item.model && item.base_url);
 
@@ -1202,16 +1087,14 @@ export default function SettingsPage() {
   };
 
   const openCreateEditor = () => {
-    const defaultPreset = providerPresets.find((preset) => preset.id === "deepseek") || providerPresets[0];
+    const defaultPreset = providerPresets[0];
     if (!defaultPreset) return;
 
     setEditingConfigId(null);
     setFormProviderChoice(defaultPreset.id);
     setFormCustomServiceName("");
-    setFormModelChoice(defaultPreset.models[0]?.id || CUSTOM_OPTION);
     setFormCustomModel("");
-    setFormUrlChoice(defaultPreset.default_base_url);
-    setFormBaseUrl(defaultPreset.default_base_url);
+    setFormBaseUrl("");
     setFormApiKey("");
     setFormIsActive(apiConfigs.length === 0);
     setShowFormApiKey(false);
@@ -1221,25 +1104,17 @@ export default function SettingsPage() {
   };
 
   const openEditEditor = (configItem: LlmApiConfig) => {
-    const matchedPreset = providerPresets.find((preset) => preset.id === configItem.provider_id);
-
     setEditingConfigId(configItem.id);
-    setFormProviderChoice(matchedPreset ? matchedPreset.id : CUSTOM_OPTION);
-    setFormCustomServiceName(matchedPreset ? "" : configItem.service_name);
+    setFormProviderChoice(
+      configItem.api_format === "anthropic"
+        ? "anthropic-compatible"
+        : configItem.api_format === "openai"
+          ? "openai-compatible"
+          : configItem.api_format || ""
+    );
+    setFormCustomServiceName(configItem.service_name);
 
-    if (matchedPreset?.models.some((model) => model.id === configItem.model)) {
-      setFormModelChoice(configItem.model);
-      setFormCustomModel("");
-    } else {
-      setFormModelChoice(CUSTOM_OPTION);
-      setFormCustomModel(configItem.model);
-    }
-
-    if (matchedPreset && normalizeBaseUrl(matchedPreset.default_base_url, matchedPreset.id) === normalizeBaseUrl(configItem.base_url, configItem.provider_id)) {
-      setFormUrlChoice(matchedPreset.default_base_url);
-    } else {
-      setFormUrlChoice(CUSTOM_OPTION);
-    }
+    setFormCustomModel(configItem.model);
     setFormBaseUrl(configItem.base_url);
     setFormApiKey(configItem.api_key);
     setFormIsActive(configItem.is_active);
@@ -1247,78 +1122,6 @@ export default function SettingsPage() {
     setFormErrors({});
     setListFeedback(null);
     onEditorOpen();
-  };
-
-  const handleProviderChoiceChange = (value: string) => {
-    setFormProviderChoice(value);
-    setFetchedModelOptions([]);
-    if (value === CUSTOM_OPTION) {
-      setFormCustomServiceName(resolvedFormServiceName);
-      setFormModelChoice(CUSTOM_OPTION);
-      setFormCustomModel(resolvedFormModel);
-      setFormUrlChoice(CUSTOM_OPTION);
-      setFormBaseUrl(resolvedFormBaseUrl);
-      return;
-    }
-
-    const preset = providerPresets.find((item) => item.id === value);
-    if (!preset) return;
-
-    setFormCustomServiceName("");
-    setFormModelChoice(preset.models[0]?.id || CUSTOM_OPTION);
-    setFormCustomModel("");
-    setFormUrlChoice(preset.default_base_url);
-    setFormBaseUrl(preset.default_base_url);
-
-    if (preset.id === "ollama") {
-      setFormApiKey("");
-    }
-  };
-
-  const enableCustomServiceEdit = () => {
-    if (formProviderChoice !== CUSTOM_OPTION) {
-      setFormCustomServiceName(resolvedFormServiceName);
-      setFormProviderChoice(CUSTOM_OPTION);
-      setFormModelChoice(CUSTOM_OPTION);
-      setFormCustomModel(resolvedFormModel);
-      setFormUrlChoice(CUSTOM_OPTION);
-      setFormBaseUrl(resolvedFormBaseUrl);
-    }
-  };
-
-  const handleServiceInputChange = (value: string) => {
-    if (formProviderChoice !== CUSTOM_OPTION) {
-      enableCustomServiceEdit();
-    }
-    setFormCustomServiceName(value);
-  };
-
-  const enableCustomModelEdit = () => {
-    if (formModelChoice !== CUSTOM_OPTION) {
-      setFormCustomModel(resolvedFormModel);
-      setFormModelChoice(CUSTOM_OPTION);
-    }
-  };
-
-  const handleModelInputChange = (value: string) => {
-    if (formModelChoice !== CUSTOM_OPTION) {
-      enableCustomModelEdit();
-    }
-    setFormCustomModel(value);
-  };
-
-  const enableCustomUrlEdit = () => {
-    if (formUrlChoice !== CUSTOM_OPTION) {
-      setFormBaseUrl(resolvedFormBaseUrl);
-      setFormUrlChoice(CUSTOM_OPTION);
-    }
-  };
-
-  const handleUrlInputChange = (value: string) => {
-    if (formUrlChoice !== CUSTOM_OPTION) {
-      enableCustomUrlEdit();
-    }
-    setFormBaseUrl(value);
   };
 
   const handleActivateConfig = (targetId: string) => {
@@ -1345,16 +1148,26 @@ export default function SettingsPage() {
       return;
     }
 
-    const nextProviderId = resolvedFormProviderId;
+    const previous = editingConfigId ? apiConfigs.find((item) => item.id === editingConfigId) : null;
+    const nextProviderId = previous?.provider_id || resolvedFormProviderId;
     const nextConfig: LlmApiConfig = {
+      ...(previous || {}),
       id: editingConfigId || createConfigId(),
       provider_id: nextProviderId,
       service_name: resolvedFormServiceName,
       model: resolvedFormModel,
-      base_url: normalizeBaseUrl(resolvedFormBaseUrl, nextProviderId),
-      api_key: nextProviderId === "ollama" ? "" : formApiKey.trim(),
+      base_url: normalizeBaseUrl(resolvedFormBaseUrl),
+      api_key: formApiKey.trim(),
       is_active: formIsActive,
-      extra_params: {},
+      extra_params: previous?.extra_params || {},
+      api_format: currentFormPreset?.api_format || previous?.api_format || "",
+      credential_ref: previous?.credential_ref || "",
+      models: previous?.models || {},
+      default_headers: previous?.default_headers || {},
+      supports_json_mode: previous?.supports_json_mode !== false,
+      icon: previous?.icon || "",
+      website_url: previous?.website_url || "",
+      notes: previous?.notes || "",
     };
 
     setApiConfigs((prev) => {
@@ -1872,11 +1685,23 @@ export default function SettingsPage() {
               <h3 className="text-2xl font-bold text-[var(--foreground)]">爬虫认证配置</h3>
             </div>
           </div>
-          <p className="text-xs font-medium leading-relaxed text-[var(--foreground-muted)]">
-            部分招聘平台需要登录后的 Cookie 才能获取数据。在浏览器登录后，
-            按 F12 - Network - 复制任意请求的 Cookie 字段粘贴到这里。Cookie 仅保存在本地。
+          <div className="bauhaus-panel-sm bg-[var(--surface-muted)] px-4 py-3">
+            <p className="text-xs font-semibold text-[var(--foreground)]">推荐：在浏览器扩展里连接</p>
+            <p className="mt-1 text-xs font-medium leading-relaxed text-[var(--foreground-muted)]">
+              先在浏览器登录 BOSS直聘，然后打开 OfferU 浏览器助手 → 设置 → 「连接 BOSS 登录态」。
+              登录态会直接发送到本机 OfferU，不需要手动复制 Cookie。
+            </p>
+          </div>
+          <p className="text-xs font-medium text-[var(--foreground-muted)]">
+            {bossCookie === "***已配置***"
+              ? "BOSS直聘：已连接"
+              : "BOSS直聘：未连接，采集会跳过该来源。"}
           </p>
 
+          <details className="group" data-testid="boss-cookie-manual">
+            <summary className="cursor-pointer text-xs font-medium text-[var(--foreground-muted)]">
+              高级：手动粘贴 Cookie（扩展不可用时）
+            </summary>
           <Input
             label="BOSS直聘 Cookie"
             variant="bordered"
@@ -1909,6 +1734,8 @@ export default function SettingsPage() {
             }
             classNames={bauhausFieldClassNames}
           />
+
+          </details>
 
           <Input
             label="智联招聘 Cookie（可选）"
@@ -1980,196 +1807,23 @@ export default function SettingsPage() {
             {editingConfigId ? "编辑模型配置" : "新增模型配置"}
           </ModalHeader>
           <ModalBody className="grid grid-cols-1 gap-4 overflow-y-auto px-6 py-6 md:grid-cols-2">
-            <Autocomplete
-              label="服务选择"
-              variant="bordered"
-              allowsCustomValue
-              menuTrigger="manual"
-              selectedKey={formProviderChoice === CUSTOM_OPTION ? null : formProviderChoice}
-              value={formProviderChoice === CUSTOM_OPTION ? formCustomServiceName : resolvedFormServiceName}
-              onInputChange={(value) => {
-                if (providerSelectionRef.current) {
-                  providerSelectionRef.current = false;
-                  return;
-                }
-                handleServiceInputChange(value);
-              }}
-              onSelectionChange={(key) => {
-                if (!key) return;
-                providerSelectionRef.current = true;
-                handleProviderChoiceChange(String(key));
-              }}
-              description={
-                formProviderChoice === CUSTOM_OPTION
-                  ? "当前为自定义服务，可直接编辑"
-                  : "左侧可直接输入，右侧可展开预设服务列表"
-              }
-              isInvalid={Boolean(formErrors.service_name)}
-              errorMessage={formErrors.service_name}
-              placeholder="例如：DeepSeek"
-              selectorButtonProps={{
-                size: "sm",
-                variant: "flat",
-                className: "min-h-10 h-10 w-10 min-w-10 border border-[var(--border-strong)] bg-[#F0C020] text-[var(--foreground)]",
-              }}
-              inputProps={{
-                classNames: bauhausAutocompleteInputClassNames,
-              }}
-              classNames={{
-                base: "w-full",
-                listboxWrapper: "max-h-56",
-              }}
-              listboxProps={{
-                emptyContent: "暂无预设服务",
-              }}
-            >
-              {providerSelectOptions.map((item) => (
-                <AutocompleteItem key={item.id} textValue={item.label}>
-                  <div className="flex flex-col">
-                    <span className="font-medium text-[var(--foreground)]">{item.label}</span>
-                    {item.description && <span className="text-xs text-[var(--foreground-muted)]">{item.description}</span>}
-                  </div>
-                </AutocompleteItem>
-              ))}
-            </Autocomplete>
-
-            <Autocomplete
-              label="模型选择"
-              variant="bordered"
-              allowsCustomValue
-              menuTrigger="manual"
-              selectedKey={formModelChoice === CUSTOM_OPTION ? null : formModelChoice}
-              value={formModelChoice === CUSTOM_OPTION ? formCustomModel : resolvedFormModel}
-              onInputChange={(value) => {
-                if (modelSelectionRef.current) {
-                  modelSelectionRef.current = false;
-                  return;
-                }
-                handleModelInputChange(value);
-              }}
-              onSelectionChange={(key) => {
-                if (!key) return;
-                modelSelectionRef.current = true;
-                setFormModelChoice(String(key));
-                setFormCustomModel("");
-              }}
-              description={
-                formModelChoice === CUSTOM_OPTION
-                  ? "当前为自定义模型，可直接编辑"
-                  : "左侧可直接输入，右侧可展开预设模型列表"
-              }
-              isInvalid={Boolean(formErrors.model)}
-              errorMessage={formErrors.model}
-              placeholder="例如：deepseek-v4-flash"
-              selectorButtonProps={{
-                size: "sm",
-                variant: "flat",
-                className: "min-h-10 h-10 w-10 min-w-10 border border-[var(--border-strong)] bg-[#F0C020] text-[var(--foreground)]",
-              }}
-              inputProps={{
-                classNames: bauhausAutocompleteInputClassNames,
-              }}
-              classNames={{
-                base: "w-full",
-                listboxWrapper: "max-h-56",
-              }}
-              listboxProps={{
-                emptyContent: "暂无预设模型",
-              }}
-            >
-              {modelSelectOptions.map((item) => (
-                <AutocompleteItem key={item.id} textValue={item.label}>
-                  <div className="flex flex-col">
-                    <span className="font-medium text-[var(--foreground)]">{item.label}</span>
-                    {item.description && <span className="text-xs text-[var(--foreground-muted)]">{item.description}</span>}
-                  </div>
-                </AutocompleteItem>
-              ))}
-            </Autocomplete>
-
-            <div className="flex items-center gap-2 md:col-span-2">
-              <FetchModelsButton
-                baseUrl={formUrlChoice === CUSTOM_OPTION ? formBaseUrl : resolvedFormBaseUrl}
-                apiKey={formApiKey}
-                onModelsFetched={(models) => {
-                  if (models.length > 0) {
-                    const options: SelectOption[] = models.map((m) => ({
-                      id: m.id,
-                      label: m.name || m.id,
-                      description: m.owned_by || "",
-                    }));
-                    setFetchedModelOptions(options);
-                    setFormModelChoice(models[0].id);
-                    setFormCustomModel("");
-                  }
-                }}
-              />
-              <span className="text-xs text-[var(--foreground-muted)]">根据接口地址和密钥获取可用模型列表</span>
-            </div>
-
-            <Autocomplete
-              label="接口地址选择"
-              variant="bordered"
-              allowsCustomValue
-              menuTrigger="manual"
-              selectedKey={formUrlChoice === CUSTOM_OPTION ? null : formUrlChoice}
-              value={formUrlChoice === CUSTOM_OPTION ? formBaseUrl : resolvedFormBaseUrl}
-              onInputChange={(value) => {
-                if (urlSelectionRef.current) {
-                  urlSelectionRef.current = false;
-                  return;
-                }
-                handleUrlInputChange(value);
-              }}
-              onSelectionChange={(key) => {
-                if (!key) return;
-                urlSelectionRef.current = true;
-                const value = String(key);
-                setFormUrlChoice(value);
-                setFormBaseUrl(value);
-              }}
-              description={
-                formUrlChoice === CUSTOM_OPTION
-                  ? "当前为自定义 URL，可直接编辑"
-                  : "左侧可直接输入，右侧可展开预设 URL 列表"
-              }
-              isInvalid={Boolean(formErrors.base_url)}
-              errorMessage={formErrors.base_url}
-              placeholder="https://..."
-              selectorButtonProps={{
-                size: "sm",
-                variant: "flat",
-                className: "min-h-10 h-10 w-10 min-w-10 border border-[var(--border-strong)] bg-[#F0C020] text-[var(--foreground)]",
-              }}
-              inputProps={{
-                classNames: bauhausAutocompleteInputClassNames,
-              }}
-              classNames={{
-                base: "w-full",
-                listboxWrapper: "max-h-56",
-              }}
-              listboxProps={{
-                emptyContent: "暂无预设 URL",
-              }}
-            >
-              {urlSelectOptions.map((item) => (
-                <AutocompleteItem key={item.id} textValue={item.label}>
-                  <div className="flex flex-col">
-                    <span className="font-medium text-[var(--foreground)]">{item.label}</span>
-                    {item.description && <span className="text-xs text-[var(--foreground-muted)]">{item.description}</span>}
-                  </div>
-                </AutocompleteItem>
-              ))}
-            </Autocomplete>
-
+            <label className="text-xs font-semibold text-[var(--foreground-muted)]">接口协议
+              <select value={formProviderChoice} onChange={(event) => setFormProviderChoice(event.target.value)} className="mt-2 block min-h-10 w-full border border-[var(--border-strong)] bg-white px-3 text-sm">
+                {providerPresets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}
+              </select>
+              {formErrors.api_format && <p className="mt-1 text-xs text-red-600">{formErrors.api_format}</p>}
+            </label>
+            <Input label="服务名称" variant="bordered" value={formCustomServiceName} onValueChange={setFormCustomServiceName} placeholder="例如：我的模型服务" isInvalid={Boolean(formErrors.service_name)} errorMessage={formErrors.service_name} classNames={bauhausFieldClassNames} />
+            <Input label="模型 ID" variant="bordered" value={formCustomModel} onValueChange={setFormCustomModel} placeholder="例如：claude-sonnet-4-5" isInvalid={Boolean(formErrors.model)} errorMessage={formErrors.model} classNames={bauhausFieldClassNames} />
+            <Input label="接口地址" variant="bordered" value={formBaseUrl} onValueChange={setFormBaseUrl} placeholder="https://..." isInvalid={Boolean(formErrors.base_url)} errorMessage={formErrors.base_url} classNames={bauhausFieldClassNames} />
             <Input
               label="API 密钥"
               variant="bordered"
               value={formApiKey}
               onValueChange={setFormApiKey}
-              placeholder={resolvedFormProviderId === "ollama" ? "Ollama 无需密钥" : "sk-... 或 env:MY_API_KEY"}
+              placeholder={isLocalEndpoint(formBaseUrl) ? "本地端点可留空" : "API key 或 env:VAR_NAME"}
               type={showFormApiKey ? "text" : "password"}
-              isDisabled={resolvedFormProviderId === "ollama"}
+              isDisabled={false}
               isInvalid={Boolean(formErrors.api_key)}
               errorMessage={formErrors.api_key}
               classNames={bauhausFieldClassNames}
@@ -2192,7 +1846,7 @@ export default function SettingsPage() {
 
             <Divider className="my-1 border-[var(--border-strong)]/10 md:col-span-2" />
             <p className="text-xs font-medium text-[var(--foreground-muted)] md:col-span-2">
-              所有字段均必填。服务名称、模型名称、接口地址均支持预设选择和手动输入。
+              服务名称、模型 ID 和接口地址由你自行填写；本地端点可以不填写 API key。
             </p>
           </ModalBody>
           <ModalFooter className="border-t-2 border-[var(--border-strong)] px-6 py-5">

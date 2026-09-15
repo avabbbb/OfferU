@@ -9,6 +9,7 @@ pydantic-settings>=2.5.0
 eval_type_backport>=0.2.0  # Python 3.9 compat for X | Y in Pydantic models
 httpx>=0.27.0
 openai>=2.30.0
+anthropic>=0.69.0
 python-multipart==0.0.31
 weasyprint>=60.0
 reportlab>=4.0.0

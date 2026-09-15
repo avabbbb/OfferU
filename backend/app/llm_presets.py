@@ -10,6 +10,22 @@ from __future__ import annotations
 
 from typing import Any
 
+# The user-facing catalogue contains protocols, not vendor/model choices.
+ENDPOINT_PROTOCOL_TEMPLATES: list[dict[str, Any]] = [
+    {
+        "id": "openai-compatible",
+        "name": "OpenAI-compatible",
+        "description": "OpenAI-compatible endpoint with a custom service name, URL, and model ID.",
+        "api_format": "openai",
+    },
+    {
+        "id": "anthropic-compatible",
+        "name": "Anthropic-compatible",
+        "description": "Anthropic Messages endpoint with a custom service name, URL, and model ID.",
+        "api_format": "anthropic",
+    },
+]
+
 # cc-switch 风格的内置预设：id 只作身份 slug，name/base_url/models 用于
 # 前端「新增配置」与「一键导入」时预填。接入任意 OpenAI 兼容 API 始终可用（见 custom）。
 PROVIDER_PRESETS: list[dict[str, Any]] = [

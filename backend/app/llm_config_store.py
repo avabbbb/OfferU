@@ -11,6 +11,9 @@ from __future__ import annotations
 import json
 import os
 import re
+import asyncio
+import ipaddress
+from urllib.parse import urlsplit
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -202,6 +205,11 @@ async def probe_llm_endpoint(
     api_key: str,
     model: str,
     provider: str = "custom",
+    api_format: str = "openai",
+    default_headers: dict[str, str] | None = None,
+    ssl_verify: bool = True,
+    timeout: float = 15.0,
+    http_client: Any | None = None,
 ) -> dict[str, Any]:
     """对指定 base_url / api_key / model 做一次真实连接探测。
 
@@ -210,7 +218,17 @@ async def probe_llm_endpoint(
     """
     import httpx
 
+    hostname = (urlsplit((base_url or "").strip()).hostname or "").lower().rstrip(".")
+    try:
+        is_local = hostname == "localhost" or ipaddress.ip_address(hostname).is_loopback
+    except ValueError:
+        is_local = hostname == "localhost"
+    key_is_env_ref = (api_key or "").strip().lower().startswith("env:")
     resolved_key = resolve_api_key(api_key)
+    if key_is_env_ref and not resolved_key:
+        resolved_key = ""
+    if not resolved_key and is_local and not key_is_env_ref:
+        resolved_key = "local"
     if not resolved_key or resolved_key in _PLACEHOLDER_API_KEYS:
         return {
             "success": False,
@@ -226,19 +244,65 @@ async def probe_llm_endpoint(
             "model": model,
             "message": "Base URL 未配置。",
         }
+    if api_format not in {"openai", "anthropic"}:
+        return {"success": False, "provider": provider, "model": model, "message": f"不支持的 API 协议: {api_format}"}
+    if api_format == "anthropic":
+        try:
+            from anthropic import AsyncAnthropic
+
+            created_client = http_client is None
+            client = AsyncAnthropic(
+                api_key=resolved_key,
+                base_url=clean_base,
+                timeout=timeout,
+                default_headers=default_headers or {},
+                http_client=http_client or httpx.AsyncClient(
+                    transport=httpx.AsyncHTTPTransport(verify=ssl_verify),
+                    timeout=timeout,
+                    trust_env=False,
+                ),
+            )
+            try:
+                response = await asyncio.wait_for(client.messages.create(
+                    model=model, max_tokens=5, messages=[{"role": "user", "content": "Hi"}],
+                ), timeout=timeout)
+                text = "".join(getattr(block, "text", "") for block in response.content).strip()
+                if not text:
+                    return {"success": False, "provider": provider, "model": model, "message": "服务返回空文本。"}
+                return {"success": True, "provider": provider, "model": model, "message": "连接成功，Anthropic 服务返回了文本。"}
+            finally:
+                if created_client:
+                    await client.close()
+        except Exception as exc:
+            return {"success": False, "provider": provider, "model": model, "message": f"检测失败: {safe_error_message(exc)}"}
     safe_base = redact_sensitive_text(clean_base, max_length=300)
     test_url = f"{clean_base}/chat/completions"
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {resolved_key}"}
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {resolved_key}", **(default_headers or {})}
     payload = {"model": model, "messages": [{"role": "user", "content": "Hi"}], "max_tokens": 5}
     try:
-        async with httpx.AsyncClient(
-            timeout=15.0,
+        created_client = http_client is None
+        client = http_client or httpx.AsyncClient(
+            transport=httpx.AsyncHTTPTransport(verify=ssl_verify),
+            timeout=timeout,
             follow_redirects=False,
             trust_env=False,
-        ) as client:
+        )
+        try:
             resp = await client.post(test_url, json=payload, headers=headers)
+        finally:
+            if created_client:
+                await client.aclose()
         if resp.status_code == 200:
             body = resp.json()
+            choices = body.get("choices") if isinstance(body, dict) else None
+            content = choices[0].get("message", {}).get("content") if choices else ""
+            if not isinstance(content, str) or not content.strip():
+                return {
+                    "success": False,
+                    "provider": provider,
+                    "model": model,
+                    "message": "服务返回了无效或空的文本响应。",
+                }
             model_used = body.get("model", model)
             return {
                 "success": True,
