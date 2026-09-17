@@ -28,6 +28,10 @@ from pydantic import BaseModel, Field
 
 router = APIRouter()
 
+from app.services.job_sources.normalize import observations_to_ingest
+from app.services.job_sources.protocol import JobSearchQuery
+from app.services.job_sources.router import job_source_router
+
 TRIAGE_STATUSES = {"inbox", "picked", "ignored"}
 ALLOWED_SORT_FIELDS = {"created_at", "posted_at", "title", "company"}
 TRIAGE_ALIAS_GROUPS = {
@@ -466,6 +470,47 @@ async def weekly_report(db: AsyncSession = Depends(get_db)):
         "top_keywords": [{"keyword": k, "count": c} for k, c in top_keywords],
     }
 
+class JobSourceSearchParams(BaseModel):
+    """Agent/前端发起的通用岗位搜索；平台选择交给 JobSourceRouter。"""
+    keywords: str = Field(min_length=1, max_length=200)
+    location: str = Field(default="", max_length=100)
+    limit: int = Field(default=20, ge=1, le=100)
+    sources: Optional[str] = None  # 逗号分隔 source_id 白名单；None=全部可用源
+
+@router.get("/source-search")
+async def source_search(
+    keywords: str = Query(min_length=1, max_length=200),
+    location: str = Query(default="", max_length=100),
+    limit: int = Query(default=20, ge=1, le=100),
+    sources: Optional[str] = Query(default=None, description="逗号分隔 source_id"),
+):
+    """多源岗位搜索：JobSourceRouter 聚合 + 跨源去重，保留每源 provenance。"""
+    only = [s.strip() for s in (sources or "").split(",") if s.strip()] or None
+    query = JobSearchQuery(keywords=keywords, location=location, limit=limit)
+    result = await job_source_router.search_all(query, only=only)
+    return {
+        "ok": True,
+        "observations": [
+            {
+                "source": o.source,
+                "external_job_id": o.external_job_id,
+                "source_url": o.source_url,
+                "title": o.title,
+                "company": o.company,
+                "location": o.location,
+                "salary": o.salary,
+                "experience": o.experience,
+                "education": o.education,
+                "captured_at": o.captured_at.isoformat(),
+                "raw_hash": o.raw_hash,
+                "metadata": o.metadata,
+            }
+            for o in result.observations
+        ],
+        "source_statuses": result.source_statuses,
+        "source_errors": result.source_errors,
+        "source_counts": result.source_counts,
+    }
 @router.get("/triage-counts")
 async def triage_counts(db: AsyncSession = Depends(get_db)):
     """返回分拣状态计数（兼容旧状态和新状态命名）。"""

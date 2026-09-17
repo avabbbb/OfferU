@@ -24,7 +24,7 @@ from app.services.career_memory import record_learning_observation
 from app.services.security_redaction import safe_error_message
 
 
-CHANNELS = frozenset({"email", "sms_forward"})
+CHANNELS = frozenset({"email", "sms_forward", "boss"})
 APPLICATION_STAGES = frozenset(
     {
         "prepared",
@@ -536,7 +536,7 @@ async def ingest_application_signal(
 ) -> dict[str, Any]:
     clean_channel = str(channel or "").strip().lower()
     if clean_channel not in CHANNELS:
-        raise ValueError("channel 只能是 email 或 sms_forward")
+        raise ValueError("channel 只能是 email / sms_forward / boss")
     clean_account_ref = _clean_text(account_ref, "account_ref", limit=160, required=True)
     clean_message_id = _clean_text(
         external_message_id,

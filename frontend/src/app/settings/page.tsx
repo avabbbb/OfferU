@@ -50,6 +50,7 @@ import { safeClientErrorMessage } from "@/lib/safe-error";
 import { SHOWCASE } from "@/lib/showcase/router";
 import { useConfig, updateConfig } from "@/lib/hooks";
 import { AgentConnectionPanel } from "@/components/workbench/AgentConnectionPanel";
+import { JobSourceConnectionsCard } from "@/components/settings/JobSourceConnectionsCard";
 
 interface ProviderPreset {
   id: string;
@@ -1338,6 +1339,8 @@ export default function SettingsPage() {
       </section>
 
       <AgentConnectionPanel />
+      <JobSourceConnectionsCard />
+
 
       <LocalDataSafetyCard />
 

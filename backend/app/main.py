@@ -55,12 +55,20 @@ if settings.offeru_enable_mcp:
 else:
     mcp_server = None
     _HAS_MCP = False
-from app.routes import jobs, resume, calendar, email, config, applications, scraper, pools, profile, profile_agent, optimize, interview, main_agent, templates, interviews, research, memory, studio, bridge
+from app.routes import jobs, resume, calendar, email, config, applications, scraper, pools, profile, profile_agent, optimize, interview, main_agent, templates, interviews, research, memory, studio, bridge, connections
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用启动时初始化数据库表与 MCP 会话管理器。"""
     await init_db()
+    # JobSource V1: register adapters into the shared router. BOSS is
+    # EXPERIMENTAL/READ_ONLY; local sources wrap the existing jobs table.
+    from app.services.job_sources.router import job_source_router
+    from app.services.job_sources.adapters.local import ManualJobSource, WebJobSource
+    from app.services.job_sources.adapters.boss import BossJobSource
+    job_source_router.register(ManualJobSource())
+    job_source_router.register(WebJobSource())
+    job_source_router.register(BossJobSource())
     from app.services.startup_recovery import (
         finish_startup_recovery,
         reset_startup_recovery,
@@ -371,6 +379,7 @@ app.include_router(memory.router, prefix="/api/memory", tags=["Memory"])
 # studio.router 自带 prefix="/api/studio"，直接注册
 app.include_router(studio.router)
 app.include_router(bridge.router, prefix="/api/bridge", tags=["Bridge"])
+app.include_router(connections.router, prefix="/api/connections", tags=["Connections"])
 
 # ---- 静态文件（头像等上传文件） ----
 UPLOAD_DIR = os.fspath(runtime_uploads_dir())

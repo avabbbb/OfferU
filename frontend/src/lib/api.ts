@@ -1739,3 +1739,53 @@ export const memoryApi = {
       body: JSON.stringify({ action, note }),
     }),
 };
+
+// ---- JobSource / Connections ----
+
+export interface JobSourceConnection {
+  source_id: string;
+  label: string;
+  description: string;
+  experimental: boolean;
+  status: "READY" | "AUTH_REQUIRED" | "DEGRADED" | "UNAVAILABLE" | "EXPERIMENTAL";
+  connected: boolean;
+  capabilities: string[];
+  last_sync: string | null;
+}
+
+export interface JobSourceObservation {
+  source: string;
+  external_job_id: string;
+  source_url: string;
+  title: string;
+  company: string;
+  location: string;
+  salary: string;
+  experience: string;
+  education: string;
+  captured_at: string;
+  raw_hash: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface JobSourceSearchResult {
+  ok: boolean;
+  observations: JobSourceObservation[];
+  source_statuses: Record<string, JobSourceConnection["status"]>;
+  source_errors: Record<string, string>;
+  source_counts: Record<string, number>;
+}
+
+export const connectionsApi = {
+  list: () =>
+    request<{ ok: boolean; connections: JobSourceConnection[] }>("/api/connections/"),
+
+  search: (params: { keywords: string; location?: string; limit?: number; sources?: string[] }) => {
+    const qs = new URLSearchParams();
+    qs.set("keywords", params.keywords);
+    if (params.location) qs.set("location", params.location);
+    if (params.limit) qs.set("limit", String(params.limit));
+    if (params.sources?.length) qs.set("sources", params.sources.join(","));
+    return request<JobSourceSearchResult>(`/api/jobs/source-search?${qs.toString()}`);
+  },
+};

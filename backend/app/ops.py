@@ -35,6 +35,8 @@ from app.services.privacy_hygiene import (
     scrub_legacy_email_notification_bodies,
 )
 from app.services.job_ingest import JobIngestItem, import_job_batch
+from app.services.job_sources.protocol import JobSearchQuery
+from app.services.job_sources.router import job_source_router
 from app.services.scraper_operations import finalize_scraper_batch, start_scraper_batch
 from app.services.harness_operations import (
     delete_harness_conversation,
@@ -1694,6 +1696,36 @@ async def _prepare_resume_optimization_after_pre_application(
     return await prepare_resume_optimization(**kwargs)
 
 
+async def _search_jobs_via_sources(
+    keywords: str,
+    location: str = "",
+    limit: int = 20,
+    sources: list[str] | None = None,
+) -> dict[str, Any]:
+    """Operation 实现：JobSourceRouter 聚合搜索，provenance 透传。"""
+    query = JobSearchQuery(keywords=keywords, location=location, limit=limit)
+    result = await job_source_router.search_all(query, only=sources)
+    return {
+        "observations": [
+            {
+                "source": o.source,
+                "external_job_id": o.external_job_id,
+                "source_url": o.source_url,
+                "title": o.title,
+                "company": o.company,
+                "location": o.location,
+                "salary": o.salary,
+                "experience": o.experience,
+                "education": o.education,
+                "captured_at": o.captured_at.isoformat(),
+            }
+            for o in result.observations
+        ],
+        "source_statuses": result.source_statuses,
+        "source_errors": result.source_errors,
+        "source_counts": result.source_counts,
+    }
+
 OPERATIONS: dict[str, Operation] = {
     "get_data_safety_status": Operation(
         name="get_data_safety_status",
@@ -2180,6 +2212,22 @@ OPERATIONS: dict[str, Operation] = {
         side_effects=("external", "write"),
         input_model=StartScraperBatchInput,
         version="2026-08-28",
+    ),
+    "search_jobs": Operation(
+        name="search_jobs",
+        fn=lambda keywords, location="", limit=20, sources=None: _search_jobs_via_sources(
+            keywords=keywords, location=location, limit=limit, sources=sources
+        ),
+        description="跨数据源搜索岗位：JobSourceRouter 聚合 Manual/Web/BOSS 等源，跨源去重，保留每源 provenance。源失败不等于空结果。",
+        parameters={
+            "keywords": "str",
+            "location": "str=",
+            "limit": "int=20",
+            "sources": "list[str]?",
+        },
+        group="jobs",
+        side_effects=("read", "external"),
+        version="2026-09-17",
     ),
     "finalize_scraper_batch": Operation(
         name="finalize_scraper_batch",
