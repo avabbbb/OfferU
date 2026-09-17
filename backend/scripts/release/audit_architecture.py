@@ -148,7 +148,7 @@ def _automated_browser_files() -> list[Path]:
         ROOT / "backend" / "app" / "services" / "pdf_exporter.py",
         *sorted((ROOT / "backend" / "scripts" / "e2e").glob("*.py")),
         *sorted((ROOT / "extension" / "scripts").glob("*.mjs")),
-        ROOT / "_tmp_online.cjs",
+        # _tmp_online.cjs was deleted — it was a stale dev script, not a product entry.
     ]
     excluded = {
         # Explicit user-confirmed interactive login boundary, not automated

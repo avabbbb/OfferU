@@ -22,29 +22,30 @@
   <em>本地优先 · 证据驱动 · 人类可控</em>
 </p>
 
-> [!IMPORTANT]
-> OfferU 目前是本地单人 **Internal Beta / Public Release 候选版**，不是公开发布版。
-> 核心本地流程可用，但签名安装包、旧版本升级、clean-machine 独立验收、完整安全/隐私 Gate 以及
-> live 外部 Role Intelligence 证据仍未完成，发布结论保持 `OFFERU_PUBLIC_RELEASE_NOT_READY`，
-> 详见 [STATUS.md](./STATUS.md)。OfferU **不是自动投递机器人**：不会自动提交申请、发送邮件或联系
-> 第三方。AI 的推断必须先成为候选或提案，经你审核后才会变成职业事实。
+<p align="center">
+  <img src="./asset/demo/offeru-demo.gif" alt="OfferU 演示：Today → 岗位 → 岗位情报 → 简历 → Pipeline" width="960" />
+</p>
+
+<p align="center">
+  <em>Internal Beta —— 源码可用，签名安装包尚未发布。详见 <a href="./STATUS.md">Status</a>。</em>
+</p>
 
 <table>
   <tr>
-    <td width="50%"><img src="./asset/screenshots/workbench.png" alt="OfferU 工作台" /></td>
-    <td width="50%"><img src="./asset/screenshots/job-research-handback.png" alt="岗位研究证据审核" /></td>
+    <td width="50%"><img src="./asset/screenshots/01-today-workbench.png" alt="OfferU 工作台" /></td>
+    <td width="50%"><img src="./asset/screenshots/04-job-detail.png" alt="岗位详情与岗位情报" /></td>
   </tr>
   <tr>
     <td align="center"><strong>工作台：岗位、证据与下一步</strong></td>
-    <td align="center"><strong>岗位研究：来源、未知项与候选审核</strong></td>
+    <td align="center"><strong>岗位详情：研究、缺口与准备</strong></td>
   </tr>
   <tr>
-    <td width="50%"><img src="./asset/screenshots/applications.png" alt="投递 Pipeline" /></td>
-    <td width="50%"><img src="./asset/screenshots/interview.png" alt="面试训练" /></td>
+    <td width="50%"><img src="./asset/screenshots/02-pipeline-board.png" alt="投递 Pipeline" /></td>
+    <td width="50%"><img src="./asset/screenshots/08-resume-optimize.png" alt="简历工作区" /></td>
   </tr>
   <tr>
     <td align="center"><strong>Pipeline：阶段、时间线与下一动作</strong></td>
-    <td align="center"><strong>面试：针对性训练与复盘</strong></td>
+    <td align="center"><strong>简历：基于证据的定制</strong></td>
   </tr>
 </table>
 

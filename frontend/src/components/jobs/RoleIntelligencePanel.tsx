@@ -54,6 +54,23 @@ function statusLabel(status?: string) {
   return status || "未开始";
 }
 
+// User-visible preparation stages. The backend exposes only coarse
+// status (pending/running/completed/failed/blocked) — this projection maps it
+// onto steps a non-developer can read. No fabricated progress: a stage only
+// shows as active when the backend status actually reached it.
+const PREPARATION_STAGES = [
+  { key: "queued", label: "已排队", statuses: ["pending"] },
+  { key: "collecting", label: "正在收集同类岗位", statuses: ["running"] },
+  { key: "analyzing", label: "正在对比能力要求", statuses: ["running"] },
+  { key: "complete", label: "岗位情报就绪", statuses: ["completed"] },
+] as const;
+
+function preparationStageIndex(status?: string) {
+  if (!status) return -1;
+  const idx = PREPARATION_STAGES.findIndex((s) => s.statuses.includes(status as never));
+  return idx;
+}
+
 function SignalEvidence({ signal, documents }: { signal: RoleBenchmarkSignal; documents: RoleBenchmarkDocument[] }) {
   const sourceByRef = useMemo(
     () => new Map(documents.map((document) => [document.source_ref, document])),
@@ -293,10 +310,27 @@ export function RoleIntelligencePanel({ jobId }: { jobId: number }) {
           <div className={`bauhaus-panel-sm p-4 ${benchmark.status === "failed" || benchmark.status === "blocked" ? "border-[var(--primary-red)] bg-red-50" : "bg-[var(--surface-muted)]"}`}>
             <div className="flex items-start gap-3">
               {benchmark.status === "failed" || benchmark.status === "blocked" ? <AlertTriangle className="mt-0.5 shrink-0 text-[var(--primary-red)]" size={18} /> : <Spinner className="mt-0.5 shrink-0" size="sm" color="warning" />}
-              <div>
+              <div className="min-w-0 flex-1">
                 <p className="text-sm font-black text-[var(--foreground)]">{statusLabel(benchmark.status)}</p>
                 <p className="mt-1 text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">{benchmark.last_error || `运行 ${benchmark.run_id || ""} 尚未产出可展示的 benchmark snapshot。`}</p>
                 {benchmark.error_id && <p className="mt-2 text-xs font-bold text-[var(--foreground-muted)]">错误 ID：{benchmark.error_id}</p>}
+
+                {/* User-visible progress projection — no fabricated progress */}
+                {benchmark.status !== "failed" && benchmark.status !== "blocked" && (
+                  <div className="mt-3 space-y-1">
+                    {PREPARATION_STAGES.map((stage, i) => {
+                      const active = preparationStageIndex(benchmark.status) === i;
+                      const done = preparationStageIndex(benchmark.status) > i;
+                      return (
+                        <div key={stage.key} className={`flex items-center gap-2 text-xs font-semibold ${active ? "text-[var(--foreground)]" : done ? "text-[var(--foreground-muted)]" : "text-[var(--foreground-soft)]"}`}>
+                          <span className={`inline-block h-1.5 w-1.5 rounded-full ${active ? "bg-[var(--primary-yellow)]" : done ? "bg-[var(--primary-blue)]" : "bg-[var(--border)]"}`} />
+                          {stage.label}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
                 {(benchmark.status === "failed" || benchmark.status === "blocked") && fixtureEnabled && <Button onPress={() => setFixtureConfirmOpen(true)} className="bauhaus-button bauhaus-button-yellow mt-4 !px-4 !py-3 !text-[11px]">用 fixture 验证 UI</Button>}
               </div>
             </div>

@@ -248,7 +248,7 @@ export interface JobFilters {
   education?: string;
   is_campus?: boolean;
   triage_status?: "inbox" | "picked" | "ignored";
-  pool_id?: number | "ungrouped";
+  pool_id?: string;
   batch_id?: string;
 }
 

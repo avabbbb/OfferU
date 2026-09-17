@@ -1,12 +1,12 @@
-"use client";
-
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { usePathname } from "next/navigation";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import useSWR from "swr";
+import { usePathname } from "next/navigation";
 import { agentRuntimeApi, type AgentConnectionsSnapshot } from "./api";
-import { safeClientErrorMessage } from "./safe-error";
 import { SHOWCASE } from "./showcase/router";
+import { safeClientErrorMessage } from "./safe-error";
 import { useWorkbench } from "./workbench";
+import type { components } from "./api-types.generated";
+type AgentContextRequest = components["schemas"]["AgentContextRequest"];
 
 export interface ContextSyncState {
   status: "idle" | "syncing" | "synced" | "failed";
@@ -82,7 +82,7 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
   const inFlight = useRef(false);
   const probeInFlight = useRef(false);
   const controller = useRef<AbortController | null>(null);
-  const queued = useRef<{ sequence: number; body: Record<string, unknown>; title: string } | null>(null);
+  const queued = useRef<{ sequence: number; body: AgentContextRequest; title: string } | null>(null);
   const { data, error, isLoading, isValidating, mutate } = useSWR(
     SHOWCASE || /^\/resume\/print\//.test(pathname) ? null : "offeru-agent-connections",
     agentRuntimeApi.connections,
@@ -151,10 +151,10 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
     }
   }, [record]);
 
-  const payload = useMemo(() => {
+  const payload = useMemo<AgentContextRequest>(() => {
     const agentContext = selection?.data?.agentContext;
     const routeEntity = entityFromRoute(pathname);
-    return JSON.stringify({
+    return {
       scope: "default", route: pathname,
       title: selection?.title || PAGE_NAMES[pathname] || PAGE_NAMES[`/${pathname.split("/")[1]}`] || "当前页面",
       entity_type: selection?.kind || routeEntity.entity_type,
@@ -166,7 +166,7 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
         kind: routeEntity.entity_type, title: "", subtitle: "",
       } } : {}),
       updated_by: "ui",
-    });
+    };
   }, [pathname, selection]);
 
   useEffect(() => {
@@ -175,8 +175,7 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
       sequence.current += 1;
       return;
     }
-    const body = JSON.parse(payload);
-    body.context.reported_at = new Date().toISOString();
+    const body = { ...payload, context: { ...payload.context, reported_at: new Date().toISOString() } };
     queued.current = { sequence: ++sequence.current, body, title: body.title };
     setSync((previous) => ({ ...previous, status: "syncing", title: body.title, error: "" }));
     const timer = window.setTimeout(() => void flush(), 250);

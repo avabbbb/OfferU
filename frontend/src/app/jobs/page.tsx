@@ -200,7 +200,7 @@ export default function JobsPage() {
 
   const scopedPoolFilter =
     (triageStatus === "all" || triageStatus === "inbox" || triageStatus === "picked") && selectedPoolFilter !== "all"
-      ? (selectedPoolFilter === "ungrouped" ? "ungrouped" : Number(selectedPoolFilter))
+      ? (selectedPoolFilter === "ungrouped" ? "ungrouped" : String(selectedPoolFilter))
       : undefined;
   const poolScope = triageStatus === "all" ? undefined : triageStatus;
 

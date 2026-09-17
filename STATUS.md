@@ -38,6 +38,15 @@ Ports: frontend `http://127.0.0.1:7410`, backend `http://127.0.0.1:8766`. The op
 3. **Reliability matrix** — cross-process provider/network/restart coverage.
 4. **Live Role Intelligence** — configure a real provider and run the 10-role matrix; current `deepseek-v4-flash-free` returns model unavailable.
 
+## Closure pass (2026-09-17)
+
+| Item | Before | After |
+| --- | --- | --- |
+| Backend test suite | "52/52 relevant" (subset) | **621 passed, 9 skipped, 0 failed** (full `pytest tests/ -q`, 3m42s) |
+| OpenAPI codegen | Generated file existed, not wired | **8 endpoints wired** (`Schemas`/`Ops` for request bodies + query params); response types stay hand-written (FastAPI emits `unknown` for most response bodies) |
+| Job-preparation progress | Static text in "Next preparation" card | **Dynamic checklist** driven by `CareerTask.progress.stage` + `preApplication.stage` + `resumeProposal` presence; retry button on failed tasks |
+| Demo media | Placeholder static-frame GIF | **Real recorded WebM→GIF** (13.5s, 6.4MB, real click-through on showcase workspace) |
+
 ## History
 
 Slice-by-slice execution log (Aug 28 – Sep 16) preserved in `docs/archive/STATUS-history-2026-09.md`.

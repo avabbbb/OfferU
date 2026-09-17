@@ -1484,7 +1484,8 @@ def _set_cached_export_image(cache_key: tuple[int, str, str], png_bytes: bytes) 
 
 # GET is also exposed for the browser's native download path. POST remains
 # supported for existing API callers and explicit export actions.
-@router.api_route("/{resume_id}/export/pdf", methods=["GET", "POST"])
+@router.get("/{resume_id}/export/pdf", operation_id="export_pdf_get")
+@router.post("/{resume_id}/export/pdf", operation_id="export_pdf_post")
 async def export_pdf(resume_id: int, db: AsyncSession = Depends(get_db)):
     """
     导出简历为 PDF

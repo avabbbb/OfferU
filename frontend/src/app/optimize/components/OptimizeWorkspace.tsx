@@ -74,7 +74,7 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
     lastAppliedSeedRef.current = seedSignature;
   }, [normalizedSeedJobIds]);
 
-  const poolIdForQuery = poolFilter === "all" ? undefined : poolFilter;
+  const poolIdForQuery = poolFilter === "all" ? undefined : String(poolFilter);
   const { data: pools } = usePools("picked");
   const { data: resumeListData } = useResumes();
   const [jobs, setJobs] = useState<Job[]>([]);

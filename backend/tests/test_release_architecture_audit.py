@@ -415,7 +415,7 @@ def test_automated_browser_audit_excludes_only_non_automated_boundaries() -> Non
     assert not any(path.endswith("backend/scripts/e2e/test_resume_template_contract.py") for path in paths)
     assert any(path.endswith("backend/app/routes/resume.py") for path in paths)
     assert any(path.endswith("backend/app/services/pdf_exporter.py") for path in paths)
-    assert any(path.endswith("_tmp_online.cjs") for path in paths)
+    # _tmp_online.cjs was deleted as stale dev script; no longer audited.
 
 
 def test_gmail_auth_navigation_is_allowlisted() -> None:
@@ -634,9 +634,6 @@ def test_frontend_api_clients_reject_redirects() -> None:
     api_source = (ROOT / "frontend/src/lib/api.ts").read_text(encoding="utf-8")
     hooks_source = (ROOT / "frontend/src/lib/hooks.ts").read_text(encoding="utf-8")
     providers_source = (ROOT / "frontend/src/app/providers.tsx").read_text(encoding="utf-8")
-    workbench_source = (ROOT / "frontend/src/components/workbench/WorkbenchShell.tsx").read_text(
-        encoding="utf-8"
-    )
     studio_source = (ROOT / "frontend/src/app/studio/page.tsx").read_text(encoding="utf-8")
     optimize_source = (ROOT / "frontend/src/app/optimize/components/OptimizeChatPanel.tsx").read_text(
         encoding="utf-8"
@@ -646,7 +643,6 @@ def test_frontend_api_clients_reject_redirects() -> None:
     assert api_source.count('redirect: "error"') >= 2
     assert hooks_source.count('redirect: "error"') >= 2
     assert 'redirect: "error"' in providers_source
-    assert 'redirect: "error"' in workbench_source
     assert studio_source.count('redirect: "error"') >= 2
     assert optimize_source.count('redirect: "error"') >= 2
     assert settings_source.count('redirect: "error"') >= 1

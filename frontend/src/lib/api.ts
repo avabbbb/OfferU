@@ -9,6 +9,9 @@ import { SHOWCASE, showcaseHandle } from "./showcase/router";
 import { showcaseChatResponse } from "./showcase/llm";
 import { resolveApiBase } from "./apiBase";
 import { safeClientErrorMessage } from "./safe-error";
+import type { components, operations } from "./api-types.generated";
+type Schemas = components["schemas"];
+type Ops = operations;
 
 const API_BASE = resolveApiBase();
 
@@ -166,39 +169,20 @@ function waitForReconnect(delayMs: number) {
   return new Promise((resolve) => window.setTimeout(resolve, delayMs));
 }
 
-// ---- Jobs API ----
+export type JobsListQuery = Ops["list_jobs_api_jobs__get"]["parameters"]["query"];
+
 export const jobsApi = {
-  list: (params?: {
-    page?: number;
-    page_size?: number;
-    period?: string;
-    source?: string;
-    triage_status?: "inbox" | "picked" | "ignored";
-    pool_id?: number | "ungrouped";
-    batch_id?: string;
-    keyword?: string;
-    job_type?: string;
-    education?: string;
-    is_campus?: boolean;
-  }) =>
+  list: (params?: JobsListQuery) =>
     request(`/api/jobs/?${buildQuery(params as any)}`),
   
   get: (id: number) => request(`/api/jobs/${id}`),
 
   batches: (limit = 30) => request(`/api/jobs/batches?limit=${limit}`),
 
-  patch: (
-    id: number,
-    data: { triage_status?: "inbox" | "picked" | "ignored"; pool_id?: number; clear_pool?: boolean }
-  ) =>
+  patch: (id: number, data: Schemas["JobPatchRequest"]) =>
     request(`/api/jobs/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
 
-  patchBatch: (data: {
-    job_ids: number[];
-    triage_status?: "inbox" | "picked" | "ignored";
-    pool_id?: number;
-    clear_pool?: boolean;
-  }) =>
+  patchBatch: (data: Schemas["JobBatchPatchRequest"]) =>
     request("/api/jobs/batch-update", { method: "PATCH", body: JSON.stringify(data) }),
   
   stats: (period = "week") => request(`/api/jobs/stats?period=${period}`),
@@ -209,22 +193,16 @@ export const poolsApi = {
   list: (scope?: "inbox" | "picked" | "ignored") =>
     request(`/api/pools/?${buildQuery({ scope })}`),
 
-  create: (data: { name: string; scope?: "inbox" | "picked" | "ignored" }) =>
+  create: (data: Partial<Schemas["PoolCreateRequest"]> & { name: string }) =>
     request("/api/pools/", { method: "POST", body: JSON.stringify(data) }),
 
-  update: (id: number, data: { name: string }, scope?: "inbox" | "picked" | "ignored") =>
+  update: (id: number, data: Schemas["PoolUpdateRequest"], scope?: "inbox" | "picked" | "ignored") =>
     request(`/api/pools/${id}?${buildQuery({ scope })}`, { method: "PUT", body: JSON.stringify(data) }),
 
   delete: (id: number, scope?: "inbox" | "picked" | "ignored") =>
     request(`/api/pools/${id}?${buildQuery({ scope })}`, { method: "DELETE" }),
 };
-
-// ---- Resume API ----
 export const resumeApi = {
-  list: () => request("/api/resume/"),
-
-  get: (id: number) => request(`/api/resume/${id}`),
-
   create: (data: any) =>
     request("/api/resume/", { method: "POST", body: JSON.stringify(data) }),
 
@@ -828,14 +806,9 @@ export interface RoleBenchmarkDetail extends RoleBenchmarkSummary {
   signals?: RoleBenchmarkSignal[];
 }
 
-export interface RoleBenchmarkBuildRequest {
+export type RoleBenchmarkBuildRequest = Partial<Omit<Schemas["RoleBenchmarkRequest"], "runtime_id">> & {
   runtime_id?: "codex" | "claude" | "gemini" | "omp" | "pi" | "opencode" | "codebuddy" | "fixture" | "replay" | "boss-fixture" | `plugin:${string}`;
-  role_family?: string;
-  specialization?: string;
-  seniority?: string;
-  region?: string;
-  industry?: string;
-}
+};
 
 export const roleBenchmarkApi = {
   forJob: (jobId: number) =>
@@ -989,7 +962,7 @@ export const agentRuntimeApi = {
     `/api/agent/runtime/connections/${encodeURIComponent(providerId)}/integration`,
     { method: "POST", body: JSON.stringify({ action }), signal: AbortSignal.timeout(360000) },
   ),
-  syncContext: (data: Record<string, unknown>, signal: AbortSignal) => request<{
+  syncContext: (data: Schemas["AgentContextRequest"], signal: AbortSignal) => request<{
     ok: boolean; outputs?: AgentViewSnapshot; errors?: string[];
   }>("/api/agent/context", { method: "PUT", body: JSON.stringify(data), signal }),
   skills: () =>
@@ -1232,9 +1205,8 @@ export const preApplicationApi = {
     ),
   review: (
     decisionId: string,
-    data: {
+    data: Omit<Schemas["PreApplicationDecisionReviewRequest"], "final_decision"> & {
       final_decision: PreApplicationDecisionChoice;
-      note?: string;
     }
   ) =>
     request<PreApplicationDecisionRecord>(

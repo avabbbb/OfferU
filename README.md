@@ -22,30 +22,30 @@
   <em>Local-first · Evidence-driven · Human-controlled</em>
 </p>
 
-> [!IMPORTANT]
-> OfferU is currently a local single-user **Internal Beta / Public Release Candidate**, not a public release.
-> The core local workflow works, but signed installer, previous-release upgrade, clean-machine validation,
-> full security/privacy gates and live external Role Intelligence evidence are still open, so the release
-> verdict stays `OFFERU_PUBLIC_RELEASE_NOT_READY`. See [STATUS.md](./STATUS.md) for the current evidence.
-> OfferU is **not** an auto-apply bot: it never submits applications, sends mail or contacts third parties
-> on its own. AI output becomes career truth only after you review and approve it.
+<p align="center">
+  <img src="./asset/demo/offeru-demo.gif" alt="OfferU demo: Today → Job → Role Intelligence → Resume → Pipeline" width="960" />
+</p>
+
+<p align="center">
+  <em>Internal Beta — source available, signed installer not yet released. See <a href="./STATUS.md">Status</a>.</em>
+</p>
 
 <table>
   <tr>
-    <td width="50%"><img src="./asset/screenshots/workbench.png" alt="OfferU workbench" /></td>
-    <td width="50%"><img src="./asset/screenshots/job-research-handback.png" alt="Job research evidence review" /></td>
+    <td width="50%"><img src="./asset/screenshots/01-today-workbench.png" alt="OfferU workbench" /></td>
+    <td width="50%"><img src="./asset/screenshots/04-job-detail.png" alt="Job detail with role intelligence" /></td>
   </tr>
   <tr>
-    <td align="center"><strong>Workbench: jobs, evidence and next actions</strong></td>
-    <td align="center"><strong>Job research: sources, unknowns, candidate review</strong></td>
+    <td align="center"><strong>Today: jobs, evidence and next actions</strong></td>
+    <td align="center"><strong>Job detail: research, gaps, preparation</strong></td>
   </tr>
   <tr>
-    <td width="50%"><img src="./asset/screenshots/applications.png" alt="Application pipeline" /></td>
-    <td width="50%"><img src="./asset/screenshots/interview.png" alt="Interview preparation" /></td>
+    <td width="50%"><img src="./asset/screenshots/02-pipeline-board.png" alt="Application pipeline" /></td>
+    <td width="50%"><img src="./asset/screenshots/08-resume-optimize.png" alt="Resume workspace" /></td>
   </tr>
   <tr>
     <td align="center"><strong>Pipeline: stages, timeline, next action</strong></td>
-    <td align="center"><strong>Interview: targeted practice and debrief</strong></td>
+    <td align="center"><strong>Resume: tailoring with evidence check</strong></td>
   </tr>
 </table>
 
