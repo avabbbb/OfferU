@@ -6,6 +6,8 @@
 
 长期 Career Profile、模糊目标、跨 Provider Harness 泛化和安全硬门槛由 [`OfferU-EvolveBench v1`](./offeru-evolve-bench-v1.md) 负责。它与 `offeru-core-v1` 分开计分；EvolveBench 的 `NOT_RUN`/`BLOCKED` 不能冒充核心或真实集成通过。
 
+使用冻结真实职业数据的本机私有基准见 [`PRIVATE_REAL_USER_EVAL.md`](./PRIVATE_REAL_USER_EVAL.md)。真实数据、Ground Truth、SkillRoute prompts 与人工评分只保存在 repo 外；未通过 readiness gate 时必须写 `PRIVATE_EVAL_BASELINE_NOT_ESTABLISHED`。
+
 ## 事实源分工
 
 | 问题 | 权威来源 |

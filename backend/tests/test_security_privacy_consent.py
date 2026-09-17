@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import os
 import sys
 import unittest
+from unittest.mock import patch
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -94,7 +95,8 @@ class PrivacyConsentContractTests(unittest.TestCase):
         self.assertTrue(result["is_local"])
 
     def test_interview_runtime_and_authorized_browser_expose_privacy_contract(self) -> None:
-        runtime = get_ai_interview_runtime()
+        with patch.dict(os.environ, {"OFFERU_INTERVIEW_RUNTIME": "replay"}):
+            runtime = get_ai_interview_runtime()
         self.assertFalse(runtime["privacy"]["raw_camera_data_sent_to_backend"])
         self.assertFalse(runtime["privacy"]["raw_audio_stored_by_default"])
         self.assertIn("personality", runtime["evaluation_boundary"]["prohibited_inferences"])

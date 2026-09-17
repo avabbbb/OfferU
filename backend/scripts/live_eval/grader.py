@@ -106,6 +106,12 @@ EXTERNAL_OPERATIONS: tuple[str, ...] = (
 )
 
 _OPERATION_PATTERN = re.compile(r"app\.cli\s+(run|confirm|schema|manifest|ops)\s+([a-z0-9_]+)")
+_SKILL_EXPANSION_PATTERN = re.compile(
+    r"app\.cli\s+manifest\b[^\r\n;&|]*?--skill(?:=|\s+)([a-z0-9_-]+)"
+)
+_SCHEMA_LOAD_PATTERN = re.compile(r"app\.cli\s+schema\s+([a-z0-9_]+)")
+_FULL_REGISTRY_PATTERN = re.compile(r"app\.cli\s+manifest\b[^\r\n;&|]*--all\b")
+_OPERATION_CALL_PATTERN = re.compile(r"app\.cli\s+run\s+([a-z0-9_]+)")
 
 # 在 final_text 里识别「声称已完成」的措辞（用于 false-success 检查）。
 _SUCCESS_CLAIM_PATTERN = re.compile(
@@ -152,6 +158,40 @@ class Trace:
     @property
     def tool_call_count(self) -> int:
         return sum(1 for call in self.tool_calls if call.get("tool") != "result")
+
+    @property
+    def skill_expansions(self) -> list[str]:
+        return [
+            match.group(1)
+            for call in self.tool_calls
+            for match in _SKILL_EXPANSION_PATTERN.finditer(str(call.get("input") or ""))
+        ]
+
+    @property
+    def first_skill(self) -> str:
+        return self.skill_expansions[0] if self.skill_expansions else ""
+
+    @property
+    def schemas_loaded(self) -> list[str]:
+        return [
+            match.group(1)
+            for call in self.tool_calls
+            for match in _SCHEMA_LOAD_PATTERN.finditer(str(call.get("input") or ""))
+        ]
+
+    @property
+    def full_registry_bootstrap_used(self) -> bool:
+        return any(
+            _FULL_REGISTRY_PATTERN.search(str(call.get("input") or ""))
+            for call in self.tool_calls
+        )
+
+    @property
+    def operation_call_count(self) -> int:
+        return sum(
+            len(_OPERATION_CALL_PATTERN.findall(str(call.get("input") or "")))
+            for call in self.tool_calls
+        )
 
 
 # ---------------------------------------------------------------- provider 归类

@@ -74,6 +74,7 @@ def _skill(
 
 _SKILLS = (
     _skill("discovery", "技能中心", "system", "native", "解释 OfferU 能做什么，并选择下一条最短路径。", "general", ("get_profile",), featured=True, order=10, aliases=("help", "menu")),
+    _skill("connection_probe", "连接验证", "system", "native", "仅用于 OfferU 发起的短时本机 Agent 集成验证；读取一次非敏感 nonce，不读取职业档案。", "skill_assistant", ("get_agent_connection_nonce",), featured=False, order=15, aliases=("verify_connection",)),
     _skill("pre_application_decision", "投前决策闭环", "pipeline", "native", "围绕一个真实岗位检查职业证据和调研，生成可复核投前决策；只有使用者确认投或有条件投后才生成简历提案。", "pre_application_workflow", ("get_profile", "list_jobs", "get_job", "get_pre_application_state", "prepare_pre_application_decision", "review_pre_application_decision", "start_job_research", "resume_job_research", "cancel_job_research", "review_job_research", "prepare_resume_optimization"), featured=True, order=20, aliases=("pre_application", "投前决策", "投前")),
     _skill("evaluate_job", "岗位评估", "jobs", "native", "基于档案与真实岗位内容做证据化匹配。", "skill_assistant", ("get_profile", "list_jobs", "get_job", "list_career_artifacts", "save_career_artifact", "triage_job"), featured=True, order=30, aliases=("job", "岗位匹配")),
     _skill("compare_jobs", "岗位对比", "jobs", "native", "用统一维度比较多个岗位并给出有门槛的优先级。", "skill_assistant", ("get_profile", "list_jobs", "get_job", "batch_triage"), featured=True, order=40, aliases=("jobs", "岗位对比")),

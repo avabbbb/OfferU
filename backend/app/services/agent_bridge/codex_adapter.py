@@ -32,7 +32,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import os
 import subprocess
+import urllib.request
 from typing import Any
 
 from app.services.agent_bridge.errors import BridgeProtocolError
@@ -43,6 +45,18 @@ _CUSTOM_TOOL_PROMPT = """\
 {tool_descriptions}
 当用户需要读取 OfferU 岗位、档案或投递数据时，优先调用上述工具并报告结果。
 """
+
+
+def _codex_environment() -> dict[str, str]:
+    environment = dict(os.environ)
+    environment["NO_COLOR"] = "1"
+    proxies = urllib.request.getproxies()
+    for scheme, variable in (("http", "HTTP_PROXY"), ("https", "HTTPS_PROXY")):
+        if variable not in environment and variable.lower() not in environment:
+            proxy = str(proxies.get(scheme) or "").strip()
+            if proxy:
+                environment[variable] = proxy
+    return environment
 
 # The app-server protocol is JSONL.  Career-context reads can legitimately
 # exceed asyncio's 64 KiB default (the default raises ``LimitOverrunError``
@@ -84,10 +98,12 @@ class CodexMainLoopAdapter:
         executable: str | None = None,
         thread_params: dict[str, Any] | None = None,
         turn_timeout: float = 360,
+        turn_effort: str | None = None,
     ):
         self.executable = executable or _resolve_codex_binary()
         self.thread_params = thread_params or {}
         self.turn_timeout = max(30.0, min(float(turn_timeout), 900.0))
+        self.turn_effort = turn_effort
         self.process: asyncio.subprocess.Process | None = None
         self.thread_id = ""
         self.turn_id = ""
@@ -111,14 +127,12 @@ class CodexMainLoopAdapter:
 
     async def start(self) -> None:
         """Spawn `codex app-server --stdio` and complete the Initialize handshake."""
-        import os
         from app.services.coding_agent_runtime import _command
 
         if self.process is not None:
             await self.close()
         self._reader_exit_error = None
-        environment = dict(os.environ)
-        environment["NO_COLOR"] = "1"
+        environment = _codex_environment()
         command, args = _command(self.executable, ["app-server", "--stdio"])
         self.process = await asyncio.create_subprocess_exec(
             command,
@@ -407,7 +421,27 @@ class CodexMainLoopAdapter:
             raise RuntimeError("codex thread/start returned no thread id")
         return {"threadId": self.thread_id, "thread": thread}
 
-    async def start_turn(self, *, prompt: str, cwd: str) -> dict[str, Any]:
+    async def list_skills(self, *, cwd: str, force_reload: bool = True) -> list[dict[str, Any]]:
+        response = await self._request(
+            "skills/list",
+            {"cwds": [cwd], "forceReload": force_reload},
+        )
+        data = response.get("data") or []
+        if not isinstance(data, list):
+            return []
+        for item in data:
+            if isinstance(item, dict) and str(item.get("cwd") or "") == cwd:
+                skills = item.get("skills") or []
+                return skills if isinstance(skills, list) else []
+        return []
+
+    async def start_turn(
+        self,
+        *,
+        prompt: str,
+        cwd: str,
+        skill: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
         """Start a turn on the current thread and wait for its completion push."""
 
         if not self.thread_id:
@@ -424,11 +458,13 @@ class CodexMainLoopAdapter:
                         "type": "text",
                         "text": prompt,
                         "text_elements": [],
-                    }
+                    },
+                    *([skill] if skill else []),
                 ],
                 "cwd": cwd,
                 "approvalPolicy": "never",
                 "sandboxPolicy": {"type": "readOnly", "networkAccess": False},
+                **({"effort": self.turn_effort} if self.turn_effort else {}),
             },
         )
         turn = turn_response.get("turn") or {}

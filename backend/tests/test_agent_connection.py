@@ -4,7 +4,7 @@ import asyncio
 import json
 import time
 import unittest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.services import agent_connection as connection
 from app.services.agent_bridge.codex_adapter import CodexMainLoopAdapter
@@ -23,6 +23,26 @@ class AgentConnectionTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         connection._CHECKS.clear()
         connection._CHECK_LOCK = asyncio.Lock()
+        integration = {
+            "skill_status": "INSTALLED", "skill_version": "1", "skill_hash": "installed",
+            "expected_skill_version": "1", "expected_skill_hash": "expected", "registry_hash": "registry",
+            "can_install": True, "can_live_verify": True, "error": "",
+        }
+        self.integration = integration
+        self.inspect_patch = patch.object(connection.integration_manager, "inspect", return_value=integration)
+        self.inspect_patch.start()
+        self.addCleanup(self.inspect_patch.stop)
+        fake_integration_adapter = MagicMock()
+        fake_integration_adapter.detected_executable.side_effect = lambda fallback="": fallback
+        self.adapter_patch = patch.object(connection.integration_manager, "adapter", return_value=fake_integration_adapter)
+        self.adapter_patch.start()
+        self.addCleanup(self.adapter_patch.stop)
+        self.integration_probe = AsyncMock(return_value={
+            **integration, "integration_status": "VERIFIED", "connection_verified": True, "error": "",
+        })
+        self.probe_patch = patch.object(connection.integration_manager, "probe", self.integration_probe)
+        self.probe_patch.start()
+        self.addCleanup(self.probe_patch.stop)
 
     async def run_probe(self, account=None, *, failure=None, health=None, item=None):
         item = item or detected()
@@ -33,6 +53,7 @@ class AgentConnectionTests(unittest.IsolatedAsyncioTestCase):
             patch.object(connection.runtime, "_probe", AsyncMock(return_value=item)) as probe,
             patch.object(connection.runtime, "list_local_executors", AsyncMock(return_value={"items": [item]})),
             patch.object(connection, "list_provider_health", AsyncMock(return_value={"providers": health or []})),
+            patch("app.services.agent_bridge.codex_adapter._resolve_codex_binary", return_value=item.get("executable_path") or ""),
             patch("app.services.agent_bridge.codex_adapter.CodexMainLoopAdapter", return_value=adapter) as factory,
         ):
             result = await connection.probe_agent_connection(item["id"])
@@ -90,6 +111,7 @@ class AgentConnectionTests(unittest.IsolatedAsyncioTestCase):
         adapter.read_account.assert_awaited_once()
         adapter.close.assert_awaited_once()
         adapter.start_turn.assert_not_called()
+        self.integration_probe.assert_awaited_once_with("codex", "/agent/codex")
         self.assertNotIn("private@example.com", json.dumps(result))
         self.assertNotIn("private-value", json.dumps(result))
         self.assertNotIn("executable_path", item)
@@ -181,10 +203,34 @@ class AgentConnectionTests(unittest.IsolatedAsyncioTestCase):
         result, _, _, factory = await self.run_probe(item=detected(executable_path=None, contract_compatible=False))
         self.assertEqual(result["items"][0]["status"], "missing")
         factory.assert_not_called()
+        self.integration_probe.return_value = {
+            **self.integration,
+            "integration_status": "INSTALLED",
+            "connection_verified": False,
+            "error": "live readback unavailable",
+        }
         result, _, _, factory = await self.run_probe(item=detected("claude"))
         self.assertEqual(result["items"][0]["status"], "check_required")
         self.assertIsNone(result["items"][0]["authenticated"])
         factory.assert_not_called()
+
+    async def test_installed_skill_is_not_ready_without_readback(self):
+        self.integration_probe.return_value = {
+            **self.integration, "integration_status": "ERROR", "connection_verified": False,
+            "error": "wrong nonce",
+        }
+        result, _, _, _ = await self.run_probe({"account": {"type": "chatgpt"}})
+        self.assertEqual(result["items"][0]["status"], "failed")
+        self.assertFalse(result["items"][0]["connection_verified"])
+
+    async def test_missing_skill_requires_integration_install(self):
+        connection.integration_manager.inspect.return_value = {
+            **self.integration, "skill_status": "NOT_INSTALLED", "skill_hash": "",
+        }
+        result, _, _, _ = await self.run_probe({"account": {"type": "chatgpt"}})
+        self.assertEqual(result["items"][0]["status"], "integration_missing")
+        self.assertFalse(result["items"][0]["connection_verified"])
+        self.integration_probe.assert_not_awaited()
 
     async def test_expired_or_replaced_executable_invalidates_success(self):
         await self.run_probe({"account": {"type": "chatgpt"}})

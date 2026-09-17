@@ -24,65 +24,6 @@ const API_BASE = resolveApiBase();
 const APP_VERSION = import.meta.env.VITE_APP_VERSION || "0.0.0";
 const BACKEND_STARTUP_TIMEOUT_MS = 45_000;
 
-const PAGE_TITLES: Record<string, string> = {
-  "/": "今日",
-  "/jobs": "机会",
-  "/resume": "材料",
-  "/optimize": "简历定制",
-  "/applications": "进展",
-  "/interview": "面试",
-  "/calendar": "日程",
-  "/email": "信号收件箱",
-  "/profile": "档案",
-  "/settings": "设置",
-};
-
-function inferPageTitle(pathname: string) {
-  if (/^\/jobs\/\d+/.test(pathname)) return "岗位详情";
-  if (/^\/resume\/\d+/.test(pathname)) return "简历详情";
-  return PAGE_TITLES[pathname] || "OfferU 页面";
-}
-
-function inferEntity(pathname: string) {
-  const jobMatch = pathname.match(/^\/jobs\/(\d+)/);
-  if (jobMatch) return { entity_type: "job", entity_id: jobMatch[1] };
-  const resumeMatch = pathname.match(/^\/resume\/(\d+)/);
-  if (resumeMatch) return { entity_type: "resume", entity_id: resumeMatch[1] };
-  return { entity_type: "", entity_id: "" };
-}
-
-function AgentContextReporter() {
-  const pathname = usePathname();
-
-  useEffect(() => {
-    if (SHOWCASE) return; // 展示模式无后端，跳过上下文同步
-    const controller = new AbortController();
-    const entity = inferEntity(pathname);
-    fetch(`${API_BASE}/api/agent/context`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        scope: "default",
-        route: pathname,
-        title: inferPageTitle(pathname),
-        entity_type: entity.entity_type,
-        entity_id: entity.entity_id,
-      context: {
-        reported_at: new Date().toISOString(),
-      },
-      updated_by: "ui",
-      }),
-      redirect: "error",
-      signal: controller.signal,
-    }).catch(() => {
-      // Context sync should never block the user's UI flow.
-    });
-    return () => controller.abort();
-  }, [pathname]);
-
-  return null;
-}
-
 function OnboardingGate({ children }: { children: React.ReactNode }) {
   const { shouldShowWizard, completeWizard, skipWizard } = useOnboarding();
   const pathname = usePathname();
@@ -246,7 +187,6 @@ export function Providers({ children }: { children: React.ReactNode }) {
     >
       <NextUIProvider>
         <BackendReadyGate>
-          <AgentContextReporter />
           <OnboardingGate>
             {children}
           </OnboardingGate>

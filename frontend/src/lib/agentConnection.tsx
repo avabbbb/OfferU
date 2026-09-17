@@ -33,7 +33,9 @@ interface AgentConnectionContextValue {
   open: boolean;
   setOpen: (value: boolean) => void;
   probing: string | null;
+  integrating: string | null;
   probe: (id: string) => Promise<void>;
+  connect: (id: string, action: "install" | "update" | "repair") => Promise<void>;
   refresh: () => void;
   sync: ContextSyncState;
   retrySync: () => void;
@@ -65,6 +67,7 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
   const { selection } = useWorkbench();
   const [open, setOpen] = useState(false);
   const [probing, setProbing] = useState<string | null>(null);
+  const [integrating, setIntegrating] = useState<string | null>(null);
   const [probeError, setProbeError] = useState("");
   const [offline, setOffline] = useState(() => typeof navigator !== "undefined" && !navigator.onLine);
   const [now, setNow] = useState(Date.now());
@@ -107,8 +110,10 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
     };
   }, [mutate]);
 
-  // A single writer drains only the latest selection. Rapid navigation cannot
-  // let an older successful response overwrite the latest visible sync state.
+  // Single serialized writer. All callers funnel through `queued` — last
+  // enqueued wins, so stale route/selection writes can never overwrite a newer
+  // one. Backend applies writes in arrival order; keeping one in-flight writer
+  // guarantees arrival order matches intent order.
   const flush = useCallback(async () => {
     if (inFlight.current || !mounted.current) return;
     inFlight.current = true;
@@ -202,6 +207,30 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
     }
   }, [data, mutate, record]);
 
+  const connect = useCallback(async (id: string, action: "install" | "update" | "repair") => {
+    if (probeInFlight.current || SHOWCASE) return;
+    probeInFlight.current = true;
+    setIntegrating(id);
+    setProbeError("");
+    const label = data?.items.find((item) => item.id === id)?.name || id;
+    record(`${action === "update" ? "正在更新" : action === "repair" ? "正在修复" : "正在连接"} ${label}`);
+    try {
+      const result = await agentRuntimeApi.connectIntegration(id, action);
+      if (!mounted.current) return;
+      await mutate(result, { revalidate: false });
+      const item = result.items.find((candidate) => candidate.id === id);
+      record(item?.status === "ready" ? `${label} 已验证，可以使用` : `${label} 已处理，请查看下一步`, item?.status !== "ready");
+    } catch (cause) {
+      if (mounted.current) {
+        setProbeError(safeClientErrorMessage(cause, "OfferU 接入失败，请重试。"));
+        record(`${label} 接入失败`, true);
+      }
+    } finally {
+      probeInFlight.current = false;
+      if (mounted.current) setIntegrating(null);
+    }
+  }, [data, mutate, record]);
+
   const refresh = useCallback(() => { setProbeError(""); void mutate().catch(() => undefined); }, [mutate]);
   const retrySync = useCallback(() => setRetry((value) => value + 1), []);
   const stale = Boolean(data && now - Date.parse(data.checked_at) > 45000);
@@ -210,7 +239,7 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
     <ConnectionContext.Provider value={{
       snapshot: data, loading: isLoading, refreshing: isValidating,
       error: probeError || (error ? safeClientErrorMessage(error, "状态更新失败") : ""),
-      stale, offline, open, setOpen, probing, probe, refresh, sync, retrySync, activity,
+      stale, offline, open, setOpen, probing, integrating, probe, connect, refresh, sync, retrySync, activity,
     }}>
       {children}
     </ConnectionContext.Provider>

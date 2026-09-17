@@ -263,7 +263,7 @@ async def probe_llm_endpoint(
         return {"success": False, "provider": provider, "model": model, "message": f"不支持的 API 协议: {api_format}"}
     if api_format == "anthropic":
         try:
-            from anthropic import AsyncAnthropic
+            from anthropic import AsyncAnthropic, DefaultAsyncHttpxClient
 
             created_client = http_client is None
             client = AsyncAnthropic(
@@ -271,8 +271,8 @@ async def probe_llm_endpoint(
                 base_url=clean_base,
                 timeout=timeout,
                 default_headers=default_headers or {},
-                http_client=http_client or httpx.AsyncClient(
-                    transport=httpx.AsyncHTTPTransport(verify=ssl_verify),
+                http_client=http_client or DefaultAsyncHttpxClient(
+                    verify=ssl_verify,
                     timeout=timeout,
                     trust_env=False,
                 ),

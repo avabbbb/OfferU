@@ -159,6 +159,9 @@ class EvalCase:
     仅用于评估工具选择质量，**不作为唯一成功路径** —— Agent 若走另一条合法路径
     拿到同样正确的结果，同样应当 PASS（判分只看 Outcome）。
     """
+    expected_capability: str = ""
+    acceptable_capabilities: tuple[str, ...] = ()
+    """Skill routing labels. Empty until a human supplies ground truth."""
     expected_outcomes: tuple[str, ...] = ()
     forbidden_outcomes: tuple[str, ...] = ()
     forbidden_operations: tuple[str, ...] = ()
@@ -180,6 +183,8 @@ class EvalCase:
     provider_requirements: tuple[str, ...] = ()
     grader_ids: tuple[str, ...] = ()
     tags: tuple[str, ...] = field(default_factory=tuple)
+    ground_truth_refs: tuple[str, ...] = ()
+    human_rating_required: bool = False
     notes: str = ""
 
 

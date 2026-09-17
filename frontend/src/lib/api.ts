@@ -928,9 +928,17 @@ export interface AgentConnection {
   installed: boolean;
   compatible: boolean;
   version: string;
-  status: "missing" | "incompatible" | "check_required" | "ready" | "auth_required" | "blocked" | "failed";
+  status: "missing" | "incompatible" | "integration_missing" | "outdated" | "check_required" | "ready" | "auth_required" | "blocked" | "failed";
   authenticated: boolean | null;
   connection_verified: boolean;
+  integration_status: string;
+  skill_status: "NOT_INSTALLED" | "INSTALLED" | "OUTDATED" | "ERROR" | "NOT_SUPPORTED" | string;
+  skill_version: string;
+  skill_hash: string;
+  expected_skill_version: string;
+  expected_skill_hash: string;
+  can_install_skill: boolean;
+  can_live_verify_skill: boolean;
   auth_mode: string;
   checked_at: string | null;
   detected_at: string | null;
@@ -975,7 +983,11 @@ export const agentRuntimeApi = {
   }),
   probeConnection: (providerId: string) => request<AgentConnectionsSnapshot>(
     `/api/agent/runtime/connections/${encodeURIComponent(providerId)}/probe`,
-    { method: "POST", signal: AbortSignal.timeout(45000) },
+    { method: "POST", signal: AbortSignal.timeout(360000) },
+  ),
+  connectIntegration: (providerId: string, action: "install" | "update" | "repair") => request<AgentConnectionsSnapshot>(
+    `/api/agent/runtime/connections/${encodeURIComponent(providerId)}/integration`,
+    { method: "POST", body: JSON.stringify({ action }), signal: AbortSignal.timeout(360000) },
   ),
   syncContext: (data: Record<string, unknown>, signal: AbortSignal) => request<{
     ok: boolean; outputs?: AgentViewSnapshot; errors?: string[];

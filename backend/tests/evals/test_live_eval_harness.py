@@ -38,7 +38,18 @@ from scripts.live_eval.grader import (  # noqa: E402
     classify_provider_failure,
     grade,
 )
+from scripts.live_eval.human_grading import aggregate_human_ratings  # noqa: E402
 from scripts.live_eval.isolation import diff, has_changes, snapshot  # noqa: E402
+from scripts.live_eval.metrics import aggregate_metrics  # noqa: E402
+from scripts.live_eval.private_dataset import validate_private_dataset  # noqa: E402
+from scripts.live_eval.private_seed import (  # noqa: E402
+    create_private_seed,
+    curate_private_seed,
+    extract_private_prompt_candidates,
+)
+from scripts.live_eval.runner import main as live_eval_main  # noqa: E402
+from scripts.live_eval.private_suite import load_private_real_user_cases  # noqa: E402
+from scripts.live_eval.skill_route import load_skill_route_cases  # noqa: E402
 
 
 # ---------------------------------------------------------------- fixtures
@@ -151,6 +162,279 @@ def test_diff_detects_insert_and_update(tmp_path: Path) -> None:
     assert jobs["added_count"] == 1
     assert jobs["modified_count"] == 1
     assert has_changes(changes)
+
+
+def test_private_seed_uses_online_backup_without_exposing_row_content(tmp_path: Path) -> None:
+    source = _make_db(tmp_path / "real-user.db", jobs=2)
+    connection = sqlite3.connect(str(source))
+    try:
+        connection.execute(
+            "CREATE TABLE profile_sections (id INTEGER PRIMARY KEY, title TEXT, content_json TEXT, source TEXT)"
+        )
+        connection.execute(
+            "INSERT INTO profile_sections VALUES (1, ?, ?, ?)",
+            ("Private Resume", '{"phone":"13800000000"}', "real_user"),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    source_before = source.read_bytes()
+    result = create_private_seed(source, tmp_path / "private-eval")
+
+    assert source.read_bytes() == source_before
+    assert Path(result["seed_path"]).is_file()
+    assert result["integrity_check"] == "ok"
+    assert result["curation_status"] == "NEEDS_USER_CURATION"
+    manifest_text = Path(result["manifest_path"]).read_text(encoding="utf-8")
+    assert "13800000000" not in manifest_text
+    assert "Private Resume" not in manifest_text
+    assert json.loads(manifest_text)["table_counts"]["profile_sections"] == 1
+
+
+def test_private_seed_creates_repo_external_label_templates(tmp_path: Path) -> None:
+    source = _make_db(tmp_path / "real-user.db", jobs=1)
+    result = create_private_seed(source, tmp_path / "private-eval")
+
+    expected = {
+        "ground_truth.template.json",
+        "skill_route_50.template.json",
+        "human_ratings.template.json",
+        "private_real_user_20.template.json",
+    }
+    assert expected <= {Path(path).name for path in result["template_paths"]}
+    for path in result["template_paths"]:
+        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+        assert payload["private"] is True
+        assert "credential" not in json.dumps(payload, ensure_ascii=False).lower()
+
+
+def test_runner_cli_creates_private_seed_workspace(tmp_path: Path) -> None:
+    source = _make_db(tmp_path / "real-user.db", jobs=1)
+    workspace = tmp_path / "private-eval"
+
+    exit_code = live_eval_main([
+        "--private-seed-create",
+        "--source-db",
+        str(source),
+        "--private-workspace",
+        str(workspace),
+    ])
+
+    assert exit_code == 0
+    assert list((workspace / "seeds").glob("*/private_seed.db"))
+    assert (workspace / "skill_route_50.template.json").is_file()
+
+
+def test_private_seed_curation_is_conservative_and_keeps_referenced_candidates(tmp_path: Path) -> None:
+    source = tmp_path / "source.db"
+    connection = sqlite3.connect(str(source))
+    try:
+        connection.execute("PRAGMA foreign_keys=ON")
+        connection.execute(
+            "CREATE TABLE jobs (id INTEGER PRIMARY KEY, title TEXT, source TEXT, batch_id TEXT)"
+        )
+        connection.execute(
+            "CREATE TABLE applications (id INTEGER PRIMARY KEY, job_id INTEGER REFERENCES jobs(id))"
+        )
+        connection.executemany(
+            "INSERT INTO jobs VALUES (?, ?, ?, ?)",
+            [
+                (1, "real", "boss", "real"),
+                (2, "unreferenced demo", "offeru-demo", "fixture"),
+                (3, "referenced demo", "test", "fixture"),
+            ],
+        )
+        connection.execute("INSERT INTO applications VALUES (1, 3)")
+        connection.commit()
+    finally:
+        connection.close()
+
+    seed = create_private_seed(source, tmp_path / "private-eval")
+    curated = curate_private_seed(Path(seed["seed_path"]))
+
+    connection = sqlite3.connect(curated["seed_path"])
+    try:
+        remaining = [row[0] for row in connection.execute("SELECT id FROM jobs ORDER BY id")]
+        foreign_key_errors = connection.execute("PRAGMA foreign_key_check").fetchall()
+    finally:
+        connection.close()
+    assert remaining == [1, 3]
+    assert foreign_key_errors == []
+    assert curated["removed"]["jobs"] == 1
+    assert curated["retained_due_references"]["jobs"] == 1
+
+
+def test_private_prompt_candidates_are_deduplicated_and_secret_redacted(tmp_path: Path) -> None:
+    seed = tmp_path / "seed.db"
+    connection = sqlite3.connect(str(seed))
+    try:
+        connection.execute("CREATE TABLE agent_runs (run_id TEXT PRIMARY KEY, goal TEXT)")
+        connection.executemany(
+            "INSERT INTO agent_runs VALUES (?, ?)",
+            [
+                ("run-1", "帮我看看这个岗位值不值得投"),
+                ("run-2", "帮我看看这个岗位值不值得投"),
+                ("run-3", "Execute OfferU Operation get_job"),
+                ("run-4", "分析这个岗位，api_key=sk-secret-value-12345678901234567890"),
+            ],
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    output = tmp_path / "prompt_candidates.json"
+    result = extract_private_prompt_candidates(seed, output)
+    payload = json.loads(output.read_text(encoding="utf-8"))
+
+    assert result["candidate_count"] == 2
+    assert [item["prompt"] for item in payload["candidates"]][0] == "帮我看看这个岗位值不值得投"
+    serialized = json.dumps(payload, ensure_ascii=False)
+    assert "Execute OfferU Operation" not in serialized
+    assert "sk-secret-value" not in serialized
+    assert "[redacted]" in serialized
+
+
+def test_private_dataset_validator_fails_closed_on_unfilled_templates(tmp_path: Path) -> None:
+    source = _make_db(tmp_path / "real-user.db", jobs=1)
+    seed = create_private_seed(source, tmp_path / "private-eval")
+
+    report = validate_private_dataset(tmp_path / "private-eval", Path(seed["seed_path"]))
+
+    assert report["status"] == "NEEDS_USER_INPUT"
+    assert report["skill_route"]["missing_prompts"] == 50
+    assert report["private_real_user"]["missing_user_turns"] == 20
+    assert report["baseline_allowed"] is False
+
+
+def test_private_dataset_validator_accepts_complete_private_labels(tmp_path: Path) -> None:
+    workspace = tmp_path / "private-eval"
+    source = _make_db(tmp_path / "real-user.db", jobs=1)
+    seed = create_private_seed(source, workspace)
+
+    skill_route_path = workspace / "skill_route_50.template.json"
+    skill_route = json.loads(skill_route_path.read_text(encoding="utf-8"))
+    for index, case in enumerate(skill_route["cases"], start=1):
+        case["prompt"] = f"真实自然语言请求 {index}"
+        case["expected_capability"] = "job"
+    skill_route_path.write_text(json.dumps(skill_route, ensure_ascii=False), encoding="utf-8")
+
+    real_user_path = workspace / "private_real_user_20.template.json"
+    real_user = json.loads(real_user_path.read_text(encoding="utf-8"))
+    for case in real_user["cases"]:
+        case["user_turns"] = [f"请处理 {case['journey']}"]
+        case["outcome_criteria"] = ["final_answer_nonempty"]
+    real_user_path.write_text(json.dumps(real_user, ensure_ascii=False), encoding="utf-8")
+
+    ground_truth_path = workspace / "ground_truth.template.json"
+    ground_truth = json.loads(ground_truth_path.read_text(encoding="utf-8"))
+    ground_truth["jobs"] = [{"job_id": 1, "interest": "strong", "fit": "medium"}]
+    ground_truth["resume"]["supported_facts"] = [{"text": "supported"}]
+    ground_truth["applications"] = [{"application_id": 1, "stage": "interview"}]
+    ground_truth["preferences"] = {"target_role": "AI PM"}
+    ground_truth_path.write_text(json.dumps(ground_truth, ensure_ascii=False), encoding="utf-8")
+
+    report = validate_private_dataset(workspace, Path(seed["seed_path"]))
+
+    assert report["status"] == "READY_FOR_PRIVATE_EVAL"
+    assert report["baseline_allowed"] is True
+
+
+def test_skill_route_loader_builds_fifty_private_eval_cases(tmp_path: Path) -> None:
+    path = tmp_path / "skill_route_50.json"
+    payload = {
+        "private": True,
+        "schema_version": 1,
+        "cases": [
+            {
+                "case_id": f"SR{index:02d}",
+                "category": "core" if index <= 44 else "no_tool_or_clarify",
+                "prompt": f"真实自然语言请求 {index}",
+                "expected_capability": "job" if index <= 44 else "none",
+                "acceptable_capabilities": [],
+                "expected_outcome": "grounded response",
+            }
+            for index in range(1, 51)
+        ],
+    }
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    cases = load_skill_route_cases(path)
+
+    assert len(cases) == 50
+    assert cases[0].expected_capability == "job"
+    assert "read_at_least_one_operation" in cases[0].outcome_criteria
+    assert "read_at_least_one_operation" not in cases[-1].outcome_criteria
+
+
+def test_skill_route_loader_rejects_prompts_that_leak_control_contract(tmp_path: Path) -> None:
+    path = tmp_path / "skill_route_50.json"
+    payload = {
+        "private": True,
+        "schema_version": 1,
+        "cases": [
+            {
+                "case_id": f"SR{index:02d}",
+                "category": "core",
+                "prompt": "请运行 app.cli manifest --skill job" if index == 1 else f"真实请求 {index}",
+                "expected_capability": "job",
+                "acceptable_capabilities": [],
+                "expected_outcome": "grounded response",
+            }
+            for index in range(1, 51)
+        ],
+    }
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="control-contract syntax"):
+        load_skill_route_cases(path)
+
+
+def test_private_real_user_loader_reuses_eval_case_contract(tmp_path: Path) -> None:
+    path = tmp_path / "private_real_user_20.json"
+    payload = {
+        "private": True,
+        "schema_version": 1,
+        "cases": [
+            {
+                "case_id": f"PR{index:02d}",
+                "journey": f"journey_{index}",
+                "user_turns": [f"真实求职请求 {index}"],
+                "outcome_criteria": ["final_answer_nonempty", "no_business_write"],
+                "protected_records": ["jobs:1"],
+                "forbidden_operations": ["submit_application"],
+                "forbidden_side_effects": ["external"],
+                "ground_truth_refs": ["jobs:1"],
+                "human_rating_required": index <= 5,
+            }
+            for index in range(1, 21)
+        ],
+    }
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    cases = load_private_real_user_cases(path)
+
+    assert len(cases) == 20
+    assert cases[0].user_turns == ("真实求职请求 1",)
+    assert cases[0].ground_truth_refs == ("jobs:1",)
+    assert cases[0].human_rating_required is True
+    assert cases[-1].human_rating_required is False
+
+
+def test_human_rating_summary_preserves_low_score_review_queue() -> None:
+    summary = aggregate_human_ratings({
+        "private": True,
+        "ratings": [
+            {"case_id": "PR02", "useful": 5, "grounded": 4, "would_use": "yes"},
+            {"case_id": "PR05", "useful": 2, "grounded": 2, "would_use": "no"},
+        ],
+    })
+
+    assert summary["rating_count"] == 2
+    assert summary["avg_useful"] == 3.5
+    assert summary["avg_grounded"] == 3.0
+    assert summary["would_use_rate"] == 0.5
+    assert summary["low_score_case_ids"] == ["PR05"]
 
 
 # ---------------------------------------------------------------- 3. grader 正反例
@@ -330,6 +614,74 @@ def test_trace_extracts_operations_and_confirm_flag() -> None:
 def test_trace_detects_self_confirm() -> None:
     trace = _trace(tool_calls=[{"tool": "Bash", "input": "app.cli confirm run_abc --action x:1"}])
     assert trace.confirm_used is True
+
+
+def test_trace_exposes_progressive_discovery_metrics() -> None:
+    trace = _trace(tool_calls=[
+        {"tool": "Bash", "input": "python -m app.cli manifest --skill job"},
+        {"tool": "Bash", "input": "python -m app.cli schema get_job"},
+        {"tool": "Bash", "input": "python -m app.cli manifest --skill resume"},
+        {"tool": "Bash", "input": "python -m app.cli schema tailor_resume"},
+        {"tool": "Bash", "input": "python -m app.cli run get_job --arg job_id=1"},
+    ])
+
+    assert trace.first_skill == "job"
+    assert trace.skill_expansions == ["job", "resume"]
+    assert trace.schemas_loaded == ["get_job", "tailor_resume"]
+    assert trace.full_registry_bootstrap_used is False
+    assert trace.operation_call_count == 1
+
+
+def test_trace_detects_full_registry_bootstrap() -> None:
+    trace = _trace(tool_calls=[
+        {"tool": "Bash", "input": "python -m app.cli manifest --all"},
+    ])
+
+    assert trace.full_registry_bootstrap_used is True
+
+
+def test_metrics_aggregate_routing_efficiency_and_p95() -> None:
+    metrics = aggregate_metrics([
+        {
+            "case_id": "SR01",
+            "status": "PASS",
+            "issue_type": "",
+            "hard_gate_violations": [],
+            "elapsed_s": 10.0,
+            "routing": {
+                "top1_correct": True,
+                "recovery_correct": True,
+                "skill_expansion_count": 1,
+                "schema_load_count": 1,
+                "operation_call_count": 1,
+                "full_registry_bootstrap_used": False,
+            },
+        },
+        {
+            "case_id": "SR02",
+            "status": "FAIL",
+            "issue_type": "model_behavior",
+            "hard_gate_violations": [],
+            "elapsed_s": 20.0,
+            "routing": {
+                "top1_correct": False,
+                "recovery_correct": True,
+                "skill_expansion_count": 2,
+                "schema_load_count": 3,
+                "operation_call_count": 2,
+                "full_registry_bootstrap_used": True,
+            },
+        },
+    ])
+
+    assert metrics["skill_top1_accuracy"] == 0.5
+    assert metrics["skill_top3_or_recovery_accuracy"] == 1.0
+    assert metrics["wrong_skill_rate"] == 0.5
+    assert metrics["avg_skill_expansions_per_task"] == 1.5
+    assert metrics["avg_schemas_loaded_per_task"] == 2.0
+    assert metrics["avg_operations_per_task"] == 1.5
+    assert metrics["full_registry_bootstrap_rate"] == 0.5
+    assert metrics["p95_latency_s"] == 20.0
 
 
 # ---------------------------------------------------------------- 6. taxonomy 完整性

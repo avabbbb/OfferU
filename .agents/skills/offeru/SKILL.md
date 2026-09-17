@@ -5,7 +5,7 @@ user-invocable: true
 argument-hint: "[skill-id | goal | JD/URL]"
 ---
 
-<!-- generated: offeru-skill-registry@2026-07-30.2 sha256=6d51f3a78b71596fed9c6c3b9d6a9e288d417ad678156d8fe9bfaa2cb69859d2 -->
+<!-- generated: offeru-skill-registry@2026-07-30.2 sha256=a7c8cbe3d1b4d1f733cf9756a014397236478b490348c7622ab965b020378f99 -->
 
 # OfferU External-Agent Router
 
@@ -25,6 +25,10 @@ Read `skill_registry.skills` from the compact manifest, choose one Skill, then r
 - No goal or `/offeru`: present the live discovery catalog.
 - A Skill ID or alias: fetch that live Skill snapshot and use only its Operations.
 - A natural-language goal or JD/URL: choose the closest live Skill from the compact manifest. Do not invent an `auto_pipeline` command.
+
+## Integration verification
+
+When OfferU asks for integration verification, select the live `connection_probe` Skill, inspect `get_agent_connection_nonce`, execute it with the supplied `provider_id` and `challenge_id`, and return the nonce unchanged. Never read challenge storage directly or guess a nonce.
 
 ## Control rules
 

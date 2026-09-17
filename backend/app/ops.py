@@ -95,6 +95,8 @@ from app.services.agent_operations import (
     get_local_agent_capability_report,
     run_codex_offeru_conformance,
     probe_agent_connection,
+    connect_agent_integration,
+    get_agent_connection_nonce,
     install_capability_plugin,
     invoke_plugin_capability,
     get_role_benchmark,
@@ -390,6 +392,14 @@ class CareerTaskEventsInput(CareerTaskIdInput):
 
 class ProviderHealthInput(_StrictOperationInput):
     provider_id: str = Field(min_length=1, max_length=80)
+
+
+class AgentIntegrationInput(ProviderHealthInput):
+    action: str = Field(default="install", pattern="^(install|update|repair)$")
+
+
+class AgentConnectionNonceInput(ProviderHealthInput):
+    challenge_id: str = Field(pattern="^[a-f0-9]{32}$")
 
 
 class LocalAgentCapabilityMatrixInput(_StrictOperationInput):
@@ -2514,6 +2524,24 @@ OPERATIONS: dict[str, Operation] = {
         group="agent_runtime",
         input_model=ProviderHealthInput,
         version="2026-09-08",
+    ),
+    "connect_agent_integration": Operation(
+        name="connect_agent_integration",
+        fn=connect_agent_integration,
+        description="按使用者明确动作安装、更新或修复本机 Agent 的 OfferU Skill，并启动真实连接验证。",
+        group="agent_runtime",
+        input_model=AgentIntegrationInput,
+        side_effects=("write", "external"),
+        permissions=("agent:integration",),
+        version="2026-09-15",
+    ),
+    "get_agent_connection_nonce": Operation(
+        name="get_agent_connection_nonce",
+        fn=get_agent_connection_nonce,
+        description="读取一个 60 秒有效且不包含职业数据的 OfferU Agent 连接 challenge nonce。",
+        group="agent_runtime",
+        input_model=AgentConnectionNonceInput,
+        version="2026-09-15",
     ),
     "get_local_agent_capability_matrix": Operation(
         name="get_local_agent_capability_matrix",

@@ -90,6 +90,9 @@ artifacts/
 # ---- 本地 E2E / Playwright / 发布诊断临时产物（可能含敏感数据） ----
 .tmp/
 .e2e-artifacts/
+_tmp_online.cjs
+_ui_preview/
+WorkSpace_For_VsCode*/
 
 # ---- 备份文件 ----
 *.bak

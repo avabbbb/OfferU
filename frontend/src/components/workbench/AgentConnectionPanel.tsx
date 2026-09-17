@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Button, Modal, ModalBody, ModalContent, ModalHeader } from "@nextui-org/react";
 import {
   AlertCircle, ArrowRight, Check, CheckCircle2, ChevronDown, Circle,
-  Copy, ExternalLink, Laptop, Loader2, Plug, RefreshCw, Waypoints,
+  ExternalLink, Laptop, Loader2, Plug, RefreshCw, Waypoints,
 } from "lucide-react";
 import { type AgentConnection } from "@/lib/api";
 import { connectionTime, useAgentConnection } from "@/lib/agentConnection";
@@ -13,8 +13,10 @@ import { SHOWCASE } from "@/lib/showcase/router";
 const STATUS = {
   missing: { label: "未检测到", tone: "text-[var(--foreground-muted)]", title: "先准备好本机 Agent", detail: "打开官方指南完成安装，然后回到这里重新检查。" },
   incompatible: { label: "需要修复", tone: "text-amber-700", title: "已找到程序，还需要修复连接", detail: "当前版本或运行组件未通过检查。按官方指南更新后重试。" },
+  integration_missing: { label: "等待连接", tone: "text-amber-700", title: "连接 OfferU 即可开始", detail: "OfferU 会自动安装接入 Skill，并用一次安全回读确认 Agent 真的能使用它。" },
+  outdated: { label: "需要更新", tone: "text-amber-700", title: "更新 OfferU 接入", detail: "Agent 中的 OfferU Skill 已过期。更新后会重新进行安全回读。" },
   check_required: { label: "待检查", tone: "text-[var(--foreground-muted)]", title: "检查一下，就知道能否接入", detail: "OfferU 会检查本机程序和连接能力。已有的登录由你的 Agent 继续管理。" },
-  ready: { label: "检查通过", tone: "text-emerald-700", title: "准备好了，把工作交给你的 Agent", detail: "本机连接与登录检查已通过。复制下面的接入指令，发给你的 Agent，核对它实际读到的内容。" },
+  ready: { label: "已验证", tone: "text-emerald-700", title: "OfferU 已准备好", detail: "Agent 已在全新会话中发现 OfferU，并通过安全回读验证。" },
   auth_required: { label: "等待登录", tone: "text-amber-700", title: "还差一步：登录你的 Agent", detail: "请在 Agent 自己的界面完成登录，再回来检查。可以沿用已有订阅。" },
   blocked: { label: "需要处理", tone: "text-red-700", title: "上次任务遇到了连接问题", detail: "查看下面的原因，在 Agent 中完成修复后重试原任务。本机检查通过后，任务仍需验证服务商响应。" },
   failed: { label: "检查失败", tone: "text-red-700", title: "这次没有连上，可以重试", detail: "确认本机 Agent 能正常启动，再重新检查。" },
@@ -101,8 +103,6 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
   const state = useAgentConnection();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [copyError, setCopyError] = useState("");
   const candidates = state.snapshot?.items || [];
   const beginnerCandidates = candidates.filter((item) => item.beginner);
   const suggested = beginnerCandidates.find((item) => item.recommended)
@@ -111,20 +111,15 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
   const presentation = selected ? currentStatus(selected) : STATUS.check_required;
   const ready = presentation === STATUS.ready;
   const localReady = Boolean(selected?.connection_verified && selected.checked_at && Date.now() - Date.parse(selected.checked_at) <= 120000);
-  const checking = Boolean(selected && state.probing === selected.id);
+  const checking = Boolean(selected && (state.probing === selected.id || state.integrating === selected.id));
   const visible = showAll ? candidates : beginnerCandidates;
   const syncFailed = state.sync.status === "failed";
   const syncDone = state.sync.status === "synced";
 
-  const copyPrompt = async () => {
-    setCopyError("");
-    try {
-      await navigator.clipboard.writeText(state.snapshot?.connect_prompt || "");
-      setCopied(true);
-    } catch {
-      setCopyError("未能复制。展开下方接入指令，手动复制后发给你的 Agent。");
-    }
-  };
+  const skillInstalled = selected?.skill_status === "INSTALLED";
+  const integrationAction = selected?.skill_status === "NOT_INSTALLED" ? "install"
+    : selected?.skill_status === "OUTDATED" ? "update"
+    : selected?.skill_status === "ERROR" ? "repair" : null;
 
   return (
     <section id={embedded ? undefined : "agent-connection"} data-testid={embedded ? "agent-provider-health-dialog" : "agent-provider-health"}
@@ -160,7 +155,7 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
             {!state.loading && !candidates.length && <p className="py-3 text-xs leading-relaxed text-[var(--foreground-muted)]">{state.error ? "连接工作台后，即可发现本机 Agent。" : "尚未取得检测结果，请重新检测。"}</p>}
             <div className="grid grid-cols-2 gap-2 md:grid-cols-1" role="group" aria-label="本机 Agent 列表">
               {visible.map((item) => <button type="button" key={item.id} aria-pressed={selected?.id === item.id}
-                onClick={() => { setSelectedId(item.id); setCopied(false); setCopyError(""); }}
+                onClick={() => setSelectedId(item.id)}
                 className={`flex min-w-0 items-center gap-2.5 rounded-xl border px-3 py-3 text-left transition-colors focus-visible:outline focus-visible:outline-2 ${selected?.id === item.id ? "border-[var(--foreground)] bg-[var(--surface-muted)]" : "border-transparent hover:bg-[var(--surface-muted)]"}`}>
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-xs font-bold">{item.id === "codex" ? ">_" : item.name.slice(0, 1)}</span>
                 <span className="min-w-0 flex-1">
@@ -184,27 +179,29 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
               {selected.last_error && <div role="alert" className="mt-3 break-words rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">{selected.last_error}</div>}
               <ol className="my-6 space-y-5" aria-label="接入步骤">
                 <SetupStep index={1} title="找到本机 Agent" done={selected.installed} detail={selected.installed ? selected.version || "已发现本机运行环境" : "安装后，OfferU 会自动发现它。"} />
-                <SetupStep index={2} title="检查连接与登录" done={localReady} busy={checking}
-                  detail={localReady ? `本机检查通过 · ${connectionTime(selected.checked_at)}` : selected.can_verify_login ? "点击下方按钮检查，通常只需几秒。" : "可检查本机组件；该 Agent 的登录仍需在其原生界面确认。"} />
-                <SetupStep index={3} title="同步当前工作" done={syncDone} busy={state.sync.status === "syncing"}
+                <SetupStep index={2} title="安装 OfferU 接入" done={skillInstalled} busy={Boolean(state.integrating)}
+                  detail={skillInstalled ? `Skill ${selected.skill_version || "已安装"}` : selected.skill_status === "OUTDATED" ? "已有接入需要更新。" : "OfferU 会自动完成，不需要复制文件或命令。"} />
+                <SetupStep index={3} title="验证 Agent 真能读取" done={localReady} busy={checking}
+                  detail={localReady ? `安全回读通过 · ${connectionTime(selected.checked_at)}` : selected.can_live_verify_skill ? "启动全新 Agent 会话并读取一次短期随机码；不会读取职业数据。" : "该 Agent 的自动回读仍在适配中。"} />
+                <SetupStep index={4} title="同步当前工作" done={syncDone} busy={state.sync.status === "syncing"}
                   detail={syncDone ? `工作台已收到「${state.sync.title}」，Agent 可按需读取。` : syncFailed ? "同步遇到问题，可在下方重试。" : "自动同步当前页面和显式选中的内容。"} />
               </ol>
               <div className="flex flex-wrap items-center gap-2">
-                {(localReady || (selected.compatible && !selected.can_verify_login)) && state.snapshot?.connect_prompt ? <Button size="sm" onPress={() => void copyPrompt()} startContent={copied ? <Check size={14} /> : <Copy size={14} />}
-                  className="bg-[var(--foreground)] px-4 text-xs font-semibold text-[var(--surface)]">{copied ? "已复制，发给你的 Agent" : localReady ? "复制接入指令" : "复制指令，在 Agent 中继续"}</Button>
-                  : !selected.installed && selected.docs_url ? <a href={selected.docs_url} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-[var(--foreground)] px-4 text-xs font-semibold text-[var(--surface)]">查看安装指南 <ExternalLink size={12} /></a> : null}
-                <Button size="sm" onPress={() => void state.probe(selected.id)} isLoading={checking} isDisabled={Boolean(state.probing)}
-                  className={ready || !selected.installed ? "border border-[var(--border)] bg-[var(--surface)] text-xs font-semibold text-[var(--foreground)]" : "bg-[var(--foreground)] px-4 text-xs font-semibold text-[var(--surface)]"}>
-                  {checking ? "正在检查" : ready ? "重新检查" : selected.status === "auth_required" ? "登录后检查" : "检查接入"}
-                </Button>
+                {!selected.installed && selected.docs_url ? <a href={selected.docs_url} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-[var(--foreground)] px-4 text-xs font-semibold text-[var(--surface)]">安装 Agent <ExternalLink size={12} /></a>
+                  : integrationAction && selected.can_install_skill ? <Button size="sm" onPress={() => void state.connect(selected.id, integrationAction)} isLoading={checking} isDisabled={Boolean(state.probing || state.integrating)}
+                    className="bg-[var(--foreground)] px-4 text-xs font-semibold text-[var(--surface)]">{integrationAction === "update" ? "更新接入" : integrationAction === "repair" ? "修复接入" : "连接 OfferU"}</Button>
+                  : <Button size="sm" onPress={() => void state.probe(selected.id)} isLoading={checking} isDisabled={Boolean(state.probing || state.integrating)}
+                    className={ready ? "border border-[var(--border)] bg-[var(--surface)] text-xs font-semibold text-[var(--foreground)]" : "bg-[var(--foreground)] px-4 text-xs font-semibold text-[var(--surface)]"}>
+                    {checking ? "正在验证" : ready ? "重新验证" : selected.status === "auth_required" ? "登录后验证" : "验证接入"}
+                  </Button>}
                 {selected.installed && selected.docs_url && <a href={selected.docs_url} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center gap-1.5 px-2 text-xs text-[var(--foreground-muted)]">{selected.status === "auth_required" ? "登录指南" : "官方指南"} <ExternalLink size={12} /></a>}
               </div>
-              {copyError && <p role="alert" className="mt-3 text-xs text-amber-700">{copyError}</p>}
-              {localReady && !state.snapshot?.connect_prompt && <p className="mt-3 text-xs leading-relaxed text-amber-700">当前安装包未提供外部 Agent 接入指令，请通过已配置的 OfferU 接入包继续。</p>}
               <details className="mt-5 text-xs text-[var(--foreground-muted)]">
-                <summary className="w-fit cursor-pointer py-1">查看检查详情{state.snapshot?.connect_prompt ? "与接入指令" : ""}</summary>
+                <summary className="w-fit cursor-pointer py-1">高级检查详情</summary>
                 <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 leading-relaxed">
                   <dt>安装与能力</dt><dd>{selected.compatible ? "本机组件检查通过" : "尚未通过"}</dd>
+                  <dt>OfferU Skill</dt><dd>{selected.skill_status}{selected.skill_version ? ` · ${selected.skill_version}` : ""}</dd>
+                  <dt>安全回读</dt><dd>{selected.connection_verified ? "已验证" : "未验证"}</dd>
                   <dt>本机登录</dt><dd>{selected.authenticated === true ? "已读取登录信息" : selected.authenticated === false ? "需要登录" : "尚未确认"}</dd>
                   <dt>服务商响应</dt><dd>{capabilityState(selected.live_model_state).label}</dd>
                   <dt>生命周期</dt><dd>继续 {capabilityState(selected.resume_state).label} · 取消 {capabilityState(selected.cancel_state).label}</dd>
@@ -221,7 +218,7 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
                     </div>;
                   })}
                 </div>
-                {state.snapshot?.connect_prompt && <p className="mt-3 select-text whitespace-pre-wrap break-words rounded-lg bg-[var(--surface-muted)] p-3 leading-6">{state.snapshot.connect_prompt}</p>}
+                {state.snapshot?.connect_prompt && <p className="mt-3 select-text whitespace-pre-wrap break-words rounded-lg bg-[var(--surface-muted)] p-3 leading-6">高级手动接入：{state.snapshot.connect_prompt}</p>}
               </details>
             </> : <div className="flex min-h-48 flex-col items-center justify-center gap-3 text-center text-[var(--foreground-muted)]"><Laptop size={28} strokeWidth={1.25} /><p className="text-sm">连接工作台后，从这里开始。</p></div>}
           </div>

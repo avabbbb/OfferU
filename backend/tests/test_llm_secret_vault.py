@@ -83,7 +83,11 @@ class LlmSecretVaultTests(unittest.TestCase):
             payload = config_payload()
             vault.dehydrate(payload)
 
-            restored = {"llm_api_configs": [dict(payload["llm_api_configs"][0])], "deepseek_api_key": ""}
+            restored = {
+                "llm_api_configs": [dict(payload["llm_api_configs"][0])],
+                "deepseek_api_key": "",
+                "secret_refs": dict(payload["secret_refs"]),
+            }
             vault.hydrate(restored)
 
         self.assertEqual(restored["llm_api_configs"][0]["api_key"], "sk-real-key")

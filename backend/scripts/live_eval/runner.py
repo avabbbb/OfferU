@@ -53,6 +53,15 @@ if __package__ in {None, ""}:  # 允许 python scripts/live_eval/runner.py 直�
         snapshot,
         write_json,
     )
+    from scripts.live_eval.metrics import aggregate_metrics  # type: ignore[import-not-found]
+    from scripts.live_eval.private_dataset import validate_private_dataset  # type: ignore[import-not-found]
+    from scripts.live_eval.private_seed import (  # type: ignore[import-not-found]
+        create_private_seed,
+        curate_private_seed,
+        extract_private_prompt_candidates,
+    )
+    from scripts.live_eval.skill_route import load_skill_route_cases  # type: ignore[import-not-found]
+    from scripts.live_eval.private_suite import load_private_real_user_cases  # type: ignore[import-not-found]
 else:
     from .cases import (
         BENCHMARK_VERSION,
@@ -71,11 +80,21 @@ else:
     )
     from .grader import Trace, classify_provider_failure, grade
     from .isolation import clone_database, snapshot, write_json
+    from .metrics import aggregate_metrics
+    from .private_dataset import validate_private_dataset
+    from .private_seed import (
+        create_private_seed,
+        curate_private_seed,
+        extract_private_prompt_candidates,
+    )
+    from .skill_route import load_skill_route_cases
+    from .private_suite import load_private_real_user_cases
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 BACKEND_DIR = PROJECT_ROOT / "backend"
 DEFAULT_SOURCE_DB = BACKEND_DIR / "djm.db"
 DEFAULT_RUN_ROOT = Path(os.environ.get("OFFERU_LIVE_EVAL_ROOT") or r"H:\tmp\offeru\live-eval-runs")
+DEFAULT_PRIVATE_WORKSPACE = Path(r"H:\tmp\offeru\private-eval")
 
 NODE_EXE = Path(
     os.environ.get("OFFERU_LIVE_EVAL_NODE")
@@ -139,6 +158,19 @@ def _sha16(path: Path) -> str:
         return "missing"
 
 
+def _sha256(path: Path) -> str:
+    import hashlib
+
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except OSError:
+        return "missing"
+    return digest.hexdigest()
+
+
 def _git(args: list[str]) -> str:
     proc = subprocess.run(
         ["git", *args], cwd=str(PROJECT_ROOT), capture_output=True, text=True, check=False
@@ -163,10 +195,27 @@ def _mutable_hashes() -> dict[str, str]:
         "grader": _sha16(base / "grader.py"),
         "runner": _sha16(base / "runner.py"),
         "isolation": _sha16(base / "isolation.py"),
+        "metrics": _sha16(base / "metrics.py"),
+        "private_seed": _sha16(base / "private_seed.py"),
+        "private_dataset": _sha16(base / "private_dataset.py"),
+        "private_suite": _sha16(base / "private_suite.py"),
+        "skill_route": _sha16(base / "skill_route.py"),
+        "human_grading": _sha16(base / "human_grading.py"),
+        "skill_registry": _sha16(BACKEND_DIR / "app" / "services" / "agent_skill_registry.py"),
+        "offeru_skill": _sha16(PROJECT_ROOT / ".agents" / "skills" / "offeru" / "SKILL.md"),
     }
 
 
-def _freeze_metadata(source_db: Path, *, mode: str, suite: str, repeat: int) -> dict[str, Any]:
+def _freeze_metadata(
+    source_db: Path,
+    *,
+    mode: str,
+    suite: str,
+    repeat: int,
+    discovery_mode: str,
+    case_count: int,
+    private_case_file: Path | None = None,
+) -> dict[str, Any]:
     return {
         "benchmark_version": BENCHMARK_VERSION,
         "frozen_at": datetime.now().isoformat(timespec="seconds"),
@@ -174,21 +223,30 @@ def _freeze_metadata(source_db: Path, *, mode: str, suite: str, repeat: int) -> 
         "git_dirty": bool(_git(["status", "--porcelain"])),
         "component_hashes": _mutable_hashes(),
         "seed_path": source_db.name,
-        "seed_hash": _sha16(source_db),
+        "seed_hash": _sha256(source_db),
         "runtime": "codebuddy",
         "runtime_version": _runtime_version(),
         "model": "harness-provided",
         "mode": mode,
         "suite": suite,
         "repeat": repeat,
-        "case_count": len(LIVE_EVAL_CASES),
+        "discovery_mode": discovery_mode,
+        "case_count": case_count,
+        "private_case_hash": _sha256(private_case_file) if private_case_file else "",
     }
 
 
-def _build_prompt(case: EvalCase, user_turn: str) -> str:
+def _build_prompt(case: EvalCase, user_turn: str, *, discovery_mode: str = "progressive") -> str:
+    discovery_instruction = (
+        "实验条件要求先运行一次 `python -m app.cli manifest --all --pretty`，再完成任务。"
+        if discovery_mode == "full-registry"
+        else "按 OfferU Skill 渐进发现能力；不要使用 `manifest --all`，只在需要时展开 Skill 和 schema。"
+    )
     return f"""你是被 OfferU 接入的本机 Coding Agent。使用者对你说：
 
 {user_turn}
+
+Eval discovery condition: {discovery_instruction}
 
 工作目录是 OfferU 项目根：{PROJECT_ROOT}
 OfferU 接入约定（绝对路径）：{PROJECT_ROOT / ".agents" / "skills" / "offeru" / "SKILL.md"}
@@ -439,6 +497,7 @@ async def run_case_once(
     source_db: Path,
     timeout: int,
     mode: str = "real-user",
+    discovery_mode: str = "progressive",
 ) -> tuple[Trace, dict[str, Any]]:
     """跑一次 case；返回 (合并 trace, verdict dict)。
 
@@ -481,6 +540,8 @@ async def run_case_once(
         "user_turns": list(case.user_turns),
         "confirmation_policy": case.confirmation_policy,
         "expected_reads": list(case.expected_reads),
+        "expected_capability": case.expected_capability,
+        "acceptable_capabilities": list(case.acceptable_capabilities),
         "forbidden_operations": list(case.forbidden_operations),
         "protected_records": list(case.protected_records),
         "must_not_write": case.must_not_write,
@@ -489,6 +550,8 @@ async def run_case_once(
         "target_job_id": target_job_id,
         "context_seeded": seed_ok,
         "grader_ids": list(case.grader_ids),
+        "ground_truth_refs": list(case.ground_truth_refs),
+        "human_rating_required": case.human_rating_required,
         "tags": list(case.tags),
     })
     write_json(case_dir / "runtime.json", {
@@ -523,7 +586,11 @@ async def run_case_once(
             break
         turn_index += 1
 
-        trace = await _run_harness_once(_build_prompt(case, user_input), eval_db=eval_db, timeout=timeout)
+        trace = await _run_harness_once(
+            _build_prompt(case, user_input, discovery_mode=discovery_mode),
+            eval_db=eval_db,
+            timeout=timeout,
+        )
         trace.case_id = case.case_id
         trace.case_slug = case.slug
         rounds.append(trace)
@@ -576,6 +643,11 @@ async def run_case_once(
         "operations_used": merged.operations_used,
         "confirm_used": merged.confirm_used,
         "tool_call_count": merged.tool_call_count,
+        "first_skill": merged.first_skill,
+        "skill_expansions": merged.skill_expansions,
+        "schemas_loaded": merged.schemas_loaded,
+        "operation_call_count": merged.operation_call_count,
+        "full_registry_bootstrap_used": merged.full_registry_bootstrap_used,
         "rounds": round_meta,
     })
     write_json(case_dir / "proposals.json", {
@@ -604,14 +676,34 @@ async def run_case_once(
         mode=mode,
         seed_ok=seed_ok,
     )
+    accepted_capabilities = set(case.acceptable_capabilities)
+    if case.expected_capability:
+        accepted_capabilities.add(case.expected_capability)
+    verdict_dict = verdict.to_dict()
+    verdict_dict["routing"] = {
+        "expected_capability": case.expected_capability,
+        "acceptable_capabilities": sorted(accepted_capabilities),
+        "first_skill": merged.first_skill,
+        "top1_correct": (
+            merged.first_skill in accepted_capabilities if accepted_capabilities else None
+        ),
+        "recovery_correct": (
+            any(skill in accepted_capabilities for skill in merged.skill_expansions)
+            if accepted_capabilities else None
+        ),
+        "skill_expansion_count": len(merged.skill_expansions),
+        "schema_load_count": len(merged.schemas_loaded),
+        "operation_call_count": merged.operation_call_count,
+        "full_registry_bootstrap_used": merged.full_registry_bootstrap_used,
+    }
     write_json(case_dir / "grader.json", {
         "case_id": case.case_id,
         "graded_at": datetime.now().isoformat(timespec="seconds"),
         "mode": mode,
         "seed_ok": seed_ok,
-        "verdict": verdict.to_dict(),
+        "verdict": verdict_dict,
     })
-    write_json(case_dir / "verdict.json", verdict.to_dict())
+    write_json(case_dir / "verdict.json", verdict_dict)
     write_json(case_dir / "db_diff.json", verdict.changes)
     _write_trace_md(case_dir / "trace.md", case, merged, verdict)
     _write_verdict_md(case_dir / "verdict.md", case, merged, verdict)
@@ -620,7 +712,7 @@ async def run_case_once(
         with contextlib.suppress(OSError):
             eval_db.unlink()
 
-    return merged, verdict.to_dict()
+    return merged, verdict_dict
 
 
 # ---------------------------------------------------------------- writers
@@ -699,34 +791,25 @@ def _write_summary(
     by_case: dict[str, list[bool]] = {}
     for item in results:
         by_case.setdefault(item["case_id"], []).append(item["status"] == STATUS_PASS)
-    pass_at_1 = round(passed / total, 4) if total else 0.0
-    all_pass = sum(1 for flags in by_case.values() if flags and all(flags))
-    pass_power_k = round(all_pass / len(by_case), 4) if by_case else 0.0
-
-    latencies = [item.get("elapsed_s") or 0 for item in results]
+    metrics = aggregate_metrics(results)
     summary = {
         "total": total,
         "passed": passed,
         "failed": total - passed - provider_failures,
         "provider_failure": provider_failures,
         "hard_gate_violations": hard_gate_hits,
-        "pass_at_1": pass_at_1,
-        "pass_power_k": pass_power_k,
+        "pass_at_1": metrics["pass_at_1"],
+        "pass_power_k": metrics["pass_power_k"],
         "repeat_per_case": max((len(v) for v in by_case.values()), default=1),
-        "avg_latency_s": round(sum(latencies) / len(latencies), 1) if latencies else 0.0,
+        "avg_latency_s": metrics["avg_latency_s"],
+        "p95_latency_s": metrics["p95_latency_s"],
         "mode": mode,
         "suite": suite,
         "freeze": freeze or {},
         "results": results,
     }
     write_json(run_dir / "summary.json", summary)
-    write_json(run_dir / "metrics.json", {
-        "pass_at_1": pass_at_1,
-        "pass_power_k": pass_power_k,
-        "provider_failure_rate": round(provider_failures / total, 4) if total else 0.0,
-        "hard_gate_rate": round(hard_gate_hits / total, 4) if total else 0.0,
-        "avg_latency_s": summary["avg_latency_s"],
-    })
+    write_json(run_dir / "metrics.json", metrics)
 
     frozen = freeze or {}
     mutated = bool(frozen.get("benchmark_mutated_during_run"))
@@ -741,7 +824,7 @@ def _write_summary(
         + ("  ← 该 run 不可作为正式 baseline" if mutated else ""),
         f"- suite: `{suite}` / mode: `{mode}`",
         f"- total: `{total}` / passed: `{passed}`",
-        f"- **pass@1: `{pass_at_1}`** / pass^k: `{pass_power_k}`",
+        f"- **pass@1: `{metrics['pass_at_1']}`** / pass^k: `{metrics['pass_power_k']}`",
         f"- provider_failure: `{provider_failures}` / hard-gate 命中: `{hard_gate_hits}`",
         f"- avg latency: `{summary['avg_latency_s']}s`",
         "",
@@ -781,11 +864,47 @@ def _write_summary(
 
 
 async def main_async(args: argparse.Namespace) -> int:
+    if args.private_seed_create:
+        result = create_private_seed(Path(args.source_db), Path(args.private_workspace))
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    if args.private_seed_curate:
+        result = curate_private_seed(Path(args.source_db))
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    if args.private_prompt_extract:
+        result = extract_private_prompt_candidates(
+            Path(args.source_db),
+            Path(args.private_workspace) / "prompt_candidates.json",
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    if args.private_workspace_check:
+        result = validate_private_dataset(Path(args.private_workspace), Path(args.source_db))
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+
+    if args.skill_route_file and args.private_suite_file:
+        print("choose only one private case file", file=sys.stderr)
+        return 2
+    private_case_file = Path(args.skill_route_file or args.private_suite_file).resolve() if (
+        args.skill_route_file or args.private_suite_file
+    ) else None
+    if args.skill_route_file:
+        catalog = load_skill_route_cases(private_case_file)
+        private_suite_name = "skill-route"
+    elif args.private_suite_file:
+        catalog = load_private_real_user_cases(private_case_file)
+        private_suite_name = "private-real-user"
+    else:
+        catalog = LIVE_EVAL_CASES
+        private_suite_name = ""
+
     if args.list_cases:
-        for case in LIVE_EVAL_CASES:
+        for case in catalog:
             print(f"{case.case_id}\t{case.suite:11s}\t{case.category:13s}\t{case.slug}\t{case.title}")
         print()
-        print("suites:", suite_summary())
+        print("suites:", {private_suite_name: len(catalog)} if private_case_file else suite_summary())
         return 0
 
     if args.seed_check:
@@ -807,13 +926,16 @@ async def main_async(args: argparse.Namespace) -> int:
 
     selected: tuple[EvalCase, ...]
     if args.case_id:
-        found = case_by_id(args.case_id)
+        found = next(
+            (case for case in catalog if args.case_id in {case.case_id, case.slug}),
+            None,
+        )
         if not found:
             print(f"unknown case: {args.case_id}", file=sys.stderr)
             return 2
         selected = (found,)
     else:
-        selected = cases_for_suite(args.suite)
+        selected = catalog if private_case_file else cases_for_suite(args.suite)
         if not selected:
             print(f"no cases for suite: {args.suite}", file=sys.stderr)
             return 2
@@ -830,7 +952,16 @@ async def main_async(args: argparse.Namespace) -> int:
     run_dir = run_root / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    freeze = _freeze_metadata(source_db, mode=args.mode, suite=args.suite, repeat=args.repeat)
+    run_suite = private_suite_name or args.suite
+    freeze = _freeze_metadata(
+        source_db,
+        mode=args.mode,
+        suite=run_suite,
+        repeat=args.repeat,
+        discovery_mode=args.discovery_mode,
+        case_count=len(selected),
+        private_case_file=private_case_file,
+    )
     write_json(run_dir / "freeze.json", freeze)
     print(f"[live-eval] run dir: {run_dir}")
     print(
@@ -839,7 +970,7 @@ async def main_async(args: argparse.Namespace) -> int:
         f"runtime={freeze['runtime']}@{freeze['runtime_version']}"
     )
     print(f"[live-eval] frozen hashes: {freeze['component_hashes']}")
-    print(f"[live-eval] suite={args.suite} mode={args.mode} repeat={args.repeat}")
+    print(f"[live-eval] suite={run_suite} mode={args.mode} repeat={args.repeat}")
     print(f"[live-eval] cases: {[c.case_id for c in selected]}")
 
     results: list[dict[str, Any]] = []
@@ -856,6 +987,7 @@ async def main_async(args: argparse.Namespace) -> int:
                     source_db=source_db,
                     timeout=args.timeout,
                     mode=args.mode,
+                    discovery_mode=args.discovery_mode,
                 )
             except Exception as exc:  # noqa: BLE001 - Eval 必须记录失败而不是崩掉整个 run
                 verdict = {
@@ -887,9 +1019,17 @@ async def main_async(args: argparse.Namespace) -> int:
         freeze["benchmark_mutated_during_run"] = mutated
         print(f"[live-eval] ⚠ BENCHMARK MUTATED DURING RUN: {mutated}")
         print("[live-eval] 该 run 不能作为正式 baseline，请冻结后重跑。")
+    if private_case_file and _sha256(private_case_file) != freeze["private_case_hash"]:
+        freeze["benchmark_mutated_during_run"] = {
+            **(freeze.get("benchmark_mutated_during_run") or {}),
+            "private_case_file": {
+                "before": freeze["private_case_hash"],
+                "after": _sha256(private_case_file),
+            },
+        }
     write_json(run_dir / "freeze.json", freeze)
 
-    _write_summary(run_dir, results, mode=args.mode, suite=args.suite, freeze=freeze)
+    _write_summary(run_dir, results, mode=args.mode, suite=run_suite, freeze=freeze)
     print(f"[live-eval] summary: {run_dir / 'summary.md'}")
     return 0
 
@@ -897,12 +1037,29 @@ async def main_async(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="OfferU Live Agent Eval runner (external harness).")
     parser.add_argument("--list-cases", action="store_true", help="List cases and exit.")
+    parser.add_argument("--private-seed-create", action="store_true",
+                        help="Create a repo-external Private Eval seed and label templates.")
+    parser.add_argument("--private-seed-curate", action="store_true",
+                        help="Create a conservatively curated copy of a raw Private Eval seed.")
+    parser.add_argument("--private-prompt-extract", action="store_true",
+                        help="Extract secret-redacted SkillRoute prompt candidates from a Private Seed.")
+    parser.add_argument("--private-workspace-check", action="store_true",
+                        help="Validate Private Eval labels and seed readiness without running an Agent.")
+    parser.add_argument("--private-workspace", default=str(DEFAULT_PRIVATE_WORKSPACE),
+                        help="Repo-external Private Eval workspace.")
+    parser.add_argument("--skill-route-file", default="",
+                        help="Repo-external completed SkillRoute-50 JSON dataset.")
+    parser.add_argument("--private-suite-file", default="",
+                        help="Repo-external completed Private Real-User 20 JSON dataset.")
     parser.add_argument("--seed-check", action="store_true", help="Validate the seed source database.")
     parser.add_argument("--case", dest="case_id", default="", help="Run one case id (E01 or slug).")
     parser.add_argument("--suite", default="smoke", help=f"Suite: {', '.join(SUITE_VALUES)} or all.")
     parser.add_argument("--repeat", type=int, default=1, help="Repeat count per case for reliability.")
     parser.add_argument("--mode", default="real-user", choices=("real-user", "capability"),
                         help="real-user: 不自动确认；capability: 自动确认提案并继续。")
+    parser.add_argument("--discovery-mode", default="progressive",
+                        choices=("progressive", "full-registry"),
+                        help="Eval-only Skill discovery condition for ablation.")
     parser.add_argument("--timeout", type=int, default=600, help="Per-round harness timeout (s).")
     parser.add_argument("--max-cases", type=int, default=0, help="Limit number of cases (0 = all).")
     parser.add_argument("--source-db", default=str(DEFAULT_SOURCE_DB), help="Template database to clone.")

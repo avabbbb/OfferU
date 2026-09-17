@@ -208,10 +208,7 @@ def dehydrate(payload: dict[str, Any]) -> list[str]:
             for item in configs:
                 if isinstance(item, dict):
                     _dehydrate_config_item(item, created_refs)
-        refs = payload.setdefault("secret_refs", {})
-        if not isinstance(refs, dict):
-            refs = {}
-            payload["secret_refs"] = refs
+        refs = payload.get("secret_refs") if isinstance(payload.get("secret_refs"), dict) else {}
         for field in LEGACY_KEY_FIELDS:
             value = str(payload.get(field) or "").strip()
             existing_ref = str(refs.get(field) or "")
@@ -221,6 +218,7 @@ def dehydrate(payload: dict[str, Any]) -> list[str]:
             if reference != existing_ref:
                 created_refs.append(reference)
             write_key(reference, value)
+            payload["secret_refs"] = refs
             refs[field] = reference
             payload[field] = ""
         for field in SCRAPER_SECRET_FIELDS:
@@ -236,6 +234,7 @@ def dehydrate(payload: dict[str, Any]) -> list[str]:
                 credential_store.store_secret_sync(reference, secret)
             except Exception as exc:
                 raise VaultUnavailableError(str(exc)) from exc
+            payload["secret_refs"] = refs
             refs[field] = reference
             payload[field] = ""
     except VaultUnavailableError:

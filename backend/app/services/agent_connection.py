@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from app.services import coding_agent_runtime as runtime
+from app.services.agent_integration import integration_manager
 from app.services.agent_provider_health import list_provider_health
 from app.services.security_redaction import redact_sensitive_text
 
@@ -35,12 +36,29 @@ _GUIDES = {
 
 def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
     provider_id = item["id"]
+    integration = integration_manager.inspect(provider_id) if provider_id in _BEGINNER_PROVIDER_IDS else {
+        "skill_status": "NOT_SUPPORTED",
+        "skill_version": "",
+        "skill_hash": "",
+        "expected_skill_version": "",
+        "expected_skill_hash": "",
+        "registry_hash": "",
+        "can_install": False,
+        "can_live_verify": False,
+        "error": "",
+    }
+    executable = (
+        integration_manager.adapter(provider_id).detected_executable(str(item.get("executable_path") or ""))
+        if provider_id in _BEGINNER_PROVIDER_IDS
+        else str(item.get("executable_path") or "")
+    )
     check = _CHECKS.get(provider_id, {})
     if (time.monotonic() - check.get("at", 0) > _CHECK_TTL
             or check.get("version") != item.get("version")
-            or check.get("executable") != item.get("executable_path")):
+            or check.get("executable") != executable
+            or check.get("skill_hash", integration.get("expected_skill_hash")) != integration.get("expected_skill_hash")):
         check = {}
-    installed = bool(item.get("executable_path"))
+    installed = bool(executable)
     compatible = bool(item.get("contract_compatible"))
     status = "check_required"
     if not installed:
@@ -53,6 +71,14 @@ def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
         status = "auth_required"
     elif health.get("status") == "unavailable" and health.get("checked_at"):
         status = "failed"
+    elif integration["skill_status"] == "NOT_INSTALLED":
+        status = "integration_missing"
+    elif integration["skill_status"] == "OUTDATED":
+        status = "outdated"
+    elif integration["skill_status"] == "ERROR":
+        status = "failed"
+    elif check.get("integration_status") == "VERIFIED":
+        status = "ready"
     elif check:
         status = check["status"]
     capabilities = health.get("capabilities") if isinstance(health.get("capabilities"), dict) else {}
@@ -61,7 +87,6 @@ def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
         conformance.get("binary_path") == item.get("executable_path")
         and conformance.get("version") == item.get("version")
     )
-    persisted_connection_verified = conformance_matches and conformance.get("connection_verified") == "VERIFIED"
     persisted_authenticated = conformance_matches and conformance.get("native_auth_detected") == "VERIFIED"
     live_model_verified = bool(
         conformance_matches and conformance.get("live_model_verified") == "VERIFIED"
@@ -80,8 +105,6 @@ def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
             "ERROR",
         } else "NOT_VERIFIED"
 
-    if persisted_connection_verified and not check and installed and compatible and status == "check_required":
-        status = "ready"
     return {
         "id": provider_id,
         "name": item["name"],
@@ -98,14 +121,20 @@ def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
             if conformance_matches and conformance.get("native_auth_detected") == "BLOCKED_AUTH"
             else None
         ),
-        "connection_verified": compatible and (
-            check.get("status") == "ready" or persisted_connection_verified
-        ),
+        "connection_verified": compatible and check.get("integration_status") == "VERIFIED",
+        "integration_status": check.get("integration_status") or integration["skill_status"],
+        "skill_status": integration["skill_status"],
+        "skill_version": integration["skill_version"],
+        "skill_hash": integration["skill_hash"],
+        "expected_skill_version": integration["expected_skill_version"],
+        "expected_skill_hash": integration["expected_skill_hash"],
+        "can_install_skill": integration["can_install"],
+        "can_live_verify_skill": integration["can_live_verify"],
         "auth_mode": check.get("auth_mode", "native_probe" if persisted_authenticated else "unknown"),
         "checked_at": check.get("checked_at") or conformance.get("last_probe_at"),
         "detected_at": item.get("checked_at"),
         "last_error": redact_sensitive_text(
-            health.get("last_error") or check.get("error") or "", max_length=500,
+            health.get("last_error") or check.get("error") or integration.get("error") or "", max_length=500,
         ),
         "provider_checked_at": health.get("checked_at"),
         "docs_url": _GUIDES.get(provider_id, ""),
@@ -161,6 +190,8 @@ async def probe_agent_connection(provider_id: str) -> dict[str, Any]:
             "version": item.get("version"), "executable": item.get("executable_path"),
             "authenticated": None,
             "status": "check_required", "auth_mode": "unknown", "error": "",
+            "integration_status": integration_manager.inspect(provider_id).get("skill_status")
+            if provider_id in _BEGINNER_PROVIDER_IDS else "NOT_SUPPORTED",
         }
         if item.get("contract_compatible") and provider_id == "codex":
             from app.services.agent_bridge.codex_adapter import (
@@ -179,7 +210,9 @@ async def probe_agent_connection(provider_id: str) -> dict[str, Any]:
                     executable = native_executable
             except FileNotFoundError:
                 pass
+            check["executable"] = executable
             adapter = CodexMainLoopAdapter(executable=executable)
+            verify_integration = False
             try:
                 async with asyncio.timeout(15):
                     await adapter.start()
@@ -195,8 +228,9 @@ async def probe_agent_connection(provider_id: str) -> dict[str, Any]:
                     check.update(
                         authenticated=authenticated,
                         auth_mode=kind if authenticated else "unknown",
-                        status="ready" if authenticated else "auth_required",
+                        status="check_required" if authenticated else "auth_required",
                     )
+                    verify_integration = authenticated
                 else:
                     check["error"] = "当前 Agent 返回了尚未支持的登录类型，请在其原生界面确认。"
             except TimeoutError:
@@ -205,6 +239,54 @@ async def probe_agent_connection(provider_id: str) -> dict[str, Any]:
                 check.update(status="failed", error=redact_sensitive_text(str(exc), max_length=500))
             finally:
                 await adapter.close()
+            if verify_integration:
+                integration = integration_manager.inspect(provider_id)
+                if integration["skill_status"] == "INSTALLED":
+                    verification = await integration_manager.probe(provider_id, executable)
+                    check.update(
+                        status="ready" if verification.get("connection_verified") else "failed",
+                        integration_status=verification.get("integration_status") or "ERROR",
+                        skill_hash=integration.get("expected_skill_hash"),
+                        error=verification.get("error") or "",
+                    )
+                else:
+                    check.update(
+                        status="integration_missing" if integration["skill_status"] == "NOT_INSTALLED" else "outdated",
+                        integration_status=integration["skill_status"],
+                    )
+        elif item.get("contract_compatible") and provider_id in {"opencode", "claude"}:
+            integration = integration_manager.inspect(provider_id)
+            if integration["skill_status"] == "INSTALLED":
+                verification = await integration_manager.probe(
+                    provider_id,
+                    integration_manager.adapter(provider_id).detected_executable(
+                        str(item.get("executable_path") or "")
+                    ),
+                )
+                check.update(
+                    status="ready" if verification.get("connection_verified") else "check_required",
+                    integration_status=verification.get("integration_status") or "ERROR",
+                    skill_hash=integration.get("expected_skill_hash"),
+                    error=verification.get("error") or "",
+                )
+            else:
+                check.update(
+                    status="integration_missing" if integration["skill_status"] == "NOT_INSTALLED" else "outdated",
+                    integration_status=integration["skill_status"],
+                )
         check.update(at=time.monotonic(), checked_at=datetime.now(timezone.utc).isoformat())
         _CHECKS[provider_id] = check
     return await get_agent_connections()
+
+
+async def connect_agent_integration(provider_id: str, action: str = "install") -> dict[str, Any]:
+    if provider_id not in _BEGINNER_PROVIDER_IDS:
+        raise ValueError("当前 Agent 尚不支持自动安装 OfferU Skill")
+    item = await runtime._probe(provider_id, refresh=True)
+    executable = integration_manager.adapter(provider_id).detected_executable(
+        str(item.get("executable_path") or "")
+    )
+    if not executable:
+        raise ValueError("未检测到本机 Agent，请先安装后重试")
+    await asyncio.to_thread(integration_manager.install, provider_id, action)
+    return await probe_agent_connection(provider_id)

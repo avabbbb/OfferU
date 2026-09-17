@@ -144,7 +144,7 @@ def clone_database(source: Path, destination: Path) -> Path:
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists():
         destination.unlink()
-    src = sqlite3.connect(str(source))
+    src = sqlite3.connect(f"{source.resolve().as_uri()}?mode=ro", uri=True)
     dst = sqlite3.connect(str(destination))
     try:
         src.backup(dst)

@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
 from app.config import get_settings
 from app.services.security_redaction import redact_sensitive_text
-from app.llm_presets import provider_default_url, provider_tier_models
+from app.llm_presets import provider_default_model, provider_default_url, provider_tier_models
 
 _logger = logging.getLogger(__name__)
 
@@ -46,6 +46,17 @@ def _make_http_client() -> httpx.AsyncClient:
     return httpx.AsyncClient(
         transport=httpx.AsyncHTTPTransport(verify=settings.ssl_verify),
         verify=settings.ssl_verify,
+        trust_env=False,
+    )
+
+
+def _make_anthropic_http_client() -> Any:
+    from anthropic import DefaultAsyncHttpxClient
+
+    settings = get_settings()
+    return DefaultAsyncHttpxClient(
+        verify=settings.ssl_verify,
+        timeout=settings.llm_timeout,
         trust_env=False,
     )
 
@@ -249,12 +260,16 @@ def resolve_model_for_tier(tier: str = "standard", settings: Any | None = None) 
     user_tier_map = getattr(config, "tier_model_map", None) or {}
     if user_tier_map.get(tier):
         return str(user_tier_map[tier])
+    if active_cfg is not None and str(active_cfg.get("model") or "").strip():
+        return str(active_cfg["model"]).strip()
+    configured_model = str(getattr(config, "llm_model", "") or "").strip()
+    provider_id = str(getattr(config, "llm_provider", "") or "")
+    if configured_model and configured_model != provider_default_model(provider_id):
+        return configured_model
     legacy_tiers = provider_tier_models(str(getattr(config, "llm_provider", "") or ""))
     if legacy_tiers.get(tier):
         return str(legacy_tiers[tier])
-    if active_cfg is not None and str(active_cfg.get("model") or "").strip():
-        return str(active_cfg["model"]).strip()
-    return str(getattr(config, "llm_model", "") or "").strip()
+    return configured_model
 
 
 def get_llm_runtime_info(
@@ -296,7 +311,7 @@ def _get_client() -> tuple[Any, str]:
         from anthropic import AsyncAnthropic
     else:
         from openai import AsyncOpenAI
-    http_client = _make_http_client()
+    http_client = _make_anthropic_http_client() if resolved.get("api_format") == "anthropic" else _make_http_client()
     kwargs: dict[str, Any] = {
         "api_key": resolved["api_key"],
         "base_url": resolved["base_url"],
@@ -367,7 +382,7 @@ async def chat_completion(
         if json_mode:
             anthropic_messages.append({"role": "user", "content": "Return JSON only."})
         try:
-            kwargs = {"model": model, "messages": anthropic_messages, "max_tokens": max_tokens, "temperature": temperature}
+            kwargs = {"model": model, "messages": anthropic_messages, "max_tokens": max_tokens}
             if system:
                 kwargs["system"] = "\n\n".join(system)
             response = await asyncio.wait_for(client.messages.create(**kwargs), timeout=settings.llm_timeout)
@@ -485,7 +500,7 @@ async def chat_completion_stream(
         if json_mode:
             anthropic_messages.append({"role": "user", "content": "Return JSON only."})
         try:
-            kwargs = {"model": model, "messages": anthropic_messages, "max_tokens": max_tokens, "temperature": temperature, "stream": True}
+            kwargs = {"model": model, "messages": anthropic_messages, "max_tokens": max_tokens, "stream": True}
             if system:
                 kwargs["system"] = "\n\n".join(system)
             stream = await asyncio.wait_for(client.messages.create(**kwargs), timeout=settings.llm_timeout)

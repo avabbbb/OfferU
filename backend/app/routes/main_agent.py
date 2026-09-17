@@ -93,6 +93,10 @@ class AutomationInboxActionRequest(BaseModel):
     action: str = Field(pattern="^(resolve|dismiss|reopen)$")
 
 
+class AgentIntegrationRequest(BaseModel):
+    action: str = Field(default="install", pattern="^(install|update|repair)$")
+
+
 class CareerTaskStartRequest(BaseModel):
     task_type: str = Field(min_length=1, max_length=100)
     source: str = Field(default="ui", min_length=1, max_length=80)
@@ -436,6 +440,17 @@ async def agent_connections() -> dict[str, Any]:
 @runtime_router.post("/runtime/connections/{provider_id}/probe")
 async def probe_agent_connection(provider_id: str) -> dict[str, Any]:
     return await _ui_operation_outputs("probe_agent_connection", {"provider_id": provider_id})
+
+
+@runtime_router.post("/runtime/connections/{provider_id}/integration")
+async def connect_agent_integration(
+    provider_id: str,
+    request: AgentIntegrationRequest,
+) -> dict[str, Any]:
+    return await _ui_operation_outputs(
+        "connect_agent_integration",
+        {"provider_id": provider_id, "action": request.action},
+    )
 
 
 @runtime_router.get("/runtime/conformance")

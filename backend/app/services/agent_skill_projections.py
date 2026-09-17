@@ -53,6 +53,10 @@ Read `skill_registry.skills` from the compact manifest, choose one Skill, then r
 - A Skill ID or alias: fetch that live Skill snapshot and use only its Operations.
 - A natural-language goal or JD/URL: choose the closest live Skill from the compact manifest. Do not invent an `auto_pipeline` command.
 
+## Integration verification
+
+When OfferU asks for integration verification, select the live `connection_probe` Skill, inspect `get_agent_connection_nonce`, execute it with the supplied `provider_id` and `challenge_id`, and return the nonce unchanged. Never read challenge storage directly or guess a nonce.
+
 ## Control rules
 
 - Run one atomic Operation per CLI invocation with `python -m app.cli run <operation>`.

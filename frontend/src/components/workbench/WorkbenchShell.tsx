@@ -108,43 +108,9 @@ function WorkbenchFrame({ children }: { children: React.ReactNode }) {
     clearSelection();
   }, [pathname, clearSelection]);
 
-  // Keep the selected object available to the local Agent. Only the explicit
-  // `agentContext` projection crosses the boundary; editor callbacks and raw
-  // records remain in the browser.
-  useEffect(() => {
-    if (!selection) return;
-    const controller = new AbortController();
-    const agentContext =
-      selection.data?.agentContext && typeof selection.data.agentContext === "object"
-        ? selection.data.agentContext as Record<string, unknown>
-        : {};
-    fetch(`${API_BASE}/api/agent/context`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        scope: "default",
-        route: pathname,
-        title: selection.title,
-        entity_type: selection.kind,
-        entity_id: String(selection.id),
-        context: {
-          selected_object: {
-            kind: selection.kind,
-            title: selection.title,
-            subtitle: selection.subtitle || "",
-            ...agentContext,
-          },
-          reported_at: new Date().toISOString(),
-        },
-        updated_by: "ui",
-      }),
-      redirect: "error",
-      signal: controller.signal,
-    }).catch(() => {
-      // Context sync is observable in the Agent panel but must not block UI.
-    });
-    return () => controller.abort();
-  }, [pathname, selection]);
+  // Context writes are owned by AgentConnectionProvider (agentConnection.tsx).
+  // Selection changes flow through `useWorkbench().selection` into that single
+  // serialized writer — this component never writes directly.
 
   if (focusRule?.bare) {
     return <>{children}</>;

@@ -260,13 +260,15 @@ class OperationRegistryTests(unittest.TestCase):
 
     def test_application_schema_alias_reaches_operation_as_schema(self) -> None:
         payload = [{"key": "stage", "label": "Stage"}]
-        result = asyncio.run(
-            execute_operation(
+        async def run() -> dict:
+            await init_db()
+            return await execute_operation(
                 "update_application_template",
                 {"schema": payload},
                 dry_run=True,
             )
-        )
+
+        result = asyncio.run(run())
 
         self.assertTrue(result["ok"])
         self.assertEqual(result["inputs"]["schema"], payload)
@@ -523,13 +525,15 @@ class OperationRegistryTests(unittest.TestCase):
         self.assertTrue(legacy_unchanged)
 
     def test_dry_run_skips_mutating_operation(self) -> None:
-        result = asyncio.run(
-            execute_operation(
+        async def run() -> dict:
+            await init_db()
+            return await execute_operation(
                 "triage_job",
                 {"job_id": 1, "status": "picked"},
                 dry_run=True,
             )
-        )
+
+        result = asyncio.run(run())
 
         self.assertTrue(result["ok"])
         self.assertEqual(result["outputs"]["skipped"], True)

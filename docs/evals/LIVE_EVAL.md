@@ -154,6 +154,7 @@ Regression 与 Capability 分开），才升级为 **`OfferU-EvolveBench v1`**�
 | [FINDINGS.md](./FINDINGS.md) | 真实发现的 Bug 与归属 |
 | [BASELINE.md](./BASELINE.md) | 基线结果（首次完整跑完后填写） |
 | [RUNTIME_COMPARISON.md](./RUNTIME_COMPARISON.md) | 跨 Runtime 对比（至少两个 Runtime 后填写） |
+| [PRIVATE_REAL_USER_EVAL.md](./PRIVATE_REAL_USER_EVAL.md) | 私有 Seed、SkillRoute-50、Real-User 20、A/B 与 Live Shadow |
 
 参考实现仓库：<https://github.com/luyishui/OfferU>
 （仅作范式参考；本仓库的被测对象、判分边界与 seed 策略与它不同，见审计文档第 7 节。）

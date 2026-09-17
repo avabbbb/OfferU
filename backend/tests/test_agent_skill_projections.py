@@ -75,6 +75,9 @@ class AgentSkillProjectionTests(unittest.TestCase):
             self.assertNotIn("python -m app.cli api ", content)
             self.assertNotIn("python -m app.cli routes", content)
             self.assertNotIn("http://localhost:8000/api", content)
+        for path, content in rendered.items():
+            if path.name == "SKILL.md":
+                self.assertIn("get_agent_connection_nonce", content)
 
     def test_checked_in_projections_have_no_drift(self) -> None:
         self.assertEqual(projection_drift(PROJECT_ROOT), [])

@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import httpx
+import httpx2
 from pydantic import ValidationError
 
 from app.llm_presets import ENDPOINT_PROTOCOL_TEMPLATES
@@ -62,6 +63,18 @@ class SseByteStream(httpx.AsyncByteStream):
         yield self.payload
 
     async def aclose(self):
+        self.closed = True
+
+
+class AnthropicSseByteStream(httpx2.AsyncByteStream):
+    def __init__(self, body: bytes):
+        self.body = body
+        self.closed = False
+
+    async def __aiter__(self):
+        yield self.body
+
+    async def aclose(self) -> None:
         self.closed = True
 
 
@@ -150,13 +163,13 @@ class LlmSdkTransportTests(unittest.IsolatedAsyncioTestCase):
     async def test_anthropic_completion_uses_message_endpoint(self):
         from app.agents import llm
 
-        async def handler(request: httpx.Request) -> httpx.Response:
+        async def handler(request: httpx2.Request) -> httpx2.Response:
             self.assertEqual(request.url.path, "/v1/messages")
-            return httpx.Response(200, json={"id": "msg_1", "type": "message", "role": "assistant", "model": "model", "content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn", "usage": {"input_tokens": 1, "output_tokens": 1}})
+            return httpx2.Response(200, json={"id": "msg_1", "type": "message", "role": "assistant", "model": "model", "content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn", "usage": {"input_tokens": 1, "output_tokens": 1}})
 
-        client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="https://example.test")
+        client = httpx2.AsyncClient(transport=httpx2.MockTransport(handler), base_url="https://example.test")
         resolved = {"api_format": "anthropic", "provider": "custom", "model": "model", "base_url": "https://example.test", "api_key": "sk-test", "source": "test", "supports_json_mode": True, "default_headers": {}}
-        with patch.object(llm, "get_settings", return_value=self._settings()), patch.object(llm, "resolve_llm_client_config", return_value=resolved), patch.object(llm, "resolve_model_for_tier", return_value="model"), patch.object(llm, "_make_http_client", return_value=client):
+        with patch.object(llm, "get_settings", return_value=self._settings()), patch.object(llm, "resolve_llm_client_config", return_value=resolved), patch.object(llm, "resolve_model_for_tier", return_value="model"), patch.object(llm, "_make_anthropic_http_client", return_value=client):
             result = await llm.chat_completion([{"role": "user", "content": "Hi"}])
         self.assertEqual(result, "ok")
 
@@ -193,14 +206,14 @@ class LlmSdkTransportTests(unittest.IsolatedAsyncioTestCase):
             {"type": "message_delta", "delta": {"stop_reason": "end_turn", "stop_sequence": None}, "usage": {"output_tokens": 2}},
             {"type": "message_stop"},
         ]
-        body_stream = SseByteStream(b"".join(f"event: {event['type']}\ndata: {json.dumps(event)}\n\n".encode() for event in events))
+        body_stream = AnthropicSseByteStream(b"".join(f"event: {event['type']}\ndata: {json.dumps(event)}\n\n".encode() for event in events))
 
-        async def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, headers={"content-type": "text/event-stream"}, stream=body_stream)
+        async def handler(request: httpx2.Request) -> httpx2.Response:
+            return httpx2.Response(200, headers={"content-type": "text/event-stream"}, stream=body_stream)
 
-        client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="https://example.test")
+        client = httpx2.AsyncClient(transport=httpx2.MockTransport(handler), base_url="https://example.test")
         resolved = {"api_format": "anthropic", "provider": "custom", "model": "model", "base_url": "https://example.test", "api_key": "sk-test", "source": "test", "supports_json_mode": True, "default_headers": {}}
-        with patch.object(llm, "get_settings", return_value=self._settings()), patch.object(llm, "resolve_llm_client_config", return_value=resolved), patch.object(llm, "resolve_model_for_tier", return_value="model"), patch.object(llm, "_make_http_client", return_value=client):
+        with patch.object(llm, "get_settings", return_value=self._settings()), patch.object(llm, "resolve_llm_client_config", return_value=resolved), patch.object(llm, "resolve_model_for_tier", return_value="model"), patch.object(llm, "_make_anthropic_http_client", return_value=client):
             result = "".join([chunk async for chunk in llm.chat_completion_stream([{"role": "user", "content": "Hi"}])])
         self.assertEqual(result, "ok!")
         self.assertTrue(client.is_closed)
@@ -226,14 +239,14 @@ class LlmSdkTransportTests(unittest.IsolatedAsyncioTestCase):
     async def test_anthropic_stream_aclose_closes_client_and_stream(self):
         from app.agents import llm
 
-        body_stream = SseByteStream(b'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"ok"}}\n\n')
+        body_stream = AnthropicSseByteStream(b'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"ok"}}\n\n')
 
-        async def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, headers={"content-type": "text/event-stream"}, stream=body_stream)
+        async def handler(request: httpx2.Request) -> httpx2.Response:
+            return httpx2.Response(200, headers={"content-type": "text/event-stream"}, stream=body_stream)
 
-        client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="https://example.test")
+        client = httpx2.AsyncClient(transport=httpx2.MockTransport(handler), base_url="https://example.test")
         resolved = {"api_format": "anthropic", "provider": "custom", "model": "model", "base_url": "https://example.test", "api_key": "sk-test", "source": "test", "supports_json_mode": True, "default_headers": {}}
-        with patch.object(llm, "get_settings", return_value=self._settings()), patch.object(llm, "resolve_llm_client_config", return_value=resolved), patch.object(llm, "resolve_model_for_tier", return_value="model"), patch.object(llm, "_make_http_client", return_value=client):
+        with patch.object(llm, "get_settings", return_value=self._settings()), patch.object(llm, "resolve_llm_client_config", return_value=resolved), patch.object(llm, "resolve_model_for_tier", return_value="model"), patch.object(llm, "_make_anthropic_http_client", return_value=client):
             generator = llm.chat_completion_stream([{"role": "user", "content": "Hi"}])
             await anext(generator)
             await generator.aclose()
@@ -256,12 +269,12 @@ class LlmSdkTransportTests(unittest.IsolatedAsyncioTestCase):
     async def test_anthropic_probe_uses_message_endpoint_and_nonempty_text(self):
         from app.llm_config_store import probe_llm_endpoint
 
-        async def handler(request: httpx.Request) -> httpx.Response:
+        async def handler(request: httpx2.Request) -> httpx2.Response:
             self.assertEqual(request.url.path, "/v1/messages")
-            return httpx.Response(200, json={"id": "msg_1", "type": "message", "role": "assistant", "model": "model", "content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn", "stop_sequence": None, "usage": {"input_tokens": 1, "output_tokens": 1}})
+            return httpx2.Response(200, json={"id": "msg_1", "type": "message", "role": "assistant", "model": "model", "content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn", "stop_sequence": None, "usage": {"input_tokens": 1, "output_tokens": 1}})
 
-        transport = httpx.MockTransport(handler)
-        async with httpx.AsyncClient(transport=transport) as client:
+        transport = httpx2.MockTransport(handler)
+        async with httpx2.AsyncClient(transport=transport) as client:
             result = await probe_llm_endpoint("https://example.test", "sk-test", "model", api_format="anthropic", http_client=client)
         self.assertTrue(result["success"])
 

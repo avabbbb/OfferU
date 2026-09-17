@@ -1,6 +1,6 @@
 # OfferU product and architecture simplification
 
-Date: 2026-09-14. Status: S1-S4 source implementation complete; runtime and browser acceptance pending under the no-test instruction.
+Date: 2026-09-14. Status: S1-S4 source implementation and offline regression complete; Codex Agent connection acceptance passed on 2026-09-16.
 
 ## Authorized direction
 
@@ -187,3 +187,79 @@ Store connection headers and additional parameters together with the connection 
 The full baseline inventory and exact schema/token measurements are in [Operation inventory](2026-09-14-operation-inventory.md). All 28 legacy implementations have current route references. `routes/agent.py` still contains a giant inline tool prompt, but `main.py` mounts `main_agent.router`, not that old chat router; retain it as an explicitly isolated historical surface during this round. MCP is optional and disabled by default; its full catalog is a developer surface, not the beginner Skill contract.
 
 The fixed 7410/8766 services were already running before this task (PIDs 11880 and 6128 at inspection). They are not owned by the agent and must not be stopped or used for synthetic business writes. Browser setup acceptance should route API requests to an in-process isolated ASGI app or explicit response fixtures; state exactly which evidence uses each. Reuse the live frontend only after readiness verification. This keeps the required origins and preserves the real workspace.
+
+## Agent connection acceptance update: 2026-09-16
+
+The user explicitly moved this work from source completion into runtime acceptance and authorized the tests that earlier instructions had deferred. The older no-test statements above remain historical context and are superseded by the evidence in this section.
+
+### Implemented connection lifecycle
+
+- `AgentIntegrationManager` now owns provider-neutral inspect, install, update, repair and probe behavior. Codex, OpenCode and Claude Code path/invocation differences stay in adapters.
+- Beginner UI actions execute `connect_agent_integration` through the Operation Registry. Normal setup no longer asks the user to copy a Skill or terminal command. The panel presents Agent detected, Skill installed/current, safe readback, and current-context sync as separate steps.
+- Installed Skill state uses exact generated content, version and SHA-256. Unknown files require an explicit repair action; symlink destinations are rejected. Update writes a real file atomically rather than relying on a symlink.
+- Codex verification asks app-server `skills/list` with a forced refresh in an isolated H-drive workspace. Only a returned, enabled `offeru` entry at the expected global path advances to `DISCOVERED`.
+- The Codex turn receives the discovered Skill as a structured `skill` input. Its temporary thread disables inherited plugins/apps, omits the general Skill catalogue and disables inherited MCP servers without changing the user's config. The probe remains read-only with `approvalPolicy=never`.
+- The nonce is provider-bound, valid for at most five minutes and deleted on first successful read. `VERIFIED` additionally requires an exact nonce in the final response and an app-server dynamic-tool event proving execution of `get_agent_connection_nonce` through the Operation Registry. The probe does not depend on shell access.
+- OpenCode discovery runs `opencode debug skill --pure` in an isolated H-drive workspace and compares the returned global Skill location. It may reach `DISCOVERED`, but not `VERIFIED`, because a live nonce readback adapter is not yet implemented.
+- Claude Code supports automatic file install/update/repair. It remains `INSTALLED`, not `VERIFIED`; no deterministic local discovery/readback API has been wired.
+
+### Runtime measurements
+
+Measured from the current imported runtime rather than source estimates:
+
+| Measure | Current |
+| --- | ---: |
+| Top-level CLI verbs | 8 |
+| Registered Operations | 259 |
+| Default manifest Operation schemas | 0 |
+| Default compact Skill cards | 36 |
+| Default manifest serialized bytes | 14,596 |
+| Full manifest Operation schemas | 259 |
+| Full manifest serialized bytes | 359,412 |
+| Bridge grants | 14 |
+| Operations implemented by `legacy_operations` | 28 |
+
+The two added Operations are the user-triggered integration lifecycle and the read-only one-time nonce. The added non-featured Skill card is `connection_probe`; these are acceptance infrastructure, not a renewed expansion of the business capability surface.
+
+### Real local-Agent evidence
+
+| Journey | Evidence | Result |
+| --- | --- | --- |
+| Codex detection | `codex-cli 0.154.0`, contract-compatible executable found | PASS |
+| Codex fresh Skill install | Real file installed under `C:\Users\ava\.codex\skills\offeru\SKILL.md`; expected hash matched | PASS |
+| Codex Skill update | Installed marker changed to an older version, state became `OUTDATED`, product update restored the exact current hash | PASS |
+| Codex discovery | Fresh isolated app-server `skills/list` returned the global OfferU Skill | PASS (`DISCOVERED`) |
+| Codex nonce readback | A fresh isolated app-server session selected the OfferU Skill, called the dynamic `get_agent_connection_nonce` tool through the Operation Registry and returned the exact one-time nonce | PASS (`VERIFIED`) |
+| Codex 5/5 fresh-connect | Five consecutive fresh sessions passed in 18.5 s, 16.2 s, 11.5 s, 12.3 s and 19.5 s | PASS (5/5) |
+| Codex read-only product task | An isolated synthetic Today context was read only through `get_current_view`; the final answer exactly returned the stored next action and fixture provenance | PASS |
+| Codex mutation boundary | Codex called `set_current_view`; the Registry persisted a Proposal, state remained unchanged, Workbench pending-proposal API exposed it, human confirmation executed it once and replay produced zero tool calls | PASS |
+| OpenCode install | Real file installed under `C:\Users\ava\.config\opencode\skills\offeru\SKILL.md` | PASS |
+| OpenCode discovery | `opencode debug skill --pure` from an isolated non-repository workspace returned the expected global path/content | PASS (`DISCOVERED`) |
+| Claude Code install | Real file installed under `C:\Users\ava\.claude\skills\offeru\SKILL.md` | PASS |
+| Claude Code discovery/readback | No deterministic adapter implemented | NOT VERIFIED |
+
+The initial Codex diagnostics proved Skill discovery but exposed repeated `responseStreamDisconnected` retries. Direct OpenAI endpoints timed out on this workstation while the existing Windows proxy at `127.0.0.1:7890` responded immediately. The adapter now inherits the OS proxy only when the launching process has not explicitly set `HTTP_PROXY` or `HTTPS_PROXY`; explicit process proxy configuration still wins. No Codex credential, native login, proxy setting or user configuration file was rewritten. With that transport boundary restored, the deterministic nonce probe passed and then repeated 5/5.
+
+### Verification executed
+
+- Full backend after the final Codex transport and dynamic-tool changes: `607 passed, 9 skipped, 17 warnings, 11 subtests passed` in 188.54 seconds, using isolated `H:\tmp\offeru` data/temp paths.
+- Focused integration/runtime regression: `40 passed, 7 subtests passed`; focused connection state regression: `22 passed, 5 subtests passed`.
+- Frontend `npm run typecheck`: PASS.
+- Frontend `npm run build`: PASS with Vite 8.1.5; only the existing stale Browserslist data and plugin-timing warnings were reported.
+- Managed Chromium headless UI fixture acceptance: beginner Connect action, resulting Verified state, Outdated update action and readback-timeout retry action all PASS. Agent/context and all non-GET API writes were intercepted; no real career data or Agent process was mutated by this browser run.
+- Codex Skill update E2E: PASS.
+- Codex fresh-connect nonce readback: PASS, five consecutive fresh sessions.
+- Codex read-only Skill/Registry task: PASS against an isolated SQLite workspace.
+- Codex mutation/Proposal boundary: PASS; the Agent did not self-confirm, the Workbench API showed the pending Proposal, confirmation changed state once and replay executed nothing.
+- OpenCode global discovery: PASS.
+
+Current verdict for the primary beginner provider is **`AGENT_CONNECTION_BETA_READY` (Codex)**. The completion gates are satisfied: fresh connect 5/5, Skill update, exact live readback, real read-only Registry use, Proposal-without-self-confirm, actionable failure UX, backend regression, frontend typecheck and production build.
+
+Remaining secondary-provider and quality work does not falsify Codex readiness:
+
+1. OpenCode has real install and discovery evidence but no deterministic nonce readback adapter.
+2. Claude Code has real install evidence but no deterministic discovery/readback adapter.
+3. The Workbench confirmation contract passed through its real ASGI endpoints; an additional live-backend managed-Chromium click journey remains useful release evidence, while the isolated response-fixture UX matrix already passes.
+4. A real 50-request Skill selection evaluation remains quality work. No top-1 accuracy number is claimed yet, and the current 36 compact cards must not be reduced by intuition.
+
+The app-server integration follows the current official contracts for [`thread/start`, `skills/list` and structured Skill input](https://github.com/openai/codex/blob/main/codex-rs/app-server/README.md). OpenCode discovery uses its documented Skill layout and CLI-discoverable catalog. These references support the implementation shape; only the runtime evidence above determines OfferU readiness.

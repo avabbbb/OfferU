@@ -8,6 +8,8 @@
     "build:sidecar": "powershell -NoProfile -ExecutionPolicy Bypass -File ../backend/scripts/build_sidecar.ps1",
     "start": "vite preview --port 7410 --strictPort",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "tauri": "tauri"
   },
   "dependencies": {
@@ -44,17 +46,23 @@
     "swr": "^2.2.0"
   },
   "devDependencies": {
-    "@types/markdown-it": "^14.2.0",
     "@tauri-apps/cli": "^2.11.4",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.7",
+    "@types/markdown-it": "^14.2.0",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "@vitejs/plugin-react": "^6.0.4",
     "autoprefixer": "^10.4.0",
+    "jsdom": "^29.1.1",
     "postcss": "^8.4.0",
     "tailwindcss": "^3.4.0",
     "typescript": "^5",
-    "vite": "^8.1.5"
+    "vite": "^8.1.5",
+    "vitest": "^5.0.1"
   },
   "overrides": {
     "@puckeditor/core": {

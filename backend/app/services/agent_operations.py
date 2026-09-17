@@ -1138,6 +1138,18 @@ async def probe_agent_connection(provider_id: str) -> dict:
     return await _probe(provider_id)
 
 
+async def connect_agent_integration(provider_id: str, action: str = "install") -> dict:
+    from app.services.agent_connection import connect_agent_integration as _connect
+
+    return await _connect(provider_id, action)
+
+
+async def get_agent_connection_nonce(provider_id: str, challenge_id: str) -> dict:
+    from app.services.agent_integration import get_connection_nonce
+
+    return get_connection_nonce(provider_id, challenge_id)
+
+
 async def list_capability_plugins() -> dict:
     from app.services.capability_plugins import discover_plugins
 

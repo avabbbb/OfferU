@@ -13,7 +13,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from app.database import async_session, init_db  # noqa: E402
-from app.models.models import AgentRunRecord, BridgePairing, JobSearchTask  # noqa: E402
+from app.models.models import AgentRunRecord, BridgePairing, JobSearchTask, Profile  # noqa: E402
 from app.services.agent_bridge.errors import BridgeProtocolError  # noqa: E402
 from app.services.agent_bridge.event_stream import follow_events  # noqa: E402
 from app.services.agent_bridge.operation_gateway import (  # noqa: E402
@@ -58,6 +58,13 @@ class Slice1BridgeTests(unittest.TestCase):
 
     async def _make_run(self) -> str:
         await init_db()
+        async with async_session() as db:
+            profile = (
+                await db.execute(select(Profile).where(Profile.is_default == True))
+            ).scalar_one_or_none()
+            if profile is None:
+                db.add(Profile(name="Bridge fixture", is_default=True))
+                await db.commit()
         run = await create_agent_run(
             conversation_id=f"slice1-{_SALT}-{id(object())}",
             goal="Slice 1 只读链路验收",

@@ -6,4 +6,15 @@ Operation Registry 完成真实求职任务；判分只看数据库最终状态�
 
 from __future__ import annotations
 
-__all__ = ["cases", "grader", "isolation", "runner"]
+__all__ = [
+    "cases",
+    "grader",
+    "human_grading",
+    "isolation",
+    "metrics",
+    "private_dataset",
+    "private_seed",
+    "private_suite",
+    "runner",
+    "skill_route",
+]

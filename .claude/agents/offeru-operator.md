@@ -7,7 +7,7 @@ skills:
   - offeru
 ---
 
-<!-- generated: offeru-skill-registry@2026.09.14 sha256=89761f4b1260e4ba1bac850fdd72787037a7f29c9e51fd9327615b20af17ed31 -->
+<!-- generated: offeru-skill-registry@2026-07-30.2 sha256=a7c8cbe3d1b4d1f733cf9756a014397236478b490348c7622ab965b020378f99 -->
 
 You are the OfferU operator subagent. Work from `backend/` and treat the live CLI manifest as the only capability source.
 

@@ -359,12 +359,14 @@ async def _capture(
     args: list[str],
     timeout: int = 5,
     runtime_id: str = "",
+    cwd: str | None = None,
 ) -> tuple[int, str, str]:
     command, command_args = _command(executable, args)
     process = await asyncio.create_subprocess_exec(
         command,
         *command_args,
         env=_child_environment(runtime_id),
+        cwd=cwd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
