@@ -52,8 +52,11 @@ class BossCliError(RuntimeError):
 
 
 async def _run_boss(*args: str, timeout: float = 30.0) -> dict[str, Any]:
-    """执行 boss CLI，返回解析后的 JSON 信封；只认 stdout，stderr 仅为日志。"""
-    cmd = [*_BOSS_BIN, *args]
+    """执行 boss CLI，返回解析后的 JSON 信封；只认 stdout，stderr 仅为日志。
+
+    `--json` 是全局 flag（强制 JSON 信封输出），必须放在子命令之前。
+    """
+    cmd = [*_BOSS_BIN, "--json", *args]
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
@@ -139,23 +142,29 @@ class BossJobSource:
         return JobSourceCapabilities(search=True, detail=True)
 
     async def search(self, query: JobSearchQuery) -> list[JobObservation]:
-        """`boss search <keywords> [--city X] --format json`；失败抛 BossCliError。"""
-        args = ["search", query.keywords, "--format", "json", "--limit", str(query.limit)]
+        """`boss --json search <kw> [--city X] [--page N]`；失败抛 BossCliError。
+
+        CLI 没有 --limit/--format：limit 由 adapter 端截断，页码走 filters["page"]。
+        """
+        args = ["search", query.keywords]
         city = query.location or str(query.filters.get("city") or "")
         if city:
             args += ["--city", city]
+        page = int(query.filters.get("page") or 1)
+        if page > 1:
+            args += ["--page", str(page)]
         env = await _run_boss(*args, timeout=45.0)
         data = _unwrap(env)
         items = data.get("items") or data.get("jobs") or data.get("list") or []
         if not isinstance(items, list):
             return []
-        return [_to_observation(i) for i in items if isinstance(i, dict)]
+        return [_to_observation(i) for i in items if isinstance(i, dict)][: max(1, query.limit)]
 
     async def get(self, external_job_id: str) -> Optional[JobObservation]:
-        """`boss detail <security_id>`；security_id/job_id 都可作键。"""
+        """`boss --json detail <security_id>`；security_id/job_id 都可作键。"""
         if not external_job_id:
             return None
-        env = await _run_boss("detail", external_job_id, "--format", "json", timeout=30.0)
+        env = await _run_boss("detail", external_job_id, timeout=30.0)
         data = _unwrap(env)
         detail = data.get("job") or data.get("detail") or data
         if not isinstance(detail, dict) or not detail:

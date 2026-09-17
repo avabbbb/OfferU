@@ -197,6 +197,7 @@ from app.services.agent_operations import (
     email_connection_status,
     delete_ai_interview,
 )
+from app.services.job_sources.boss_progress import sync_boss_application_progress
 from app.services.legacy_operations import (
     apply_application_template_to_all,
     apply_resume_template,
@@ -3132,6 +3133,24 @@ OPERATIONS: dict[str, Operation] = {
         side_effects=("write",),
         audit_redacted_parameters=("body",),
         input_model=IngestApplicationSignalInput,
+    ),
+    "sync_boss_application_status": Operation(
+        name="sync_boss_application_status",
+        fn=sync_boss_application_progress,
+        description=(
+            "手动触发的 BOSS 直聘投递/面试进展只读同步（Sync now）："
+            "经 boss CLI 拉取投递记录与面试邀请，逐条生成待用户确认的候选进展；"
+            "不自动改写任何投递阶段，未匹配记录进入 review queue。"
+            "仅在用户手动调用时运行，无后台周期任务。"
+        ),
+        parameters={
+            "account_ref": "str=boss",
+            "max_pages": "int=1 (deliver 列表页数上限 1-10)",
+        },
+        group="applications",
+        side_effects=("external", "write"),
+        permissions=("job_source:boss:read",),
+        version="2026-09-17",
     ),
     "list_application_progress_candidates": Operation(
         name="list_application_progress_candidates",

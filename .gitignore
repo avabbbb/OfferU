@@ -107,6 +107,14 @@ replacements.txt
 docs/产品分歧分析_*.md
 md/
 
+# ---- BOSS 直聘连接器本地凭据/缓存（boss-agent-cli 数据目录、cookies、导出） ----
+# 只读实验连接器；认证/缓存/导出含私密数据，绝不入库。
+.boss-agent/
+boss-agent-cli/
+*.boss-cookies*
+boss-export*/
+boss-*.json
+
 # ---- Trae 本地元数据 ----
 .trae/
 .Trae/
