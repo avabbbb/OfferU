@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -32,8 +32,13 @@ logger = logging.getLogger(__name__)
 
 
 # ---- 内存中的任务状态（轻量实现，后续可换 Redis / DB） ----
-# 限制最多保留 200 条任务记录，超出后丢弃最旧的
+# 限制最多保留 200 条任务记录，超出后丢弃最旧的；同时按 24h TTL 清理，
+# 避免长期运行后任务列表混入数周前的历史记录。
 _MAX_TASK_HISTORY = 200
+_TASK_TTL_SECONDS = 24 * 3600
+# 运行中批次的宽限时间：进程重启后内存任务丢失，DB 中的 batch 会永久停在
+# running。list_tasks 惰性收割 created_at 超过该窗口且无存活内存任务的批次。
+_ORPHAN_RUNNING_GRACE_SECONDS = 30 * 60
 _tasks: list[dict] = []
 
 
@@ -42,6 +47,76 @@ def _append_task(task: dict) -> None:
     _tasks.append(task)
     if len(_tasks) > _MAX_TASK_HISTORY:
         del _tasks[:len(_tasks) - _MAX_TASK_HISTORY]
+
+
+def _task_age_seconds(task: dict) -> float:
+    try:
+        created = datetime.fromisoformat(str(task.get("created_at") or ""))
+    except ValueError:
+        return float("inf")
+    return (datetime.utcnow() - created).total_seconds()
+
+
+def _prune_tasks() -> None:
+    """丢弃超过 TTL 的内存任务（运行中的任务不清理）。"""
+    _tasks[:] = [
+        task
+        for task in _tasks
+        if task.get("status") == "running" or _task_age_seconds(task) <= _TASK_TTL_SECONDS
+    ]
+
+
+async def _mark_batch_failed_fallback(batch_id: Optional[str]) -> None:
+    """finalize_scraper_batch 失败时的最后兜底：直接 UPDATE batch 为 failed。"""
+    if not batch_id:
+        return
+    try:
+        from app.database import async_session
+        from sqlalchemy import update
+
+        async with async_session() as db:
+            await db.execute(
+                update(Batch)
+                .where(Batch.id == str(batch_id))
+                .where(Batch.status == "running")
+                .values(status="failed")
+            )
+            await db.commit()
+    except Exception as exc:
+        logger.error(
+            "[scraper] batch failed-status fallback write failed for %s: %s",
+            batch_id,
+            safe_error_message(exc),
+        )
+
+
+async def _reap_orphaned_running_batches(db: AsyncSession) -> None:
+    """收割进程重启遗留的 running 批次：无存活内存任务且超过宽限时间。"""
+    from sqlalchemy import update
+
+    live_batch_ids = {
+        task.get("batch_id")
+        for task in _tasks
+        if task.get("status") == "running" and task.get("batch_id")
+    }
+    cutoff = datetime.utcnow() - timedelta(seconds=_ORPHAN_RUNNING_GRACE_SECONDS)
+    orphans = (
+        await db.execute(
+            select(Batch.id).where(Batch.status == "running").where(Batch.created_at < cutoff)
+        )
+    ).scalars().all()
+    stale_ids = [bid for bid in orphans if bid not in live_batch_ids]
+    if not stale_ids:
+        return
+    await db.execute(
+        update(Batch).where(Batch.id.in_(stale_ids)).values(status="failed")
+    )
+    await db.commit()
+    logger.warning(
+        "[scraper] reaped %d orphaned running batches (process restart lost task state): %s",
+        len(stale_ids),
+        stale_ids,
+    )
 
 
 class RunRequest(BaseModel):
@@ -276,11 +351,15 @@ async def _execute_scraper(task_info: dict, scraper, req: RunRequest):
                 "[scraper] failed to persist batch failure: %s",
                 safe_error_message(exc),
             )
+        # finalize_scraper_batch 自身失败时直接 UPDATE 兜底，避免 batch 永远停在 running。
+        await _mark_batch_failed_fallback(task_info.get("batch_id"))
 
 
 @router.get("/tasks")
 async def list_tasks(db: AsyncSession = Depends(get_db)):
     """获取最近的爬取任务列表。内存任务丢失时，回退展示数据库中的批次记录。"""
+    _prune_tasks()
+    await _reap_orphaned_running_batches(db)
     memory_tasks = list(reversed(_tasks[-50:]))
     seen_batches = {
         item.get("batch_id")

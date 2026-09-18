@@ -952,6 +952,7 @@ class ApplicationStageEvent(Base):
     signal_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("external_progress_signals.id", ondelete="RESTRICT"),
+        unique=True,
         index=True,
     )
     application_attempt_id: Mapped[int] = mapped_column(

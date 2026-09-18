@@ -20,7 +20,7 @@ from app.services.security_redaction import safe_error_message
 
 settings = get_settings()
 
-CURRENT_SCHEMA_VERSION = 2
+CURRENT_SCHEMA_VERSION = 3
 
 
 class DatabaseMigrationError(RuntimeError):
@@ -160,6 +160,13 @@ def _auto_migrate(connection):
             text(
                 'CREATE UNIQUE INDEX IF NOT EXISTS "ux_operation_audit_idempotency_key" '
                 'ON "operation_audit_logs" ("idempotency_key")'
+            )
+        )
+    if inspector.has_table("application_stage_events"):
+        connection.execute(
+            text(
+                'CREATE UNIQUE INDEX IF NOT EXISTS "ux_application_stage_events_signal_id" '
+                'ON "application_stage_events" ("signal_id")'
             )
         )
 
@@ -331,9 +338,23 @@ def _migrate_schema_v2(connection) -> None:  # noqa: ANN001
     )
 
 
+def _migrate_schema_v3(connection) -> None:  # noqa: ANN001
+    """Add the signal_id uniqueness guard on application_stage_events."""
+
+    from sqlalchemy import text
+
+    connection.execute(
+        text(
+            'CREATE UNIQUE INDEX IF NOT EXISTS "ux_application_stage_events_signal_id" '
+            'ON "application_stage_events" ("signal_id")'
+        )
+    )
+
+
 SCHEMA_MIGRATIONS: dict[int, Callable[[Any], None]] = {
     1: _migrate_schema_v1,
     2: _migrate_schema_v2,
+    3: _migrate_schema_v3,
 }
 
 
