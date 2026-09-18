@@ -518,10 +518,10 @@ def test_llm_config_writes_are_atomic() -> None:
     route_source = (ROOT / "backend/app/routes/config.py").read_text(encoding="utf-8")
 
     assert "def save_llm_config_file" in store_source
-    assert "os.replace(temporary, _CONFIG_FILE)" in store_source
+    assert "os.replace(temporary, config_file)" in store_source
     assert "save_llm_config_file(raw)" in store_source
-    assert "from app.llm_config_store import save_llm_config_file" in route_source
-    assert "return save_llm_config_file(payload)" in route_source
+    assert "config_file_path" in route_source
+    assert "save_llm_config_file(payload)" in route_source
     assert "_CONFIG_FILE.write_text" not in store_source
     assert "_CONFIG_FILE.write_text" not in route_source
 

@@ -35,7 +35,6 @@ from app.models.models import (
 )
 from app.ops import OPERATIONS, execute_operation
 from app.services.career_artifacts import CareerArtifactStore
-from app.services.data_safety import DataSafetyError
 from app.services.demo_data import (
     DEMO_BATCH_ID,
     DEMO_JOB_SOURCE,
@@ -248,8 +247,8 @@ class DemoDataResetTests(unittest.TestCase):
                 with patch("app.services.demo_data.async_session", session), patch(
                     "app.services.demo_data.career_artifact_store", artifact_store
                 ):
-                    result = await reset_demo_data(user_confirmed=True)
-                    second = await reset_demo_data(user_confirmed=True)
+                    result = await reset_demo_data()
+                    second = await reset_demo_data()
 
                 async with session() as db:
                     remaining = {
@@ -293,9 +292,21 @@ class DemoDataResetTests(unittest.TestCase):
         self.assertFalse(result["second"]["reset"])
         self.assertEqual(result["second"]["reason"], "no_marked_demo_data")
 
-    def test_reset_requires_explicit_confirmation_and_registry_exposes_dry_run(self) -> None:
+    def test_reset_dry_run_skips_execution_and_user_confirmed_arg_is_rejected(self) -> None:
         self.assertIn("reset_demo_data", OPERATIONS)
         dry_run = asyncio.run(
+            execute_operation(
+                "reset_demo_data",
+                {},
+                dry_run=True,
+                audit=False,
+            )
+        )
+        self.assertTrue(dry_run["ok"])
+        self.assertEqual(dry_run["outputs"]["reason"], "dry_run")
+        # Confirmation is proven by _validate_authorization; the strict input
+        # model rejects a caller-supplied user_confirmed argument.
+        rejected = asyncio.run(
             execute_operation(
                 "reset_demo_data",
                 {"user_confirmed": True},
@@ -303,10 +314,8 @@ class DemoDataResetTests(unittest.TestCase):
                 audit=False,
             )
         )
-        self.assertTrue(dry_run["ok"])
-        self.assertEqual(dry_run["outputs"]["reason"], "dry_run")
-        with self.assertRaises(DataSafetyError):
-            asyncio.run(reset_demo_data(user_confirmed=False))
+        self.assertFalse(rejected["ok"])
+        self.assertIn("user_confirmed", " ".join(rejected["errors"]))
 
 
 if __name__ == "__main__":

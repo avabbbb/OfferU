@@ -24,7 +24,7 @@ from app.models.models import (
     EmailSyncRun,
     ExternalProgressSignal,
 )
-from app.ops import OPERATIONS
+from app.ops import OPERATIONS, execute_operation
 from app.services.agent_skill_registry import resolve_skill
 from app.services.email_sync import (
     GmailHistoryExpired,
@@ -33,7 +33,6 @@ from app.services.email_sync import (
     _gmail_full_message_ids,
     _fetch_imap_delta_blocking,
     _run_payload,
-    begin_gmail_oauth,
     connect_imap_account,
     revoke_email_account,
     sync_email_account,
@@ -195,13 +194,13 @@ class EmailIncrementalSyncTests(unittest.TestCase):
             "auth_url",
             OPERATIONS["begin_gmail_oauth"].audit_redacted_output_parameters,
         )
-        self.assertEqual(
-            OPERATIONS["begin_gmail_oauth"].parameters["user_confirmed"],
-            "bool (must be true)",
+        self.assertNotIn(
+            "user_confirmed",
+            OPERATIONS["begin_gmail_oauth"].parameters,
         )
-        self.assertEqual(
-            OPERATIONS["connect_imap_account"].parameters["user_confirmed"],
-            "bool (must be true)",
+        self.assertNotIn(
+            "user_confirmed",
+            OPERATIONS["connect_imap_account"].parameters,
         )
         skill = resolve_skill("回复识别")
         self.assertIsNotNone(skill)
@@ -221,7 +220,6 @@ class EmailIncrementalSyncTests(unittest.TestCase):
                     user=f"{_unique('imap')}@qq.com",
                     password="never-store-this-password",
                     provider="qq",
-                    user_confirmed=True,
                 )
             self.assertEqual(store.await_count, 1)
             async with async_session() as db:
@@ -251,16 +249,36 @@ class EmailIncrementalSyncTests(unittest.TestCase):
             )
         )
 
-    def test_mailbox_connection_requires_explicit_user_confirmation(self) -> None:
+    def test_mailbox_connection_requires_confirmed_agent_authorization(self) -> None:
+        """Mutations on a protected agent surface without run authorization are rejected."""
         async def run() -> None:
-            with self.assertRaises(ValueError):
-                await connect_imap_account(
-                    user="candidate@example.com",
-                    password="transient-password",
-                    provider="qq",
-                )
-            with self.assertRaises(ValueError):
-                await begin_gmail_oauth("http://localhost:7410/email")
+            result = await execute_operation(
+                "connect_imap_account",
+                {
+                    "user": "candidate@example.com",
+                    "password": "transient-password",
+                    "provider": "qq",
+                },
+                surface="agent",
+                audit=False,
+            )
+            self.assertFalse(result["ok"])
+            self.assertTrue(result["outputs"]["requires_confirmation"])
+            self.assertIn("确认", " ".join(result["errors"]))
+            # A caller-supplied user_confirmed argument is no longer accepted at all.
+            result2 = await execute_operation(
+                "connect_imap_account",
+                {
+                    "user": "candidate@example.com",
+                    "password": "transient-password",
+                    "provider": "qq",
+                    "user_confirmed": True,
+                },
+                surface="agent",
+                audit=False,
+            )
+            self.assertFalse(result2["ok"])
+            self.assertIn("user_confirmed", " ".join(result2["errors"]))
 
         asyncio.run(run())
 

@@ -25,35 +25,30 @@ class InterviewCreate(BaseModel):
     model_provider: str
     data_consent: bool
     consented_data_categories: list[str]
-    user_confirmed: bool
 
 
 class MessageCreate(BaseModel):
     question_index: int = Field(ge=0)
     content: str = Field(min_length=1, max_length=30_000)
     model_provider: str
-    user_confirmed: bool
 
 
 class BehaviorEventsCreate(BaseModel):
     events: list[dict[str, Any]] = Field(min_length=1, max_length=200)
-    user_confirmed: bool
 
 
 class ScoringSkillCreate(BaseModel):
     skill_id: str
     name: str
     definition: dict[str, Any]
-    user_confirmed: bool
 
 
 class DeleteInterviewRequest(BaseModel):
     reason: str = Field(min_length=1, max_length=500)
-    user_confirmed: bool
 
 
 class RestartInterviewRequest(BaseModel):
-    user_confirmed: bool
+    pass
 
 
 def _operation_outputs(result: dict[str, Any]) -> dict[str, Any]:

@@ -421,7 +421,10 @@ class DataSafetyTests(unittest.TestCase):
             )
         )
         self.assertFalse(result["ok"])
-        self.assertIn("明确确认", " ".join(result["errors"]))
+        # user_confirmed is no longer an accepted argument; the strict input
+        # model rejects it, so confirmation can only come from
+        # _validate_authorization, never from the caller.
+        self.assertIn("user_confirmed", " ".join(result["errors"]))
 
     def test_registry_round_trip_uses_managed_service_without_exposing_absolute_path(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

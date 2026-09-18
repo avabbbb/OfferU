@@ -1202,10 +1202,7 @@ async def review_memory_proposal(
             source_url=snapshot["source_locator"],
             dedup_key=f"memory_proposal:{clean_proposal_id}",
             tier=snapshot["target_tier"],
-            preference_confirmation=(
-                "proposal" if snapshot["target_tier"] == "preference" else None
-            ),
-            user_confirmed=True,
+            preference_confirmation="proposal",
         )
     except Exception as exc:
         async with async_session() as db:

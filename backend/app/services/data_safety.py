@@ -866,13 +866,11 @@ async def list_data_backups() -> dict[str, Any]:
     return await asyncio.to_thread(list_backups, _runtime_layout())
 
 
-async def stage_data_restore(*, backup_id: str, user_confirmed: bool) -> dict[str, Any]:
-    if user_confirmed is not True:
-        raise DataSafetyError("恢复暂存必须由使用者明确确认。")
+async def stage_data_restore(*, backup_id: str) -> dict[str, Any]:
+    # 确认已由 _validate_authorization 服务端校验；到达此处即视为已确认
     return await asyncio.to_thread(stage_restore, _runtime_layout(), backup_id=backup_id)
 
 
-async def cancel_data_restore(*, user_confirmed: bool) -> dict[str, Any]:
-    if user_confirmed is not True:
-        raise DataSafetyError("取消待恢复任务必须由使用者明确确认。")
+async def cancel_data_restore() -> dict[str, Any]:
+    # 确认已由 _validate_authorization 服务端校验；到达此处即视为已确认
     return await asyncio.to_thread(cancel_pending_restore, _runtime_layout())

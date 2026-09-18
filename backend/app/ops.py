@@ -306,11 +306,10 @@ class _StrictOperationInput(BaseModel):
 
 class DataRestoreInput(_StrictOperationInput):
     backup_id: str = Field(pattern=r"^[a-f0-9]{32}$")
-    user_confirmed: bool = False
 
 
 class DataSafetyConfirmationInput(_StrictOperationInput):
-    user_confirmed: bool = False
+    pass
 
 
 class GetJobInput(_StrictOperationInput):
@@ -1214,8 +1213,7 @@ class AddProfileEvidenceInput(_StrictOperationInput):
         pattern="^(direct|proposal)$",
     )
     # 自回声来源（来源=声明本身）时，只有使用者明确确认才放行
-    user_confirmed: bool = False
-
+    # 确认已由 _validate_authorization 服务端校验；不再需要调用方传入 user_confirmed
 
 class ListLearningObservationsInput(_StrictOperationInput):
     status: str = Field(default="active", pattern="^(active|invalidated|all)$")
@@ -1394,15 +1392,12 @@ class ListApplicationProgressCandidatesInput(_StrictOperationInput):
     )
     disclosure: str = Field(default="summary", pattern="^(summary|detail)$")
     limit: int = Field(default=100, ge=1, le=500)
-
-
 class ScrubLegacyEmailBodiesInput(_StrictOperationInput):
-    user_confirmed: bool = False
+    pass
 
 
 class PurgeSyntheticEmailTestDataInput(_StrictOperationInput):
-    user_confirmed: bool = False
-
+    pass
 
 class ApplicationProgressCandidateInput(_StrictOperationInput):
     candidate_id: str = Field(min_length=1, max_length=64)
@@ -1994,7 +1989,6 @@ OPERATIONS: dict[str, Operation] = {
             "skill_id": "str",
             "name": "str",
             "definition": "object",
-            "user_confirmed": "bool (must be true)",
         },
         group="interview",
         side_effects=("write",),
@@ -2022,7 +2016,6 @@ OPERATIONS: dict[str, Operation] = {
             "model_provider": "str",
             "data_consent": "bool",
             "consented_data_categories": "list[str]",
-            "user_confirmed": "bool (must be true)",
             "title": "str?",
             "target_company": "str?",
             "target_position": "str?",
@@ -2049,7 +2042,6 @@ OPERATIONS: dict[str, Operation] = {
             "question_index": "int",
             "content": "str",
             "model_provider": "str",
-            "user_confirmed": "bool (must be true)",
         },
         group="interview",
         side_effects=("llm", "external", "write"),
@@ -2063,7 +2055,6 @@ OPERATIONS: dict[str, Operation] = {
         parameters={
             "interview_id": "int",
             "events": "list[object]",
-            "user_confirmed": "bool (must be true)",
         },
         group="interview",
         side_effects=("write",),
@@ -2076,7 +2067,6 @@ OPERATIONS: dict[str, Operation] = {
         description="确认后归档原会话并从同一固定问题和评分版本创建新会话，保留旧会话证据链。",
         parameters={
             "interview_id": "int",
-            "user_confirmed": "bool (must be true)",
         },
         group="interview",
         side_effects=("write",),
@@ -2088,7 +2078,6 @@ OPERATIONS: dict[str, Operation] = {
         parameters={
             "interview_id": "int",
             "reason": "str",
-            "user_confirmed": "bool (must be true)",
         },
         group="interview",
         side_effects=("write",),
@@ -2755,7 +2744,6 @@ OPERATIONS: dict[str, Operation] = {
             "job_id": "int",
             "platform": "str (xiaohongshu|maimai|niuke|boss)",
             "initial_url": "str",
-            "user_authorized": "bool",
             "base_run_id": "str?",
             "expires_minutes": "int=30",
         },
@@ -2771,7 +2759,6 @@ OPERATIONS: dict[str, Operation] = {
         description="使用者确认登录完成后重建为只读页面，拦截写请求、WebSocket、下载与 service worker。",
         parameters={
             "session_id": "str",
-            "user_confirmed_login_complete": "bool",
         },
         group="research",
         side_effects=("external", "write"),
@@ -2785,7 +2772,6 @@ OPERATIONS: dict[str, Operation] = {
             "session_id": "str",
             "dossier_scope": "str (company|role)",
             "source_class": "str",
-            "user_confirmed_capture": "bool",
             "publisher": "str?",
             "published_at": "str?",
             "selected_text": "str?",
@@ -2819,7 +2805,6 @@ OPERATIONS: dict[str, Operation] = {
         parameters={
             "session_id": "str",
             "findings": "list[object]",
-            "user_confirmed_findings": "bool",
             "gaps": "list[str]?",
         },
         group="research",
@@ -3000,7 +2985,7 @@ OPERATIONS: dict[str, Operation] = {
         name="begin_gmail_oauth",
         fn=begin_gmail_oauth,
         description="在使用者确认只读同步范围后，生成带 PKCE 与一次性 state 的 Gmail 只读授权链接；verifier 只进入系统钥匙串。",
-        parameters={"redirect_uri": "str", "user_confirmed": "bool (must be true)"},
+        parameters={"redirect_uri": "str"},
         group="email",
         side_effects=("write",),
         permissions=("credential:keychain",),
@@ -3026,7 +3011,6 @@ OPERATIONS: dict[str, Operation] = {
             "provider": "str?",
             "host": "str?",
             "port": "int=993",
-            "user_confirmed": "bool (must be true)",
         },
         group="email",
         side_effects=("external", "write"),
@@ -3096,7 +3080,7 @@ OPERATIONS: dict[str, Operation] = {
         name="scrub_legacy_email_notification_bodies",
         fn=scrub_legacy_email_notification_bodies,
         description="明确确认后清理已解析旧面试通知中的冗余邮件正文；保留结构化解析字段。该操作不可恢复。",
-        parameters={"user_confirmed": "bool (must be true)"},
+        parameters={},
         group="governance",
         side_effects=("write",),
         permissions=("privacy:maintenance",),
@@ -3107,7 +3091,7 @@ OPERATIONS: dict[str, Operation] = {
         name="purge_synthetic_email_test_data",
         fn=purge_synthetic_email_test_data,
         description="明确确认后清理严格模式命中的合成邮箱测试账号及其同步数据；关联正式阶段事件时自动拒绝。",
-        parameters={"user_confirmed": "bool (must be true)"},
+        parameters={},
         group="governance",
         side_effects=("external", "write"),
         permissions=("credential:keychain", "privacy:maintenance"),

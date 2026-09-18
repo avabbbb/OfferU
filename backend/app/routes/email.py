@@ -39,7 +39,6 @@ class ImapConnectRequest(BaseModel):
     user: str
     password: str
     provider: str = ""
-    user_confirmed: bool = False
 
 
 class EmailSyncRequest(BaseModel):
@@ -97,7 +96,6 @@ def _redirect_uri(_request: Request) -> str:
 @router.get("/auth-url")
 async def get_auth_url(
     request: Request,
-    user_confirmed: bool = Query(False),
 ):
     from app.ops import execute_operation
 
@@ -110,7 +108,6 @@ async def get_auth_url(
         "begin_gmail_oauth",
         {
             "redirect_uri": redirect_uri,
-            "user_confirmed": user_confirmed,
         },
         surface="email_api",
     )

@@ -153,14 +153,9 @@ async def get_privacy_hygiene_status() -> dict[str, Any]:
     }
 
 
-async def scrub_legacy_email_notification_bodies(
-    *,
-    user_confirmed: bool = False,
-) -> dict[str, Any]:
+async def scrub_legacy_email_notification_bodies() -> dict[str, Any]:
     """Clear redundant legacy email bodies after explicit user confirmation."""
-
-    if user_confirmed is not True:
-        raise ValueError("清理旧邮件正文前必须明确确认；该操作不可恢复")
+    # 确认已由 _validate_authorization 服务端校验；到达此处即视为已确认
     async with async_session() as db:
         result = await db.execute(
             update(InterviewNotification)
@@ -175,14 +170,9 @@ async def scrub_legacy_email_notification_bodies(
     }
 
 
-async def purge_synthetic_email_test_data(
-    *,
-    user_confirmed: bool = False,
-) -> dict[str, Any]:
+async def purge_synthetic_email_test_data() -> dict[str, Any]:
     """Remove only the known test account namespace after explicit confirmation."""
-
-    if user_confirmed is not True:
-        raise ValueError("清理合成邮箱测试数据前必须明确确认")
+    # 确认已由 _validate_authorization 服务端校验；到达此处即视为已确认
     accounts, signals, stage_event_count, calendar_event_count = (
         await _synthetic_email_rows()
     )

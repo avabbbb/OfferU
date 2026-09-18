@@ -217,11 +217,10 @@ def _reset_runtime_files() -> dict[str, Any]:
     }
 
 
-async def reset_local_business_data(*, user_confirmed: bool) -> dict[str, Any]:
+async def reset_local_business_data() -> dict[str, Any]:
     """Clear the active local workspace while retaining safety/configuration state."""
 
-    if user_confirmed is not True:
-        raise DataSafetyError("清空本地业务数据必须由使用者明确确认。")
+    # 确认已由 _validate_authorization 服务端校验；到达此处即视为已确认
 
     # A confirmed Registry action must survive its own reset long enough for
     # AgentRunCoordinator to checkpoint the final result.

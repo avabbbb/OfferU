@@ -33,7 +33,7 @@ The operation returns a **draft only** — it never persists. The draft must pas
 
 ### Promote the draft (HITL)
 
-Only after explicit user confirmation, call `create_interview_scoring_skill` with `skill_id`, `name`, `definition=<draft>`, and `user_confirmed=true`.
+Only after explicit user confirmation, call `create_interview_scoring_skill` with `skill_id`, `name`, and `definition=<draft>`. Confirmation is proven by the authorized run step (`_validate_authorization`); the operation takes no `user_confirmed` argument.
 
 ### Draft constraints
 

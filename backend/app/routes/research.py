@@ -13,19 +13,17 @@ class AuthorizedResearchStartRequest(BaseModel):
     job_id: int
     platform: str
     initial_url: str
-    user_authorized: bool
     base_run_id: Optional[str] = None
     expires_minutes: int = Field(30, ge=5, le=120)
 
 
 class AuthorizedResearchActivateRequest(BaseModel):
-    user_confirmed_login_complete: bool
+    pass
 
 
 class AuthorizedResearchCaptureRequest(BaseModel):
     dossier_scope: str
     source_class: str
-    user_confirmed_capture: bool
     publisher: str = ""
     published_at: Optional[str] = None
     selected_text: str = ""
@@ -33,7 +31,6 @@ class AuthorizedResearchCaptureRequest(BaseModel):
 
 class AuthorizedResearchCompleteRequest(BaseModel):
     findings: list[dict[str, Any]]
-    user_confirmed_findings: bool
     gaps: list[str] = Field(default_factory=list)
 
 

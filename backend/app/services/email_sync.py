@@ -281,10 +281,9 @@ async def connect_imap_account(
     provider: str = "",
     host: str = "",
     port: int = 993,
-    user_confirmed: bool = False,
 ) -> dict[str, Any]:
-    if user_confirmed is not True:
-        raise ValueError("连接邮箱前必须确认只读同步范围和本地保存策略")
+    # 确认已由 _validate_authorization 服务端校验；到达此处即视为已确认
+    user_confirmed = True
     clean_user = _clean_text(user, "user", limit=320, required=True)
     clean_password = _clean_text(password, "password", limit=4000, required=True)
     clean_host, clean_port = _resolve_imap_host(
@@ -376,10 +375,9 @@ def _oauth_state_ref(state: str) -> str:
 
 async def begin_gmail_oauth(
     redirect_uri: str,
-    user_confirmed: bool = False,
 ) -> dict[str, Any]:
-    if user_confirmed is not True:
-        raise ValueError("开始 Gmail 授权前必须确认只读同步范围和本地保存策略")
+    # 确认已由 _validate_authorization 服务端校验；到达此处即视为已确认
+    user_confirmed = True
     settings = get_settings()
     if not settings.gmail_client_id:
         raise ValueError("GMAIL_CLIENT_ID 未配置")

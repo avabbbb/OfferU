@@ -36,11 +36,6 @@ class AgentMemoryImportRequest(BaseModel):
 
 class DataRestoreRequest(BaseModel):
     backup_id: str = Field(pattern=r"^[a-f0-9]{32}$")
-    confirmed: bool = False
-
-
-class DataSafetyConfirmationRequest(BaseModel):
-    confirmed: bool = False
 
 
 class AgentContextRequest(BaseModel):
@@ -1015,12 +1010,9 @@ async def export_diagnostic_bundle() -> dict[str, Any]:
 
 
 @router.post("/data/demo/reset")
-async def reset_demo_data(body: DataSafetyConfirmationRequest) -> dict[str, Any]:
+async def reset_demo_data() -> dict[str, Any]:
     """Reset only the reserved synthetic Demo scope through the Registry."""
-    return await _ui_operation_outputs(
-        "reset_demo_data",
-        {"user_confirmed": body.confirmed},
-    )
+    return await _ui_operation_outputs("reset_demo_data", {})
 
 
 @router.get("/data/safety/status")
@@ -1035,21 +1027,15 @@ async def privacy_hygiene_status() -> dict[str, Any]:
 
 
 @router.post("/data/privacy-hygiene/scrub")
-async def scrub_privacy_hygiene(body: DataSafetyConfirmationRequest) -> dict[str, Any]:
+async def scrub_privacy_hygiene() -> dict[str, Any]:
     """Clear redundant legacy email bodies only after explicit confirmation."""
-    return await _ui_operation_outputs(
-        "scrub_legacy_email_notification_bodies",
-        {"user_confirmed": body.confirmed},
-    )
+    return await _ui_operation_outputs("scrub_legacy_email_notification_bodies", {})
 
 
 @router.post("/data/privacy-hygiene/purge-synthetic")
-async def purge_synthetic_privacy_data(body: DataSafetyConfirmationRequest) -> dict[str, Any]:
+async def purge_synthetic_privacy_data() -> dict[str, Any]:
     """Remove only the reserved synthetic mailbox namespace after confirmation."""
-    return await _ui_operation_outputs(
-        "purge_synthetic_email_test_data",
-        {"user_confirmed": body.confirmed},
-    )
+    return await _ui_operation_outputs("purge_synthetic_email_test_data", {})
 
 
 @router.get("/data/safety/integrity")
@@ -1071,16 +1057,13 @@ async def create_data_backup() -> dict[str, Any]:
 async def stage_data_restore(body: DataRestoreRequest) -> dict[str, Any]:
     return await _ui_operation_outputs(
         "stage_data_restore",
-        {"backup_id": body.backup_id, "user_confirmed": body.confirmed},
+        {"backup_id": body.backup_id},
     )
 
 
 @router.post("/data/restore/cancel")
-async def cancel_data_restore(body: DataSafetyConfirmationRequest) -> dict[str, Any]:
-    return await _ui_operation_outputs(
-        "cancel_data_restore",
-        {"user_confirmed": body.confirmed},
-    )
+async def cancel_data_restore() -> dict[str, Any]:
+    return await _ui_operation_outputs("cancel_data_restore", {})
 
 
 @router.post("/memory/import")

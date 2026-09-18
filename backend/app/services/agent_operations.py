@@ -517,10 +517,9 @@ async def create_interview_scoring_skill(
     skill_id: str,
     name: str,
     definition: dict,
-    user_confirmed: bool,
 ) -> dict:
-    if user_confirmed is not True:
-        raise ValueError("创建评分 Skill 前必须由使用者明确确认")
+    # 确认已由 _validate_authorization 服务端校验；到达此处即视为已确认
+    user_confirmed = True
     from app.services.interview_scoring import create_interview_scoring_skill as _create
 
     return await _create(skill_id=skill_id, name=name, definition=definition)
@@ -548,7 +547,6 @@ async def create_ai_interview(
     model_provider: str,
     data_consent: bool,
     consented_data_categories: list[str],
-    user_confirmed: bool,
     title: str = "未命名面试",
     target_company: str = "",
     target_position: str = "",
@@ -580,16 +578,13 @@ async def create_ai_interview(
         model_provider=model_provider,
         data_consent=data_consent,
         consented_data_categories=consented_data_categories,
-        user_confirmed=user_confirmed,
     )
-
 
 async def submit_ai_interview_answer(
     interview_id: int,
     question_index: int,
     content: str,
     model_provider: str,
-    user_confirmed: bool,
 ) -> dict:
     from app.services.ai_interviews import submit_ai_interview_answer as _submit
 
@@ -598,14 +593,12 @@ async def submit_ai_interview_answer(
         question_index=question_index,
         content=content,
         model_provider=model_provider,
-        user_confirmed=user_confirmed,
     )
 
 
 async def ingest_interview_behavior_events(
     interview_id: int,
     events: list[dict],
-    user_confirmed: bool,
 ) -> dict:
     from app.services.ai_interviews import (
         ingest_interview_behavior_events as _ingest,
@@ -614,33 +607,28 @@ async def ingest_interview_behavior_events(
     return await _ingest(
         interview_id=interview_id,
         events=events,
-        user_confirmed=user_confirmed,
     )
 
 
 async def delete_ai_interview(
     interview_id: int,
     reason: str,
-    user_confirmed: bool,
 ) -> dict:
     from app.services.ai_interviews import delete_ai_interview as _delete
 
     return await _delete(
         interview_id=interview_id,
         reason=reason,
-        user_confirmed=user_confirmed,
     )
 
 
 async def restart_ai_interview(
     interview_id: int,
-    user_confirmed: bool,
 ) -> dict:
     from app.services.ai_interviews import restart_ai_interview as _restart
 
     return await _restart(
         interview_id=interview_id,
-        user_confirmed=user_confirmed,
     )
 
 
@@ -794,13 +782,11 @@ async def invalidate_work_source(work_source_id: int, reason: str) -> dict:
 
 async def begin_gmail_oauth(
     redirect_uri: str,
-    user_confirmed: bool = False,
 ) -> dict:
     from app.services.email_sync import begin_gmail_oauth as _begin
 
     return await _begin(
         redirect_uri=redirect_uri,
-        user_confirmed=user_confirmed,
     )
 
 
@@ -816,7 +802,6 @@ async def connect_imap_account(
     provider: str = "",
     host: str = "",
     port: int = 993,
-    user_confirmed: bool = False,
 ) -> dict:
     from app.services.email_sync import connect_imap_account as _connect
 
@@ -826,10 +811,7 @@ async def connect_imap_account(
         provider=provider,
         host=host,
         port=port,
-        user_confirmed=user_confirmed,
     )
-
-
 async def email_connection_status() -> dict:
     from app.services.email_sync import email_connection_status as _status
 
@@ -1295,7 +1277,6 @@ async def start_authorized_research_session(
     job_id: int,
     platform: str,
     initial_url: str,
-    user_authorized: bool,
     base_run_id: Optional[str] = None,
     expires_minutes: int = 30,
 ) -> dict:
@@ -1307,7 +1288,6 @@ async def start_authorized_research_session(
         job_id=job_id,
         platform=platform,
         initial_url=initial_url,
-        user_authorized=user_authorized,
         base_run_id=base_run_id,
         expires_minutes=expires_minutes,
     )
@@ -1315,7 +1295,6 @@ async def start_authorized_research_session(
 
 async def activate_authorized_research_read_only(
     session_id: str,
-    user_confirmed_login_complete: bool,
 ) -> dict:
     from app.services.authorized_research import (
         activate_authorized_research_read_only as _activate,
@@ -1323,15 +1302,11 @@ async def activate_authorized_research_read_only(
 
     return await _activate(
         session_id=session_id,
-        user_confirmed_login_complete=user_confirmed_login_complete,
     )
-
-
 async def capture_authorized_research_page(
     session_id: str,
     dossier_scope: str,
     source_class: str,
-    user_confirmed_capture: bool,
     publisher: str = "",
     published_at: Optional[str] = None,
     selected_text: str = "",
@@ -1344,7 +1319,6 @@ async def capture_authorized_research_page(
         session_id=session_id,
         dossier_scope=dossier_scope,
         source_class=source_class,
-        user_confirmed_capture=user_confirmed_capture,
         publisher=publisher,
         published_at=published_at,
         selected_text=selected_text,
@@ -1380,7 +1354,6 @@ async def get_authorized_research_session(
 async def complete_authorized_research_session(
     session_id: str,
     findings: list[dict],
-    user_confirmed_findings: bool,
     gaps: Optional[list[str]] = None,
 ) -> dict:
     from app.services.authorized_research import (
@@ -1390,7 +1363,6 @@ async def complete_authorized_research_session(
     return await _complete(
         session_id=session_id,
         findings=findings,
-        user_confirmed_findings=user_confirmed_findings,
         gaps=gaps,
     )
 
@@ -1489,7 +1461,7 @@ async def add_profile_evidence(
     dedup_key: Optional[str] = None,
     tier: Optional[str] = None,
     preference_confirmation: Optional[str] = None,
-    user_confirmed: bool = False,
+    # 确认已由 _validate_authorization 服务端校验；不再需要调用方传入 user_confirmed
 ) -> dict:
     """Append one confirmed, source-grounded profile entry with deterministic dedup."""
     from app.services.profile_schema import canonicalize_profile_section_payload, normalize_profile_tier
@@ -1528,10 +1500,15 @@ async def add_profile_evidence(
             item.get("issue") == "echo_source" for item in fact_gate.get("warnings") or []
         )
         if echo_blocked:
-            if not (
-                user_confirmed
+            # 确认已由 _validate_authorization 服务端校验；自回声来源只在两条
+            # 已确认路径放行：收件箱提案确认（preference_confirmation=proposal，
+            # 由 review_memory_proposal 传入，任意 tier）或使用者对偏好条目的
+            # 明确陈述（preference + direct，陈述本身即构成确认）。
+            confirmed_echo = (
+                preference_confirmation == "proposal"
                 or (resolved_tier == "preference" and preference_confirmation == "direct")
-            ):
+            )
+            if not confirmed_echo:
                 return {
                     "error": "来源只是声明自身的回声，缺少独立可验证出处；请提供真实来源材料，或经记忆收件箱由使用者确认",
                     "fact_gate": fact_gate,
@@ -1853,8 +1830,14 @@ async def list_resumes() -> list[dict]:
         ]
 
 
-async def inspect_resume_document(file_path: str) -> dict:
-    """Read one confirmed local PDF/DOCX and return candidates' source text only."""
+def _resolve_inspectable_resume_path(file_path: str) -> Path:
+    """把用户传入的简历路径限定在用户主目录与 OfferU 数据目录内。
+
+    该 Operation 把读取结果放进 Agent 上下文（可能外发到云端 provider），
+    因此只允许用户主目录与 OfferU 自身数据目录内的文件，避免提示注入
+    利用绝对路径读取系统目录或其它应用数据文件。resolve(strict=True)
+    已展开符号链接，逃逸路径会在白名单比较中被拒绝。
+    """
     requested_path = Path(str(file_path or "").strip()).expanduser()
     try:
         path = requested_path.resolve(strict=True)
@@ -1862,6 +1845,25 @@ async def inspect_resume_document(file_path: str) -> dict:
         raise ValueError("简历文件不存在或不可读取") from exc
     if not path.is_file():
         raise ValueError("简历路径必须指向一个文件")
+
+    allowed_roots: list[Path] = [Path.home()]
+    try:
+        from app.runtime_paths import runtime_data_dir
+
+        allowed_roots.append(runtime_data_dir())
+    except Exception:
+        pass
+    if not any(path.is_relative_to(root) for root in allowed_roots):
+        raise ValueError(
+            "出于安全考虑，只能读取用户主目录或 OfferU 数据目录内的简历文件；"
+            "请先把文件复制到主目录（如 Documents/Downloads/桌面）后重试"
+        )
+    return path
+
+
+async def inspect_resume_document(file_path: str) -> dict:
+    """Read one confirmed local PDF/DOCX and return candidates' source text only."""
+    path = _resolve_inspectable_resume_path(file_path)
     if path.suffix.lower() not in {".pdf", ".docx"}:
         raise ValueError("仅支持 .pdf 和 .docx 简历文件")
     size = path.stat().st_size

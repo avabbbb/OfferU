@@ -142,7 +142,10 @@ class DisabledProviderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             config_file = Path(tmp) / "config.json"
             config_file.write_text(json.dumps({}), encoding="utf-8")
-            with patch("app.llm_config_store._CONFIG_FILE", config_file), patch(
+            with patch(
+                "app.llm_config_store.runtime_config_file",
+                return_value=config_file,
+            ), patch(
                 "app.llm_config_store.get_settings",
                 return_value=SimpleNamespace(disabled_llm_providers=["openai"]),
             ):
@@ -158,7 +161,10 @@ class DisabledProviderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             config_file = Path(tmp) / "config.json"
             config_file.write_text(json.dumps({}), encoding="utf-8")
-            with patch("app.llm_config_store._CONFIG_FILE", config_file), patch(
+            with patch(
+                "app.llm_config_store.runtime_config_file",
+                return_value=config_file,
+            ), patch(
                 "app.llm_config_store.get_settings",
                 return_value=SimpleNamespace(disabled_llm_providers=[]),
             ):
@@ -178,7 +184,10 @@ class DisabledProviderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             config_file = Path(tmp) / "config.json"
             config_file.write_text(json.dumps({"version": 1}), encoding="utf-8")
-            with patch("app.llm_config_store._CONFIG_FILE", config_file), patch(
+            with patch(
+                "app.llm_config_store.runtime_config_file",
+                return_value=config_file,
+            ), patch(
                 "app.llm_config_store.os.replace",
                 wraps=os.replace,
             ) as replace:

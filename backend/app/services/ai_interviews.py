@@ -534,11 +534,10 @@ async def create_ai_interview(
     model_provider: str,
     data_consent: bool,
     consented_data_categories: list[str],
-    user_confirmed: bool,
     role_benchmark_run_id: Optional[str] = None,
 ) -> dict[str, Any]:
-    if user_confirmed is not True:
-        raise ValueError("创建 AI 面试前必须由使用者明确确认")
+    # 确认已由 _validate_authorization 服务端校验；到达此处即视为已确认
+    user_confirmed = True
     clean_type = _clean_text(
         interview_type, "interview_type", 50, required=True
     ).lower()
@@ -1522,10 +1521,9 @@ async def submit_ai_interview_answer(
     question_index: int,
     content: str,
     model_provider: str,
-    user_confirmed: bool,
 ) -> dict[str, Any]:
-    if user_confirmed is not True:
-        raise ValueError("提交回答前必须由使用者明确确认")
+    # 确认已由 _validate_authorization 服务端校验；到达此处即视为已确认
+    user_confirmed = True
     clean_id = _positive_id(interview_id, "interview_id")
     if isinstance(question_index, bool) or int(question_index) < 0:
         raise ValueError("question_index 必须是非负整数")
@@ -1741,10 +1739,9 @@ async def ingest_interview_behavior_events(
     *,
     interview_id: int,
     events: list[dict[str, Any]],
-    user_confirmed: bool,
 ) -> dict[str, Any]:
-    if user_confirmed is not True:
-        raise ValueError("上传派生表达行为事件前必须由使用者明确确认")
+    # 确认已由 _validate_authorization 服务端校验；到达此处即视为已确认
+    user_confirmed = True
     clean_id = _positive_id(interview_id, "interview_id")
     validated = validate_behavior_events(events)
     lock = _LOCKS.setdefault(clean_id, asyncio.Lock())
@@ -1849,10 +1846,9 @@ async def delete_ai_interview(
     *,
     interview_id: int,
     reason: str,
-    user_confirmed: bool,
 ) -> dict[str, Any]:
-    if user_confirmed is not True:
-        raise ValueError("删除面试前必须由使用者明确确认")
+    # 确认已由 _validate_authorization 服务端校验；到达此处即视为已确认
+    user_confirmed = True
     clean_id = _positive_id(interview_id, "interview_id")
     clean_reason = _clean_text(reason, "reason", 500, required=True)
     async with async_session() as db:
@@ -1897,10 +1893,9 @@ async def delete_ai_interview(
 async def restart_ai_interview(
     *,
     interview_id: int,
-    user_confirmed: bool,
 ) -> dict[str, Any]:
-    if user_confirmed is not True:
-        raise ValueError("重新开始面试前必须由使用者明确确认")
+    # 确认已由 _validate_authorization 服务端校验；到达此处即视为已确认
+    user_confirmed = True
     clean_id = _positive_id(interview_id, "interview_id")
     async with async_session() as db:
         original = (

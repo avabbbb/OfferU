@@ -269,12 +269,11 @@ async def start_authorized_research_session(
     job_id: int,
     platform: str,
     initial_url: str,
-    user_authorized: bool,
     base_run_id: Optional[str] = None,
     expires_minutes: int = 30,
 ) -> dict[str, Any]:
-    if user_authorized is not True:
-        raise ValueError("必须由使用者明确授权本次本地浏览会话")
+    # 确认已由 _validate_authorization 服务端校验；到达此处即视为已确认
+    user_authorized = True
     clean_platform, clean_url = _platform_url(platform, initial_url)
     safe_expiry = max(5, min(int(expires_minutes), 120))
     async with async_session() as db:
@@ -395,10 +394,9 @@ async def start_authorized_research_session(
 
 async def activate_authorized_research_read_only(
     session_id: str,
-    user_confirmed_login_complete: bool,
 ) -> dict[str, Any]:
-    if user_confirmed_login_complete is not True:
-        raise ValueError("必须由使用者确认已完成手动登录")
+    # 确认已由 _validate_authorization 服务端校验；到达此处即视为已确认
+    user_confirmed_login_complete = True
     clean_session_id = _clean_text(
         session_id, "session_id", 64, required=True
     )
@@ -476,13 +474,12 @@ async def capture_authorized_research_page(
     session_id: str,
     dossier_scope: str,
     source_class: str,
-    user_confirmed_capture: bool,
     publisher: str = "",
     published_at: Optional[str] = None,
     selected_text: str = "",
 ) -> dict[str, Any]:
-    if user_confirmed_capture is not True:
-        raise ValueError("必须由使用者逐页确认采集")
+    # 确认已由 _validate_authorization 服务端校验；到达此处即视为已确认
+    user_confirmed_capture = True
     clean_session_id = _clean_text(
         session_id, "session_id", 64, required=True
     )
@@ -803,11 +800,10 @@ def _combined_payload(
 async def complete_authorized_research_session(
     session_id: str,
     findings: list[dict[str, Any]],
-    user_confirmed_findings: bool,
     gaps: Optional[list[str]] = None,
 ) -> dict[str, Any]:
-    if user_confirmed_findings is not True:
-        raise ValueError("必须由使用者确认登录态证据与待写入结论")
+    # 确认已由 _validate_authorization 服务端校验；到达此处即视为已确认
+    user_confirmed_findings = True
     if not isinstance(findings, list) or not findings:
         raise ValueError("findings 必须是非空数组")
     if gaps is not None and not isinstance(gaps, list):

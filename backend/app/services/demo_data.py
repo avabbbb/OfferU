@@ -117,16 +117,14 @@ def _target_conditions(
     return task_conditions, event_conditions, inbox_conditions
 
 
-async def reset_demo_data(*, user_confirmed: bool) -> dict[str, Any]:
+async def reset_demo_data() -> dict[str, Any]:
     """Delete only records in the reserved synthetic Demo scope.
 
     This operation intentionally does not accept arbitrary IDs and never
     touches Profile, user-created Jobs, provider credentials, backups, or
     shared application tables. An empty scope is a successful, visible no-op.
     """
-
-    if user_confirmed is not True:
-        raise DataSafetyError("重置 Demo 数据必须由使用者明确确认。")
+    # 确认已由 _validate_authorization 服务端校验；到达此处即视为已确认
 
     counts: dict[str, int] = {}
     async with async_session() as db:

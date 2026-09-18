@@ -58,11 +58,7 @@ class PrivacyHygieneTests(unittest.TestCase):
                     await db.commit()
                 with patch("app.services.privacy_hygiene.async_session", session):
                     before = await get_privacy_hygiene_status()
-                    with self.assertRaisesRegex(ValueError, "明确确认"):
-                        await scrub_legacy_email_notification_bodies()
-                    scrubbed = await scrub_legacy_email_notification_bodies(
-                        user_confirmed=True
-                    )
+                    scrubbed = await scrub_legacy_email_notification_bodies()
                     after = await get_privacy_hygiene_status()
                 async with session() as db:
                     rows = (
@@ -92,7 +88,9 @@ class PrivacyHygieneTests(unittest.TestCase):
         scrub = OPERATIONS["scrub_legacy_email_notification_bodies"].schema()
         self.assertEqual(status["side_effects"], ["read"])
         self.assertTrue(scrub["requires_confirmation"])
-        self.assertEqual(scrub["parameters"]["user_confirmed"]["type"], "boolean")
+        # Confirmation is proven by _validate_authorization; the operation
+        # schema must not offer a caller-supplied user_confirmed parameter.
+        self.assertNotIn("user_confirmed", scrub["parameters"])
         self.assertIn("不可恢复", OPERATIONS["scrub_legacy_email_notification_bodies"].description)
 
     def test_settings_privacy_routes_use_registry_boundary(self) -> None:
@@ -155,9 +153,7 @@ class PrivacyHygieneTests(unittest.TestCase):
                     new=AsyncMock(),
                 ) as delete_secret:
                     before = await get_synthetic_email_test_data_status()
-                    with self.assertRaisesRegex(ValueError, "明确确认"):
-                        await purge_synthetic_email_test_data()
-                    purged = await purge_synthetic_email_test_data(user_confirmed=True)
+                    purged = await purge_synthetic_email_test_data()
                     after = await get_synthetic_email_test_data_status()
                 return before, purged, after, delete_secret.await_count
             finally:
