@@ -1403,7 +1403,7 @@ export interface DiagnosticBundle {
 
 export const dataSafetyApi = {
   exportUserData: () => request<UserDataExport>("/api/agent/data/export"),
-  resetDemoData: (confirmed: boolean) =>
+  resetDemoData: () =>
     request<{
       reset: boolean;
       scope: { source: string; batch_id: string };
@@ -1413,40 +1413,37 @@ export const dataSafetyApi = {
       real_data_preserved: boolean;
     }>("/api/agent/data/demo/reset", {
       method: "POST",
-      body: JSON.stringify({ confirmed }),
     }),
   status: () => request<DataSafetyStatus>("/api/agent/data/safety/status"),
   privacyHygieneStatus: () => request<PrivacyHygieneStatus>("/api/agent/data/privacy-hygiene"),
-  scrubLegacyEmailBodies: (confirmed: boolean) =>
+  scrubLegacyEmailBodies: () =>
     request<{
       scrubbed_records: number;
       status: PrivacyHygieneStatus;
     }>("/api/agent/data/privacy-hygiene/scrub", {
       method: "POST",
-      body: JSON.stringify({ confirmed }),
     }),
-  purgeSyntheticEmailTestData: (confirmed: boolean) =>
+  purgeSyntheticEmailTestData: () =>
     request<{
       purged: Record<string, number>;
       status: Record<string, number>;
     }>("/api/agent/data/privacy-hygiene/purge-synthetic", {
       method: "POST",
-      body: JSON.stringify({ confirmed }),
     }),
   checkIntegrity: () => request<DataIntegrityReport>("/api/agent/data/safety/integrity"),
   listBackups: () => request<DataBackupList>("/api/agent/data/backups"),
   createBackup: () => request<DataBackupItem & { archive_sha256: string }>("/api/agent/data/backups", {
     method: "POST",
   }),
-  stageRestore: (backupId: string, confirmed: boolean) =>
+  stageRestore: (backupId: string) =>
     request<{ backup_id: string; staged_at: string; pending_restart: boolean; database_replaced: boolean }>(
       "/api/agent/data/restore",
-      { method: "POST", body: JSON.stringify({ backup_id: backupId, confirmed }) },
+      { method: "POST", body: JSON.stringify({ backup_id: backupId }) },
     ),
-  cancelRestore: (confirmed: boolean) =>
+  cancelRestore: () =>
     request<{ cancelled: boolean; backup_id?: string; backup_preserved?: boolean }>(
       "/api/agent/data/restore/cancel",
-      { method: "POST", body: JSON.stringify({ confirmed }) },
+      { method: "POST" },
     ),
 };
 

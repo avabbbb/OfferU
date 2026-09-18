@@ -200,7 +200,6 @@ export default function AIInterviewPage() {
         model_provider: runtime.runtime.provider,
         data_consent: true,
         consented_data_categories: consentedCategories,
-        user_confirmed: true,
       });
       if (!created.questions.length) throw new Error("AI 没有生成可用问题，请重新创建");
       setSession(created);

@@ -23,6 +23,7 @@ const OnboardingWizard = lazy(() =>
 const API_BASE = resolveApiBase();
 const APP_VERSION = import.meta.env.VITE_APP_VERSION || "0.0.0";
 const BACKEND_STARTUP_TIMEOUT_MS = 45_000;
+const BACKEND_STARTUP_SLOW_HINT_MS = 8_000;
 
 function OnboardingGate({ children }: { children: React.ReactNode }) {
   const { shouldShowWizard, completeWizard, skipWizard } = useOnboarding();
@@ -50,6 +51,7 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
 function BackendReadyGate({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(SHOWCASE);
   const [startupError, setStartupError] = useState(false);
+  const [slowHint, setSlowHint] = useState(false);
   const [probeNonce, setProbeNonce] = useState(0);
   const [startupRecovery, setStartupRecovery] = useState<{
     status: string;
@@ -61,9 +63,14 @@ function BackendReadyGate({ children }: { children: React.ReactNode }) {
     if (SHOWCASE) return; // 展示模式无 Python 后端，直接放行
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let slowHintTimer: ReturnType<typeof setTimeout> | undefined;
     setReady(false);
     setStartupError(false);
+    setSlowHint(false);
     const deadline = Date.now() + BACKEND_STARTUP_TIMEOUT_MS;
+    slowHintTimer = setTimeout(() => {
+      if (!cancelled) setSlowHint(true);
+    }, BACKEND_STARTUP_SLOW_HINT_MS);
     const probe = async () => {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 1200);
@@ -101,7 +108,8 @@ function BackendReadyGate({ children }: { children: React.ReactNode }) {
     probe();
     return () => {
       cancelled = true;
-      if (retryTimer) clearTimeout(retryTimer);
+      clearTimeout(retryTimer);
+      clearTimeout(slowHintTimer);
     };
   }, [probeNonce]);
 
@@ -134,7 +142,23 @@ function BackendReadyGate({ children }: { children: React.ReactNode }) {
                 </button>
               </>
             ) : (
-              <p className="text-sm font-semibold">正在启动 Python 工作台…</p>
+              <>
+                <p className="text-sm font-semibold">正在启动 Python 工作台…</p>
+                {slowHint && (
+                  <>
+                    <p className="mt-2 text-xs leading-5 text-[var(--foreground-muted)]">
+                      连接时间较长，仍在重试。若本地服务未启动，请先在终端启动后端（端口 8766）。
+                    </p>
+                    <button
+                      type="button"
+                      className="bauhaus-button bauhaus-button-red mt-3 !px-4 !py-2 !text-[11px]"
+                      onClick={() => setProbeNonce((value) => value + 1)}
+                    >
+                      立即重试
+                    </button>
+                  </>
+                )}
+              </>
             )}
           </div>
         </div>

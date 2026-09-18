@@ -1119,9 +1119,8 @@ async function showcaseDataExport(): Promise<unknown> {
 }
 
 async function resetShowcaseDemoData(body: unknown): Promise<unknown> {
-  if (!body || typeof body !== "object" || (body as { confirmed?: unknown }).confirmed !== true) {
-    return { ok: false, errors: ["重置 Demo 数据必须由使用者明确确认"] };
-  }
+  // Confirmation happens in the UI confirmation dialog; the request body no
+  // longer carries a confirmed flag (the real backend ignores it).
   const before = await showcaseDataExport() as {
     counts: Record<string, number>;
   };

@@ -71,6 +71,7 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
   const [probeError, setProbeError] = useState("");
   const [offline, setOffline] = useState(() => typeof navigator !== "undefined" && !navigator.onLine);
   const [now, setNow] = useState(Date.now());
+  const [receivedAt, setReceivedAt] = useState(0);
   const [retry, setRetry] = useState(0);
   const [activity, setActivity] = useState<ConnectionActivity[]>([]);
   const [sync, setSync] = useState<ContextSyncState>({
@@ -109,6 +110,10 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
       window.removeEventListener("offline", offline);
     };
   }, [mutate]);
+
+  useEffect(() => {
+    if (data) setReceivedAt(Date.now());
+  }, [data]);
 
   // Single serialized writer. All callers funnel through `queued` — last
   // enqueued wins, so stale route/selection writes can never overwrite a newer
@@ -232,7 +237,7 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
 
   const refresh = useCallback(() => { setProbeError(""); void mutate().catch(() => undefined); }, [mutate]);
   const retrySync = useCallback(() => setRetry((value) => value + 1), []);
-  const stale = Boolean(data && now - Date.parse(data.checked_at) > 45000);
+  const stale = Boolean(data && receivedAt > 0 && now - receivedAt > 30000);
 
   return (
     <ConnectionContext.Provider value={{

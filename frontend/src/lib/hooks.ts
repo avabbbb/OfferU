@@ -346,11 +346,20 @@ export function useAutomationInbox(limit = 20) {
 }
 
 /** 获取持久化 CareerTask；Today 用它展示所有后台任务的实时生命周期。 */
+const ACTIVE_TASK_STATUSES: Record<string, true> = {
+  queued: true,
+  running: true,
+  waiting_for_approval: true,
+};
 export function useCareerTasks(limit = 50) {
   return useSWR<{ tasks: CareerTask[] }>(
     `${API_BASE}/api/agent/runtime/career-tasks?limit=${limit}`,
     fetcher,
-    { refreshInterval: 2000, revalidateOnFocus: true },
+    {
+      refreshInterval: (latest) =>
+        latest?.tasks?.some((task) => ACTIVE_TASK_STATUSES[task.status]) ? 2000 : 8000,
+      revalidateOnFocus: true,
+    },
   );
 }
 
@@ -551,9 +560,8 @@ export async function syncEmails() {
 }
 
 /** 获取 Gmail 授权链接 */
-export async function getEmailAuthUrl(userConfirmed = false): Promise<{ auth_url?: string; message?: string }> {
-  const params = new URLSearchParams({ user_confirmed: String(userConfirmed) });
-  const res = await showcaseFetch(`/api/email/auth-url?${params.toString()}`);
+export async function getEmailAuthUrl(): Promise<{ auth_url?: string; message?: string }> {
+  const res = await showcaseFetch(`/api/email/auth-url`);
   return res.json();
 }
 
@@ -609,7 +617,12 @@ export function useEmailSyncRuns(limit = 20) {
   return useSWR<{ total: number; items: EmailSyncRunSummary[] }>(
     `${API_BASE}/api/email/sync-runs?limit=${safeLimit}`,
     fetcher,
-    { refreshInterval: 5000 }
+    {
+      refreshInterval: (latest) =>
+        latest?.items?.some((run) => run.status === "pending" || run.status === "running")
+          ? 5000
+          : 15000,
+    }
   );
 }
 
@@ -620,7 +633,6 @@ export async function imapConnect(data: {
   provider?: string;
   host?: string;
   port?: number;
-  user_confirmed?: boolean;
 }) {
   const res = await showcaseFetch(`/api/email/imap-connect`, {
     method: "POST",
@@ -1911,10 +1923,11 @@ export function useScraperSources() {
   return useSWR<ScraperSource[]>(`${API_BASE}/api/scraper/sources`, fetcher);
 }
 
-/** 获取爬取任务列表 */
+/** 获取爬取任务列表；只在有 running 任务时保持 3s 轮询，空闲时降到 15s。 */
 export function useScraperTasks() {
   return useSWR<ScraperTask[]>(`${API_BASE}/api/scraper/tasks`, fetcher, {
-    refreshInterval: 3000,  // 运行中自动刷新
+    refreshInterval: (latest) =>
+      latest?.some((task) => task.status === "running") ? 3000 : 15000,
   });
 }
 
@@ -2805,7 +2818,6 @@ export async function createAIInterview(body: {
   model_provider: string;
   data_consent: boolean;
   consented_data_categories: string[];
-  user_confirmed: boolean;
 }): Promise<AIInterviewSession> {
   let res: Response;
   try {
@@ -2839,7 +2851,6 @@ export async function submitAIInterviewAnswer(
         question_index: questionIndex,
         content,
         model_provider: modelProvider,
-        user_confirmed: true,
       }),
     });
   } catch (error) {
@@ -2859,7 +2870,7 @@ export async function ingestAIInterviewBehaviorEvents(
   const res = await showcaseFetch(`${API_BASE}/api/interviews/${interviewId}/behavior-events`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ events, user_confirmed: true }),
+    body: JSON.stringify({ events }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));

@@ -358,7 +358,7 @@ function LocalDataSafetyCard() {
     if (!selectedBackup || confirmationText !== "恢复") return;
     setAction("restore");
     try {
-      await dataSafetyApi.stageRestore(selectedBackup.backup_id, true);
+      await dataSafetyApi.stageRestore(selectedBackup.backup_id);
       onClose();
       setFeedback({ type: "success", message: "恢复已安全暂存。请关闭并重新打开 OfferU；启动前会再次校验并保留 pre-restore 备份。" });
       await load();
@@ -373,7 +373,7 @@ function LocalDataSafetyCard() {
     setAction("cancel");
     setFeedback(null);
     try {
-      await dataSafetyApi.cancelRestore(true);
+      await dataSafetyApi.cancelRestore();
       setFeedback({ type: "success", message: "待恢复任务已取消，原备份仍然保留。" });
       await load();
     } catch (cause) {
@@ -412,7 +412,7 @@ function LocalDataSafetyCard() {
     setAction("reset_demo");
     setFeedback(null);
     try {
-      const result = await dataSafetyApi.resetDemoData(true);
+      const result = await dataSafetyApi.resetDemoData();
       setDemoResetOpen(false);
       setDemoConfirmationText("");
       const cleared = Object.values(result.deleted || {}).reduce((sum, count) => sum + Number(count || 0), 0);
@@ -435,7 +435,7 @@ function LocalDataSafetyCard() {
     setAction("privacy_scrub");
     setFeedback(null);
     try {
-      const result = await dataSafetyApi.scrubLegacyEmailBodies(true);
+      const result = await dataSafetyApi.scrubLegacyEmailBodies();
       setPrivacyScrubOpen(false);
       setPrivacyConfirmationText("");
       setPrivacyHygiene(result.status);
@@ -455,7 +455,7 @@ function LocalDataSafetyCard() {
     setAction("privacy_purge_synthetic");
     setFeedback(null);
     try {
-      const result = await dataSafetyApi.purgeSyntheticEmailTestData(true);
+      const result = await dataSafetyApi.purgeSyntheticEmailTestData();
       setSyntheticPurgeOpen(false);
       setSyntheticConfirmationText("");
       setPrivacyHygiene((current) => current ? { ...current, synthetic_email_test_data: result.status } : current);

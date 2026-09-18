@@ -7,8 +7,8 @@
   --background: #f4f6f7;
   --foreground: #243039;
   --foreground-soft: #5d6b73;
-  --foreground-muted: #829098;
-  --foreground-faint: #aeb9be;
+  --foreground-muted: #617078;
+  --foreground-faint: #7d8b93;
   --surface: #ffffff;
   --surface-muted: #eef2f3;
   --surface-hover: #e6ecee;
@@ -1049,8 +1049,8 @@ select {
   --background: #edf0eb;
   --foreground: #191919;
   --foreground-soft: rgba(25, 25, 25, 0.68);
-  --foreground-muted: rgba(25, 25, 25, 0.46);
-  --foreground-faint: rgba(25, 25, 25, 0.28);
+  --foreground-muted: rgba(25, 25, 25, 0.62);
+  --foreground-faint: rgba(25, 25, 25, 0.48);
   --surface: rgba(248, 249, 246, 0.78);
   --surface-opaque: #f8f9f6;
   --surface-muted: rgba(232, 236, 231, 0.78);

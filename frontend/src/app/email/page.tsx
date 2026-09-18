@@ -138,7 +138,7 @@ export default function EmailPage() {
     }
     setEmailError("");
     try {
-      const result = await getEmailAuthUrl(true);
+      const result = await getEmailAuthUrl();
       if (result.auth_url) {
         if (!isTrustedGmailAuthUrl(result.auth_url)) {
           setEmailError("Gmail 授权地址异常，已停止跳转");
@@ -164,7 +164,6 @@ export default function EmailPage() {
       user: imapUser,
       password: imapPassword,
       provider: imapProvider,
-      user_confirmed: true,
     });
     setImapLoading(false);
     if (ok) {

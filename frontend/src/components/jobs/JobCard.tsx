@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Briefcase,
@@ -70,7 +71,11 @@ export function JobCard({
     marker: "rounded-full bg-[#e8d2cd]",
     meta: "其他来源",
   };
-  const applyUrl = job.apply_url || job.url;
+  const rawApplyUrl = job.apply_url || job.url;
+  // 数据源可能返回占位域名（example.invalid 等），这类链接打开即死链。
+  const applyUrl = rawApplyUrl && !/https?:\/\/[^/]*example\.(invalid|test|example|localhost)/i.test(rawApplyUrl)
+    ? rawApplyUrl
+    : "";
 
   const openDetail = () => {
     router.push(`/jobs/${job.id}`);
@@ -78,6 +83,8 @@ export function JobCard({
 
   return (
     <article
+      role="article"
+      aria-label={`${job.title} · ${job.company}`}
       className={`job-card group relative flex h-full min-h-[280px] max-w-full flex-col overflow-hidden border border-black/15 bg-[var(--surface)] transition-all duration-[var(--dur-quick)] ease-[var(--ease-snap)] ${
         selected
           ? "bg-[var(--surface-muted)] shadow-[1px_1px_0_0_rgba(18,18,18,0.16)]"
@@ -113,7 +120,12 @@ export function JobCard({
           <div className="min-w-0 flex-1">
             <p className="bauhaus-label text-black/50">{accent.meta}</p>
             <h3 className="mt-1 line-clamp-2 text-xl font-semibold leading-tight text-black">
-              {job.title}
+              <Link
+                href={`/jobs/${job.id}`}
+                className="outline-none transition-colors hover:text-[var(--primary-blue)] focus-visible:underline"
+              >
+                {job.title}
+              </Link>
             </h3>
             <p className="mt-2 line-clamp-1 text-sm font-medium text-black/62">
               {job.company}
@@ -194,7 +206,7 @@ export function JobCard({
           >
             查看详情
           </button>
-          {applyUrl && (
+          {applyUrl ? (
             <a
               href={applyUrl}
               target="_blank"
@@ -204,7 +216,14 @@ export function JobCard({
             >
               投递入口
             </a>
-          )}
+          ) : rawApplyUrl ? (
+            <span
+              className="bauhaus-button z-20 !min-h-8 !px-3 !py-2 !text-[11px] cursor-not-allowed border border-black/15 text-black/45"
+              title="该岗位来源未提供有效投递链接"
+            >
+              暂无投递链接
+            </span>
+          ) : null}
         </div>
       </div>
 
