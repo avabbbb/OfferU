@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from pathlib import Path
 from typing import Any, Literal
@@ -32,14 +33,14 @@ from app.services.security_redaction import (
     redact_sensitive_value,
     safe_error_message,
 )
-from app.llm_config_store import save_llm_config_file
-from app.runtime_paths import runtime_config_file
+from app.llm_config_store import config_file_path, save_llm_config_file
 from app.services import llm_secret_vault
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# backend/config.json
-_CONFIG_FILE = runtime_config_file()
+# config.json 路径统一走 llm_config_store.config_file_path() 运行期现取。
 _DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
 _PLACEHOLDER_API_KEYS = {
     "sk-your-openai-key-here",
@@ -443,16 +444,19 @@ def _normalize_llm_state(cfg: ConfigUpdate) -> None:
 
 
 def _load_config() -> ConfigUpdate:
-    if _CONFIG_FILE.exists():
+    config_file = config_file_path()
+    if config_file.exists():
         try:
-            raw = json.loads(_CONFIG_FILE.read_text(encoding="utf-8"))
+            raw = json.loads(config_file.read_text(encoding="utf-8"))
             if isinstance(raw, dict):
                 llm_secret_vault.hydrate(raw)
             cfg = ConfigUpdate(**raw)
             _normalize_llm_state(cfg)
             return cfg
-        except (json.JSONDecodeError, Exception):
-            pass
+        except json.JSONDecodeError:
+            logger.warning("config.json 格式损坏，使用默认配置")
+        except Exception as exc:
+            logger.warning("config.json 校验失败: %s，使用默认配置", exc)
 
     settings = get_settings()
     cfg = ConfigUpdate(

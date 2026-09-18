@@ -234,7 +234,7 @@ class LlmSecretVaultTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir="H:/tmp/offeru") as root:
             config_file = Path(root) / "config.json"
             config_file.write_text('{"existing":true}', encoding="utf-8")
-            with fake.install(), patch.object(llm_config_store, "_CONFIG_FILE", config_file), \
+            with fake.install(), patch.object(llm_config_store, "runtime_config_file", return_value=config_file), \
                     patch("app.llm_config_store.os.replace", side_effect=OSError("denied")), \
                     self.assertRaises(OSError):
                 llm_config_store.save_llm_config_file(config_payload())
@@ -245,7 +245,7 @@ class LlmSecretVaultTests(unittest.TestCase):
         fake = FakeVault()
         with tempfile.TemporaryDirectory(dir="H:/tmp/offeru") as root:
             config_file = Path(root) / "config.json"
-            with fake.install(), patch.object(llm_config_store, "_CONFIG_FILE", config_file):
+            with fake.install(), patch.object(llm_config_store, "runtime_config_file", return_value=config_file):
                 first = llm_config_store.save_llm_config_file(config_payload(api_key="sk-first"))
                 first_ref = first["llm_api_configs"][0]["credential_ref"]
                 second_payload = config_payload(api_key="sk-second", credential_ref=first_ref)

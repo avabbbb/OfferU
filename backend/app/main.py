@@ -8,6 +8,7 @@
 import os
 import logging
 from contextlib import asynccontextmanager
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -157,12 +158,45 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-cors_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
-
 # ---- CORS 允许前端跨域访问 ----
 # cors_origins 以逗号分隔多个来源，如 "http://localhost:7410,http://127.0.0.1:7410"
 # allow_credentials=True 允许带 cookie 的跨域请求（Gmail OAuth 回调需要）
-cors_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+#
+# CORS_ORIGINS 可被系统环境变量静默覆盖（pydantic-settings 优先级 进程env > .env > 默认）。
+# 一旦放宽为 * 或外部来源，任意网页即可跨域调用 8766 的未鉴权写端点（如 PUT /api/config
+# 重指 LLM base_url 形成数据外泄链）。因此 env 提供的值必须过白名单：仅允许本机回环、
+# tauri 协议与浏览器扩展来源；其余一律拒绝并明示，绝不静默放宽。
+_CORS_ALLOWED_HOSTS = {"localhost", "127.0.0.1", "[::1]", "tauri.localhost"}
+
+
+def _is_allowed_cors_origin(origin: str) -> bool:
+    if origin in ("tauri://localhost",):
+        return True
+    try:
+        parts = urlsplit(origin)
+    except ValueError:
+        return False
+    if parts.scheme not in ("http", "https", "tauri"):
+        return False
+    host = (parts.hostname or "").lower()
+    return host in _CORS_ALLOWED_HOSTS
+
+
+cors_origins = []
+_dropped_cors_origins: list[str] = []
+for _origin in (o.strip() for o in settings.cors_origins.split(",")):
+    if not _origin:
+        continue
+    if _is_allowed_cors_origin(_origin):
+        if _origin not in cors_origins:
+            cors_origins.append(_origin)
+    else:
+        _dropped_cors_origins.append(_origin)
+if _dropped_cors_origins:
+    logger.warning(
+        "CORS_ORIGINS 含非本机来源已拒绝: %s（仅允许 localhost/127.0.0.1/tauri 来源）",
+        _dropped_cors_origins,
+    )
 # 前端 dev 端口 7410 无条件可用：系统环境变量 CORS_ORIGINS 会覆盖 settings，
 # 且该变量可能在旧值（5140/3000）上漂移，导致浏览器请求被 CORS 拦截。
 for _offeru_frontend_origin in ("http://localhost:7410", "http://127.0.0.1:7410"):
@@ -308,8 +342,28 @@ async def offeru_unhandled_exception_handler(
     )
 
 
+_LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1", "[::1]", "tauri.localhost"}
+
+
 @app.middleware("http")
 async def add_security_headers(request, call_next):
+    # DNS-rebinding boundary: the API binds loopback and has no login, so a
+    # hostile site could otherwise rebind to 127.0.0.1 and issue same-origin
+    # writes. Reject any Host that is not loopback/tauri (fail-closed).
+    raw_host = (request.headers.get("host") or "").strip().lower()
+    # IPv6 字面量形如 [::1]:8766；按 ']' 取主机段，否则按 ':' 去端口。
+    host_header = (
+        raw_host[1 : raw_host.index("]")]
+        if raw_host.startswith("[") and "]" in raw_host
+        else raw_host.split(":", 1)[0]
+    )
+    if request.url.path.startswith("/api/") and host_header not in _LOOPBACK_HOSTS:
+        return _error_response(
+            request,
+            status_code=403,
+            detail="请求被拒绝：仅允许本机回环来源",
+            kind="forbidden_host",
+        )
     try:
         response = await call_next(request)
     except Exception as exc:

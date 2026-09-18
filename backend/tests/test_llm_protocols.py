@@ -35,10 +35,9 @@ def isolated_config():
                  patch.object(llm_secret_vault, "hydrate", return_value=None), \
                  patch.object(llm_secret_vault, "dehydrate", return_value=None):
                 import app.llm_config_store as store
-                with patch.object(store, "_CONFIG_FILE", config_file):
+                with patch.object(store, "runtime_config_file", return_value=config_file):
                     import app.routes.config as routes
-                    with patch.object(routes, "_CONFIG_FILE", config_file), \
-                         patch.object(routes, "_current_config", None), \
+                    with patch.object(routes, "_current_config", None), \
                          patch.object(routes, "get_settings", return_value=settings):
                         yield routes
         finally:

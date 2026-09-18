@@ -29,8 +29,7 @@ from app.llm_presets import (
     provider_tier_models,
 )
 
-# backend/config.json
-_CONFIG_FILE = runtime_config_file()
+# config.json 路径统一由 config_file_path() 运行期现取，不在模块级冻结。
 
 # 从 config.json 同步进全局 Settings 的 LLM 相关字段。
 # 与 app/routes/config.py 的 _sync_runtime_settings 保持一致。
@@ -56,15 +55,18 @@ _LLM_RUNTIME_FIELDS: tuple[str, ...] = (
 
 
 def config_file_path() -> Path:
-    return _CONFIG_FILE
+    """运行期现取 config.json 路径——OFFERU_DATA_DIR 变化时跟随，
+    避免 import 期冻结导致测试 patch 与实际写入指向不同文件。"""
+    return runtime_config_file()
 
 
 def load_llm_config_file() -> dict[str, Any] | None:
     """读取 backend/config.json，返回原始 dict；文件不存在或损坏时返回 None。"""
-    if not _CONFIG_FILE.exists():
+    config_file = config_file_path()
+    if not config_file.exists():
         return None
     try:
-        raw = json.loads(_CONFIG_FILE.read_text(encoding="utf-8"))
+        raw = json.loads(config_file.read_text(encoding="utf-8"))
         return raw if isinstance(raw, dict) else None
     except (json.JSONDecodeError, OSError):
         return None
@@ -75,17 +77,27 @@ def save_llm_config_file(payload: dict[str, Any]) -> dict[str, Any]:
 
     from app.services import llm_secret_vault
 
+    # 文件存在但无法解析时拒绝写入：否则 _load_config 静默 fallback 到默认配置，
+    config_file = config_file_path()
+    if config_file.exists():
+        previous_payload = load_llm_config_file()
+        if previous_payload is None:
+            raise ValueError(
+                "config.json 存在但无法解析；为避免凭据引用级联删除已拒绝写入，"
+                "请先手动备份并修复或删除该文件"
+            )
+    else:
+        previous_payload = None
+    previous_refs = llm_secret_vault.credential_references(previous_payload or {})
     safe_payload = deepcopy(payload)
     created_refs = llm_secret_vault.dehydrate(safe_payload)
-    previous_payload = load_llm_config_file() or {}
-    previous_refs = llm_secret_vault.credential_references(previous_payload)
-    temporary = _CONFIG_FILE.with_name(f".{_CONFIG_FILE.name}.{uuid4().hex}.tmp")
+    temporary = config_file.with_name(f".{config_file.name}.{uuid4().hex}.tmp")
     try:
         temporary.write_text(
             json.dumps(safe_payload, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-        os.replace(temporary, _CONFIG_FILE)
+        os.replace(temporary, config_file)
         current_refs = llm_secret_vault.credential_references(safe_payload)
         for reference in previous_refs - current_refs:
             llm_secret_vault.delete_key(reference)

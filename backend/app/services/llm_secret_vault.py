@@ -68,11 +68,23 @@ def read_key(reference: str) -> str:
     return str(payload.get("api_key") or "")
 
 
-def _read_connection_secret(reference: str, *, record_error: bool = False) -> dict[str, Any]:
+def _read_connection_secret(
+    reference: str,
+    *,
+    record_error: bool = False,
+    missing_is_error: bool = False,
+) -> dict[str, Any]:
     if not reference:
         return {}
     try:
         payload = credential_store.load_secret_sync(reference)
+    except RuntimeError as exc:
+        # "凭据不存在" 是正常空态（该 ref 从未写入或被清理），不应计入
+        # _hydrate_errors；只有钥匙串后端故障/损坏才上报。
+        is_missing = "不存在" in str(exc)
+        if record_error and (missing_is_error or not is_missing):
+            _hydrate_errors.append("系统钥匙串中的连接凭据无法读取")
+        return {}
     except Exception:
         if record_error:
             _hydrate_errors.append("系统钥匙串中的连接凭据无法读取")
@@ -126,9 +138,7 @@ def hydrate(payload: dict[str, Any]) -> None:
                 continue
             api_key = str(item.get("api_key") or "").strip()
             reference = str(item.get("credential_ref") or "")
-            if api_key and not reference:
-                continue
-            secret = _read_connection_secret(reference, record_error=bool(reference))
+            secret = _read_connection_secret(reference, record_error=bool(reference), missing_is_error=True)
             if not api_key and secret.get("api_key"):
                 item["api_key"] = str(secret["api_key"])
             if isinstance(secret.get("default_headers"), dict):
@@ -138,17 +148,19 @@ def hydrate(payload: dict[str, Any]) -> None:
         if str(payload.get(field) or "").strip():
             continue
         reference = str(refs.get(field) or "")
-        secret = _read_connection_secret(reference, record_error=bool(reference))
+        secret = _read_connection_secret(reference, record_error=bool(reference), missing_is_error=True)
         resolved = str(secret.get("api_key") or "")
         if not resolved:
-            resolved = read_key(legacy_ref(field))
+            # legacy ref 是迁移兜底探测：不存在属正常空态，后端故障/损坏才上报。
+            legacy_secret = _read_connection_secret(legacy_ref(field), record_error=True)
+            resolved = str(legacy_secret.get("api_key") or "")
         if resolved:
             payload[field] = resolved
     for field in SCRAPER_SECRET_FIELDS:
         if str(payload.get(field) or "").strip():
             continue
         reference = str(refs.get(field) or "")
-        secret = _read_connection_secret(reference, record_error=bool(reference))
+        secret = _read_connection_secret(reference, record_error=bool(reference), missing_is_error=True)
         if secret.get("value"):
             payload[field] = str(secret["value"])
 
@@ -181,8 +193,16 @@ def _dehydrate_config_item(item: dict[str, Any], created_refs: list[str]) -> Non
         item["credential_ref"] = existing_ref
         return
     if _is_masked(api_key):
-        # 前端回传的仍是脱敏值，保持既有引用不动。
-        item["credential_ref"] = existing_ref or config_ref(config_id)
+        # 前端回传的仍是脱敏值，保持既有引用不动。没有既有引用时，只有当
+        # 确定性 ref 真的能在钥匙串里解析到条目才采用——否则会指向一个不存在的
+        # 钥匙串项，hydrate 永久报错、vault_status 误报。
+        if existing_ref:
+            item["credential_ref"] = existing_ref
+            return
+        deterministic = config_ref(config_id)
+        item["credential_ref"] = (
+            deterministic if _read_connection_secret(deterministic) else ""
+        )
         return
     secret: dict[str, Any] = {}
     if api_key and not _is_env_reference(api_key):
@@ -208,16 +228,35 @@ def dehydrate(payload: dict[str, Any]) -> list[str]:
             for item in configs:
                 if isinstance(item, dict):
                     _dehydrate_config_item(item, created_refs)
+        # active_llm_api_key 等 legacy 字段与 llm_api_configs 里的明文是同一把
+        # Key 时，复用该配置的 credential_ref，避免同一把 Key 在钥匙串存两份。
+        key_to_ref: dict[str, str] = {}
+        if isinstance(configs, list):
+            for item in configs:
+                if not isinstance(item, dict):
+                    continue
+                stored_ref = str(item.get("credential_ref") or "")
+                if not stored_ref:
+                    continue
+                secret = _read_connection_secret(stored_ref)
+                stored_key = str(secret.get("api_key") or "")
+                if stored_key:
+                    key_to_ref.setdefault(stored_key, stored_ref)
         refs = payload.get("secret_refs") if isinstance(payload.get("secret_refs"), dict) else {}
         for field in LEGACY_KEY_FIELDS:
             value = str(payload.get(field) or "").strip()
             existing_ref = str(refs.get(field) or "")
             if not value or _is_masked(value) or _is_env_reference(value):
                 continue
-            reference = existing_ref if _stored_secret_matches(existing_ref, {"api_key": value}) else f"llm/legacy/{uuid4().hex}"
-            if reference != existing_ref:
+            shared_ref = key_to_ref.get(value, "")
+            reference = (
+                shared_ref
+                or (existing_ref if _stored_secret_matches(existing_ref, {"api_key": value}) else f"llm/legacy/{uuid4().hex}")
+            )
+            if reference != existing_ref and not shared_ref:
                 created_refs.append(reference)
-            write_key(reference, value)
+            if not shared_ref:
+                write_key(reference, value)
             payload["secret_refs"] = refs
             refs[field] = reference
             payload[field] = ""
