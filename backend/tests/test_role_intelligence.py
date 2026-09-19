@@ -601,6 +601,35 @@ asyncio.run(main())
             )
         )
 
+    def test_auto_runtime_resolves_to_concrete_runtime_id(self) -> None:
+        async def fake_executor(preferred=None, *, requirements=None):
+            # Mirrors select_local_executor's real adapter descriptor: the
+            # runtime identity is keyed "id", with no "runtime_id" key.
+            return {
+                "id": "codex",
+                "name": "Codex App Server",
+                "version": "codex-cli 0.154.0",
+                "available": True,
+                "supported": True,
+                "contract_compatible": True,
+            }
+
+        async def run_check() -> None:
+            with patch.object(
+                role_intelligence,
+                "select_local_executor",
+                side_effect=fake_executor,
+            ):
+                for requested in ("auto", "", None):
+                    selected = await role_intelligence._compatible_runtime(requested)
+                    resolved = str(selected.get("runtime_id") or "")
+                    self.assertEqual(resolved, "codex")
+                    self.assertNotEqual(resolved, "auto")
+                    provider = role_intelligence._collection_provider(resolved)
+                    self.assertIsInstance(provider, DeepExecutorRoleCollectionProvider)
+
+        asyncio.run(run_check())
+
 
 if __name__ == "__main__":
     unittest.main()

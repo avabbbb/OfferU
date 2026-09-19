@@ -1448,10 +1448,19 @@ async def _compatible_runtime(runtime_id: str | None = None) -> dict[str, Any]:
             )
         return _backend_search_runtime()
     try:
-        return await select_local_executor(
+        selected = await select_local_executor(
             None if clean == "auto" else runtime_id,
             requirements=ExecutorRequirements(web_search=True),
         )
+        # select_local_executor returns the adapter descriptor keyed by "id";
+        # normalize it so a concrete runtime_id (never the literal "auto")
+        # reaches the run record and the collection provider.
+        resolved_id = str(selected.get("id") or "").strip().casefold()
+        if not resolved_id:
+            raise ValueError(
+                "select_local_executor 未返回可用的 runtime id，无法建立岗位基准"
+            )
+        return {**selected, "runtime_id": resolved_id}
     except ValueError as exc:
         # Explicit runtime ids remain fail-closed. Only auto selection can
         # move to the bounded HTTP+LLM adapter, and it is never mislabeled as

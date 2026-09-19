@@ -121,7 +121,13 @@ HARNESS_TOOLS = "Bash,Read,Grep"
 HARNESS_ALLOWED_TOOLS = (
     "Bash(cd:*) "
     "Bash(PYTHONPATH=backend backend/.venv312/Scripts/python.exe -m app.cli:*) "
-    "Bash(backend/.venv312/Scripts/python.exe -m app.cli:*)"
+    "Bash(backend/.venv312/Scripts/python.exe -m app.cli:*) "
+    # SKILL.md tells the agent to run `python -m app.cli …`; allow that plain
+    # invocation too (venv python resolves on PATH) or routing cases all fail
+    # with a tool-permission denial before any Operation is called.
+    "Bash(python -m app.cli:*) "
+    "Bash(python.exe -m app.cli:*) "
+    "Bash(uv run python -m app.cli:*)"
 )
 # 业务确认必须由人类做出，Agent 不得自行 confirm。
 HARNESS_DISALLOWED_TOOLS = "Bash(*app.cli confirm*)"
