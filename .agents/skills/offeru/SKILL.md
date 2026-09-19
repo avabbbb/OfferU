@@ -1,6 +1,6 @@
 ---
 name: offeru
-description: Use when operating OfferU through Codex or another agent-skill host. Provides live Skill discovery, atomic CLI operations, and human-confirmed side effects.
+description: atomic CLI operations, and human-confirmed side effects.
 user-invocable: true
 argument-hint: "[skill-id | goal | JD/URL]"
 ---

@@ -870,6 +870,13 @@ export default function JobDetailPage() {
                     </div>
                   )}
 
+                  {resumeProposal.rewrite_status === "degraded" && (
+                    <div className="bauhaus-panel-sm border-orange-500 bg-orange-50 px-4 py-3 text-sm font-semibold leading-relaxed text-orange-950">
+                      岗位分析已完成，但 AI 简历改写未生效 —— 当前候选保留原文表述，未完成 JD 定制。
+                      可在模型/Provider 恢复后重新生成提案。
+                    </div>
+                  )}
+
                   {resumeProposal.status === "accepted" && (
                     <div className="bauhaus-panel-sm flex items-start gap-3 border-emerald-600 bg-emerald-50 px-4 py-4 text-sm font-semibold text-emerald-900">
                       <CheckCircle2 className="mt-0.5 shrink-0" size={18} />

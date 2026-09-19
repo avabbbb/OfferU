@@ -164,7 +164,17 @@ export default function StudioPage() {
         <div className="min-w-0 space-y-2">
           <div className="h-[min(70dvh,720px)] min-h-[320px] overflow-hidden rounded-lg bg-white p-4 shadow-lg sm:min-h-[400px]">
             {previewUrl ? (
-              <iframe src={previewUrl} title="简历预览" className="w-full h-full border-0" />
+              // Resume HTML is untrusted generated content served from the
+              // backend origin.  An empty `sandbox` grants no capabilities:
+              // no scripts, no forms, no popups, no top-navigation and, most
+              // importantly, no same-origin access to the OfferU API.  Defence
+              // in depth with the restrictive CSP on the preview endpoint.
+              <iframe
+                src={previewUrl}
+                title="简历预览"
+                sandbox=""
+                className="w-full h-full border-0"
+              />
             ) : (
               <div className="flex items-center justify-center h-full text-gray-400">
                 选择模板后点击生成预览

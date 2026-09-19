@@ -5,6 +5,37 @@ from typing import Any
 
 from app.ops import list_operations
 from app.services.agent_skill_registry import registry_snapshot
+from app.services.agent_host_registry import get_host
+
+
+def _host_capability_note(host_id: str) -> str:
+    """Static capability-exclusion notice for a host's projected manifest.
+
+    Mirrors ASu's host capability exclusion: a host that cannot honour a Skill
+    (e.g. no browser-autofill, no controlled public-web adapter) declares it
+    explicitly instead of pretending parity.  Returns "" when the host has no
+    exclusions or no registry entry.
+    """
+    host = get_host(host_id)
+    if not host:
+        return ""
+    lines: list[str] = []
+    if host.unsupported_skills:
+        lines.append(
+            "- UNSUPPORTED here (do not attempt): " + ", ".join(host.unsupported_skills)
+        )
+    if host.limited_skills:
+        lines.append(
+            "- LIMITED here (reduced capability, prefer local/replay path): "
+            + ", ".join(host.limited_skills)
+        )
+    if not lines:
+        return ""
+    return (
+        "\n## Capability limits for this host\n\n"
+        + "\n".join(lines)
+        + "\n"
+    )
 
 
 PROJECTION_PATHS = {
@@ -16,9 +47,9 @@ PROJECTION_PATHS = {
 }
 
 
-def _markdown_projection(host: str, snapshot: dict[str, Any]) -> str:
+def _markdown_projection(host: str, snapshot: dict[str, Any], host_id: str = "") -> str:
+    capability_note = _host_capability_note(host_id) if host_id else ""
     description = (
-        f"Use when operating OfferU through {host}. Provides live Skill discovery, "
         "atomic CLI operations, and human-confirmed side effects."
     )
     marker = (
@@ -66,7 +97,7 @@ When OfferU asks for integration verification, select the live `connection_probe
 - Never use raw HTTP, direct database writes, removed `api/routes` commands, or hidden shell business logic.
 - Never submit applications, send emails, or contact third parties automatically.
 - Report executed reads, persisted proposals, pending confirmations, visible failures, and the next user decision.
-"""
+{capability_note}"""
 
 
 def _codex_projection(snapshot: dict[str, Any]) -> str:
@@ -125,8 +156,10 @@ Return executed reads, persisted proposals, pending confirmations, visible failu
 def render_skill_projections() -> dict[Path, str]:
     snapshot = registry_snapshot(list_operations())
     return {
+        # Generic agent-skill host manifest: no single host identity, so no
+        # capability exclusion note.
         PROJECTION_PATHS["agents"]: _markdown_projection("Codex or another agent-skill host", snapshot),
-        PROJECTION_PATHS["claude"]: _markdown_projection("Claude Code", snapshot),
+        PROJECTION_PATHS["claude"]: _markdown_projection("Claude Code", snapshot, host_id="claude"),
         PROJECTION_PATHS["claude_agent"]: _claude_agent_projection(snapshot),
         PROJECTION_PATHS["codex"]: _codex_projection(snapshot),
         PROJECTION_PATHS["copilot"]: _markdown_projection("GitHub Copilot", snapshot),

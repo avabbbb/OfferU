@@ -6,7 +6,13 @@ import os
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./djm.db")
+# Pure-function tests; import still builds the module engine.  Use an isolated
+# temp DB path instead of the real ./djm.db so a bare run cannot touch user data.
+os.environ.setdefault(
+    "DATABASE_URL",
+    "sqlite+aiosqlite:///"
+    + (pathlib.Path(os.environ.get("OFFERU_TEST_TEMP_ROOT", os.path.join(os.path.expanduser("~"), ".offeru-test"))) / "scripts-isolated.db").as_posix(),
+)
 
 from app.routes import profile as profile_route  # noqa: E402
 

@@ -64,7 +64,29 @@ async def preview_html_resume(resume_id: int, db: AsyncSession = Depends(get_db)
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
 
+    # Generated/imported resume HTML is untrusted content rendered on the
+    # backend API origin.  Serve it under a restrictive CSP ``sandbox``
+    # directive so a hostile document cannot execute script, submit forms,
+    # navigate, or claim same-origin authority against the OfferU API.  This is
+    # defence-in-depth alongside the sandboxed <iframe> in the Studio UI.
+    headers = {
+        # Empty ``sandbox`` = apply every restriction: no scripts, no forms,
+        # no popups, no top-navigation, no same-origin, no plugins/downloads.
+        # Resumes are static HTML+CSS; they need none of those capabilities.
+        "Content-Security-Policy": (
+            "sandbox; "
+            "default-src 'none'; "
+            "img-src data: https:; "
+            "font-src data: https:; "
+            "style-src 'unsafe-inline' https:; "
+            "media-src 'none'; "
+            "connect-src 'none'; "
+            "frame-ancestors 'self'"
+        ),
+        "X-Content-Type-Options": "nosniff",
+    }
     return StreamingResponse(
         iter([resume.html_content]),
-        media_type="text/html"
+        media_type="text/html",
+        headers=headers,
     )

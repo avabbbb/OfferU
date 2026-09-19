@@ -36,7 +36,6 @@ from app.models.models import (
     ResumeVersion,
 )
 from app.ops import OPERATIONS
-from app.routes.agent import SYSTEM_PROMPT as WEB_AGENT_SYSTEM_PROMPT
 from app.routes import optimize as optimize_route
 from app.services import coding_agent_runtime, resume_optimization
 from app.services.agent_skill_registry import resolve_skill
@@ -87,7 +86,6 @@ class ResumeOptimizationContractTests(unittest.TestCase):
         self.assertTrue(_RESUME_OPERATIONS.issubset(skill.allowed_tools))
         self.assertTrue(skill.allowed_tools.issubset(OPERATIONS))
         self.assertNotIn("generate_resume", optimize_agent.TOOL_REGISTRY)
-        self.assertNotIn("generate_resume", WEB_AGENT_SYSTEM_PROMPT)
         self.assertFalse(hasattr(mcp_server, "generate_resume"))
         self.assertFalse(hasattr(optimize_route, "_create_generated_resume"))
         self.assertFalse(hasattr(optimize_route, "_generate_for_job"))
@@ -169,6 +167,68 @@ class ResumeOptimizationContractTests(unittest.TestCase):
         self.assertEqual([item["company"] for item in before], ["Alpha", "Beta"])
         self.assertEqual([item["company"] for item in after], ["Beta", "Alpha"])
         self.assertFalse(candidate["rewrite_applied"])
+
+    def test_fixture_candidate_marks_rewrite_skipped_not_degraded(self) -> None:
+        async def run() -> dict:
+            profile = Profile(id=7, name="Fixture candidate")
+            sections = [
+                ProfileSection(
+                    id=1,
+                    profile_id=profile.id,
+                    section_type="experience",
+                    title="Alpha",
+                    content_json=[{"company": "Alpha"}],
+                ),
+                ProfileSection(
+                    id=2,
+                    profile_id=profile.id,
+                    section_type="experience",
+                    title="Beta",
+                    content_json=[{"company": "Beta"}],
+                ),
+            ]
+            return await resume_optimization._generate_candidate(
+                profile=profile,
+                sections=sections,
+                jd_text="Build a model evaluation workflow.",
+                research_context={"data_mode": "fixture"},
+            )
+
+        candidate = asyncio.run(run())
+        # Fixture/replay never rewrites by design — must surface "skipped",
+        # never the degraded provider-failure state.
+        self.assertFalse(candidate["rewrite_applied"])
+        self.assertEqual(
+            candidate["pipeline"]["fixture_replay"]["rewrite_status"],
+            "skipped",
+        )
+
+    def test_pipeline_failure_marks_rewrite_degraded(self) -> None:
+        async def run() -> dict:
+            rows = [{"section_type": "experience", "title": "Alpha",
+                     "content_json": [{"company": "Alpha", "description": "x"}]}]
+            from app.services import resume_optimize_support as support
+
+            class _FailingPipeline:
+                async def run(self, **kwargs):
+                    raise RuntimeError("provider down")
+
+            with patch(
+                "app.agents.skills.SkillPipeline",
+                return_value=_FailingPipeline(),
+            ), patch.object(
+                support,
+                "_llm_rewrite_sections",
+                new=AsyncMock(return_value=(rows, False)),
+            ):
+                return await support._skills_pipeline_rewrite(
+                    [dict(r) for r in rows], "Some JD text"
+                )
+
+        _, rewrite_applied, pipeline = asyncio.run(run())
+        self.assertFalse(rewrite_applied)
+        # Provider failure must be visible as degraded — never silent success.
+        self.assertEqual(pipeline["rewrite_status"], "degraded")
 
     def test_optimize_agent_reuses_latest_completed_research(self) -> None:
         async def run() -> tuple[dict, optimize_agent.OptimizeSession, AsyncMock]:

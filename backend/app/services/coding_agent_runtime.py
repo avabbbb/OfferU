@@ -421,6 +421,10 @@ async def _probe(runtime_id: str, *, refresh: bool = False) -> dict[str, Any]:
             "version": None,
             "capabilities": {},
             "missing_required_flags": list(definition["required_flags"]),
+            # Executable simply absent from PATH — distinct from a probe that
+            # ran and failed.  This is the only "not installed" state.
+            "probe_status": "not_installed",
+            "probe_error": None,
             "checked_at": _now(),
         }
 
@@ -434,6 +438,11 @@ async def _probe(runtime_id: str, *, refresh: bool = False) -> dict[str, Any]:
 
     version = ""
     help_text = ""
+    # Structured probe diagnostics: distinguishes a runtime that exists but is
+    # broken/misconfigured from one that is simply absent.  Never expose raw
+    # stderr (may carry credentials); store only a sanitised category+summary.
+    probe_status: str | None = None
+    probe_error: str | None = None
     if runtime_id == "claude" and _CLAUDE_SDK_PACKAGE.is_file():
         try:
             package = json.loads(_CLAUDE_SDK_PACKAGE.read_text(encoding="utf-8"))
@@ -459,8 +468,15 @@ async def _probe(runtime_id: str, *, refresh: bool = False) -> dict[str, Any]:
             runtime_id=runtime_id,
         )
         help_text = help_stdout + "\n" + help_stderr if help_code == 0 else ""
-    except (OSError, asyncio.TimeoutError):
-        pass
+        if help_code != 0:
+            probe_status = "error"
+            probe_error = f"help exited {help_code}"
+    except asyncio.TimeoutError:
+        probe_status = "timeout"
+        probe_error = "probe timed out after 20s"
+    except OSError as exc:
+        probe_status = "error"
+        probe_error = f"launch failed: {type(exc).__name__}"
 
     capabilities = {
         flag: flag in help_text
@@ -473,6 +489,27 @@ async def _probe(runtime_id: str, *, refresh: bool = False) -> dict[str, Any]:
         )
         if not capabilities["agent_sdk_worker"]:
             missing.append("@anthropic-ai/claude-agent-sdk")
+
+    # Final probe_status resolution.  A hard probe failure (timeout/launch
+    # error) already set probe_status above; otherwise derive it from outcome:
+    #   ready        — version detected and all required flags present;
+    #   incompatible — runtime ran but is missing required capabilities;
+    #   error        — ran but produced no usable version and no flags.
+    if probe_status is None:
+        if version and not missing:
+            probe_status = "ready"
+        elif version or not missing:
+            probe_status = "incompatible"
+            if not probe_error:
+                probe_error = (
+                    "missing required flags: " + ", ".join(missing)
+                    if missing
+                    else "no version output"
+                )
+        else:
+            probe_status = "error"
+            if not probe_error:
+                probe_error = "no version output and no required capabilities"
     result = {
         "id": runtime_id,
         **definition,
@@ -480,8 +517,9 @@ async def _probe(runtime_id: str, *, refresh: bool = False) -> dict[str, Any]:
         "contract_compatible": bool(version) and bool(definition["supported"]) and not missing,
         "executable_path": executable,
         "version": version or None,
-        "capabilities": capabilities,
         "missing_required_flags": missing,
+        "probe_status": probe_status,
+        "probe_error": probe_error,
         "checked_at": _now(),
     }
     _PROBE_CACHE[runtime_id] = (executable, executable_mtime, result)

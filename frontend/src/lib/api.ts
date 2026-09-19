@@ -653,6 +653,9 @@ export interface ResumeOptimizationProposalSummary {
   reference_resume_id?: number | null;
   change_count: number;
   fact_gate_status: string;
+  /** applied = JD-tailored rewrite ran; degraded = rewrite failed, original
+   * wording preserved; skipped = fixture/replay intentionally unrewritten. */
+  rewrite_status?: "applied" | "degraded" | "skipped" | string;
   fact_gate_warnings_count: number;
   accepted_resume_id?: number | null;
   accepted_resume_version_id?: number | null;

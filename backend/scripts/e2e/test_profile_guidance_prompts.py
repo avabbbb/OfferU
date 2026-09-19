@@ -6,7 +6,14 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./djm.db")
+# These tests only exercise pure prompt-builder functions; the import below
+# still creates the module-level engine.  Point DATABASE_URL at an isolated
+# temp path (never the real ./djm.db) so a bare run cannot touch user data.
+os.environ.setdefault(
+    "DATABASE_URL",
+    "sqlite+aiosqlite:///"
+    + (pathlib.Path(os.environ.get("OFFERU_TEST_TEMP_ROOT", os.path.join(os.path.expanduser("~"), ".offeru-test"))) / "scripts-isolated.db").as_posix(),
+)
 
 from app.routes.profile import _build_profile_chat_prompt, _fallback_chat_payload  # noqa: E402
 from app.services.profile_builder_agent import (  # noqa: E402

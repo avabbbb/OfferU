@@ -644,6 +644,15 @@ async def _skills_pipeline_rewrite(
             rewrite_applied = True
             pipeline_result["fallback_to_simple_rewrite"] = True
 
+    # Surface rewrite integrity to the caller/UI.  A provider or pipeline
+    # failure must never masquerade as a successful JD-tailored rewrite.
+    #   applied  — content was genuinely rewritten for the JD;
+    #   degraded — selection/analysis ran but AI rewrite failed, original
+    #              wording preserved.
+    # (empty input returns early above; fixture/replay marks itself "skipped"
+    #  upstream in _generate_candidate, never reaching this path.)
+    pipeline_result["rewrite_status"] = "applied" if rewrite_applied else "degraded"
+
     return rows, rewrite_applied, pipeline_result
 
 

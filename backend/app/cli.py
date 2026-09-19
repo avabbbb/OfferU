@@ -17,6 +17,7 @@ from app.ops import get_operation_schema, list_operations
 from app.bridge_cli import main as bridge_main
 from app.runtime_paths import runtime_data_dir, runtime_uploads_dir
 from app.services.agent_skill_registry import catalog, registry_snapshot, resolve_skill
+from app.services.agent_host_registry import host_capability_matrix
 from app.services.operation_projection import (
     confirm_operation_proposal,
     execute_or_propose_operation,
@@ -814,6 +815,12 @@ def _manifest(*, skill: str = "", group: str = "", all_operations: bool = False)
         "groups": _groups(operation_schemas),
         "operations": operations,
         "skill_registry": skills,
+        # Host × Skill support matrix (full/limited/unsupported) so an external
+        # agent can self-check which Skills its host can actually honour rather
+        # than assuming feature parity across every host.
+        "host_capability_matrix": host_capability_matrix(
+            [item["id"] for item in skills.get("skills", full_registry["skills"])]
+        ),
     }
 
 

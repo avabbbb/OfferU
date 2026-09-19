@@ -358,6 +358,9 @@ async def _generate_candidate(
                     "status": "completed",
                     "provider": "replay",
                     "rewrite_applied": False,
+                    # Fixture/replay never rewrites by design — this is an
+                    # expected no-op, not a provider failure.
+                    "rewrite_status": "skipped",
                 }
             },
             "missing_capabilities": _missing_keywords(jd_text, used_texts),
@@ -386,6 +389,10 @@ async def _generate_candidate(
         "original_rows": original_rows,
         "proposed_rows": proposed_rows,
         "rewrite_applied": rewrite_applied,
+        # Surface rewrite integrity to the proposal UI.  Degraded means the
+        # JD-tailored AI rewrite failed and original wording was preserved —
+        # it must not be presented as a successful tailored rewrite.
+        "rewrite_status": pipeline.get("rewrite_status") or ("applied" if rewrite_applied else "degraded"),
         "pipeline": pipeline,
         "missing_capabilities": _missing_keywords(jd_text, used_texts),
     }
@@ -396,7 +403,12 @@ def _proposal_summary(
     job: Optional[Job],
 ) -> dict[str, Any]:
     fact_gates = proposal.fact_gates_json or {}
+    trace = proposal.trace_json or {}
+    # Top-level rewrite integrity: applied / degraded / skipped.  Lets the UI
+    # flag "original wording preserved" without digging into trace internals.
+    rewrite_status = trace.get("rewrite_status") or trace.get("pipeline", {}).get("rewrite_status")
     return {
+        "rewrite_status": rewrite_status,
         "proposal_id": proposal.proposal_id,
         "status": proposal.status,
         "job_id": proposal.job_id,
@@ -575,6 +587,10 @@ async def prepare_resume_optimization(
                     "reviewed_optimize_session": {
                         "status": "completed",
                         "source_session_id": clean_source_session_id,
+                        # A human-reviewed session candidate is applied as-is;
+                        # no AI rewrite ran here, so mark it applied rather
+                        # than degrading a path that never attempted rewrite.
+                        "rewrite_status": "applied",
                     }
                 },
                 "missing_capabilities": _missing_keywords(
@@ -682,7 +698,7 @@ async def prepare_resume_optimization(
                 ),
                 "source_session_id": clean_source_session_id,
                 "rewrite_applied": bool(candidate["rewrite_applied"]),
-                "pipeline": pipeline,
+                "rewrite_status": candidate.get("rewrite_status") or candidate["pipeline"].get("rewrite_status") or ("applied" if candidate["rewrite_applied"] else "degraded"),
                 "pipeline_errors": pipeline_errors,
                 "profile_verified_fact_count": len(sections),
                 "selected_fact_count": len(selected),

@@ -38,6 +38,47 @@ Ports: frontend `http://127.0.0.1:7410`, backend `http://127.0.0.1:8766`. The op
 3. **Reliability matrix** — cross-process provider/network/restart coverage.
 4. **Live Role Intelligence** — configure a real provider and run the 10-role matrix; current `deepseek-v4-flash-free` returns model unavailable.
 
+## Trust-boundary pass (2026-09-19)
+
+`TRUST_BOUNDARY_P0_CLOSED`.  Apple-Bar adversarial review found real trust defects;
+this pass closed the verified P0s.  Full report: `docs/review/apple-bar/00-SYNTHESIS.md`.
+
+| Item | Root cause | Fix |
+| --- | --- | --- |
+| Test DB isolation | Tests/scripts could resolve `DATABASE_URL` → real `djm.db`; conftest had no DB guard | `conftest.py` now sets `OFFERU_DATA_DIR` → isolated tmp before any app import + fail-closed path guard; 2 scripts repointed to isolated tmp. Verified: real `djm.db` md5 unchanged across full suite |
+| Studio preview SSRF | `/api/studio/resumes/{id}/preview` served `html_content` on API origin; iframe unsandboxed → generated HTML could call privileged APIs | Restrictive CSP `sandbox` (empty = no scripts/forms/popups/same-origin) + `X-Content-Type-Options` on endpoint; `sandbox=""` on `<iframe>` |
+| Legacy Web Agent bypass | `routes/agent.py` held full `OPERATIONS` registry + in-memory `_PROPOSALS` + `web_agent_confirm` surface outside `_PROTECTED_AGENT_SURFACES` | File was **unmounted dead code** — deleted `routes/agent.py`; cleaned stale import/assert in `test_resume_optimization.py` |
+| Resume fake-success | `_llm_rewrite_sections` failure silently returned original rows; `rewrite_applied` never reached UI | Added `rewrite_status`: `applied`/`degraded`/`skipped` through pipeline → candidate → proposal `trace` + top-level summary; jobs/[id] shows degraded banner; 2 regression tests |
+| Runtime probe silent | `_probe()` swallowed `OSError`/`TimeoutError` — broken CLI indistinguishable from "not installed" | Added `probe_status` (`ready`/`not_installed`/`timeout`/`incompatible`/`error`) + sanitised `probe_error`; 3 regression tests |
+| DSH ghost artifact | `integrations/dsh/dsh-home` is a dangling NTFS reparse point (undeletable, git-untracked, zero refs) | Marked DSH experimental in `integrations/dsh-README.md`; ghost entry recorded as inert residue |
+
+Backend suite: **631 passed, 4 pre-existing failures, 9 skipped** — the 4
+failures are pre-existing tech debt unrelated to this pass: `scraper.py`
+intentional fallback/reaper writes flagged by `test_control_plane_global` +
+release audit (infrastructure status repair, not registry bypass), and
+`CURRENT_SCHEMA_VERSION=3` vs migration-test expectation of 2.  Frontend:
+typecheck clean, build ok, vitest 16/16.
+
+## Agent integration convergence (2026-09-19)
+
+`AGENT_INTEGRATION_CONVERGED` (Phase B of the same goal).  OfferU already had the
+ASu pattern — declarative Skill Registry (49 skills) + `agent_skill_projections`
+(render/drift/write) + per-host manifest generation.  What was missing was the
+**Host Integration vs Hosted Runtime** split and a single capability source.
+
+| Change | Detail |
+| --- | --- |
+| `agent_host_registry.py` (new) | Single canonical declaration: `kind = skill_host / hosted_runtime / both`, `beginner`, `recommended`, `can_install_skill`, `runtime_id`, `unsupported_skills`, `limited_skills`, `docs_url`. 7 hosts. |
+| `agent_connection.py` | `_BEGINNER_PROVIDER_IDS` + `_GUIDES` + `provider_id == "codex"` hard-coding **removed**; `beginner`/`recommended`/`docs_url`/`can_verify_login`/`can_install_skill` now read the registry |
+| Host×Skill matrix | `host_capability_matrix()` → `full/limited/unsupported`; exposed in `cli manifest` so an agent self-checks instead of assuming parity. opencode research = `limited` (no controlled web adapter); hosted-only executors `application_assistant` = `unsupported` |
+| Projection capability note | `_host_capability_note()` injects per-host exclusion into generated manifests; `--check` drift gate green |
+| Tests | `test_agent_host_registry.py` (7): id uniqueness, runtime↔host resolution, every RUNTIME_DEFINITIONS mapped, kind/install coherence, single recommended, unsupported never projects full |
+
+Preserved invariants: hosted runtimes keep native lifecycle protocols
+(spawn/stream/cancel/resume); Career capability still converges
+Skill → Bridge/CLI → Operation Registry → Career Runtime; skills stay thin
+(no business logic); beginner UI output unchanged.  79 focused tests pass.
+
 ## Closure pass (2026-09-17)
 
 | Item | Before | After |

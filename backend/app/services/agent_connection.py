@@ -21,22 +21,28 @@ from app.services.security_redaction import redact_sensitive_text
 _CHECKS: dict[str, dict[str, Any]] = {}
 _CHECK_LOCK = asyncio.Lock()
 _CHECK_TTL = 120
-_BEGINNER_PROVIDER_IDS = ("codex", "claude", "opencode")
 
-_GUIDES = {
-    "codex": "https://developers.openai.com/codex/quickstart/",
-    "claude": "https://code.claude.com/docs/en/setup",
-    "gemini": "https://geminicli.com/docs/get-started/",
-    "opencode": "https://opencode.ai/docs/",
-    "pi": "https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent",
-    "omp": "https://github.com/can1357/oh-my-pi",
-    "codebuddy": "https://www.workbuddy.cn/docs/workbuddy/Overview",
-}
+from app.services.agent_host_registry import (
+    beginner_host_ids,
+    get_host,
+    recommended_host_id,
+)
+
+
+def _can_install_skill(provider_id: str) -> bool:
+    """Whether OfferU can install/update the canonical Skill into this host.
+
+    Replaces the former hard-coded _BEGINNER_PROVIDER_IDS gate: a host that is
+    only a hosted runtime (pi/omp/gemini/codebuddy) has no skill-install face.
+    """
+    host = get_host(provider_id)
+    return bool(host and host.can_install_skill)
 
 
 def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
     provider_id = item["id"]
-    integration = integration_manager.inspect(provider_id) if provider_id in _BEGINNER_PROVIDER_IDS else {
+    can_install = _can_install_skill(provider_id)
+    integration = integration_manager.inspect(provider_id) if can_install else {
         "skill_status": "NOT_SUPPORTED",
         "skill_version": "",
         "skill_hash": "",
@@ -49,7 +55,7 @@ def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
     }
     executable = (
         integration_manager.adapter(provider_id).detected_executable(str(item.get("executable_path") or ""))
-        if provider_id in _BEGINNER_PROVIDER_IDS
+        if can_install
         else str(item.get("executable_path") or "")
     )
     check = _CHECKS.get(provider_id, {})
@@ -137,8 +143,8 @@ def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
             health.get("last_error") or check.get("error") or integration.get("error") or "", max_length=500,
         ),
         "provider_checked_at": health.get("checked_at"),
-        "docs_url": _GUIDES.get(provider_id, ""),
-        "can_verify_login": provider_id == "codex",
+        "docs_url": (get_host(provider_id).docs_url if get_host(provider_id) else ""),
+        "can_verify_login": bool(get_host(provider_id) and get_host(provider_id).can_verify_login),
         "live_model_verified": live_model_verified,
         "native_auth_state": conformance_state("native_auth_detected"),
         "live_model_state": conformance_state("live_model_verified"),
@@ -149,8 +155,8 @@ def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
         "cwd_isolation_state": conformance_state("cwd_isolation_verified"),
         "web_search_state": conformance_state("web_search_verified"),
         "conformance_checked_at": conformance.get("last_probe_at") if conformance_matches else None,
-        "beginner": provider_id in _BEGINNER_PROVIDER_IDS,
-        "recommended": provider_id == "codex",
+        "beginner": bool(get_host(provider_id) and get_host(provider_id).beginner),
+        "recommended": bool(get_host(provider_id) and get_host(provider_id).recommended),
     }
 
 
@@ -175,8 +181,8 @@ async def get_agent_connections() -> dict[str, Any]:
         "items": [_view(item, by_id.get(item["id"], {})) for item in detected["items"]],
         "checked_at": datetime.now(timezone.utc).isoformat(),
         "connect_prompt": connect_prompt,
-        "beginner_provider_ids": list(_BEGINNER_PROVIDER_IDS),
-        "recommended_provider_id": "codex",
+        "beginner_provider_ids": beginner_host_ids(),
+        "recommended_provider_id": recommended_host_id(),
     }
 
 
@@ -191,7 +197,7 @@ async def probe_agent_connection(provider_id: str) -> dict[str, Any]:
             "authenticated": None,
             "status": "check_required", "auth_mode": "unknown", "error": "",
             "integration_status": integration_manager.inspect(provider_id).get("skill_status")
-            if provider_id in _BEGINNER_PROVIDER_IDS else "NOT_SUPPORTED",
+            if _can_install_skill(provider_id) else "NOT_SUPPORTED",
         }
         if item.get("contract_compatible") and provider_id == "codex":
             from app.services.agent_bridge.codex_adapter import (
@@ -280,7 +286,7 @@ async def probe_agent_connection(provider_id: str) -> dict[str, Any]:
 
 
 async def connect_agent_integration(provider_id: str, action: str = "install") -> dict[str, Any]:
-    if provider_id not in _BEGINNER_PROVIDER_IDS:
+    if not _can_install_skill(provider_id):
         raise ValueError("当前 Agent 尚不支持自动安装 OfferU Skill")
     item = await runtime._probe(provider_id, refresh=True)
     executable = integration_manager.adapter(provider_id).detected_executable(

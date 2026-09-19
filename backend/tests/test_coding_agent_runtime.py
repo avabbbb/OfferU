@@ -149,6 +149,43 @@ class CodingAgentRuntimeTests(unittest.TestCase):
         self.assertFalse(result["contract_compatible"])
         self.assertEqual(result["missing_required_flags"], ["--stdio"])
 
+    def test_probe_status_not_installed_when_executable_missing(self) -> None:
+        with patch.object(runtime.shutil, "which", return_value=None), patch.object(
+            runtime, "_resolve_executable", return_value=None
+        ):
+            result = asyncio.run(runtime._probe("codex", refresh=True))
+
+        self.assertFalse(result["available"])
+        self.assertEqual(result["probe_status"], "not_installed")
+        self.assertIsNone(result["probe_error"])
+
+    def test_probe_status_timeout_when_capture_hangs(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            executable = Path(directory) / "codex.exe"
+            executable.touch()
+            with patch.object(runtime.shutil, "which", return_value=str(executable)), patch.object(
+                runtime, "_capture", AsyncMock(side_effect=asyncio.TimeoutError())
+            ):
+                result = asyncio.run(runtime._probe("codex", refresh=True))
+
+        self.assertFalse(result["available"])
+        self.assertEqual(result["probe_status"], "timeout")
+        self.assertIn("timed out", result["probe_error"])
+
+    def test_probe_status_incompatible_when_flags_missing(self) -> None:
+        capture = AsyncMock(side_effect=[(0, "codex-cli 0.144.1\n", ""), (0, "--listen", "")])
+        with tempfile.TemporaryDirectory() as directory:
+            executable = Path(directory) / "codex.exe"
+            executable.touch()
+            with patch.object(runtime.shutil, "which", return_value=str(executable)), patch.object(
+                runtime, "_capture", capture
+            ):
+                result = asyncio.run(runtime._probe("codex", refresh=True))
+
+        self.assertTrue(result["available"])
+        self.assertEqual(result["probe_status"], "incompatible")
+        self.assertIn("--stdio", result["probe_error"])
+
     def test_windows_probe_prefers_runnable_launcher_over_extensionless_npm_shim(self) -> None:
         with patch.object(runtime.os, "name", "nt"), patch.object(
             runtime.shutil,
