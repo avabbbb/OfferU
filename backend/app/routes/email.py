@@ -222,12 +222,19 @@ async def email_sync_run(run_id: str):
 
 
 @router.get("/notifications")
-async def list_notifications(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(InterviewNotification).order_by(
-            InterviewNotification.created_at.desc()
-        )
+async def list_notifications(
+    pending: bool = Query(False, description="仅返回未处理且需要操作的信号"),
+    db: AsyncSession = Depends(get_db),
+):
+    query = select(InterviewNotification).order_by(
+        InterviewNotification.created_at.desc()
     )
+    if pending:
+        query = query.where(
+            InterviewNotification.action_required != "",
+            InterviewNotification.acknowledged_at.is_(None),
+        )
+    result = await db.execute(query)
     return [
         {
             "id": item.id,
@@ -245,10 +252,34 @@ async def list_notifications(db: AsyncSession = Depends(get_db)):
             ),
             "location": item.location,
             "action_required": getattr(item, "action_required", ""),
+            "acknowledged_at": (
+                item.acknowledged_at.isoformat()
+                if getattr(item, "acknowledged_at", None)
+                else None
+            ),
             "parsed_at": str(item.parsed_at),
         }
         for item in result.scalars().all()
     ]
+
+
+@router.post("/notifications/{notification_id}/ack")
+async def ack_notification(
+    notification_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services.email_sync import acknowledge_notification
+
+    item = await acknowledge_notification(notification_id, db)
+    if item is None:
+        raise HTTPException(status_code=404, detail="通知不存在")
+    return {
+        "ok": True,
+        "id": item.id,
+        "acknowledged_at": (
+            item.acknowledged_at.isoformat() if item.acknowledged_at else None
+        ),
+    }
 
 
 @router.post("/signals")

@@ -67,56 +67,46 @@ def _prune_tasks() -> None:
 
 
 async def _mark_batch_failed_fallback(batch_id: Optional[str]) -> None:
-    """finalize_scraper_batch 失败时的最后兜底：直接 UPDATE batch 为 failed。"""
+    """finalize_scraper_batch 失败时的最后兜底：标记 batch 为 failed。
+
+    Batch.status 是 scraper 运行态（infrastructure state），由
+    ``scraper_operations.mark_scraper_batch_failed_fallback`` 这一专用边界写入，
+    路由层不直接执行写 SQL。
+    """
     if not batch_id:
         return
-    try:
-        from app.database import async_session
-        from sqlalchemy import update
+    from app.services.scraper_operations import mark_scraper_batch_failed_fallback
 
-        async with async_session() as db:
-            await db.execute(
-                update(Batch)
-                .where(Batch.id == str(batch_id))
-                .where(Batch.status == "running")
-                .values(status="failed")
-            )
-            await db.commit()
-    except Exception as exc:
+    ok = await mark_scraper_batch_failed_fallback(str(batch_id))
+    if not ok:
         logger.error(
-            "[scraper] batch failed-status fallback write failed for %s: %s",
+            "[scraper] batch failed-status fallback write failed for %s",
             batch_id,
-            safe_error_message(exc),
         )
 
+async def _reap_orphaned_running_batches() -> None:
+    """收割进程重启遗留的 running 批次（无存活内存任务且超过宽限时间）。
 
-async def _reap_orphaned_running_batches(db: AsyncSession) -> None:
-    """收割进程重启遗留的 running 批次：无存活内存任务且超过宽限时间。"""
-    from sqlalchemy import update
+    实际写入下沉到 ``scraper_operations.reap_orphaned_running_batches``；路由只
+    负责提供当前存活任务集合与宽限参数。
+    """
+    from app.services.scraper_operations import reap_orphaned_running_batches
 
     live_batch_ids = {
-        task.get("batch_id")
+        str(task.get("batch_id"))
         for task in _tasks
         if task.get("status") == "running" and task.get("batch_id")
     }
-    cutoff = datetime.utcnow() - timedelta(seconds=_ORPHAN_RUNNING_GRACE_SECONDS)
-    orphans = (
-        await db.execute(
-            select(Batch.id).where(Batch.status == "running").where(Batch.created_at < cutoff)
+    stale_ids = await reap_orphaned_running_batches(
+        live_batch_ids=live_batch_ids,
+        orphan_grace_seconds=_ORPHAN_RUNNING_GRACE_SECONDS,
+    )
+    if stale_ids:
+        logger.warning(
+            "[scraper] reaped %d orphaned running batches (process restart lost task state): %s",
+            len(stale_ids),
+            stale_ids,
         )
-    ).scalars().all()
-    stale_ids = [bid for bid in orphans if bid not in live_batch_ids]
-    if not stale_ids:
-        return
-    await db.execute(
-        update(Batch).where(Batch.id.in_(stale_ids)).values(status="failed")
-    )
-    await db.commit()
-    logger.warning(
-        "[scraper] reaped %d orphaned running batches (process restart lost task state): %s",
-        len(stale_ids),
-        stale_ids,
-    )
 
 
 class RunRequest(BaseModel):
@@ -359,7 +349,7 @@ async def _execute_scraper(task_info: dict, scraper, req: RunRequest):
 async def list_tasks(db: AsyncSession = Depends(get_db)):
     """获取最近的爬取任务列表。内存任务丢失时，回退展示数据库中的批次记录。"""
     _prune_tasks()
-    await _reap_orphaned_running_batches(db)
+    await _reap_orphaned_running_batches()
     memory_tasks = list(reversed(_tasks[-50:]))
     seen_batches = {
         item.get("batch_id")

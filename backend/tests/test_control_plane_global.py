@@ -60,6 +60,10 @@ NON_REGISTRY_MUTATION_ENDPOINTS = {
     ("resume.py", "ai_analyze_resume"),
     ("resume.py", "ai_analyze_text"),
     ("resume.py", "parse_resume_upload"),
+    # Notification read-state: a lightweight UI flag flip on an email-derived
+    # signal (acknowledged_at), not a Career domain write — kept beside the
+    # other derived/UI state endpoints rather than a second Career write path.
+    ("email.py", "ack_notification"),
 }
 
 MUTATING_METHODS = {

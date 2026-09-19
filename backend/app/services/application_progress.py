@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from sqlalchemy import select
@@ -296,6 +296,53 @@ def _workspace_status_for_stage(stage: str) -> str:
     if stage == "rejected":
         return "已拒绝"
     return "已投递"
+
+
+# 跨渠道去重：同一投递尝试 + 同一归一化阶段 + 事件时间窗口内（允许邮件/BOSS 等渠道延迟），
+# 视为同一现实事件的不同渠道回声；第二个信号接受时链接到已有阶段事件而非重复追加。
+_SAME_EVENT_WINDOW = timedelta(days=2)
+_WORKSPACE_STATUS_TO_STAGE = {
+    "待投递": "prepared",
+    "已投递": "applied",
+    "待处理": "assessment",
+    "面试中": "interview_1",
+    "已拒绝": "rejected",
+    "已录用": "offer",
+}
+
+
+def _stage_for_workspace_status(value: Any) -> str:
+    """工作区中文 apply_status → 投递阶段（与 _workspace_status_for_stage 互逆）。"""
+    clean = str(value or "").strip()
+    return _WORKSPACE_STATUS_TO_STAGE.get(clean, "applied")
+
+
+async def _find_same_event(
+    db: Any,
+    *,
+    attempt_id: int,
+    stage: str,
+    event_time: datetime,
+    exclude_signal_id: Optional[int] = None,
+) -> Optional[ApplicationStageEvent]:
+    """查找同一 attempt 上同阶段、时间窗口内的已有阶段事件（跨渠道同一现实事件）。"""
+    query = (
+        select(ApplicationStageEvent)
+        .where(ApplicationStageEvent.application_attempt_id == attempt_id)
+        .where(ApplicationStageEvent.stage == stage)
+        .where(
+            ApplicationStageEvent.occurred_at >= event_time - _SAME_EVENT_WINDOW,
+            ApplicationStageEvent.occurred_at <= event_time + _SAME_EVENT_WINDOW,
+        )
+        .order_by(
+            ApplicationStageEvent.occurred_at.asc(),
+            ApplicationStageEvent.id.asc(),
+        )
+        .limit(1)
+    )
+    if exclude_signal_id is not None:
+        query = query.where(ApplicationStageEvent.signal_id != exclude_signal_id)
+    return (await db.execute(query)).scalar_one_or_none()
 
 
 async def _confirmed_thread_attempt(
@@ -867,6 +914,18 @@ async def review_application_progress(
         if not attempt:
             raise ValueError(f"ApplicationAttempt #{selected_attempt_id} 不存在")
         event_time = signal.received_at or _now()
+        # 跨渠道去重：同一 attempt+stage 且时间窗口内已有阶段事件时，本候选链接到该
+        # 事件（邮件/BOSS 对同一现实事件的回声），不再追加第二条事件。
+        twin_event = await _find_same_event(
+            db,
+            attempt_id=attempt.id,
+            stage=selected_stage,
+            event_time=event_time,
+            exclude_signal_id=signal.id,
+        )
+        duplicate_event = twin_event is not None
+        if duplicate_event and clean_note:
+            clean_note = f"{clean_note}（跨渠道重复信号，已链接到已有阶段事件）"
         previous_event = (
             await db.execute(
                 select(ApplicationStageEvent)
@@ -896,25 +955,34 @@ async def review_application_progress(
                 .limit(1)
             )
         ).scalar_one_or_none()
-        if next_event is not None:
+        if next_event is not None and not duplicate_event:
             next_event.previous_stage = selected_stage
-        event = ApplicationStageEvent(
-            event_id=f"application_stage_{uuid.uuid4().hex}",
-            candidate_id=candidate.id,
-            signal_id=signal.id,
-            application_attempt_id=attempt.id,
-            previous_stage=previous_stage,
-            stage=selected_stage,
-            occurred_at=event_time,
-            source_channel=signal.channel,
-            evidence_json={
-                "signal_id": signal.signal_id,
-                "body_sha256": signal.body_sha256,
-                "external_message_id": signal.external_message_id,
-                "external_thread_id": signal.external_thread_id or "",
-            },
-        )
-        db.add(event)
+        if duplicate_event:
+            event = twin_event
+            linked_evidence = dict(twin_event.evidence_json or {})
+            linked_signals = list(linked_evidence.get("linked_signal_ids") or [])
+            if signal.signal_id not in linked_signals:
+                linked_signals.append(signal.signal_id)
+            linked_evidence["linked_signal_ids"] = linked_signals
+            twin_event.evidence_json = linked_evidence
+        else:
+            event = ApplicationStageEvent(
+                event_id=f"application_stage_{uuid.uuid4().hex}",
+                candidate_id=candidate.id,
+                signal_id=signal.id,
+                application_attempt_id=attempt.id,
+                previous_stage=previous_stage,
+                stage=selected_stage,
+                occurred_at=event_time,
+                source_channel=signal.channel,
+                evidence_json={
+                    "signal_id": signal.signal_id,
+                    "body_sha256": signal.body_sha256,
+                    "external_message_id": signal.external_message_id,
+                    "external_thread_id": signal.external_thread_id or "",
+                },
+            )
+            db.add(event)
         candidate.status = "confirmed"
         candidate.selected_attempt_id = attempt.id
         candidate.selected_stage = selected_stage
@@ -1012,6 +1080,7 @@ async def review_application_progress(
                 "stage": event.stage,
                 "occurred_at": event.occurred_at.isoformat(),
                 "source_channel": event.source_channel,
+                "linked_duplicate": duplicate_event,
             },
             "calendar_event": calendar_event_payload,
             "workspace_record": workspace_record_payload,
@@ -1144,6 +1213,143 @@ async def _sync_workspace_record_stage(
         "previous_status": previous_status,
         "status": workspace_status,
     }
+
+async def sync_workspace_status_stage_event(
+    db: Any,
+    *,
+    record: ApplicationRecord,
+    workspace_status: str,
+    notes: str = "",
+    source: str = "agent",
+) -> Optional[dict[str, Any]]:
+    """工作区 apply_status 变更 → 追加受治理的 ApplicationStageEvent。
+
+    与 review-accept 同一条 signal→candidate→stage_event 路径（内部确认，
+    无额外 HITL），保证进度看板 current_stage 与工作区状态不发散。
+    record 必须已写入最新 apply_status（previous_stage 从既有事件链推导）。
+    幂等：同 attempt 已存在同阶段最新事件时不重复追加。
+    """
+    stage = _stage_for_workspace_status(workspace_status)
+    if stage not in APPLICATION_STAGES - {"unknown"}:
+        stage = "applied"
+    job_id = record.job_ref_id
+    if not job_id:
+        return None
+    attempt = (
+        await db.execute(
+            select(ApplicationAttempt)
+            .where(ApplicationAttempt.job_id == job_id)
+            .order_by(ApplicationAttempt.created_at.desc(), ApplicationAttempt.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if attempt is None:
+        attempt = ApplicationAttempt(job_id=int(job_id), status="applied")
+        db.add(attempt)
+        await db.flush()
+
+    event_time = _now()
+    latest_event = (
+        await db.execute(
+            select(ApplicationStageEvent)
+            .where(ApplicationStageEvent.application_attempt_id == attempt.id)
+            .order_by(
+                ApplicationStageEvent.occurred_at.desc(),
+                ApplicationStageEvent.id.desc(),
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if latest_event is not None and latest_event.stage == stage:
+        return {
+            "event_id": latest_event.event_id,
+            "application_attempt_id": attempt.id,
+            "stage": stage,
+            "occurred_at": latest_event.occurred_at.isoformat(),
+            "created": False,
+        }
+    previous_stage = (
+        latest_event.stage
+        if latest_event is not None
+        else _normalize_stage(attempt.status)
+    )
+
+    signal = ExternalProgressSignal(
+        signal_id=f"progress_signal_{uuid.uuid4().hex}",
+        channel="manual",
+        account_ref=f"{source}:workspace_record:{record.id}",
+        external_message_id=f"workspace-status-{record.id}-{uuid.uuid4().hex[:12]}",
+        sender="",
+        received_at=event_time,
+        subject=f"工作区状态更新：{workspace_status}",
+        snippet=(notes or "")[:700],
+        body_sha256=hashlib.sha256(
+            f"workspace:{record.id}:{workspace_status}:{event_time.isoformat()}".encode(
+                "utf-8"
+            )
+        ).hexdigest(),
+        classification_json={
+            "suggested_stage": stage,
+            "rule_stage": stage,
+            "method": "workspace_status",
+            "matched_term": "",
+            "llm_used": False,
+            "classification_conflict": False,
+        },
+        status="active",
+    )
+    db.add(signal)
+    await db.flush()
+    candidate = ApplicationProgressCandidate(
+        candidate_id=f"progress_candidate_{uuid.uuid4().hex}",
+        signal_id=signal.id,
+        suggested_attempt_id=attempt.id,
+        suggested_stage=stage,
+        match_state="suggested",
+        match_candidates_json=[
+            {
+                "application_attempt_id": attempt.id,
+                "job_id": job_id,
+                "match_basis": ["workspace_status"],
+            }
+        ],
+        reasons_json=["workspace_status_change"],
+        llm_extracted_json={},
+        status="confirmed",
+        selected_attempt_id=attempt.id,
+        selected_stage=stage,
+        review_note=notes or "",
+        reviewed_at=event_time,
+    )
+    db.add(candidate)
+    await db.flush()
+    event = ApplicationStageEvent(
+        event_id=f"application_stage_{uuid.uuid4().hex}",
+        candidate_id=candidate.id,
+        signal_id=signal.id,
+        application_attempt_id=attempt.id,
+        previous_stage=previous_stage,
+        stage=stage,
+        occurred_at=event_time,
+        source_channel="manual",
+        evidence_json={
+            "signal_id": signal.signal_id,
+            "application_record_id": record.id,
+            "workspace_status": workspace_status,
+            "source": source,
+        },
+    )
+    db.add(event)
+    await db.flush()
+    return {
+        "event_id": event.event_id,
+        "application_attempt_id": attempt.id,
+        "previous_stage": previous_stage,
+        "stage": stage,
+        "occurred_at": event.occurred_at.isoformat(),
+        "created": True,
+    }
+
 
 
 async def _maybe_create_interview_calendar_event(

@@ -10,9 +10,15 @@ import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   Briefcase,
+  CalendarDays,
+  FileText,
+  Mail,
+  MessagesSquare,
+  Palette,
   Search,
   Settings,
   Send,
+  Sparkles,
   Sun,
   UserRound,
 } from "lucide-react";
@@ -28,12 +34,22 @@ interface NavItem {
   match: string[];
 }
 
-// 四个核心入口 + 支持入口。子资源仍保留原路由，由 Job Detail / Today 承接。
+// 核心求职流程 + 可独立打开的工作台入口。
+// 材料、岗位情报仍由 Job Detail / Today 承接；这里保证每个路由都能从导航找到。
 const stageItems: NavItem[] = [
   { href: "/", label: "Today", hint: "下一步", icon: Sun, match: ["/"] },
   { href: "/applications?view=board", label: "Pipeline", hint: "投递进展", icon: Send, match: ["/applications", "/email", "/calendar"] },
   { href: "/jobs", label: "Opportunity", hint: "目标岗位", icon: Briefcase, match: ["/jobs"] },
   { href: "/profile", label: "Profile", hint: "职业档案", icon: UserRound, match: ["/profile"] },
+];
+
+const workspaceItems: NavItem[] = [
+  { href: "/resume", label: "简历", hint: "版本与编辑", icon: FileText, match: ["/resume"] },
+  { href: "/interview", label: "面试", hint: "题库与面经", icon: MessagesSquare, match: ["/interview"] },
+  { href: "/optimize", label: "简历定制", hint: "按岗位改写", icon: Sparkles, match: ["/optimize"] },
+  { href: "/email", label: "邮件", hint: "进展与提醒", icon: Mail, match: ["/email"] },
+  { href: "/calendar", label: "日历", hint: "面试日程", icon: CalendarDays, match: ["/calendar"] },
+  { href: "/studio", label: "工作室", hint: "HTML 简历", icon: Palette, match: ["/studio"] },
 ];
 
 const supportItems: NavItem[] = [
@@ -154,6 +170,13 @@ export function Sidebar() {
               <NavLink item={item} active={isStageActive(item, pathname)} />
             </motion.div>
           ))}
+
+          <motion.div variants={navItemVariant} className="!mt-4 space-y-0.5 border-t border-[var(--border)] pt-3">
+            <p className="px-2.5 pb-1 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--foreground-faint)]">工作台</p>
+            {workspaceItems.map((item) => (
+              <NavLink key={item.href} item={item} active={isStageActive(item, pathname)} />
+            ))}
+          </motion.div>
 
           <motion.div variants={navItemVariant} className="!mt-4 border-t border-[var(--border)] pt-3">
             {supportItems.map((item) => (

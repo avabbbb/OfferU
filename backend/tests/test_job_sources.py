@@ -67,7 +67,7 @@ class JobSourceProtocolTests(unittest.TestCase):
     def test_dedupe_key_prefers_external_id(self):
         a = _obs(ext_id="42")
         b = _obs(ext_id="42", title="不同标题")
-        self.assertEqual(a.dedupe_key(), "ext:42")
+        self.assertEqual(a.dedupe_key(), "ext:boss:42")
         self.assertEqual(a.dedupe_key(), b.dedupe_key())
 
     def test_dedupe_key_falls_back_to_content(self):
@@ -77,16 +77,34 @@ class JobSourceProtocolTests(unittest.TestCase):
         c = _obs(ext_id="", company="OtherCo")
         self.assertNotEqual(a.dedupe_key(), c.dedupe_key())
 
+    def test_dedupe_key_scoped_by_source(self):
+        """不同源同样的 external_job_id 不得去重到一起（manual:42 vs web:42）。"""
+        a = _obs(source="manual", ext_id="42")
+        b = _obs(source="web", ext_id="42")
+        self.assertNotEqual(a.dedupe_key(), b.dedupe_key())
+        c = _obs(source="manual", ext_id="42")
+        self.assertEqual(a.dedupe_key(), c.dedupe_key())
+
 
 class JobSourceRouterTests(unittest.IsolatedAsyncioTestCase):
     async def test_dedupes_across_sources(self):
+        """跨源同 external_job_id 不得误并；真正的同岗（无 ext id、同 title+company）仍去重。"""
         router = JobSourceRouter()
         router.register(_FakeSource("boss", results=[_obs(source="boss", ext_id="j1")]))
         router.register(_FakeSource("web", results=[_obs(source="web", ext_id="j1")]))
         result = await router.search_all(JobSearchQuery(keywords="agent"))
+        self.assertEqual(len(result.observations), 2)
+        self.assertEqual({o.source for o in result.observations}, {"boss", "web"})
+        self.assertEqual(result.source_counts, {"boss": 1, "web": 1})
+
+    async def test_dedupes_same_job_without_ext_id(self):
+        """无 ext id 时按 title+company 文本哈希跨源去重，保留先到的 provenance。"""
+        router = JobSourceRouter()
+        router.register(_FakeSource("boss", results=[_obs(source="boss", ext_id="")]))
+        router.register(_FakeSource("web", results=[_obs(source="web", ext_id="")]))
+        result = await router.search_all(JobSearchQuery(keywords="agent"))
         self.assertEqual(len(result.observations), 1)
         self.assertEqual(result.observations[0].source, "boss")
-        self.assertEqual(result.source_counts, {"boss": 1, "web": 1})
 
     async def test_source_failure_is_not_empty_result(self):
         """一个源挂了，另一个源成功：失败必须可见且不影响成功源。"""
@@ -127,6 +145,21 @@ class NormalizeTests(unittest.TestCase):
         items = observations_to_ingest([good, bad])
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0]["title"], "AI Agent 产品经理")
+
+    def test_posted_at_not_faked_from_capture_time(self):
+        """源数据无发布日期时，posted_at 必须保持 None，不得用 captured_at 冒充。"""
+        obs = _obs()  # posted_at 缺省 None
+        item = observation_to_ingest_item(obs)
+        self.assertIsNone(item["posted_at"])
+        self.assertNotEqual(item["posted_at"], obs.captured_at.date().isoformat())
+
+    def test_posted_at_passes_through_real_source_date(self):
+        obs = JobObservation(
+            source="boss", external_job_id="j9", source_url="https://x/j9",
+            title="T", company="C", description="d", posted_at="2026-08-01",
+        )
+        item = observation_to_ingest_item(obs)
+        self.assertEqual(item["posted_at"], "2026-08-01")
 
 
 class BossAdapterBoundaryTests(unittest.IsolatedAsyncioTestCase):

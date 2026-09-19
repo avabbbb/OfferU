@@ -27,6 +27,9 @@ def _parse_salary(salary_text: str) -> tuple[Optional[int], Optional[int]]:
 def _job_hash_key(obs: JobObservation) -> str:
     """生成入库幂等键：有 external_id 用平台键，否则用内容哈希。"""
     if obs.external_job_id:
+        # adapter 已按 "{source}:{id}" 命名空间（如 manual:42）则不重复加前缀。
+        if obs.external_job_id.startswith(f"{obs.source}:"):
+            return obs.external_job_id
         return f"{obs.source}:{obs.external_job_id}"
     basis = f"{obs.source}|{obs.source_url}|{obs.title}|{obs.company}"
     return f"{obs.source}:{hashlib.sha256(basis.encode()).hexdigest()[:32]}"
@@ -47,7 +50,10 @@ def observation_to_ingest_item(
         "apply_url": obs.source_url.strip(),
         "source": obs.source,
         "raw_description": obs.description.strip(),
-        "posted_at": obs.captured_at.date().isoformat(),
+        # 真实发布日期只认源数据；未知则 None，绝不拿 captured_at 冒充。
+        # 采集时间留在 obs.captured_at / metadata["captured_at_age_seconds"]，
+        # 不进 ingest item（JobIngestItem extra=forbid）。
+        "posted_at": obs.posted_at,
         "batch_id": batch_id,
         "hash_key": _job_hash_key(obs),
         "summary": "",

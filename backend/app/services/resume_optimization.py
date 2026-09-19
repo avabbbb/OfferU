@@ -705,6 +705,24 @@ async def prepare_resume_optimization(
             },
         )
         db.add(proposal)
+        # Only one live candidate per job: a newly generated proposal
+        # supersedes earlier un-reviewed ones so a stale draft can never be
+        # accepted after fresher evidence was generated.
+        superseded = (
+            await db.execute(
+                select(ResumeOptimizationProposal).where(
+                    ResumeOptimizationProposal.job_id == job.id,
+                    ResumeOptimizationProposal.status.in_(("ready", "blocked")),
+                    ResumeOptimizationProposal.proposal_id != proposal.proposal_id,
+                )
+            )
+        ).scalars().all()
+        for older in superseded:
+            older.status = "stale"
+            older.review_note = (
+                f"已被新提案 {proposal.proposal_id} 取代，请审核最新提案"
+            )
+            older.reviewed_at = _now()
         await db.commit()
         await db.refresh(proposal)
         return _proposal_detail(proposal, job)

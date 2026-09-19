@@ -72,6 +72,10 @@ EXPLICIT_ROUTE_BOUNDARIES = {
     ("resume.py", "ai_analyze_resume"),
     ("resume.py", "ai_analyze_text"),
     ("resume.py", "parse_resume_upload"),
+    # Notification read-state: a lightweight UI flag flip on an email-derived
+    # signal, not a Career Truth mutation — kept beside the other derived/UI
+    # state boundaries rather than promoted to an Operation.
+    ("email.py", "ack_notification"),
 }
 
 REGISTRY_HELPERS = {

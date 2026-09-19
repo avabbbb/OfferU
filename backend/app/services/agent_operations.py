@@ -2126,6 +2126,22 @@ async def update_application_status(
             custom_values["notes"] = str(notes).strip()
         record.custom_values = custom_values
         record.updated_at_value = datetime.utcnow()
+        stage_event_warning = None
+        if previous_workspace_status != custom_values["apply_status"]:
+            try:
+                from app.services.application_progress import (
+                    sync_workspace_status_stage_event,
+                )
+
+                await sync_workspace_status_stage_event(
+                    db,
+                    record=record,
+                    workspace_status=custom_values["apply_status"],
+                    notes=str(custom_values.get("notes") or ""),
+                    source="agent",
+                )
+            except Exception as exc:
+                stage_event_warning = safe_error_message(exc)
         await db.commit()
         await db.refresh(record)
         event_warning = None
@@ -2155,7 +2171,7 @@ async def update_application_status(
             "submitted_at": custom_values.get("applied_at")
             or custom_values.get("application_date"),
             "updated": True,
-            "event_warning": event_warning,
+            "event_warning": event_warning or stage_event_warning,
         }
 
 

@@ -65,7 +65,7 @@ class DatabaseMigrationTests(unittest.TestCase):
                 with engine.begin() as connection:
                     Base.metadata.create_all(connection)
                     result = run_schema_migrations(connection)
-                    self.assertEqual(result, {"from_version": 0, "to_version": 2})
+                    self.assertEqual(result, {"from_version": 0, "to_version": 4})
             finally:
                 engine.dispose()
 
@@ -83,7 +83,7 @@ class DatabaseMigrationTests(unittest.TestCase):
 
             connection = sqlite3.connect(database_path)
             try:
-                self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 2)
+                self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 4)
                 job_status = connection.execute(
                     "SELECT triage_status FROM jobs WHERE id = 1"
                 ).fetchone()[0]
@@ -128,7 +128,7 @@ class DatabaseMigrationTests(unittest.TestCase):
             engine = create_engine(f"sqlite:///{database_path.as_posix()}")
             try:
                 with engine.begin() as connection:
-                    self.assertEqual(run_schema_migrations(connection), {"from_version": 1, "to_version": 2})
+                    self.assertEqual(run_schema_migrations(connection), {"from_version": 1, "to_version": 4})
             finally:
                 engine.dispose()
             self.assertEqual(schema_migration_status(url)["status"], "ready")

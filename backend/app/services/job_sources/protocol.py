@@ -9,7 +9,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Literal, Protocol, runtime_checkable
+from typing import Any, Literal, Optional, Protocol, runtime_checkable
 
 # 数据源可用性 —— 前端 Connections 页直接消费这些字面量。
 JobSourceStatus = Literal[
@@ -46,7 +46,7 @@ class JobObservation:
     不在主字段暴露平台私有结构。
     """
     source: JobSourceId
-    external_job_id: str          # 平台原生 ID；无则 ""
+    external_job_id: str          # adapter 命名空间内唯一 ID（如 "manual:42"）；无则 ""
     source_url: str               # 原始详情页 URL
     title: str
     company: str
@@ -56,13 +56,17 @@ class JobObservation:
     experience: str = ""
     education: str = ""
     captured_at: datetime = field(default_factory=_utcnow)
+    # 真实发布日期（ISO 字符串，仅源平台给出时设置）；缺省 None 表示未知，
+    # 绝不回填 captured_at —— 采集时间不是岗位发布日期。
+    posted_at: Optional[str] = None
     raw_hash: str = ""            # sha256(raw_payload)；空则由 normalize 补
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def dedupe_key(self) -> str:
-        """跨源去重键：优先 external_id（全局唯一），退化为 title+company 归一化。"""
+        """跨源去重键：优先 external_id（按 source 命名空间，杜绝跨源 PK 碰撞），
+        退化为 title+company 归一化。"""
         if self.external_job_id:
-            return f"ext:{self.external_job_id}"
+            return f"ext:{self.source}:{self.external_job_id}"
         norm = f"{self.title.strip().lower()}|{self.company.strip().lower()}"
         return f"text:{hashlib.sha256(norm.encode()).hexdigest()[:24]}"
 

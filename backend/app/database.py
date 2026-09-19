@@ -20,7 +20,7 @@ from app.services.security_redaction import safe_error_message
 
 settings = get_settings()
 
-CURRENT_SCHEMA_VERSION = 3
+CURRENT_SCHEMA_VERSION = 4
 
 
 class DatabaseMigrationError(RuntimeError):
@@ -351,10 +351,17 @@ def _migrate_schema_v3(connection) -> None:  # noqa: ANN001
     )
 
 
+def _migrate_schema_v4(connection) -> None:  # noqa: ANN001
+    """Add interview_notifications.acknowledged_at via additive auto-migration."""
+
+    _auto_migrate(connection)
+
+
 SCHEMA_MIGRATIONS: dict[int, Callable[[Any], None]] = {
     1: _migrate_schema_v1,
     2: _migrate_schema_v2,
     3: _migrate_schema_v3,
+    4: _migrate_schema_v4,
 }
 
 

@@ -24,9 +24,12 @@ from ..protocol import (
 
 
 def _job_to_observation(job: Job, source_id: str) -> JobObservation:
+    captured_at = job.created_at or datetime.now(timezone.utc)
+    posted_at = job.posted_at.date().isoformat() if job.posted_at else None
     return JobObservation(
         source=source_id,
-        external_job_id=str(job.id),
+        # DB PK 只在单源内有意义：加 source 前缀，杜绝 manual:42 与 web:42 跨源碰撞。
+        external_job_id=f"{source_id}:{job.id}",
         source_url=job.url or "",
         title=job.title,
         company=job.company,
@@ -35,9 +38,18 @@ def _job_to_observation(job: Job, source_id: str) -> JobObservation:
         salary=job.salary_text or "",
         experience=job.experience or "",
         education=job.education or "",
-        captured_at=job.created_at or datetime.now(timezone.utc),
+        captured_at=captured_at,
+        posted_at=posted_at,
         raw_hash=job.hash_key or "",
-        metadata={"job_id": job.id, "triage_status": job.triage_status, "batch_id": job.batch_id},
+        metadata={
+            "job_id": job.id,
+            "triage_status": job.triage_status,
+            "batch_id": job.batch_id,
+            # 新鲜度提示：观测距采集的秒数；采集时间本身就是 captured_at。
+            "captured_at_age_seconds": max(
+                0.0, (datetime.now(timezone.utc) - captured_at).total_seconds()
+            ),
+        },
     )
 
 
@@ -69,8 +81,12 @@ class _DbBackedSource:
         return [_job_to_observation(j, self.source_id) for j in rows]
 
     async def get(self, external_job_id: str) -> Optional[JobObservation]:
+        raw = str(external_job_id or "").strip()
+        # 兼容 "manual:42" 命名空间键与历史裸 "42" 键。
+        if ":" in raw:
+            raw = raw.rsplit(":", 1)[-1]
         try:
-            jid = int(external_job_id)
+            jid = int(raw)
         except (TypeError, ValueError):
             return None
         async with async_session() as db:

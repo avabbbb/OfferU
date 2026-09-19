@@ -787,6 +787,7 @@ class InterviewNotification(Base):
     location: Mapped[str] = mapped_column(String(500), default="")
     action_required: Mapped[str] = mapped_column(String(500), default="")  # 用户待办操作
     parsed_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    acknowledged_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     # 关联日历事件

@@ -79,6 +79,18 @@ Preserved invariants: hosted runtimes keep native lifecycle protocols
 Skill → Bridge/CLI → Operation Registry → Career Runtime; skills stay thin
 (no business logic); beginner UI output unchanged.  79 focused tests pass.
 
+## Real-user beta wave 1 (2026-09-19)
+
+Recon complete (11 read-only agents). Trust surface analyzed: `_PROTECTED_AGENT_SURFACES`
+covers every agent-driven surface (agent/bridge/cli/mcp/pi/web_agent/optimize_agent);
+HTTP user surfaces (ui/profile_api/memory_api) are intentionally outside it — they are
+the human operator, and OfferU is a loopback-only local app. Gate-2 self-confirm = PASS.
+Confirmed no agent-surface path lets an LLM write Career Truth without user confirmation.
+Top defects queued for Wave 2: cross-channel signal dedupe, update_application_status
+event bypass, Today wrong-empty-state + unbounded notifications, JobSource ext-id
+collision + captured_at→posted_at, resume description fact-gate gap + multi-ready
+proposals + edited_text bypass, nav/fixture/jargon beginner leaks.
+
 ## Closure pass (2026-09-17)
 
 | Item | Before | After |

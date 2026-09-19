@@ -22,12 +22,14 @@ from app.models.models import (
     ApplicationAttempt,
     Job,
     Profile,
+    ProfileSection,
     Resume,
     ResumeOptimizationProposal,
     ResumeSection,
     ResumeVersion,
 )
 from app.services.pre_application_decisions import get_pre_application_state
+from app.services.resume_fact_gates import validate_edited_text
 from app.services.resume_builder import _profile_to_contact_json
 from app.services.resume_optimization import _proposal_detail
 from app.services.resume_versions import create_version_snapshot
@@ -616,6 +618,55 @@ async def review_resume_proposal_item(
             elif change_type == "removed":
                 target.visible = False
             elif after:
+                if clean_edited_text:
+                    # User-supplied text bypasses the generated content, so it
+                    # must re-run the fact gate against the proposal's verified
+                    # source evidence. Unsupported claims require an explicit
+                    # second submission (confirmation) instead of silent apply.
+                    # Runs BEFORE any section mutation: only the pending flag
+                    # is committed when confirmation is required.
+                    pending_key = f"{clean_change_id}:pending_edit"
+                    pending = reviews.get(pending_key)
+                    confirmed = (
+                        isinstance(pending, dict)
+                        and pending.get("edited_text") == clean_edited_text
+                    )
+                    if not confirmed:
+                        source_ids = _source_ids(proposal.source_section_ids_json)
+                        for diff_row in (before, after):
+                            if isinstance(diff_row, dict):
+                                for sid in _source_ids(diff_row.get("source_section_ids")):
+                                    if sid not in source_ids:
+                                        source_ids.append(sid)
+                        source_sections = []
+                        if source_ids:
+                            source_sections = list(
+                                (
+                                    await db.execute(
+                                        select(ProfileSection).where(
+                                            ProfileSection.id.in_(source_ids)
+                                        )
+                                    )
+                                ).scalars().all()
+                            )
+                        gate = validate_edited_text(source_sections, clean_edited_text)
+                        if gate["requires_user_confirmation"]:
+                            reviews[pending_key] = {
+                                "edited_text": clean_edited_text,
+                                "warnings": gate["warnings"],
+                                "flagged_at": _now().isoformat(),
+                            }
+                            proposal.item_reviews_json = reviews
+                            await db.commit()
+                            claims = "、".join(
+                                gate["unsupported_metrics"]
+                                + gate["unsupported_named_claims"]
+                            )
+                            raise ValueError(
+                                "编辑文本包含来源中不存在的声明"
+                                f"（{claims}）。如确认无误，请再次提交相同文本以确认。"
+                            )
+                        reviews.pop(pending_key, None)
                 target.section_type = _row_section_type(str(after.get("section_type") or target.section_type))
                 target.title = str(after.get("title") or target.title)
                 target.sort_order = int(after.get("sort_order", target.sort_order))

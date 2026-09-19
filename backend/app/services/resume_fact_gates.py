@@ -31,6 +31,73 @@ _EVIDENCE_FIELD_KEYS = {
     "date",
 }
 
+_PROPER_NOUN = re.compile(r"[A-Za-z][A-Za-z0-9]*(?:[.+#][A-Za-z0-9]+)*")
+
+# Sentence-initial words and resume verbs are capitalized by convention, not
+# because they name an entity. Keep this list small: it is better to flag a
+# real claim than to silently pass an invented one.
+_CLAIM_STOPWORDS = {
+    "the", "a", "an", "and", "or", "of", "to", "in", "for", "on", "at", "by",
+    "with", "from", "as", "is", "are", "was", "were", "be", "been", "being",
+    "we", "i", "our", "my", "their", "its", "his", "her", "this", "that",
+    "these", "those", "it",
+    "built", "led", "designed", "developed", "improved", "created",
+    "launched", "managed", "delivered", "drove", "owned", "worked",
+    "responsible", "using", "used", "including", "reduced", "increased",
+    "supported", "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug",
+    "sep", "oct", "nov", "dec",
+}
+
+
+def named_entity_claims(value: Any) -> set[str]:
+    """Extract proper-noun claims (orgs, products, technologies) from free text.
+
+    Catches ALLCAPS acronyms (AWS, NLP), internally-capitalized or suffixed
+    tech names (GraphQL, gRPC, Node.js, C++, K8s), and TitleCase words that
+    appear mid-sentence (Google, Kubernetes). Common words capitalized only
+    because they start a sentence are skipped via _CLAIM_STOPWORDS plus a
+    sentence-boundary check.
+    """
+    text = _plain(value)
+    claims: set[str] = set()
+    for match in _PROPER_NOUN.finditer(text):
+        word = match.group(0)
+        if len(word) < 2:
+            continue
+        if word.lower().strip(".") in _CLAIM_STOPWORDS:
+            continue
+        if word.isupper():
+            claims.add(word)
+            continue
+        if any(ch.isupper() for ch in word[1:]) or any(ch in ".+#" for ch in word):
+            claims.add(word)
+            continue
+        if word[0].isupper():
+            prefix = text[: match.start()].rstrip()
+            if prefix and prefix[-1] not in ".!?\n•·:;":
+                claims.add(word)
+    return claims
+
+
+def _free_text_fields(value: Any) -> list[str]:
+    """Collect free-text `description` leaves from generated rows.
+
+    Only `description` fields are scanned: they are the free-form rewrite
+    surface where an LLM can invent unquantified responsibilities and claims.
+    """
+    texts: list[str] = []
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key == "description" and isinstance(item, str) and item.strip():
+                texts.append(item)
+            else:
+                texts.extend(_free_text_fields(item))
+    elif isinstance(value, list):
+        for item in value:
+            texts.extend(_free_text_fields(item))
+    return texts
+
+
 
 def _plain(value: Any) -> str:
     text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, default=str)
@@ -244,6 +311,39 @@ def validate_resume_fact_gates(
                 warnings.append(warning)
                 item.setdefault("_gate_warnings", []).append(f"未验证名称: {organization}")
 
+    # Free-text `description` fields are fact-gated separately from structured
+    # fields: a rewrite may not introduce quantified claims (already covered
+    # by unverified_metric on the whole payload) nor new proper-noun org/tech
+    # claims absent from the verified source evidence. Matching is
+    # deliberately conservative: a claim is supported if it appears anywhere
+    # in the source text (case-insensitive substring), so only genuinely new
+    # named entities are flagged.
+    unsupported_named_claims: list[str] = []
+    for row_index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            continue
+        for index, item in enumerate(row.get("content_json") or []):
+            if not isinstance(item, dict):
+                continue
+            description = item.get("description")
+            if not isinstance(description, str) or not description.strip():
+                continue
+            for claim in sorted(named_entity_claims(description)):
+                if claim.lower() in source_text:
+                    continue
+                unsupported_named_claims.append(claim)
+                warnings.append({
+                    "section_type": row.get("section_type", ""),
+                    "section_title": row.get("title", ""),
+                    "row_index": row_index,
+                    "item_index": index,
+                    "issue": "unverified_named_claim",
+                    "detail": f"描述中出现来源中不存在的名称/技术声明: {claim}",
+                })
+                item.setdefault("_gate_warnings", []).append(
+                    f"未验证描述声明: {claim}"
+                )
+
     for warning in warnings:
         if warning.get("issue") != "unverified_metric":
             continue
@@ -251,8 +351,16 @@ def validate_resume_fact_gates(
             for item in row.get("content_json") or []:
                 if isinstance(item, dict):
                     item.setdefault("_gate_warnings", []).append(warning["detail"])
+    blocking_warnings = [
+        warning
+        for warning in warnings
+        if warning.get("issue") != "unverified_named_claim"
+    ]
     result.update({
-        "status": "blocked" if warnings else "passed",
+        "unsupported_named_claims": sorted(set(unsupported_named_claims)),
+        # Fuzzy named-claim matches warn and require explicit confirmation but
+        # do not hard-block: a false positive must not freeze the proposal.
+        "status": "blocked" if blocking_warnings else "passed",
         "requires_user_confirmation": bool(warnings),
         "warnings": warnings,
         "warnings_count": len(warnings),
@@ -261,3 +369,49 @@ def validate_resume_fact_gates(
         "source_section_ids_count": len(source_ids),
     })
     return result
+
+def validate_edited_text(source_sections: list[Any], edited_text: str) -> dict[str, Any]:
+    """Fact-gate a user-edited text leaf against the verified source evidence.
+
+    Used when Edit-then-Accept supplies `edited_text`: the user's override
+    bypasses the generated content, so it must re-run the same claims check
+    (metrics + named entities) against the section evidence the proposal was
+    built from. Returns warnings only; the caller decides whether to require
+    confirmation.
+    """
+    source_payload = []
+    for section in source_sections:
+        if isinstance(section, dict):
+            payload = section.get("content_json") or section
+            title = section.get("title") or ""
+        else:
+            payload = getattr(section, "content_json", {}) or {}
+            title = getattr(section, "title", "") or ""
+        source_payload.append({"title": title, "content_json": payload})
+    source_text = _plain(source_payload).lower()
+
+    warnings: list[dict[str, Any]] = []
+    unsupported_metrics = sorted(metric_claims(edited_text) - metric_claims(source_payload))
+    for claim in unsupported_metrics:
+        warnings.append({
+            "issue": "unverified_metric",
+            "detail": f"编辑文本出现来源中不存在的量化信息: {claim}",
+        })
+    unsupported_named = sorted(
+        claim
+        for claim in named_entity_claims(edited_text)
+        if claim.lower() not in source_text
+    )
+    for claim in unsupported_named:
+        warnings.append({
+            "issue": "unverified_named_claim",
+            "detail": f"编辑文本出现来源中不存在的名称/技术声明: {claim}",
+        })
+    return {
+        "status": "flagged" if warnings else "passed",
+        "requires_user_confirmation": bool(warnings),
+        "unsupported_metrics": unsupported_metrics,
+        "unsupported_named_claims": unsupported_named,
+        "warnings": warnings,
+        "warnings_count": len(warnings),
+    }

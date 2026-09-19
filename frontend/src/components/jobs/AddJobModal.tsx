@@ -151,9 +151,9 @@ export function AddJobModal({ isOpen, onClose, onCreated }: AddJobModalProps) {
                     : "border-[var(--border)] bg-white"
                 }`}
               >
-                <p className="text-sm font-bold text-[var(--foreground)]">本地准备（推荐）</p>
+                <p className="text-sm font-bold text-[var(--foreground)]">本地演示数据（离线）</p>
                 <p className="mt-1 text-xs font-medium leading-relaxed text-[var(--foreground-soft)]">
-                  使用可复现的本地数据完成首次体验，不需要外部登录；结果会明确标记为本地准备。
+                  使用内置 Fixture 生成可复现的演示结果，不代表真实市场研究；不需要外部登录。
                 </p>
               </button>
               <button
@@ -170,6 +170,11 @@ export function AddJobModal({ isOpen, onClose, onCreated }: AddJobModalProps) {
                   使用已连接的 Agent Provider；认证或网络失败会显示在任务状态中，不会伪造完成。
                 </p>
               </button>
+            {form.preparationMode === "local" && (
+              <p className="text-xs font-medium leading-relaxed text-[var(--foreground-muted)]" role="note">
+                选择「本地演示数据」会使用内置 Fixture/Replay 链路：产出为离线演示数据，仅用于体验流程，不代表真实市场研究或已验证的岗位证据。
+              </p>
+            )}
             </div>
           </div>
 

@@ -1049,6 +1049,11 @@ export default function JobDetailPage() {
                 </div>
               ) : (
                 <>
+                  {isFixtureDataMode(research.data_mode) && (
+                    <div className="bauhaus-panel-sm border-amber-500 bg-amber-50 px-4 py-3 text-sm font-semibold leading-relaxed text-amber-950" role="note">
+                      本地 Fixture / Replay 数据：以下调研结果为离线演示产物，不代表真实市场研究或已验证的岗位证据。
+                    </div>
+                  )}
                   {research.review_status === "candidate" && (
                     <div className="bauhaus-panel-sm border-amber-500 bg-amber-50 px-4 py-4 text-sm font-semibold leading-relaxed text-amber-950">
                       这些内容还不是 OfferU 的可消费事实。请检查来源、结论和信息缺口，再明确接受或拒绝。

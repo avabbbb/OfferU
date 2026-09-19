@@ -153,6 +153,89 @@ class ResumeWorkspaceTests(unittest.TestCase):
 
         self.assertEqual(asyncio.run(run()), "用户确认后的描述")
 
+    def test_edited_text_with_fabricated_claim_requires_confirmation(self) -> None:
+        async def run() -> dict:
+            engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+            sessions = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+            async with engine.begin() as connection:
+                await connection.run_sync(Base.metadata.create_all)
+            fixture = await _seed(sessions, "fabricated")
+            with patch.object(
+                resume_workspace,
+                "async_session",
+                sessions,
+            ), patch.object(
+                resume_workspace,
+                "get_pre_application_state",
+                new=AsyncMock(return_value={"stage": "resume_proposal_ready"}),
+            ):
+                workspace = await resume_workspace.ensure_resume_workspace(
+                    job_id=fixture["job_id"], proposal_id=fixture["proposal_id"]
+                )
+                fabricated = "Scaled Kubernetes platform, improved throughput by 80%."
+                with self.assertRaisesRegex(ValueError, "确认"):
+                    await resume_workspace.review_resume_proposal_item(
+                        proposal_id=fixture["proposal_id"],
+                        resume_id=workspace["resume"]["id"],
+                        change_id=fixture["change_id"],
+                        action="accept",
+                        edited_text=fabricated,
+                    )
+                # Same text submitted again = explicit confirmation → applied.
+                reviewed = await resume_workspace.review_resume_proposal_item(
+                    proposal_id=fixture["proposal_id"],
+                    resume_id=workspace["resume"]["id"],
+                    change_id=fixture["change_id"],
+                    action="accept",
+                    edited_text=fabricated,
+                )
+            await engine.dispose()
+            return {
+                "description": reviewed["resume"]["sections"][0]["content_json"][0]["description"],
+            }
+
+        result = asyncio.run(run())
+        self.assertEqual(
+            result["description"],
+            "Scaled Kubernetes platform, improved throughput by 80%.",
+        )
+
+    def test_edited_text_grounded_in_source_applies_directly(self) -> None:
+        async def run() -> dict:
+            engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+            sessions = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+            async with engine.begin() as connection:
+                await connection.run_sync(Base.metadata.create_all)
+            fixture = await _seed(sessions, "grounded")
+            with patch.object(
+                resume_workspace,
+                "async_session",
+                sessions,
+            ), patch.object(
+                resume_workspace,
+                "get_pre_application_state",
+                new=AsyncMock(return_value={"stage": "resume_proposal_ready"}),
+            ):
+                workspace = await resume_workspace.ensure_resume_workspace(
+                    job_id=fixture["job_id"], proposal_id=fixture["proposal_id"]
+                )
+                reviewed = await resume_workspace.review_resume_proposal_item(
+                    proposal_id=fixture["proposal_id"],
+                    resume_id=workspace["resume"]["id"],
+                    change_id=fixture["change_id"],
+                    action="accept",
+                    edited_text="old evidence refined",
+                )
+            await engine.dispose()
+            return {
+                "description": reviewed["resume"]["sections"][0]["content_json"][0]["description"],
+                "duplicate": reviewed["duplicate"],
+            }
+
+        result = asyncio.run(run())
+        self.assertEqual(result["description"], "old evidence refined")
+        self.assertFalse(result["duplicate"])
+
     def test_workspace_requires_confirmed_pre_application_decision(self) -> None:
         async def run() -> None:
             with patch.object(

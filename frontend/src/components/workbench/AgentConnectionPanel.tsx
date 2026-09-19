@@ -41,6 +41,14 @@ const CAPABILITY_STATE_LABEL: Record<string, string> = {
   ERROR: "检查失败",
 };
 
+const SKILL_STATUS_LABEL: Record<string, string> = {
+  NOT_INSTALLED: "未安装",
+  INSTALLED: "已安装",
+  OUTDATED: "需要更新",
+  ERROR: "安装异常",
+  NOT_SUPPORTED: "不支持自动接入",
+};
+
 function capabilityState(value: unknown) {
   const state = String(value || "NOT_VERIFIED");
   return {
@@ -182,7 +190,7 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
                 <SetupStep index={2} title="安装 OfferU 接入" done={skillInstalled} busy={Boolean(state.integrating)}
                   detail={skillInstalled ? `Skill ${selected.skill_version || "已安装"}` : selected.skill_status === "OUTDATED" ? "已有接入需要更新。" : "OfferU 会自动完成，不需要复制文件或命令。"} />
                 <SetupStep index={3} title="验证 Agent 真能读取" done={localReady} busy={checking}
-                  detail={localReady ? `安全回读通过 · ${connectionTime(selected.checked_at)}` : selected.can_live_verify_skill ? "启动全新 Agent 会话并读取一次短期随机码；不会读取职业数据。" : "该 Agent 的自动回读仍在适配中。"} />
+                  detail={localReady ? `安全回读通过 · ${connectionTime(selected.checked_at)}` : selected.can_live_verify_skill ? "启动全新 Agent 会话并读取一次短期随机码；不会读取职业数据。" : "需要手动配置（进阶）· 该 Agent 暂不支持自动回读，请展开下方「高级检查详情」查看手动接入说明。"} />
                 <SetupStep index={4} title="同步当前工作" done={syncDone} busy={state.sync.status === "syncing"}
                   detail={syncDone ? `工作台已收到「${state.sync.title}」，Agent 可按需读取。` : syncFailed ? "同步遇到问题，可在下方重试。" : "自动同步当前页面和显式选中的内容。"} />
               </ol>
@@ -200,7 +208,7 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
                 <summary className="w-fit cursor-pointer py-1">高级检查详情</summary>
                 <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 leading-relaxed">
                   <dt>安装与能力</dt><dd>{selected.compatible ? "本机组件检查通过" : "尚未通过"}</dd>
-                  <dt>OfferU Skill</dt><dd>{selected.skill_status}{selected.skill_version ? ` · ${selected.skill_version}` : ""}</dd>
+                  <dt>OfferU Skill</dt><dd>{SKILL_STATUS_LABEL[selected.skill_status] || selected.skill_status}{selected.skill_version ? ` · ${selected.skill_version}` : ""}</dd>
                   <dt>安全回读</dt><dd>{selected.connection_verified ? "已验证" : "未验证"}</dd>
                   <dt>本机登录</dt><dd>{selected.authenticated === true ? "已读取登录信息" : selected.authenticated === false ? "需要登录" : "尚未确认"}</dd>
                   <dt>服务商响应</dt><dd>{capabilityState(selected.live_model_state).label}</dd>
@@ -218,7 +226,12 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
                     </div>;
                   })}
                 </div>
-                {state.snapshot?.connect_prompt && <p className="mt-3 select-text whitespace-pre-wrap break-words rounded-lg bg-[var(--surface-muted)] p-3 leading-6">高级手动接入：{state.snapshot.connect_prompt}</p>}
+                {state.snapshot?.connect_prompt && (
+                  <details className="mt-3">
+                    <summary className="w-fit cursor-pointer py-1">手动接入说明（进阶）</summary>
+                    <p className="mt-2 select-text whitespace-pre-wrap break-words rounded-lg bg-[var(--surface-muted)] p-3 leading-6">{state.snapshot.connect_prompt}</p>
+                  </details>
+                )}
               </details>
             </> : <div className="flex min-h-48 flex-col items-center justify-center gap-3 text-center text-[var(--foreground-muted)]"><Laptop size={28} strokeWidth={1.25} /><p className="text-sm">连接工作台后，从这里开始。</p></div>}
           </div>

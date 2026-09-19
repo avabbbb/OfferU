@@ -503,6 +503,192 @@ class ApplicationProgressTests(unittest.TestCase):
         )
         self.assertEqual(workspace_status, "已录用")
 
+    def test_cross_channel_signals_link_to_one_stage_event(self) -> None:
+        async def run(database_path: Path) -> tuple[dict, dict, int]:
+            engine = create_async_engine(
+                f"sqlite+aiosqlite:///{database_path.as_posix()}"
+            )
+            session = async_sessionmaker(
+                engine,
+                class_=AsyncSession,
+                expire_on_commit=False,
+            )
+            try:
+                async with engine.begin() as connection:
+                    await connection.run_sync(Base.metadata.create_all)
+                token = uuid.uuid4().hex[:10]
+                async with session() as db:
+                    job = Job(
+                        title="Agent Engineer",
+                        company="Example CrossChannel",
+                        source="unit-test",
+                        hash_key=uuid.uuid4().hex,
+                    )
+                    db.add(job)
+                    await db.flush()
+                    attempt = ApplicationAttempt(job_id=job.id, status="applied")
+                    db.add(attempt)
+                    await db.flush()
+                    # 同一场面试：邮件上午 9 点、BOSS 渠道 30 小时后推送
+                    email_signal = _signal(
+                        f"{token}-email", datetime(2026, 8, 13, 9, 0, 0)
+                    )
+                    boss_signal = _signal(
+                        f"{token}-boss", datetime(2026, 8, 14, 15, 0, 0)
+                    )
+                    boss_signal.channel = "boss"
+                    boss_signal.account_ref = f"boss-{token}"
+                    db.add_all([email_signal, boss_signal])
+                    await db.flush()
+                    email_candidate = _candidate(
+                        f"{token}-email",
+                        email_signal.id,
+                        stage="interview_1",
+                        match_state="suggested",
+                        attempt_id=attempt.id,
+                    )
+                    boss_candidate = _candidate(
+                        f"{token}-boss",
+                        boss_signal.id,
+                        stage="interview_1",
+                        match_state="suggested",
+                        attempt_id=attempt.id,
+                    )
+                    db.add_all([email_candidate, boss_candidate])
+                    await db.commit()
+                    email_id = email_candidate.candidate_id
+                    boss_id = boss_candidate.candidate_id
+
+                with patch(
+                    "app.services.application_progress.async_session",
+                    session,
+                ):
+                    first = await review_application_progress(
+                        candidate_id=email_id,
+                        action="accept",
+                        add_calendar=False,
+                    )
+                    second = await review_application_progress(
+                        candidate_id=boss_id,
+                        action="accept",
+                        add_calendar=False,
+                    )
+
+                async with session() as db:
+                    event_count = int(
+                        (
+                            await db.execute(
+                                select(func.count()).select_from(ApplicationStageEvent)
+                            )
+                        ).scalar_one()
+                    )
+                return first, second, event_count
+            finally:
+                await engine.dispose()
+
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+            application_event_store,
+            "directory",
+            Path(directory) / "events",
+        ):
+            first, second, event_count = asyncio.run(
+                run(Path(directory) / "progress-xchannel.db")
+            )
+
+        self.assertEqual(first["status"], "confirmed")
+        self.assertFalse(first["stage_event"]["linked_duplicate"])
+        self.assertEqual(second["status"], "confirmed")
+        self.assertTrue(second["stage_event"]["linked_duplicate"])
+        self.assertEqual(
+            first["stage_event"]["event_id"],
+            second["stage_event"]["event_id"],
+        )
+        self.assertEqual(event_count, 1)
+
+    def test_update_application_status_writes_stage_event_for_board(self) -> None:
+        from app.services.agent_operations import update_application_status
+
+        async def run(database_path: Path) -> tuple[dict, dict, int]:
+            engine = create_async_engine(
+                f"sqlite+aiosqlite:///{database_path.as_posix()}"
+            )
+            session = async_sessionmaker(
+                engine,
+                class_=AsyncSession,
+                expire_on_commit=False,
+            )
+            try:
+                async with engine.begin() as connection:
+                    await connection.run_sync(Base.metadata.create_all)
+                async with session() as db:
+                    job = Job(
+                        title="Agent Engineer",
+                        company="Example StatusSync",
+                        source="unit-test",
+                        hash_key=uuid.uuid4().hex,
+                    )
+                    db.add(job)
+                    await db.flush()
+                    attempt = ApplicationAttempt(job_id=job.id, status="applied")
+                    db.add(attempt)
+                    await db.flush()
+                    record = ApplicationRecord(
+                        job_ref_id=job.id,
+                        company_name=job.company,
+                        job_title=job.title,
+                        custom_values={"apply_status": "已投递"},
+                    )
+                    db.add(record)
+                    await db.commit()
+                    record_id = record.id
+
+                with patch(
+                    "app.services.agent_operations.async_session",
+                    session,
+                ), patch(
+                    "app.services.application_progress.async_session",
+                    session,
+                ):
+                    updated = await update_application_status(
+                        record_id,
+                        "interview",
+                        notes="进入面试",
+                    )
+                    board = await get_application_progress_board(status="all")
+
+                async with session() as db:
+                    event_count = int(
+                        (
+                            await db.execute(
+                                select(func.count()).select_from(ApplicationStageEvent)
+                            )
+                        ).scalar_one()
+                    )
+                return updated, board, event_count
+            finally:
+                await engine.dispose()
+
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+            application_event_store,
+            "directory",
+            Path(directory) / "events",
+        ):
+            updated, board, event_count = asyncio.run(
+                run(Path(directory) / "progress-status-sync.db")
+            )
+
+        self.assertEqual(updated["status"], "interview")
+        self.assertEqual(updated["workspace_status"], "面试中")
+        self.assertIsNone(updated["event_warning"])
+        self.assertEqual(event_count, 1)
+        board_rows = [
+            record
+            for company in board["companies"]
+            for record in company["records"]
+        ]
+        self.assertEqual(len(board_rows), 1)
+        self.assertEqual(board_rows[0]["current_stage"], "interview_1")
+
 
 if __name__ == "__main__":
     unittest.main()

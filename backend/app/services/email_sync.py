@@ -16,6 +16,7 @@ from urllib.parse import urlencode, urlsplit
 
 import httpx
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.database import async_session
@@ -25,6 +26,7 @@ from app.models.models import (
     EmailAccount,
     EmailSyncRun,
     ExternalProgressSignal,
+    InterviewNotification,
 )
 from app.services.application_progress import ingest_application_signal
 from app.services.credential_store import delete_secret, load_secret, store_secret
@@ -1292,6 +1294,26 @@ async def get_email_sync_run(run_id: str) -> dict[str, Any]:
     if run is None:
         raise ValueError(f"邮箱同步运行 {clean_run_id} 不存在")
     return _run_payload(run)
+
+
+async def acknowledge_notification(
+    notification_id: int,
+    db: AsyncSession,
+) -> Optional[InterviewNotification]:
+    """标记一条面试通知已处理；已处理的信号从待确认视图移除但保留在收件箱。"""
+    item = (
+        await db.execute(
+            select(InterviewNotification).where(
+                InterviewNotification.id == notification_id
+            )
+        )
+    ).scalar_one_or_none()
+    if item is None:
+        return None
+    if item.acknowledged_at is None:
+        item.acknowledged_at = _now()
+    await db.commit()
+    return item
 
 
 async def revoke_email_account(

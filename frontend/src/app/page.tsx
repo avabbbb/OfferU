@@ -36,12 +36,17 @@ import {
   useJobStats,
   useJobTrend,
   useNotifications,
+  type Notification,
   useCareerTasks,
   useProgressBoard,
   useProgressCandidates,
 } from "@/lib/hooks";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { useWorkbench } from "@/lib/workbench";
+
+import { resolveApiBase } from "@/lib/apiBase";
+
+type SignalNotification = Notification & { acknowledged_at?: string | null };
 
 const TrendChart = lazy(() =>
   import("@/components/charts/TrendChart").then((module) => ({
@@ -297,7 +302,7 @@ export default function TodayPage() {
   }, []);
 
   const { data: events } = useCalendarEvents(range.start, range.end);
-  const { data: notifications } = useNotifications();
+  const { data: notifications, mutate: mutateNotifications } = useNotifications();
   const {
     data: automationInbox,
     error: automationInboxError,
@@ -311,6 +316,7 @@ export default function TodayPage() {
     mutate: mutateCareerTasks,
   } = useCareerTasks();
   const { data: jobsData } = useJobs({ page: 1, period: "week" });
+  const { data: allJobsData } = useJobs({ page: 1, page_size: 1 });
   const { data: stats } = useJobStats("week");
   const { data: trendData } = useJobTrend("week");
   const {
@@ -325,9 +331,39 @@ export default function TodayPage() {
   } = useProgressCandidates("pending", 6);
 
   const pendingSignals = useMemo(
-    () => (notifications ?? []).filter((n) => Boolean(n.action_required)).slice(0, 6),
+    () =>
+      ((notifications ?? []) as SignalNotification[])
+        .filter((n) => Boolean(n.action_required) && !n.acknowledged_at)
+        .slice(0, 6),
     [notifications]
   );
+  const [signalAckBusy, setSignalAckBusy] = useState<number | null>(null);
+
+  const acknowledgeSignal = async (id: number) => {
+    setSignalAckBusy(id);
+    try {
+      const response = await fetch(
+        `${resolveApiBase()}/api/email/notifications/${id}/ack`,
+        { method: "POST" },
+      );
+      if (!response.ok) {
+        throw new Error(`API ${response.status}`);
+      }
+      await mutateNotifications(
+        (current) =>
+          (current ?? []).map((n) =>
+            n.id === id
+              ? { ...n, acknowledged_at: new Date().toISOString() }
+              : n,
+          ),
+        { revalidate: true },
+      );
+    } catch {
+      await mutateNotifications();
+    } finally {
+      setSignalAckBusy(null);
+    }
+  };
   const pendingAutomation = useMemo(
     () => (automationInbox?.items ?? []).filter((entry) => entry.status === "pending").slice(0, 5),
     [automationInbox],
@@ -822,41 +858,50 @@ export default function TodayPage() {
             </p>
           )}
           {pendingSignals.map((signal) => (
-            <button
-              key={signal.id}
-              type="button"
-              onClick={() =>
-                select({
-                  kind: "task",
-                  id: `signal-${signal.id}`,
-                  title: signal.action_required || signal.email_subject,
-                  subtitle: [signal.company, signal.position].filter(Boolean).join(" · "),
-                  data: {
-                    fields: [
-                      { label: "类型", value: signal.category_display || signal.category },
-                      { label: "来件", value: signal.email_from },
-                      { label: "主题", value: signal.email_subject },
-                      { label: "面试时间", value: signal.interview_time || "-" },
-                      { label: "地点", value: signal.location || "-" },
-                      { label: "解析于", value: signal.parsed_at },
-                    ],
-                    fullscreenHref: "/email",
-                  },
-                })
-              }
-              className="press-feedback flex w-full items-center gap-3 px-4 py-2.5 text-left"
-            >
-              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--primary-red)]" />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13px] font-medium text-[var(--foreground)]">
-                  {signal.action_required || signal.email_subject}
+            <div key={signal.id} className="flex items-center gap-1 px-4 py-2.5">
+              <button
+                type="button"
+                onClick={() =>
+                  select({
+                    kind: "task",
+                    id: `signal-${signal.id}`,
+                    title: signal.action_required || signal.email_subject,
+                    subtitle: [signal.company, signal.position].filter(Boolean).join(" · "),
+                    data: {
+                      fields: [
+                        { label: "类型", value: signal.category_display || signal.category },
+                        { label: "来件", value: signal.email_from },
+                        { label: "主题", value: signal.email_subject },
+                        { label: "面试时间", value: signal.interview_time || "-" },
+                        { label: "地点", value: signal.location || "-" },
+                        { label: "解析于", value: signal.parsed_at },
+                      ],
+                      fullscreenHref: "/email",
+                    },
+                  })
+                }
+                className="press-feedback flex min-w-0 flex-1 items-center gap-3 text-left"
+              >
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--primary-red)]" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] font-medium text-[var(--foreground)]">
+                    {signal.action_required || signal.email_subject}
+                  </span>
+                  <span className="mt-0.5 block truncate text-[12px] text-[var(--foreground-muted)]">
+                    {[signal.company, signal.position, signal.category_display].filter(Boolean).join(" · ")}
+                  </span>
                 </span>
-                <span className="mt-0.5 block truncate text-[12px] text-[var(--foreground-muted)]">
-                  {[signal.company, signal.position, signal.category_display].filter(Boolean).join(" · ")}
-                </span>
-              </span>
-              <ArrowRight size={13} className="shrink-0 text-[var(--foreground-faint)]" />
-            </button>
+                <ArrowRight size={13} className="shrink-0 text-[var(--foreground-faint)]" />
+              </button>
+              <button
+                type="button"
+                disabled={signalAckBusy === signal.id}
+                onClick={() => void acknowledgeSignal(signal.id)}
+                className="shrink-0 rounded-full border border-[var(--border)] px-2.5 py-1 text-[11px] font-medium text-[var(--foreground-muted)] transition-colors hover:border-[var(--foreground-faint)] hover:text-[var(--foreground)] disabled:opacity-50"
+              >
+                {signalAckBusy === signal.id ? "处理中…" : "标记已处理"}
+              </button>
+            </div>
           ))}
         </div>
       </motion.section>
@@ -923,7 +968,20 @@ export default function TodayPage() {
           hrefLabel="机会"
         />
         <div className="bauhaus-panel-sm divide-y divide-[var(--border)] overflow-hidden">
-          {recentJobs.length === 0 && (
+          {recentJobs.length === 0 && jobsData === undefined && (
+            <p className="px-4 py-4 text-[13px] text-[var(--foreground-muted)]">正在读取岗位数据…</p>
+          )}
+          {recentJobs.length === 0 && jobsData !== undefined && (allJobsData?.total ?? 0) > 0 && (
+            <div className="px-4 py-6 text-center">
+              <p className="text-[13px] font-medium text-[var(--foreground)]">
+                本周暂无新岗位，共 {allJobsData?.total} 个已保存岗位
+              </p>
+              <p className="mt-1 text-[12px] leading-5 text-[var(--foreground-muted)]">
+                已保存的岗位不会丢失，新机会出现时会显示在这里。
+              </p>
+            </div>
+          )}
+          {recentJobs.length === 0 && jobsData !== undefined && (allJobsData?.total ?? 0) === 0 && (
             <div className="px-4 py-6 text-center">
               <p className="text-[13px] font-medium text-[var(--foreground)]">还没有岗位数据</p>
               <p className="mt-1 text-[12px] leading-5 text-[var(--foreground-muted)]">

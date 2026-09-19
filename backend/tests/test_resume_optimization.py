@@ -308,6 +308,124 @@ class ResumeOptimizationContractTests(unittest.TestCase):
             }.issubset(issues)
         )
 
+    def test_fact_gate_flags_new_claims_in_description(self) -> None:
+        source = {
+            "id": 9,
+            "title": "Example Company",
+            "content_json": {
+                "normalized": {
+                    "company": "Example Company",
+                    "position": "Backend Engineer",
+                    "description": "Built a Python service for internal workflows.",
+                }
+            },
+        }
+        rows = [
+            {
+                "section_type": "experience",
+                "title": "工作经历",
+                "content_json": [
+                    {
+                        "company": "Example Company",
+                        "position": "Backend Engineer",
+                        "description": (
+                            "Scaled Kubernetes platform at Google, "
+                            "improved throughput by 80%."
+                        ),
+                    }
+                ],
+                "source_section_ids": [9],
+            }
+        ]
+
+        result = validate_resume_fact_gates(
+            rows,
+            [source],
+            strict_structured_facts=True,
+        )
+        issues = {item["issue"] for item in result["warnings"]}
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertTrue(result["requires_user_confirmation"])
+        self.assertIn("unverified_metric", issues)
+        self.assertIn("unverified_named_claim", issues)
+        self.assertIn("Kubernetes", result["unsupported_named_claims"])
+        self.assertIn("Google", result["unsupported_named_claims"])
+
+    def test_fact_gate_named_claim_only_flags_without_blocking(self) -> None:
+        source = {
+            "id": 9,
+            "title": "Example Company",
+            "content_json": {
+                "normalized": {
+                    "company": "Example Company",
+                    "position": "Backend Engineer",
+                    "description": "Built a Python service for internal workflows.",
+                }
+            },
+        }
+        rows = [
+            {
+                "section_type": "experience",
+                "title": "工作经历",
+                "content_json": [
+                    {
+                        "company": "Example Company",
+                        "position": "Backend Engineer",
+                        "description": "Built a Python service on Kubernetes.",
+                    }
+                ],
+                "source_section_ids": [9],
+            }
+        ]
+
+        result = validate_resume_fact_gates(
+            rows,
+            [source],
+            strict_structured_facts=True,
+        )
+
+        self.assertEqual(result["status"], "passed")
+        self.assertTrue(result["requires_user_confirmation"])
+        self.assertIn("Kubernetes", result["unsupported_named_claims"])
+
+    def test_fact_gate_grounded_description_passes_clean(self) -> None:
+        source = {
+            "id": 9,
+            "title": "Example Company",
+            "content_json": {
+                "normalized": {
+                    "company": "Example Company",
+                    "position": "Backend Engineer",
+                    "description": "Built a Python service for internal workflows.",
+                }
+            },
+        }
+        rows = [
+            {
+                "section_type": "experience",
+                "title": "工作经历",
+                "content_json": [
+                    {
+                        "company": "Example Company",
+                        "position": "Backend Engineer",
+                        "description": "Built a reliable Python service.",
+                    }
+                ],
+                "source_section_ids": [9],
+            }
+        ]
+
+        result = validate_resume_fact_gates(
+            rows,
+            [source],
+            strict_structured_facts=True,
+        )
+
+        self.assertEqual(result["status"], "passed")
+        self.assertFalse(result["requires_user_confirmation"])
+        self.assertEqual(result["warnings"], [])
+
 
 class ResumeOptimizationLifecycleTests(unittest.TestCase):
     def test_reviewed_session_candidate_stays_a_proposal(self) -> None:
@@ -540,6 +658,70 @@ class ResumeOptimizationLifecycleTests(unittest.TestCase):
                 for item in matching_observations
             )
         )
+
+    def test_new_ready_proposal_supersedes_prior_ready(self) -> None:
+        async def run() -> tuple[str, str, str, str]:
+            await init_db()
+            fixture = await _create_fixture()
+            candidate = _candidate_for(fixture["section"])
+
+            with patch.object(
+                resume_optimization,
+                "_generate_candidate",
+                AsyncMock(return_value=candidate),
+            ):
+                first = await resume_optimization.prepare_resume_optimization(
+                    job_id=fixture["job_id"],
+                    research_run_id=fixture["run_id"],
+                )
+                second = await resume_optimization.prepare_resume_optimization(
+                    job_id=fixture["job_id"],
+                    research_run_id=fixture["run_id"],
+                )
+
+            async with async_session() as db:
+                first_row = (
+                    await db.execute(
+                        select(ResumeOptimizationProposal).where(
+                            ResumeOptimizationProposal.proposal_id
+                            == first["proposal_id"]
+                        )
+                    )
+                ).scalar_one()
+                second_row = (
+                    await db.execute(
+                        select(ResumeOptimizationProposal).where(
+                            ResumeOptimizationProposal.proposal_id
+                            == second["proposal_id"]
+                        )
+                    )
+                ).scalar_one()
+                live_ready = list(
+                    (
+                        await db.execute(
+                            select(ResumeOptimizationProposal).where(
+                                ResumeOptimizationProposal.job_id
+                                == fixture["job_id"],
+                                ResumeOptimizationProposal.status == "ready",
+                            )
+                        )
+                    ).scalars().all()
+                )
+            return (
+                first_row.status,
+                second_row.status,
+                first["status"],
+                ",".join(sorted(p.proposal_id for p in live_ready)),
+            )
+
+        first_status, second_status, first_returned, live_ready = asyncio.run(run())
+
+        self.assertEqual(first_returned, "ready")
+        self.assertEqual(first_status, "stale")
+        self.assertEqual(second_status, "ready")
+        self.assertNotIn("stale", second_status)
+        # Exactly one live ready proposal remains for the job.
+        self.assertEqual(live_ready.count(","), 0)
 
 
 async def _create_fixture() -> dict:
