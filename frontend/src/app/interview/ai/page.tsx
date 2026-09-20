@@ -581,7 +581,7 @@ function RoleInterviewDebrief({ debrief }: { debrief: NonNullable<AIInterviewRep
         {debrief.focuses.map((focus) => (
           <details key={focus.capability} className="rounded-xl border border-blue-200 bg-white">
             <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 p-4">
-              <span className="flex items-center gap-3"><span className="text-sm font-black text-[var(--foreground)]">{focus.capability}</span><span className="text-xs font-semibold text-[var(--foreground-muted)]">岗位特殊度 {focus.role_distinctiveness} · 证据缺口 {focus.evidence_gap}</span></span>
+              <span className="flex items-center gap-3"><span className="text-sm font-black text-[var(--foreground)]">{focus.capability}</span><span className="text-xs font-semibold text-[var(--foreground-muted)]">岗位特殊度 {focus.role_distinctiveness} · 档案证据覆盖缺口 {focus.evidence_gap}</span></span>
               <span className="text-xs font-black text-[var(--primary-red)]">训练权重 {focus.priority_percent}%</span>
             </summary>
             <div className="border-t border-blue-100 px-4 pb-4 pt-3">
