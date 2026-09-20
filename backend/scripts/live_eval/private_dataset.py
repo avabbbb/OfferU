@@ -41,7 +41,13 @@ def validate_private_dataset(workspace: Path, seed_path: Path) -> dict[str, Any]
     prompts = [str(case.get("prompt") or "").strip() for case in route_cases if isinstance(case, dict)]
     populated_prompts = [prompt for prompt in prompts if prompt]
     expected = [
-        bool(str(case.get("expected_capability") or "").strip() or case.get("acceptable_capabilities"))
+        (
+            str(case.get("category") or "").strip() in CAPABILITY_LABEL_OPTIONAL_CATEGORIES
+            or bool(
+                str(case.get("expected_capability") or "").strip()
+                or case.get("acceptable_capabilities")
+            )
+        )
         for case in route_cases
         if isinstance(case, dict)
     ]
