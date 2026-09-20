@@ -836,8 +836,10 @@ def test_low_trajectory_does_not_lower_task_completion(db_pair: tuple[Path, Path
     case = case_by_id("E01")
     assert case is not None
     trace = _trace(
-        # 故意不使用 expected_reads 里的 get_current_view / get_job
+        # 故意不使用 expected_reads 里的 get_current_view / get_job，
+        # 但 list_jobs 有本 trial 的可信执行回执。
         tool_calls=[{"tool": "Bash", "input": "app.cli run list_jobs --arg keyword=acme"}],
+        executed_operations=["list_jobs"],
         final_text="当前岗位要求 5 年经验，我的档案里只有 2 年，所以还不匹配。",
     )
     verdict = grade(
