@@ -29,6 +29,7 @@ const CAPABILITY_LABELS: Array<[keyof AgentConnection, string]> = [
   ["resume_state", "继续"],
   ["cancel_state", "取消"],
   ["web_search_state", "网页搜索"],
+  ["routing_eval_state", "能力路由评估"],
 ];
 
 const CAPABILITY_STATE_LABEL: Record<string, string> = {

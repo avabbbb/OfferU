@@ -50,6 +50,7 @@ function makeConnection(overrides: Partial<AgentConnection> = {}): AgentConnecti
     cancel_state: "SUPPORTED",
     cwd_isolation_state: "SUPPORTED",
     web_search_state: "NOT_VERIFIED",
+    routing_eval_state: "NOT_VERIFIED",
     conformance_checked_at: null,
     beginner: true,
     recommended: true,

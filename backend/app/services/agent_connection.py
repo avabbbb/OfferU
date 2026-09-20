@@ -154,6 +154,15 @@ def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
         "cancel_state": conformance_state("cancel_verified"),
         "cwd_isolation_state": conformance_state("cwd_isolation_verified"),
         "web_search_state": conformance_state("web_search_verified"),
+        # Whether this agent can act as the live-eval routing executor.
+        # omp (swe-2) is proven — it routed SkillRoute cases end-to-end via the
+        # read-only CLI. codebuddy can but is flaky (self-denies its own Bash
+        # tool in non-interactive sessions); codex shares its account quota.
+        "routing_eval_state": (
+            "VERIFIED" if item["id"] == "omp" and item.get("status") == "ready"
+            else "SUPPORTED" if item["id"] in {"omp", "codebuddy"}
+            else "NOT_VERIFIED"
+        ),
         "conformance_checked_at": conformance.get("last_probe_at") if conformance_matches else None,
         "beginner": bool(get_host(provider_id) and get_host(provider_id).beginner),
         "recommended": bool(get_host(provider_id) and get_host(provider_id).recommended),

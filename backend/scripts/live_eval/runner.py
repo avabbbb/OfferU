@@ -221,6 +221,7 @@ def _freeze_metadata(
     discovery_mode: str,
     case_count: int,
     private_case_file: Path | None = None,
+    runtime: str = "codebuddy",
 ) -> dict[str, Any]:
     return {
         "benchmark_version": BENCHMARK_VERSION,
@@ -229,9 +230,8 @@ def _freeze_metadata(
         "git_dirty": bool(_git(["status", "--porcelain"])),
         "component_hashes": _mutable_hashes(),
         "seed_path": source_db.name,
-        "seed_hash": _sha256(source_db),
-        "runtime": "codebuddy",
-        "runtime_version": _runtime_version(),
+        "runtime": runtime,
+        "runtime_version": (_runtime_version() if runtime == "codebuddy" else "omp"),
         "model": "harness-provided",
         "mode": mode,
         "suite": suite,
@@ -493,6 +493,56 @@ async def _run_harness_once(prompt: str, *, eval_db: Path, timeout: int) -> Trac
     return trace
 
 
+async def _run_harness_omp(
+    prompt: str, *, eval_db: Path, timeout: int, case_dir: Path
+) -> Trace:
+    """omp (swe-2) executor backend.
+
+    codebuddy is spawned as a subprocess; an omp agent is not — it runs inside
+    the omp harness, outside this process. So in ``--runtime omp`` mode the
+    runner writes a request file the external omp orchestrator picks up, and
+    blocks until the agent writes ``omp_result.json`` back into the case dir.
+
+    Request:  ``<case_dir>/omp_request.json`` — {prompt, eval_db, timeout}
+    Result:   ``<case_dir>/omp_result.json``  — {tool_calls, final_text, is_error}
+
+    ``tool_calls`` items carry the literal CLI command in ``input`` (e.g.
+    ``python -m app.cli run list_jobs --args ...``), so the grader's existing
+    regex-based parsing of first_skill / operations_used works unchanged.
+    """
+    request_path = case_dir / "omp_request.json"
+    result_path = case_dir / "omp_result.json"
+    write_json(request_path, {
+        "prompt": prompt,
+        "eval_db": str(eval_db),
+        "timeout_seconds": timeout,
+        "runtime": "omp",
+    })
+    started = time.perf_counter()
+    deadline = started + timeout
+    trace = Trace()
+    while time.perf_counter() < deadline:
+        if result_path.is_file():
+            try:
+                payload = json.loads(result_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                payload = {}
+            trace.tool_calls = [
+                {"tool": "Bash", "input": str(call.get("input") or "")}
+                for call in (payload.get("tool_calls") or [])
+            ]
+            trace.final_text = str(payload.get("final_text") or "")
+            trace.is_error = bool(payload.get("is_error"))
+            trace.note = str(payload.get("note") or "omp runtime")
+            break
+        await asyncio.sleep(0.5)
+    else:
+        trace.note = f"omp executor timeout after {timeout}s (no omp_result.json)"
+        trace.is_error = True
+    trace.elapsed_s = round(time.perf_counter() - started, 1)
+    trace.provider_failure = classify_provider_failure(trace)
+    return trace
+
 # ---------------------------------------------------------------- case run
 
 
@@ -504,6 +554,7 @@ async def run_case_once(
     timeout: int,
     mode: str = "real-user",
     discovery_mode: str = "progressive",
+    runtime: str = "codebuddy",
 ) -> tuple[Trace, dict[str, Any]]:
     """跑一次 case；返回 (合并 trace, verdict dict)。
 
@@ -561,7 +612,7 @@ async def run_case_once(
         "tags": list(case.tags),
     })
     write_json(case_dir / "runtime.json", {
-        "harness": "codebuddy",
+        "harness": runtime,
         "node": str(NODE_EXE),
         "script": str(CODEBUDDY_SCRIPT),
         "tools": HARNESS_TOOLS,
@@ -591,11 +642,19 @@ async def run_case_once(
         else:
             break
         turn_index += 1
-
-        trace = await _run_harness_once(
-            _build_prompt(case, user_input, discovery_mode=discovery_mode),
-            eval_db=eval_db,
-            timeout=timeout,
+        trace = await (
+            _run_harness_omp(
+                _build_prompt(case, user_input, discovery_mode=discovery_mode),
+                eval_db=eval_db,
+                timeout=timeout,
+                case_dir=case_dir,
+            )
+            if runtime == "omp"
+            else _run_harness_once(
+                _build_prompt(case, user_input, discovery_mode=discovery_mode),
+                eval_db=eval_db,
+                timeout=timeout,
+            )
         )
         trace.case_id = case.case_id
         trace.case_slug = case.slug
@@ -967,6 +1026,7 @@ async def main_async(args: argparse.Namespace) -> int:
         discovery_mode=args.discovery_mode,
         case_count=len(selected),
         private_case_file=private_case_file,
+        runtime=args.runtime,
     )
     write_json(run_dir / "freeze.json", freeze)
     print(f"[live-eval] run dir: {run_dir}")
@@ -994,6 +1054,7 @@ async def main_async(args: argparse.Namespace) -> int:
                     timeout=args.timeout,
                     mode=args.mode,
                     discovery_mode=args.discovery_mode,
+                    runtime=args.runtime,
                 )
             except Exception as exc:  # noqa: BLE001 - Eval 必须记录失败而不是崩掉整个 run
                 verdict = {
@@ -1067,6 +1128,10 @@ def main(argv: list[str] | None = None) -> int:
                         choices=("progressive", "full-registry"),
                         help="Eval-only Skill discovery condition for ablation.")
     parser.add_argument("--timeout", type=int, default=600, help="Per-round harness timeout (s).")
+    parser.add_argument("--runtime", default="codebuddy", choices=("codebuddy", "omp"),
+                        help="Agent executor. codebuddy spawns the CLI harness; omp writes an "
+                        "omp_request.json per case and waits for an external omp agent to write "
+                        "omp_result.json (the omp harness spawns its own agents, not this process).")
     parser.add_argument("--max-cases", type=int, default=0, help="Limit number of cases (0 = all).")
     parser.add_argument("--source-db", default=str(DEFAULT_SOURCE_DB), help="Template database to clone.")
     parser.add_argument("--output-root", default=str(DEFAULT_RUN_ROOT), help="Run artifact root.")

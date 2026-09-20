@@ -931,6 +931,7 @@ export interface AgentConnection {
   cancel_state: string;
   cwd_isolation_state: string;
   web_search_state: string;
+  routing_eval_state: string;
   conformance_checked_at: string | null;
   beginner?: boolean;
   recommended?: boolean;
