@@ -367,6 +367,36 @@ def test_skill_route_loader_builds_fifty_private_eval_cases(tmp_path: Path) -> N
     assert "read_at_least_one_operation" not in cases[-1].outcome_criteria
 
 
+def test_skill_route_loader_allows_no_tool_cases_without_capability_label(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "skill_route_50.json"
+    payload = {
+        "private": True,
+        "schema_version": 1,
+        "cases": [
+            {
+                "case_id": f"SR{index:02d}",
+                "category": "no_tool_or_clarify" if index == 50 else "core",
+                "prompt": f"真实请求 {index}",
+                "expected_capability": "" if index == 50 else "job",
+                "acceptable_capabilities": [],
+                "expected_outcome": "direct answer or clarification"
+                if index == 50
+                else "grounded response",
+            }
+            for index in range(1, 51)
+        ],
+    }
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    cases = load_skill_route_cases(path)
+
+    assert cases[-1].expected_capability == ""
+    assert cases[-1].acceptable_capabilities == ()
+    assert "read_at_least_one_operation" not in cases[-1].outcome_criteria
+
+
 def test_skill_route_loader_rejects_prompts_that_leak_control_contract(tmp_path: Path) -> None:
     path = tmp_path / "skill_route_50.json"
     payload = {
