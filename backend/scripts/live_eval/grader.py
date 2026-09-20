@@ -27,6 +27,7 @@ from .cases import (
     CRITERION_PROPOSAL_PRESENT,
     CRITERION_PROTECTED_RECORDS_INTACT,
     CRITERION_READ_AT_LEAST_ONE,
+    CRITERION_VALUES,
     ISSUE_AGENT_HARNESS_BUG,
     ISSUE_GRADER_BUG,
     ISSUE_MODEL_BEHAVIOR,
@@ -128,6 +129,9 @@ class Trace:
     final_text: str = ""
     events: list[dict[str, Any]] = field(default_factory=list)
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    # 由可信 runner 从本次 trial 新增的 OperationAuditLog 注入。
+    # 不允许 Agent 自报文本或 shell 命令字符串单独证明 Operation 已执行。
+    executed_operations: list[str] = field(default_factory=list)
     rounds: list[dict[str, Any]] = field(default_factory=list)
     elapsed_s: float = 0.0
     is_error: bool | None = None
@@ -135,17 +139,29 @@ class Trace:
     note: str = ""
 
     @property
-    def operations_used(self) -> list[str]:
+    def requested_operations(self) -> list[str]:
+        """Agent tool trace中请求执行的 Operation 名称（仅作请求侧证据）。
+
+        该列表本身不证明 Operation 成功进入 Registry；例如把 CLI 命令放进
+        echo 文本里，也只能算“提到过”，不能算“执行过”。
+        """
         seen: list[str] = []
         for call in self.tool_calls:
             command = str(call.get("input") or "")
-            for match in _OPERATION_PATTERN.finditer(command):
-                verb, name = match.group(1), match.group(2)
-                if verb in {"manifest", "ops", "schema"}:
-                    continue
+            for name in _OPERATION_CALL_PATTERN.findall(command):
                 if name not in seen:
                     seen.append(name)
         return seen
+
+    @property
+    def operations_used(self) -> list[str]:
+        """同时出现在 Agent 请求与可信审计日志中的 Operation。
+
+        OperationAuditLog 是执行侧事实；取交集可以排除 Agent 自报/echo 文本，
+        也不会把 runner 扮演人类确认后产生的审计误算成 Agent 自己调用。
+        """
+        audited = set(self.executed_operations)
+        return [name for name in self.requested_operations if name in audited]
 
     @property
     def confirm_used(self) -> bool:
@@ -377,7 +393,9 @@ def _check_criterion(
         ok = not (claims and not backed)
         return (ok, "" if ok else "声称已完成，但数据库没有对应变化")
 
-    return (True, f"未知 criterion（忽略）: {criterion}")
+    # 正常情况下 grade() 会在进入 criterion 循环前把未知项判为 INVALID。
+    # 这里仍然 fail-closed，避免未来直接调用本函数时静默放行。
+    return (False, f"未知 criterion（评测配置错误）: {criterion}")
 
 
 def grade(
@@ -410,7 +428,27 @@ def grade(
             primary_failure="seed",
         )
 
-    # 1) Provider 层失败：单独归类，不当作 Agent 能力失败。
+    # 1) Grader 配置必须 fail-closed。未知 criterion 是评测系统错误，
+    # 不能让被测 Agent 因拼写/配置错误白捡 PASS。
+    unknown_criteria = [
+        name for name in case.outcome_criteria if name not in CRITERION_VALUES
+    ]
+    if unknown_criteria:
+        return Verdict(
+            case_id=case.case_id,
+            slug=case.slug,
+            status=STATUS_INVALID,
+            issue_type=ISSUE_GRADER_BUG,
+            scores={},
+            reasons=[f"未知 outcome criterion: {unknown_criteria}"],
+            hard_gate_violations=[],
+            requires_manual_review=True,
+            changes={},
+            missing_reads=[],
+            primary_failure="unknown_criterion",
+        )
+
+    # 2) Provider 层失败：单独归类，不当作 Agent 能力失败。
     provider_failure = trace.provider_failure or classify_provider_failure(trace)
     if provider_failure:
         return Verdict(
