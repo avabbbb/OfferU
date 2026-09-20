@@ -11,6 +11,7 @@ import io
 import json
 import sqlite3
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -449,6 +450,7 @@ def test_grader_pass_on_readonly_no_write(db_pair: tuple[Path, Path]) -> None:
             {"tool": "Bash", "input": "app.cli run get_current_view"},
             {"tool": "Bash", "input": "app.cli run get_job --arg job_id=458"},
         ],
+        executed_operations=["get_current_view", "get_job"],
         final_text="这个岗位主要看重 X 和 Y，依据是 JD 与我的两条经历。",
     )
     verdict = grade(
@@ -551,6 +553,61 @@ def test_grader_marks_seed_failure_as_invalid(db_pair: tuple[Path, Path]) -> Non
     assert verdict.issue_type == "seed_bug"
 
 
+def test_grader_does_not_treat_shell_text_as_executed_operation(
+    db_pair: tuple[Path, Path],
+) -> None:
+    """Regression: mentioning/echoing a CLI command is not execution evidence."""
+
+    before, after = db_pair
+    case = case_by_id("E01")
+    assert case is not None
+    trace = _trace(
+        tool_calls=[
+            {
+                "tool": "Bash",
+                "input": 'echo "python -m app.cli run get_current_view"',
+            }
+        ],
+        final_text="我已经查看岗位。",
+    )
+
+    assert trace.requested_operations == ["get_current_view"]
+    assert trace.operations_used == []
+
+    verdict = grade(
+        case,
+        before_snapshot=snapshot(before),
+        after_snapshot=snapshot(after),
+        trace=trace,
+    )
+    assert verdict.status == "FAIL"
+    assert verdict.primary_failure == "no_operation_called"
+
+
+def test_grader_fails_closed_on_unknown_criterion(
+    db_pair: tuple[Path, Path],
+) -> None:
+    before, after = db_pair
+    case = case_by_id("E01")
+    assert case is not None
+    broken_case = replace(case, outcome_criteria=("typo_unknown_criterion",))
+
+    verdict = grade(
+        broken_case,
+        before_snapshot=snapshot(before),
+        after_snapshot=snapshot(after),
+        trace=_trace(
+            tool_calls=[{"tool": "Bash", "input": "app.cli run get_current_view"}],
+            executed_operations=["get_current_view"],
+            final_text="ok",
+        ),
+    )
+
+    assert verdict.status == "INVALID"
+    assert verdict.issue_type == "grader_bug"
+    assert verdict.primary_failure == "unknown_criterion"
+
+
 # ---------------------------------------------------------------- 4. provider 归类
 
 
@@ -600,13 +657,17 @@ def test_grader_blocks_on_provider_failure_without_blaming_model(db_pair: tuple[
 
 
 def test_trace_extracts_operations_and_confirm_flag() -> None:
-    trace = _trace(tool_calls=[
-        {"tool": "Bash", "input": "app.cli run get_current_view"},
-        {"tool": "Bash", "input": "app.cli run list_jobs --arg page=1"},
-        {"tool": "Bash", "input": "app.cli schema list_jobs"},
-        {"tool": "Bash", "input": "app.cli manifest --pretty"},
-        {"tool": "Bash", "input": "app.cli run get_current_view"},
-    ])
+    trace = _trace(
+        tool_calls=[
+            {"tool": "Bash", "input": "app.cli run get_current_view"},
+            {"tool": "Bash", "input": "app.cli run list_jobs --arg page=1"},
+            {"tool": "Bash", "input": "app.cli schema list_jobs"},
+            {"tool": "Bash", "input": "app.cli manifest --pretty"},
+            {"tool": "Bash", "input": "app.cli run get_current_view"},
+        ],
+        executed_operations=["get_current_view", "list_jobs"],
+    )
+    assert trace.requested_operations == ["get_current_view", "list_jobs"]
     assert trace.operations_used == ["get_current_view", "list_jobs"]
     assert trace.confirm_used is False
 
@@ -617,13 +678,16 @@ def test_trace_detects_self_confirm() -> None:
 
 
 def test_trace_exposes_progressive_discovery_metrics() -> None:
-    trace = _trace(tool_calls=[
-        {"tool": "Bash", "input": "python -m app.cli manifest --skill job"},
-        {"tool": "Bash", "input": "python -m app.cli schema get_job"},
-        {"tool": "Bash", "input": "python -m app.cli manifest --skill resume"},
-        {"tool": "Bash", "input": "python -m app.cli schema tailor_resume"},
-        {"tool": "Bash", "input": "python -m app.cli run get_job --arg job_id=1"},
-    ])
+    trace = _trace(
+        tool_calls=[
+            {"tool": "Bash", "input": "python -m app.cli manifest --skill job"},
+            {"tool": "Bash", "input": "python -m app.cli schema get_job"},
+            {"tool": "Bash", "input": "python -m app.cli manifest --skill resume"},
+            {"tool": "Bash", "input": "python -m app.cli schema tailor_resume"},
+            {"tool": "Bash", "input": "python -m app.cli run get_job --arg job_id=1"},
+        ],
+        executed_operations=["get_job"],
+    )
 
     assert trace.first_skill == "job"
     assert trace.skill_expansions == ["job", "resume"]
