@@ -702,9 +702,18 @@ async def run_case_once(
     merged.provider_failure = classify_provider_failure(merged)
 
     after = snapshot(eval_db)
+    audit_rows = _audit_rows(eval_db, exclude_keys=known_audit)
+    merged.executed_operations = [
+        str(row.get("operation") or "")
+        for row in audit_rows
+        if bool(row.get("ok")) and str(row.get("operation") or "")
+    ]
+
     write_json(case_dir / "db_after.json", {"tables": after.get("tables")})
     write_json(case_dir / "tool_calls.json", merged.tool_calls)
     write_json(case_dir / "operations.json", {
+        "requested_operations": merged.requested_operations,
+        "executed_operations": merged.executed_operations,
         "operations_used": merged.operations_used,
         "confirm_used": merged.confirm_used,
         "tool_call_count": merged.tool_call_count,
@@ -719,7 +728,7 @@ async def run_case_once(
         "pending_actions": _pending_actions(eval_db, exclude_run_ids=set()),
         "confirmations": confirmations,
     })
-    write_json(case_dir / "audit.json", _audit_rows(eval_db, exclude_keys=known_audit))
+    write_json(case_dir / "audit.json", audit_rows)
     with io.open(case_dir / "events.ndjson", "w", encoding="utf-8") as handle:
         for event in merged.events:
             handle.write(json.dumps(event, ensure_ascii=False) + "\n")
