@@ -24,8 +24,6 @@
     "@fullcalendar/timegrid": "^6.1.10",
     "@mediapipe/tasks-vision": "^0.10.35",
     "@nextui-org/react": "^2.4.0",
-    "@puckeditor/core": "^0.22.0",
-    "@react-pdf/renderer": "^3.4.5",
     "@tiptap/extension-link": "^3.31.3",
     "@tiptap/extension-placeholder": "^3.31.3",
     "@tiptap/extension-text-align": "^3.31.3",
@@ -68,11 +66,6 @@
     "vitest": "^5.0.1"
   },
   "overrides": {
-    "@puckeditor/core": {
-      "@tiptap/core": "3.31.3",
-      "@tiptap/html": "3.31.3",
-      "@tiptap/pm": "3.31.3"
-    },
     "dompurify": "3.4.14",
     "fflate": "0.8.3",
     "linkify-it": "5.0.2",

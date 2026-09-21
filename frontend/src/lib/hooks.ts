@@ -271,10 +271,6 @@ export function useJobs(filters: JobFilters = {}) {
   );
 }
 
-/** 获取批次汇总（Inbox 分区） */
-export function useJobBatches(limit = 30) {
-  return useSWR<BatchSummary[]>(`${API_BASE}/api/jobs/batches?limit=${limit}`, fetcher);
-}
 
 /** 获取岗位池列表 */
 export function usePools(scope?: "all" | "inbox" | "picked" | "ignored") {
@@ -313,9 +309,6 @@ export interface WeeklyReport {
   last_week: { total: number };
   source_distribution: { name: string; value: number }[];
   top_keywords: { keyword: string; count: number }[];
-}
-export function useWeeklyReport() {
-  return useSWR<WeeklyReport>(`${API_BASE}/api/jobs/weekly-report`, fetcher);
 }
 
 /** 获取日历事件 */
@@ -726,19 +719,6 @@ export interface ResumeDetail extends ResumeBrief {
   sections: ResumeSectionBlock[];
 }
 
-/** 更新简历主信息 */
-export async function updateResume(id: number, data: any) {
-  const res = await showcaseFetch(`/api/resume/${id}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(safeClientErrorMessage(err.detail, `更新简历失败 (${res.status})`));
-  }
-  return res.json();
-}
 
 /** 删除简历 */
 export async function deleteResume(id: number) {
@@ -961,23 +941,8 @@ export function useProfile() {
   return useSWR<ProfileData>(`${API_BASE}/api/profile/`, fetcher);
 }
 
-export function useProfileCategories() {
-  return useSWR<ProfileCategoryList>(`${API_BASE}/api/profile/categories`, fetcher);
-}
 
-export function useProfileChatSessions(limit = 20) {
-  return useSWR<ProfileChatSessionSummary[]>(
-    `${API_BASE}/api/profile/chat/sessions?limit=${limit}`,
-    fetcher
-  );
-}
 
-export function useProfileChatSessionDetail(sessionId: number | null) {
-  return useSWR<ProfileChatSessionDetail>(
-    sessionId ? `${API_BASE}/api/profile/chat/sessions/${sessionId}` : null,
-    fetcher
-  );
-}
 
 export async function updateProfileData(data: {
   name?: string;
@@ -998,33 +963,7 @@ export async function updateProfileData(data: {
   return res.json() as Promise<ProfileData>;
 }
 
-export async function createProfileTargetRole(data: {
-  role_name: string;
-  role_level?: string;
-  fit?: "primary" | "secondary" | "adjacent";
-}) {
-  const res = await showcaseFetch(`/api/profile/target-roles`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(safeClientErrorMessage(err.detail, `新增目标岗位失败 (${res.status})`));
-  }
-  return res.json() as Promise<ProfileTargetRole>;
-}
 
-export async function deleteProfileTargetRole(roleId: number) {
-  const res = await showcaseFetch(`/api/profile/target-roles/${roleId}`, {
-    method: "DELETE",
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(safeClientErrorMessage(err.detail, `删除目标岗位失败 (${res.status})`));
-  }
-  return res.json();
-}
 
 export async function createProfileSection(data: {
   section_type: string;
@@ -1048,113 +987,8 @@ export async function createProfileSection(data: {
   return res.json() as Promise<ProfileSection>;
 }
 
-export async function updateProfileSectionData(
-  sectionId: number,
-  data: {
-    section_type?: string;
-    category_label?: string;
-    title?: string;
-    sort_order?: number;
-    content_json?: Record<string, any>;
-    source?: string;
-    confidence?: number;
-  }
-) {
-  const res = await showcaseFetch(`/api/profile/sections/${sectionId}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(safeClientErrorMessage(err.detail, `更新档案条目失败 (${res.status})`));
-  }
-  return res.json() as Promise<ProfileSection>;
-}
 
-export async function deleteProfileSectionData(sectionId: number) {
-  const res = await showcaseFetch(`/api/profile/sections/${sectionId}`, {
-    method: "DELETE",
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(safeClientErrorMessage(err.detail, `删除档案条目失败 (${res.status})`));
-  }
-  return res.json();
-}
 
-export async function streamProfileChat(
-  payload: { topic: ProfileTopic; message: string; session_id?: number | null },
-  options?: {
-    signal?: AbortSignal;
-    onEvent?: (event: ProfileStreamEvent) => void;
-  }
-) {
-  const res = await showcaseFetch(`/api/profile/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-    signal: options?.signal,
-  });
-
-  if (!res.ok || !res.body) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(safeClientErrorMessage(err.detail, `档案对话失败 (${res.status})`));
-  }
-
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder("utf-8");
-  let buffer = "";
-
-  const findBoundary = (text: string) => {
-    const unix = text.indexOf("\n\n");
-    const windows = text.indexOf("\r\n\r\n");
-    if (unix === -1) return windows;
-    if (windows === -1) return unix;
-    return Math.min(unix, windows);
-  };
-
-  const emit = (chunk: string) => {
-    let eventName = "message";
-    const dataLines: string[] = [];
-
-    for (const line of chunk.split(/\r?\n/)) {
-      if (line.startsWith("event:")) {
-        eventName = line.slice(6).trim() || "message";
-      } else if (line.startsWith("data:")) {
-        dataLines.push(line.slice(5).trim());
-      }
-    }
-
-    if (dataLines.length === 0) return;
-    const dataText = dataLines.join("\n");
-    let data: any = dataText;
-    try {
-      data = JSON.parse(dataText);
-    } catch {
-      // keep raw text when server payload is non-json
-    }
-    options?.onEvent?.({ event: eventName, data });
-  };
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-
-    let boundary = findBoundary(buffer);
-    while (boundary >= 0) {
-      const separatorLength = buffer.slice(boundary, boundary + 4) === "\r\n\r\n" ? 4 : 2;
-      const block = buffer.slice(0, boundary).trim();
-      buffer = buffer.slice(boundary + separatorLength);
-      if (block) emit(block);
-      boundary = findBoundary(buffer);
-    }
-  }
-
-  const tail = buffer.trim();
-  if (tail) emit(tail);
-}
 
 export async function importProfileResume(file: File, parseMode: ResumeImportParseMode = "ai") {
   const formData = new FormData();
@@ -1189,20 +1023,6 @@ export async function confirmProfileCandidate(data: {
   return res.json() as Promise<ProfileSection>;
 }
 
-export async function generateProfileNarrative() {
-  const res = await showcaseFetch(`/api/profile/generate-narrative`, {
-    method: "POST",
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(safeClientErrorMessage(err.detail, `生成叙事失败 (${res.status})`));
-  }
-  return res.json() as Promise<{
-    headline: string;
-    exit_story: string;
-    cross_cutting_advantage: string;
-  }>;
-}
 
 // ---- AI 简历优化 ----
 
@@ -1228,86 +1048,10 @@ export interface AiOptimizeResult {
   summary: string;
 }
 
-/** AI 优化简历（基于已有简历 ID） */
-export async function aiOptimizeResume(
-  resumeId: number,
-  data: { jd_text?: string; job_id?: number }
-): Promise<AiOptimizeResult> {
-  const res = await showcaseFetch(`/api/resume/${resumeId}/ai/optimize`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(safeClientErrorMessage(err.detail, `AI 优化失败 (${res.status})`));
-  }
-  return res.json();
-}
 
-/** AI 优化简历（纯文本粘贴） */
-export async function aiOptimizeText(
-  data: { resume_text: string; jd_text: string }
-): Promise<AiOptimizeResult> {
-  const res = await showcaseFetch(`/api/resume/ai/optimize-text`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(safeClientErrorMessage(err.detail, `AI 优化失败 (${res.status})`));
-  }
-  return res.json();
-}
 
-/** 应用单条 AI 建议到简历 */
-export async function aiApplySuggestion(
-  resumeId: number,
-  suggestion: any
-) {
-  const res = await showcaseFetch(`/api/resume/${resumeId}/ai/apply`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(suggestion),
-  });
-  return res.json();
-}
 
-/** 批量应用已采纳的 AI 建议（一键应用） */
-export async function aiApplyBatch(
-  resumeId: number,
-  payload: {
-    suggestions: RewriteSuggestion[];
-    reorder?: { suggested_order: string[] };
-  }
-) {
-  const res = await showcaseFetch(`/api/resume/${resumeId}/ai/apply-batch`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(safeClientErrorMessage(err.detail, "批量应用失败"));
-  }
-  return res.json();
-}
 
-/** 上传 PDF/Word 简历文件并解析为文本 */
-export async function parseResumeFile(file: File): Promise<{ filename: string; text: string; length: number }> {
-  const formData = new FormData();
-  formData.append("file", file);
-  const res = await showcaseFetch(`/api/resume/parse`, {
-    method: "POST",
-    body: formData,
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(safeClientErrorMessage(err.detail, `文件解析失败 (${res.status})`));
-  }
-  return res.json();
-}
 
 /** 段落排序 */
 export async function reorderSections(resumeId: number, items: { id: number; sort_order: number }[]) {
@@ -1319,45 +1063,8 @@ export async function reorderSections(resumeId: number, items: { id: number; sor
   return res.json();
 }
 
-/** 上传头像 */
-export async function uploadResumePhoto(resumeId: number, file: File) {
-  const formData = new FormData();
-  formData.append("file", file);
-  const res = await showcaseFetch(`/api/resume/${resumeId}/photo`, {
-    method: "POST",
-    body: formData,
-  });
-  return res.json();
-}
 
-/** 上传大学校徽 */
-export async function uploadResumeLogo(resumeId: number, file: File) {
-  const formData = new FormData();
-  formData.append("file", file);
-  const res = await showcaseFetch(`/api/resume/${resumeId}/logo`, {
-    method: "POST",
-    body: formData,
-  });
-  return res.json();
-}
 
-/** 根据学校名称联网获取大学校徽 */
-export async function resolveResumeLogo(resumeId: number, schoolName: string) {
-  const res = await showcaseFetch(`/api/resume/${resumeId}/logo/resolve`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ school_name: schoolName }),
-  });
-  if (!res.ok) {
-    const errorId = res.headers.get("X-OfferU-Error-Id");
-    throw new Error(
-      errorId
-        ? `校徽获取失败（HTTP ${res.status}，错误 ID: ${errorId}）`
-        : `校徽获取失败（HTTP ${res.status}）`,
-    );
-  }
-  return res.json();
-}
 
 export interface ResumeTemplate {
   id: number;
@@ -1367,10 +1074,6 @@ export interface ResumeTemplate {
   is_builtin: boolean;
 }
 
-/** 获取模板列表 */
-export function useResumeTemplates() {
-  return useSWR<ResumeTemplate[]>(`${API_BASE}/api/resume/templates`, fetcher);
-}
 
 // ---- AI Skill Pipeline 深度分析 ----
 
@@ -1442,38 +1145,7 @@ export interface SectionReorderResult {
   error?: string;
 }
 
-/** Skill Pipeline 深度分析（基于已有简历 ID） */
-export async function aiAnalyzeResume(
-  resumeId: number,
-  data: { jd_text?: string; job_id?: number }
-): Promise<SkillAnalyzeResult> {
-  const res = await showcaseFetch(`/api/resume/${resumeId}/ai/analyze`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(safeClientErrorMessage(err.detail, `AI 分析失败 (${res.status})`));
-  }
-  return res.json();
-}
 
-/** Skill Pipeline 深度分析（纯文本粘贴） */
-export async function aiAnalyzeText(
-  data: { resume_text: string; jd_text: string }
-): Promise<SkillAnalyzeResult> {
-  const res = await showcaseFetch(`/api/resume/ai/analyze-text`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(safeClientErrorMessage(err.detail, `AI 分析失败 (${res.status})`));
-  }
-  return res.json();
-}
 
 // ---- 投递管理 ----
 
@@ -1497,55 +1169,10 @@ export interface ApplicationsResponse {
   items: ApplicationItem[];
 }
 
-/** 获取投递记录列表 */
-export function useApplications(page = 1, status?: string) {
-  const params = new URLSearchParams({ page: String(page) });
-  if (status) params.set("status", status);
-  return useSWR<ApplicationsResponse>(
-    `${API_BASE}/api/applications/?${params}`, fetcher
-  );
-}
 
-/** 获取投递统计 */
-export function useApplicationStats() {
-  return useSWR<Record<string, number>>(
-    `${API_BASE}/api/applications/stats`, fetcher
-  );
-}
 
-/** 创建投递记录 */
-export async function createApplication(jobId: number, notes = "") {
-  const res = await showcaseFetch(`/api/applications/auto-write`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ job_id: jobId, notes }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(safeClientErrorMessage(err.detail, `创建投递记录失败 (${res.status})`));
-  }
-  return res.json();
-}
 
-/** 更新投递状态 */
-export async function updateApplication(id: number, data: { status?: string; notes?: string; cover_letter?: string }) {
-  const res = await showcaseFetch(`/api/applications/${id}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-  return res.json();
-}
 
-/** AI 生成求职信 */
-export async function generateCoverLetter(jobId: number, resumeId: number) {
-  const res = await showcaseFetch(`/api/applications/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ job_id: jobId, resume_id: resumeId }),
-  });
-  return res.json();
-}
 
 export type ApplicationFieldType =
   | "text"
@@ -1624,13 +1251,7 @@ export function useApplicationTableRecords(tableId: number | null, keyword = "")
   );
 }
 
-export function useApplicationTemplate() {
-  return useSWR<{ schema: ApplicationFieldSchema[] }>(`${API_BASE}/api/applications/template`, fetcher);
-}
 
-export function useApplicationSettings() {
-  return useSWR<ApplicationWorkspaceSettings>(`${API_BASE}/api/applications/settings`, fetcher);
-}
 
 export async function createApplicationTable(name: string) {
   const res = await showcaseFetch(`/api/applications/tables`, {
@@ -1848,18 +1469,6 @@ export async function updateApplicationTemplate(
   return res.json();
 }
 
-export async function applyApplicationTemplateToAll(purgeNonTemplateFields = false) {
-  const res = await showcaseFetch(`/api/applications/template/apply-to-all`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ purge_non_template_fields: purgeNonTemplateFields }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(safeClientErrorMessage(err.detail, `覆盖全部表结构失败 (${res.status})`));
-  }
-  return res.json();
-}
 
 export async function updateApplicationWorkspaceSettings(data: {
   auto_row_height?: boolean;
@@ -1880,14 +1489,6 @@ export async function updateApplicationWorkspaceSettings(data: {
 
 // ---- 简历模板 ----
 
-/** 将模板应用到简历（覆盖 style_config） */
-export async function applyTemplate(resumeId: number, templateId: number) {
-  const res = await showcaseFetch(`/api/resume/${resumeId}/apply-template/${templateId}`, {
-    method: "POST",
-  });
-  if (!res.ok) throw new Error(`Apply template failed: ${res.status}`);
-  return res.json();
-}
 
 // ---- 爬虫管理 ----
 
@@ -1918,10 +1519,6 @@ export interface ScraperTask {
   } | null;
 }
 
-/** 获取所有数据源状态 */
-export function useScraperSources() {
-  return useSWR<ScraperSource[]>(`${API_BASE}/api/scraper/sources`, fetcher);
-}
 
 /** 获取爬取任务列表；只在有 running 任务时保持 3s 轮询，空闲时降到 15s。 */
 export function useScraperTasks() {
@@ -1931,19 +1528,6 @@ export function useScraperTasks() {
   });
 }
 
-/** 触发爬取任务 */
-export async function runScraper(source: string, keywords: string[], location = "", maxResults = 50) {
-  const res = await showcaseFetch(`/api/scraper/run`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ source, keywords, location, max_results: maxResults }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(safeClientErrorMessage(err.detail, "启动爬取失败"));
-  }
-  return res.json();
-}
 
 // ---- BOSS直聘 Cookie 管理 ----
 
@@ -1954,24 +1538,7 @@ export interface BossStatus {
   message: string;
 }
 
-/** 获取 BOSS直聘 Cookie 配置状态 */
-export function useBossStatus() {
-  return useSWR<BossStatus>(`${API_BASE}/api/config/boss-status`, fetcher);
-}
 
-/** 保存 BOSS Cookie 到后端配置（先读取当前配置再合并，避免覆盖其他字段） */
-export async function saveBossCookie(cookie: string) {
-  // 先拿当前完整配置
-  const current = await fetcher(`${API_BASE}/api/config/`);
-  // 合并 boss_cookie，其余字段原值回传
-  const res = await showcaseFetch(`/api/config/`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...current, boss_cookie: cookie }),
-  });
-  if (!res.ok) throw new Error("保存 Cookie 失败");
-  return res.json();
-}
 
 // ---- 批量 AI 简历定制 (SSE 流式) ----
 
@@ -1994,74 +1561,6 @@ export interface BatchOptimizeResponse {
   results: BatchOptimizeEntry[];
 }
 
-/**
- * 批量 AI 简历定制 — SSE 流式版本
- * 通过 onProgress 回调实时接收每个岗位的处理结果
- */
-export async function batchOptimizeResume(
-  resumeId: number,
-  jobIds: number[],
-  autoApply = false,
-  onProgress?: (entry: BatchOptimizeEntry) => void,
-  signal?: AbortSignal
-): Promise<BatchOptimizeResponse> {
-  const res = await showcaseFetch(`/api/resume/${resumeId}/ai/batch-optimize`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ job_ids: jobIds, auto_apply: autoApply }),
-    signal,
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(safeClientErrorMessage(err.detail, `批量优化失败 (${res.status})`));
-  }
-
-  // 解析 SSE 流
-  const reader = res.body?.getReader();
-  if (!reader) throw new Error("浏览器不支持流式响应");
-
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let finalResult: BatchOptimizeResponse | null = null;
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-
-    // 按双换行分割 SSE 事件
-    const parts = buffer.split("\n\n");
-    buffer = parts.pop() || "";
-
-    for (const part of parts) {
-      const lines = part.trim().split("\n");
-      let eventType = "";
-      let data = "";
-
-      for (const line of lines) {
-        if (line.startsWith("event: ")) eventType = line.slice(7);
-        else if (line.startsWith("data: ")) data = line.slice(6);
-      }
-
-      if (!data) continue;
-
-      try {
-        const parsed = JSON.parse(data);
-        if (eventType === "progress" && onProgress) {
-          onProgress(parsed as BatchOptimizeEntry);
-        } else if (eventType === "done") {
-          finalResult = parsed as BatchOptimizeResponse;
-        }
-      } catch {
-        // 跳过无法解析的行
-      }
-    }
-  }
-
-  return finalResult || { total: jobIds.length, success: 0, results: [] };
-}
 
 // ---- Optimize 工作区（Profile -> JD 生成）----
 
@@ -2299,14 +1798,6 @@ export async function fetchOptimizeSessions(): Promise<OptimizeSessionSummary[]>
   return Array.isArray(data?.sessions) ? data.sessions : [];
 }
 
-export async function fetchOptimizeSessionDetail(sessionId: string): Promise<OptimizeSessionDetail> {
-  const res = await showcaseFetch(`/api/optimize/agent/sessions/${sessionId}`);
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(safeClientErrorMessage(err.detail, `获取会话详情失败 (${res.status})`));
-  }
-  return res.json();
-}
 
 export async function deleteOptimizeSession(sessionId: string): Promise<void> {
   const res = await showcaseFetch(`/api/optimize/agent/sessions/${sessionId}`, {
@@ -2318,78 +1809,6 @@ export async function deleteOptimizeSession(sessionId: string): Promise<void> {
   }
 }
 
-export async function streamOptimizeGenerate(
-  payload: OptimizeGenerateRequest,
-  options?: {
-    signal?: AbortSignal;
-    onEvent?: (event: OptimizeStreamEvent) => void;
-  }
-) {
-  const res = await showcaseFetch(`/api/optimize/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-    signal: options?.signal,
-  });
-
-  if (!res.ok || !res.body) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(safeClientErrorMessage(err.detail, `定制生成失败 (${res.status})`));
-  }
-
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder("utf-8");
-  let buffer = "";
-
-  const findBoundary = (text: string) => {
-    const unix = text.indexOf("\n\n");
-    const windows = text.indexOf("\r\n\r\n");
-    if (unix === -1) return windows;
-    if (windows === -1) return unix;
-    return Math.min(unix, windows);
-  };
-
-  const emit = (chunk: string) => {
-    let eventName = "message";
-    const dataLines: string[] = [];
-
-    for (const line of chunk.split(/\r?\n/)) {
-      if (line.startsWith("event:")) {
-        eventName = line.slice(6).trim() || "message";
-      } else if (line.startsWith("data:")) {
-        dataLines.push(line.slice(5).trim());
-      }
-    }
-
-    if (dataLines.length === 0) return;
-    const dataText = dataLines.join("\n");
-    let data: any = dataText;
-    try {
-      data = JSON.parse(dataText);
-    } catch {
-      // server may send raw text payload in exceptional cases
-    }
-    options?.onEvent?.({ event: eventName, data });
-  };
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-
-    let boundary = findBoundary(buffer);
-    while (boundary >= 0) {
-      const separatorLength = buffer.slice(boundary, boundary + 4) === "\r\n\r\n" ? 4 : 2;
-      const block = buffer.slice(0, boundary).trim();
-      buffer = buffer.slice(boundary + separatorLength);
-      if (block) emit(block);
-      boundary = findBoundary(buffer);
-    }
-  }
-
-  const tail = buffer.trim();
-  if (tail) emit(tail);
-}
 
 // =============================================
 // Interview 面经题库 hooks

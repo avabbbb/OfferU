@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field
 router = APIRouter()
 
 from app.services.job_sources.normalize import observations_to_ingest
+from app.services.job_visibility import public_job_filter
 from app.services.job_sources.protocol import JobSearchQuery
 from app.services.job_sources.router import job_source_router
 
@@ -39,12 +40,6 @@ TRIAGE_ALIAS_GROUPS = {
     "picked": {"picked", "screened"},
     "ignored": {"ignored"},
 }
-INTERNAL_TEST_BATCH_PREFIXES = ("test-", "test_", "ui-ext-", "mock-")
-INTERNAL_TEST_COMPANY_PREFIX = "OfferU "
-INTERNAL_TEST_URL_MARKERS = (
-    "example.com/jobs/test-",
-    "example.com/apply/test-",
-)
 
 
 def _automation_runtime_for_source(source: str) -> str:
@@ -75,23 +70,7 @@ def _status_filter_values(status: str) -> list[str]:
         return ["ignored"]
     return [status]
 
-def _public_job_filter():
-    batch_filters = [
-        or_(Job.batch_id.is_(None), ~Job.batch_id.ilike(f"{prefix}%"))
-        for prefix in INTERNAL_TEST_BATCH_PREFIXES
-    ]
-    url_filters = [
-        or_(Job.url.is_(None), ~Job.url.ilike(f"%{marker}%"))
-        for marker in INTERNAL_TEST_URL_MARKERS
-    ] + [
-        or_(Job.apply_url.is_(None), ~Job.apply_url.ilike(f"%{marker}%"))
-        for marker in INTERNAL_TEST_URL_MARKERS
-    ]
-    return and_(
-        *batch_filters,
-        or_(Job.company.is_(None), ~Job.company.ilike(f"{INTERNAL_TEST_COMPANY_PREFIX}%")),
-        *url_filters,
-    )
+_public_job_filter = public_job_filter
 
 # ---- Pydantic Schemas ----
 

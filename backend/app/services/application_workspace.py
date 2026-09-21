@@ -16,6 +16,7 @@ from app.models.models import (
     ApplicationWorkspaceSettings,
     Job,
 )
+from app.services.job_visibility import public_application_record_filter
 from app.services.security_redaction import safe_error_message
 
 FIELD_TYPES = {
@@ -29,36 +30,7 @@ FIELD_TYPES = {
     "boolean",
     "link",
 }
-
-INTERNAL_TEST_BATCH_PREFIXES = ("test-", "test_", "ui-ext-", "mock-")
-INTERNAL_TEST_COMPANY_PREFIX = "OfferU "
-INTERNAL_TEST_URL_MARKERS = (
-    "example.com/jobs/test-",
-    "example.com/apply/test-",
-)
-
-
-def _public_application_record_filter():
-    batch_filters = [
-        or_(Job.batch_id.is_(None), ~Job.batch_id.ilike(f"{prefix}%"))
-        for prefix in INTERNAL_TEST_BATCH_PREFIXES
-    ]
-    url_filters = [
-        or_(ApplicationRecord.job_link.is_(None), ~ApplicationRecord.job_link.ilike(f"%{marker}%"))
-        for marker in INTERNAL_TEST_URL_MARKERS
-    ] + [
-        or_(Job.url.is_(None), ~Job.url.ilike(f"%{marker}%"))
-        for marker in INTERNAL_TEST_URL_MARKERS
-    ] + [
-        or_(Job.apply_url.is_(None), ~Job.apply_url.ilike(f"%{marker}%"))
-        for marker in INTERNAL_TEST_URL_MARKERS
-    ]
-    return and_(
-        *batch_filters,
-        or_(ApplicationRecord.company_name.is_(None), ~ApplicationRecord.company_name.ilike(f"{INTERNAL_TEST_COMPANY_PREFIX}%")),
-        or_(Job.company.is_(None), ~Job.company.ilike(f"{INTERNAL_TEST_COMPANY_PREFIX}%")),
-        *url_filters,
-    )
+_public_application_record_filter = public_application_record_filter
 
 FIXED_FIELD_SPECS: list[dict[str, Any]] = [
     {

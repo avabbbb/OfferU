@@ -19,6 +19,7 @@ import {
   Inbox,
   LoaderCircle,
   Mail,
+  PlugZap,
   RotateCcw,
   Sparkles,
   X,
@@ -195,7 +196,20 @@ function AutomationTaskControls({
   if (!taskId) return null;
   const cancelable = status === "queued" || status === "running" || status === "waiting_for_approval";
   const retryableStatus = (status === "failed" || status === "blocked") && retryable;
-  if (!cancelable && !retryableStatus) return null;
+  const terminalFailure = (status === "failed" || status === "blocked") && !retryable;
+  if (!cancelable && !retryableStatus && !terminalFailure) return null;
+  if (terminalFailure) {
+    return (
+      <Link
+        href="/settings"
+        title="后台任务不可自动重试——多半是 Agent 连接或凭据问题，去设置里检查"
+        className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-[var(--primary-red)]/35 px-2 text-[11px] font-medium text-[var(--primary-red)] transition-colors duration-[var(--dur-quick)] hover:bg-[var(--primary-red)]/8"
+      >
+        <PlugZap size={12} />
+        检查 Agent 连接
+      </Link>
+    );
+  }
   const action = cancelable ? "cancel" : "retry";
   const actionKey = `${taskId}:${action}`;
   return (

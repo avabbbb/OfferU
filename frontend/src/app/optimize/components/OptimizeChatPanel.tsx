@@ -641,7 +641,7 @@ export function OptimizeChatPanel({ jobIds, mode, disabled, profileId, reference
           </div>
         </div>
 
-        {sessionId && (
+        {sessionId ? (
           <div className="shrink-0 border-t border-[var(--border-strong)]/12 p-4">
             <form
               onSubmit={(e) => {
@@ -678,6 +678,20 @@ export function OptimizeChatPanel({ jobIds, mode, disabled, profileId, reference
               )}
             </form>
           </div>
+        ) : (
+          messages.length > 0 && (
+            <div className="shrink-0 border-t border-[var(--border-strong)]/12 p-4">
+              <Button
+                className="bauhaus-button bauhaus-button-red w-full"
+                startContent={<Play size={16} />}
+                onPress={startSession}
+                isDisabled={disabled || jobIds.length === 0 || loading}
+                isLoading={loading}
+              >
+                重试启动
+              </Button>
+            </div>
+          )
         )}
       </div>
     </div>

@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 from typing import Optional
 
-from sqlalchemy import func, select, desc
+from sqlalchemy import and_, func, select, desc
 from sqlalchemy.orm import selectinload
 
 from app.database import async_session
@@ -28,11 +28,12 @@ from app.models.models import (
     Resume,
     ResumeSection,
 )
+from app.services.job_visibility import public_job_filter
 from app.services.security_redaction import safe_error_message
 
 
 def _public_job_filter():
-    return Job.triage_status != "ignored"
+    return and_(public_job_filter(), Job.triage_status != "ignored")
 
 
 async def get_profile() -> dict:
