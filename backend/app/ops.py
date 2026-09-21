@@ -37,6 +37,7 @@ from app.services.privacy_hygiene import (
 from app.services.job_ingest import JobIngestItem, import_job_batch
 from app.services.job_sources.protocol import JobSearchQuery
 from app.services.job_sources.router import job_source_router
+from app.services.application_actions import preview_application_action
 from app.services.scraper_operations import finalize_scraper_batch, start_scraper_batch
 from app.services.harness_operations import (
     delete_harness_conversation,
@@ -554,6 +555,13 @@ class SubmitManualPreApplicationDecisionInput(_StrictOperationInput):
         pattern="^(go|conditional_go|no_go|insufficient_evidence)$"
     )
     rationale: str = Field(default="", max_length=2000)
+
+
+class PreviewApplicationActionInput(_StrictOperationInput):
+    job_id: int = Field(gt=0)
+    action: str = Field(pattern="^(greet|send_message|send_resume|exchange_contact)$")
+    resume_id: int | None = Field(default=None, gt=0)
+    message: str = Field(default="", max_length=4000)
 
 
 class PrepareResumeOptimizationInput(_StrictOperationInput):
@@ -2248,6 +2256,21 @@ OPERATIONS: dict[str, Operation] = {
         group="profile",
         side_effects=("read",),
         input_model=ValidateFactGateInput,
+    ),
+    "preview_application_action": Operation(
+        name="preview_application_action",
+        fn=preview_application_action,
+        description="只读预演一次站外投递动作：检查投前决策、Application Packet、已有投递尝试并生成稳定幂等键；不会触发 BOSS/浏览器/邮件写操作。",
+        parameters={
+            "job_id": "int",
+            "action": "greet|send_message|send_resume|exchange_contact",
+            "resume_id": "int?",
+            "message": "str=",
+        },
+        group="applications",
+        side_effects=("read",),
+        input_model=PreviewApplicationActionInput,
+        version="2026-09-21",
     ),
     "create_application_attempt": Operation(
         name="create_application_attempt",
