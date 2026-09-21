@@ -37,7 +37,7 @@ from app.services.privacy_hygiene import (
 from app.services.job_ingest import JobIngestItem, import_job_batch
 from app.services.job_sources.protocol import JobSearchQuery
 from app.services.job_sources.router import job_source_router
-from app.services.application_actions import preview_application_action
+from app.services.application_actions import list_application_action_connectors, preview_application_action
 from app.services.scraper_operations import finalize_scraper_batch, start_scraper_batch
 from app.services.harness_operations import (
     delete_harness_conversation,
@@ -2270,6 +2270,16 @@ OPERATIONS: dict[str, Operation] = {
         group="applications",
         side_effects=("read",),
         input_model=PreviewApplicationActionInput,
+        version="2026-09-21",
+    ),
+    "list_application_action_connectors": Operation(
+        name="list_application_action_connectors",
+        fn=list_application_action_connectors,
+        description="列出已注册站外投递动作 Connector 的能力矩阵（greet/send_message/send_resume/exchange_contact）与可用性；第一阶段无写执行器，仅声明边界，任何真实写都须走受保护 Operation + Proposal/HITL。",
+        parameters={},
+        group="applications",
+        side_effects=("read",),
+        input_model=_StrictOperationInput,
         version="2026-09-21",
     ),
     "create_application_attempt": Operation(

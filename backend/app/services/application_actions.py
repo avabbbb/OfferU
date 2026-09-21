@@ -292,3 +292,16 @@ async def preview_application_action(
         payload["blocking_reasons"] = list(dict.fromkeys(reasons))
         payload["state"] = "blocked"
     return payload
+
+
+async def list_application_action_connectors() -> dict[str, Any]:
+    """Read-only capability matrix for registered write-plane connectors.
+
+    Phase 1 returns an honest empty/unavailable matrix — no external executor
+    is wired, so this never claims an executable path exists.
+    """
+    from app.services.application_action_registry import (
+        application_action_connector_registry,
+    )
+
+    return await application_action_connector_registry.capability_matrix()
