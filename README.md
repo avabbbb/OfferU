@@ -166,6 +166,8 @@ owns persisted truth. You remain the approval authority for sensitive changes an
 
 Memory is a mechanism for evolving Profile — not a separate product silo.
 The Agent is a system-wide capability — not another disconnected chat window.
+The `extension/` browser add-on (WXT) is the job-capture surface — it imports listings into the
+same Operation Registry instead of scraping or auto-applying on its own.
 
 ---
 
