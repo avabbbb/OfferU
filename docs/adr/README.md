@@ -296,6 +296,19 @@ OfferU Capability Plugin 使用自有版本化 Manifest，组合 CLI、Skill、c
 
 自动化采用持久化 `AutomationEvent` → 显式 `AutomationRule` → `CareerTask` → Operation 的有限分发链，不引入常驻 Agent Loop。后台产生的岗位情报、简历建议和面试 Focus Plan 进入 Automation Inbox 作为候选或复核项；只有既有 Proposal/HITL 与 Career Memory 生命周期才能改变正式职业事实。
 
+<a id="adr-0058"></a>
+### ADR-0058 — 岗位读取与站外投递动作使用独立 Connector 平面
+
+`Status: proposed`
+
+`JobSource` 只负责 search/detail/recommend/application-record 等读取能力，输出 `JobObservation` 与外部进展信号；它永远不因为底层 CLI 或 Browser Bridge 同时具备写能力而暴露 greet、send、submit 等方法。站外动作使用独立 `ApplicationActionConnector`，统一建模 `greet / send_message / send_resume / exchange_contact` 等用户可感知动作。
+
+OfferU 的产品顺序固定为：岗位发现与去重 → Role Intelligence / 投前决策 → Application Packet 准备 → `preview_application_action` dry-run → Proposal/HITL → 单条外部执行 → OperationAuditLog / 外部证据 → Application Event。批量场景只批量准备和批量审核，不允许把“批准一组岗位”退化为一个不可审计的后台海投循环。
+
+`ApplicationActionConnector` 不拥有 Career Truth，不维护第二套 Application/Pipeline 状态。投前是否值得投由既有 Pre-Application Decision 决定；材料是否 ready 读取既有 Application Packet；外部执行成功与否由受保护 Operation 的审计和后续 `ExternalProgressSignal` 证据确认。重试必须复用稳定 idempotency key，避免重复打招呼、重复发消息或重复发送简历。
+
+第一阶段只落地只读 `preview_application_action` 与 Connector 契约，不提供 BOSS 写执行器。未来无论底层使用 CLI、浏览器桥接还是其他用户授权通道，都必须接入同一 Proposal/HITL、幂等与审计边界；平台私有 token、Cookie、长 external ID 和浏览器细节不得进入普通 Agent Skill 或 Career Domain。
+
 ## 深度执行器
 
 <a id="adr-0015"></a>
