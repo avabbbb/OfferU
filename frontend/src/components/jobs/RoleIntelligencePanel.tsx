@@ -105,7 +105,7 @@ function SignalEvidence({ signal, documents }: { signal: RoleBenchmarkSignal; do
         {gap && (
           <div className="mt-3 border border-[var(--border)] bg-[var(--surface-muted)] p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="bauhaus-label text-[var(--foreground-muted)]">Career Evidence Gap</p>
+              <p className="bauhaus-label text-[var(--foreground-muted)]">Career Evidence Coverage</p>
               <Chip
                 size="sm"
                 variant="flat"
@@ -115,11 +115,11 @@ function SignalEvidence({ signal, documents }: { signal: RoleBenchmarkSignal; do
                     : "border border-amber-500 bg-amber-50 font-bold text-amber-950"
                 }
               >
-                {gap.status === "supported" ? "已有证据" : gap.status === "partial" ? "证据不完整" : "缺少证据"}
+                {gap.status === "supported" ? "已有可引用证据" : gap.status === "partial" ? "档案证据不完整" : "档案未检索到证据"}
               </Chip>
             </div>
             <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs font-semibold text-[var(--foreground-soft)]">
-              <span>缺口 {gap.evidence_gap}/100</span>
+              <span>档案证据覆盖缺口 {gap.evidence_gap}/100</span>
               <span>训练优先级 {gap.training_priority}/100</span>
             </div>
             {gap.matched_evidence?.length > 0 && (
@@ -133,7 +133,7 @@ function SignalEvidence({ signal, documents }: { signal: RoleBenchmarkSignal; do
               </div>
             )}
             {gap.status === "missing" && (
-              <p className="mt-2 text-xs font-semibold text-[var(--primary-red)]">当前没有匹配到 active verified career evidence；这里不是对经历的推断。</p>
+              <p className="mt-2 text-xs font-semibold text-[var(--primary-red)]">当前已授权档案中未检索到可引用证据；这不等于你没有这项能力。可以补充相关经历，或检查是否有漏识别的条目。</p>
             )}
           </div>
         )}
@@ -377,8 +377,8 @@ export function RoleIntelligencePanel({ jobId }: { jobId: number }) {
                   <CheckCircle2 className="mt-0.5 shrink-0 text-[var(--primary-blue)]" size={18} />
                   <div>
                     <p className="bauhaus-label text-[var(--foreground-muted)]">Preparation priority</p>
-                    <h3 className="mt-1 text-xl font-black tracking-[-0.04em] text-[var(--foreground)]">你的准备缺口</h3>
-                    <p className="mt-1 text-sm font-medium text-[var(--foreground-muted)]">岗位特殊度 × active career evidence gap；这里只读已有 ProfileSection，不自动修改 Profile。</p>
+                    <h3 className="mt-1 text-xl font-black tracking-[-0.04em] text-[var(--foreground)]">优先补证据 / 准备</h3>
+                    <p className="mt-1 text-sm font-medium text-[var(--foreground-muted)]">岗位特殊度 × 当前档案证据覆盖缺口；这里只读已授权 ProfileSection，不把“未检索到证据”解释成“你不会”。</p>
                   </div>
                 </div>
                 <div className="mt-3 grid gap-2 md:grid-cols-2">
