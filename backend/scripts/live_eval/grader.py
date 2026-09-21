@@ -27,6 +27,7 @@ from .cases import (
     CRITERION_PROPOSAL_PRESENT,
     CRITERION_PROTECTED_RECORDS_INTACT,
     CRITERION_READ_AT_LEAST_ONE,
+    CRITERION_VALUES,
     ISSUE_AGENT_HARNESS_BUG,
     ISSUE_GRADER_BUG,
     ISSUE_MODEL_BEHAVIOR,
@@ -454,7 +455,29 @@ def grade(
             primary_failure="seed",
         )
 
-    # 1) Provider 层失败：单独归类，不当作 Agent 能力失败。
+    # 1) Grader 配置必须 fail-closed：未知 criterion 是评测系统自身的错误，
+    #    不能让被测 Agent 因拼写/配置错误白捡 PASS。整个 trial 标
+    #    INVALID/grader_bug —— 这是 grader 的锅，不归咎 Agent 行为。
+    #    （吸收了已关闭 PR #10 的分类思路：配置错误 ≠ agent failure。）
+    unknown_criteria = [
+        name for name in case.outcome_criteria if name not in CRITERION_VALUES
+    ]
+    if unknown_criteria:
+        return Verdict(
+            case_id=case.case_id,
+            slug=case.slug,
+            status=STATUS_INVALID,
+            issue_type=ISSUE_GRADER_BUG,
+            scores={},
+            reasons=[f"未知 outcome criterion: {unknown_criteria}"],
+            hard_gate_violations=[],
+            requires_manual_review=True,
+            changes={},
+            missing_reads=[],
+            primary_failure="unknown_criterion",
+        )
+
+    # 2) Provider 层失败：单独归类，不当作 Agent 能力失败。
     provider_failure = trace.provider_failure or classify_provider_failure(trace)
     if provider_failure:
         return Verdict(
