@@ -174,6 +174,7 @@ from app.services.agent_operations import (
     review_pre_application_decision,
     review_resume_optimization,
     review_application_progress,
+    submit_manual_pre_application_decision,
     resolve_automation_inbox_item,
     save_career_artifact,
     search_memory,
@@ -545,6 +546,14 @@ class ReviewPreApplicationDecisionInput(_StrictOperationInput):
         pattern="^(go|conditional_go|no_go|insufficient_evidence)$"
     )
     note: str = Field(default="", max_length=2000)
+
+
+class SubmitManualPreApplicationDecisionInput(_StrictOperationInput):
+    job_id: int = Field(gt=0)
+    final_decision: str = Field(
+        pattern="^(go|conditional_go|no_go|insufficient_evidence)$"
+    )
+    rationale: str = Field(default="", max_length=2000)
 
 
 class PrepareResumeOptimizationInput(_StrictOperationInput):
@@ -2735,6 +2744,19 @@ OPERATIONS: dict[str, Operation] = {
         group="pre_application",
         side_effects=("write",),
         input_model=ReviewPreApplicationDecisionInput,
+    ),
+    "submit_manual_pre_application_decision": Operation(
+        name="submit_manual_pre_application_decision",
+        fn=submit_manual_pre_application_decision,
+        description="AI 投前决策不可用时，由使用者本人直接提交投/不投/有条件投决定；记录 decision_source=manual，不调用模型。",
+        parameters={
+            "job_id": "int",
+            "final_decision": "str (go|conditional_go|no_go|insufficient_evidence)",
+            "rationale": "str=",
+        },
+        group="pre_application",
+        side_effects=("write",),
+        input_model=SubmitManualPreApplicationDecisionInput,
     ),
     "start_authorized_research_session": Operation(
         name="start_authorized_research_session",

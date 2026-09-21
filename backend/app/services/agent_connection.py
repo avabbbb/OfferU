@@ -111,6 +111,18 @@ def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
             "ERROR",
         } else "NOT_VERIFIED"
 
+    def _routing_eval_state(provider_item: dict[str, Any]) -> str:
+        """能力路由评估徽章——必须由可回查的 routing-eval run 证据支撑。
+
+        此前实现只凭 ``provider id == 'omp'`` + 连接 ``status == 'ready'``
+        就返回 VERIFIED，是名字推导不是证据（PRODUCT_CRITIQUE §15/§23：
+        SkillRoute 30 题含提示泄漏，OMP 又是文件交接协议，run/model/case
+        均未绑定）。当前没有持久化的 routing-eval 结果存储可读，因此一律
+        诚实返回 ``NOT_VERIFIED`` —— 直到某次真实、可审计的 routing run
+        能把 run_id / model / case 集合写进来为止。
+        """
+        return "NOT_VERIFIED"
+
     return {
         "id": provider_id,
         "name": item["name"],
@@ -155,14 +167,12 @@ def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
         "cwd_isolation_state": conformance_state("cwd_isolation_verified"),
         "web_search_state": conformance_state("web_search_verified"),
         # Whether this agent can act as the live-eval routing executor.
-        # omp (swe-2) is proven — it routed SkillRoute cases end-to-end via the
-        # read-only CLI. codebuddy can but is flaky (self-denies its own Bash
-        # tool in non-interactive sessions); codex shares its account quota.
-        "routing_eval_state": (
-            "VERIFIED" if item["id"] == "omp" and item.get("status") == "ready"
-            else "SUPPORTED" if item["id"] in {"omp", "codebuddy"}
-            else "NOT_VERIFIED"
-        ),
+        # 此前这里只凭 provider id == 'omp' + status == 'ready' 就标 VERIFIED ——
+        # 是名字推导，不是证据。SkillRoute 成绩既未绑定 run/model/case，OMP 路径
+        # 也只是文件交接协议（见 PRODUCT_CRITIQUE §15/§17/§23）。
+        # 在没有可回查的 routing-eval run 存储前，诚实标 NOT_VERIFIED；
+        # 不凭名字或一次手工编排结果发“已验证”徽章。
+        "routing_eval_state": _routing_eval_state(item),
         "conformance_checked_at": conformance.get("last_probe_at") if conformance_matches else None,
         "beginner": bool(get_host(provider_id) and get_host(provider_id).beginner),
         "recommended": bool(get_host(provider_id) and get_host(provider_id).recommended),

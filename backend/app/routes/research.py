@@ -66,6 +66,13 @@ class PreApplicationDecisionReviewRequest(BaseModel):
     note: str = Field("", max_length=2000)
 
 
+class PreApplicationDecisionManualRequest(BaseModel):
+    final_decision: str = Field(
+        pattern="^(go|conditional_go|no_go|insufficient_evidence)$"
+    )
+    rationale: str = Field("", max_length=2000)
+
+
 def _operation_outputs(result: dict[str, Any]) -> dict[str, Any]:
     if not result.get("ok"):
         message = "；".join(str(item) for item in result.get("errors") or [])
@@ -179,6 +186,17 @@ async def review_pre_application_decision(
     return await _execute(
         "review_pre_application_decision",
         {"decision_id": decision_id, **data.model_dump()},
+    )
+
+
+@router.post("/pre-application/{job_id}/manual")
+async def manual_pre_application_decision(
+    job_id: int,
+    data: PreApplicationDecisionManualRequest,
+):
+    return await _execute(
+        "submit_manual_pre_application_decision",
+        {"job_id": job_id, **data.model_dump()},
     )
 
 

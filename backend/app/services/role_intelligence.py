@@ -1034,7 +1034,7 @@ def _backend_search_runtime() -> dict[str, Any]:
     """Describe the controlled HTTP provider without presenting it as a CLI."""
 
     return {
-        "id": _BACKEND_SEARCH_RUNTIME_ID,
+        "runtime_id": _BACKEND_SEARCH_RUNTIME_ID,
         "name": "OfferU public web HTTP fallback",
         "version": _BACKEND_SEARCH_RUNTIME_VERSION,
         "available": True,
@@ -1453,14 +1453,16 @@ async def _compatible_runtime(runtime_id: str | None = None) -> dict[str, Any]:
             requirements=ExecutorRequirements(web_search=True),
         )
         # select_local_executor returns the adapter descriptor keyed by "id";
-        # normalize it so a concrete runtime_id (never the literal "auto")
-        # reaches the run record and the collection provider.
+        # translate it so every branch of this seam speaks one shape —
+        # "runtime_id" naming a concrete, resolved runtime (never "auto").
         resolved_id = str(selected.get("id") or "").strip().casefold()
         if not resolved_id:
             raise ValueError(
                 "select_local_executor 未返回可用的 runtime id，无法建立岗位基准"
             )
-        return {**selected, "runtime_id": resolved_id}
+        return {
+            key: value for key, value in selected.items() if key != "id"
+        } | {"runtime_id": resolved_id}
     except ValueError as exc:
         # Explicit runtime ids remain fail-closed. Only auto selection can
         # move to the bounded HTTP+LLM adapter, and it is never mislabeled as
@@ -1612,8 +1614,8 @@ async def build_role_benchmark(
             min_sample_count=MIN_SAMPLE_COUNT,
             max_sample_count=MAX_SAMPLE_COUNT,
             schema_version=ROLE_BENCHMARK_OUTPUT_SCHEMA_ID,
+            runtime_id=str(selected_runtime["runtime_id"]),
             algorithm_version=ROLE_BENCHMARK_ALGORITHM_VERSION,
-            runtime_id=str(selected_runtime.get("runtime_id") or runtime_id or "codex"),
             status="pending",
             source_summary_json={"requested": TARGET_SAMPLE_COUNT},
         )
@@ -2252,6 +2254,13 @@ async def prepare_role_interview_focus(
             "岗位基准样本不足，暂不生成专项训练："
             f"{benchmark.get('valid_sample_count', 0)} / "
             f"{benchmark.get('minimum_sample_count', MIN_SAMPLE_COUNT)}"
+        )
+    # fixture/replay 基准只用于本地 UI/管道验收，不能驱动真实专项训练——
+    # 它对任何 JD 都回放同一套信号，会把用户训练到错误的能力上（critique E12）。
+    if str(benchmark.get("data_mode") or "") in {"fixture", "fixture_plugin"}:
+        raise ValueError(
+            "当前岗位基准来自 fixture 数据，仅用于产品验收；"
+            "请先采集真实岗位基准再生成专项训练。"
         )
 
     async with async_session() as db:

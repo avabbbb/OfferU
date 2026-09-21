@@ -674,6 +674,73 @@ async def prepare_pre_application_decision(
         }
     )
 
+async def submit_manual_pre_application_decision(
+    job_id: int,
+    final_decision: str,
+    rationale: str = "",
+) -> dict[str, Any]:
+    """人工投前决策——AI 路径不可用时，由**使用者本人**直接给出决定。
+
+    Hypothesis D（PRODUCT_CRITIQUE §3 E11）：LLM 401 不该把用户锁在
+    Resume Workspace 外。这条路径不调用 ``chat_completion``，直接以
+    ``decision_source="manual"`` 落一条 ``status="reviewed"`` 的决策——
+    因为决定本身就是使用者作出的，无需再过 Agent 建议的 review 步骤。
+
+    保留的边界：
+    - 仍绑定当前 ``input_hash``（岗位/证据/调研变化后旧决策不生效）；
+    - ``final_decision`` 只允许 go/conditional_go/no_go/insufficient_evidence；
+    - ``agent_recommendation=None``、``decision_source='manual'`` 如实记录；
+    - 这是一个 Operation（mutation），在 Agent surface 仍需确认——
+      不能成为 Agent 绕过人工决策的旁路。
+    """
+    clean_job_id = _clean_job_id(job_id)
+    clean_final = _clean_text(final_decision, "final_decision", 40).lower()
+    if clean_final not in FINAL_DECISIONS:
+        raise ValueError(
+            "final_decision 只能是 go、conditional_go、no_go 或 insufficient_evidence"
+        )
+    clean_rationale = _clean_text(rationale, "rationale", 2000)
+
+    context = await _load_current_context(clean_job_id)
+    if context["stage"] != "needs_decision":
+        raise ValueError(f"当前投前决策阶段为 {context['stage']}，不能提交人工决策")
+
+    # 幂等：同 input_hash 已有人工/AI 决策时直接返回，不重复造。
+    existing = decision_store.latest(
+        job_id=clean_job_id,
+        input_hash=str(context["input_hash"]),
+    )
+    if existing is not None:
+        return existing
+
+    return decision_store.create(
+        {
+            "job_id": clean_job_id,
+            "profile_id": context["profile_id"],
+            "research_run_id": str(
+                (context.get("research_run") or {}).get("run_id") or ""
+            ),
+            "input_hash": context["input_hash"],
+            "agent_recommendation": None,
+            "decision": {
+                "recommendation": clean_final,
+                "rationale": clean_rationale or "使用者人工决定",
+                "strengths": [],
+                "gaps": [],
+                "conditions": [],
+                "missing_evidence": [],
+                "evidence": [],
+            },
+            "decision_source": "manual",
+            "model_runtime": None,
+            # 人工即作者：创建即 reviewed，final_decision 立即生效。
+            "status": "reviewed",
+            "final_decision": clean_final,
+            "review_note": clean_rationale,
+            "reviewed_at": _now(),
+        }
+    )
+
 
 async def review_pre_application_decision(
     decision_id: str,

@@ -21,6 +21,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+import uuid
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -232,7 +233,10 @@ def _freeze_metadata(
         "seed_path": source_db.name,
         "runtime": runtime,
         "runtime_version": (_runtime_version() if runtime == "codebuddy" else "omp"),
-        "model": "harness-provided",
+        # 模型身份在此协议下不可核验：诚实记 UNVERIFIED，不写 harness-provided
+        # 冒充已证明。若外部执行器在结果里回报模型，记为 model_reported。
+        "model": "UNVERIFIED",
+        "model_source": "not_observable_in_handoff_protocol",
         "mode": mode,
         "suite": suite,
         "repeat": repeat,
@@ -490,33 +494,41 @@ async def _run_harness_once(prompt: str, *, eval_db: Path, timeout: int) -> Trac
     trace.final_text = str((result_event or {}).get("result") or "")
     trace.is_error = (result_event or {}).get("is_error")
     trace.provider_failure = classify_provider_failure(trace)
-    return trace
-
-
 async def _run_harness_omp(
-    prompt: str, *, eval_db: Path, timeout: int, case_dir: Path
+    prompt: str, *, eval_db: Path, timeout: int, case_dir: Path, round_index: int
 ) -> Trace:
-    """omp (swe-2) executor backend.
+    """omp (swe-2) executor backend — **External Executor Handoff 协议**，非托管 Runtime。
 
     codebuddy is spawned as a subprocess; an omp agent is not — it runs inside
     the omp harness, outside this process. So in ``--runtime omp`` mode the
     runner writes a request file the external omp orchestrator picks up, and
     blocks until the agent writes ``omp_result.json`` back into the case dir.
 
-    Request:  ``<case_dir>/omp_request.json`` — {prompt, eval_db, timeout}
-    Result:   ``<case_dir>/omp_result.json``  — {tool_calls, final_text, is_error}
+    协议现在携带 ``request_id``：每次请求生成唯一 id，结果必须回显同一 id
+    才被接受——防止跨轮次/跨 case 消费陈旧结果文件（E4/E6）。
+    结果文件仍非原子写，故额外要求 ``request_id`` 匹配 + JSON 可解析；
+    半个文件不会被当成有效返回（E5）。
 
-    ``tool_calls`` items carry the literal CLI command in ``input`` (e.g.
-    ``python -m app.cli run list_jobs --args ...``), so the grader's existing
-    regex-based parsing of first_skill / operations_used works unchanged.
+    Request:  ``<case_dir>/omp_request.json`` — {request_id, prompt, eval_db, timeout, round}
+    Result:   ``<case_dir>/omp_result.json``  — {request_id, tool_calls, final_text, is_error, model?}
+
+    ``tool_calls`` items carry the literal CLI command in ``input``. 注意：这些
+    是自报文本，grader 只用作 trajectory 诊断；真实执行证据看 audit.json。
     """
     request_path = case_dir / "omp_request.json"
     result_path = case_dir / "omp_result.json"
+    # 清掉上一轮/上一题的遗留结果，避免消费陈旧文件。
+    with contextlib.suppress(OSError):
+        result_path.unlink()
+    request_id = f"{case_dir.name}-r{round_index}-{uuid.uuid4().hex[:12]}"
     write_json(request_path, {
+        "request_id": request_id,
+        "round": round_index,
         "prompt": prompt,
         "eval_db": str(eval_db),
         "timeout_seconds": timeout,
         "runtime": "omp",
+        "protocol": "external-executor-handoff.v1",
     })
     started = time.perf_counter()
     deadline = started + timeout
@@ -527,6 +539,10 @@ async def _run_harness_omp(
                 payload = json.loads(result_path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
                 payload = {}
+            # 结果必须回显当前 request_id 才算本次应答；不匹配说明是陈旧/迟到文件。
+            if payload.get("request_id") != request_id:
+                await asyncio.sleep(0.5)
+                continue
             trace.tool_calls = [
                 {"tool": "Bash", "input": str(call.get("input") or "")}
                 for call in (payload.get("tool_calls") or [])
@@ -534,6 +550,9 @@ async def _run_harness_omp(
             trace.final_text = str(payload.get("final_text") or "")
             trace.is_error = bool(payload.get("is_error"))
             trace.note = str(payload.get("note") or "omp runtime")
+            # 模型身份：执行器可自报 model，但仍是 unverified —— 单独记录。
+            if payload.get("model"):
+                trace.note = f"{trace.note} | model_reported={payload.get('model')}"
             break
         await asyncio.sleep(0.5)
     else:
@@ -611,13 +630,18 @@ async def run_case_once(
         "human_rating_required": case.human_rating_required,
         "tags": list(case.tags),
     })
+    # runtime.json 记录的是**实际**执行通道：codebuddy 是子进程（有 node/script/
+    # 工具白名单），omp 是外部执行器交接协议（没有这些字段，标 handoff）。
     write_json(case_dir / "runtime.json", {
         "harness": runtime,
-        "node": str(NODE_EXE),
-        "script": str(CODEBUDDY_SCRIPT),
-        "tools": HARNESS_TOOLS,
-        "allowed_tools": HARNESS_ALLOWED_TOOLS,
-        "disallowed_tools": HARNESS_DISALLOWED_TOOLS,
+        "protocol": (
+            "external-executor-handoff.v1" if runtime == "omp" else "subprocess-stdout-events"
+        ),
+        "node": str(NODE_EXE) if runtime == "codebuddy" else None,
+        "script": str(CODEBUDDY_SCRIPT) if runtime == "codebuddy" else None,
+        "tools": HARNESS_TOOLS if runtime == "codebuddy" else None,
+        "allowed_tools": HARNESS_ALLOWED_TOOLS if runtime == "codebuddy" else None,
+        "disallowed_tools": HARNESS_DISALLOWED_TOOLS if runtime == "codebuddy" else None,
         "timeout_seconds": timeout,
     })
 
@@ -648,6 +672,7 @@ async def run_case_once(
                 eval_db=eval_db,
                 timeout=timeout,
                 case_dir=case_dir,
+                round_index=turn_index,
             )
             if runtime == "omp"
             else _run_harness_once(
@@ -709,7 +734,6 @@ async def run_case_once(
         "confirm_used": merged.confirm_used,
         "tool_call_count": merged.tool_call_count,
         "first_skill": merged.first_skill,
-        "skill_expansions": merged.skill_expansions,
         "schemas_loaded": merged.schemas_loaded,
         "operation_call_count": merged.operation_call_count,
         "full_registry_bootstrap_used": merged.full_registry_bootstrap_used,
@@ -719,7 +743,8 @@ async def run_case_once(
         "pending_actions": _pending_actions(eval_db, exclude_run_ids=set()),
         "confirmations": confirmations,
     })
-    write_json(case_dir / "audit.json", _audit_rows(eval_db, exclude_keys=known_audit))
+    audit_rows = _audit_rows(eval_db, exclude_keys=known_audit)
+    write_json(case_dir / "audit.json", audit_rows)
     with io.open(case_dir / "events.ndjson", "w", encoding="utf-8") as handle:
         for event in merged.events:
             handle.write(json.dumps(event, ensure_ascii=False) + "\n")
@@ -740,6 +765,7 @@ async def run_case_once(
         trace=merged,
         mode=mode,
         seed_ok=seed_ok,
+        audit_rows=audit_rows,
     )
     accepted_capabilities = set(case.acceptable_capabilities)
     if case.expected_capability:

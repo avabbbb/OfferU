@@ -844,7 +844,8 @@ export interface PreApplicationDecisionRecord {
   id: string;
   job_id: number;
   status: "ready_for_review" | "reviewed" | string;
-  agent_recommendation: PreApplicationDecisionChoice;
+  agent_recommendation: PreApplicationDecisionChoice | null;
+  decision_source?: "agent" | "manual" | string;
   final_decision: PreApplicationDecisionChoice | null;
   review_note: string;
   reviewed_at?: string | null;
@@ -1215,6 +1216,14 @@ export const preApplicationApi = {
   ) =>
     request<PreApplicationDecisionRecord>(
       `/api/research/pre-application/decisions/${encodeURIComponent(decisionId)}/review`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      }
+    ),
+  manual: (jobId: number, data: { final_decision: PreApplicationDecisionChoice; rationale?: string }) =>
+    request<PreApplicationDecisionRecord>(
+      `/api/research/pre-application/${jobId}/manual`,
       {
         method: "POST",
         body: JSON.stringify(data),

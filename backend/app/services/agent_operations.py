@@ -1273,6 +1273,21 @@ async def review_pre_application_decision(
     )
 
 
+async def submit_manual_pre_application_decision(
+    job_id: int,
+    final_decision: str,
+    rationale: str = "",
+) -> dict:
+    from app.services.pre_application_decisions import (
+        submit_manual_pre_application_decision as _submit,
+    )
+
+    return await _submit(
+        job_id=job_id,
+        final_decision=final_decision,
+        rationale=rationale,
+    )
+
 async def start_authorized_research_session(
     job_id: int,
     platform: str,

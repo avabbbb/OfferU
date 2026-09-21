@@ -161,9 +161,12 @@ export default function JobDetailPage() {
   const [preApplication, setPreApplication] = useState<PreApplicationState | null>(null);
   const [preApplicationLoading, setPreApplicationLoading] = useState(false);
   const [preApplicationError, setPreApplicationError] = useState("");
-  const [preApplicationAction, setPreApplicationAction] = useState<"prepare" | "review" | null>(null);
+  const [preApplicationAction, setPreApplicationAction] = useState<"prepare" | "review" | "manual" | null>(null);
   const [decisionChoice, setDecisionChoice] = useState<PreApplicationDecisionChoice | "">("");
   const [decisionNote, setDecisionNote] = useState("");
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualChoice, setManualChoice] = useState<PreApplicationDecisionChoice | "">("");
+  const [manualRationale, setManualRationale] = useState("");
   const [resumeProposal, setResumeProposal] = useState<ResumeOptimizationProposalDetail | null>(null);
   const [resumeProposalLoading, setResumeProposalLoading] = useState(false);
   const [resumeProposalError, setResumeProposalError] = useState("");
@@ -382,7 +385,7 @@ export default function JobDetailPage() {
     setPreApplicationError("");
     try {
       const decision = await preApplicationApi.prepare(jobId, preApplication.research_run.run_id);
-      setDecisionChoice(decision.agent_recommendation);
+      setDecisionChoice(decision.agent_recommendation || "");
       setDecisionNote("");
       await loadPreApplication();
     } catch (err) {
@@ -410,6 +413,26 @@ export default function JobDetailPage() {
       await loadPreApplication();
     } catch (err) {
       setPreApplicationError(safeClientErrorMessage(err, "投前决策审核失败"));
+    } finally {
+      setPreApplicationAction(null);
+    }
+  };
+
+  const handleManualPreApplication = async () => {
+    if (!jobId || !manualChoice || preApplicationAction) return;
+    setPreApplicationAction("manual");
+    setPreApplicationError("");
+    try {
+      await preApplicationApi.manual(jobId, {
+        final_decision: manualChoice,
+        rationale: manualRationale.trim(),
+      });
+      await loadPreApplication();
+      setManualOpen(false);
+      setManualChoice("");
+      setManualRationale("");
+    } catch (err) {
+      setPreApplicationError(safeClientErrorMessage(err, "人工投前决策提交失败"));
     } finally {
       setPreApplicationAction(null);
     }
@@ -1272,6 +1295,59 @@ export default function JobDetailPage() {
                   >
                     生成投前决策建议
                   </Button>
+
+                  <div className="mt-4 border-t border-amber-300 pt-4">
+                    <button
+                      type="button"
+                      onClick={() => setManualOpen((open) => !open)}
+                      aria-expanded={manualOpen}
+                      className="text-xs font-black uppercase tracking-[0.08em] text-amber-900 underline-offset-4 hover:underline"
+                    >
+                      {manualOpen ? "收起人工决策" : "AI 不可用？由你本人人工决定"}
+                    </button>
+                    {manualOpen && (
+                      <div className="mt-4 space-y-3">
+                        <p className="text-xs font-medium leading-relaxed text-amber-900">
+                          模型/Provider 暂时不可用，或你不想等 AI 建议时，可以直接给出投/不投决定。
+                          这会记录为 decision_source=manual，不调用模型。
+                        </p>
+                        <Select
+                          label="你的投前决定"
+                          aria-label="你的投前决定"
+                          selectedKeys={manualChoice ? [manualChoice] : []}
+                          onSelectionChange={(keys) => {
+                            const value = Array.from(keys)[0] as PreApplicationDecisionChoice | undefined;
+                            setManualChoice(value || "");
+                          }}
+                          classNames={bauhausSelectClassNames}
+                        >
+                          {PRE_APPLICATION_DECISION_OPTIONS.map((option) => (
+                            <SelectItem key={option.value}>{option.label}</SelectItem>
+                          ))}
+                        </Select>
+                        <label htmlFor="manual-decision-rationale" className="bauhaus-label text-[var(--foreground-muted)]">
+                          决定依据（可选）
+                        </label>
+                        <textarea
+                          id="manual-decision-rationale"
+                          value={manualRationale}
+                          onChange={(event) => setManualRationale(event.target.value)}
+                          maxLength={2000}
+                          rows={3}
+                          placeholder="记录你作出这个决定的理由。"
+                          className="w-full border border-[var(--border-strong)] bg-white px-4 py-3 text-sm font-medium text-[var(--foreground)] outline-none focus:border-[var(--primary-blue)]"
+                        />
+                        <Button
+                          onPress={() => void handleManualPreApplication()}
+                          isLoading={preApplicationAction === "manual"}
+                          isDisabled={!manualChoice}
+                          className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
+                        >
+                          提交人工投前决策
+                        </Button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -1280,9 +1356,15 @@ export default function JobDetailPage() {
                   <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
-                        <p className="bauhaus-label text-[var(--foreground-muted)]">Agent 建议</p>
+                        <p className="bauhaus-label text-[var(--foreground-muted)]">
+                          {preApplication.decision.decision_source === "manual" ? "决策来源" : "Agent 建议"}
+                        </p>
                         <p className="mt-2 text-2xl font-black text-[var(--foreground)]">
-                          {PRE_APPLICATION_DECISION_LABELS[preApplication.decision.agent_recommendation]}
+                          {preApplication.decision.decision_source === "manual"
+                            ? "人工决定"
+                            : preApplication.decision.agent_recommendation
+                              ? PRE_APPLICATION_DECISION_LABELS[preApplication.decision.agent_recommendation]
+                              : "—"}
                         </p>
                       </div>
                       {preApplication.decision.final_decision && (
