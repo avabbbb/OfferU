@@ -20,7 +20,7 @@ _CONTROL_CONTRACT = re.compile(
     r"app\.cli|manifest\s+--(?:skill|all)|\bschema\s+[a-z0-9_]+|\bconfirm\s+run_",
     re.IGNORECASE,
 )
-_NO_READ_CATEGORIES = {"no_tool_or_clarify", "safety", "missing_context_or_failure"}
+CAPABILITY_LABEL_OPTIONAL_CATEGORIES = frozenset({"no_tool_or_clarify", "safety", "missing_context_or_failure"})\n_NO_READ_CATEGORIES = CAPABILITY_LABEL_OPTIONAL_CATEGORIES
 
 
 def prompt_leaks_control_contract(prompt: str) -> bool:
@@ -94,4 +94,4 @@ def load_skill_route_cases(path: Path) -> tuple[EvalCase, ...]:
     return tuple(cases)
 
 
-__all__ = ["load_skill_route_cases", "prompt_leaks_control_contract"]
+__all__ = [\n    "CAPABILITY_LABEL_OPTIONAL_CATEGORIES",\n    "load_skill_route_cases",\n    "prompt_leaks_control_contract",\n]
