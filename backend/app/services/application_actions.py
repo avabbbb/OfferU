@@ -258,11 +258,18 @@ async def preview_application_action(
 
     pre_application = await get_pre_application_state(job_id)
     resume_packet: dict[str, Any] | None = None
+    resume_packet_error = ""
     if action == "send_resume" and resume_id is not None:
-        workspace = await get_resume_workspace(resume_id)
-        packet = workspace.get("application_packet")
-        if isinstance(packet, dict):
-            resume_packet = packet
+        try:
+            workspace = await get_resume_workspace(resume_id)
+        except ValueError as exc:
+            # Preview is diagnostic: an unready/mismatched workspace should
+            # become a blocker, not turn the dry-run endpoint into an error.
+            resume_packet_error = str(exc)
+        else:
+            packet = workspace.get("application_packet")
+            if isinstance(packet, dict):
+                resume_packet = packet
 
     request = ApplicationActionRequest(
         source=str(job.source or "").strip(),
@@ -272,9 +279,16 @@ async def preview_application_action(
         resume_id=resume_id,
         message=message,
     )
-    return build_application_action_preview(
+    preview = build_application_action_preview(
         request=request,
         pre_application_stage=str(pre_application.get("stage") or ""),
         resume_packet=resume_packet,
         has_application_attempt=has_attempt,
-    ).to_dict()
+    )
+    payload = preview.to_dict()
+    if resume_packet_error:
+        reasons = list(payload["blocking_reasons"])
+        reasons.append(f"Application Packet 不可用：{resume_packet_error}")
+        payload["blocking_reasons"] = list(dict.fromkeys(reasons))
+        payload["state"] = "blocked"
+    return payload
