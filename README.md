@@ -136,12 +136,16 @@ Previous Interview Learning
 OfferU generates targeted focus areas, runs turn-based practice, challenges vague answers, produces
 transcript-backed debriefs and turns useful observations into reviewable learning candidates.
 
-### A controlled agent, not a black box
+### Your AI, with a controlled Career OS
 
-OfferU lets an AI agent reason and use tools, but the model never owns business truth.
+OfferU prefers the local AI agent you already use and allows a built-in fallback, but no model owns business truth.
 
 ```text
-Agent Runtime
+External local Agent (preferred) / OfferU fallback
+    ↓
+OfferU Skill + optional Career Skills
+    ↓
+Agent Tool Surface
     ↓
 Operation Registry
     ↓
@@ -150,8 +154,7 @@ Proposal / Approval
 Career Runtime
 ```
 
-The agent reasons. The Operation Registry controls capabilities and side effects. The Career Runtime
-owns persisted truth. You remain the approval authority for sensitive changes and irreversible actions.
+The active agent reasons. OfferU controls capabilities, evidence, side effects and persistent truth. Third-party resume/interview/recruiting Skills may contribute methodology, while sensitive changes and irreversible actions remain under OfferU and user control.
 
 ---
 
@@ -187,10 +190,11 @@ OfferU detects a local agent you already have, checks it, and consumes its own m
         ↓
     Auto Detect
         ↓
-┌───────┼───────┐
-Codex  Claude  OpenCode
+┌────────────┼────────────┐
+Codex  WorkBuddy  Claude  OMP / others
         ↓
    OfferU Skill
+   + compatible Career Skills
         ↓
    OfferU Bridge
         ↓
@@ -289,11 +293,11 @@ The intended public user path is:
 ```text
 Download
 → Install
-→ Launch
-→ Connect your AI agent
-→ Build Profile
-→ Save a Job
-→ Let OfferU prepare the rest
+→ Auto-detect your local AI
+→ Resume + optional authorized AI memory → Profile
+→ Save your first Job from the browser
+→ Optionally connect a job-search inbox
+→ Today tells you what matters next
 ```
 
 > If you find an `OfferU.exe` in the repository root, it is a legacy `0.1.0` binary, not the current
@@ -331,11 +335,11 @@ These commands only validate their own scope; they do not mean "ready for beta" 
 
 Current priorities are productization, not more top-level features:
 
-1. **Zero-friction AI setup** — connect once, detect capabilities, default to Auto.
-2. **Live Role Intelligence** — validate at least one real external research path end to end.
-3. **Public desktop release** — signed installer, clean-machine setup, migration, backup, restore, upgrade.
-4. **Privacy & security hardening** — finish the remaining security and privacy gates.
-5. **Real-user feedback** — use it in actual job searches and fix the highest-impact issues.
+1. **Zero-Setup onboarding** — native install, local-Agent auto-discovery, Profile bootstrap, first Job, inbox, useful Today.
+2. **Real external-Agent Eval** — validate autonomous tool discovery and complete user journeys before further tool compression.
+3. **Browser + inbox productization** — one-click job capture and beginner-friendly read-only progress sync.
+4. **Public desktop release** — signed installer, clean-machine setup, migration, backup, restore and upgrade.
+5. **Privacy, security and real-user iteration** — keep trust gates hard while reducing user effort.
 
 ---
 
