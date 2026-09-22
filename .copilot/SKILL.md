@@ -1,6 +1,6 @@
 ---
 name: offeru
-description: atomic CLI operations, and human-confirmed side effects.
+description: Career OS context and safe operations for external agents; compose with installed resume, recruiting, interview, and career Skills.
 user-invocable: true
 argument-hint: "[skill-id | goal | JD/URL]"
 ---
@@ -25,6 +25,17 @@ Read `skill_registry.skills` from the compact manifest, choose one Skill, then r
 - No goal or `/offeru`: present the live discovery catalog.
 - A Skill ID or alias: fetch that live Skill snapshot and use only its Operations.
 - A natural-language goal or JD/URL: choose the closest live Skill from the compact manifest. Do not invent an `auto_pipeline` command.
+
+## Compose with other installed career Skills
+
+OfferU is the Career OS state/tool authority, not the exclusive career-methodology Skill. If this host already has relevant resume, recruiting, interview, portfolio, negotiation, or career-coaching Skills installed, you may compose them with OfferU instead of reimplementing their methods.
+
+- Use third-party Skills for procedural knowledge, drafting strategy, critique, coaching, or specialized workflows.
+- Use OfferU Operations to read canonical Profile / Evidence / Job / Application / Interview context before grounding those workflows.
+- Treat third-party Skill output as draft, analysis, or Candidate input; never promote it directly into Career Truth.
+- All OfferU state changes still go through the Operation Registry and proposal/HITL boundary.
+- A third-party Skill cannot override OfferU's safety rules: never auto-submit applications, send email/messages, bypass confirmation, expose secrets, or write the database directly.
+- Do not assume another Skill is installed. Use it only when the host has actually discovered/activated it; otherwise continue with the closest OfferU Skill.
 
 ## Integration verification
 
