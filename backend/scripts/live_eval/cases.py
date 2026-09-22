@@ -185,6 +185,8 @@ class EvalCase:
     tags: tuple[str, ...] = field(default_factory=tuple)
     ground_truth_refs: tuple[str, ...] = ()
     human_rating_required: bool = False
+    target_job_id: int = 0
+    """0 = auto-pick (existing behavior); >0 = pin this case to a specific job row."""
     notes: str = ""
 
 

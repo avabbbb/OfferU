@@ -1,0 +1,407 @@
+Exception in thread Thread-4 (_readerthread):
+Traceback (most recent call last):
+  File "C:\Python312\Lib\threading.py", line 1052, in _bootstrap_inner
+    self.run()
+  File "C:\Python312\Lib\threading.py", line 989, in run
+    self._target(*self._args, **self._kwargs)
+  File "C:\Python312\Lib\subprocess.py", line 1597, in _readerthread
+    buffer.append(fh.read())
+                  ^^^^^^^^^
+  File "<frozen codecs>", line 322, in decode
+UnicodeDecodeError: 'utf-8' codec can't decode byte 0xb2 in position 12: invalid start byte
+Exception in thread Thread-6 (_readerthread):
+Traceback (most recent call last):
+  File "C:\Python312\Lib\threading.py", line 1052, in _bootstrap_inner
+    self.run()
+  File "C:\Python312\Lib\threading.py", line 989, in run
+    self._target(*self._args, **self._kwargs)
+  File "C:\Python312\Lib\subprocess.py", line 1597, in _readerthread
+    buffer.append(fh.read())
+                  ^^^^^^^^^
+  File "<frozen codecs>", line 322, in decode
+UnicodeDecodeError: 'utf-8' codec can't decode byte 0xd0 in position 0: invalid continuation byte
+Exception in thread Thread-8 (_readerthread):
+Traceback (most recent call last):
+  File "C:\Python312\Lib\threading.py", line 1052, in _bootstrap_inner
+    self.run()
+  File "C:\Python312\Lib\threading.py", line 989, in run
+    self._target(*self._args, **self._kwargs)
+  File "C:\Python312\Lib\subprocess.py", line 1597, in _readerthread
+    buffer.append(fh.read())
+                  ^^^^^^^^^
+  File "<frozen codecs>", line 322, in decode
+UnicodeDecodeError: 'utf-8' codec can't decode byte 0xb2 in position 12: invalid start byte
+Exception in thread Thread-10 (_readerthread):
+Traceback (most recent call last):
+  File "C:\Python312\Lib\threading.py", line 1052, in _bootstrap_inner
+    self.run()
+  File "C:\Python312\Lib\threading.py", line 989, in run
+    self._target(*self._args, **self._kwargs)
+  File "C:\Python312\Lib\subprocess.py", line 1597, in _readerthread
+    buffer.append(fh.read())
+                  ^^^^^^^^^
+  File "<frozen codecs>", line 322, in decode
+UnicodeDecodeError: 'utf-8' codec can't decode byte 0xd0 in position 0: invalid continuation byte
+Exception in thread Thread-12 (_readerthread):
+Traceback (most recent call last):
+  File "C:\Python312\Lib\threading.py", line 1052, in _bootstrap_inner
+    self.run()
+  File "C:\Python312\Lib\threading.py", line 989, in run
+    self._target(*self._args, **self._kwargs)
+  File "C:\Python312\Lib\subprocess.py", line 1597, in _readerthread
+    buffer.append(fh.read())
+                  ^^^^^^^^^
+  File "<frozen codecs>", line 322, in decode
+UnicodeDecodeError: 'utf-8' codec can't decode byte 0xb2 in position 12: invalid start byte
+Exception in thread Thread-14 (_readerthread):
+Traceback (most recent call last):
+  File "C:\Python312\Lib\threading.py", line 1052, in _bootstrap_inner
+    self.run()
+  File "C:\Python312\Lib\threading.py", line 989, in run
+    self._target(*self._args, **self._kwargs)
+  File "C:\Python312\Lib\subprocess.py", line 1597, in _readerthread
+    buffer.append(fh.read())
+                  ^^^^^^^^^
+  File "<frozen codecs>", line 322, in decode
+UnicodeDecodeError: 'utf-8' codec can't decode byte 0xd0 in position 0: invalid continuation byte
+{
+  "ok": true,
+  "service": "OfferU CLI",
+  "version": "0.4.0",
+  "commands": [
+    "doctor",
+    "manifest",
+    "ops",
+    "schema",
+    "run",
+    "confirm",
+    "conformance",
+    "bridge",
+    "ui"
+  ],
+  "operation_count": 264,
+  "database_url_configured": true,
+  "backend": {
+    "status": "ready",
+    "url": "http://127.0.0.1:8766/api/health",
+    "http_status": 200,
+    "runtime": "python",
+    "health_url": "http://127.0.0.1:8766/api/health"
+  },
+  "frontend": {
+    "status": "ready",
+    "url": "http://127.0.0.1:7410",
+    "http_status": 200
+  },
+  "agent_providers": [
+    {
+      "provider_id": "pi",
+      "available": true,
+      "authenticated": false,
+      "blocked": true,
+      "status": "blocked",
+      "version": "0.74.0",
+      "auth_mode": "native_probe",
+      "protocol_version": "",
+      "capabilities": {
+        "conformance": {
+          "native_auth_detected": "BLOCKED_AUTH",
+          "connection_verified": "BLOCKED_AUTH",
+          "live_model_verified": "BLOCKED_AUTH",
+          "structured_output_verified": "BLOCKED_AUTH",
+          "streaming_verified": "NOT_VERIFIED",
+          "resume_verified": "SUPPORTED",
+          "cancel_verified": "SUPPORTED",
+          "cwd_isolation_verified": "SUPPORTED",
+          "web_search_verified": "UNSUPPORTED",
+          "last_probe_at": "2026-09-09T06:42:44.137657+00:00",
+          "failure_reason": "[pi error] 401 Insufficient balance. Manage your billing here: https://opencode.ai/workspace/wrk_01KR6K6TRCH1M6DVT8H835VRC8/billing",
+          "binary_path": "D:\\Nodejs\\node_global\\pi.cmd",
+          "version": "0.74.0"
+        }
+      },
+      "last_error": "[pi error] 401 Insufficient balance. Manage your billing here: https://opencode.ai/workspace/wrk_01KR6K6TRCH1M6DVT8H835VRC8/billing",
+      "checked_at": "2026-09-09T06:42:44.137657"
+    },
+    {
+      "provider_id": "replay",
+      "available": true,
+      "authenticated": true,
+      "blocked": false,
+      "status": "ready",
+      "version": "offeru-main-agent-replay.v1",
+      "auth_mode": "builtin",
+      "protocol_version": "offeru.agent-runtime.v1",
+      "capabilities": {
+        "stream": true,
+        "resume": true,
+        "approval": true
+      },
+      "last_error": "",
+      "checked_at": null
+    },
+    {
+      "provider_id": "codex",
+      "available": true,
+      "authenticated": true,
+      "blocked": false,
+      "status": "ready",
+      "version": "codex-cli 0.154.0",
+      "auth_mode": "native_probe",
+      "protocol_version": "codex-app-server-jsonl-v2",
+      "capabilities": {
+        "conformance": {
+          "native_auth_detected": "VERIFIED",
+          "connection_verified": "VERIFIED",
+          "live_model_verified": "VERIFIED",
+          "structured_output_verified": "VERIFIED",
+          "streaming_verified": "VERIFIED",
+          "resume_verified": "SUPPORTED",
+          "cancel_verified": "SUPPORTED",
+          "cwd_isolation_verified": "VERIFIED",
+          "web_search_verified": "SUPPORTED",
+          "last_probe_at": "2026-09-10T14:23:04.290088+00:00",
+          "failure_reason": "",
+          "binary_path": "C:\\Users\\ava\\AppData\\Roaming\\npm\\codex.cmd",
+          "version": "codex-cli 0.154.0",
+          "live_probe": {
+            "verified": true,
+            "binary_path": "C:\\Users\\ava\\AppData\\Roaming\\npm\\codex.cmd",
+            "version": "codex-cli 0.154.0",
+            "nonce": "offeru-65b23dd6b6fcc0776b498b4e",
+            "task_id": "cap_df465a23edbb32b5a364cd70",
+            "completed_at": "2026-09-10T14:23:04.290088+00:00",
+            "runtime_version": "codex-cli 0.154.0",
+            "trace": {
+              "protocol": "codex-app-server-jsonl-v2",
+              "sandbox": "task cwd, read-only sandbox, approvals disabled, persistent thread",
+              "schema_enforced": true,
+              "event_count": 60,
+              "hosted_session_id": "hexec_1396e68b1406489093c9c37e94acfc44",
+              "external_session_id": "01a08bb1-846b-7a20-8c58-b45f0346863d",
+              "external_turn_id": "01a08bb1-8555-77d1-84a5-7089b164c0dd",
+              "elapsed_ms": 122648.62
+            }
+          }
+        }
+      },
+      "last_error": "",
+      "checked_at": "2026-09-10T14:23:04.298182"
+    },
+    {
+      "provider_id": "deepseek-harness",
+      "available": false,
+      "authenticated": null,
+      "blocked": false,
+      "status": "unprobed",
+      "version": "",
+      "auth_mode": "unknown",
+      "protocol_version": "",
+      "capabilities": {},
+      "last_error": "",
+      "checked_at": null
+    },
+    {
+      "provider_id": "codebuddy",
+      "available": true,
+      "authenticated": true,
+      "blocked": false,
+      "status": "ready",
+      "version": "2.137.1",
+      "auth_mode": "native_probe",
+      "protocol_version": "",
+      "capabilities": {
+        "conformance": {
+          "native_auth_detected": "VERIFIED",
+          "connection_verified": "VERIFIED",
+          "live_model_verified": "VERIFIED",
+          "structured_output_verified": "VERIFIED",
+          "streaming_verified": "VERIFIED",
+          "resume_verified": "SUPPORTED",
+          "cancel_verified": "SUPPORTED",
+          "cwd_isolation_verified": "VERIFIED",
+          "web_search_verified": "UNSUPPORTED",
+          "last_probe_at": "2026-09-13T12:56:54.189568+00:00",
+          "failure_reason": "",
+          "binary_path": "H:\\WorkBuddy\\resources\\app.asar.unpacked\\cli\\bin\\codebuddy",
+          "version": "2.137.1",
+          "live_probe": {
+            "verified": true,
+            "binary_path": "H:\\WorkBuddy\\resources\\app.asar.unpacked\\cli\\bin\\codebuddy",
+            "version": "2.137.1",
+            "nonce": "offeru-b1a458bdb0d792eb617bcf76",
+            "task_id": "cap_b7a96f1766fb58f7028358c7",
+            "completed_at": "2026-09-13T12:56:54.189568+00:00",
+            "runtime_version": "2.137.1",
+            "trace": {
+              "protocol": null,
+              "sandbox": "non-interactive print, stream-json events, tool surface restricted to StructuredOutput, ephemeral session (--no-session-persistence), task cwd, prompt via stdin",
+              "schema_enforced": true,
+              "event_count": 6,
+              "hosted_session_id": null,
+              "external_session_id": null,
+              "external_turn_id": null,
+              "elapsed_ms": 92723.89
+            }
+          }
+        }
+      },
+      "last_error": "",
+      "checked_at": "2026-09-13T12:56:54.254019"
+    },
+    {
+      "provider_id": "omp",
+      "available": true,
+      "authenticated": null,
+      "blocked": false,
+      "status": "ready",
+      "version": "omp/18.0.4",
+      "auth_mode": "native_probe",
+      "protocol_version": "",
+      "capabilities": {
+        "conformance": {
+          "native_auth_detected": "NOT_VERIFIED",
+          "connection_verified": "SUPPORTED",
+          "live_model_verified": "ERROR",
+          "structured_output_verified": "ERROR",
+          "streaming_verified": "NOT_VERIFIED",
+          "resume_verified": "SUPPORTED",
+          "cancel_verified": "SUPPORTED",
+          "cwd_isolation_verified": "SUPPORTED",
+          "web_search_verified": "UNSUPPORTED",
+          "last_probe_at": "2026-09-09T06:43:25.461449+00:00",
+          "failure_reason": "Oh My Pi worker \u9000\u51fa\u7801 1: Still starting after 10s \u2014 phase: resolveModelScope\n  logs: C:\\Users\\ava\\.omp\\logs\\omp.[redacted phone].log \u00b7 re-run with PI_DEBUG_STARTUP=1 for streaming phase markers\nNo model available matching enabledModels (opencode-zen/big-pickle, opencode-zen/deepseek-v4-flash-free, opencode-zen/laguna-s-2.1-free, opencode-zen/ling-3.0-flash-fin-free, opencode-zen/mimo-v2.5-free, opencode-zen/muse-spark-1.2-contributor-free, opencode-zen/muse-spark-1.3-contributor-free, opencode-ze\u2026",
+          "binary_path": "C:\\Users\\ava\\AppData\\Roaming\\npm\\omp.cmd",
+          "version": "omp/18.0.4"
+        }
+      },
+      "last_error": "Oh My Pi worker \u9000\u51fa\u7801 1: Still starting after 10s \u2014 phase: resolveModelScope\n  logs: C:\\Users\\ava\\.omp\\logs\\omp.[redacted phone].log \u00b7 re-run with PI_DEBUG_STARTUP=1 for streaming phase markers\nNo model available matching enabledModels (opencode-zen/big-pickle, opencode-zen/deepseek-v4-flash-free, opencode-zen/laguna-s-2.1-free, opencode-zen/ling-3.0-flash-fin-free, opencode-zen/mimo-v2.5-free, opencode-zen/muse-spark-1.2-contributor-free, opencode-zen/muse-spark-1.3-contributor-free, opencode-ze\u2026",
+      "checked_at": "2026-09-09T06:43:25.461449"
+    },
+    {
+      "provider_id": "opencode",
+      "available": true,
+      "authenticated": false,
+      "blocked": true,
+      "status": "blocked",
+      "version": "1.17.11",
+      "auth_mode": "native_probe",
+      "protocol_version": "",
+      "capabilities": {
+        "conformance": {
+          "native_auth_detected": "BLOCKED_AUTH",
+          "connection_verified": "BLOCKED_AUTH",
+          "live_model_verified": "BLOCKED_AUTH",
+          "structured_output_verified": "BLOCKED_AUTH",
+          "streaming_verified": "NOT_VERIFIED",
+          "resume_verified": "UNSUPPORTED",
+          "cancel_verified": "UNSUPPORTED",
+          "cwd_isolation_verified": "SUPPORTED",
+          "web_search_verified": "UNSUPPORTED",
+          "last_probe_at": "2026-09-09T06:44:33.627322+00:00",
+          "failure_reason": "OpenCode worker \u9000\u51fa\u7801 1: {\"type\":\"error\",\"timestamp\":[redacted phone],\"sessionID\":\"ses_f7b16f587ffeWuaj00GeJHx4sq\",\"error\":{\"name\":\"APIError\",\"data\":{\"message\":\"Insufficient balance. Manage your billing here: https://opencode.ai/workspace/wrk_01KZ5RA9S2293N85AC4R6Z4Q49/billing\",\"statusCode\":401,\"isRetryable\":false,\"responseHeaders\":{\"cf-placement\":\"remote-ORD\",\"cf-ray\":\"a384398d895843b8-EWR\",\"connection\":\"keep-alive\",\"content-length\":\"177\",\"content-type\":\"text/plain;charset=UTF-8\",\"date\":\"Wed, 09\u2026",
+          "binary_path": "D:\\Nodejs\\node_global\\opencode.cmd",
+          "version": "1.17.11"
+        }
+      },
+      "last_error": "OpenCode worker \u9000\u51fa\u7801 1: {\"type\":\"error\",\"timestamp\":[redacted phone],\"sessionID\":\"ses_f7b16f587ffeWuaj00GeJHx4sq\",\"error\":{\"name\":\"APIError\",\"data\":{\"message\":\"Insufficient balance. Manage your billing here: https://opencode.ai/workspace/wrk_01KZ5RA9S2293N85AC4R6Z4Q49/billing\",\"statusCode\":401,\"isRetryable\":false,\"responseHeaders\":{\"cf-placement\":\"remote-ORD\",\"cf-ray\":\"a384398d895843b8-EWR\",\"connection\":\"keep-alive\",\"content-length\":\"177\",\"content-type\":\"text/plain;charset=UTF-8\",\"date\":\"Wed, 09\u2026",
+      "checked_at": "2026-09-09T06:44:33.627847"
+    }
+  ],
+  "data_safety": {
+    "status": "ready",
+    "schema_migration": {
+      "status": "ready",
+      "database_exists": true,
+      "current_version": 4,
+      "target_version": 4,
+      "migration_required": false
+    },
+    "integrity_check": "ok",
+    "foreign_key_violations": 0,
+    "backup_count": 32,
+    "invalid_backup_count": 0,
+    "pending_restore": null
+  },
+  "release_readiness": {
+    "status": "CORE_READY",
+    "release_mode": false,
+    "checks": {
+      "backend": {
+        "status": "ready",
+        "url": "http://127.0.0.1:8766/api/health",
+        "http_status": 200,
+        "runtime": "python"
+      },
+      "database": {
+        "status": "ready",
+        "schema": "ready",
+        "integrity_check": "ok",
+        "foreign_key_violations": 0
+      },
+      "storage": {
+        "status": "ready",
+        "mode": "managed_local",
+        "missing": []
+      },
+      "desktop_bridge": {
+        "status": "not_applicable",
+        "required": false,
+        "runtime_mode": "local",
+        "missing": []
+      },
+      "version_consistency": {
+        "status": "not_applicable",
+        "app_version": "0.4.0",
+        "runtime_version": null
+      },
+      "agent_runtime": {
+        "status": "ready",
+        "replay_available": true,
+        "live_provider_status": "ready",
+        "live_provider_ids": [
+          "codex",
+          "codebuddy",
+          "omp"
+        ]
+      },
+      "frontend": {
+        "status": "ready",
+        "url": "http://127.0.0.1:7410",
+        "http_status": 200
+      }
+    },
+    "blockers": [],
+    "live_provider_gate": "ready",
+    "note": "CORE_READY \u4e0d\u4ee3\u8868 live external provider\u3001\u7b7e\u540d\u6216\u516c\u5f00\u53d1\u5e03 Gate \u5df2\u901a\u8fc7\u3002"
+  },
+  "optional_integrations": {
+    "codex_oauth": "optional",
+    "gmail_oauth": "optional",
+    "deepseek_harness": "experimental"
+  },
+  "llm_provider": "deepseek",
+  "llm_model": "nemotron-3.5-lightning-free",
+  "resume_import": {
+    "formats": [
+      "pdf",
+      "docx"
+    ],
+    "max_file_size_mb": 10,
+    "ocr": {
+      "configured": false,
+      "language": "chi_sim+eng",
+      "fallback_english_configured": false,
+      "missing_languages": [
+        "chi_sim",
+        "eng"
+      ],
+      "install_hint": "Install Tesseract traineddata for chi_sim and eng, or set TESSDATA_PREFIX."
+    }
+  },
+  "safety": {
+    "json_output": true,
+    "dry_run_for_mutations": true,
+    "auto_submit_applications": false
+  }
+}

@@ -30,14 +30,13 @@ from app.services.security_redaction import (
 )
 from app.services.privacy_hygiene import (
     get_privacy_hygiene_status,
-    get_synthetic_email_test_data_status,
     purge_synthetic_email_test_data,
     scrub_legacy_email_notification_bodies,
 )
 from app.services.job_ingest import JobIngestItem, import_job_batch
 from app.services.job_sources.protocol import JobSearchQuery
 from app.services.job_sources.router import job_source_router
-from app.services.application_actions import preview_application_action
+from app.services.application_actions import list_application_action_connectors, preview_application_action
 from app.services.scraper_operations import finalize_scraper_batch, start_scraper_batch
 from app.services.harness_operations import (
     delete_harness_conversation,
@@ -92,7 +91,6 @@ from app.services.agent_operations import (
     get_hosted_executor_session,
     get_career_task,
     get_career_task_result,
-    get_agent_provider_health,
     get_agent_connections,
     get_local_agent_capability_matrix,
     get_local_agent_capability_report,
@@ -217,7 +215,6 @@ from app.services.legacy_operations import (
     duplicate_resume_template,
     extract_interview_questions,
     generate_html_resume,
-    generate_legacy_cover_letter,
     generate_legacy_interview_answer,
     import_jobs_to_application_table,
     import_latest_extension_batch_to_application_table,
@@ -887,11 +884,6 @@ class ResumeTemplateApplyInput(_StrictOperationInput):
 class ResumeTemplateDuplicateInput(_StrictOperationInput):
     template_id: int = Field(gt=0)
     new_name: str = Field(min_length=1, max_length=300)
-
-
-class LegacyCoverLetterInput(_StrictOperationInput):
-    job_id: int = Field(gt=0)
-    resume_id: int = Field(gt=0)
 
 
 class GenerateHtmlResumeInput(_StrictOperationInput):
@@ -2272,6 +2264,16 @@ OPERATIONS: dict[str, Operation] = {
         input_model=PreviewApplicationActionInput,
         version="2026-09-21",
     ),
+    "list_application_action_connectors": Operation(
+        name="list_application_action_connectors",
+        fn=list_application_action_connectors,
+        description="列出已注册站外投递动作 Connector 的能力矩阵（greet/send_message/send_resume/exchange_contact）与可用性；第一阶段无写执行器，仅声明边界，任何真实写都须走受保护 Operation + Proposal/HITL。",
+        parameters={},
+        group="applications",
+        side_effects=("read",),
+        input_model=_StrictOperationInput,
+        version="2026-09-21",
+    ),
     "create_application_attempt": Operation(
         name="create_application_attempt",
         fn=create_application_attempt,
@@ -2563,14 +2565,6 @@ OPERATIONS: dict[str, Operation] = {
         side_effects=("external", "llm", "write"),
         permissions=("workspace:bound", "executor:task-scoped"),
         input_model=DelegateCareerTaskInput,
-        version="2026-08-27",
-    ),
-    "get_agent_provider_health": Operation(
-        name="get_agent_provider_health",
-        fn=get_agent_provider_health,
-        description="读取一个 Agent Runtime provider 的脱敏可用性、认证与阻塞状态。",
-        group="agent_runtime",
-        input_model=ProviderHealthInput,
         version="2026-08-27",
     ),
     "list_agent_provider_health": Operation(
@@ -3114,13 +3108,6 @@ OPERATIONS: dict[str, Operation] = {
         group="governance",
         version="2026-08-31",
     ),
-    "get_synthetic_email_test_data_status": Operation(
-        name="get_synthetic_email_test_data_status",
-        fn=get_synthetic_email_test_data_status,
-        description="读取严格限定的合成邮箱测试数据计数，不返回账号地址或邮件内容。",
-        group="governance",
-        version="2026-08-31",
-    ),
     "scrub_legacy_email_notification_bodies": Operation(
         name="scrub_legacy_email_notification_bodies",
         fn=scrub_legacy_email_notification_bodies,
@@ -3509,14 +3496,6 @@ OPERATIONS.update(
             group="interview",
             side_effects=("llm", "write"),
             input_model=GenerateLegacyInterviewAnswerInput,
-        ),
-        "generate_legacy_cover_letter": Operation(
-            name="generate_legacy_cover_letter",
-            fn=generate_legacy_cover_letter,
-            description="兼容旧投递接口生成求职信草稿。",
-            group="applications",
-            side_effects=("llm",),
-            input_model=LegacyCoverLetterInput,
         ),
         "create_resume_template": Operation(
             name="create_resume_template",

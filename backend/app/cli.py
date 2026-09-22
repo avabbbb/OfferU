@@ -16,7 +16,12 @@ from app.database import init_db
 from app.ops import get_operation_schema, list_operations
 from app.bridge_cli import main as bridge_main
 from app.runtime_paths import runtime_data_dir, runtime_uploads_dir
-from app.services.agent_skill_registry import catalog, registry_snapshot, resolve_skill
+from app.services.agent_skill_registry import (
+    agent_operation_names,
+    catalog,
+    registry_snapshot,
+    resolve_skill,
+)
 from app.services.agent_host_registry import host_capability_matrix
 from app.services.operation_projection import (
     confirm_operation_proposal,
@@ -107,6 +112,12 @@ def main(argv: Optional[list[str]] = None) -> int:
                 {
                     "ok": True,
                     "operation_count": len(list_operations()),
+                    "operation_registry_count": len(list_operations()),
+                    "agent_tool_count": len(agent_operation_names()),
+                    "featured_tool_count": len(agent_operation_names(featured_only=True)),
+                    "internal_operation_count": (
+                        len(list_operations()) - len(agent_operation_names())
+                    ),
                     "returned_count": len(operations),
                     "selector": selector,
                     "operations": operations,
@@ -154,6 +165,9 @@ def main(argv: Optional[list[str]] = None) -> int:
                 args.pretty,
                 exit_code=0 if result.get("ok") else 1,
             )
+        if args.command == "ui":
+            from app.ui_cli import main as ui_main
+            return ui_main(["ui"] + args.ui_args)
         return _print({"ok": False, "errors": ["缺少命令"], "commands": _commands()}, exit_code=2)
     except KeyboardInterrupt:
         return _print({"ok": False, "errors": ["interrupted"]}, getattr(args, "pretty", False), exit_code=130)
@@ -189,11 +203,19 @@ def _build_parser() -> JsonArgumentParser:
     manifest_selector.add_argument("--group", default="", help="Show compact Operation summaries for one group.")
     manifest_selector.add_argument("--all", dest="all_operations", action="store_true", help="Show the full developer audit manifest.")
 
-    ops = sub.add_parser("ops", help="Discover atomic internal operations.", add_help=False)
+    ops = sub.add_parser(
+        "ops",
+        help="Discover Agent-facing OfferU tools; --all is the raw Operation Registry audit.",
+        add_help=False,
+    )
     ops.add_argument("--pretty", action="store_true", help="Pretty-print JSON.")
     ops_selector = ops.add_mutually_exclusive_group()
     ops_selector.add_argument("--skill", default="", help="List compact Operations for one Skill.")
-    ops_selector.add_argument("--group", default="", help="List compact Operations for one group.")
+    ops_selector.add_argument(
+        "--group",
+        default="",
+        help="List Agent-exposed Operations for one group; internal/legacy entries stay hidden.",
+    )
     ops_selector.add_argument("--all", dest="all_operations", action="store_true", help="List every full Operation schema for auditing.")
 
     schema = sub.add_parser("schema", help="Show one operation schema.", add_help=False)
@@ -246,11 +268,15 @@ def _build_parser() -> JsonArgumentParser:
     )
     conformance.add_argument("--refresh", action="store_true", help="Bypass local version probe cache.")
     conformance.add_argument("--pretty", action="store_true", help="Pretty-print JSON.")
+
+    ui = sub.add_parser("ui", help="UI automation commands (open/click/fill/eval/screenshot/content/wait).", add_help=False)
+    ui.add_argument("ui_args", nargs=argparse.REMAINDER, help="Arguments passed to ui command.")
+
     return parser
 
 
 def _commands() -> list[str]:
-    return ["doctor", "manifest", "ops", "schema", "run", "confirm", "conformance", "bridge"]
+    return ["doctor", "manifest", "ops", "schema", "run", "confirm", "conformance", "bridge", "ui"]
 
 
 def _doctor() -> dict[str, Any]:
@@ -716,14 +742,13 @@ def _select_operations(
         known_groups = {str(operation.get("group") or "ungrouped") for operation in operations}
         if clean_group not in known_groups:
             raise ValueError(f"未知能力组: {clean_group}")
+        # Group discovery is an Agent surface, not a raw Registry dump.  UI-only,
+        # migration, diagnostic and compatibility Operations stay reachable by
+        # exact schema/run name and by the explicit --all developer audit path.
+        selected_names = agent_operation_names()
         selector = f"group:{clean_group}"
     elif default_featured and not all_operations:
-        selected_names = {
-            str(operation_name)
-            for skill_item in catalog()
-            if skill_item.get("featured")
-            for operation_name in skill_item.get("allowed_tools", [])
-        }
+        selected_names = agent_operation_names(featured_only=True)
         selector = "featured_skills"
     if selected_names is not None:
         operations = [operation for operation in operations if operation.get("name") in selected_names]
@@ -776,6 +801,13 @@ def _manifest(*, skill: str = "", group: str = "", all_operations: bool = False)
             "sha256": full_registry["sha256"],
             "skills": [_summarize_skill(item) for item in full_registry["skills"]],
         }
+    agent_names = agent_operation_names()
+    featured_names = agent_operation_names(featured_only=True)
+    agent_schemas = [
+        operation
+        for operation in operation_schemas
+        if str(operation.get("name") or "") in agent_names
+    ]
     return {
         "ok": True,
         "service": "OfferU CLI",
@@ -809,10 +841,18 @@ def _manifest(*, skill: str = "", group: str = "", all_operations: bool = False)
             "raw_api_capability": False,
             "side_effect_labels": sorted({effect for op in operation_schemas for effect in op.get("side_effects", [])}),
         },
+        # operation_count is retained for backwards compatibility.  New callers
+        # should distinguish the governed Registry from the model-facing Tool
+        # surface instead of treating every Operation as an Agent tool.
         "operation_count": len(operation_schemas),
+        "operation_registry_count": len(operation_schemas),
+        "agent_tool_count": len(agent_names),
+        "featured_tool_count": len(featured_names),
+        "internal_operation_count": len(operation_schemas) - len(agent_names),
         "returned_count": len(operations),
         "selector": selector,
         "groups": _groups(operation_schemas),
+        "agent_groups": _groups(agent_schemas),
         "operations": operations,
         "skill_registry": skills,
         # Host × Skill support matrix (full/limited/unsupported) so an external

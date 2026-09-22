@@ -5,7 +5,7 @@ user-invocable: true
 argument-hint: "[skill-id | goal | JD/URL]"
 ---
 
-<!-- generated: offeru-skill-registry@2026-07-30.2 sha256=bc92f50701240cdc9c8f42c63a8dd440cccce7aa8af5c7b543f8045dc11debaf -->
+<!-- generated: offeru-skill-registry@2026-07-30.2 sha256=aaed3fc9f2d46ef3564d49f1a20fdd408c03779eea2554b710b7274118406f23 -->
 
 # OfferU External-Agent Router
 

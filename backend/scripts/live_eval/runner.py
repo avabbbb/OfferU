@@ -290,9 +290,16 @@ def _run_cli(database_url: str, args: list[str]) -> dict[str, Any]:
         return {"ok": False, "raw": (proc.stdout or "")[:400]}
 
 
-def _pick_target_job(eval_db: Path) -> int:
+def _pick_target_job(eval_db: Path, *, pinned_job_id: int = 0) -> int:
     connection = sqlite3.connect(str(eval_db))
     try:
+        if pinned_job_id > 0:
+            row = connection.execute(
+                "SELECT id FROM jobs WHERE id = ? AND COALESCE(raw_description, '') != ''",
+                (pinned_job_id,),
+            ).fetchone()
+            if row:
+                return int(row[0])
         row = connection.execute(
             "SELECT id FROM jobs WHERE COALESCE(raw_description, '') != '' ORDER BY id DESC LIMIT 1"
         ).fetchone()
@@ -494,6 +501,7 @@ async def _run_harness_once(prompt: str, *, eval_db: Path, timeout: int) -> Trac
     trace.final_text = str((result_event or {}).get("result") or "")
     trace.is_error = (result_event or {}).get("is_error")
     trace.provider_failure = classify_provider_failure(trace)
+    return trace
 async def _run_harness_omp(
     prompt: str, *, eval_db: Path, timeout: int, case_dir: Path, round_index: int
 ) -> Trace:
@@ -590,7 +598,7 @@ async def run_case_once(
     clone_database(source_db, eval_db)
     database_url = f"sqlite+aiosqlite:///{eval_db.as_posix()}"
 
-    target_job_id = _pick_target_job(eval_db)
+    target_job_id = _pick_target_job(eval_db, pinned_job_id=case.target_job_id)
     seed_result = _seed_current_view(database_url, target_job_id)
     seed_ok = bool(seed_result.get("ok"))
 
@@ -975,18 +983,21 @@ async def main_async(args: argparse.Namespace) -> int:
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
 
-    if args.skill_route_file and args.private_suite_file:
+    _case_file_args = [f for f in (args.skill_route_file, args.private_suite_file, args.resume_opt_file) if f]
+    if len(_case_file_args) > 1:
         print("choose only one private case file", file=sys.stderr)
         return 2
-    private_case_file = Path(args.skill_route_file or args.private_suite_file).resolve() if (
-        args.skill_route_file or args.private_suite_file
-    ) else None
+    private_case_file = Path(_case_file_args[0]).resolve() if _case_file_args else None
     if args.skill_route_file:
         catalog = load_skill_route_cases(private_case_file)
         private_suite_name = "skill-route"
     elif args.private_suite_file:
         catalog = load_private_real_user_cases(private_case_file)
         private_suite_name = "private-real-user"
+    elif args.resume_opt_file:
+        from scripts.live_eval.resume_opt_suite import load_resume_opt_cases
+        catalog = load_resume_opt_cases(private_case_file)
+        private_suite_name = "resume-opt"
     else:
         catalog = LIVE_EVAL_CASES
         private_suite_name = ""
@@ -1144,6 +1155,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="Repo-external completed SkillRoute-50 JSON dataset.")
     parser.add_argument("--private-suite-file", default="",
                         help="Repo-external completed Private Real-User 20 JSON dataset.")
+    parser.add_argument("--resume-opt-file", default="",
+                        help="Repo-external Resume-Opt eval JSON dataset (variable case count).")
     parser.add_argument("--seed-check", action="store_true", help="Validate the seed source database.")
     parser.add_argument("--case", dest="case_id", default="", help="Run one case id (E01 or slug).")
     parser.add_argument("--suite", default="smoke", help=f"Suite: {', '.join(SUITE_VALUES)} or all.")

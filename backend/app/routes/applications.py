@@ -376,7 +376,7 @@ async def create_application(data: ApplicationCreate):
 
 @router.post("/generate")
 async def generate(data: GenerateRequest):
-    return await _execute_operation("generate_legacy_cover_letter", data.model_dump())
+    return await _execute_operation("generate_cover_letter", data.model_dump())
 
 
 @router.get("/stats")
