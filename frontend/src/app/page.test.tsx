@@ -103,6 +103,46 @@ describe("TodayPage", () => {
     expect(screen.getByText("保存第一个岗位")).toBeInTheDocument();
   });
 
+  it("把当前求职状态压缩成最多三条主动下一步", async () => {
+    setupJobs({ weekTotal: 1, allTotal: 3 });
+    mockUseProgressCandidates.mockReturnValue({ ...idleHook, data: { items: [], total: 2 } });
+    mockUseProgressBoard.mockReturnValue({
+      ...idleHook,
+      data: {
+        companies: [
+          {
+            company: "星辰科技",
+            records: [
+              {
+                application_attempt_id: 11,
+                job_id: 101,
+                company: "星辰科技",
+                job_title: "AI 产品经理",
+                current_stage: "interview_1",
+                next_action: "准备一面",
+                last_event_at: "2026-09-22T10:00:00",
+                pending_candidates: 2,
+                upcoming_interview: {
+                  title: "AI 产品经理一面",
+                  start_time: "2026-09-23T14:00:00",
+                },
+              },
+            ],
+          },
+        ],
+        summary: { pending_review: 2 },
+        total_records: 1,
+      },
+    });
+
+    render(<TodayPage />);
+
+    expect(await screen.findByText("先做这几件事")).toBeInTheDocument();
+    expect(screen.getByText("先确认 2 条求职进展")).toBeInTheDocument();
+    expect(screen.getByText("准备 星辰科技 · AI 产品经理")).toBeInTheDocument();
+    expect(screen.getByText(/最多只给你 3 个下一步/)).toBeInTheDocument();
+  });
+
   it("待确认信号可标记已处理，并从待确认列表消失", async () => {
     setupJobs({ weekTotal: 0, allTotal: 0 });
     const pending = {

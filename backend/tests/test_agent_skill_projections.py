@@ -70,6 +70,7 @@ class AgentSkillProjectionTests(unittest.TestCase):
         for content in rendered.values():
             self.assertIn("python -m app.cli manifest --pretty", content)
             self.assertIn("python -m app.cli manifest --skill <skill-id> --pretty", content)
+            self.assertIn("career Skills", content)
             self.assertNotIn("python -m app.cli confirm", content)
             self.assertNotIn("agent_playbook --arg detail=full", content)
             self.assertNotIn("python -m app.cli api ", content)

@@ -439,6 +439,76 @@ export default function TodayPage() {
   const pendingProgress = progressCandidates?.items ?? [];
   const pendingProgressCount = pipeline?.summary.pending_review ?? progressCandidates?.total ?? 0;
 
+  const guidedActions = useMemo(() => {
+    const actions: Array<{
+      key: string;
+      title: string;
+      reason: string;
+      href: string;
+      cta: string;
+      emphasis: "urgent" | "recommended" | "normal";
+    }> = [];
+
+    if (pendingProgressCount > 0) {
+      actions.push({
+        key: "review-progress",
+        title: `先确认 ${pendingProgressCount} 条求职进展`,
+        reason: "这些候选只有在你确认后才会更新正式 Pipeline，先处理可以避免后续判断建立在旧状态上。",
+        href: "/applications?view=board",
+        cta: "去确认",
+        emphasis: "urgent",
+      });
+    }
+
+    const interviewRecord = pipelineRecords.find(
+      (record) => Boolean(record.upcoming_interview) || isInterviewStage(record.current_stage),
+    );
+    if (interviewRecord) {
+      const interviewTime = interviewRecord.upcoming_interview
+        ? formatEventTime(interviewRecord.upcoming_interview.start_time)
+        : "";
+      actions.push({
+        key: `interview-${interviewRecord.application_attempt_id ?? interviewRecord.job_id}`,
+        title: `准备 ${interviewRecord.company} · ${interviewRecord.job_title}`,
+        reason: interviewTime
+          ? `最近的面试安排在 ${interviewTime}，优先把岗位证据和面试重点准备好。`
+          : "这个岗位已经进入面试阶段，建议优先准备岗位证据和高概率追问。",
+        href: `/jobs/${interviewRecord.job_id}`,
+        cta: "开始准备",
+        emphasis: "recommended",
+      });
+    }
+
+    if (pendingSignals.length > 0) {
+      actions.push({
+        key: "review-signals",
+        title: `处理 ${pendingSignals.length} 条外部求职信号`,
+        reason: "OfferU 已经从邮箱等来源发现需要你确认的信息，确认后才会进入正式职业状态。",
+        href: "/email",
+        cta: "查看信号",
+        emphasis: "recommended",
+      });
+    }
+
+    const nextRecord = pipelineRecords.find(
+      (record) =>
+        record !== interviewRecord
+        && Boolean(String(record.next_action || "").trim()),
+    );
+    if (nextRecord && actions.length < 3) {
+      actions.push({
+        key: `pipeline-${nextRecord.application_attempt_id ?? nextRecord.job_id}`,
+        title: `${nextRecord.company} · ${nextRecord.job_title}`,
+        reason: String(nextRecord.next_action || "继续推进这个岗位"),
+        href: `/jobs/${nextRecord.job_id}`,
+        cta: "继续推进",
+        emphasis: "normal",
+      });
+    }
+
+    return actions.slice(0, 3);
+  }, [pendingProgressCount, pendingSignals.length, pipelineRecords]);
+
   const today = new Date();
   const dateLabel = today.toLocaleDateString("zh-CN", {
     month: "long",
@@ -470,6 +540,55 @@ export default function TodayPage() {
       <motion.div variants={item}>
         <OnboardingChecklist hasJobs={Boolean(jobsData?.items?.length)} />
       </motion.div>
+
+      {guidedActions.length > 0 && (
+        <motion.section variants={item} aria-labelledby="guided-next-actions">
+          <div className="mb-2 flex items-end justify-between gap-4 px-1">
+            <div>
+              <div className="flex items-center gap-2">
+                <Sparkles size={14} className="text-[var(--primary-yellow)]" />
+                <h2 id="guided-next-actions" className="text-[13px] font-semibold text-[var(--foreground)]">
+                  先做这几件事
+                </h2>
+              </div>
+              <p className="mt-1 text-[12px] text-[var(--foreground-muted)]">
+                OfferU 根据当前求职状态排序，最多只给你 3 个下一步。
+              </p>
+            </div>
+          </div>
+          <div className="grid gap-2">
+            {guidedActions.map((action, index) => (
+              <Link
+                key={action.key}
+                href={action.href}
+                className={`group flex items-start gap-3 rounded-xl border px-4 py-3 transition-colors duration-[var(--dur-quick)] hover:bg-[var(--surface-hover)] ${
+                  action.emphasis === "urgent"
+                    ? "border-[var(--primary-red)]/35"
+                    : action.emphasis === "recommended"
+                      ? "border-[var(--primary-yellow)]/35"
+                      : "border-[var(--border)]"
+                }`}
+              >
+                <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-[11px] font-semibold text-[var(--background)]">
+                  {index + 1}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[13px] font-semibold text-[var(--foreground)]">
+                    {action.title}
+                  </span>
+                  <span className="mt-1 block text-[12px] leading-5 text-[var(--foreground-muted)]">
+                    {action.reason}
+                  </span>
+                </span>
+                <span className="mt-0.5 inline-flex shrink-0 items-center gap-1 text-[12px] font-medium text-[var(--foreground)]">
+                  {action.cta}
+                  <ArrowRight size={12} className="transition-transform group-hover:translate-x-0.5" />
+                </span>
+              </Link>
+            ))}
+          </div>
+        </motion.section>
+      )}
 
       {/* 后台自动化收件箱：只呈现候选/提案，不在首页静默提交外部操作 */}
       <motion.section variants={item}>
