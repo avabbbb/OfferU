@@ -1,3 +1,5 @@
+> **HISTORICAL SNAPSHOT — 2026-09-14.** This audit describes the repository before Tool Surface V2 and the 2026-09-23 documentation/product reset. It is evidence for that date, not current architecture authority. Current authority: `docs/product/current-product.md`, `CONTEXT.md`, `ARCHITECTURE.md`.
+
 # OfferU Agent Eval —— 架构审计
 
 - 状态：第 1 阶段（Inspect）产出，作为后续实现的唯一前置事实源
