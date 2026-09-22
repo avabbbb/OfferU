@@ -534,34 +534,6 @@ async def generate_legacy_interview_answer(question_id: int) -> dict[str, Any]:
         }
 
 
-async def generate_legacy_cover_letter(job_id: int, resume_id: int) -> dict[str, Any]:
-    from app.agents.cover_letter import generate_cover_letter
-
-    async with async_session() as db:
-        job = (await db.execute(select(Job).where(Job.id == job_id))).scalar_one_or_none()
-        if not job:
-            raise ValueError("Job not found")
-        resume = (
-            await db.execute(select(Resume).where(Resume.id == resume_id))
-        ).scalar_one_or_none()
-        if not resume:
-            raise ValueError("Resume not found")
-
-        content = resume.content_json or {}
-        resume_text = f"姓名: {content.get('name', '')}\n"
-        resume_text += f"技能: {content.get('skills', '')}\n"
-        for experience in content.get("experience", []):
-            resume_text += (
-                f"工作经历: {experience.get('company', '')} - "
-                f"{experience.get('position', '')}\n"
-                f"  描述: {experience.get('description', '')}\n"
-            )
-        return await generate_cover_letter(
-            jd=job.raw_description or job.summary,
-            resume=resume_text,
-        )
-
-
 async def create_resume_template(
     name: str,
     thumbnail_url: str = "",
