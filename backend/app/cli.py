@@ -285,13 +285,6 @@ def _doctor() -> dict[str, Any]:
     provider_health = _doctor_provider_health()
     data_safety = _doctor_data_safety()
     frontend_health = _doctor_frontend_health()
-    agent_names = agent_operation_names()
-    featured_names = agent_operation_names(featured_only=True)
-    agent_schemas = [
-        operation
-        for operation in operation_schemas
-        if str(operation.get("name") or "") in agent_names
-    ]
     return {
         "ok": True,
         "service": "OfferU CLI",
@@ -808,6 +801,13 @@ def _manifest(*, skill: str = "", group: str = "", all_operations: bool = False)
             "sha256": full_registry["sha256"],
             "skills": [_summarize_skill(item) for item in full_registry["skills"]],
         }
+    agent_names = agent_operation_names()
+    featured_names = agent_operation_names(featured_only=True)
+    agent_schemas = [
+        operation
+        for operation in operation_schemas
+        if str(operation.get("name") or "") in agent_names
+    ]
     return {
         "ok": True,
         "service": "OfferU CLI",
