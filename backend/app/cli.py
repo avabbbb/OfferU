@@ -16,7 +16,12 @@ from app.database import init_db
 from app.ops import get_operation_schema, list_operations
 from app.bridge_cli import main as bridge_main
 from app.runtime_paths import runtime_data_dir, runtime_uploads_dir
-from app.services.agent_skill_registry import (\n    agent_operation_names,\n    catalog,\n    registry_snapshot,\n    resolve_skill,\n)
+from app.services.agent_skill_registry import (
+    agent_operation_names,
+    catalog,
+    registry_snapshot,
+    resolve_skill,
+)
 from app.services.agent_host_registry import host_capability_matrix
 from app.services.operation_projection import (
     confirm_operation_proposal,
