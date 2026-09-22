@@ -1,11 +1,15 @@
-"""OMP executor bridge: reads omp_request.json, executes via app.cli, writes omp_result.json.
+"""Scripted CLI executor for deterministic eval — NOT an Agent.
 
-Usage:
-    python -m scripts.live_eval.omp_executor --watch-dir <run_dir> --db <eval.db>
+This module reads eval case prompts and executes a fixed sequence of CLI
+operations. It does NOT launch OMP/SWE-2, does NOT do LLM reasoning, and
+does NOT let the model choose which operations to call.
 
-This runs as a long-lived process alongside the runner. For each case_dir that
-appears under watch_dir, it reads omp_request.json, executes the requested
-operation sequence via app.cli, and writes omp_result.json.
+Name history: this was originally called `omp_executor.py` which was
+misleading — it suggested this was an OMP/SWE-2 Agent executor. It is not.
+It is a deterministic script that calls `python -m app.cli` in a fixed order.
+
+For real Agent E2E testing, use `agent_executor.py` (to be created) which
+launches a real OMP session and lets the model decide which tools to call.
 """
 
 from __future__ import annotations
