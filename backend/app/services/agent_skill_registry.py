@@ -134,6 +134,26 @@ def catalog() -> list[dict[str, Any]]:
     return [skill.summary() for skill in sorted(skills, key=lambda item: (item.order, item.id))]
 
 
+def agent_operation_names(*, featured_only: bool = False) -> set[str]:
+    """Return Operations intentionally exposed through Agent Skills.
+
+    The Operation Registry is the governed execution/control plane and includes
+    UI-only, migration, diagnostic and compatibility Operations.  It is not the
+    same thing as the model-facing Tool surface.
+
+    This helper is the single projection boundary used by CLI discovery:
+    - all Skill allowlists -> complete Agent Tool surface;
+    - featured Skills only -> default compact discovery surface.
+    """
+
+    names: set[str] = set()
+    for skill in catalog():
+        if featured_only and not bool(skill.get("featured")):
+            continue
+        names.update(str(name) for name in skill.get("allowed_tools") or [] if str(name))
+    return names
+
+
 def registry_snapshot(operation_schemas: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     skills = catalog()
     if operation_schemas is not None:

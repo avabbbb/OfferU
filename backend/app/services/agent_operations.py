@@ -1097,12 +1097,6 @@ async def delegate_career_task(
     )
 
 
-async def get_agent_provider_health(provider_id: str) -> dict:
-    from app.services.agent_provider_health import get_provider_health
-
-    return await get_provider_health(provider_id)
-
-
 async def list_agent_provider_health() -> dict:
     from app.services.agent_provider_health import list_provider_health
 
