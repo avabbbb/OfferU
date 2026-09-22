@@ -1,3 +1,5 @@
+> **HISTORICAL SNAPSHOT — 2026-09-14/16.** This execution plan records the earlier Codex-first simplification phase. Current product authority is `docs/product/current-product.md`; current host support comes from live registries/probes, not this plan.
+
 # OfferU product and architecture simplification
 
 Date: 2026-09-14. Status: S1-S4 source implementation and offline regression complete; Codex Agent connection acceptance passed on 2026-09-16.

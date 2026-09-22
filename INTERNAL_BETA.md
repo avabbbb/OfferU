@@ -1,3 +1,6 @@
+> [!NOTE]
+> **HISTORICAL INTERNAL-BETA WALKTHROUGH.** Keep this for regression/demo archaeology. It is not the current onboarding or product authority; use `docs/product/current-product.md`, `STATUS.md`, and `HANDOFF.md` for current direction.
+
 # OfferU Internal Beta
 
 > [!IMPORTANT]

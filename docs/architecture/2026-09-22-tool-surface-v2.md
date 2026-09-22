@@ -1,7 +1,7 @@
 # Tool Surface V2 — Operation Registry is not the Agent Tool Catalog
 
 Date: 2026-09-22  
-Status: proposed implementation slice
+Status: **CURRENT / merged in #17**
 
 ## Problem
 
@@ -19,7 +19,7 @@ registry contains more than model-facing tools:
 That control-plane breadth is useful for audit and authorization, but it is harmful if every
 entry is presented as an equally eligible Agent tool.
 
-On the current assisted-apply branch before this slice:
+Pre-change baseline on the assisted-apply branch (historical counts used for the V2 comparison):
 
 | Surface | Count |
 | --- | ---: |

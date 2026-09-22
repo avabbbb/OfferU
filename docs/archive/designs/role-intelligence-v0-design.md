@@ -1,3 +1,5 @@
+> **HISTORICAL SNAPSHOT** — archived from `ROLE_INTELLIGENCE_V0_DESIGN.md` on 2026-09-23. It does not define current product or architecture authority. See `docs/product/current-product.md`, `CONTEXT.md`, and `ARCHITECTURE.md`.
+
 # Role Intelligence v0.1 设计审计
 
 状态：现状审计、G1–G3 后端切片、最小 Collection Provider seam 与 fixture-backed Job Detail / Evidence Gap 切片已落地。G2A fixture corpus 已有验证证据；G2B 真实外部采集仍因 Codex Auth 401 阻塞。G4/G5 fixture-backed Job Detail 链已通过浏览器 smoke 与人工质量复核，但真实市场质量尚未通过；Interview、DSH provider 和 live collector 不在本轮。已记录非阻塞静态资源问题：`http://127.0.0.1:7410/favicon.ico` 返回 404。审计/开发日期：2026-08-27。

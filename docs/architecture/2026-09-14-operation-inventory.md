@@ -1,3 +1,5 @@
+> **HISTORICAL SNAPSHOT — 2026-09-14.** The operation counts and manifest measurements below are intentionally preserved as the pre-Tool-Surface-V2 baseline. Do not use them as current tool counts.
+
 # Operation surface inventory — 2026-09-14
 
 Measured against the working checkout before simplification: **257 registered operations, 88 read-only, 169 with side effects, 18 domain groups, 35 Skills (15 featured), 14 Bridge read grants**. CLI remains 8 top-level verbs. The default manifest returns 257 full schemas and serializes to 356,711 UTF-8 bytes using `json.dumps(..., ensure_ascii=False)` with its default separators. Existing `--summary` still advertises all 257 operations and serializes to 26,284 bytes. These are bytes, not token counts.

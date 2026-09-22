@@ -1,3 +1,5 @@
+> **HISTORICAL SNAPSHOT** — archived from `docs/PRODUCT_CRITIQUE_2026-09.md` on 2026-09-23. It does not define current product or architecture authority. See `docs/product/current-product.md`, `CONTEXT.md`, and `ARCHITECTURE.md`.
+
 # OfferU 产品设计拷打（2026-09-20）
 
 > 视角：严格、以证据为准的产品评审。前轮记录、当前代码、实际诊断和推断必须分开；涉及私密素材的工件留在本机，不复制简历、JD 正文或凭据到本文。

@@ -128,12 +128,16 @@ Today、Pipeline、Job Detail 和 Timeline 读的是同一份底层职业状态�
 OfferU 会生成针对性的面试重点，进行多轮对话训练，追问含糊的回答，产出基于转写的复盘，
 并把有价值的观察变成可审核的学习候选。
 
-### 受控的 Agent，不是黑盒
+### 用你已有的 AI，但让 Career OS 管住事实与执行
 
-OfferU 允许 AI Agent 推理和使用工具，但模型不掌握业务事实。
+OfferU 优先复用你本机已经在用的 Agent，也允许 OfferU 内置能力作为兜底；无论使用哪个模型，都不能直接拥有业务事实或绕过确认。
 
 ```text
-Agent Runtime
+本地 Agent（优先）/ OfferU fallback
+    ↓
+OfferU Skill + 可组合求职 Skills
+    ↓
+Agent Tool Surface
     ↓
 Operation Registry
     ↓
@@ -142,8 +146,7 @@ Operation Registry
 Career Runtime
 ```
 
-Agent 负责推理；Operation Registry 负责控制能力与副作用；Career Runtime 负责持有持久化事实。
-敏感变更和不可逆动作的最终批准权始终在你手里。
+Agent 负责推理；第三方简历、招聘、面试 Skill 可以提供方法论；OfferU 负责真实职业上下文、能力边界、副作用和持久化事实。
 
 ---
 
@@ -177,10 +180,11 @@ Agent 是全局能力，不是又一个割裂的聊天窗口。
       ↓
     自动检测
       ↓
-┌─────┼─────┐
-Codex  Claude  OpenCode
+┌──────────┼──────────┐
+Codex  WorkBuddy  Claude  OMP / 其他
       ↓
   OfferU Skill
+  + 可组合 Career Skills
       ↓
   OfferU Bridge
       ↓
@@ -273,11 +277,11 @@ OfferU 还没有对外发布签名安装包。源码开发与内测请看：
 ```text
 下载
 → 安装
-→ 启动
-→ 连接你的 AI Agent
-→ 建立职业档案
-→ 保存一个岗位
-→ 剩下的交给 OfferU 准备
+→ 自动发现本机 AI
+→ 简历 + 可选授权 AI 记忆 → Profile
+→ 浏览器保存第一个岗位
+→ 可选连接求职邮箱
+→ Today 主动告诉你下一步
 ```
 
 > 如果仓库根目录存在 `OfferU.exe`，那是历史 `0.1.0` 二进制，不是当前 Release Candidate，不要运行。
@@ -314,11 +318,11 @@ npm run build
 
 当前优先级是产品化，而不是继续堆顶层功能：
 
-1. **零摩擦 AI 接入** —— 连接一次，自动检测能力，默认 Auto。
-2. **真实可用的 Role Intelligence** —— 至少打通一条真实的外部研究链路。
-3. **公开桌面版发布** —— 签名安装包、clean-machine 安装、迁移、备份、恢复与升级验证。
-4. **隐私与安全加固** —— 完成剩余的安全与隐私 Gate。
-5. **真实用户反馈** —— 在真实求职流程中使用，修掉影响最大的问题。
+1. **Zero-Setup Onboarding** —— 原生安装、自动发现 Agent、建档、首个岗位、邮箱、可用 Today。
+2. **真实外部 Agent Eval** —— 先证明 Agent 能自主发现并使用 OfferU Tools 跑完真实流程，再继续压缩工具面。
+3. **浏览器 + 邮箱产品化** —— 一键保存岗位、只读进度同步、低门槛审核。
+4. **公开桌面版发布** —— 签名安装包、clean-machine 安装、迁移、备份、恢复与升级验证。
+5. **隐私、安全和真实用户迭代** —— 保持硬安全门，同时持续减少用户操作成本。
 
 ---
 

@@ -1,3 +1,5 @@
+> **HISTORICAL EVAL GUIDE.** This file predates the current Live Eval / real OMP RPC path and may mention manual API-key/runtime setup that is no longer the default product direction. Use `docs/evals/LIVE_EVAL.md`, `STATUS.md`, and PR #16 for current external-Agent validation.
+
 # Real Agent E2E Test Guide
 
 This document describes how to run a **real Agent E2E test** for OfferU's resume optimization feature.
