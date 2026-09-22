@@ -31,7 +31,7 @@ Public Release 指一个可公开分发的 local-first 个人 Career OS。陌生
 
 ## Product North Star
 
-OfferU 是 local-first 自动化 Career OS。它持续知道用户是谁、正在投什么、当前发生了什么、岗位真正看重什么以及下一步最值得做什么。系统自动完成研究、整理和准备；用户负责事实确认、关键决策和真实世界不可逆行为。
+OfferU 是 local-first 自动化 Career OS。它持续知道用户是谁、正在投什么、当前发生了什么、岗位真正看重什么以及下一步最值得做什么。系统同时减少 setup burden 与 decision burden：优先复用用户已有本地 Agent，并主动给出 Next Best Action；用户负责事实确认、关键决策和真实世界不可逆行为。
 
 每个进入本 Release 的改动都必须明显改善至少一项：
 
@@ -62,7 +62,7 @@ Agent 是全局能力；Memory 是 Profile 的演进机制；Resume、Role Intel
 TypeScript / React = UI、交互、本地 client state
 Python / FastAPI = Career Domain Runtime、Operation Registry、Automation、Data、Business State
 Tauri / Rust = Desktop shell、进程生命周期、OS 集成、Installer / Update boundary
-AgentRuntimeProvider = Pi / Codex / DSH / future harness 的 provider-neutral seam
+Agent Host / Runtime = Codex / WorkBuddy / Claude Code / OpenCode / OMP / Pi / future hosts；external-first，OfferU built-in fallback
 ```
 
 - 不进行 Python → TypeScript 全量重写；
@@ -73,7 +73,7 @@ AgentRuntimeProvider = Pi / Codex / DSH / future harness 的 provider-neutral se
 ## Stable Authority Model
 
 ```text
-Agent Runtime = Reasoning Authority
+Active Agent = Reasoning Authority（external local Agent preferred; OfferU fallback allowed）
 Operation Registry = Capability / Execution Control
 OfferU Domain Runtime = Career Truth
 User = High-risk Approval Authority
@@ -110,7 +110,7 @@ Event → Rule → CareerTask → Agent / Runtime → Operation
 
 ### First Run
 
-Launch → Welcome → explain OfferU → create/import Profile → add first Job → automatic preparation → Today。正常路径不得要求终端，也不得让用户理解 MCP、Operation Registry、Codex、Pi、DSH、FastAPI 或 SQLite。
+Install → Launch → auto-detect local AI → Resume + explicitly authorized memory → Profile → save first Job → optionally connect job-search inbox → Today / Next Best Actions。正常路径不得要求终端，也不得让用户理解 MCP、Operation Registry、Provider、Harness、FastAPI 或 SQLite。
 
 Onboarding Golden Path 必须 100% 通过，并达到 0 uncaught exception、0 blank page、0 developer-only blocker。Today、Pipeline、Profile、Job、Resume 的空状态必须解释原因并给出下一步。
 
