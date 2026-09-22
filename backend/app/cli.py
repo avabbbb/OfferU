@@ -154,6 +154,9 @@ def main(argv: Optional[list[str]] = None) -> int:
                 args.pretty,
                 exit_code=0 if result.get("ok") else 1,
             )
+        if args.command == "ui":
+            from app.ui_cli import main as ui_main
+            return ui_main(["ui"] + args.ui_args)
         return _print({"ok": False, "errors": ["缺少命令"], "commands": _commands()}, exit_code=2)
     except KeyboardInterrupt:
         return _print({"ok": False, "errors": ["interrupted"]}, getattr(args, "pretty", False), exit_code=130)
@@ -246,11 +249,15 @@ def _build_parser() -> JsonArgumentParser:
     )
     conformance.add_argument("--refresh", action="store_true", help="Bypass local version probe cache.")
     conformance.add_argument("--pretty", action="store_true", help="Pretty-print JSON.")
+
+    ui = sub.add_parser("ui", help="UI automation commands (open/click/fill/eval/screenshot/content/wait).", add_help=False)
+    ui.add_argument("ui_args", nargs=argparse.REMAINDER, help="Arguments passed to ui command.")
+
     return parser
 
 
 def _commands() -> list[str]:
-    return ["doctor", "manifest", "ops", "schema", "run", "confirm", "conformance", "bridge"]
+    return ["doctor", "manifest", "ops", "schema", "run", "confirm", "conformance", "bridge", "ui"]
 
 
 def _doctor() -> dict[str, Any]:
