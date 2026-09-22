@@ -33,6 +33,8 @@ Playwright MCP 或Browser 来访问/截图/识别/探索网站的视觉和代码
 - **网页导航必须先确认服务就绪**：扩展或其它用户入口在创建 `7410` 网页标签前，必须使用有界超时检查 `http://127.0.0.1:7410`；检查失败、超时或返回错误时只显示提示，不创建浏览器标签。后端 `8766` 和模型 `8080` 永远不能作为网页导航目标。
 - **扩展验收同样不得选系统浏览器**：`extension/scripts/` 下的 fixture、smoke 和 E2E 脚本必须使用 Playwright 自带的 managed Chromium、临时隔离 profile 与 `headless: true`；不得扫描或传入 Chrome/Edge 可执行文件路径。
 - **仓库内所有自动浏览器脚本都遵守同一边界**：包括根目录临时/历史脚本；统一使用 Playwright managed Chromium 与 `headless: true`，不得保留系统 Chrome/Edge 的 `executablePath`、channel 或可见窗口入口。用户主动触发的授权登录窗口是唯一例外，且不属于自动验收。
+- **Agent-native 产品验收不得用 Playwright 代替 Agent 操作**：当目标是验证“本地 Coding Agent 使用 OfferU”时，真实 Coding Agent 必须通过 OfferU Skill → CLI/Bridge → Operation Registry 调用业务能力；Playwright 只能作为独立的前端回归/可视化验证，不得把“浏览器能点通”写成 Agent E2E。用户自己打开可见 OfferU 前端观察、编辑和执行 HITL 确认属于正常产品使用，不等于自动浏览器验收，也不要求 Agent 去点网页。
+- **禁止 scripted executor 冒充真实 Agent**：任何根据 prompt 关键词或预设步骤直接决定 Operation 序列的 Python/Node/shell executor，只能标记为 deterministic workflow/smoke；即使文件、runtime 或结果名包含 `omp`、`swe2`、`codex` 等字样，也不得宣称对应模型实际参与。真实 Agent E2E 必须保留可核验的 Agent session/model 身份、model-issued tool call、OfferU 可信执行回执（如 OperationAuditLog）和最终环境 outcome；详见 `docs/evals/AGENT_NATIVE_ACCEPTANCE.md`。
 - **测试临时空间固定使用 H 盘**：Agent、浏览器、后端、前端和扩展测试产生的工作目录、缓存、隔离 profile、日志与截图统一放到 `H:\tmp\offeru` 或其子目录；不得把测试临时目录写入 C 盘。已安装的 Agent 可执行文件及其原生认证目录只读使用，不搬迁、不清理用户凭据。
 - **旧二进制不得作为入口**：仓库根目录若存在版本低于当前 Release 的 `OfferU.exe`（当前发现为历史 `0.1.0`），不得自动启动、覆盖或作为验收依据；当前源码开发只使用 `DEVELOPMENT.md` 的 `7410/8766` 进程，正式使用只接受经过 Release Gate 的安装包。
 
