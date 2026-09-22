@@ -214,4 +214,50 @@ def _run_omp_session(prompt: str, model: str, timeout: int, run_dir: Path) -> di
     env = os.environ.copy()
     env["DATABASE_URL"] = f"sqlite+aiosqlite:///{EVAL_DIR}/eval.db"
     env["PYTHONIOENCODING"] = "utf-8"
-    env
+    env["PYTHONPATH"] = str(BACKEND_DIR)
+    
+    proc = subprocess.run(
+        ["omp", "exec", "--model", model, prompt],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        env=env,
+        cwd=str(BACKEND_DIR),
+    )
+    
+    return {
+        "ok": proc.returncode == 0,
+        "stdout": proc.stdout[:5000],
+        "stderr": proc.stderr[:2000],
+        "returncode": proc.returncode,
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Real Agent executor for live eval")
+    parser.add_argument("--case", required=True, help="Eval case ID")
+    parser.add_argument("--model", default="swe-2", help="Model to use")
+    parser.add_argument("--timeout", type=int, default=300, help="Timeout in seconds")
+    parser.add_argument("--cases-file", default=str(EVAL_DIR / "private_resume_opt_6.json"))
+    args = parser.parse_args()
+    
+    # Load case
+    cases_file = Path(args.cases_file)
+    if not cases_file.exists():
+        print(json.dumps({"ok": False, "error": f"Cases file not found: {cases_file}"}))
+        return 1
+    
+    cases = json.loads(cases_file.read_text(encoding="utf-8"))
+    case = next((c for c in cases["cases"] if c["case_id"] == args.case), None)
+    if not case:
+        print(json.dumps({"ok": False, "error": f"Case not found: {args.case}"}))
+        return 1
+    
+    # Run Agent session
+    result = _run_agent_session(case, args.model, args.timeout)
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    return 0 if result.get("ok") else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
