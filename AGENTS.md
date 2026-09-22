@@ -34,7 +34,8 @@ Playwright MCP 或Browser 来访问/截图/识别/探索网站的视觉和代码
 - **扩展验收同样不得选系统浏览器**：`extension/scripts/` 下的 fixture、smoke 和 E2E 脚本必须使用 Playwright 自带的 managed Chromium、临时隔离 profile 与 `headless: true`；不得扫描或传入 Chrome/Edge 可执行文件路径。
 - **仓库内所有自动浏览器脚本都遵守同一边界**：包括根目录临时/历史脚本；统一使用 Playwright managed Chromium 与 `headless: true`，不得保留系统 Chrome/Edge 的 `executablePath`、channel 或可见窗口入口。用户主动触发的授权登录窗口是唯一例外，且不属于自动验收。
 - **测试临时空间固定使用 H 盘**：Agent、浏览器、后端、前端和扩展测试产生的工作目录、缓存、隔离 profile、日志与截图统一放到 `H:\tmp\offeru` 或其子目录；不得把测试临时目录写入 C 盘。已安装的 Agent 可执行文件及其原生认证目录只读使用，不搬迁、不清理用户凭据。
-- **旧二进制不得作为入口**：仓库根目录若存在版本低于当前 Release 的 `OfferU.exe`（当前发现为历史 `0.1.0`），不得自动启动、覆盖或作为验收依据；当前源码开发只使用 `DEVELOPMENT.md` 的 `7410/8766` 进程，正式使用只接受经过 Release Gate 的安装包。
+- **Agent-native 产品验收不得用 Playwright 代替 Agent 操作**：当验收目标是“本地 Coding Agent 使用 OfferU”时，Coding Agent 必须通过 OfferU Skill → CLI/Bridge → Operation Registry 操作业务能力；Playwright 只能作为独立的前端回归测试，不得充当 Agent。用户可以自行打开可见 OfferU 前端作为观察、编辑和 HITL 确认界面，这不属于自动浏览器验收，也不受 `headless=true` 限制。
+- **禁止 scripted executor 冒充 Agent**：预先根据 prompt 关键字写死 Operation 序列的 deterministic executor 只能标为 workflow/smoke，不得标记为 OMP/SWE-2 Agent E2E；Agent E2E 必须保留可验证的模型身份和 model-issued tool calls。
 
 ## Agent skills
 

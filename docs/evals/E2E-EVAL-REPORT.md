@@ -1,14 +1,24 @@
-# OfferU E2E Eval Report — Resume Optimization Pipeline
+# OfferU Deterministic Pipeline Smoke Report
 
 **Date**: 2026-09-22  
-**Scope**: End-to-end user journey validation for resume optimization feature  
+**Scope**: Deterministic validation of resume optimization pipeline (NOT Agent E2E)  
 **Environment**: Local dev (frontend `7410`, backend `8766`, isolated eval DB)
 
 ---
 
-## Executive Summary
+## ⚠️ Critical Clarification
 
-Validated the complete HITL (Human-in-the-Loop) resume optimization flow from user onboarding through proposal acceptance. The eval confirms the product correctly implements the intended workflow: **Profile → Job → Decision Gate → Resume Proposal → User Confirmation**.
+This report documents a **deterministic pipeline smoke test**, not an Agent-native E2E eval.
+
+| What this tested | What this did NOT test |
+|------------------|------------------------|
+| Backend CLI operations work | SWE-2/OMP Agent reasoning |
+| Frontend displays data correctly | Agent tool selection |
+| HITL gates enforce order | Real LLM optimization quality |
+| Manual decision fallback works | Agent-initiated Operation calls |
+| Resume saves to DB | Model identity verification |
+
+**This is a workflow test, not an Agent test.** The `scripted_cli_executor.py` (formerly `omp_executor.py`) executes a fixed sequence of CLI calls based on prompt keywords — it does not launch OMP/SWE-2 or let the model decide which operations to call.
 
 ---
 
@@ -36,45 +46,37 @@ Validated the complete HITL (Human-in-the-Loop) resume optimization flow from us
 
 ---
 
-## User Journey Validation
+## Pipeline Validation Results
 
 ### Step 1: Onboarding
 - 4-question career profile assessment (MBTI-style)
-- Answers map to job preferences and proof types
-- **Result**: Profile initialized, redirected to main app
+- **Result**: ✅ Profile initialized
 
 ### Step 2: Profile Page
 - User resume data correctly loaded
-- Sections: education, experience, projects, skills
-- **Result**: All 8 verified_fact sections displayed
+- **Result**: ✅ All 8 verified_fact sections displayed
 
 ### Step 3: Jobs List
 - Job pool correctly filtered and displayed
-- Pagination working (480+ jobs in test DB)
-- **Result**: Target jobs accessible
+- **Result**: ✅ Target jobs accessible (after fixing triage_status)
 
 ### Step 4: Job Detail
 - JD content displayed
 - Decision gate status visible
-- Material candidate (resume proposal) shown
-- Research evidence linked
-- **Result**: Complete job context available
+- Material candidate shown
+- **Result**: ✅ Complete job context available
 
 ### Step 5: Pre-Application Decision
-- Decision gate requires human input (LLM optional)
 - Manual decision path functional
-- **Result**: "Go" decision recorded, unlocked proposal review
+- **Result**: ✅ "Go" decision recorded
 
 ### Step 6: Resume Workspace
 - Proposal editable in structured editor
-- Live preview (A4 format) visible
-- Section-by-section review supported
-- **Result**: User can review and modify AI proposal
+- **Result**: ✅ User can review and modify proposal
 
 ### Step 7: Save & Confirm
 - "Save version" persists changes
-- New resume record created with job linkage
-- **Result**: Resume 1 saved, `target_job_id` set
+- **Result**: ✅ Resume 1 saved, `target_job_id` set
 
 ---
 
@@ -94,7 +96,7 @@ prepare_resume_optimization → fact_gates_passed → proposal_ready → user_co
 | User confirmation required | ✅ |
 | Resume persisted | ✅ |
 
-### Frontend Integration
+### Frontend Integration (Playwright headless)
 | Surface | Status |
 |---------|--------|
 | Onboarding flow | ✅ |
@@ -118,22 +120,35 @@ prepare_resume_optimization → fact_gates_passed → proposal_ready → user_co
 
 ---
 
-## Safety & Compliance
+## What This Proves
 
-- **No auto-commit**: All changes require explicit user confirmation
-- **Fact gates**: Proposal validated against verified facts before display
-- **Non-destructive**: Original resume preserved; new version created on accept
-- **Audit trail**: All actions logged with timestamps
+✅ **Pipeline integrity**: The backend correctly processes profile → job → decision → proposal → resume  
+✅ **Frontend rendering**: The UI correctly displays eval data and enforces HITL gates  
+✅ **Safety boundaries**: Fact gates prevent invalid proposals; manual confirmation required  
+✅ **Data persistence**: Resume saves correctly with job linkage  
+
+## What This Does NOT Prove
+
+❌ **Agent reasoning**: No LLM was involved in operation selection  
+❌ **Tool selection**: Operations were hardcoded, not model-chosen  
+❌ **Real optimization**: Fixture mode used, no actual LLM rewrite  
+❌ **Quality assessment**: No scoring against ground truth or user preferences  
+❌ **Error handling**: Happy path only, no failure recovery tested  
+❌ **Concurrent access**: Single user, single session only  
 
 ---
 
-## Recommendations
+## Next Steps for Real Agent E2E
 
-1. **LLM Integration**: Configure real API key for automated decision suggestions
-2. **Quality Grading**: Add LLM judge for proposal quality scoring
-3. **Regression Suite**: Run E2E on every PR to catch UI/backend drift
-4. **Multi-Job Testing**: Validate all 3 job targets in sequence
-5. **Edge Cases**: Test rejection flow, insufficient evidence, network failures
+To validate the **Agent-native product experience**, we need:
+
+1. **Real OMP/SWE-2 session**: Launch actual Agent runtime, not scripted CLI calls
+2. **Model-issued tool calls**: Verify Agent decides which Operations to call
+3. **LLM-driven optimization**: Use real API key for content rewriting
+4. **Quality scoring**: LLM judge evaluates proposal against ground truth
+5. **Visible HITL**: User watches frontend while Agent works in background
+6. **Rejection flow**: Test "decline" path, not just "accept"
+7. **Multi-turn interaction**: Agent responds to user feedback, not just one-shot
 
 ---
 
@@ -146,19 +161,14 @@ prepare_resume_optimization → fact_gates_passed → proposal_ready → user_co
 | Eval cases | `private-eval/private_resume_opt_6.json` |
 | Screenshots | `eval-screenshots/` |
 | Report JSON | `e2e_report.json` |
+| Scripted executor | `backend/scripts/live_eval/scripted_cli_executor.py` |
 
 ---
 
 ## Conclusion
 
-The OfferU resume optimization pipeline correctly implements the intended HITL workflow. Users can:
+This deterministic pipeline smoke test confirms the OfferU resume optimization **backend pipeline and frontend integration work correctly**. The HITL flow is enforced, data persists properly, and safety gates function as designed.
 
-1. Complete onboarding and build a profile
-2. Browse and select target jobs
-3. Review AI-generated resume proposals with full context
-4. Make informed decisions with evidence-backed recommendations
-5. Edit, save, or reject proposals with full control
+However, this is **not an Agent E2E test**. To validate the true Agent-native experience — where SWE-2 reasons about user goals, discovers Skills, selects Operations, and calls CLI tools autonomously — a separate eval with real OMP session and model-issued tool calls is required.
 
-The system maintains safety through fact gates, requires human confirmation for all changes, and preserves original data until explicit acceptance.
-
-**Status**: ✅ E2E pipeline validated and working as designed.
+**Status**: ✅ Deterministic pipeline validated | ⚠️ Agent E2E not tested
