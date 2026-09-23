@@ -431,25 +431,30 @@ def test_rpc_v2_frame_reader_reassembles_utf8_chunks() -> None:
     encoded = json.dumps(expected, ensure_ascii=False).encode("utf-8")
     split = len(encoded) // 2
     parts = (encoded[:split], encoded[split:])
-    stream = asyncio.StreamReader()
-    for index, part in enumerate(parts):
-        stream.feed_data(
-            (
-                json.dumps(
-                    {
-                        "type": "rpc_chunk",
-                        "chunkId": "rpc-large",
-                        "index": index,
-                        "count": len(parts),
-                        "byteLength": len(encoded),
-                        "data": base64.b64encode(part).decode("ascii"),
-                    }
-                )
-                + "\n"
-            ).encode("utf-8")
-        )
-    stream.feed_eof()
 
-    actual = asyncio.run(_RpcFrameReader(stream, lambda: 0).read(deadline=time.monotonic() + 2))
+    async def _read_reassembled() -> dict:
+        # Build the StreamReader inside the running loop so Python 3.12 does
+        # not require a pre-set current event loop in the main thread.
+        stream = asyncio.StreamReader()
+        for index, part in enumerate(parts):
+            stream.feed_data(
+                (
+                    json.dumps(
+                        {
+                            "type": "rpc_chunk",
+                            "chunkId": "rpc-large",
+                            "index": index,
+                            "count": len(parts),
+                            "byteLength": len(encoded),
+                            "data": base64.b64encode(part).decode("ascii"),
+                        }
+                    )
+                    + "\n"
+                ).encode("utf-8")
+            )
+        stream.feed_eof()
+        return await _RpcFrameReader(stream, lambda: 0).read(deadline=time.monotonic() + 2)
+
+    actual = asyncio.run(_read_reassembled())
 
     assert actual == expected
