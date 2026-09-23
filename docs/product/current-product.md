@@ -294,11 +294,19 @@ Recently landed on main:
 
 - Assisted Apply / ApplicationActionConnector foundation (#14);
 - Tool Surface V2 separating the governed Operation Registry from the model-facing tool catalog (#17);
-- Guided Today actions and composable local career-Skill contract (#19).
+- Guided Today actions and composable local career-Skill contract (#19);
+- canonical Job Workspace + App-first / Skill-first product authority;
+- real OMP RPC Eval implementation on current main (the old #16 branch is superseded/closed; live Agent-native acceptance is still NOT_RUN);
+- Zero-Setup onboarding implementation for Agent readiness → Resume/Profile → optional authorized memory → first Job → optional inbox → Today;
+- permissioned Codex memory-summary import through the existing evidence/memory-proposal gate;
+- macOS desktop packaging foundation for arm64/x64.
 
 Current active validation work:
 
-- real OMP/RPC Agent Eval (#16, still draft/open).
+- make current main pass CI and release audits;
+- run the real external-Agent Golden Path with trusted execution evidence, human-visible HITL and pass^3;
+- validate one clean Zero-Setup first-run journey with real user inputs;
+- validate signed/notarized macOS clean install, upgrade, migration and recovery.
 
 The previous zero-setup proposal (#18) is incorporated into this North Star; this document is the current product authority.
 
