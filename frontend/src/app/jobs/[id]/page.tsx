@@ -29,7 +29,7 @@ import {
   Send,
   XCircle,
 } from "lucide-react";
-import { patchJob, useJob, usePools, useProgressBoard, useProgressTimeline, useCareerTasks, type CareerTask } from "@/lib/hooks";
+import { controlCareerTask, patchJob, useJob, usePools, useProgressBoard, useProgressTimeline, useCareerTasks, type CareerTask } from "@/lib/hooks";
 import { RoleIntelligencePanel } from "@/components/jobs/RoleIntelligencePanel";
 import {
   jobResearchApi,
@@ -780,7 +780,7 @@ export default function JobDetailPage() {
               </div>
               {preparationTask?.status === "failed" && preparationTask.retryable && (
                 <Button size="sm" variant="flat" color="warning" className="mt-3 !px-3 !py-1.5 !text-[11px]"
-                  onPress={() => void import("@/lib/hooks").then(m => m.controlCareerTask(preparationTask.task_id, "retry"))}>
+                  onPress={() => void controlCareerTask(preparationTask.task_id, "retry").catch((err) => alert(safeClientErrorMessage(err, "重试准备任务失败")))}>
                   重试准备任务
                 </Button>
               )}

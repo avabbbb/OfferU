@@ -1,34 +1,19 @@
-name: Frontend quality
+name: Frontend quality (manual)
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
-  build:
+  frontend-quality:
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v4
-
-    - name: Use Node.js 24
-      uses: actions/setup-node@v4
-      with:
-        node-version: 24
-        cache: npm
-        cache-dependency-path: frontend/package-lock.json
-
-    - name: Install
-      working-directory: frontend
-      run: npm ci
-
-    - name: Typecheck
-      working-directory: frontend
-      run: npm run typecheck
-
-    - name: Build
-      working-directory: frontend
-      run: |
-        npm run build
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - working-directory: frontend
+        run: npm ci
+      - working-directory: frontend
+        run: npm run typecheck
+      - working-directory: frontend
+        run: npm run build

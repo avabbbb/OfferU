@@ -64,7 +64,7 @@ def _description_items(value: Any) -> list[str]:
 
 
 def _archive_id(prefix: str, seed: str) -> str:
-    digest = hashlib.sha1(seed.encode("utf-8")).hexdigest()[:10]
+    digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:10]
     return f"{prefix}_{digest}"
 
 

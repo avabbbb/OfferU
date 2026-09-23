@@ -270,11 +270,9 @@ export default function JobsPage() {
     },
   }[triageStatus];
 
-  const visibleJobOrder = useMemo(() => jobs, [jobs]);
-
   const visibleJobIndexMap = useMemo(() => {
-    return new Map(visibleJobOrder.map((job, index) => [job.id, index]));
-  }, [visibleJobOrder]);
+    return new Map(jobs.map((job, index) => [job.id, index]));
+  }, [jobs]);
 
   // 批量选择辅助
   const toggleJobSelect = useCallback((id: number, options?: { shiftKey?: boolean }) => {
@@ -293,7 +291,7 @@ export default function JobsPage() {
         const from = Math.min(start, end);
         const to = Math.max(start, end);
         for (let i = from; i <= to; i += 1) {
-          next.add(visibleJobOrder[i].id);
+          next.add(jobs[i].id);
         }
       } else if (next.has(id)) {
         next.delete(id);
@@ -304,7 +302,7 @@ export default function JobsPage() {
       return next;
     });
     setLastSelectedAnchorId(id);
-  }, [lastSelectedAnchorId, visibleJobIndexMap, visibleJobOrder]);
+  }, [lastSelectedAnchorId, visibleJobIndexMap, jobs]);
 
   const handleSelectionPointerDown = useCallback(
     (id: number, options?: { shiftKey?: boolean }) => {
