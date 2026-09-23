@@ -9,6 +9,8 @@ from typing import Any
 
 from app.services.security_redaction import redact_secret_value
 
+from scripts.live_eval.skill_route import CAPABILITY_LABEL_OPTIONAL_CATEGORIES
+
 
 def _read_json(path: Path) -> dict[str, Any]:
     try:

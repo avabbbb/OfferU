@@ -61,7 +61,7 @@ def load_skill_route_cases(path: Path) -> tuple[EvalCase, ...]:
             raise ValueError(f"Missing or duplicate SkillRoute prompt: {case_id}")
         if prompt_leaks_control_contract(prompt):
             raise ValueError(f"SkillRoute prompt leaks control-contract syntax: {case_id}")
-        if not expected and not acceptable:
+        if not expected and not acceptable and category not in _NO_READ_CATEGORIES:
             raise ValueError(f"SkillRoute case lacks capability label: {case_id}")
         seen_ids.add(case_id)
         seen_prompts.add(prompt)
