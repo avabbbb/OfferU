@@ -8,56 +8,67 @@ Read these first:
 2. CONTEXT.md
 3. ARCHITECTURE.md
 4. STATUS.md
-5. docs/architecture/2026-09-22-tool-surface-v2.md
+5. docs/evals/LIVE_EVAL.md
 
-Do **not** use archived DSH/Pi/Main-Agent designs as current product authority.
+Do **not** use archived DSH/Pi/Main-Agent designs or closed PR branches as current product authority.
 
 ## Current main direction
 
 OfferU is a local-first Career OS for non-technical job seekers.
 
 ~~~
-OfferU Desktop / Guided UX
-→ external local Agent preferred, built-in fallback allowed
-→ OfferU Skill + optional third-party Career Skills
-→ Agent Tool Surface
-→ Operation Registry / Proposal / Audit
-→ Career Runtime / Career Truth
+App-first OfferU Desktop / Skill-first external Agent
+                ↓
+          same OfferU Skill
+                ↓
+        Agent Tool Surface
+                ↓
+Operation Registry / Proposal / Audit
+                ↓
+     Career Runtime / Career Truth
+                ↓
+       canonical Job Workspace
 ~~~
 
-## Recently completed
+## Recently completed on main
 
-- #14 Assisted Apply / connector foundation
-- #17 Tool Surface V2
-- #19 Guided Next Best Actions + Skill composition contract
+- Assisted Apply / connector foundation
+- Tool Surface V2
+- Guided Next Best Actions + Skill composition contract
+- Job Workspace + dual-entry product authority
+- hardened AGENTS.md implementation rules
+- real OMP RPC Eval implementation (old #16 is superseded and closed)
+- Zero-Setup onboarding implementation
+- permissioned Codex memory-summary → reviewable memory candidates
+- macOS desktop packaging foundation
 
-## Active branch / PR to continue
+## Current continuation point
 
-- #16 Real OMP RPC Eval — Draft. Use it to validate autonomous tool discovery and real task completion before further Tool Surface compression.
+Do **not** continue from an old feature branch.
 
-## Next product milestone
+Continue from current main and validate what already landed.
 
-Zero-Setup Golden Path:
+Highest-value sequence:
 
-~~~
-native install
-→ auto-detect a ready local Agent
-→ Resume + explicitly authorized memory → Profile T0
-→ user-triggered browser capture of first Job
-→ optional read-only inbox connection
-→ useful Today / Next Best Action
-~~~
+1. CI/release-audit green on current main.
+2. Real OMP/SWE-2 Agent-native Golden Path with trusted trace + visible HITL + pass^3.
+3. Clean Zero-Setup first-run acceptance with a real Resume and real Job.
+4. macOS arm64/x64 package and clean-machine acceptance.
+5. Update STATUS / QUALITY_SCORE / RELEASE_CHECKLIST from evidence, then choose the next implementation slice.
 
 ## Non-negotiable boundaries
 
 - Career Runtime owns truth.
-- Protected writes remain behind Registry / Proposal / user review.
+- Skill-first and App-first must resolve to the same canonical Job Workspace / Profile / Pipeline state.
+- Protected writes remain behind Registry / Proposal / human review.
 - Third-party Skills are methodology/drafting layers, not truth or permission authorities.
 - Browser capture is user-triggered by default; no beginner background crawler.
 - Smart Fill never silently performs final submit.
 - Email creates progress candidates before formal stage changes.
+- Local Agent memory is explicitly authorized input and enters as candidate/hypothesis, never automatic verified truth.
 - Do not add a second Agent loop or second business backend just to support another host.
-- Do not optimize Tool count without real Eval evidence.
+- Do not optimize tool count without real Eval evidence.
+- Do not treat implemented packaging/onboarding as release-ready without clean-machine runtime evidence.
 
 ## Documentation rule
 
