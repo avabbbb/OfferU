@@ -37,8 +37,11 @@ Never translate binary found into supported.
 4. It installs/projects the OfferU Skill where supported.
 5. The host uses its own model/account.
 6. OfferU exposes only the relevant Skill/tool surface.
+7. Agent work resolves against canonical Profile / Job / Application state and materializes into the same Job Workspace visible in OfferU Desktop.
 
 A fallback OfferU Agent may be used if no external host is suitable.
+
+The Skill is an **Agent entry surface**, not a second product database or project system. A power user may begin from a supported Agent, but the result must be the same governed OfferU state that the Desktop app reads.
 
 ## Skill composition
 
@@ -57,9 +60,13 @@ manifest
 
 The tool surface must be evaluated with real Agent tasks. Do not optimize for a pretty tool count at the expense of task completion.
 
-## Confirmation
+## Preparation plan and confirmation
 
-Protected state changes create Proposals. The Agent may request a protected mutation and wait. It may not self-confirm it. OfferU UI is the authoritative human review surface.
+Before broad preparation, paid model work or external side effects, the Agent should surface a compact user-facing plan when scope/cost/irreversibility makes that useful. The plan explains the intended work, evidence basis, proposal status and any known account/rate/cost boundary.
+
+Protected state changes still create Proposals. The Agent may request a protected mutation and wait. It may not self-confirm it. OfferU UI is the authoritative human review surface.
+
+Do not turn this into confirmation spam: work already inside an agreed safe scope can proceed until account, cost, scope or side-effect risk materially changes.
 
 ## Native tools
 
