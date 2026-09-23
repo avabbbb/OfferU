@@ -1055,6 +1055,8 @@ async def sync_email_account(account_id: str) -> dict[str, Any]:
                 )
             elif account.provider == "imap":
                 secret = await load_secret(account.credential_ref)
+                if not secret.get("user") or not secret.get("password"):
+                    raise ValueError(f"IMAP credentials missing for account {account.id}")
                 messages, next_cursor, trace = await asyncio.to_thread(
                     _fetch_imap_delta_blocking,
                     host=account.host,

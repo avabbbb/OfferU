@@ -316,6 +316,9 @@ class OptimizeSession:
 
 _sessions: dict[str, OptimizeSession] = {}
 
+# Per-session async locks to prevent concurrent modifications to the same session
+_session_locks: dict[str, asyncio.Lock] = {}
+
 
 def _get_session(session_id: str) -> OptimizeSession | None:
     return _sessions.get(session_id)
@@ -497,8 +500,9 @@ async def delete_session(session_id: str, db) -> bool:
     )
     await db.commit()
 
-    # Also remove from in-memory cache
+    # Also remove from in-memory cache and clean up lock
     _sessions.pop(session_id, None)
+    _session_locks.pop(session_id, None)
     return True
 
 
@@ -516,7 +520,11 @@ async def _get_session_profile(session: OptimizeSession, db) -> object | None:
 
 
 async def _get_source_sections(session: OptimizeSession, db) -> list:
-    """加载源档案条目（带 session 级缓存，避免每次改写都查库）"""
+    """加载源档案条目（带 session 级缓存，避免每次改写都查库）
+
+    返回普通 dict 列表而非 ORM 对象，避免跨 DB session 的
+    DetachedInstanceError。缓存内容为纯数据，不持有任何 ORM 引用。
+    """
     if session._source_sections_cache is not None:
         return session._source_sections_cache
     from app.models.models import ProfileSection
@@ -533,8 +541,23 @@ async def _get_source_sections(session: OptimizeSession, db) -> list:
         .order_by(ProfileSection.sort_order.asc())
     )
     sections = list(result.scalars().all())
-    session._source_sections_cache = sections
-    return sections
+    # Convert ORM objects to plain dicts so they survive DB session closure
+    # and never raise DetachedInstanceError on attribute access.
+    section_dicts = [
+        {
+            "id": s.id,
+            "profile_id": s.profile_id,
+            "section_type": s.section_type or "",
+            "title": s.title or "",
+            "sort_order": s.sort_order or 0,
+            "content_json": s.content_json or {},
+            "source": s.source or "manual",
+            "status": s.status or "active",
+        }
+        for s in sections
+    ]
+    session._source_sections_cache = section_dicts
+    return section_dicts
 
 
 # ---- Tool Implementations ----
@@ -1167,6 +1190,9 @@ async def agent_turn_stream(
     db,
 ) -> AsyncGenerator[str, None]:
     """ReAct Agent 主循环 — SSE 流式输出"""
+    # Invalidate source-sections cache at the start of each turn so stale
+    # data from a previous DB session (or updated profile sections) is never used.
+    session._source_sections_cache = None
     session.messages.append({"role": "user", "content": user_message})
 
     # Check if there's a pending action to execute (user confirmed)
@@ -1636,49 +1662,51 @@ async def chat_turn(
     if not session:
         return {"error": "会话不存在", "session_id": session_id}
 
-    final_response = {}
-    async for event_str in agent_turn_stream(session, user_message, db):
-        # Parse SSE event
-        if event_str.startswith("data: "):
-            try:
-                data = json.loads(event_str[6:].strip())
-                event_type = data.get("event")
-                if event_type == "assistant_message":
-                    final_response["assistant_message"] = data.get("content", "")
-                    if data.get("proposal_id"):
-                        final_response["proposal_id"] = data.get("proposal_id")
-                    if isinstance(data.get("resume_id"), int):
+    _lock = _session_locks.setdefault(session_id, asyncio.Lock())
+    async with _lock:
+        final_response = {}
+        async for event_str in agent_turn_stream(session, user_message, db):
+            # Parse SSE event
+            if event_str.startswith("data: "):
+                try:
+                    data = json.loads(event_str[6:].strip())
+                    event_type = data.get("event")
+                    if event_type == "assistant_message":
+                        final_response["assistant_message"] = data.get("content", "")
+                        if data.get("proposal_id"):
+                            final_response["proposal_id"] = data.get("proposal_id")
+                        if isinstance(data.get("resume_id"), int):
+                            final_response["resume_id"] = data.get("resume_id")
+                    elif event_type == "phase":
+                        final_response["phase"] = data.get("phase", session.phase)
+                    elif event_type == "error":
+                        final_response["error"] = data.get("message", "")
+                    elif event_type == "confirm_request":
+                        final_response["confirm_request"] = {
+                            "tool": data.get("tool"),
+                            "args": data.get("args"),
+                            "summary": data.get("summary"),
+                        }
+                    elif event_type == "resume_generated":
                         final_response["resume_id"] = data.get("resume_id")
-                elif event_type == "phase":
-                    final_response["phase"] = data.get("phase", session.phase)
-                elif event_type == "error":
-                    final_response["error"] = data.get("message", "")
-                elif event_type == "confirm_request":
-                    final_response["confirm_request"] = {
-                        "tool": data.get("tool"),
-                        "args": data.get("args"),
-                        "summary": data.get("summary"),
-                    }
-                elif event_type == "resume_generated":
-                    final_response["resume_id"] = data.get("resume_id")
-                elif event_type == "resume_proposal_prepared":
-                    final_response["proposal_id"] = data.get("proposal_id")
-                    final_response["proposal_status"] = data.get("status", "")
-                    final_response["fact_gate_status"] = data.get(
-                        "fact_gate_status",
-                        "",
-                    )
-                elif event_type == "section_confirmed":
-                    final_response["section_confirmed"] = data
-            except json.JSONDecodeError:
-                pass
+                    elif event_type == "resume_proposal_prepared":
+                        final_response["proposal_id"] = data.get("proposal_id")
+                        final_response["proposal_status"] = data.get("status", "")
+                        final_response["fact_gate_status"] = data.get(
+                            "fact_gate_status",
+                            "",
+                        )
+                    elif event_type == "section_confirmed":
+                        final_response["section_confirmed"] = data
+                except json.JSONDecodeError:
+                    pass
 
-    # Note: assistant messages are already appended by agent_turn_stream, no need to re-append
+        # Note: assistant messages are already appended by agent_turn_stream, no need to re-append
 
-    final_response["session_id"] = session.session_id
-    if "phase" not in final_response:
-        final_response["phase"] = session.phase
-    return final_response
+        final_response["session_id"] = session.session_id
+        if "phase" not in final_response:
+            final_response["phase"] = session.phase
+        return final_response
 
 
 async def chat_turn_stream(
@@ -1705,8 +1733,10 @@ async def chat_turn_stream(
     elif action == "adjust" and feedback:
         effective_message = feedback
 
-    async for event_str in agent_turn_stream(session, effective_message, db):
-        yield event_str
+    _lock = _session_locks.setdefault(session_id, asyncio.Lock())
+    async with _lock:
+        async for event_str in agent_turn_stream(session, effective_message, db):
+            yield event_str
 
 
 # ---- Utility Functions ----

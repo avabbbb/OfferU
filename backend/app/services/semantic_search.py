@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from collections import OrderedDict
 from typing import Optional
 
 from qdrant_client import AsyncQdrantClient
@@ -33,6 +34,39 @@ COLLECTION_PROFILE_BULLETS = "profile_bullets"
 COLLECTION_JOB_DESCRIPTIONS = "job_descriptions"
 COLLECTION_MEMORY_OBSERVATIONS = "memory_observations"
 
+# Embedding 缓存上限：防止长期运行时缓存无界增长吃光内存。
+_EMBEDDING_CACHE_MAXSIZE = 500
+
+
+class _LRUCache:
+    """简单的有界 LRU 缓存（cachetools 不可用时的内置实现）。"""
+
+    def __init__(self, maxsize: int = _EMBEDDING_CACHE_MAXSIZE):
+        self._maxsize = maxsize
+        self._data: OrderedDict[str, list[float]] = OrderedDict()
+
+    def __getitem__(self, key: str) -> list[float]:
+        self._data.move_to_end(key)
+        return self._data[key]
+
+    def __setitem__(self, key: str, value: list[float]) -> None:
+        if key in self._data:
+            self._data.move_to_end(key)
+        self._data[key] = value
+        if len(self._data) > self._maxsize:
+            self._data.popitem(last=False)
+
+    def __contains__(self, key: object) -> bool:
+        return key in self._data
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+    def get(self, key: str, default=None):
+        if key in self:
+            return self[key]
+        return default
+
 
 class SemanticSearchService:
     """语义搜索服务 — 基于 Qdrant Vector DB"""
@@ -40,7 +74,7 @@ class SemanticSearchService:
     def __init__(self):
         self.client: Optional[AsyncQdrantClient] = None
         self.settings = get_settings()
-        self._embedding_cache: dict[str, list[float]] = {}  # 简单内存缓存
+        self._embedding_cache: _LRUCache = _LRUCache()  # 有界 LRU 内存缓存
 
     async def _get_client(self) -> AsyncQdrantClient:
         """懒加载 Qdrant 客户端"""
@@ -96,9 +130,10 @@ class SemanticSearchService:
             return [0.0] * EMBEDDING_DIMENSION
 
         # 缓存命中
-        cache_key = hashlib.md5(text.encode()).hexdigest()
-        if cache_key in self._embedding_cache:
-            return self._embedding_cache[cache_key]
+        cache_key = hashlib.sha256(text.encode()).hexdigest()
+        cached = self._embedding_cache.get(cache_key)
+        if cached is not None:
+            return cached
 
         try:
             # 调用 Qwen embedding API
@@ -106,6 +141,10 @@ class SemanticSearchService:
             from app.agents.llm import get_embedding
 
             vector = await get_embedding(text, model=EMBEDDING_MODEL)
+
+            if vector is None:
+                _logger.warning("Embedding returned None for text, skipping cache")
+                return [0.0] * EMBEDDING_DIMENSION
 
             # 缓存结果
             self._embedding_cache[cache_key] = vector

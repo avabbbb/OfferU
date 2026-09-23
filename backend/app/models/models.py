@@ -645,7 +645,7 @@ class Resume(Base):
     contact_json: Mapped[dict] = mapped_column(JSON, default=dict)
     # 关联模板（可为空，使用系统默认）
     template_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("resume_templates.id"), nullable=True
+        Integer, ForeignKey("resume_templates.id", ondelete="RESTRICT"), nullable=True
     )
     # 用户对模板样式的覆盖：{ primaryColor, bodySize, lineHeight, ... }
     style_config: Mapped[dict] = mapped_column(JSON, default=dict)
@@ -808,10 +808,10 @@ class CalendarEvent(Base):
 
     # 关联
     related_job_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("jobs.id"), nullable=True
+        Integer, ForeignKey("jobs.id", ondelete="RESTRICT"), nullable=True
     )
     related_notification_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("interview_notifications.id"), nullable=True
+        Integer, ForeignKey("interview_notifications.id", ondelete="RESTRICT"), nullable=True
     )
     # 由进度信号 accept 自动创建时回链信号，防重复建事件
     related_signal_id: Mapped[Optional[int]] = mapped_column(
@@ -829,7 +829,7 @@ class Application(Base):
     __tablename__ = "applications"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    job_id: Mapped[int] = mapped_column(Integer, ForeignKey("jobs.id"))
+    job_id: Mapped[int] = mapped_column(Integer, ForeignKey("jobs.id", ondelete="RESTRICT"))
     status: Mapped[str] = mapped_column(
         String(50), default="pending"
     )  # pending / submitted / rejected / interview / offer
@@ -849,7 +849,7 @@ class ApplicationAttempt(Base):
     __tablename__ = "application_attempts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    job_id: Mapped[int] = mapped_column(Integer, ForeignKey("jobs.id"), index=True)
+    job_id: Mapped[int] = mapped_column(Integer, ForeignKey("jobs.id", ondelete="RESTRICT"), index=True)
     resume_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("resumes.id", ondelete="SET NULL"), nullable=True, index=True
     )

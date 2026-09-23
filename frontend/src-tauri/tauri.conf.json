@@ -23,15 +23,14 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' asset: http://asset.localhost data: blob: https:; media-src 'self' blob: data:; connect-src 'self' http://localhost:8766 http://127.0.0.1:8766 ws://localhost:7411 ws://127.0.0.1:7411 https:;"
+      "csp": "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' asset: http://asset.localhost data: blob: https:; media-src 'self' blob: data:; connect-src 'self' http://localhost:8766 http://127.0.0.1:8766 ws://localhost:7411 ws://127.0.0.1:7411 https://api.deepseek.com https://dashscope.aliyuncs.com https://api.openai.com https://api.anthropic.com;"
     }
   },
   "bundle": {
     "active": true,
-    "externalBin": ["binaries/offeru-backend"],
+    "externalBin": ["binaries/offeru-backend", "binaries/offeru-node"],
     "resources": {
-      "../../.tmp/p/": "agent-runtime/",
-      "../../.tmp/offeru-node-runtime.exe": "node.exe"
+      "../../.tmp/p/": "agent-runtime/"
     },
     "targets": "all",
     "icon": [

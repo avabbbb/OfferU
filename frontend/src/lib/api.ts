@@ -48,7 +48,7 @@ function buildQuery(params?: Record<string, unknown>) {
   return sp.toString();
 }
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
+export async function request<T>(path: string, options?: RequestInit): Promise<T> {
   if (SHOWCASE) {
     // 展示模式：全部请求由本地 IndexedDB 数据层承载（无需 Python 后端）
     return (await showcaseHandle(path, options)) as T;
@@ -76,7 +76,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 async function readEventStream<T>(
   path: string,
   options: RequestInit,
-  onEvent?: (event: string, data: any) => void
+  onEvent?: (event: string, data: any) => void,
+  signal?: AbortSignal
 ): Promise<T> {
   if (SHOWCASE) {
     // 展示模式：Agent 工作流端点（optimize/interviews）不接本地数据层，
@@ -87,6 +88,7 @@ async function readEventStream<T>(
     ...options,
     headers: { Accept: "text/event-stream", ...options.headers },
     redirect: "error",
+    signal,
   });
   if (
     (res.status === 404 || res.status === 405)
@@ -148,7 +150,8 @@ async function readEventStream<T>(
 async function streamResult<T>(
   path: string,
   body: unknown,
-  onEvent?: (event: string, data: any) => void
+  onEvent?: (event: string, data: any) => void,
+  signal?: AbortSignal
 ): Promise<T> {
   return readEventStream<T>(
     path,
@@ -157,7 +160,8 @@ async function streamResult<T>(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     },
-    onEvent
+    onEvent,
+    signal
   );
 }
 
@@ -982,7 +986,7 @@ export const agentRuntimeApi = {
     conversation_id?: string | null;
     task_id?: string | null;
     runtime_provider?: string;
-  }, onEvent?: (event: string, data: any) => void) => {
+  }, onEvent?: (event: string, data: any) => void, signal?: AbortSignal) => {
     const runId = createAgentRunId();
     const requestData = { ...data, run_id: runId };
     let lastSequence = 0;
@@ -1036,9 +1040,14 @@ export const agentRuntimeApi = {
               after_sequence: lastSequence,
             })}`,
             { method: "GET" },
-            forwardEvent
+            forwardEvent,
+            signal
           );
         } catch (error) {
+          // 组件已取消（unmount / 手动停止）时不重连，直接抛出中止错误
+          if (error instanceof Error && (error.name === "AbortError" || signal?.aborted)) {
+            throw error;
+          }
           failures += 1;
           if (failures >= 8) throw error;
           const delayMs = Math.min(250 * (2 ** (failures - 1)), 2000);
@@ -1056,13 +1065,19 @@ export const agentRuntimeApi = {
       return await streamResult<AgentRunResponse>(
         "/api/agent/runtime/runs/stream",
         requestData,
-        forwardEvent
+        forwardEvent,
+        signal
       );
     } catch (error) {
+      // 组件已取消（unmount / 手动停止）时不进入重连流程，直接抛出中止错误
+      if (error instanceof Error && (error.name === "AbortError" || signal?.aborted)) {
+        throw error;
+      }
       if (error instanceof Error && error.message === "__SSE_UNAVAILABLE__") {
         return request<AgentRunResponse>("/api/agent/runtime/runs", {
           method: "POST",
           body: JSON.stringify(requestData),
+          signal,
         });
       }
       try {
@@ -1719,6 +1734,16 @@ export interface ProfileEvolutionReport {
 }
 
 export const memoryApi = {
+  localSources: () => request<{ items: Array<{ id: string; name: string; bytes: number; can_preview: boolean }>; message?: string }>("/api/memory/local-sources"),
+  previewLocalSource: (sourceId: string) => request<{ source_id: string; source_name: string; text: string }>("/api/memory/local-sources/preview", {
+    method: "POST", body: JSON.stringify({ source_id: sourceId, consent: true }),
+  }),
+  importCandidates: (sourceName: string, excerpts: string[]) =>
+    request<{ items: MemoryInboxItem[]; duplicates: number; imported: number }>("/api/memory/import", {
+      method: "POST",
+      body: JSON.stringify({ source_name: sourceName, excerpts, consent: true }),
+    }),
+
   inbox: (params?: { status?: string; limit?: number }) =>
     request<{ items: MemoryInboxItem[] }>(
       `/api/memory/inbox?${buildQuery(params)}`

@@ -953,7 +953,10 @@ async def optimize_generate(data: OptimizeGenerateRequest):
                 continue
 
             failed += 1
-            message = "；".join(str(item) for item in (result.get("errors") or []))
+            message = "；".join(
+                safe_error_message(ValueError(str(item)))
+                for item in (result.get("errors") or [])
+            )
             yield _sse(
                 "progress",
                 {
@@ -1064,7 +1067,10 @@ async def _execute_agent_operation(name: str, args: dict) -> dict:
 
     result = await execute_operation(name, args, surface="optimize_api")
     if not result.get("ok"):
-        detail = "；".join(str(item) for item in result.get("errors") or [])
+        detail = "；".join(
+            safe_error_message(ValueError(str(item)))
+            for item in result.get("errors") or []
+        )
         status = 404 if "不存在" in detail or "not found" in detail.lower() else 400
         raise HTTPException(status_code=status, detail=detail or "操作失败")
     outputs = result.get("outputs")

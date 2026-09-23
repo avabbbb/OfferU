@@ -5,12 +5,10 @@ import Link from "next/link";
 import MarkdownIt from "markdown-it";
 import { Button } from "@nextui-org/react";
 import { FileText, MessageSquare, Play, SendHorizonal, Square } from "lucide-react";
-import { streamOptimizeAgentChat, OptimizeAgentStreamEvent } from "@/lib/hooks";
+import { streamOptimizeAgentChat, OptimizeAgentStreamEvent, type OptimizeSessionDetail } from "@/lib/hooks";
+import { request } from "@/lib/api";
 import { cleanRichHtml } from "@/app/resume/components/templates/shared";
-import { resolveApiBase } from "@/lib/apiBase";
 import { safeClientErrorMessage } from "@/lib/safe-error";
-
-const API_BASE = resolveApiBase();
 
 const md = new MarkdownIt({
   html: false,
@@ -117,14 +115,9 @@ export function OptimizeChatPanel({ jobIds, mode, disabled, profileId, reference
     const load = async () => {
       setLoading(true);
       try {
-        const res = await fetch(`${API_BASE}/api/optimize/agent/sessions/${loadSessionId}`, {
-          redirect: "error",
-        });
-        if (!res.ok) {
-          const errBody = await res.json().catch(() => null);
-          throw new Error(safeClientErrorMessage(errBody?.detail, `加载会话失败 (${res.status})`));
-        }
-        const data = await res.json();
+        const data = await request<OptimizeSessionDetail>(
+          `/api/optimize/agent/sessions/${loadSessionId}`
+        );
         if (!cancelled) {
           setSessionId(data.session_id);
           setPhase(data.phase || "idle");
@@ -187,10 +180,12 @@ export function OptimizeChatPanel({ jobIds, mode, disabled, profileId, reference
     if (jobIds.length === 0) return;
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/optimize/agent/start`, {
+      const data = await request<{
+        session_id?: string;
+        phase?: string;
+        assistant_message?: string;
+      }>("/api/optimize/agent/start", {
         method: "POST",
-        redirect: "error",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           job_ids: jobIds,
           mode,
@@ -198,11 +193,6 @@ export function OptimizeChatPanel({ jobIds, mode, disabled, profileId, reference
           reference_resume_id: referenceResumeId,
         }),
       });
-      if (!res.ok) {
-        const errBody = await res.json().catch(() => null);
-        throw new Error(safeClientErrorMessage(errBody?.detail, `请求失败 (${res.status})`));
-      }
-      const data = await res.json();
       if (data.session_id) {
         setSessionId(data.session_id);
         setPhase(data.phase || "confirming");

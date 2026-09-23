@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.models import Job, Pool
 from app.ops import execute_operation
+from app.services.security_redaction import safe_error_message
 
 router = APIRouter()
 POOL_SCOPES = {"inbox", "picked", "ignored"}
@@ -134,7 +135,10 @@ async def delete_pool(
 def _operation_output_or_error(result: dict) -> dict:
     if result.get("ok"):
         return result.get("outputs") or {}
-    detail = "; ".join(result.get("errors") or ["operation failed"])
+    detail = "; ".join(
+        safe_error_message(ValueError(str(item)))
+        for item in (result.get("errors") or ["operation failed"])
+    )
     status_code = 404 if "not found" in detail.lower() else 400
     if "already exists" in detail.lower():
         status_code = 409

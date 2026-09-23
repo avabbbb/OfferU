@@ -190,6 +190,31 @@ async def _close_live_browser(session_id: str) -> None:
         pass
 
 
+async def _abort_live_session(session_id: str, exc: BaseException) -> None:
+    """Close the live browser, cancel its expiry timer, and mark the session
+    failed.  Used on exception paths that would otherwise leak a browser in
+    ``_LIVE_BROWSERS`` with no cleanup."""
+    await _close_live_browser(session_id)
+    _cancel_expiry(session_id)
+    try:
+        async with async_session() as db:
+            stored = (
+                await db.execute(
+                    select(AuthorizedResearchSession).where(
+                        AuthorizedResearchSession.session_id == session_id
+                    )
+                )
+            ).scalar_one_or_none()
+            if stored is not None and stored.status in _ACTIVE_STATUSES:
+                stored.status = "failed"
+                stored.read_only_active = False
+                stored.error = safe_error_message(exc)
+                stored.completed_at = _utc_now()
+                await db.commit()
+    except Exception:
+        pass
+
+
 async def _expire_session(session_id: str, expires_at: datetime) -> None:
     current_expiry = expires_at
     if current_expiry.tzinfo is None:
@@ -420,44 +445,51 @@ async def activate_authorized_research_read_only(
         raise ValueError("临时浏览器没有可切换到只读模式的页面")
     target_url = pages[-1].url
     _platform_url(snapshot["platform"], target_url)
-    await live.context.route("**/*", guard)
-    if hasattr(live.context, "route_web_socket"):
-        async def block_socket(socket: Any) -> None:
-            await socket.close()
+    try:
+        await live.context.route("**/*", guard)
+        if hasattr(live.context, "route_web_socket"):
+            async def block_socket(socket: Any) -> None:
+                await socket.close()
 
-        await live.context.route_web_socket("**/*", block_socket)
-    for page in pages:
-        await page.close(run_before_unload=False)
-    live.page = await live.context.new_page()
-    await live.page.goto(
-        target_url,
-        wait_until="domcontentloaded",
-        timeout=45_000,
-    )
+            await live.context.route_web_socket("**/*", block_socket)
+        for page in pages:
+            await page.close(run_before_unload=False)
+        live.page = await live.context.new_page()
+        await live.page.goto(
+            target_url,
+            wait_until="domcontentloaded",
+            timeout=45_000,
+        )
 
-    async with async_session() as db:
-        session = (
-            await db.execute(
-                select(AuthorizedResearchSession).where(
-                    AuthorizedResearchSession.session_id == clean_session_id
+        async with async_session() as db:
+            session = (
+                await db.execute(
+                    select(AuthorizedResearchSession).where(
+                        AuthorizedResearchSession.session_id == clean_session_id
+                    )
                 )
-            )
-        ).scalar_one_or_none()
-        if session is None:
-            raise ValueError("授权浏览会话不存在")
-        if session.status not in {"authenticating", "read_only"}:
-            raise ValueError(f"当前会话状态不能进入只读采集: {session.status}")
-        session.status = "read_only"
-        session.read_only_active = True
-        session.error = ""
-        await db.commit()
-        count = (
-            await db.execute(
-                select(AuthorizedResearchCapture).where(
-                    AuthorizedResearchCapture.session_id == clean_session_id
+            ).scalar_one_or_none()
+            if session is None:
+                raise ValueError("授权浏览会话不存在")
+            if session.status not in {"authenticating", "read_only"}:
+                raise ValueError(f"当前会话状态不能进入只读采集: {session.status}")
+            session.status = "read_only"
+            session.read_only_active = True
+            session.error = ""
+            await db.commit()
+            count = (
+                await db.execute(
+                    select(AuthorizedResearchCapture).where(
+                        AuthorizedResearchCapture.session_id == clean_session_id
+                    )
                 )
-            )
-        ).scalars().all()
+            ).scalars().all()
+    except Exception as exc:
+        # Any failure while switching the live browser to read-only mode leaves
+        # the browser in a half-mutated state.  Close it and fail the session so
+        # it is not leaked in _LIVE_BROWSERS.
+        await _abort_live_session(clean_session_id, exc)
+        raise
     return {
         **_session_summary(session, len(count)),
         "next_step": "在页面中选中相关文字，再调用 capture_authorized_research_page。",
@@ -510,42 +542,51 @@ async def capture_authorized_research_page(
         if clean_source_class not in _PLATFORMS[session.platform]["source_classes"]:
             raise ValueError("该登录态平台不能被标记为官方事实来源")
 
-    pages = [page for page in live.context.pages if not page.is_closed()]
-    if not pages:
-        raise ValueError("临时浏览器没有可采集页面")
-    page = pages[-1]
-    clean_platform, page_url = _platform_url(session.platform, page.url)
-    if clean_platform != session.platform:
-        raise ValueError("当前页面不属于已授权平台")
-    body_text = _clean_text(
-        await page.locator("body").inner_text(timeout=10_000),
-        "page.body",
-        500_000,
-        required=True,
-    )
-    chosen = _clean_text(selected_text, "selected_text", 10_000)
-    if chosen:
-        if chosen not in body_text:
-            raise ValueError("selected_text 必须来自当前页面可见文字")
-    else:
-        chosen = _clean_text(
-            await page.evaluate("() => window.getSelection()?.toString() || ''"),
-            "browser_selection",
-            10_000,
+    try:
+        pages = [page for page in live.context.pages if not page.is_closed()]
+        if not pages:
+            raise ValueError("临时浏览器没有可采集页面")
+        page = pages[-1]
+        clean_platform, page_url = _platform_url(session.platform, page.url)
+        if clean_platform != session.platform:
+            raise ValueError("当前页面不属于已授权平台")
+        body_text = _clean_text(
+            await page.locator("body").inner_text(timeout=10_000),
+            "page.body",
+            500_000,
             required=True,
         )
-        if chosen not in body_text:
-            raise ValueError("浏览器选中文字与当前页面不一致")
-    excerpt = _redact_personal_identifiers(chosen)[:1500].strip()
-    if not excerpt:
-        raise ValueError("选中内容经最小化处理后为空")
-    title = _clean_text(await page.title(), "title", 500) or clean_platform
-    clean_publisher = _clean_text(publisher, "publisher", 300) or _PLATFORMS[
-        clean_platform
-    ]["label"]
-    clean_published_at = (
-        _clean_text(published_at, "published_at", 80) or None
-    )
+        chosen = _clean_text(selected_text, "selected_text", 10_000)
+        if chosen:
+            if chosen not in body_text:
+                raise ValueError("selected_text 必须来自当前页面可见文字")
+        else:
+            chosen = _clean_text(
+                await page.evaluate("() => window.getSelection()?.toString() || ''"),
+                "browser_selection",
+                10_000,
+                required=True,
+            )
+            if chosen not in body_text:
+                raise ValueError("浏览器选中文字与当前页面不一致")
+        excerpt = _redact_personal_identifiers(chosen)[:1500].strip()
+        if not excerpt:
+            raise ValueError("选中内容经最小化处理后为空")
+        title = _clean_text(await page.title(), "title", 500) or clean_platform
+        clean_publisher = _clean_text(publisher, "publisher", 300) or _PLATFORMS[
+            clean_platform
+        ]["label"]
+        clean_published_at = (
+            _clean_text(published_at, "published_at", 80) or None
+        )
+    except ValueError:
+        # Validation errors are retryable; keep the live browser intact.
+        raise
+    except Exception as exc:
+        # A genuine browser/IO failure leaves the live browser unusable; close
+        # it and fail the session instead of leaking it in _LIVE_BROWSERS.
+        await _abort_live_session(clean_session_id, exc)
+        raise
     digest = hashlib.sha256(
         f"{page_url}\n{clean_scope}\n{clean_source_class}\n{excerpt}".encode("utf-8")
     ).hexdigest()

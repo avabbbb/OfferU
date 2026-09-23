@@ -26,6 +26,7 @@ from app.models.models import (
     ProfileSection,
 )
 from app.agents.interview_prep import extract_questions, generate_answer_hint
+from app.services.security_redaction import safe_error_message
 
 router = APIRouter()
 _logger = logging.getLogger(__name__)
@@ -55,7 +56,10 @@ async def _execute_operation(name: str, args: dict[str, Any]) -> Any:
 
     result = await execute_operation(name, args, surface="legacy_interview_api")
     if not result.get("ok"):
-        message = "；".join(str(item) for item in result.get("errors") or [])
+        message = "；".join(
+            safe_error_message(ValueError(str(item)))
+            for item in result.get("errors") or []
+        )
         lowered = message.lower()
         if "不存在" in message or "not found" in lowered:
             status = 404

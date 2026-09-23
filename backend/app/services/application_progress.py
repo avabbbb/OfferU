@@ -24,7 +24,7 @@ from app.services.career_memory import record_learning_observation
 from app.services.security_redaction import safe_error_message
 
 
-CHANNELS = frozenset({"email", "sms_forward", "boss"})
+CHANNELS = frozenset({"email", "sms_forward", "boss", "manual"})
 APPLICATION_STAGES = frozenset(
     {
         "prepared",
@@ -583,7 +583,7 @@ async def ingest_application_signal(
 ) -> dict[str, Any]:
     clean_channel = str(channel or "").strip().lower()
     if clean_channel not in CHANNELS:
-        raise ValueError("channel 只能是 email / sms_forward / boss")
+        raise ValueError("channel 只能是 email / sms_forward / boss / manual")
     clean_account_ref = _clean_text(account_ref, "account_ref", limit=160, required=True)
     clean_message_id = _clean_text(
         external_message_id,
@@ -641,7 +641,14 @@ async def ingest_application_signal(
                         ApplicationProgressCandidate.signal_id == existing.id
                     )
                 )
-            ).scalar_one()
+            ).scalar_one_or_none()
+            if candidate is None:
+                # 信号存在但对应的 candidate 已被删除：不能让 scalar_one()
+                # 抛 NoResultFound 打断重复上报的去重路径。
+                return {
+                    "error": "Signal exists but associated candidate is missing",
+                    "signal_id": existing.signal_id,
+                }
             return {
                 **await _candidate_payload(db, candidate, existing, detail=True),
                 "duplicate": True,

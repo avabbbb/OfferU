@@ -5,6 +5,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from app.services.security_redaction import safe_error_message
 
 router = APIRouter()
 
@@ -75,7 +76,10 @@ class PreApplicationDecisionManualRequest(BaseModel):
 
 def _operation_outputs(result: dict[str, Any]) -> dict[str, Any]:
     if not result.get("ok"):
-        message = "；".join(str(item) for item in result.get("errors") or [])
+        message = "；".join(
+            safe_error_message(ValueError(str(item)))
+            for item in result.get("errors") or []
+        )
         raise HTTPException(status_code=400, detail=message or "操作失败")
     outputs = result.get("outputs")
     if not isinstance(outputs, dict):

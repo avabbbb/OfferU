@@ -22,22 +22,18 @@ from __future__ import annotations
 import json
 import re
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.llm import chat_completion, extract_json
 from app.database import get_db
 from app.models.models import (
-    Profile,
-    ProfileChatSession,
-    ProfileSection,
-    ProfileTargetRole,
     SmartFillMapCache,
     SmartFillRun,
     SmartFillRunLog,
@@ -45,14 +41,13 @@ from app.models.models import (
 from app.services.profile_schema import (
     PROFILE_BUILTIN_SECTION_TYPES,
     PROFILE_SECTION_SCHEMA_VERSION,
-    canonicalize_profile_section_payload,
     get_category_label,
     is_custom_category_key,
     is_valid_profile_section_type,
-    normalize_base_info_payload,
     normalize_section_type_alias,
 )
 from app.services.profile_builder_agent import build_initial_agent_state, normalize_profile_agent_patch
+from app.services.profile_operations import _normalize_candidate
 from app.services.security_redaction import safe_error_message
 
 try:
@@ -80,10 +75,6 @@ async def _execute_operation(name: str, args: dict[str, Any]) -> Any:
     return result.get("outputs")
 
 VALID_TOPICS = {"education", "experience", "project", "activity", "skill", "general"}
-VALID_FITS = {"primary", "secondary", "adjacent"}
-VALID_SECTION_TYPES = set(PROFILE_BUILTIN_SECTION_TYPES).union(
-    {"general", "custom", "internship", "activity", "competition", "honor", "language"}
-)
 PROFILE_CATEGORY_ORDER = ["education", "experience", "project", "skill", "certificate"]
 ALLOWED_RESUME_IMPORT_EXTENSIONS = {".pdf", ".docx"}
 MAX_RESUME_IMPORT_FILE_SIZE = 10 * 1024 * 1024
@@ -222,165 +213,8 @@ class SmartFillRunLogRequest(BaseModel):
     logs: list[SmartFillRunLogItem] = Field(default_factory=list)
 
 
-def _serialize_target_role(role: ProfileTargetRole) -> dict:
-    return {
-        "id": role.id,
-        "profile_id": role.profile_id,
-        "role_name": role.role_name,
-        "role_level": role.role_level,
-        "fit": role.fit,
-        "created_at": str(role.created_at),
-    }
-
-
-def _serialize_section(section: ProfileSection) -> dict:
-    content_json = section.content_json if isinstance(section.content_json, dict) else {}
-    category_key = normalize_section_type_alias(section.section_type)
-    if category_key in {"general", "activity", "competition"} or not is_valid_profile_section_type(category_key):
-        category_key = "custom:c_legacy"
-    category_label = get_category_label(category_key, content_json)
-    field_values = content_json.get("field_values") if isinstance(content_json.get("field_values"), dict) else {}
-    normalized = content_json.get("normalized") if isinstance(content_json.get("normalized"), dict) else {}
-
-    return {
-        "id": section.id,
-        "profile_id": section.profile_id,
-        "section_type": category_key,
-        "raw_section_type": section.section_type,
-        "category_key": category_key,
-        "category_label": category_label,
-        "is_custom_category": is_custom_category_key(category_key),
-        "parent_id": section.parent_id,
-        "title": section.title,
-        "sort_order": section.sort_order,
-        "content_json": content_json,
-        "field_values": field_values,
-        "normalized": normalized,
-        "source": section.source,
-        "confidence": section.confidence,
-        "tier": section.tier,
-        "created_at": str(section.created_at),
-        "updated_at": str(section.updated_at),
-    }
-
-
-def _serialize_profile(profile: Profile, roles: list[ProfileTargetRole], sections: list[ProfileSection]) -> dict:
-    base_info_json = normalize_base_info_payload(profile.base_info_json)
-    return {
-        "id": profile.id,
-        "name": profile.name,
-        "headline": profile.headline,
-        "exit_story": profile.exit_story,
-        "cross_cutting_advantage": profile.cross_cutting_advantage,
-        "base_info_json": base_info_json,
-        "is_default": profile.is_default,
-        "created_at": str(profile.created_at),
-        "updated_at": str(profile.updated_at),
-        "target_roles": [_serialize_target_role(item) for item in roles],
-        "sections": [_serialize_section(item) for item in sections],
-    }
-
-
-def _serialize_chat_session(session: ProfileChatSession) -> dict:
-    return {
-        "id": session.id,
-        "profile_id": session.profile_id,
-        "topic": session.topic,
-        "status": session.status,
-        "extracted_bullets_count": session.extracted_bullets_count,
-        "created_at": str(session.created_at),
-        "updated_at": str(session.updated_at),
-    }
-
-
 def _sse(event: str, payload: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
-
-
-def _extract_last_candidates(messages_json: list[Any]) -> list[dict[str, Any]]:
-    for item in reversed(messages_json or []):
-        if isinstance(item, dict) and item.get("kind") == "bullet_candidates":
-            candidates = item.get("candidates")
-            if isinstance(candidates, list):
-                return candidates
-    return []
-
-
-async def _load_profile_bundle(db: AsyncSession, profile_id: int) -> tuple[Profile, list[ProfileTargetRole], list[ProfileSection]]:
-    profile = (
-        await db.execute(select(Profile).where(Profile.id == profile_id))
-    ).scalar_one_or_none()
-    if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found")
-
-    roles = (
-        await db.execute(
-            select(ProfileTargetRole)
-            .where(ProfileTargetRole.profile_id == profile_id)
-            .order_by(ProfileTargetRole.created_at.desc())
-        )
-    ).scalars().all()
-
-    sections = (
-        await db.execute(
-            select(ProfileSection)
-            .where(ProfileSection.profile_id == profile_id)
-            .where(ProfileSection.status == "active")
-            .order_by(ProfileSection.sort_order.asc(), ProfileSection.created_at.asc())
-        )
-    ).scalars().all()
-
-    return profile, roles, sections
-
-
-def _normalize_candidate(topic: str, candidate: dict[str, Any]) -> dict[str, Any]:
-    raw_section_type = (candidate.get("section_type") or topic or "general").strip().lower()
-    section_type = normalize_section_type_alias(raw_section_type)
-    category_label: Optional[str] = None
-
-    if section_type in {"general", "activity", "competition"}:
-        section_type = "custom"
-        category_label = "自定义分类"
-
-    if not is_valid_profile_section_type(section_type):
-        section_type = "custom"
-        category_label = "自定义分类"
-
-    title = (candidate.get("title") or "未命名条目").strip()[:220]
-    content_json = candidate.get("content_json")
-    if not isinstance(content_json, dict):
-        raw = str(candidate.get("content") or candidate.get("bullet") or "").strip()
-        content_json = {"bullet": raw}
-
-    try:
-        category_key, resolved_label, _, canonical_content_json = canonicalize_profile_section_payload(
-            section_type=section_type,
-            category_label=category_label,
-            title=title,
-            raw_content_json=content_json,
-        )
-    except ValueError:
-        category_key, resolved_label, _, canonical_content_json = canonicalize_profile_section_payload(
-            section_type="custom",
-            category_label="自定义分类",
-            title=title,
-            raw_content_json=content_json,
-        )
-
-    confidence = candidate.get("confidence", 0.7)
-    try:
-        confidence = float(confidence)
-    except Exception:
-        confidence = 0.7
-    confidence = min(max(confidence, 0.0), 1.0)
-
-    return {
-        "section_type": category_key,
-        "category_label": resolved_label,
-        "title": title,
-        "content_json": canonical_content_json,
-        "confidence": confidence,
-    }
 
 
 def _fallback_chat_payload(topic: str, user_message: str) -> dict[str, Any]:
@@ -1865,15 +1699,15 @@ def _new_smartfill_run_id() -> str:
 
 def _parse_dt_iso(value: Optional[str]) -> datetime:
     if not value:
-        return datetime.utcnow()
+        return datetime.now(timezone.utc).replace(tzinfo=None)
     text = value.strip()
     if not text:
-        return datetime.utcnow()
+        return datetime.now(timezone.utc).replace(tzinfo=None)
     text = text.replace("Z", "+00:00")
     try:
         return datetime.fromisoformat(text).replace(tzinfo=None)
     except Exception:
-        return datetime.utcnow()
+        return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 SMART_FILL_KEY_LABELS = {
@@ -2439,7 +2273,7 @@ async def smart_fill_ping(_data: SmartFillPingRequest):
 
 @router.post("/smart-fill/cache/get")
 async def smart_fill_cache_get(data: SmartFillCacheGetRequest, db: AsyncSession = Depends(get_db)):
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     row = (
         await db.execute(
             select(SmartFillMapCache).where(

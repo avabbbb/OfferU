@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -219,11 +219,11 @@ async def list_jobs(
 
     # 时间范围筛选
     if period == "today":
-        query = query.where(Job.created_at >= datetime.utcnow().replace(hour=0, minute=0, second=0))
+        query = query.where(Job.created_at >= datetime.now(timezone.utc).replace(tzinfo=None).replace(hour=0, minute=0, second=0))
     elif period == "week":
-        query = query.where(Job.created_at >= datetime.utcnow() - timedelta(days=7))
+        query = query.where(Job.created_at >= datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=7))
     elif period == "month":
-        query = query.where(Job.created_at >= datetime.utcnow() - timedelta(days=30))
+        query = query.where(Job.created_at >= datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=30))
 
     # 排序
     sort_col = Job.created_at if sort_by not in ALLOWED_SORT_FIELDS else getattr(Job, sort_by)
@@ -344,7 +344,7 @@ async def job_stats(
     db: AsyncSession = Depends(get_db),
 ):
     """统计汇总：岗位数、来源分布"""
-    since = datetime.utcnow()
+    since = datetime.now(timezone.utc).replace(tzinfo=None)
     if period == "today":
         since = since.replace(hour=0, minute=0, second=0)
     elif period == "week":
@@ -379,7 +379,7 @@ async def job_trend(
 ):
     """每日趋势数据：按天分组返回岗位数"""
     days = 7 if period == "week" else 30
-    since = datetime.utcnow() - timedelta(days=days)
+    since = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
 
     date_col = func.date(Job.created_at).label("date")
     trend_q = (
@@ -404,7 +404,7 @@ async def job_trend(
 @router.get("/weekly-report")
 async def weekly_report(db: AsyncSession = Depends(get_db)):
     """周报分析接口 — 汇总本周数据供 Analytics Dashboard 使用"""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     this_week_start = now - timedelta(days=7)
     last_week_start = now - timedelta(days=14)
 

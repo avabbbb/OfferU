@@ -697,6 +697,12 @@ async def delete_profile_section(section_id: int) -> dict[str, Any]:
             raise ValueError("Profile section not found")
         await db.delete(section)
         await db.commit()
+        try:
+            from app.services.semantic_search import get_semantic_search
+
+            await get_semantic_search().delete_profile_section(section_id)
+        except Exception:
+            pass  # Best-effort cleanup：向量索引不可用时不能阻断删除本身
         return {"deleted": True}
 
 

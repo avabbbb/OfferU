@@ -70,9 +70,15 @@ class ProgressReviewRequest(BaseModel):
     create_record: bool = False
 
 
-def _operation_outputs(result: dict) -> dict:
+async def _execute_operation(name: str, args: Optional[dict] = None) -> dict:
+    from app.ops import execute_operation
+
+    result = await execute_operation(name, args or {}, surface="email_api")
     if not result.get("ok"):
-        message = "；".join(str(item) for item in result.get("errors") or [])
+        message = "；".join(
+            safe_error_message(ValueError(str(item)))
+            for item in result.get("errors") or []
+        )
         raise HTTPException(status_code=400, detail=message or "操作失败")
     outputs = result.get("outputs")
     if not isinstance(outputs, dict):
@@ -97,21 +103,17 @@ def _redirect_uri(_request: Request) -> str:
 async def get_auth_url(
     request: Request,
 ):
-    from app.ops import execute_operation
-
     try:
         redirect_uri = _redirect_uri(request)
     except ValueError as exc:
         raise HTTPException(status_code=503, detail=safe_error_message(exc)) from exc
 
-    result = await execute_operation(
+    return await _execute_operation(
         "begin_gmail_oauth",
         {
             "redirect_uri": redirect_uri,
         },
-        surface="email_api",
     )
-    return _operation_outputs(result)
 
 
 @router.get("/callback")
@@ -119,39 +121,27 @@ async def oauth_callback(
     code: str = Query(...),
     state: str = Query(...),
 ):
-    from app.ops import execute_operation
-
-    result = await execute_operation(
+    await _execute_operation(
         "complete_gmail_oauth",
         {"code": code, "state": state},
-        surface="email_api",
     )
-    _operation_outputs(result)
-    return RedirectResponse(url=f"{_frontend_url()}/email?auth=success")
+    return RedirectResponse(url=f"{_frontend_url()}/?auth=success#/email")
 
 
 @router.post("/imap-connect")
 async def imap_connect(data: ImapConnectRequest):
-    from app.ops import execute_operation
-
-    result = await execute_operation(
+    return await _execute_operation(
         "connect_imap_account",
         data.model_dump(),
-        surface="email_api",
     )
-    return _operation_outputs(result)
 
 
 @router.get("/status")
 async def email_status():
-    from app.ops import execute_operation
-
-    result = await execute_operation(
+    return await _execute_operation(
         "email_connection_status",
         {},
-        surface="email_api",
     )
-    return _operation_outputs(result)
 
 
 @router.get("/accounts")
@@ -159,38 +149,26 @@ async def email_accounts(
     status: str = Query("active"),
     limit: int = Query(50, ge=1, le=200),
 ):
-    from app.ops import execute_operation
-
-    result = await execute_operation(
+    return await _execute_operation(
         "list_email_accounts",
         {"status": status, "limit": limit},
-        surface="email_api",
     )
-    return _operation_outputs(result)
 
 
 @router.post("/accounts/{account_id}/revoke")
 async def revoke_account(account_id: str, data: RevokeEmailAccountRequest):
-    from app.ops import execute_operation
-
-    result = await execute_operation(
+    return await _execute_operation(
         "revoke_email_account",
         {"account_id": account_id, "reason": data.reason},
-        surface="email_api",
     )
-    return _operation_outputs(result)
 
 
 @router.post("/sync")
 async def sync_emails(data: Optional[EmailSyncRequest] = None):
-    from app.ops import execute_operation
-
-    result = await execute_operation(
+    return await _execute_operation(
         "sync_email_notifications",
         {"account_id": data.account_id} if data and data.account_id else {},
-        surface="email_api",
     )
-    return _operation_outputs(result)
 
 
 @router.get("/sync-runs")
@@ -199,26 +177,18 @@ async def email_sync_runs(
     status: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=500),
 ):
-    from app.ops import execute_operation
-
-    result = await execute_operation(
+    return await _execute_operation(
         "list_email_sync_runs",
         {"account_id": account_id, "status": status, "limit": limit},
-        surface="email_api",
     )
-    return _operation_outputs(result)
 
 
 @router.get("/sync-runs/{run_id}")
 async def email_sync_run(run_id: str):
-    from app.ops import execute_operation
-
-    result = await execute_operation(
+    return await _execute_operation(
         "get_email_sync_run",
         {"run_id": run_id},
-        surface="email_api",
     )
-    return _operation_outputs(result)
 
 
 @router.get("/notifications")
@@ -284,14 +254,10 @@ async def ack_notification(
 
 @router.post("/signals")
 async def ingest_progress_signal(data: ProgressSignalIngestRequest):
-    from app.ops import execute_operation
-
-    result = await execute_operation(
+    return await _execute_operation(
         "ingest_application_signal",
         data.model_dump(),
-        surface="email_api",
     )
-    return _operation_outputs(result)
 
 
 @router.get("/progress-candidates")
@@ -300,26 +266,18 @@ async def progress_candidates(
     disclosure: str = Query("summary"),
     limit: int = Query(100, ge=1, le=500),
 ):
-    from app.ops import execute_operation
-
-    result = await execute_operation(
+    return await _execute_operation(
         "list_application_progress_candidates",
         {"status": status, "disclosure": disclosure, "limit": limit},
-        surface="email_api",
     )
-    return _operation_outputs(result)
 
 
 @router.get("/progress-candidates/{candidate_id}")
 async def progress_candidate_detail(candidate_id: str):
-    from app.ops import execute_operation
-
-    result = await execute_operation(
+    return await _execute_operation(
         "get_application_progress_candidate",
         {"candidate_id": candidate_id},
-        surface="email_api",
     )
-    return _operation_outputs(result)
 
 
 @router.post("/progress-candidates/{candidate_id}/review")
@@ -327,14 +285,10 @@ async def review_progress_candidate(
     candidate_id: str,
     data: ProgressReviewRequest,
 ):
-    from app.ops import execute_operation
-
-    result = await execute_operation(
+    return await _execute_operation(
         "review_application_progress",
         {"candidate_id": candidate_id, **data.model_dump()},
-        surface="email_api",
     )
-    return _operation_outputs(result)
 
 
 @router.get("/application-overview")
@@ -343,11 +297,7 @@ async def application_progress_overview(
     job_id: Optional[int] = Query(None),
     limit: int = Query(200, ge=1, le=500),
 ):
-    from app.ops import execute_operation
-
-    result = await execute_operation(
+    return await _execute_operation(
         "get_application_progress_overview",
         {"disclosure": disclosure, "job_id": job_id, "limit": limit},
-        surface="email_api",
     )
-    return _operation_outputs(result)

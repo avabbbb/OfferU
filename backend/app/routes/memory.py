@@ -6,6 +6,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.ops import execute_operation
+from app.services.memory_import import MemoryImportInput
+from app.services.local_memory import LocalMemoryPreviewInput
+from app.services.security_redaction import safe_error_message
 
 router = APIRouter()
 
@@ -32,7 +35,10 @@ class ReviewMemoryProposalRequest(BaseModel):
 async def _execute(name: str, args: dict[str, Any]) -> dict[str, Any]:
     result = await execute_operation(name, args, surface="memory_api")
     if not result.get("ok"):
-        detail = "；".join(str(item) for item in result.get("errors") or [])
+        detail = "；".join(
+            safe_error_message(ValueError(str(item)))
+            for item in result.get("errors") or []
+        )
         raise HTTPException(status_code=400, detail=detail or "Operation failed")
     outputs = result.get("outputs")
     if not isinstance(outputs, dict):
@@ -44,6 +50,21 @@ async def _execute(name: str, args: dict[str, Any]) -> dict[str, Any]:
 async def memory_inbox(status: str = "pending", limit: int = 100) -> dict[str, Any]:
     """记忆收件箱：待审核的职业模型变更提案（含取代链字段）。"""
     return await _execute("list_memory_inbox", {"status": status, "limit": limit})
+
+
+@router.post("/import")
+async def import_memory(body: MemoryImportInput) -> dict[str, Any]:
+    return await _execute("import_memory_candidates", body.model_dump())
+
+
+@router.get("/local-sources")
+async def local_memory_sources() -> dict[str, Any]:
+    return await _execute("list_local_memory_sources", {})
+
+
+@router.post("/local-sources/preview")
+async def preview_local_memory(body: LocalMemoryPreviewInput) -> dict[str, Any]:
+    return await _execute("preview_local_memory_source", body.model_dump())
 
 
 @router.get("/ledger")

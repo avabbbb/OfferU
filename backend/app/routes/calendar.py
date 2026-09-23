@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from app.database import get_db
 from app.models.models import CalendarEvent
+from app.services.security_redaction import safe_error_message
 
 router = APIRouter()
 
@@ -36,7 +37,10 @@ async def _execute_operation(name: str, args: dict[str, Any]) -> Any:
 
     result = await execute_operation(name, args, surface="calendar_api")
     if not result.get("ok"):
-        message = "；".join(str(item) for item in result.get("errors") or [])
+        message = "；".join(
+            safe_error_message(ValueError(str(item)))
+            for item in result.get("errors") or []
+        )
         status = 404 if "不存在" in message or "not found" in message.lower() else 400
         raise HTTPException(status_code=status, detail=message or "操作失败")
     return result.get("outputs")

@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -40,13 +40,17 @@ _TASK_TTL_SECONDS = 24 * 3600
 # running。list_tasks 惰性收割 created_at 超过该窗口且无存活内存任务的批次。
 _ORPHAN_RUNNING_GRACE_SECONDS = 30 * 60
 _tasks: list[dict] = []
+# 保护 _tasks 的并发读写：run_scraper 的后台任务与 list_tasks 可能同时
+# 增删/遍历任务列表，统一用锁串行化，避免 asyncio 任务交错时的竞态。
+_tasks_lock = asyncio.Lock()
 
 
-def _append_task(task: dict) -> None:
+async def _append_task(task: dict) -> None:
     """添加任务记录，超过上限时丢弃最旧的条目"""
-    _tasks.append(task)
-    if len(_tasks) > _MAX_TASK_HISTORY:
-        del _tasks[:len(_tasks) - _MAX_TASK_HISTORY]
+    async with _tasks_lock:
+        _tasks.append(task)
+        if len(_tasks) > _MAX_TASK_HISTORY:
+            del _tasks[:len(_tasks) - _MAX_TASK_HISTORY]
 
 
 def _task_age_seconds(task: dict) -> float:
@@ -54,16 +58,20 @@ def _task_age_seconds(task: dict) -> float:
         created = datetime.fromisoformat(str(task.get("created_at") or ""))
     except ValueError:
         return float("inf")
-    return (datetime.utcnow() - created).total_seconds()
+    if created.tzinfo is None:
+        # 兼容历史任务：utcnow() 时代的 naive 时间戳按 UTC 解释
+        created = created.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - created).total_seconds()
 
 
-def _prune_tasks() -> None:
+async def _prune_tasks() -> None:
     """丢弃超过 TTL 的内存任务（运行中的任务不清理）。"""
-    _tasks[:] = [
-        task
-        for task in _tasks
-        if task.get("status") == "running" or _task_age_seconds(task) <= _TASK_TTL_SECONDS
-    ]
+    async with _tasks_lock:
+        _tasks[:] = [
+            task
+            for task in _tasks
+            if task.get("status") == "running" or _task_age_seconds(task) <= _TASK_TTL_SECONDS
+        ]
 
 
 async def _mark_batch_failed_fallback(batch_id: Optional[str]) -> None:
@@ -92,11 +100,12 @@ async def _reap_orphaned_running_batches() -> None:
     """
     from app.services.scraper_operations import reap_orphaned_running_batches
 
-    live_batch_ids = {
-        str(task.get("batch_id"))
-        for task in _tasks
-        if task.get("status") == "running" and task.get("batch_id")
-    }
+    async with _tasks_lock:
+        live_batch_ids = {
+            str(task.get("batch_id"))
+            for task in _tasks
+            if task.get("status") == "running" and task.get("batch_id")
+        }
     stale_ids = await reap_orphaned_running_batches(
         live_batch_ids=live_batch_ids,
         orphan_grace_seconds=_ORPHAN_RUNNING_GRACE_SECONDS,
@@ -135,7 +144,7 @@ SOURCE_NAME_MAP = {item["key"]: item["name"] for item in AVAILABLE_SOURCES}
 
 def _build_pool_name(source_key: str, keywords: list[str]) -> str:
     source_label = SOURCE_NAME_MAP.get(source_key, source_key)
-    date_label = datetime.utcnow().strftime("%Y年%m月%d日")
+    date_label = datetime.now(timezone.utc).strftime("%Y年%m月%d日")
     keyword_text = "、".join([kw.strip() for kw in keywords if kw.strip()]) or "全量"
     return f"{source_label}{date_label}+{keyword_text}"
 
@@ -164,8 +173,8 @@ async def list_sources():
         result.append({
             **src,
             "registered": is_registered,
-            # 仅 status=ready 的源在注册后显示 ready，skeleton/planned 保持原状
-            "status": src["status"] if src["status"] != "ready" and not is_registered else src["status"],
+            # 仅 status=ready 的源在未注册时降级为 unavailable，skeleton/unsupported 保持原状
+            "status": "unavailable" if src["status"] == "ready" and not is_registered else src["status"],
         })
     return result
 
@@ -183,8 +192,8 @@ async def run_scraper(req: RunRequest):
             detail=f"数据源 '{req.source}' 尚未实现，当前为骨架/计划状态"
         )
 
-    task_id = hashlib.md5(f"{req.source}-{datetime.utcnow().isoformat()}".encode()).hexdigest()[:12]
-    batch_id = f"batch-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}-{task_id[:4]}"
+    task_id = hashlib.md5(f"{req.source}-{datetime.now(timezone.utc).isoformat()}".encode()).hexdigest()[:12]
+    batch_id = f"batch-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{task_id[:4]}"
     pool_base_name = _build_pool_name(req.source, req.keywords)
     batch = await _operation_outputs(
         "start_scraper_batch",
@@ -207,10 +216,10 @@ async def run_scraper(req: RunRequest):
         "keywords": req.keywords,
         "location": req.location,
         "status": "running",
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
         "result": None,
     }
-    _append_task(task_info)
+    await _append_task(task_info)
 
     # 异步执行爬虫任务
     asyncio.create_task(_execute_scraper(task_info, scraper, req))
@@ -348,9 +357,10 @@ async def _execute_scraper(task_info: dict, scraper, req: RunRequest):
 @router.get("/tasks")
 async def list_tasks(db: AsyncSession = Depends(get_db)):
     """获取最近的爬取任务列表。内存任务丢失时，回退展示数据库中的批次记录。"""
-    _prune_tasks()
+    await _prune_tasks()
     await _reap_orphaned_running_batches()
-    memory_tasks = list(reversed(_tasks[-50:]))
+    async with _tasks_lock:
+        memory_tasks = list(reversed(_tasks[-50:]))
     seen_batches = {
         item.get("batch_id")
         for item in memory_tasks

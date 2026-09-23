@@ -512,6 +512,8 @@ async def chat_completion_stream(
                             text = getattr(delta, "text", None)
                             if text:
                                 yield text
+        except asyncio.TimeoutError:
+            _logger.warning("[LLM Timeout] %s/%s (anthropic stream): 超过 %ss", provider, model, settings.llm_timeout)
         except Exception as exc:
             _logger.error("[LLM Error] %s/%s (anthropic stream): %s", provider, model, redact_sensitive_text(exc, max_length=500))
         finally:
@@ -634,14 +636,17 @@ def extract_json(text: str) -> Optional[dict]:
         except json.JSONDecodeError:
             pass
 
-    # 尝试找到第一个 { 到最后一个 } 的范围
-    start = text.find("{")
-    end = text.rfind("}")
-    if start >= 0 and end > start:
-        try:
-            return json.loads(text[start:end + 1])
-        except json.JSONDecodeError:
-            pass
+    # 使用 JSONDecoder.raw_decode 提取第一个完整 JSON 对象，
+    # 避免多个 JSON 对象时第一个 { 到最后一个 } 产生无效 JSON。
+    decoder = json.JSONDecoder()
+    for i, ch in enumerate(text):
+        if ch == '{':
+            try:
+                obj, _end = decoder.raw_decode(text[i:])
+                if isinstance(obj, dict):
+                    return obj
+            except json.JSONDecodeError:
+                continue
 
     return None
 
@@ -650,7 +655,7 @@ def extract_json(text: str) -> Optional[dict]:
 # Embedding API — 文本向量化（用于语义搜索）
 # =============================================
 
-async def get_embedding(text: str, model: str = "text-embedding-v3") -> list[float]:
+async def get_embedding(text: str, model: str = "text-embedding-v3") -> Optional[list[float]]:
     """
     获取文本的 Embedding 向量
     ─────────────────────────────────────────────
@@ -661,11 +666,12 @@ async def get_embedding(text: str, model: str = "text-embedding-v3") -> list[flo
       text: 待向量化的文本
       model: embedding 模型名称
 
-    返回: 向量列表（长度取决于模型，Qwen v3 为 1024 维）
+    返回: 向量列表（长度取决于模型，Qwen v3 为 1024 维）；
+          失败时返回 None，调用方应检查并跳过该条目的索引/搜索。
     """
     if not text or not text.strip():
-        # 返回零向量（避免崩溃）
-        return [0.0] * 1024
+        _logger.warning("[Embedding] empty text, returning None")
+        return None
 
     client, _ = _get_client()
     settings = get_settings()
@@ -686,11 +692,11 @@ async def get_embedding(text: str, model: str = "text-embedding-v3") -> list[flo
 
     except asyncio.TimeoutError:
         _logger.error(f"[Embedding Timeout] model={model}: 超过 {settings.llm_timeout}s")
-        return [0.0] * 1024
+        return None
     except Exception as e:
         _logger.error(
             "[Embedding Error] model=%s: %s",
             model,
             redact_sensitive_text(e, max_length=500),
         )
-        return [0.0] * 1024
+        return None

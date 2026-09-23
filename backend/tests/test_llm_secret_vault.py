@@ -179,7 +179,7 @@ class LlmSecretVaultTests(unittest.TestCase):
 
     def test_runtime_cookie_reader_hydrates_the_vault_reference(self):
         fake = FakeVault()
-        with tempfile.TemporaryDirectory(dir="H:/tmp/offeru") as root:
+        with tempfile.TemporaryDirectory() as root:
             config_file = Path(root) / "config.json"
             payload = {"boss_cookie": "wt2=secret"}
             with fake.install():
@@ -231,7 +231,7 @@ class LlmSecretVaultTests(unittest.TestCase):
 
     def test_replace_failure_preserves_file_and_removes_new_reference(self):
         fake = FakeVault()
-        with tempfile.TemporaryDirectory(dir="H:/tmp/offeru") as root:
+        with tempfile.TemporaryDirectory() as root:
             config_file = Path(root) / "config.json"
             config_file.write_text('{"existing":true}', encoding="utf-8")
             with fake.install(), patch.object(llm_config_store, "runtime_config_file", return_value=config_file), \
@@ -243,7 +243,7 @@ class LlmSecretVaultTests(unittest.TestCase):
 
     def test_successful_rotation_deletes_only_the_replaced_reference(self):
         fake = FakeVault()
-        with tempfile.TemporaryDirectory(dir="H:/tmp/offeru") as root:
+        with tempfile.TemporaryDirectory() as root:
             config_file = Path(root) / "config.json"
             with fake.install(), patch.object(llm_config_store, "runtime_config_file", return_value=config_file):
                 first = llm_config_store.save_llm_config_file(config_payload(api_key="sk-first"))

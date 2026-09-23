@@ -357,7 +357,10 @@ async def add_security_headers(request, call_next):
         if raw_host.startswith("[") and "]" in raw_host
         else raw_host.split(":", 1)[0]
     )
-    if request.url.path.startswith("/api/") and host_header not in _LOOPBACK_HOSTS:
+    if (
+        request.url.path.startswith("/api/")
+        or request.url.path.startswith("/mcp")
+    ) and host_header not in _LOOPBACK_HOSTS:
         return _error_response(
             request,
             status_code=403,

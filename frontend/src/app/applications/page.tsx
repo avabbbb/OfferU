@@ -515,8 +515,15 @@ const [emailSyncing, setEmailSyncing] = useState(false);
     if (!currentTableId || !currentTable) return;
     const draft = cloneSchema(currentTable.schema);
     mutator(draft);
-    await updateApplicationTableSchema(currentTableId, draft);
-    await refreshAll();
+    try {
+      await updateApplicationTableSchema(currentTableId, draft);
+      await refreshAll();
+    } catch (error) {
+      setOperationFeedback({
+        tone: "error",
+        message: safeClientErrorMessage(error, "更新表格结构失败，请稍后重试。"),
+      });
+    }
   };
 
   const startColumnResize = (
@@ -640,6 +647,11 @@ const [emailSyncing, setEmailSyncing] = useState(false);
       await createApplicationTable(newTableName.trim());
       setNewTableName("");
       await mutateWorkspace();
+    } catch (error) {
+      setOperationFeedback({
+        tone: "error",
+        message: safeClientErrorMessage(error, "创建表格失败，请稍后重试。"),
+      });
     } finally {
       setTableActionLoading(false);
     }
@@ -654,6 +666,11 @@ const [emailSyncing, setEmailSyncing] = useState(false);
       setEditingTableName("");
       await mutateWorkspace();
       await mutateRecords();
+    } catch (error) {
+      setOperationFeedback({
+        tone: "error",
+        message: safeClientErrorMessage(error, "重命名表格失败，请稍后重试。"),
+      });
     } finally {
       setTableActionLoading(false);
     }
@@ -665,6 +682,11 @@ const [emailSyncing, setEmailSyncing] = useState(false);
       await deleteApplicationTable(tableId);
       await mutateWorkspace();
       await mutateRecords();
+    } catch (error) {
+      setOperationFeedback({
+        tone: "error",
+        message: safeClientErrorMessage(error, "删除表格失败，请稍后重试。"),
+      });
     } finally {
       setTableActionLoading(false);
     }
@@ -766,16 +788,23 @@ const [emailSyncing, setEmailSyncing] = useState(false);
 
   const handleCreateManualRecord = async () => {
     if (!currentTableId) return;
-    await createApplicationRecord(currentTableId, {
-      company_name: "",
-      job_title: "",
-      location: "",
-      job_link: "",
-      source: "",
-      salary_text: "",
-      updated_at: new Date().toISOString(),
-    });
-    await refreshAll();
+    try {
+      await createApplicationRecord(currentTableId, {
+        company_name: "",
+        job_title: "",
+        location: "",
+        job_link: "",
+        source: "",
+        salary_text: "",
+        updated_at: new Date().toISOString(),
+      });
+      await refreshAll();
+    } catch (error) {
+      setOperationFeedback({
+        tone: "error",
+        message: safeClientErrorMessage(error, "新增记录失败，请稍后重试。"),
+      });
+    }
   };
 
   const openMoveModal = () => {
@@ -830,6 +859,11 @@ const [emailSyncing, setEmailSyncing] = useState(false);
       setDeleteConfirmOpen(false);
       setSelectedIds(new Set());
       await refreshAll();
+    } catch (error) {
+      setOperationFeedback({
+        tone: "error",
+        message: safeClientErrorMessage(error, "删除记录失败，请稍后重试。"),
+      });
     } finally {
       setBulkLoading(false);
     }
@@ -919,6 +953,11 @@ const [emailSyncing, setEmailSyncing] = useState(false);
       await updateApplicationTemplate(templateDraft, purgeNonTemplateFields);
       await refreshAll();
       closeSettingsModal();
+    } catch (error) {
+      setOperationFeedback({
+        tone: "error",
+        message: safeClientErrorMessage(error, "保存设置与模板失败，请稍后重试。"),
+      });
     } finally {
       setSettingsSaving(false);
     }

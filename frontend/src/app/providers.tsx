@@ -6,47 +6,15 @@
 
 import { NextUIProvider } from "@nextui-org/react";
 import { SWRConfig } from "swr";
-import { AnimatePresence } from "framer-motion";
-import { usePathname } from "next/navigation";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useOnboarding } from "@/lib/useOnboarding";
 import { SHOWCASE } from "@/lib/showcase/router";
 import { resolveApiBase } from "@/lib/apiBase";
-
-const OnboardingWizard = lazy(() =>
-  import("@/components/onboarding/OnboardingWizard").then((module) => ({
-    default: module.OnboardingWizard,
-  })),
-);
 
 const API_BASE = resolveApiBase();
 const APP_VERSION = import.meta.env.VITE_APP_VERSION || "0.0.0";
 const BACKEND_STARTUP_TIMEOUT_MS = 45_000;
 const BACKEND_STARTUP_SLOW_HINT_MS = 8_000;
-
-function OnboardingGate({ children }: { children: React.ReactNode }) {
-  const { shouldShowWizard, completeWizard, skipWizard } = useOnboarding();
-  const pathname = usePathname();
-  const canShowWizard = pathname === "/";
-  if (SHOWCASE) return children; // 展示模式不弹引导向导
-
-  return (
-    <>
-      {children}
-      <AnimatePresence>
-        {shouldShowWizard && canShowWizard && (
-          <Suspense fallback={null}>
-            <OnboardingWizard
-              onComplete={completeWizard}
-              onSkip={skipWizard}
-            />
-          </Suspense>
-        )}
-      </AnimatePresence>
-    </>
-  );
-}
 
 function BackendReadyGate({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(SHOWCASE);
@@ -211,9 +179,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     >
       <NextUIProvider>
         <BackendReadyGate>
-          <OnboardingGate>
-            {children}
-          </OnboardingGate>
+          {children}
         </BackendReadyGate>
       </NextUIProvider>
     </SWRConfig>

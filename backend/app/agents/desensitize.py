@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import re
+import secrets
 from typing import Tuple
 
 # ---- 正则模式 ----
@@ -37,6 +38,9 @@ def desensitize(text: str) -> Tuple[str, dict]:
     """
     mapping: dict[str, str] = {}  # placeholder -> original
     counter = {"phone": 0, "email": 0, "id": 0, "bank": 0}
+    # Per-call random nonce so placeholders are globally unique and cannot
+    # accidentally collide with text that the LLM might generate on its own.
+    nonce = secrets.token_hex(4)
 
     def _replace(match: re.Match, prefix: str) -> str:
         original = match.group(0)
@@ -45,7 +49,7 @@ def desensitize(text: str) -> Tuple[str, dict]:
             if orig == original:
                 return placeholder
         counter[prefix] += 1
-        placeholder = f"[{prefix.upper()}_{counter[prefix]}]"
+        placeholder = f"[__PII_{prefix.upper()}_{counter[prefix]}_{nonce}__]"
         mapping[placeholder] = original
         return placeholder
 
@@ -64,8 +68,14 @@ def desensitize(text: str) -> Tuple[str, dict]:
 
 
 def restore(text: str, mapping: dict) -> str:
-    """将脱敏占位符还原为原始值"""
+    """将脱敏占位符还原为原始值
+
+    使用精确的占位符字符串替换。由于占位符包含每调用唯一的随机
+    nonce（如 ``[__PII_PHONE_1_a3f2b1c7__]``），LLM 输出中不太可能
+    意外产生相同的字符串，因此 ``str.replace`` 是安全的。
+    """
     result = text
     for placeholder, original in mapping.items():
-        result = result.replace(placeholder, original)
+        if placeholder in result:
+            result = result.replace(placeholder, original)
     return result

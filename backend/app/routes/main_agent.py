@@ -800,6 +800,19 @@ async def stream_runtime_run(body: PiAgentRunRequest):
                 "event": "error",
                 "data": json.dumps(payload, ensure_ascii=False),
             }
+        finally:
+            # If the client disconnected (or any error aborted the SSE stream)
+            # before the background run finished, cancel it so the Agent
+            # execution loop does not keep running detached.
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                except Exception:
+                    pass
+            _background_runtime_tasks.discard(task)
 
     return EventSourceResponse(events())
 

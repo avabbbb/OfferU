@@ -30,14 +30,14 @@ async def list_pending_proposals() -> dict[str, Any]:
     from app.database import async_session
     from app.models.models import AgentRunRecord
 
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
     from sqlalchemy import select
 
     from app.database import async_session
     from app.models.models import AgentRunRecord
 
-    since = datetime.utcnow() - timedelta(hours=24)
+    since = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=24)
     async with async_session() as db:
         rows = (
             (

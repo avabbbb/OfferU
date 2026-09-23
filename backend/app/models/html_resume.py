@@ -1,7 +1,6 @@
 # backend/app/models/html_resume.py
-from sqlalchemy import Column, Integer, String, Text, JSON, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, JSON, DateTime, ForeignKey, func
 from sqlalchemy.orm import relationship
-from datetime import datetime
 from .models import Base
 
 class HtmlResumeTemplate(Base):
@@ -16,7 +15,7 @@ class HtmlResumeTemplate(Base):
     html_template = Column(Text)  # Jinja2 模板
     css_template = Column(Text)  # CSS 样式
     design_tokens = Column(JSON)  # 设计变量 {"primaryColor": "#2563eb"}
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, server_default=func.now())
 
 class HtmlResume(Base):
     """用户生成的 HTML 简历"""
@@ -29,7 +28,7 @@ class HtmlResume(Base):
     html_content = Column(Text)  # 渲染后的 HTML
     design_overrides = Column(JSON)  # 用户自定义配色 {"primaryColor": "#ef4444"}
     job_ids = Column(JSON)  # 关联岗位 [1, 2, 3]
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, server_default=func.now())
 
     profile = relationship("Profile")
     template = relationship("HtmlResumeTemplate")

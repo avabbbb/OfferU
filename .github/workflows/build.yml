@@ -72,6 +72,10 @@ jobs:
         working-directory: frontend
         run: npm run typecheck
 
+      - name: Run frontend tests
+        working-directory: frontend
+        run: npm test
+
       - name: Build frontend
         working-directory: frontend
         run: npm run build
@@ -730,29 +734,10 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $version = (Get-Content frontend/package.json -Raw | ConvertFrom-Json).version
-          $artifactDir = Join-Path $env:GITHUB_WORKSPACE 'release-artifacts'
-          New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
-          $artifacts = @(
-            Get-ChildItem frontend/src-tauri/target/release/bundle/nsis -Filter '*-setup.exe' -File
-            Get-ChildItem frontend/src-tauri/target/release/bundle/msi -Filter '*.msi' -File
-          ) | Sort-Object Name -Unique
-          if ($artifacts.Count -lt 2) { throw 'NSIS and MSI installers were not both produced' }
-          Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'RELEASE_NOTES.md') -Destination (Join-Path $artifactDir 'RELEASE_NOTES.md') -Force
-          Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'THIRD_PARTY_NOTICES.md') -Destination (Join-Path $artifactDir 'THIRD_PARTY_NOTICES.md') -Force
-          Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'LICENSE') -Destination (Join-Path $artifactDir 'LICENSE') -Force
-          $manifest = foreach ($artifact in $artifacts) {
-            Copy-Item -LiteralPath $artifact.FullName -Destination (Join-Path $artifactDir $artifact.Name) -Force
-            $hash = Get-FileHash -LiteralPath $artifact.FullName -Algorithm SHA256
-            [pscustomobject]@{ name = $artifact.Name; bytes = $artifact.Length; sha256 = $hash.Hash }
-          }
-          $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $artifactDir 'artifacts.json') -Encoding utf8
-          $checksums = foreach ($artifact in $artifacts) {
-            $hash = Get-FileHash -LiteralPath $artifact.FullName -Algorithm SHA256
-            "$($hash.Hash)  $($artifact.Name)"
-          }
-          $checksums | Set-Content -LiteralPath (Join-Path $artifactDir 'SHA256SUMS.txt') -Encoding utf8
-          [pscustomobject]@{ product = 'OfferU'; version = $version; target = 'windows-x64'; installers = @($artifacts.Name); signed = [bool]( $env:GITHUB_REF -like 'refs/tags/v*' ) } |
-            ConvertTo-Json | Set-Content -LiteralPath (Join-Path $artifactDir 'version.json') -Encoding utf8
+          $arguments = @('frontend/src-tauri/target/release/bundle', 'release-artifacts', '--version', [string]$version, '--target', 'windows-x64')
+          if ($env:GITHUB_REF -like 'refs/tags/v*') { $arguments += '--signed' }
+          python backend/scripts/release/collect_release_artifacts.py @arguments
+          if ($LASTEXITCODE -ne 0) { throw 'Release artifact collection failed' }
 
       - name: Verify release artifact manifest and checksums
         shell: pwsh
@@ -777,6 +762,11 @@ jobs:
           name: offeru-windows-x64
           path: release-artifacts
           if-no-files-found: error
+
+  macos-package:
+    needs: [backend-tests, frontend-quality, extension-quality]
+    uses: ./.github/workflows/macos-package.yml
+    secrets: inherit
 
   desktop-installed-smoke:
     name: Windows installed-app and sidecar smoke
@@ -846,7 +836,7 @@ jobs:
               throw "port 8766 is already occupied before installed-app smoke (PID(s): $($ownerIds -join ', '))"
             }
 
-            $installer = Get-ChildItem -Path (Join-Path $env:GITHUB_WORKSPACE 'release-assets') -Filter '*-setup.exe' -File -Recurse |
+            $installer = Get-ChildItem -Path (Join-Path $env:GITHUB_WORKSPACE 'release-assets') -Filter 'OfferU-Setup-*.exe' -File -Recurse |
               Select-Object -First 1
             if ($null -eq $installer) { throw 'NSIS installer artifact was not found' }
             $installerRun = Start-Process -FilePath $installer.FullName -ArgumentList @('/S', "/D=$installRoot") -WindowStyle Hidden -PassThru -Wait
@@ -957,7 +947,7 @@ jobs:
   release:
     name: Draft GitHub release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [backend-tests, frontend-quality, rust-security-audit, browser-smoke, reliability-failure-recovery, critical-browser-repeatability, migration-browser-smoke, desktop-package, desktop-installed-smoke]
+    needs: [backend-tests, frontend-quality, rust-security-audit, browser-smoke, reliability-failure-recovery, critical-browser-repeatability, migration-browser-smoke, desktop-package, desktop-installed-smoke, macos-package]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -972,6 +962,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: offeru-windows-x64
+          path: release-assets/windows-x64
+
+      - name: Download macOS release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: offeru-macos-*
           path: release-assets
 
       - name: Verify downloaded release artifact manifest and checksums
@@ -979,10 +975,13 @@ jobs:
         run: |
           set -euo pipefail
           expected_version="${GITHUB_REF_NAME#v}"
-          python backend/scripts/release/verify_release_artifacts.py \
-            release-assets \
-            --expected-version "$expected_version" \
-            --require-signed
+          for artifact in release-assets/windows-x64 release-assets/offeru-macos-arm64 release-assets/offeru-macos-x64; do
+            python backend/scripts/release/verify_release_artifacts.py "$artifact" --expected-version "$expected_version" --require-signed
+            platform=$(basename "$artifact")
+            cp "$artifact/artifacts.json" "release-assets/artifacts-$platform.json"
+            cp "$artifact/version.json" "release-assets/version-$platform.json"
+          done
+          cat release-assets/*/SHA256SUMS.txt > release-assets/SHA256SUMS.txt
 
       - name: Audit downloaded release artifact for secrets
         shell: bash
@@ -996,4 +995,13 @@ jobs:
           name: OfferU ${{ github.ref_name }}
           draft: true
           generate_release_notes: true
-          files: release-assets/*
+          files: |
+            release-assets/windows-x64/*.exe
+            release-assets/windows-x64/*.msi
+            release-assets/offeru-macos-*/*.dmg
+            release-assets/SHA256SUMS.txt
+            release-assets/artifacts-*.json
+            release-assets/version-*.json
+            release-assets/windows-x64/RELEASE_NOTES.md
+            release-assets/windows-x64/THIRD_PARTY_NOTICES.md
+            release-assets/windows-x64/LICENSE
