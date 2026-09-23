@@ -1,0 +1,108 @@
+name: macOS desktop package
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: macos-arm64
+          - runner: macos-15-intel
+            target: macos-x64
+    runs-on: ${{ matrix.runner }}
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '13.5'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            agent-runtime/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install build dependencies
+        run: |
+          python -m pip install -r backend/requirements.txt pyinstaller==6.21.0
+          npm --prefix frontend ci
+          npm --prefix agent-runtime ci
+      - name: Audit release version
+        run: python backend/scripts/release/audit_version_consistency.py --repo-root .
+      - name: Require release readiness and Apple signing for release tags
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          python backend/scripts/release/audit_release_readiness.py --repo-root . --require-ready
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!name}" ]; then echo "Release signing secret is missing: $name" >&2; exit 1; fi
+          done
+          if [ "$APPLE_SIGNING_IDENTITY" = '-' ]; then echo 'Release tags require a Developer ID signature.' >&2; exit 1; fi
+      - name: Build native app and DMG
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY || '-' }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          projectPath: frontend
+          args: --bundles app,dmg
+      - name: Check copied app runtime without development dependencies
+        run: |
+          version=$(node -p "require('./frontend/package.json').version")
+          python backend/scripts/release/smoke_macos_package.py frontend/src-tauri/target/release/bundle/macos/OfferU.app --version "$version"
+      - name: Verify release signing and notarization
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          codesign --verify --deep --strict frontend/src-tauri/target/release/bundle/macos/OfferU.app
+          spctl --assess --type execute frontend/src-tauri/target/release/bundle/macos/OfferU.app
+          for dmg in frontend/src-tauri/target/release/bundle/dmg/*.dmg; do xcrun stapler validate "$dmg"; done
+      - name: Collect and verify installers
+        env:
+          RELEASE_TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./frontend/package.json').version")
+          collect_flags=()
+          verify_flags=()
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then collect_flags+=(--signed); verify_flags+=(--require-signed); fi
+          python backend/scripts/release/collect_release_artifacts.py frontend/src-tauri/target/release/bundle release-artifacts --version "$version" --target "$RELEASE_TARGET" "${collect_flags[@]}"
+          python backend/scripts/release/verify_release_artifacts.py release-artifacts --expected-version "$version" "${verify_flags[@]}"
+          python backend/scripts/release/audit_artifacts.py release-artifacts --json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: offeru-${{ matrix.target }}
+          path: release-artifacts
+          if-no-files-found: error
+      - name: Preserve failed runtime log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: offeru-${{ matrix.target }}-runtime-log
+          path: ${{ runner.temp }}/offeru-macos-backend.log
+          if-no-files-found: ignore

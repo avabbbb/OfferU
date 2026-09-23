@@ -13,6 +13,17 @@ use tauri::{AppHandle, Emitter, Manager};
 
 struct Children(Mutex<Vec<Child>>);
 
+fn find_packaged_file(resource_dir: &std::path::Path, names: &[&str]) -> Option<std::path::PathBuf> {
+    let executable_dir = std::env::current_exe()
+        .ok()
+        .and_then(|executable| executable.parent().map(|directory| directory.to_path_buf()));
+    executable_dir
+        .into_iter()
+        .chain(std::iter::once(resource_dir.to_path_buf()))
+        .flat_map(|directory| names.iter().map(move |name| directory.join(name)))
+        .find(|path| path.is_file())
+}
+
 fn project_root_from_exe() -> std::path::PathBuf {
     // dev: target/debug/app.exe -> 向上直到含 frontend/ 和 backend/ 的目录
     let mut d = std::env::current_exe().unwrap();
@@ -75,23 +86,58 @@ fn spawn_release_sidecar(app: &AppHandle) -> Option<Child> {
             return None;
         }
     };
-    let sidecar = [
+    #[cfg(windows)]
+    let backend_names = [
+        "offeru-backend.exe",
         "offeru-backend-x86_64-pc-windows-msvc.exe",
         "offeru-backend-aarch64-pc-windows-msvc.exe",
-        "offeru-backend.exe",
-        "offeru-backend-x86_64-apple-darwin",
+    ];
+    #[cfg(target_os = "macos")]
+    let backend_names = [
+        "offeru-backend",
         "offeru-backend-aarch64-apple-darwin",
+        "offeru-backend-x86_64-apple-darwin",
+    ];
+    #[cfg(target_os = "linux")]
+    let backend_names = [
+        "offeru-backend",
         "offeru-backend-x86_64-unknown-linux-gnu",
         "offeru-backend-aarch64-unknown-linux-gnu",
-    ]
-    .iter()
-    .map(|name| resource_dir.join(name))
-    .find(|path| path.is_file());
+    ];
+    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
+    let backend_names = ["offeru-backend"];
+
+    #[cfg(windows)]
+    let node_names = [
+        "offeru-node.exe",
+        "offeru-node-x86_64-pc-windows-msvc.exe",
+        "offeru-node-aarch64-pc-windows-msvc.exe",
+    ];
+    #[cfg(target_os = "macos")]
+    let node_names = [
+        "offeru-node",
+        "offeru-node-aarch64-apple-darwin",
+        "offeru-node-x86_64-apple-darwin",
+    ];
+    #[cfg(target_os = "linux")]
+    let node_names = [
+        "offeru-node",
+        "offeru-node-x86_64-unknown-linux-gnu",
+        "offeru-node-aarch64-unknown-linux-gnu",
+    ];
+    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
+    let node_names = ["offeru-node"];
+
+    let sidecar = find_packaged_file(&resource_dir, &backend_names);
 
     let Some(sidecar) = sidecar else {
-        eprintln!("[OfferU] packaged Python sidecar was not found in the resource directory");
+        eprintln!("[OfferU] packaged backend sidecar was not found beside the app executable or in the resource directory");
         return None;
     };
+    let node = find_packaged_file(&resource_dir, &node_names);
+    if node.is_none() {
+        eprintln!("[OfferU] packaged Node runtime was not found; Node-based Agent providers may be unavailable");
+    }
 
     let cors_origins = concat!(
         "http://localhost:7410,http://127.0.0.1:7410,",
@@ -101,7 +147,6 @@ fn spawn_release_sidecar(app: &AppHandle) -> Option<Child> {
     let mut cmd = Command::new(sidecar);
     cmd.env("OFFERU_DATA_DIR", &data_dir)
         .env("OFFERU_AGENT_RUNTIME_DIR", resource_dir.join("agent-runtime"))
-        .env("OFFERU_NODE_PATH", resource_dir.join("node.exe"))
         .env("OFFERU_BUILD_MODE", "release")
         .env("OFFERU_RUNTIME_MODE", "desktop-sidecar")
         .env("OFFERU_VERSION", env!("CARGO_PKG_VERSION"))
@@ -111,6 +156,9 @@ fn spawn_release_sidecar(app: &AppHandle) -> Option<Child> {
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
+    if let Some(node) = node {
+        cmd.env("OFFERU_NODE_PATH", node);
+    }
 
     #[cfg(windows)]
     {
