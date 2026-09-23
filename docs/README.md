@@ -36,7 +36,7 @@ Historical audits and dated reports are evidence of what was true when they were
 
 | Area | Current document | Purpose |
 | --- | --- | --- |
-| Product | [Current Product North Star](./product/current-product.md) | Zero-setup, Guided UX, external-first Agent, fallback Agent, Skills ecosystem, browser/email journeys |
+| Product | [Current Product North Star](./product/current-product.md) | Outcome-first Job Workspace, zero-setup App-first UX, Skill-first power-user entry, Guided Today, external-first Agent |
 | Goal | [GOAL.md](../GOAL.md) | Public-release goal and durable release gates |
 | Domain | [CONTEXT.md](../CONTEXT.md) | Career Truth, candidates, evidence, applications, memory and Agent vocabulary |
 | Architecture | [ARCHITECTURE.md](../ARCHITECTURE.md) | Short current system boundary |
@@ -49,6 +49,12 @@ Historical audits and dated reports are evidence of what was true when they were
 | Eval | [Live Eval](./evals/LIVE_EVAL.md) | current Agent eval contract and execution model |
 | Status | [STATUS.md](../STATUS.md) | current implementation state and blockers |
 | Handoff | [HANDOFF.md](../HANDOFF.md) | latest continuation context for Coding Agents |
+
+## Product design rationale
+
+These explain why current product rules exist; they are references, not higher authority.
+
+- [Skill-first Agent Entry, Job Workspace & Product Story](./product/skill-first-job-workspace-story.md) — rationale and external reference patterns behind the now-adopted App-first / Skill-first dual entry, canonical Job Workspace and outcome-first product story.
 
 ## Document status classes
 
@@ -87,9 +93,12 @@ Do not rewrite old eval numbers to make them look current. Preserve the result a
 
 ~~~
 OfferU Desktop = primary Career OS experience
+Job Workspace = durable product object for one opportunity
+App-first = default normal-user front door
+Skill-first = power-user Agent front door
 External local Agent = preferred reasoning host
 Built-in OfferU Agent = fallback
-Agent Skills = composable methodology layer
+Agent Skills = composable methodology / Agent entry layer
 Operation Registry = execution / permission authority
 Career Runtime = canonical truth
 Today = guided next-best-action layer
