@@ -616,20 +616,6 @@ def _audit_rows_for_grading(
         if item.get("decision") in {"accepted", "approve"}
     }
 
-
-def _human_action_execution_started(
-    audit_rows: list[dict[str, Any]], actions: list[dict[str, str]]
-) -> bool:
-    refs = {
-        f"agent-run:{item.get('run_id')}:{item.get('action_id')}"
-        for item in actions
-    }
-    return any(
-        str(row.get("surface") or "") == "pi"
-        and str(row.get("confirmation_ref") or "") in refs
-        and str(row.get("status") or "") in {"executing", "completed", "failed"}
-        for row in audit_rows
-    )
     kept: list[dict[str, Any]] = []
     excluded_ids: list[int] = []
     for row in audit_rows:
@@ -655,6 +641,21 @@ def _human_action_execution_started(
         else:
             kept.append(row)
     return kept, excluded_ids
+
+
+def _human_action_execution_started(
+    audit_rows: list[dict[str, Any]], actions: list[dict[str, str]]
+) -> bool:
+    refs = {
+        f"agent-run:{item.get('run_id')}:{item.get('action_id')}"
+        for item in actions
+    }
+    return any(
+        str(row.get("surface") or "") == "pi"
+        and str(row.get("confirmation_ref") or "") in refs
+        and str(row.get("status") or "") in {"executing", "completed", "failed"}
+        for row in audit_rows
+    )
 
 
 def _audit_keys(eval_db: Path) -> set[str]:
