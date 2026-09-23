@@ -1,7 +1,7 @@
 
 # AGENTS.md
 
-本文档用于约束本项目中的 AI / 自动化开发行为。开发时优先遵循本文件，其次遵循用户当前消息。
+本文档用于约束本项目中的 AI / 自动化开发行为。用户当前明确任务与更高优先级指令优先；在其范围内，本文件提供 OfferU 仓库级施工约束。遇到文档冲突时，不凭旧聊天或历史设计猜测，按下述“当前事实源”顺序裁决。
 
 ## 角色设定
 
@@ -11,14 +11,46 @@
 Playwright MCP 或Browser 来访问/截图/识别/探索网站的视觉和代码Context7 MCP 来查询某些技术文档(如果你需要使用到它们的话)动效丰富的部分，可以使用/web-shader-extractor进行分析
 关于分析：这是个重大且复杂的工程，并且你上下文有限，你可以先进行整体分析，按模块进行顺序执行，每个模块任务的结果落盘分析文档到本地，这样即便上下文被压缩，后续也能够通过本地文档得到保证。分析思维你可以参考/duck
 
+## 当前事实源与产品模型
+
+当产品/架构文档冲突时，按以下顺序：
+
+```text
+GOAL.md
+  ↓
+docs/product/current-product.md
+  ↓
+CONTEXT.md
+  ↓
+docs/adr/README.md
+  ↓
+ARCHITECTURE.md + current architecture topic docs
+  ↓
+live code / Registry / Host / generated Skill projections
+  ↓
+current Eval evidence
+```
+
+`docs/archive/**`、旧 dated report、旧 harness/DSH/Pi 方案只作历史证据，不得覆盖当前 authority。
+
+当前必须保持的产品模型：
+
+- **App-first 是普通用户默认入口**：安装 OfferU → 自动发现可用本地 Agent → 支持时自动投影/注册 OfferU Skill → 建立 Profile → 保存 Job → 打开 canonical Job Workspace → Today 引导下一步。
+- **Skill-first 是高级用户入口**：用户可从 Codex / Claude Code / WorkBuddy / OpenCode / OMP / Pi 等支持宿主直接调用 OfferU Skill，但最终必须解析或创建同一个 canonical Job / Application 状态。
+- **Skill 是 Agent entry，不是第二套产品状态**；不得创建 Agent-only Job、隐藏 workspace、重复 Profile 或平行 Application state。
+- **Job / Opportunity 是持久 Job Workspace**：Job Snapshot、Role Intelligence、Evidence Map、Application Materials、Interview、Timeline / Next Action 都属于同一机会工作区。
+- Agent 长任务结果必须逐步物化为 OfferU 可见状态（completed / needs review / blocked / failed / next action），不得只留在聊天文本里。
+- **Career Runtime 是 Truth authority**，Operation Registry 是 execution/permission authority，当前 active Agent 是 reasoning authority；Today / Pipeline / UI 只投影同一份 Career Truth。
+- 对外产品叙事优先使用“一个 Job → 岗位要求 × 可验证证据 → evidence-backed Job Workspace”，Career OS 与三权分立是第二层解释，不应成为普通用户的理解前置条件。
+
 ## 基本原则
 
 - 先读现有代码，再动手修改，优先沿用项目已有结构和写法。
 - 写代码保持最少行数，能简单实现就不要引入复杂抽象。
 - 标准格式、协议、解析、压缩、加密、日期等通用能力优先使用成熟稳定的库，不要手写底层实现，除非用户明确要求或项目已有实现必须沿用。
 - 不要为了“兼容更多场景”写大量分支，只实现当前明确需要的功能。
-- 项目尚未上线，不需要兼容旧数据；表结构或字段调整时直接按新设计修改，不写旧字段兼容、数据迁移兜底或删除旧表的清理逻辑，除非用户明确要求。
-- 每次写完代码，不需要检查语法，不需要执行构建，用户会自己做。
+- OfferU 已进入 Public Release 准备路径，**不得再假设旧数据可以直接丢弃**。涉及 schema / persistence / version 的变更必须按 `GOAL.md` 的 migration、backup/restore、upgrade 规则处理；只有明确标记为开发 fixture/demo 的数据才能按任务要求 reset。
+- 修改代码后必须做与改动范围匹配的验证，并如实报告：后端至少运行相关 pytest；前端改动至少 typecheck + 相关 test，影响构建/路由/依赖时再跑 production build；跨层、release/security/migration 变更按 `GOAL.md` / CI 对应 gate 扩大验证。文档-only 改动不要求无意义地跑全量构建。**未运行或失败的检查必须明确写出，绝不把“看起来没问题”当 PASS。**
 - 不要改无关文件，不要顺手重构。
 - 如果工作区已有用户改动，不要回滚，不要覆盖；只在必要范围内追加修改。
 - **前端 dev 端口固定 7410，后端固定 8766**：两个端口均避开 AI/框架常用端口（3000/3300/5173/8000/8080/11434 等）与当前 winnat 动态排除段。winnat 排除段会漂移（曾见 2942-3041，后又出现 4229-4328，4321 因此 EACCES），改端口前必须先执行 `netsh interface ipv4 show excludedportrange protocol=tcp` 确认不在任何段内。改前端端口必须同步 `frontend/package.json` 的 `scripts.dev` / `scripts.start`、`frontend/vite.config.ts`（含 TAURI HMR 端口 7411）、`frontend/src-tauri/tauri.conf.json` 的 `devUrl`、`backend/app/config.py` 默认 CORS、`backend/app/routes/email.py`、`backend/app/routes/resume.py` 的 `FRONTEND_BASE_URL`、`.env.example` 与 `backend/.env`；`frontendDist` 必须继续指向静态目录 `../dist`，不能改成 localhost URL。
@@ -53,17 +85,17 @@ Issues 和 PRD 使用当前 Git remote 对应的 GitHub Issues；外部 Pull Req
 
 ## 实现 Agent 准则
 
-- 实现阶段以 `CONTEXT.md`、相关 ADR 和已批准实施路线为事实源；评审意见、聊天总结和旧设计与 ADR 冲突时，以最新 accepted ADR 为准。
+- 实现阶段先按“当前事实源”读取 `GOAL.md`、`docs/product/current-product.md`，再按任务读取 `CONTEXT.md`、相关 ADR / architecture docs 与 live code。评审意见、聊天总结、历史报告与当前 authority 冲突时，以当前 authority + live code/evidence 为准。
 - 一次只实现一个边界明确、可独立验收的纵向切片。不要同时铺开多个模块，也不要把数据库、API、前端分别做成长期未闭环的横向工程。
 - 实现 Agent 负责落地，不重新进行产品问卷或自行新增架构。只有遇到 ADR 冲突、必须扩大文件范围、会改变领域模型或需要新外部权限时，才停止并提出一个阻塞问题。
 - 开工前先读取与任务直接相关的代码和文档，用不超过 10 行复述目标、修改范围和验收映射；没有真实阻塞时立即实施。
-- 用户或主 Agent 必须在任务中给出允许修改的文件范围。未经确认不得越界，不得修改无关文件、顺手重构、清理历史代码或创建新 ADR/PRD/Issue。
-- GUI、CLI、TUI、斜杠 Skill 和本地 Coding Agent 都必须通过同一 Operation Registry；不得复制业务逻辑、直接写数据库、执行隐藏 shell 或绕过 dry-run、确认、审计和数据授权。
+- 修改范围由当前任务目标决定，不要求用户预先枚举每个文件。Agent 可修改完成该纵向切片**直接必要**的相邻文件与测试，但不得借机做无关重构、历史清理或创建无关 ADR/PRD/Issue；若必须扩大到新的领域边界或外部权限，再提出阻塞问题。
+- GUI、CLI、TUI、斜杠 Skill 和本地 Coding Agent 都必须通过同一 Operation Registry；不得复制业务逻辑、直接写数据库、执行隐藏 shell 或绕过 dry-run、确认、审计和数据授权。**Skill-first 与 App-first 的结果必须落到同一 canonical Job Workspace / Profile / Pipeline。**
 - 本地 Coding Agent 只承担可审计重任务。CLI 参数和能力必须通过 capability probe 判断，不能把某个 Codex、Claude 或其他 CLI 版本的 argv 永久写死。
 - Agent 推断、面试反馈、简历建议和投递信号不能直接成为职业事实；必须遵循学习观察、事实门、候选进展和使用者确认规则。
 - 当前产品仅为本地单人版；不要引入 SaaS、多租户、`workspace_id`、组织、计费、登录或为未来需求预埋兼容层。
 - 保持最小实现，优先复用成熟库和现有结构。不得用固定假分、伪造 JSON、静默降级或“返回成功但实际未执行”掩盖失败。
-- 完成后按“修改文件、验收映射、未执行命令、剩余风险”报告。遵循本文件既有规则，不运行构建、语法检查或测试，只列出建议由用户执行的命令。
+- 完成后按“修改文件、验收映射、已执行检查及结果、未执行检查、剩余风险”报告。能在当前环境执行的相关自动检查应由 Agent 自己执行；只有环境/凭据/平台限制导致无法运行时，才把命令留给用户，并说明原因。
 
 ## 反复提醒沉淀
 
@@ -76,3 +108,16 @@ Issues 和 PRD 使用当前 Git remote 对应的 GitHub Issues；外部 Pull Req
 - **配置文件路径统一走 `llm_config_store.config_file_path()`**：该函数每次调用 `runtime_config_file()` 运行期现取（跟随 `OFFERU_DATA_DIR`），`app/routes/config.py` 与 `app/llm_config_store.py` 不再有模块级 `_CONFIG_FILE` 副本。测试隔离用 `patch("app.llm_config_store.runtime_config_file", return_value=...)` 或 `OFFERU_DATA_DIR` 环境变量，一处生效两处覆盖；不要重新引入模块级路径常量。
 - **清理钥匙串时只能删自己写过的 ref**：不要按 `legacy_ref(...)` / `config_ref(...)` 这类固定 ref 批量删除。用户真实 LLM 凭据就存放在 `llm/legacy/*` 与 `llm/config/*` 下，误删会直接让用户丢失 API Key。测试用 fake vault（`unittest.mock.patch` credential_store 的同步函数），不要碰真实钥匙串。
 - **API Key 只进钥匙串**：`config.json` 只允许出现 `credential_ref` 和 `env:VAR_NAME` 引用。写入钥匙串失败必须 fail-closed（`VaultUnavailableError`），绝不回退为明文落盘；读取失败不阻断启动，但必须经 `/api/config` 的 `vault_status` 暴露给用户。新增任何会写 config.json 的入口，都要经过 `llm_secret_vault.dehydrate()`。
+
+
+## 安全回归红线（2026-09-23 加固基线）
+
+这部分来自最新 critical/high/medium/low 修复后的稳定约束。后续改动不得为了“方便”退回旧行为：
+
+- 新增或修改远程 URL / model endpoint / fetch 路径时，必须复用当前 SSRF / scheme / host 校验与 SSL 验证边界；不得关闭证书验证，不得自行放宽到 loopback/private/metadata 等高风险目标。
+- 上传文件、PDF/HTML 渲染、导出与本地文件访问必须保持 filename/path canonicalization 与边界校验，禁止重新引入路径穿越。
+- 富文本/模板输出继续使用当前安全 sanitizer / sandbox 机制；不得用正则清 HTML 或把用户内容拼入可执行 JS/template。
+- 发往外部模型的 cover letter、interview prep 等包含个人信息的内容必须保持 desensitize → model → restore 边界；不得把 PII 明文上送作为“临时简化”。
+- API/Bridge/Operation 入口不得移除现有鉴权与权限边界；本地部署也不等于所有 endpoint 可以匿名写。
+- config、Agent run、resume/application workspace 等并发写路径必须保留当前锁、事务、idempotency / version 检查；不要用“单用户所以不会并发”作为删除并发保护的理由。
+- Secret 永远不进 repo、日志、前端持久状态或明文 config；继续遵循本文件的 keyring / credential_ref 规则。
