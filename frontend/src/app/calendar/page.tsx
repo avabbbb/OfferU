@@ -43,6 +43,7 @@ export default function CalendarPage() {
     end_time: "",
     location: "",
   });
+  const [createError, setCreateError] = useState("");
 
   const calendarEvents = useMemo(() => {
     if (!events) return [];
@@ -74,15 +75,22 @@ export default function CalendarPage() {
 
   const handleCreate = async () => {
     if (!newEvent.title || !newEvent.start_time) return;
-    await createCalendarEvent({
-      ...newEvent,
-      start_time: new Date(newEvent.start_time).toISOString(),
-      end_time: newEvent.end_time ? new Date(newEvent.end_time).toISOString() : null,
-      event_type: "interview",
-    });
-    setNewEvent({ title: "", description: "", start_time: "", end_time: "", location: "" });
-    onClose();
-    mutate();
+    setCreateError("");
+    try {
+      await createCalendarEvent({
+        ...newEvent,
+        start_time: new Date(newEvent.start_time).toISOString(),
+        end_time: newEvent.end_time ? new Date(newEvent.end_time).toISOString() : null,
+        event_type: "interview",
+      });
+      setNewEvent({ title: "", description: "", start_time: "", end_time: "", location: "" });
+      onClose();
+      mutate();
+    } catch (err) {
+      setCreateError(
+        err instanceof Error ? err.message : "创建日程失败，请稍后重试"
+      );
+    }
   };
 
   const typeTone = (type: string) => {
@@ -229,6 +237,9 @@ export default function CalendarPage() {
             添加日程
           </ModalHeader>
           <ModalBody className="space-y-3 px-6 py-6">
+            {createError && (
+              <p className="text-sm font-medium text-red-600" role="alert">{createError}</p>
+            )}
             <Input label="标题" variant="bordered" value={newEvent.title} onValueChange={(v) => setNewEvent((p) => ({ ...p, title: v }))} classNames={bauhausFieldClassNames} />
             <div className="grid gap-3 md:grid-cols-2">
               <CascadeDatePicker

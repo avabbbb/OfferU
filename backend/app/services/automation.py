@@ -74,7 +74,6 @@ _DEFAULT_RULES: dict[str, dict[str, Any]] = {
 }
 
 _AUTOMATION_EVENT_CREATE_LOCK = asyncio.Lock()
-_AUTOMATION_EVENT_PROCESS_LOCK = asyncio.Lock()
 
 
 def _now() -> datetime:
@@ -500,51 +499,56 @@ async def record_automation_event(
 
 
 async def _process_automation_event(event_id: str) -> dict[str, Any]:
-    """Process one queued signal exactly once within this backend process."""
+    """Process one queued signal exactly once within this backend process.
 
-    async with _AUTOMATION_EVENT_PROCESS_LOCK:
-        event = await _claim_automation_event(event_id)
-        if event is None:
-            async with async_session() as db:
-                current = await db.get(AutomationEvent, str(event_id or ""))
-            if current is None:
-                raise ValueError(f"AutomationEvent {event_id} 不存在")
-            return _event_view(current)
+    Exactly-once is guaranteed by ``_claim_automation_event``'s atomic
+    conditional UPDATE (``queued`` -> ``processing``): the loser claims 0
+    rows and re-reads the current state, so a global process lock is not
+    needed and would only serialize unrelated events.
+    """
 
-        rule = await _rule(event.event_type)
-        if not rule["enabled"]:
-            return await _update_event(event.event_id, status="skipped", result={"rule": rule})
-        if event.event_type != "JOB_SAVED":
-            return await _update_event(event.event_id, status="completed", result={"rule": rule})
-        try:
-            result = await _dispatch_job_saved(event, rule)
-        except Exception as exc:  # keep the signal visible; never claim success
-            blocked = any(
-                marker in str(exc).casefold()
-                for marker in ("401", "unauthorized", "invalid_api_key", "authentication")
-            )
-            error_message = "provider authentication failed" if blocked else safe_error_message(exc)
-            error_id = new_error_id()
-            record_error(
-                error_id,
-                method="AUTOMATION",
-                path=f"/api/agent/automation/events/{event.event_id}",
-                status_code=503 if blocked else 500,
-                kind="automation_provider_blocked" if blocked else "automation_dispatch",
-                message=error_message,
-                provider_id=(
-                    str(event.payload_json.get("runtime_provider") or "")
-                    if isinstance(event.payload_json, dict)
-                    else ""
-                ),
-            )
-            return await _update_event(
-                event.event_id,
-                status="blocked" if blocked else "failed",
-                result={"error_id": error_id},
-                error=error_message,
-            )
-        return await _update_event(event.event_id, status="dispatched", result=result)
+    event = await _claim_automation_event(event_id)
+    if event is None:
+        async with async_session() as db:
+            current = await db.get(AutomationEvent, str(event_id or ""))
+        if current is None:
+            raise ValueError(f"AutomationEvent {event_id} 不存在")
+        return _event_view(current)
+
+    rule = await _rule(event.event_type)
+    if not rule["enabled"]:
+        return await _update_event(event.event_id, status="skipped", result={"rule": rule})
+    if event.event_type != "JOB_SAVED":
+        return await _update_event(event.event_id, status="completed", result={"rule": rule})
+    try:
+        result = await _dispatch_job_saved(event, rule)
+    except Exception as exc:  # keep the signal visible; never claim success
+        blocked = any(
+            marker in str(exc).casefold()
+            for marker in ("401", "unauthorized", "invalid_api_key", "authentication")
+        )
+        error_message = "provider authentication failed" if blocked else safe_error_message(exc)
+        error_id = new_error_id()
+        record_error(
+            error_id,
+            method="AUTOMATION",
+            path=f"/api/agent/automation/events/{event.event_id}",
+            status_code=503 if blocked else 500,
+            kind="automation_provider_blocked" if blocked else "automation_dispatch",
+            message=error_message,
+            provider_id=(
+                str(event.payload_json.get("runtime_provider") or "")
+                if isinstance(event.payload_json, dict)
+                else ""
+            ),
+        )
+        return await _update_event(
+            event.event_id,
+            status="blocked" if blocked else "failed",
+            result={"error_id": error_id},
+            error=error_message,
+        )
+    return await _update_event(event.event_id, status="dispatched", result=result)
 
 
 async def recover_automation_events() -> dict[str, int]:

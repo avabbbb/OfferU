@@ -263,6 +263,9 @@ async def record_learning_observation(
                 await db.flush()
             except IntegrityError as exc:
                 if not _commit:
+                    # 调用方管理事务时也必须先回滚再上抛，否则会话停留在
+                    # failed 状态，后续任何操作都会报 PendingRollbackError。
+                    await db.rollback()
                     raise
                 await db.rollback()
                 source = (
@@ -303,6 +306,9 @@ async def record_learning_observation(
                 await db.flush()
         except IntegrityError:
             if not _commit:
+                # 调用方管理事务时也必须先回滚再上抛，否则会话停留在
+                # failed 状态，后续任何操作都会报 PendingRollbackError。
+                await db.rollback()
                 raise
             await db.rollback()
             existing = (

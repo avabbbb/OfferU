@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { EmailConnectionForm } from "@/components/onboarding/EmailConnectionForm";
 import { motion } from "framer-motion";
 import {
   Button,
@@ -8,14 +10,10 @@ import {
   CardBody,
   Chip,
   Checkbox,
-  Input,
   Modal,
   ModalBody,
   ModalContent,
-  ModalFooter,
   ModalHeader,
-  Select,
-  SelectItem,
   useDisclosure,
 } from "@nextui-org/react";
 import {
@@ -29,13 +27,11 @@ import {
   Mail,
   MapPin,
   RefreshCw,
-  Shield,
   Trash2,
 } from "lucide-react";
 import {
   autoFillCalendar,
   getEmailAuthUrl,
-  imapConnect,
   revokeEmailAccount,
   syncEmails,
   useEmailStatus,
@@ -44,9 +40,7 @@ import {
 } from "@/lib/hooks";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import {
-  bauhausFieldClassNames,
   bauhausModalContentClassName,
-  bauhausSelectClassNames,
 } from "@/lib/bauhaus";
 
 const container = {
@@ -70,14 +64,6 @@ const CATEGORY_CLASS: Record<string, string> = {
   rejection: "border border-[var(--border-strong)] bg-[var(--status-blush)] text-[var(--foreground)] font-semibold",
   unknown: "border border-[var(--border-strong)] bg-white text-[var(--foreground)] font-semibold",
 };
-
-const PROVIDERS = [
-  { key: "qq", label: "QQ邮箱" },
-  { key: "163", label: "163邮箱" },
-  { key: "126", label: "126邮箱" },
-  { key: "gmail", label: "Gmail" },
-  { key: "outlook", label: "Outlook / 365" },
-];
 
 function isTrustedGmailAuthUrl(value: unknown): value is string {
   if (typeof value !== "string" || !value.trim()) return false;
@@ -109,7 +95,7 @@ export default function EmailPage() {
   const [revokingAccountId, setRevokingAccountId] = useState<string | null>(null);
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
 
-  // Gmail OAuth 回调：{frontend}/email?auth=success|error → 展示提示并清理 URL
+  // Gmail OAuth 回调：{frontend}/?auth=success|error#/email → 展示提示并清理 query
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const outcome = params.get("auth");
@@ -120,11 +106,7 @@ export default function EmailPage() {
     }
   }, [mutateStatus]);
 
-  const [imapProvider, setImapProvider] = useState("qq");
-  const [imapUser, setImapUser] = useState("");
-  const [imapPassword, setImapPassword] = useState("");
-  const [imapLoading, setImapLoading] = useState(false);
-  const [imapError, setImapError] = useState("");
+  const [emailConnectionBusy, setEmailConnectionBusy] = useState(false);
 
   const isConnected = emailStatus?.connected ?? false;
   const isGmail = emailStatus?.gmail_connected ?? false;
@@ -153,27 +135,6 @@ export default function EmailPage() {
     }
   };
 
-  const handleImapConnect = async (onClose: () => void) => {
-    if (!emailConsent) {
-      setImapError("请先确认邮箱只读同步范围");
-      return;
-    }
-    setImapLoading(true);
-    setImapError("");
-    const { ok, data } = await imapConnect({
-      user: imapUser,
-      password: imapPassword,
-      provider: imapProvider,
-    });
-    setImapLoading(false);
-    if (ok) {
-      await mutateStatus();
-      onClose();
-    } else {
-      setImapError(safeClientErrorMessage(data?.message, "连接失败"));
-    }
-  };
-
   const handleRevoke = async (account: { account_id: string; email_address: string; provider: string }) => {
     if (!window.confirm(`确认撤销 ${account.email_address || account.provider} 的邮箱授权？这会停止同步、删除本地凭据，并使未确认的邮件候选失效。`)) return;
     setRevokingAccountId(account.account_id);
@@ -195,7 +156,7 @@ export default function EmailPage() {
       const result = await syncEmails();
       if (result.synced !== undefined) {
         setSyncResult(
-          `已同步 ${result.synced} 条通知（共发现 ${result.total_found} 封邮件），自动创建 ${result.calendar_created ?? 0} 个日历事件`
+          `发现 ${result.requires_review ?? result.synced} 条新的求职进展，等待你确认${result.failed_accounts ? `；${result.failed_accounts} 个邮箱未能同步，可重试` : ""}`
         );
       } else {
         setSyncResult(safeClientErrorMessage(result.message, "同步完成"));
@@ -279,7 +240,7 @@ export default function EmailPage() {
             isImap ? "bauhaus-button-blue" : "bauhaus-button-outline"
           }`}
         >
-          {isImap ? `IMAP 已连 (${emailStatus?.imap_host})` : "IMAP 直连"}
+          {isImap ? "添加另一个邮箱" : "连接 QQ / 163 等邮箱"}
         </Button>
         <Button
           startContent={<RefreshCw size={16} className={syncing ? "animate-spin" : ""} />}
@@ -404,71 +365,18 @@ export default function EmailPage() {
         </motion.section>
       ) : null}
 
-      <Modal isOpen={isOpen} onOpenChange={onOpenChange} placement="center">
+      <Modal isOpen={isOpen} onOpenChange={onOpenChange} placement="center"
+        isDismissable={!emailConnectionBusy} isKeyboardDismissDisabled={emailConnectionBusy} hideCloseButton={emailConnectionBusy}>
         <ModalContent className={bauhausModalContentClassName}>
-          {(onClose) => (
-            <>
-              <ModalHeader className="border-b border-[var(--border-strong)]/12 bg-[var(--surface-muted)] px-6 py-5 text-xl font-black tracking-[-0.06em] text-[var(--foreground)]">
-                <div className="flex items-center gap-2">
-                  <Shield size={20} />
-                  IMAP 邮箱直连
-                </div>
-              </ModalHeader>
-              <ModalBody className="space-y-4 px-6 py-6">
-                <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4 text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
-                  QQ邮箱 / 163邮箱需要使用授权码而不是登录密码。OfferU 会先以只读方式校验连接，再把凭据保存到本地钥匙串；不会把密码写入数据库。
-                </div>
-                <Select
-                  label="邮箱服务商"
-                  selectedKeys={[imapProvider]}
-                  onSelectionChange={(keys) => {
-                    const value = Array.from(keys)[0] as string;
-                    if (value) setImapProvider(value);
-                  }}
-                  classNames={bauhausSelectClassNames}
-                >
-                  {PROVIDERS.map((provider) => (
-                    <SelectItem key={provider.key}>{provider.label}</SelectItem>
-                  ))}
-                </Select>
-                <Input
-                  label="邮箱地址"
-                  placeholder="your@qq.com"
-                  value={imapUser}
-                  onValueChange={setImapUser}
-                  classNames={bauhausFieldClassNames}
-                />
-                <Input
-                  label="授权码 / 应用密码"
-                  type="password"
-                  placeholder="QQ邮箱→设置→账户→生成授权码"
-                  value={imapPassword}
-                  onValueChange={setImapPassword}
-                  classNames={bauhausFieldClassNames}
-                />
-                {imapError && (
-                  <div className="bauhaus-panel-sm flex items-center gap-2 bg-[var(--status-blush)] px-4 py-3 text-sm font-medium text-[#b7483c]">
-                    <AlertCircle size={14} /> {imapError}
-                  </div>
-                )}
-              </ModalBody>
-              <ModalFooter className="border-t-2 border-[var(--border-strong)] px-6 py-5">
-                <Button variant="light" onPress={onClose} className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]">
-                  取消
-                </Button>
-                <Button
-                  onPress={() => handleImapConnect(onClose)}
-                  isLoading={imapLoading}
-                  isDisabled={!imapUser || !imapPassword || !emailConsent}
-                  className="bauhaus-button bauhaus-button-blue !px-4 !py-3 !text-[11px]"
-                >
-                  测试并连接
-                </Button>
-              </ModalFooter>
-            </>
-          )}
+          {(onClose) => <>
+            <ModalHeader>连接求职邮箱</ModalHeader>
+            <ModalBody className="px-6 pb-6">
+              <EmailConnectionForm onBusy={setEmailConnectionBusy} onConnected={async () => { await mutateStatus(); onClose(); }} />
+            </ModalBody>
+          </>}
         </ModalContent>
       </Modal>
+      {isConnected && <Link href="/applications" className="inline-block text-sm font-semibold underline">查看并确认求职进展</Link>}
 
       {notifications && notifications.length > 0 ? (
         <div className="space-y-4">

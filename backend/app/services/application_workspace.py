@@ -5,7 +5,7 @@ import re
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import and_, delete, func, or_, select
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.models import (
@@ -356,17 +356,79 @@ async def ensure_workspace_bootstrap(db: AsyncSession) -> None:
 
 
 async def recompute_duplicate_flags(db: AsyncSession) -> None:
-    records = (await db.execute(select(ApplicationRecord))).scalars().all()
-    grouped: dict[tuple[str, str, str, str], list[ApplicationRecord]] = {}
-    for record in records:
-        grouped.setdefault(_record_signature(record), []).append(record)
+    """用 SQL GROUP BY 找出重复组并打标，不再把全部记录加载进内存。
 
-    for signature, items in grouped.items():
-        duplicate = len(items) > 1
-        group_key = _signature_key(signature) if duplicate else ""
-        for item in items:
-            item.is_duplicate = duplicate
-            item.duplicate_group = group_key
+    只写状态真正变化的行：updated_at 带 onupdate，误伤全表会打乱
+    列表按 updated_at 排序的展示。
+    """
+    company_name_expr = func.trim(func.coalesce(ApplicationRecord.company_name, ""))
+    job_title_expr = func.trim(func.coalesce(ApplicationRecord.job_title, ""))
+    location_expr = func.trim(func.coalesce(ApplicationRecord.location, ""))
+    job_link_expr = func.trim(func.coalesce(ApplicationRecord.job_link, ""))
+
+    duplicate_rows = (
+        await db.execute(
+            select(
+                company_name_expr,
+                job_title_expr,
+                location_expr,
+                job_link_expr,
+            )
+            .group_by(company_name_expr, job_title_expr, location_expr, job_link_expr)
+            .having(func.count() > 1)
+        )
+    ).all()
+    duplicate_signatures = [
+        tuple(str(value or "") for value in row) for row in duplicate_rows
+    ]
+
+    if duplicate_signatures:
+        in_any_group = or_(
+            and_(
+                company_name_expr == signature[0],
+                job_title_expr == signature[1],
+                location_expr == signature[2],
+                job_link_expr == signature[3],
+            )
+            for signature in duplicate_signatures
+        )
+        stale_filter = and_(
+            or_(
+                ApplicationRecord.is_duplicate.is_(True),
+                ApplicationRecord.duplicate_group != "",
+            ),
+            ~in_any_group,
+        )
+    else:
+        stale_filter = or_(
+            ApplicationRecord.is_duplicate.is_(True),
+            ApplicationRecord.duplicate_group != "",
+        )
+
+    # 清掉已不在任何重复组里的旧标记。
+    await db.execute(
+        update(ApplicationRecord)
+        .where(stale_filter)
+        .values(is_duplicate=False, duplicate_group="")
+    )
+
+    # 为每个重复组打标；只写状态确实变化的行。
+    for signature in duplicate_signatures:
+        group_key = _signature_key(signature)
+        await db.execute(
+            update(ApplicationRecord)
+            .where(company_name_expr == signature[0])
+            .where(job_title_expr == signature[1])
+            .where(location_expr == signature[2])
+            .where(job_link_expr == signature[3])
+            .where(
+                or_(
+                    ApplicationRecord.is_duplicate.is_(False),
+                    ApplicationRecord.duplicate_group != group_key,
+                )
+            )
+            .values(is_duplicate=True, duplicate_group=group_key)
+        )
 
 
 async def get_workspace_payload(db: AsyncSession) -> dict[str, Any]:
@@ -437,7 +499,14 @@ async def list_table_records(
     keyword: str = "",
 ) -> dict[str, Any]:
     table = await get_table_or_raise(db, table_id)
-    pattern = f"%{keyword.strip()}%" if keyword.strip() else ""
+    raw_keyword = (keyword or "").strip()
+    pattern = ""
+    if raw_keyword:
+        # 转义 LIKE 通配符，避免用户输入的 % / _ 被当作模式字符放大查询范围。
+        escaped = (
+            raw_keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        )
+        pattern = f"%{escaped}%"
 
     stmt = (
         select(ApplicationRecord)
@@ -452,12 +521,12 @@ async def list_table_records(
     if pattern:
         stmt = stmt.where(
             or_(
-                ApplicationRecord.company_name.ilike(pattern),
-                ApplicationRecord.job_title.ilike(pattern),
-                ApplicationRecord.location.ilike(pattern),
-                ApplicationRecord.job_link.ilike(pattern),
-                ApplicationRecord.source.ilike(pattern),
-                ApplicationRecord.salary_text.ilike(pattern),
+                ApplicationRecord.company_name.ilike(pattern, escape="\\"),
+                ApplicationRecord.job_title.ilike(pattern, escape="\\"),
+                ApplicationRecord.location.ilike(pattern, escape="\\"),
+                ApplicationRecord.job_link.ilike(pattern, escape="\\"),
+                ApplicationRecord.source.ilike(pattern, escape="\\"),
+                ApplicationRecord.salary_text.ilike(pattern, escape="\\"),
             )
         )
 

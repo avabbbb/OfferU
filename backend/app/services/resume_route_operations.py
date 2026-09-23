@@ -574,40 +574,64 @@ async def batch_optimize_resume_records(
     async with async_session() as db:
         source = await _get_resume(db, resume_id, load_sections=True)
         source_data = _resume_dict(source)
+        # Detach the source section blueprints into plain dicts so the per-job
+        # write loop can use a fresh session without keeping this read session
+        # open (which would deadlock SQLite's write lock).
+        source_sections = [
+            {
+                "section_type": section.section_type,
+                "sort_order": section.sort_order,
+                "title": section.title,
+                "visible": section.visible,
+                "content_json": copy.deepcopy(section.content_json or []),
+            }
+            for section in source.sections
+        ]
         jobs = (
             await db.execute(select(Job).where(Job.id.in_(job_ids)))
         ).scalars().all()
-        jobs_map = {job.id: job for job in jobs}
+        jobs_map = {
+            job.id: {
+                "title": job.title,
+                "company": job.company,
+                "raw_description": job.raw_description,
+            }
+            for job in jobs
+        }
         missing = sorted(set(job_ids) - set(jobs_map))
         if missing:
             raise ValueError(f"以下岗位不存在: {missing}")
 
-        pipeline = SkillPipeline()
-        results: list[dict[str, Any]] = []
-        for index, job_id in enumerate(job_ids):
-            job = jobs_map[job_id]
-            entry: dict[str, Any] = {
-                "job_id": job_id,
-                "job_title": job.title,
-                "company": job.company,
-                "new_resume_id": None,
-                "ats_score": None,
-                "suggestions_applied": 0,
-                "status": "pending",
-                "error": None,
-                "index": index,
-                "total": len(job_ids),
-            }
-            jd_text = (job.raw_description or "").strip()
-            if not jd_text:
-                entry.update(status="skipped", error="岗位无 JD 文本")
-                results.append(entry)
-                continue
+    pipeline = SkillPipeline()
+    results: list[dict[str, Any]] = []
+    for index, job_id in enumerate(job_ids):
+        job = jobs_map[job_id]
+        entry: dict[str, Any] = {
+            "job_id": job_id,
+            "job_title": job["title"],
+            "company": job["company"],
+            "new_resume_id": None,
+            "ats_score": None,
+            "suggestions_applied": 0,
+            "status": "pending",
+            "error": None,
+            "index": index,
+            "total": len(job_ids),
+        }
+        jd_text = (job["raw_description"] or "").strip()
+        if not jd_text:
+            entry.update(status="skipped", error="岗位无 JD 文本")
+            results.append(entry)
+            continue
 
-            try:
+        try:
+            # Use a fresh session per job so a rollback in one iteration never
+            # leaves a dirty session for the next (M-30). The async-with closes
+            # (and rolls back any uncommitted work) on exception exit.
+            async with async_session() as db:
                 new_resume = Resume(
                     user_name=source_data.get("user_name") or "",
-                    title=f"{source_data.get('title') or '简历'} - {job.company} {job.title}",
+                    title=f"{source_data.get('title') or '简历'} - {job['company']} {job['title']}",
                     photo_url=source_data.get("photo_url") or "",
                     summary=source_data.get("summary") or "",
                     contact_json=copy.deepcopy(source_data.get("contact_json") or {}),
@@ -620,15 +644,15 @@ async def batch_optimize_resume_records(
                 )
                 db.add(new_resume)
                 await db.flush()
-                for section in source.sections:
+                for section in source_sections:
                     db.add(
                         ResumeSection(
                             resume_id=new_resume.id,
-                            section_type=section.section_type,
-                            sort_order=section.sort_order,
-                            title=section.title,
-                            visible=section.visible,
-                            content_json=copy.deepcopy(section.content_json or []),
+                            section_type=section["section_type"],
+                            sort_order=section["sort_order"],
+                            title=section["title"],
+                            visible=section["visible"],
+                            content_json=copy.deepcopy(section["content_json"]),
                         )
                     )
                 await db.flush()
@@ -692,15 +716,14 @@ async def batch_optimize_resume_records(
                     await auto_write_job_to_total(db, job_id=job_id)
                 except Exception as exc:
                     entry["error"] = f"自动写入投递总表失败: {safe_error_message(exc)}"
-            except Exception as exc:
-                await db.rollback()
-                entry.update(status="failed", error=safe_error_message(exc))
-            results.append(entry)
-        return {
-            "total": len(job_ids),
-            "success": sum(1 for item in results if item.get("status") == "success"),
-            "results": results,
-        }
+        except Exception as exc:
+            entry.update(status="failed", error=safe_error_message(exc))
+        results.append(entry)
+    return {
+        "total": len(job_ids),
+        "success": sum(1 for item in results if item.get("status") == "success"),
+        "results": results,
+    }
 
 
 def _flatten_resume_data(resume_data: dict[str, Any]) -> str:

@@ -12,6 +12,7 @@ config.json 只保留 `credential_ref`，真实 Key 只写入操作系统钥匙�
 
 from __future__ import annotations
 
+import threading
 import time
 from copy import deepcopy
 from typing import Any
@@ -36,6 +37,7 @@ class VaultUnavailableError(RuntimeError):
     """钥匙串不可用；调用方必须向用户暴露，不得静默改为明文存储。"""
 
 
+_hydrate_lock = threading.Lock()
 _hydrate_errors: list[str] = []
 
 
@@ -129,40 +131,41 @@ def credential_references(payload: dict[str, Any]) -> set[str]:
 def hydrate(payload: dict[str, Any]) -> None:
     """把一份 config dict 中的 credential_ref 还原为内存可用的 Key。"""
     global _status_cache
-    _hydrate_errors.clear()
-    _status_cache = None
-    configs = payload.get("llm_api_configs")
-    if isinstance(configs, list):
-        for item in configs:
-            if not isinstance(item, dict):
+    with _hydrate_lock:
+        _hydrate_errors.clear()
+        _status_cache = None
+        configs = payload.get("llm_api_configs")
+        if isinstance(configs, list):
+            for item in configs:
+                if not isinstance(item, dict):
+                    continue
+                api_key = str(item.get("api_key") or "").strip()
+                reference = str(item.get("credential_ref") or "")
+                secret = _read_connection_secret(reference, record_error=bool(reference), missing_is_error=True)
+                if not api_key and secret.get("api_key"):
+                    item["api_key"] = str(secret["api_key"])
+                if isinstance(secret.get("default_headers"), dict):
+                    item["default_headers"] = dict(secret["default_headers"])
+        refs = payload.get("secret_refs") if isinstance(payload.get("secret_refs"), dict) else {}
+        for field in LEGACY_KEY_FIELDS:
+            if str(payload.get(field) or "").strip():
                 continue
-            api_key = str(item.get("api_key") or "").strip()
-            reference = str(item.get("credential_ref") or "")
+            reference = str(refs.get(field) or "")
             secret = _read_connection_secret(reference, record_error=bool(reference), missing_is_error=True)
-            if not api_key and secret.get("api_key"):
-                item["api_key"] = str(secret["api_key"])
-            if isinstance(secret.get("default_headers"), dict):
-                item["default_headers"] = dict(secret["default_headers"])
-    refs = payload.get("secret_refs") if isinstance(payload.get("secret_refs"), dict) else {}
-    for field in LEGACY_KEY_FIELDS:
-        if str(payload.get(field) or "").strip():
-            continue
-        reference = str(refs.get(field) or "")
-        secret = _read_connection_secret(reference, record_error=bool(reference), missing_is_error=True)
-        resolved = str(secret.get("api_key") or "")
-        if not resolved:
-            # legacy ref 是迁移兜底探测：不存在属正常空态，后端故障/损坏才上报。
-            legacy_secret = _read_connection_secret(legacy_ref(field), record_error=True)
-            resolved = str(legacy_secret.get("api_key") or "")
-        if resolved:
-            payload[field] = resolved
-    for field in SCRAPER_SECRET_FIELDS:
-        if str(payload.get(field) or "").strip():
-            continue
-        reference = str(refs.get(field) or "")
-        secret = _read_connection_secret(reference, record_error=bool(reference), missing_is_error=True)
-        if secret.get("value"):
-            payload[field] = str(secret["value"])
+            resolved = str(secret.get("api_key") or "")
+            if not resolved:
+                # legacy ref 是迁移兜底探测：不存在属正常空态，后端故障/损坏才上报。
+                legacy_secret = _read_connection_secret(legacy_ref(field), record_error=True)
+                resolved = str(legacy_secret.get("api_key") or "")
+            if resolved:
+                payload[field] = resolved
+        for field in SCRAPER_SECRET_FIELDS:
+            if str(payload.get(field) or "").strip():
+                continue
+            reference = str(refs.get(field) or "")
+            secret = _read_connection_secret(reference, record_error=bool(reference), missing_is_error=True)
+            if secret.get("value"):
+                payload[field] = str(secret["value"])
 
 
 def _new_config_ref() -> str:
@@ -313,12 +316,14 @@ def status(force: bool = False) -> dict[str, Any]:
     if not force and _status_cache and now - _status_cache[0] < _STATUS_TTL_SECONDS:
         return dict(_status_cache[1])
     probe_error = credential_store.probe_backend()
-    read_error = _hydrate_errors[0] if _hydrate_errors else ""
+    with _hydrate_lock:
+        read_error = _hydrate_errors[0] if _hydrate_errors else ""
+        error_count = len(_hydrate_errors)
     error = probe_error or read_error
     result = {
         "available": not error,
         "error": str(error or ""),
-        "read_error_count": len(_hydrate_errors),
+        "read_error_count": error_count,
     }
     _status_cache = (now, result)
     return dict(result)

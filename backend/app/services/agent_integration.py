@@ -4,14 +4,16 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from app.runtime_paths import runtime_data_path
+from app.runtime_paths import PACKAGE_BACKEND_DIR, runtime_data_dir, runtime_data_path
 from app.services.agent_files import atomic_write_bytes, atomic_write_json
 from app.services.security_redaction import redact_sensitive_text
 
@@ -20,6 +22,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _BACKEND_ROOT = _PROJECT_ROOT / "backend"
 _SOURCE_SKILL = _PROJECT_ROOT / ".agents" / "skills" / "offeru" / "SKILL.md"
 _CHALLENGE_TTL_SECONDS = 300
+_CHALLENGE_LOCK = threading.Lock()
 _MARKER = re.compile(r"generated: offeru-skill-registry@([^\s]+) sha256=([a-f0-9]{64})")
 _PROVIDER_IDS = ("codex", "opencode", "claude")
 
@@ -28,12 +31,24 @@ def _sha256(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def _shell_quote(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'" if os.name == "nt" else shlex.quote(value)
+
+
 def _command_prefix() -> str:
     executable = str(Path(sys.executable).resolve())
-    return f"& '{executable}'" if os.name == "nt" else f"'{executable}'"
+    return ("& " if os.name == "nt" else "") + _shell_quote(executable)
 
 
 def _installed_content() -> str:
+    if getattr(sys, "frozen", False):
+        source = (PACKAGE_BACKEND_DIR / "offeru-assets/skills/offeru/SKILL.md").read_text(encoding="utf-8")
+        command = f"{_command_prefix()} --data-dir {_shell_quote(str(runtime_data_dir()))} cli"
+        return source.replace(
+            "Work from `backend/`.",
+            "OfferU is installed locally. Run the bundled commands below from any directory.",
+            1,
+        ).replace("python -m app.cli", command).replace("```powershell", "```powershell" if os.name == "nt" else "```sh")
     source = _SOURCE_SKILL.read_text(encoding="utf-8")
     backend = str(_BACKEND_ROOT.resolve())
     source = source.replace(
@@ -363,35 +378,37 @@ def _load_challenges() -> dict[str, dict[str, Any]]:
 def create_connection_challenge(provider_id: str) -> dict[str, str]:
     if provider_id not in _PROVIDER_IDS:
         raise ValueError("未知的 Agent integration provider")
-    now = time.time()
-    challenges = {
-        key: value
-        for key, value in _load_challenges().items()
-        if isinstance(value, dict) and float(value.get("expires_at") or 0) > now
-    }
-    challenge_id = uuid4().hex
-    nonce = uuid4().hex
-    challenges[challenge_id] = {
-        "provider_id": provider_id,
-        "nonce": nonce,
-        "expires_at": now + _CHALLENGE_TTL_SECONDS,
-    }
-    atomic_write_json(_challenge_path(), challenges)
-    return {"challenge_id": challenge_id, "nonce": nonce}
+    with _CHALLENGE_LOCK:
+        now = time.time()
+        challenges = {
+            key: value
+            for key, value in _load_challenges().items()
+            if isinstance(value, dict) and float(value.get("expires_at") or 0) > now
+        }
+        challenge_id = uuid4().hex
+        nonce = uuid4().hex
+        challenges[challenge_id] = {
+            "provider_id": provider_id,
+            "nonce": nonce,
+            "expires_at": now + _CHALLENGE_TTL_SECONDS,
+        }
+        atomic_write_json(_challenge_path(), challenges)
+        return {"challenge_id": challenge_id, "nonce": nonce}
 
 
 def get_connection_nonce(provider_id: str, challenge_id: str) -> dict[str, str]:
-    challenges = _load_challenges()
-    clean_id = str(challenge_id or "").strip()
-    challenge = challenges.get(clean_id)
-    if not isinstance(challenge, dict) or challenge.get("provider_id") != provider_id:
-        raise ValueError("OfferU connection challenge 不存在")
-    if float(challenge.get("expires_at") or 0) <= time.time():
-        raise ValueError("OfferU connection challenge 已过期")
-    nonce = str(challenge.get("nonce") or "")
-    challenges.pop(clean_id, None)
-    atomic_write_json(_challenge_path(), challenges)
-    return {"nonce": nonce}
+    with _CHALLENGE_LOCK:
+        challenges = _load_challenges()
+        clean_id = str(challenge_id or "").strip()
+        challenge = challenges.get(clean_id)
+        if not isinstance(challenge, dict) or challenge.get("provider_id") != provider_id:
+            raise ValueError("OfferU connection challenge 不存在")
+        if float(challenge.get("expires_at") or 0) <= time.time():
+            raise ValueError("OfferU connection challenge 已过期")
+        nonce = str(challenge.get("nonce") or "")
+        challenges.pop(clean_id, None)
+        atomic_write_json(_challenge_path(), challenges)
+        return {"nonce": nonce}
 
 
 integration_manager = AgentIntegrationManager()

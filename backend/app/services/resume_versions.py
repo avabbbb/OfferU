@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 
 from app.models.models import Resume, ResumeVersion
 
@@ -48,17 +49,29 @@ async def create_version_snapshot(
     change_summary: str,
     created_by: str,
 ) -> ResumeVersion:
-    highest = (
-        await db.execute(select(func.max(ResumeVersion.version_number)).where(ResumeVersion.resume_id == resume.id))
-    ).scalar_one_or_none() or 0
-    version_number = int(highest) + 1
-    version = ResumeVersion(
-        resume_id=resume.id,
-        version_number=version_number,
-        content_snapshot=snapshot_resume(resume),
-        change_summary=(change_summary.strip() or f"版本 {version_number}")[:500],
-        created_by=(created_by.strip() or "system")[:100],
-    )
-    db.add(version)
-    await db.flush()
-    return version
+    # Race-safe version numbering: compute max(version_number)+1, then insert
+    # inside a SAVEPOINT so an IntegrityError (duplicate version_number) only
+    # rolls back the version insert — not the caller's pending work such as a
+    # freshly created resume that has only been flushed, not committed.
+    last_exc: IntegrityError | None = None
+    for _attempt in range(3):
+        highest = (
+            await db.execute(select(func.max(ResumeVersion.version_number)).where(ResumeVersion.resume_id == resume.id))
+        ).scalar_one_or_none() or 0
+        version_number = int(highest) + 1
+        version = ResumeVersion(
+            resume_id=resume.id,
+            version_number=version_number,
+            content_snapshot=snapshot_resume(resume),
+            change_summary=(change_summary.strip() or f"版本 {version_number}")[:500],
+            created_by=(created_by.strip() or "system")[:100],
+        )
+        try:
+            async with db.begin_nested():
+                db.add(version)
+            # begin_nested flushed successfully and released the savepoint.
+            return version
+        except IntegrityError as exc:
+            last_exc = exc
+            continue
+    raise RuntimeError("resume_version race: failed after 3 attempts") from last_exc

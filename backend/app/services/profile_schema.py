@@ -167,6 +167,8 @@ LEGACY_SECTION_TYPE_ALIASES: dict[str, str] = {
     "internship": "experience",
     "honor": "skill",
     "language": "skill",
+    "preference": "custom:c_preference",
+    "career_signal": "custom:c_career_signal",
 }
 
 

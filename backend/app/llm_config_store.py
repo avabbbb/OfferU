@@ -175,7 +175,12 @@ def _sanitize_api_key(raw: str) -> str:
     return value
 
 
-_ENV_FILE = runtime_env_file()
+def _get_env_file() -> Path:
+    """运行期现取 .env 路径——OFFERU_DATA_DIR 变化时跟随，
+    避免 import 期冻结（与 config_file_path 同策略）。"""
+    return runtime_env_file()
+
+
 _ENV_FILE_VALUES: dict[str, str] | None = None
 
 
@@ -186,7 +191,7 @@ def _load_env_file_values() -> dict[str, str]:
         return _ENV_FILE_VALUES
     values: dict[str, str] = {}
     try:
-        for line in _ENV_FILE.read_text(encoding="utf-8").splitlines():
+        for line in _get_env_file().read_text(encoding="utf-8").splitlines():
             line = line.strip()
             if not line or line.startswith("#") or "=" not in line:
                 continue

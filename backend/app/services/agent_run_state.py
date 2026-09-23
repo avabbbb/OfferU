@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update as sql_update
 
 from app.database import async_session
 from app.models.models import AgentRunEvent, AgentRunRecord, JobSearchTask
@@ -339,14 +339,13 @@ async def save_agent_run(
         row.recovery_cursor_json = cleaned["recovery_cursor"]
         row.final_result_json = cleaned["final_result"]
         row.failure_reason = cleaned["failure_reason"]
+        # Collect the lifecycle events to append, then reserve their sequence
+        # numbers with an atomic UPDATE so concurrent save_agent_run calls for
+        # the same run cannot collide on (run_id, sequence) — which is guarded
+        # by the uq_agent_run_event_sequence unique constraint.
+        pending_events: list[tuple[str, dict[str, Any]]] = []
         if event_type:
-            db.add(
-                _append_event_row(
-                    row,
-                    event_type=event_type,
-                    payload=event_payload or {},
-                )
-            )
+            pending_events.append((event_type, event_payload or {}))
         if row.status != previous_status and row.status in TERMINAL_STATUSES:
             terminal_type = {
                 "completed": "run.completed",
@@ -354,16 +353,38 @@ async def save_agent_run(
                 "cancelled": "run.cancelled",
                 "needs_reconciliation": "run.failed",
             }[row.status]
-            db.add(
-                _append_event_row(
-                    row,
-                    event_type=terminal_type,
-                    payload={
-                        "status": row.status,
-                        "failure_reason": row.failure_reason,
-                    },
+            pending_events.append(
+                (
+                    terminal_type,
+                    {"status": row.status, "failure_reason": row.failure_reason},
                 )
             )
+        if pending_events:
+            new_sequence = (
+                await db.execute(
+                    sql_update(AgentRunRecord)
+                    .where(AgentRunRecord.run_id == cleaned["id"])
+                    .values(
+                        event_sequence=AgentRunRecord.event_sequence
+                        + len(pending_events)
+                    )
+                    .returning(AgentRunRecord.event_sequence)
+                )
+            ).scalar_one()
+            base_sequence = new_sequence - len(pending_events)
+            for offset, (etype, epayload) in enumerate(pending_events):
+                db.add(
+                    AgentRunEvent(
+                        event_id=f"evt_{uuid.uuid4().hex}",
+                        run_id=row.run_id,
+                        sequence=base_sequence + offset + 1,
+                        event_type=etype,
+                        payload_json=safe_result_preview(epayload),
+                    )
+                )
+            # Keep the in-memory attribute consistent with the DB for callers
+            # that read row.event_sequence before the refresh below.
+            row.event_sequence = new_sequence
         await db.commit()
         await db.refresh(row)
         return _row_to_run(row)

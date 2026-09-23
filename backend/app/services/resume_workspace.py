@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
 from app.database import async_session
@@ -461,14 +462,31 @@ async def ensure_resume_workspace(
                     ]
                 )
             db.add(resume)
-            await db.flush()
-            version = await create_version_snapshot(
-                db,
-                resume,
-                change_summary="创建岗位简历工作区",
-                created_by="system",
-            )
-            resume.current_version_id = version.id
+            try:
+                await db.flush()
+                version = await create_version_snapshot(
+                    db,
+                    resume,
+                    change_summary="创建岗位简历工作区",
+                    created_by="system",
+                )
+                resume.current_version_id = version.id
+            except IntegrityError:
+                # A concurrent caller raced and created the workspace resume for
+                # this job first.  Roll back this transaction's pending insert
+                # and re-query the existing resume so we return a single record.
+                await db.rollback()
+                resume = (
+                    await db.execute(
+                        select(Resume)
+                        .where(Resume.target_job_id == job.id)
+                        .where(Resume.source_mode == "job_tailored_workspace")
+                        .order_by(Resume.updated_at.desc(), Resume.id.desc())
+                        .options(selectinload(Resume.sections))
+                    )
+                ).scalars().first()
+                if resume is None:
+                    raise
 
         resume.target_job_id = job.id
         resume.source_mode = "job_tailored_workspace"

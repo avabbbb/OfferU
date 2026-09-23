@@ -513,9 +513,9 @@ async def _distill_loop(interval_seconds: int) -> None:
             result = await distill_observations(limit=10)
             if result.get("distilled"):
                 _logger.info(
-                    "memory distiller completed: distilled=%s observations=%s",
-                    len(result.get("distilled") or []),
-                    int(result.get("observations") or 0),
+                    "memory distiller completed: distilled=%s processed=%s",
+                    int(result.get("distilled") or 0),
+                    int(result.get("processed") or 0),
                 )
         except asyncio.CancelledError:
             raise

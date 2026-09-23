@@ -45,6 +45,8 @@ from app.services.harness_operations import (
     promote_harness_memory,
     save_harness_conversation,
 )
+from app.services.memory_import import MemoryImportInput, import_memory_candidates
+from app.services.local_memory import LocalMemoryPreviewInput, list_local_memory_sources, preview_local_memory_source
 from app.services.optimize_agent_operations import (
     chat_optimize_agent_session,
     delete_optimize_agent_session,
@@ -4194,7 +4196,13 @@ async def create_pool_operation(
             sort_order=int(sort_order or 0),
         )
         db.add(pool)
-        await db.commit()
+        try:
+            # TOCTOU 兜底：并发创建同名池时，检查与写入之间的竞态由
+            # pools.name 唯一约束在 commit 处拦截，按业务语义返回错误。
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
+            return {"error": "Pool name already exists"}
         await db.refresh(pool)
         return _serialize_pool(pool, 0)
 
@@ -5365,6 +5373,32 @@ OPERATIONS.update(
             side_effects=("write",),
             input_model=HarnessMemoryImportInput,
             version="2026-08-28",
+        ),
+        "import_memory_candidates": Operation(
+            name="import_memory_candidates",
+            fn=import_memory_candidates,
+            description="把使用者显式选择的 AI 记忆摘录送入记忆收件箱，始终作为待核实线索。",
+            group="memory",
+            side_effects=("write",),
+            input_model=MemoryImportInput,
+            audit_redacted_parameters=("excerpts",),
+            audit_redacted_output_parameters=("items",),
+        ),
+        "list_local_memory_sources": Operation(
+            name="list_local_memory_sources",
+            fn=list_local_memory_sources,
+            description="仅检查受支持的本地 AI 记忆摘要是否存在，不读取内容或扫描聊天历史。",
+            group="memory",
+        ),
+        "preview_local_memory_source": Operation(
+            name="preview_local_memory_source",
+            fn=preview_local_memory_source,
+            description="经使用者允许后预览一个受支持的本地 AI 记忆摘要；不会自动保存到档案。",
+            group="memory",
+            side_effects=("read", "external"),
+            permissions=("local_memory:read",),
+            input_model=LocalMemoryPreviewInput,
+            audit_redacted_output_parameters=("text",),
         ),
     }
 )

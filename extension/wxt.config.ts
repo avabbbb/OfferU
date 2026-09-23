@@ -22,11 +22,20 @@ export default defineConfig({
   manifest: {
     name: "OfferU 简历购物车助手",
     description: "在招聘站列表页/详情页手动采集岗位并同步到 OfferU",
+    // cookies 仅用于「连接 BOSS 登录态」读取 zhipin.com 的 HttpOnly Cookie
+    // （src/background.ts 的 syncBossScraperSession），不读取其他任何站点。
     permissions: ["storage", "activeTab", "tabs", "scripting", "clipboardWrite", "offscreen", "cookies"],
     host_permissions: ["http://127.0.0.1/*", "http://localhost/*"],
     // 招聘站点权限按需申请（见 docs/architecture/browser-extension.md），
-    // 例如用户点「连接 BOSS 登录态」时才申请 https://*.zhipin.com/*。
-    optional_host_permissions: ["https://*/*", "http://*/*"],
+    // 仅限常见招聘站点；用户连接对应站点登录态时才逐站申请，不再开放通配所有 http/https。
+    optional_host_permissions: [
+      "https://*.zhipin.com/*",
+      "https://*.liepin.com/*",
+      "https://*.51job.com/*",
+      "https://*.zhaopin.com/*",
+      "https://*.linkedin.com/*",
+      "https://*.indeed.com/*",
+    ],
     web_accessible_resources: [
       {
         resources: ["popup.html", "assets/*", "chunks/*"],

@@ -138,7 +138,8 @@ def _auto_migrate(connection):
                         except Exception:
                             val = None
                     if isinstance(val, str):
-                        default_clause = f" DEFAULT '{val}'"
+                        escaped = val.replace("'", "''")
+                        default_clause = f" DEFAULT '{escaped}'"
                     elif isinstance(val, bool):
                         default_clause = f" DEFAULT {1 if val else 0}"
                     elif isinstance(val, (int, float)):
@@ -150,7 +151,7 @@ def _auto_migrate(connection):
                     if "CHAR" in col_type_upper or "TEXT" in col_type_upper:
                         default_clause = " DEFAULT ''"
                     elif "JSON" in col_type_upper:
-                        default_clause = " DEFAULT '[]'"
+                        default_clause = " DEFAULT '{}'"
                     else:
                         default_clause = " DEFAULT 0"
                 ddl = f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {col_type}{nullable}{default_clause}'

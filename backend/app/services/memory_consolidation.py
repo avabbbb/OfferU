@@ -1,18 +1,14 @@
 from __future__ import annotations
 
-import re
 from typing import Any, Optional
 
 from sqlalchemy import select
 
 from app.database import async_session
 from app.models.models import CareerSource, LearningObservation, ProfileSection
-from app.services.career_memory import create_memory_proposal
+from app.services.career_memory import TARGET_TIERS, create_memory_proposal
+from app.services.profile_schema import is_valid_profile_section_type, normalize_section_type_alias
 from app.services.security_redaction import safe_error_message
-
-
-TARGET_TIERS = frozenset({"verified_fact", "preference", "career_hypothesis"})
-_TYPE_NAME = re.compile(r"^[a-z][a-z0-9_]{1,59}$")
 
 
 def _clean_text(value: Any, field: str, *, limit: int, required: bool = False) -> str:
@@ -35,13 +31,13 @@ def _candidate(value: Any) -> dict[str, Any]:
     ).lower()
     if target_tier not in TARGET_TIERS:
         raise ValueError("memory candidate target_tier 无效")
-    section_type = _clean_text(
+    section_type = normalize_section_type_alias(_clean_text(
         value.get("section_type"),
         "section_type",
-        limit=60,
+        limit=80,
         required=True,
-    ).lower()
-    if not _TYPE_NAME.fullmatch(section_type):
+    ))
+    if not is_valid_profile_section_type(section_type):
         raise ValueError("memory candidate section_type 格式无效")
     title = _clean_text(value.get("title"), "title", limit=220, required=True)
     after = value.get("after")

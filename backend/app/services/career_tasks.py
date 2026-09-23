@@ -141,6 +141,19 @@ def _task_lock(task_id: str) -> asyncio.Lock:
     return _TASK_LOCKS.setdefault(task_id, asyncio.Lock())
 
 
+def _discard_task_lock(task_id: str) -> None:
+    """任务终结后丢弃其进程内锁，避免 _TASK_LOCKS 无界增长。
+
+    锁仍被持有时跳过本次清理，避免把正在等待的 cancel/retry 协程
+    拆到另一把新锁上；这些残留项会在下一次任务终止时再被清理。
+    数据库侧的条件更新（status 过渡校验）仍然是跨进程正确性的
+    最终保证。
+    """
+    lock = _TASK_LOCKS.get(task_id)
+    if lock is not None and not lock.locked():
+        _TASK_LOCKS.pop(task_id, None)
+
+
 async def _claim_task(task_id: str) -> dict[str, Any] | None:
     """Atomically claim a queued task across backend processes.
 
@@ -569,6 +582,7 @@ async def _run_role_intelligence_task(task: dict[str, Any]) -> dict[str, Any]:
         await worker
 
     deadline = asyncio.get_running_loop().time() + 3600
+    poll_delay = 0.5
     while True:
         benchmark = await role_intelligence.get_role_benchmark(run_id=run_id)
         status = str(benchmark.get("status") or "")
@@ -576,7 +590,8 @@ async def _run_role_intelligence_task(task: dict[str, Any]) -> dict[str, Any]:
             break
         if asyncio.get_running_loop().time() >= deadline:
             raise TimeoutError("role_intelligence benchmark 等待超时")
-        await asyncio.sleep(0.25)
+        await asyncio.sleep(poll_delay)
+        poll_delay = min(poll_delay * 2, 10.0)
     if status != "completed":
         raise RuntimeError(
             str(benchmark.get("last_error") or f"Role benchmark status={status}")
@@ -640,89 +655,94 @@ async def _complete_task(task_id: str, result: dict[str, Any]) -> dict[str, Any]
 
 
 async def _run_task(task_id: str) -> None:
-    task = await _claim_task(task_id)
-    if task is None:
-        # Another process either claimed the task or moved it to a terminal
-        # state.  It owns execution and durable completion.
-        return
     try:
-        await _append_event(task_id, "task.started", {"attempt": task["attempt_count"]})
-        if task["task_type"] == "agent_turn":
-            result = await _run_agent_turn(task)
-        elif task["task_type"] == "run_artifact":
-            result = await _run_artifact_task(task)
-        elif task["task_type"] == "role_intelligence":
-            result = await _run_role_intelligence_task(task)
-        elif task["task_type"] == "plugin_capability":
-            from app.services.capability_plugins import invoke_plugin_capability
-
-            payload = task["input"] if isinstance(task.get("input"), dict) else {}
-            result = await invoke_plugin_capability(**payload)
-        else:
-            raise ValueError(f"unsupported CareerTask type: {task['task_type']}")
-        completed = await _complete_task(task_id, result)
-        if completed["status"] == "cancelled":
+        task = await _claim_task(task_id)
+        if task is None:
+            # Another process either claimed the task or moved it to a terminal
+            # state.  It owns execution and durable completion.
             return
-        await _notify_automation(task_id)
-    except asyncio.CancelledError:
-        current = await get_career_task(task_id)
-        if current["status"] not in TERMINAL_STATUSES:
-            error_message = "任务被运行环境中断；未自动重放外部副作用"
+        try:
+            await _append_event(task_id, "task.started", {"attempt": task["attempt_count"]})
+            if task["task_type"] == "agent_turn":
+                result = await _run_agent_turn(task)
+            elif task["task_type"] == "run_artifact":
+                result = await _run_artifact_task(task)
+            elif task["task_type"] == "role_intelligence":
+                result = await _run_role_intelligence_task(task)
+            elif task["task_type"] == "plugin_capability":
+                from app.services.capability_plugins import invoke_plugin_capability
+
+                payload = task["input"] if isinstance(task.get("input"), dict) else {}
+                result = await invoke_plugin_capability(**payload)
+            else:
+                raise ValueError(f"unsupported CareerTask type: {task['task_type']}")
+            completed = await _complete_task(task_id, result)
+            if completed["status"] == "cancelled":
+                return
+            await _notify_automation(task_id)
+        except asyncio.CancelledError:
+            current = await get_career_task(task_id)
+            if current["status"] not in TERMINAL_STATUSES:
+                error_message = "任务被运行环境中断；未自动重放外部副作用"
+                error_id = _record_task_error(
+                    task_id,
+                    message=error_message,
+                    provider_id=current.get("runtime_provider") or "",
+                    run_id=current.get("run_id") or "",
+                    kind="task_cancelled",
+                )
+                await _update_task(
+                    task_id,
+                    status="blocked",
+                    error=error_message,
+                    retryable=True,
+                    finished_at=_utc_now(),
+                    progress_json={"stage": "blocked", "percent": 0, "error_id": error_id},
+                )
+                await _append_event(
+                    task_id,
+                    "task.blocked",
+                    {"reason": "cancelled_by_runtime", "error_id": error_id},
+                )
+            raise
+        except Exception as exc:  # noqa: BLE001 - persisted task failure is explicit
+            blocked = _is_provider_blocked(exc)
+            current = await get_career_task(task_id)
+            if current["status"] == "cancelled":
+                return
+            error_message = "provider authentication failed" if blocked else _safe_error(exc)
             error_id = _record_task_error(
                 task_id,
                 message=error_message,
                 provider_id=current.get("runtime_provider") or "",
                 run_id=current.get("run_id") or "",
-                kind="task_cancelled",
+                kind="provider_blocked" if blocked else "career_task",
             )
             await _update_task(
                 task_id,
-                status="blocked",
+                status="blocked" if blocked else "failed",
                 error=error_message,
-                retryable=True,
+                retryable=bool(blocked or current["attempt_count"] < current["max_attempts"]),
                 finished_at=_utc_now(),
-                progress_json={"stage": "blocked", "percent": 0, "error_id": error_id},
+                progress_json={
+                    "stage": "blocked" if blocked else "failed",
+                    "percent": 0,
+                    "error_id": error_id,
+                },
             )
             await _append_event(
                 task_id,
-                "task.blocked",
-                {"reason": "cancelled_by_runtime", "error_id": error_id},
+                "task.blocked" if blocked else "task.failed",
+                {
+                    "retryable": bool(blocked or current["attempt_count"] < current["max_attempts"]),
+                    "error_id": error_id,
+                },
             )
-        raise
-    except Exception as exc:  # noqa: BLE001 - persisted task failure is explicit
-        blocked = _is_provider_blocked(exc)
-        current = await get_career_task(task_id)
-        if current["status"] == "cancelled":
-            return
-        error_message = "provider authentication failed" if blocked else _safe_error(exc)
-        error_id = _record_task_error(
-            task_id,
-            message=error_message,
-            provider_id=current.get("runtime_provider") or "",
-            run_id=current.get("run_id") or "",
-            kind="provider_blocked" if blocked else "career_task",
-        )
-        await _update_task(
-            task_id,
-            status="blocked" if blocked else "failed",
-            error=error_message,
-            retryable=bool(blocked or current["attempt_count"] < current["max_attempts"]),
-            finished_at=_utc_now(),
-            progress_json={
-                "stage": "blocked" if blocked else "failed",
-                "percent": 0,
-                "error_id": error_id,
-            },
-        )
-        await _append_event(
-            task_id,
-            "task.blocked" if blocked else "task.failed",
-            {
-                "retryable": bool(blocked or current["attempt_count"] < current["max_attempts"]),
-                "error_id": error_id,
-            },
-        )
-        await _notify_automation(task_id)
+            await _notify_automation(task_id)
+    finally:
+        # 任务已终止（completed/failed/blocked/cancelled）或未被本进程认领，
+        # 进程内锁不再需要；移除以防 _TASK_LOCKS 随任务数无界增长。
+        _discard_task_lock(task_id)
 
 
 async def cancel_career_task(task_id: str) -> dict[str, Any]:

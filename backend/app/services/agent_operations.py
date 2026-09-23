@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 from pathlib import Path
 import re
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import and_, func, select, desc
 from sqlalchemy.orm import selectinload
@@ -1729,10 +1729,20 @@ async def triage_job(job_id: int, status: str, pool_id: Optional[int] = None) ->
         return {"id": job.id, "triage_status": job.triage_status, "pool_id": job.pool_id, "updated": True}
 
 
-async def batch_triage(job_ids: list[int], status: str, pool_id: Optional[int] = None) -> dict:
+VALID_TRIAGE_STATUSES = {"inbox", "picked", "applied", "archived", "ignored"}
+
+_UNSET = object()
+
+
+async def batch_triage(job_ids: list[int], status: str, pool_id: Any = _UNSET) -> dict:
+    if status not in VALID_TRIAGE_STATUSES:
+        raise ValueError(f"Unsupported triage_status: {status}")
     async with async_session() as db:
         from sqlalchemy import update as sql_update
-        stmt = sql_update(Job).where(Job.id.in_(job_ids)).values(triage_status=status, pool_id=pool_id)
+        values: dict[str, Any] = {"triage_status": status}
+        if pool_id is not _UNSET:
+            values["pool_id"] = pool_id
+        stmt = sql_update(Job).where(Job.id.in_(job_ids)).values(**values)
         result = await db.execute(stmt)
         await db.commit()
         return {"updated": result.rowcount or 0, "requested": len(job_ids)}

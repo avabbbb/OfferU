@@ -292,6 +292,7 @@ def _manifest(
     include_patterns: list[str],
     exclude_patterns: list[str],
 ) -> dict[str, dict[str, Any]]:
+    root_resolved = root.resolve()
     result: dict[str, dict[str, Any]] = {}
     for current_root, dirnames, filenames in os.walk(root, followlinks=False):
         current = Path(current_root)
@@ -309,6 +310,16 @@ def _manifest(
         for filename in filenames:
             path = current / filename
             if path.is_symlink():
+                continue
+            # Defense-in-depth: fnmatch-based include/exclude operates on posix
+            # relative strings and does not understand path semantics.  Verify
+            # the resolved path stays within the source root to block any
+            # traversal (e.g. via crafted names or bind mounts).
+            try:
+                resolved = path.resolve()
+            except (OSError, RuntimeError):
+                continue
+            if not resolved.is_relative_to(root_resolved):
                 continue
             relative = path.relative_to(root).as_posix()
             if not _included(
@@ -353,11 +364,16 @@ def _excerpts(root: Path, changes: list[dict[str, str]]) -> tuple[str, int]:
     parts: list[str] = []
     total = 0
     sent_files = 0
+    root_resolved = root.resolve()
     for item in changes:
         if item["change"] == "deleted":
             continue
         path = root / item["path"]
         try:
+            # Defense-in-depth: ensure the file resolves within the source root
+            # before reading, so a crafted relative path cannot escape it.
+            if not path.resolve().is_relative_to(root_resolved):
+                continue
             text = path.read_text(encoding="utf-8", errors="replace")
         except (OSError, PermissionError):
             continue

@@ -56,6 +56,13 @@ backend/uploads/photos/*
 # ---- 日志 ----
 *.log
 npm-debug.log*
+# 诊断/健康检查输出与本地服务日志（含环境细节，绝不能入库）
+backend/doctor_*.txt
+backend/doctor_out*.txt
+backend/codex-*.log
+backend/preview-*.log
+backend/server-*.log
+backend/uvicorn-*.log
 
 # ---- 测试/临时 ----
 coverage/
