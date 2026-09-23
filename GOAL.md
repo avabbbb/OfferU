@@ -54,7 +54,9 @@ Job / Opportunity
 Profile
 ```
 
-Agent 是全局能力；Memory 是 Profile 的演进机制；Resume、Role Intelligence、Research、Application Packet 和 Interview 均属于 Job Context。Today、Pipeline、Agent 不拥有独立业务事实，只投影 OfferU Domain Runtime 中同一份 Career Truth。
+其中 **Job / Opportunity 是一个持久的 Job Workspace，而不是一次聊天或单纯详情页**。Job Snapshot、Role Intelligence、Evidence Map、Resume/Application Materials、Interview 与 Timeline 都属于同一机会工作区，并逐步物化 Agent 的准备结果。
+
+Agent 是全局能力；Memory 是 Profile 的演进机制；Resume、Role Intelligence、Research、Application Packet 和 Interview 均属于 Job Workspace。Today、Pipeline、Agent 不拥有独立业务事实，只投影 OfferU Domain Runtime 中同一份 Career Truth。
 
 ## Stable Technical Boundary
 
@@ -110,15 +112,23 @@ Event → Rule → CareerTask → Agent / Runtime → Operation
 
 ### First Run
 
-Install → Launch → auto-detect local AI → Resume + explicitly authorized memory → Profile → save first Job → optionally connect job-search inbox → Today / Next Best Actions。正常路径不得要求终端，也不得让用户理解 MCP、Operation Registry、Provider、Harness、FastAPI 或 SQLite。
+普通用户主路径：
+
+Install → Launch → auto-detect local AI → 在支持时自动投影/注册 OfferU Skill → Resume + explicitly authorized memory → Profile → save first Job → create/open canonical Job Workspace → optionally connect job-search inbox → Today / Next Best Actions。
+
+高级用户允许从支持的外部 Agent 通过 OfferU Skill 直接开始一个 Job，但最终必须解析/创建同一个 canonical Job Workspace，不能形成 Agent-only 第二套项目状态。
+
+正常路径不得要求终端，也不得让用户理解 Skill 安装、MCP、Operation Registry、Provider、Harness、FastAPI 或 SQLite。
 
 Onboarding Golden Path 必须 100% 通过，并达到 0 uncaught exception、0 blank page、0 developer-only blocker。Today、Pipeline、Profile、Job、Resume 的空状态必须解释原因并给出下一步。
 
-### Today / Pipeline / Job
+### Today / Pipeline / Job Workspace
 
 - Today 从 Application、Event、CareerTask、Candidate、Interview 和 Role Intelligence 派生，展示 completed、needs attention、next best action 和 failed/blocked tasks；
 - Pipeline 是 Application State 的主要视图，至少展示 Job、Stage、Next action、Last event、Priority；
-- Job Detail 收敛 Overview、Role Intelligence、Evidence Gap、Application Materials、Interview、Timeline；
+- Job Workspace 收敛 Job Snapshot、Role Intelligence、Evidence Map、Application Materials、Interview、Timeline；
+- 长任务结果应逐步物化到 Job Workspace，不得只存在 Agent 会话文本中；
+- 关闭/切换 Agent 后，用户仍能从 Job Workspace 理解已完成、待审核、阻塞/失败与下一动作；
 - 任何页面出现不同阶段都是 Release Blocker。
 
 ### Resume Workspace
@@ -211,6 +221,7 @@ Critical E2E 必须连续 10/10 通过，不依赖 retry 染绿；核心 Journey
 ## Product Claims and Support
 
 - README、官网和 UI 只能宣传真实验证的能力；Live Role Intelligence 未通过时只能称岗位差异分析 Beta；
+- 首屏优先表达具体用户结果：一个 Job 进入 → 角色要求 × 可验证证据 → reviewable Job Workspace；“Career OS”、Operation Registry、Reasoning Authority 等作为第二层解释，不应成为普通用户理解产品的前置条件；
 - README 只有 Final Release Gate 通过后才从 POC/Internal Beta 改为正式 Release claim；
 - Public QUICKSTART 只包含 Download、Install、Launch、Onboarding，开发者启动移至 DEVELOPMENT.md；
 - 用户报告“Agent 不工作”时，支持人员通过 Doctor、Diagnostic Bundle、Error ID 定位 Provider auth、Backend、DB、Network 或 Task，不要求用户截图 Terminal；
