@@ -140,15 +140,23 @@ prepare_resume_optimization → fact_gates_passed → proposal_ready → user_co
 
 ## Next Steps for Real Agent E2E
 
-To validate the **Agent-native product experience**, we need:
+The repository now contains an OMP RPC harness in `agent_executor.py`; the
+runner is designed to keep one in-memory RPC session per case across turns and
+human-review waits. This implementation has not yet been validated with a live
+model in OS isolation.
 
-1. **Real OMP/SWE-2 session**: Launch actual Agent runtime, not scripted CLI calls
-2. **Model-issued tool calls**: Verify Agent decides which Operations to call
-3. **LLM-driven optimization**: Use real API key for content rewriting
-4. **Quality scoring**: LLM judge evaluates proposal against ground truth
-5. **Visible HITL**: User watches frontend while Agent works in background
-6. **Rejection flow**: Test "decline" path, not just "accept"
-7. **Multi-turn interaction**: Agent responds to user feedback, not just one-shot
+`AGENT_NATIVE_E2E` remains `NOT_RUN`. Acceptance still needs runtime evidence and
+the following product/evidence gaps resolved:
+
+1. **Run real OMP/SWE-2**: execute the RPC harness against the private eval snapshot
+2. **Verify model identity**: compare requested selector with RPC `get_state`
+3. **Verify model-issued tools**: require `tool_execution_start` events for OfferU CLI
+4. **Corroborate outcome**: bind tool events to OperationAuditLog / Proposal / DB state
+5. **Visible HITL**: user reviews and approves in the normal OfferU frontend; capture the actual human-facing result
+6. **Rejection + continuation**: Workbench currently has no visible rejection action, so this path is not covered
+7. **Audit attribution**: verify exact `surface` / `confirmation_ref` attribution in `grader_audit.json` (`pi` for Workbench approval; capability-only simulated `cli` approval) while preserving the complete `audit.json`
+8. **Isolation**: run OMP in authorized OS-level isolation; the per-case SQLite clone and Bash policy are not host isolation
+9. **Multi-turn / pass^3**: repeat from fresh isolated state
 
 ---
 
@@ -171,4 +179,4 @@ This deterministic pipeline smoke test confirms the OfferU resume optimization *
 
 However, this is **not an Agent E2E test**. To validate the true Agent-native experience — where SWE-2 reasons about user goals, discovers Skills, selects Operations, and calls CLI tools autonomously — a separate eval with real OMP session and model-issued tool calls is required.
 
-**Status**: ✅ Deterministic pipeline validated | ⚠️ Agent E2E not tested
+**Status**: ✅ Deterministic pipeline validated | 🧪 OMP RPC harness implemented but not live-validated | ⚠️ `AGENT_NATIVE_E2E = NOT_RUN` until a live model trace, trusted outcome, authorized OS-isolation evidence, correctly attributed human-visible HITL result, and the required UI path are captured
