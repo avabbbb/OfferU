@@ -124,6 +124,7 @@ function resolveTriageTab(raw: string | null): "all" | "inbox" | "picked" | "ign
 export default function JobsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const guidedSetup = searchParams.get("setup") === "1";
   const fromScraper = searchParams.get("from_scraper") === "1";
   const scraperTaskId = (searchParams.get("task_id") || "").trim();
   const { isOpen: poolOpen, onOpen: openPoolModal, onClose: closePoolModal } = useDisclosure();
@@ -181,6 +182,19 @@ export default function JobsPage() {
   const [isScraperSyncing, setIsScraperSyncing] = useState(fromScraper && !!scraperTaskId);
   const [actionError, setActionError] = useState("");
   const [addJobOpen, setAddJobOpen] = useState(false);
+
+  useEffect(() => {
+    if (guidedSetup) setAddJobOpen(true);
+  }, [guidedSetup]);
+
+  const closeAddJob = useCallback(() => {
+    setAddJobOpen(false);
+    if (!guidedSetup) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("setup");
+    const query = params.toString();
+    router.replace(query ? "/jobs?" + query : "/jobs", { scroll: false });
+  }, [guidedSetup, router, searchParams]);
 
   // 错误横幅 5.5s 自动消失
   useEffect(() => {
@@ -1078,7 +1092,8 @@ export default function JobsPage() {
 
       <AddJobModal
         isOpen={addJobOpen}
-        onClose={() => setAddJobOpen(false)}
+        guided={guidedSetup}
+        onClose={closeAddJob}
         onCreated={(jobId) => {
           void handleJobCreated(jobId).catch((error) => {
             setActionError(

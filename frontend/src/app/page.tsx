@@ -538,7 +538,7 @@ export default function TodayPage() {
       </motion.header>
 
       <motion.div variants={item}>
-        <OnboardingChecklist hasJobs={Boolean(jobsData?.items?.length)} />
+        <OnboardingChecklist />
       </motion.div>
 
       {guidedActions.length > 0 && (

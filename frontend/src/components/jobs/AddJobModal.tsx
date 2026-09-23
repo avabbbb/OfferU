@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Button,
   Input,
@@ -18,6 +18,7 @@ type AddJobModalProps = {
   isOpen: boolean;
   onClose: () => void;
   onCreated: (jobId: number | null) => void;
+  guided?: boolean;
 };
 
 const inputClassNames = {
@@ -35,10 +36,14 @@ const initialForm = {
   preparationMode: "local" as JobPreparationMode,
 };
 
-export function AddJobModal({ isOpen, onClose, onCreated }: AddJobModalProps) {
-  const [form, setForm] = useState(initialForm);
+export function AddJobModal({ isOpen, onClose, onCreated, guided = false }: AddJobModalProps) {
+  const [form, setForm] = useState({ ...initialForm, preparationMode: guided ? "live" as const : initialForm.preparationMode });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (guided && isOpen) setForm((current) => ({ ...current, preparationMode: "live" }));
+  }, [guided, isOpen]);
 
   const update = (key: keyof typeof initialForm, value: string) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -74,7 +79,7 @@ export function AddJobModal({ isOpen, onClose, onCreated }: AddJobModalProps) {
         runtime_provider: form.preparationMode === "local" ? "replay" : "auto",
       });
       const createdId = Number(result?.created_job_ids?.[0] || 0);
-      setForm(initialForm);
+      setForm({ ...initialForm, preparationMode: guided ? "live" : initialForm.preparationMode });
       onClose();
       onCreated(createdId > 0 ? createdId : null);
     } catch (reason) {
@@ -139,44 +144,50 @@ export function AddJobModal({ isOpen, onClose, onCreated }: AddJobModalProps) {
             data-testid="add-job-description"
           />
 
-          <div className="space-y-3">
-            <p className="bauhaus-label text-[var(--foreground-muted)]">准备方式</p>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <button
-                type="button"
-                onClick={() => setForm((current) => ({ ...current, preparationMode: "local" }))}
-                className={`border px-4 py-4 text-left transition ${
-                  form.preparationMode === "local"
-                    ? "border-[var(--border-strong)] bg-[var(--surface-muted)]"
-                    : "border-[var(--border)] bg-white"
-                }`}
-              >
-                <p className="text-sm font-bold text-[var(--foreground)]">本地演示数据（离线）</p>
-                <p className="mt-1 text-xs font-medium leading-relaxed text-[var(--foreground-soft)]">
-                  使用内置 Fixture 生成可复现的演示结果，不代表真实市场研究；不需要外部登录。
-                </p>
-              </button>
-              <button
-                type="button"
-                onClick={() => setForm((current) => ({ ...current, preparationMode: "live" }))}
-                className={`border px-4 py-4 text-left transition ${
-                  form.preparationMode === "live"
-                    ? "border-[var(--border-strong)] bg-[var(--surface-muted)]"
-                    : "border-[var(--border)] bg-white"
-                }`}
-              >
-                <p className="text-sm font-bold text-[var(--foreground)]">实时研究</p>
-                <p className="mt-1 text-xs font-medium leading-relaxed text-[var(--foreground-soft)]">
-                  使用已连接的 Agent Provider；认证或网络失败会显示在任务状态中，不会伪造完成。
-                </p>
-              </button>
-            {form.preparationMode === "local" && (
-              <p className="text-xs font-medium leading-relaxed text-[var(--foreground-muted)]" role="note">
-                选择「本地演示数据」会使用内置 Fixture/Replay 链路：产出为离线演示数据，仅用于体验流程，不代表真实市场研究或已验证的岗位证据。
-              </p>
-            )}
+          {guided ? (
+            <p role="note" className="rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-xs leading-5 text-[var(--foreground-muted)]">
+              OfferU 会使用当前可用的研究配置开始准备。认证或网络问题会显示为可重试状态，不会用演示结果代替。
+            </p>
+          ) : (
+            <div className="space-y-3">
+              <p className="bauhaus-label text-[var(--foreground-muted)]">准备方式</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setForm((current) => ({ ...current, preparationMode: "local" }))}
+                  className={`border px-4 py-4 text-left transition ${
+                    form.preparationMode === "local"
+                      ? "border-[var(--border-strong)] bg-[var(--surface-muted)]"
+                      : "border-[var(--border)] bg-white"
+                  }`}
+                >
+                  <p className="text-sm font-bold text-[var(--foreground)]">本地演示数据（离线）</p>
+                  <p className="mt-1 text-xs font-medium leading-relaxed text-[var(--foreground-soft)]">
+                    使用内置 Fixture 生成可复现的演示结果，不代表真实市场研究；不需要外部登录。
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setForm((current) => ({ ...current, preparationMode: "live" }))}
+                  className={`border px-4 py-4 text-left transition ${
+                    form.preparationMode === "live"
+                      ? "border-[var(--border-strong)] bg-[var(--surface-muted)]"
+                      : "border-[var(--border)] bg-white"
+                  }`}
+                >
+                  <p className="text-sm font-bold text-[var(--foreground)]">实时研究</p>
+                  <p className="mt-1 text-xs font-medium leading-relaxed text-[var(--foreground-soft)]">
+                    使用已连接的 Agent Provider；认证或网络失败会显示在任务状态中，不会伪造完成。
+                  </p>
+                </button>
+                {form.preparationMode === "local" && (
+                  <p className="text-xs font-medium leading-relaxed text-[var(--foreground-muted)]" role="note">
+                    选择「本地演示数据」会使用内置 Fixture/Replay 链路：产出为离线演示数据，仅用于体验流程，不代表真实市场研究或已验证的岗位证据。
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           {error && (
             <div className="border border-[var(--primary-red)]/40 bg-[var(--status-blush)] px-4 py-3 text-sm font-medium leading-relaxed text-[var(--primary-red)]" role="alert">

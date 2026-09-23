@@ -12,6 +12,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, Bot } from "lucide-react";
 import { Sidebar } from "@/components/layout/Sidebar";
+import { OnboardingGate } from "@/components/onboarding/OnboardingGate";
 import { WorkbenchProvider, useWorkbench } from "@/lib/workbench";
 import { AgentConnectionProvider } from "@/lib/agentConnection";
 import { AgentConnectionDialog, AgentConnectionStatus } from "./AgentConnectionPanel";
@@ -148,7 +149,9 @@ export function WorkbenchShell({ children }: { children: React.ReactNode }) {
   return (
     <WorkbenchProvider>
       <AgentConnectionProvider>
-        <WorkbenchFrame>{children}</WorkbenchFrame>
+        <WorkbenchFrame>
+          <OnboardingGate>{children}</OnboardingGate>
+        </WorkbenchFrame>
         <AgentConnectionDialog />
       </AgentConnectionProvider>
     </WorkbenchProvider>
