@@ -1,3 +1,14 @@
+---
+AIGC:
+  ContentProducer: '001191110102MAD55U9H0F10002'
+  ContentPropagator: '001191110102MAD55U9H0F10002'
+  Label: '1'
+  ProduceID: '5dbc8898-f444-4e80-812c-f30846f9de77'
+  PropagateID: '5dbc8898-f444-4e80-812c-f30846f9de77'
+  ReservedCode1: 'f6305057-a6ef-4499-81d9-6a56436ca560'
+  ReservedCode2: 'f6305057-a6ef-4499-81d9-6a56436ca560'
+---
+
 <p align="center">
   <img src="./asset/logo.png" width="112" alt="OfferU logo" />
 </p>

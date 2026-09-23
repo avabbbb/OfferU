@@ -1,3 +1,14 @@
+---
+AIGC:
+  ContentProducer: '001191110102MAD55U9H0F10002'
+  ContentPropagator: '001191110102MAD55U9H0F10002'
+  Label: '1'
+  ProduceID: '71ff6dbd-ec3d-4ce8-b560-7b718fc41070'
+  PropagateID: '71ff6dbd-ec3d-4ce8-b560-7b718fc41070'
+  ReservedCode1: '8707edcf-aa58-4a1a-9386-658e62193f63'
+  ReservedCode2: '8707edcf-aa58-4a1a-9386-658e62193f63'
+---
+
 # OfferU Public Release Goal
 
 ## Autonomous Production Readiness Program
