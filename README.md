@@ -5,8 +5,12 @@
 <h1 align="center">OfferU</h1>
 
 <p align="center">
-  <strong>Your local-first AI Career OS.</strong><br/>
-  Understand every job. Tailor every application. Learn from every interview.
+  <strong>Give OfferU a job. Get an evidence-backed application workspace.</strong><br/>
+  See what the role really asks for, what you can prove, and what to prepare next.
+</p>
+
+<p align="center">
+  <em>A local-first AI Career OS that compounds what you learn across jobs and interviews.</em>
 </p>
 
 <p align="center">
@@ -55,10 +59,25 @@
 
 Most job-search tools solve one step.
 
-Your resume lives in one place. Job research lives in another. Application tracking becomes a spreadsheet.
-Interview practice starts from zero every single time.
+Your JD lives in the browser. Your resume lives in a file. Research lives in another tab. Application tracking becomes a spreadsheet. Interview learning disappears into another AI chat.
 
-OfferU treats the whole search as one evolving system instead of four disconnected chores:
+So every application starts from zero.
+
+OfferU changes the unit of work from **a chat** to **a durable Job Workspace**:
+
+```text
+Target Job
+    ↓
+What does this role really care about?
+    ×
+What can I actually prove?
+    ↓
+What should I prepare next?
+    ↓
+Evidence-backed Job Workspace
+```
+
+That Workspace then compounds into the larger Career OS:
 
 ```text
 Career Profile
@@ -81,6 +100,21 @@ Debrief & Learning
 
 Instead of opening a fresh AI chat for every job, OfferU keeps one persistent, evidence-backed career
 context and carries what it learns across the entire search.
+
+### One Job, one durable Workspace
+
+A Job is not just a detail page. It is the canonical workspace for one opportunity:
+
+```text
+Job Snapshot
+Role Intelligence
+Evidence Map
+Application Materials
+Interview
+Timeline / Next Action
+```
+
+Agent work progressively materializes into these objects, so closing a chat does not make the work disappear.
 
 ### Persistent career context
 
@@ -164,7 +198,7 @@ The active agent reasons. OfferU controls capabilities, evidence, side effects a
 | ------------ | -------------------------------------------------------------------------------------------------- |
 | **Today**    | What changed, what OfferU finished, what needs your attention, and what matters next              |
 | **Pipeline** | Every opportunity, application stage, timeline and next action                                     |
-| **Job**      | Research, Role Intelligence, evidence gaps, resume, application packet and interview preparation    |
+| **Job**      | Durable Job Workspace: snapshot, Role Intelligence, Evidence Map, materials, interview and timeline |
 | **Profile**  | Long-term career evidence, goals, preferences and reviewed learning                                |
 
 Memory is a mechanism for evolving Profile — not a separate product silo.
@@ -176,9 +210,31 @@ same Operation Registry instead of scraping or auto-applying on its own.
 
 ## AI setup
 
-The product direction is **Connect → Auto → Ready**.
+The product has **two front doors and one Career Truth**.
 
-> **Beginner: connect an agent. Advanced: configure the stack.**
+**Normal users: App-first**
+
+```text
+Install OfferU
+→ auto-detect local AI
+→ project/register OfferU Skill where supported
+→ save a Job
+→ work appears in the canonical Job Workspace
+```
+
+**Power users: Skill-first**
+
+```text
+Open Codex / Claude Code / WorkBuddy / OpenCode / OMP / another supported host
+→ enable OfferU Skill
+→ "analyze this job for me"
+→ Agent creates/resolves the canonical Job
+→ open the same Job Workspace in OfferU
+```
+
+The product direction remains **Connect → Auto → Ready**.
+
+> **Skill is the Agent entry; Job Workspace is the user product.**
 
 Normal users should not have to understand runtimes, protocol versions, model IDs or custom endpoints.
 OfferU detects a local agent you already have, checks it, and consumes its own model and account:
@@ -294,8 +350,10 @@ The intended public user path is:
 Download
 → Install
 → Auto-detect your local AI
+→ Project/register OfferU Skill where supported
 → Resume + optional authorized AI memory → Profile
 → Save your first Job from the browser
+→ Open the canonical Job Workspace
 → Optionally connect a job-search inbox
 → Today tells you what matters next
 ```
