@@ -10,7 +10,25 @@ This document defines the current product shape of OfferU. Historical audits, da
 
 OfferU is a **local-first AI Career OS** for normal job seekers.
 
-It should reduce both:
+The category is broad; the first-use promise should be concrete:
+
+> **Give OfferU a job. It shows what the role really asks for, what you can prove, and prepares the application around that evidence.**
+
+The core product equation is:
+
+~~~
+Target Job
+    ↓
+What does this role care about?
+    ×
+What can I actually prove?
+    ↓
+What should I prepare next?
+    ↓
+Evidence-backed Job Workspace
+~~~
+
+OfferU should reduce both:
 
 1. **setup burden** — users should not need Python, Node, Git, MCP, CLI, model IDs or provider configuration to start;
 2. **decision burden** — users should not need to know which feature, mode, Skill or Agent command to invoke next.
@@ -20,14 +38,17 @@ The default experience is:
 ~~~
 Install
 → Find my local AI automatically
+→ Project / register the OfferU Skill where supported
 → Resume + explicitly authorized AI memory → Profile
 → Save a real job from the browser
-→ Connect a job-search inbox
-→ Today tells me the next best actions
-→ Agent prepares / analyzes / drafts
+→ Create the canonical Job Workspace
+→ Agent prepares / analyzes / drafts into that Workspace
+→ Today tells me what needs attention next
 → User confirms important facts and irreversible actions
 → outcomes feed back into Profile and future decisions
 ~~~
+
+The user should experience a durable workspace, not a disposable AI conversation.
 
 ## Product information architecture
 
@@ -42,10 +63,42 @@ Profile
 
 - **Today** is the guided action layer. It answers “what matters now?” and shows at most a few primary actions.
 - **Pipeline** projects application state, timeline and next action from the same canonical events.
-- **Job** contains role understanding, evidence gaps, resume/application material and interview preparation for one opportunity.
+- **Job / Job Workspace** is the durable application workspace for one opportunity: Job Snapshot, Role Intelligence, Evidence Map, application materials, interview preparation and canonical Timeline all converge here. Agent conversations are only one way to modify this workspace.
 - **Profile** is the long-lived evidence-backed model of the user. Memory is an evolution mechanism for Profile, not a separate silo.
 
 Agent, Skills, Email, Browser Capture, Resume, Role Intelligence and Interview are capabilities across these surfaces, not competing top-level products.
+
+## Two front doors, one Career Truth
+
+OfferU has two valid entry lanes that must converge on the same canonical state.
+
+### Normal user: App-first
+
+~~~
+Install OfferU
+→ auto-detect a supported local Agent
+→ project/register OfferU Skill automatically where supported
+→ import resume / core evidence
+→ save first Job
+→ open Job Workspace
+→ Guided Today handles the next decisions
+~~~
+
+Normal users do not need to know what a Skill, MCP server, Registry or provider topology is.
+
+### Power user: Skill-first
+
+A user already inside Codex, Claude Code, WorkBuddy/CodeBuddy, OpenCode, OMP, Pi or another supported host may start from the Agent:
+
+~~~
+enable OfferU Skill
+→ "analyze this job for me"
+→ Agent creates/resolves the canonical Job
+→ governed OfferU operations prepare the role
+→ open the same Job Workspace in OfferU
+~~~
+
+This must never become a second CLI-only product. Skill-first and App-first are two doors into the same Career Runtime, Job, Pipeline, Profile and audit trail.
 
 ## Reasoning authority: external-first, not external-only
 
@@ -104,6 +157,36 @@ References:
 - https://agentskills.io/
 - https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills
 
+## Job Workspace as the durable product object
+
+The unit of work is not a chat transcript. For every target opportunity, OfferU should materialize a persistent, reviewable Job Workspace:
+
+~~~
+Job Workspace
+
+Job Snapshot
+Role Intelligence
+Evidence Map
+Application Materials
+Interview
+Timeline / Next Action
+~~~
+
+The Workspace progressively fills as work completes:
+
+~~~
+Job saved
+→ Job Snapshot ready
+→ Role Intelligence ready
+→ Evidence Map ready
+→ Resume proposals ready
+→ Interview focus ready
+~~~
+
+Long-running Agent work should surface as product state: completed, needs review, blocked/failed, and next action. Closing an Agent chat must not make the work disappear.
+
+Accepted facts, user edits and approved versions are preserved. Re-analysis may update affected preparation, but it must not reset unrelated application state or silently overwrite accepted work.
+
 ## Guided interaction
 
 The default mode is **Guided**.
@@ -152,6 +235,18 @@ User opens a job page
 This is not background crawling and not an application event.
 
 BOSS CLI, scraper adapters or other source connectors may exist for research, testing or advanced user workflows, but they are not the default consumer acquisition path and must not weaken platform, privacy or anti-automation boundaries.
+
+## Plan → Review → Execute
+
+Before a large preparation run, paid model work, or any external side effect, OfferU should show a compact plan at the level a normal user cares about:
+
+- what will be researched or generated;
+- which verified evidence will be used;
+- what is only a proposal;
+- which external actions will **not** happen automatically;
+- account / rate / estimated cost when materially relevant and known.
+
+This is not approval-everywhere. Work already inside an agreed safe scope may proceed; a material change of scope, cost, account or irreversible effect creates a new decision.
 
 ## Application assistance
 
@@ -222,6 +317,32 @@ Do not reintroduce these as defaults:
 - a long command/mode menu as the beginner UX;
 - treating historical eval/audit numbers as current capability truth.
 
+## Product story and launch order
+
+Product communication should start from the repeated user problem, not the internal architecture:
+
+1. every application starts from zero;
+2. the JD, resume, research, tracker and interview learning are fragmented;
+3. generic AI can optimize by inventing unless evidence and truth are separately governed;
+4. OfferU turns a target Job + verified Career Profile into one reviewable Job Workspace.
+
+Recommended information order:
+
+~~~
+Concrete Job → Workspace outcome
+→ complete Job-to-Workspace demo
+→ Role × Evidence formula
+→ why job-search AI breaks
+→ Job Workspace
+→ Quickstart
+→ local Agent / Skill entry
+→ Today / Pipeline / Profile compounding loop
+→ evidence / approval model
+→ architecture, security and release status
+~~~
+
+Operation Registry, Reasoning Authority and Career Runtime explain **why the experience can be trusted**; they are not the first reason a normal user cares.
+
 ## Success test
 
 A new user should be able to understand OfferU without knowing what a Harness, MCP server, Operation Registry or provider is.
@@ -229,11 +350,13 @@ A new user should be able to understand OfferU without knowing what a Harness, M
 The product is succeeding when the user experiences:
 
 ~~~
-OfferU knows my current career state
-→ tells me what matters next
+I give OfferU a Job
+→ it shows what the role cares about
+→ maps that against what I can actually prove
+→ prepares work into one durable Job Workspace
 → uses the AI I already have
-→ safely composes the Skills I already have
-→ prepares work proactively
+→ tells me what matters next
 → asks me only for decisions that genuinely require me
+→ preserves accepted work
 → learns from confirmed outcomes
 ~~~
