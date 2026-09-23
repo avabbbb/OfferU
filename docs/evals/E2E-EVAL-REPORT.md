@@ -140,15 +140,19 @@ prepare_resume_optimization → fact_gates_passed → proposal_ready → user_co
 
 ## Next Steps for Real Agent E2E
 
-To validate the **Agent-native product experience**, we need:
+The repository now contains a real OMP RPC harness in `agent_executor.py`, and
+`runner.py --runtime omp` launches it directly rather than waiting for a scripted
+handoff file.
 
-1. **Real OMP/SWE-2 session**: Launch actual Agent runtime, not scripted CLI calls
-2. **Model-issued tool calls**: Verify Agent decides which Operations to call
-3. **LLM-driven optimization**: Use real API key for content rewriting
-4. **Quality scoring**: LLM judge evaluates proposal against ground truth
-5. **Visible HITL**: User watches frontend while Agent works in background
-6. **Rejection flow**: Test "decline" path, not just "accept"
-7. **Multi-turn interaction**: Agent responds to user feedback, not just one-shot
+The remaining acceptance work is runtime evidence, not more scripted plumbing:
+
+1. **Run real OMP/SWE-2**: execute the RPC harness against the private eval snapshot
+2. **Verify model identity**: compare requested selector with RPC `get_state`
+3. **Verify model-issued tools**: require `tool_execution_start` events for OfferU CLI
+4. **Corroborate outcome**: bind tool events to OperationAuditLog / Proposal / DB state
+5. **Visible HITL**: user reviews/accepts/rejects in normal OfferU frontend
+6. **Rejection + continuation**: verify Agent observes the human decision correctly
+7. **Multi-turn / pass^3**: repeat from fresh isolated state
 
 ---
 
@@ -171,4 +175,4 @@ This deterministic pipeline smoke test confirms the OfferU resume optimization *
 
 However, this is **not an Agent E2E test**. To validate the true Agent-native experience — where SWE-2 reasons about user goals, discovers Skills, selects Operations, and calls CLI tools autonomously — a separate eval with real OMP session and model-issued tool calls is required.
 
-**Status**: ✅ Deterministic pipeline validated | ⚠️ Agent E2E not tested
+**Status**: ✅ Deterministic pipeline validated | 🧪 Real OMP RPC harness implemented | ⚠️ `AGENT_NATIVE_E2E = NOT_RUN` until a live model trace + trusted outcome are captured
