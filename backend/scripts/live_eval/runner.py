@@ -17,6 +17,7 @@ import contextlib
 import io
 import json
 import os
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -63,6 +64,7 @@ if __package__ in {None, ""}:  # 允许 python scripts/live_eval/runner.py 直�
     )
     from scripts.live_eval.skill_route import load_skill_route_cases  # type: ignore[import-not-found]
     from scripts.live_eval.private_suite import load_private_real_user_cases  # type: ignore[import-not-found]
+    from scripts.live_eval.agent_executor import run_omp_rpc_agent  # type: ignore[import-not-found]
 else:
     from .cases import (
         BENCHMARK_VERSION,
@@ -90,6 +92,7 @@ else:
     )
     from .skill_route import load_skill_route_cases
     from .private_suite import load_private_real_user_cases
+    from .agent_executor import run_omp_rpc_agent
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 BACKEND_DIR = PROJECT_ROOT / "backend"
@@ -195,6 +198,26 @@ def _runtime_version() -> str:
     ).strip() else "unknown"
 
 
+def _omp_runtime_version() -> str:
+    executable = shutil.which("omp")
+    if not executable:
+        return "unavailable"
+    try:
+        proc = subprocess.run(
+            [executable, "--version"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+            timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return "unavailable"
+    text = ((proc.stdout or "") + (proc.stderr or "")).strip()
+    return text.splitlines()[0][:80] if text else "unknown"
+
+
 def _mutable_hashes() -> dict[str, str]:
     base = BACKEND_DIR / "scripts" / "live_eval"
     return {
@@ -208,6 +231,8 @@ def _mutable_hashes() -> dict[str, str]:
         "private_suite": _sha16(base / "private_suite.py"),
         "skill_route": _sha16(base / "skill_route.py"),
         "human_grading": _sha16(base / "human_grading.py"),
+        "agent_executor": _sha16(base / "agent_executor.py"),
+        "scripted_cli_executor": _sha16(base / "scripted_cli_executor.py"),
         "skill_registry": _sha16(BACKEND_DIR / "app" / "services" / "agent_skill_registry.py"),
         "offeru_skill": _sha16(PROJECT_ROOT / ".agents" / "skills" / "offeru" / "SKILL.md"),
     }
@@ -223,6 +248,8 @@ def _freeze_metadata(
     case_count: int,
     private_case_file: Path | None = None,
     runtime: str = "codebuddy",
+    model: str = "",
+    thinking: str = "",
 ) -> dict[str, Any]:
     return {
         "benchmark_version": BENCHMARK_VERSION,
@@ -232,11 +259,19 @@ def _freeze_metadata(
         "component_hashes": _mutable_hashes(),
         "seed_path": source_db.name,
         "runtime": runtime,
-        "runtime_version": (_runtime_version() if runtime == "codebuddy" else "omp"),
-        # 模型身份在此协议下不可核验：诚实记 UNVERIFIED，不写 harness-provided
-        # 冒充已证明。若外部执行器在结果里回报模型，记为 model_reported。
+        "runtime_version": (
+            _runtime_version() if runtime == "codebuddy" else _omp_runtime_version()
+        ),
+        # Freeze 只记录请求条件；真实模型身份在每个 OMP RPC trial 的
+        # get_state / event artifacts 中单独记录，不能把 selector 冒充成已验证身份。
+        "model_requested": model if runtime == "omp" else "",
+        "thinking_requested": thinking if runtime == "omp" else "",
         "model": "UNVERIFIED",
-        "model_source": "not_observable_in_handoff_protocol",
+        "model_source": (
+            "trial_rpc_state_required"
+            if runtime == "omp"
+            else "not_observable_in_subprocess_stream"
+        ),
         "mode": mode,
         "suite": suite,
         "repeat": repeat,
@@ -503,71 +538,65 @@ async def _run_harness_once(prompt: str, *, eval_db: Path, timeout: int) -> Trac
     trace.provider_failure = classify_provider_failure(trace)
     return trace
 async def _run_harness_omp(
-    prompt: str, *, eval_db: Path, timeout: int, case_dir: Path, round_index: int
+    prompt: str,
+    *,
+    eval_db: Path,
+    timeout: int,
+    case_dir: Path,
+    round_index: int,
+    model: str,
+    thinking: str,
 ) -> Trace:
-    """omp (swe-2) executor backend — **External Executor Handoff 协议**，非托管 Runtime。
+    """Run a real OMP Agent over RPC; never synthesize its Operation choices."""
 
-    codebuddy is spawned as a subprocess; an omp agent is not — it runs inside
-    the omp harness, outside this process. So in ``--runtime omp`` mode the
-    runner writes a request file the external omp orchestrator picks up, and
-    blocks until the agent writes ``omp_result.json`` back into the case dir.
-
-    协议现在携带 ``request_id``：每次请求生成唯一 id，结果必须回显同一 id
-    才被接受——防止跨轮次/跨 case 消费陈旧结果文件（E4/E6）。
-    结果文件仍非原子写，故额外要求 ``request_id`` 匹配 + JSON 可解析；
-    半个文件不会被当成有效返回（E5）。
-
-    Request:  ``<case_dir>/omp_request.json`` — {request_id, prompt, eval_db, timeout, round}
-    Result:   ``<case_dir>/omp_result.json``  — {request_id, tool_calls, final_text, is_error, model?}
-
-    ``tool_calls`` items carry the literal CLI command in ``input``. 注意：这些
-    是自报文本，grader 只用作 trajectory 诊断；真实执行证据看 audit.json。
-    """
-    request_path = case_dir / "omp_request.json"
-    result_path = case_dir / "omp_result.json"
-    # 清掉上一轮/上一题的遗留结果，避免消费陈旧文件。
-    with contextlib.suppress(OSError):
-        result_path.unlink()
-    request_id = f"{case_dir.name}-r{round_index}-{uuid.uuid4().hex[:12]}"
-    write_json(request_path, {
-        "request_id": request_id,
-        "round": round_index,
-        "prompt": prompt,
-        "eval_db": str(eval_db),
-        "timeout_seconds": timeout,
-        "runtime": "omp",
-        "protocol": "external-executor-handoff.v1",
-    })
-    started = time.perf_counter()
-    deadline = started + timeout
-    trace = Trace()
-    while time.perf_counter() < deadline:
-        if result_path.is_file():
-            try:
-                payload = json.loads(result_path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                payload = {}
-            # 结果必须回显当前 request_id 才算本次应答；不匹配说明是陈旧/迟到文件。
-            if payload.get("request_id") != request_id:
-                await asyncio.sleep(0.5)
-                continue
-            trace.tool_calls = [
-                {"tool": "Bash", "input": str(call.get("input") or "")}
-                for call in (payload.get("tool_calls") or [])
-            ]
-            trace.final_text = str(payload.get("final_text") or "")
-            trace.is_error = bool(payload.get("is_error"))
-            trace.note = str(payload.get("note") or "omp runtime")
-            # 模型身份：执行器可自报 model，但仍是 unverified —— 单独记录。
-            if payload.get("model"):
-                trace.note = f"{trace.note} | model_reported={payload.get('model')}"
-            break
-        await asyncio.sleep(0.5)
-    else:
-        trace.note = f"omp executor timeout after {timeout}s (no omp_result.json)"
-        trace.is_error = True
-    trace.elapsed_s = round(time.perf_counter() - started, 1)
+    rpc_dir = case_dir / f"omp-rpc-round-{round_index:02d}"
+    result = await run_omp_rpc_agent(
+        prompt,
+        eval_db=eval_db,
+        run_dir=rpc_dir,
+        model=model,
+        thinking=thinking,
+        timeout=timeout,
+    )
+    trace = Trace(
+        events=list(result.events),
+        tool_calls=list(result.tool_calls),
+        final_text=result.final_text,
+        elapsed_s=result.elapsed_s,
+        is_error=not result.ok,
+        note=(
+            f"omp-rpc-v2 model_requested={result.model_requested} "
+            f"model_observed={result.model_observed or 'UNVERIFIED'} "
+            f"thinking_requested={result.thinking_requested} "
+            f"thinking_observed={result.thinking_observed or 'UNVERIFIED'} "
+            f"session_id={result.session_id or 'UNVERIFIED'}"
+        ),
+    )
+    if result.error:
+        trace.events.append(
+            {
+                "type": "error",
+                "is_error": True,
+                "source": "omp_rpc_harness",
+                "error": result.error,
+            }
+        )
+        if not trace.final_text:
+            trace.final_text = result.error
     trace.provider_failure = classify_provider_failure(trace)
+    write_json(
+        rpc_dir / "identity.json",
+        {
+            "runtime": "omp",
+            "protocol": "rpc",
+            "model_requested": result.model_requested,
+            "model_observed": result.model_observed or None,
+            "thinking_requested": result.thinking_requested,
+            "thinking_observed": result.thinking_observed or None,
+            "session_id": result.session_id or None,
+            "identity_verified": bool(result.model_observed and result.session_id),
+        },
+    )
     return trace
 
 # ---------------------------------------------------------------- case run
@@ -582,6 +611,8 @@ async def run_case_once(
     mode: str = "real-user",
     discovery_mode: str = "progressive",
     runtime: str = "codebuddy",
+    model: str = "",
+    thinking: str = "",
 ) -> tuple[Trace, dict[str, Any]]:
     """跑一次 case；返回 (合并 trace, verdict dict)。
 
@@ -638,18 +669,22 @@ async def run_case_once(
         "human_rating_required": case.human_rating_required,
         "tags": list(case.tags),
     })
-    # runtime.json 记录的是**实际**执行通道：codebuddy 是子进程（有 node/script/
-    # 工具白名单），omp 是外部执行器交接协议（没有这些字段，标 handoff）。
+    # runtime.json 记录**实际**执行通道：codebuddy 是 stream-json 子进程；
+    # omp 由 runner 直接托管 RPC 进程，并在每轮 identity.json 记录观察到的模型/会话身份。
     write_json(case_dir / "runtime.json", {
         "harness": runtime,
-        "protocol": (
-            "external-executor-handoff.v1" if runtime == "omp" else "subprocess-stdout-events"
-        ),
+        "protocol": "omp-rpc-v2" if runtime == "omp" else "subprocess-stdout-events",
         "node": str(NODE_EXE) if runtime == "codebuddy" else None,
         "script": str(CODEBUDDY_SCRIPT) if runtime == "codebuddy" else None,
-        "tools": HARNESS_TOOLS if runtime == "codebuddy" else None,
+        "tools": HARNESS_TOOLS if runtime == "codebuddy" else "read,bash,grep,glob",
         "allowed_tools": HARNESS_ALLOWED_TOOLS if runtime == "codebuddy" else None,
-        "disallowed_tools": HARNESS_DISALLOWED_TOOLS if runtime == "codebuddy" else None,
+        "disallowed_tools": (
+            HARNESS_DISALLOWED_TOOLS
+            if runtime == "codebuddy"
+            else "app.cli confirm (denied by OMP eval config)"
+        ),
+        "model_requested": model if runtime == "omp" else None,
+        "thinking_requested": thinking if runtime == "omp" else None,
         "timeout_seconds": timeout,
     })
 
@@ -681,6 +716,8 @@ async def run_case_once(
                 timeout=timeout,
                 case_dir=case_dir,
                 round_index=turn_index,
+                model=model,
+                thinking=thinking,
             )
             if runtime == "omp"
             else _run_harness_once(
@@ -1064,6 +1101,8 @@ async def main_async(args: argparse.Namespace) -> int:
         case_count=len(selected),
         private_case_file=private_case_file,
         runtime=args.runtime,
+        model=args.omp_model,
+        thinking=args.omp_thinking,
     )
     write_json(run_dir / "freeze.json", freeze)
     print(f"[live-eval] run dir: {run_dir}")
@@ -1092,6 +1131,8 @@ async def main_async(args: argparse.Namespace) -> int:
                     mode=args.mode,
                     discovery_mode=args.discovery_mode,
                     runtime=args.runtime,
+                    model=args.omp_model,
+                    thinking=args.omp_thinking,
                 )
             except Exception as exc:  # noqa: BLE001 - Eval 必须记录失败而不是崩掉整个 run
                 verdict = {
@@ -1168,9 +1209,19 @@ def main(argv: list[str] | None = None) -> int:
                         help="Eval-only Skill discovery condition for ablation.")
     parser.add_argument("--timeout", type=int, default=600, help="Per-round harness timeout (s).")
     parser.add_argument("--runtime", default="codebuddy", choices=("codebuddy", "omp"),
-                        help="Agent executor. codebuddy spawns the CLI harness; omp writes an "
-                        "omp_request.json per case and waits for an external omp agent to write "
-                        "omp_result.json (the omp harness spawns its own agents, not this process).")
+                        help="Agent executor. codebuddy uses stream-json; omp launches a real "
+                        "OMP session through --mode rpc and captures model-issued tool events.")
+    parser.add_argument(
+        "--omp-model",
+        default=os.environ.get("OFFERU_LIVE_EVAL_OMP_MODEL") or "avabbbb/devin/swe-2",
+        help="OMP model selector used with --runtime omp.",
+    )
+    parser.add_argument(
+        "--omp-thinking",
+        default=os.environ.get("OFFERU_LIVE_EVAL_OMP_THINKING") or "xhigh",
+        choices=("off", "minimal", "low", "medium", "high", "xhigh", "max"),
+        help="OMP thinking level used with --runtime omp.",
+    )
     parser.add_argument("--max-cases", type=int, default=0, help="Limit number of cases (0 = all).")
     parser.add_argument("--source-db", default=str(DEFAULT_SOURCE_DB), help="Template database to clone.")
     parser.add_argument("--output-root", default=str(DEFAULT_RUN_ROOT), help="Run artifact root.")
