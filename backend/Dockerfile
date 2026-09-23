@@ -22,6 +22,7 @@ RUN apt-get update \
 		tesseract-ocr \
 		tesseract-ocr-eng \
 		tesseract-ocr-chi-sim \
+		curl \
 	&& rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -35,5 +36,10 @@ RUN pip install --no-cache-dir \
 COPY . .
 
 EXPOSE 8766
+
+# Never run as root; curl (installed above) backs the container healthcheck.
+RUN useradd -m -u 1000 offeru
+USER offeru
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD curl -f http://localhost:8766/api/health || exit 1
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8766"]

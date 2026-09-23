@@ -45,17 +45,19 @@ async def export_resume_to_pdf(
     async with async_playwright() as p:
         # 启动 Chromium 浏览器（headless 模式）
         browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
 
-        # 设置视口大小（A4 纸张宽度约 794px）
-        await page.set_viewport_size({"width": 794, "height": 1123})
+        temp_html_path = None
+        try:
+            page = await browser.new_page()
 
-        # 将 HTML 内容写入临时文件（避免 data URI 长度限制）
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-8') as f:
-            f.write(resume_html)
+            # 设置视口大小（A4 纸张宽度约 794px）
+            await page.set_viewport_size({"width": 794, "height": 1123})
+
+            # 将 HTML 内容写入临时文件（避免 data URI 长度限制）
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-8') as f:
+                f.write(resume_html)
             temp_html_path = f.name
 
-        try:
             # 加载 HTML 文件
             await page.goto(f"file://{temp_html_path}", wait_until="networkidle")
 
@@ -80,10 +82,10 @@ async def export_resume_to_pdf(
             return pdf_bytes
 
         finally:
-            # 清理临时文件
-            await browser.close()
-            if os.path.exists(temp_html_path):
+            # 清理临时文件并关闭浏览器（覆盖从浏览器创建之后的所有异常路径）
+            if temp_html_path and os.path.exists(temp_html_path):
                 os.unlink(temp_html_path)
+            await browser.close()
 
 
 async def render_resume_html(

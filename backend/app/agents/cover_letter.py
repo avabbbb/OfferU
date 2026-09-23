@@ -10,6 +10,8 @@ import json
 import logging
 
 from app.agents.llm import chat_completion
+from app.agents.desensitize import desensitize, restore
+from app.config import get_settings
 
 _logger = logging.getLogger(__name__)
 
@@ -43,7 +45,16 @@ async def generate_cover_letter(jd: str, resume: str) -> dict:
     调用 LLM 生成针对特定岗位的求职信
     返回 { cover_letter, language, key_highlights }
     """
-    prompt = COVER_LETTER_PROMPT.format(jd=jd[:3000], resume=resume[:3000])
+    jd_safe = jd[:3000]
+    resume_safe = resume[:3000]
+
+    # 云端 Provider 自动脱敏 PII（Ollama 本地不需要）
+    pii_mapping: dict = {}
+    settings = get_settings()
+    if settings.llm_provider != "ollama":
+        resume_safe, pii_mapping = desensitize(resume_safe)
+
+    prompt = COVER_LETTER_PROMPT.format(jd=jd_safe, resume=resume_safe)
 
     raw = await chat_completion(
         messages=[{"role": "user", "content": prompt}],
@@ -54,6 +65,10 @@ async def generate_cover_letter(jd: str, resume: str) -> dict:
 
     if not raw:
         return {"cover_letter": "", "language": "zh", "key_highlights": []}
+
+    # 还原脱敏占位符
+    if pii_mapping:
+        raw = restore(raw, pii_mapping)
 
     try:
         return json.loads(raw)

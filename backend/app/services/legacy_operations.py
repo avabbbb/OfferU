@@ -11,7 +11,7 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
-from jinja2 import Template
+from jinja2.sandbox import SandboxedEnvironment
 from sqlalchemy import desc, select
 from sqlalchemy.orm import selectinload
 
@@ -48,6 +48,10 @@ from app.services.application_workspace import (
 
 
 _LEGACY_APPLICATION_CREATE_LOCKS: dict[int, asyncio.Lock] = {}
+
+# HtmlResumeTemplate.html_template 存在数据库里，属于不可信模板源：
+# 渲染必须走 Jinja2 沙箱环境，封死 SSTI → 沙箱逃逸 → RCE 的链路。
+_HTML_TEMPLATE_ENV = SandboxedEnvironment()
 
 
 async def create_application_table(name: str) -> dict[str, Any]:
@@ -754,7 +758,7 @@ async def generate_html_resume(
             "target_roles": [role.role_name for role in profile.target_roles],
         }
         overrides = design_overrides or {}
-        html_content = Template(template.html_template).render(
+        html_content = _HTML_TEMPLATE_ENV.from_string(template.html_template).render(
             profile=profile_data,
             design_tokens={**(template.design_tokens or {}), **overrides},
         )

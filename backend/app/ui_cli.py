@@ -30,6 +30,7 @@ import os
 import sys
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 from playwright.sync_api import sync_playwright, Browser, Page, BrowserContext
 
@@ -90,6 +91,9 @@ class UISession:
 
 def cmd_open(url: str, session: UISession) -> dict:
     """Navigate to URL."""
+    scheme = urlparse(url).scheme.lower()
+    if scheme not in ("http", "https"):
+        return {"ok": False, "error": "Only http/https URLs are allowed"}
     page = session.page
     page.goto(url, wait_until="domcontentloaded", timeout=TIMEOUT)
     page.wait_for_timeout(2000)
@@ -104,17 +108,18 @@ def cmd_open(url: str, session: UISession) -> dict:
 def cmd_click(text: str, session: UISession) -> dict:
     """Click element containing text."""
     page = session.page
-    result = page.evaluate(f"""
-        (function() {{
+    result = page.evaluate(
+        """(text) => {
             var els = Array.from(document.querySelectorAll('button, a, [role="button"], [role="link"]'));
-            var t = els.find(e => e.innerText.trim().includes('{text}') && !e.disabled);
-            if (t) {{
+            var t = els.find(e => e.innerText.trim().includes(text) && !e.disabled);
+            if (t) {
                 t.click();
-                return {{ clicked: true, text: t.innerText.trim().slice(0, 50), tag: t.tagName }};
-            }}
-            return {{ clicked: false, available: els.map(e => e.innerText.trim()).filter(t => t.length > 0 && t.length < 50).slice(0, 20) }};
-        }})()
-    """)
+                return { clicked: true, text: t.innerText.trim().slice(0, 50), tag: t.tagName };
+            }
+            return { clicked: false, available: els.map(e => e.innerText.trim()).filter(t => t.length > 0 && t.length < 50).slice(0, 20) };
+        }""",
+        text,
+    )
     page.wait_for_timeout(1000)
     return {"ok": result.get("clicked", False), **result}
 
@@ -122,25 +127,26 @@ def cmd_click(text: str, session: UISession) -> dict:
 def cmd_fill(selector: str, value: str, session: UISession) -> dict:
     """Fill input field by selector."""
     page = session.page
-    result = page.evaluate(f"""
-        (function() {{
-            var el = document.querySelector('{selector}');
-            if (!el) {{
-                el = Array.from(document.querySelectorAll('input, textarea')).find(e => 
-                    e.placeholder && e.placeholder.includes('{selector}')
+    result = page.evaluate(
+        """([selector, value]) => {
+            var el = document.querySelector(selector);
+            if (!el) {
+                el = Array.from(document.querySelectorAll('input, textarea')).find(e =>
+                    e.placeholder && e.placeholder.includes(selector)
                 );
-            }}
-            if (el) {{
-                el.value = '{value}';
-                el.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                el.dispatchEvent(new Event('change', {{ bubbles: true }}));
-                return {{ filled: true, tag: el.tagName, type: el.type }};
-            }}
-            return {{ filled: false, available: Array.from(document.querySelectorAll('input, textarea')).map(e => ({{
+            }
+            if (el) {
+                el.value = value;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+                return { filled: true, tag: el.tagName, type: el.type };
+            }
+            return { filled: false, available: Array.from(document.querySelectorAll('input, textarea')).map(e => ({
                 tag: e.tagName, type: e.type, placeholder: e.placeholder, id: e.id
-            }})).slice(0, 10) }};
-        }})()
-    """)
+            })).slice(0, 10) };
+        }""",
+        [selector, value],
+    )
     return {"ok": result.get("filled", False), **result}
 
 
@@ -179,7 +185,7 @@ def cmd_wait(seconds: float, session: UISession) -> dict:
     return {"ok": True, "waited": seconds}
 
 
-def cmd_batch(script_path: str, session: UISession) -> dict:
+def cmd_batch(script_path: str, session: UISession, _depth: int = 0) -> dict:
     """Run a batch of commands from JSON script."""
     script_file = Path(script_path)
     if not script_file.exists():
@@ -197,7 +203,7 @@ def cmd_batch(script_path: str, session: UISession) -> dict:
     for i, cmd in enumerate(commands):
         cmd_name = cmd.get("cmd")
         cmd_args = cmd.get("args", [])
-        result = _run_command(cmd_name, cmd_args, session)
+        result = _run_command(cmd_name, cmd_args, session, _depth=_depth)
         results.append({"step": i, "cmd": cmd_name, "args": cmd_args, **result})
         if not result.get("ok"):
             break
@@ -205,7 +211,7 @@ def cmd_batch(script_path: str, session: UISession) -> dict:
     return {"ok": all(r.get("ok") for r in results), "steps": results}
 
 
-def _run_command(command: str, args: list, session: UISession) -> dict:
+def _run_command(command: str, args: list, session: UISession, _depth: int = 0) -> dict:
     """Run a single command in the given session."""
     try:
         if command == "open":
@@ -224,7 +230,9 @@ def _run_command(command: str, args: list, session: UISession) -> dict:
         elif command == "wait":
             return cmd_wait(float(args[0]) if args else 1.0, session)
         elif command == "batch":
-            return cmd_batch(args[0] if args else "", session)
+            if _depth > 5:
+                return {"ok": False, "error": "Batch nesting too deep (max depth: 5)"}
+            return cmd_batch(args[0] if args else "", session, _depth=_depth + 1)
         else:
             return {"ok": False, "error": f"Unknown command: {command}"}
     except Exception as e:

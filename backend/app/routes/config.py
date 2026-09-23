@@ -7,11 +7,16 @@
 
 from __future__ import annotations
 
+import asyncio
+import ipaddress
 import json
 import logging
+import os
 import re
+import socket
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
@@ -165,6 +170,95 @@ def _sanitize_api_key(raw: str) -> str:
         return ""
 
     return value
+
+
+def _is_disallowed_ip(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """True if the IP is private/loopback/link-local/reserved/multicast/unspecified.
+
+    覆盖 SSRF 常见目标：云元数据 169.254.169.254、内网 10/172.16/192.168、
+    本机 loopback 127/::1、ULA fc00::/7、link-local fe80::/10 等。
+    IPv4-mapped IPv6（如 ::ffff:169.254.169.254）先拆出 IPv4 部分再判断，
+    兼容修复 CVE-2024-4032 之前的 Python。
+    """
+    if isinstance(addr, ipaddress.IPv6Address):
+        mapped = addr.ipv4_mapped
+        if mapped is not None:
+            addr = mapped
+    return bool(
+        addr.is_private
+        or addr.is_loopback
+        or addr.is_link_local
+        or addr.is_reserved
+        or addr.is_multicast
+        or addr.is_unspecified
+    )
+
+
+def _is_production_env() -> bool:
+    """检测是否处于生产环境（用于强制 HTTPS）；无显式标记时按开发环境处理。"""
+    for name in ("OFFERU_ENV", "APP_ENV", "ENVIRONMENT", "ENV", "NODE_ENV"):
+        if os.environ.get(name, "").strip().lower() in ("production", "prod"):
+            return True
+    return False
+
+
+async def _validate_external_base_url(base_url: str) -> str | None:
+    """校验 fetch-models 的 base_url 是否指向外部可达端点（H-06 SSRF 防护）。
+
+    返回 None 表示通过；返回字符串表示拒绝原因（调用方据此返回 400）。
+    - 仅允许 http/https scheme；
+    - 解析主机名，拒绝任何解析到私有/内网/loopback/link-local 的地址；
+    - 生产环境强制 HTTPS，开发环境对明文 HTTP 记录 warning。
+    """
+    try:
+        parsed = urlsplit(base_url)
+    except ValueError:
+        return "Base URL 格式无效"
+    scheme = (parsed.scheme or "").lower()
+    if scheme not in ("http", "https"):
+        return f"不支持的协议「{scheme or '(空)'}」，仅允许 http/https"
+    hostname = (parsed.hostname or "").rstrip(".")
+    if not hostname:
+        return "Base URL 缺少主机名"
+
+    # IP 字面量直接判断，无需 DNS 解析
+    try:
+        ip_literal = ipaddress.ip_address(hostname)
+    except ValueError:
+        ip_literal = None
+
+    if ip_literal is not None:
+        if _is_disallowed_ip(ip_literal):
+            return f"目标地址 {hostname} 为私有/内网地址，禁止访问"
+    else:
+        try:
+            port = parsed.port or (443 if scheme == "https" else 80)
+        except ValueError:
+            return f"Base URL 端口号无效"
+        try:
+            loop = asyncio.get_running_loop()
+            infos = await asyncio.wait_for(
+                loop.getaddrinfo(hostname, port, type=socket.SOCK_STREAM),
+                timeout=5.0,
+            )
+        except (asyncio.TimeoutError, socket.gaierror, OSError):
+            return f"无法解析主机名 {hostname}"
+        for info in infos:
+            ip_str = info[4][0]
+            # 去掉 IPv6 zone index（如 fe80::1%eth0）再解析
+            ip_str = ip_str.split("%", 1)[0]
+            try:
+                ip_obj = ipaddress.ip_address(ip_str)
+            except ValueError:
+                continue
+            if _is_disallowed_ip(ip_obj):
+                return f"主机名 {hostname} 解析到私有/内网地址 {ip_str}，禁止访问"
+
+    if scheme == "http":
+        if _is_production_env():
+            return "生产环境要求使用 HTTPS，请改用 https:// 地址"
+        logger.warning("fetch-models 使用明文 HTTP 访问 %s，生产环境建议改用 HTTPS", hostname)
+    return None
 
 
 def _upsert_provider_config(
@@ -506,6 +600,9 @@ def _sync_runtime_settings(cfg: ConfigUpdate) -> None:
     settings.llm_api_configs = [item.model_dump() for item in cfg.llm_api_configs]
 
 
+# 串行化对 _current_config 的读-改-写，避免并发 PUT / 一键导入互相覆盖（C-02）。
+_config_lock = asyncio.Lock()
+
 _current_config = _load_config()
 _sync_runtime_settings(_current_config)
 
@@ -554,14 +651,6 @@ def _restore_masked_keys(next_cfg: ConfigUpdate, payload_fields: set[str]) -> No
         next_cfg.boss_cookie = _current_config.boss_cookie
     if "zhilian_cookie" in payload_fields and next_cfg.zhilian_cookie == "***已配置***":
         next_cfg.zhilian_cookie = _current_config.zhilian_cookie
-
-    # list key masking
-    if "llm_api_configs" in payload_fields:
-        old_map = {item.id: item for item in _current_config.llm_api_configs}
-        for item in next_cfg.llm_api_configs:
-            old_item = old_map.get(item.id)
-            if old_item and item.api_key and "*" in item.api_key:
-                item.api_key = old_item.api_key
 
 
 def _apply_legacy_updates(next_cfg: ConfigUpdate, payload_fields: set[str]) -> None:
@@ -711,32 +800,36 @@ async def update_config(data: ConfigUpdate):
     payload_fields = set(data.model_fields_set)
     updates = data.model_dump(exclude_unset=True)
 
-    merged_raw = _current_config.model_dump()
-    merged_raw.update(updates)
+    # 串行化读-改-写，避免并发 PUT 互相覆盖（C-02）。
+    async with _config_lock:
+        merged_raw = _current_config.model_dump()
+        merged_raw.update(updates)
 
-    next_cfg = ConfigUpdate(**merged_raw)
+        next_cfg = ConfigUpdate(**merged_raw)
 
-    _restore_masked_keys(next_cfg, payload_fields)
-    _apply_legacy_updates(next_cfg, payload_fields)
-    _normalize_llm_state(next_cfg)
+        _restore_masked_keys(next_cfg, payload_fields)
+        _apply_legacy_updates(next_cfg, payload_fields)
+        _normalize_llm_state(next_cfg)
 
-    try:
-        safe_payload = _save_config(next_cfg)
-        next_cfg.secret_refs = safe_payload.get("secret_refs") or {}
-        for saved in safe_payload.get("llm_api_configs") or []:
-            current = next((item for item in next_cfg.llm_api_configs if item.id == saved.get("id")), None)
-            if current is not None:
-                current.credential_ref = str(saved.get("credential_ref") or "")
-    except llm_secret_vault.VaultUnavailableError as exc:
-        # 内存配置保持不变，让用户有机会修好钥匙串后重试。
-        raise HTTPException(
-            status_code=503,
-            detail=f"无法写入系统钥匙串，配置未保存到磁盘：{safe_error_message(exc)}",
-        )
-    _current_config = next_cfg
-    _sync_runtime_settings(_current_config)
+        try:
+            safe_payload = _save_config(next_cfg)
+            next_cfg.secret_refs = safe_payload.get("secret_refs") or {}
+            for saved in safe_payload.get("llm_api_configs") or []:
+                current = next((item for item in next_cfg.llm_api_configs if item.id == saved.get("id")), None)
+                if current is not None:
+                    current.credential_ref = str(saved.get("credential_ref") or "")
+        except llm_secret_vault.VaultUnavailableError as exc:
+            # 内存配置保持不变，让用户有机会修好钥匙串后重试。
+            raise HTTPException(
+                status_code=503,
+                detail=f"无法写入系统钥匙串，配置未保存到磁盘：{safe_error_message(exc)}",
+            )
+        _current_config = next_cfg
+        _sync_runtime_settings(_current_config)
+        # 锁内构建响应，确保返回的配置与刚写入的一致。
+        response_config = _response_payload()
 
-    return {"message": "Config updated", "config": _response_payload()}
+    return {"message": "Config updated", "config": response_config}
 
 
 @router.get("/boss-status")
@@ -847,55 +940,62 @@ async def import_llm_provider(body: LlmProviderImportRequest) -> dict[str, Any]:
     global _current_config
     from app.llm_config_store import import_provider, probe_llm_endpoint
 
-    result = import_provider(
-        provider_id=body.provider_id,
-        api_key=body.api_key,
-        base_url=body.base_url,
-        model=body.model,
-        service_name=body.service_name,
-        models=body.models or None,
-        activate=body.activate,
-    )
-    payload: dict[str, Any] = {
-        "ok": result["ok"],
-        "errors": [redact_sensitive_text(item, max_length=500) for item in result["errors"]],
-    }
-    config = result.get("config")
-    if config is None:
-        payload["config"] = None
-        payload["test_result"] = None
-        return payload
-    # 重载内存配置，确保 active_llm_summary / 后续读取与落盘一致
-    _current_config = _load_config()
-    _sync_runtime_settings(_current_config)
-    payload["config"] = {
-        k: config.get(k)
-        for k in (
-            "id",
-            "provider_id",
-            "service_name",
-            "model",
-            "base_url",
-            "is_active",
-            "models",
+    # 串行化磁盘写入与内存重载，避免与并发 PUT 互相覆盖（C-02）。
+    async with _config_lock:
+        result = import_provider(
+            provider_id=body.provider_id,
+            api_key=body.api_key,
+            base_url=body.base_url,
+            model=body.model,
+            service_name=body.service_name,
+            models=body.models or None,
+            activate=body.activate,
         )
-    }
-    active = next((item for item in _current_config.llm_api_configs if item.is_active), None)
-    payload["active_llm_summary"] = {
-        "provider_id": active.provider_id if active else _current_config.llm_provider,
-        "service_name": active.service_name if active else _current_config.llm_provider,
-        "model": active.model if active else _current_config.llm_model,
-        "base_url": redact_sensitive_text(active.base_url if active else "", max_length=300),
-        "is_active": bool(active),
-    }
+        payload: dict[str, Any] = {
+            "ok": result["ok"],
+            "errors": [redact_sensitive_text(item, max_length=500) for item in result["errors"]],
+        }
+        config = result.get("config")
+        if config is None:
+            payload["config"] = None
+            payload["test_result"] = None
+            return payload
+        # 重载内存配置，确保 active_llm_summary / 后续读取与落盘一致
+        _current_config = _load_config()
+        _sync_runtime_settings(_current_config)
+        payload["config"] = {
+            k: config.get(k)
+            for k in (
+                "id",
+                "provider_id",
+                "service_name",
+                "model",
+                "base_url",
+                "is_active",
+                "models",
+            )
+        }
+        active = next((item for item in _current_config.llm_api_configs if item.is_active), None)
+        payload["active_llm_summary"] = {
+            "provider_id": active.provider_id if active else _current_config.llm_provider,
+            "service_name": active.service_name if active else _current_config.llm_provider,
+            "model": active.model if active else _current_config.llm_model,
+            "base_url": redact_sensitive_text(active.base_url if active else "", max_length=300),
+            "is_active": bool(active),
+        }
+
     payload["test_result"] = None
     if body.test:
-        payload["test_result"] = await probe_llm_endpoint(
-            config.get("base_url", ""),
-            config.get("api_key", ""),
-            config.get("model", ""),
-            config.get("provider_id", "custom"),
-        )
+        _ssrf_err = await _validate_external_base_url(config.get("base_url", ""))
+        if _ssrf_err:
+            payload["test_result"] = {"ok": False, "error": _ssrf_err}
+        else:
+            payload["test_result"] = await probe_llm_endpoint(
+                config.get("base_url", ""),
+                config.get("api_key", ""),
+                config.get("model", ""),
+                config.get("provider_id", "custom"),
+            )
     return payload
 
 
@@ -905,6 +1005,11 @@ async def fetch_models(body: FetchModelsRequest):
 
     base_url = body.base_url.rstrip("/")
     api_key = body.api_key
+
+    # SSRF 防护：禁止 base_url 指向私有/内网/云元数据地址（H-06）。
+    validation_error = await _validate_external_base_url(base_url)
+    if validation_error is not None:
+        raise HTTPException(status_code=400, detail=validation_error)
 
     models_url = f"{base_url}/models"
     headers: dict = {}

@@ -1,3 +1,4 @@
+import DOMPurify from "dompurify";
 import { splitBullets, textFromHtml } from "@/lib/resumeText";
 import { KeywordHighlightView } from "../KeywordHighlightView";
 import type { NormalizedResumeData, NormalizedResumeItem, NormalizedResumeSection } from "./templateSettings";
@@ -9,22 +10,73 @@ export function dateRange(start?: string, end?: string) {
   return parts.join(" - ");
 }
 
-export function cleanRichHtml(value?: string) {
-  if (!value) return "";
+/**
+ * Decode HTML entities so that obfuscated dangerous protocols like
+ * `ja&#x0A;vascript:` are detected before the browser strips control chars.
+ */
+function decodeHtmlEntities(str: string): string {
+  return str
+    .replace(/&#x0*([0-9a-fA-F]+);?/gi, (_, hex: string) => {
+      const code = parseInt(hex, 16);
+      return code > 0 && code < 128 ? String.fromCharCode(code) : "";
+    })
+    .replace(/&#0*([0-9]+);?/gi, (_, dec: string) => {
+      const code = parseInt(dec, 10);
+      return code > 0 && code < 128 ? String.fromCharCode(code) : "";
+    })
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;/gi, "'");
+}
+
+/**
+ * SSR-safe fallback sanitizer (used when DOMPurify is unavailable).
+ * Improved over the original: decodes entities before protocol checks,
+ * filters data:/vbscript: URLs, and covers more dangerous tags.
+ */
+function sanitizeWithRegex(value: string): string {
+  const dangerousTags =
+    "script|iframe|object|embed|form|meta|base|svg|applet|link|style|input|button|textarea|video|audio|source";
   return value
-    .replace(/<(script|iframe|object|embed|form|meta|base|svg|applet)[\s>][\s\S]*?<\/\1>/gi, "")
-    .replace(/<(script|iframe|object|embed|form|meta|base|svg|applet)\b[^>]*\/?>/gi, "")
-    .replace(/\son\w+=["'][^"']*["']/gi, "")
-    .replace(/\son\w+=(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
-    .replace(/(href|src)\s*=\s*["']?\s*javascript\s*:/gi, "$1=\"")
-    .replace(/\sstyle="([^"]*)"/gi, (_, content) => {
+    .replace(new RegExp(`<(${dangerousTags})[\\s>][\\s\\S]*?<\\/\\1>`, "gi"), "")
+    .replace(new RegExp(`<(${dangerousTags})\\b[^>]*\\/?>`, "gi"), "")
+    .replace(/\son\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+    .replace(/(href|src)\s*=\s*(["'])([^"']*)\2/gi, (match, attr: string, quote: string, url: string) => {
+      const decoded = decodeHtmlEntities(url).replace(/\s/g, "").toLowerCase();
+      if (/^(javascript|vbscript|data):/.test(decoded)) {
+        return `${attr}=${quote}#${quote}`;
+      }
+      return match;
+    })
+    .replace(/(href|src)\s*=\s*([^\s"'>]+)/gi, (match, attr: string, url: string) => {
+      const decoded = decodeHtmlEntities(url).replace(/\s/g, "").toLowerCase();
+      if (/^(javascript|vbscript|data):/.test(decoded)) {
+        return `${attr}="#"`;
+      }
+      return match;
+    })
+    .replace(/\sstyle="([^"]*)"/gi, (_, content: string) => {
       const safe = content.match(/text-align:\s*(left|center|right|justify)/i);
       return safe ? ` style="${safe[0]}"` : "";
     })
-    .replace(/\sstyle='([^']*)'/gi, (_, content) => {
+    .replace(/\sstyle='([^']*)'/gi, (_, content: string) => {
       const safe = content.match(/text-align:\s*(left|center|right|justify)/i);
       return safe ? ` style="${safe[0]}"` : "";
     });
+}
+
+export function cleanRichHtml(value?: string) {
+  if (!value) return "";
+  if (typeof window !== "undefined") {
+    return DOMPurify.sanitize(value, {
+      ALLOWED_TAGS: ["p", "br", "strong", "b", "em", "i", "u", "s", "strike", "ul", "ol", "li", "a", "span", "div"],
+      ALLOWED_ATTR: ["href", "style", "target", "rel"],
+      ALLOW_DATA_ATTR: false,
+    });
+  }
+  return sanitizeWithRegex(value);
 }
 
 const RICH_HTML_RE = /<\s*(strong|b|em|i|u|s|strike|ul|ol|li|a)\b/i;

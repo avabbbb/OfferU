@@ -12,6 +12,8 @@ import logging
 from typing import Optional
 
 from app.agents.llm import chat_completion, extract_json
+from app.agents.desensitize import desensitize, restore
+from app.config import get_settings
 
 _logger = logging.getLogger(__name__)
 
@@ -74,10 +76,18 @@ async def extract_questions(
 
     返回: {"rounds": [...], "questions": [{question_text, round_type, category, difficulty}]}
     """
+    raw_text_safe = raw_text[:6000]
+
+    # 云端 Provider 自动脱敏 PII（面经可能包含个人联系方式等敏感信息）
+    pii_mapping: dict = {}
+    settings = get_settings()
+    if settings.llm_provider != "ollama":
+        raw_text_safe, pii_mapping = desensitize(raw_text_safe)
+
     prompt = EXTRACT_PROMPT.format(
         company=company,
         role=role,
-        raw_text=raw_text[:6000],
+        raw_text=raw_text_safe,
     )
 
     raw = await chat_completion(
@@ -90,6 +100,10 @@ async def extract_questions(
     if not raw:
         _logger.warning("extract_questions: LLM returned no content")
         return None
+
+    # 还原脱敏占位符
+    if pii_mapping:
+        raw = restore(raw, pii_mapping)
 
     result = extract_json(raw)
     if not result or "questions" not in result:

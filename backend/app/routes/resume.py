@@ -48,6 +48,7 @@ import anyio
 import httpx
 from pydantic import BaseModel, Field
 from jinja2 import Template
+from markupsafe import Markup
 from sse_starlette import EventSourceResponse, ServerSentEvent
 
 from app.database import get_db
@@ -533,6 +534,32 @@ async def _read_upload_image(file: UploadFile, *, max_bytes: int = 5 * 1024 * 10
     return contents, ext
 
 
+def _sanitize_upload_filename(raw_filename: str | None) -> str:
+    """上传文件名去路径化，阻断 `../../etc/passwd` 之类的路径穿越。
+
+    存储层本身用 UUID 文件名落盘（见 resume_route_operations），不消费
+    原始文件名；这里在路由边界再兜一道：原始文件名或 basename 剥离路径
+    分量后的结果中，只要出现 `..`、`/`、`\\` 或为空，一律 400 拒绝，
+    防止未来下游误用原始文件名。
+    """
+    raw = str(raw_filename or "")
+    name = os.path.basename(raw).strip()
+    if (
+        not name
+        or ".." in raw
+        or "/" in raw
+        or "\\" in raw
+        or ".." in name
+        or "/" in name
+        or "\\" in name
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="非法文件名：不能为空，且不能包含路径分隔符或 `..`",
+        )
+    return name
+
+
 def _commons_file_url(filename: str) -> str:
     return f"https://commons.wikimedia.org/wiki/Special:FilePath/{quote(filename)}"
 
@@ -640,6 +667,9 @@ async def upload_photo(
             detail=f"Unsupported file type: {file.content_type}",
         )
 
+    # 安全校验：文件名去路径化，拒绝含 `..` 或路径分隔符的恶意文件名
+    _sanitize_upload_filename(file.filename)
+
     # 限制文件大小（5MB）
     contents = await file.read()
     if len(contents) > 5 * 1024 * 1024:
@@ -663,6 +693,8 @@ async def upload_logo(
     """
     Upload a university logo and store its relative URL in contact_json.schoolLogoUrl.
     """
+    # 安全校验：文件名去路径化，拒绝含 `..` 或路径分隔符的恶意文件名
+    _sanitize_upload_filename(file.filename)
     contents, _ = await _read_upload_image(file)
     return await _execute_operation(
         "upload_resume_logo",
@@ -701,6 +733,8 @@ async def resolve_logo(
 
 # 默认 HTML 模板：Reference 风格（照片+姓名+校徽三栏头部，黑色正文横线分区）
 # 与前端 ResumeReference 模板视觉一致，用于 WeasyPrint/ReportLab fallback
+# autoescape=True：姓名/简介/段落描述等用户数据全部 HTML 转义，封死注入；
+# <style> 内的 CSS 变量经 _css_token() 透传（autoescape 会破坏合法引号）。
 DEFAULT_HTML_TEMPLATE = Template("""<!DOCTYPE html>
 <html>
 <head>
@@ -1060,7 +1094,7 @@ DEFAULT_HTML_TEMPLATE = Template("""<!DOCTYPE html>
     </div>
 </body>
 </html>
-""")
+""", autoescape=True)
 
 # 默认 CSS 变量值（用户未自定义时使用）
 DEFAULT_STYLE = {
@@ -1075,15 +1109,33 @@ DEFAULT_STYLE = {
 }
 
 
+def _css_token(value: Any) -> Markup:
+    """把样式变量安全地渲染进 <style> 原始文本块。
+
+    autoescape 会把 font-family 里的合法引号转成 &quot;（<style> 内不解码
+    实体），直接破坏 CSS；因此剥离可终止 <style> 块的字符（< >）后，
+    以 Markup 标记安全透传：CSS 保持可用，标记注入被封死。
+    """
+    return Markup(str(value or "").replace("<", "").replace(">", ""))
+
+
 def _resolve_photo_url_for_render(photo_url: str) -> str:
     """
     将 /uploads/... 相对路径转换为本地 file:// URI，方便 WeasyPrint 读取头像。
+
+    realpath 归一化后校验路径必须仍落在 uploads 目录内，阻断
+    `/uploads/../../app/database.py` 之类的路径穿越（读取任意后端文件）。
+    _resolve_logo_url_for_render 复用本函数，校徽路径同样受此保护。
     """
     if not photo_url:
         return ""
 
     if photo_url.startswith("/uploads/"):
-        local_path = os.path.join(BACKEND_DIR, photo_url.lstrip("/"))
+        uploads_root = os.path.realpath(os.path.join(BACKEND_DIR, "uploads"))
+        local_path = os.path.realpath(os.path.join(BACKEND_DIR, photo_url.lstrip("/")))
+        if local_path != uploads_root and not local_path.startswith(uploads_root + os.sep):
+            # 路径穿越：解析后已逃出 uploads 目录，拒绝渲染
+            return ""
         if os.path.exists(local_path):
             return Path(local_path).as_uri()
 
@@ -1102,7 +1154,11 @@ def _build_contact_line(contact_json: Optional[dict]) -> str:
 
 
 def _resolve_logo_url_for_render(contact_json: Optional[dict]) -> str:
-    """从 contact_json 中提取校徽 URL 并转换为本地 file:// URI。"""
+    """从 contact_json 中提取校徽 URL 并转换为本地 file:// URI。
+
+    委托 _resolve_photo_url_for_render 统一做 realpath 边界校验，
+    `/uploads/../` 之类穿越路径在此同样被拒绝。
+    """
     c = contact_json or {}
     for key in ("schoolLogoUrl", "universityLogoUrl", "logoUrl", "school_logo_url"):
         url = c.get(key, "")
@@ -1160,14 +1216,14 @@ async def _render_resume_html_for_export(resume: Resume, db: AsyncSession) -> st
         contact_status=c.get("status", "") or c.get("currentStatus", "") or c.get("当前状态", ""),
         summary=resume.summary or "",
         sections=_serialize_export_sections(resume),
-        primary_color=style.get("primaryColor", "#222"),
-        accent_color=style.get("accentColor", "#666"),
-        body_size=style.get("bodySize", "10pt"),
-        heading_size=style.get("headingSize", "12pt"),
-        line_height=style.get("lineHeight", "1.5"),
-        page_margin=style.get("pageMargin", "2cm"),
-        section_gap=style.get("sectionGap", "14pt"),
-        font_family=style.get("fontFamily", "sans-serif"),
+        primary_color=_css_token(style.get("primaryColor", "#222")),
+        accent_color=_css_token(style.get("accentColor", "#666")),
+        body_size=_css_token(style.get("bodySize", "10pt")),
+        heading_size=_css_token(style.get("headingSize", "12pt")),
+        line_height=_css_token(style.get("lineHeight", "1.5")),
+        page_margin=_css_token(style.get("pageMargin", "2cm")),
+        section_gap=_css_token(style.get("sectionGap", "14pt")),
+        font_family=_css_token(style.get("fontFamily", "sans-serif")),
     )
 
 
