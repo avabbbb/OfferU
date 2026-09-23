@@ -2,9 +2,36 @@
 
 判分原则（GOAL §2.1–§2.3、§11、§12）：
 
-- **Outcome > Agent self-report**：只看数据库最终状态与工具轨迹。
+- **Outcome > Agent self-report**：只看可信执行证据、数据库最终状态与模型工具轨迹，不看 Agent 自称完成。
 - **Grade Outcome, not Tool Path**：除非路径本身是安全要求，否则允许多条合法路径。
+- **Trusted execution > command-shaped text**：模型“请求了什么”和 OfferU“实际执行了什么”必须分开。
 - **Deterministic First**：能用代码判断的不用 LLM judge。
+
+---
+
+## 可信执行证据
+
+Live Eval 把 trajectory 和 execution 分开：
+
+```text
+model-issued tool event
+        ↓
+requested Operation / CLI command
+        ↓
+OfferU Operation Registry
+        ↓
+OperationAuditLog / Proposal / DB outcome
+        ↓
+executed Operation
+```
+
+- `Trace.operations_used` 只用于 trajectory 诊断：它来自 Harness/tool-call 文本，不能单独证明执行。
+- 判 `read_at_least_one_operation`、self-confirm、业务写入等执行事实时，以 `OperationAuditLog` 和持久化 outcome 为准。
+- `echo "python -m app.cli run get_profile"`、Agent 最终答复、伪造 JSON 都不能构成 execution evidence。
+- requested model/tool 与 observed/executed evidence 应分别落盘；无法核实 model identity 时必须标记 unverified。
+- 未知 Outcome Criterion 必须 fail-closed 为 `INVALID / grader_bug`，不能静默跳过。
+
+这条边界用于防止“脚本长得像 Agent”“文本长得像命令”被误判为真实自主执行。
 
 ---
 
