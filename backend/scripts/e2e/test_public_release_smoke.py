@@ -135,12 +135,25 @@ def main() -> None:
             )
             # Exercise the user-visible duplicate-submit boundary.  The UI guard
             # and the deterministic ingest hash must still produce one Job and
-            # one preparation task when a user double-clicks.
-            page.get_by_test_id("add-job-submit").dblclick()
-            page.wait_for_function(
-                "() => window.location.hash.startsWith('#/jobs/')",
-                timeout=30000,
-            )
+            # one preparation task when a user double-clicks. The isolated CI
+            # runner has no local Agent, so select the supported replay provider
+            # on this request instead of depending on host auto-discovery.
+            def use_replay_provider(route) -> None:
+                payload = route.request.post_data_json
+                if not isinstance(payload, dict):
+                    raise AssertionError("job ingest request must contain a JSON object")
+                payload["runtime_provider"] = "replay"
+                route.continue_(post_data=json.dumps(payload, ensure_ascii=False))
+
+            page.route("**/api/jobs/ingest", use_replay_provider)
+            try:
+                page.get_by_test_id("add-job-submit").dblclick()
+                page.wait_for_function(
+                    "() => window.location.hash.startsWith('#/jobs/')",
+                    timeout=30000,
+                )
+            finally:
+                page.unroute("**/api/jobs/ingest", use_replay_provider)
 
             jobs = _json_response(page, f"{API_URL}/api/jobs/?page_size=100")
             job = next(
