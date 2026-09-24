@@ -187,9 +187,9 @@ export default function JobsPage() {
     if (guidedSetup) setAddJobOpen(true);
   }, [guidedSetup]);
 
-  const closeAddJob = useCallback(() => {
+  const closeAddJob = useCallback((reason?: "dismissed" | "created") => {
     setAddJobOpen(false);
-    if (!guidedSetup) return;
+    if (!guidedSetup || reason === "created") return;
     const params = new URLSearchParams(searchParams.toString());
     params.delete("setup");
     const query = params.toString();
