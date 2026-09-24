@@ -6,14 +6,15 @@ from pathlib import Path
 import tempfile
 import unittest
 
+from scripts.release.collect_release_artifacts import collect_artifacts
 from scripts.release.verify_release_artifacts import verify_release_artifacts
 
 
 class ReleaseArtifactManifestTests(unittest.TestCase):
     def _write_release(self, root: Path, *, signed: bool = True) -> None:
         files = {
-            "OfferU_0.4.0_x64-setup.exe": b"nsis installer",
-            "OfferU_0.4.0_x64_en-US.msi": b"msi installer",
+            "OfferU-Setup-0.4.0.exe": b"nsis installer",
+            "OfferU-0.4.0-x64.msi": b"msi installer",
         }
         manifest = []
         checksum_lines = []
@@ -75,6 +76,28 @@ class ReleaseArtifactManifestTests(unittest.TestCase):
         self.assertEqual(result["installer_count"], 2)
         self.assertTrue(result["signed"])
 
+    def test_verifies_collector_output_names(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "bundle"
+            source.mkdir()
+            (source / "OfferU_0.4.0_x64-setup.exe").write_bytes(b"nsis installer")
+            (source / "OfferU_0.4.0_x64_en-US.msi").write_bytes(b"msi installer")
+            output = root / "release-artifacts"
+            collect_artifacts(
+                source,
+                output,
+                version="0.4.0",
+                target="windows-x64",
+                signed=False,
+            )
+
+            result = verify_release_artifacts(output, expected_version="0.4.0")
+
+        self.assertEqual(result["status"], "verified")
+        self.assertEqual(result["target"], "windows-x64")
+        self.assertEqual(result["installer_count"], 2)
+
     def test_verifies_macos_dmg_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -96,7 +119,7 @@ class ReleaseArtifactManifestTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             self._write_release(root)
-            (root / "OfferU_0.4.0_x64-setup.exe").write_bytes(b"changed installer")
+            (root / "OfferU-Setup-0.4.0.exe").write_bytes(b"changed installer")
             with self.assertRaisesRegex(ValueError, "byte count mismatch"):
                 verify_release_artifacts(root)
 

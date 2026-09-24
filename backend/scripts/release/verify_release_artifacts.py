@@ -60,7 +60,7 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _read_manifest(root: Path, *, target: str) -> dict[str, tuple[Path, int, str]]:
+def _read_manifest(root: Path, *, target: str, version: str) -> dict[str, tuple[Path, int, str]]:
     payload = _load_json(_metadata_file(root, "artifacts.json"))
     if not isinstance(payload, list) or not payload:
         raise ValueError("artifacts.json must contain a non-empty list")
@@ -82,10 +82,11 @@ def _read_manifest(root: Path, *, target: str) -> dict[str, tuple[Path, int, str
 
     names = set(manifest)
     if target == "windows-x64":
-        if not any(name.casefold().endswith("-setup.exe") for name in names):
-            raise ValueError("release artifact set is missing an NSIS setup executable")
-        if not any(name.casefold().endswith(".msi") for name in names):
-            raise ValueError("release artifact set is missing an MSI installer")
+        folded_names = {name.casefold() for name in names}
+        if f"offeru-setup-{version}.exe".casefold() not in folded_names:
+            raise ValueError("release artifact set is missing its canonical NSIS setup executable")
+        if f"offeru-{version}-x64.msi".casefold() not in folded_names:
+            raise ValueError("release artifact set is missing its canonical MSI installer")
     elif len(names) != 1 or not next(iter(names)).casefold().endswith(".dmg"):
         raise ValueError("macOS release artifact set must contain exactly one DMG installer")
     return manifest
@@ -137,7 +138,7 @@ def verify_release_artifacts(
     if expected_version is not None and version != expected_version:
         raise ValueError("version.json does not match the expected release version")
 
-    manifest = _read_manifest(root, target=target)
+    manifest = _read_manifest(root, target=target, version=version)
     checksums = _read_checksums(root)
     if set(checksums) != set(manifest):
         raise ValueError("SHA256SUMS.txt does not match artifacts.json")
