@@ -1679,7 +1679,9 @@ export interface paths {
     "/api/agent/runtime/runs/{run_id}/confirm": {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                authorization: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -1699,7 +1701,9 @@ export interface paths {
     "/api/agent/runtime/runs/{run_id}/reject": {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                authorization: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -4418,7 +4422,9 @@ export interface paths {
     "/api/bridge/proposals/{run_id}/confirm": {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                authorization: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -9741,7 +9747,9 @@ export interface operations {
     confirm_runtime_action_api_agent_runtime_runs__run_id__confirm_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                authorization: string;
+            };
             path: {
                 run_id: string;
             };
@@ -9778,7 +9786,9 @@ export interface operations {
     reject_runtime_action_api_agent_runtime_runs__run_id__reject_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                authorization: string;
+            };
             path: {
                 run_id: string;
             };
@@ -14867,7 +14877,9 @@ export interface operations {
     confirm_proposal_endpoint_api_bridge_proposals__run_id__confirm_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                authorization: string;
+            };
             path: {
                 run_id: string;
             };

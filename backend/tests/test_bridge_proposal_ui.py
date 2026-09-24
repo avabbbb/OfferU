@@ -4,7 +4,9 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 import uuid
 
+import httpx
 from sqlalchemy import select
+from fastapi import FastAPI
 
 from app.database import async_session, init_db
 from app.models.models import AgentRunRecord, AgentWorkspaceState, OperationAuditLog
@@ -12,9 +14,22 @@ from app.routes.bridge import (
     ProposalDecisionRequest,
     confirm_proposal_endpoint,
     list_pending_proposals,
+    router as bridge_router,
 )
 from app.ops import execute_operation
 from app.services.agent_run_state import create_agent_run, load_agent_run
+from app.services import ui_approval_capability
+
+
+_UI_AUTHORIZATION = "Bearer test-offeru-ui-capability"
+
+
+def _authorize_ui(monkeypatch) -> None:
+    monkeypatch.setattr(
+        ui_approval_capability,
+        "_APPROVAL_TOKEN",
+        "test-offeru-ui-capability",
+    )
 
 
 async def _pending_projection_run(*, goal: str, scope: str | None = None) -> dict:
@@ -65,7 +80,9 @@ def test_agent_runtime_ui_cannot_execute_mutation_without_proposal_authorization
     assert view is None
 
 
-def test_workbench_approval_executes_registry_action_once_with_ui_audit() -> None:
+def test_workbench_approval_executes_registry_action_once_with_ui_audit(monkeypatch) -> None:
+    _authorize_ui(monkeypatch)
+
     async def run() -> tuple[dict, dict, dict, list[OperationAuditLog], AgentWorkspaceState | None]:
         await init_db()
         scope = f"proposal-ui-approve-{uuid.uuid4().hex}"
@@ -76,10 +93,12 @@ def test_workbench_approval_executes_registry_action_once_with_ui_audit() -> Non
         first = await confirm_proposal_endpoint(
             proposal["id"],
             ProposalDecisionRequest(approve=True, action_id="set-view:1"),
+            authorization=_UI_AUTHORIZATION,
         )
         replay = await confirm_proposal_endpoint(
             proposal["id"],
             ProposalDecisionRequest(approve=True, action_id="set-view:1"),
+            authorization=_UI_AUTHORIZATION,
         )
         async with async_session() as db:
             audit = list(
@@ -114,7 +133,9 @@ def test_workbench_approval_executes_registry_action_once_with_ui_audit() -> Non
     assert audit[0].idempotency_key == f"{persisted['id']}:set-view:1"
 
 
-def test_workbench_rejection_records_decision_without_running_proposed_operation() -> None:
+def test_workbench_rejection_records_decision_without_running_proposed_operation(monkeypatch) -> None:
+    _authorize_ui(monkeypatch)
+
     async def run() -> tuple[dict, dict, list[OperationAuditLog], AgentWorkspaceState | None]:
         await init_db()
         scope = f"proposal-ui-reject-{uuid.uuid4().hex}"
@@ -125,6 +146,7 @@ def test_workbench_rejection_records_decision_without_running_proposed_operation
         result = await confirm_proposal_endpoint(
             proposal["id"],
             ProposalDecisionRequest(approve=False, action_id="set-view:1"),
+            authorization=_UI_AUTHORIZATION,
         )
         persisted = await load_agent_run(proposal["id"])
         async with async_session() as db:
@@ -152,6 +174,62 @@ def test_workbench_rejection_records_decision_without_running_proposed_operation
     assert persisted["steps"][0]["status"] == "rejected"
     assert not any(row.operation == "set_current_view" for row in audit)
     assert view is None
+
+
+def test_bridge_http_rejects_decision_without_desktop_capability(monkeypatch) -> None:
+    _authorize_ui(monkeypatch)
+
+    async def run() -> tuple[int, int, str, int, str, dict]:
+        await init_db()
+        proposal = await _pending_projection_run(goal="Reject an unauthenticated decision")
+        test_app = FastAPI()
+        test_app.include_router(bridge_router, prefix="/api/bridge")
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=test_app),
+            base_url="http://127.0.0.1:8766",
+        ) as client:
+            denied = await client.post(
+                f"/api/bridge/proposals/{proposal['id']}/confirm",
+                json={"approve": True, "action_id": "set-view:1"},
+            )
+            spoofed = await client.post(
+                f"/api/bridge/proposals/{proposal['id']}/confirm",
+                headers={"Authorization": "Bearer guessed-token"},
+                json={"approve": True, "action_id": "set-view:1"},
+            )
+            after_denial = await load_agent_run(proposal["id"])
+            assert after_denial is not None
+            accepted = await client.post(
+                f"/api/bridge/proposals/{proposal['id']}/confirm",
+                headers={"Authorization": _UI_AUTHORIZATION},
+                json={"approve": True, "action_id": "set-view:1"},
+            )
+        persisted = await load_agent_run(proposal["id"])
+        assert persisted is not None
+        return (
+            denied.status_code,
+            spoofed.status_code,
+            after_denial["steps"][0]["status"],
+            accepted.status_code,
+            persisted["steps"][0]["status"],
+            spoofed.json(),
+        )
+
+    (
+        status,
+        spoofed_status,
+        status_after_denial,
+        accepted_status,
+        final_status,
+        payload,
+    ) = asyncio.run(run())
+
+    assert status == 422
+    assert spoofed_status == 403
+    assert status_after_denial == "waiting_confirmation"
+    assert accepted_status == 200
+    assert final_status == "completed"
+    assert "桌面工作区" in payload["detail"]
 
 
 def test_pending_workbench_queue_includes_old_and_detached_runs() -> None:

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from app.ops import execute_operation
@@ -18,6 +18,7 @@ from app.services.agent_bridge.operation_gateway import (
     load_proposal_state,
 )
 from app.services.security_redaction import redact_sensitive_value
+from app.services.ui_approval_capability import accepts_authorization
 
 router = APIRouter()
 
@@ -79,13 +80,17 @@ class ProposalDecisionRequest(BaseModel):
 
 @router.post("/proposals/{run_id}/confirm")
 async def confirm_proposal_endpoint(
-    run_id: str, body: ProposalDecisionRequest
+    run_id: str,
+    body: ProposalDecisionRequest,
+    authorization: str = Header(...),
 ) -> dict[str, Any]:
     """Human decision from the workbench overlay.
 
     approve=true executes only the selected action once; approve=false rejects
     only the selected action, leaving sibling actions available for review.
     """
+    if not accepts_authorization(authorization):
+        raise HTTPException(status_code=403, detail="该决定只能由 OfferU 桌面工作区提交")
     if body.approve:
         result = await confirm_proposal(
             run_id=run_id,

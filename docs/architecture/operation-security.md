@@ -73,6 +73,8 @@ Harness 请求 mutation
 - CLI 参数 `--yes`、环境变量或 Skill 指令；
 - 浏览器页面中的第三方按钮。
 
+Bridge 与内置 Agent 的 Proposal 决定接口只接受当前 OfferU 桌面进程启动时生成的一次性能力。前端通过 Tauri 原生命令提交决定；能力不交给网页 JavaScript、Skill、CLI 或 Agent 子进程。没有桌面能力的普通 HTTP 请求必须失败关闭，`surface=agent_runtime_ui` 只是审计标签，不能充当调用者身份。
+
 模型可调用的公开 CLI 不暴露 `confirm`。只有 OfferU 拥有的嵌入工作区、专注窗口或移动端能调用内部 `ApprovalCoordinator` seam，且决定只能占用一次。DSH client slot 的存在不授予业务权限；提案过期、Run 终止、租约丢失或 OfferU 人类界面不可达时失败关闭。
 
 ## 执行参数与审计脱敏分离

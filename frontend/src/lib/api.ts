@@ -9,6 +9,10 @@ import { SHOWCASE, showcaseHandle } from "./showcase/router";
 import { showcaseChatResponse } from "./showcase/llm";
 import { resolveApiBase } from "./apiBase";
 import { safeClientErrorMessage } from "./safe-error";
+import {
+  decideAgentRuntimeActionInDesktop,
+  decideProposalInDesktop,
+} from "./desktop-proposal-decision";
 import type { components, operations } from "./api-types.generated";
 type Schemas = components["schemas"];
 type Ops = operations;
@@ -1126,21 +1130,9 @@ export const agentRuntimeApi = {
     }
   },
   confirm: (runId: string, actionId: string) =>
-    request<AgentConfirmationResponse>(
-      `/api/agent/runtime/runs/${encodeURIComponent(runId)}/confirm`,
-      {
-        method: "POST",
-        body: JSON.stringify({ action_id: actionId }),
-      }
-    ),
+    decideAgentRuntimeActionInDesktop(runId, actionId, true),
   reject: (runId: string, actionId: string) =>
-    request<AgentConfirmationResponse>(
-      `/api/agent/runtime/runs/${encodeURIComponent(runId)}/reject`,
-      {
-        method: "POST",
-        body: JSON.stringify({ action_id: actionId }),
-      }
-    ),
+    decideAgentRuntimeActionInDesktop(runId, actionId, false),
   resume: (runId: string) =>
     request<AgentRunResponse>(
       `/api/agent/runtime/runs/${encodeURIComponent(runId)}/resume`,
@@ -1182,13 +1174,7 @@ export const bridgeProposalApi = {
       signal: AbortSignal.timeout(15000),
     }),
   decide: (runId: string, actionId: string, approve: boolean) =>
-    request<AgentProposalDecisionResponse>(
-      `/api/bridge/proposals/${encodeURIComponent(runId)}/confirm`,
-      {
-        method: "POST",
-        body: JSON.stringify({ approve, action_id: actionId }),
-      }
-    ),
+    decideProposalInDesktop(runId, actionId, approve),
 };
 
 export const hostedExecutorApi = {
