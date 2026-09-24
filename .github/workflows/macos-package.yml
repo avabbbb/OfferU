@@ -15,10 +15,10 @@ jobs:
         include:
           - runner: macos-15
             target: macos-arm64
-            build_args: --bundles app,dmg
+            ci_build_args: --bundles app,dmg
           - runner: macos-15-intel
             target: macos-x64
-            build_args: --bundles app,dmg --verbose
+            ci_build_args: --bundles app,dmg --verbose
     runs-on: ${{ matrix.runner }}
     env:
       MACOSX_DEPLOYMENT_TARGET: '13.5'
@@ -69,7 +69,7 @@ jobs:
           TAURI_BUNDLER_DMG_IGNORE_CI: 'false'
         with:
           projectPath: frontend
-          args: ${{ matrix.build_args }}
+          args: ${{ matrix.ci_build_args }}
       - name: Build signed app and DMG for release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: tauri-apps/tauri-action@v0
@@ -84,7 +84,7 @@ jobs:
           TAURI_BUNDLER_DMG_IGNORE_CI: 'false'
         with:
           projectPath: frontend
-          args: ${{ matrix.build_args }}
+          args: --bundles app,dmg
       - name: Check copied app runtime without development dependencies
         run: |
           version=$(node -p "require('./frontend/package.json').version")
