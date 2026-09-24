@@ -84,11 +84,18 @@ Source C  Browser/Recruiter ┘        （带 source / provenance / confidence�
 ## 2026-09-24 — F1/F3 实现更新：隔离副本内写入 fixture-only 当前岗位上下文
 
 - 代码路径：`backend/scripts/live_eval/runner.py::_validate_eval_database()` 与 `_seed_current_view()`。
-- Clone 边界：先将源库克隆到本 case 的 `eval.db`；fixture helper 要求 `DATABASE_URL` 精确指向解析后的 clone 路径，并拒绝 symlink。目标岗位必须存在于该 clone 的 `jobs` 表。
+- Clone 边界：先将源库克隆到本 case 的 `eval.db`；fixture helper 要求 `DATABASE_URL` 精确指向解析后的 clone 路径，并拒绝 symlink/junction 路径组件。case slug 必须留在 run 目录内；目标岗位必须存在于该 clone 的 `jobs` 表。
 - 初始化：runner 先对 clone 调用只读 Registry Operation `get_current_view`。它产生的只读审计行在 `db_before.json` 快照和审计基线采集之前写入，因此不属于本 case 的 Agent execution evidence。
 - Fixture 写入：随后用参数化 SQLite upsert 直接写 clone 的 `agent_workspace_states`，以 `updated_by='live_eval_fixture'` 标记，预置 `route=/jobs/<job_id>` 和 `entity_type=job` / `entity_id=<job_id>`。这一步不调用业务 mutation Operation，不创建 Proposal，也不执行批准或确认。
 - 证据：`seed_state.json` 记录 `stage=fixture_context`、`fixture_only=true`、`side_effect_operation_executed=false`、`proposal_created=false`、`approval_performed=false`；`case.json` 记录 `target_job_id` 与 `context_seeded`。
 - 状态：F1/F3 的历史症状仍是有效历史记录；旧的 `set_current_view` 提案加确认 seed 路径已被上述隔离 fixture 方式取代。该上下文只存在于 case clone，不代表产品用户上下文已被写入。
+
+## 2026-09-25 — Clone 输出祖先路径重定向保护
+
+- 风险：叶子路径检查无法发现 `run_dir` 或其祖先的 symlink/junction；`resolve()` 可能把 clone 目标重定向到预期输出根之外，随后覆盖已有 `eval.db`。
+- 修复：`isolation.validate_unredirected_path()` 检查全部路径组件；runner 校验 case slug containment；`clone_database()` 在创建父目录及删除已有目标前重新检查。
+- 回归：覆盖 run/ancestor symlink、junction、越界 slug，并验证重定向时旧 clone 文件不被删除。
+- 边界：此修复保护 Live Eval 输出文件路径，不提供 OMP 的 OS 级隔离；真实 Agent 运行仍需要独立的获授权隔离环境。
 
 ## F4 — Grader 缺陷：裸 "401" 子串匹配把成功运行误判成 provider 故障
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import sqlite3
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -50,6 +51,32 @@ def test_eval_subprocess_environment_uses_private_data_dir(tmp_path: Path) -> No
 
     assert env["DATABASE_URL"] == _eval_url(database)
     assert env["OFFERU_DATA_DIR"] == str(data_dir.resolve())
+
+
+def test_clone_database_rejects_redirected_ancestor_before_unlink(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_db = tmp_path / "source.db"
+    source_db.touch()
+    redirected_root = tmp_path / "linked-root"
+    destination = redirected_root / "case" / "eval.db"
+    destination.parent.mkdir(parents=True)
+    destination.write_text("preserve existing target", encoding="utf-8")
+    original_is_symlink = Path.is_symlink
+
+    def report_symlink(path: Path) -> bool:
+        return path == redirected_root or original_is_symlink(path)
+
+    monkeypatch.setattr(Path, "is_symlink", report_symlink)
+
+    with pytest.raises(
+        ValueError,
+        match="clone destination must not traverse a symlink or junction",
+    ):
+        runner.clone_database(source_db, destination)
+
+    assert destination.read_text(encoding="utf-8") == "preserve existing target"
 
 
 def test_seed_current_view_initializes_clone_then_writes_fixture_context(
@@ -163,11 +190,14 @@ def test_capability_mode_is_not_an_available_cli_choice() -> None:
 @pytest.mark.parametrize(
     ("symlink_kind", "expected_message"),
     [
-        ("case_dir", "case directory must not be a symlink"),
-        ("eval_db", "clone destination must not be a symlink"),
+        ("case_dir", "must not traverse a symlink or junction"),
+        ("eval_db", "must not traverse a symlink or junction"),
+        ("run_dir", "must not traverse a symlink or junction"),
+        ("ancestor", "must not traverse a symlink or junction"),
+        ("junction", "must not traverse a symlink or junction"),
     ],
 )
-def test_run_case_rejects_symlink_paths_before_cloning(
+def test_run_case_rejects_redirected_path_components_before_cloning(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     symlink_kind: str,
@@ -176,16 +206,32 @@ def test_run_case_rejects_symlink_paths_before_cloning(
     case = LIVE_EVAL_CASES[0]
     run_dir = tmp_path / "runs"
     case_dir = run_dir / case.slug
-    symlink_path = case_dir if symlink_kind == "case_dir" else case_dir / "eval.db"
+    if symlink_kind == "case_dir":
+        redirected_path = case_dir
+    elif symlink_kind == "eval_db":
+        redirected_path = case_dir / "eval.db"
+    elif symlink_kind == "run_dir":
+        redirected_path = run_dir
+    else:
+        redirected_path = run_dir.parent
     original_is_symlink = Path.is_symlink
+    original_is_junction = getattr(Path, "is_junction", None)
     clone_calls: list[Path] = []
 
     def report_symlink(path: Path) -> bool:
-        if path == symlink_path:
+        return (
+            symlink_kind != "junction" and path == redirected_path
+        ) or original_is_symlink(path)
+
+    def report_junction(path: Path) -> bool:
+        if symlink_kind == "junction" and path == redirected_path:
             return True
+        if original_is_junction is not None:
+            return original_is_junction(path)
         return original_is_symlink(path)
 
     monkeypatch.setattr(Path, "is_symlink", report_symlink)
+    monkeypatch.setattr(Path, "is_junction", report_junction, raising=False)
     monkeypatch.setattr(
         runner,
         "clone_database",
@@ -197,6 +243,33 @@ def test_run_case_rejects_symlink_paths_before_cloning(
             runner.run_case_once(
                 case,
                 run_dir=run_dir,
+                source_db=tmp_path / "source.db",
+                timeout=1,
+                mode="real-user",
+            )
+        )
+
+    assert clone_calls == []
+
+
+def test_run_case_rejects_case_slug_that_escapes_run_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case = LIVE_EVAL_CASES[0]
+    escaped_case = replace(case, slug="../outside")
+    clone_calls: list[Path] = []
+    monkeypatch.setattr(
+        runner,
+        "clone_database",
+        lambda _source, destination: clone_calls.append(destination),
+    )
+
+    with pytest.raises(ValueError, match="case path escapes its run directory"):
+        asyncio.run(
+            runner.run_case_once(
+                escaped_case,
+                run_dir=tmp_path / "runs",
                 source_db=tmp_path / "source.db",
                 timeout=1,
                 mode="real-user",

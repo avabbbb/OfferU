@@ -51,6 +51,7 @@ if __package__ in {None, ""}:  # 允许 python scripts/live_eval/runner.py 直�
     from scripts.live_eval.isolation import (  # type: ignore[import-not-found]
         clone_database,
         snapshot,
+        validate_unredirected_path,
         write_json,
     )
     from scripts.live_eval.metrics import aggregate_metrics  # type: ignore[import-not-found]
@@ -80,7 +81,7 @@ else:
         suite_summary,
     )
     from .grader import Trace, Verdict, classify_provider_failure, grade
-    from .isolation import clone_database, snapshot, write_json
+    from .isolation import clone_database, snapshot, validate_unredirected_path, write_json
     from .metrics import aggregate_metrics
     from .private_dataset import validate_private_dataset
     from .private_seed import (
@@ -874,13 +875,15 @@ async def run_case_once(
             "capability mode is unavailable until a separately authorized simulation design exists"
         )
 
-    case_dir = run_dir / case.slug
-    if case_dir.is_symlink():
-        raise ValueError("Live Eval case directory must not be a symlink")
+    run_dir = validate_unredirected_path(Path(run_dir), label="run directory")
+    case_dir = Path(os.path.abspath(run_dir / case.slug))
+    try:
+        case_dir.relative_to(run_dir)
+    except ValueError as exc:
+        raise ValueError("Live Eval case path escapes its run directory") from exc
+    case_dir = validate_unredirected_path(case_dir, label="case directory")
     case_dir.mkdir(parents=True, exist_ok=True)
-    eval_db_path = case_dir / "eval.db"
-    if eval_db_path.is_symlink():
-        raise ValueError("Live Eval clone destination must not be a symlink")
+    eval_db_path = validate_unredirected_path(case_dir / "eval.db", label="clone destination")
     source_path = Path(source_db).resolve()
     eval_db = eval_db_path.resolve()
     if eval_db == source_path:
@@ -1629,9 +1632,9 @@ async def main_async(args: argparse.Namespace) -> int:
         print(f"source db not found: {source_db}", file=sys.stderr)
         return 2
 
-    run_root = Path(args.output_root)
+    run_root = validate_unredirected_path(Path(args.output_root), label="output root")
     run_id = datetime.now().strftime("%Y%m%d-%H%M%S")
-    run_dir = run_root / run_id
+    run_dir = validate_unredirected_path(run_root / run_id, label="run directory")
     run_dir.mkdir(parents=True, exist_ok=True)
 
     run_suite = private_suite_name or args.suite
@@ -1661,7 +1664,10 @@ async def main_async(args: argparse.Namespace) -> int:
     results: list[dict[str, Any]] = []
     for case in selected:
         for attempt in range(1, args.repeat + 1):
-            target_dir = run_dir if args.repeat == 1 else run_dir / f"repeat-{attempt:02d}"
+            target_dir = validate_unredirected_path(
+                run_dir if args.repeat == 1 else run_dir / f"repeat-{attempt:02d}",
+                label="attempt directory",
+            )
             target_dir.mkdir(parents=True, exist_ok=True)
             label = f"{case.case_id} {case.slug}" + (f" (repeat-{attempt:02d})" if args.repeat > 1 else "")
             print(f"[live-eval] running {label}")

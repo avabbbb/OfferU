@@ -59,8 +59,15 @@
 ## 2026-09-24 — F1/F3 runner 实现更新：fixture-only context seed
 
 - 代码路径：`backend/scripts/live_eval/runner.py::_validate_eval_database()` 与 `_seed_current_view()`。
-- Clone 边界：每个 case 先创建独立 `eval.db`；seed helper 要求 `DATABASE_URL` 精确指向解析后的 clone 路径，并拒绝 symlink。目标岗位还必须存在于该 clone 的 `jobs` 表。
+- Clone 边界：每个 case 先创建独立 `eval.db`；seed helper 要求 `DATABASE_URL` 精确指向解析后的 clone 路径，并拒绝 symlink/junction 路径组件。case slug 必须留在 run 目录内；目标岗位还必须存在于该 clone 的 `jobs` 表。
 - 初始化：runner 先对 clone 调用只读 Registry Operation `get_current_view`。该读取产生的审计行在 `db_before.json` 快照和 case 审计基线采集之前写入，不会成为本 case Agent execution evidence。
 - Fixture 写入：随后以参数化 SQLite upsert 直接写入 clone 的 `agent_workspace_states`，用 `updated_by='live_eval_fixture'` 标记，并预置 `/jobs/<job_id>`、`entity_type=job`、`entity_id=<job_id>`。这次 upsert 不调用业务 mutation Operation，不创建 Proposal，也不执行批准或确认。
 - 产物：`seed_state.json` 记录 `stage=fixture_context`、`fixture_only=true`、`side_effect_operation_executed=false`、`proposal_created=false`、`approval_performed=false`；`case.json` 记录 `target_job_id` 与 `context_seeded`。
 - F1/F3 中关于“提案 + confirm”的 seed 实现描述属于历史记录，现已由该隔离 fixture 方式取代。此 Eval seed 只准备测试所需的当前岗位上下文，不改变产品对真实用户上下文写入的授权语义。
+
+## 2026-09-25 — Clone 输出祖先路径重定向保护
+
+- 风险：只检查 `case_dir` 或 `eval.db` 叶子会漏掉 `run_dir` 及其祖先上的 symlink/junction；解析路径后，clone 可能覆盖预期输出根之外已有的 `eval.db`。
+- 修复：`isolation.validate_unredirected_path()` 检查输出路径的全部组件，`run_case_once()` 校验 case slug 不会逃出 run 目录；`clone_database()` 在建目录和删除旧目标前重复检查。
+- 回归：`test_run_case_rejects_redirected_path_components_before_cloning`、`test_run_case_rejects_case_slug_that_escapes_run_directory` 与 `test_clone_database_rejects_redirected_ancestor_before_unlink`。
+- 边界：这是 Eval 文件输出路径保护，不构成 OMP 进程的 OS sandbox；真实 Agent 运行仍需获授权的 OS 隔离环境。
