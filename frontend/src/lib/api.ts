@@ -559,6 +559,33 @@ export interface AgentConfirmationResponse {
   warnings?: string[];
 }
 
+export interface AgentPendingProposalAction {
+  actionId: string;
+  operation: string;
+  args: Record<string, unknown>;
+  summary: string;
+}
+
+export interface AgentPendingProposal {
+  runId: string;
+  goal: string;
+  steps: AgentPendingProposalAction[];
+  createdAt: string;
+}
+
+export interface AgentPendingProposalsResponse {
+  total: number;
+  items: AgentPendingProposal[];
+}
+
+export interface AgentProposalDecisionResponse {
+  approved: boolean;
+  completed?: boolean;
+  runStatus?: string;
+  errors?: string[];
+  warnings?: string[];
+}
+
 export interface HostedExecutorEvent {
   event_id: string;
   sequence: number;
@@ -1146,6 +1173,21 @@ export const agentRuntimeApi = {
       `/api/agent/runs/${encodeURIComponent(runId)}/events?${buildQuery({
         after_sequence: afterSequence,
       })}`
+    ),
+};
+
+export const bridgeProposalApi = {
+  listPending: () =>
+    request<AgentPendingProposalsResponse>("/api/bridge/proposals/pending", {
+      signal: AbortSignal.timeout(15000),
+    }),
+  decide: (runId: string, actionId: string, approve: boolean) =>
+    request<AgentProposalDecisionResponse>(
+      `/api/bridge/proposals/${encodeURIComponent(runId)}/confirm`,
+      {
+        method: "POST",
+        body: JSON.stringify({ approve, action_id: actionId }),
+      }
     ),
 };
 

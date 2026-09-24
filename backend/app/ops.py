@@ -1524,6 +1524,7 @@ _PROTECTED_AGENT_SURFACES = {
     "cli",
     "mcp",
     "pi",
+    "agent_runtime_ui",
     "web_agent",
     "optimize_agent",
 }
@@ -4853,7 +4854,14 @@ async def execute_operation(
 
     authorization = _OPERATION_AUTHORIZATION.get()
     audit_id: int | None = None
-    if op.is_mutation and surface in _PROTECTED_AGENT_SURFACES:
+    is_explicit_ui_rejection = (
+        surface == "agent_runtime_ui" and name == "reject_agent_run"
+    )
+    if (
+        op.is_mutation
+        and surface in _PROTECTED_AGENT_SURFACES
+        and not is_explicit_ui_rejection
+    ):
         authorization_error = await _validate_authorization(op, authorization)
         if authorization_error:
             envelope = _envelope(

@@ -16,6 +16,7 @@ import { OnboardingGate } from "@/components/onboarding/OnboardingGate";
 import { WorkbenchProvider, useWorkbench } from "@/lib/workbench";
 import { AgentConnectionProvider } from "@/lib/agentConnection";
 import { AgentConnectionDialog, AgentConnectionStatus } from "./AgentConnectionPanel";
+import { PendingProposalReview } from "./PendingProposalReview";
 import { resolveApiBase } from "@/lib/apiBase";
 
 const API_BASE = resolveApiBase();
@@ -119,29 +120,35 @@ function WorkbenchFrame({ children }: { children: React.ReactNode }) {
 
   if (focusRule) {
     return (
-      <div className="offeru-focus-shell offeru-viewport-shell flex w-full flex-col overflow-hidden">
-        <FocusTopBar rule={focusRule} />
-        <main className="workbench-main relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 md:px-6">
-          {children}
-        </main>
-      </div>
+      <>
+        <div className="offeru-focus-shell offeru-viewport-shell flex w-full flex-col overflow-hidden">
+          <FocusTopBar rule={focusRule} />
+          <main className="workbench-main relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 md:px-6">
+            {children}
+          </main>
+        </div>
+        <PendingProposalReview />
+      </>
     );
   }
 
   return (
-    <div className="offeru-workbench-shell offeru-viewport-shell relative flex w-full overflow-hidden">
-      <Sidebar />
-      <main className="workbench-main relative h-full min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-5 pb-36 md:px-6 md:py-6 md:pb-8">
-        <div className="mx-auto max-w-[1600px]">{children}</div>
-      </main>
-      {pathname !== "/settings" && <div className="fixed bottom-[72px] left-4 z-40 max-w-[calc(100vw-2rem)] md:hidden">
-        <AgentConnectionStatus compact />
-      </div>}
-      <Suspense fallback={null}>
-        <ContextRail />
-        <CommandPalette />
-      </Suspense>
-    </div>
+    <>
+      <div className="offeru-workbench-shell offeru-viewport-shell relative flex w-full overflow-hidden">
+        <Sidebar />
+        <main className="workbench-main relative h-full min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-5 pb-36 md:px-6 md:py-6 md:pb-8">
+          <div className="mx-auto max-w-[1600px]">{children}</div>
+        </main>
+        {pathname !== "/settings" && <div className="fixed bottom-[72px] left-4 z-40 max-w-[calc(100vw-2rem)] md:hidden">
+          <AgentConnectionStatus compact />
+        </div>}
+        <Suspense fallback={null}>
+          <ContextRail />
+          <CommandPalette />
+        </Suspense>
+      </div>
+      <PendingProposalReview />
+    </>
   );
 }
 

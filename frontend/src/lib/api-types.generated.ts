@@ -4384,7 +4384,7 @@ export interface paths {
         };
         /**
          * List Pending Proposals
-         * @description Newest Run per conversation waiting on confirmation, for the overlay.
+         * @description All persisted proposal Runs waiting on confirmation, for the workbench.
          */
         get: operations["list_pending_proposals_api_bridge_proposals_pending_get"];
         put?: never;

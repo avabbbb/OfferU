@@ -628,11 +628,11 @@ def _audit_rows_for_grading(
     *,
     human_decisions: list[dict[str, str]],
 ) -> tuple[list[dict[str, Any]], list[int]]:
-    """Keep full audit while excluding only attributable human/runner approvals from G2.
+    """Keep full audit while excluding attributable approvals from the Agent grader.
 
-    Workbench confirms use surface ``pi``; capability-mode runner approvals use
-    ``cli``. Both require the exact persisted run/action reference and a matching
-    decision recorded by this runner. Other surfaces and unpaired CLI confirms remain.
+    UI and capability-runner decisions may leave Registry audit rows for the
+    approved operation itself. Exclude only rows bound to the exact persisted
+    Run/action, with an idempotency key and a matching decision observed here.
     """
 
     decisions = {
@@ -644,7 +644,7 @@ def _audit_rows_for_grading(
     kept: list[dict[str, Any]] = []
     excluded_ids: list[int] = []
     for row in audit_rows:
-        if str(row.get("operation") or "") != "confirm_operation_proposal":
+        if not str(row.get("operation") or "") or not str(row.get("idempotency_key") or ""):
             kept.append(row)
             continue
         ref = str(row.get("confirmation_ref") or "")
@@ -653,12 +653,20 @@ def _audit_rows_for_grading(
             kept.append(row)
             continue
         run_id, separator, action_id = ref[len(prefix):].partition(":")
+        if (
+            not separator
+            or not action_id
+            or str(row.get("idempotency_key") or "") != f"{run_id}:{action_id}"
+        ):
+            kept.append(row)
+            continue
         decision = decisions.get((run_id, action_id))
         surface = str(row.get("surface") or "")
         if (
-            separator
+            str(row.get("status") or "") in {"executing", "completed", "failed"}
+            and not bool(row.get("dry_run"))
             and (
-                (decision == "accepted" and surface == "pi")
+                (decision == "accepted" and surface in {"pi", "agent_runtime_ui"})
                 or (decision == "approve" and surface == "cli")
             )
         ):
@@ -676,7 +684,7 @@ def _human_action_execution_started(
         for item in actions
     }
     return any(
-        str(row.get("surface") or "") == "pi"
+        str(row.get("surface") or "") in {"pi", "agent_runtime_ui"}
         and str(row.get("confirmation_ref") or "") in refs
         and str(row.get("status") or "") in {"executing", "completed", "failed"}
         for row in audit_rows

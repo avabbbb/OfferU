@@ -226,34 +226,49 @@ def test_grader_audit_excludes_only_confirmations_bound_to_accepted_human_decisi
     full_audit = [
         {
             "id": 1,
-            "operation": "confirm_operation_proposal",
+            "operation": "set_current_view",
             "confirmation_ref": "agent-run:run_1:action_1",
             "surface": "pi",
+            "idempotency_key": "run_1:action_1",
+            "status": "completed",
+            "dry_run": False,
         },
         {
             "id": 2,
-            "operation": "confirm_operation_proposal",
+            "operation": "set_current_view",
             "confirmation_ref": "agent-run:run_2:action_2",
-            "surface": "ui",
+            "surface": "agent_runtime_ui",
+            "idempotency_key": "run_2:action_2",
+            "status": "completed",
+            "dry_run": False,
         },
         {"id": 3, "operation": "get_profile", "confirmation_ref": None},
         {
             "id": 4,
-            "operation": "confirm_operation_proposal",
+            "operation": "triage_job",
             "confirmation_ref": "agent-run:run_3:action_3",
             "surface": "cli",
+            "idempotency_key": "run_3:action_3",
+            "status": "completed",
+            "dry_run": False,
         },
         {
             "id": 5,
-            "operation": "confirm_operation_proposal",
+            "operation": "set_current_view",
             "confirmation_ref": "agent-run:run_1:action_1",
             "surface": "cli",
+            "idempotency_key": "run_1:action_1:cli",
+            "status": "completed",
+            "dry_run": False,
         },
         {
             "id": 6,
-            "operation": "confirm_operation_proposal",
+            "operation": "triage_job",
             "confirmation_ref": "agent-run:run_4:action_4",
-            "surface": "bridge_user",
+            "surface": "agent_runtime_ui",
+            "idempotency_key": "run_4:action_4",
+            "status": "completed",
+            "dry_run": False,
         },
     ]
     human_decisions = [
@@ -268,8 +283,8 @@ def test_grader_audit_excludes_only_confirmations_bound_to_accepted_human_decisi
         human_decisions=human_decisions,
     )
 
-    assert [row["id"] for row in grader_rows] == [2, 3, 5, 6]
-    assert excluded_ids == [1, 4]
+    assert [row["id"] for row in grader_rows] == [2, 3, 5]
+    assert excluded_ids == [1, 4, 6]
     assert [row["id"] for row in full_audit] == [1, 2, 3, 4, 5, 6]
 
 

@@ -24,29 +24,18 @@ router = APIRouter()
 
 @router.get("/proposals/pending")
 async def list_pending_proposals() -> dict[str, Any]:
-    """Newest Run per conversation waiting on confirmation, for the overlay."""
+    """All persisted proposal Runs waiting on confirmation, for the workbench."""
     from sqlalchemy import select
 
     from app.database import async_session
     from app.models.models import AgentRunRecord
-
-    from datetime import datetime, timedelta, timezone
-
-    from sqlalchemy import select
-
-    from app.database import async_session
-    from app.models.models import AgentRunRecord
-
-    since = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=24)
     async with async_session() as db:
         rows = (
             (
                 await db.execute(
                     select(AgentRunRecord)
                     .where(AgentRunRecord.status == "waiting_confirmation")
-                    .where(AgentRunRecord.created_at >= since)
                     .order_by(AgentRunRecord.created_at.desc())
-                    .limit(5)
                 )
             )
             .scalars()
@@ -98,12 +87,16 @@ async def confirm_proposal_endpoint(
     only the selected action, leaving sibling actions available for review.
     """
     if body.approve:
-        result = await confirm_proposal(run_id=run_id, action_id=body.action_id)
+        result = await confirm_proposal(
+            run_id=run_id,
+            action_id=body.action_id,
+            surface="agent_runtime_ui",
+        )
         return {"approved": True, **result}
     result = await execute_operation(
         "reject_agent_run",
         {"run_id": run_id, "action_id": body.action_id},
-        surface="bridge_user",
+        surface="agent_runtime_ui",
     )
     if not result.get("ok"):
         return {"approved": False, "errors": list(result.get("errors") or [])}
