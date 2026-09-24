@@ -55,13 +55,17 @@ def _synthetic_resume_docx() -> bytes:
 
 def _complete_new_user_onboarding(page, suffix: str) -> None:
     """Use the current App-first onboarding UI to establish a profile and open job setup."""
-    expect(page.get_by_role("heading", name="把一个岗位，变成可准备的工作区")).to_be_visible(
+    wizard = page.get_by_role("dialog", name="把一个岗位，变成可准备的工作区")
+    expect(wizard).to_be_visible(
         timeout=20000
     )
-    agent_status = page.get_by_test_id("agent-connection-status")
-    expect(agent_status).to_be_visible(timeout=20000)
-    expect(agent_status).to_contain_text("连接本机 Agent", timeout=30000)
-    expect(page.get_by_text("暂时没有可用 Agent 也可以继续。", exact=False)).to_be_visible()
+    agent_panel = wizard.get_by_test_id("agent-provider-health")
+    expect(agent_panel).to_be_visible(timeout=20000)
+    expect(agent_panel).to_contain_text(
+        "检测到 0 个本机运行环境。连接能力以检查结果为准。", timeout=30000
+    )
+    expect(agent_panel.get_by_text("未检测到", exact=True).first).to_be_visible()
+    expect(wizard.get_by_text("暂时没有可用 Agent 也可以继续。", exact=False)).to_be_visible()
     page.get_by_role("button", name="继续", exact=True).click()
 
     resume_input = page.get_by_label("选择简历文件", exact=True)
