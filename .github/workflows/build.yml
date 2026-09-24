@@ -843,8 +843,10 @@ jobs:
             $installerRun = Start-Process -FilePath $installer.FullName -ArgumentList @('/S', "/D=$installRoot") -WindowStyle Hidden -PassThru -Wait
             if ($installerRun.ExitCode -ne 0) { throw "NSIS installer failed with exit code $($installerRun.ExitCode)" }
 
-            $app = Get-ChildItem -Path $installRoot -Filter 'OfferU.exe' -File -Recurse | Select-Object -First 1
-            if ($null -eq $app) { throw "installed OfferU.exe was not found under $installRoot" }
+            # Tauri uses the Cargo package name (`app`) for this executable;
+            # productName (`OfferU`) controls the user-facing installer name.
+            $app = Get-ChildItem -Path $installRoot -Filter 'app.exe' -File -Recurse | Select-Object -First 1
+            if ($null -eq $app) { throw "installed app.exe was not found under $installRoot" }
             $appProcess = Start-Process -FilePath $app.FullName -WindowStyle Hidden -PassThru
 
             $deadline = (Get-Date).AddSeconds(60)
