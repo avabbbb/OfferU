@@ -275,7 +275,7 @@ jobs:
           OFFERU_E2E_BASE_URL: http://127.0.0.1:7410
         run: python backend/scripts/e2e/test_public_release_empty_states.py
 
-      - name: Run targeted interview learning browser path
+      - name: Run fixture interview guard and generic learning browser smoke
         if: matrix.scenario == 'interview'
         shell: bash
         env:
