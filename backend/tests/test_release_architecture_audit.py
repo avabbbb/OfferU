@@ -372,7 +372,6 @@ def test_frontend_user_errors_use_bounded_redaction() -> None:
         "frontend/src/app/settings/page.tsx",
         "frontend/src/components/jobs/AddJobModal.tsx",
         "frontend/src/components/jobs/RoleIntelligencePanel.tsx",
-        "frontend/src/components/onboarding/OnboardingWizard.tsx",
         "frontend/src/components/progress-board.tsx",
         "frontend/src/components/workbench/AgentPanel.tsx",
     )
@@ -391,6 +390,14 @@ def test_frontend_user_errors_use_bounded_redaction() -> None:
     assert "throw new Error(payload.detail ||" not in hooks
     assert "throw new Error(confirmed.detail ||" not in hooks
     assert "无法连接本地后端 ${API_BASE}" not in hooks
+
+    onboarding = (ROOT / "frontend/src/components/onboarding/OnboardingWizard.tsx").read_text(
+        encoding="utf-8"
+    )
+    assert "部分设置状态暂时无法读取" in onboarding
+    assert "progress.error.message" not in onboarding
+    assert "error.message" not in onboarding
+    assert "{progress.error}" not in onboarding
 
 
 def test_doctor_has_fail_closed_release_exit_mode() -> None:
@@ -638,7 +645,14 @@ def test_frontend_api_clients_reject_redirects() -> None:
     assert hooks_source.count('redirect: "error"') >= 2
     assert 'redirect: "error"' in providers_source
     assert studio_source.count('redirect: "error"') >= 2
-    assert optimize_source.count('redirect: "error"') >= 2
+    assert "streamOptimizeAgentChat(" in optimize_source
+    assert "export async function streamOptimizeAgentChat" in hooks_source
+    assert "await showcaseFetch(`/api/optimize/agent/chat/stream`" in hooks_source
+    showcase_fetch = hooks_source[
+        hooks_source.index("async function showcaseFetch") :
+        hooks_source.index("async function showcaseFetch") + 800
+    ]
+    assert 'return fetch(target, { ...init, redirect: "error" })' in showcase_fetch
     assert settings_source.count('redirect: "error"') >= 1
     assert 'redirect: "error"' in showcase_source
 

@@ -84,7 +84,8 @@ async def get_proposal(run_id: str) -> dict[str, Any]:
 
 
 class ProposalDecisionRequest(BaseModel):
-    approve: bool = Field(description="true=批准执行一次；false=拒绝（零执行）")
+    approve: bool = Field(description="true=只批准目标动作执行一次；false=只拒绝目标动作（零执行）")
+    action_id: str = Field(default="", max_length=200)
 
 
 @router.post("/proposals/{run_id}/confirm")
@@ -93,15 +94,15 @@ async def confirm_proposal_endpoint(
 ) -> dict[str, Any]:
     """Human decision from the workbench overlay.
 
-    approve=true executes exactly once (idempotent replay-safe); approve=false
-    fails the proposal Run so it can never execute later.
+    approve=true executes only the selected action once; approve=false rejects
+    only the selected action, leaving sibling actions available for review.
     """
     if body.approve:
-        result = await confirm_proposal(run_id=run_id)
+        result = await confirm_proposal(run_id=run_id, action_id=body.action_id)
         return {"approved": True, **result}
     result = await execute_operation(
         "reject_agent_run",
-        {"run_id": run_id},
+        {"run_id": run_id, "action_id": body.action_id},
         surface="bridge_user",
     )
     if not result.get("ok"):

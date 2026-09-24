@@ -499,10 +499,17 @@ def _agent_run_action_state(eval_db: Path, run_id: str, action_id: str) -> dict[
     )
     if step_status == "completed":
         decision = "accepted"
-    elif str(failure_reason or "") == "rejected_by_user":
+    elif step_status == "rejected":
         decision = "rejected"
     elif step_status == "executing" or str(run_status) == "executing":
         decision = "in_progress"
+    elif (
+        str(failure_reason or "") == "rejected_by_user"
+        and str(run_status or "") == "needs_reconciliation"
+    ):
+        # Legacy reject_agent_run records rejected the whole run without marking
+        # individual steps. New action-level rejections are read from step.status.
+        decision = "rejected"
     elif step_status == "failed" or str(run_status) == "failed":
         decision = "failed"
     else:
@@ -577,6 +584,24 @@ def _confirm_action(database_url: str, run_id: str, action_id: str) -> dict[str,
 
     response = _run_cli(database_url, ["confirm", run_id, "--action", action_id, "--pretty"])
     return {"run_id": run_id, "action_id": action_id, "ok": bool(response.get("ok")), "response": response}
+
+
+def _reject_action(database_url: str, run_id: str, action_id: str) -> dict[str, Any]:
+    """Reject exactly one proposal action in capability-mode simulation."""
+
+    response = _run_cli(
+        database_url,
+        ["run", "reject_agent_run", "--args", json.dumps({
+            "run_id": run_id,
+            "action_id": action_id,
+        }, ensure_ascii=False)],
+    )
+    return {
+        "run_id": run_id,
+        "action_id": action_id,
+        "ok": bool(response.get("ok")),
+        "response": response,
+    }
 
 
 def _audit_rows(eval_db: Path, *, exclude_ids: set[str]) -> list[dict[str, Any]]:
@@ -936,7 +961,7 @@ async def run_case_once(
             elif turn_index < len(case.user_turns):
                 user_input = case.user_turns[turn_index]
                 turn_index += 1
-            elif auto_confirm:
+            elif simulated_decision == "approve":
                 user_input = CONTINUE_PROMPT
             else:
                 break
@@ -978,12 +1003,10 @@ async def run_case_once(
                 pending = _pending_actions(eval_db, exclude_run_ids=known_runs)
                 for item in pending:
                     if simulated_decision == "reject":
-                        response = _run_cli(
-                            database_url,
-                            ["run", "reject_agent_run", "--args",
-                             json.dumps({"run_id": item["run_id"]}, ensure_ascii=False)],
-                        )
-                        confirmations.append({"decision": "reject", **item, "ok": bool(response.get("ok"))})
+                        confirmations.append({
+                            "decision": "reject", **item,
+                            **_reject_action(database_url, item["run_id"], item["action_id"]),
+                        })
                     else:
                         confirmations.append({
                             "decision": "approve", **item,

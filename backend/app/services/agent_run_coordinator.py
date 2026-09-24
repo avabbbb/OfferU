@@ -34,7 +34,8 @@ async def _claim_step_for_execution(
     *,
     run_id: str,
     step_index: int,
-    updated_steps: list[dict[str, Any]],
+    expected_steps: list[Any],
+    updated_steps: list[Any],
     run_status: str,
 ) -> bool:
     """Atomically transition one ``waiting_confirmation`` step to ``executing``.
@@ -42,13 +43,14 @@ async def _claim_step_for_execution(
     The single conditional UPDATE is the execution lease: two concurrent
     confirmations of the same step cannot both execute it, because after
     the first claim commits the loser's WHERE clause no longer matches and
-    its UPDATE reports 0 rows. The loser then skips the step instead of
-    duplicating its side effects.
+    its UPDATE reports 0 rows. Comparing the complete steps snapshot also
+    prevents concurrent decisions for sibling actions from erasing one another.
     """
     async with async_session() as db:
         result = await db.execute(
             update(AgentRunRecord)
             .where(AgentRunRecord.run_id == run_id)
+            .where(AgentRunRecord.steps_json == expected_steps)
             .where(
                 AgentRunRecord.steps_json[step_index]["status"]
                 .as_string()
@@ -176,6 +178,7 @@ class AgentRunCoordinator:
             if status != _WAITING_CONFIRMATION:
                 continue
 
+            expected_steps = [dict(item) if isinstance(item, dict) else item for item in steps]
             step["status"] = _EXECUTING
             step["attempts"] = int(step.get("attempts") or 0) + 1
             step["started_at"] = _now_iso()
@@ -183,6 +186,7 @@ class AgentRunCoordinator:
             claimed = run_id != "" and await _claim_step_for_execution(
                 run_id=run_id,
                 step_index=index,
+                expected_steps=expected_steps,
                 updated_steps=steps,
                 run_status=_EXECUTING,
             )
@@ -261,7 +265,7 @@ class AgentRunCoordinator:
             run["status"] = "needs_reconciliation"
         elif "failed" in statuses:
             run["status"] = "failed"
-        elif statuses and statuses.issubset({"completed"}):
+        elif statuses and statuses.issubset({"completed", "rejected"}):
             run["status"] = "completed"
         elif "waiting_confirmation" in statuses:
             run["status"] = "waiting_confirmation"

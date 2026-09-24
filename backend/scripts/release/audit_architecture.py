@@ -57,6 +57,7 @@ EXPLICIT_ROUTE_BOUNDARIES = {
     ("main_agent.py", "start_runtime_run"),
     ("main_agent.py", "stream_runtime_run"),
     ("main_agent.py", "confirm_runtime_action"),
+    ("main_agent.py", "reject_runtime_action"),
     ("main_agent.py", "resume_runtime_run"),
     ("main_agent.py", "abort_runtime_run"),
     ("main_agent.py", "cancel_hosted_executor_session_from_ui"),

@@ -234,7 +234,11 @@ async def confirm_proposal(
     action_id: str = "",
 ) -> dict[str, Any]:
     """Confirm one persisted proposal; idempotent — replay never re-executes."""
-    result = await confirm_operation_proposal(run_id, surface=BRIDGE_SURFACE)
+    result = await confirm_operation_proposal(
+        run_id,
+        action_id=action_id,
+        surface=BRIDGE_SURFACE,
+    )
     if not result.get("ok"):
         raise _deny(
             "reconciliation_required",

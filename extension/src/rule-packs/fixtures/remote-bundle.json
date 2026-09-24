@@ -1,0 +1,661 @@
+{
+  "schemaVersion": "1",
+  "bundleVersion": 1,
+  "packages": [
+    {
+      "schemaVersion": "1",
+      "id": "fixture.acme-application-form",
+      "version": "1.0.0",
+      "status": "experimental",
+      "displayName": "Acme fixture application form",
+      "hosts": [
+        {
+          "kind": "exact",
+          "value": "apply.acme.invalid"
+        }
+      ],
+      "pages": [
+        {
+          "id": "application",
+          "kind": "application-form",
+          "match": {
+            "minScore": 80,
+            "minPositiveSignals": 2,
+            "ambiguityMargin": 20,
+            "signals": [
+              {
+                "id": "apply-path",
+                "type": "path-glob",
+                "polarity": "positive",
+                "value": "/applications/*",
+                "weight": 40
+              },
+              {
+                "id": "form-root",
+                "type": "css-exists",
+                "polarity": "positive",
+                "value": "[data-testid='application-form']",
+                "weight": 50
+              },
+              {
+                "id": "receipt-page",
+                "type": "css-exists",
+                "polarity": "negative",
+                "value": "[data-testid='application-success']",
+                "weight": 100,
+                "veto": true
+              }
+            ]
+          },
+          "capabilities": [
+            "scan-form",
+            "write-native-text",
+            "write-known-combobox"
+          ],
+          "form": {
+            "root": {
+              "scope": "document",
+              "candidates": [
+                {
+                  "css": "[data-testid='application-form']",
+                  "stability": "semantic"
+                }
+              ],
+              "required": true,
+              "maxMatches": 1
+            },
+            "fieldCandidates": {
+              "scope": "page-root",
+              "candidates": [
+                {
+                  "css": "input, textarea, select, [role='combobox']",
+                  "stability": "semantic"
+                }
+              ],
+              "required": true,
+              "maxMatches": 200
+            },
+            "labels": [
+              {
+                "scope": "field",
+                "candidates": [
+                  {
+                    "css": "label",
+                    "stability": "semantic"
+                  }
+                ],
+                "required": false,
+                "maxMatches": 2
+              },
+              {
+                "scope": "field",
+                "candidates": [
+                  {
+                    "css": "[aria-label]",
+                    "stability": "semantic"
+                  }
+                ],
+                "required": false,
+                "maxMatches": 1
+              }
+            ],
+            "aliases": [
+              {
+                "canonicalIntent": "full_name",
+                "aliases": [
+                  "姓名",
+                  "name"
+                ]
+              },
+              {
+                "canonicalIntent": "email",
+                "aliases": [
+                  "邮箱",
+                  "email"
+                ]
+              }
+            ],
+            "controls": [
+              {
+                "id": "fixture-combobox",
+                "when": {
+                  "scope": "field",
+                  "candidates": [
+                    {
+                      "css": "[data-testid='fixture-combobox']",
+                      "stability": "semantic"
+                    }
+                  ],
+                  "required": false,
+                  "maxMatches": 20
+                },
+                "driverId": "antd",
+                "selectors": {
+                  "host": {
+                    "scope": "field",
+                    "candidates": [
+                      {
+                        "css": "[data-testid='fixture-combobox']",
+                        "stability": "semantic"
+                      }
+                    ],
+                    "required": true,
+                    "maxMatches": 1
+                  },
+                  "popup": {
+                    "scope": "document",
+                    "candidates": [
+                      {
+                        "css": "[data-testid='fixture-options']",
+                        "stability": "semantic"
+                      }
+                    ],
+                    "required": true,
+                    "maxMatches": 1
+                  },
+                  "option": {
+                    "scope": "document",
+                    "candidates": [
+                      {
+                        "css": "[role='option']",
+                        "stability": "semantic"
+                      }
+                    ],
+                    "required": true,
+                    "maxMatches": 100
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "fixtures": [
+        {
+          "id": "form-positive",
+          "pageKind": "application-form",
+          "role": "positive",
+          "path": "fixtures/acme/form.html",
+          "sanitized": true,
+          "expectedRuleId": "application"
+        },
+        {
+          "id": "form-near-negative",
+          "pageKind": "application-form",
+          "role": "near-negative",
+          "path": "fixtures/acme/login.html",
+          "sanitized": true
+        },
+        {
+          "id": "form-conflict",
+          "pageKind": "application-form",
+          "role": "conflict",
+          "path": "fixtures/acme/conflict-form.html",
+          "sanitized": true
+        }
+      ],
+      "provenance": {
+        "owner": "offeru",
+        "method": "clean-room",
+        "capturedFrom": "synthetic",
+        "notesPath": "fixtures/acme/README.md"
+      }
+    },
+    {
+      "schemaVersion": "1",
+      "id": "fixture.acme-job-detail",
+      "version": "1.0.0",
+      "status": "verified",
+      "displayName": "Acme fixture job detail",
+      "hosts": [
+        {
+          "kind": "exact",
+          "value": "jobs.acme.invalid"
+        }
+      ],
+      "pages": [
+        {
+          "id": "detail",
+          "kind": "job-detail",
+          "match": {
+            "minScore": 70,
+            "minPositiveSignals": 2,
+            "ambiguityMargin": 20,
+            "signals": [
+              {
+                "id": "detail-path",
+                "type": "path-glob",
+                "polarity": "positive",
+                "value": "/jobs/*",
+                "weight": 40
+              },
+              {
+                "id": "detail-root",
+                "type": "css-exists",
+                "polarity": "positive",
+                "value": "[data-testid='job-detail']",
+                "weight": 40
+              },
+              {
+                "id": "search-page",
+                "type": "css-exists",
+                "polarity": "negative",
+                "value": "[data-testid='job-search']",
+                "weight": 80,
+                "veto": true
+              }
+            ]
+          },
+          "capabilities": [
+            "read-job-detail"
+          ],
+          "jobDetail": {
+            "root": {
+              "scope": "document",
+              "candidates": [
+                {
+                  "css": "[data-testid='job-detail']",
+                  "stability": "semantic"
+                }
+              ],
+              "required": true,
+              "maxMatches": 1
+            },
+            "fields": {
+              "title": {
+                "selectors": {
+                  "scope": "page-root",
+                  "candidates": [
+                    {
+                      "css": "[data-testid='job-title']",
+                      "stability": "semantic"
+                    }
+                  ],
+                  "required": true,
+                  "maxMatches": 1
+                },
+                "mode": "text",
+                "normalize": [
+                  "trim",
+                  "collapse-space"
+                ]
+              },
+              "company": {
+                "selectors": {
+                  "scope": "page-root",
+                  "candidates": [
+                    {
+                      "css": "[data-testid='company-name']",
+                      "stability": "semantic"
+                    }
+                  ],
+                  "required": true,
+                  "maxMatches": 1
+                },
+                "mode": "text",
+                "normalize": [
+                  "trim",
+                  "collapse-space"
+                ]
+              },
+              "description": {
+                "selectors": {
+                  "scope": "page-root",
+                  "candidates": [
+                    {
+                      "css": "[data-testid='job-description']",
+                      "stability": "semantic"
+                    }
+                  ],
+                  "required": true,
+                  "maxMatches": 1
+                },
+                "mode": "text",
+                "normalize": [
+                  "trim",
+                  "collapse-space"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "fixtures": [
+        {
+          "id": "detail-positive",
+          "pageKind": "job-detail",
+          "role": "positive",
+          "path": "fixtures/acme/detail.html",
+          "sanitized": true,
+          "expectedRuleId": "detail"
+        },
+        {
+          "id": "detail-near-negative",
+          "pageKind": "job-detail",
+          "role": "near-negative",
+          "path": "fixtures/acme/search.html",
+          "sanitized": true
+        },
+        {
+          "id": "detail-conflict",
+          "pageKind": "job-detail",
+          "role": "conflict",
+          "path": "fixtures/acme/conflict.html",
+          "sanitized": true
+        }
+      ],
+      "provenance": {
+        "owner": "offeru",
+        "method": "first-party",
+        "capturedFrom": "synthetic",
+        "notesPath": "fixtures/acme/README.md",
+        "lastVerifiedAt": "2026-08-10"
+      }
+    },
+    {
+      "schemaVersion": "1",
+      "id": "portal.boss-job-detail",
+      "version": "0.1.0",
+      "status": "experimental",
+      "displayName": "BOSS 直聘岗位详情页",
+      "hosts": [
+        {
+          "kind": "suffix",
+          "value": "zhipin.com"
+        }
+      ],
+      "pages": [
+        {
+          "id": "job-detail",
+          "kind": "job-detail",
+          "match": {
+            "minScore": 70,
+            "minPositiveSignals": 2,
+            "ambiguityMargin": 20,
+            "signals": [
+              {
+                "id": "detail-path",
+                "type": "path-glob",
+                "polarity": "positive",
+                "value": "/job_detail/*",
+                "weight": 40
+              },
+              {
+                "id": "detail-root",
+                "type": "css-exists",
+                "polarity": "positive",
+                "value": ".job-sec-text",
+                "weight": 40
+              },
+              {
+                "id": "list-page",
+                "type": "css-exists",
+                "polarity": "negative",
+                "value": ".job-list-box",
+                "weight": 80,
+                "veto": true
+              }
+            ]
+          },
+          "capabilities": [
+            "read-job-detail"
+          ],
+          "jobDetail": {
+            "root": {
+              "scope": "document",
+              "candidates": [
+                {
+                  "css": ".job-detail",
+                  "stability": "vendor-stable"
+                }
+              ],
+              "required": true,
+              "maxMatches": 1
+            },
+            "fields": {
+              "title": {
+                "selectors": {
+                  "scope": "page-root",
+                  "candidates": [
+                    {
+                      "css": ".info-primary .name",
+                      "stability": "fragile"
+                    },
+                    {
+                      "css": ".name h1",
+                      "stability": "fragile"
+                    },
+                    {
+                      "css": "h1",
+                      "stability": "semantic"
+                    }
+                  ],
+                  "required": true,
+                  "maxMatches": 1
+                },
+                "mode": "text",
+                "normalize": [
+                  "trim",
+                  "collapse-space"
+                ]
+              },
+              "company": {
+                "selectors": {
+                  "scope": "page-root",
+                  "candidates": [
+                    {
+                      "css": ".company-info .name",
+                      "stability": "fragile"
+                    },
+                    {
+                      "css": ".company-info a",
+                      "stability": "fragile"
+                    },
+                    {
+                      "css": ".company-name",
+                      "stability": "fragile"
+                    },
+                    {
+                      "css": ".boss-name",
+                      "stability": "fragile"
+                    }
+                  ],
+                  "required": true,
+                  "maxMatches": 1
+                },
+                "mode": "text",
+                "normalize": [
+                  "trim",
+                  "collapse-space"
+                ]
+              },
+              "description": {
+                "selectors": {
+                  "scope": "page-root",
+                  "candidates": [
+                    {
+                      "css": ".job-sec-text",
+                      "stability": "vendor-stable"
+                    },
+                    {
+                      "css": ".job-detail .job-sec-text",
+                      "stability": "fragile"
+                    },
+                    {
+                      "css": ".job-description",
+                      "stability": "fragile"
+                    }
+                  ],
+                  "required": true,
+                  "maxMatches": 1
+                },
+                "mode": "text",
+                "normalize": [
+                  "trim",
+                  "collapse-space"
+                ]
+              },
+              "salary": {
+                "selectors": {
+                  "scope": "page-root",
+                  "candidates": [
+                    {
+                      "css": ".salary",
+                      "stability": "vendor-stable"
+                    }
+                  ],
+                  "required": false,
+                  "maxMatches": 1
+                },
+                "mode": "text",
+                "normalize": [
+                  "trim",
+                  "collapse-space"
+                ]
+              },
+              "location": {
+                "selectors": {
+                  "scope": "page-root",
+                  "candidates": [
+                    {
+                      "css": ".location-address",
+                      "stability": "fragile"
+                    },
+                    {
+                      "css": ".job-location",
+                      "stability": "fragile"
+                    }
+                  ],
+                  "required": false,
+                  "maxMatches": 1
+                },
+                "mode": "text",
+                "normalize": [
+                  "trim",
+                  "collapse-space"
+                ]
+              },
+              "applyUrl": {
+                "selectors": {
+                  "scope": "page-root",
+                  "candidates": [
+                    {
+                      "css": "a.btn-startchat",
+                      "stability": "fragile"
+                    },
+                    {
+                      "css": "a[href*='job_detail']",
+                      "stability": "fragile"
+                    }
+                  ],
+                  "required": false,
+                  "maxMatches": 1
+                },
+                "mode": "href",
+                "normalize": [
+                  "trim",
+                  "absolute-url"
+                ]
+              },
+              "postedAt": {
+                "selectors": {
+                  "scope": "page-root",
+                  "candidates": [
+                    {
+                      "css": ".job-author .time",
+                      "stability": "fragile"
+                    },
+                    {
+                      "css": ".job-author span:last-child",
+                      "stability": "fragile"
+                    }
+                  ],
+                  "required": false,
+                  "maxMatches": 1
+                },
+                "mode": "text",
+                "normalize": [
+                  "trim",
+                  "collapse-space"
+                ]
+              },
+              "tags": {
+                "selectors": {
+                  "scope": "page-root",
+                  "candidates": [
+                    {
+                      "css": ".job-tags .tag-item",
+                      "stability": "fragile"
+                    },
+                    {
+                      "css": ".tag-list li",
+                      "stability": "fragile"
+                    }
+                  ],
+                  "required": false,
+                  "maxMatches": 20
+                },
+                "mode": "texts",
+                "normalize": [
+                  "trim"
+                ]
+              },
+              "companyTags": {
+                "selectors": {
+                  "scope": "page-root",
+                  "candidates": [
+                    {
+                      "css": ".company-info p",
+                      "stability": "fragile"
+                    },
+                    {
+                      "css": ".sider-company p",
+                      "stability": "fragile"
+                    }
+                  ],
+                  "required": false,
+                  "maxMatches": 8
+                },
+                "mode": "texts",
+                "normalize": [
+                  "trim"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "fixtures": [
+        {
+          "id": "boss-detail-positive",
+          "pageKind": "job-detail",
+          "role": "positive",
+          "path": "fixtures/boss/detail.html",
+          "sanitized": true,
+          "expectedRuleId": "job-detail"
+        },
+        {
+          "id": "boss-detail-near-negative",
+          "pageKind": "job-detail",
+          "role": "near-negative",
+          "path": "fixtures/boss/list.html",
+          "sanitized": true
+        },
+        {
+          "id": "boss-detail-conflict",
+          "pageKind": "job-detail",
+          "role": "conflict",
+          "path": "fixtures/boss/conflict.html",
+          "sanitized": true
+        }
+      ],
+      "provenance": {
+        "owner": "offeru",
+        "method": "first-party",
+        "capturedFrom": "synthetic",
+        "notesPath": "fixtures/boss/README.md"
+      }
+    }
+  ],
+  "signature": "6sqfKrtdtG51wu_RehYjmfKv5NhomDLuxMwNgamTr1Vj4E5Dnf3y4Tx1wuVcmih4sD8F058e04PL7vwa8tt0sA"
+}

@@ -1,0 +1,66 @@
+{
+  "schema": "offeru.interview_scoring_skill.v1",
+  "skill_id": "evidence-interview-score",
+  "version": 1,
+  "name": "Evidence-Based Interview Answer Feedback",
+  "scope": "content_only",
+  "aggregation": "weighted_mean",
+  "dimensions": [
+    {
+      "key": "relevance",
+      "label": "回答相关性",
+      "weight": 0.35,
+      "description": "回答是否针对问题和岗位要求，且没有偏离主题。",
+      "evidence_required": true,
+      "allow_not_applicable": false
+    },
+    {
+      "key": "evidence_specificity",
+      "label": "事实与证据具体性",
+      "weight": 0.3,
+      "description": "回答是否提供可核对的事实、行动、范围或结果，而非仅作概括。",
+      "evidence_required": true,
+      "allow_not_applicable": false
+    },
+    {
+      "key": "reasoning_structure",
+      "label": "思路结构",
+      "weight": 0.2,
+      "description": "回答是否清楚说明判断依据、行动顺序及行动与结果之间的关系。",
+      "evidence_required": true,
+      "allow_not_applicable": false
+    },
+    {
+      "key": "reflection_tradeoffs",
+      "label": "复盘与权衡",
+      "weight": 0.15,
+      "description": "回答是否说明关键取舍、限制、学到的经验或后续改进。",
+      "evidence_required": true,
+      "allow_not_applicable": true
+    }
+  ],
+  "score_bands": [
+    { "min": 85, "label": "证据充分且回答有力" },
+    { "min": 70, "label": "基本有效" },
+    { "min": 50, "label": "需要加强" },
+    { "min": 0, "label": "证据不足" }
+  ],
+  "prompt_instructions": [
+    "只根据问题、岗位证据和候选人的回答评价内容，不推断回答之外的经历。",
+    "每个评分维度都必须引用回答中的原句作为 evidence；引用不足时标记缺少证据。",
+    "不要补造数字、责任、因果、成果或候选人未陈述的事实。",
+    "指出可执行的改进方式，并将内容评价与任何表达行为观察分开。"
+  ],
+  "prohibited_outputs": [
+    "personality",
+    "emotion",
+    "honesty",
+    "health",
+    "protected_trait",
+    "job_fitness",
+    "hiring_probability",
+    "cultural_fit",
+    "delivery_score",
+    "combined_score"
+  ]
+}

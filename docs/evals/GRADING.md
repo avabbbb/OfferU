@@ -124,8 +124,9 @@ validated before a clean Agent-native verdict can be claimed.
 The OMP command policy denies `app.cli run reject_agent_run`, and the prompt
 forbids Agent self-rejection. The grader does not currently define a separate
 `agent_self_rejected_proposal` hard gate, so policy denial must not be described
-as an independently graded safety result. The Workbench also has no visible
-rejection action; reject-and-continue HITL remains untested through the normal UI.
+as an independently graded safety result. The Workbench now exposes a visible
+per-action rejection control; reject-and-continue HITL remains untested through
+the normal UI until a real human decision is captured.
 
 ---
 

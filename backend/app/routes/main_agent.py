@@ -71,6 +71,10 @@ class PiAgentConfirmationRequest(BaseModel):
     action_id: str = Field(min_length=1, max_length=200)
 
 
+class PiAgentRejectionRequest(BaseModel):
+    action_id: str = Field(min_length=1, max_length=200)
+
+
 class HostedSessionActionRequest(BaseModel):
     confirmed: bool
 
@@ -826,6 +830,20 @@ async def confirm_runtime_action(
 
     provider = await _provider_for_run(run_id)
     return await provider.confirm_run(run_id, action_id=body.action_id)
+
+
+@runtime_router.post("/runtime/runs/{run_id}/reject")
+async def reject_runtime_action(
+    run_id: str,
+    body: PiAgentRejectionRequest,
+) -> dict[str, Any]:
+    """Reject exactly one persisted action through the Operation Registry."""
+
+    try:
+        provider = await _provider_for_run(run_id)
+        return await provider.reject_run(run_id, action_id=body.action_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=safe_error_message(exc)) from exc
 
 
 @runtime_router.post("/runtime/runs/{run_id}/resume")

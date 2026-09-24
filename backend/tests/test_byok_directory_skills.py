@@ -20,6 +20,7 @@ from app.agents.llm import resolve_llm_client_config
 from app.llm_config_store import (
     _sanitize_api_key,
     import_provider,
+    reload_env_file_cache,
     resolve_api_key,
     save_llm_config_file,
 )
@@ -62,14 +63,14 @@ class EnvKeyReferenceTests(unittest.TestCase):
                 "OFFERU_FILE_KEY=sk-from-file\n# 注释行\nEMPTY_VALUE=\n",
                 encoding="utf-8",
             )
-            with patch(
-                "app.llm_config_store._ENV_FILE", env_file
-            ), patch(
-                "app.llm_config_store._ENV_FILE_VALUES", None
-            ):
-                self.assertEqual(resolve_api_key("env:OFFERU_FILE_KEY"), "sk-from-file")
-                self.assertEqual(resolve_api_key("env:EMPTY_VALUE"), "")
-                self.assertEqual(resolve_api_key("env:NOT_THERE"), "")
+            with patch("app.llm_config_store.runtime_env_file", return_value=env_file):
+                reload_env_file_cache()
+                try:
+                    self.assertEqual(resolve_api_key("env:OFFERU_FILE_KEY"), "sk-from-file")
+                    self.assertEqual(resolve_api_key("env:EMPTY_VALUE"), "")
+                    self.assertEqual(resolve_api_key("env:NOT_THERE"), "")
+                finally:
+                    reload_env_file_cache()
 
     def test_resolve_client_config_resolves_env_reference(self) -> None:
         settings = SimpleNamespace(

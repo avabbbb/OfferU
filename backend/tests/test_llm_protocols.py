@@ -25,7 +25,7 @@ def isolated_config():
     isolated_modules = ("app.llm_config_store", "app.routes.config")
     module_names_before = set(sys.modules).intersection(isolated_modules)
 
-    with tempfile.TemporaryDirectory(dir="H:/tmp/offeru") as root:
+    with tempfile.TemporaryDirectory() as root:
         config_file = Path(root) / "config.json"
         settings = Settings(_env_file=None, database_url=f"sqlite+aiosqlite:///{Path(root) / 'test.db'}")
         try:

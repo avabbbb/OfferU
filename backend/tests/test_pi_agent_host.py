@@ -302,6 +302,7 @@ class PiAgentHostTests(unittest.TestCase):
             paths,
         )
         self.assertIn("/api/agent/runtime/runs/{run_id}/confirm", paths)
+        self.assertIn("/api/agent/runtime/runs/{run_id}/reject", paths)
         self.assertIn("/api/agent/runtime/runs/{run_id}/resume", paths)
         self.assertFalse(
             any(path.startswith("/api/harness-agent") for path in paths)
@@ -388,7 +389,7 @@ class PiAgentHostTests(unittest.TestCase):
 
     def test_pi_run_freezes_skill_proposes_write_and_confirms_once(self) -> None:
         calls = 0
-        turn_finished_while_confirming: bool | None = None
+        run_status_while_confirming: str | None = None
         original = OPERATIONS["start_job_research"]
         worker = FakePiWorker()
         secret = "pi-host-secret-must-not-persist"
@@ -398,14 +399,10 @@ class PiAgentHostTests(unittest.TestCase):
             job_id: int,
             runtime_id: str = "codex",
         ) -> dict[str, Any]:
-            nonlocal calls, turn_finished_while_confirming
+            nonlocal calls, run_status_while_confirming
             calls += 1
             confirming_run = await load_agent_run(worker.active_run_id)
-            turn_finished_while_confirming = bool(
-                (confirming_run or {})
-                .get("final_result", {})
-                .get("turn_finished")
-            )
+            run_status_while_confirming = str((confirming_run or {}).get("status") or "")
             return {
                 "run_id": f"research-{job_id}",
                 "job_id": job_id,
@@ -472,7 +469,7 @@ class PiAgentHostTests(unittest.TestCase):
             worker.operation_results[1]["outputs"]["executed"]
         )
         self.assertEqual(calls, 1)
-        self.assertFalse(turn_finished_while_confirming)
+        self.assertEqual(run_status_while_confirming, "executing")
         self.assertTrue(confirmed["ok"])
         self.assertEqual(confirmed["run"]["status"], "completed")
         self.assertTrue(confirmed["run"]["final_result"]["turn_finished"])

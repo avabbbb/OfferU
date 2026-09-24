@@ -195,6 +195,31 @@ def test_simulated_confirmation_decisions_are_capability_only() -> None:
     assert _should_simulate_decision("capability", CONFIRM_AUTO_SAFE) == "approve"
 
 
+def test_capability_rejection_targets_one_action(monkeypatch) -> None:
+    from scripts.live_eval import runner
+
+    calls: list[tuple[str, list[str]]] = []
+
+    def fake_run_cli(database_url: str, args: list[str]) -> dict[str, bool]:
+        calls.append((database_url, args))
+        return {"ok": True}
+
+    monkeypatch.setattr(runner, "_run_cli", fake_run_cli)
+
+    result = runner._reject_action("sqlite:///eval.db", "run_1", "action_2")
+
+    assert result["ok"] is True
+    assert result["run_id"] == "run_1"
+    assert result["action_id"] == "action_2"
+    assert calls == [(
+        "sqlite:///eval.db",
+        [
+            "run", "reject_agent_run", "--args",
+            '{"run_id": "run_1", "action_id": "action_2"}',
+        ],
+    )]
+
+
 def test_grader_audit_excludes_only_confirmations_bound_to_accepted_human_decisions() -> None:
     from scripts.live_eval.runner import _audit_rows_for_grading
 
@@ -409,16 +434,31 @@ def test_human_review_status_is_read_from_persisted_agent_run(tmp_path: Path) ->
             "INSERT INTO agent_runs VALUES (?, ?, ?, ?, ?, ?)",
             ("run_executing", "executing", "", '[{"id":"action_3","status":"executing"}]', "executing goal", "2026-09-23"),
         )
+        connection.execute(
+            "INSERT INTO agent_runs VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                "run_partial_reject",
+                "waiting_confirmation",
+                "",
+                '[{"id":"action_4","tool":"update_job","status":"rejected",'
+                '"requires_confirmation":true},{"id":"action_5","tool":"update_profile",'
+                '"status":"waiting_confirmation","requires_confirmation":true}]',
+                "partial reject goal",
+                "2026-09-23",
+            ),
+        )
 
     assert _agent_run_action_state(database, "run_accepted", "action_1")["decision"] == "accepted"
     assert _agent_run_action_state(database, "run_rejected", "action_2")["decision"] == "rejected"
     assert _agent_run_action_state(database, "run_executing", "action_3")["decision"] == "in_progress"
-    assert [
+    assert _agent_run_action_state(database, "run_partial_reject", "action_4")["decision"] == "rejected"
+    assert _agent_run_action_state(database, "run_partial_reject", "action_5")["decision"] == "pending"
+    assert {
         item["action_id"]
         for item in _new_proposed_actions(
             database, exclude_run_ids=set(), exclude_action_keys=set(),
         )
-    ] == ["action_1", "action_2"]
+    } == {"action_1", "action_2", "action_4", "action_5"}
     followup = _human_review_continuation_prompt([
         {"run_id": "run_rejected", "action_id": "action_2", "decision": "rejected"},
     ])

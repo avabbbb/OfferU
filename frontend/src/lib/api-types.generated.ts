@@ -1696,6 +1696,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agent/runtime/runs/{run_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Runtime Action
+         * @description Reject exactly one persisted action through the Operation Registry.
+         */
+        post: operations["reject_runtime_action_api_agent_runtime_runs__run_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/agent/runtime/runs/{run_id}/resume": {
         parameters: {
             query?: never;
@@ -4408,8 +4428,8 @@ export interface paths {
          * Confirm Proposal Endpoint
          * @description Human decision from the workbench overlay.
          *
-         *     approve=true executes exactly once (idempotent replay-safe); approve=false
-         *     fails the proposal Run so it can never execute later.
+         *     approve=true executes only the selected action once; approve=false rejects
+         *     only the selected action, leaving sibling actions available for review.
          */
         post: operations["confirm_proposal_endpoint_api_bridge_proposals__run_id__confirm_post"];
         delete?: never;
@@ -5559,6 +5579,11 @@ export interface components {
             /** Action Id */
             action_id: string;
         };
+        /** PiAgentRejectionRequest */
+        PiAgentRejectionRequest: {
+            /** Action Id */
+            action_id: string;
+        };
         /** PiAgentRunRequest */
         PiAgentRunRequest: {
             /** Message */
@@ -5801,9 +5826,11 @@ export interface components {
         ProposalDecisionRequest: {
             /**
              * Approve
-             * @description true=批准执行一次；false=拒绝（零执行）
+             * @description true=只批准目标动作执行一次；false=只拒绝目标动作（零执行）
              */
             approve: boolean;
+            /** Action Id */
+            action_id?: string;
         };
         /** RecordCreateRequest */
         RecordCreateRequest: {
@@ -9723,6 +9750,43 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PiAgentConfirmationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_runtime_action_api_agent_runtime_runs__run_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PiAgentRejectionRequest"];
             };
         };
         responses: {

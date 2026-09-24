@@ -105,11 +105,12 @@ jobs:
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked --version 0.22.2
 
-      - name: Audit Rust dependencies with current RustSec data
-        working-directory: frontend/src-tauri
-        run: cargo audit --format json
+      - name: Enforce RustSec policy and scoped Linux exception
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        run: python backend/scripts/security/check_rustsec.py
 
-      - name: Deny unsound RustSec findings
+      - name: Deny all unsound findings on release tags
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
         working-directory: frontend/src-tauri
         run: cargo audit --deny unsound --format json
 

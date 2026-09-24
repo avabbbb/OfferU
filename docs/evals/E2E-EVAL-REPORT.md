@@ -153,7 +153,7 @@ the following product/evidence gaps resolved:
 3. **Verify model-issued tools**: require `tool_execution_start` events for OfferU CLI
 4. **Corroborate outcome**: bind tool events to OperationAuditLog / Proposal / DB state
 5. **Visible HITL**: user reviews and approves in the normal OfferU frontend; capture the actual human-facing result
-6. **Rejection + continuation**: Workbench currently has no visible rejection action, so this path is not covered
+6. **Rejection + continuation**: per-action rejection is implemented in Workbench; this path still needs a real-user same-session evaluation
 7. **Audit attribution**: verify exact `surface` / `confirmation_ref` attribution in `grader_audit.json` (`pi` for Workbench approval; capability-only simulated `cli` approval) while preserving the complete `audit.json`
 8. **Isolation**: run OMP in authorized OS-level isolation; the per-case SQLite clone and Bash policy are not host isolation
 9. **Multi-turn / pass^3**: repeat from fresh isolated state

@@ -655,11 +655,10 @@ class AgentRuntimeConvergenceTests(unittest.TestCase):
         self.assertEqual(result["inbox"]["items"][0]["category"], "needs_review")
         payload = result["inbox"]["items"][0]["payload"]
         self.assertNotIn("preview", payload)
-        self.assertTrue(
-            payload["interview_focus_plan"]["focuses"]
-        )
+        self.assertEqual(payload["interview_focus_plan"], {})
         packet = payload["application_packet"]
         self.assertEqual(packet["status"], "partial")
+        self.assertEqual(packet["interview_focus_plan"], {})
         self.assertEqual(packet["resume_candidate"]["status"], "blocked")
         self.assertEqual(result["events"]["events"][0]["status"], "completed")
 

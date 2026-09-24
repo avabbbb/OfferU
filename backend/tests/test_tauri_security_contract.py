@@ -16,7 +16,15 @@ class TauriSecurityContractTests(unittest.TestCase):
 
         manifest = json.loads(capability_files[0].read_text(encoding="utf-8"))
         self.assertEqual(manifest["windows"], ["main"])
-        self.assertEqual(manifest["permissions"], ["core:default"])
+        self.assertEqual(
+            manifest["permissions"],
+            [
+                "core:event:default",
+                "core:window:default",
+                "core:webview:default",
+                "core:app:default",
+            ],
+        )
         self.assertNotIn("shell", json.dumps(manifest).lower())
 
         tauri_config = json.loads(
@@ -24,12 +32,14 @@ class TauriSecurityContractTests(unittest.TestCase):
         )
         self.assertEqual(tauri_config["build"]["frontendDist"], "../dist")
         self.assertEqual(tauri_config["build"]["devUrl"], "http://127.0.0.1:7410")
-        self.assertEqual(tauri_config["bundle"]["externalBin"], ["binaries/offeru-backend"])
+        self.assertEqual(
+            tauri_config["bundle"]["externalBin"],
+            ["binaries/offeru-backend", "binaries/offeru-node"],
+        )
         self.assertEqual(
             tauri_config["bundle"]["resources"],
             {
                 "../../.tmp/p/": "agent-runtime/",
-                "../../.tmp/offeru-node-runtime.exe": "node.exe",
             },
         )
         csp = str(tauri_config["app"]["security"]["csp"])

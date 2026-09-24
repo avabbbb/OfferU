@@ -61,9 +61,9 @@ Playwright 只能单独证明前端回归；scripted executor 只能单独证明
 
 `summary.json` / `summary.md` 会单独显示 `AGENT_NATIVE_E2E = NOT_RUN`；单个 Case 的 `PASS` 只表示自动判分的业务 Outcome 达标，不能升级为 Agent-native 端到端通过。
 
-当前实现尚无经 OS 隔离的真实模型运行证据，也没有覆盖完整 Workbench 拒绝路径：
-Workbench 有可见批准操作，但没有对应的可见拒绝操作。Runner 可以等待并观察持久化
-决定，但未捕获的人类 HITL 证据不能由 RPC 启动或自动判分替代。
+当前实现尚无经 OS 隔离的真实模型运行证据。Workbench 代码现已提供逐 action 的可见
+确认与拒绝入口；但还没有真实用户通过拒绝入口作出决定，并由同一 OMP session 观察持久化
+结果后继续的证据。Runner 可以等待并观察持久化决定，但自动判分不能替代人类 HITL 证据。
 
 ---
 
@@ -146,10 +146,9 @@ H:/tmp/offeru/live-eval-runs/<YYYYMMDD-HHMMSS>/
 **能力模式的确认由 runner 侧执行**（`app.cli confirm`），被测 Agent 的 allowlist 里显式
 `deny` 了 confirm —— **Agent 永远不能自批**。
 
-OMP policy 同样显式拒绝 Agent 自己执行 `app.cli run reject_agent_run`。Workbench
-目前没有可见拒绝操作，因此 real-user E2E 不能声称验证了用户从 Workbench 拒绝并让
-Agent 在同一会话继续的路径。Capability-mode 的 runner 决策是模拟行为，不是人类 HITL
-证据。
+OMP policy 同样显式拒绝 Agent 自己执行 `app.cli run reject_agent_run`。Workbench 现已
+提供逐 action 拒绝；real-user E2E 仍须验证用户从该入口拒绝，并由同一 Agent 会话观察持久化
+决定后继续。Capability-mode 的 runner 决策是模拟行为，不是人类 HITL 证据。
 
 判分输入只排除和 runner 已记录决定精确对应的确认审计：Workbench 人工批准为
 `surface=pi` + `decision=accepted`；capability runner 的模拟批准为

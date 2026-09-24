@@ -77,6 +77,7 @@ _RUN_EVENT_MAP = {
     "operation.started": "tool.started",
     "operation.completed": "tool.completed",
     "operation.failed": "tool.failed",
+    "operation.rejected": "approval.resolved",
     "operation.proposed": "approval.requested",
     "approval.requested": "approval.requested",
     "approval.resolved": "approval.resolved",
@@ -181,6 +182,8 @@ class AgentRunProvider(Protocol):
 
     async def confirm_run(self, run_id: str, *, action_id: str) -> dict[str, Any]: ...
 
+    async def reject_run(self, run_id: str, *, action_id: str) -> dict[str, Any]: ...
+
     async def abort_run(self, run_id: str) -> dict[str, Any]: ...
 
 
@@ -269,6 +272,11 @@ class PiAgentRuntimeProvider:
         from app.services.pi_agent_host import confirm_pi_agent_action
 
         return await confirm_pi_agent_action(run_id, action_id=action_id)
+
+    async def reject_run(self, run_id: str, *, action_id: str) -> dict[str, Any]:
+        from app.services.pi_agent_host import reject_pi_agent_action
+
+        return await reject_pi_agent_action(run_id, action_id=action_id)
 
     async def abort_run(self, run_id: str) -> dict[str, Any]:
         from app.services.pi_agent_host import abort_pi_agent_run
@@ -474,6 +482,30 @@ class ReplayAgentRunProvider:
             "tool_calls": [],
             "errors": [f"Replay provider 没有可确认的动作: {action_id}"],
             "pending_actions": pending_actions_for_run(run),
+        }
+
+    async def reject_run(self, run_id: str, *, action_id: str) -> dict[str, Any]:
+        from app.ops import execute_operation
+        from app.services.agent_run_state import pending_actions_for_run
+
+        result = await execute_operation(
+            "reject_agent_run",
+            {"run_id": run_id, "action_id": action_id},
+            surface="agent_runtime_ui",
+        )
+        if not result.get("ok"):
+            return {
+                "ok": False,
+                "errors": list(result.get("errors") or []),
+                "tool_calls": [],
+            }
+        outputs = result.get("outputs") if isinstance(result.get("outputs"), dict) else {}
+        run = outputs.get("run") if isinstance(outputs.get("run"), dict) else {}
+        return {
+            "ok": bool(run),
+            "run": run,
+            "pending_actions": pending_actions_for_run(run),
+            "tool_calls": [],
         }
 
     async def abort_run(self, run_id: str) -> dict[str, Any]:

@@ -51,7 +51,7 @@ class FakeCodexAdapter:
 
 class AgentIntegrationTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
-        self.temp = tempfile.TemporaryDirectory(dir="H:/tmp/offeru")
+        self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.env = patch.dict("os.environ", {"CODEX_HOME": str(self.root / "codex")})
         self.env.start()

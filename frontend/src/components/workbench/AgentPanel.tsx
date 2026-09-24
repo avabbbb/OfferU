@@ -11,7 +11,6 @@ import {
   Activity,
   AlertTriangle,
   Briefcase,
-  CheckCircle2,
   ChevronDown,
   ChevronUp,
   History,
@@ -484,33 +483,41 @@ export function AgentPanel() {
     }
   };
 
-  const confirmPendingActions = async () => {
-    if (!activeRunId || pendingActions.length === 0 || loading) return;
+  const decidePendingAction = async (
+    action: AgentProposedAction,
+    decision: "approve" | "reject",
+  ) => {
+    if (!activeRunId || loading) return;
     setLoading(true);
-    setProgressText("正在通过 Registry 执行已确认动作...");
+    setProgressText(
+      decision === "approve" ? "正在通过 Registry 执行此动作..." : "正在记录此动作的拒绝...",
+    );
     setError("");
     try {
-      let finalRun: AgentRunRecord | null = null;
-      const toolCalls: AgentToolCall[] = [];
-      for (const action of pendingActions) {
-        const result = await agentRuntimeApi.confirm(activeRunId, action.id);
-        finalRun = result.run;
-        toolCalls.push(...(result.tool_calls || []));
-        if (result.errors?.length) {
-          throw new Error(safeClientErrorMessage(result.errors.join("；"), "确认动作执行失败"));
-        }
+      const result = decision === "approve"
+        ? await agentRuntimeApi.confirm(activeRunId, action.id)
+        : await agentRuntimeApi.reject(activeRunId, action.id);
+      if (!result.ok || result.errors?.length) {
+        throw new Error(
+          safeClientErrorMessage(
+            result.errors?.join("；") || "动作决定未能保存",
+            decision === "approve" ? "确认动作执行失败" : "拒绝动作失败",
+          ),
+        );
       }
-      if (!finalRun) throw new Error("确认结果缺少 Agent Run");
+      const finalRun = result.run;
       const remaining = pendingActionsFromRun(finalRun);
+      const message = decision === "reject"
+        ? `已拒绝“${action.summary}”；该动作不会执行。${remaining.length > 0 ? `仍有 ${remaining.length} 个动作等待确认。` : "本次 Run 已结束，可以继续对话。"}`
+        : remaining.length > 0
+          ? `已执行“${action.summary}”，仍有 ${remaining.length} 个动作等待确认。`
+          : "已通过 OfferU Operation Registry 执行确认动作，并完成审计。";
       const response: AgentResponse = {
-        assistant_message:
-          remaining.length > 0
-            ? `已执行确认动作，仍有 ${remaining.length} 个动作等待确认。`
-            : "已通过 OfferU Operation Registry 执行确认动作，并完成审计。",
+        assistant_message: message,
         mode: finalRun.mode,
         active_skill: latestResponse?.active_skill,
         requires_confirmation: remaining.length > 0,
-        tool_calls: toolCalls,
+        tool_calls: result.tool_calls || [],
         proposed_actions: remaining,
       };
       setMessages((prev) => [
@@ -525,7 +532,12 @@ export function AgentPanel() {
       setPendingActions(remaining);
       if (remaining.length === 0) setActiveRunId(null);
     } catch (err: any) {
-      setError(safeClientErrorMessage(err, "确认动作失败"));
+      setError(
+        safeClientErrorMessage(
+          err,
+          decision === "approve" ? "确认动作失败" : "拒绝动作失败",
+        ),
+      );
     } finally {
       setLoading(false);
     }
@@ -1025,25 +1037,33 @@ export function AgentPanel() {
 
       {hasPendingActions && (
         <div className="border-t border-[var(--border)] bg-[var(--status-blush)] px-3 py-2.5">
-          <p className="text-[12px] font-semibold text-[var(--foreground)]">需要确认的动作</p>
+          <p className="text-[12px] font-semibold text-[var(--foreground)]">逐项审核动作</p>
           <div className="mt-1.5 space-y-1.5">
             {pendingActions.map((action) => (
               <div
                 key={action.id}
-                className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[12px] text-[var(--foreground)]"
+                className="flex items-start justify-between gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[12px] text-[var(--foreground)]"
               >
-                {action.summary}
+                <span className="min-w-0 flex-1">{action.summary}</span>
+                <div className="flex shrink-0 gap-1">
+                  <Button
+                    onPress={() => decidePendingAction(action, "reject")}
+                    isDisabled={loading}
+                    className="bauhaus-button bauhaus-button-outline !min-h-7 !justify-center !px-2 !py-1 !text-[11px]"
+                  >
+                    拒绝
+                  </Button>
+                  <Button
+                    onPress={() => decidePendingAction(action, "approve")}
+                    isDisabled={loading}
+                    className="bauhaus-button bauhaus-button-red !min-h-7 !justify-center !px-2 !py-1 !text-[11px]"
+                  >
+                    确认
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
-          <Button
-            onPress={confirmPendingActions}
-            isDisabled={loading}
-            startContent={loading ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
-            className="bauhaus-button bauhaus-button-red mt-2 !min-h-8 !w-full !justify-center !py-1 !text-[12px]"
-          >
-            确认执行
-          </Button>
           <Button
             onPress={abortPendingRun}
             isDisabled={loading}

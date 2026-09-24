@@ -140,12 +140,10 @@ Agent → python -m app.cli confirm ...
 The eval OMP config explicitly denies both `app.cli confirm` and
 `app.cli run reject_agent_run`.
 
-The current Workbench exposes an approval action but no matching visible
-rejection action. A persisted rejection can be observed if another authorized
-OfferU surface records one, but that does not exercise a visible Workbench
-rejection path. Do not claim reject-and-continue acceptance until the user can
-reject through the normal Workbench and the same OMP session observes that
-decision. In `real-user` mode, the runner waits for a human decision; simulated
+The Workbench now exposes per-action approval and rejection controls. This code
+path remains unvalidated until a user rejects through the normal Workbench and
+the same OMP session observes that persisted decision and continues. In
+`real-user` mode, the runner waits for a human decision; simulated
 approval/rejection belongs to capability-mode evaluation only.
 
 The grader's self-confirm rule is based on the audit operation name. The runner
@@ -306,9 +304,9 @@ A trial can report `AGENT_NATIVE_E2E = PASS` only when:
 10. The authorized trial data is the data actually used by CLI calls, and OMP runs inside an OS-isolated environment.
 11. No false-success claim is emitted.
 
-The current Workbench has no visible rejection action, and human-vs-Agent
-confirmation attribution must be verified in the grader input. Those gaps keep
-the corresponding HITL acceptance unproven.
+The per-action Workbench rejection control is implemented, but human-vs-Agent
+decision attribution and same-session observation must still be verified in
+the grader input. Those gaps keep the corresponding HITL acceptance unproven.
 
 ## Reliability
 

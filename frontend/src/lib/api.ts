@@ -1106,6 +1106,14 @@ export const agentRuntimeApi = {
         body: JSON.stringify({ action_id: actionId }),
       }
     ),
+  reject: (runId: string, actionId: string) =>
+    request<AgentConfirmationResponse>(
+      `/api/agent/runtime/runs/${encodeURIComponent(runId)}/reject`,
+      {
+        method: "POST",
+        body: JSON.stringify({ action_id: actionId }),
+      }
+    ),
   resume: (runId: string) =>
     request<AgentRunResponse>(
       `/api/agent/runtime/runs/${encodeURIComponent(runId)}/resume`,
