@@ -23,6 +23,7 @@ from release_endpoints import (
     release_frontend_url,
 )
 from temp_paths import test_temp_root
+from test_public_release_smoke import _complete_new_user_onboarding
 
 BASE_URL = release_frontend_url()
 API_URL = release_api_url()
@@ -43,41 +44,7 @@ def _create_profile_and_job(page, suffix: str) -> tuple[int, dict]:
     page.goto(f"{BASE_URL}/#/?interview_smoke={suffix}", wait_until="domcontentloaded")
     page.evaluate("localStorage.clear()")
     page.reload(wait_until="domcontentloaded")
-    expect(page.get_by_role("button", name="生成求职画像", exact=True)).to_be_visible(
-        timeout=20000
-    )
-    for label in (
-        "先拆目标和节奏",
-        "能被看见的内容",
-        "把资源和人拉起来",
-        "数字结果",
-        "愿意冲成长方向",
-    ):
-        page.get_by_role("button", name=label, exact=False).click()
-    page.get_by_role("button", name="生成求职画像", exact=True).click()
-    page.get_by_role("button", name="跳过", exact=True).click()
-    page.get_by_text("快速创建", exact=True).wait_for(timeout=10000)
-    page.get_by_text("快速创建", exact=True).click()
-
-    page.get_by_label("姓名", exact=True).fill("OfferU Interview User")
-    page.get_by_label("目标方向", exact=True).fill("AI 产品经理")
-    page.get_by_label("学校", exact=True).fill("OfferU Interview University")
-    page.get_by_label("专业", exact=True).fill("Computer Science")
-    page.get_by_label("素材 1", exact=True).fill(
-        "负责 AI 产品需求分析，协调设计与工程完成首版交付。"
-    )
-    page.get_by_label("素材 2", exact=True).fill(
-        "建立模型评测流程，整理用户反馈并推动两轮体验改进。"
-    )
-    page.get_by_label("素材 3", exact=True).fill(
-        "组织跨团队项目复盘，沉淀可复用的工作方法。"
-    )
-    page.get_by_role("button", name="创建简历", exact=True).click()
-    expect(page.get_by_text("简历已就绪", exact=True)).to_be_visible(timeout=30000)
-
-    page.get_by_role("button", name="保存第一个岗位", exact=True).click()
-    page.get_by_test_id("open-add-job").wait_for(timeout=20000)
-    page.get_by_test_id("open-add-job").click()
+    _complete_new_user_onboarding(page, suffix)
     title = "AI 产品经理"
     company = f"Interview Orbit {suffix}"
     page.get_by_test_id("add-job-title").fill(title)

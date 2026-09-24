@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import time
+from io import BytesIO
 from pathlib import Path
 
 from playwright.sync_api import expect, sync_playwright
@@ -35,6 +36,56 @@ def _json_response(page, url: str) -> dict:
     if not isinstance(payload, dict):
         raise AssertionError(f"expected object response: {url}")
     return payload
+
+
+def _synthetic_resume_docx() -> bytes:
+    """Build a stable, synthetic resume for the visible first-run import flow."""
+    from docx import Document
+
+    document = Document()
+    document.add_paragraph("姓名：OfferU E2E 用户")
+    document.add_paragraph("求职意向：AI 产品经理")
+    document.add_paragraph("工作经历")
+    document.add_paragraph("OfferU 测试科技有限公司 产品经理 2023.01 - 2025.01")
+    document.add_paragraph("负责 AI 产品需求分析，协调设计与工程完成首版交付。")
+    output = BytesIO()
+    document.save(output)
+    return output.getvalue()
+
+
+def _complete_new_user_onboarding(page, suffix: str) -> None:
+    """Use the current App-first onboarding UI to establish a profile and open job setup."""
+    expect(page.get_by_role("heading", name="把一个岗位，变成可准备的工作区")).to_be_visible(
+        timeout=20000
+    )
+    agent_status = page.get_by_test_id("agent-connection-status")
+    expect(agent_status).to_be_visible(timeout=20000)
+    expect(agent_status).to_contain_text("连接本机 Agent", timeout=30000)
+    expect(page.get_by_text("暂时没有可用 Agent 也可以继续。", exact=False)).to_be_visible()
+    page.get_by_role("button", name="继续", exact=True).click()
+
+    resume_input = page.get_by_label("选择简历文件", exact=True)
+    resume_input.set_input_files(
+        {
+            "name": f"offeru-e2e-resume-{suffix}.docx",
+            "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "buffer": _synthetic_resume_docx(),
+        }
+    )
+    expect(page.get_by_text("识别出 1 条内容", exact=False)).to_be_visible(timeout=30000)
+    expect(page.get_by_text("负责 AI 产品需求分析", exact=False)).to_be_visible()
+    expect(page.get_by_text("Word 文档正文", exact=True)).to_be_visible()
+    experience = page.get_by_role(
+        "checkbox", name="OfferU 测试科技有限公司", exact=False
+    )
+    experience.check()
+    page.get_by_role("button", name="确认所选内容，建立档案", exact=True).click()
+
+    expect(page.get_by_text("整理 AI 记忆", exact=True)).to_be_visible(timeout=30000)
+    page.get_by_role("button", name="跳过记忆", exact=True).click()
+    expect(page.get_by_role("button", name="开始保存目标岗位", exact=True)).to_be_visible()
+    page.get_by_role("button", name="开始保存目标岗位", exact=True).click()
+    expect(page.get_by_test_id("add-job-modal")).to_be_visible(timeout=20000)
 
 
 def main() -> None:
@@ -71,41 +122,7 @@ def main() -> None:
             page.goto(f"{BASE_URL}/#/?release_smoke={suffix}", wait_until="domcontentloaded")
             page.evaluate("localStorage.clear()")
             page.reload(wait_until="domcontentloaded")
-            expect(page.get_by_role("button", name="生成求职画像", exact=True)).to_be_visible(
-                timeout=20000
-            )
-            for label in (
-                "先拆目标和节奏",
-                "能被看见的内容",
-                "把资源和人拉起来",
-                "数字结果",
-                "愿意冲成长方向",
-            ):
-                page.get_by_role("button", name=label, exact=False).click()
-            page.get_by_role("button", name="生成求职画像", exact=True).click()
-            page.get_by_role("button", name="跳过", exact=True).click()
-            page.get_by_text("快速创建", exact=True).wait_for(timeout=10000)
-            page.get_by_text("快速创建", exact=True).click()
-
-            page.get_by_label("姓名", exact=True).fill("OfferU CI 用户")
-            page.get_by_label("目标方向", exact=True).fill("AI 产品经理")
-            page.get_by_label("学校", exact=True).fill("OfferU Test University")
-            page.get_by_label("专业", exact=True).fill("Computer Science")
-            page.get_by_label("素材 1", exact=True).fill(
-                "负责 AI 产品需求分析，协调设计与工程完成首版交付。"
-            )
-            page.get_by_label("素材 2", exact=True).fill(
-                "建立模型评测流程，整理用户反馈并推动两轮体验改进。"
-            )
-            page.get_by_label("素材 3", exact=True).fill(
-                "组织跨团队项目复盘，沉淀可复用的工作方法。"
-            )
-            page.get_by_role("button", name="创建简历", exact=True).click()
-            expect(page.get_by_text("简历已就绪", exact=True)).to_be_visible(timeout=30000)
-
-            page.get_by_role("button", name="保存第一个岗位", exact=True).click()
-            page.get_by_test_id("open-add-job").wait_for(timeout=20000)
-            page.get_by_test_id("open-add-job").click()
+            _complete_new_user_onboarding(page, suffix)
             page.get_by_test_id("add-job-title").fill("AI 产品经理")
             company = f"CI Orbit {suffix}"
             page.get_by_test_id("add-job-company").fill(company)
