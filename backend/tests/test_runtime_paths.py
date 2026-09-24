@@ -75,3 +75,23 @@ def test_sidecar_entry_configures_writable_runtime(monkeypatch, tmp_path: Path) 
     assert os.environ["OFFERU_BUILD_MODE"] == "release"
     assert os.environ["OFFERU_RUNTIME_MODE"] == "desktop-sidecar"
     assert os.environ["OFFERU_PORT"] == "8766"
+
+
+def test_sidecar_entry_dispatches_cli_with_isolated_data_dir(monkeypatch, tmp_path: Path) -> None:
+    import app.cli
+    from sidecar_entry import main
+
+    for name in ("OFFERU_DATA_DIR", "DATABASE_URL", "OFFERU_BUILD_MODE", "OFFERU_RUNTIME_MODE", "OFFERU_PORT"):
+        monkeypatch.delenv(name, raising=False)
+    calls: list[list[str]] = []
+    monkeypatch.setattr(app.cli, "main", lambda argv=None: calls.append(argv or []) or 7)
+
+    data_dir = tmp_path / "packaged-user-data"
+    result = main(["--data-dir", str(data_dir), "cli", "manifest", "--pretty"])
+
+    assert result == 7
+    assert calls == [["manifest", "--pretty"]]
+    assert Path(os.environ["OFFERU_DATA_DIR"]) == data_dir.resolve()
+    assert Path(os.environ["DATABASE_URL"].removeprefix("sqlite+aiosqlite:///")) == (
+        data_dir.resolve() / "djm.db"
+    )

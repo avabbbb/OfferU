@@ -23,7 +23,10 @@ from release_endpoints import (
     release_frontend_url,
 )
 from temp_paths import test_temp_root
-from test_public_release_smoke import _complete_new_user_onboarding
+from test_public_release_smoke import (
+    _complete_new_user_onboarding,
+    _use_replay_provider,
+)
 
 BASE_URL = release_frontend_url()
 API_URL = release_api_url()
@@ -52,8 +55,15 @@ def _create_profile_and_job(page, suffix: str) -> tuple[int, dict]:
     page.get_by_test_id("add-job-description").fill(
         "负责 AI 产品规划、用户需求分析、评测体系建设与跨团队交付；关注 Agent 工作流和产品增长。"
     )
-    page.get_by_test_id("add-job-submit").click()
-    page.wait_for_url("**/jobs/*", timeout=30000)
+    page.route("**/api/jobs/ingest", _use_replay_provider)
+    try:
+        page.get_by_test_id("add-job-submit").click()
+        page.wait_for_function(
+            "() => window.location.hash.startsWith('#/jobs/')",
+            timeout=30000,
+        )
+    finally:
+        page.unroute("**/api/jobs/ingest", _use_replay_provider)
 
     jobs = _json_response(page, f"{API_URL}/api/jobs/?page_size=100")
     matching = [item for item in jobs.get("items", []) if item.get("company") == company]
@@ -133,7 +143,29 @@ def main() -> None:
         trace_stopped = False
         try:
             job_id, job = _create_profile_and_job(page, suffix)
+            page.wait_for_function(
+                "jobId => window.location.hash.slice(1).split('?')[0] === `/jobs/${jobId}`",
+                arg=job_id,
+                timeout=20000,
+            )
             benchmark = _wait_for_role_benchmark(page, job_id)
+            tasks = _json_response(
+                page,
+                f"{API_URL}/api/agent/runtime/career-tasks"
+                f"?target_type=job&target_id={job_id}&limit=10",
+            )
+            role_tasks = [
+                item
+                for item in tasks.get("tasks", [])
+                if item.get("task_type") == "role_intelligence"
+            ]
+            if len(role_tasks) != 1:
+                raise AssertionError(
+                    f"interview smoke expected one role intelligence task, got {len(role_tasks)}"
+                )
+            task = role_tasks[0]
+            if task.get("status") != "completed" or task.get("runtime_provider") != "replay":
+                raise AssertionError(f"interview smoke must use a completed replay task: {task}")
             run_id = str(benchmark["run_id"])
 
             page.goto(

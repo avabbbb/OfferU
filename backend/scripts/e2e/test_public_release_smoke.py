@@ -38,6 +38,18 @@ def _json_response(page, url: str) -> dict:
     return payload
 
 
+def _replay_provider_payload(route) -> str:
+    payload = route.request.post_data_json
+    if not isinstance(payload, dict):
+        raise AssertionError("job ingest request must contain a JSON object")
+    payload["runtime_provider"] = "replay"
+    return json.dumps(payload, ensure_ascii=False)
+
+
+def _use_replay_provider(route) -> None:
+    route.continue_(post_data=_replay_provider_payload(route))
+
+
 def _synthetic_resume_docx() -> bytes:
     """Build a stable, synthetic resume for the visible first-run import flow."""
     from docx import Document
@@ -138,14 +150,7 @@ def main() -> None:
             # one preparation task when a user double-clicks. The isolated CI
             # runner has no local Agent, so select the supported replay provider
             # on this request instead of depending on host auto-discovery.
-            def use_replay_provider(route) -> None:
-                payload = route.request.post_data_json
-                if not isinstance(payload, dict):
-                    raise AssertionError("job ingest request must contain a JSON object")
-                payload["runtime_provider"] = "replay"
-                route.continue_(post_data=json.dumps(payload, ensure_ascii=False))
-
-            page.route("**/api/jobs/ingest", use_replay_provider)
+            page.route("**/api/jobs/ingest", _use_replay_provider)
             try:
                 page.get_by_test_id("add-job-submit").dblclick()
                 page.wait_for_function(
@@ -153,7 +158,7 @@ def main() -> None:
                     timeout=30000,
                 )
             finally:
-                page.unroute("**/api/jobs/ingest", use_replay_provider)
+                page.unroute("**/api/jobs/ingest", _use_replay_provider)
 
             jobs = _json_response(page, f"{API_URL}/api/jobs/?page_size=100")
             job = next(
@@ -213,9 +218,13 @@ def main() -> None:
                     f"duplicate submit created {len(matching_tasks)} role intelligence tasks"
                 )
 
-            page.goto(f"{BASE_URL}/#/jobs/{job_id}", wait_until="domcontentloaded")
-            expect(page.get_by_text("岗位情报", exact=False).first).to_be_visible(timeout=20000)
+            page.wait_for_function(
+                "jobId => window.location.hash.slice(1).split('?')[0] === `/jobs/${jobId}`",
+                arg=job_id,
+                timeout=20000,
+            )
             role_panel = page.get_by_test_id("role-intelligence-panel")
+            expect(role_panel).to_be_visible(timeout=20000)
             expect(role_panel).to_contain_text("20", timeout=30000)
             expect(page.get_by_text("材料候选", exact=True)).to_be_visible(timeout=30000)
             body = page.locator("body").inner_text()
@@ -232,15 +241,16 @@ def main() -> None:
 
             def fail_first_ingest(route) -> None:
                 retry_state["attempts"] += 1
+                replay_payload = _replay_provider_payload(route)
                 if retry_state["attempts"] == 1:
-                    route.fetch()
+                    route.fetch(post_data=replay_payload)
                     route.fulfill(
                         status=503,
                         content_type="application/json",
                         body=json.dumps({"detail": "模拟网络错误"}, ensure_ascii=True),
                     )
                     return
-                route.continue_()
+                route.continue_(post_data=replay_payload)
 
             page.route("**/api/jobs/ingest", fail_first_ingest)
             try:
@@ -306,8 +316,13 @@ def main() -> None:
                 raise AssertionError(
                     f"transport retry created {len(retry_matching_tasks)} role intelligence tasks"
                 )
-            page.goto(f"{BASE_URL}/#/jobs/{retry_job_id}", wait_until="domcontentloaded")
+            page.wait_for_function(
+                "jobId => window.location.hash.slice(1).split('?')[0] === `/jobs/${jobId}`",
+                arg=retry_job_id,
+                timeout=20000,
+            )
             retry_role_panel = page.get_by_test_id("role-intelligence-panel")
+            expect(retry_role_panel).to_be_visible(timeout=20000)
             expect(retry_role_panel).to_contain_text("20", timeout=30000)
 
             expected_bad_responses = [
