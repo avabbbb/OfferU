@@ -294,7 +294,10 @@ class PiAgentHostTests(unittest.TestCase):
     def test_pi_runtime_routes_are_canonical_agent_routes(self) -> None:
         from app.main import app
 
-        paths = {getattr(route, "path", "") for route in app.routes}
+        # FastAPI 0.137+ keeps included routers as lazy ``_IncludedRouter``
+        # entries in ``app.routes`` instead of flattening every child route.
+        # OpenAPI is the public, version-stable view of registered HTTP paths.
+        paths = set(app.openapi()["paths"])
         self.assertIn("/api/agent/runtime/runs", paths)
         self.assertIn("/api/agent/runtime/runs/stream", paths)
         self.assertIn(

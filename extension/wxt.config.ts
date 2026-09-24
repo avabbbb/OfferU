@@ -10,7 +10,8 @@ export default defineConfig({
   },
   hooks: {
     "entrypoints:found": (wxt, entrypoints) => {
-      const popupPath = path.resolve(wxt.config.root, "popup.html");
+      // Root popup.html is synced build output and may contain stale chunk hashes.
+      const popupPath = path.resolve(wxt.config.root, "src", "popup.html");
       if (entrypoints.some((entrypoint) => entrypoint.name === "popup")) return;
       entrypoints.push({
         name: "popup",

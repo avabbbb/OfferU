@@ -29,7 +29,7 @@ npm run build
 1. `wxt build` 产出 `.output/chrome-mv3`
 2. `scripts/sync-root-build.mjs` 将浏览器加载所需文件同步到 `extension` 根目录
 
-根目录的 `popup.html` 是 WXT 的源码入口桥接；构建会把 `src/popup.ts` 打包成实际的 popup 脚本。同步脚本发现 `popup.html` 或 `chunks/` 缺失时会直接失败，不会保留旧的、可能指向不存在脚本的根目录产物。
+Popup 源码入口是 `src/popup.html`，由它引用 `src/popup.ts` 与 `static/popup.css`。构建后的根目录 `popup.html` 和 `chunks/` 是生成产物，WXT 不会把它们重新当作输入；因此干净 checkout 不需要预先包含旧 hash 的 chunk。同步脚本会在新构建校验成功后更新根目录产物。
 
 ## 加载方式（Chromium 浏览器）
 1. 打开扩展管理页，启用开发者模式。
