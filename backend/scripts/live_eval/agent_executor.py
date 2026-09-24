@@ -38,7 +38,7 @@ import sys
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 BACKEND_DIR = PROJECT_ROOT / "backend"
@@ -91,10 +91,35 @@ class OmpRpcExecution:
         return asdict(self)
 
 
+def _resolve_omp_executable(
+    omp_bin: str | None = None,
+    *,
+    is_windows: bool | None = None,
+    which: Callable[[str], str | None] | None = None,
+) -> str | None:
+    """Resolve OMP while preferring runnable npm wrappers on Windows."""
+
+    configured = omp_bin or os.environ.get("OFFERU_OMP_PATH")
+    if configured:
+        return configured
+
+    find_executable = which or shutil.which
+    executable = find_executable("omp")
+    windows = os.name == "nt" if is_windows is None else is_windows
+    if windows and executable and not Path(executable).suffix:
+        # npm may put a POSIX shell shim first on PATH; CreateProcess cannot run
+        # it. Prefer a Windows launcher while retaining explicit user paths.
+        for suffix in (".cmd", ".exe", ".bat", ".ps1"):
+            wrapper = find_executable(f"omp{suffix}")
+            if wrapper:
+                return wrapper
+    return executable
+
+
 def resolve_omp_command(
     args: list[str], *, omp_bin: str | None = None
 ) -> tuple[str, list[str]] | None:
-    executable = omp_bin or os.environ.get("OFFERU_OMP_PATH") or shutil.which("omp")
+    executable = _resolve_omp_executable(omp_bin)
     return _coding_agent_command(executable, args) if executable else None
 
 
@@ -102,9 +127,9 @@ def resolve_omp_command(
 def _probe_omp_cached(executable: str, mtime_ns: int) -> tuple[str, str]:
     del mtime_ns  # cache key invalidates the result when the installed CLI changes
     try:
-        version_command = _coding_agent_command(executable, ["--version"])
+        version_program, version_args = _coding_agent_command(executable, ["--version"])
         version_result = subprocess.run(
-            version_command,
+            [version_program, *version_args],
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -114,9 +139,9 @@ def _probe_omp_cached(executable: str, mtime_ns: int) -> tuple[str, str]:
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         version_text = ((version_result.stdout or "") + (version_result.stderr or "")).strip()
-        help_command = _coding_agent_command(executable, ["--help"])
+        help_program, help_args = _coding_agent_command(executable, ["--help"])
         help_result = subprocess.run(
-            help_command,
+            [help_program, *help_args],
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -143,7 +168,7 @@ def _probe_omp_cached(executable: str, mtime_ns: int) -> tuple[str, str]:
 
 
 def probe_omp_cli(omp_bin: str | None = None) -> dict[str, Any]:
-    executable = omp_bin or os.environ.get("OFFERU_OMP_PATH") or shutil.which("omp")
+    executable = _resolve_omp_executable(omp_bin)
     if not executable:
         return {"ok": False, "executable": "", "version": "unavailable", "error": "OMP executable not found"}
     try:
@@ -548,7 +573,7 @@ class OmpRpcAgentSession:
 
     async def start(self) -> str:
         self.session_dir.mkdir(parents=True, exist_ok=True)
-        executable = self.omp_bin or os.environ.get("OFFERU_OMP_PATH") or shutil.which("omp") or ""
+        executable = _resolve_omp_executable(self.omp_bin) or ""
         if not executable:
             self.error = "OMP executable not found on PATH"
             return self.error

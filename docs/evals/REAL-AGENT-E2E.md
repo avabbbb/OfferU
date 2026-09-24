@@ -34,11 +34,10 @@ Career Truth
 
 ## Prerequisites
 
-1. OMP is installed and authenticated.
-2. The requested model resolves in `omp --list-models`.
-3. A private/isolated eval database exists.
-4. OfferU's generated Skill exists at `.agents/skills/offeru/SKILL.md`.
-5. For visible HITL acceptance, set `OFFERU_LIVE_EVAL_KEEP_DB=1`, then run OfferU frontend/backend against the exact database path recorded in `runtime.json`.
+1. OMP is installed. `omp models` displays the model catalog; catalog presence does not verify provider authentication, account entitlement, successful resolution for a request, or the model observed in a session. The runner must record observed identity, and unavailable evidence stays unverified. The old top-level `--list-models` invocation is stale.
+2. A private/isolated eval database exists.
+3. OfferU's generated Skill exists at `.agents/skills/offeru/SKILL.md`.
+4. For human review, set `OFFERU_LIVE_EVAL_KEEP_DB=1` and launch the **OfferU Tauri desktop app** with its backend configured for the exact isolated database path recorded in `runtime.json`. Verify that effective path before making a decision. A standalone browser frontend, CLI, or MCP client cannot approve or reject the proposal.
 
 The runner does **not** require Playwright to drive the Agent.
 
@@ -51,7 +50,7 @@ $env:OFFERU_LIVE_EVAL_KEEP_DB = "1"
 python scripts/live_eval/runner.py --runtime omp --omp-model avabbbb/devin/swe-2 --omp-thinking xhigh --resume-opt-file H:\tmp\offeru\private-eval\private_resume_opt_6.json --source-db H:\tmp\offeru\private-eval\eval.db --case PR01 --mode real-user
 ```
 
-The runner prints and records the cloned `eval.db` path. Point the separately run backend at that database with `DATABASE_URL=sqlite+aiosqlite:///...`; do not point it at `backend/djm.db` or a user database.
+The runner prints and records the cloned `eval.db` path. Configure the OfferU Tauri desktop process and its backend to use that exact cloned database; do not point it at `backend/djm.db` or a user database. Human review must happen in that desktop instance, so the decision, Agent Run, and audit rows land in the database the runner is watching. Opening the same URL in a standalone browser does not grant the desktop approval capability.
 
 The runner launches OMP once per case through its documented RPC protocol and keeps that in-memory session open across scripted user turns and OfferU human-review waits:
 
@@ -100,7 +99,7 @@ read,bash,grep,glob
 The per-run OMP config is fail-closed for Bash approval:
 
 - `python -m app.cli ...` is allowed;
-- `app.cli confirm` and `app.cli run reject_agent_run` are explicitly denied;
+- command patterns containing `app.cli confirm` and `app.cli run reject_agent_run` are explicitly denied; the public CLI does not expose a `confirm` subcommand;
 - other Bash commands require an interactive approval that the non-interactive runner cancels.
 
 These rules are an OMP command-approval policy, not an operating-system sandbox. The `read` tool can access filesystem paths and web URLs, and OMP plus its allowed CLI subprocesses retain the launching user's ambient privileges. The isolated database only limits which database OfferU CLI uses; it does not contain OMP's filesystem or network access. Run a real model only inside an authorized OS-isolated environment whose accessible files and network are in scope.
@@ -112,8 +111,11 @@ OfferU side-effect Operations still create Proposal/HITL state.
 ## Human review
 
 The Coding Agent must never confirm or reject its own OfferU Proposal. The OMP
-command policy denies both CLI paths, and the prompt tells the Agent to leave
-the decision to a person.
+command policy denies those command patterns, and the prompt tells the Agent to
+leave the decision to a person. Protected Proposal decisions are not available
+through the public CLI or MCP. A real person must decide in the OfferU Tauri
+desktop instance using the exact isolated eval database; a standalone browser
+cannot submit the decision.
 
 Correct:
 
@@ -124,39 +126,39 @@ OfferU creates waiting_confirmation Proposal
         ↓
 Agent stops / reports the pending decision
         ↓
-human reviews in OfferU frontend
+human reviews in OfferU Tauri desktop
         ↓
-human approves in OfferU frontend
+human approves or rejects in OfferU Tauri desktop
         ↓
 the same OMP session observes the persisted result and may continue
 ```
 
-Incorrect:
+The denied `app.cli confirm` string is a defense-in-depth command-pattern
+rule, not a usable CLI workflow: no public CLI confirm command exists. The
+policy also denies `app.cli run reject_agent_run` for the Agent.
 
-```text
-Agent → python -m app.cli confirm ...
-```
-
-The eval OMP config explicitly denies both `app.cli confirm` and
-`app.cli run reject_agent_run`.
-
-The Workbench now exposes per-action approval and rejection controls. This code
-path remains unvalidated until a user rejects through the normal Workbench and
-the same OMP session observes that persisted decision and continues. In
-`real-user` mode, the runner waits for a human decision; simulated
-approval/rejection belongs to capability-mode evaluation only.
+The Tauri Workbench exposes per-action approval and rejection controls. This
+path remains unvalidated until a person makes a decision in the desktop app
+against the exact eval database and the same OMP session observes that
+persisted decision and continues. In `real-user` mode, the runner waits for
+that human decision. The legacy `--mode capability` path is unsupported and
+unavailable for current acceptance; the current runner accepts only
+`--mode real-user`. Its old simulated decisions depended on the removed public
+CLI confirm command. Historical capability-mode decisions were simulated,
+non-Agent-native, and are not human HITL evidence.
 
 The grader's self-confirm rule is based on the audit operation name. The runner
 therefore keeps the complete `audit.json` and writes a separate
 `grader_audit.json`; it excludes a confirm audit row only when its surface,
 exact `confirmation_ref=agent-run:<run_id>:<action_id>`, and recorded decision
-match. Workbench acceptance uses `surface=pi` plus `decision=accepted`;
-capability-mode runner approval uses `surface=cli` plus `decision=approve` and
-is simulated behavior, not human HITL evidence. Missing or ambiguous
-attribution remains in grader input, and a decision that changes before the
-pre-review checkpoint produces `NOT_RUN`. This path still needs a live,
-human-visible review to be validated before it can support a clean Agent-native
-verdict.
+match. Current Tauri Workbench approval is attributed to
+`surface=agent_runtime_ui` plus `decision=accepted`; `surface=pi` is accepted
+only for legacy records. Historical capability-mode runner approval used
+`surface=cli` plus `decision=approve`; that simulated row is never human HITL
+evidence. Missing or ambiguous attribution remains in grader input, and a
+decision that changes before the pre-review checkpoint produces `NOT_RUN`.
+This path still needs a live, human-visible review to be validated before it
+can support a clean Agent-native verdict.
 
 ## What to verify
 
@@ -229,19 +231,24 @@ Examples:
 
 ### 5. Frontend/HITL
 
-For the human-facing Golden Path, the user keeps the normal OfferU frontend open themselves.
+For the human-facing Golden Path, the user opens the OfferU Tauri desktop app
+themselves and confirms it is using the exact cloned eval database from
+`runtime.json`.
 
 The Agent operates via tools.
 
-The human uses the frontend to:
+The human uses the Tauri desktop UI to:
 
 - understand progress;
-- inspect Proposal diff;
-- edit where supported;
+- inspect the Proposal goal, action summary, Operation, and redacted arguments;
 - approve the Proposal;
+- reject an action when appropriate;
 - inspect resulting Career Truth.
 
-This does not require Playwright or `headless=false`.
+The current pending-review surface does not provide a generic Proposal diff or
+editor. A standalone browser, CLI, MCP client, Playwright, or Agent cannot make
+the human decision. No real human HITL result has been captured yet, so the
+status remains `AGENT_NATIVE_E2E = NOT_RUN`.
 
 Playwright remains a separate frontend-regression surface.
 

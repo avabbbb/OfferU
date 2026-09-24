@@ -10,7 +10,7 @@ Issue Type 取值见 [GRADING.md](./GRADING.md) 的十类 taxonomy。
 
 ---
 
-## F1 — Eval 自身缺陷：隔离环境没有 seed "当前上下文"
+## F1 — 历史发现：Eval 隔离环境没有 seed "当前上下文"
 
 | 字段 | 值 |
 | --- | --- |
@@ -60,7 +60,7 @@ Source C  Browser/Recruiter ┘        （带 source / provenance / confidence�
 
 ---
 
-## F3 — 设计摩擦：外部 Agent 无法直接同步 UI 上下文
+## F3 — 历史发现：外部 Agent 无法直接同步 UI 上下文
 
 | 字段 | 值 |
 | --- | --- |
@@ -78,6 +78,17 @@ Source C  Browser/Recruiter ┘        （带 source / provenance / confidence�
 **待决策**：外部 Agent「告诉 OfferU 我在看什么」在 CLI 路径上需要人类确认，若每次导航都确认则实际不可用；需明确是否应归为低风险直接写入，或为 Bridge/CLI 暴露与 `surface="ui"` 一致的语义。
 
 ---
+
+> F1 与 F3 保留的是 2026-09-14 的历史运行诊断。F3 表中的「提案 + confirm」是当时的 seed 修复方式，不代表当前 runner 实现；当前方式见下方 2026-09-24 更新。
+
+## 2026-09-24 — F1/F3 实现更新：隔离副本内写入 fixture-only 当前岗位上下文
+
+- 代码路径：`backend/scripts/live_eval/runner.py::_validate_eval_database()` 与 `_seed_current_view()`。
+- Clone 边界：先将源库克隆到本 case 的 `eval.db`；fixture helper 要求 `DATABASE_URL` 精确指向解析后的 clone 路径，并拒绝 symlink。目标岗位必须存在于该 clone 的 `jobs` 表。
+- 初始化：runner 先对 clone 调用只读 Registry Operation `get_current_view`。它产生的只读审计行在 `db_before.json` 快照和审计基线采集之前写入，因此不属于本 case 的 Agent execution evidence。
+- Fixture 写入：随后用参数化 SQLite upsert 直接写 clone 的 `agent_workspace_states`，以 `updated_by='live_eval_fixture'` 标记，预置 `route=/jobs/<job_id>` 和 `entity_type=job` / `entity_id=<job_id>`。这一步不调用业务 mutation Operation，不创建 Proposal，也不执行批准或确认。
+- 证据：`seed_state.json` 记录 `stage=fixture_context`、`fixture_only=true`、`side_effect_operation_executed=false`、`proposal_created=false`、`approval_performed=false`；`case.json` 记录 `target_job_id` 与 `context_seeded`。
+- 状态：F1/F3 的历史症状仍是有效历史记录；旧的 `set_current_view` 提案加确认 seed 路径已被上述隔离 fixture 方式取代。该上下文只存在于 case clone，不代表产品用户上下文已被写入。
 
 ## F4 — Grader 缺陷：裸 "401" 子串匹配把成功运行误判成 provider 故障
 

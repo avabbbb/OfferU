@@ -17,7 +17,7 @@
 - 现象：`vague_prepare`、`status_change_proposal` 双双判 FAIL，理由都是「期望出现等待确认的提案，但数据库中没有对应记录」。
 - 实际上 Agent 行为是正确的：它调用 `get_current_view` 后发现 `route="/"`、`entity_id=""`，于是**明确报告"UI 没有告诉我当前是哪个公司/岗位"**，列出候选并请用户确认，没有编造目标。
 - 根因：Eval 的 seed 只复制了数据库，**没有预置 `current view`**。真实使用时这一项由前端 `set_current_view` 写入；隔离环境没有前端，于是所有「我当前这个岗位」类题目都退化成"找不到目标"。
-- 归属：`grader_uncertain` → 已修复（runner 侧 `_seed_current_view()` 在副本上预置 `entity_type=job` + `entity_id`，并把选中的 `target_job_id` 记入 `case.json`）。
+- 归属：`grader_uncertain` → 当时已修复。历史实现由 runner 侧 `_seed_current_view()` 在副本上预置 `entity_type=job` + `entity_id`，并把选中的 `target_job_id` 记入 `case.json`；现行 fixture-only seed 方式见 2026-09-24 更新。
 - 教训：Eval 的 seed 必须包含**UI 侧契约**，不能只复制数据表。
 
 ## 2026-09-14 — 产品缺口：「我进二面了」没有可用的写入路径
@@ -47,11 +47,20 @@
 - 证据：`app.cli run set_current_view --args '{...}'` → `outputs.proposal.run_id`；`PUT /api/agent/context` → 直接成功。
 - 影响：
   1. 外部 Agent「告诉 OfferU 我正在看什么」在 CLI 路径上需要人类确认；若每次导航都确认，实际不可用。
-  2. Eval 的 seed 也必须走"提案 + 确认"两步才能真正预置 current view（runner 已按此实现）。
+  2. 当时的 Eval seed 也曾走"提案 + 确认"两步来预置 current view；这是历史实现，不是当前 seed 路径。当前方式见 2026-09-24 更新。
 - 归属：`product_gap`（设计摩擦，不是 bug）。需要明确：UI 上下文同步是否应归为低风险直接写入，或为 Bridge/CLI 暴露与 `surface="ui"` 一致的语义。
 
 ## 待补
 
 - `--repeat 3` 的稳定性通过率尚未跑。
-- `--mode capability`（自动确认 + 补 "Go on"）已实现，尚未跑通验证。
+- `--mode capability` 已禁用且不可用；当前 runner 仅支持 `--mode real-user`。此前的模拟审批依赖已移除的公共 CLI `confirm`，不属于 Agent-native 或真实 HITL 验收路径。
 - 尚未在 `--suite complex` 上验证跨模块与多轮上下文保持。
+
+## 2026-09-24 — F1/F3 runner 实现更新：fixture-only context seed
+
+- 代码路径：`backend/scripts/live_eval/runner.py::_validate_eval_database()` 与 `_seed_current_view()`。
+- Clone 边界：每个 case 先创建独立 `eval.db`；seed helper 要求 `DATABASE_URL` 精确指向解析后的 clone 路径，并拒绝 symlink。目标岗位还必须存在于该 clone 的 `jobs` 表。
+- 初始化：runner 先对 clone 调用只读 Registry Operation `get_current_view`。该读取产生的审计行在 `db_before.json` 快照和 case 审计基线采集之前写入，不会成为本 case Agent execution evidence。
+- Fixture 写入：随后以参数化 SQLite upsert 直接写入 clone 的 `agent_workspace_states`，用 `updated_by='live_eval_fixture'` 标记，并预置 `/jobs/<job_id>`、`entity_type=job`、`entity_id=<job_id>`。这次 upsert 不调用业务 mutation Operation，不创建 Proposal，也不执行批准或确认。
+- 产物：`seed_state.json` 记录 `stage=fixture_context`、`fixture_only=true`、`side_effect_operation_executed=false`、`proposal_created=false`、`approval_performed=false`；`case.json` 记录 `target_job_id` 与 `context_seeded`。
+- F1/F3 中关于“提案 + confirm”的 seed 实现描述属于历史记录，现已由该隔离 fixture 方式取代。此 Eval seed 只准备测试所需的当前岗位上下文，不改变产品对真实用户上下文写入的授权语义。
