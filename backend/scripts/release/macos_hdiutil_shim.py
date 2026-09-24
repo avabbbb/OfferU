@@ -34,24 +34,32 @@ def _entry_belongs_to_device(entry: str, device: str) -> bool:
     )
 
 
-def _emit(result: subprocess.CompletedProcess[str]) -> None:
+def _as_text(value: str | bytes) -> str:
+    return (
+        value.decode("utf-8", errors="replace") if isinstance(value, bytes) else value
+    )
+
+
+def _emit(
+    result: subprocess.CompletedProcess[str] | subprocess.CompletedProcess[bytes],
+) -> None:
     if result.stdout:
-        sys.stdout.write(result.stdout)
+        sys.stdout.write(_as_text(result.stdout))
         sys.stdout.flush()
     if result.stderr:
-        sys.stderr.write(result.stderr)
+        sys.stderr.write(_as_text(result.stderr))
         sys.stderr.flush()
 
 
 def _run_captured(
-    command: Sequence[str], timeout: int | None
-) -> subprocess.CompletedProcess[str] | None:
+    command: Sequence[str], timeout: int | None, *, text: bool = True
+) -> subprocess.CompletedProcess[str] | subprocess.CompletedProcess[bytes] | None:
     try:
         return subprocess.run(
             command,
             capture_output=True,
             check=False,
-            text=True,
+            text=text,
             timeout=timeout,
         )
     except (OSError, subprocess.TimeoutExpired) as error:
@@ -60,7 +68,9 @@ def _run_captured(
 
 
 def _load_hdiutil_info() -> Mapping[str, object] | None:
-    result = _run_captured([REAL_HDIUTIL, "info", "-plist"], _INFO_TIMEOUT_SECONDS)
+    result = _run_captured(
+        [REAL_HDIUTIL, "info", "-plist"], _INFO_TIMEOUT_SECONDS, text=False
+    )
     if result is None:
         return None
     if result.returncode != 0:
@@ -71,7 +81,10 @@ def _load_hdiutil_info() -> Mapping[str, object] | None:
         )
         return None
     try:
-        payload = plistlib.loads(result.stdout.encode("utf-8"))
+        raw_output = result.stdout
+        if isinstance(raw_output, str):
+            raw_output = raw_output.encode("utf-8")
+        payload = plistlib.loads(raw_output)
     except (plistlib.InvalidFileException, UnicodeEncodeError) as error:
         print(
             f"OfferU hdiutil recovery received invalid plist output: {error}",

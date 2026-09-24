@@ -74,6 +74,25 @@ def test_non_detach_hdiutil_commands_are_delegated(monkeypatch, capsys) -> None:
     assert capsys.readouterr().out == ""
 
 
+def test_binary_hdiutil_info_plist_is_supported(monkeypatch) -> None:
+    binary_info = plistlib.dumps({"images": []}, fmt=plistlib.FMT_BINARY)
+    calls: list[tuple[list[str], dict[str, object]]] = []
+
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(command, 0, binary_info, b"")
+
+    monkeypatch.setattr(SHIM.subprocess, "run", fake_run)
+
+    assert SHIM._load_hdiutil_info() == {"images": []}
+    assert calls == [
+        (
+            ["/usr/bin/hdiutil", "info", "-plist"],
+            {"capture_output": True, "check": False, "text": False, "timeout": 15},
+        )
+    ]
+
+
 def test_exact_timeout_force_detaches_only_verified_offeru_staging_image(
     tmp_path, monkeypatch, capsys
 ) -> None:
