@@ -20,6 +20,8 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from app.database import Base, init_db
+from app.mcp_server import HAS_MCP_SERVER, mcp
+from app.services.agent_run_state import load_agent_run
 from app.models.models import Application, Job
 from app.ops import (
     OPERATIONS,
@@ -677,6 +679,7 @@ class CliBlackBoxTests(unittest.TestCase):
         self.assertFalse(payload["safety"]["auto_submit_applications"])
         self.assertFalse(payload["safety"]["raw_api_capability"])
         self.assertTrue(payload["safety"]["explicit_user_confirmation_required"])
+        self.assertNotIn("confirm", payload["commands"])
         self.assertNotIn("call_get_api", payload["commands"])
         self.assertNotIn("call_write_api", payload["commands"])
         self.assertNotIn("list_routes", payload["commands"])
@@ -746,7 +749,7 @@ class CliBlackBoxTests(unittest.TestCase):
         self.assertEqual(payload["inputs"], {"job_id": 1, "status": "picked"})
         self.assertTrue(payload["outputs"]["skipped"])
 
-    def test_mutation_creates_persisted_proposal_then_confirms_once(self) -> None:
+    def test_cli_cannot_confirm_a_persisted_proposal(self) -> None:
         proposal = self.run_cli(
             "run",
             "set_current_view",
@@ -762,16 +765,14 @@ class CliBlackBoxTests(unittest.TestCase):
         run_id = proposal["outputs"]["proposal"]["run_id"]
         action_id = proposal["outputs"]["proposal"]["action_id"]
 
-        first = self.run_cli("confirm", run_id, "--action", action_id)
-        second = self.run_cli("confirm", run_id, "--action", action_id)
+        result = self.run_cli("confirm", run_id, "--action", action_id)
+        persisted = asyncio.run(load_agent_run(run_id))
 
-        self.assertEqual(first["_exit_code"], 0)
-        self.assertTrue(first["ok"])
-        self.assertEqual(first["run"]["status"], "completed")
-        self.assertEqual(len(first["tool_calls"]), 1)
-        self.assertEqual(second["_exit_code"], 0)
-        self.assertTrue(second["ok"])
-        self.assertEqual(second["tool_calls"], [])
+        self.assertEqual(result["_exit_code"], 2)
+        self.assertFalse(result["ok"])
+        self.assertNotIn("confirm", result["commands"])
+        self.assertEqual(persisted["status"], "waiting_confirmation")
+        self.assertEqual(persisted["steps"][0]["status"], "waiting_confirmation")
 
     def test_run_accepts_json_like_key_value_list(self) -> None:
         payload = self.run_cli(
@@ -907,12 +908,12 @@ class OperationProjectionSafetyTests(unittest.TestCase):
             first = await confirm_operation_proposal(
                 proposal_data["run_id"],
                 action_id=proposal_data["action_id"],
-                surface="mcp",
+                surface="agent_runtime_ui",
             )
             second = await confirm_operation_proposal(
                 proposal_data["run_id"],
                 action_id=proposal_data["action_id"],
-                surface="mcp",
+                surface="agent_runtime_ui",
             )
             return proposal, first, second
 
@@ -927,11 +928,21 @@ class OperationProjectionSafetyTests(unittest.TestCase):
 
     def test_confirm_unknown_persisted_proposal_fails(self) -> None:
         result = asyncio.run(
-            confirm_operation_proposal("missing", surface="mcp")
+            confirm_operation_proposal("missing", surface="agent_runtime_ui")
         )
 
         self.assertFalse(result["ok"])
         self.assertIn("不存在", result["errors"][0])
+
+
+@unittest.skipUnless(HAS_MCP_SERVER, "MCP server dependency is optional")
+class MCPApprovalBoundaryTests(unittest.TestCase):
+    def test_mcp_does_not_expose_proposal_confirmation(self) -> None:
+        tools = asyncio.run(mcp.list_tools())
+        names = {tool.name for tool in tools}
+
+        self.assertIn("offeru_operation", names)
+        self.assertNotIn("confirm_operation", names)
 
 
 if __name__ == "__main__":

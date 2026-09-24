@@ -100,12 +100,12 @@ class AgentControlPlaneTests(unittest.TestCase):
             first = await confirm_operation_proposal(
                 item["run_id"],
                 action_id=item["action_id"],
-                surface="cli",
+                surface="agent_runtime_ui",
             )
             second = await confirm_operation_proposal(
                 item["run_id"],
                 action_id=item["action_id"],
-                surface="cli",
+                surface="agent_runtime_ui",
             )
             async with async_session() as db:
                 audit_count = (
@@ -162,7 +162,7 @@ class AgentControlPlaneTests(unittest.TestCase):
             result = await confirm_operation_proposal(
                 item["run_id"],
                 action_id=item["action_id"],
-                surface="cli",
+                surface="agent_runtime_ui",
             )
             events = await list_agent_run_events(item["run_id"])
             return result, events
@@ -339,7 +339,7 @@ class AgentControlPlaneTests(unittest.TestCase):
                 ],
             )
             result = await confirm_operation_proposal(
-                created["id"], action_id="action-one", surface="cli"
+                created["id"], action_id="action-one", surface="agent_runtime_ui"
             )
             persisted = await load_agent_run(created["id"])
             assert persisted is not None
@@ -410,7 +410,7 @@ class AgentControlPlaneTests(unittest.TestCase):
             ):
                 confirmed, rejected = await asyncio.gather(
                     confirm_operation_proposal(
-                        created["id"], action_id="action-race", surface="cli"
+                        created["id"], action_id="action-race", surface="agent_runtime_ui"
                     ),
                     execute_operation(
                         "reject_agent_run",

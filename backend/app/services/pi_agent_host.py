@@ -849,7 +849,7 @@ async def confirm_pi_agent_action(
     result = await confirm_operation_proposal(
         run_id,
         action_id=action_id,
-        surface="pi",
+        surface="agent_runtime_ui",
     )
     active_worker = worker or get_pi_agent_worker()
     if active_worker.active_run_id == run_id:

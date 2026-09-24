@@ -10,13 +10,16 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
+from sqlalchemy import select
+
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 os.chdir(BACKEND_DIR)
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from app.config import Settings
-from app.database import init_db
+from app.database import async_session, init_db
+from app.models.models import OperationAuditLog
 from app.ops import OPERATIONS
 from app.services.agent_run_state import (
     append_agent_run_event,
@@ -415,7 +418,7 @@ class PiAgentHostTests(unittest.TestCase):
         async def stream_listener(event: dict[str, Any]) -> None:
             streamed_events.append(event)
 
-        async def run() -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
+        async def run() -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], str]:
             await init_db()
             started = await start_pi_agent_run(
                 message="研究这个岗位，确认后启动调研。",
@@ -450,14 +453,23 @@ class PiAgentHostTests(unittest.TestCase):
             stored = await load_agent_run(started["run"]["id"])
             assert stored is not None
             events = await list_agent_run_events(started["run"]["id"])
-            return started, confirmed, events
+            async with async_session() as db:
+                audit = (
+                    await db.execute(
+                        select(OperationAuditLog).where(
+                            OperationAuditLog.idempotency_key
+                            == stored["steps"][0]["idempotency_key"]
+                        )
+                    )
+                ).scalar_one()
+            return started, confirmed, events, audit.surface
 
         OPERATIONS["start_job_research"] = replace(
             original,
             fn=fake_start_job_research,
         )
         try:
-            started, confirmed, events = asyncio.run(run())
+            started, confirmed, events, approval_surface = asyncio.run(run())
         finally:
             OPERATIONS["start_job_research"] = original
 
@@ -472,6 +484,7 @@ class PiAgentHostTests(unittest.TestCase):
             worker.operation_results[1]["outputs"]["executed"]
         )
         self.assertEqual(calls, 1)
+        self.assertEqual(approval_surface, "agent_runtime_ui")
         self.assertEqual(run_status_while_confirming, "executing")
         self.assertTrue(confirmed["ok"])
         self.assertEqual(confirmed["run"]["status"], "completed")
