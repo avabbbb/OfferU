@@ -137,7 +137,10 @@ def main() -> None:
             # and the deterministic ingest hash must still produce one Job and
             # one preparation task when a user double-clicks.
             page.get_by_test_id("add-job-submit").dblclick()
-            page.wait_for_url("**/jobs/*", timeout=30000)
+            page.wait_for_function(
+                "() => window.location.hash.startsWith('#/jobs/')",
+                timeout=30000,
+            )
 
             jobs = _json_response(page, f"{API_URL}/api/jobs/?page_size=100")
             job = next(
