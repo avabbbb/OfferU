@@ -78,7 +78,9 @@ export function AddJobModal({ isOpen, onClose, onCreated, guided = false }: AddJ
         source: "manual",
         runtime_provider: form.preparationMode === "local" ? "replay" : "auto",
       });
-      const createdId = Number(result?.created_job_ids?.[0] || 0);
+      const createdId = Number(
+        result?.created_job_ids?.[0] || result?.resolved_job_ids?.[0] || 0,
+      );
       setForm({ ...initialForm, preparationMode: guided ? "live" : initialForm.preparationMode });
       onClose();
       onCreated(createdId > 0 ? createdId : null);

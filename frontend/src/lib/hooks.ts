@@ -168,6 +168,7 @@ export interface JobIngestResult {
   created: number;
   skipped: number;
   created_job_ids: number[];
+  resolved_job_ids: number[];
   failed: Array<{ title: string; error: string }>;
   automation?: {
     events: unknown[];

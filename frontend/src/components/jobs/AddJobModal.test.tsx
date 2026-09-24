@@ -41,6 +41,7 @@ describe("AddJobModal", () => {
       created: 1,
       skipped: 0,
       created_job_ids: [456],
+      resolved_job_ids: [456],
       failed: [],
     });
     const onCreated = vi.fn();
@@ -60,6 +61,23 @@ describe("AddJobModal", () => {
     });
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith(456));
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("幂等重试返回已存在的岗位时仍把 canonical Job 交给页面", async () => {
+    mockIngestJob.mockResolvedValue({
+      created: 0,
+      skipped: 1,
+      created_job_ids: [],
+      resolved_job_ids: [789],
+      failed: [],
+    });
+    const onCreated = vi.fn();
+    renderModal({ onCreated });
+
+    const user = await fillRequiredFields();
+    await user.click(screen.getByTestId("add-job-submit"));
+
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(789));
   });
 
   it("必填字段为空时阻止提交并提示用户", async () => {

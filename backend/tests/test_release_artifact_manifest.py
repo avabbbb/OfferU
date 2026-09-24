@@ -38,6 +38,33 @@ class ReleaseArtifactManifestTests(unittest.TestCase):
             encoding="utf-8",
         )
 
+    def _write_macos_release(
+        self,
+        root: Path,
+        *,
+        target: str = "macos-arm64",
+        installer_name: str = "OfferU-0.4.0-arm64.dmg",
+    ) -> None:
+        name = installer_name
+        content = b"macOS disk image"
+        checksum = hashlib.sha256(content).hexdigest()
+        (root / name).write_bytes(content)
+        (root / "artifacts.json").write_text(
+            json.dumps([{"name": name, "bytes": len(content), "sha256": checksum}]),
+            encoding="utf-8",
+        )
+        (root / "SHA256SUMS.txt").write_text(f"{checksum}  {name}\n", encoding="utf-8")
+        (root / "version.json").write_text(
+            json.dumps({
+                "product": "OfferU",
+                "version": "0.4.0",
+                "target": target,
+                "installers": [name],
+                "signed": False,
+            }),
+            encoding="utf-8",
+        )
+
     def test_verifies_manifest_checksums_version_and_signature(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -47,6 +74,23 @@ class ReleaseArtifactManifestTests(unittest.TestCase):
         self.assertEqual(result["status"], "verified")
         self.assertEqual(result["installer_count"], 2)
         self.assertTrue(result["signed"])
+
+    def test_verifies_macos_dmg_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._write_macos_release(root)
+            result = verify_release_artifacts(root, expected_version="0.4.0")
+
+        self.assertEqual(result["status"], "verified")
+        self.assertEqual(result["target"], "macos-arm64")
+        self.assertEqual(result["installer_count"], 1)
+
+    def test_rejects_non_dmg_macos_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._write_macos_release(root, installer_name="OfferU-0.4.0-arm64.zip")
+            with self.assertRaisesRegex(ValueError, "exactly one DMG installer"):
+                verify_release_artifacts(root)
 
     def test_rejects_changed_installer_bytes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

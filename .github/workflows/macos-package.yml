@@ -98,11 +98,13 @@ jobs:
         run: |
           set -euo pipefail
           version=$(node -p "require('./frontend/package.json').version")
-          collect_flags=()
-          verify_flags=()
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then collect_flags+=(--signed); verify_flags+=(--require-signed); fi
-          python backend/scripts/release/collect_release_artifacts.py frontend/src-tauri/target/release/bundle release-artifacts --version "$version" --target "$RELEASE_TARGET" "${collect_flags[@]}"
-          python backend/scripts/release/verify_release_artifacts.py release-artifacts --expected-version "$version" "${verify_flags[@]}"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            python backend/scripts/release/collect_release_artifacts.py frontend/src-tauri/target/release/bundle release-artifacts --version "$version" --target "$RELEASE_TARGET" --signed
+            python backend/scripts/release/verify_release_artifacts.py release-artifacts --expected-version "$version" --require-signed
+          else
+            python backend/scripts/release/collect_release_artifacts.py frontend/src-tauri/target/release/bundle release-artifacts --version "$version" --target "$RELEASE_TARGET"
+            python backend/scripts/release/verify_release_artifacts.py release-artifacts --expected-version "$version"
+          fi
           python backend/scripts/release/audit_artifacts.py release-artifacts --json
       - uses: actions/upload-artifact@v4
         with:

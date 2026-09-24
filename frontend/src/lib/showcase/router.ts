@@ -601,6 +601,7 @@ async function ingestJob(body: unknown): Promise<unknown> {
       created: 0,
       skipped: 1,
       created_job_ids: [],
+      resolved_job_ids: [existing.id],
       failed: [],
       skipped_hash_keys: hashKey ? [hashKey] : [],
       automation: { events: [], errors: [] },
@@ -638,6 +639,7 @@ async function ingestJob(body: unknown): Promise<unknown> {
     created: 1,
     skipped: 0,
     created_job_ids: [job.id],
+    resolved_job_ids: [job.id],
     failed: [],
     automation: {
       events: [{
