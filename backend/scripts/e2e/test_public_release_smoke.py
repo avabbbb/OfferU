@@ -12,9 +12,9 @@ import os
 import time
 from io import BytesIO
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from playwright.sync_api import expect, sync_playwright
-
 from release_endpoints import (
     assert_release_backend_ready,
     assert_release_frontend_ready,
@@ -119,6 +119,53 @@ def main() -> None:
         console_errors: list[str] = []
         page_errors: list[str] = []
         bad_responses: list[str] = []
+        asset_requests: dict[int, dict[str, object]] = {}
+        failed_frontend_assets: list[dict[str, object]] = []
+        frontend_origin = urlsplit(BASE_URL)
+
+        def on_asset_request(request) -> None:
+            target = urlsplit(request.url)
+            same_origin = (target.scheme, target.netloc) == (
+                frontend_origin.scheme,
+                frontend_origin.netloc,
+            )
+            if same_origin and request.resource_type in {"script", "stylesheet"}:
+                asset_requests[id(request)] = {
+                    "path": target.path,
+                    "resource_type": request.resource_type,
+                    "started_at": time.monotonic(),
+                }
+
+        def on_asset_request_finished(request) -> None:
+            asset_requests.pop(id(request), None)
+
+        def on_asset_request_failed(request) -> None:
+            entry = asset_requests.pop(id(request), None)
+            if entry is None:
+                return
+            failure_code = (request.failure or "").split(" ", 1)[0]
+            if not failure_code.startswith("net::"):
+                failure_code = "request failed"
+            failed_frontend_assets.append(
+                {
+                    "path": entry["path"],
+                    "resource_type": entry["resource_type"],
+                    "elapsed_seconds": round(time.monotonic() - entry["started_at"], 3),
+                    "failure": failure_code,
+                }
+            )
+
+        def pending_frontend_assets() -> list[dict[str, object]]:
+            now = time.monotonic()
+            return [
+                {
+                    "path": entry["path"],
+                    "resource_type": entry["resource_type"],
+                    "elapsed_seconds": round(now - entry["started_at"], 3),
+                }
+                for entry in asset_requests.values()
+            ]
+
         page.on(
             "console",
             lambda message: console_errors.append(message.text)
@@ -132,6 +179,9 @@ def main() -> None:
             if response.status >= 400
             else None,
         )
+        page.on("request", on_asset_request)
+        page.on("requestfinished", on_asset_request_finished)
+        page.on("requestfailed", on_asset_request_failed)
 
         trace_stopped = False
         try:
@@ -362,6 +412,7 @@ def main() -> None:
                 "bad_responses": bad_responses,
                 "console_errors": console_errors,
                 "page_errors": page_errors,
+                "failed_frontend_assets": failed_frontend_assets,
             }
             print(json.dumps(result, ensure_ascii=True, indent=2), flush=True)
             context.tracing.stop()
@@ -388,6 +439,8 @@ def main() -> None:
                         "bad_responses": bad_responses,
                         "console_errors": console_errors,
                         "page_errors": page_errors,
+                        "failed_frontend_assets": failed_frontend_assets,
+                        "pending_frontend_assets": pending_frontend_assets(),
                     },
                     ensure_ascii=True,
                     indent=2,
