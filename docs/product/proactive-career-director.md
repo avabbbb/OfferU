@@ -543,6 +543,14 @@ Rules:
 
 Today is the user-facing surface for Career Director output, not a separate source of truth.
 
+### Implementation update — 2026-09-26
+
+The first Daily Career Brief slice now records one idempotent `DAILY_REVIEW` AutomationEvent per default Profile and local calendar day when Today opens. The event uses the existing `AutomationEvent → AutomationRule → CareerTask → Codex Runtime` path. A missing Profile produces a visible skipped response; it does not create one.
+
+The real Career Director must read both `get_career_snapshot` and the new read-only `get_daily_career_context` Operation before returning the strict `offeru.career_briefing.v1` contract. Context is bounded and sanitized and includes active Pipeline rows, due/near-due follow-ups, interviews in the next 14 days, pending review items, recent Profile/Resume changes, interview learning summaries and previously dismissed Brief actions. CareerTask and Automation Inbox persist the model result; Today shows each action's `why_now`, prepared outcome, autonomy boundary and target link.
+
+Today’s “稍后处理” action records a dismissal through the existing Registry proposal boundary. After the same suggestion has been dismissed on two recent Daily Briefs, deterministic policy removes it when either its stable action key or its evidence-sensitive fingerprint matches; a suggestion can reappear after both change. No Career Truth is written by this slice, and no database schema migration was required. The daily trigger runs on Today open, so it does not wake an Agent while the app is closed.
+
 ---
 
 ## 12. Weekly Career Review

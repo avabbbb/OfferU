@@ -1,20 +1,20 @@
 # OfferU Status
 
-Updated: 2026-09-25
+Updated: 2026-09-26
 
 ## Verdict
 
 ~~~
 OFFERU_PUBLIC_RELEASE_NOT_READY
-OWNER_DOGFOOD_READY
+PROACTIVE_CAREER_DIRECTOR_IMPLEMENTATION_IN_PROGRESS
 ~~~
 
-OfferU is now suitable for owner dogfood on the current internal/development path. Public distribution still has separate signing, notarization, clean-machine and live external-evidence gates.
+Public distribution still has separate signing, notarization, clean-machine and live external-evidence gates. Owner dogfood for this proactive milestone begins after its implementation Definition of Done; coding continues now against synthetic isolated fixtures.
 
 ## Current phase
 
 ~~~
-OWNER_DOGFOOD_AND_PROACTIVE_DIRECTOR
+PROACTIVE_CAREER_DIRECTOR_IMPLEMENTATION
 ~~~
 
 Current product authority: [docs/product/current-product.md](./docs/product/current-product.md).  
@@ -55,9 +55,11 @@ The first owner-dogfood review identified a product-level autonomy gap: OfferU h
 
 The accepted next product slice is the bounded [Proactive Career Director](./docs/product/proactive-career-director.md): event-triggered career-state judgment, campus/experienced Strategy Packs, proactive Profile discovery, Daily/Weekly briefing, interview lifecycle and Resume re-engagement — without introducing a second infinite Agent loop.
 
+Implementation uses synthetic fixtures and isolated test databases. First-run Profile Discovery is committed as `73c522e`; Daily Career Brief is implemented locally with Today-triggered idempotency, read-only daily context, CareerTask/Inbox projection and dismissal feedback. Job Saved Assessment, Interview Prep/Debrief and Resume Re-engagement remain the next implementation slices. Do not wait for real Resume/Profile/Job data before completing those slices; owner dogfood follows implementation and full regression.
+
 ## Active validation
 
-- Real OMP/SWE-2 Agent-native acceptance remains NOT_RUN because the current local machine lacks the approved isolated GUI/runtime environment. This blocks that specific evidence gate, not owner dogfood.
+- Real OMP/SWE-2 Agent-native acceptance remains NOT_RUN because the current local machine lacks the approved isolated GUI/runtime environment. This does not block implementation; after the implementation DoD, Codex-first owner dogfood can proceed while OMP pass³ stays a separate evidence gate.
 - Codex is the recommended first dogfood Agent because it has the strongest beginner integration path: detection, Skill installation/update, native login check and live integration verification.
 - Zero-Setup still needs one genuine real-user first-run trace with real Resume + real Job rather than only automated/replay evidence.
 - Public macOS/Windows release still needs legitimate signing/notarization and clean-machine acceptance.
@@ -65,15 +67,12 @@ The accepted next product slice is the bounded [Proactive Career Director](./doc
 
 ## Current priorities
 
-1. **Dogfood three real Jobs now, while measuring where the user still has to tell the Agent the obvious next action.**
-   - one strong match;
-   - one obvious evidence-gap role;
-   - one aspirational/uncertain role.
-2. Record every point where the owner leaves OfferU for ChatGPT/Codex notes, Word, Excel or manual tracking.
-3. Implement the first bounded Proactive Career Director slice from the accepted design; do not expand every event at once.
-4. In parallel, arrange an approved isolated environment for real OMP/SWE-2 Agent-native Golden Path → fresh-state pass³.
-5. After dogfood evidence, update README/marketing from real captured flows instead of feature claims.
-6. Continue public-release signing/clean-machine work separately; do not let release-only gates block product dogfood.
+1. Implement Slice 3, Job Saved Assessment Plan, through the existing Automation/CareerTask/Registry path.
+2. Implement Slice 4, proactive Interview Prep and post-interview Debrief.
+3. Implement Slice 5, Resume Updated Re-engagement candidates with dedupe and no external sends.
+4. Run the relevant backend/frontend tests, then full backend regression and frontend production build; sync docs and verify no synthetic artifacts or real-data copies were committed.
+5. Only after the implementation Definition of Done, begin owner dogfood with a real Resume and three real Jobs.
+6. Keep OMP/SWE-2 isolation and public-release signing/clean-machine evidence as separate external gates.
 
 ## Product boundaries during dogfood
 

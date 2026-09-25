@@ -2,7 +2,7 @@
 # OfferU Current Product North Star
 
 Status: **CURRENT PRODUCT AUTHORITY**  
-Updated: 2026-09-25
+Updated: 2026-09-26
 
 This document defines the current product shape of OfferU. Historical audits, dated implementation plans and superseded Harness-specific designs must not override it.
 
@@ -61,7 +61,7 @@ Job / Opportunity
 Profile
 ~~~
 
-- **Today** is the guided action layer. It answers “what matters now?” and shows at most a few primary actions.
+- **Today** is the guided action layer. It answers “what matters now?” and shows at most a few primary actions. Opening Today records one idempotent daily Career Director review for the default Profile; the resulting CareerBriefing is projected into Today and the existing Automation Inbox, while the CareerTask remains the durable execution record.
 - **Pipeline** projects application state, timeline and next action from the same canonical events.
 - **Job / Job Workspace** is the durable application workspace for one opportunity: Job Snapshot, Role Intelligence, Evidence Map, application materials, interview preparation and canonical Timeline all converge here. Agent conversations are only one way to modify this workspace.
 - **Profile** is the long-lived evidence-backed model of the user. Memory is an evolution mechanism for Profile, not a separate silo.

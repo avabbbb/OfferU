@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import datetime, timedelta
 
 import pytest
 from sqlalchemy import select
@@ -11,12 +12,20 @@ from app.database import Base
 from app.models.models import (
     AutomationEvent,
     AutomationInboxItem,
+    CalendarEvent,
+    CareerSource,
+    LearningObservation,
+    MemoryProposal,
+    Job,
     OperationAuditLog,
     Profile,
     ProfileSection,
     ProfileTargetRole,
+    Resume,
 )
 from app.services import automation, career_director, career_tasks
+from app.services import agent_operations, career_daily
+from app.routes import main_agent
 from app.services.career_director import (
     CareerBriefing,
     CareerStageAssessment,
@@ -254,6 +263,7 @@ def test_career_briefing_enforces_small_question_count_and_human_gates() -> None
         actions=[
             {
                 "objective": "更新 Profile 阶段",
+                "why_now": "新证据表明目标方向已改变。",
                 "skill": "",
                 "suggested_operations": ["correct_career_stage"],
                 "autonomy_level": "L2",
@@ -265,6 +275,473 @@ def test_career_briefing_enforces_small_question_count_and_human_gates() -> None
     )
     with pytest.raises(ValueError, match="L2/L3"):
         CareerBriefing.model_validate(invalid)
+
+
+def test_daily_context_collects_synthetic_urgency_proposals_learning_and_ignored_actions(
+    tmp_path, monkeypatch
+) -> None:
+    async def flow() -> dict:
+        engine = create_async_engine(
+            f"sqlite+aiosqlite:///{(tmp_path / 'daily-career-context.db').as_posix()}"
+        )
+        session = async_sessionmaker(engine, expire_on_commit=False)
+        try:
+            async with engine.begin() as connection:
+                await connection.run_sync(Base.metadata.create_all)
+            now = datetime.now().astimezone().replace(tzinfo=None)
+            cutoff = now - timedelta(days=30)
+            async with session() as db:
+                profile = Profile(
+                    name="Synthetic daily profile",
+                    is_default=True,
+                    base_info_json={"employment_state": "synthetic search"},
+                    updated_at=now,
+                )
+                job = Job(title="Synthetic Research Associate", company="Fixture Labs", hash_key="daily-context-job")
+                db.add_all([profile, job])
+                await db.flush()
+                db.add(
+                    ProfileSection(
+                        profile_id=profile.id,
+                        section_type="project",
+                        title="Synthetic portfolio update",
+                        content_json={"bullet": "Updated synthetic analytics project evidence."},
+                        source="manual",
+                        confidence=0.9,
+                        tier="verified_fact",
+                        status="active",
+                        updated_at=now,
+                    )
+                )
+                db.add(
+                    Resume(
+                        user_name="Synthetic Candidate",
+                        title="Synthetic revised resume",
+                        source_profile_id=profile.id,
+                        workspace_revision=3,
+                        updated_at=now,
+                    )
+                )
+                db.add(
+                    CalendarEvent(
+                        title="Synthetic panel interview",
+                        event_type="interview",
+                        start_time=now + timedelta(days=1),
+                        related_job_id=job.id,
+                    )
+                )
+                db.add(
+                    MemoryProposal(
+                        proposal_key="synthetic-daily-proposal",
+                        target_tier="career_hypothesis",
+                        section_type="skill",
+                        title="Synthetic impact evidence needs review",
+                        reason="Synthetic interview feedback needs owner review.",
+                        status="pending",
+                        created_at=now,
+                    )
+                )
+                source = CareerSource(
+                    source_type="synthetic_test",
+                    external_id="daily-interview-learning",
+                    title="Synthetic interview debrief",
+                )
+                db.add(source)
+                await db.flush()
+                db.add(
+                    LearningObservation(
+                        source_id=source.id,
+                        observation_type="interview_completed",
+                        content_json={
+                            "summary": "Synthetic answers need clearer outcome evidence.",
+                            "focuses": [{"capability": "Impact storytelling", "training_priority": "high"}],
+                        },
+                        content_hash="a" * 64,
+                        idempotency_key="synthetic-daily-interview-learning",
+                        status="active",
+                        observed_at=now,
+                    )
+                )
+                ignored_briefing = _briefing(
+                    actions=[
+                        {
+                            "objective": "完善研究助理岗位证据",
+                            "why_now": "该岗位的申请窗口仍然开放。",
+                            "skill": "evidence_review",
+                            "suggested_operations": ["get_career_snapshot"],
+                            "autonomy_level": "L1",
+                            "expected_outcome": "准备岗位证据清单。",
+                            "requires_user": False,
+                            "dedupe_key": "synthetic-stable-suggestion",
+                            "target_ref": {"kind": "job", "id": str(job.id)},
+                        }
+                    ]
+                )
+                for index in range(2):
+                    db.add(
+                        AutomationInboxItem(
+                            item_id=f"synthetic-dismissed-daily-{index}",
+                            category="needs_review",
+                            status="dismissed",
+                            target_type="career_brief",
+                            target_id=f"2026-09-{20 + index}",
+                            title="Synthetic dismissed daily brief",
+                            body="Synthetic dismissed action.",
+                            payload_json={"briefing": ignored_briefing},
+                            created_at=now - timedelta(days=index + 1),
+                            updated_at=now - timedelta(days=index + 1),
+                        )
+                    )
+                await db.commit()
+                profile_id = profile.id
+                job_id = job.id
+
+            monkeypatch.setattr(career_daily, "async_session", session)
+
+            async def fake_board(**_kwargs):
+                return {
+                    "companies": [
+                        {
+                            "company": "Fixture Labs",
+                            "records": [
+                                {
+                                    "job_id": job_id,
+                                    "job_title": "Synthetic Research Associate",
+                                    "current_stage": "interview_1",
+                                    "next_action": "Prepare tomorrow's synthetic interview",
+                                    "last_event_at": now.isoformat(),
+                                    "pending_candidates": 0,
+                                }
+                            ],
+                        }
+                    ]
+                }
+
+            async def fake_followups():
+                return {
+                    "entries": [
+                        {
+                            "application_type": "application_record",
+                            "application_id": 17,
+                            "job_id": job_id,
+                            "company": "Fixture Labs",
+                            "role": "Synthetic Research Associate",
+                            "next_follow_up_date": now.date().isoformat(),
+                            "days_until_follow_up": 0,
+                            "urgency": "overdue",
+                            "notes": "must not be projected",
+                        }
+                    ]
+                }
+
+            monkeypatch.setattr(agent_operations, "get_application_progress_board", fake_board)
+            monkeypatch.setattr(agent_operations, "list_follow_up_cadence", fake_followups)
+            return await career_daily.build_daily_career_context(profile_id=profile_id)
+        finally:
+            await engine.dispose()
+
+    context = asyncio.run(flow())
+    assert context["schema"] == "offeru.daily_career_context.v1"
+    assert context["pipeline"][0]["job_id"] > 0
+    assert context["upcoming_interviews"][0]["title"] == "Synthetic panel interview"
+    assert context["follow_ups_due"][0]["urgency"] == "overdue"
+    assert context["pending_proposals"][0]["title"] == "Synthetic impact evidence needs review"
+    assert {change["kind"] for change in context["recent_changes"]} == {"profile", "resume"}
+    assert context["interview_learning"][0]["weak_areas"] == ["Impact storytelling"]
+    assert context["ignored_suggestions"][0]["dedupe_key"] == "synthetic-stable-suggestion"
+    assert context["ignored_suggestions"][0]["dismissals"] == 2
+    assert "must not be projected" not in json.dumps(context)
+
+
+def test_daily_review_suppresses_only_exact_repeatedly_dismissed_suggestions() -> None:
+    briefing = _briefing(
+        actions=[
+            {
+                "objective": "重复提醒",
+                "why_now": "依据没有变化。",
+                "skill": "evidence_review",
+                "suggested_operations": [],
+                "autonomy_level": "L1",
+                "expected_outcome": "查看证据。",
+                "requires_user": False,
+                "dedupe_key": "ignored-twice",
+            },
+            {
+                "objective": "明日面试准备",
+                "why_now": "明日新增了面试安排。",
+                "skill": "interview_prep",
+                "suggested_operations": [],
+                "autonomy_level": "L1",
+                "expected_outcome": "准备练习重点。",
+                "requires_user": False,
+                "dedupe_key": "new-interview-evidence",
+            },
+        ]
+    )
+    context = {
+        "ignored_suggestions": [
+            {"dedupe_key": "ignored-twice", "dismissals": 2},
+            {"dedupe_key": "ignored-once", "dismissals": 1},
+        ]
+    }
+    filtered = career_daily.suppress_repeatedly_ignored_actions(briefing, context)
+    assert [action["dedupe_key"] for action in filtered["actions"]] == ["new-interview-evidence"]
+
+
+def test_daily_review_event_is_idempotent_and_uses_career_task_dispatch(tmp_path, monkeypatch) -> None:
+    async def flow() -> tuple[dict, dict, int, int]:
+        engine = create_async_engine(
+            f"sqlite+aiosqlite:///{(tmp_path / 'daily-review-dispatch.db').as_posix()}"
+        )
+        session = async_sessionmaker(engine, expire_on_commit=False)
+        started: list[dict] = []
+        try:
+            async with engine.begin() as connection:
+                await connection.run_sync(Base.metadata.create_all)
+            monkeypatch.setattr(automation, "async_session", session)
+
+            async def fake_start_career_task(**kwargs):
+                started.append(kwargs)
+                return {
+                    "task_id": "career_task_synthetic_daily_dispatch",
+                    "task_type": kwargs["task_type"],
+                    "runtime_provider": kwargs["runtime_provider"],
+                    "status": "queued",
+                    "progress": {"stage": "queued"},
+                }
+
+            monkeypatch.setattr(career_tasks, "start_career_task", fake_start_career_task)
+            first = await automation.record_automation_event(
+                event_type="DAILY_REVIEW",
+                source="today_open",
+                target_type="profile",
+                target_id="1",
+                payload={"review_date": "2026-09-26"},
+                dedupe_key="synthetic-daily-review:1:2026-09-26",
+            )
+            second = await automation.record_automation_event(
+                event_type="DAILY_REVIEW",
+                source="today_open",
+                target_type="profile",
+                target_id="1",
+                payload={"review_date": "2026-09-26"},
+                dedupe_key="synthetic-daily-review:1:2026-09-26",
+            )
+            async with session() as db:
+                event_count = len((await db.execute(select(AutomationEvent))).scalars().all())
+                inbox_count = len((await db.execute(select(AutomationInboxItem))).scalars().all())
+            return first, second, event_count, inbox_count
+        finally:
+            await engine.dispose()
+
+    first, second, event_count, inbox_count = asyncio.run(flow())
+    assert first["status"] == "dispatched"
+    assert first["result"]["task"]["task_type"] == "career_director"
+    assert second["reused"] is True
+    assert second["event_id"] == first["event_id"]
+    assert event_count == 1
+    assert inbox_count == 1
+
+
+def test_today_daily_review_route_uses_registry_and_dedupes_by_profile_and_local_date(monkeypatch) -> None:
+    async def flow() -> tuple[dict, list[tuple[str, dict]]]:
+        calls: list[tuple[str, dict]] = []
+
+        async def fake_registry_operation(name: str, arguments: dict) -> dict:
+            calls.append((name, arguments))
+            if name == "get_career_snapshot":
+                return {"profile_id": 73}
+            return {"event_id": "synthetic-daily-event", "status": "dispatched"}
+
+        monkeypatch.setattr(main_agent, "_ui_operation_outputs", fake_registry_operation)
+        return await main_agent.trigger_daily_career_review(), calls
+
+    response, calls = asyncio.run(flow())
+    assert [name for name, _ in calls] == ["get_career_snapshot", "record_automation_event"]
+    event_args = calls[1][1]
+    assert event_args["event_type"] == "DAILY_REVIEW"
+    assert event_args["source"] == "today_open"
+    assert event_args["target_type"] == "profile"
+    assert event_args["target_id"] == "73"
+    assert event_args["payload"]["review_date"] == datetime.now().astimezone().date().isoformat()
+    assert event_args["dedupe_key"] == f"daily-review:73:{event_args['payload']['review_date']}"
+    assert response["status"] == "dispatched"
+
+
+def test_daily_career_director_must_read_daily_context_and_keeps_new_urgent_action(
+    tmp_path, monkeypatch
+) -> None:
+    async def flow() -> dict:
+        engine = create_async_engine(
+            f"sqlite+aiosqlite:///{(tmp_path / 'daily-career-runtime.db').as_posix()}"
+        )
+        session = async_sessionmaker(engine, expire_on_commit=False)
+        try:
+            async with engine.begin() as connection:
+                await connection.run_sync(Base.metadata.create_all)
+            task_id = "career_task_synthetic_daily"
+            event_id = "automation_evt_synthetic_daily"
+            async with session() as db:
+                db.add(
+                    AutomationEvent(
+                        event_id=event_id,
+                        event_type="DAILY_REVIEW",
+                        source="today_open",
+                        target_type="profile",
+                        target_id="1",
+                        payload_json={"review_date": "2026-09-26"},
+                        dedupe_key="synthetic-daily-runtime-event",
+                        status="processing",
+                    )
+                )
+                db.add(
+                    career_tasks.CareerTask(
+                        task_id=task_id,
+                        task_type="career_director",
+                        source="automation",
+                        target_type="profile",
+                        target_id="1",
+                        runtime_provider="codex",
+                        input_json={
+                            "automation_event_id": event_id,
+                            "event_type": "DAILY_REVIEW",
+                            "profile_id": 1,
+                            "review_date": "2026-09-26",
+                        },
+                        output_contract_json={"schema": "offeru.career_briefing.v1"},
+                        status="running",
+                        progress_json={"stage": "running"},
+                        idempotency_key="synthetic-daily-career-task",
+                    )
+                )
+                await db.commit()
+            monkeypatch.setattr(career_tasks, "async_session", session)
+            import app.ops as ops
+
+            snapshot = {
+                "schema": "offeru.career_snapshot.v1",
+                "profile_id": 1,
+                "identity": {"career_stage": None},
+                "goals": {"primary_roles": ["Synthetic analyst"]},
+                "profile_coverage": {},
+            }
+            daily_context = {
+                "schema": "offeru.daily_career_context.v1",
+                "review_date": "2026-09-26",
+                "pipeline": [],
+                "follow_ups_due": [],
+                "upcoming_interviews": [{"event_id": 8, "title": "Tomorrow interview", "hours_until": 24}],
+                "pending_proposals": [],
+                "recent_changes": [],
+                "interview_learning": [],
+                "ignored_suggestions": [
+                    {"dedupe_key": "ignore-twice", "dismissals": 2}
+                ],
+            }
+            calls: list[tuple[str, dict, str, bool]] = []
+
+            async def fake_execute(operation, arguments, *, surface, audit):
+                calls.append((operation, arguments, surface, audit))
+                outputs = snapshot if operation == "get_career_snapshot" else daily_context
+                return {"ok": True, "outputs": outputs}
+
+            monkeypatch.setattr(ops, "execute_operation", fake_execute)
+
+            briefing_payload = _briefing(
+                actions=[
+                    {
+                        "objective": "之前忽略的建议",
+                        "why_now": "依据没有变化。",
+                        "skill": "evidence_review",
+                        "suggested_operations": [],
+                        "autonomy_level": "L1",
+                        "expected_outcome": "查看证据。",
+                        "requires_user": False,
+                        "dedupe_key": "ignore-twice",
+                    },
+                    {
+                        "objective": "准备明日面试",
+                        "why_now": "明天将进行 Synthetic Analyst 面试。",
+                        "skill": "interview_prep",
+                        "suggested_operations": [],
+                        "autonomy_level": "L1",
+                        "expected_outcome": "准备岗位重点和练习问题。",
+                        "requires_user": True,
+                        "dedupe_key": "tomorrow-interview-8",
+                        "target_ref": {"kind": "interview", "id": "8"},
+                    },
+                ]
+            )
+            message = json.dumps(briefing_payload, ensure_ascii=False)
+
+            class SyntheticCodex:
+                async def start(self):
+                    return None
+
+                async def create_thread(self, **_kwargs):
+                    return {"threadId": "synthetic-daily-thread"}
+
+                async def start_turn(self, **_kwargs):
+                    self.runtime_events = [
+                        {
+                            "method": "item/completed",
+                            "params": {"item": {"type": "agentMessage", "text": message}},
+                        }
+                    ]
+                    self.snapshot = await provider.on_operation("get_career_snapshot", {})
+                    self.daily_context = await provider.on_operation("get_daily_career_context", {})
+                    return {
+                        "threadId": "synthetic-daily-thread",
+                        "turnId": "synthetic-daily-turn",
+                        "completed": {"turn": {"items": [{"type": "agentMessage", "text": message}]}},
+                    }
+
+                async def events(self):
+                    return {
+                        "events": [
+                            {"method": "item/tool/call", "params": {"tool": "get_career_snapshot"}},
+                            {"method": "item/tool/call", "params": {"tool": "get_daily_career_context"}},
+                            *self.runtime_events,
+                        ]
+                    }
+
+                async def shutdown(self):
+                    return None
+
+            provider = None
+
+            def make_provider(_provider_id, **kwargs):
+                nonlocal provider
+                provider = SyntheticCodex()
+                provider.on_operation = kwargs["on_operation"]
+                return provider
+
+            import app.services.agent_runtime as agent_runtime
+
+            monkeypatch.setattr(agent_runtime, "get_agent_runtime_provider", make_provider)
+            monkeypatch.setattr(career_tasks, "_career_director_workspace", lambda: str(tmp_path))
+            result = await career_tasks._run_career_director(
+                {
+                    "task_id": task_id,
+                    "runtime_provider": "codex",
+                    "run_id": "",
+                    "input": {
+                        "automation_event_id": event_id,
+                        "event_type": "DAILY_REVIEW",
+                        "profile_id": 1,
+                        "review_date": "2026-09-26",
+                    },
+                }
+            )
+            return {"result": result, "calls": calls, "provider": provider}
+        finally:
+            await engine.dispose()
+
+    observed = asyncio.run(flow())
+    assert [call[0] for call in observed["calls"]] == ["get_career_snapshot", "get_daily_career_context"]
+    assert all(call[2:] == ("career_director", True) for call in observed["calls"])
+    assert observed["result"]["runtime"]["tool_calls"] == ["get_career_snapshot", "get_daily_career_context"]
+    assert [action["dedupe_key"] for action in observed["result"]["briefing"]["actions"]] == ["tomorrow-interview-8"]
 
 
 def test_model_briefing_is_strict_and_cannot_override_user_correction() -> None:
@@ -471,7 +948,7 @@ def test_profile_discovery_runs_one_codex_task_reads_registry_snapshot_and_proje
             await engine.dispose()
 
     task, state, snapshot = asyncio.run(flow())
-    assert task["status"] == "completed"
+    assert task["status"] == "completed", task
     assert task["result"]["runtime"]["provider"] == "codex"
     assert task["result"]["runtime"]["tool_calls"] == ["get_career_snapshot"]
     assert snapshot["schema"] == "offeru.career_snapshot.v1"
