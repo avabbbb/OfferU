@@ -53,9 +53,9 @@ Use a dedicated dogfood data directory. Automated destructive tests must never r
 
 The first owner-dogfood review identified a product-level autonomy gap: OfferU has a broad Skill/Operation surface and durable Automation infrastructure, but normal users still need to know what to ask too often.
 
-The accepted next product slice is the bounded [Proactive Career Director](./docs/product/proactive-career-director.md): event-triggered career-state judgment, campus/experienced Strategy Packs, proactive Profile discovery, Daily/Weekly briefing, interview lifecycle and Resume re-engagement — without introducing a second infinite Agent loop.
+The accepted product slice is the bounded [Proactive Career Director](./docs/product/proactive-career-director.md): event-triggered career-state judgment, campus/experienced Strategy Packs, proactive Profile discovery, Daily/Weekly briefing, interview lifecycle and Resume re-engagement — without introducing a second infinite Agent loop.
 
-Implementation uses synthetic fixtures and isolated test databases. First-run Profile Discovery is committed as `73c522e`; Daily Career Brief is committed as `bb2fb36` with Today-triggered idempotency, read-only daily context, CareerTask/Inbox projection and dismissal feedback. Job Saved Assessment, Interview Prep/Debrief and Resume Re-engagement remain the next implementation slices. Do not wait for real Resume/Profile/Job data before completing those slices; owner dogfood follows implementation and full regression.
+Implementation uses synthetic fixtures and isolated test databases. First-run Profile Discovery is committed as `73c522e`; Daily Career Brief is committed as `bb2fb36`; Job Saved Assessment Plan is committed as `d3508c8`. The shared import Operations emit idempotent JOB_SAVED events, a real Codex Career Director reads Career and Job context, and Role Intelligence starts only when the validated model plan recommends it. The plan is persisted to CareerTask/Automation Inbox and shown in Job Workspace. Interview Prep/Debrief and Resume Re-engagement remain; do not wait for real Resume/Profile/Job data before completing them. Owner dogfood follows implementation and full regression.
 
 ## Active validation
 
@@ -67,10 +67,10 @@ Implementation uses synthetic fixtures and isolated test databases. First-run Pr
 
 ## Current priorities
 
-1. Implement Slice 3, Job Saved Assessment Plan, through the existing Automation/CareerTask/Registry path.
-2. Implement Slice 4, proactive Interview Prep and post-interview Debrief.
-3. Implement Slice 5, Resume Updated Re-engagement candidates with dedupe and no external sends.
-4. Run the relevant backend/frontend tests, then full backend regression and frontend production build; sync docs and verify no synthetic artifacts or real-data copies were committed.
+1. Implement Slice 4, proactive Interview Prep and post-interview Debrief.
+2. Implement Slice 5, Resume Updated Re-engagement candidates with dedupe and no external sends.
+3. Run full backend regression and complete frontend tests/typecheck/build; attempt local Codex integration smoke and sync docs.
+4. Verify no synthetic artifacts or real-data copies were committed.
 5. Only after the implementation Definition of Done, begin owner dogfood with a real Resume and three real Jobs.
 6. Keep OMP/SWE-2 isolation and public-release signing/clean-machine evidence as separate external gates.
 
