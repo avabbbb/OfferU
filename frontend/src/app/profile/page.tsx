@@ -19,6 +19,7 @@ import {
   buildProfileBaseInfoForSave,
 } from "@/lib/personalArchive";
 import { updateProfileData, useProfile, type ProfileImportResult } from "@/lib/hooks";
+import { request } from "@/lib/api";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import ArchiveIntroCard from "./components/archive/ArchiveIntroCard";
 import ArchiveTabsHeader, {
@@ -31,6 +32,18 @@ import { ProfileOnboarding } from "./components/ProfileOnboarding";
 import ProfileOverview from "./components/ProfileOverview";
 import AIImportModal from "./components/AIImportModal";
 import CareerLedgerPanel from "./components/archive/CareerLedgerPanel";
+import CareerDiscoveryCard, {
+  type CareerBriefing,
+  type CareerSnapshot,
+  type CareerStageAssessment,
+} from "./components/CareerDiscoveryCard";
+
+type CareerDiscoveryTaskResult = {
+  task_id: string;
+  status: "queued" | "running" | "completed" | "failed" | "blocked" | "cancelled";
+  result?: { briefing?: CareerBriefing };
+  error?: string;
+};
 
 export default function ProfilePage() {
   const { data: profile, mutate, isLoading } = useProfile();
@@ -45,6 +58,11 @@ export default function ProfilePage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [aiImportOpen, setAiImportOpen] = useState(false);
+  const [careerSnapshot, setCareerSnapshot] = useState<CareerSnapshot | null>(null);
+  const [careerBriefing, setCareerBriefing] = useState<CareerBriefing | null>(null);
+  const [careerDiscoveryStatus, setCareerDiscoveryStatus] = useState<"idle" | "queued" | "running" | "completed" | "failed">("idle");
+  const [careerDiscoveryError, setCareerDiscoveryError] = useState("");
+  const [careerDiscoveryTaskId, setCareerDiscoveryTaskId] = useState("");
 
   const lastProfileArchiveUpdatedAtRef = useRef("");
   const archiveDirtyRef = useRef(false);
@@ -59,6 +77,134 @@ export default function ProfilePage() {
       setArchive(fromProfile);
     }
   }, [profile]);
+
+  useEffect(() => {
+    if (!profile?.id) return;
+    let active = true;
+    request<CareerSnapshot>("/api/profile/career-snapshot")
+      .then((snapshot) => {
+        if (active) setCareerSnapshot(snapshot);
+      })
+      .catch((err) => {
+        if (active) setCareerDiscoveryError(safeClientErrorMessage(err, "暂时无法读取档案信息"));
+      });
+    request<{ tasks: CareerDiscoveryTaskResult[] }>(
+      `/api/agent/runtime/career-tasks?task_type=career_director&target_type=profile&target_id=${encodeURIComponent(String(profile.id))}&limit=10`,
+    )
+      .then(({ tasks }) => {
+        if (!active || !tasks.length) return;
+        const latest = tasks[0];
+        if ((latest.status === "queued" || latest.status === "running") && latest.task_id) {
+          setCareerDiscoveryTaskId(latest.task_id);
+          setCareerDiscoveryStatus(latest.status);
+        } else if (latest.status === "completed" && latest.result?.briefing) {
+          setCareerBriefing(latest.result.briefing);
+          setCareerDiscoveryStatus("completed");
+        } else if (["failed", "blocked", "cancelled"].includes(latest.status)) {
+          setCareerDiscoveryStatus("failed");
+          setCareerDiscoveryError(latest.error || "上次分析没有完成，可以重试。");
+        }
+      })
+      .catch((err) => {
+        if (active) setCareerDiscoveryError(safeClientErrorMessage(err, "暂时无法读取最近一次分析"));
+      });
+    return () => { active = false; };
+  }, [profile?.id]);
+
+  useEffect(() => {
+    if (!careerDiscoveryTaskId) return;
+    let active = true;
+    let timer: number | undefined;
+    const stopPolling = () => {
+      if (timer !== undefined) window.clearInterval(timer);
+    };
+    const poll = async () => {
+      try {
+        const task = await request<CareerDiscoveryTaskResult>(
+          `/api/agent/runtime/career-tasks/${encodeURIComponent(careerDiscoveryTaskId)}/result`,
+        );
+        if (!active) return;
+        if (task.status === "queued" || task.status === "running") {
+          setCareerDiscoveryStatus(task.status);
+          return;
+        }
+        if (task.status === "completed" && task.result?.briefing) {
+          setCareerBriefing(task.result.briefing);
+          setCareerDiscoveryStatus("completed");
+          setCareerDiscoveryError("");
+          stopPolling();
+          return;
+        }
+        setCareerDiscoveryStatus("failed");
+        setCareerDiscoveryError(task.error || "分析未能完成，可以重试。 ");
+        stopPolling();
+      } catch (err) {
+        if (!active) return;
+        setCareerDiscoveryStatus("failed");
+        setCareerDiscoveryError(safeClientErrorMessage(err, "暂时无法读取分析结果"));
+        stopPolling();
+      }
+    };
+    void poll();
+    timer = window.setInterval(() => { void poll(); }, 1200);
+    return () => {
+      active = false;
+      stopPolling();
+    };
+  }, [careerDiscoveryTaskId]);
+
+  const startCareerDiscovery = async () => {
+    if (!profile?.id) return;
+    setCareerDiscoveryStatus("queued");
+    setCareerDiscoveryError("");
+    setCareerBriefing(null);
+    try {
+      const attemptKey = crypto.randomUUID();
+      const event = await request<{
+        result?: { task?: { task_id?: string } };
+        status?: string;
+        error?: string;
+      }>("/api/profile/career-discovery/start", {
+        method: "POST",
+        body: JSON.stringify({ profile_id: profile.id, attempt_key: attemptKey }),
+      });
+      const taskId = String(event.result?.task?.task_id || "");
+      if (!taskId) {
+        setCareerDiscoveryStatus("failed");
+        setCareerDiscoveryError(event.error || "没有成功排入分析任务，请稍后重试。");
+        return;
+      }
+      setCareerDiscoveryTaskId(taskId);
+    } catch (err) {
+      setCareerDiscoveryStatus("failed");
+      setCareerDiscoveryError(safeClientErrorMessage(err, "无法开始职业方向分析"));
+    }
+  };
+
+  const refreshCareerSnapshot = async () => {
+    try {
+      const snapshot = await request<CareerSnapshot>("/api/profile/career-snapshot");
+      setCareerSnapshot(snapshot);
+      setCareerDiscoveryError("");
+    } catch (err) {
+      setCareerDiscoveryError(safeClientErrorMessage(err, "暂时无法读取档案信息"));
+    }
+  };
+
+  const correctCareerStage = async (stage: Pick<CareerStageAssessment, "track" | "substage">) => {
+    try {
+      const result = await request<{ snapshot: CareerSnapshot }>("/api/profile/career-stage/correction", {
+        method: "POST",
+        body: JSON.stringify(stage),
+      });
+      setCareerSnapshot(result.snapshot);
+      await mutate();
+      setNotice("已按你的选择更新职业阶段");
+    } catch (err) {
+      setCareerDiscoveryError(safeClientErrorMessage(err, "无法保存职业阶段更正"));
+      setCareerDiscoveryStatus("failed");
+    }
+  };
 
   const metrics = useMemo(() => computeArchiveCompleteness(archive), [archive]);
   useEffect(() => {
@@ -80,6 +226,8 @@ export default function ProfilePage() {
       });
       archiveDirtyRef.current = false;
       await mutate();
+      setCareerBriefing(null);
+      await refreshCareerSnapshot();
       setNotice("档案已保存");
     } catch (err: any) {
       setError(safeClientErrorMessage(err, "保存失败"));
@@ -239,6 +387,16 @@ export default function ProfilePage() {
         onOnboarding={() => setShowOnboarding(true)}
         onSave={handleSave}
         saving={saving}
+      />
+
+      <CareerDiscoveryCard
+        snapshot={careerSnapshot}
+        briefing={careerBriefing}
+        status={careerDiscoveryStatus}
+        error={careerDiscoveryError}
+        onStart={() => { void startCareerDiscovery(); }}
+        onRefresh={() => { void refreshCareerSnapshot(); }}
+        onCorrect={(stage) => { void correctCareerStage(stage); }}
       />
 
       <ArchiveTabsHeader

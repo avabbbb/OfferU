@@ -11,6 +11,8 @@ import asyncio
 import contextlib
 import hashlib
 import json
+import os
+import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,7 +22,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 
 from app.database import async_session
-from app.models.models import CareerTask, CareerTaskEvent
+from app.models.models import AutomationEvent, CareerTask, CareerTaskEvent
 from app.services.security_redaction import (
     redact_secret_value,
     redact_sensitive_text,
@@ -41,6 +43,7 @@ TASK_TYPES = {
     "agent_turn",
     "run_artifact",
     "role_intelligence",
+    "career_director",
     "plugin_capability",
 }
 TERMINAL_STATUSES = {"completed", "failed", "blocked", "cancelled"}
@@ -388,6 +391,17 @@ async def start_career_task(
     clean_provider = str(runtime_provider or "replay").strip().casefold()
     payload = redact_secret_value(input if isinstance(input, dict) else {})
     contract = output_contract if isinstance(output_contract, dict) else {}
+    if clean_type == "career_director":
+        if clean_provider not in {"codex", "codex-app-server"}:
+            raise ValueError("Career Director 必须使用真实 Codex Runtime")
+        if str(source or "") != "automation":
+            raise ValueError("Career Director 只能由显式 AutomationEvent 触发")
+        if not str(payload.get("automation_event_id") or "").strip():
+            raise ValueError("Career Director 缺少 AutomationEvent 引用")
+        if not str(payload.get("event_type") or "").strip():
+            raise ValueError("Career Director 缺少触发事件类型")
+        if contract.get("schema") != "offeru.career_briefing.v1":
+            raise ValueError("Career Director 必须使用 CareerBriefing contract")
     key = str(idempotency_key or "").strip() or _idempotency_key(
         task_type=clean_type,
         source=str(source or "ui"),
@@ -400,6 +414,16 @@ async def start_career_task(
     stored_key = key[:180]
     async with _TASK_CREATE_LOCK:
         async with async_session() as db:
+            if clean_type == "career_director":
+                event = await db.get(AutomationEvent, str(payload.get("automation_event_id") or ""))
+                if (
+                    event is None
+                    or event.status != "processing"
+                    or event.event_type != str(payload.get("event_type") or "").upper()
+                    or event.target_type != str(target_type or "")
+                    or event.target_id != str(target_id or "")
+                ):
+                    raise ValueError("Career Director 只能由当前正在处理的匹配 AutomationEvent 启动")
             existing = (
                 await db.execute(
                     select(CareerTask).where(CareerTask.idempotency_key == stored_key)
@@ -494,6 +518,197 @@ async def _run_agent_turn(task: dict[str, Any]) -> dict[str, Any]:
             {"count": len(provider_events.get("events") or []), "next": provider_events.get("next", 0)},
         )
         return result
+    finally:
+        with contextlib.suppress(Exception):
+            await provider.shutdown()
+
+
+def _career_director_workspace() -> str:
+    """Create a no-data working directory isolated from the Career database."""
+
+    if os.name == "nt":
+        root = Path(r"H:\tmp\offeru\career-director")
+        if not root.drive or not root.parent.parent.parent.exists():
+            raise RuntimeError("Career Director isolated workspace H:\\tmp\\offeru is unavailable")
+    else:
+        root = Path(tempfile.gettempdir()) / "offeru" / "career-director"
+    root.mkdir(parents=True, exist_ok=True)
+    return str(root.resolve())
+
+
+def _career_director_final_message(result: Any, runtime_events: Any) -> str:
+    """Read the final assistant item across Codex adapter response versions."""
+
+    if isinstance(result, dict):
+        for key in ("final_message", "finalMessage"):
+            value = result.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        completed = result.get("completed")
+        turns = [completed]
+        if isinstance(completed, dict) and isinstance(completed.get("turn"), dict):
+            turns.append(completed["turn"])
+        for turn in turns:
+            if not isinstance(turn, dict):
+                continue
+            items = turn.get("items")
+            if not isinstance(items, list):
+                continue
+            for item in reversed(items):
+                if (
+                    isinstance(item, dict)
+                    and item.get("type") == "agentMessage"
+                    and isinstance(item.get("text"), str)
+                    and item["text"].strip()
+                ):
+                    return item["text"].strip()
+    events = runtime_events.get("events") if isinstance(runtime_events, dict) else None
+    if isinstance(events, list):
+        for event in reversed(events):
+            if not isinstance(event, dict):
+                continue
+            params = event.get("params") if isinstance(event.get("params"), dict) else {}
+            item = params.get("item") if isinstance(params.get("item"), dict) else {}
+            if (
+                event.get("method") == "item/completed"
+                and item.get("type") == "agentMessage"
+                and isinstance(item.get("text"), str)
+                and item["text"].strip()
+            ):
+                return item["text"].strip()
+            turn = params.get("turn") if isinstance(params.get("turn"), dict) else {}
+            items = turn.get("items") if isinstance(turn.get("items"), list) else []
+            for completed_item in reversed(items):
+                if (
+                    isinstance(completed_item, dict)
+                    and completed_item.get("type") == "agentMessage"
+                    and isinstance(completed_item.get("text"), str)
+                    and completed_item["text"].strip()
+                ):
+                    return completed_item["text"].strip()
+    return ""
+
+
+async def _run_career_director(task: dict[str, Any]) -> dict[str, Any]:
+    """Run one bounded, read-only Career Director judgment through Codex."""
+
+    from app.ops import execute_operation
+    from app.services.agent_runtime import get_agent_runtime_provider
+    from app.services.career_director import (
+        CAREER_BRIEFING_SCHEMA,
+        CareerStageAssessment,
+        parse_career_briefing_response,
+    )
+
+    if task["runtime_provider"] not in {"codex", "codex-app-server"}:
+        raise ValueError("Career Director refuses scripted or replay providers")
+    payload = task["input"] if isinstance(task.get("input"), dict) else {}
+    allowed_event_types = {
+        "PROFILE_BASELINE_REQUIRED",
+        "DAILY_REVIEW",
+        "JOB_SAVED",
+        "INTERVIEW_INVITATION_DETECTED",
+        "INTERVIEW_COMPLETED",
+        "RESUME_UPDATED",
+    }
+    event_type = str(payload.get("event_type") or "").strip().upper()
+    if event_type not in allowed_event_types:
+        raise ValueError(f"Career Director 不支持事件类型: {event_type}")
+
+    snapshots: list[dict[str, Any]] = []
+    tool_calls: list[str] = []
+
+    async def on_operation(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        if name != "get_career_snapshot":
+            raise ValueError(f"Career Director 不获准调用 Operation: {name}")
+        result = await execute_operation(
+            "get_career_snapshot",
+            arguments,
+            surface="career_director",
+            audit=True,
+        )
+        if not result.get("ok") or not isinstance(result.get("outputs"), dict):
+            raise RuntimeError("读取当前 Career State 失败")
+        snapshot = result["outputs"]
+        snapshots.append(snapshot)
+        tool_calls.append(name)
+        return snapshot
+
+    provider = get_agent_runtime_provider(
+        task["runtime_provider"],
+        run_id=task.get("run_id") or task["task_id"],
+        on_operation=on_operation,
+    )
+    cwd = _career_director_workspace()
+    instructions = {
+        "PROFILE_BASELINE_REQUIRED": "分析首次职业方向，只提出会改变后续决策的必要问题。",
+        "DAILY_REVIEW": "从当前状态选出最值得现在做的行动，并说明 why_now。",
+        "JOB_SAVED": "评估新岗位对当前用户的意义与下一步准备。",
+        "INTERVIEW_INVITATION_DETECTED": "为已安排面试准备有依据的练习重点。",
+        "INTERVIEW_COMPLETED": "提出面试复盘重点，不把反馈写成已验证事实。",
+        "RESUME_UPDATED": "评估可能值得重新联系的旧机会，只生成候选，不联系第三方。",
+    }[event_type]
+    prompt = (
+        "你是 OfferU Career Director，只能做本次有界职业判断。"
+        "先调用 get_career_snapshot() 读取当前 Career State，再基于其中的证据推理。"
+        "不得根据年龄、性别或其它无关敏感属性推断阶段；不得写入 Profile、申请阶段或其它职业事实；"
+        "不得调用外部发送、提交、联系操作，也不得自行提升权限。"
+        "严格只返回一个符合 offeru.career_briefing.v1 的原始 JSON object，不要 Markdown。"
+        "CareerStage confidence 只能是 high/medium/low；strong/weak/missing/unknown/underexpressed"
+        "必须区分。最多 3 个问题；每个优先行动都要写 why_now、预期结果与所需用户动作。"
+        f"\n触发事件：{event_type}。本次目标：{instructions}"
+        "\n\n输出必须匹配以下 JSON Schema：\n"
+        + json.dumps(CAREER_BRIEFING_SCHEMA, ensure_ascii=False, separators=(",", ":"))
+    )
+    try:
+        await provider.start()
+        await _append_event(task["task_id"], "runtime.ready", {"provider": task["runtime_provider"]})
+        thread = await provider.create_thread(
+            cwd=cwd,
+            tool_descriptions=[
+                "get_career_snapshot() — 读取经过 PII 清理的当前职业阶段、目标与有效职业证据。",
+            ],
+        )
+        result = await provider.start_turn(prompt=prompt, cwd=cwd)
+        events = await provider.events()
+        if not snapshots:
+            raise ValueError("Career Director 必须先通过 OfferU Operation 读取当前 Career State")
+        snapshot_stage = (
+            snapshots[-1].get("identity", {}).get("career_stage")
+            if isinstance(snapshots[-1].get("identity"), dict)
+            else None
+        )
+        confirmed_stage = (
+            CareerStageAssessment.model_validate(snapshot_stage)
+            if isinstance(snapshot_stage, dict)
+            else None
+        )
+        final_message = _career_director_final_message(result, events)
+        briefing = parse_career_briefing_response(
+            final_message,
+            confirmed_stage=confirmed_stage,
+        )
+        await _update_task(
+            task["task_id"],
+            agent_thread_id=str(result.get("thread_id") or result.get("threadId") or thread.get("threadId") or ""),
+            agent_turn_id=str(result.get("turn_id") or result.get("turnId") or ""),
+            progress_json={"stage": "career_briefing_validated", "percent": 100},
+        )
+        await _append_event(
+            task["task_id"],
+            "runtime.events_collected",
+            {"count": len(events.get("events") or []), "tool_calls": tool_calls},
+        )
+        return {
+            "schema": "offeru.career_director_result.v1",
+            "briefing": briefing,
+            "runtime": {
+                "provider": task["runtime_provider"],
+                "thread_id": str(result.get("thread_id") or result.get("threadId") or thread.get("threadId") or ""),
+                "turn_id": str(result.get("turn_id") or result.get("turnId") or ""),
+                "tool_calls": tool_calls,
+            },
+        }
     finally:
         with contextlib.suppress(Exception):
             await provider.shutdown()
@@ -665,6 +880,8 @@ async def _run_task(task_id: str) -> None:
             await _append_event(task_id, "task.started", {"attempt": task["attempt_count"]})
             if task["task_type"] == "agent_turn":
                 result = await _run_agent_turn(task)
+            elif task["task_type"] == "career_director":
+                result = await _run_career_director(task)
             elif task["task_type"] == "run_artifact":
                 result = await _run_artifact_task(task)
             elif task["task_type"] == "role_intelligence":
