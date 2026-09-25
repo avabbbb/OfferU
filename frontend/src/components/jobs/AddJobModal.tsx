@@ -16,7 +16,7 @@ import { safeClientErrorMessage } from "@/lib/safe-error";
 
 type AddJobModalProps = {
   isOpen: boolean;
-  onClose: () => void;
+  onClose: (reason?: "dismissed" | "created") => void;
   onCreated: (jobId: number | null) => void;
   guided?: boolean;
 };
@@ -52,7 +52,7 @@ export function AddJobModal({ isOpen, onClose, onCreated, guided = false }: AddJ
   const handleClose = () => {
     if (saving) return;
     setError("");
-    onClose();
+    onClose("dismissed");
   };
 
   const handleSubmit = async () => {
@@ -78,9 +78,11 @@ export function AddJobModal({ isOpen, onClose, onCreated, guided = false }: AddJ
         source: "manual",
         runtime_provider: form.preparationMode === "local" ? "replay" : "auto",
       });
-      const createdId = Number(result?.created_job_ids?.[0] || 0);
+      const createdId = Number(
+        result?.created_job_ids?.[0] || result?.resolved_job_ids?.[0] || 0,
+      );
       setForm({ ...initialForm, preparationMode: guided ? "live" : initialForm.preparationMode });
-      onClose();
+      onClose(createdId > 0 ? "created" : "dismissed");
       onCreated(createdId > 0 ? createdId : null);
     } catch (reason) {
       setError(safeClientErrorMessage(reason, "保存岗位失败，请重试。"));
@@ -208,6 +210,7 @@ export function AddJobModal({ isOpen, onClose, onCreated, guided = false }: AddJ
             className="bauhaus-button bauhaus-button-red !px-4 !py-3 !text-[11px]"
             onPress={() => void handleSubmit()}
             isLoading={saving}
+            isDisabled={saving}
             data-testid="add-job-submit"
           >
             保存并开始准备

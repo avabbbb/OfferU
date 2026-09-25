@@ -1,14 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { fetchRemoteRulePacks } from "../remote.js";
 import { SiteRuleRegistry } from "../registry.js";
 import bossPack from "../packs/portal.boss-job-detail.json";
+import signedBundle from "../fixtures/remote-bundle.json";
 
-// 用签名脚本真实生成的 bundle 验证往返（canonicalize 一致性 + 验签）
-const realBundle = JSON.parse(
-  readFileSync(join(__dirname, "..", "..", "..", "dist-rule-packs", "bundle.json"), "utf8"),
-) as {
+// 固定的已签名测试 fixture 覆盖 canonicalize 与真实公钥验签；测试不依赖构建输出。
+const realBundle = signedBundle as {
   schemaVersion: string;
   bundleVersion: number;
   packages: Record<string, unknown>[];

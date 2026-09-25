@@ -15,8 +15,10 @@ jobs:
         include:
           - runner: macos-15
             target: macos-arm64
+            ci_build_args: --bundles app,dmg
           - runner: macos-15-intel
             target: macos-x64
+            ci_build_args: --bundles app,dmg --verbose
     runs-on: ${{ matrix.runner }}
     env:
       MACOSX_DEPLOYMENT_TARGET: '13.5'
@@ -58,19 +60,59 @@ jobs:
             if [ -z "${!name}" ]; then echo "Release signing secret is missing: $name" >&2; exit 1; fi
           done
           if [ "$APPLE_SIGNING_IDENTITY" = '-' ]; then echo 'Release tags require a Developer ID signature.' >&2; exit 1; fi
-      - name: Build native app and DMG
+      - name: Prepare scoped hdiutil recovery for x64 DMG packaging
+        if: matrix.target == 'macos-x64'
+        shell: bash
+        env:
+          RELEASE_TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          shim_dir="$RUNNER_TEMP/offeru-hdiutil-shim"
+          mkdir -p "$shim_dir" "$RUNNER_TEMP/offeru-hdiutil-fallbacks"
+          cp backend/scripts/release/macos_hdiutil_shim.py "$shim_dir/hdiutil"
+          chmod 0755 "$shim_dir/hdiutil"
+          version=$(node -p "require('./frontend/package.json').version")
+          target_arch="${RELEASE_TARGET#macos-}"
+          printf '%s\n' "$shim_dir" >> "$GITHUB_PATH"
+          printf '%s\n' "OFFERU_DMG_TEMP_DIR=$GITHUB_WORKSPACE/frontend/src-tauri/target/release/bundle/macos" >> "$GITHUB_ENV"
+          printf '%s\n' "OFFERU_DMG_TEMP_NAME=OfferU_${version}_${target_arch}.dmg" >> "$GITHUB_ENV"
+          printf '%s\n' "OFFERU_HDIUTIL_FALLBACK_MARKER_DIR=$RUNNER_TEMP/offeru-hdiutil-fallbacks" >> "$GITHUB_ENV"
+      - name: Build unsigned app and DMG for CI
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_SIGNING_IDENTITY: '-'
+          TAURI_BUNDLER_DMG_IGNORE_CI: 'false'
+        with:
+          projectPath: frontend
+          args: ${{ matrix.ci_build_args }}
+      - name: Build signed app and DMG for release
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY || '-' }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          TAURI_BUNDLER_DMG_IGNORE_CI: 'false'
         with:
           projectPath: frontend
           args: --bundles app,dmg
+      - name: Verify DMG image integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          dmg_files=(frontend/src-tauri/target/release/bundle/dmg/*.dmg)
+          if [[ "${#dmg_files[@]}" -ne 1 ]]; then
+            printf 'Expected exactly one DMG, found %s\n' "${#dmg_files[@]}" >&2
+            exit 1
+          fi
+          hdiutil verify "${dmg_files[0]}"
       - name: Check copied app runtime without development dependencies
         run: |
           version=$(node -p "require('./frontend/package.json').version")
@@ -88,11 +130,13 @@ jobs:
         run: |
           set -euo pipefail
           version=$(node -p "require('./frontend/package.json').version")
-          collect_flags=()
-          verify_flags=()
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then collect_flags+=(--signed); verify_flags+=(--require-signed); fi
-          python backend/scripts/release/collect_release_artifacts.py frontend/src-tauri/target/release/bundle release-artifacts --version "$version" --target "$RELEASE_TARGET" "${collect_flags[@]}"
-          python backend/scripts/release/verify_release_artifacts.py release-artifacts --expected-version "$version" "${verify_flags[@]}"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            python backend/scripts/release/collect_release_artifacts.py frontend/src-tauri/target/release/bundle release-artifacts --version "$version" --target "$RELEASE_TARGET" --signed
+            python backend/scripts/release/verify_release_artifacts.py release-artifacts --expected-version "$version" --require-signed
+          else
+            python backend/scripts/release/collect_release_artifacts.py frontend/src-tauri/target/release/bundle release-artifacts --version "$version" --target "$RELEASE_TARGET"
+            python backend/scripts/release/verify_release_artifacts.py release-artifacts --expected-version "$version"
+          fi
           python backend/scripts/release/audit_artifacts.py release-artifacts --json
       - uses: actions/upload-artifact@v4
         with:

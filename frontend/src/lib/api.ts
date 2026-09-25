@@ -9,6 +9,10 @@ import { SHOWCASE, showcaseHandle } from "./showcase/router";
 import { showcaseChatResponse } from "./showcase/llm";
 import { resolveApiBase } from "./apiBase";
 import { safeClientErrorMessage } from "./safe-error";
+import {
+  decideAgentRuntimeActionInDesktop,
+  decideProposalInDesktop,
+} from "./desktop-proposal-decision";
 import type { components, operations } from "./api-types.generated";
 type Schemas = components["schemas"];
 type Ops = operations;
@@ -559,6 +563,33 @@ export interface AgentConfirmationResponse {
   warnings?: string[];
 }
 
+export interface AgentPendingProposalAction {
+  actionId: string;
+  operation: string;
+  args: Record<string, unknown>;
+  summary: string;
+}
+
+export interface AgentPendingProposal {
+  runId: string;
+  goal: string;
+  steps: AgentPendingProposalAction[];
+  createdAt: string;
+}
+
+export interface AgentPendingProposalsResponse {
+  total: number;
+  items: AgentPendingProposal[];
+}
+
+export interface AgentProposalDecisionResponse {
+  approved: boolean;
+  completed?: boolean;
+  runStatus?: string;
+  errors?: string[];
+  warnings?: string[];
+}
+
 export interface HostedExecutorEvent {
   event_id: string;
   sequence: number;
@@ -1099,13 +1130,9 @@ export const agentRuntimeApi = {
     }
   },
   confirm: (runId: string, actionId: string) =>
-    request<AgentConfirmationResponse>(
-      `/api/agent/runtime/runs/${encodeURIComponent(runId)}/confirm`,
-      {
-        method: "POST",
-        body: JSON.stringify({ action_id: actionId }),
-      }
-    ),
+    decideAgentRuntimeActionInDesktop(runId, actionId, true),
+  reject: (runId: string, actionId: string) =>
+    decideAgentRuntimeActionInDesktop(runId, actionId, false),
   resume: (runId: string) =>
     request<AgentRunResponse>(
       `/api/agent/runtime/runs/${encodeURIComponent(runId)}/resume`,
@@ -1139,6 +1166,15 @@ export const agentRuntimeApi = {
         after_sequence: afterSequence,
       })}`
     ),
+};
+
+export const bridgeProposalApi = {
+  listPending: () =>
+    request<AgentPendingProposalsResponse>("/api/bridge/proposals/pending", {
+      signal: AbortSignal.timeout(15000),
+    }),
+  decide: (runId: string, actionId: string, approve: boolean) =>
+    decideProposalInDesktop(runId, actionId, approve),
 };
 
 export const hostedExecutorApi = {

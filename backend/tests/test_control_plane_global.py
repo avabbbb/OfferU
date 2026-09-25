@@ -45,6 +45,7 @@ NON_REGISTRY_MUTATION_ENDPOINTS = {
     ("main_agent.py", "start_runtime_run"),
     ("main_agent.py", "stream_runtime_run"),
     ("main_agent.py", "confirm_runtime_action"),
+    ("main_agent.py", "reject_runtime_action"),
     ("main_agent.py", "resume_runtime_run"),
     ("main_agent.py", "abort_runtime_run"),
     ("main_agent.py", "cancel_hosted_executor_session_from_ui"),
@@ -242,15 +243,27 @@ def test_cli_mcp_and_plugin_surfaces_do_not_create_a_domain_write_escape_hatch()
     assert "app.models" not in cli_modules
     assert "app.services.agent_operations" not in cli_modules
     assert "execute_or_propose_operation" in _function_calls(cli_tree, "_run_operation")
-    assert "confirm_operation_proposal" in _function_calls(cli_tree, "_confirm_operation")
+    cli_names = {node.id for node in ast.walk(cli_tree) if isinstance(node, ast.Name)}
+    cli_functions = {
+        node.name for node in cli_tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    assert "confirm_operation_proposal" not in cli_names
+    assert "_confirm_operation" not in cli_functions
 
     mcp_modules = _imported_modules(mcp_tree)
     assert "app.database" not in mcp_modules
     assert "app.models.models" not in mcp_modules
     assert "app.services.agent_operations" not in mcp_modules
     assert "execute_or_propose_operation" in _function_calls(mcp_tree, "offeru_operation")
-    assert "confirm_operation_proposal" in _function_calls(mcp_tree, "confirm_operation")
     assert "execute_or_propose_operation" in _function_calls(mcp_tree, "resource_profile")
+    mcp_names = {node.id for node in ast.walk(mcp_tree) if isinstance(node, ast.Name)}
+    mcp_functions = {
+        node.name for node in mcp_tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    assert "confirm_operation_proposal" not in mcp_names
+    assert "confirm_operation" not in mcp_functions
 
     plugin_modules = _imported_modules(plugin_tree)
     assert "app.models.models" not in plugin_modules

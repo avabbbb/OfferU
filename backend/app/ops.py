@@ -594,8 +594,9 @@ class ListAgentRunsInput(_StrictOperationInput):
     limit: int = Field(default=20, ge=1, le=100)
 
 
-class AgentRunIdInput(_StrictOperationInput):
+class RejectAgentRunInput(_StrictOperationInput):
     run_id: str = Field(min_length=1, max_length=120)
+    action_id: str | None = Field(default=None, min_length=1, max_length=200)
 
 
 class AgentPlaybookInput(_StrictOperationInput):
@@ -1523,6 +1524,7 @@ _PROTECTED_AGENT_SURFACES = {
     "cli",
     "mcp",
     "pi",
+    "agent_runtime_ui",
     "web_agent",
     "optimize_agent",
 }
@@ -3729,11 +3731,11 @@ OPERATIONS.update(
 OPERATIONS["reject_agent_run"] = Operation(
     name="reject_agent_run",
     fn=reject_agent_run,
-    description="记录用户拒绝 Agent Run 提案，确保后续不会执行。",
+    description="记录用户拒绝 Agent Run 中一个待确认动作；必须指定 action_id，单动作 Run 可省略。",
     group="agent_runtime",
     side_effects=("write",),
-    input_model=AgentRunIdInput,
-    version="2026-08-28",
+    input_model=RejectAgentRunInput,
+    version="2026-09-24",
 )
 
 
@@ -4852,7 +4854,14 @@ async def execute_operation(
 
     authorization = _OPERATION_AUTHORIZATION.get()
     audit_id: int | None = None
-    if op.is_mutation and surface in _PROTECTED_AGENT_SURFACES:
+    is_explicit_ui_rejection = (
+        surface == "agent_runtime_ui" and name == "reject_agent_run"
+    )
+    if (
+        op.is_mutation
+        and surface in _PROTECTED_AGENT_SURFACES
+        and not is_explicit_ui_rejection
+    ):
         authorization_error = await _validate_authorization(op, authorization)
         if authorization_error:
             envelope = _envelope(

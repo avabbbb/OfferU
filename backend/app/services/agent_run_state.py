@@ -213,6 +213,59 @@ def _append_event_row(
     )
 
 
+def _run_status_from_steps(
+    steps: list[Any], *, fallback: str = "executing"
+) -> str:
+    statuses = {
+        str(step.get("status") or "")
+        for step in steps
+        if isinstance(step, dict)
+    }
+    if "uncertain" in statuses:
+        return "needs_reconciliation"
+    if "failed" in statuses:
+        return "failed"
+    if "waiting_confirmation" in statuses:
+        return "waiting_confirmation"
+    if statuses.intersection({"pending", "executing"}):
+        return "executing"
+    if statuses and statuses.issubset({"completed", "rejected"}):
+        return "completed"
+    return fallback
+
+
+def _preserve_rejected_steps(
+    current_steps: list[Any], incoming_steps: list[Any]
+) -> tuple[list[Any], bool]:
+    """Keep persisted user rejections immutable across stale whole-run saves."""
+    rejected = [
+        (index, step)
+        for index, step in enumerate(current_steps)
+        if isinstance(step, dict) and step.get("status") == "rejected"
+    ]
+    if not rejected:
+        return incoming_steps, False
+
+    merged = [dict(step) if isinstance(step, dict) else step for step in incoming_steps]
+    found_ids: set[str] = set()
+    for index, current in rejected:
+        action_id = str(current.get("id") or "")
+        match = next(
+            (
+                position
+                for position, step in enumerate(merged)
+                if isinstance(step, dict) and str(step.get("id") or "") == action_id
+            ),
+            None,
+        )
+        if match is None:
+            merged.insert(min(index, len(merged)), dict(current))
+        else:
+            merged[match] = dict(current)
+        found_ids.add(action_id)
+    return merged, bool(found_ids)
+
+
 async def create_agent_run(
     *,
     conversation_id: str,
@@ -321,57 +374,89 @@ async def save_agent_run(
     cleaned = _clean_run({**run, "updated_at": _now_iso()})
     if cleaned is None:
         raise ValueError("Invalid agent run")
-    async with async_session() as db:
-        row = (
-            await db.execute(
-                select(AgentRunRecord).where(
-                    AgentRunRecord.run_id == cleaned["id"]
+    protected_terminal_statuses = {
+        "failed",
+        "needs_reconciliation",
+        "cancelled",
+    }
+    for _ in range(3):
+        async with async_session() as db:
+            row = (
+                await db.execute(
+                    select(AgentRunRecord).where(
+                        AgentRunRecord.run_id == cleaned["id"]
+                    )
                 )
+            ).scalar_one_or_none()
+            if row is None:
+                raise ValueError(f"Agent Run {cleaned['id']} does not exist")
+            previous_status = row.status
+            previous_failure_reason = row.failure_reason
+            previous_steps = row.steps_json if isinstance(row.steps_json, list) else []
+            merged_steps, has_rejected_steps = _preserve_rejected_steps(
+                previous_steps, cleaned["steps"]
             )
-        ).scalar_one_or_none()
-        if row is None:
-            raise ValueError(f"Agent Run {cleaned['id']} does not exist")
-        previous_status = row.status
-        row.status = cleaned["status"]
-        row.steps_json = cleaned["steps"]
-        row.exit_criteria_json = cleaned["exit_criteria"]
-        row.llm_runtime_json = cleaned["llm_runtime"]
-        row.recovery_cursor_json = cleaned["recovery_cursor"]
-        row.final_result_json = cleaned["final_result"]
-        row.failure_reason = cleaned["failure_reason"]
-        # Collect the lifecycle events to append, then reserve their sequence
-        # numbers with an atomic UPDATE so concurrent save_agent_run calls for
-        # the same run cannot collide on (run_id, sequence) — which is guarded
-        # by the uq_agent_run_event_sequence unique constraint.
-        pending_events: list[tuple[str, dict[str, Any]]] = []
-        if event_type:
-            pending_events.append((event_type, event_payload or {}))
-        if row.status != previous_status and row.status in TERMINAL_STATUSES:
-            terminal_type = {
-                "completed": "run.completed",
-                "failed": "run.failed",
-                "cancelled": "run.cancelled",
-                "needs_reconciliation": "run.failed",
-            }[row.status]
-            pending_events.append(
-                (
-                    terminal_type,
-                    {"status": row.status, "failure_reason": row.failure_reason},
+            if not has_rejected_steps:
+                next_status = cleaned["status"]
+            elif previous_status in protected_terminal_statuses:
+                next_status = previous_status
+            elif cleaned["status"] in protected_terminal_statuses:
+                next_status = cleaned["status"]
+            else:
+                next_status = _run_status_from_steps(
+                    merged_steps, fallback=cleaned["status"]
                 )
+            failure_reason = (
+                previous_failure_reason
+                if has_rejected_steps
+                and previous_status in protected_terminal_statuses
+                and not cleaned["failure_reason"]
+                else cleaned["failure_reason"]
             )
-        if pending_events:
+            # Lifecycle rows and the Run snapshot commit together. The full
+            # steps/status predicate makes a save retry if a concurrent action
+            # decision changed the Run after this snapshot was read.
+            pending_events: list[tuple[str, dict[str, Any]]] = []
+            if event_type:
+                pending_events.append((event_type, event_payload or {}))
+            if next_status != previous_status and next_status in TERMINAL_STATUSES:
+                terminal_type = {
+                    "completed": "run.completed",
+                    "failed": "run.failed",
+                    "cancelled": "run.cancelled",
+                    "needs_reconciliation": "run.failed",
+                }[next_status]
+                pending_events.append(
+                    (
+                        terminal_type,
+                        {"status": next_status, "failure_reason": failure_reason},
+                    )
+                )
+            values = {
+                "status": next_status,
+                "steps_json": merged_steps,
+                "exit_criteria_json": cleaned["exit_criteria"],
+                "llm_runtime_json": cleaned["llm_runtime"],
+                "recovery_cursor_json": cleaned["recovery_cursor"],
+                "final_result_json": cleaned["final_result"],
+                "failure_reason": failure_reason,
+                "event_sequence": AgentRunRecord.event_sequence
+                + len(pending_events),
+            }
             new_sequence = (
                 await db.execute(
                     sql_update(AgentRunRecord)
                     .where(AgentRunRecord.run_id == cleaned["id"])
-                    .values(
-                        event_sequence=AgentRunRecord.event_sequence
-                        + len(pending_events)
-                    )
+                    .where(AgentRunRecord.status == previous_status)
+                    .where(AgentRunRecord.steps_json == previous_steps)
+                    .values(**values)
                     .returning(AgentRunRecord.event_sequence)
                 )
-            ).scalar_one()
-            base_sequence = new_sequence - len(pending_events)
+            ).scalar_one_or_none()
+            if new_sequence is None:
+                await db.rollback()
+                continue
+            base_sequence = int(new_sequence) - len(pending_events)
             for offset, (etype, epayload) in enumerate(pending_events):
                 db.add(
                     AgentRunEvent(
@@ -382,12 +467,12 @@ async def save_agent_run(
                         payload_json=safe_result_preview(epayload),
                     )
                 )
-            # Keep the in-memory attribute consistent with the DB for callers
-            # that read row.event_sequence before the refresh below.
-            row.event_sequence = new_sequence
-        await db.commit()
-        await db.refresh(row)
-        return _row_to_run(row)
+            await db.commit()
+            await db.refresh(row)
+            return _row_to_run(row)
+    raise ValueError(
+        f"Agent Run {cleaned['id']} changed concurrently; reload it and retry the save"
+    )
 
 
 async def load_agent_run(run_id: str | None) -> dict[str, Any] | None:
@@ -670,6 +755,176 @@ async def propose_agent_run_action(
         return step
 
 
+async def reject_agent_run_action(
+    run_id: str, *, action_id: str | None = None
+) -> dict[str, Any]:
+    """Reject exactly one pending action with a compare-and-set transition."""
+    clean_run_id = str(run_id or "").strip()
+    clean_action_id = str(action_id or "").strip()
+    if not clean_run_id:
+        return {"error": "拒绝动作必须提供 Agent Run id。"}
+
+    # Compare the full JSON snapshot as well as the target step. A concurrent
+    # update to a sibling action then causes a retry instead of being erased by
+    # writing a stale steps_json array.
+    for _ in range(3):
+        async with async_session() as db:
+            row = (
+                await db.execute(
+                    select(AgentRunRecord).where(
+                        AgentRunRecord.run_id == clean_run_id
+                    )
+                )
+            ).scalar_one_or_none()
+            if row is None:
+                return {"error": f"Agent Run {clean_run_id} 不存在。"}
+            current_run = _row_to_run(row)
+            current_steps = row.steps_json if isinstance(row.steps_json, list) else []
+        steps = [dict(step) if isinstance(step, dict) else step for step in current_steps]
+        target_action_id = clean_action_id
+        if not target_action_id:
+            pending = [
+                step
+                for step in steps
+                if isinstance(step, dict)
+                and step.get("status") == "waiting_confirmation"
+            ]
+            if len(pending) != 1:
+                return {
+                    "error": (
+                        "拒绝动作必须提供 action_id；仅当 Agent Run 恰有一个待确认动作时"
+                        "才允许省略。"
+                    )
+                }
+            target_action_id = str(pending[0].get("id") or "")
+        index = next(
+            (
+                position
+                for position, step in enumerate(steps)
+                if isinstance(step, dict)
+                and str(step.get("id") or "") == target_action_id
+            ),
+            None,
+        )
+        if index is None:
+            return {"error": f"Agent Run 动作 {target_action_id} 不存在。"}
+
+        current_status = str(steps[index].get("status") or "")
+        if current_status == "rejected":
+            return {
+                "rejected": True,
+                "action_id": target_action_id,
+                "action_status": "rejected",
+                "run_status": current_run["status"],
+                "runStatus": current_run["status"],
+                "run": current_run,
+                "warnings": ["该动作已拒绝；没有重复写入状态或事件。"],
+            }
+        if current_status != "waiting_confirmation":
+            return {
+                "error": (
+                    f"动作 {target_action_id} 当前状态为 {current_status or 'unknown'}；"
+                    "只有 waiting_confirmation 动作可以拒绝。"
+                )
+            }
+        if current_run["status"] in TERMINAL_STATUSES:
+            return {
+                "error": f"Agent Run 当前已终结（{current_run['status']}），不能再拒绝动作。"
+            }
+
+        now = datetime.now(timezone.utc)
+        steps[index]["status"] = "rejected"
+        steps[index]["rejected_at"] = now.isoformat()
+        next_status = _run_status_from_steps(
+            steps, fallback=str(current_run.get("status") or "executing")
+        )
+        pending_events: list[tuple[str, dict[str, Any]]] = [
+            (
+                "operation.rejected",
+                {
+                    "action_id": target_action_id,
+                    "operation": str(steps[index].get("tool") or ""),
+                    "idempotency_key": str(steps[index].get("idempotency_key") or ""),
+                    "status": "rejected",
+                },
+            )
+        ]
+        if next_status in TERMINAL_STATUSES and next_status != current_run["status"]:
+            terminal_type = {
+                "completed": "run.completed",
+                "cancelled": "run.cancelled",
+                "failed": "run.failed",
+                "needs_reconciliation": "run.failed",
+            }[next_status]
+            pending_events.append(
+                (
+                    terminal_type,
+                    {
+                        "status": next_status,
+                        "action_id": target_action_id,
+                        "reason": "proposal_rejected",
+                    },
+                )
+            )
+
+        event_count = len(pending_events)
+        async with async_session() as db:
+            new_sequence = (
+                await db.execute(
+                    sql_update(AgentRunRecord)
+                    .where(AgentRunRecord.run_id == clean_run_id)
+                    .where(AgentRunRecord.status.notin_(TERMINAL_STATUSES))
+                    .where(AgentRunRecord.steps_json == current_steps)
+                    .where(
+                        AgentRunRecord.steps_json[index]["id"].as_string()
+                        == target_action_id
+                    )
+                    .where(
+                        AgentRunRecord.steps_json[index]["status"].as_string()
+                        == "waiting_confirmation"
+                    )
+                    .values(
+                        status=next_status,
+                        steps_json=steps,
+                        updated_at=now.replace(tzinfo=None),
+                        event_sequence=AgentRunRecord.event_sequence + event_count,
+                    )
+                    .returning(AgentRunRecord.event_sequence)
+                )
+            ).scalar_one_or_none()
+            if new_sequence is None:
+                await db.rollback()
+                continue
+            base_sequence = int(new_sequence) - event_count
+            for offset, (event_type, payload) in enumerate(pending_events):
+                db.add(
+                    AgentRunEvent(
+                        event_id=f"evt_{uuid.uuid4().hex}",
+                        run_id=clean_run_id,
+                        sequence=base_sequence + offset + 1,
+                        event_type=event_type,
+                        payload_json=safe_result_preview(payload),
+                    )
+                )
+            await db.commit()
+        run = await load_agent_run(clean_run_id)
+        if run is None:
+            return {"error": f"Agent Run {clean_run_id} 在拒绝后无法重新读取。"}
+        return {
+            "rejected": True,
+            "action_id": target_action_id,
+            "action_status": "rejected",
+            "run_status": run["status"],
+            "runStatus": run["status"],
+            "run": run,
+            "warnings": ["已拒绝该动作；该动作不会通过后续确认执行。"],
+        }
+
+    return {
+        "error": "Agent Run 状态正在并发变化；本次拒绝未写入，请刷新后重试。"
+    }
+
+
 def pending_actions_for_run(run: dict[str, Any]) -> list[dict[str, Any]]:
     actions: list[dict[str, Any]] = []
     for step in run.get("steps") or []:
@@ -718,17 +973,7 @@ def mark_run_actions_executed(
             if has_error and isinstance(result, dict)
             else None
         )
-    statuses = {
-        str(step.get("status") or "")
-        for step in run.get("steps") or []
-        if isinstance(step, dict)
-    }
-    if "failed" in statuses:
-        run["status"] = "failed"
-    elif statuses and statuses.issubset({"completed"}):
-        run["status"] = "completed"
-    elif "waiting_confirmation" in statuses:
-        run["status"] = "waiting_confirmation"
-    else:
-        run["status"] = "executing"
+    run["status"] = _run_status_from_steps(
+        run.get("steps") or [], fallback="executing"
+    )
     return run

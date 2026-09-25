@@ -57,6 +57,7 @@ EXPLICIT_ROUTE_BOUNDARIES = {
     ("main_agent.py", "start_runtime_run"),
     ("main_agent.py", "stream_runtime_run"),
     ("main_agent.py", "confirm_runtime_action"),
+    ("main_agent.py", "reject_runtime_action"),
     ("main_agent.py", "resume_runtime_run"),
     ("main_agent.py", "abort_runtime_run"),
     ("main_agent.py", "cancel_hosted_executor_session_from_ui"),
@@ -431,6 +432,11 @@ def _control_surface_bypasses() -> list[dict[str, Any]]:
         "mcp": {"app.database", "app.models.models", "app.services.agent_operations"},
         "plugins": {"app.models.models", "app.database", "sqlalchemy"},
     }
+    forbidden_confirmation_names = {
+        "cli": {"_confirm_operation", "confirm_operation_proposal"},
+        "mcp": {"confirm_operation", "confirm_operation_proposal"},
+        "plugins": set(),
+    }
     for surface, path in CONTROL_SURFACES.items():
         if not path.is_file():
             findings.append({"path": _relative(path), "kind": "missing_control_surface"})
@@ -440,13 +446,31 @@ def _control_surface_bypasses() -> list[dict[str, Any]]:
             findings.append({"path": _relative(path), "kind": "control_surface_domain_import", "module": module})
 
         tree = ast.parse(path.read_text(encoding="utf-8"))
+        function_names = {
+            node.name
+            for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
+        referenced_names = {
+            node.id for node in ast.walk(tree) if isinstance(node, ast.Name)
+        }
+        for name in sorted(
+            (function_names | referenced_names) & forbidden_confirmation_names[surface]
+        ):
+            findings.append(
+                {
+                    "path": _relative(path),
+                    "kind": "control_surface_confirmation_escape_hatch",
+                    "name": name,
+                }
+            )
+
         required: dict[str, set[str]] = {}
         if surface == "cli":
-            required = {"_run_operation": {"execute_or_propose_operation"}, "_confirm_operation": {"confirm_operation_proposal"}}
+            required = {"_run_operation": {"execute_or_propose_operation"}}
         elif surface == "mcp":
             required = {
                 "offeru_operation": {"execute_or_propose_operation"},
-                "confirm_operation": {"confirm_operation_proposal"},
                 "resource_profile": {"execute_or_propose_operation"},
             }
         for function_name, expected_calls in required.items():

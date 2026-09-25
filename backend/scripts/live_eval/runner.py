@@ -32,10 +32,6 @@ if __package__ in {None, ""}:  # 允许 python scripts/live_eval/runner.py 直�
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     from scripts.live_eval.cases import (  # type: ignore[import-not-found]
         BENCHMARK_VERSION,
-        CONFIRM_AUTO_SANDBOX,
-        CONFIRM_AUTO_SAFE,
-        CONFIRM_MANUAL,
-        CONFIRM_REJECT,
         LIVE_EVAL_CASES,
         STATUS_NOT_RUN,
         STATUS_PASS,
@@ -55,6 +51,7 @@ if __package__ in {None, ""}:  # 允许 python scripts/live_eval/runner.py 直�
     from scripts.live_eval.isolation import (  # type: ignore[import-not-found]
         clone_database,
         snapshot,
+        validate_unredirected_path,
         write_json,
     )
     from scripts.live_eval.metrics import aggregate_metrics  # type: ignore[import-not-found]
@@ -73,10 +70,6 @@ if __package__ in {None, ""}:  # 允许 python scripts/live_eval/runner.py 直�
 else:
     from .cases import (
         BENCHMARK_VERSION,
-        CONFIRM_AUTO_SANDBOX,
-        CONFIRM_AUTO_SAFE,
-        CONFIRM_MANUAL,
-        CONFIRM_REJECT,
         LIVE_EVAL_CASES,
         STATUS_NOT_RUN,
         STATUS_PASS,
@@ -88,7 +81,7 @@ else:
         suite_summary,
     )
     from .grader import Trace, Verdict, classify_provider_failure, grade
-    from .isolation import clone_database, snapshot, write_json
+    from .isolation import clone_database, snapshot, validate_unredirected_path, write_json
     from .metrics import aggregate_metrics
     from .private_dataset import validate_private_dataset
     from .private_seed import (
@@ -142,16 +135,19 @@ HARNESS_ALLOWED_TOOLS = (
 # 业务确认/拒绝必须由人类做出，Agent 不得自行 confirm 或 reject。
 HARNESS_DISALLOWED_TOOLS = "Bash(*app.cli confirm*) Bash(*app.cli run reject_agent_run*)"
 
-CONTINUE_PROMPT = "请继续执行，我同意。Go on."
-
-
 # ---------------------------------------------------------------- helpers
 
 
-def _child_environment(database_url: str) -> dict[str, str]:
+def _child_environment(
+    database_url: str,
+    *,
+    data_dir: Path | None = None,
+) -> dict[str, str]:
     env = {key: value for key, value in os.environ.items() if key in ENV_KEEP}
     env["NO_COLOR"] = "1"
     env["DATABASE_URL"] = database_url
+    if data_dir is not None:
+        env["OFFERU_DATA_DIR"] = str(Path(data_dir).resolve())
     return env
 
 
@@ -311,8 +307,13 @@ OfferU 接入约定（绝对路径）：{PROJECT_ROOT / ".agents" / "skills" / "
 """
 
 
-def _run_cli(database_url: str, args: list[str]) -> dict[str, Any]:
-    env = _child_environment(database_url)
+def _run_cli(
+    database_url: str,
+    args: list[str],
+    *,
+    data_dir: Path | None = None,
+) -> dict[str, Any]:
+    env = _child_environment(database_url, data_dir=data_dir)
     proc = subprocess.run(
         [str(BACKEND_DIR / ".venv312" / "Scripts" / "python.exe"), "-m", "app.cli", *args],
         cwd=str(BACKEND_DIR),
@@ -349,44 +350,93 @@ def _pick_target_job(eval_db: Path, *, pinned_job_id: int = 0) -> int:
         connection.close()
 
 
-def _seed_current_view(database_url: str, job_id: int) -> dict[str, Any]:
-    """预置 current view。
+def _sqlite_eval_url(eval_db: Path) -> str:
+    return f"sqlite+aiosqlite:///{Path(eval_db).resolve().as_posix()}"
 
-    隔离环境没有前端，current view 必然为空，会让所有"我当前这个岗位"类题目
-    退化成"找不到目标"。真实使用时这一项由前端 `set_current_view` 写入。
 
-    注意：`set_current_view` 的 side_effects 是 write，走 CLI 只会得到提案，
-    必须再 confirm 才生效（前端走 surface="ui" 才直接写）。
+def _validate_eval_database(database_url: str, eval_db: Path) -> Path:
+    path = Path(eval_db)
+    if path.is_symlink():
+        raise ValueError("Live Eval fixture database must not be a symlink")
+    resolved = path.resolve(strict=True)
+    if not resolved.is_file() or database_url != _sqlite_eval_url(resolved):
+        raise ValueError("DATABASE_URL must point exactly to the isolated Live Eval clone")
+    return resolved
+
+
+def _seed_current_view(
+    database_url: str,
+    eval_db: Path,
+    job_id: int,
+) -> dict[str, Any]:
+    """Initialize the clone and add fixture-only workspace context.
+
+    The context row is test setup, not a Career Operation, Proposal, approval,
+    or business execution. All SQL is parameterized and targets only eval_db.
     """
 
+    clone_path = _validate_eval_database(database_url, eval_db)
     if job_id <= 0:
         return {"ok": False, "reason": "no target job available"}
-    payload = json.dumps(
-        {
-            "scope": "default",
-            "route": f"/jobs/{job_id}",
-            "title": "目标岗位",
-            "entity_type": "job",
-            "entity_id": str(job_id),
-        },
-        ensure_ascii=False,
-    )
-    proposed = _run_cli(database_url, ["run", "set_current_view", "--args", payload])
-    outputs = proposed.get("outputs") if isinstance(proposed.get("outputs"), dict) else {}
-    if not proposed.get("ok") or not outputs.get("requires_confirmation"):
-        return {"ok": bool(proposed.get("ok")), "stage": "direct"}
 
-    proposal = outputs.get("proposal") if isinstance(outputs.get("proposal"), dict) else {}
-    run_id = str(proposal.get("run_id") or "")
-    action_id = str(proposal.get("action_id") or "")
-    if not run_id or not action_id:
-        return {"ok": False, "stage": "proposal"}
-    confirmed = _run_cli(database_url, ["confirm", run_id, "--action", action_id])
+    initialized = _run_cli(
+        database_url,
+        [
+            "run",
+            "get_current_view",
+            "--args",
+            json.dumps({"scope": "default"}, separators=(",", ":")),
+        ],
+        data_dir=clone_path.parent / "offeru-data",
+    )
+    if not initialized.get("ok"):
+        return {"ok": False, "stage": "clone_initialization"}
+
+    route = f"/jobs/{job_id}"
+    with sqlite3.connect(str(clone_path)) as connection:
+        if connection.execute("SELECT 1 FROM jobs WHERE id = ?", (job_id,)).fetchone() is None:
+            return {"ok": False, "reason": "target job is not present in the eval clone"}
+        connection.execute(
+            """
+            INSERT INTO agent_workspace_states (
+                scope, route, title, entity_type, entity_id, selection_json,
+                filters_json, context_json, version, updated_by, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ON CONFLICT(scope) DO UPDATE SET
+                route = excluded.route,
+                title = excluded.title,
+                entity_type = excluded.entity_type,
+                entity_id = excluded.entity_id,
+                selection_json = excluded.selection_json,
+                filters_json = excluded.filters_json,
+                context_json = excluded.context_json,
+                version = excluded.version,
+                updated_by = excluded.updated_by,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (
+                "default",
+                route,
+                "Live Eval fixture job",
+                "job",
+                str(job_id),
+                "{}",
+                "{}",
+                "{}",
+                1,
+                "live_eval_fixture",
+            ),
+        )
+
     return {
-        "ok": bool(confirmed.get("ok")),
-        "stage": "proposal+confirm",
-        "run_id": run_id,
-        "action_id": action_id,
+        "ok": True,
+        "stage": "fixture_context",
+        "fixture_only": True,
+        "context_kind": "current_job_selection",
+        "job_id": job_id,
+        "side_effect_operation_executed": False,
+        "proposal_created": False,
+        "approval_performed": False,
     }
 
 
@@ -499,10 +549,17 @@ def _agent_run_action_state(eval_db: Path, run_id: str, action_id: str) -> dict[
     )
     if step_status == "completed":
         decision = "accepted"
-    elif str(failure_reason or "") == "rejected_by_user":
+    elif step_status == "rejected":
         decision = "rejected"
     elif step_status == "executing" or str(run_status) == "executing":
         decision = "in_progress"
+    elif (
+        str(failure_reason or "") == "rejected_by_user"
+        and str(run_status or "") == "needs_reconciliation"
+    ):
+        # Legacy reject_agent_run records rejected the whole run without marking
+        # individual steps. New action-level rejections are read from step.status.
+        decision = "rejected"
     elif step_status == "failed" or str(run_status) == "failed":
         decision = "failed"
     else:
@@ -560,25 +617,6 @@ def _human_review_continuation_prompt(decisions: list[dict[str, str]]) -> str:
     return "\n".join(lines)
 
 
-def _should_simulate_decision(mode: str, confirmation_policy: str) -> str | None:
-    """Runner may simulate a reviewer only in the isolated capability mode."""
-
-    if mode != "capability":
-        return None
-    if confirmation_policy == CONFIRM_REJECT:
-        return "reject"
-    if confirmation_policy in {CONFIRM_AUTO_SANDBOX, CONFIRM_AUTO_SAFE}:
-        return "approve"
-    return None
-
-
-def _confirm_action(database_url: str, run_id: str, action_id: str) -> dict[str, Any]:
-    """由 runner 扮演「人类使用者」确认提案 —— 绝不让被测 Agent 自己确认。"""
-
-    response = _run_cli(database_url, ["confirm", run_id, "--action", action_id, "--pretty"])
-    return {"run_id": run_id, "action_id": action_id, "ok": bool(response.get("ok")), "response": response}
-
-
 def _audit_rows(eval_db: Path, *, exclude_ids: set[str]) -> list[dict[str, Any]]:
     connection = sqlite3.connect(str(eval_db))
     connection.row_factory = sqlite3.Row
@@ -603,11 +641,11 @@ def _audit_rows_for_grading(
     *,
     human_decisions: list[dict[str, str]],
 ) -> tuple[list[dict[str, Any]], list[int]]:
-    """Keep full audit while excluding only attributable human/runner approvals from G2.
+    """Keep full audit while excluding attributable approvals from the Agent grader.
 
-    Workbench confirms use surface ``pi``; capability-mode runner approvals use
-    ``cli``. Both require the exact persisted run/action reference and a matching
-    decision recorded by this runner. Other surfaces and unpaired CLI confirms remain.
+    UI and capability-runner decisions may leave Registry audit rows for the
+    approved operation itself. Exclude only rows bound to the exact persisted
+    Run/action, with an idempotency key and a matching decision observed here.
     """
 
     decisions = {
@@ -619,7 +657,7 @@ def _audit_rows_for_grading(
     kept: list[dict[str, Any]] = []
     excluded_ids: list[int] = []
     for row in audit_rows:
-        if str(row.get("operation") or "") != "confirm_operation_proposal":
+        if not str(row.get("operation") or "") or not str(row.get("idempotency_key") or ""):
             kept.append(row)
             continue
         ref = str(row.get("confirmation_ref") or "")
@@ -628,12 +666,20 @@ def _audit_rows_for_grading(
             kept.append(row)
             continue
         run_id, separator, action_id = ref[len(prefix):].partition(":")
+        if (
+            not separator
+            or not action_id
+            or str(row.get("idempotency_key") or "") != f"{run_id}:{action_id}"
+        ):
+            kept.append(row)
+            continue
         decision = decisions.get((run_id, action_id))
         surface = str(row.get("surface") or "")
         if (
-            separator
+            str(row.get("status") or "") in {"executing", "completed", "failed"}
+            and not bool(row.get("dry_run"))
             and (
-                (decision == "accepted" and surface == "pi")
+                (decision == "accepted" and surface in {"pi", "agent_runtime_ui"})
                 or (decision == "approve" and surface == "cli")
             )
         ):
@@ -651,7 +697,7 @@ def _human_action_execution_started(
         for item in actions
     }
     return any(
-        str(row.get("surface") or "") == "pi"
+        str(row.get("surface") or "") in {"pi", "agent_runtime_ui"}
         and str(row.get("confirmation_ref") or "") in refs
         and str(row.get("status") or "") in {"executing", "completed", "failed"}
         for row in audit_rows
@@ -672,8 +718,8 @@ def _audit_keys(eval_db: Path) -> set[str]:
 
 
 async def _run_harness_once(prompt: str, *, eval_db: Path, timeout: int) -> Trace:
-    database_url = f"sqlite+aiosqlite:///{eval_db.as_posix()}"
-    env = _child_environment(database_url)
+    database_url = _sqlite_eval_url(eval_db)
+    env = _child_environment(database_url, data_dir=eval_db.parent / "offeru-data")
     started = time.perf_counter()
     proc = await asyncio.create_subprocess_exec(
         str(NODE_EXE),
@@ -820,15 +866,30 @@ async def run_case_once(
 
     多轮驱动规则：
     - `user_turns` 里的发言按顺序进入同一 Harness session；
-    - capability/reject policy 仍由 runner 模拟确认决定；
+    - 仅支持 real-user；capability mode 在获得独立授权的模拟审批设计前 fail closed；
     - OMP real-user 在新增 Proposal 后等待隔离库状态改变，再在原 RPC session 中提示 Agent 检查结果。
     """
 
-    case_dir = run_dir / case.slug
+    if mode != "real-user":
+        raise ValueError(
+            "capability mode is unavailable until a separately authorized simulation design exists"
+        )
+
+    run_dir = validate_unredirected_path(Path(run_dir), label="run directory")
+    case_dir = Path(os.path.abspath(run_dir / case.slug))
+    try:
+        case_dir.relative_to(run_dir)
+    except ValueError as exc:
+        raise ValueError("Live Eval case path escapes its run directory") from exc
+    case_dir = validate_unredirected_path(case_dir, label="case directory")
     case_dir.mkdir(parents=True, exist_ok=True)
-    eval_db = case_dir / "eval.db"
-    clone_database(source_db, eval_db)
-    database_url = f"sqlite+aiosqlite:///{eval_db.as_posix()}"
+    eval_db_path = validate_unredirected_path(case_dir / "eval.db", label="clone destination")
+    source_path = Path(source_db).resolve()
+    eval_db = eval_db_path.resolve()
+    if eval_db == source_path:
+        raise ValueError("Live Eval clone must not be the source database")
+    clone_database(source_path, eval_db)
+    database_url = _sqlite_eval_url(eval_db)
     if runtime == "omp":
         print(
             f"[live-eval] isolated OMP database: {eval_db.resolve()} "
@@ -837,7 +898,7 @@ async def run_case_once(
         )
 
     target_job_id = _pick_target_job(eval_db, pinned_job_id=case.target_job_id)
-    seed_result = _seed_current_view(database_url, target_job_id)
+    seed_result = _seed_current_view(database_url, eval_db, target_job_id)
     seed_ok = bool(seed_result.get("ok"))
 
     before = snapshot(eval_db)
@@ -897,8 +958,6 @@ async def run_case_once(
     }
     write_json(case_dir / "runtime.json", runtime_info)
 
-    simulated_decision = _should_simulate_decision(mode, case.confirmation_policy)
-
     rounds: list[Trace] = []
     round_meta: list[dict[str, Any]] = []
     confirmations: list[dict[str, Any]] = []
@@ -936,8 +995,6 @@ async def run_case_once(
             elif turn_index < len(case.user_turns):
                 user_input = case.user_turns[turn_index]
                 turn_index += 1
-            elif auto_confirm:
-                user_input = CONTINUE_PROMPT
             else:
                 break
 
@@ -973,26 +1030,6 @@ async def run_case_once(
                 "operations_used": trace.operations_used,
                 "pending_actions": pending_count,
             })
-
-            if simulated_decision:
-                pending = _pending_actions(eval_db, exclude_run_ids=known_runs)
-                for item in pending:
-                    if simulated_decision == "reject":
-                        response = _run_cli(
-                            database_url,
-                            ["run", "reject_agent_run", "--args",
-                             json.dumps({"run_id": item["run_id"]}, ensure_ascii=False)],
-                        )
-                        confirmations.append({"decision": "reject", **item, "ok": bool(response.get("ok"))})
-                    else:
-                        confirmations.append({
-                            "decision": "approve", **item,
-                            **await _confirm_action(database_url, item["run_id"], item["action_id"]),
-                        })
-                    known_runs.add(item["run_id"])
-                if not pending and turn_index >= len(case.user_turns):
-                    break
-                continue
 
             pending = (
                 _new_proposed_actions(
@@ -1595,9 +1632,9 @@ async def main_async(args: argparse.Namespace) -> int:
         print(f"source db not found: {source_db}", file=sys.stderr)
         return 2
 
-    run_root = Path(args.output_root)
+    run_root = validate_unredirected_path(Path(args.output_root), label="output root")
     run_id = datetime.now().strftime("%Y%m%d-%H%M%S")
-    run_dir = run_root / run_id
+    run_dir = validate_unredirected_path(run_root / run_id, label="run directory")
     run_dir.mkdir(parents=True, exist_ok=True)
 
     run_suite = private_suite_name or args.suite
@@ -1627,7 +1664,10 @@ async def main_async(args: argparse.Namespace) -> int:
     results: list[dict[str, Any]] = []
     for case in selected:
         for attempt in range(1, args.repeat + 1):
-            target_dir = run_dir if args.repeat == 1 else run_dir / f"repeat-{attempt:02d}"
+            target_dir = validate_unredirected_path(
+                run_dir if args.repeat == 1 else run_dir / f"repeat-{attempt:02d}",
+                label="attempt directory",
+            )
             target_dir.mkdir(parents=True, exist_ok=True)
             label = f"{case.case_id} {case.slug}" + (f" (repeat-{attempt:02d})" if args.repeat > 1 else "")
             print(f"[live-eval] running {label}")
@@ -1711,8 +1751,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--case", dest="case_id", default="", help="Run one case id (E01 or slug).")
     parser.add_argument("--suite", default="smoke", help=f"Suite: {', '.join(SUITE_VALUES)} or all.")
     parser.add_argument("--repeat", type=int, default=1, help="Repeat count per case for reliability.")
-    parser.add_argument("--mode", default="real-user", choices=("real-user", "capability"),
-                        help="real-user: 不自动确认；capability: 自动确认提案并继续。")
+    parser.add_argument(
+        "--mode",
+        default="real-user",
+        choices=("real-user",),
+        help="Only real-user review is supported; capability mode is unavailable.",
+    )
     parser.add_argument("--discovery-mode", default="progressive",
                         choices=("progressive", "full-registry"),
                         help="Eval-only Skill discovery condition for ablation.")

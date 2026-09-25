@@ -633,7 +633,12 @@ async def handle_career_task_finished(task_id: str) -> dict[str, Any] | None:
     body = (
         f"Role Intelligence 已完成：{benchmark.get('valid_sample_count', 0)} 个有效 comparator，"
         f"{len(benchmark.get('signals') or [])} 个 Delta signal。"
-        "请查看岗位证据、Resume Proposal 和专项训练 Focus Plan。"
+        "请查看岗位证据和 Resume Proposal。"
+        + (
+            "专项训练 Focus Plan 已准备好。"
+            if focus_plan.get("focuses")
+            else "当前岗位基准尚不满足专项训练生成条件。"
+        )
         if task["status"] == "completed"
         else f"Role Intelligence 未完成：{task.get('error') or '任务失败'}"
     )

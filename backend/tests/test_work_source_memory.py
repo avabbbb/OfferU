@@ -84,6 +84,14 @@ def _worker_result(title: str) -> dict:
 
 
 class WorkSourceMemoryTests(unittest.TestCase):
+    def setUp(self) -> None:
+        runtime_selection = patch(
+            "app.services.work_sources.select_local_executor",
+            new=AsyncMock(return_value={"id": "codex"}),
+        )
+        runtime_selection.start()
+        self.addCleanup(runtime_selection.stop)
+
     def test_sensitive_files_are_excluded_and_deleted_only_evidence_is_not_fact(self) -> None:
         self.assertTrue(_secret_like("config/client_secret.json"))
         self.assertTrue(_secret_like("auth/refresh_token.txt"))

@@ -10,8 +10,86 @@ use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
+use uuid::Uuid;
 
 struct Children(Mutex<Vec<Child>>);
+struct UiApprovalCapability(String);
+
+async fn post_approval_request(
+    app: AppHandle,
+    path: String,
+    body: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let token = app.state::<UiApprovalCapability>().0.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let client = reqwest::blocking::Client::builder()
+            .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
+            .timeout(Duration::from_secs(15))
+            .build()
+            .map_err(|_| "无法连接 OfferU 本地服务".to_string())?;
+        let response = client
+            .post(format!("http://127.0.0.1:8766{path}"))
+            .bearer_auth(token)
+            .json(&body)
+            .send()
+            .map_err(|_| "无法提交 OfferU 提案决定".to_string())?;
+        if !response.status().is_success() {
+            return Err(format!(
+                "OfferU 未接受该提案决定（HTTP {}）",
+                response.status()
+            ));
+        }
+        response
+            .json::<serde_json::Value>()
+            .map_err(|_| "OfferU 返回了无效的提案决定结果".to_string())
+    })
+    .await
+    .map_err(|_| "OfferU 提案决定任务中断".to_string())?
+}
+
+fn validate_approval_input(run_id: String, action_id: String) -> Result<(String, String), String> {
+    let run_id = Uuid::parse_str(&run_id)
+        .map_err(|_| "提案标识无效".to_string())?
+        .to_string();
+    if action_id.trim().is_empty() || action_id.len() > 200 {
+        return Err("提案动作标识无效".to_string());
+    }
+    Ok((run_id, action_id))
+}
+
+#[tauri::command]
+async fn decide_agent_proposal(
+    app: AppHandle,
+    run_id: String,
+    action_id: String,
+    approve: bool,
+) -> Result<serde_json::Value, String> {
+    let (run_id, action_id) = validate_approval_input(run_id, action_id)?;
+    post_approval_request(
+        app,
+        format!("/api/bridge/proposals/{run_id}/confirm"),
+        serde_json::json!({"approve": approve, "action_id": action_id}),
+    )
+    .await
+}
+
+#[tauri::command]
+async fn decide_agent_runtime_action(
+    app: AppHandle,
+    run_id: String,
+    action_id: String,
+    approve: bool,
+) -> Result<serde_json::Value, String> {
+    let (run_id, action_id) = validate_approval_input(run_id, action_id)?;
+    let decision = if approve { "confirm" } else { "reject" };
+    post_approval_request(
+        app,
+        format!("/api/agent/runtime/runs/{run_id}/{decision}"),
+        serde_json::json!({"action_id": action_id}),
+    )
+    .await
+}
 
 fn find_packaged_file(resource_dir: &std::path::Path, names: &[&str]) -> Option<std::path::PathBuf> {
     let executable_dir = std::env::current_exe()
@@ -38,7 +116,7 @@ fn project_root_from_exe() -> std::path::PathBuf {
     std::env::current_dir().unwrap_or_default()
 }
 
-fn spawn_python_backend(root: &std::path::Path) -> Option<Child> {
+fn spawn_python_backend(root: &std::path::Path, approval_token: &str) -> Option<Child> {
     let py = root.join("backend").join(".venv312").join("Scripts").join("python.exe");
     let py_str = if py.is_file() { py.to_str().unwrap().to_string() } else { String::from("python") };
     let cwd = root.join("backend");
@@ -50,6 +128,7 @@ fn spawn_python_backend(root: &std::path::Path) -> Option<Child> {
         .env("OFFERU_PORT", "8766")
         .env("OFFERU_BUILD_MODE", "local-development")
         .env("OFFERU_RUNTIME_MODE", "local")
+        .env("OFFERU_APPROVAL_TOKEN", approval_token)
         .env("OFFERU_VERSION", env!("CARGO_PKG_VERSION"))
         .current_dir(&cwd)
         .stdin(Stdio::null())
@@ -66,7 +145,7 @@ fn spawn_python_backend(root: &std::path::Path) -> Option<Child> {
     cmd.spawn().ok()
 }
 
-fn spawn_release_sidecar(app: &AppHandle) -> Option<Child> {
+fn spawn_release_sidecar(app: &AppHandle, approval_token: &str) -> Option<Child> {
     let data_dir = match app.path().app_data_dir() {
         Ok(path) => path,
         Err(error) => {
@@ -149,6 +228,7 @@ fn spawn_release_sidecar(app: &AppHandle) -> Option<Child> {
         .env("OFFERU_AGENT_RUNTIME_DIR", resource_dir.join("agent-runtime"))
         .env("OFFERU_BUILD_MODE", "release")
         .env("OFFERU_RUNTIME_MODE", "desktop-sidecar")
+        .env("OFFERU_APPROVAL_TOKEN", approval_token)
         .env("OFFERU_VERSION", env!("CARGO_PKG_VERSION"))
         .env("OFFERU_PORT", "8766")
         .env("CORS_ORIGINS", cors_origins)
@@ -170,11 +250,11 @@ fn spawn_release_sidecar(app: &AppHandle) -> Option<Child> {
     cmd.spawn().ok()
 }
 
-fn spawn_backend(app: &AppHandle) -> Option<Child> {
+fn spawn_backend(app: &AppHandle, approval_token: &str) -> Option<Child> {
     if cfg!(debug_assertions) {
-        return spawn_python_backend(&project_root_from_exe());
+        return spawn_python_backend(&project_root_from_exe(), approval_token);
     }
-    spawn_release_sidecar(app)
+    spawn_release_sidecar(app, approval_token)
 }
 
 fn wait_for_python_backend(timeout_secs: u64) -> bool {
@@ -233,6 +313,11 @@ fn wait_for_python_backend(timeout_secs: u64) -> bool {
 pub fn run() {
     tauri::Builder::default()
         .manage(Children(Mutex::new(Vec::new())))
+        .manage(UiApprovalCapability(Uuid::new_v4().to_string()))
+        .invoke_handler(tauri::generate_handler![
+            decide_agent_proposal,
+            decide_agent_runtime_action
+        ])
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -244,7 +329,10 @@ pub fn run() {
             let state = app.state::<Children>();
             let mut kids = state.0.lock().unwrap();
 
-            if let Some(child) = spawn_backend(app.handle()) { kids.push(child); }
+            let approval_token = app.state::<UiApprovalCapability>().0.clone();
+            if let Some(child) = spawn_backend(app.handle(), &approval_token) {
+                kids.push(child);
+            }
 
             drop(kids);
 

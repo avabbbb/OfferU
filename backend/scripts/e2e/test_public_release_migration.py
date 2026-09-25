@@ -390,6 +390,8 @@ def _copy_failure_artifacts(log_path: Path, fixture_dir: Path) -> list[str]:
 
 
 def _verify_migrated_database(database_path: Path, data_dir: Path) -> dict[str, Any]:
+    from app.database import CURRENT_SCHEMA_VERSION
+
     connection = sqlite3.connect(str(database_path))
     try:
         version = int(connection.execute("PRAGMA user_version").fetchone()[0])
@@ -420,7 +422,12 @@ def _verify_migrated_database(database_path: Path, data_dir: Path) -> dict[str, 
 
     backup_dir = data_dir / "data" / "data_safety" / "backups"
     backup_count = len(list(backup_dir.glob("*.offeru-backup"))) if backup_dir.is_dir() else 0
-    if version != 2 or integrity != "ok" or foreign_keys or triage_values != ["picked"]:
+    if (
+        version != CURRENT_SCHEMA_VERSION
+        or integrity != "ok"
+        or foreign_keys
+        or triage_values != ["picked"]
+    ):
         raise AssertionError(
             "migration verification failed: "
             f"version={version}, integrity={integrity!r}, foreign_keys={foreign_keys}, "

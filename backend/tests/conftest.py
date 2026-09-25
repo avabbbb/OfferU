@@ -8,12 +8,24 @@ central policy instead of relying on every test author to pass ``dir=``.
 from __future__ import annotations
 
 import os
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import tempfile
+
+
+def _is_windows_path(value: str) -> bool:
+    """Return whether a value uses a Windows drive or UNC path form."""
+
+    drive = PureWindowsPath(value).drive
+    return bool(drive) and (len(drive) == 2 or drive.startswith("\\\\"))
 
 
 def _test_temp_base() -> Path:
     configured = str(os.environ.get("OFFERU_TEST_TEMP_ROOT") or "").strip()
+    if os.name != "nt" and configured and _is_windows_path(configured):
+        # A Windows developer setting can leak into POSIX CI.  pathlib treats
+        # H:/... as a relative path there, which creates a bogus H: directory
+        # under the checkout instead of using runner storage.
+        configured = ""
     if configured:
         base = Path(configured).expanduser()
     elif os.name == "nt":
@@ -25,7 +37,12 @@ def _test_temp_base() -> Path:
             runner_root = str(os.environ.get("RUNNER_TEMP") or "").strip()
             base = Path(runner_root) if runner_root else Path(tempfile.gettempdir())
     else:
-        base = Path(tempfile.gettempdir())
+        runner_root = str(os.environ.get("RUNNER_TEMP") or "").strip()
+        if runner_root and not _is_windows_path(runner_root):
+            base = Path(runner_root)
+        else:
+            system_temp = tempfile.gettempdir()
+            base = Path(system_temp) if not _is_windows_path(system_temp) else Path("/tmp")
 
     base = base.resolve()
     if (

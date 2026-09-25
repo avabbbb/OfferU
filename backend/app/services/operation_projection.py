@@ -105,21 +105,41 @@ async def confirm_operation_proposal(
         if isinstance(step, dict)
         and step.get("status") in {"waiting_confirmation", "executing"}
     ]
-    selected = next(
-        (
-            item
-            for item in recoverable
-            if not action_id or str(item.get("id") or "") == action_id
-        ),
-        None,
+    selected = (
+        next(
+            (item for item in recoverable if str(item.get("id") or "") == action_id),
+            None,
+        )
+        if action_id
+        else recoverable[0] if len(recoverable) == 1 else None
     )
     if selected is None:
-        if run.get("status") == "completed":
+        completed_steps = [
+            step
+            for step in (run.get("steps") or [])
+            if isinstance(step, dict) and step.get("status") == "completed"
+        ]
+        rejected_target = any(
+            isinstance(step, dict)
+            and str(step.get("id") or "") == action_id
+            and step.get("status") == "rejected"
+            for step in (run.get("steps") or [])
+        )
+        if run.get("status") == "completed" and not rejected_target and (
+            (action_id and any(str(step.get("id") or "") == action_id for step in completed_steps))
+            or (not action_id and len(completed_steps) == 1)
+        ):
             return {
                 "ok": True,
                 "run": run,
                 "tool_calls": [],
                 "warnings": ["该提案已完成；没有重放副作用。"],
+            }
+        if not action_id and len(recoverable) > 1:
+            return {
+                "ok": False,
+                "run": run,
+                "errors": ["该 Run 有多个待处理动作，确认时必须指定 action_id。"],
             }
         return {
             "ok": False,
@@ -146,23 +166,42 @@ async def confirm_operation_proposal(
         confirmed_action_ids=[str(selected["id"])],
         tool_runner=registry_runner,
     )
+    final_run = execution["run"]
+    final_step = next(
+        (
+            step
+            for step in final_run.get("steps") or []
+            if isinstance(step, dict)
+            and str(step.get("id") or "") == str(selected["id"])
+        ),
+        {},
+    )
+    action_completed = str(final_step.get("status") or "") == "completed"
     failed = any(
         isinstance(call.get("result"), dict) and call["result"].get("error")
         for call in execution["tool_calls"]
         if isinstance(call, dict)
     )
+    errors = [
+        str(call["result"]["error"])
+        for call in execution["tool_calls"]
+        if isinstance(call, dict)
+        and isinstance(call.get("result"), dict)
+        and call["result"].get("error")
+    ]
+    if not action_completed and not errors:
+        status = str(final_step.get("status") or "unknown")
+        errors.append(
+            "该动作未执行成功；"
+            + {
+                "rejected": "用户已拒绝，不能确认执行。",
+                "waiting_confirmation": "仍待确认，本次未执行。",
+                "executing": "正由另一请求处理，本次未报告成功。",
+                "uncertain": "执行状态不确定，需要先核对副作用。",
+            }.get(status, f"最终状态为 {status}。")
+        )
     return {
-        "ok": not failed and execution["run"].get("status") == "completed",
+        "ok": not failed and action_completed,
         **execution,
-        "errors": (
-            [
-                str(call["result"]["error"])
-                for call in execution["tool_calls"]
-                if isinstance(call, dict)
-                and isinstance(call.get("result"), dict)
-                and call["result"].get("error")
-            ]
-            if failed
-            else []
-        ),
+        "errors": errors,
     }

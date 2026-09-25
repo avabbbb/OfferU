@@ -1,6 +1,6 @@
 # OfferU Public Release Security
 
-更新时间：2026-09-03
+更新时间：2026-09-24
 
 ## Current verdict
 
@@ -8,7 +8,7 @@
 SECURITY_NOT_VERIFIED
 ```
 
-现有 Operation Registry、候选事实门、只读外部研究和本地单人边界是安全基础，但它们不是 Public Release 安全证明。`SECURITY_01` 至 `SECURITY_11` 已补齐错误关联、脱敏诊断包、canary、依赖/权限/logger contract、云端类别同意、邮箱撤回、合成测试数据清理、Provider health 读取侧脱敏和 durable error projection 的直接 PII 脱敏；当前 release artifact/sidecar secret audit 与 architecture/Registry boundary audit 也已通过。最新 RustSec advisory fetch 已成功，但 `cargo audit --deny unsound` 仍被 `glib 0.18.5 / RUSTSEC-2024-0429` 阻塞，另有 16 条 unmaintained warning。正常工作区仍有 3 条历史旧正文，历史 artifact/行 scrub、完整 runtime PII data-flow、retention/公开政策、真实 OAuth/浏览器和发布签名仍未完成，因此 Public Release 继续保持 `SECURITY_NOT_VERIFIED`。
+现有 Operation Registry、候选事实门、只读外部研究和本地单人边界是安全基础，但它们不是 Public Release 安全证明。`SECURITY_01` 至 `SECURITY_11` 已补齐错误关联、脱敏诊断包、canary、依赖/权限/logger contract、云端类别同意、邮箱撤回、合成测试数据清理、Provider health 读取侧脱敏和 durable error projection 的直接 PII 脱敏；当前 release artifact/sidecar secret audit 与 architecture/Registry boundary audit 也已通过。最新 RustSec advisory fetch 的普通 audit 为 0 vulnerabilities；非 tag 的 Linux CI 对 `glib 0.18.5 / RUSTSEC-2024-0429` 使用有期限例外并校验唯一 finding 与目标依赖图。tag/release 路径执行不带 ignore 的严格 `--deny unsound`，当前仍会被该 finding 阻断，直至依赖修复。所有其他 unsound findings 在两条路径均 fail closed，另有 16 条 unmaintained warning。正常工作区仍有 3 条历史旧正文，历史 artifact/行 scrub、完整 runtime PII data-flow、retention/公开政策、真实 OAuth/浏览器和发布签名仍未完成，因此 Public Release 继续保持 `SECURITY_NOT_VERIFIED`。
 
 ## Security 01 current evidence
 
@@ -38,7 +38,7 @@ SECURITY_NOT_VERIFIED
 - `python-multipart` 已升级到 `0.0.31`；JobSpy 固定到上游更新 markdownify 约束的 commit，并使用 `markdownify==1.2.3`；`pip check` 无冲突，`pip-audit` 无已知漏洞；npm production audit 使用官方 registry 为 0 vulnerabilities；
 - 依赖替换后的后端全量为 `298 passed, 10 warnings, 1 subtest passed`，前端 typecheck/build 通过。
 
-本轮仍未把 Security Gate 标为 PASS：RustSec advisory DB 已成功拉取且普通 audit 报告 0 vulnerabilities，但严格 `--deny unsound` 被 `glib 0.18.5 / RUSTSEC-2024-0429` 阻塞；完整 release artifact canary、所有权限 surface diff、全部 logging/PII data-flow、历史 Agent Run scrub、privacy/consent 和签名仍待完成。
+本轮仍未把 Security Gate 标为 PASS：RustSec advisory DB 已成功拉取且普通 audit 报告 0 vulnerabilities；仅非 tag 的 Linux CI 对 `glib 0.18.5 / RUSTSEC-2024-0429` 应用 2026-12-23 到期例外。tag/release 路径不传 `--ignore`，因此当前仍会因该 unsound finding 失败；其他 unsound findings 也继续阻断。完整 release artifact canary、所有权限 surface diff、全部 logging/PII data-flow、历史 Agent Run scrub、privacy/consent 和签名仍待完成。
 
 ## Stable security boundary
 
@@ -58,7 +58,7 @@ SECURITY_NOT_VERIFIED
 | --- | --- | --- |
 | Secret scan | PARTIAL | tracked repo、当前 Windows bundle/sidecar artifact audit 已通过；历史 logs、trace、Temp、diagnostic、export 的完整 matrix 仍缺 |
 | Canary secret | PARTIAL | durable Agent/Audit/export + API validation/error + diagnostic + browser feedback canary 已通过；完整 release artifact matrix 仍缺 |
-| Dependency audit | PARTIAL | 三个 npm production audit 与 Python `pip-audit` 已通过；最新 RustSec fetch 成功且普通 audit 为 0 vulnerabilities，但严格 unsound policy 被 `glib 0.18.5 / RUSTSEC-2024-0429` 阻塞，另有 16 条 unmaintained warning |
+| Dependency audit | PARTIAL | 三个 npm production audit 与 Python `pip-audit` 已通过；RustSec 普通 audit 为 0 vulnerabilities；仅非 tag Linux CI 对 `glib 0.18.5 / RUSTSEC-2024-0429` 使用限期例外，tag/release 严格 gate 不忽略该 advisory 并保持阻断；其他 unsound findings 均 fail closed；另有 16 条 unmaintained warning |
 | Operation permission audit | PARTIAL | architecture audit 的 route/Registry、CLI/MCP/plugin、Automation/startup boundary 为 0 finding；动态 legacy/runtime 全 surface 仍缺 |
 | Logging / PII audit | PARTIAL | Python logger AST contract 当前敏感动态参数为 0；历史日志、桌面/第三方日志和完整 runtime data-flow 仍缺 |
 | Diagnostic redaction | PARTIAL | Registry-backed bundle、error ID、API 与浏览器下载 canary 已通过；完整 artifact/PII review 仍缺 |
@@ -97,7 +97,9 @@ CI now runs `audit_artifacts.py --json` on the artifact directory after the inst
 
 ## RustSec dependency audit
 
-本地 `cargo-audit 0.22.2` 已成功更新 advisory database，并扫描当前 `Cargo.lock` 的 441 个依赖：普通 audit 为 `0 vulnerabilities`，但严格 `cargo audit --deny unsound` 发现 `glib 0.18.5 / RUSTSEC-2024-0429`，同时保留 16 条 unmaintained warning。目标图检查显示 `glib` 不在 `x86_64-pc-windows-msvc` 图中，而来自 Tauri/Wry 的跨平台 GTK/WebKit Linux 分支；这只能界定 Windows 包的实际链接范围，不能替代全锁文件策略处置。`.github/workflows/build.yml` 已加入同一审计并让 tag release 依赖严格 unsound 检查；在依赖升级或经批准的安全例外前，R55 不得视为 PASS。
+本地 `cargo-audit 0.22.2` 已扫描当前 `Cargo.lock` 的 441 个依赖：普通 audit 为 `0 vulnerabilities`，唯一 unsound finding 为 `glib 0.18.5 / RUSTSEC-2024-0429`，同时保留 16 条 unmaintained warning。RustSec 将 `glib >=0.20.0` 列为修复版本；当前 Tauri 2/Wry Linux 栈仍绑定 GTK 0.18。虽然 `gtk 0.19.0` 已发布且依赖修复后的 `glib 0.22`，Wry 对该栈的集成 PR #1843 仍为 Draft，并把 MSRV 提高到 Rust 1.92；本仓当前 Tauri 应用声明 Rust 1.77.2，且当前发布的 Tauri/Wry graph 仍使用 GTK 0.18。Tauri GTK4/WebKitGTK 6 迁移也仍为 Open 的 breaking-change 工作，因此当前没有可直接采用且兼容本仓 MSRV 的已发布升级路径。
+
+非 tag CI 的 `backend/scripts/security/check_rustsec.py` 只容忍上述唯一 advisory/package/version 组合，且仅当它确实存在于 Linux 图、在 Windows x64 与 macOS x64/arm64 发布目标图均不存在时才使用 `--ignore RUSTSEC-2024-0429`；脚本拒绝 tag refs，例外于 `2026-12-23` UTC 到期并在当日 fail closed，届时必须移除或重新评审，不会自动续期。tag/release 使用不带 ignore 的 `cargo audit --deny unsound`，因此当前会被此 finding 阻断，直到依赖修复。当前 Linux 仅为 CI/开发图，不是 release artifact target；将来新增 Linux 发布目标必须先移除该例外或为其完成上游修复。该图检查不证明相关 API 在 Linux 上不可达，也不替代真实 release build 审核。完整 release artifact canary、所有权限 surface diff、全部 logging/PII data-flow、历史 Agent Run scrub、privacy/consent 和签名仍待完成，R55 仍为 PARTIAL。
 
 ## Security exception format
 
@@ -111,6 +113,18 @@ reason:
 mitigation:
 owner:
 expiry / review date:
+```
+
+Current exception record:
+
+```text
+SECURITY_EXCEPTION
+dependency / finding: frontend/src-tauri Cargo.lock glib 0.18.5 / RUSTSEC-2024-0429
+risk: If glib::VariantStrIter affected methods are reached in the Linux desktop graph, the unsound implementation can cause undefined behavior or a null-pointer crash; reachability is not proven.
+reason: RustSec lists glib >=0.20.0 as patched. Current Tauri 2/Wry GTK3 dependencies remain on glib 0.18; upstream compatible migration is not merged.
+mitigation: Only non-tag Linux CI may use cargo audit --deny unsound --ignore RUSTSEC-2024-0429, after asserting this is the sole unsound finding and affected glib is confined to the Linux graph. Release tags run cargo audit --deny unsound without an ignore and therefore remain blocked until fixed. Expiration is enforced by the CI script.
+owner: OfferU Release Engineering
+expiry / review date: 2026-12-23 UTC; CI fails closed on this date.
 ```
 
 ## Canary protocol

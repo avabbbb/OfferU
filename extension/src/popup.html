@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OfferU 浏览器助手</title>
+
+    <link rel="stylesheet" href="../static/popup.css" />
+    <script type="module" src="./popup.ts"></script>
+  </head>
+  <body>
+    <div class="popup-shell">
+      <nav class="side-nav">
+        <div class="brand-mark"></div>
+        <button class="tab-btn active" data-tab="cart" type="button" title="购物车">
+          <svg class="tab-icon" viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0" /></svg>
+        </button>
+        <button class="tab-btn" data-tab="resumes" type="button" title="简历">
+          <svg class="tab-icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8" /></svg>
+        </button>
+        <button class="tab-btn" data-tab="settings" type="button" title="设置">
+          <svg class="tab-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" /></svg>
+        </button>
+      </nav>
+
+      <div class="main-shell">
+        <div class="topbar">
+          <h2 class="top-title">OfferU</h2>
+          <button class="open-button" id="openServerBtn" type="button" aria-label="打开 OfferU 网页">↗</button>
+        </div>
+
+        <div class="message" id="message"></div>
+
+        <section class="tab-panel active" id="panel-cart" data-panel="cart">
+          <div class="panel-head">
+            <div class="panel-title">购物车 <span class="round-badge" id="cartTotalBadge">0</span></div>
+            <div class="panel-tools">
+              <button class="text-action" id="cartFilterBtn" type="button">展开筛选</button>
+              <span class="splitter">|</span>
+              <button class="text-action" id="addCurrentBtn" type="button">+ 加入购物车</button>
+            </div>
+          </div>
+          <div class="sub-stat">
+            可同步 <span id="readyCountInline">0</span>
+            <span class="sub-divider">|</span>
+            草稿 <span id="draftCountInline">0</span>
+          </div>
+          <div class="filters-wrap hidden" id="jobFilterWrap">
+            <div class="filter-field">
+              <label>时间范围</label>
+              <select id="jobTimeFilter">
+                <option value="all">全部</option>
+                <option value="7d">近7天</option>
+                <option value="30d">近30天</option>
+                <option value="90d">近90天</option>
+                <option value="custom">自定义</option>
+              </select>
+            </div>
+            <div class="filter-range hidden" id="jobCustomRange">
+              <input type="date" id="jobDateStart">
+              <span>至</span>
+              <input type="date" id="jobDateEnd">
+            </div>
+            <div class="filter-field">
+              <label>平台</label>
+              <select id="jobPlatformFilter">
+                <option value="all">全部</option>
+                <option value="boss">Boss</option>
+                <option value="liepin">猎聘</option>
+                <option value="zhaopin">智联</option>
+                <option value="shixiseng">实习僧</option>
+                <option value="linkedin">LinkedIn</option>
+                <option value="other">其他</option>
+              </select>
+            </div>
+            <div class="filter-field">
+              <label>薪资</label>
+              <select id="jobSalaryFilter">
+                <option value="all">全部</option>
+              </select>
+            </div>
+            <div class="filter-field">
+              <label>城市</label>
+              <input type="text" id="jobCityFilter" placeholder="输入城市关键词">
+            </div>
+            <div class="quick-city-row" id="jobHotCityRow">
+              <button class="city-chip" type="button" data-city="北京">北京</button>
+              <button class="city-chip" type="button" data-city="上海">上海</button>
+              <button class="city-chip" type="button" data-city="广州">广州</button>
+              <button class="city-chip" type="button" data-city="深圳">深圳</button>
+              <button class="city-chip" type="button" data-city="杭州">杭州</button>
+              <button class="city-chip" type="button" data-city="成都">成都</button>
+            </div>
+            <button class="mini-tag" id="jobResetFilterBtn" type="button">重置筛选</button>
+          </div>
+          <div class="list-wrap" id="jobList"></div>
+          <div class="footer-actions">
+            <button class="btn btn-secondary" id="clearBtn" type="button">清空购物车</button>
+            <button class="btn btn-primary" id="syncBtn" type="button">一键同步 (0)</button>
+          </div>
+        </section>
+
+        <section class="tab-panel" id="panel-resumes" data-panel="resumes">
+          <div class="panel-head">
+            <div class="panel-title">简历 <span class="round-badge" id="resumeTotalBadge">0</span></div>
+            <div class="panel-tools">
+              <button class="icon-small-btn" id="resumeSearchToggleBtn" type="button" title="搜索">🔍</button>
+              <button class="text-action" id="resumeSortBtn" type="button">筛选</button>
+            </div>
+          </div>
+          <div class="search-row hidden" id="resumeSearchRow">
+            <input type="text" id="resumeSearchInput" placeholder="搜索简历名称" spellcheck="false">
+            <button class="icon-small-btn" id="resumeSearchClearBtn" type="button">×</button>
+          </div>
+          <div class="filters-wrap hidden" id="resumeFilterWrap">
+            <div class="filter-field">
+              <label>时间范围</label>
+              <select id="resumeTimeFilter">
+                <option value="all">全部</option>
+                <option value="7d">近7天</option>
+                <option value="30d">近30天</option>
+                <option value="90d">近90天</option>
+                <option value="custom">自定义</option>
+              </select>
+            </div>
+            <div class="filter-range hidden" id="resumeCustomRange">
+              <input type="date" id="resumeDateStart">
+              <span>至</span>
+              <input type="date" id="resumeDateEnd">
+            </div>
+            <button class="mini-tag" id="resumeResetFilterBtn" type="button">重置筛选</button>
+          </div>
+          <div class="list-wrap" id="resumeList"></div>
+          <div class="footer-actions footer-actions-3">
+            <button class="btn btn-secondary" id="previewResumeBtn" type="button">预览</button>
+            <button class="btn btn-primary" id="copySelectedResumeBtn" type="button">复制发送</button>
+            <button class="btn btn-outline" id="openDesktopResumeBtn" type="button">桌面端</button>
+          </div>
+        </section>
+
+        <section class="tab-panel" id="panel-settings" data-panel="settings">
+          <h2 class="settings-title">设置</h2>
+
+          <section class="settings-card stack">
+            <div class="settings-row">
+              <span class="settings-label">OfferU 后端 API 地址（非网页）</span>
+            </div>
+            <input type="url" id="serverUrl" placeholder="http://127.0.0.1:8765" spellcheck="false">
+            <p class="help-text">网页入口固定为 http://127.0.0.1:7410；8080 只可能是模型服务端点，不要在浏览器中打开。</p>
+            <div class="inline-actions">
+              <button class="mini-tag" id="saveSettingsBtn" type="button">保存</button>
+              <button class="mini-tag" id="checkServerBtn" type="button">检查连接</button>
+            </div>
+            <div class="service-line">
+              <span class="service-dot" id="serviceStatusDot"></span>
+              <span id="serviceStatus">未检测</span>
+            </div>
+          </section>
+
+          <section class="settings-card stack">
+            <div class="settings-row">
+              <span class="settings-label">BOSS直聘登录态</span>
+            </div>
+            <p class="help-text">在已登录的浏览器里读取一次登录态并交给本机 OfferU，之后采集岗位不需要再手动复制 Cookie。登录态只发送到 127.0.0.1，不会保存在扩展里。</p>
+            <div class="inline-actions">
+              <button class="mini-tag" id="connectBossSessionBtn" type="button">连接 BOSS 登录态</button>
+              <button class="mini-tag" id="checkBossSessionBtn" type="button">检查状态</button>
+            </div>
+            <div class="service-line">
+              <span class="service-dot" id="bossSessionStatusDot"></span>
+              <span id="bossSessionStatus">未连接</span>
+            </div>
+          </section>
+
+          <section class="settings-card stack">
+            <div class="settings-row">
+              <span class="settings-label">AI 智能填充</span>
+              <label class="switch">
+                <input type="checkbox" id="aiSmartFillToggle">
+                <span class="slider"></span>
+              </label>
+            </div>
+            <div class="filter-field">
+              <label>服务商</label>
+              <select id="aiProviderSelect">
+                <option value="openai-compatible">OpenAI 兼容</option>
+              </select>
+            </div>
+            <input type="url" id="aiBaseUrlInput" placeholder="API Base URL" spellcheck="false">
+            <input type="password" id="aiApiKeyInput" placeholder="API Key">
+            <input type="text" id="aiModelInput" placeholder="模型名称" spellcheck="false">
+            <div class="settings-row">
+              <span class="settings-label">自动降级到后端通道</span>
+              <label class="switch">
+                <input type="checkbox" id="aiFallbackToggle">
+                <span class="slider"></span>
+              </label>
+            </div>
+            <div class="inline-actions">
+              <button class="mini-tag" id="saveAiSettingsBtn" type="button">保存</button>
+              <button class="mini-tag" id="checkAiConnectionBtn" type="button">检查连接</button>
+            </div>
+            <div class="service-line">
+              <span class="service-dot" id="aiServiceStatusDot"></span>
+              <span id="aiServiceStatus">未启用</span>
+            </div>
+          </section>
+
+          <section class="settings-card stack">
+            <div class="desktop-launcher">
+              <h3 class="desktop-launcher-title">桌面端打开方式</h3>
+              <label class="desktop-launcher-option">
+                <input type="radio" name="desktopMode" class="desktop-launcher-radio" id="desktopModeDocker" value="docker" checked>
+                Docker 本地服务
+              </label>
+              <label class="desktop-launcher-option">
+                <input type="radio" name="desktopMode" class="desktop-launcher-radio" id="desktopModeApp" value="app">
+                本地应用程序
+              </label>
+              <div class="desktop-launcher-config" id="desktopDockerConfig">
+                <div class="desktop-launcher-row">
+                  <input type="text" id="desktopDockerPort" placeholder="网页端口固定为 7410" value="7410" readonly>
+                  <button class="mini-tag" id="saveDesktopDockerPortBtn" type="button">保存</button>
+                  <button class="mini-tag" id="checkDesktopDockerBtn" type="button">检测</button>
+                </div>
+                <p class="desktop-launcher-status" id="desktopDockerStatus">未检测</p>
+              </div>
+              <div class="desktop-launcher-config hidden" id="desktopAppConfig">
+                <div class="desktop-launcher-row">
+                  <input type="text" id="desktopAppPath" placeholder="应用程序路径" spellcheck="false">
+                  <button class="mini-tag" id="browseDesktopAppPathBtn" type="button">浏览</button>
+                </div>
+                <div class="desktop-launcher-row desktop-launcher-actions">
+                  <button class="mini-tag" id="saveDesktopAppPathBtn" type="button">保存路径</button>
+                </div>
+                <input type="file" id="desktopAppPathPicker" style="display:none" webkitdirectory="">
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-card stack">
+            <div class="settings-row">
+              <span class="settings-label">自动同步</span>
+              <label class="switch">
+                <input type="checkbox" id="autoSyncToggle">
+                <span class="slider"></span>
+              </label>
+            </div>
+            <div class="settings-row">
+              <span class="settings-label">复制后下载 PNG</span>
+              <label class="switch">
+                <input type="checkbox" id="copyAndDownloadPngToggle">
+                <span class="slider"></span>
+              </label>
+            </div>
+          </section>
+
+          <section class="settings-card stack" id="themeSettingsCard">
+            <div class="settings-row">
+              <span class="settings-label">外观</span>
+              <span class="settings-value">浅色 / 深色 / 系统</span>
+            </div>
+            <div class="segment-group" id="themeSegment">
+              <button class="segment-btn" data-theme="light" type="button">浅色</button>
+              <button class="segment-btn" data-theme="dark" type="button">深色</button>
+              <button class="segment-btn" data-theme="system" type="button">系统默认</button>
+            </div>
+          </section>
+
+          <section class="settings-card stack">
+            <div class="settings-row">
+              <span class="settings-label">快捷键</span>
+            </div>
+            <div class="shortcut-list">
+              <div class="shortcut-row">
+                <span>采集岗位</span>
+                <button class="shortcut-btn" data-shortcut-action="collect" type="button">Alt+J</button>
+              </div>
+              <div class="shortcut-row">
+                <span>同步</span>
+                <button class="shortcut-btn" data-shortcut-action="sync" type="button">Alt+S</button>
+              </div>
+              <div class="shortcut-row">
+                <span>设置</span>
+                <button class="shortcut-btn" data-shortcut-action="settings" type="button">Alt+O</button>
+              </div>
+            </div>
+            <p class="shortcut-tip">点击快捷键按钮后按下新组合键，按 Esc 清空</p>
+          </section>
+
+          <section class="settings-card stack">
+            <div class="settings-row">
+              <span class="settings-label">反馈与帮助</span>
+            </div>
+            <div class="inline-actions">
+              <button class="mini-tag" id="feedbackBtn" type="button">反馈</button>
+              <button class="mini-tag" id="supportedPlatformsBtn" type="button">支持平台</button>
+              <button class="mini-tag" id="checkUpdateBtn" type="button">检查更新</button>
+            </div>
+            <p class="settings-hint" id="updateStatusText">当前版本：v-</p>
+          </section>
+        </section>
+
+        <div class="panel-footer">
+          <button class="footer-link" id="openDesktopFooterBtn" type="button">打开桌面端</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal hidden" id="resumePreviewModal" aria-hidden="true">
+      <div class="modal-backdrop" data-close-modal="1"></div>
+      <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="resumeModalTitle">
+        <header class="modal-header">
+          <h3 id="resumeModalTitle">简历预览</h3>
+          <button class="icon-btn" id="closeResumePreviewBtn" type="button">×</button>
+        </header>
+        <p class="modal-meta" id="resumeModalMeta"></p>
+        <div class="modal-body" id="resumeModalBody"></div>
+        <div class="modal-actions">
+          <button class="btn btn-primary" id="copyResumeModalBtn" type="button">复制简历图片</button>
+          <button class="btn btn-secondary" id="closeResumePreviewBtn2" type="button">关闭预览</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal hidden" id="feedbackModal" aria-hidden="true">
+      <div class="modal-backdrop" data-close-feedback="1"></div>
+      <div class="modal-content" role="dialog" aria-modal="true">
+        <header class="modal-header">
+          <h3>反馈建议</h3>
+          <button class="icon-btn" id="closeFeedbackBtn" type="button">×</button>
+        </header>
+        <div class="modal-body">
+          <textarea class="feedback-textarea" id="feedbackContent" placeholder="请输入你的反馈内容..."></textarea>
+          <input class="feedback-input" type="text" id="feedbackContact" placeholder="联系方式（可选）">
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" id="cancelFeedbackBtn" type="button">取消</button>
+          <button class="btn btn-primary" id="submitFeedbackBtn" type="button">提交反馈</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal hidden" id="supportedPlatformsModal" aria-hidden="true">
+      <div class="modal-backdrop" data-close-platforms="1"></div>
+      <div class="modal-content" role="dialog" aria-modal="true">
+        <header class="modal-header">
+          <h3>支持的平台</h3>
+          <button class="icon-btn" id="closeSupportedPlatformsBtn" type="button">×</button>
+        </header>
+        <div class="modal-body">
+          <ul class="supported-platform-list">
+            <li class="supported-platform-item">
+              <span class="supported-platform-name">Boss 直聘</span>
+              <span class="supported-platform-domain">zhipin.com</span>
+            </li>
+            <li class="supported-platform-item">
+              <span class="supported-platform-name">猎聘</span>
+              <span class="supported-platform-domain">liepin.com</span>
+            </li>
+            <li class="supported-platform-item">
+              <span class="supported-platform-name">智联招聘</span>
+              <span class="supported-platform-domain">zhaopin.com</span>
+            </li>
+            <li class="supported-platform-item">
+              <span class="supported-platform-name">实习僧</span>
+              <span class="supported-platform-domain">shixiseng.com</span>
+            </li>
+            <li class="supported-platform-item">
+              <span class="supported-platform-name">LinkedIn</span>
+              <span class="supported-platform-domain">linkedin.com</span>
+            </li>
+          </ul>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" id="closeSupportedPlatformsBtn2" type="button">关闭</button>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

@@ -11,6 +11,7 @@ import { SHOWCASE, showcaseHandle } from "@/lib/showcase/router";
 import { showcaseChatResponse } from "@/lib/showcase/llm";
 import { resolveApiBase } from "@/lib/apiBase";
 import { safeClientErrorMessage } from "@/lib/safe-error";
+import { decideAgentRuntimeActionInDesktop } from "@/lib/desktop-proposal-decision";
 
 const API_BASE = resolveApiBase();
 
@@ -168,6 +169,7 @@ export interface JobIngestResult {
   created: number;
   skipped: number;
   created_job_ids: number[];
+  resolved_job_ids: number[];
   failed: Array<{ title: string; error: string }>;
   automation?: {
     events: unknown[];
@@ -383,19 +385,30 @@ export async function controlCareerTask(
     return payload;
   }
 
-  let confirmation: Response;
-  try {
-    confirmation = await showcaseFetch(
-      `/api/agent/runtime/runs/${encodeURIComponent(String(proposal.run_id))}/confirm`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action_id: String(proposal.action_id) }),
-      },
-    );
-  } catch (error) {
-    throw new Error(formatBackendNetworkError(error));
+  if (!SHOWCASE) {
+    try {
+      const confirmed = await decideAgentRuntimeActionInDesktop(
+        String(proposal.run_id),
+        String(proposal.action_id),
+        true,
+      );
+      if (!confirmed.ok || confirmed.errors?.length) {
+        throw new Error(confirmed.errors?.join("；") || `确认任务${action}失败`);
+      }
+      return confirmed;
+    } catch (error) {
+      throw new Error(safeClientErrorMessage(error, `确认任务${action}失败`));
+    }
   }
+
+  const confirmation = await showcaseFetch(
+    `/api/agent/runtime/runs/${encodeURIComponent(String(proposal.run_id))}/confirm`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action_id: String(proposal.action_id) }),
+    },
+  );
   const confirmed = (await confirmation.json().catch(() => ({}))) as Record<string, any>;
   if (!confirmation.ok || confirmed.ok === false || confirmed.error || confirmed.detail) {
     throw new Error(safeClientErrorMessage(confirmed.detail || confirmed.error, `确认任务${action}失败 (${confirmation.status})`));

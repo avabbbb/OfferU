@@ -105,11 +105,12 @@ jobs:
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked --version 0.22.2
 
-      - name: Audit Rust dependencies with current RustSec data
-        working-directory: frontend/src-tauri
-        run: cargo audit --format json
+      - name: Enforce RustSec policy and scoped Linux exception
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        run: python backend/scripts/security/check_rustsec.py
 
-      - name: Deny unsound RustSec findings
+      - name: Deny all unsound findings on release tags
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
         working-directory: frontend/src-tauri
         run: cargo audit --deny unsound --format json
 
@@ -274,7 +275,7 @@ jobs:
           OFFERU_E2E_BASE_URL: http://127.0.0.1:7410
         run: python backend/scripts/e2e/test_public_release_empty_states.py
 
-      - name: Run targeted interview learning browser path
+      - name: Run fixture interview guard and generic learning browser smoke
         if: matrix.scenario == 'interview'
         shell: bash
         env:
@@ -842,8 +843,10 @@ jobs:
             $installerRun = Start-Process -FilePath $installer.FullName -ArgumentList @('/S', "/D=$installRoot") -WindowStyle Hidden -PassThru -Wait
             if ($installerRun.ExitCode -ne 0) { throw "NSIS installer failed with exit code $($installerRun.ExitCode)" }
 
-            $app = Get-ChildItem -Path $installRoot -Filter 'OfferU.exe' -File -Recurse | Select-Object -First 1
-            if ($null -eq $app) { throw "installed OfferU.exe was not found under $installRoot" }
+            # Tauri uses the Cargo package name (`app`) for this executable;
+            # productName (`OfferU`) controls the user-facing installer name.
+            $app = Get-ChildItem -Path $installRoot -Filter 'app.exe' -File -Recurse | Select-Object -First 1
+            if ($null -eq $app) { throw "installed app.exe was not found under $installRoot" }
             $appProcess = Start-Process -FilePath $app.FullName -WindowStyle Hidden -PassThru
 
             $deadline = (Get-Date).AddSeconds(60)

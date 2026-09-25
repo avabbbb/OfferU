@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import shutil
 import sqlite3
 from pathlib import Path
@@ -136,12 +137,29 @@ def diff(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
     return changes
 
 
+def validate_unredirected_path(path: Path, *, label: str) -> Path:
+    """Return an absolute path only when none of its components redirects it."""
+
+    absolute = Path(os.path.abspath(path))
+    current = absolute
+    while True:
+        is_junction = getattr(current, "is_junction", None)
+        if current.is_symlink() or (is_junction is not None and is_junction()):
+            raise ValueError(f"Live Eval {label} must not traverse a symlink or junction")
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+    return absolute
+
+
 def clone_database(source: Path, destination: Path) -> Path:
     """用 SQLite 在线备份 API 复制库，避免复制到写了一半的文件。"""
 
     source = Path(source)
-    destination = Path(destination)
+    destination = validate_unredirected_path(destination, label="clone destination")
     destination.parent.mkdir(parents=True, exist_ok=True)
+    destination = validate_unredirected_path(destination, label="clone destination")
     if destination.exists():
         destination.unlink()
     src = sqlite3.connect(f"{source.resolve().as_uri()}?mode=ro", uri=True)

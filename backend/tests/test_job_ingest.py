@@ -137,15 +137,19 @@ class JobIngestTests(unittest.TestCase):
                 ).scalar_one()
             return {
                 "first_created": first["outputs"]["created"],
+                "first_job_ids": first["outputs"]["created_job_ids"],
                 "second_created": second["outputs"]["created"],
                 "second_skipped": second["outputs"]["skipped"],
+                "second_resolved_job_ids": second["outputs"]["resolved_job_ids"],
                 "stored_count": count,
             }
 
         payload = asyncio.run(run())
         self.assertEqual(payload["first_created"], 1)
+        self.assertEqual(len(payload["first_job_ids"]), 1)
         self.assertEqual(payload["second_created"], 0)
         self.assertEqual(payload["second_skipped"], 1)
+        self.assertEqual(payload["second_resolved_job_ids"], payload["first_job_ids"])
         self.assertEqual(payload["stored_count"], 1)
 
     def test_t3_same_batch_id_replay_creates_single_batch(self) -> None:

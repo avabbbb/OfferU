@@ -24,7 +24,6 @@ from app.services.agent_skill_registry import (
 )
 from app.services.agent_host_registry import host_capability_matrix
 from app.services.operation_projection import (
-    confirm_operation_proposal,
     execute_or_propose_operation,
 )
 from app.services.resume_parser import get_resume_ocr_capabilities
@@ -143,14 +142,6 @@ def main(argv: Optional[list[str]] = None) -> int:
             op_args.update(pair_args)
             result = asyncio.run(_run_operation(args.name, op_args, dry_run=args.dry_run))
             return _print(result, args.pretty, exit_code=0 if result.get("ok") else 1)
-        if args.command == "confirm":
-            result = asyncio.run(
-                _confirm_operation(
-                    args.run_id,
-                    action_id=args.action_id,
-                )
-            )
-            return _print(result, args.pretty, exit_code=0 if result.get("ok") else 1)
         if args.command == "conformance":
             result = asyncio.run(
                 _run_conformance(
@@ -230,20 +221,6 @@ def _build_parser() -> JsonArgumentParser:
     run.add_argument("--dry-run", action="store_true", help="Skip mutation, LLM, or external side-effect operations.")
     run.add_argument("--pretty", action="store_true", help="Pretty-print JSON.")
 
-    confirm = sub.add_parser(
-        "confirm",
-        help="Confirm one persisted Operation proposal.",
-        add_help=False,
-    )
-    confirm.add_argument("run_id", help="Persisted Agent Run ID returned by run.")
-    confirm.add_argument(
-        "--action",
-        dest="action_id",
-        default="",
-        help="Action ID. Defaults to the first pending action.",
-    )
-    confirm.add_argument("--pretty", action="store_true", help="Pretty-print JSON.")
-
     conformance = sub.add_parser(
         "conformance",
         help="Read the local Agent capability matrix; --live runs one real nonce probe and --lifecycle verifies Codex resume/cancel.",
@@ -276,7 +253,7 @@ def _build_parser() -> JsonArgumentParser:
 
 
 def _commands() -> list[str]:
-    return ["doctor", "manifest", "ops", "schema", "run", "confirm", "conformance", "bridge", "ui"]
+    return ["doctor", "manifest", "ops", "schema", "run", "conformance", "bridge", "ui"]
 
 
 def _doctor() -> dict[str, Any]:
@@ -907,15 +884,6 @@ async def _run_conformance(
         )
     )
     return {"ok": not live_failed, "capabilities": matrix}
-
-
-async def _confirm_operation(run_id: str, *, action_id: str = "") -> dict[str, Any]:
-    await init_db()
-    return await confirm_operation_proposal(
-        run_id,
-        action_id=action_id,
-        surface="cli",
-    )
 
 
 def _parse_args_json(raw: str) -> Union[dict[str, Any], str]:

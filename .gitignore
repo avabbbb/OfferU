@@ -136,6 +136,9 @@ boss-*.json
 # ---- 本地参考仓库（不入库） ----
 references/
 reference/
+# The default interview scoring rubric is versioned product input, not a local reference repo.
+!backend/app/agents/skills/interview-scoring/references/
+!backend/app/agents/skills/interview-scoring/references/default-rubric.json
 /Niuke/
 
 # ---- Launcher 打包产物 ----

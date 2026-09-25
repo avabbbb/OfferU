@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import argparse
 import os
 from pathlib import Path
+import sys
 
 from app.runtime_paths import OFFERU_BACKEND_PORT
 
@@ -27,8 +29,24 @@ def configure_runtime() -> Path:
     return data_dir
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--data-dir", type=Path)
+    parser.add_argument("command", nargs="?", choices=("serve", "cli"), default="serve")
+    parser.add_argument("command_args", nargs=argparse.REMAINDER)
+    args = parser.parse_args(argv)
+
+    if args.data_dir is not None:
+        os.environ["OFFERU_DATA_DIR"] = str(args.data_dir.expanduser().resolve())
     configure_runtime()
+
+    if args.command == "cli":
+        from app.cli import main as cli_main
+
+        return cli_main(args.command_args)
+    if args.command_args:
+        parser.error("serve mode does not accept additional arguments")
+
     import uvicorn
     from app.main import app
 
@@ -39,3 +57,8 @@ if __name__ == "__main__":
         reload=False,
         access_log=False,
     )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

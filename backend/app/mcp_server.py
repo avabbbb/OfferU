@@ -6,7 +6,6 @@ from typing import Any
 
 from app.ops import get_operation_schema, list_operations
 from app.services.operation_projection import (
-    confirm_operation_proposal,
     execute_or_propose_operation,
 )
 
@@ -52,7 +51,7 @@ mcp = FastMCP(
     instructions=(
         "OfferU MCP 是统一 Operation Registry 的薄投影，不包含数据库、业务服务或任意 HTTP 逃生口。"
         "先用 operation_catalog / operation_schema 发现能力。读操作直接执行；副作用操作只会创建持久化提案。"
-        "只有在用户明确确认提案后，客户端才可调用 confirm_operation。"
+        "MCP 不提供批准接口；使用者必须在 OfferU 桌面工作区审核并决定提案。"
     ),
     stateless_http=True,
     json_response=True,
@@ -108,20 +107,6 @@ async def offeru_operation(
         args or {},
         surface="mcp",
         dry_run=dry_run,
-    )
-
-
-@mcp.tool()
-async def confirm_operation(
-    run_id: str,
-    action_id: str = "",
-) -> dict[str, Any]:
-    """Execute one persisted proposal after explicit user confirmation."""
-
-    return await confirm_operation_proposal(
-        run_id,
-        action_id=action_id,
-        surface="mcp",
     )
 
 

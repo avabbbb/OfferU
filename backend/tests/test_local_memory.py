@@ -13,7 +13,7 @@ def summary(tmp_path, monkeypatch):
     monkeypatch.setenv("CODEX_HOME", str(tmp_path))
     path = tmp_path / "memories" / "memory_summary.md"
     path.parent.mkdir()
-    path.write_text("- 用户希望从事产品工作\n", encoding="utf-8")
+    path.write_bytes("- 用户希望从事产品工作\n".encode("utf-8"))
     return path
 
 

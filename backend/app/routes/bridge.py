@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from app.ops import execute_operation
@@ -18,35 +18,25 @@ from app.services.agent_bridge.operation_gateway import (
     load_proposal_state,
 )
 from app.services.security_redaction import redact_sensitive_value
+from app.services.ui_approval_capability import accepts_authorization
 
 router = APIRouter()
 
 
 @router.get("/proposals/pending")
 async def list_pending_proposals() -> dict[str, Any]:
-    """Newest Run per conversation waiting on confirmation, for the overlay."""
+    """All persisted proposal Runs waiting on confirmation, for the workbench."""
     from sqlalchemy import select
 
     from app.database import async_session
     from app.models.models import AgentRunRecord
-
-    from datetime import datetime, timedelta, timezone
-
-    from sqlalchemy import select
-
-    from app.database import async_session
-    from app.models.models import AgentRunRecord
-
-    since = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=24)
     async with async_session() as db:
         rows = (
             (
                 await db.execute(
                     select(AgentRunRecord)
                     .where(AgentRunRecord.status == "waiting_confirmation")
-                    .where(AgentRunRecord.created_at >= since)
                     .order_by(AgentRunRecord.created_at.desc())
-                    .limit(5)
                 )
             )
             .scalars()
@@ -84,25 +74,34 @@ async def get_proposal(run_id: str) -> dict[str, Any]:
 
 
 class ProposalDecisionRequest(BaseModel):
-    approve: bool = Field(description="true=批准执行一次；false=拒绝（零执行）")
+    approve: bool = Field(description="true=只批准目标动作执行一次；false=只拒绝目标动作（零执行）")
+    action_id: str = Field(default="", max_length=200)
 
 
 @router.post("/proposals/{run_id}/confirm")
 async def confirm_proposal_endpoint(
-    run_id: str, body: ProposalDecisionRequest
+    run_id: str,
+    body: ProposalDecisionRequest,
+    authorization: str = Header(...),
 ) -> dict[str, Any]:
     """Human decision from the workbench overlay.
 
-    approve=true executes exactly once (idempotent replay-safe); approve=false
-    fails the proposal Run so it can never execute later.
+    approve=true executes only the selected action once; approve=false rejects
+    only the selected action, leaving sibling actions available for review.
     """
+    if not accepts_authorization(authorization):
+        raise HTTPException(status_code=403, detail="该决定只能由 OfferU 桌面工作区提交")
     if body.approve:
-        result = await confirm_proposal(run_id=run_id)
+        result = await confirm_proposal(
+            run_id=run_id,
+            action_id=body.action_id,
+            surface="agent_runtime_ui",
+        )
         return {"approved": True, **result}
     result = await execute_operation(
         "reject_agent_run",
-        {"run_id": run_id},
-        surface="bridge_user",
+        {"run_id": run_id, "action_id": body.action_id},
+        surface="agent_runtime_ui",
     )
     if not result.get("ok"):
         return {"approved": False, "errors": list(result.get("errors") or [])}

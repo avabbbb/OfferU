@@ -3,18 +3,112 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import os
 from pathlib import Path
 import time
+from types import SimpleNamespace
 
+from scripts.live_eval import agent_executor
 from scripts.live_eval.agent_executor import (
     _RpcFrameReader,
     _extract_identity,
     _offeru_agent_prompt,
+    _probe_omp_cached,
+    probe_omp_cli,
     _record_tool_start,
     _write_omp_eval_config,
 )
 from scripts.live_eval.cases import LIVE_EVAL_CASES
 from scripts.live_eval.runner import _build_prompt, _write_summary
+
+
+def test_omp_capability_probe_flattens_command_and_caches_by_mtime(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    executable = tmp_path / "omp.cmd"
+    executable.write_text("fixture", encoding="utf-8")
+    calls: list[tuple[list[str], dict[str, object]]] = []
+
+    def command(executable_arg: str, args: list[str]) -> tuple[str, list[str]]:
+        return "probe-wrapper", ["--forward", executable_arg, *args]
+
+    def run(argv: list[str], **kwargs: object) -> SimpleNamespace:
+        assert isinstance(argv, list)
+        assert not any(isinstance(item, list) for item in argv)
+        calls.append((argv, kwargs))
+        output = (
+            "OMP test version"
+            if argv[-1] == "--version"
+            else "--mode rpc --no-session --model --thinking --config --tools --approval-mode"
+        )
+        return SimpleNamespace(returncode=0, stdout=output, stderr="")
+
+    _probe_omp_cached.cache_clear()
+    monkeypatch.setattr(agent_executor, "_coding_agent_command", command)
+    monkeypatch.setattr(agent_executor.subprocess, "run", run)
+
+    first = probe_omp_cli(str(executable))
+    second = probe_omp_cli(str(executable))
+
+    assert first["ok"] is True
+    assert first["version"] == "OMP test version"
+    assert second == first
+    assert [argv for argv, _ in calls] == [
+        ["probe-wrapper", "--forward", str(executable), "--version"],
+        ["probe-wrapper", "--forward", str(executable), "--help"],
+    ]
+    assert all(kwargs["timeout"] >= 20 for _, kwargs in calls)
+    assert all(kwargs.get("shell", False) is False for _, kwargs in calls)
+
+    stat = executable.stat()
+    os.utime(executable, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+    third = probe_omp_cli(str(executable))
+
+    assert third == first
+    assert len(calls) == 4
+    _probe_omp_cached.cache_clear()
+
+
+def test_omp_discovery_prefers_windows_launcher_but_preserves_explicit_paths(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    discovered_shim = str(tmp_path / "omp")
+    discovered_cmd = str(tmp_path / "omp.cmd")
+    discovered_exe = str(tmp_path / "omp.exe")
+    explicit_path = str(tmp_path / "configured-omp")
+    env_path = str(tmp_path / "env-omp")
+    candidates = {
+        "omp": discovered_shim,
+        "omp.cmd": discovered_cmd,
+        "omp.exe": discovered_exe,
+    }
+    lookups: list[str] = []
+
+    def which(name: str) -> str | None:
+        lookups.append(name)
+        return candidates.get(name)
+
+    monkeypatch.delenv("OFFERU_OMP_PATH", raising=False)
+    assert agent_executor._resolve_omp_executable(
+        explicit_path, is_windows=True, which=which,
+    ) == explicit_path
+    monkeypatch.setenv("OFFERU_OMP_PATH", env_path)
+    assert agent_executor._resolve_omp_executable(
+        is_windows=True, which=which,
+    ) == env_path
+    assert lookups == []
+
+    monkeypatch.delenv("OFFERU_OMP_PATH")
+    assert agent_executor._resolve_omp_executable(
+        is_windows=True, which=which,
+    ) == discovered_cmd
+    assert lookups == ["omp", "omp.cmd"]
+
+    lookups.clear()
+    assert agent_executor._resolve_omp_executable(
+        is_windows=False, which=which,
+    ) == discovered_shim
+    assert lookups == ["omp"]
 
 
 def test_extract_identity_from_rpc_state() -> None:
@@ -142,7 +236,7 @@ def test_real_user_mode_does_not_simulate_reject_policy(tmp_path: Path, monkeypa
 
     monkeypatch.setattr(runner, "clone_database", create_eval_db)
     monkeypatch.setattr(runner, "_pick_target_job", lambda _db, pinned_job_id=None: pinned_job_id or 1)
-    monkeypatch.setattr(runner, "_seed_current_view", lambda _url, _job_id: {"ok": True})
+    monkeypatch.setattr(runner, "_seed_current_view", lambda _url, _eval_db, _job_id: {"ok": True})
     monkeypatch.setattr(runner, "snapshot", lambda _db: {"tables": {}, "rows": {}})
     monkeypatch.setattr(runner, "_audit_keys", lambda _db: set())
     simulated_cli_calls: list[tuple[object, ...]] = []
@@ -185,50 +279,55 @@ def test_real_user_mode_does_not_simulate_reject_policy(tmp_path: Path, monkeypa
     assert simulated_cli_calls == []
 
 
-def test_simulated_confirmation_decisions_are_capability_only() -> None:
-    from scripts.live_eval.cases import CONFIRM_AUTO_SAFE, CONFIRM_REJECT
-    from scripts.live_eval.runner import _should_simulate_decision
-
-    assert _should_simulate_decision("real-user", CONFIRM_REJECT) is None
-    assert _should_simulate_decision("real-user", CONFIRM_AUTO_SAFE) is None
-    assert _should_simulate_decision("capability", CONFIRM_REJECT) == "reject"
-    assert _should_simulate_decision("capability", CONFIRM_AUTO_SAFE) == "approve"
-
-
 def test_grader_audit_excludes_only_confirmations_bound_to_accepted_human_decisions() -> None:
     from scripts.live_eval.runner import _audit_rows_for_grading
 
     full_audit = [
         {
             "id": 1,
-            "operation": "confirm_operation_proposal",
+            "operation": "set_current_view",
             "confirmation_ref": "agent-run:run_1:action_1",
             "surface": "pi",
+            "idempotency_key": "run_1:action_1",
+            "status": "completed",
+            "dry_run": False,
         },
         {
             "id": 2,
-            "operation": "confirm_operation_proposal",
+            "operation": "set_current_view",
             "confirmation_ref": "agent-run:run_2:action_2",
-            "surface": "ui",
+            "surface": "agent_runtime_ui",
+            "idempotency_key": "run_2:action_2",
+            "status": "completed",
+            "dry_run": False,
         },
         {"id": 3, "operation": "get_profile", "confirmation_ref": None},
         {
             "id": 4,
-            "operation": "confirm_operation_proposal",
+            "operation": "triage_job",
             "confirmation_ref": "agent-run:run_3:action_3",
             "surface": "cli",
+            "idempotency_key": "run_3:action_3",
+            "status": "completed",
+            "dry_run": False,
         },
         {
             "id": 5,
-            "operation": "confirm_operation_proposal",
+            "operation": "set_current_view",
             "confirmation_ref": "agent-run:run_1:action_1",
             "surface": "cli",
+            "idempotency_key": "run_1:action_1:cli",
+            "status": "completed",
+            "dry_run": False,
         },
         {
             "id": 6,
-            "operation": "confirm_operation_proposal",
+            "operation": "triage_job",
             "confirmation_ref": "agent-run:run_4:action_4",
-            "surface": "bridge_user",
+            "surface": "agent_runtime_ui",
+            "idempotency_key": "run_4:action_4",
+            "status": "completed",
+            "dry_run": False,
         },
     ]
     human_decisions = [
@@ -243,8 +342,8 @@ def test_grader_audit_excludes_only_confirmations_bound_to_accepted_human_decisi
         human_decisions=human_decisions,
     )
 
-    assert [row["id"] for row in grader_rows] == [2, 3, 5, 6]
-    assert excluded_ids == [1, 4]
+    assert [row["id"] for row in grader_rows] == [2, 3, 5]
+    assert excluded_ids == [1, 4, 6]
     assert [row["id"] for row in full_audit] == [1, 2, 3, 4, 5, 6]
 
 
@@ -350,7 +449,7 @@ def test_real_user_human_review_continues_through_one_omp_session(tmp_path: Path
     monkeypatch.setattr(runner, "_wait_for_human_review", accept_in_ui)
     monkeypatch.setattr(runner, "clone_database", create_eval_db)
     monkeypatch.setattr(runner, "_pick_target_job", lambda _db, pinned_job_id=None: pinned_job_id or 1)
-    monkeypatch.setattr(runner, "_seed_current_view", lambda _url, _job_id: {"ok": True})
+    monkeypatch.setattr(runner, "_seed_current_view", lambda _url, _eval_db, _job_id: {"ok": True})
     monkeypatch.setattr(runner, "snapshot", lambda _db: {"tables": {}, "rows": {}})
     monkeypatch.setattr(runner, "_audit_keys", lambda _db: set())
 
@@ -409,16 +508,31 @@ def test_human_review_status_is_read_from_persisted_agent_run(tmp_path: Path) ->
             "INSERT INTO agent_runs VALUES (?, ?, ?, ?, ?, ?)",
             ("run_executing", "executing", "", '[{"id":"action_3","status":"executing"}]', "executing goal", "2026-09-23"),
         )
+        connection.execute(
+            "INSERT INTO agent_runs VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                "run_partial_reject",
+                "waiting_confirmation",
+                "",
+                '[{"id":"action_4","tool":"update_job","status":"rejected",'
+                '"requires_confirmation":true},{"id":"action_5","tool":"update_profile",'
+                '"status":"waiting_confirmation","requires_confirmation":true}]',
+                "partial reject goal",
+                "2026-09-23",
+            ),
+        )
 
     assert _agent_run_action_state(database, "run_accepted", "action_1")["decision"] == "accepted"
     assert _agent_run_action_state(database, "run_rejected", "action_2")["decision"] == "rejected"
     assert _agent_run_action_state(database, "run_executing", "action_3")["decision"] == "in_progress"
-    assert [
+    assert _agent_run_action_state(database, "run_partial_reject", "action_4")["decision"] == "rejected"
+    assert _agent_run_action_state(database, "run_partial_reject", "action_5")["decision"] == "pending"
+    assert {
         item["action_id"]
         for item in _new_proposed_actions(
             database, exclude_run_ids=set(), exclude_action_keys=set(),
         )
-    ] == ["action_1", "action_2"]
+    } == {"action_1", "action_2", "action_4", "action_5"}
     followup = _human_review_continuation_prompt([
         {"run_id": "run_rejected", "action_id": "action_2", "decision": "rejected"},
     ])

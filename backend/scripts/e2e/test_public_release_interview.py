@@ -1,10 +1,9 @@
-"""Portable browser acceptance for the targeted Interview learning loop.
+"""Portable browser acceptance for the fixture-backed Interview safety gate.
 
 The scenario creates its own profile and job through the visible UI, uses the
-explicit replay providers, and then exercises Focus Plan -> Interviewer Mode
--> transcript-backed Debrief -> reviewed Learning Candidate.  It assumes the
-isolated backend/frontend are already running, just like the other release
-browser gates.
+explicit replay providers, and verifies that fixture-only Role Intelligence
+cannot start real interview training. It assumes the isolated backend/frontend
+are already running, just like the other release browser gates.
 """
 
 from __future__ import annotations
@@ -23,6 +22,10 @@ from release_endpoints import (
     release_frontend_url,
 )
 from temp_paths import test_temp_root
+from test_public_release_smoke import (
+    _complete_new_user_onboarding,
+    _use_replay_provider,
+)
 
 BASE_URL = release_frontend_url()
 API_URL = release_api_url()
@@ -43,41 +46,7 @@ def _create_profile_and_job(page, suffix: str) -> tuple[int, dict]:
     page.goto(f"{BASE_URL}/#/?interview_smoke={suffix}", wait_until="domcontentloaded")
     page.evaluate("localStorage.clear()")
     page.reload(wait_until="domcontentloaded")
-    expect(page.get_by_role("button", name="生成求职画像", exact=True)).to_be_visible(
-        timeout=20000
-    )
-    for label in (
-        "先拆目标和节奏",
-        "能被看见的内容",
-        "把资源和人拉起来",
-        "数字结果",
-        "愿意冲成长方向",
-    ):
-        page.get_by_role("button", name=label, exact=False).click()
-    page.get_by_role("button", name="生成求职画像", exact=True).click()
-    page.get_by_role("button", name="跳过", exact=True).click()
-    page.get_by_text("快速创建", exact=True).wait_for(timeout=10000)
-    page.get_by_text("快速创建", exact=True).click()
-
-    page.get_by_label("姓名", exact=True).fill("OfferU Interview User")
-    page.get_by_label("目标方向", exact=True).fill("AI 产品经理")
-    page.get_by_label("学校", exact=True).fill("OfferU Interview University")
-    page.get_by_label("专业", exact=True).fill("Computer Science")
-    page.get_by_label("素材 1", exact=True).fill(
-        "负责 AI 产品需求分析，协调设计与工程完成首版交付。"
-    )
-    page.get_by_label("素材 2", exact=True).fill(
-        "建立模型评测流程，整理用户反馈并推动两轮体验改进。"
-    )
-    page.get_by_label("素材 3", exact=True).fill(
-        "组织跨团队项目复盘，沉淀可复用的工作方法。"
-    )
-    page.get_by_role("button", name="创建简历", exact=True).click()
-    expect(page.get_by_text("简历已就绪", exact=True)).to_be_visible(timeout=30000)
-
-    page.get_by_role("button", name="保存第一个岗位", exact=True).click()
-    page.get_by_test_id("open-add-job").wait_for(timeout=20000)
-    page.get_by_test_id("open-add-job").click()
+    _complete_new_user_onboarding(page, suffix)
     title = "AI 产品经理"
     company = f"Interview Orbit {suffix}"
     page.get_by_test_id("add-job-title").fill(title)
@@ -85,8 +54,15 @@ def _create_profile_and_job(page, suffix: str) -> tuple[int, dict]:
     page.get_by_test_id("add-job-description").fill(
         "负责 AI 产品规划、用户需求分析、评测体系建设与跨团队交付；关注 Agent 工作流和产品增长。"
     )
-    page.get_by_test_id("add-job-submit").click()
-    page.wait_for_url("**/jobs/*", timeout=30000)
+    page.route("**/api/jobs/ingest", _use_replay_provider)
+    try:
+        page.get_by_test_id("add-job-submit").click()
+        page.wait_for_function(
+            "() => window.location.hash.startsWith('#/jobs/')",
+            timeout=30000,
+        )
+    finally:
+        page.unroute("**/api/jobs/ingest", _use_replay_provider)
 
     jobs = _json_response(page, f"{API_URL}/api/jobs/?page_size=100")
     matching = [item for item in jobs.get("items", []) if item.get("company") == company]
@@ -165,48 +141,109 @@ def main() -> None:
 
         trace_stopped = False
         try:
-            job_id, job = _create_profile_and_job(page, suffix)
+            job_id, _job = _create_profile_and_job(page, suffix)
+            page.wait_for_function(
+                "jobId => window.location.hash.slice(1).split('?')[0] === `/jobs/${jobId}`",
+                arg=job_id,
+                timeout=20000,
+            )
             benchmark = _wait_for_role_benchmark(page, job_id)
+            tasks = _json_response(
+                page,
+                f"{API_URL}/api/agent/runtime/career-tasks"
+                f"?target_type=job&target_id={job_id}&limit=10",
+            )
+            role_tasks = [
+                item
+                for item in tasks.get("tasks", [])
+                if item.get("task_type") == "role_intelligence"
+            ]
+            if len(role_tasks) != 1:
+                raise AssertionError(
+                    f"interview smoke expected one role intelligence task, got {len(role_tasks)}"
+                )
+            task = role_tasks[0]
+            if task.get("status") != "completed" or task.get("runtime_provider") != "replay":
+                raise AssertionError(f"interview smoke must use a completed replay task: {task}")
+            if benchmark.get("data_mode") not in {"fixture", "fixture_plugin"}:
+                raise AssertionError(
+                    "replay Interview smoke expected an explicitly fixture-backed benchmark: "
+                    f"{benchmark.get('data_mode')}"
+                )
             run_id = str(benchmark["run_id"])
 
             page.goto(
                 f"{BASE_URL}/#/interview/ai?job_id={job_id}&benchmark_run_id={run_id}",
                 wait_until="domcontentloaded",
             )
-            focus_plan = page.get_by_test_id("interview-focus-plan")
-            expect(focus_plan).to_be_visible(timeout=30000)
-            expect(page.get_by_text("Interviewer Mode", exact=False).first).to_be_visible()
-            page.get_by_role("checkbox").check()
-            page.get_by_role("button", name="生成专项问题并开始", exact=True).click()
+            block_message = (
+                "当前岗位基准来自 fixture 数据，仅用于产品验收；"
+                "请先采集真实岗位基准再生成专项训练。"
+            )
+            expect(page.get_by_role("alert")).to_contain_text(block_message, timeout=30000)
+            expect(page.get_by_role("button", name="生成专项问题并开始", exact=True)).to_be_disabled()
+            expect(page.get_by_test_id("interview-focus-plan")).to_have_count(0)
+            expect(page.locator("textarea[aria-label='输入本题回答']")).to_have_count(0)
+
+            focus_failures = [
+                response
+                for response in bad_responses
+                if response.startswith("400 ") and "/api/interviews/focus-plan?" in response
+            ]
+            unexpected_bad_responses = [
+                response for response in bad_responses if response not in focus_failures
+            ]
+            expected_console_errors = [message for message in console_errors if "400" in message]
+            unexpected_console_errors = [
+                message for message in console_errors if message not in expected_console_errors
+            ]
+            if len(focus_failures) != 1 or unexpected_bad_responses:
+                raise AssertionError(
+                    f"fixture Interview should make one explicit focus-plan rejection: {bad_responses}"
+                )
+            if len(expected_console_errors) != 1 or unexpected_console_errors or page_errors:
+                raise AssertionError(
+                    "browser errors beyond the expected fixture guard: "
+                    f"console={console_errors}, page={page_errors}"
+                )
+
+            interviews_response = page.request.get(f"{API_URL}/api/interviews/?limit=100")
+            if not interviews_response.ok:
+                raise AssertionError("interview list request failed")
+            interviews = interviews_response.json()
+            if any(item.get("target_job_id") == job_id for item in interviews):
+                raise AssertionError("fixture-only benchmark created an Interview")
+
+            # The deterministic CI runtime can cover the generic interview
+            # learning loop without treating replay role signals as live market
+            # evidence. Keep the targeted fixture path blocked above, then
+            # exercise interview completion and review without a Job benchmark.
+            page.goto(f"{BASE_URL}/#/interview/ai", wait_until="domcontentloaded")
+            interview_company = f"Interview Orbit {suffix}"
+            interview_position = "AI 产品经理"
+            page.get_by_label("目标公司（可选）", exact=True).fill(interview_company)
+            page.get_by_label("目标岗位", exact=True).fill(interview_position)
+            consent = page.get_by_role("checkbox")
+            expect(consent).to_be_enabled(timeout=30000)
+            consent.check()
+            create_button = page.get_by_role("button", name="生成面试并进入房间", exact=True)
+            expect(create_button).to_be_enabled(timeout=30000)
+            create_button.click()
 
             answer_count = 0
-            follow_up_seen = False
             while not page.get_by_text("本场模拟面试报告", exact=True).is_visible():
                 textarea = page.locator("textarea[aria-label='输入本题回答']")
                 expect(textarea).to_be_visible(timeout=30000)
-                if answer_count == 0:
-                    answer = "我做过评测。"
-                else:
-                    answer = (
-                        "我在项目中负责模型评测流程设计，先定义评测指标和样本，再和工程团队复盘结果，"
-                        "根据用户反馈推动两轮改进；当指标与交付速度冲突时，我会记录取舍并验证结果。"
-                    )
-                textarea.fill(answer)
+                textarea.fill(
+                    "我负责模型评测流程设计，先定义指标和样本，再和工程团队复盘结果，"
+                    "根据用户反馈推动两轮改进；指标和交付速度冲突时，我会记录取舍并验证结果。"
+                )
                 submit = page.get_by_role("button", name="提交并", exact=False)
                 expect(submit).to_be_enabled(timeout=30000)
                 submit.click()
                 answer_count += 1
-                if answer_count == 1:
-                    expect(page.get_by_test_id("interviewer-mode-status")).to_contain_text(
-                        "Adaptive follow-up", timeout=30000
-                    )
-                    expect(page.get_by_text("请继续补充", exact=False)).to_be_visible(timeout=30000)
-                    active_text = page.get_by_test_id("interviewer-mode-status").inner_text()
-                    if "做得好" in active_text or "参考答案" in active_text:
-                        raise AssertionError("Interviewer Mode exposed praise or answer coaching")
-                    follow_up_seen = True
                 if answer_count > 8:
-                    raise AssertionError("targeted interview did not complete within eight answers")
+                    raise AssertionError("generic replay interview did not complete within eight answers")
                 page.wait_for_function(
                     """
                     () => {
@@ -221,23 +258,22 @@ def main() -> None:
                     timeout=30000,
                 )
 
-            expect(page.get_by_test_id("role-interview-debrief")).to_be_visible(timeout=15000)
-            page.get_by_test_id("role-interview-debrief").locator("details").first.click()
-            report_body = page.locator("body").inner_text()
-            if "评价引用（实际回答）" not in report_body:
-                raise AssertionError("debrief did not expose transcript-backed evidence citation")
-            if "我在项目中负责模型评测流程设计" not in report_body:
-                raise AssertionError("debrief did not cite the submitted answer")
-
             interviews_response = page.request.get(f"{API_URL}/api/interviews/?limit=100")
             if not interviews_response.ok:
                 raise AssertionError("interview list request failed")
             interviews = interviews_response.json()
             interview = next(
-                item
-                for item in interviews
-                if item.get("target_job_id") == job_id and item.get("status") == "completed"
+                (
+                    item
+                    for item in interviews
+                    if item.get("target_company") == interview_company
+                    and item.get("target_position") == interview_position
+                    and item.get("status") == "completed"
+                ),
+                None,
             )
+            if not isinstance(interview, dict):
+                raise AssertionError("generic replay interview did not complete")
             interview_detail_response = page.request.get(
                 f"{API_URL}/api/interviews/{interview['id']}?detail=full"
             )
@@ -255,17 +291,18 @@ def main() -> None:
             if not interview_detail["report"].get("learning_candidate"):
                 raise AssertionError("completed interview has no Learning Candidate reference")
 
-            memory_item = _wait_for_learning_candidate(page, str(job["title"]))
+            memory_item = _wait_for_learning_candidate(page, interview_position)
             page.goto(f"{BASE_URL}/#/profile", wait_until="domcontentloaded")
             page.get_by_text("职业模型", exact=True).click()
             page.get_by_text("记忆收件箱 · 待审核", exact=True).wait_for(timeout=20000)
             page.get_by_text(memory_item["title"], exact=True).first.wait_for(timeout=15000)
             accept_buttons = page.get_by_role("button", name="接受", exact=True)
-            target_accept = accept_buttons.last
-            target_accept.click()
+            accept_buttons.last.click()
             expect(page.get_by_text("没有待审核提案", exact=True)).to_be_visible(timeout=15000)
 
-            accepted_inbox = _json_response(page, f"{API_URL}/api/memory/inbox?status=all&limit=100")
+            accepted_inbox = _json_response(
+                page, f"{API_URL}/api/memory/inbox?status=all&limit=100"
+            )
             accepted = next(
                 item
                 for item in accepted_inbox.get("items", [])
@@ -278,28 +315,50 @@ def main() -> None:
                 raise AssertionError(f"Learning Candidate was not accepted: {accepted}")
             if not accepted.get("applied_profile_section_id"):
                 raise AssertionError("accepted Learning Candidate did not return a Profile section")
-            if final_detail.get("report", {}).get("learning_candidate", {}).get("status") != "accepted":
+            if (
+                final_detail.get("report", {})
+                .get("learning_candidate", {})
+                .get("status")
+                != "accepted"
+            ):
                 raise AssertionError("Interview report did not reflect accepted Learning Candidate")
-            if bad_responses or console_errors or page_errors:
+
+            focus_failures = [
+                response
+                for response in bad_responses
+                if response.startswith("400 ") and "/api/interviews/focus-plan?" in response
+            ]
+            unexpected_bad_responses = [
+                response for response in bad_responses if response not in focus_failures
+            ]
+            expected_console_errors = [message for message in console_errors if "400" in message]
+            unexpected_console_errors = [
+                message for message in console_errors if message not in expected_console_errors
+            ]
+            if len(focus_failures) != 1 or unexpected_bad_responses:
                 raise AssertionError(
-                    f"browser errors: responses={bad_responses}, console={console_errors}, page={page_errors}"
+                    f"unexpected browser responses after the expected fixture guard: {bad_responses}"
+                )
+            if len(expected_console_errors) != 1 or unexpected_console_errors or page_errors:
+                raise AssertionError(
+                    "browser errors beyond the expected fixture guard: "
+                    f"console={console_errors}, page={page_errors}"
                 )
 
             result = {
                 "status": "PASS",
+                "scenario": "fixture-guard-and-generic-replay-learning",
                 "job_id": job_id,
                 "benchmark_run_id": run_id,
-                "interview_id": interview["id"],
-                "answers_submitted": answer_count,
-                "interview_status": interview["status"],
-                "focus_plan_visible": True,
-                "interviewer_mode_follow_up": follow_up_seen,
-                "debrief_visible": True,
-                "transcript_message_count": len(messages),
+                "benchmark_data_mode": benchmark.get("data_mode"),
+                "runtime_provider": task["runtime_provider"],
+                "job_targeted_training_blocked": True,
+                "targeted_interview_created": False,
+                "generic_interview_id": interview["id"],
+                "generic_answers_submitted": answer_count,
                 "learning_candidate_id": memory_item["id"],
                 "learning_candidate_status": accepted.get("status"),
                 "profile_section_id": accepted.get("applied_profile_section_id"),
-                "report_has_evidence_review": True,
                 "console_errors": console_errors,
                 "page_errors": page_errors,
                 "bad_responses": bad_responses,

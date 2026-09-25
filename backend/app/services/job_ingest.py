@@ -107,6 +107,7 @@ async def import_job_batch(
     created_hash_keys: list[str] = []
     skipped_hash_keys: list[str] = []
     created_jobs: list[Job] = []
+    resolved_jobs: list[Job] = []
 
     async with async_session() as db:
         async def ensure_batch(db_batch_id: str, batch_source: str) -> None:
@@ -133,6 +134,7 @@ async def import_job_batch(
                 skipped += 1
                 accepted_hash_keys.append(item.hash_key)
                 skipped_hash_keys.append(item.hash_key)
+                resolved_jobs.append(existing)
                 continue
 
             job_batch_id = item.batch_id or resolved_batch_id
@@ -174,12 +176,14 @@ async def import_job_batch(
             )
             db.add(job)
             created_jobs.append(job)
+            resolved_jobs.append(job)
             created += 1
             accepted_hash_keys.append(item.hash_key)
             created_hash_keys.append(item.hash_key)
 
         await db.flush()
         created_job_ids = [int(job.id) for job in created_jobs]
+        resolved_job_ids = [int(job.id) for job in resolved_jobs]
         batch = (
             await db.execute(select(Batch).where(Batch.id == resolved_batch_id))
         ).scalar_one_or_none()
@@ -196,5 +200,6 @@ async def import_job_batch(
         "created_hash_keys": created_hash_keys,
         "skipped_hash_keys": skipped_hash_keys,
         "created_job_ids": created_job_ids,
+        "resolved_job_ids": resolved_job_ids,
         "failed": failed,
     }

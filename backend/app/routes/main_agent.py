@@ -4,7 +4,7 @@ import asyncio
 import json
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
@@ -24,6 +24,7 @@ from app.services.agent_runtime import (
 )
 from app.services.diagnostics import new_error_id, record_error
 from app.services.security_redaction import safe_error_message
+from app.services.ui_approval_capability import accepts_authorization
 
 router = APIRouter()
 runtime_router = APIRouter()
@@ -68,6 +69,10 @@ class PiAgentRunRequest(BaseModel):
 
 
 class PiAgentConfirmationRequest(BaseModel):
+    action_id: str = Field(min_length=1, max_length=200)
+
+
+class PiAgentRejectionRequest(BaseModel):
     action_id: str = Field(min_length=1, max_length=200)
 
 
@@ -821,11 +826,31 @@ async def stream_runtime_run(body: PiAgentRunRequest):
 async def confirm_runtime_action(
     run_id: str,
     body: PiAgentConfirmationRequest,
+    authorization: str = Header(...),
 ) -> dict[str, Any]:
     """Confirm one persisted action through the selected Agent provider."""
 
+    if not accepts_authorization(authorization):
+        raise HTTPException(status_code=403, detail="该决定只能由 OfferU 桌面工作区提交")
     provider = await _provider_for_run(run_id)
     return await provider.confirm_run(run_id, action_id=body.action_id)
+
+
+@runtime_router.post("/runtime/runs/{run_id}/reject")
+async def reject_runtime_action(
+    run_id: str,
+    body: PiAgentRejectionRequest,
+    authorization: str = Header(...),
+) -> dict[str, Any]:
+    """Reject exactly one persisted action through the Operation Registry."""
+
+    if not accepts_authorization(authorization):
+        raise HTTPException(status_code=403, detail="该决定只能由 OfferU 桌面工作区提交")
+    try:
+        provider = await _provider_for_run(run_id)
+        return await provider.reject_run(run_id, action_id=body.action_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=safe_error_message(exc)) from exc
 
 
 @runtime_router.post("/runtime/runs/{run_id}/resume")

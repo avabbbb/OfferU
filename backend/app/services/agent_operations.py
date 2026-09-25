@@ -212,22 +212,15 @@ async def list_agent_runs_summary(
     }
 
 
-async def reject_agent_run(run_id: str) -> dict:
-    """Persist an explicit user rejection through the Agent Run state service."""
-    from app.services.agent_run_state import ACTIVE_STATUSES, load_agent_run, save_agent_run
+async def reject_agent_run(
+    run_id: str, action_id: Optional[str] = None
+) -> dict:
+    """Persist the user's rejection of exactly one Agent Run proposal action."""
+    from app.services.agent_run_state import reject_agent_run_action
 
-    run = await load_agent_run(run_id)
-    if run is None:
-        return {"error": f"Agent Run {run_id} 不存在。"}
-    if run.get("status") in ACTIVE_STATUSES:
-        run["status"] = "needs_reconciliation"
-        run["failure_reason"] = "rejected_by_user"
-        run = await save_agent_run(run)
-    return {
-        "rejected": True,
-        "runStatus": run.get("status"),
-        "warnings": ["已拒绝；该提案不会执行。"],
-    }
+    return await reject_agent_run_action(
+        str(run_id), action_id=action_id
+    )
 
 
 async def list_profile_evidence(

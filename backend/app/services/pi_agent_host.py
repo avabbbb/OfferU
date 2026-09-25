@@ -846,36 +846,10 @@ async def confirm_pi_agent_action(
     action_id: str,
     worker: PiAgentWorkerClient | None = None,
 ) -> dict[str, Any]:
-    current = await load_agent_run(run_id)
-    selected = (
-        next(
-            (
-                step
-                for step in (current.get("steps") or [])
-                if isinstance(step, dict)
-                and step.get("status")
-                in {"waiting_confirmation", "executing"}
-                and (
-                    not action_id
-                    or str(step.get("id") or "") == action_id
-                )
-            ),
-            None,
-        )
-        if current is not None
-        else None
-    )
-    if current is not None and selected is not None:
-        current["final_result"] = {
-            **(current.get("final_result") or {}),
-            "requires_confirmation": True,
-            "turn_finished": False,
-        }
-        await save_agent_run(current)
     result = await confirm_operation_proposal(
         run_id,
         action_id=action_id,
-        surface="pi",
+        surface="agent_runtime_ui",
     )
     active_worker = worker or get_pi_agent_worker()
     if active_worker.active_run_id == run_id:
@@ -927,6 +901,77 @@ async def confirm_pi_agent_action(
                 },
             )
     return result
+
+
+async def reject_pi_agent_action(
+    run_id: str,
+    *,
+    action_id: str,
+    worker: PiAgentWorkerClient | None = None,
+) -> dict[str, Any]:
+    operation = await execute_operation(
+        "reject_agent_run",
+        {"run_id": run_id, "action_id": action_id},
+        surface="agent_runtime_ui",
+    )
+    if not operation.get("ok"):
+        raise ValueError(
+            "; ".join(str(item) for item in operation.get("errors") or [])
+            or "拒绝动作失败。"
+        )
+    outputs = operation.get("outputs") if isinstance(operation.get("outputs"), dict) else {}
+    run = outputs.get("run") if isinstance(outputs.get("run"), dict) else None
+    if run is None:
+        raise ValueError("拒绝结果缺少持久化 Agent Run。")
+
+    warnings = list(operation.get("warnings") or [])
+    active_worker = worker or get_pi_agent_worker()
+    if active_worker.active_run_id == run_id:
+        try:
+            await active_worker.dispose_run(run_id)
+        except Exception as exc:
+            await append_agent_run_event(
+                run_id,
+                event_type="runtime.failed",
+                payload={"error": safe_error_message(exc), "phase": "dispose_after_reject"},
+            )
+            warnings.append(
+                "操作已处理，但 Pi Session 释放失败；Worker 会在下次启动时显式报错。"
+            )
+
+    run = await load_agent_run(run_id) or run
+    pending_actions = pending_actions_for_run(run)
+    turn_finished = str(run.get("status") or "") != "executing"
+    requires_confirmation = (
+        str(run.get("status") or "") == "waiting_confirmation"
+        and bool(pending_actions)
+    )
+    final_result = run.get("final_result") if isinstance(run.get("final_result"), dict) else {}
+    changed = (
+        final_result.get("requires_confirmation") is not requires_confirmation
+        or final_result.get("turn_finished") is not turn_finished
+    )
+    run["final_result"] = {
+        **final_result,
+        "requires_confirmation": requires_confirmation,
+        "turn_finished": turn_finished,
+    }
+    if changed:
+        run = await save_agent_run(
+            run,
+            event_type="run.turn_finished",
+            event_payload={
+                "status": str(run.get("status") or ""),
+                "requires_confirmation": requires_confirmation,
+            },
+        )
+    return {
+        "ok": True,
+        "run": run,
+        "pending_actions": pending_actions_for_run(run),
+        "tool_calls": [],
+        "warnings": warnings,
+    }
 
 
 async def abort_pi_agent_run(

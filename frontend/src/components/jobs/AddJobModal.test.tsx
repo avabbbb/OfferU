@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -41,6 +41,7 @@ describe("AddJobModal", () => {
       created: 1,
       skipped: 0,
       created_job_ids: [456],
+      resolved_job_ids: [456],
       failed: [],
     });
     const onCreated = vi.fn();
@@ -59,7 +60,60 @@ describe("AddJobModal", () => {
       runtime_provider: "replay",
     });
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith(456));
-    expect(onClose).toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledWith("created");
+  });
+
+  it("提交进行中禁用按钮并阻止重复点击", async () => {
+    let finishIngest!: (value: {
+      created: number;
+      skipped: number;
+      created_job_ids: number[];
+      resolved_job_ids: number[];
+      failed: never[];
+    }) => void;
+    mockIngestJob.mockReturnValue(
+      new Promise((resolve) => {
+        finishIngest = resolve;
+      }),
+    );
+    const onCreated = vi.fn();
+    renderModal({ onCreated });
+
+    const user = await fillRequiredFields();
+    const submit = screen.getByTestId("add-job-submit");
+    await user.click(submit);
+
+    expect(submit).toBeDisabled();
+    await user.click(submit);
+    expect(mockIngestJob).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      finishIngest({
+        created: 1,
+        skipped: 0,
+        created_job_ids: [456],
+        resolved_job_ids: [456],
+        failed: [],
+      });
+    });
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(456));
+  });
+
+  it("幂等重试返回已存在的岗位时仍把 canonical Job 交给页面", async () => {
+    mockIngestJob.mockResolvedValue({
+      created: 0,
+      skipped: 1,
+      created_job_ids: [],
+      resolved_job_ids: [789],
+      failed: [],
+    });
+    const onCreated = vi.fn();
+    renderModal({ onCreated });
+
+    const user = await fillRequiredFields();
+    await user.click(screen.getByTestId("add-job-submit"));
+
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(789));
   });
 
   it("必填字段为空时阻止提交并提示用户", async () => {

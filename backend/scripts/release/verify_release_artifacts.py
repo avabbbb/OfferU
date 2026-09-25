@@ -60,7 +60,7 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _read_manifest(root: Path) -> dict[str, tuple[Path, int, str]]:
+def _read_manifest(root: Path, *, target: str, version: str) -> dict[str, tuple[Path, int, str]]:
     payload = _load_json(_metadata_file(root, "artifacts.json"))
     if not isinstance(payload, list) or not payload:
         raise ValueError("artifacts.json must contain a non-empty list")
@@ -81,10 +81,14 @@ def _read_manifest(root: Path) -> dict[str, tuple[Path, int, str]]:
         manifest[name] = (_release_file(root, name), size, checksum.lower())
 
     names = set(manifest)
-    if not any(name.casefold().endswith("-setup.exe") for name in names):
-        raise ValueError("release artifact set is missing an NSIS setup executable")
-    if not any(name.casefold().endswith(".msi") for name in names):
-        raise ValueError("release artifact set is missing an MSI installer")
+    if target == "windows-x64":
+        folded_names = {name.casefold() for name in names}
+        if f"offeru-setup-{version}.exe".casefold() not in folded_names:
+            raise ValueError("release artifact set is missing its canonical NSIS setup executable")
+        if f"offeru-{version}-x64.msi".casefold() not in folded_names:
+            raise ValueError("release artifact set is missing its canonical MSI installer")
+    elif len(names) != 1 or not next(iter(names)).casefold().endswith(".dmg"):
+        raise ValueError("macOS release artifact set must contain exactly one DMG installer")
     return manifest
 
 
@@ -120,7 +124,21 @@ def verify_release_artifacts(
     if not root.is_dir():
         raise ValueError(f"release artifact directory does not exist: {root}")
 
-    manifest = _read_manifest(root)
+    version_payload = _load_json(_metadata_file(root, "version.json"))
+    if not isinstance(version_payload, dict):
+        raise ValueError("version.json must contain an object")
+    if version_payload.get("product") != "OfferU":
+        raise ValueError("version.json has an unexpected product")
+    target = version_payload.get("target")
+    if not isinstance(target, str) or target not in {"windows-x64", "macos-arm64", "macos-x64"}:
+        raise ValueError("version.json has an unexpected target")
+    version = version_payload.get("version")
+    if not isinstance(version, str) or not version:
+        raise ValueError("version.json has no release version")
+    if expected_version is not None and version != expected_version:
+        raise ValueError("version.json does not match the expected release version")
+
+    manifest = _read_manifest(root, target=target, version=version)
     checksums = _read_checksums(root)
     if set(checksums) != set(manifest):
         raise ValueError("SHA256SUMS.txt does not match artifacts.json")
@@ -135,18 +153,6 @@ def verify_release_artifacts(
             raise ValueError(f"artifact SHA-256 mismatch: {name}")
         total_bytes += actual_bytes
 
-    version_payload = _load_json(_metadata_file(root, "version.json"))
-    if not isinstance(version_payload, dict):
-        raise ValueError("version.json must contain an object")
-    if version_payload.get("product") != "OfferU":
-        raise ValueError("version.json has an unexpected product")
-    if version_payload.get("target") != "windows-x64":
-        raise ValueError("version.json has an unexpected target")
-    version = version_payload.get("version")
-    if not isinstance(version, str) or not version:
-        raise ValueError("version.json has no release version")
-    if expected_version is not None and version != expected_version:
-        raise ValueError("version.json does not match the expected release version")
     signed = version_payload.get("signed")
     if not isinstance(signed, bool):
         raise ValueError("version.json signed flag is invalid")
@@ -167,7 +173,7 @@ def verify_release_artifacts(
         "status": "verified",
         "product": "OfferU",
         "version": version,
-        "target": "windows-x64",
+        "target": target,
         "signed": signed,
         "installer_count": len(manifest),
         "total_bytes": total_bytes,
