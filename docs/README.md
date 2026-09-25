@@ -2,7 +2,7 @@
 # OfferU Documentation
 
 Status: **CURRENT NAVIGATION AUTHORITY**  
-Updated: 2026-09-23
+Updated: 2026-09-25
 
 OfferU has accumulated design documents, audits, eval reports and implementation snapshots across several architecture generations. This page defines which documents are authoritative **now**.
 
@@ -37,6 +37,7 @@ Historical audits and dated reports are evidence of what was true when they were
 | Area | Current document | Purpose |
 | --- | --- | --- |
 | Product | [Current Product North Star](./product/current-product.md) | Outcome-first Job Workspace, zero-setup App-first UX, Skill-first power-user entry, Guided Today, external-first Agent |
+| First use / dogfood | [Entry, Onboarding & Dogfood Contract](./product/entry-onboarding-and-dogfood.md) | Installer/Skill boundary, beginner hosts, current Agent capabilities, owner-dogfood path and marketing evidence |
 | Goal | [GOAL.md](../GOAL.md) | Public-release goal and durable release gates |
 | Domain | [CONTEXT.md](../CONTEXT.md) | Career Truth, candidates, evidence, applications, memory and Agent vocabulary |
 | Architecture | [ARCHITECTURE.md](../ARCHITECTURE.md) | Short current system boundary |

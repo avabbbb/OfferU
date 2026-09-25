@@ -2,7 +2,7 @@
 # OfferU Current Product North Star
 
 Status: **CURRENT PRODUCT AUTHORITY**  
-Updated: 2026-09-23
+Updated: 2026-09-25
 
 This document defines the current product shape of OfferU. Historical audits, dated implementation plans and superseded Harness-specific designs must not override it.
 
@@ -67,6 +67,27 @@ Profile
 - **Profile** is the long-lived evidence-backed model of the user. Memory is an evolution mechanism for Profile, not a separate silo.
 
 Agent, Skills, Email, Browser Capture, Resume, Role Intelligence and Interview are capabilities across these surfaces, not competing top-level products.
+
+## Distribution and first-use contract
+
+For normal users, OfferU Desktop owns setup. The intended public beginner experience is:
+
+~~~text
+Download OfferU
+→ install
+→ open OfferU
+→ find an existing supported Agent
+→ prepare/register the OfferU Skill where supported
+→ import Resume
+→ save first Job
+→ useful Job Workspace
+~~~
+
+The normal user must not be required to install Python, Node.js, Git, MCP tooling or manually copy Skill files. The Desktop package owns its runtime dependencies; the Agent keeps ownership of its own account/login/model.
+
+For power users, Skill-first remains a valid second front door, but OfferU does not currently claim a public standalone `npx skills add offeru` package. The present consumer path is Desktop-assisted Skill installation/projection into detected hosts.
+
+Detailed first-use, current host/capability boundaries and owner-dogfood acceptance are maintained in [Entry, Onboarding & Dogfood Contract](./entry-onboarding-and-dogfood.md).
 
 ## Two front doors, one Career Truth
 
@@ -303,8 +324,9 @@ Recently landed on main:
 
 Current active validation work:
 
-- make current main pass CI and release audits;
-- run the real external-Agent Golden Path with trusted execution evidence, human-visible HITL and pass^3;
+- deterministic Build & Release gates are green on the merged #29 baseline; keep them green rather than adding broad new feature scope;
+- start owner dogfood with real Resume + real Jobs through the App-first entry;
+- run the real external-Agent Golden Path with trusted execution evidence, human-visible HITL and pass^3 once an approved isolated environment is available;
 - validate one clean Zero-Setup first-run journey with real user inputs;
 - validate signed/notarized macOS clean install, upgrade, migration and recovery.
 
