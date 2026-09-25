@@ -55,7 +55,7 @@ The first owner-dogfood review identified a product-level autonomy gap: OfferU h
 
 The accepted next product slice is the bounded [Proactive Career Director](./docs/product/proactive-career-director.md): event-triggered career-state judgment, campus/experienced Strategy Packs, proactive Profile discovery, Daily/Weekly briefing, interview lifecycle and Resume re-engagement — without introducing a second infinite Agent loop.
 
-Implementation uses synthetic fixtures and isolated test databases. First-run Profile Discovery is committed as `73c522e`; Daily Career Brief is implemented locally with Today-triggered idempotency, read-only daily context, CareerTask/Inbox projection and dismissal feedback. Job Saved Assessment, Interview Prep/Debrief and Resume Re-engagement remain the next implementation slices. Do not wait for real Resume/Profile/Job data before completing those slices; owner dogfood follows implementation and full regression.
+Implementation uses synthetic fixtures and isolated test databases. First-run Profile Discovery is committed as `73c522e`; Daily Career Brief is committed as `bb2fb36` with Today-triggered idempotency, read-only daily context, CareerTask/Inbox projection and dismissal feedback. Job Saved Assessment, Interview Prep/Debrief and Resume Re-engagement remain the next implementation slices. Do not wait for real Resume/Profile/Job data before completing those slices; owner dogfood follows implementation and full regression.
 
 ## Active validation
 
