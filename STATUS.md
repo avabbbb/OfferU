@@ -1,64 +1,81 @@
 # OfferU Status
 
-Updated: 2026-09-23
+Updated: 2026-09-25
 
 ## Verdict
 
 ~~~
 OFFERU_PUBLIC_RELEASE_NOT_READY
+OWNER_DOGFOOD_READY
 ~~~
 
-OfferU has converged on a local-first Career OS with a guided desktop experience, external-local-Agent-first reasoning, a shared Operation Registry, and evidence-backed Career Truth.
+OfferU is now suitable for owner dogfood on the current internal/development path. Public distribution still has separate signing, notarization, clean-machine and live external-evidence gates.
 
 ## Current phase
 
 ~~~
-VALIDATE_ZERO_SETUP_AND_AGENT_NATIVE_MAIN
+OWNER_DOGFOOD_AND_AGENT_NATIVE_ACCEPTANCE
 ~~~
 
-Current product authority: [docs/product/current-product.md](./docs/product/current-product.md).
+Current product authority: [docs/product/current-product.md](./docs/product/current-product.md).  
+First-use/dogfood contract: [docs/product/entry-onboarding-and-dogfood.md](./docs/product/entry-onboarding-and-dogfood.md).
 
 ## Recently landed
 
-- #14 Assisted Apply / ApplicationActionConnector foundation.
-- #17 Tool Surface V2: Registry breadth is separated from Agent-facing and active-Skill surfaces.
-- #19 Guided Today + composable local Career Skills.
-- Canonical Job Workspace / App-first + Skill-first documentation and AGENTS.md constraints are on main.
-- Real OMP RPC Eval implementation is now on main, including protocol-v2 framing, model/session identity capture, fail-closed command policy, trusted-execution artifacts and focused tests. The old #16 branch is superseded/closed.
-- Zero-Setup onboarding implementation is on main: Agent readiness, Resume → Profile bootstrap, optional permissioned AI-memory import, first Job handoff, optional email connection and Today handoff.
-- macOS Tauri packaging foundation is on main for arm64/x64, with sidecar build, app/DMG workflow and package smoke tooling.
+- #29 merged: deterministic Build & Release branch validation is green.
+- Backend, frontend, browser extension, migration/recovery smoke, 10/10 critical new-user browser repeatability, macOS arm64/x64 packaging, Windows packaging and installed-app smoke all passed on the validated #29 head.
+- Agent proposal/HITL is now visible in Desktop through per-action Pending Proposal Review with approve/reject.
+- Canonical Job Workspace, App-first / Skill-first product model, Zero-Setup onboarding and current Skill Registry remain the product baseline.
+
+## What this means
+
+For **owner dogfood**, do not wait for Public Release completion.
+
+Start with:
+
+~~~text
+OfferU Desktop
+→ recommended verified Agent (Codex first)
+→ real Resume
+→ reviewed Profile
+→ real Job
+→ Job Workspace
+→ Agent read
+→ governed proposal
+→ approve / reject / edit
+→ export / track
+→ restart and continue
+~~~
+
+Use a dedicated dogfood data directory. Automated destructive tests must never run against the owner’s real dogfood database.
 
 ## Active validation
 
-- AGENT_NATIVE_E2E is still NOT_RUN: current main has the harness, but no authenticated OS-isolated live OMP/SWE-2 trace + trusted business outcome + human-visible HITL evidence has been accepted yet.
-- Zero-Setup implementation has code and focused tests, but the implementation record explicitly says runtime/build/browser/clean-install acceptance is pending.
-- macOS packaging code exists, but signed/notarized artifact, clean-machine install, migration/backup/restore and upgrade evidence are still pending.
-- Current main CI must be green before any new capability claim. Product code landed faster than release evidence.
-
-## Current product gates
-
-| Area | State | Current meaning |
-| --- | --- | --- |
-| Career Truth / Registry | STRONG | Shared truth, proposal/HITL and audit remain the core invariant |
-| Agent Tool Surface | IMPLEMENTED / VALIDATING | OMP RPC path is on main; live Agent-native acceptance remains NOT_RUN |
-| Guided Today | MERGED / EARLY | Next Best Action slice exists; real-user policy needs iteration |
-| Local Agent ecosystem | PARTIAL | Multiple hosts are discoverable; readiness/auth/live verification varies by host |
-| Zero-Setup onboarding | IMPLEMENTED / NOT ACCEPTED | New App-first flow exists; real first-run journey still needs runtime/browser validation |
-| macOS package | IMPLEMENTED / NOT ACCEPTED | app/DMG pipeline exists; signed/notarized clean-machine proof is pending |
-| Browser Job Capture | PARTIAL | User-triggered capture exists; consumer distribution/live-site compatibility still need polish |
-| Smart Fill | PARTIAL | Safe-fill boundary exists; broad live ATS verification remains incomplete |
-| Email progress sync | PARTIAL/STRONG BACKEND | Read-only sync and onboarding connection UI exist; real inbox journey needs validation |
-| Profile from Resume | IMPLEMENTED / VALIDATING | Onboarding bootstrap exists; real resume first-run acceptance is pending |
-| Local Agent memory → Profile | INITIAL SLICE / VALIDATING | Explicit Codex memory-summary preview/import is permissioned and evidence-gated; broader host support is not yet a claim |
-| Public Release | NOT READY | release gates, signed installers, clean-machine acceptance and real-user evidence still required |
+- Real OMP/SWE-2 Agent-native acceptance remains NOT_RUN because the current local machine lacks the approved isolated GUI/runtime environment. This blocks that specific evidence gate, not owner dogfood.
+- Codex is the recommended first dogfood Agent because it has the strongest beginner integration path: detection, Skill installation/update, native login check and live integration verification.
+- Zero-Setup still needs one genuine real-user first-run trace with real Resume + real Job rather than only automated/replay evidence.
+- Public macOS/Windows release still needs legitimate signing/notarization and clean-machine acceptance.
+- Live Role Intelligence, external application execution, contact search, market/policy calibration and legal conclusions remain capability-limited and must not be treated as guaranteed beginner functionality.
 
 ## Current priorities
 
-1. Make current main green: backend tests + release audits, frontend typecheck/tests/build, RustSec, extension checks and downstream browser/release jobs.
-2. Run the real Agent-native Golden Path on current main: authenticated OMP/SWE-2, verified model identity, model-issued tool events, trusted OperationAuditLog/outcome, human approval, rejection path, OS isolation, then fresh-state pass^3.
-3. Validate one complete Zero-Setup first run: clean state → ready Agent → real Resume → reviewed Profile → first captured/saved Job → canonical Job Workspace → optional read-only inbox → useful Today. No terminal/manual DB shortcuts.
-4. Validate macOS packaging on real machines: arm64 first, then x64; sidecar startup, app-data isolation, keychain, shutdown/restart, signing/notarization, clean install, upgrade, migration and backup/restore.
-5. Only after those traces exist, use failures to decide the next product/code slice. Do not add more top-level features or compress the tool surface from intuition alone.
+1. **Dogfood three real Jobs now.**
+   - one strong match;
+   - one obvious evidence-gap role;
+   - one aspirational/uncertain role.
+2. Record every point where the owner leaves OfferU for ChatGPT/Codex notes, Word, Excel or manual tracking.
+3. Fix only the highest-friction dogfood blockers that prevent the Job → Evidence → Proposal → Workspace loop.
+4. In parallel, arrange an approved isolated environment for real OMP/SWE-2 Agent-native Golden Path → fresh-state pass³.
+5. After dogfood evidence, update README/marketing from real captured flows instead of feature claims.
+6. Continue public-release signing/clean-machine work separately; do not let release-only gates block product dogfood.
+
+## Product boundaries during dogfood
+
+Current native/strong surfaces include Profile/Evidence, Job evaluation and comparison, pre-application decision, Resume tailoring/export, cover-letter/application-email drafting, tracking/follow-up, governed research/Role Intelligence when provider evidence exists, interview preparation/practice/debrief, memory review, and career pattern/gap analysis.
+
+Partial surfaces include job-source crawling, external application execution, contact discovery, live employer-reputation research, market/policy calibration and legal Offer interpretation.
+
+Safety boundaries remain absolute: no silent submit, no automatic recruiter/email send, no Agent self-confirm, no direct DB writes and no unreviewed inference promoted to Career Truth.
 
 ## Historical status
 
