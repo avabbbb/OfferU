@@ -6,10 +6,11 @@ Read these first:
 
 1. docs/product/current-product.md
 2. docs/product/entry-onboarding-and-dogfood.md
-3. STATUS.md
-4. CONTEXT.md
-5. ARCHITECTURE.md
-6. docs/evals/LIVE_EVAL.md
+3. docs/product/proactive-career-director.md
+4. STATUS.md
+5. CONTEXT.md
+6. ARCHITECTURE.md
+7. docs/evals/LIVE_EVAL.md
 
 Do **not** continue from closed feature branches or historical Harness designs.
 
@@ -36,7 +37,9 @@ PR #29 has been merged. Its validated Build & Release run passed the determinist
 
 The next product task is **not another broad feature sprint**.
 
-It is owner dogfood.
+Owner dogfood has now identified the first high-value product slice: **runtime proactivity**.
+
+OfferU already has durable Automation, CareerTask, Skill and Operation infrastructure. The missing product behavior is a bounded Career Director that interprets Career State and proactively decides what deserves attention, while preserving the existing permission/truth boundaries.
 
 ## Continue from here
 
@@ -53,8 +56,14 @@ It is owner dogfood.
    - PDF export;
    - Pipeline/Today continuation;
    - restart/persistence.
-6. Record escape points where the owner returns to another tool.
-7. Turn the highest-value escape point into the next product slice.
+6. Record every point where the owner has to tell the Agent an obvious next action.
+7. Implement only the first Proactive Career Director vertical slice defined in the current design:
+   - First-run Profile Discovery;
+   - Daily Career Brief;
+   - Job-saved Assessment Plan;
+   - Interview Prep / Debrief;
+   - Resume-updated Re-engagement Review.
+8. Evaluate whether user-directed task rate falls without increasing duplicate/irrelevant reminders or autonomy violations.
 
 Do not let the blocked OMP isolation requirement stop Codex-first owner dogfood. The OMP/SWE-2 Golden Path remains a separate acceptance workstream and needs an approved isolated environment before pass³.
 
@@ -86,6 +95,9 @@ The current development/internal path may still rely on a prepared development e
 - Application submit / recruiter contact remain user-controlled.
 - AI memory and third-party Skill output enter as candidate/evidence, not automatic Career Truth.
 - Do not add another top-level product surface until dogfood proves a real need.
+- Do not implement proactivity as a second infinite Agent loop. Runtime triggers are deterministic; Career Director reasoning is bounded; all execution remains behind CareerTask / Operation Registry / Proposal.
+- Campus and experienced-hire users must use different first-party Strategy Packs; do not solve this with one generic prompt or a fixed daily-application number.
+- Scripted bootstrap/health logic must never masquerade as career judgment.
 
 ## Documentation rule
 

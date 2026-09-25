@@ -43,6 +43,24 @@ current Eval evidence
 - **Career Runtime 是 Truth authority**，Operation Registry 是 execution/permission authority，当前 active Agent 是 reasoning authority；Today / Pipeline / UI 只投影同一份 Career Truth。
 - 对外产品叙事优先使用“一个 Job → 岗位要求 × 可验证证据 → evidence-backed Job Workspace”，Career OS 与三权分立是第二层解释，不应成为普通用户的理解前置条件。
 
+## Proactive Career Director 施工约束
+
+涉及“主动 Agent / 自主求职 / Daily / Weekly / Profile 挖潜 / 面试提醒 / 自动投递策略”的实现，必须先读 `docs/product/proactive-career-director.md`，并遵守：
+
+- **不得新增第二个无限 Agent Loop**。唯一自动化骨架仍是 `AutomationEvent → AutomationRule → CareerTask → Agent/Runtime → Operation`；Career Director 只能在明确事件/日程/状态变化触发时做一次有界判断。
+- **Runtime 决定何时唤醒，模型决定当前什么最重要，Operation Registry/Policy 决定什么能执行**。不要把职业判断硬编码成脚本，也不要把权限交给模型。
+- 安装、migration、health check、Agent detection 可以用 deterministic script；“用户属于什么求职阶段、Profile 缺什么、今天先做什么、是否值得重新联系旧岗位、面试后该复盘什么”等职业判断必须来自真实 Agent + OfferU Career State / tools，不得用 scripted executor 冒充 Agent。
+- Profile “完整度”必须**目标相关**：区分 strong / weak / missing / unknown / under-expressed evidence，不实现没有决策意义的通用百分比分数。
+- 至少区分 `campus_search` 与 `experienced_search` Strategy Pack。求职阶段优先根据毕业时间、全职经验、当前就业状态、目标 seniority 等职业证据推断，并允许用户纠正；不得根据年龄等敏感或无关属性猜测。
+- 校招侧默认关注探索、招聘窗口、漏斗转化、有限经历中的 Potential Discovery；社招侧默认关注 Market Position、ownership/impact、流程节奏、re-engagement、薪酬/level/谈判。不要把一套固定投递量或通用 Prompt 套给所有用户。
+- Proactive 输出必须结构化并物化到 Today / Automation Inbox / CareerTask / Proposal；不得只存在于聊天回复。
+- 自主等级必须保持：L0 Observe 可自动；L1 Prepare 可在有界范围自动准备；L2 Career Truth commit 走 Proposal/HITL；L3 外部 submit/send/contact 默认明确用户批准。Career Director 永远不能自行升级权限。
+- `DAILY_REVIEW` / `WEEKLY_REVIEW` 是职业状态重新判断触发器，不只是静态 Todo 汇总；建议必须包含 `why_now`，被拒绝/长期忽略的建议必须衰减或改变，不能日复一日重复骚扰。
+- 面试邀请、临近面试、面试结束应形成 Prep / Debrief 主动链；Resume materially updated 时只生成有去重/时间窗/未明确拒绝约束的 re-engagement candidates，不自动发消息。
+- Job Search Campaign 可以自动发现/去重/评估/准备；未来若开放自动外部动作，必须另外具备显式 opt-in、connector 支持、bounded scope、rate limit、dedupe、audit、pause/kill switch。解决反爬不等于获得自动提交/重复联系权限。
+- 第一实现切片限定为：First-run Profile Discovery、Daily Career Brief、Job-saved Assessment Plan、Interview Prep/Debrief、Resume-updated Re-engagement Review。不要一次把所有 AutomationEvent 都接成 Agent。
+- 验收关注主动性质量而不是 automation 数量：user-directed task rate、proactive acceptance、useful-first-action、重复/过期建议、用户纠正率，以及 0 次 self-confirm / unreviewed truth write / unauthorized external action。
+
 ## 基本原则
 
 - 先读现有代码，再动手修改，优先沿用项目已有结构和写法。

@@ -208,6 +208,35 @@ Long-running Agent work should surface as product state: completed, needs review
 
 Accepted facts, user edits and approved versions are preserved. Re-analysis may update affected preparation, but it must not reset unrelated application state or silently overwrite accepted work.
 
+## Proactive Career Director
+
+Guided UX must not mean “the user still has to know what to ask the Agent”.
+
+For normal users, OfferU should proactively interpret meaningful Career State changes and decide what deserves attention next.
+
+The accepted architecture remains the single durable automation model:
+
+~~~text
+Event / Schedule / Career State change
+→ explicit Runtime trigger
+→ Career Snapshot
+→ bounded Career Director reasoning
+→ Strategy Pack
+→ Proactive Plan
+→ Autonomy Policy
+→ CareerTask / Proposal / Today / Inbox
+→ Operation Registry
+→ Career Truth
+~~~
+
+This does **not** introduce a second infinite Agent loop. Runtime decides **when to think**; the model decides **what matters and which governed capability is appropriate**; Operation Registry and product policy decide **what may execute**.
+
+OfferU must distinguish at least campus/fresh-graduate and experienced-hire strategy. Profile sufficiency, Today ranking, interview preparation, re-engagement and follow-up are target- and stage-relative rather than one generic checklist.
+
+The Director may automatically observe/analyze and prepare bounded drafts. It may not self-confirm protected Career Truth changes or irreversible external actions.
+
+Detailed design, autonomy levels, Strategy Packs and eval cases are defined in [Proactive Career Director](./proactive-career-director.md).
+
 ## Guided interaction
 
 The default mode is **Guided**.
@@ -328,7 +357,8 @@ Current active validation work:
 - start owner dogfood with real Resume + real Jobs through the App-first entry;
 - run the real external-Agent Golden Path with trusted execution evidence, human-visible HITL and pass^3 once an approved isolated environment is available;
 - validate one clean Zero-Setup first-run journey with real user inputs;
-- validate signed/notarized macOS clean install, upgrade, migration and recovery.
+- validate signed/notarized macOS clean install, upgrade, migration and recovery;
+- implement and dogfood the first bounded Proactive Career Director slice after the current owner-dogfood feedback identified low runtime autonomy as a primary product friction.
 
 The previous zero-setup proposal (#18) is incorporated into this North Star; this document is the current product authority.
 
