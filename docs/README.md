@@ -38,6 +38,7 @@ Historical audits and dated reports are evidence of what was true when they were
 | --- | --- | --- |
 | Product | [Current Product North Star](./product/current-product.md) | Outcome-first Job Workspace, zero-setup App-first UX, Skill-first power-user entry, Guided Today, external-first Agent |
 | First use / dogfood | [Entry, Onboarding & Dogfood Contract](./product/entry-onboarding-and-dogfood.md) | Installer/Skill boundary, beginner hosts, current Agent capabilities, owner-dogfood path and marketing evidence |
+| Proactivity | [Proactive Career Director](./product/proactive-career-director.md) | Triggered career judgment, campus/experienced Strategy Packs, autonomy levels, proactive Today/interview/re-engagement and eval contract |
 | Goal | [GOAL.md](../GOAL.md) | Public-release goal and durable release gates |
 | Domain | [CONTEXT.md](../CONTEXT.md) | Career Truth, candidates, evidence, applications, memory and Agent vocabulary |
 | Architecture | [ARCHITECTURE.md](../ARCHITECTURE.md) | Short current system boundary |
