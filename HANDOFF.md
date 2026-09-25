@@ -1,6 +1,6 @@
 # OfferU Handoff
 
-Updated: 2026-09-25
+Updated: 2026-09-26
 
 Read these first:
 
@@ -33,37 +33,22 @@ OfferU Desktop                     external Agent
 
 ## Current checkpoint
 
-PR #29 has been merged. Its validated Build & Release run passed the deterministic upstream and downstream gates, including backend/frontend/extension, browser/migration/recovery, critical new-user repeatability, macOS arm64/x64 package, Windows package and installed-app smoke.
+`main` was synced to `84b8255` before implementation. PR #29's validated Build & Release run passed the deterministic upstream and downstream gates, including backend/frontend/extension, browser/migration/recovery, critical new-user repeatability, macOS arm64/x64 package, Windows package and installed-app smoke.
 
 The next product task is **not another broad feature sprint**.
 
 Owner dogfood has now identified the first high-value product slice: **runtime proactivity**.
 
-OfferU already has durable Automation, CareerTask, Skill and Operation infrastructure. The missing product behavior is a bounded Career Director that interprets Career State and proactively decides what deserves attention, while preserving the existing permission/truth boundaries.
+OfferU already has durable Automation, CareerTask, Skill and Operation infrastructure. The missing product behavior is a bounded Career Director that interprets Career State and proactively decides what deserves attention, while preserving the existing permission/truth boundaries. Synthetic isolated development is the implementation path; real owner data is not a coding prerequisite.
 
 ## Continue from here
 
-1. Use current main with a dedicated dogfood data directory.
-2. Start with Codex as the first Agent.
-3. Import the owner’s real Resume and review Profile evidence.
-4. Use three real Jobs.
-5. Exercise:
-   - Job evaluation;
-   - pre-application decision;
-   - Evidence gaps;
-   - Resume proposal;
-   - Desktop proposal approve/reject;
-   - PDF export;
-   - Pipeline/Today continuation;
-   - restart/persistence.
-6. Record every point where the owner has to tell the Agent an obvious next action.
-7. Implement only the first Proactive Career Director vertical slice defined in the current design:
-   - First-run Profile Discovery;
-   - Daily Career Brief;
-   - Job-saved Assessment Plan;
-   - Interview Prep / Debrief;
-   - Resume-updated Re-engagement Review.
-8. Evaluate whether user-directed task rate falls without increasing duplicate/irrelevant reminders or autonomy violations.
+1. Continue on `main`; Slice 1, First-run Profile Discovery, is committed as `73c522e`.
+2. Slice 2, Daily Career Brief, now has implementation and targeted validation: Today creates one local-day idempotent event; a real Codex Career Director reads current and daily context through Registry; structured output persists into CareerTask/Automation Inbox and appears in Today; dismissal feedback suppresses repeated unchanged suggestions.
+3. Commit Slice 2 and continue sequentially with Slice 3 Job Saved Assessment, Slice 4 Interview Prep/Debrief and Slice 5 Resume Re-engagement. Do not stop for real Resume/Profile/Job, email or OMP data.
+4. Use synthetic Career State and isolated databases for targeted tests. Every Career Director judgment must call the real runtime and Registry operations; provider mocks are test-only.
+5. After all five slices, run full backend regression, relevant frontend test/typecheck/build, sync docs, and attempt local Codex integration smoke. Mark only provider-login/service limitations `BLOCKED_EXTERNAL` while continuing all other work.
+6. Begin owner dogfood with the real Resume and three Jobs only after the implementation Definition of Done.
 
 Do not let the blocked OMP isolation requirement stop Codex-first owner dogfood. The OMP/SWE-2 Golden Path remains a separate acceptance workstream and needs an approved isolated environment before pass³.
 

@@ -284,6 +284,7 @@ from app.services.resume_workspace import (
     review_resume_proposal_item,
 )
 from app.services.career_director import build_career_snapshot, correct_career_stage
+from app.services.career_daily import build_daily_career_context
 from app.services.data_export import export_user_data
 from app.services.diagnostics import export_diagnostic_bundle
 from app.services.demo_data import reset_demo_data
@@ -1223,6 +1224,10 @@ class CareerStageCorrectionInput(_StrictOperationInput):
         return self
 
 
+class DailyCareerContextInput(_StrictOperationInput):
+    profile_id: int | None = Field(default=None, gt=0)
+
+
 class AddProfileEvidenceInput(_StrictOperationInput):
     section_type: str = Field(
         pattern="^(education|experience|project|skill|certificate|custom|custom:[a-z0-9_]{6,64})$",
@@ -1853,6 +1858,15 @@ OPERATIONS: dict[str, Operation] = {
         group="career_runtime",
         audit_redacted_output_parameters=("identity", "goals", "profile_coverage"),
         input_model=GetProfileInput,
+        version="2026-09-26",
+    ),
+    "get_daily_career_context": Operation(
+        name="get_daily_career_context",
+        fn=build_daily_career_context,
+        description="读取有界、脱敏的今日 Pipeline、面试、跟进、提案和近期变化摘要；不修改 Career Truth。",
+        group="career_runtime",
+        audit_redacted_output_parameters=("pipeline", "follow_ups_due", "upcoming_interviews", "pending_proposals", "recent_changes", "interview_learning", "ignored_suggestions"),
+        input_model=DailyCareerContextInput,
         version="2026-09-26",
     ),
     "correct_career_stage": Operation(

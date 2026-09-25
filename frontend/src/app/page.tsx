@@ -6,7 +6,7 @@
 // 统计指标与趋势按需展开,不占据默认首屏;品牌叙事只出现在真实空状态。
 // =============================================
 
-import { lazy, Suspense, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
@@ -30,6 +30,8 @@ import {
 } from "@/components/onboarding/OnboardingChecklist";
 import {
   controlCareerTask,
+  dismissAutomationInboxItem,
+  triggerDailyCareerReview,
   type CareerTask,
   useAutomationInbox,
   useCalendarEvents,
@@ -329,6 +331,17 @@ export default function TodayPage() {
     isLoading: careerTasksLoading,
     mutate: mutateCareerTasks,
   } = useCareerTasks();
+  const dailyReviewTriggered = useRef(false);
+  const [dailyReviewTriggerError, setDailyReviewTriggerError] = useState<string | null>(null);
+  const [dailyBriefDismissing, setDailyBriefDismissing] = useState(false);
+  const [dailyBriefDismissError, setDailyBriefDismissError] = useState<string | null>(null);
+  useEffect(() => {
+    if (dailyReviewTriggered.current) return;
+    dailyReviewTriggered.current = true;
+    void triggerDailyCareerReview()
+      .then(() => Promise.all([mutateCareerTasks(), mutateAutomationInbox()]))
+      .catch((error) => setDailyReviewTriggerError(safeClientErrorMessage(error, "今日职业简报暂时无法启动")));
+  }, [mutateAutomationInbox, mutateCareerTasks]);
   const { data: jobsData } = useJobs({ page: 1, period: "week" });
   const { data: allJobsData } = useJobs({ page: 1, page_size: 1 });
   const { data: stats } = useJobStats("week");
@@ -382,6 +395,29 @@ export default function TodayPage() {
     () => (automationInbox?.items ?? []).filter((entry) => entry.status === "pending").slice(0, 5),
     [automationInbox],
   );
+  const dailyBriefInboxItem = pendingAutomation.find(
+    (entry) => entry.target_type === "career_brief" && entry.payload?.event_type === "DAILY_REVIEW",
+  );
+  const dailyBriefTask = dailyBriefInboxItem?.task_id
+    ? careerTasks?.tasks.find((task) => task.task_id === dailyBriefInboxItem.task_id)
+    : undefined;
+  const dailyBrief = dailyBriefTask?.result?.briefing as Record<string, any> | undefined
+    ?? dailyBriefInboxItem?.payload?.briefing as Record<string, any> | undefined;
+  const dailyBriefActions = Array.isArray(dailyBrief?.actions) ? dailyBrief.actions as Array<Record<string, any>> : [];
+  const dailyBriefQuestions = Array.isArray(dailyBrief?.questions) ? dailyBrief.questions as Array<Record<string, any>> : [];
+  const dismissDailyBrief = async () => {
+    if (!dailyBriefInboxItem) return;
+    setDailyBriefDismissing(true);
+    setDailyBriefDismissError(null);
+    try {
+      await dismissAutomationInboxItem(dailyBriefInboxItem.item_id);
+      await mutateAutomationInbox();
+    } catch (error) {
+      setDailyBriefDismissError(safeClientErrorMessage(error, "稍后处理失败，请重试"));
+    } finally {
+      setDailyBriefDismissing(false);
+    }
+  };
   const taskIdsInInbox = useMemo(
     () => new Set(pendingAutomation.map((entry) => entry.task_id).filter(Boolean)),
     [pendingAutomation],
@@ -541,7 +577,91 @@ export default function TodayPage() {
         <OnboardingChecklist />
       </motion.div>
 
-      {guidedActions.length > 0 && (
+      {dailyReviewTriggerError && !dailyBriefInboxItem && (
+        <p role="status" className="px-1 text-[12px] text-[var(--primary-red)]">今日职业简报暂时无法启动：{dailyReviewTriggerError}</p>
+      )}
+
+      {dailyBriefInboxItem && (
+        <motion.section variants={item} aria-labelledby="daily-career-brief" className="rounded-xl border border-[var(--primary-yellow)]/35 bg-[var(--surface)] p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <Sparkles size={14} className="text-[var(--primary-yellow)]" />
+                <h2 id="daily-career-brief" className="text-[13px] font-semibold text-[var(--foreground)]">今天的求职简报</h2>
+              </div>
+              <p className="mt-2 text-[13px] leading-5 text-[var(--foreground)]">
+                {String(dailyBrief?.situation_summary || dailyBriefInboxItem.body || "OfferU 正在综合你的岗位进展和近期安排。")}
+              </p>
+            </div>
+            {dailyBriefInboxItem.task_status === "completed" && (
+              <button
+                type="button"
+                onClick={() => void dismissDailyBrief()}
+                disabled={dailyBriefDismissing}
+                className="shrink-0 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-[11px] text-[var(--foreground-muted)] hover:text-[var(--foreground)] disabled:opacity-60"
+              >
+                {dailyBriefDismissing ? "保存中…" : "稍后处理"}
+              </button>
+            )}
+          </div>
+          {dailyBriefInboxItem.task_status !== "completed" ? (
+            <p className="mt-3 text-[12px] text-[var(--foreground-muted)]">
+              {dailyBriefInboxItem.task_error || (dailyBriefInboxItem.task_status === "failed" || dailyBriefInboxItem.task_status === "blocked"
+                ? "职业简报暂时无法生成。"
+                : "正在读取面试、跟进、Pipeline 和待确认事项…")}
+            </p>
+          ) : (
+            <div className="mt-4 grid gap-2">
+              {dailyBriefActions.map((action, index) => {
+                const target = action.target_ref as Record<string, any> | undefined;
+                const href = target?.kind === "job" && target?.id
+                  ? `/jobs/${encodeURIComponent(String(target.id))}`
+                  : target?.kind === "profile"
+                    ? "/profile"
+                    : target?.kind === "application" || target?.kind === "follow_up"
+                      ? "/applications?view=board"
+                      : target?.kind === "interview"
+                        ? "/calendar"
+                        : "/today";
+                const autonomyLabel = action.autonomy_level === "L3"
+                  ? "联系或发送前需要你确认"
+                  : action.autonomy_level === "L2"
+                    ? "需要你确认职业信息变更"
+                    : action.autonomy_level === "L1"
+                      ? "OfferU 已准备，可审核"
+                      : "状态观察";
+                return (
+                  <Link
+                    key={String(action.dedupe_key || `${index}-${action.objective}`)}
+                    href={href}
+                    className="rounded-lg border border-[var(--border)] px-3 py-2.5 transition-colors hover:bg-[var(--surface-hover)]"
+                  >
+                    <span className="block text-[12px] font-semibold text-[var(--foreground)]">{String(action.objective || "查看建议")}</span>
+                    <span className="mt-1 block text-[12px] leading-5 text-[var(--foreground-muted)]">为什么现在：{String(action.why_now || "")}</span>
+                    <span className="mt-1 block text-[11px] leading-5 text-[var(--foreground-muted)]">OfferU 已准备：{String(action.expected_outcome || "")}</span>
+                    <span className="mt-1 block text-[10px] text-[var(--foreground-faint)]">{autonomyLabel}</span>
+                  </Link>
+                );
+              })}
+              {dailyBriefQuestions.length > 0 && (
+                <div className="rounded-lg bg-[var(--surface-muted)] px-3 py-2.5">
+                  <p className="text-[11px] font-medium text-[var(--foreground)]">OfferU 想确认</p>
+                  {dailyBriefQuestions.map((question, index) => (
+                    <p key={`${index}-${String(question.question || "")}`} className="mt-1 text-[12px] text-[var(--foreground-muted)]">
+                      {String(question.question || "")}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {(dailyBriefDismissError || dailyReviewTriggerError) && (
+            <p role="status" className="mt-2 text-[11px] text-[var(--primary-red)]">{dailyBriefDismissError || dailyReviewTriggerError}</p>
+          )}
+        </motion.section>
+      )}
+
+      {guidedActions.length > 0 && !dailyBrief && (
         <motion.section variants={item} aria-labelledby="guided-next-actions">
           <div className="mb-2 flex items-end justify-between gap-4 px-1">
             <div>

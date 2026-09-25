@@ -72,6 +72,13 @@ _DEFAULT_RULES: dict[str, dict[str, Any]] = {
         "automation_level": "L1",
         "description": "首次职业方向发现；结果只作可审核建议，不写入 Career Truth。",
     },
+    "DAILY_REVIEW": {
+        "task_type": "career_director",
+        "runtime_provider": "codex",
+        "enabled": True,
+        "automation_level": "L1",
+        "description": "每日由真实 Career Director 对当前机会和待办重新排序；不直接修改 Career Truth。",
+    },
     "JOB_SAVED": {
         "task_type": "role_intelligence",
         "runtime_provider": "auto",
@@ -373,6 +380,53 @@ async def _dispatch_profile_baseline(
     return {"task": task, "profile_id": int(event.target_id), "runtime_provider": provider}
 
 
+async def _dispatch_daily_review(
+    event: AutomationEvent,
+    rule: dict[str, Any],
+) -> dict[str, Any]:
+    from datetime import date
+
+    from app.services.career_tasks import start_career_task
+
+    payload = event.payload_json if isinstance(event.payload_json, dict) else {}
+    policy = rule.get("policy") if isinstance(rule.get("policy"), dict) else {}
+    provider = str(payload.get("runtime_provider") or policy.get("runtime_provider") or "codex")
+    if provider not in {"codex", "codex-app-server"}:
+        raise ValueError("Daily Career Brief 需要真实 Codex Runtime")
+    if event.target_type != "profile" or not str(event.target_id or "").isdigit():
+        raise ValueError("DAILY_REVIEW 缺少 Profile 目标")
+    review_date = str(payload.get("review_date") or "")
+    date.fromisoformat(review_date)
+    profile_id = int(event.target_id)
+    task = await start_career_task(
+        task_type="career_director",
+        source="automation",
+        target_type="profile",
+        target_id=event.target_id,
+        runtime_provider=provider,
+        input={
+            "automation_event_id": event.event_id,
+            "event_type": event.event_type,
+            "profile_id": profile_id,
+            "review_date": review_date,
+        },
+        output_contract={"schema": "offeru.career_briefing.v1", "type": "object"},
+        idempotency_key=f"automation:{event.event_id}:career-director",
+    )
+    await _upsert_inbox(
+        item_id=f"automation_task_{task['task_id']}",
+        category="fyi",
+        event_id=event.event_id,
+        task_id=task["task_id"],
+        target_type="career_brief",
+        target_id=review_date,
+        title="正在整理今天最重要的求职行动",
+        body="OfferU 正在结合面试、跟进、岗位进展和待确认事项重新排序。",
+        payload={"runtime_provider": provider, "task": task, "event_type": "DAILY_REVIEW"},
+    )
+    return {"task": task, "profile_id": profile_id, "review_date": review_date}
+
+
 async def _update_event(
     event_id: str,
     *,
@@ -570,6 +624,7 @@ async def _process_automation_event(event_id: str) -> dict[str, Any]:
     dispatchers = {
         "JOB_SAVED": _dispatch_job_saved,
         "PROFILE_BASELINE_REQUIRED": _dispatch_profile_baseline,
+        "DAILY_REVIEW": _dispatch_daily_review,
     }
     dispatch = dispatchers.get(event.event_type)
     if dispatch is None:
@@ -806,22 +861,37 @@ async def _project_career_director_task(task: dict[str, Any]) -> dict[str, Any] 
         return None
     task_result = task.get("result") if isinstance(task.get("result"), dict) else {}
     briefing = task_result.get("briefing") if isinstance(task_result.get("briefing"), dict) else {}
+    event_type = str(input_payload.get("event_type") or "PROFILE_BASELINE_REQUIRED").upper()
+    is_daily = event_type == "DAILY_REVIEW"
     completed = task["status"] == "completed" and bool(briefing)
     category = "needs_review" if completed else "failed"
-    title = "你的职业方向建议已准备" if completed else "职业方向分析需要处理"
+    title = (
+        "今天的求职行动简报已准备"
+        if completed and is_daily
+        else "你的职业方向建议已准备"
+        if completed
+        else "每日职业简报需要处理"
+        if is_daily
+        else "职业方向分析需要处理"
+    )
     summary = str(briefing.get("situation_summary") or "")
     body = (
-        summary or "OfferU 已准备职业阶段、证据强弱和下一步问题，等待你查看。"
+        summary or (
+            "OfferU 已根据当前求职状态准备今日行动排序，等待你查看。"
+            if is_daily
+            else "OfferU 已准备职业阶段、证据强弱和下一步问题，等待你查看。"
+        )
         if completed
         else f"OfferU 没能完成这次分析：{task.get('error') or '任务失败'}"
     )
+    review_date = str(input_payload.get("review_date") or "")
     item = await _upsert_inbox(
         item_id=f"automation_task_{task['task_id']}",
         category=category,
         event_id=event_id,
         task_id=task["task_id"],
-        target_type=task.get("target_type") or "profile",
-        target_id=task.get("target_id") or str(input_payload.get("profile_id") or ""),
+        target_type="career_brief" if is_daily else task.get("target_type") or "profile",
+        target_id=review_date if is_daily else task.get("target_id") or str(input_payload.get("profile_id") or ""),
         title=title,
         body=body,
         payload={
@@ -830,6 +900,8 @@ async def _project_career_director_task(task: dict[str, Any]) -> dict[str, Any] 
                 for key in ("task_id", "task_type", "runtime_provider", "status", "progress", "error")
             },
             "briefing": briefing if completed else {},
+            "event_type": event_type,
+            "review_date": review_date,
             "autonomy_level": "L1",
             "changes_career_truth": False,
         },

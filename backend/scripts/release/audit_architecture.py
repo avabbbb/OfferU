@@ -756,10 +756,12 @@ def _automation_model_bypasses() -> list[dict[str, Any]]:
         "_process_automation_event": {
             "_claim_automation_event",
             "_rule",
-            "_dispatch_job_saved",
+            "dispatch",
             "_update_event",
         },
         "_dispatch_job_saved": {"start_career_task"},
+        "_dispatch_profile_baseline": {"start_career_task"},
+        "_dispatch_daily_review": {"start_career_task"},
         "recover_automation_events": {"_process_automation_event"},
     }
     for function_name, expected_calls in required.items():
@@ -785,6 +787,34 @@ def _automation_model_bypasses() -> list[dict[str, Any]]:
                     "kind": "automation_missing_boundary_call",
                     "function": function_name,
                     "expected": expected,
+                }
+            )
+
+    dispatcher = functions.get("_process_automation_event")
+    dispatch_targets: dict[str, str] = {}
+    if dispatcher is not None:
+        for node in ast.walk(dispatcher):
+            if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Dict):
+                continue
+            if not any(isinstance(target, ast.Name) and target.id == "dispatchers" for target in node.targets):
+                continue
+            for key, value in zip(node.value.keys, node.value.values):
+                if isinstance(key, ast.Constant) and isinstance(key.value, str) and isinstance(value, ast.Name):
+                    dispatch_targets[key.value] = value.id
+    expected_dispatch_targets = {
+        "JOB_SAVED": "_dispatch_job_saved",
+        "PROFILE_BASELINE_REQUIRED": "_dispatch_profile_baseline",
+        "DAILY_REVIEW": "_dispatch_daily_review",
+    }
+    for event_type, target in expected_dispatch_targets.items():
+        if dispatch_targets.get(event_type) != target:
+            findings.append(
+                {
+                    "path": _relative(path),
+                    "kind": "automation_dispatch_route_missing",
+                    "event_type": event_type,
+                    "expected": target,
+                    "actual": dispatch_targets.get(event_type),
                 }
             )
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException
@@ -629,6 +630,28 @@ async def record_automation_event(body: AutomationEventRequest) -> dict[str, Any
     return await _ui_operation_projection(
         "record_automation_event",
         body.model_dump(),
+    )
+
+
+@runtime_router.post("/runtime/automation/daily-review")
+async def trigger_daily_career_review() -> dict[str, Any]:
+    """Record one idempotent daily signal through the Operation Registry."""
+
+    snapshot = await _ui_operation_outputs("get_career_snapshot", {})
+    profile_id = int(snapshot.get("profile_id") or 0)
+    if profile_id <= 0:
+        return {"status": "skipped", "reason": "profile_missing"}
+    review_date = datetime.now().astimezone().date().isoformat()
+    return await _ui_operation_outputs(
+        "record_automation_event",
+        {
+            "event_type": "DAILY_REVIEW",
+            "source": "today_open",
+            "target_type": "profile",
+            "target_id": str(profile_id),
+            "payload": {"review_date": review_date},
+            "dedupe_key": f"daily-review:{profile_id}:{review_date}",
+        },
     )
 
 

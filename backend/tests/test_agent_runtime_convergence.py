@@ -550,9 +550,12 @@ class AgentRuntimeConvergenceTests(unittest.TestCase):
             "list_automation_inbox",
             "list_automation_rules",
             "resolve_automation_inbox_item",
+            "get_career_snapshot",
+            "get_daily_career_context",
         }
         self.assertTrue(expected.issubset(OPERATIONS))
         self.assertFalse(get_operation_schema("invoke_plugin_capability")["requires_confirmation"])
+        self.assertFalse(get_operation_schema("get_daily_career_context")["requires_confirmation"])
         self.assertTrue(get_operation_schema("delegate_career_task")["requires_confirmation"])
         self.assertNotIn("execute_deep_task", inspect.getsource(BridgeSession._workspace_delegate))
 

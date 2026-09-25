@@ -709,6 +709,7 @@ async def _run_career_director(task: dict[str, Any]) -> dict[str, Any]:
         CareerStageAssessment,
         parse_career_briefing_response,
     )
+    from app.services.career_daily import suppress_repeatedly_ignored_actions
 
     if task["runtime_provider"] not in {"codex", "codex-app-server"}:
         raise ValueError("Career Director refuses scripted or replay providers")
@@ -726,21 +727,39 @@ async def _run_career_director(task: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(f"Career Director 不支持事件类型: {event_type}")
 
     snapshots: list[dict[str, Any]] = []
+    daily_contexts: list[dict[str, Any]] = []
     tool_calls: list[str] = []
 
     async def on_operation(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        if name != "get_career_snapshot":
+        allowed_operations = {"get_career_snapshot"}
+        if event_type == "DAILY_REVIEW":
+            allowed_operations.add("get_daily_career_context")
+        if name not in allowed_operations:
             raise ValueError(f"Career Director 不获准调用 Operation: {name}")
+        expected_profile = payload.get("profile_id")
+        requested_profile = arguments.get("profile_id")
+        if requested_profile and expected_profile and int(requested_profile) != int(expected_profile):
+            raise ValueError("Career Director 不能读取任务目标之外的 Profile")
+        operation_args = (
+            {"profile_id": int(expected_profile)}
+            if name == "get_daily_career_context" and expected_profile
+            else {}
+        )
         result = await execute_operation(
-            "get_career_snapshot",
-            arguments,
+            name,
+            operation_args,
             surface="career_director",
             audit=True,
         )
         if not result.get("ok") or not isinstance(result.get("outputs"), dict):
-            raise RuntimeError("读取当前 Career State 失败")
+            raise RuntimeError("读取当前 Career State 失败" if name == "get_career_snapshot" else "读取今日求职上下文失败")
         snapshot = result["outputs"]
-        snapshots.append(snapshot)
+        if name == "get_career_snapshot":
+            if expected_profile and int(snapshot.get("profile_id") or 0) != int(expected_profile):
+                raise ValueError("Career Director 读取到的默认 Profile 与任务目标不一致")
+            snapshots.append(snapshot)
+        else:
+            daily_contexts.append(snapshot)
         tool_calls.append(name)
         return snapshot
 
@@ -752,37 +771,48 @@ async def _run_career_director(task: dict[str, Any]) -> dict[str, Any]:
     cwd = _career_director_workspace()
     instructions = {
         "PROFILE_BASELINE_REQUIRED": "分析首次职业方向，只提出会改变后续决策的必要问题。",
-        "DAILY_REVIEW": "从当前状态选出最值得现在做的行动，并说明 why_now。",
+        "DAILY_REVIEW": "综合今日上下文，重新判断最重要的 1–3 个行动；临近面试和已到期事项优先于低优先级完善工作。每条建议说明 why_now。",
         "JOB_SAVED": "评估新岗位对当前用户的意义与下一步准备。",
         "INTERVIEW_INVITATION_DETECTED": "为已安排面试准备有依据的练习重点。",
         "INTERVIEW_COMPLETED": "提出面试复盘重点，不把反馈写成已验证事实。",
         "RESUME_UPDATED": "评估可能值得重新联系的旧机会，只生成候选，不联系第三方。",
     }[event_type]
-    prompt = (
-        "你是 OfferU Career Director，只能做本次有界职业判断。"
-        "先调用 get_career_snapshot() 读取当前 Career State，再基于其中的证据推理。"
-        "不得根据年龄、性别或其它无关敏感属性推断阶段；不得写入 Profile、申请阶段或其它职业事实；"
-        "不得调用外部发送、提交、联系操作，也不得自行提升权限。"
-        "严格只返回一个符合 offeru.career_briefing.v1 的原始 JSON object，不要 Markdown。"
-        "CareerStage confidence 只能是 high/medium/low；strong/weak/missing/unknown/underexpressed"
-        "必须区分。最多 3 个问题；每个优先行动都要写 why_now、预期结果与所需用户动作。"
-        f"\n触发事件：{event_type}。本次目标：{instructions}"
-        "\n\n输出必须匹配以下 JSON Schema：\n"
-        + json.dumps(CAREER_BRIEFING_SCHEMA, ensure_ascii=False, separators=(",", ":"))
+    prompt_parts = [
+        "你是 OfferU Career Director，只能做本次有界职业判断。",
+        "先调用 get_career_snapshot() 读取当前 Career State，再基于其中的证据推理。",
+    ]
+    if event_type == "DAILY_REVIEW":
+        prompt_parts.append("然后必须调用 get_daily_career_context() 读取今日 Pipeline、面试、跟进、提案、近期变化与用户忽略记录。")
+    prompt_parts.extend(
+        [
+            "不得根据年龄、性别或其它无关敏感属性推断阶段；不得写入 Profile、申请阶段或其它职业事实；",
+            "不得调用外部发送、提交、联系操作，也不得自行提升权限。",
+            "严格只返回一个符合 offeru.career_briefing.v1 的原始 JSON object，不要 Markdown。",
+            "CareerStage confidence 只能是 high/medium/low；strong/weak/missing/unknown/underexpressed 必须区分。",
+            "最多 3 个问题和 3 条行动；每条行动都写 why_now、预期结果、所需用户动作和稳定 dedupe_key。",
+            "如今日上下文含已多次忽略的相同建议，且证据/截止时间没有明显变化，必须复用该 dedupe_key 并停止重复推荐。",
+            f"触发事件：{event_type}。本次目标：{instructions}",
+            "输出必须匹配以下 JSON Schema：",
+            json.dumps(CAREER_BRIEFING_SCHEMA, ensure_ascii=False, separators=(",", ":")),
+        ]
     )
+    prompt = "\n".join(prompt_parts)
     try:
         await provider.start()
         await _append_event(task["task_id"], "runtime.ready", {"provider": task["runtime_provider"]})
         thread = await provider.create_thread(
             cwd=cwd,
             tool_descriptions=[
-                "get_career_snapshot() — 读取经过 PII 清理的当前职业阶段、目标与有效职业证据。",
+                "get_career_snapshot(profile_id?) — 读取经过 PII 清理的当前职业阶段、目标与有效职业证据。",
+                *(["get_daily_career_context(profile_id?) — 读取有界且脱敏的今日 Pipeline、面试、跟进、待审核提案、近期 Profile/Resume 变化、面试学习和已忽略建议。"] if event_type == "DAILY_REVIEW" else []),
             ],
         )
         result = await provider.start_turn(prompt=prompt, cwd=cwd)
         events = await provider.events()
         if not snapshots:
             raise ValueError("Career Director 必须先通过 OfferU Operation 读取当前 Career State")
+        if event_type == "DAILY_REVIEW" and not daily_contexts:
+            raise ValueError("Daily Career Brief 必须先读取今日求职上下文")
         snapshot_stage = (
             snapshots[-1].get("identity", {}).get("career_stage")
             if isinstance(snapshots[-1].get("identity"), dict)
@@ -798,6 +828,8 @@ async def _run_career_director(task: dict[str, Any]) -> dict[str, Any]:
             final_message,
             confirmed_stage=confirmed_stage,
         )
+        if event_type == "DAILY_REVIEW":
+            briefing = suppress_repeatedly_ignored_actions(briefing, daily_contexts[-1])
         await _update_task(
             task["task_id"],
             agent_thread_id=str(result.get("thread_id") or result.get("threadId") or thread.get("threadId") or ""),

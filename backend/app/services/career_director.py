@@ -107,14 +107,21 @@ class CareerPriority(_StrictContract):
     confidence: CareerConfidence
 
 
+class CareerActionTarget(_StrictContract):
+    kind: Literal["profile", "job", "application", "interview", "follow_up"]
+    id: str = Field(min_length=1, max_length=160, pattern=r"^[A-Za-z0-9_.:-]{1,160}$")
+
+
 class CareerAction(_StrictContract):
     objective: str = Field(min_length=1, max_length=300)
+    why_now: str = Field(min_length=1, max_length=500)
     skill: str = Field(default="", max_length=120)
     suggested_operations: list[str] = Field(default_factory=list, max_length=8)
+    target_ref: CareerActionTarget | None = None
     autonomy_level: AutonomyLevel
     expected_outcome: str = Field(min_length=1, max_length=400)
     requires_user: bool
-    dedupe_key: str = Field(min_length=1, max_length=180)
+    dedupe_key: str = Field(min_length=1, max_length=180, pattern=r"^[A-Za-z0-9_.:-]{1,180}$")
 
     @model_validator(mode="after")
     def protected_actions_need_user(self) -> "CareerAction":
@@ -139,7 +146,7 @@ class CareerBriefing(_StrictContract):
     situation_summary: str = Field(min_length=1, max_length=1200)
     profile_coverage: CareerProfileCoverage
     priorities: list[CareerPriority] = Field(default_factory=list, max_length=3)
-    actions: list[CareerAction] = Field(default_factory=list, max_length=5)
+    actions: list[CareerAction] = Field(default_factory=list, max_length=3)
     questions: list[CareerQuestion] = Field(default_factory=list, max_length=3)
     risks: list[str] = Field(default_factory=list, max_length=8)
     opportunities: list[str] = Field(default_factory=list, max_length=8)
