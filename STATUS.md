@@ -14,7 +14,7 @@ OfferU is now suitable for owner dogfood on the current internal/development pat
 ## Current phase
 
 ~~~
-OWNER_DOGFOOD_AND_AGENT_NATIVE_ACCEPTANCE
+OWNER_DOGFOOD_AND_PROACTIVE_DIRECTOR
 ~~~
 
 Current product authority: [docs/product/current-product.md](./docs/product/current-product.md).  
@@ -49,6 +49,12 @@ OfferU Desktop
 
 Use a dedicated dogfood data directory. Automated destructive tests must never run against the owner’s real dogfood database.
 
+## Primary dogfood finding
+
+The first owner-dogfood review identified a product-level autonomy gap: OfferU has a broad Skill/Operation surface and durable Automation infrastructure, but normal users still need to know what to ask too often.
+
+The accepted next product slice is the bounded [Proactive Career Director](./docs/product/proactive-career-director.md): event-triggered career-state judgment, campus/experienced Strategy Packs, proactive Profile discovery, Daily/Weekly briefing, interview lifecycle and Resume re-engagement — without introducing a second infinite Agent loop.
+
 ## Active validation
 
 - Real OMP/SWE-2 Agent-native acceptance remains NOT_RUN because the current local machine lacks the approved isolated GUI/runtime environment. This blocks that specific evidence gate, not owner dogfood.
@@ -59,12 +65,12 @@ Use a dedicated dogfood data directory. Automated destructive tests must never r
 
 ## Current priorities
 
-1. **Dogfood three real Jobs now.**
+1. **Dogfood three real Jobs now, while measuring where the user still has to tell the Agent the obvious next action.**
    - one strong match;
    - one obvious evidence-gap role;
    - one aspirational/uncertain role.
 2. Record every point where the owner leaves OfferU for ChatGPT/Codex notes, Word, Excel or manual tracking.
-3. Fix only the highest-friction dogfood blockers that prevent the Job → Evidence → Proposal → Workspace loop.
+3. Implement the first bounded Proactive Career Director slice from the accepted design; do not expand every event at once.
 4. In parallel, arrange an approved isolated environment for real OMP/SWE-2 Agent-native Golden Path → fresh-state pass³.
 5. After dogfood evidence, update README/marketing from real captured flows instead of feature claims.
 6. Continue public-release signing/clean-machine work separately; do not let release-only gates block product dogfood.
