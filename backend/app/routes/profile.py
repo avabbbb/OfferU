@@ -27,7 +27,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -88,6 +88,20 @@ class ProfileUpdateRequest(BaseModel):
     exit_story: Optional[str] = None
     cross_cutting_advantage: Optional[str] = None
     base_info_json: Optional[dict] = None
+
+
+class CareerDiscoveryStartRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    profile_id: int = Field(gt=0)
+    attempt_key: str = Field(pattern="^[A-Za-z0-9_-]{8,64}$")
+
+
+class CareerStageCorrectionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    track: str = Field(pattern="^(campus|experienced)$")
+    substage: str = Field(
+        pattern="^(internship|fresh_graduate|early_career|experienced_ic|manager|executive|career_switch)$"
+    )
 
 
 class TargetRoleCreateRequest(BaseModel):
@@ -1347,6 +1361,31 @@ async def smart_fill_catalog():
 @router.put("/")
 async def update_profile(data: ProfileUpdateRequest):
     return await _execute_operation("update_profile", data.model_dump(exclude_none=True))
+
+
+@router.get("/career-snapshot")
+async def career_snapshot():
+    return await _execute_operation("get_career_snapshot", {})
+
+
+@router.post("/career-discovery/start")
+async def start_career_discovery(data: CareerDiscoveryStartRequest):
+    return await _execute_operation(
+        "record_automation_event",
+        {
+            "event_type": "PROFILE_BASELINE_REQUIRED",
+            "source": "profile_ui",
+            "target_type": "profile",
+            "target_id": str(data.profile_id),
+            "payload": {"runtime_provider": "codex"},
+            "dedupe_key": f"profile-discovery:{data.profile_id}:{data.attempt_key}",
+        },
+    )
+
+
+@router.post("/career-stage/correction")
+async def correct_profile_career_stage(data: CareerStageCorrectionRequest):
+    return await _execute_operation("correct_career_stage", data.model_dump())
 
 
 @router.get("/target-roles")

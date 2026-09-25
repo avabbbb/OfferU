@@ -668,6 +668,8 @@ export default function TodayPage() {
                           fullscreenHref:
                             entry.target_type === "job" && entry.target_id
                               ? `/jobs/${entry.target_id}`
+                              : entry.target_type === "profile"
+                                ? "/profile"
                               : undefined,
                         },
                       })

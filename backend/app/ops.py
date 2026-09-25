@@ -283,6 +283,7 @@ from app.services.resume_workspace import (
     get_resume_workspace,
     review_resume_proposal_item,
 )
+from app.services.career_director import build_career_snapshot, correct_career_stage
 from app.services.data_export import export_user_data
 from app.services.diagnostics import export_diagnostic_bundle
 from app.services.demo_data import reset_demo_data
@@ -360,7 +361,7 @@ class RoleBenchmarkRunInput(_StrictOperationInput):
 
 class CareerTaskStartInput(_StrictOperationInput):
     task_type: str = Field(
-        pattern="^(agent_turn|run_artifact|role_intelligence|plugin_capability)$"
+        pattern="^(agent_turn|run_artifact|role_intelligence|career_director|plugin_capability)$"
     )
     source: str = Field(default="ui", min_length=1, max_length=80)
     target_type: str = Field(default="", max_length=80)
@@ -449,7 +450,7 @@ class InvokePluginCapabilityInput(_StrictOperationInput):
 class RecordAutomationEventInput(_StrictOperationInput):
     event_type: str = Field(
         pattern=(
-            "^(JOB_SAVED|JOB_UPDATED|APPLICATION_CREATED|APPLICATION_SUBMITTED|"
+            "^(JOB_SAVED|PROFILE_BASELINE_REQUIRED|JOB_UPDATED|APPLICATION_CREATED|APPLICATION_SUBMITTED|"
             "APPLICATION_STAGE_CANDIDATE|EMAIL_RECEIVED|INTERVIEW_INVITATION_DETECTED|"
             "REJECTION_DETECTED|OFFER_DETECTED|CAREER_FILE_CHANGED|"
             "CAREER_FACT_CANDIDATE_CREATED|RESUME_UPDATED|INTERVIEW_COMPLETED|"
@@ -1205,6 +1206,23 @@ class ListProfileEvidenceInput(_StrictOperationInput):
     limit: int = Field(default=100, ge=1, le=500)
 
 
+class CareerStageCorrectionInput(_StrictOperationInput):
+    track: str = Field(pattern="^(campus|experienced)$")
+    substage: str = Field(
+        pattern="^(internship|fresh_graduate|early_career|experienced_ic|manager|executive|career_switch)$"
+    )
+
+    @model_validator(mode="after")
+    def validate_track(self) -> "CareerStageCorrectionInput":
+        campus = {"internship", "fresh_graduate"}
+        experienced = {"early_career", "experienced_ic", "manager", "executive"}
+        if self.substage in campus and self.track != "campus":
+            raise ValueError("internship/fresh_graduate must use campus track")
+        if self.substage in experienced and self.track != "experienced":
+            raise ValueError("experienced substages must use experienced track")
+        return self
+
+
 class AddProfileEvidenceInput(_StrictOperationInput):
     section_type: str = Field(
         pattern="^(education|experience|project|skill|certificate|custom|custom:[a-z0-9_]{6,64})$",
@@ -1827,6 +1845,24 @@ OPERATIONS: dict[str, Operation] = {
         description="获取用户个人资料概览，包括基本信息、目标岗位、经历统计。",
         group="profile",
         input_model=GetProfileInput,
+    ),
+    "get_career_snapshot": Operation(
+        name="get_career_snapshot",
+        fn=build_career_snapshot,
+        description="读取脱敏后的职业阶段、求职目标和带来源的有效证据；不创建或修改档案。",
+        group="career_runtime",
+        audit_redacted_output_parameters=("identity", "goals", "profile_coverage"),
+        input_model=GetProfileInput,
+        version="2026-09-26",
+    ),
+    "correct_career_stage": Operation(
+        name="correct_career_stage",
+        fn=correct_career_stage,
+        description="保存使用者明确选择的职业阶段；仅更新阶段纠正字段，不接受 Agent 自行确认。",
+        group="career_runtime",
+        side_effects=("write",),
+        input_model=CareerStageCorrectionInput,
+        version="2026-09-26",
     ),
     "list_profile_evidence": Operation(
         name="list_profile_evidence",

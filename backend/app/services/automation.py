@@ -37,6 +37,7 @@ from app.services.security_redaction import (
 AUTOMATION_EVENT_TYPES = frozenset(
     {
         "JOB_SAVED",
+        "PROFILE_BASELINE_REQUIRED",
         "JOB_UPDATED",
         "APPLICATION_CREATED",
         "APPLICATION_SUBMITTED",
@@ -64,6 +65,13 @@ INBOX_CATEGORIES = frozenset(
 INBOX_STATUSES = frozenset({"pending", "resolved", "dismissed"})
 
 _DEFAULT_RULES: dict[str, dict[str, Any]] = {
+    "PROFILE_BASELINE_REQUIRED": {
+        "task_type": "career_director",
+        "runtime_provider": "codex",
+        "enabled": True,
+        "automation_level": "L1",
+        "description": "首次职业方向发现；结果只作可审核建议，不写入 Career Truth。",
+    },
     "JOB_SAVED": {
         "task_type": "role_intelligence",
         "runtime_provider": "auto",
@@ -324,6 +332,47 @@ async def _dispatch_job_saved(event: AutomationEvent, rule: dict[str, Any]) -> d
     return {"task": task, "job_id": job_id, "runtime_provider": provider}
 
 
+async def _dispatch_profile_baseline(
+    event: AutomationEvent,
+    rule: dict[str, Any],
+) -> dict[str, Any]:
+    from app.services.career_tasks import start_career_task
+
+    payload = event.payload_json if isinstance(event.payload_json, dict) else {}
+    policy = rule.get("policy") if isinstance(rule.get("policy"), dict) else {}
+    provider = str(payload.get("runtime_provider") or policy.get("runtime_provider") or "codex")
+    if provider not in {"codex", "codex-app-server"}:
+        raise ValueError("Profile Discovery 需要真实 Codex Runtime")
+    if event.target_type != "profile" or not str(event.target_id or "").isdigit():
+        raise ValueError("PROFILE_BASELINE_REQUIRED 缺少 Profile 目标")
+    task = await start_career_task(
+        task_type="career_director",
+        source="automation",
+        target_type="profile",
+        target_id=event.target_id,
+        runtime_provider=provider,
+        input={
+            "automation_event_id": event.event_id,
+            "event_type": event.event_type,
+            "profile_id": int(event.target_id),
+        },
+        output_contract={"schema": "offeru.career_briefing.v1", "type": "object"},
+        idempotency_key=f"automation:{event.event_id}:career-director",
+    )
+    await _upsert_inbox(
+        item_id=f"automation_task_{task['task_id']}",
+        category="fyi",
+        event_id=event.event_id,
+        task_id=task["task_id"],
+        target_type="profile",
+        target_id=event.target_id,
+        title="正在了解你的职业方向",
+        body="OfferU 会先读取已保存的职业经历和目标，再准备一份可审核的方向建议。",
+        payload={"runtime_provider": provider, "task": task, "autonomy_level": "L1"},
+    )
+    return {"task": task, "profile_id": int(event.target_id), "runtime_provider": provider}
+
+
 async def _update_event(
     event_id: str,
     *,
@@ -518,10 +567,15 @@ async def _process_automation_event(event_id: str) -> dict[str, Any]:
     rule = await _rule(event.event_type)
     if not rule["enabled"]:
         return await _update_event(event.event_id, status="skipped", result={"rule": rule})
-    if event.event_type != "JOB_SAVED":
+    dispatchers = {
+        "JOB_SAVED": _dispatch_job_saved,
+        "PROFILE_BASELINE_REQUIRED": _dispatch_profile_baseline,
+    }
+    dispatch = dispatchers.get(event.event_type)
+    if dispatch is None:
         return await _update_event(event.event_id, status="completed", result={"rule": rule})
     try:
-        result = await _dispatch_job_saved(event, rule)
+        result = await dispatch(event, rule)
     except Exception as exc:  # keep the signal visible; never claim success
         blocked = any(
             marker in str(exc).casefold()
@@ -601,6 +655,8 @@ async def handle_career_task_finished(task_id: str) -> dict[str, Any] | None:
     from app.services.career_tasks import get_career_task
 
     task = await get_career_task(task_id)
+    if task["task_type"] == "career_director":
+        return await _project_career_director_task(task)
     if task["task_type"] != "role_intelligence":
         return None
     input_payload = task.get("input") if isinstance(task.get("input"), dict) else {}
@@ -740,6 +796,55 @@ async def handle_career_task_finished(task_id: str) -> dict[str, Any] | None:
             error=task.get("error") or "",
             expected_statuses=("processing", "dispatched"),
         )
+    return item
+
+
+async def _project_career_director_task(task: dict[str, Any]) -> dict[str, Any] | None:
+    input_payload = task.get("input") if isinstance(task.get("input"), dict) else {}
+    event_id = str(input_payload.get("automation_event_id") or "")
+    if not event_id:
+        return None
+    task_result = task.get("result") if isinstance(task.get("result"), dict) else {}
+    briefing = task_result.get("briefing") if isinstance(task_result.get("briefing"), dict) else {}
+    completed = task["status"] == "completed" and bool(briefing)
+    category = "needs_review" if completed else "failed"
+    title = "你的职业方向建议已准备" if completed else "职业方向分析需要处理"
+    summary = str(briefing.get("situation_summary") or "")
+    body = (
+        summary or "OfferU 已准备职业阶段、证据强弱和下一步问题，等待你查看。"
+        if completed
+        else f"OfferU 没能完成这次分析：{task.get('error') or '任务失败'}"
+    )
+    item = await _upsert_inbox(
+        item_id=f"automation_task_{task['task_id']}",
+        category=category,
+        event_id=event_id,
+        task_id=task["task_id"],
+        target_type=task.get("target_type") or "profile",
+        target_id=task.get("target_id") or str(input_payload.get("profile_id") or ""),
+        title=title,
+        body=body,
+        payload={
+            "task": {
+                key: task.get(key)
+                for key in ("task_id", "task_type", "runtime_provider", "status", "progress", "error")
+            },
+            "briefing": briefing if completed else {},
+            "autonomy_level": "L1",
+            "changes_career_truth": False,
+        },
+    )
+    await _update_event(
+        event_id,
+        status="completed" if completed else task["status"],
+        result={
+            "task_id": task["task_id"],
+            "briefing_schema": briefing.get("schema") if completed else None,
+            "inbox_item_id": item["item_id"],
+        },
+        error=task.get("error") or "",
+        expected_statuses=("processing", "dispatched"),
+    )
     return item
 
 
