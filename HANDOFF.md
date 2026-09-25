@@ -45,10 +45,11 @@ OfferU already has durable Automation, CareerTask, Skill and Operation infrastru
 
 1. Continue on `main`; Slice 1, First-run Profile Discovery, is committed as `73c522e`.
 2. Slice 2, Daily Career Brief, is committed as `bb2fb36`; Today creates one local-day idempotent event, a real Codex Career Director reads current and daily context through Registry, the result persists into CareerTask/Automation Inbox and appears in Today, and dismissal feedback suppresses repeated unchanged suggestions.
-3. Continue sequentially with Slice 3 Job Saved Assessment, Slice 4 Interview Prep/Debrief and Slice 5 Resume Re-engagement. Do not stop for real Resume/Profile/Job, email or OMP data.
-4. Use synthetic Career State and isolated databases for targeted tests. Every Career Director judgment must call the real runtime and Registry operations; provider mocks are test-only.
-5. After all five slices, run full backend regression, relevant frontend test/typecheck/build, sync docs, and attempt local Codex integration smoke. Mark only provider-login/service limitations `BLOCKED_EXTERNAL` while continuing all other work.
-6. Begin owner dogfood with the real Resume and three Jobs only after the implementation Definition of Done.
+3. Slice 3, Job Saved Assessment Plan, is committed as `d3508c8`; shared job-import Operations emit one idempotent JOB_SAVED event, Codex reads the Career Snapshot and bounded Job context, the validated plan appears in Inbox and Job Workspace, and Role Intelligence starts only when the Agent plan recommends it.
+4. Continue with Slice 4 Interview Prep/Debrief, then Slice 5 Resume Re-engagement. Do not stop for real Resume/Profile/Job, email or OMP data.
+5. Use synthetic Career State and isolated databases for targeted tests. Every Career Director judgment must call the real runtime and Registry operations; provider mocks are test-only.
+6. After all five slices, run full backend regression, relevant frontend test/typecheck/build, sync docs, and attempt local Codex integration smoke. Mark only provider-login/service limitations `BLOCKED_EXTERNAL` while continuing all other work.
+7. Begin owner dogfood with the real Resume and three Jobs only after the implementation Definition of Done.
 
 Do not let the blocked OMP isolation requirement stop Codex-first owner dogfood. The OMP/SWE-2 Golden Path remains a separate acceptance workstream and needs an approved isolated environment before pass³.
 

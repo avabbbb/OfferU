@@ -1,7 +1,7 @@
 # Proactive Career Director
 
 Status: **CURRENT PRODUCT DETAIL / IMPLEMENTATION CONTRACT**  
-Updated: 2026-09-25
+Updated: 2026-09-26
 
 This document defines the product and runtime contract for making OfferU genuinely proactive for non-technical job seekers.
 
@@ -12,6 +12,16 @@ Event → Rule → CareerTask → Agent / Runtime → Operation
 ~~~
 
 If this document conflicts with `GOAL.md` or `docs/product/current-product.md`, the higher authority wins.
+
+## Implementation checkpoint — 2026-09-26
+
+- Slice 1, First-run Profile Discovery, is committed as `73c522e`.
+- Slice 2, Daily Career Brief, is committed as `bb2fb36`.
+- Slice 3, Job Saved Assessment Plan, is committed as `d3508c8`.
+- JOB_SAVED is emitted by the shared job-import Operations, so App, scraper and Agent import paths converge on one idempotent event. A real Codex Career Director reads Career Snapshot and bounded Job context through read-only Registry Operations, validates a strict Job Assessment Plan, and projects it into CareerTask, Automation Inbox and Job Workspace.
+- The existing Role Intelligence task now starts only when the structured assessment marks it needed/useful and recommends `build_role_benchmark`; the launch goes through the Operation Registry and retains idempotency. Career Director cannot write Career Truth or perform external actions.
+- The Job Workspace assessment card covers fit, priority, evidence alignment/gaps, preparation relevance and retryable failures. Targeted backend tests, frontend component tests, typecheck and production build passed for this checkpoint.
+- Slice 4, Interview Prep/Debrief, and Slice 5, Resume Updated Re-engagement, remain unimplemented. Full backend regression is still required after all slices.
 
 ---
 
@@ -77,9 +87,9 @@ The event vocabulary already includes signals such as:
 - `DAILY_REVIEW`;
 - `WEEKLY_REVIEW`.
 
-But the current built-in automation behavior is much narrower: the main default dispatch is effectively `JOB_SAVED → role_intelligence`; other accepted event types do not yet produce a meaningful career-strategy decision.
+The first three vertical slices now provide bounded Career Director judgments for first-run Profile Discovery, `DAILY_REVIEW` and `JOB_SAVED`. Interview lifecycle and Resume re-engagement signals remain in the event vocabulary but still need meaningful proactive behavior.
 
-This means OfferU has the durable event/task machinery, but not yet the **career judgment layer** between “an event occurred” and “what should happen next”.
+OfferU is implementing the **career judgment layer** between “an event occurred” and “what should happen next” on top of the existing durable event/task machinery.
 
 ---
 
