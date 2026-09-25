@@ -44,8 +44,8 @@ OfferU already has durable Automation, CareerTask, Skill and Operation infrastru
 ## Continue from here
 
 1. Continue on `main`; Slice 1, First-run Profile Discovery, is committed as `73c522e`.
-2. Slice 2, Daily Career Brief, now has implementation and targeted validation: Today creates one local-day idempotent event; a real Codex Career Director reads current and daily context through Registry; structured output persists into CareerTask/Automation Inbox and appears in Today; dismissal feedback suppresses repeated unchanged suggestions.
-3. Commit Slice 2 and continue sequentially with Slice 3 Job Saved Assessment, Slice 4 Interview Prep/Debrief and Slice 5 Resume Re-engagement. Do not stop for real Resume/Profile/Job, email or OMP data.
+2. Slice 2, Daily Career Brief, is committed as `bb2fb36`; Today creates one local-day idempotent event, a real Codex Career Director reads current and daily context through Registry, the result persists into CareerTask/Automation Inbox and appears in Today, and dismissal feedback suppresses repeated unchanged suggestions.
+3. Continue sequentially with Slice 3 Job Saved Assessment, Slice 4 Interview Prep/Debrief and Slice 5 Resume Re-engagement. Do not stop for real Resume/Profile/Job, email or OMP data.
 4. Use synthetic Career State and isolated databases for targeted tests. Every Career Director judgment must call the real runtime and Registry operations; provider mocks are test-only.
 5. After all five slices, run full backend regression, relevant frontend test/typecheck/build, sync docs, and attempt local Codex integration smoke. Mark only provider-login/service limitations `BLOCKED_EXTERNAL` while continuing all other work.
 6. Begin owner dogfood with the real Resume and three Jobs only after the implementation Definition of Done.
