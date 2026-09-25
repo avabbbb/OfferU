@@ -19,6 +19,7 @@ import sys
 import unittest
 from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock, patch
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 os.chdir(BACKEND_DIR)
@@ -40,6 +41,7 @@ from app.models.models import (
     ResumeVersion,
 )
 from app.ops import OPERATIONS, execute_operation
+import app.ops as operation_registry
 
 
 import secrets
@@ -52,6 +54,15 @@ def _uniq(label: str) -> str:
 
 
 class Slice01Tests(unittest.TestCase):
+
+    def setUp(self) -> None:
+        event_dispatch = patch.object(
+            operation_registry,
+            "_record_job_saved_automation",
+            new=AsyncMock(return_value={"events": [], "errors": []}),
+        )
+        event_dispatch.start()
+        self.addCleanup(event_dispatch.stop)
 
     def test_t1_import_jd_creates_job_with_raw_description(self) -> None:
         async def run() -> dict[str, Any]:

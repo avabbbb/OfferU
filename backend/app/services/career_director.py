@@ -137,6 +137,44 @@ class CareerQuestion(_StrictContract):
     optional: bool = True
 
 
+class JobEvidenceAlignment(_StrictContract):
+    requirement: str = Field(min_length=1, max_length=260)
+    evidence_ref: str = Field(min_length=1, max_length=180)
+    match: Literal["strong", "partial", "missing"]
+    rationale: str = Field(min_length=1, max_length=400)
+
+
+class JobEvidenceGap(_StrictContract):
+    requirement: str = Field(min_length=1, max_length=260)
+    why_missing: str = Field(min_length=1, max_length=400)
+    evidence_to_seek: str = Field(min_length=1, max_length=400)
+
+
+class CareerCapabilityNeed(_StrictContract):
+    relevance: Literal["needed", "useful", "not_now"]
+    rationale: str = Field(min_length=1, max_length=400)
+
+
+class JobAssessmentPlan(_StrictContract):
+    job_id: int = Field(gt=0)
+    fit: Literal["strong_match", "plausible_match", "stretch", "weak_match", "insufficient_evidence"]
+    fit_rationale: str = Field(min_length=1, max_length=700)
+    application_priority: Literal["high", "normal", "low", "hold"]
+    evidence_alignment: list[JobEvidenceAlignment] = Field(default_factory=list, max_length=8)
+    evidence_gaps: list[JobEvidenceGap] = Field(default_factory=list, max_length=8)
+    role_intelligence: CareerCapabilityNeed
+    resume_prep: CareerCapabilityNeed
+    interview_prep: CareerCapabilityNeed
+    recommended_operations: list[
+        Literal[
+            "build_role_benchmark",
+            "prepare_resume_optimization",
+            "prepare_role_interview_focus",
+            "create_application_packet",
+        ]
+    ] = Field(default_factory=list, max_length=4)
+
+
 class CareerBriefing(_StrictContract):
     contract_schema: Literal["offeru.career_briefing.v1"] = Field(
         default="offeru.career_briefing.v1", alias="schema"
@@ -145,6 +183,7 @@ class CareerBriefing(_StrictContract):
     strategy_pack: Literal["campus_search.v1", "experienced_search.v1"]
     situation_summary: str = Field(min_length=1, max_length=1200)
     profile_coverage: CareerProfileCoverage
+    job_assessment: JobAssessmentPlan | None = None
     priorities: list[CareerPriority] = Field(default_factory=list, max_length=3)
     actions: list[CareerAction] = Field(default_factory=list, max_length=3)
     questions: list[CareerQuestion] = Field(default_factory=list, max_length=3)

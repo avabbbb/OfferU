@@ -19,6 +19,7 @@ import sys
 import unittest
 from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock, patch
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 os.chdir(BACKEND_DIR)
@@ -29,6 +30,7 @@ from sqlalchemy import func, select
 
 from app.database import async_session, init_db
 from app.models.models import Batch, Job, OperationAuditLog
+import app.ops as operation_registry
 from app.ops import execute_operation
 
 _RUN_SALT = secrets.token_hex(8)
@@ -71,6 +73,15 @@ def _item(**overrides: Any) -> dict[str, Any]:
 
 class JobIngestTests(unittest.TestCase):
     maxDiff = None
+
+    def setUp(self) -> None:
+        event_dispatch = patch.object(
+            operation_registry,
+            "_record_job_saved_automation",
+            new=AsyncMock(return_value={"events": [], "errors": []}),
+        )
+        event_dispatch.start()
+        self.addCleanup(event_dispatch.stop)
 
     def test_t1_import_job_batch_creates_jobs(self) -> None:
         async def run() -> dict[str, Any]:

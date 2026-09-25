@@ -285,6 +285,7 @@ from app.services.resume_workspace import (
 )
 from app.services.career_director import build_career_snapshot, correct_career_stage
 from app.services.career_daily import build_daily_career_context
+from app.services.career_job_assessment import build_job_assessment_context
 from app.services.data_export import export_user_data
 from app.services.diagnostics import export_diagnostic_bundle
 from app.services.demo_data import reset_demo_data
@@ -1228,6 +1229,10 @@ class DailyCareerContextInput(_StrictOperationInput):
     profile_id: int | None = Field(default=None, gt=0)
 
 
+class JobAssessmentContextInput(_StrictOperationInput):
+    job_id: int = Field(gt=0)
+
+
 class AddProfileEvidenceInput(_StrictOperationInput):
     section_type: str = Field(
         pattern="^(education|experience|project|skill|certificate|custom|custom:[a-z0-9_]{6,64})$",
@@ -1365,6 +1370,101 @@ class ImportJobBatchInput(_StrictOperationInput):
     keywords: list[str] = Field(default_factory=list, max_length=50)
     location: str = Field(default="", max_length=200)
     pool_id: int | None = Field(default=None, gt=0)
+    runtime_provider: str | None = Field(default=None, min_length=1, max_length=40)
+
+
+async def _record_job_saved_automation(
+    job_ids: list[int],
+    *,
+    source: str,
+    runtime_provider: str,
+) -> dict[str, list[Any]]:
+    events: list[Any] = []
+    errors: list[str] = []
+    for job_id in job_ids:
+        result = await execute_operation(
+            "record_automation_event",
+            {
+                "event_type": "JOB_SAVED",
+                "source": source,
+                "target_type": "job",
+                "target_id": str(job_id),
+                "payload": {"job_id": int(job_id), "runtime_provider": runtime_provider},
+                "dedupe_key": f"job-saved:job:{int(job_id)}",
+            },
+            surface="automation",
+        )
+        if result.get("ok"):
+            events.append(result.get("outputs") or {})
+        else:
+            errors.extend(str(error) for error in result.get("errors") or [])
+    return {"events": events, "errors": errors}
+
+
+def _ingest_runtime_provider(source: str, runtime_provider: str | None) -> str:
+    selected = str(runtime_provider or "").strip()
+    if selected:
+        return selected
+    clean_source = str(source or "").strip().casefold()
+    if clean_source in {"fixture", "replay", "boss-fixture"} or clean_source.startswith("plugin:"):
+        return clean_source
+    return "auto"
+
+
+async def _import_job_batch_and_dispatch(
+    *,
+    jobs: list[dict[str, Any]],
+    source: str = "manual",
+    batch_id: str | None = None,
+    keywords: list[str] | None = None,
+    location: str = "",
+    pool_id: int | None = None,
+    runtime_provider: str | None = None,
+) -> dict[str, Any]:
+    result = await import_job_batch(
+        jobs=jobs,
+        source=source,
+        batch_id=batch_id,
+        keywords=keywords,
+        location=location,
+        pool_id=pool_id,
+    )
+    result["automation"] = await _record_job_saved_automation(
+        result.get("resolved_job_ids") or result.get("created_job_ids") or [],
+        source=str(source or "job_import"),
+        runtime_provider=_ingest_runtime_provider(source, runtime_provider),
+    )
+    return result
+
+
+async def _import_jd_and_dispatch(
+    *,
+    title: str,
+    company: str,
+    jd_text: str,
+    source: str = "agent_import",
+    location: str = "",
+    url: str = "",
+    apply_url: str = "",
+    batch_id: str | None = None,
+) -> dict[str, Any]:
+    result = await import_jd(
+        title=title,
+        company=company,
+        jd_text=jd_text,
+        source=source,
+        location=location,
+        url=url,
+        apply_url=apply_url,
+        batch_id=batch_id,
+    )
+    if result.get("id"):
+        result["automation"] = await _record_job_saved_automation(
+            [int(result["id"])],
+            source=str(source or "agent_import"),
+            runtime_provider=_ingest_runtime_provider(source, None),
+        )
+    return result
 
 
 class StartScraperBatchInput(_StrictOperationInput):
@@ -1869,6 +1969,15 @@ OPERATIONS: dict[str, Operation] = {
         input_model=DailyCareerContextInput,
         version="2026-09-26",
     ),
+    "get_job_assessment_context": Operation(
+        name="get_job_assessment_context",
+        fn=build_job_assessment_context,
+        description="读取指定 canonical Job、现有 Role Intelligence/Application/Resume 提案和未来面试摘要；岗位描述作为不可信数据处理，不修改职业事实。",
+        group="career_runtime",
+        audit_redacted_output_parameters=("job", "role_intelligence", "application_attempts", "resume_materials", "upcoming_interviews"),
+        input_model=JobAssessmentContextInput,
+        version="2026-09-26",
+    ),
     "correct_career_stage": Operation(
         name="correct_career_stage",
         fn=correct_career_stage,
@@ -2225,8 +2334,8 @@ OPERATIONS: dict[str, Operation] = {
     ),
     "import_jd": Operation(
         name="import_jd",
-        fn=import_jd,
-        description="导入单条 JD 文本为 Job；按 md5(jd_text) 去重，新建 Job triage_status=inbox。",
+        fn=_import_jd_and_dispatch,
+        description="导入单条 JD 文本为 canonical Job；按 md5(jd_text) 去重。新建岗位会幂等记录 JOB_SAVED 并进入 Career Director / Role Intelligence。",
         parameters={
             "title": "str",
             "company": "str",
@@ -2242,8 +2351,8 @@ OPERATIONS: dict[str, Operation] = {
     ),
     "import_job_batch": Operation(
         name="import_job_batch",
-        fn=import_job_batch,
-        description="批量导入岗位为 Job（浏览器扩展/CLI/采集器统一入口）：逐条按 hash_key 幂等去重，同 batch_id 重放不重复计数；triage_status=inbox。",
+        fn=_import_job_batch_and_dispatch,
+        description="批量导入岗位为 canonical Job（浏览器扩展/CLI/采集器统一入口）：逐条按 hash_key 幂等去重，同 batch_id 重放不重复计数；新建岗位会幂等记录 JOB_SAVED 并进入 Career Director / Role Intelligence。",
         parameters={
             "jobs": "list[object]",
             "source": "str=manual",
@@ -2251,6 +2360,7 @@ OPERATIONS: dict[str, Operation] = {
             "keywords": "list[str]=[]",
             "location": "str?",
             "pool_id": "int?",
+            "runtime_provider": "str?",
         },
         group="jobs",
         side_effects=("write",),

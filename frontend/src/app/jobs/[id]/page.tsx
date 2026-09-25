@@ -30,6 +30,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { controlCareerTask, patchJob, useJob, usePools, useProgressBoard, useProgressTimeline, useCareerTasks, type CareerTask } from "@/lib/hooks";
+import { JobAssessmentPlanCard } from "@/components/jobs/JobAssessmentPlanCard";
 import { RoleIntelligencePanel } from "@/components/jobs/RoleIntelligencePanel";
 import {
   jobResearchApi,
@@ -302,6 +303,15 @@ export default function JobDetailPage() {
     if (!jobId || !careerTasksData?.tasks) return null;
     return careerTasksData.tasks.find(
       (t) => t.task_type === "role_intelligence" && t.target_type === "job" && t.target_id === String(jobId)
+    ) ?? null;
+  }, [careerTasksData, jobId]);
+  const jobAssessmentTask = useMemo<CareerTask | null>(() => {
+    if (!jobId || !careerTasksData?.tasks) return null;
+    return careerTasksData.tasks.find(
+      (t) => t.task_type === "career_director"
+        && t.target_type === "job"
+        && t.target_id === String(jobId)
+        && t.input?.event_type === "JOB_SAVED"
     ) ?? null;
   }, [careerTasksData, jobId]);
 
@@ -590,6 +600,11 @@ export default function JobDetailPage() {
           </CardBody>
         </Card>
       )}
+
+      <JobAssessmentPlanCard
+        task={jobAssessmentTask}
+        onRetry={() => void controlCareerTask(jobAssessmentTask!.task_id, "retry").catch((err) => alert(safeClientErrorMessage(err, "重试岗位评估失败")))}
+      />
 
       <Card className="bauhaus-panel rounded-none bg-white shadow-none" data-testid="job-application-context">
         <CardBody className="space-y-5 p-5">
