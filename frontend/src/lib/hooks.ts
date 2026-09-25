@@ -220,6 +220,7 @@ export interface CareerTask {
   target_id: string;
   runtime_provider: string;
   status: CareerTaskStatus;
+  input?: Record<string, any>;
   progress: Record<string, any>;
   error_id: string;
   error: string;

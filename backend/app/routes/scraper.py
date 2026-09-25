@@ -329,6 +329,7 @@ async def _execute_scraper(task_info: dict, scraper, req: RunRequest):
             "pool_id": task_info.get("pool_id"),
             "pool_name": task_info.get("pool_name"),
             "warning": warning,
+            "automation": ingest_output.get("automation") or {"events": [], "errors": []},
         }
     except Exception as e:
         logger.error("[scraper] task failed: %s", safe_error_message(e))
