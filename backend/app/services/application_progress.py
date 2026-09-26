@@ -1050,6 +1050,19 @@ async def review_application_progress(
         await db.commit()
         await db.refresh(candidate)
         await db.refresh(event)
+        if calendar_event_payload and calendar_event_payload.get("id"):
+            try:
+                from app.services.automation import record_calendar_interview_invitation
+
+                calendar_event_payload["automation"] = await record_calendar_interview_invitation(
+                    calendar_event_id=int(calendar_event_payload["id"]),
+                    source="application_progress_confirmation",
+                )
+            except Exception as exc:
+                calendar_event_payload["automation"] = {
+                    "status": "failed",
+                    "error": safe_error_message(exc),
+                }
         record_id = workspace_record_payload.get("record_id")
         previous_status = workspace_record_payload.get("previous_status")
         workspace_status = workspace_record_payload.get("status")

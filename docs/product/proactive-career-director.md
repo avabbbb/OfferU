@@ -21,7 +21,9 @@ If this document conflicts with `GOAL.md` or `docs/product/current-product.md`, 
 - JOB_SAVED is emitted by the shared job-import Operations, so App, scraper and Agent import paths converge on one idempotent event. A real Codex Career Director reads Career Snapshot and bounded Job context through read-only Registry Operations, validates a strict Job Assessment Plan, and projects it into CareerTask, Automation Inbox and Job Workspace.
 - The existing Role Intelligence task now starts only when the structured assessment marks it needed/useful and recommends `build_role_benchmark`; the launch goes through the Operation Registry and retains idempotency. Career Director cannot write Career Truth or perform external actions.
 - The Job Workspace assessment card covers fit, priority, evidence alignment/gaps, preparation relevance and retryable failures. Targeted backend tests, frontend component tests, typecheck and production build passed for this checkpoint.
-- Slice 4, Interview Prep/Debrief, and Slice 5, Resume Updated Re-engagement, remain unimplemented. Full backend regression is still required after all slices.
+- Slice 4, Interview Prep/Debrief, is implemented in the current working tree. Calendar creation and notification recovery emit an idempotent invitation event; Daily Review scans at most eight elapsed interviews from the past seven days and emits one completion event per calendar item. Each CareerTask remains bound to its exact AutomationEvent target, while its linked Job is used for workspace projection.
+- A real Codex Career Director must read Career Snapshot and the target interview context through Registry Operations. The UI shows the model's preparation focus and practice questions, or asks the model's two or three debrief questions. Answers create source-linked learning observations and pending memory proposals only; unreviewed candidates do not count as repeated weak areas, and no Career Truth is directly changed.
+- Today and the canonical Job Workspace project the current interview lifecycle stage. Synthetic backend integration tests cover invitation, elapsed interview, debrief, source validation, idempotency and no direct truth writes; the focused frontend card test and typecheck pass. Slice 5, Resume Updated Re-engagement, remains. Full backend regression and frontend build are still required after all slices.
 
 ---
 
@@ -87,7 +89,7 @@ The event vocabulary already includes signals such as:
 - `DAILY_REVIEW`;
 - `WEEKLY_REVIEW`.
 
-The first three vertical slices now provide bounded Career Director judgments for first-run Profile Discovery, `DAILY_REVIEW` and `JOB_SAVED`. Interview lifecycle and Resume re-engagement signals remain in the event vocabulary but still need meaningful proactive behavior.
+The first four vertical slices now provide bounded Career Director judgments for first-run Profile Discovery, `DAILY_REVIEW`, `JOB_SAVED`, and the interview lifecycle. Resume re-engagement remains the final proactive behavior to implement.
 
 OfferU is implementing the **career judgment layer** between “an event occurred” and “what should happen next” on top of the existing durable event/task machinery.
 

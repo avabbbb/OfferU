@@ -14,6 +14,7 @@ from app.models.models import (
     AutomationInboxItem,
     CalendarEvent,
     CareerSource,
+    EvidenceLink,
     LearningObservation,
     MemoryProposal,
     Job,
@@ -330,17 +331,16 @@ def test_daily_context_collects_synthetic_urgency_proposals_learning_and_ignored
                         related_job_id=job.id,
                     )
                 )
-                db.add(
-                    MemoryProposal(
-                        proposal_key="synthetic-daily-proposal",
-                        target_tier="career_hypothesis",
-                        section_type="skill",
-                        title="Synthetic impact evidence needs review",
-                        reason="Synthetic interview feedback needs owner review.",
-                        status="pending",
-                        created_at=now,
-                    )
+                proposal = MemoryProposal(
+                    proposal_key="synthetic-daily-proposal",
+                    target_tier="career_hypothesis",
+                    section_type="skill",
+                    title="Synthetic impact evidence needs review",
+                    reason="Synthetic interview feedback needs owner review.",
+                    status="pending",
+                    created_at=now,
                 )
+                db.add(proposal)
                 source = CareerSource(
                     source_type="synthetic_test",
                     external_id="daily-interview-learning",
@@ -348,20 +348,27 @@ def test_daily_context_collects_synthetic_urgency_proposals_learning_and_ignored
                 )
                 db.add(source)
                 await db.flush()
-                db.add(
-                    LearningObservation(
-                        source_id=source.id,
-                        observation_type="interview_completed",
-                        content_json={
-                            "summary": "Synthetic answers need clearer outcome evidence.",
-                            "focuses": [{"capability": "Impact storytelling", "training_priority": "high"}],
-                        },
-                        content_hash="a" * 64,
-                        idempotency_key="synthetic-daily-interview-learning",
-                        status="active",
-                        observed_at=now,
-                    )
+                observation = LearningObservation(
+                    source_id=source.id,
+                    observation_type="interview_completed",
+                    content_json={
+                        "summary": "Synthetic answers need clearer outcome evidence.",
+                        "focuses": [{"capability": "Impact storytelling", "training_priority": "high"}],
+                    },
+                    content_hash="a" * 64,
+                    idempotency_key="synthetic-daily-interview-learning",
+                    status="active",
+                    observed_at=now,
                 )
+                db.add(observation)
+                await db.flush()
+                db.add(EvidenceLink(
+                    observation_id=observation.id,
+                    target_type="memory_proposal",
+                    target_id=proposal.id,
+                    relation="supports",
+                    is_active=True,
+                ))
                 ignored_briefing = _briefing(
                     actions=[
                         {
@@ -447,7 +454,8 @@ def test_daily_context_collects_synthetic_urgency_proposals_learning_and_ignored
     assert context["follow_ups_due"][0]["urgency"] == "overdue"
     assert context["pending_proposals"][0]["title"] == "Synthetic impact evidence needs review"
     assert {change["kind"] for change in context["recent_changes"]} == {"profile", "resume"}
-    assert context["interview_learning"][0]["weak_areas"] == ["Impact storytelling"]
+    assert context["interview_learning"][0]["review_status"] == "pending"
+    assert context["interview_learning"][0]["weak_areas"] == []
     assert context["ignored_suggestions"][0]["dedupe_key"] == "synthetic-stable-suggestion"
     assert context["ignored_suggestions"][0]["dismissals"] == 2
     assert "must not be projected" not in json.dumps(context)

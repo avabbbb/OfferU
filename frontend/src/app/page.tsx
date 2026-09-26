@@ -6,7 +6,7 @@
 // 统计指标与趋势按需展开,不占据默认首屏;品牌叙事只出现在真实空状态。
 // =============================================
 
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
@@ -46,6 +46,7 @@ import {
 } from "@/lib/hooks";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { useWorkbench } from "@/lib/workbench";
+import { InterviewLifecycleCard } from "@/components/career/InterviewLifecycleCard";
 
 import { resolveApiBase } from "@/lib/apiBase";
 
@@ -746,12 +747,20 @@ export default function TodayPage() {
             const packet = entry.payload?.application_packet as Record<string, any> | undefined;
             const sample = benchmark?.valid_sample_count;
             const task = taskSnapshotFromInbox(entry);
+            const careerTask = careerTasks?.tasks.find((candidate) => candidate.task_id === entry.task_id);
             const percent = careerTaskPercent(task.progress);
+            const isInterviewTask = String(entry.payload?.event_type || "").startsWith("INTERVIEW_");
             return (
-              <div
-                key={entry.item_id}
-                className="px-4 py-3"
-              >
+              <Fragment key={entry.item_id}>
+                {isInterviewTask && careerTask ? (
+                  <div className="px-4 pt-3">
+                    <InterviewLifecycleCard
+                      task={careerTask}
+                      onSubmitted={() => void Promise.all([mutateCareerTasks(), mutateAutomationInbox()])}
+                    />
+                  </div>
+                ) : null}
+                <div className="px-4 py-3">
                 <div className="flex items-start gap-3">
                   <span
                     className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
@@ -832,16 +841,24 @@ export default function TodayPage() {
                   />
                   <ArrowRight size={13} className="mt-1.5 shrink-0 text-[var(--foreground-faint)]" />
                 </div>
-              </div>
+                </div>
+              </Fragment>
             );
           })}
           {standaloneCareerTasks.map((task: CareerTask) => {
             const percent = careerTaskPercent(task.progress);
+            const isInterviewTask = String(task.input?.event_type || "").startsWith("INTERVIEW_");
             const title = `${careerTaskTypeLabel(task.task_type)}${task.target_type && task.target_id
               ? ` · ${task.target_type} #${task.target_id}`
               : ""}`;
             return (
-              <div key={task.task_id} className="px-4 py-3">
+              <div key={task.task_id} className="space-y-2 px-4 py-3">
+                {isInterviewTask ? (
+                  <InterviewLifecycleCard
+                    task={task}
+                    onSubmitted={() => void Promise.all([mutateCareerTasks(), mutateAutomationInbox()])}
+                  />
+                ) : null}
                 <div className="flex items-start gap-3">
                   <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
                     task.status === "failed" || task.status === "blocked"

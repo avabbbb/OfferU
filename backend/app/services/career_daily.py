@@ -9,12 +9,13 @@ from datetime import date, datetime, timedelta
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import and_, select
 
 from app.database import async_session
 from app.models.models import (
     AutomationInboxItem,
     CalendarEvent,
+    EvidenceLink,
     LearningObservation,
     MemoryProposal,
     Profile,
@@ -77,6 +78,8 @@ class DailyChange(_StrictModel):
 class DailyLearning(_StrictModel):
     ref: str = Field(max_length=180)
     summary: str = Field(max_length=500)
+    learning_type: Literal["interview_assessment", "potential_strength", "weak_area"] = "interview_assessment"
+    review_status: Literal["accepted", "pending", "deferred", "rejected", "unreviewed", "inactive"] = "unreviewed"
     weak_areas: list[str] = Field(default_factory=list, max_length=6)
     observed_at: str = Field(max_length=50)
 
@@ -294,25 +297,63 @@ async def build_daily_career_context(
             await db.execute(
                 select(LearningObservation)
                 .where(LearningObservation.status == "active")
-                .where(LearningObservation.observation_type == "interview_completed")
+                .where(
+                    LearningObservation.observation_type.in_(
+                        ("interview_completed", "interview_debrief_candidate")
+                    )
+                )
                 .where(LearningObservation.observed_at >= cutoff)
                 .order_by(LearningObservation.observed_at.desc())
                 .limit(6)
             )
         ).scalars().all()
+        review_status_by_observation: dict[int, str] = {}
+        observation_ids = [int(observation.id) for observation in observations]
+        if observation_ids:
+            proposal_rows = (
+                await db.execute(
+                    select(EvidenceLink.observation_id, MemoryProposal.status)
+                    .select_from(EvidenceLink)
+                    .join(
+                        MemoryProposal,
+                        and_(
+                            EvidenceLink.target_type == "memory_proposal",
+                            EvidenceLink.target_id == MemoryProposal.id,
+                        ),
+                    )
+                    .where(EvidenceLink.is_active.is_(True))
+                    .where(EvidenceLink.observation_id.in_(observation_ids))
+                    .order_by(MemoryProposal.created_at.desc())
+                )
+            ).all()
+            for observation_id, status in proposal_rows:
+                review_status_by_observation.setdefault(int(observation_id), str(status))
         learning: list[dict[str, Any]] = []
         for observation in observations:
             content = observation.content_json if isinstance(observation.content_json, dict) else {}
+            learning_type = str(content.get("candidate_type") or "interview_assessment")
+            if learning_type not in {"interview_assessment", "potential_strength", "weak_area"}:
+                learning_type = "interview_assessment"
+            raw_review_status = review_status_by_observation.get(int(observation.id), "unreviewed")
+            review_status = raw_review_status if raw_review_status in {
+                "accepted", "pending", "deferred", "rejected"
+            } else "inactive" if raw_review_status != "unreviewed" else "unreviewed"
             focuses = content.get("focuses") if isinstance(content.get("focuses"), list) else []
             weak_areas = [
                 _safe(item.get("capability") or item.get("training_priority"), 120)
                 for item in focuses
                 if isinstance(item, dict) and (item.get("capability") or item.get("training_priority"))
             ][:6]
+            if review_status != "accepted":
+                weak_areas = []
+            elif not weak_areas and learning_type == "weak_area" and content.get("summary"):
+                weak_areas = [_safe(content.get("summary"), 120)]
             learning.append(
                 DailyLearning(
                     ref=f"learning-observation:{observation.id}",
                     summary=_safe(content.get("summary"), 500),
+                    learning_type=learning_type,
+                    review_status=review_status,
                     weak_areas=weak_areas,
                     observed_at=_iso(observation.observed_at),
                 ).model_dump()

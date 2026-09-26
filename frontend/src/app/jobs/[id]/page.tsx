@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { controlCareerTask, patchJob, useJob, usePools, useProgressBoard, useProgressTimeline, useCareerTasks, type CareerTask } from "@/lib/hooks";
 import { JobAssessmentPlanCard } from "@/components/jobs/JobAssessmentPlanCard";
+import { InterviewLifecycleCard } from "@/components/career/InterviewLifecycleCard";
 import { RoleIntelligencePanel } from "@/components/jobs/RoleIntelligencePanel";
 import {
   jobResearchApi,
@@ -298,7 +299,7 @@ export default function JobDetailPage() {
   }, [loadPreApplication]);
 
   // Fetch the role_intelligence CareerTask for this job — the real progress source.
-  const { data: careerTasksData } = useCareerTasks(50);
+  const { data: careerTasksData, mutate: mutateCareerTasks } = useCareerTasks(50);
   const preparationTask = useMemo<CareerTask | null>(() => {
     if (!jobId || !careerTasksData?.tasks) return null;
     return careerTasksData.tasks.find(
@@ -313,6 +314,29 @@ export default function JobDetailPage() {
         && t.target_id === String(jobId)
         && t.input?.event_type === "JOB_SAVED"
     ) ?? null;
+  }, [careerTasksData, jobId]);
+  const interviewLifecycleTasks = useMemo(() => {
+    if (!jobId || !careerTasksData?.tasks) return [];
+    const seenInterviews = new Set<number>();
+    return careerTasksData.tasks.filter(
+      (task) => {
+        const calendarEventId = Number(task.input?.calendar_event_id ?? 0);
+        const matchesJob = (
+          (task.target_type === "job" && task.target_id === String(jobId))
+          || Number(task.input?.job_id ?? 0) === jobId
+        );
+        const isInterviewLifecycle = ["INTERVIEW_INVITATION_DETECTED", "INTERVIEW_COMPLETED", "INTERVIEW_DEBRIEF_CREATED"]
+          .includes(String(task.input?.event_type || ""));
+        if (task.task_type !== "career_director" || !matchesJob || !isInterviewLifecycle || !calendarEventId) {
+          return false;
+        }
+        // The API returns newest tasks first. Show only the current lifecycle
+        // stage for each interview instead of repeating old preparation cards.
+        if (seenInterviews.has(calendarEventId)) return false;
+        seenInterviews.add(calendarEventId);
+        return true;
+      },
+    ).slice(0, 3);
   }, [careerTasksData, jobId]);
 
   // Dynamic progress projection — derived from real state, not fabricated.
@@ -605,6 +629,14 @@ export default function JobDetailPage() {
         task={jobAssessmentTask}
         onRetry={() => void controlCareerTask(jobAssessmentTask!.task_id, "retry").catch((err) => alert(safeClientErrorMessage(err, "重试岗位评估失败")))}
       />
+
+      {interviewLifecycleTasks.map((task) => (
+        <InterviewLifecycleCard
+          key={task.task_id}
+          task={task}
+          onSubmitted={() => void mutateCareerTasks()}
+        />
+      ))}
 
       <Card className="bauhaus-panel rounded-none bg-white shadow-none" data-testid="job-application-context">
         <CardBody className="space-y-5 p-5">

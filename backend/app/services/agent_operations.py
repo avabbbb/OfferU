@@ -988,6 +988,59 @@ async def prepare_role_interview_focus(
     )
 
 
+async def get_interview_career_context(
+    calendar_event_id: int,
+    automation_event_id: str = "",
+) -> dict:
+    from app.services.career_interviews import (
+        get_interview_career_context as _get_context,
+    )
+
+    return await _get_context(
+        calendar_event_id=calendar_event_id,
+        automation_event_id=automation_event_id,
+    )
+
+
+async def submit_interview_debrief(
+    calendar_event_id: int,
+    answers: list[str],
+) -> dict:
+    from app.services.career_interviews import (
+        submit_interview_debrief as _submit,
+    )
+
+    return await _submit(calendar_event_id=calendar_event_id, answers=answers)
+
+
+async def record_learning_observation(
+    source_type: str,
+    source_external_id: str,
+    observation_type: str,
+    content: dict,
+    source_title: str = "",
+    source_locator: str = "",
+    source_metadata: Optional[dict] = None,
+    observed_at: Optional[str] = None,
+    idempotency_key: Optional[str] = None,
+) -> dict:
+    from app.services.career_memory import (
+        record_learning_observation as _record,
+    )
+
+    return await _record(
+        source_type=source_type,
+        source_external_id=source_external_id,
+        observation_type=observation_type,
+        content=content,
+        source_title=source_title,
+        source_locator=source_locator,
+        source_metadata=source_metadata,
+        observed_at=observed_at,
+        idempotency_key=idempotency_key,
+    )
+
+
 async def start_career_task(
     task_type: str,
     source: str = "ui",

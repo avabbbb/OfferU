@@ -251,6 +251,28 @@ export async function triggerDailyCareerReview(): Promise<Record<string, any>> {
   return (payload.outputs && typeof payload.outputs === "object" ? payload.outputs : payload) as Record<string, any>;
 }
 
+/** Submit answers to the model-generated real interview debrief prompt. */
+export async function submitInterviewDebrief(
+  calendarEventId: number,
+  answers: string[],
+): Promise<Record<string, any>> {
+  let response: Response;
+  try {
+    response = await showcaseFetch("/api/interviews/debriefs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ calendar_event_id: calendarEventId, answers }),
+    });
+  } catch {
+    throw new Error(formatBackendNetworkError());
+  }
+  const payload = (await response.json().catch(() => ({}))) as Record<string, any>;
+  if (!response.ok || payload.ok === false || payload.error || payload.detail) {
+    throw new Error(safeClientErrorMessage(payload.detail || payload.error, `面试复盘提交失败 (${response.status})`));
+  }
+  return (payload.outputs && typeof payload.outputs === "object" ? payload.outputs : payload) as Record<string, any>;
+}
+
 /** Dismiss a user-facing automation suggestion through its Registry proposal boundary. */
 export async function dismissAutomationInboxItem(itemId: string): Promise<Record<string, any>> {
   const response = await showcaseFetch(

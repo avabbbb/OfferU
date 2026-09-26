@@ -235,6 +235,8 @@ OfferU must distinguish at least campus/fresh-graduate and experienced-hire stra
 
 The Director may automatically observe/analyze and prepare bounded drafts. It may not self-confirm protected Career Truth changes or irreversible external actions.
 
+When an interview is added to the canonical calendar or recovered from an interview notification, OfferU triggers a bounded Career Director run that reads the current Career Snapshot, linked Job preparation and reviewed interview learning. The resulting preparation plan appears in Today and the same Job Workspace. After a scheduled interview passes, Daily Review creates one debrief task with model-selected questions; submitted answers remain source-linked learning candidates until the user reviews them in the memory inbox. Neither preparation nor debrief writes verified Career Truth or contacts anyone.
+
 Detailed design, autonomy levels, Strategy Packs and eval cases are defined in [Proactive Career Director](./proactive-career-director.md).
 
 ## Guided interaction
