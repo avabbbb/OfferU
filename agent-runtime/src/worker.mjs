@@ -295,6 +295,13 @@ async function handleCommand(command) {
         session_scope: "one_pi_session_per_offeru_agent_run",
         session_persistence: "run_scoped_jsonl",
         built_in_tools: "disabled_for_run_sessions",
+        kernel: "pi",
+        features: {
+          persistent_sessions: true,
+          compaction: true,
+          steer: true,
+          follow_up: true,
+        },
       });
       return;
     }
@@ -322,6 +329,35 @@ async function handleCommand(command) {
         run_id: activeRun.runId,
         session_id: activeRun.session.sessionId,
         assistant_message: activeRun.session.getLastAssistantText() || "",
+      });
+      return;
+    }
+    if (type === "run.steer") {
+      if (!activeRun || activeRun.runId !== command.run_id) throw new Error("Run is not active in this Worker");
+      const disposition = await activeRun.session.steer(String(command.message || ""));
+      response(id, type, true, {
+        run_id: activeRun.runId,
+        disposition,
+      });
+      return;
+    }
+    if (type === "run.follow_up") {
+      if (!activeRun || activeRun.runId !== command.run_id) throw new Error("Run is not active in this Worker");
+      const disposition = await activeRun.session.followUp(String(command.message || ""));
+      response(id, type, true, {
+        run_id: activeRun.runId,
+        disposition,
+      });
+      return;
+    }
+    if (type === "run.compact") {
+      if (!activeRun || activeRun.runId !== command.run_id) throw new Error("Run is not active in this Worker");
+      await activeRun.session.compact(
+        command.instructions ? String(command.instructions) : undefined,
+      );
+      response(id, type, true, {
+        run_id: activeRun.runId,
+        compacted: true,
       });
       return;
     }

@@ -651,175 +651,6 @@ class ReplayAgentRuntimeProvider:
         }
 
 
-class CodexAgentRuntimeProvider:
-    """OfferU adapter for one Codex app-server stdio process."""
-
-    provider_id = "codex"
-
-    def __init__(
-        self,
-        *,
-        run_id: str = "",
-        executable: str | None = None,
-        thread_params: dict[str, Any] | None = None,
-        on_operation: AgentOperationCallback | None = None,
-    ) -> None:
-        from app.services.agent_bridge.codex_adapter import CodexMainLoopAdapter
-
-        self.run_id = str(run_id or "")
-        self.adapter = CodexMainLoopAdapter(
-            executable=executable,
-            thread_params=thread_params,
-        )
-        if on_operation is not None:
-            self.adapter.on_operation = on_operation
-        self._state = "created"
-        self._result: dict[str, Any] = {}
-        self._last_error = ""
-
-    @staticmethod
-    async def _record_health(**kwargs: Any) -> None:
-        try:
-            from app.services.agent_provider_health import record_provider_health
-
-            await record_provider_health("codex", **kwargs)
-        except Exception:
-            # Health persistence must not hide the provider's primary result.
-            pass
-
-    @staticmethod
-    def _is_auth_error(error: Any) -> bool:
-        text = str(error or "").casefold()
-        return any(
-            marker in text
-            for marker in ("401", "invalid_api_key", "authentication", "unauthorized")
-        )
-
-    async def start(self) -> dict[str, Any]:
-        try:
-            await self.adapter.start()
-        except Exception as exc:
-            self._state = "blocked" if self._is_auth_error(exc) else "failed"
-            self._last_error = safe_error_message(exc)
-            await self._record_health(
-                available=False,
-                authenticated=False if self._is_auth_error(exc) else None,
-                blocked=self._is_auth_error(exc),
-                auth_mode="unknown",
-                protocol_version=self.adapter.protocol_version,
-                error=exc,
-            )
-            raise
-        self._state = "ready"
-        info = self.adapter.server_info
-        version = str(info.get("userAgent") or info.get("version") or "")[:160]
-        await self._record_health(
-            available=True,
-            authenticated=None,
-            blocked=False,
-            version=version,
-            auth_mode="provider-managed",
-            protocol_version=self.adapter.protocol_version,
-            capabilities={"thread": True, "turn": True, "approval": False},
-        )
-        return await self.status()
-
-    async def status(self) -> dict[str, Any]:
-        process = self.adapter.process
-        return {
-            "provider_id": self.provider_id,
-            "status": self._state,
-            "available": process is not None and process.returncode is None,
-            "authenticated": None if self._state == "ready" else False if self._state == "blocked" else None,
-            "blocked": self._state == "blocked",
-            "version": str(self.adapter.server_info.get("userAgent") or ""),
-            "protocol_version": self.adapter.protocol_version,
-            "thread_id": self.adapter.thread_id,
-            "turn_id": self.adapter.turn_id,
-            "last_error": "provider authentication failed" if self._is_auth_error(self._last_error) else self._last_error,
-        }
-
-    async def shutdown(self) -> dict[str, Any]:
-        await self.adapter.close()
-        self._state = "stopped"
-        return await self.status()
-
-    async def restart(self) -> dict[str, Any]:
-        await self.shutdown()
-        return await self.start()
-
-    async def events(self, *, after: int = 0) -> dict[str, Any]:
-        return {"events": self.adapter.events(after=after), "next": len(self.adapter.events())}
-
-    async def cancel(self) -> dict[str, Any]:
-        result = await self.adapter.cancel()
-        self._state = "cancelled" if result.get("cancelled") else self._state
-        return result
-
-    async def result(self) -> dict[str, Any]:
-        return dict(self._result)
-
-    async def create_thread(
-        self,
-        *,
-        cwd: str,
-        tool_descriptions: list[str] | None = None,
-    ) -> dict[str, Any]:
-        return await self.adapter.create_thread(
-            cwd=cwd,
-            tool_descriptions=tool_descriptions or [],
-        )
-
-    async def start_turn(self, *, prompt: str, cwd: str) -> dict[str, Any]:
-        self._state = "running"
-        try:
-            self._result = await self.adapter.start_turn(prompt=prompt, cwd=cwd)
-        except Exception as exc:
-            self._state = "blocked" if self._is_auth_error(exc) else "failed"
-            self._last_error = safe_error_message(exc)
-            if self._is_auth_error(exc):
-                await self._record_health(
-                    available=False,
-                    authenticated=False,
-                    blocked=True,
-                    protocol_version=self.adapter.protocol_version,
-                    error=exc,
-                )
-            raise
-        self._state = "completed"
-        return dict(self._result)
-
-    async def resume_turn(self, *, prompt: str, cwd: str) -> dict[str, Any]:
-        self._state = "running"
-        self._result = await self.adapter.resume_turn(prompt=prompt, cwd=cwd)
-        self._state = "completed"
-        return dict(self._result)
-
-    async def approve(self, **kwargs: Any) -> dict[str, Any]:
-        return await self.adapter.approve(**kwargs)
-
-    async def reject(self, **kwargs: Any) -> dict[str, Any]:
-        return await self.adapter.reject(**kwargs)
-
-    async def list_skills(self) -> dict[str, Any]:
-        from app.services.agent_skill_registry import registry_snapshot
-
-        return {
-            "provider_id": self.provider_id,
-            "skills": registry_snapshot().get("skills", []),
-            "source": "offeru_registry",
-        }
-
-    async def list_plugins(self) -> dict[str, Any]:
-        from app.services.capability_plugins import discover_plugins
-
-        return {
-            "provider_id": self.provider_id,
-            **discover_plugins(),
-            "source": "offeru_registry",
-        }
-
-
 def get_agent_runtime_provider(
     provider_id: str,
     *,
@@ -828,16 +659,16 @@ def get_agent_runtime_provider(
     thread_params: dict[str, Any] | None = None,
     on_operation: AgentOperationCallback | None = None,
 ) -> AgentRuntimeProvider:
+    """Fixture-only low-level runtime seam.
+
+    Production Main Agent reasoning is owned by AgentRunProvider (embedded Pi).
+    External Codex remains available through Agent Bridge / hosted executor
+    integrations; it is intentionally not a second internal Agent kernel.
+    """
+    del run_id, executable, thread_params, on_operation
     clean = str(provider_id or "replay").strip().casefold()
     if clean in {"fixture", "replay", "mock"}:
         return ReplayAgentRuntimeProvider()
-    if clean in {"codex", "codex-app-server"}:
-        return CodexAgentRuntimeProvider(
-            run_id=run_id,
-            executable=executable,
-            thread_params=thread_params,
-            on_operation=on_operation,
-        )
     raise ValueError(f"未知 Agent Runtime provider: {provider_id}")
 
 
@@ -857,7 +688,6 @@ __all__ = [
     "AgentRunStreamListener",
     "AgentRuntimeProvider",
     "CANONICAL_AGENT_RUN_EVENT_TYPES",
-    "CodexAgentRuntimeProvider",
     "PiAgentRuntimeProvider",
     "ReplayAgentRunProvider",
     "ReplayAgentRuntimeProvider",
