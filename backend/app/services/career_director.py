@@ -175,6 +175,26 @@ class JobAssessmentPlan(_StrictContract):
     ] = Field(default_factory=list, max_length=4)
 
 
+class InterviewLearningCandidate(_StrictContract):
+    candidate_type: Literal["potential_strength", "weak_area"]
+    title: str = Field(min_length=1, max_length=180)
+    summary: str = Field(min_length=1, max_length=500)
+    answer_index: int = Field(ge=0, le=2)
+    source_excerpt: str = Field(min_length=1, max_length=400)
+    review_reason: str = Field(min_length=1, max_length=500)
+
+
+class InterviewLifecyclePlan(_StrictContract):
+    mode: Literal["prepare", "debrief", "learning_review"]
+    calendar_event_id: int = Field(gt=0)
+    summary: str = Field(min_length=1, max_length=1000)
+    focus_areas: list[str] = Field(default_factory=list, max_length=6)
+    practice_questions: list[str] = Field(default_factory=list, max_length=6)
+    learning_candidates: list[InterviewLearningCandidate] = Field(
+        default_factory=list, max_length=5
+    )
+
+
 class CareerBriefing(_StrictContract):
     contract_schema: Literal["offeru.career_briefing.v1"] = Field(
         default="offeru.career_briefing.v1", alias="schema"
@@ -184,6 +204,7 @@ class CareerBriefing(_StrictContract):
     situation_summary: str = Field(min_length=1, max_length=1200)
     profile_coverage: CareerProfileCoverage
     job_assessment: JobAssessmentPlan | None = None
+    interview_lifecycle: InterviewLifecyclePlan | None = None
     priorities: list[CareerPriority] = Field(default_factory=list, max_length=3)
     actions: list[CareerAction] = Field(default_factory=list, max_length=3)
     questions: list[CareerQuestion] = Field(default_factory=list, max_length=3)

@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Awaitable, Callable, Optional, get_type_hints
 
+from fastapi.encoders import jsonable_encoder
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -105,6 +106,7 @@ from app.services.agent_operations import (
     get_role_benchmark,
     get_pre_application_state,
     get_interview_scoring_skill,
+    get_interview_career_context,
     get_profile,
     get_profile_evolution_report,
     get_resume,
@@ -167,6 +169,7 @@ from app.services.agent_operations import (
     ingest_application_signal,
     ingest_interview_behavior_events,
     record_automation_event,
+    record_learning_observation,
     record_follow_up,
     revoke_email_account,
     restart_ai_interview,
@@ -193,6 +196,7 @@ from app.services.agent_operations import (
     build_role_benchmark,
     sync_email_notifications,
     submit_ai_interview_answer,
+    submit_interview_debrief,
     update_application_record,
     update_application_status,
     uninstall_capability_plugin,
@@ -1264,6 +1268,36 @@ class ListLearningObservationsInput(_StrictOperationInput):
     limit: int = Field(default=100, ge=1, le=500)
 
 
+class InterviewCareerContextInput(_StrictOperationInput):
+    calendar_event_id: int = Field(gt=0)
+    automation_event_id: str = Field(default="", max_length=100)
+
+
+class SubmitInterviewDebriefInput(_StrictOperationInput):
+    calendar_event_id: int = Field(gt=0)
+    answers: list[str] = Field(min_length=1, max_length=3)
+
+    @model_validator(mode="after")
+    def bound_answers(self) -> "SubmitInterviewDebriefInput":
+        if any(len(answer) > 5000 for answer in self.answers):
+            raise ValueError("每条面试复盘答案最多 5000 字符")
+        if not any(answer.strip() for answer in self.answers):
+            raise ValueError("至少填写一条面试复盘答案")
+        return self
+
+
+class RecordLearningObservationInput(_StrictOperationInput):
+    source_type: str = Field(pattern="^[a-z][a-z0-9_]{0,59}$")
+    source_external_id: str = Field(min_length=1, max_length=255)
+    observation_type: str = Field(pattern="^[a-z][a-z0-9_]{0,79}$")
+    content: dict[str, Any] = Field(min_length=1)
+    source_title: str = Field(default="", max_length=300)
+    source_locator: str = Field(default="", max_length=2000)
+    source_metadata: dict[str, Any] = Field(default_factory=dict)
+    observed_at: str | None = Field(default=None, max_length=50)
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=1000)
+
+
 class ListMemoryInboxInput(_StrictOperationInput):
     status: str = Field(
         default="pending",
@@ -1978,6 +2012,24 @@ OPERATIONS: dict[str, Operation] = {
         input_model=JobAssessmentContextInput,
         version="2026-09-26",
     ),
+    "get_interview_career_context": Operation(
+        name="get_interview_career_context",
+        fn=get_interview_career_context,
+        description="读取指定真实面试日程、岗位准备状态和精简历史面试学习；复盘答复仅限本次 AutomationEvent。",
+        group="career_runtime",
+        audit_redacted_output_parameters=("interview", "job_assessment", "previous_learning", "repeated_weak_areas", "debrief_answers"),
+        input_model=InterviewCareerContextInput,
+        version="2026-09-26",
+    ),
+    "submit_interview_debrief": Operation(
+        name="submit_interview_debrief",
+        fn=submit_interview_debrief,
+        description="提交用户填写的真实面试复盘答案，幂等启动 Career Director 学习候选分析；不会直接改写职业事实。",
+        group="interview",
+        side_effects=("write",),
+        input_model=SubmitInterviewDebriefInput,
+        version="2026-09-26",
+    ),
     "correct_career_stage": Operation(
         name="correct_career_stage",
         fn=correct_career_stage,
@@ -2025,6 +2077,15 @@ OPERATIONS: dict[str, Operation] = {
         },
         group="memory",
         input_model=ListLearningObservationsInput,
+    ),
+    "record_learning_observation": Operation(
+        name="record_learning_observation",
+        fn=record_learning_observation,
+        description="保存带来源和幂等键的学习观察；观察本身不是职业事实，后续 Proposal 仍需人工审核。",
+        group="memory",
+        side_effects=("write",),
+        input_model=RecordLearningObservationInput,
+        version="2026-09-26",
     ),
     "list_memory_inbox": Operation(
         name="list_memory_inbox",
@@ -5381,8 +5442,11 @@ def _audit_failure_envelope(
 
 
 def _audit_inputs(op: Operation, inputs: dict[str, Any]) -> dict[str, Any]:
-    return redact_sensitive_value(
-        _redact_mapping(inputs, set(op.audit_redacted_parameters))
+    return jsonable_encoder(
+        redact_sensitive_value(
+            _redact_mapping(inputs, set(op.audit_redacted_parameters))
+        ),
+        exclude_none=True,
     )
 
 
@@ -5391,7 +5455,7 @@ def _audit_outputs(op: Optional[Operation], outputs: Any) -> Any:
         outputs = _redact_mapping(
             outputs, set(op.audit_redacted_output_parameters)
         )
-    return redact_sensitive_value(outputs)
+    return jsonable_encoder(redact_sensitive_value(outputs), exclude_none=True)
 
 
 def _redact_mapping(

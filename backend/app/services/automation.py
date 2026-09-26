@@ -11,7 +11,7 @@ import asyncio
 import hashlib
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import select, update
@@ -25,6 +25,7 @@ from app.models.models import (
     CareerTask,
     AutomationRule,
     JobResearchRun,
+    CalendarEvent,
 )
 from app.services.security_redaction import (
     redact_secret_text,
@@ -78,6 +79,27 @@ _DEFAULT_RULES: dict[str, dict[str, Any]] = {
         "enabled": True,
         "automation_level": "L1",
         "description": "每日由真实 Career Director 对当前机会和待办重新排序；不直接修改 Career Truth。",
+    },
+    "INTERVIEW_INVITATION_DETECTED": {
+        "task_type": "career_director",
+        "runtime_provider": "codex",
+        "enabled": True,
+        "automation_level": "L1",
+        "description": "读取已安排面试及当前岗位证据，由 Career Director 准备有依据的练习重点。",
+    },
+    "INTERVIEW_COMPLETED": {
+        "task_type": "career_director",
+        "runtime_provider": "codex",
+        "enabled": True,
+        "automation_level": "L1",
+        "description": "日历面试时间已过后主动生成复盘问题；不写入职业事实。",
+    },
+    "INTERVIEW_DEBRIEF_CREATED": {
+        "task_type": "career_director",
+        "runtime_provider": "codex",
+        "enabled": True,
+        "automation_level": "L1",
+        "description": "分析用户提交的面试复盘，仅生成待审核学习候选。",
     },
     "JOB_SAVED": {
         "task_type": "role_intelligence",
@@ -411,6 +433,7 @@ async def _dispatch_daily_review(
     review_date = str(payload.get("review_date") or "")
     date.fromisoformat(review_date)
     profile_id = int(event.target_id)
+    elapsed_interviews = await _dispatch_elapsed_interviews()
     task = await start_career_task(
         task_type="career_director",
         source="automation",
@@ -437,7 +460,128 @@ async def _dispatch_daily_review(
         body="OfferU 正在结合面试、跟进、岗位进展和待确认事项重新排序。",
         payload={"runtime_provider": provider, "task": task, "event_type": "DAILY_REVIEW"},
     )
-    return {"task": task, "profile_id": profile_id, "review_date": review_date}
+    return {
+        "task": task,
+        "profile_id": profile_id,
+        "review_date": review_date,
+        "elapsed_interviews": elapsed_interviews,
+    }
+
+
+async def _dispatch_interview_event(
+    event: AutomationEvent,
+    rule: dict[str, Any],
+) -> dict[str, Any]:
+    from app.services.career_tasks import start_career_task
+
+    payload = event.payload_json if isinstance(event.payload_json, dict) else {}
+    calendar_event_id = int(payload.get("calendar_event_id") or event.target_id or 0)
+    if calendar_event_id <= 0:
+        raise ValueError(f"{event.event_type} 缺少有效日历面试 ID")
+    job_id = int(payload.get("job_id") or 0) or None
+    provider = str(payload.get("runtime_provider") or rule.get("policy", {}).get("runtime_provider") or "codex")
+    if provider not in {"codex", "codex-app-server"}:
+        raise ValueError("Interview Career Director 需要真实 Codex Runtime")
+    # Keep the CareerTask target identical to its AutomationEvent target so
+    # task creation remains bound to the exact triggering interview.
+    target_type = event.target_type
+    target_id = event.target_id
+    task = await start_career_task(
+        task_type="career_director",
+        source="automation",
+        target_type=target_type,
+        target_id=target_id,
+        runtime_provider=provider,
+        input={
+            "automation_event_id": event.event_id,
+            "event_type": event.event_type,
+            "calendar_event_id": calendar_event_id,
+            "job_id": job_id,
+            "profile_id": int(payload["profile_id"]) if str(payload.get("profile_id") or "").isdigit() else None,
+        },
+        output_contract={"schema": "offeru.career_briefing.v1", "type": "object"},
+        idempotency_key=f"automation:{event.event_id}:career-director",
+    )
+    titles = {
+        "INTERVIEW_INVITATION_DETECTED": "OfferU 正在准备这场面试",
+        "INTERVIEW_COMPLETED": "OfferU 正在准备面试复盘问题",
+        "INTERVIEW_DEBRIEF_CREATED": "OfferU 正在整理可复核的面试学习",
+    }
+    bodies = {
+        "INTERVIEW_INVITATION_DETECTED": "职业 Agent 正在对照岗位证据、面试时间和以往学习，决定值得练习的重点。",
+        "INTERVIEW_COMPLETED": "日历显示面试时间已过；OfferU 会先问你实际经历，再整理候选学习。",
+        "INTERVIEW_DEBRIEF_CREATED": "职业 Agent 正在从你提交的复盘中提炼有来源的学习候选；确认前不会更新档案。",
+    }
+    await _upsert_inbox(
+        item_id=f"automation_task_{task['task_id']}",
+        category="fyi",
+        event_id=event.event_id,
+        task_id=task["task_id"],
+        target_type=target_type,
+        target_id=target_id,
+        title=titles[event.event_type],
+        body=bodies[event.event_type],
+        payload={
+            "runtime_provider": provider,
+            "task": task,
+            "event_type": event.event_type,
+            "calendar_event_id": calendar_event_id,
+            "job_id": job_id,
+            "autonomy_level": "L1",
+            "changes_career_truth": False,
+        },
+    )
+    return {
+        "task": task,
+        "calendar_event_id": calendar_event_id,
+        "job_id": job_id,
+        "runtime_provider": provider,
+    }
+
+
+async def _dispatch_elapsed_interviews() -> dict[str, int]:
+    """Turn recent passed interview calendar events into idempotent debrief tasks."""
+
+    now = _now()
+    cutoff = now - timedelta(days=7)
+    async with async_session() as db:
+        events = (
+            await db.execute(
+                select(CalendarEvent)
+                .where(CalendarEvent.event_type == "interview")
+                .where(CalendarEvent.start_time >= cutoff)
+                .where(CalendarEvent.start_time <= now)
+                .order_by(CalendarEvent.start_time.desc())
+                .limit(8)
+            )
+        ).scalars().all()
+    dispatched = 0
+    skipped = 0
+    for calendar_event in events:
+        start_time = calendar_event.start_time
+        end_time = calendar_event.end_time or (start_time + timedelta(hours=1))
+        if end_time.tzinfo is not None:
+            end_time = end_time.astimezone(timezone.utc).replace(tzinfo=None)
+        if end_time > now:
+            skipped += 1
+            continue
+        result = await record_automation_event(
+            event_type="INTERVIEW_COMPLETED",
+            source="calendar_elapsed",
+            target_type="interview",
+            target_id=str(calendar_event.id),
+            payload={
+                "calendar_event_id": calendar_event.id,
+                "job_id": calendar_event.related_job_id,
+                "runtime_provider": "codex",
+            },
+            dedupe_key=f"calendar-interview-completed:{calendar_event.id}",
+        )
+        if result.get("reused"):
+            skipped += 1
+        else:
+            dispatched += 1
+    return {"dispatched": dispatched, "skipped": skipped}
 
 
 async def _update_event(
@@ -614,6 +758,34 @@ async def record_automation_event(
     return {**(await _process_automation_event(event_id)), "reused": reused}
 
 
+async def record_calendar_interview_invitation(
+    *, calendar_event_id: int, source: str = "calendar"
+) -> dict[str, Any]:
+    """Emit one prep trigger for a future canonical interview calendar event."""
+
+    async with async_session() as db:
+        calendar_event = await db.get(CalendarEvent, int(calendar_event_id))
+    if calendar_event is None or calendar_event.event_type != "interview":
+        raise ValueError("Interview calendar event does not exist")
+    start_time = calendar_event.start_time
+    if start_time.tzinfo is not None:
+        start_time = start_time.astimezone(timezone.utc).replace(tzinfo=None)
+    if start_time <= _now():
+        return {"status": "not_upcoming", "calendar_event_id": calendar_event.id}
+    return await record_automation_event(
+        event_type="INTERVIEW_INVITATION_DETECTED",
+        source=source,
+        target_type="interview",
+        target_id=str(calendar_event.id),
+        payload={
+            "calendar_event_id": calendar_event.id,
+            "job_id": calendar_event.related_job_id,
+            "runtime_provider": "codex",
+        },
+        dedupe_key=f"calendar-interview-invitation:{calendar_event.id}",
+    )
+
+
 async def _process_automation_event(event_id: str) -> dict[str, Any]:
     """Process one queued signal exactly once within this backend process.
 
@@ -638,6 +810,9 @@ async def _process_automation_event(event_id: str) -> dict[str, Any]:
         "JOB_SAVED": _dispatch_job_saved,
         "PROFILE_BASELINE_REQUIRED": _dispatch_profile_baseline,
         "DAILY_REVIEW": _dispatch_daily_review,
+        "INTERVIEW_INVITATION_DETECTED": _dispatch_interview_event,
+        "INTERVIEW_COMPLETED": _dispatch_interview_event,
+        "INTERVIEW_DEBRIEF_CREATED": _dispatch_interview_event,
     }
     dispatch = dispatchers.get(event.event_type)
     if dispatch is None:
@@ -867,6 +1042,104 @@ async def handle_career_task_finished(task_id: str) -> dict[str, Any] | None:
     return item
 
 
+async def _project_interview_learning_candidates(
+    *, task: dict[str, Any], briefing: dict[str, Any], event_id: str
+) -> list[dict[str, Any]]:
+    lifecycle = briefing.get("interview_lifecycle")
+    candidates = lifecycle.get("learning_candidates") if isinstance(lifecycle, dict) else []
+    if not isinstance(candidates, list) or not candidates:
+        return []
+    async with async_session() as db:
+        event = await db.get(AutomationEvent, event_id)
+    if event is None or event.event_type != "INTERVIEW_DEBRIEF_CREATED":
+        raise ValueError("Interview learning candidates are not linked to a debrief event")
+    payload = event.payload_json if isinstance(event.payload_json, dict) else {}
+    answers = payload.get("answers") if isinstance(payload.get("answers"), list) else []
+    calendar_event_id = int(payload.get("calendar_event_id") or event.target_id or 0)
+    job_id = int(payload.get("job_id") or 0) or None
+    proposals: list[dict[str, Any]] = []
+    from app.ops import execute_operation
+
+    for index, candidate in enumerate(candidates[:5]):
+        if not isinstance(candidate, dict):
+            continue
+        answer_index = int(candidate.get("answer_index", -1))
+        if answer_index < 0 or answer_index >= len(answers) or not isinstance(answers[answer_index], dict):
+            continue
+        answer = answers[answer_index]
+        answer_text = redact_sensitive_text(str(answer.get("answer") or ""), max_length=5000)
+        source_excerpt = redact_sensitive_text(str(candidate.get("source_excerpt") or ""), max_length=400)
+        if not source_excerpt or source_excerpt.casefold() not in answer_text.casefold():
+            # Model conclusions without an exact excerpt from the user's answer
+            # remain suggestions only and are not inserted into memory.
+            continue
+        summary = redact_sensitive_text(str(candidate.get("summary") or ""), max_length=500).strip()
+        title = redact_sensitive_text(str(candidate.get("title") or ""), max_length=180).strip()
+        if not summary or not title:
+            continue
+        observation_result = await execute_operation(
+            "record_learning_observation",
+            {
+                "source_type": "interview_debrief",
+                "source_external_id": str(calendar_event_id),
+                "source_title": "OfferU 真实面试复盘",
+                "source_locator": f"calendar_interview:{calendar_event_id}/answer:{answer_index}",
+                "source_metadata": {
+                    "calendar_event_id": calendar_event_id,
+                    "job_id": job_id,
+                    "answer_index": answer_index,
+                },
+                "observation_type": "interview_debrief_candidate",
+                "content": {
+                    "title": title,
+                    "summary": summary,
+                    "candidate_type": str(candidate.get("candidate_type") or "potential_strength"),
+                    "source_excerpt": source_excerpt,
+                    "calendar_event_id": calendar_event_id,
+                    "job_id": job_id,
+                    "career_task_id": task.get("task_id"),
+                },
+                "idempotency_key": (
+                    f"interview-debrief:{event_id}:{index}:"
+                    f"{hashlib.sha256(summary.encode('utf-8')).hexdigest()}"
+                ),
+            },
+            surface="automation",
+        )
+        if not observation_result.get("ok") or not isinstance(observation_result.get("outputs"), dict):
+            raise RuntimeError("Interview learning observation could not be recorded")
+        observation = observation_result["outputs"]
+        proposal_result = await execute_operation(
+            "create_memory_proposal",
+            {
+                "observation_id": int(observation.get("id") or 0),
+                "target_tier": "career_hypothesis",
+                "section_type": "skill",
+                "title": title,
+                "after": {"bullet": summary, "description": summary},
+                "reason": redact_sensitive_text(
+                    str(candidate.get("review_reason") or "来自一场真实面试的学习观察；接受前不会成为职业事实。"),
+                    max_length=1000,
+                ),
+                "impact": ["作为后续岗位准备和面试训练的参考；须由你审核"],
+            },
+            surface="automation",
+        )
+        if not proposal_result.get("ok") or not isinstance(proposal_result.get("outputs"), dict):
+            raise RuntimeError("Interview learning proposal could not be created")
+        proposal = proposal_result["outputs"]
+        proposals.append(
+            {
+                "observation_id": observation.get("id"),
+                "proposal_id": proposal.get("id"),
+                "title": title,
+                "target_tier": "career_hypothesis",
+                "status": proposal.get("status", "pending"),
+            }
+        )
+    return proposals
+
+
 async def _project_career_director_task(task: dict[str, Any]) -> dict[str, Any] | None:
     input_payload = task.get("input") if isinstance(task.get("input"), dict) else {}
     event_id = str(input_payload.get("automation_event_id") or "")
@@ -877,13 +1150,25 @@ async def _project_career_director_task(task: dict[str, Any]) -> dict[str, Any] 
     event_type = str(input_payload.get("event_type") or "PROFILE_BASELINE_REQUIRED").upper()
     is_daily = event_type == "DAILY_REVIEW"
     is_job_saved = event_type == "JOB_SAVED"
+    is_interview = event_type in {
+        "INTERVIEW_INVITATION_DETECTED",
+        "INTERVIEW_COMPLETED",
+        "INTERVIEW_DEBRIEF_CREATED",
+    }
     completed = task["status"] == "completed" and bool(briefing)
     category = "needs_review" if completed else "failed"
+    interview_titles = {
+        "INTERVIEW_INVITATION_DETECTED": "面试准备计划已准备",
+        "INTERVIEW_COMPLETED": "面试复盘问题已准备",
+        "INTERVIEW_DEBRIEF_CREATED": "面试学习候选已准备",
+    }
     title = (
         "今天的求职行动简报已准备"
         if completed and is_daily
         else "岗位匹配评估计划已准备"
         if completed and is_job_saved
+        else interview_titles[event_type]
+        if completed and is_interview
         else "你的职业方向建议已准备"
         if completed
         else "每日职业简报需要处理"
@@ -893,17 +1178,33 @@ async def _project_career_director_task(task: dict[str, Any]) -> dict[str, Any] 
         else "职业方向分析需要处理"
     )
     summary = str(briefing.get("situation_summary") or "")
+    learning_proposals: list[dict[str, Any]] = []
+    if completed and event_type == "INTERVIEW_DEBRIEF_CREATED":
+        learning_proposals = await _project_interview_learning_candidates(
+            task=task,
+            briefing=briefing,
+            event_id=event_id,
+        )
+    lifecycle = briefing.get("interview_lifecycle") if isinstance(briefing.get("interview_lifecycle"), dict) else {}
     body = (
         summary or (
             "OfferU 已根据当前求职状态准备今日行动排序，等待你查看。"
             if is_daily
             else "OfferU 已比较岗位要求与你的职业证据，并整理了匹配依据和准备优先级。"
             if is_job_saved
+            else str(lifecycle.get("summary") or "OfferU 已结合这场面试的岗位证据准备下一步。")
+            if is_interview
             else "OfferU 已准备职业阶段、证据强弱和下一步问题，等待你查看。"
         )
         if completed
         else f"OfferU 没能完成这次分析：{task.get('error') or '任务失败'}"
     )
+    if completed and event_type == "INTERVIEW_DEBRIEF_CREATED":
+        body += (
+            f" 已整理 {len(learning_proposals)} 条学习候选，均需你在 Profile 记忆收件箱复核。"
+            if learning_proposals
+            else " 这次复盘没有形成有直接回答证据的学习候选。"
+        )
     review_date = str(input_payload.get("review_date") or "")
     role_intelligence_task: dict[str, Any] | None = None
     role_intelligence_error = ""
@@ -976,6 +1277,8 @@ async def _project_career_director_task(task: dict[str, Any]) -> dict[str, Any] 
             },
             "briefing": briefing if completed else {},
             "job_assessment": briefing.get("job_assessment") if completed and is_job_saved else {},
+            "interview_lifecycle": lifecycle if completed and is_interview else {},
+            "learning_proposals": learning_proposals,
             "event_type": event_type,
             "review_date": review_date,
             "autonomy_level": "L1",
@@ -991,6 +1294,7 @@ async def _project_career_director_task(task: dict[str, Any]) -> dict[str, Any] 
             "inbox_item_id": item["item_id"],
             "role_intelligence_task_id": role_intelligence_task.get("task_id") if role_intelligence_task else None,
             "role_intelligence_error": role_intelligence_error or None,
+            "learning_proposal_count": len(learning_proposals),
         },
         error=task.get("error") or "",
         expected_statuses=("processing", "dispatched"),
@@ -1128,5 +1432,6 @@ __all__ = [
     "list_automation_inbox",
     "list_automation_rules",
     "record_automation_event",
+    "record_calendar_interview_invitation",
     "resolve_automation_inbox_item",
 ]

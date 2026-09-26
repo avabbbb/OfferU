@@ -55,7 +55,9 @@ The first owner-dogfood review identified a product-level autonomy gap: OfferU h
 
 The accepted product slice is the bounded [Proactive Career Director](./docs/product/proactive-career-director.md): event-triggered career-state judgment, campus/experienced Strategy Packs, proactive Profile discovery, Daily/Weekly briefing, interview lifecycle and Resume re-engagement — without introducing a second infinite Agent loop.
 
-Implementation uses synthetic fixtures and isolated test databases. First-run Profile Discovery is committed as `73c522e`; Daily Career Brief is committed as `bb2fb36`; Job Saved Assessment Plan is committed as `d3508c8`. The shared import Operations emit idempotent JOB_SAVED events, a real Codex Career Director reads Career and Job context, and Role Intelligence starts only when the validated model plan recommends it. The plan is persisted to CareerTask/Automation Inbox and shown in Job Workspace. Interview Prep/Debrief and Resume Re-engagement remain; do not wait for real Resume/Profile/Job data before completing them. Owner dogfood follows implementation and full regression.
+Implementation uses synthetic fixtures and isolated test databases. First-run Profile Discovery is committed as `73c522e`; Daily Career Brief is committed as `bb2fb36`; Job Saved Assessment Plan is committed as `d3508c8`. The shared import Operations emit idempotent JOB_SAVED events, a real Codex Career Director reads Career and Job context, and Role Intelligence starts only when the validated model plan recommends it. The plan is persisted to CareerTask/Automation Inbox and shown in Job Workspace. Resume Re-engagement is the remaining product slice; do not wait for real Resume/Profile/Job data before completing it. Owner dogfood follows implementation and full regression.
+
+Interview Prep/Debrief is now implemented in the working tree: calendar-backed invitation and elapsed-interview events launch bounded Codex CareerTasks, Today and Job Workspace show the current lifecycle result, and user answers produce source-linked pending learning proposals. Synthetic integration coverage verifies idempotency and that Career Truth is unchanged; focused frontend tests and typecheck pass. Resume Updated Re-engagement is the remaining slice.
 
 ## Active validation
 
@@ -67,9 +69,8 @@ Implementation uses synthetic fixtures and isolated test databases. First-run Pr
 
 ## Current priorities
 
-1. Implement Slice 4, proactive Interview Prep and post-interview Debrief.
-2. Implement Slice 5, Resume Updated Re-engagement candidates with dedupe and no external sends.
-3. Run full backend regression and complete frontend tests/typecheck/build; attempt local Codex integration smoke and sync docs.
+1. Implement Slice 5, Resume Updated Re-engagement candidates with dedupe and no external sends.
+2. Run full backend regression and complete frontend tests/typecheck/build; attempt local Codex integration smoke and sync docs.
 4. Verify no synthetic artifacts or real-data copies were committed.
 5. Only after the implementation Definition of Done, begin owner dogfood with a real Resume and three real Jobs.
 6. Keep OMP/SWE-2 isolation and public-release signing/clean-machine evidence as separate external gates.
