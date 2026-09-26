@@ -9,7 +9,21 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import func, select, update
 
 from app.database import async_session
-from app.models.models import Profile, ProfileSection, ProfileTargetRole
+from app.models.models import (
+    ApplicationAttempt,
+    ApplicationStageEvent,
+    AutomationInboxItem,
+    CareerTask,
+    Job,
+    LearningObservation,
+    MemoryProposal,
+    Profile,
+    ProfileSection,
+    ProfileTargetRole,
+    Resume,
+    ResumeVersion,
+    RoleBenchmarkDocument,
+)
 from app.services.security_redaction import redact_sensitive_text
 
 CareerTrack = Literal["campus", "experienced"]
@@ -89,14 +103,70 @@ class CareerGoals(_StrictContract):
     timing: str | None = Field(default=None, max_length=160)
 
 
+class CareerResumeJobRef(_StrictContract):
+    job_id: int = Field(gt=0)
+    company: str = Field(default="", max_length=180)
+    role: str = Field(default="", max_length=220)
+    application_attempt_id: int | None = Field(default=None, gt=0)
+    applied_resume_version: int | None = Field(default=None, ge=0)
+    current_stage: str = Field(default="", max_length=80)
+
+
+class CareerResumeState(_StrictContract):
+    current_resume_id: int | None = Field(default=None, gt=0)
+    current_version_id: int | None = Field(default=None, gt=0)
+    current_version_number: int | None = Field(default=None, ge=0)
+    workspace_revision: int = Field(default=0, ge=0)
+    material_change_summary: str = Field(default="", max_length=400)
+    has_material_change: bool = False
+    jobs_using_older_resume: list[CareerResumeJobRef] = Field(default_factory=list, max_length=12)
+
+
+class CareerLearningDigest(_StrictContract):
+    repeated_weak_areas: list[str] = Field(default_factory=list, max_length=8)
+    recurring_question_themes: list[str] = Field(default_factory=list, max_length=8)
+    recent_findings_count: int = Field(default=0, ge=0)
+    user_corrections_count: int = Field(default=0, ge=0)
+
+
+class CareerAttention(_StrictContract):
+    pending_proposals: int = Field(default=0, ge=0)
+    pending_memory_items: int = Field(default=0, ge=0)
+    automation_inbox_pending: int = Field(default=0, ge=0)
+    blocked_tasks: int = Field(default=0, ge=0)
+
+
+class RoleFamilyFunnel(_StrictContract):
+    role_family: str = Field(min_length=1, max_length=160)
+    saved: int = Field(default=0, ge=0)
+    applied: int = Field(default=0, ge=0)
+    interview: int = Field(default=0, ge=0)
+    offer: int = Field(default=0, ge=0)
+    rejected: int = Field(default=0, ge=0)
+
+
+class CareerPipelineDigest(_StrictContract):
+    active_count: int = Field(default=0, ge=0)
+    no_response_count: int = Field(default=0, ge=0)
+    interview_count: int = Field(default=0, ge=0)
+    rejected_count: int = Field(default=0, ge=0)
+    offer_count: int = Field(default=0, ge=0)
+    role_family_funnel: list[RoleFamilyFunnel] = Field(default_factory=list, max_length=12)
+
+
 class CareerSnapshot(_StrictContract):
-    contract_schema: Literal["offeru.career_snapshot.v1"] = Field(
-        default="offeru.career_snapshot.v1", alias="schema"
+    contract_schema: Literal["offeru.career_snapshot.v2"] = Field(
+        default="offeru.career_snapshot.v2", alias="schema"
     )
     profile_id: int | None = None
     identity: CareerIdentity
     goals: CareerGoals
     profile_coverage: CareerProfileCoverage
+    resume: CareerResumeState = Field(default_factory=CareerResumeState)
+    learning: CareerLearningDigest = Field(default_factory=CareerLearningDigest)
+    attention: CareerAttention = Field(default_factory=CareerAttention)
+    pipeline: CareerPipelineDigest = Field(default_factory=CareerPipelineDigest)
+    strategy_pack: Literal["campus_search.v1", "experienced_search.v1"] | None = None
 
 
 class CareerPriority(_StrictContract):
@@ -256,6 +326,234 @@ def _career_section_summary(section: ProfileSection) -> str:
     return f"profile-section:{section.id} {display}"[:420]
 
 
+def _track_from_stage(stage: dict[str, Any] | None) -> str | None:
+    if not isinstance(stage, dict):
+        return None
+    track = str(stage.get("track") or "").strip()
+    return track if track in {"campus", "experienced"} else None
+
+
+async def _build_resume_state(db: Any, profile_id: int | None) -> CareerResumeState:
+    """Read canonical Resume truth: current version and which jobs used older ones."""
+    resume_query = select(Resume).order_by(Resume.updated_at.desc())
+    if profile_id is not None:
+        resume_query = resume_query.where(
+            (Resume.source_profile_id == profile_id) | (Resume.source_profile_id.is_(None))
+        )
+    resumes = (await db.execute(resume_query.limit(20))).scalars().all()
+    if not resumes:
+        return CareerResumeState()
+    current = next((row for row in resumes if row.is_primary), resumes[0])
+    current_version: ResumeVersion | None = None
+    if current.current_version_id:
+        current_version = await db.get(ResumeVersion, int(current.current_version_id))
+    if current_version is None:
+        current_version = (
+            await db.execute(
+                select(ResumeVersion)
+                .where(ResumeVersion.resume_id == current.id)
+                .order_by(ResumeVersion.version_number.desc())
+                .limit(1)
+            )
+        ).scalars().first()
+    current_version_number = int(current_version.version_number) if current_version else 0
+
+    attempts = (
+        await db.execute(
+            select(ApplicationAttempt, Job)
+            .join(Job, Job.id == ApplicationAttempt.job_id)
+            .where(ApplicationAttempt.resume_version_id.is_not(None))
+            .order_by(ApplicationAttempt.created_at.desc())
+            .limit(200)
+        )
+    ).all()
+    stage_rows = (
+        await db.execute(
+            select(ApplicationStageEvent.application_attempt_id, ApplicationStageEvent.stage, ApplicationStageEvent.occurred_at)
+            .order_by(ApplicationStageEvent.occurred_at.desc())
+        )
+    ).all()
+    latest_stage: dict[int, str] = {}
+    for attempt_id, stage, _occurred in stage_rows:
+        latest_stage.setdefault(int(attempt_id), str(stage))
+
+    version_numbers: dict[int, int] = {}
+    older_refs: list[CareerResumeJobRef] = []
+    seen_jobs: set[int] = set()
+    terminal = {"rejected", "offer", "withdrawn"}
+    for attempt, job in attempts:
+        if int(job.id) in seen_jobs:
+            continue
+        if attempt.resume_id is not None and int(attempt.resume_id) != int(current.id):
+            continue
+        ver_id = int(attempt.resume_version_id or 0)
+        if ver_id and ver_id not in version_numbers:
+            ver = await db.get(ResumeVersion, ver_id)
+            version_numbers[ver_id] = int(ver.version_number) if ver else 0
+        applied_version = version_numbers.get(ver_id, 0)
+        stage = latest_stage.get(int(attempt.id), str(attempt.status or ""))
+        if applied_version and current_version_number and applied_version < current_version_number:
+            if stage.casefold() in terminal:
+                continue
+            seen_jobs.add(int(job.id))
+            older_refs.append(
+                CareerResumeJobRef(
+                    job_id=int(job.id),
+                    company=_safe_text(job.company, limit=180),
+                    role=_safe_text(job.title, limit=220),
+                    application_attempt_id=int(attempt.id),
+                    applied_resume_version=applied_version,
+                    current_stage=_safe_text(stage, limit=80),
+                )
+            )
+        if len(older_refs) >= 12:
+            break
+    return CareerResumeState(
+        current_resume_id=int(current.id),
+        current_version_id=int(current_version.id) if current_version else None,
+        current_version_number=current_version_number,
+        workspace_revision=int(current.workspace_revision or 0),
+        material_change_summary=_safe_text(current_version.change_summary if current_version else "", limit=400),
+        has_material_change=bool(older_refs),
+        jobs_using_older_resume=older_refs,
+    )
+
+
+async def _build_learning_digest(db: Any) -> CareerLearningDigest:
+    observations = (
+        await db.execute(
+            select(LearningObservation)
+            .where(LearningObservation.status == "active")
+            .order_by(LearningObservation.observed_at.desc())
+            .limit(40)
+        )
+    ).scalars().all()
+    weak_counts: dict[str, int] = {}
+    theme_counts: dict[str, int] = {}
+    findings = 0
+    for observation in observations:
+        content = observation.content_json if isinstance(observation.content_json, dict) else {}
+        findings += 1
+        for area in content.get("weak_areas") or []:
+            area_text = _safe_text(area, limit=180)
+            if area_text:
+                weak_counts[area_text] = weak_counts.get(area_text, 0) + 1
+        role_intel = content.get("role_intelligence") if isinstance(content.get("role_intelligence"), dict) else {}
+        for focus in role_intel.get("focuses") or []:
+            if not isinstance(focus, dict):
+                continue
+            for gap in focus.get("observed_answer_gaps") or []:
+                gap_text = _safe_text(gap, limit=180)
+                if gap_text:
+                    weak_counts[gap_text] = weak_counts.get(gap_text, 0) + 1
+        for theme in content.get("question_themes") or []:
+            theme_text = _safe_text(theme, limit=120)
+            if theme_text:
+                theme_counts[theme_text] = theme_counts.get(theme_text, 0) + 1
+    repeated_weak = sorted(weak_counts, key=lambda a: (-weak_counts[a], a.casefold()))[:8]
+    themes = sorted(theme_counts, key=lambda a: (-theme_counts[a], a.casefold()))[:8]
+    corrections = (
+        await db.execute(
+            select(func.count(MemoryProposal.id)).where(MemoryProposal.review_note.like("%stage%"))
+        )
+    ).scalar_one() or 0
+    return CareerLearningDigest(
+        repeated_weak_areas=repeated_weak,
+        recurring_question_themes=themes,
+        recent_findings_count=findings,
+        user_corrections_count=int(corrections),
+    )
+
+
+async def _build_attention(db: Any) -> CareerAttention:
+    pending_memory = (
+        await db.execute(select(func.count(MemoryProposal.id)).where(MemoryProposal.status == "pending"))
+    ).scalar_one() or 0
+    inbox_pending = (
+        await db.execute(select(func.count(AutomationInboxItem.item_id)).where(AutomationInboxItem.status == "pending"))
+    ).scalar_one() or 0
+    blocked = (
+        await db.execute(select(func.count(CareerTask.task_id)).where(CareerTask.status == "blocked"))
+    ).scalar_one() or 0
+    pending_proposals = (
+        await db.execute(
+            select(func.count(AutomationInboxItem.item_id)).where(
+                AutomationInboxItem.status == "pending",
+                AutomationInboxItem.category == "needs_approval",
+            )
+        )
+    ).scalar_one() or 0
+    return CareerAttention(
+        pending_proposals=int(pending_proposals),
+        pending_memory_items=int(pending_memory),
+        automation_inbox_pending=int(inbox_pending),
+        blocked_tasks=int(blocked),
+    )
+
+
+async def _build_pipeline_digest(db: Any) -> CareerPipelineDigest:
+    attempts = (await db.execute(select(ApplicationAttempt))).scalars().all()
+    latest_stage: dict[int, str] = {}
+    stage_rows = (
+        await db.execute(
+            select(ApplicationStageEvent.application_attempt_id, ApplicationStageEvent.stage, ApplicationStageEvent.occurred_at)
+            .order_by(ApplicationStageEvent.occurred_at.asc())
+        )
+    ).all()
+    for attempt_id, stage, _occurred in stage_rows:
+        latest_stage[int(attempt_id)] = str(stage)
+
+    job_ids = [int(a.job_id) for a in attempts]
+    jobs = {int(j.id): j for j in (await db.execute(select(Job).where(Job.id.in_(job_ids or [0])))).scalars().all()}
+    family_rows = (
+        await db.execute(
+            select(RoleBenchmarkDocument.job_id, RoleBenchmarkDocument.role_family)
+            .where(RoleBenchmarkDocument.job_id.is_not(None))
+            .where(RoleBenchmarkDocument.role_family != "")
+            .order_by(RoleBenchmarkDocument.created_at.desc())
+        )
+    ).all()
+    family_by_job: dict[int, str] = {}
+    for job_id, family in family_rows:
+        family_by_job.setdefault(int(job_id), _safe_text(family, limit=160))
+
+    counts = {"active": 0, "no_response": 0, "interview": 0, "rejected": 0, "offer": 0}
+    funnel: dict[str, dict[str, int]] = {}
+    saved_jobs = (await db.execute(select(func.count(Job.id)))).scalar_one() or 0
+    for attempt in attempts:
+        stage = latest_stage.get(int(attempt.id), str(attempt.status or "prepared")).casefold()
+        family = family_by_job.get(int(attempt.job_id), "unclassified")
+        bucket = funnel.setdefault(family, {"saved": 0, "applied": 0, "interview": 0, "offer": 0, "rejected": 0})
+        bucket["saved"] += 1
+        if stage in {"applied", "written_test", "assessment"}:
+            counts["active"] += 1
+            counts["no_response"] += 1
+            bucket["applied"] += 1
+        elif stage.startswith("interview"):
+            counts["interview"] += 1
+            bucket["interview"] += 1
+        elif stage == "offer":
+            counts["offer"] += 1
+            bucket["offer"] += 1
+        elif stage in {"rejected", "withdrawn"}:
+            counts["rejected"] += 1
+            bucket["rejected"] += 1
+        else:
+            counts["active"] += 1
+    digest = CareerPipelineDigest(
+        active_count=counts["active"],
+        no_response_count=counts["no_response"],
+        interview_count=counts["interview"],
+        rejected_count=counts["rejected"],
+        offer_count=counts["offer"],
+        role_family_funnel=[
+            RoleFamilyFunnel(role_family=name, **buckets)
+            for name, buckets in sorted(funnel.items(), key=lambda kv: -sum(kv[1].values()))
+        ][:12],
+    )
+    return digest
+
+
 def _confirmed_stage(base_info: dict[str, Any]) -> CareerStageAssessment | None:
     raw = base_info.get("career_stage_correction")
     if raw is None:
@@ -275,6 +573,10 @@ def _make_snapshot(
     base_info: dict[str, Any],
     roles: list[ProfileTargetRole],
     sections: list[ProfileSection],
+    resume: CareerResumeState | None = None,
+    learning: CareerLearningDigest | None = None,
+    attention: CareerAttention | None = None,
+    pipeline: CareerPipelineDigest | None = None,
 ) -> CareerSnapshot:
     preferences = _archive_section(base_info, "applicationArchive", "jobPreference")
     campus = _archive_section(base_info, "applicationArchive", "campusFields")
@@ -339,11 +641,12 @@ def _make_snapshot(
         or campus.get("graduationDate"),
         limit=160,
     )
+    confirmed = _confirmed_stage(base_info)
     return CareerSnapshot(
         profile_id=profile_id,
         identity=CareerIdentity(
-            career_stage=_confirmed_stage(base_info),
-            career_stage_source="user_confirmed" if _confirmed_stage(base_info) else None,
+            career_stage=confirmed,
+            career_stage_source="user_confirmed" if confirmed else None,
             experience_years=(
                 float(base_info["experience_years"])
                 if isinstance(base_info.get("experience_years"), (int, float))
@@ -368,6 +671,15 @@ def _make_snapshot(
             unknowns=unknowns,
             underexpressed_strengths=[],
         ),
+        resume=resume or CareerResumeState(),
+        learning=learning or CareerLearningDigest(),
+        attention=attention or CareerAttention(),
+        pipeline=pipeline or CareerPipelineDigest(),
+        strategy_pack=(
+            "campus_search.v1" if _track_from_stage(confirmed.model_dump() if confirmed else None) == "campus"
+            else "experienced_search.v1" if confirmed
+            else None
+        ),
     )
 
 
@@ -390,6 +702,10 @@ async def build_career_snapshot() -> dict[str, Any]:
                 roles=[],
                 sections=[],
             ).model_dump(mode="json", by_alias=True)
+        resume_state = await _build_resume_state(db, profile.id)
+        learning_digest = await _build_learning_digest(db)
+        attention = await _build_attention(db)
+        pipeline_digest = await _build_pipeline_digest(db)
         roles = (
             await db.execute(
                 select(ProfileTargetRole)
@@ -415,6 +731,10 @@ async def build_career_snapshot() -> dict[str, Any]:
             base_info=base_info,
             roles=roles,
             sections=sections,
+            resume=resume_state,
+            learning=learning_digest,
+            attention=attention,
+            pipeline=pipeline_digest,
         ).model_dump(mode="json", by_alias=True)
 
 

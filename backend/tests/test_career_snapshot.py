@@ -140,7 +140,7 @@ def test_career_snapshot_is_read_only_and_keeps_unknown_distinct_from_weak(tmp_p
 
     snapshot, profile_count = asyncio.run(flow())
     assert profile_count == 1
-    assert snapshot["schema"] == "offeru.career_snapshot.v1"
+    assert snapshot["schema"] == "offeru.career_snapshot.v2"
     assert snapshot["identity"]["career_stage"] is None
     assert snapshot["identity"]["employment_state"] == "考虑新的全职机会"
     assert snapshot["goals"]["primary_roles"] == ["产品分析师"]
@@ -448,7 +448,7 @@ def test_daily_context_collects_synthetic_urgency_proposals_learning_and_ignored
             await engine.dispose()
 
     context = asyncio.run(flow())
-    assert context["schema"] == "offeru.daily_career_context.v1"
+    assert context["schema"] == "offeru.daily_career_context.v2"
     assert context["pipeline"][0]["job_id"] > 0
     assert context["upcoming_interviews"][0]["title"] == "Synthetic panel interview"
     assert context["follow_ups_due"][0]["urgency"] == "overdue"
@@ -627,14 +627,14 @@ def test_daily_career_director_must_read_daily_context_and_keeps_new_urgent_acti
             import app.ops as ops
 
             snapshot = {
-                "schema": "offeru.career_snapshot.v1",
+                "schema": "offeru.career_snapshot.v2",
                 "profile_id": 1,
                 "identity": {"career_stage": None},
                 "goals": {"primary_roles": ["Synthetic analyst"]},
                 "profile_coverage": {},
             }
             daily_context = {
-                "schema": "offeru.daily_career_context.v1",
+                "schema": "offeru.daily_career_context.v2",
                 "review_date": "2026-09-26",
                 "pipeline": [],
                 "follow_ups_due": [],
@@ -959,7 +959,7 @@ def test_profile_discovery_runs_one_codex_task_reads_registry_snapshot_and_proje
     assert task["status"] == "completed", task
     assert task["result"]["runtime"]["provider"] == "codex"
     assert task["result"]["runtime"]["tool_calls"] == ["get_career_snapshot"]
-    assert snapshot["schema"] == "offeru.career_snapshot.v1"
+    assert snapshot["schema"] == "offeru.career_snapshot.v2"
     assert snapshot["goals"]["primary_roles"] == ["数据分析师"]
     assert state["event_status"] == "completed"
     assert state["inbox_category"] == "needs_review"
