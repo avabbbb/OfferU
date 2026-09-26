@@ -581,6 +581,29 @@ class PrepareResumeOptimizationInput(_StrictOperationInput):
     source_session_id: str | None = Field(default=None, min_length=1, max_length=60)
 
 
+class ResumePreparationContextInput(_StrictOperationInput):
+    job_id: int = Field(gt=0)
+    replaces_proposal_id: str | None = Field(default=None, max_length=80)
+    affected_source_section_ids: list[PositiveInt] | None = Field(default=None, max_length=30)
+
+
+class PersistDirectorResumeInput(_StrictOperationInput):
+    job_id: int = Field(gt=0)
+    task_id: str = Field(min_length=1, max_length=80)
+    preparation: dict[str, Any]
+    replaces_proposal_id: str | None = Field(default=None, max_length=80)
+
+
+class CareerQuestionTaskInput(_StrictOperationInput):
+    task_id: str = Field(min_length=1, max_length=80)
+
+
+class SubmitCareerAnswerInput(CareerQuestionTaskInput):
+    question_index: int = Field(ge=0, le=2)
+    answer: str = Field(min_length=1, max_length=5000)
+    proposal_id: str | None = Field(default=None, max_length=80)
+
+
 class ListCalendarEventsInput(_StrictOperationInput):
     start: str | None = Field(default=None, min_length=1, max_length=64)
     end: str | None = Field(default=None, min_length=1, max_length=64)
@@ -1349,7 +1372,7 @@ class SaveCareerArtifactInput(_StrictOperationInput):
         pattern=(
             "^(application_answers|application_email|company_research|cover_letter|"
             "follow_up_draft|interview_debrief|interview_prep|interview_risk_review|"
-            "job_evaluation|offer_review|pattern_analysis|reply_digest|skill_gap)$"
+            "job_evaluation|offer_review|pattern_analysis|reply_digest|skill_gap|reengagement_candidate)$"
         )
     )
     title: str = Field(min_length=1, max_length=300)
@@ -1366,7 +1389,7 @@ class ListCareerArtifactsInput(_StrictOperationInput):
         pattern=(
             "^(application_answers|application_email|company_research|cover_letter|"
             "follow_up_draft|interview_debrief|interview_prep|interview_risk_review|"
-            "job_evaluation|offer_review|pattern_analysis|reply_digest|skill_gap)$"
+            "job_evaluation|offer_review|pattern_analysis|reply_digest|skill_gap|reengagement_candidate)$"
         ),
     )
     limit: int = Field(default=100, ge=1, le=500)
@@ -1841,6 +1864,30 @@ async def _batch_triage_via_canonical_update(
     )
 
 
+async def _get_resume_preparation_context(**kwargs: Any) -> dict[str, Any]:
+    from app.services.resume_optimization import get_resume_preparation_context
+
+    return await get_resume_preparation_context(**kwargs)
+
+
+async def _persist_director_resume_proposal(**kwargs: Any) -> dict[str, Any]:
+    from app.services.resume_optimization import persist_director_resume_proposal
+
+    return await persist_director_resume_proposal(**kwargs)
+
+
+async def _get_career_questions(**kwargs: Any) -> dict[str, Any]:
+    from app.services.career_questions import get_career_questions
+
+    return await get_career_questions(**kwargs)
+
+
+async def _submit_career_answer(**kwargs: Any) -> dict[str, Any]:
+    from app.services.career_questions import submit_career_answer
+
+    return await submit_career_answer(**kwargs)
+
+
 async def _prepare_resume_optimization_after_pre_application(
     **kwargs: Any,
 ) -> dict[str, Any]:
@@ -1899,6 +1946,42 @@ async def _search_jobs_via_sources(
     }
 
 OPERATIONS: dict[str, Operation] = {
+    "get_resume_preparation_context": Operation(
+        name="get_resume_preparation_context",
+        fn=_get_resume_preparation_context,
+        description="读取岗位 JD、已验证职业证据与待修订提案；不生成、不采用简历。",
+        group="career_runtime",
+        input_model=ResumePreparationContextInput,
+        audit_redacted_output_parameters=("sections", "source_rows", "evidence", "jd_text", "original_rows", "proposed_rows"),
+    ),
+    "persist_director_resume_proposal": Operation(
+        name="persist_director_resume_proposal",
+        fn=_persist_director_resume_proposal,
+        description="校验真实 CareerTask 的岗位化草稿并保存为待审核提案；不采用、不投递。",
+        group="resume",
+        side_effects=("write",),
+        input_model=PersistDirectorResumeInput,
+        audit_redacted_parameters=("preparation",),
+        audit_redacted_output_parameters=("original_rows", "proposed_rows", "diff", "strategy", "presentation"),
+    ),
+    "get_career_questions": Operation(
+        name="get_career_questions",
+        fn=_get_career_questions,
+        description="读取指定职业任务的关键问题、回答和审核状态。",
+        group="profile",
+        input_model=CareerQuestionTaskInput,
+        audit_redacted_output_parameters=("questions", "answers"),
+    ),
+    "submit_career_answer": Operation(
+        name="submit_career_answer",
+        fn=_submit_career_answer,
+        description="保存关键问题的回答与来源为待审核候选；不直接改变 Career Truth。",
+        group="profile",
+        side_effects=("write",),
+        input_model=SubmitCareerAnswerInput,
+        audit_redacted_parameters=("answer",),
+        audit_redacted_output_parameters=("answer", "observation", "proposal"),
+    ),
     "get_data_safety_status": Operation(
         name="get_data_safety_status",
         fn=get_data_safety_status,

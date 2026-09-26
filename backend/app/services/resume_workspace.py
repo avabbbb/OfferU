@@ -161,10 +161,49 @@ def _job_dict(job: Optional[Job]) -> Optional[dict[str, Any]]:
     }
 
 
-async def _require_resume_proposal_gate(job_id: int) -> None:
+async def _has_live_director_proposal(
+    db,
+    job_id: int,
+    proposal_id: Optional[str] = None,
+) -> bool:
+    from app.services.resume_optimization import DIRECTOR_SOURCE_MODE
+
+    query = select(ResumeOptimizationProposal).where(
+        ResumeOptimizationProposal.job_id == job_id
+    )
+    if proposal_id:
+        query = query.where(
+            ResumeOptimizationProposal.proposal_id == proposal_id
+        )
+    proposals = list((await db.execute(query)).scalars().all())
+    return any(
+        (proposal.trace_json or {}).get("source_mode") == DIRECTOR_SOURCE_MODE
+        and proposal.status in {"ready", "blocked", "in_review", "accepted"}
+        for proposal in proposals
+    )
+
+
+async def _require_resume_proposal_gate(
+    job_id: int,
+    proposal_id: Optional[str] = None,
+) -> None:
     state = await get_pre_application_state(job_id)
-    if state.get("stage") != "resume_proposal_ready":
-        raise ValueError("只有用户确认投或有条件投并生成简历提案后才能进入 Resume Workspace")
+    if state.get("stage") == "resume_proposal_ready":
+        return
+    # L1 Career Director proposals are prepared JD-only: no accepted research
+    # run and no pre-application decision exists upstream of them.  A
+    # persisted, non-terminal director proposal is itself the reviewable
+    # artifact, so it unlocks the workspace for reading and per-item review
+    # while human L2 acceptance still gates any Career Truth change.
+    try:
+        async with async_session() as db:
+            if await _has_live_director_proposal(db, job_id, proposal_id=proposal_id):
+                return
+    except Exception:
+        # The decision-stage check already denied entry; a fallback lookup
+        # failure must never silently unlock the workspace.
+        pass
+    raise ValueError("只有用户确认投或有条件投并生成简历提案后才能进入 Resume Workspace")
 
 
 def _version_dict(version: ResumeVersion, current_id: Optional[int]) -> dict[str, Any]:
@@ -331,7 +370,7 @@ async def ensure_resume_workspace(
         if reference_resume_id is not None
         else None
     )
-    await _require_resume_proposal_gate(clean_job_id)
+    await _require_resume_proposal_gate(clean_job_id, proposal_id=clean_proposal_id)
     async with async_session() as db:
         job = await db.get(Job, clean_job_id)
         if job is None:
@@ -616,6 +655,49 @@ async def review_resume_proposal_item(
             if proposal.status == "blocked" or (proposal.fact_gates_json or {}).get("status") == "blocked":
                 raise ValueError("事实门处于 blocked，不能接受该建议")
             expected_hash = proposal.workspace_snapshot_hash
+            if proposal.status in {"stale", "accepted", "rejected"}:
+                raise ValueError(f"提案已处于终态 {proposal.status}，不能逐条接受")
+            # A stale JD or Profile invalidates every remaining diff, not just
+            # the workspace copy: accepting an item must see the same freshness
+            # envelope as accepting the whole proposal.
+            current_jd = (job.raw_description or "").strip() if job else ""
+            expected_jd_hash = str(
+                (proposal.strategy_json or {}).get("job_description_sha256") or ""
+            )
+            if expected_jd_hash and (
+                not current_jd
+                or hashlib.sha256(
+                    json.dumps(current_jd, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+                ).hexdigest() != expected_jd_hash
+            ):
+                proposal.status = "stale"
+                proposal.review_note = "提案生成后岗位 JD 已变化或缺失，请重新生成"
+                proposal.reviewed_at = _now()
+                await db.commit()
+                raise ValueError(proposal.review_note)
+            expected_source_hash = str(proposal.source_snapshot_hash or "")
+            if expected_source_hash:
+                from app.services.resume_optimization import _profile_snapshot_hash
+
+                source_rows = list(
+                    (
+                        await db.execute(
+                            select(ProfileSection)
+                            .where(ProfileSection.id.in_(proposal.source_section_ids_json or []))
+                            .where(ProfileSection.profile_id == proposal.profile_id)
+                            .where(ProfileSection.tier == "verified_fact")
+                            .where(ProfileSection.status == "active")
+                        )
+                    ).scalars().all()
+                )
+                if len(source_rows) != len(set(proposal.source_section_ids_json or [])) or (
+                    _profile_snapshot_hash(source_rows) != expected_source_hash
+                ):
+                    proposal.status = "stale"
+                    proposal.review_note = "提案生成后档案事实已变化，请重新生成以避免使用过期内容"
+                    proposal.reviewed_at = _now()
+                    await db.commit()
+                    raise ValueError(proposal.review_note)
             if expected_hash and workspace_content_hash(resume) != expected_hash:
                 proposal.status = "stale"
                 proposal.review_note = "用户手动修改后，原提案已过期，请重新生成或重新计算"

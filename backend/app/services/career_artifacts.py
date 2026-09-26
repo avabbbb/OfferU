@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import threading
@@ -8,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from app.runtime_paths import runtime_data_path
 from app.services.agent_files import atomic_write_json
 
 
@@ -25,12 +27,39 @@ ARTIFACT_TYPES = frozenset(
         "job_evaluation",
         "offer_review",
         "pattern_analysis",
+        "reengagement_candidate",
         "reply_digest",
         "skill_gap",
     }
 )
 _ARTIFACT_ID = re.compile(r"^artifact_[0-9a-f]{32}$")
-from app.runtime_paths import runtime_data_path
+_STORE_LOCK = threading.RLock()
+_MAX_IDEMPOTENCY_KEY_LENGTH = 200
+
+
+def _normalize_idempotency_key(value: Any, *, allow_missing: bool = False) -> str:
+    if value is None and allow_missing:
+        return ""
+    if not isinstance(value, str):
+        raise ValueError("idempotency key 必须是字符串")
+    clean_key = value.strip()
+    if not clean_key and allow_missing:
+        return ""
+    if not clean_key:
+        raise ValueError("idempotency key 不能为空")
+    if len(clean_key) > _MAX_IDEMPOTENCY_KEY_LENGTH:
+        raise ValueError("idempotency key 长度不能超过 200 个字符")
+    return clean_key
+
+
+def artifact_id_for_key(artifact_type: str, idempotency_key: str) -> str:
+    """Return a stable ID scoped to an artifact type and this per-user store."""
+    clean_type = str(artifact_type or "").strip()
+    clean_key = _normalize_idempotency_key(idempotency_key)
+    if clean_type not in ARTIFACT_TYPES:
+        raise ValueError(f"不支持的材料类型: {clean_type}")
+    digest = hashlib.sha256(f"{clean_type}\0{clean_key}".encode("utf-8")).hexdigest()
+    return f"artifact_{digest[:32]}"
 
 _DEFAULT_DIR = runtime_data_path("artifacts")
 
@@ -44,7 +73,36 @@ class CareerArtifactStore:
 
     def __init__(self, directory: Path | None = None) -> None:
         self.directory = directory or _DEFAULT_DIR
-        self._lock = threading.RLock()
+        # Share a process lock across instances so concurrent retries using
+        # separate handles for one runtime data directory cannot replace one
+        # another's idempotent artifact.
+        self._lock = _STORE_LOCK
+
+    @staticmethod
+    def _idempotency_key(metadata: dict[str, Any] | None) -> str:
+        source = metadata if isinstance(metadata, dict) else {}
+        return _normalize_idempotency_key(
+            source.get("idempotency_key"), allow_missing=True
+        )
+
+    def find_by_idempotency_key(
+        self, artifact_type: str, idempotency_key: str
+    ) -> dict[str, Any] | None:
+        """Look up an artifact inside this store, scoped to its type and key."""
+        clean_type = str(artifact_type or "").strip()
+        clean_key = _normalize_idempotency_key(idempotency_key)
+        artifact_id = artifact_id_for_key(clean_type, clean_key)
+        with self._lock:
+            existing = self._read(self.directory / f"{artifact_id}.json")
+        if existing is None:
+            return None
+        if (
+            existing.get("id") != artifact_id
+            or existing.get("artifact_type") != clean_type
+            or self._idempotency_key(existing.get("metadata")) != clean_key
+        ):
+            raise ValueError("idempotency key collision in this artifact type")
+        return existing
 
     def list(
         self,
@@ -156,22 +214,124 @@ class CareerArtifactStore:
         if metadata is not None and not isinstance(metadata, dict):
             raise ValueError("metadata 必须是对象")
 
-        artifact_id = f"artifact_{uuid.uuid4().hex}"
-        payload = {
-            "schema": ARTIFACT_SCHEMA,
-            "id": artifact_id,
-            "artifact_type": clean_type,
-            "title": clean_title,
-            "content_markdown": clean_content,
-            "related_job_id": related_job_id,
-            "related_application_id": related_application_id,
-            "related_application_record_id": related_application_record_id,
-            "metadata": metadata or {},
-            "created_at": _utc_now(),
-        }
+        idempotency_key = self._idempotency_key(metadata)
         with self._lock:
+            if idempotency_key:
+                artifact_id = artifact_id_for_key(clean_type, idempotency_key)
+                existing = self._read(self.directory / f"{artifact_id}.json")
+                if existing is not None:
+                    if (
+                        existing.get("id") != artifact_id
+                        or existing.get("artifact_type") != clean_type
+                        or self._idempotency_key(existing.get("metadata")) != idempotency_key
+                    ):
+                        raise ValueError("idempotency key collision in this artifact type")
+                    if any(
+                        existing.get(field) != value
+                        for field, value in (
+                            ("title", clean_title),
+                            ("content_markdown", clean_content),
+                            ("related_job_id", related_job_id),
+                            ("related_application_id", related_application_id),
+                            ("related_application_record_id", related_application_record_id),
+                        )
+                    ):
+                        raise ValueError("idempotency key conflicts with existing artifact content")
+                    # Replay of an idempotent save: keep the persisted artifact
+                    # (user review state, created_at) instead of overwriting.
+                    return existing
+            else:
+                artifact_id = f"artifact_{uuid.uuid4().hex}"
+            payload = {
+                "schema": ARTIFACT_SCHEMA,
+                "id": artifact_id,
+                "artifact_type": clean_type,
+                "title": clean_title,
+                "content_markdown": clean_content,
+                "related_job_id": related_job_id,
+                "related_application_id": related_application_id,
+                "related_application_record_id": related_application_record_id,
+                "metadata": metadata or {},
+                "created_at": _utc_now(),
+            }
             atomic_write_json(self.directory / f"{artifact_id}.json", payload)
         return payload
+
+    def record_practice_answer(
+        self,
+        artifact_id: str,
+        *,
+        question_index: int,
+        question: str,
+        answer: str,
+    ) -> dict[str, Any] | None:
+        """Persist one practice answer inside artifact metadata.
+
+        The artifact content_markdown is never rewritten; answers live under
+        ``metadata.practice.answers`` so delivery views stay stable.  The write
+        is idempotent per question: a replayed identical answer returns the
+        existing record with ``changed=False``.
+        """
+        clean_id = self._validate_id(artifact_id)
+        index = int(question_index)
+        clean_answer = str(answer or "").strip()
+        if index < 0 or not clean_answer:
+            raise ValueError("question_index/answer 无效")
+        with self._lock:
+            path = self.directory / f"{clean_id}.json"
+            item = self._read(path)
+            if item is None:
+                return None
+            metadata = item.get("metadata")
+            if not isinstance(metadata, dict):
+                metadata = {}
+                item["metadata"] = metadata
+            practice = metadata.get("practice")
+            if not isinstance(practice, dict):
+                practice = {}
+                metadata["practice"] = practice
+            answers = practice.get("answers")
+            if not isinstance(answers, dict):
+                answers = {}
+                practice["answers"] = answers
+
+            plan = metadata.get("practice_plan")
+            total = 0
+            if isinstance(plan, dict) and isinstance(plan.get("questions"), list):
+                total = len(plan["questions"])
+
+            now = _utc_now()
+            key = str(index)
+            existing = answers.get(key) if isinstance(answers.get(key), dict) else None
+            changed = True
+            if existing is not None and str(existing.get("answer") or "") == clean_answer:
+                record = dict(existing)
+                record.setdefault("attempts", 1)
+                changed = False
+            else:
+                record = {
+                    "question_index": index,
+                    "question": str(question or "")[:500],
+                    "answer": clean_answer,
+                    "attempts": int(existing.get("attempts") or 0) + 1
+                    if existing is not None
+                    else 1,
+                    "first_recorded_at": str(
+                        existing.get("first_recorded_at") or now
+                    )
+                    if existing is not None
+                    else now,
+                    "updated_at": now,
+                }
+                answers[key] = record
+            answered = len(answers)
+            practice["answered"] = answered
+            practice["total"] = total
+            practice["completed"] = bool(total) and answered >= total
+            if changed:
+                practice["last_answered_at"] = now
+                atomic_write_json(path, item)
+            return {"answer": record, "practice": practice, "changed": changed}
 
     @staticmethod
     def _validate_id(artifact_id: str) -> str:

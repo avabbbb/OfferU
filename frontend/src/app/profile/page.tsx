@@ -100,6 +100,7 @@ export default function ProfilePage() {
         } else if (latest.status === "completed" && latest.result?.briefing) {
           setCareerBriefing(latest.result.briefing);
           setCareerDiscoveryStatus("completed");
+          setCareerDiscoveryTaskId(latest.task_id);
         } else if (["failed", "blocked", "cancelled"].includes(latest.status)) {
           setCareerDiscoveryStatus("failed");
           setCareerDiscoveryError(latest.error || "上次分析没有完成，可以重试。");
@@ -397,6 +398,8 @@ export default function ProfilePage() {
         onStart={() => { void startCareerDiscovery(); }}
         onRefresh={() => { void refreshCareerSnapshot(); }}
         onCorrect={(stage) => { void correctCareerStage(stage); }}
+        taskId={careerDiscoveryTaskId || undefined}
+        onAnswered={() => { void Promise.all([mutate(), refreshCareerSnapshot()]); }}
       />
 
       <ArchiveTabsHeader

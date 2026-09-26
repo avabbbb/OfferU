@@ -104,6 +104,13 @@ class CareerStageCorrectionRequest(BaseModel):
     )
 
 
+class CareerAnswerRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    question_index: int = Field(ge=0, le=2)
+    answer: str = Field(min_length=1, max_length=5000)
+    proposal_id: str | None = Field(default=None, max_length=80)
+
+
 class TargetRoleCreateRequest(BaseModel):
     role_name: str = Field(..., min_length=1, max_length=120)
     role_level: str = Field(default="", max_length=60)
@@ -1386,6 +1393,18 @@ async def start_career_discovery(data: CareerDiscoveryStartRequest):
 @router.post("/career-stage/correction")
 async def correct_profile_career_stage(data: CareerStageCorrectionRequest):
     return await _execute_operation("correct_career_stage", data.model_dump())
+
+
+@router.get("/career-questions/{task_id}")
+async def career_questions(task_id: str):
+    return await _execute_operation("get_career_questions", {"task_id": task_id})
+
+
+@router.post("/career-questions/{task_id}/answers")
+async def submit_career_question_answer(task_id: str, data: CareerAnswerRequest):
+    return await _execute_operation(
+        "submit_career_answer", {"task_id": task_id, **data.model_dump(exclude_none=True)}
+    )
 
 
 @router.get("/target-roles")

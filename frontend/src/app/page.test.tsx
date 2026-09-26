@@ -14,6 +14,7 @@ const {
   mockMutateNotifications,
   mockTriggerDailyCareerReview,
   mockDismissAutomationInboxItem,
+  mockGetCareerArtifact,
 } = vi.hoisted(() => ({
   mockUseJobs: vi.fn(),
   mockUseNotifications: vi.fn(),
@@ -27,6 +28,12 @@ const {
   mockMutateNotifications: vi.fn(),
   mockTriggerDailyCareerReview: vi.fn(),
   mockDismissAutomationInboxItem: vi.fn(),
+  mockGetCareerArtifact: vi.fn(),
+}));
+
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/api")>(),
+  getCareerArtifact: mockGetCareerArtifact,
 }));
 
 vi.mock("../lib/hooks", () => ({
@@ -55,6 +62,12 @@ vi.mock("../components/onboarding/OnboardingChecklist", () => ({
 
 vi.mock("../components/charts/TrendChart", () => ({
   TrendChart: () => null,
+}));
+
+vi.mock("@/components/career/CareerQuestionsPanel", () => ({
+  CareerQuestionsPanel: ({ taskId, heading }: { taskId: string; heading: string }) => (
+    <section data-testid="career-questions-panel" data-task-id={taskId}>{heading}</section>
+  ),
 }));
 
 vi.mock("../lib/showcase/router", () => ({ SHOWCASE: false }));
@@ -91,6 +104,12 @@ describe("TodayPage", () => {
     mockUseNotifications.mockReturnValue({ data: [], mutate: mockMutateNotifications });
     mockTriggerDailyCareerReview.mockResolvedValue({ status: "dispatched" });
     mockDismissAutomationInboxItem.mockResolvedValue({ status: "dismissed" });
+    mockGetCareerArtifact.mockResolvedValue({
+      id: "prep-artifact-9",
+      artifact_type: "interview_prep",
+      title: "面试准备提纲",
+      content_markdown: "## 准备重点\n\n先整理岗位证据。",
+    });
   });
 
   it("本周无新岗位但已有保存岗位时，不显示“还没有岗位数据”", async () => {
@@ -212,6 +231,62 @@ describe("TodayPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "稍后处理" }));
     await waitFor(() => expect(mockDismissAutomationInboxItem).toHaveBeenCalledWith("daily-brief-1"));
+  });
+
+  it("在 Today 让 Daily Review 问题连接持久 CareerTask，并显示可用交付状态", async () => {
+    setupJobs({ weekTotal: 0, allTotal: 2 });
+    mockUseAutomationInbox.mockReturnValue({
+      ...idleHook,
+      data: {
+        items: [{
+          item_id: "daily-brief-questions",
+          category: "needs_review",
+          status: "pending",
+          event_id: "daily-review-event",
+          task_id: "daily-review-task",
+          target_type: "career_brief",
+          target_id: "2026-09-27",
+          title: "今日简报已准备",
+          body: "面试准备优先。",
+          payload: { event_type: "DAILY_REVIEW" },
+          task_status: "completed",
+        }],
+      },
+    });
+    mockUseCareerTasks.mockReturnValue({
+      ...idleHook,
+      data: {
+        tasks: [{
+          task_id: "daily-review-task",
+          task_type: "career_director",
+          status: "completed",
+          input: { event_type: "DAILY_REVIEW" },
+          result: {
+            briefing: {
+              situation_summary: "明天下午有面试。",
+              actions: [],
+              questions: [{ question: "你最想先练哪类问题？" }],
+            },
+            deliveries: [{
+              state: "ready",
+              artifact_id: "prep-artifact-9",
+              artifact_type: "interview_prep",
+              job_id: 42,
+              title: "面试准备提纲",
+              href: "/jobs/42?artifact=prep-artifact-9",
+            }],
+          },
+        }],
+      },
+    });
+
+    render(<TodayPage />);
+
+    expect(await screen.findByTestId("career-questions-panel")).toHaveAttribute("data-task-id", "daily-review-task");
+    expect(screen.getByText("面试准备提纲")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "打开练习" }));
+    expect(await screen.findByRole("dialog", { name: "面试准备提纲" })).toBeInTheDocument();
+    expect(mockGetCareerArtifact).toHaveBeenCalledWith("prep-artifact-9");
   });
 
   it("在收件箱前五项之外仍展示简历更新后的正向重新联系候选", async () => {

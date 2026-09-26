@@ -558,6 +558,14 @@ async def career_task_result(task_id: str) -> dict[str, Any]:
     return await _ui_operation_outputs("get_career_task_result", {"task_id": task_id})
 
 
+@runtime_router.get("/runtime/career-artifacts/{artifact_id}")
+async def career_artifact(artifact_id: str) -> dict[str, Any]:
+    artifact = await _ui_operation_outputs("get_career_artifact", {"artifact_id": artifact_id})
+    if artifact.get("error"):
+        raise HTTPException(status_code=404, detail="Career artifact not found")
+    return artifact
+
+
 @runtime_router.post("/runtime/career-tasks/{task_id}/cancel")
 async def cancel_career_task(task_id: str) -> dict[str, Any]:
     return await _ui_operation_projection("cancel_career_task", {"task_id": task_id})

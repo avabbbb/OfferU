@@ -24,7 +24,7 @@ from app.models.models import (
     ProfileTargetRole,
     Resume,
 )
-from app.services import automation, career_director, career_tasks
+from app.services import automation, career_delivery, career_director, career_tasks
 from app.services import agent_operations, career_daily
 from app.routes import main_agent
 from app.services.career_director import (
@@ -584,6 +584,7 @@ def test_daily_career_director_must_read_daily_context_and_keeps_new_urgent_acti
             f"sqlite+aiosqlite:///{(tmp_path / 'daily-career-runtime.db').as_posix()}"
         )
         session = async_sessionmaker(engine, expire_on_commit=False)
+        monkeypatch.setattr(career_delivery, "async_session", session)
         try:
             async with engine.begin() as connection:
                 await connection.run_sync(Base.metadata.create_all)
@@ -660,16 +661,19 @@ def test_daily_career_director_must_read_daily_context_and_keeps_new_urgent_acti
                     {
                         "objective": "之前忽略的建议",
                         "why_now": "依据没有变化。",
-                        "skill": "evidence_review",
+                        "action_key": "explore.direction",
+                        "skill": "title_discovery",
                         "suggested_operations": [],
                         "autonomy_level": "L1",
                         "expected_outcome": "查看证据。",
                         "requires_user": False,
                         "dedupe_key": "ignore-twice",
+                        "target_ref": {"kind": "profile", "id": "1"},
                     },
                     {
                         "objective": "准备明日面试",
                         "why_now": "明天将进行 Synthetic Analyst 面试。",
+                        "action_key": "interview.prepare",
                         "skill": "interview_prep",
                         "suggested_operations": [],
                         "autonomy_level": "L1",
@@ -746,7 +750,12 @@ def test_daily_career_director_must_read_daily_context_and_keeps_new_urgent_acti
             await engine.dispose()
 
     observed = asyncio.run(flow())
-    assert [call[0] for call in observed["calls"]] == ["get_career_snapshot", "get_daily_career_context"]
+    assert [call[0] for call in observed["calls"]] == [
+        "get_career_snapshot",
+        "get_daily_career_context",
+        "get_career_snapshot",
+        "get_daily_career_context",
+    ]
     assert all(call[2:] == ("career_director", True) for call in observed["calls"])
     assert observed["result"]["runtime"]["tool_calls"] == ["get_career_snapshot", "get_daily_career_context"]
     assert [action["dedupe_key"] for action in observed["result"]["briefing"]["actions"]] == ["tomorrow-interview-8"]
@@ -845,6 +854,7 @@ def test_profile_discovery_runs_one_codex_task_reads_registry_snapshot_and_proje
             monkeypatch.setattr(career_director, "async_session", session)
             monkeypatch.setattr(career_tasks, "async_session", session)
             monkeypatch.setattr(automation, "async_session", session)
+            monkeypatch.setattr(career_delivery, "async_session", session)
             import app.ops as ops
 
             monkeypatch.setattr(ops, "async_session", session)
@@ -936,27 +946,27 @@ def test_profile_discovery_runs_one_codex_task_reads_registry_snapshot_and_proje
                 event = await db.get(AutomationEvent, event_result["event_id"])
                 item = await db.get(AutomationInboxItem, f"automation_task_{task_id}")
                 profile = await db.get(Profile, profile_id)
-                audit = (
+                audits = (
                     await db.execute(
                         select(OperationAuditLog).where(
                             OperationAuditLog.operation == "get_career_snapshot"
                         )
                     )
-                ).scalar_one()
+                ).scalars().all()
                 state = {
                     "event_status": event.status,
                     "inbox_category": item.category,
                     "inbox_payload": item.payload_json,
                     "profile_state": profile.base_info_json,
-                    "audit_surface": audit.surface,
-                    "audit_ok": audit.ok,
+                    "audit_surface": [audit.surface for audit in audits],
+                    "audit_ok": all(audit.ok for audit in audits),
                 }
             return task, state, provider_instances[0].read_snapshot
         finally:
             await engine.dispose()
 
     task, state, snapshot = asyncio.run(flow())
-    assert task["status"] == "completed", task
+    assert task["status"] == "completed", (task.get("error"), task.get("result"))
     assert task["result"]["runtime"]["provider"] == "codex"
     assert task["result"]["runtime"]["tool_calls"] == ["get_career_snapshot"]
     assert snapshot["schema"] == "offeru.career_snapshot.v2"
@@ -965,5 +975,5 @@ def test_profile_discovery_runs_one_codex_task_reads_registry_snapshot_and_proje
     assert state["inbox_category"] == "needs_review"
     assert state["inbox_payload"]["briefing"]["schema"] == "offeru.career_briefing.v1"
     assert state["profile_state"] == {"employment_state": "准备毕业"}
-    assert state["audit_surface"] == "career_director"
+    assert state["audit_surface"] == ["career_director", "career_director"]
     assert state["audit_ok"] is True

@@ -2,27 +2,42 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import and_, select
+from sqlalchemy import select
 
 from app.database import async_session
 from app.models.models import (
     AutomationEvent,
     CalendarEvent,
-    CareerSource,
     CareerTask,
-    EvidenceLink,
-    LearningObservation,
-    MemoryProposal,
+    InterviewNotification,
 )
 from app.services.career_job_assessment import build_job_assessment_context
+from app.services.career_learning import (
+    LearningEvidence,
+    REVIEW_STATUSES,
+    load_learning_evidence,
+    project_learning,
+)
 from app.services.security_redaction import redact_sensitive_text
 
 
 class _StrictContext(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+
+INTERVIEW_LIFECYCLE_STATUSES = frozenset(
+    {
+        "scheduled",
+        "assumed_elapsed",
+        "user_confirmed_completed",
+        "cancelled",
+        "rescheduled",
+    }
+)
 
 
 class InterviewEventContext(_StrictContext):
@@ -32,13 +47,35 @@ class InterviewEventContext(_StrictContext):
     ends_at: str = Field(default="", max_length=50)
     location: str = Field(default="", max_length=300)
     job_id: int | None = Field(default=None, gt=0)
+    status: Literal[
+        "scheduled",
+        "assumed_elapsed",
+        "user_confirmed_completed",
+        "cancelled",
+        "rescheduled",
+    ] = "scheduled"
+    status_basis: str = Field(default="", max_length=160)
+    confirmed_at: str = Field(default="", max_length=50)
 
 
 class InterviewLearningContext(_StrictContext):
     summary: str = Field(default="", max_length=500)
     learning_type: Literal["potential_strength", "weak_area", "interview_assessment"]
-    review_status: Literal["accepted", "pending", "deferred", "unreviewed"]
+    review_status: Literal[
+        "accepted",
+        "pending",
+        "deferred",
+        "unreviewed",
+        "rejected",
+        "revoked",
+        "invalidated",
+        "superseded",
+        "applying",
+    ]
     weak_areas: list[str] = Field(default_factory=list, max_length=6)
+    observation_id: int | None = Field(default=None, gt=0)
+    proposal_id: int | None = Field(default=None, gt=0)
+    interview_key: str = Field(default="", max_length=80)
     observed_at: str = Field(max_length=50)
     source: str = Field(max_length=160)
 
@@ -51,6 +88,9 @@ class InterviewCareerContext(_StrictContext):
     job_assessment: dict[str, Any] | None = None
     previous_learning: list[InterviewLearningContext] = Field(default_factory=list, max_length=8)
     repeated_weak_areas: list[str] = Field(default_factory=list, max_length=8)
+    evidence_gap: list[dict[str, Any]] = Field(default_factory=list, max_length=8)
+    asked_frequency: list[dict[str, Any]] = Field(default_factory=list, max_length=8)
+    learning_confidence: Literal["low", "medium", "high"] = "low"
     debrief_answers: list[dict[str, str]] = Field(default_factory=list, max_length=3)
 
 
@@ -58,52 +98,186 @@ def _safe(value: Any, limit: int = 360) -> str:
     return redact_sensitive_text(str(value or "").strip(), max_length=limit).strip()
 
 
+def _naive(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is not None:
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
+    return value
+
+
+async def load_interview_lifecycle_states(
+    db: Any, events: list[CalendarEvent]
+) -> dict[int, dict[str, Any]]:
+    """Derive each interview's lifecycle status from canonical fields only.
+
+    - ``user_confirmed_completed``: an INTERVIEW_DEBRIEF_CREATED event exists —
+      only the owner's debrief submission confirms the interview happened.
+    - ``cancelled``: the linked InterviewNotification is a rejection.
+    - ``rescheduled``: a sibling interview shares the same notification/signal
+      id with a later start_time (the new slot is canonical).
+    - ``assumed_elapsed``: end_time (or start+1h) passed with no confirmation —
+      elapsed never implies completed.
+    - ``scheduled``: everything else, including currently-in-progress events.
+    """
+
+    result: dict[int, dict[str, Any]] = {}
+    if not events:
+        return result
+    target_ids = [str(int(event.id)) for event in events]
+    debrief_rows = (
+        await db.execute(
+            select(AutomationEvent.target_id, AutomationEvent.created_at)
+            .where(AutomationEvent.event_type == "INTERVIEW_DEBRIEF_CREATED")
+            .where(AutomationEvent.target_type == "interview")
+            .where(AutomationEvent.target_id.in_(target_ids))
+            .order_by(AutomationEvent.created_at.desc())
+        )
+    ).all()
+    confirmed_at_by_id = {
+        int(target_id): created_at for target_id, created_at in debrief_rows
+    }
+
+    notification_ids = {
+        int(event.related_notification_id)
+        for event in events
+        if event.related_notification_id
+    }
+    signal_ids = {
+        int(event.related_signal_id) for event in events if event.related_signal_id
+    }
+    rejected_notifications: set[int] = set()
+    if notification_ids:
+        rejected_notifications = {
+            int(row_id)
+            for (row_id,) in (
+                await db.execute(
+                    select(InterviewNotification.id).where(
+                        InterviewNotification.id.in_(notification_ids),
+                        InterviewNotification.category == "rejection",
+                    )
+                )
+            ).all()
+        }
+
+    # Pull sibling interviews sharing the same notification/signal so a
+    # re-issued slot marks the earlier row rescheduled even when the caller
+    # only asked about one event.
+    siblings: dict[tuple[str, int], list[CalendarEvent]] = {}
+    if notification_ids or signal_ids:
+        from sqlalchemy import or_
+
+        conditions = []
+        if notification_ids:
+            conditions.append(
+                CalendarEvent.related_notification_id.in_(notification_ids)
+            )
+        if signal_ids:
+            conditions.append(CalendarEvent.related_signal_id.in_(signal_ids))
+        sibling_rows = (
+            await db.execute(
+                select(CalendarEvent)
+                .where(CalendarEvent.event_type == "interview")
+                .where(or_(*conditions))
+            )
+        ).scalars().all()
+        grouped = {int(event.id): event for event in events}
+        for row in sibling_rows:
+            grouped.setdefault(int(row.id), row)
+        for event in grouped.values():
+            if event.related_notification_id:
+                siblings.setdefault(
+                    ("notification", int(event.related_notification_id)), []
+                ).append(event)
+            if event.related_signal_id:
+                siblings.setdefault(
+                    ("signal", int(event.related_signal_id)), []
+                ).append(event)
+    else:
+        for event in events:
+            if event.related_notification_id:
+                siblings.setdefault(
+                    ("notification", int(event.related_notification_id)), []
+                ).append(event)
+            if event.related_signal_id:
+                siblings.setdefault(
+                    ("signal", int(event.related_signal_id)), []
+                ).append(event)
+    rescheduled_by: dict[int, int] = {}
+    for group in siblings.values():
+        if len(group) < 2:
+            continue
+        latest = max(group, key=lambda item: _naive(item.start_time) or datetime.min)
+        latest_start = _naive(latest.start_time) or datetime.min
+        for item in group:
+            if int(item.id) == int(latest.id):
+                continue
+            start = _naive(item.start_time) or datetime.min
+            if start < latest_start:
+                rescheduled_by[int(item.id)] = int(latest.id)
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    for event in events:
+        event_id = int(event.id)
+        start = _naive(event.start_time)
+        end = _naive(event.end_time) or (
+            start + timedelta(hours=1) if start is not None else None
+        )
+        confirmed_at = confirmed_at_by_id.get(event_id)
+        if confirmed_at is not None:
+            status, basis = "user_confirmed_completed", "debrief_submitted"
+        elif int(event.related_notification_id or 0) in rejected_notifications:
+            status, basis = "cancelled", "notification_category:rejection"
+        elif event_id in rescheduled_by:
+            status, basis = "rescheduled", f"superseded_by:{rescheduled_by[event_id]}"
+        elif end is not None and end <= now:
+            status, basis = "assumed_elapsed", "end_time_passed"
+        else:
+            status, basis = "scheduled", "future_or_in_progress"
+        result[event_id] = {
+            "status": status,
+            "status_basis": basis,
+            "confirmed_at": confirmed_at.isoformat() if confirmed_at else "",
+        }
+    return result
+
+
+def _learning_context(item: LearningEvidence) -> InterviewLearningContext | None:
+    review_status = (
+        item.review_status if item.review_status in REVIEW_STATUSES else "unreviewed"
+    )
+    learning_type = item.candidate_type or "interview_assessment"
+    if learning_type not in {"potential_strength", "weak_area", "interview_assessment"}:
+        learning_type = "interview_assessment"
+    weak_areas = item.weak_topics[:6] if item.accepted else []
+    if not weak_areas and item.accepted and learning_type == "weak_area" and item.summary:
+        weak_areas = [item.summary]
+    return InterviewLearningContext(
+        summary=item.summary,
+        learning_type=learning_type,
+        review_status=review_status,  # type: ignore[arg-type]
+        weak_areas=weak_areas,
+        observation_id=item.observation_id,
+        proposal_id=item.proposal_id,
+        interview_key=item.interview_key,
+        observed_at=item.observed_at,
+        source=item.source_title,
+    )
+
+
 async def get_interview_career_context(
     *, calendar_event_id: int, automation_event_id: str = ""
 ) -> dict[str, Any]:
-    """Read one scheduled interview, its job plan, and compact prior learning."""
+    """Read one interview's real lifecycle status, job plan, and reviewed learning."""
 
     async with async_session() as db:
         interview = await db.get(CalendarEvent, int(calendar_event_id))
         if interview is None or interview.event_type != "interview":
             raise ValueError("Interview calendar event does not exist")
         job_id = int(interview.related_job_id) if interview.related_job_id else None
-        learning_rows = (
-            await db.execute(
-                select(LearningObservation, CareerSource)
-                .join(CareerSource, CareerSource.id == LearningObservation.source_id)
-                .where(LearningObservation.status == "active")
-                .where(
-                    LearningObservation.observation_type.in_(
-                        ("interview_completed", "interview_debrief_candidate")
-                    )
-                )
-                .where(CareerSource.status == "active")
-                .order_by(LearningObservation.observed_at.desc())
-                .limit(8)
-            )
-        ).all()
-        observation_ids = [int(observation.id) for observation, _source in learning_rows]
-        review_status_by_observation: dict[int, str] = {}
-        if observation_ids:
-            proposal_rows = (
-                await db.execute(
-                    select(EvidenceLink.observation_id, MemoryProposal.status)
-                    .select_from(EvidenceLink)
-                    .join(
-                        MemoryProposal,
-                        and_(
-                            EvidenceLink.target_type == "memory_proposal",
-                            EvidenceLink.target_id == MemoryProposal.id,
-                        ),
-                    )
-                    .where(EvidenceLink.is_active.is_(True))
-                    .where(EvidenceLink.observation_id.in_(observation_ids))
-                    .order_by(MemoryProposal.created_at.desc())
-                )
-            ).all()
-            for observation_id, status in proposal_rows:
-                review_status_by_observation.setdefault(int(observation_id), str(status))
+        states = await load_interview_lifecycle_states(db, [interview])
+        state = states.get(int(interview.id), {})
+        items = await load_learning_evidence(db, limit=200)
         interview_view = InterviewEventContext(
             calendar_event_id=interview.id,
             title=_safe(interview.title, 300),
@@ -111,48 +285,20 @@ async def get_interview_career_context(
             ends_at=interview.end_time.isoformat() if interview.end_time else "",
             location=_safe(interview.location, 300),
             job_id=job_id,
+            status=state.get("status") or "scheduled",
+            status_basis=state.get("status_basis") or "",
+            confirmed_at=state.get("confirmed_at") or "",
         )
 
     job_context = (
         await build_job_assessment_context(job_id=job_id) if job_id is not None else None
     )
-    learning: list[InterviewLearningContext] = []
-    weak_area_counts: dict[str, int] = {}
-    for observation, source in learning_rows:
-        content = observation.content_json if isinstance(observation.content_json, dict) else {}
-        learning_type = str(content.get("candidate_type") or "interview_assessment")
-        if learning_type not in {"potential_strength", "weak_area", "interview_assessment"}:
-            learning_type = "interview_assessment"
-        review_status = review_status_by_observation.get(int(observation.id), "unreviewed")
-        if review_status not in {"accepted", "pending", "deferred", "unreviewed"}:
-            continue
-        role_intelligence = (
-            content.get("role_intelligence")
-            if isinstance(content.get("role_intelligence"), dict)
-            else {}
-        )
-        focuses = role_intelligence.get("focuses") if isinstance(role_intelligence.get("focuses"), list) else []
-        weak_areas = [
-            _safe(area, 180)
-            for focus in focuses
-            if isinstance(focus, dict)
-            for area in (focus.get("observed_answer_gaps") or [])
-            if str(area or "").strip()
-        ][:6]
-        summary = _safe(content.get("summary"), 500)
-        if review_status == "accepted":
-            accepted_weak_areas = weak_areas or ([summary] if learning_type == "weak_area" and summary else [])
-            for area in accepted_weak_areas:
-                weak_area_counts[area] = weak_area_counts.get(area, 0) + 1
-        learning.append(InterviewLearningContext(
-            summary=summary,
-            learning_type=learning_type,
-            review_status=review_status,
-            weak_areas=(weak_areas or ([summary] if learning_type == "weak_area" and summary else []))
-            if review_status == "accepted" else [],
-            observed_at=observation.observed_at.isoformat(),
-            source=_safe(source.title, 160),
-        ))
+    projection = project_learning(items)
+    learning = [
+        view
+        for view in (_learning_context(item) for item in items[:8])
+        if view is not None
+    ]
 
     debrief_answers: list[dict[str, str]] = []
     if automation_event_id:
@@ -173,15 +319,18 @@ async def get_interview_career_context(
                     if isinstance(row, dict)
                 ]
 
-    repeated = sorted(
-        weak_area_counts,
-        key=lambda area: (-weak_area_counts[area], area.casefold()),
-    )[:8]
     return InterviewCareerContext(
         interview=interview_view,
         job_assessment=job_context,
         previous_learning=learning,
-        repeated_weak_areas=repeated,
+        repeated_weak_areas=projection.repeated_weak_areas,
+        evidence_gap=[
+            row.model_dump(mode="json") for row in projection.evidence_gap[:8]
+        ],
+        asked_frequency=[
+            row.model_dump(mode="json") for row in projection.asked_frequency[:8]
+        ],
+        learning_confidence=projection.confidence,
         debrief_answers=debrief_answers,
     ).model_dump(mode="json", by_alias=True)
 

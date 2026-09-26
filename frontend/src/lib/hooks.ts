@@ -12,6 +12,7 @@ import { showcaseChatResponse } from "@/lib/showcase/llm";
 import { resolveApiBase } from "@/lib/apiBase";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { decideAgentRuntimeActionInDesktop } from "@/lib/desktop-proposal-decision";
+import type { CareerDelivery } from "@/lib/api";
 
 const API_BASE = resolveApiBase();
 
@@ -228,7 +229,7 @@ export interface CareerTask {
   attempt_count: number;
   max_attempts: number;
   result_ref: string;
-  result?: Record<string, any>;
+  result?: Record<string, any> & { deliveries?: CareerDelivery[] };
   created_at: string | null;
   started_at: string | null;
   finished_at: string | null;

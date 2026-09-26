@@ -8,8 +8,9 @@ import unittest
 from unittest.mock import patch
 from types import SimpleNamespace
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import MetaData, create_engine, inspect, text
 from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.schema import CreateTable
 
 from app.database import (
     Base,
@@ -65,7 +66,7 @@ class DatabaseMigrationTests(unittest.TestCase):
                 with engine.begin() as connection:
                     Base.metadata.create_all(connection)
                     result = run_schema_migrations(connection)
-                    self.assertEqual(result, {"from_version": 0, "to_version": 4})
+                    self.assertEqual(result, {"from_version": 0, "to_version": 5})
             finally:
                 engine.dispose()
 
@@ -83,7 +84,7 @@ class DatabaseMigrationTests(unittest.TestCase):
 
             connection = sqlite3.connect(database_path)
             try:
-                self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 4)
+                self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 5)
                 job_status = connection.execute(
                     "SELECT triage_status FROM jobs WHERE id = 1"
                 ).fetchone()[0]
@@ -128,11 +129,134 @@ class DatabaseMigrationTests(unittest.TestCase):
             engine = create_engine(f"sqlite:///{database_path.as_posix()}")
             try:
                 with engine.begin() as connection:
-                    self.assertEqual(run_schema_migrations(connection), {"from_version": 1, "to_version": 4})
+                    self.assertEqual(run_schema_migrations(connection), {"from_version": 1, "to_version": 5})
             finally:
                 engine.dispose()
             self.assertEqual(schema_migration_status(url)["status"], "ready")
             self.assertEqual(len(list_backups(layout)["items"]), 1)
+
+    def test_v4_resume_proposals_become_nullable_without_losing_constraints_or_data(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "version-four.db"
+            engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+            proposal = Base.metadata.tables["resume_optimization_proposals"]
+            try:
+                with engine.begin() as connection:
+                    connection.exec_driver_sql("PRAGMA foreign_keys = ON")
+                    for statement in (
+                        'CREATE TABLE "jobs" ("id" INTEGER PRIMARY KEY)',
+                        'CREATE TABLE "profiles" ("id" INTEGER PRIMARY KEY)',
+                        'CREATE TABLE "job_research_runs" ("run_id" VARCHAR(64) PRIMARY KEY)',
+                        'CREATE TABLE "resumes" ("id" INTEGER PRIMARY KEY)',
+                        'CREATE TABLE "resume_versions" ("id" INTEGER PRIMARY KEY)',
+                    ):
+                        connection.exec_driver_sql(statement)
+                    migration_support_tables = {
+                        "jobs",
+                        "profiles",
+                        "job_research_runs",
+                        "resumes",
+                        "resume_versions",
+                        proposal.name,
+                    }
+                    for table in Base.metadata.sorted_tables:
+                        if table.name not in migration_support_tables:
+                            connection.exec_driver_sql(
+                                f'CREATE TABLE "{table.name}" ("id" INTEGER PRIMARY KEY)'
+                            )
+                    connection.exec_driver_sql('INSERT INTO "jobs" ("id") VALUES (11)')
+                    connection.exec_driver_sql('INSERT INTO "profiles" ("id") VALUES (12)')
+                    connection.exec_driver_sql(
+                        'INSERT INTO "job_research_runs" ("run_id") VALUES (\'research-v4\')'
+                    )
+
+                    legacy_metadata = MetaData()
+                    for foreign_key in proposal.foreign_keys:
+                        referred_table = foreign_key.column.table
+                        if referred_table.key not in legacy_metadata.tables:
+                            referred_table.to_metadata(legacy_metadata)
+                    legacy_proposal = proposal.to_metadata(legacy_metadata)
+                    legacy_proposal.c.research_run_id.nullable = False
+                    connection.execute(CreateTable(legacy_proposal))
+                    connection.execute(
+                        proposal.insert().values(
+                            proposal_id="proposal-v4",
+                            job_id=11,
+                            profile_id=12,
+                            research_run_id="research-v4",
+                            source_snapshot_hash="source-v4",
+                            research_snapshot_hash="research-v4",
+                        )
+                    )
+                    connection.exec_driver_sql("PRAGMA user_version = 4")
+
+                    self.assertEqual(
+                        run_schema_migrations(connection),
+                        {"from_version": 4, "to_version": 5},
+                    )
+
+                    research_run_column = next(
+                        column
+                        for column in inspect(connection).get_columns("resume_optimization_proposals")
+                        if column["name"] == "research_run_id"
+                    )
+                    self.assertTrue(research_run_column["nullable"])
+                    self.assertEqual(
+                        connection.exec_driver_sql(
+                            'SELECT proposal_id, job_id, profile_id, research_run_id, '
+                            'source_snapshot_hash, research_snapshot_hash '
+                            'FROM "resume_optimization_proposals"'
+                        ).one(),
+                        (
+                            "proposal-v4",
+                            11,
+                            12,
+                            "research-v4",
+                            "source-v4",
+                            "research-v4",
+                        ),
+                    )
+
+                    actual_foreign_keys = {
+                        (
+                            row["referred_table"],
+                            tuple(row["constrained_columns"]),
+                            tuple(row["referred_columns"]),
+                        )
+                        for row in inspect(connection).get_foreign_keys(
+                            "resume_optimization_proposals"
+                        )
+                    }
+                    expected_foreign_keys = {
+                        (
+                            foreign_key.column.table.name,
+                            (foreign_key.parent.name,),
+                            (foreign_key.column.name,),
+                        )
+                        for foreign_key in proposal.foreign_keys
+                    }
+                    self.assertEqual(actual_foreign_keys, expected_foreign_keys)
+
+                    actual_indexes = {
+                        index["name"]
+                        for index in inspect(connection).get_indexes(
+                            "resume_optimization_proposals"
+                        )
+                    }
+                    self.assertTrue({index.name for index in proposal.indexes} <= actual_indexes)
+
+                    connection.execute(
+                        proposal.insert().values(
+                            proposal_id="proposal-no-research-run",
+                            job_id=11,
+                            profile_id=12,
+                            research_run_id=None,
+                            source_snapshot_hash="source-v5",
+                            research_snapshot_hash="research-v5",
+                        )
+                    )
+            finally:
+                engine.dispose()
 
     def test_future_schema_version_fails_closed_without_creating_backup(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
