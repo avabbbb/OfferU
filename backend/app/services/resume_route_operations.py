@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import binascii
 import copy
+import logging
 import re
 import secrets
 import uuid
@@ -47,6 +48,7 @@ PHOTO_DIR = runtime_uploads_dir("photos")
 LOGO_DIR = runtime_uploads_dir("logos")
 # Keep user-facing share links on the single supported local web origin.
 FRONTEND_BASE_URL = "http://127.0.0.1:7410"
+logger = logging.getLogger(__name__)
 
 
 def _source_job_ids(value: Any) -> list[int]:
@@ -753,8 +755,19 @@ async def create_resume_version_record(
     change_summary: str = "",
     created_by: str = "user",
 ) -> dict[str, Any]:
+    automation_event_id = ""
     async with async_session() as db:
         resume = await _get_resume(db, resume_id, load_sections=True)
+        previous_version = await db.get(ResumeVersion, int(resume.current_version_id or 0)) if resume.current_version_id else None
+        if previous_version is None or int(previous_version.resume_id) != int(resume.id):
+            previous_version = (
+                await db.execute(
+                    select(ResumeVersion)
+                    .where(ResumeVersion.resume_id == resume.id)
+                    .order_by(ResumeVersion.version_number.desc())
+                    .limit(1)
+                )
+            ).scalars().first()
         version = await create_version_snapshot(
             db,
             resume,
@@ -784,9 +797,32 @@ async def create_resume_version_record(
                 proposal.accepted_resume_id = resume.id
                 proposal.accepted_resume_version_id = version.id
                 proposal.reviewed_at = datetime.utcnow()
+        from app.services.career_resume import added_resume_evidence
+
+        added_evidence = added_resume_evidence(
+            previous_version.content_snapshot if previous_version and isinstance(previous_version.content_snapshot, dict) else {},
+            version.content_snapshot if isinstance(version.content_snapshot, dict) else {},
+        )
+        if previous_version is not None and added_evidence:
+            from app.services.automation import enqueue_automation_event_in_transaction
+
+            automation_event_id = await enqueue_automation_event_in_transaction(
+                db,
+                event_type="RESUME_UPDATED",
+                source="resume_version_saved",
+                target_type="resume",
+                target_id=str(resume.id),
+                payload={
+                    "resume_id": int(resume.id),
+                    "resume_version_id": int(version.id),
+                    "version_number": int(version.version_number),
+                    "runtime_provider": "codex",
+                },
+                dedupe_key=f"resume-updated:{resume.id}:{version.id}",
+            )
         await db.commit()
         await db.refresh(version)
-        return {
+        result = {
             "id": version.id,
             "resume_id": version.resume_id,
             "version_number": version.version_number,
@@ -795,6 +831,27 @@ async def create_resume_version_record(
             "created_at": version.created_at.isoformat(),
             "is_current": True,
         }
+    if automation_event_id:
+        try:
+            from app.services.automation import process_queued_automation_event
+
+            dispatched = await process_queued_automation_event(automation_event_id)
+            result["automation"] = {
+                "event_id": automation_event_id,
+                "status": dispatched.get("status", "queued"),
+                "task_id": (dispatched.get("result") or {}).get("task", {}).get("task_id")
+                if isinstance(dispatched.get("result"), dict)
+                else None,
+            }
+        except Exception as exc:
+            # ResumeVersion and its outbox event are already committed. Leave
+            # dispatch recovery to the existing startup/recovery path rather
+            # than turning a saved Resume into an apparent failed save.
+            logger.warning("Resume Career Director dispatch deferred: %s", safe_error_message(exc))
+            result["automation"] = {"event_id": automation_event_id, "status": "queued"}
+    else:
+        result["automation"] = {"status": "not_triggered", "reason": "no_added_resume_evidence"}
+    return result
 
 
 async def restore_resume_version_record(resume_id: int, version_id: int) -> dict[str, Any]:

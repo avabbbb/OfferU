@@ -32,6 +32,7 @@ import {
 import { controlCareerTask, patchJob, useJob, usePools, useProgressBoard, useProgressTimeline, useCareerTasks, type CareerTask } from "@/lib/hooks";
 import { JobAssessmentPlanCard } from "@/components/jobs/JobAssessmentPlanCard";
 import { InterviewLifecycleCard } from "@/components/career/InterviewLifecycleCard";
+import { ResumeReengagementCard } from "@/components/career/ResumeReengagementCard";
 import { RoleIntelligencePanel } from "@/components/jobs/RoleIntelligencePanel";
 import {
   jobResearchApi,
@@ -338,6 +339,21 @@ export default function JobDetailPage() {
       },
     ).slice(0, 3);
   }, [careerTasksData, jobId]);
+  const resumeReengagementTask = useMemo(() => {
+    if (!jobId || !careerTasksData?.tasks) return null;
+    const latestTask = careerTasksData.tasks.find((task) =>
+      task.task_type === "career_director" && task.input?.event_type === "RESUME_UPDATED",
+    );
+    if (!latestTask || latestTask.status !== "completed") return null;
+    const plan = latestTask.result?.briefing?.resume_update as {
+      candidates?: Array<{ job_id?: number; worth_reengaging?: boolean; urgency?: string }>;
+    } | undefined;
+    return plan?.candidates?.some((candidate) =>
+      Number(candidate.job_id) === jobId
+      && candidate.worth_reengaging === true
+      && candidate.urgency !== "skip",
+    ) ? latestTask : null;
+  }, [careerTasksData, jobId]);
 
   // Dynamic progress projection — derived from real state, not fabricated.
   const preparationProgress = useMemo(() => {
@@ -629,6 +645,8 @@ export default function JobDetailPage() {
         task={jobAssessmentTask}
         onRetry={() => void controlCareerTask(jobAssessmentTask!.task_id, "retry").catch((err) => alert(safeClientErrorMessage(err, "重试岗位评估失败")))}
       />
+
+      <ResumeReengagementCard task={resumeReengagementTask} jobId={jobId ?? undefined} />
 
       {interviewLifecycleTasks.map((task) => (
         <InterviewLifecycleCard

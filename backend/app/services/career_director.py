@@ -265,6 +265,26 @@ class InterviewLifecyclePlan(_StrictContract):
     )
 
 
+class ReengagementPlanItem(_StrictContract):
+    job_id: int = Field(gt=0)
+    worth_reengaging: bool
+    why: str = Field(min_length=1, max_length=400)
+    suggested_angle: str = Field(default="", max_length=400)
+    urgency: Literal["now", "soon", "monitor", "skip"] = "monitor"
+    evidence_refs: list[str] = Field(default_factory=list, max_length=8)
+    company: str = Field(default="", max_length=180)
+    role: str = Field(default="", max_length=220)
+
+
+class ResumeUpdatePlan(_StrictContract):
+    resume_id: int = Field(gt=0)
+    summary: str = Field(min_length=1, max_length=800)
+    added_evidence_summary: str = Field(default="", max_length=500)
+    candidates: list[ReengagementPlanItem] = Field(default_factory=list, max_length=8)
+
+
+
+
 class CareerBriefing(_StrictContract):
     contract_schema: Literal["offeru.career_briefing.v1"] = Field(
         default="offeru.career_briefing.v1", alias="schema"
@@ -275,6 +295,7 @@ class CareerBriefing(_StrictContract):
     profile_coverage: CareerProfileCoverage
     job_assessment: JobAssessmentPlan | None = None
     interview_lifecycle: InterviewLifecyclePlan | None = None
+    resume_update: ResumeUpdatePlan | None = None
     priorities: list[CareerPriority] = Field(default_factory=list, max_length=3)
     actions: list[CareerAction] = Field(default_factory=list, max_length=3)
     questions: list[CareerQuestion] = Field(default_factory=list, max_length=3)

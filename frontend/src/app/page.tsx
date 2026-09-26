@@ -47,6 +47,7 @@ import {
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { useWorkbench } from "@/lib/workbench";
 import { InterviewLifecycleCard } from "@/components/career/InterviewLifecycleCard";
+import { ResumeReengagementCard } from "@/components/career/ResumeReengagementCard";
 
 import { resolveApiBase } from "@/lib/apiBase";
 
@@ -392,10 +393,15 @@ export default function TodayPage() {
       setSignalAckBusy(null);
     }
   };
-  const pendingAutomation = useMemo(
-    () => (automationInbox?.items ?? []).filter((entry) => entry.status === "pending").slice(0, 5),
-    [automationInbox],
-  );
+  const pendingAutomation = useMemo(() => {
+    const pending = (automationInbox?.items ?? []).filter((entry) => entry.status === "pending");
+    const firstFive = pending.slice(0, 5);
+    const visibleIds = new Set(firstFive.map((entry) => entry.item_id));
+    const resumeUpdates = pending.filter(
+      (entry) => entry.payload?.event_type === "RESUME_UPDATED" && !visibleIds.has(entry.item_id),
+    );
+    return [...firstFive, ...resumeUpdates];
+  }, [automationInbox]);
   const dailyBriefInboxItem = pendingAutomation.find(
     (entry) => entry.target_type === "career_brief" && entry.payload?.event_type === "DAILY_REVIEW",
   );
@@ -750,6 +756,8 @@ export default function TodayPage() {
             const careerTask = careerTasks?.tasks.find((candidate) => candidate.task_id === entry.task_id);
             const percent = careerTaskPercent(task.progress);
             const isInterviewTask = String(entry.payload?.event_type || "").startsWith("INTERVIEW_");
+            const isResumeUpdateTask = entry.payload?.event_type === "RESUME_UPDATED"
+              || careerTask?.input?.event_type === "RESUME_UPDATED";
             return (
               <Fragment key={entry.item_id}>
                 {isInterviewTask && careerTask ? (
@@ -758,6 +766,11 @@ export default function TodayPage() {
                       task={careerTask}
                       onSubmitted={() => void Promise.all([mutateCareerTasks(), mutateAutomationInbox()])}
                     />
+                  </div>
+                ) : null}
+                {isResumeUpdateTask && careerTask ? (
+                  <div className="px-4 pt-3">
+                    <ResumeReengagementCard task={careerTask} />
                   </div>
                 ) : null}
                 <div className="px-4 py-3">
@@ -848,6 +861,7 @@ export default function TodayPage() {
           {standaloneCareerTasks.map((task: CareerTask) => {
             const percent = careerTaskPercent(task.progress);
             const isInterviewTask = String(task.input?.event_type || "").startsWith("INTERVIEW_");
+            const isResumeUpdateTask = task.input?.event_type === "RESUME_UPDATED";
             const title = `${careerTaskTypeLabel(task.task_type)}${task.target_type && task.target_id
               ? ` · ${task.target_type} #${task.target_id}`
               : ""}`;
@@ -859,6 +873,7 @@ export default function TodayPage() {
                     onSubmitted={() => void Promise.all([mutateCareerTasks(), mutateAutomationInbox()])}
                   />
                 ) : null}
+                {isResumeUpdateTask ? <ResumeReengagementCard task={task} /> : null}
                 <div className="flex items-start gap-3">
                   <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
                     task.status === "failed" || task.status === "blocked"

@@ -101,6 +101,13 @@ _DEFAULT_RULES: dict[str, dict[str, Any]] = {
         "automation_level": "L1",
         "description": "分析用户提交的面试复盘，仅生成待审核学习候选。",
     },
+    "RESUME_UPDATED": {
+        "task_type": "career_director",
+        "runtime_provider": "codex",
+        "enabled": True,
+        "automation_level": "L1",
+        "description": "评估新简历证据是否值得重新联系旧机会；仅准备候选，不发送消息。",
+    },
     "JOB_SAVED": {
         "task_type": "role_intelligence",
         "runtime_provider": "auto",
@@ -539,6 +546,75 @@ async def _dispatch_interview_event(
     }
 
 
+async def _dispatch_resume_updated(
+    event: AutomationEvent,
+    rule: dict[str, Any],
+) -> dict[str, Any]:
+    from app.services.career_tasks import get_career_task, start_career_task
+
+    payload = event.payload_json if isinstance(event.payload_json, dict) else {}
+    resume_id = int(payload.get("resume_id") or event.target_id or 0)
+    version_id = int(payload.get("resume_version_id") or 0)
+    version_number = int(payload.get("version_number") or 0)
+    if resume_id <= 0 or version_id <= 0 or version_number <= 0:
+        raise ValueError("RESUME_UPDATED 缺少有效简历版本引用")
+    if event.target_type != "resume" or event.target_id != str(resume_id):
+        raise ValueError("RESUME_UPDATED 目标必须是本次简历")
+    policy = rule.get("policy") if isinstance(rule.get("policy"), dict) else {}
+    provider = str(payload.get("runtime_provider") or policy.get("runtime_provider") or "codex")
+    if provider not in {"codex", "codex-app-server"}:
+        raise ValueError("Resume Career Director 需要真实 Codex Runtime")
+    task = await start_career_task(
+        task_type="career_director",
+        source="automation",
+        target_type="resume",
+        target_id=str(resume_id),
+        runtime_provider=provider,
+        input={
+            "automation_event_id": event.event_id,
+            "event_type": event.event_type,
+            "resume_id": resume_id,
+            "resume_version_id": version_id,
+            "version_number": version_number,
+        },
+        output_contract={"schema": "offeru.career_briefing.v1", "type": "object"},
+        idempotency_key=f"automation:{event.event_id}:career-director",
+    )
+    await _upsert_inbox(
+        item_id=f"automation_task_{task['task_id']}",
+        category="fyi",
+        event_id=event.event_id,
+        task_id=task["task_id"],
+        target_type="resume",
+        target_id=str(resume_id),
+        title="OfferU 正在重新评估旧岗位机会",
+        body="Career Director 会比较新旧简历证据和仍有效的岗位进展，只准备候选，不会联系任何人。",
+        payload={
+            "runtime_provider": provider,
+            "task": task,
+            "event_type": event.event_type,
+            "resume_id": resume_id,
+            "resume_version_id": version_id,
+            "version_number": version_number,
+            "autonomy_level": "L1",
+            "external_action": False,
+        },
+    )
+    # The bounded task may finish before the initial FYI Inbox row is written.
+    # Re-project a terminal task after that write so the result cannot be
+    # overwritten by the startup placeholder.
+    current_task = await get_career_task(task["task_id"])
+    if current_task["status"] in {"completed", "failed", "blocked", "cancelled"}:
+        await handle_career_task_finished(task["task_id"])
+    return {
+        "task": task,
+        "resume_id": resume_id,
+        "resume_version_id": version_id,
+        "version_number": version_number,
+        "runtime_provider": provider,
+    }
+
+
 async def _dispatch_elapsed_interviews() -> dict[str, int]:
     """Turn recent passed interview calendar events into idempotent debrief tasks."""
 
@@ -758,6 +834,61 @@ async def record_automation_event(
     return {**(await _process_automation_event(event_id)), "reused": reused}
 
 
+async def enqueue_automation_event_in_transaction(
+    db: Any,
+    *,
+    event_type: str,
+    source: str,
+    target_type: str,
+    target_id: str,
+    payload: dict[str, Any],
+    dedupe_key: str,
+) -> str:
+    """Add an AutomationEvent to a caller's business transaction.
+
+    The caller commits the event together with its domain write, then invokes
+    ``process_queued_automation_event``. This is the small transactional-outbox
+    boundary for mutations that must never lose their automation signal.
+    """
+
+    clean_type = str(event_type or "").strip().upper()
+    if clean_type not in AUTOMATION_EVENT_TYPES:
+        raise ValueError(f"不支持的 AutomationEvent: {clean_type}")
+    clean_payload = redact_secret_value(payload if isinstance(payload, dict) else {})
+    clean_key = str(dedupe_key or "").strip() or _dedupe_key(
+        event_type=clean_type,
+        source=str(source or "system"),
+        target_type=str(target_type or ""),
+        target_id=str(target_id or ""),
+        payload=clean_payload,
+    )
+    stored_key = clean_key[:180]
+    existing = (
+        await db.execute(select(AutomationEvent).where(AutomationEvent.dedupe_key == stored_key))
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing.event_id
+    event = AutomationEvent(
+        event_id=f"automation_evt_{uuid.uuid4().hex[:24]}",
+        event_type=clean_type,
+        source=str(source or "system").strip()[:80],
+        target_type=str(target_type or "").strip()[:80],
+        target_id=str(target_id or "").strip()[:160],
+        payload_json=_bounded(clean_payload),
+        dedupe_key=stored_key,
+        status="queued",
+    )
+    db.add(event)
+    await db.flush()
+    return event.event_id
+
+
+async def process_queued_automation_event(event_id: str) -> dict[str, Any]:
+    """Dispatch an event already committed by a transactional outbox caller."""
+
+    return await _process_automation_event(str(event_id or ""))
+
+
 async def record_calendar_interview_invitation(
     *, calendar_event_id: int, source: str = "calendar"
 ) -> dict[str, Any]:
@@ -813,6 +944,7 @@ async def _process_automation_event(event_id: str) -> dict[str, Any]:
         "INTERVIEW_INVITATION_DETECTED": _dispatch_interview_event,
         "INTERVIEW_COMPLETED": _dispatch_interview_event,
         "INTERVIEW_DEBRIEF_CREATED": _dispatch_interview_event,
+        "RESUME_UPDATED": _dispatch_resume_updated,
     }
     dispatch = dispatchers.get(event.event_type)
     if dispatch is None:
@@ -1155,8 +1287,23 @@ async def _project_career_director_task(task: dict[str, Any]) -> dict[str, Any] 
         "INTERVIEW_COMPLETED",
         "INTERVIEW_DEBRIEF_CREATED",
     }
+    is_resume_updated = event_type == "RESUME_UPDATED"
     completed = task["status"] == "completed" and bool(briefing)
-    category = "needs_review" if completed else "failed"
+    resume_update = briefing.get("resume_update") if isinstance(briefing.get("resume_update"), dict) else {}
+    reengagement_candidates = [
+        candidate
+        for candidate in resume_update.get("candidates", [])
+        if isinstance(candidate, dict)
+        and candidate.get("worth_reengaging") is True
+        and candidate.get("urgency") != "skip"
+    ]
+    category = (
+        "needs_review"
+        if completed and (not is_resume_updated or reengagement_candidates)
+        else "completed"
+        if completed
+        else "failed"
+    )
     interview_titles = {
         "INTERVIEW_INVITATION_DETECTED": "面试准备计划已准备",
         "INTERVIEW_COMPLETED": "面试复盘问题已准备",
@@ -1167,6 +1314,10 @@ async def _project_career_director_task(task: dict[str, Any]) -> dict[str, Any] 
         if completed and is_daily
         else "岗位匹配评估计划已准备"
         if completed and is_job_saved
+        else "旧岗位重新联系候选已准备"
+        if completed and is_resume_updated and reengagement_candidates
+        else "新简历已评估：暂时没有合适的旧岗位"
+        if completed and is_resume_updated
         else interview_titles[event_type]
         if completed and is_interview
         else "你的职业方向建议已准备"
@@ -1192,6 +1343,13 @@ async def _project_career_director_task(task: dict[str, Any]) -> dict[str, Any] 
             if is_daily
             else "OfferU 已比较岗位要求与你的职业证据，并整理了匹配依据和准备优先级。"
             if is_job_saved
+            else (
+                f"{resume_update.get('summary') or 'OfferU 已比较新旧简历证据与仍有效的申请。'} "
+                f"发现 {len(reengagement_candidates)} 个值得查看的旧岗位候选；没有联系任何人。"
+                if reengagement_candidates
+                else str(resume_update.get("summary") or "OfferU 没有发现当前值得重新联系的旧岗位。")
+            )
+            if is_resume_updated
             else str(lifecycle.get("summary") or "OfferU 已结合这场面试的岗位证据准备下一步。")
             if is_interview
             else "OfferU 已准备职业阶段、证据强弱和下一步问题，等待你查看。"
@@ -1278,6 +1436,17 @@ async def _project_career_director_task(task: dict[str, Any]) -> dict[str, Any] 
             "briefing": briefing if completed else {},
             "job_assessment": briefing.get("job_assessment") if completed and is_job_saved else {},
             "interview_lifecycle": lifecycle if completed and is_interview else {},
+            "resume_update": resume_update if completed and is_resume_updated else {},
+            "reengagement_candidates": reengagement_candidates if completed and is_resume_updated else [],
+            **(
+                {
+                    "resume_id": int(input_payload.get("resume_id") or task.get("target_id") or 0),
+                    "resume_version_id": int(input_payload.get("resume_version_id") or 0),
+                    "version_number": int(input_payload.get("version_number") or 0),
+                }
+                if is_resume_updated
+                else {}
+            ),
             "learning_proposals": learning_proposals,
             "event_type": event_type,
             "review_date": review_date,
@@ -1295,6 +1464,7 @@ async def _project_career_director_task(task: dict[str, Any]) -> dict[str, Any] 
             "role_intelligence_task_id": role_intelligence_task.get("task_id") if role_intelligence_task else None,
             "role_intelligence_error": role_intelligence_error or None,
             "learning_proposal_count": len(learning_proposals),
+            "reengagement_candidate_count": len(reengagement_candidates),
         },
         error=task.get("error") or "",
         expected_statuses=("processing", "dispatched"),

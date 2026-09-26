@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from app.database import Base
 from app.models.models import (
+    AutomationEvent,
     Job,
     Profile,
     ProfileSection,
@@ -18,6 +19,7 @@ from app.models.models import (
     ResumeOptimizationProposal,
 )
 from app.services import resume_route_operations, resume_workspace
+from app.services import automation
 
 
 class ResumeWorkspaceTests(unittest.TestCase):
@@ -34,6 +36,12 @@ class ResumeWorkspaceTests(unittest.TestCase):
                 resume_workspace,
                 "get_pre_application_state",
                 new=AsyncMock(return_value={"stage": "resume_proposal_ready"}),
+            ), patch.object(
+                automation, "async_session", sessions
+            ), patch.object(
+                automation,
+                "process_queued_automation_event",
+                new=AsyncMock(return_value={"status": "queued", "result": {}}),
             ):
                 first = await resume_workspace.ensure_resume_workspace(
                     job_id=fixture["job_id"], proposal_id=fixture["proposal_id"]
@@ -68,6 +76,11 @@ class ResumeWorkspaceTests(unittest.TestCase):
                     )
                 ).scalar_one_or_none()
                 section = resume.sections[0] if resume else None
+                events = (
+                    await db.execute(
+                        select(AutomationEvent).where(AutomationEvent.event_type == "RESUME_UPDATED")
+                    )
+                ).scalars().all()
             await engine.dispose()
             return {
                 "first": first,
@@ -76,6 +89,7 @@ class ResumeWorkspaceTests(unittest.TestCase):
                 "version": version,
                 "proposal": stored,
                 "section": section,
+                "automation_events": events,
                 "master_resume_id": fixture["master_resume_id"],
             }
 
@@ -87,6 +101,8 @@ class ResumeWorkspaceTests(unittest.TestCase):
         self.assertEqual(result["proposal"].status, "accepted")
         self.assertEqual(result["proposal"].accepted_resume_version_id, result["version"]["id"])
         self.assertEqual(result["section"].content_json[0]["description"], "new evidence")
+        self.assertEqual(len(result["automation_events"]), 1)
+        self.assertEqual(result["automation_events"][0].payload_json["resume_version_id"], result["version"]["id"])
 
     def test_manual_edit_makes_unreviewed_proposal_stale(self) -> None:
         async def run() -> str:

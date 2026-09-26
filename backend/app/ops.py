@@ -290,6 +290,7 @@ from app.services.resume_workspace import (
 from app.services.career_director import build_career_snapshot, correct_career_stage
 from app.services.career_daily import build_daily_career_context
 from app.services.career_job_assessment import build_job_assessment_context
+from app.services.career_resume import get_resume_reengagement_context
 from app.services.data_export import export_user_data
 from app.services.diagnostics import export_diagnostic_bundle
 from app.services.demo_data import reset_demo_data
@@ -1273,6 +1274,11 @@ class InterviewCareerContextInput(_StrictOperationInput):
     automation_event_id: str = Field(default="", max_length=100)
 
 
+class ResumeReengagementContextInput(_StrictOperationInput):
+    resume_id: int = Field(gt=0)
+    automation_event_id: str = Field(default="", max_length=100)
+
+
 class SubmitInterviewDebriefInput(_StrictOperationInput):
     calendar_event_id: int = Field(gt=0)
     answers: list[str] = Field(min_length=1, max_length=3)
@@ -2020,6 +2026,15 @@ OPERATIONS: dict[str, Operation] = {
         audit_redacted_output_parameters=("interview", "job_assessment", "previous_learning", "repeated_weak_areas", "debrief_answers"),
         input_model=InterviewCareerContextInput,
         version="2026-09-26",
+    ),
+    "get_resume_reengagement_context": Operation(
+        name="get_resume_reengagement_context",
+        fn=get_resume_reengagement_context,
+        description="读取新简历版本、material change 和使用旧版本的非终结岗位候选；不联系第三方。",
+        group="career_runtime",
+        audit_redacted_output_parameters=("resume_title", "current_version", "previous_version", "material_change_summary", "added_evidence_hints", "added_evidence", "candidates", "suppressed", "previously_suggested"),
+        input_model=ResumeReengagementContextInput,
+        version="2026-09-27",
     ),
     "submit_interview_debrief": Operation(
         name="submit_interview_debrief",
