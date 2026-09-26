@@ -14,7 +14,7 @@ Updated: 2026-09-27
 
 ## Current checkpoint
 
-The active branch is `feat/proactive-career-director` at implementation commit `8c5a193`. Its cached base includes `84b8255`; the latest remote head could not be checked because `git fetch origin main` failed during TLS negotiation. Do not switch or reset this branch. All five Proactive Career Director slices are implemented through the existing `AutomationEvent → AutomationRule → CareerTask → Agent Runtime → Operation Registry` path.
+The active branch is `feat/proactive-career-director`; its cached base includes `84b8255`. The latest remote head could not be checked because `git fetch origin main` failed during TLS negotiation. Do not switch or reset this branch. All five Proactive Career Director slices are implemented through the existing `AutomationEvent → AutomationRule → CareerTask → Agent Runtime → Operation Registry` path.
 
 - Profile Discovery and Career Stage correction are visible in Profile and Today.
 - Daily Review re-evaluates bounded Career State and projects prioritized actions into Today and Inbox, with repeated-dismissal suppression.
@@ -26,15 +26,17 @@ The active branch is `feat/proactive-career-director` at implementation commit `
 
 ## Verification
 
-- Full backend: **812 passed, 10 skipped, 11 subtests passed** with test data isolated under `H:\tmp\offeru\career-director-final-backend-rerun2-20260927`.
+- Full backend after the Codex effort-boundary change: **813 passed, 10 skipped, 11 subtests passed** (`OFFERU_TEST_TEMP_ROOT=H:\tmp\offeru\career-director-final-backend-effort-rerun-20260927`).
 - Frontend: **50 tests passed across 18 files**; `npm run typecheck` and `npm run build` passed.
 - Targeted runtime-policy/Resume and interview integration tests passed. Migration v5 is included in the full backend run.
 - The extension was not modified. No real Career database or user Resume/Profile/Job was used or changed.
 - `docs/evals/FINDINGS.md` retains F1/F3 as historical and records the fixture-only seed in cloned eval DBs; it does not claim a business Operation, Proposal or confirmation.
 
-## Unresolved live gate
+## Live local integration smoke
 
-A local Codex 0.155.1 Career Director smoke used synthetic data at `H:\tmp\offeru\career-director-codex-agent-smoke-20260927\smoke.sqlite`. Codex made successful `get_career_snapshot` and `get_resume_reengagement_context` tool calls, and both completed Registry audit rows were recorded. The App Server did not emit `turn/completed` within 360 seconds, so the task produced no briefing or delivery. Treat this as **NOT PASSED / BLOCKED_EXTERNAL** until a live turn completes; synthetic tests do not replace that evidence. Real OMP/SWE-2 pass³ is a separate gate and was not run.
+Codex 0.155.1 completed a real `PROFILE_BASELINE_REQUIRED` CareerTask from a cloned synthetic database at `H:\tmp\offeru\career-director-live-task-code-path-20260927\smoke.sqlite`. The model issued `get_career_snapshot` through the dynamic Operation Registry tool, returned a schema-valid briefing with two questions and two actions, passed policy validation, and emitted `turn/completed`; the CareerTask and its AutomationEvent completed. The Profile's Career Truth remained unchanged and no Proposal was created. The Profile page reads the completed CareerTask result.
+
+The task now sets Codex reasoning effort to `low` for this bounded Career Director turn, independently of the user's global effort preference. The same synthetic request timed out with inherited effort and with explicit `medium`; the explicit `low` turn completed. This is a live Profile Discovery smoke only; the remaining slices are covered by synthetic Registry/runtime integration tests. Real OMP/SWE-2 pass³ was not run and remains a separate acceptance activity, not a blocker for this implementation milestone.
 
 ## Local dogfood startup
 
@@ -54,7 +56,7 @@ Set-Location 'H:\WorkSpace_For_VsCode\Python\OFFERU'
 npm --prefix frontend run dev
 ~~~
 
-Open `http://127.0.0.1:7410`, import a Resume, review its Profile evidence, save one Job, and continue in that canonical Job Workspace. The current Codex App Server completion issue means a live Career Director result is still unverified; do not mistake the UI or mock-provider tests for a successful live judgment. This development startup path is not a Public Release installer claim.
+Open `http://127.0.0.1:7410`, import a Resume, review its Profile evidence and Discovery questions, save one Job, and continue in that canonical Job Workspace. The local Profile Discovery integration has completed once with a real Codex turn; use ordinary review and confirmation for all Career Truth and external actions. This development startup path is not a Public Release installer claim.
 
 ## Non-negotiable boundaries
 

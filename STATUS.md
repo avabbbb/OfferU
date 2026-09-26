@@ -7,10 +7,10 @@ Updated: 2026-09-27
 ~~~
 OFFERU_PUBLIC_RELEASE_NOT_READY
 PROACTIVE_CAREER_DIRECTOR_IMPLEMENTED
-LIVE_CODEX_TURN_COMPLETION_BLOCKED_EXTERNAL
+LIVE_CODEX_SYNTHETIC_PROFILE_SMOKE_PASS
 ~~~
 
-Public distribution still has separate signing, notarization, clean-machine and live external-evidence gates. The five proactive implementation slices are complete and locally regression-tested with isolated synthetic fixtures. One live Codex turn-completion gate remains blocked after two model-issued Registry reads completed successfully but the app-server did not emit a completed turn within 360 seconds.
+Public distribution still has separate signing, notarization, clean-machine and live external-evidence gates. The five proactive implementation slices are complete and locally regression-tested with isolated synthetic fixtures. A real Codex Profile Discovery CareerTask has now completed through the Registry, Policy validator, persistent CareerTask and Profile result projection.
 
 ## Current phase
 
@@ -62,9 +62,9 @@ Interview Prep/Debrief and Resume Updated Re-engagement are implemented with syn
 
 ## Active validation
 
-- Full backend regression: **812 passed, 10 skipped, 11 subtests passed** (`OFFERU_TEST_TEMP_ROOT=H:\tmp\offeru\career-director-final-backend-rerun2-20260927`).
+- Full backend regression after the Codex effort-boundary change: **813 passed, 10 skipped, 11 subtests passed** (`OFFERU_TEST_TEMP_ROOT=H:\tmp\offeru\career-director-final-backend-effort-rerun-20260927`).
 - Frontend regression: **50 passed across 18 files**; `npm run typecheck` and `npm run build` passed.
-- Local Codex 0.155.1 Career Director smoke used only synthetic Career data in `H:\tmp\offeru\career-director-codex-agent-smoke-20260927\smoke.sqlite`. Codex issued `get_career_snapshot` and `get_resume_reengagement_context`; both Registry audit rows completed. No `turn/completed` arrived within 360 seconds, so no final briefing or delivery was materialized and the CareerTask failed with `codex turn did not complete`. The generated local 0.155.1 protocol types confirm the adapter's dynamic-tool response shape. This is recorded as **BLOCKED_EXTERNAL / NOT PASSED** pending a completed live turn; it is not a synthetic test pass.
+- Local Codex 0.155.1 smoke used only cloned synthetic data at `H:\tmp\offeru\career-director-live-task-code-path-20260927\smoke.sqlite`. The model-issued `get_career_snapshot` dynamic-tool call completed; Codex returned a valid Profile Discovery briefing, Policy validation passed, and both CareerTask and AutomationEvent completed. The synthetic Profile was not updated as Career Truth. Explicit low effort is now set per bounded Career Director turn; default inherited effort and explicit medium effort did not complete this same scenario.
 - Real OMP/SWE-2 Agent-native acceptance remains NOT_RUN and separate from this coding milestone.
 - Zero-Setup still needs one genuine real-user first-run trace with a real Resume and Job.
 - Public macOS/Windows release still needs legitimate signing/notarization and clean-machine acceptance.
@@ -72,9 +72,9 @@ Interview Prep/Debrief and Resume Updated Re-engagement are implemented with syn
 
 ## Current priorities
 
-1. Investigate why the local Codex app-server does not complete a Career Director turn after returning successful dynamic-tool responses; preserve the Registry protocol and HITL boundaries.
-2. Begin owner dogfood with a real Resume and three real Jobs using a dedicated data directory; evaluate the UI path while treating live turn completion as unresolved.
-3. Keep OMP/SWE-2 isolation and public-release signing/clean-machine evidence as separate gates.
+1. Begin owner dogfood with a real Resume and the first Job using the dedicated `H:\OfferU-Dogfood` data directory; keep Profile discovery answers user-reviewed.
+2. Evaluate all five event surfaces during ordinary use and correct only observed UX problems.
+3. Keep OMP/SWE-2 pass³ and public-release signing/clean-machine evidence as separate gates.
 
 ## Product boundaries during dogfood
 

@@ -24,10 +24,12 @@ from app.services import automation, capability_plugins, career_director, career
 from app.services.agent_bridge.server import BridgeSession  # noqa: E402
 from app.services.agent_runtime import (  # noqa: E402
     CANONICAL_AGENT_RUN_EVENT_TYPES,
+    CodexAgentRuntimeProvider,
     PiAgentRuntimeProvider,
     ReplayAgentRunProvider,
     ReplayAgentRuntimeProvider,
     canonical_agent_run_event,
+    get_agent_runtime_provider,
 )
 from app.services.agent_run_state import create_agent_run, save_agent_run  # noqa: E402
 from app.services.harness_operations import save_harness_conversation  # noqa: E402
@@ -36,6 +38,16 @@ FIXTURE_PATH = BACKEND_DIR / "tests" / "fixtures" / "role_intelligence_v0" / "co
 
 
 class AgentRuntimeConvergenceTests(unittest.TestCase):
+    def test_career_director_effort_is_forwarded_to_the_codex_turn(self) -> None:
+        provider = get_agent_runtime_provider(
+            "codex",
+            executable="codex-fixture.exe",
+            turn_effort="low",
+        )
+
+        self.assertIsInstance(provider, CodexAgentRuntimeProvider)
+        self.assertEqual(provider.adapter.turn_effort, "low")
+
     def test_builtin_provider_status_exposes_live_web_capability_boundary(self) -> None:
         async def flow() -> tuple[dict, dict]:
             pi = await PiAgentRuntimeProvider().status()

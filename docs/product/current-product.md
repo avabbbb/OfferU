@@ -362,7 +362,7 @@ Current active validation work:
 - run the real external-Agent Golden Path with trusted execution evidence, human-visible HITL and pass^3 once an approved isolated environment is available;
 - validate one clean Zero-Setup first-run journey with real user inputs;
 - validate signed/notarized macOS clean install, upgrade, migration and recovery;
-- the first Proactive Career Director implementation is now present across five bounded slices on `feat/proactive-career-director`: Profile Discovery, Daily Brief, Job Saved Assessment, Interview Prep/Debrief, and Resume Updated re-engagement. It keeps the existing Automation → CareerTask → Agent Runtime → Operation Registry path and uses isolated synthetic state for coding and automated verification. The next step is owner dogfood after the live Codex turn-completion gate is resolved or explicitly accepted as blocked; real career data was not a coding prerequisite.
+- the first Proactive Career Director implementation is present across five bounded slices on `feat/proactive-career-director`: Profile Discovery, Daily Brief, Job Saved Assessment, Interview Prep/Debrief, and Resume Updated re-engagement. It keeps the existing Automation → CareerTask → Agent Runtime → Operation Registry path and uses isolated synthetic state for coding and automated verification. A real local Codex Profile Discovery turn has completed through the Registry and Policy validator; the next step is owner dogfood. Real career data was not a coding prerequisite. OMP/SWE-2 pass³ remains a separate acceptance activity.
 
 The previous zero-setup proposal (#18) is incorporated into this North Star; this document is the current product authority.
 

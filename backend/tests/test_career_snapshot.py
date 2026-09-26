@@ -726,6 +726,7 @@ def test_daily_career_director_must_read_daily_context_and_keeps_new_urgent_acti
                 nonlocal provider
                 provider = SyntheticCodex()
                 provider.on_operation = kwargs["on_operation"]
+                provider.turn_effort_requested = kwargs.get("turn_effort")
                 return provider
 
             import app.services.agent_runtime as agent_runtime
@@ -759,6 +760,7 @@ def test_daily_career_director_must_read_daily_context_and_keeps_new_urgent_acti
     assert all(call[2:] == ("career_director", True) for call in observed["calls"])
     assert observed["result"]["runtime"]["tool_calls"] == ["get_career_snapshot", "get_daily_career_context"]
     assert [action["dedupe_key"] for action in observed["result"]["briefing"]["actions"]] == ["tomorrow-interview-8"]
+    assert observed["provider"].turn_effort_requested == "low"
 
 
 def test_model_briefing_is_strict_and_cannot_override_user_correction() -> None:

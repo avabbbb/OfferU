@@ -662,6 +662,7 @@ class CodexAgentRuntimeProvider:
         run_id: str = "",
         executable: str | None = None,
         thread_params: dict[str, Any] | None = None,
+        turn_effort: str | None = None,
         on_operation: AgentOperationCallback | None = None,
     ) -> None:
         from app.services.agent_bridge.codex_adapter import CodexMainLoopAdapter
@@ -670,6 +671,7 @@ class CodexAgentRuntimeProvider:
         self.adapter = CodexMainLoopAdapter(
             executable=executable,
             thread_params=thread_params,
+            turn_effort=turn_effort,
         )
         if on_operation is not None:
             self.adapter.on_operation = on_operation
@@ -826,6 +828,7 @@ def get_agent_runtime_provider(
     run_id: str = "",
     executable: str | None = None,
     thread_params: dict[str, Any] | None = None,
+    turn_effort: str | None = None,
     on_operation: AgentOperationCallback | None = None,
 ) -> AgentRuntimeProvider:
     clean = str(provider_id or "replay").strip().casefold()
@@ -836,6 +839,7 @@ def get_agent_runtime_provider(
             run_id=run_id,
             executable=executable,
             thread_params=thread_params,
+            turn_effort=turn_effort,
             on_operation=on_operation,
         )
     raise ValueError(f"未知 Agent Runtime provider: {provider_id}")

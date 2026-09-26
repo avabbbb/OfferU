@@ -784,6 +784,11 @@ async def _run_career_director(task: dict[str, Any]) -> dict[str, Any]:
         task["runtime_provider"],
         run_id=task.get("run_id") or task["task_id"],
         on_operation=on_operation,
+        # Career Director is one bounded decision turn with a strict JSON
+        # contract. Keep it independent from a user's global xhigh setting so
+        # it can return a useful briefing without spending the entire task
+        # window reasoning about the schema.
+        turn_effort="low",
     )
     cwd = _career_director_workspace()
     instructions = {
