@@ -14,7 +14,7 @@ Updated: 2026-09-27
 
 ## Current checkpoint
 
-The active branch is `feat/proactive-career-director`; its cached base includes `84b8255`. The latest remote head could not be checked because `git fetch origin main` failed during TLS negotiation. Do not switch or reset this branch. All five Proactive Career Director slices are implemented through the existing `AutomationEvent → AutomationRule → CareerTask → Agent Runtime → Operation Registry` path.
+The active branch is `feat/proactive-career-director`; `origin/main` was fetched and confirmed at `84b8255`, which is an ancestor of this branch. Do not switch or reset this branch. All five Proactive Career Director slices are implemented through the existing `AutomationEvent → AutomationRule → CareerTask → Agent Runtime → Operation Registry` path.
 
 - Profile Discovery and Career Stage correction are visible in Profile and Today.
 - Daily Review re-evaluates bounded Career State and projects prioritized actions into Today and Inbox, with repeated-dismissal suppression.
