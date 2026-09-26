@@ -702,7 +702,7 @@ async def _run_career_director(task: dict[str, Any]) -> dict[str, Any]:
     }[event_type]
     prompt_parts = [
         "你是 OfferU Career Director，只能做本次有界职业判断。",
-        "先调用 get_career_snapshot() 读取当前 Career State，再基于其中的证据推理。",
+        "先调用 get_career_snapshot() 读取当前 Career State，再基于其中的证据推理。快照已含 resume.current_version_number、resume.jobs_using_older_resume、learning.repeated_weak_areas、pipeline.role_family_funnel、attention.pending_proposals、strategy_pack 等事实字段；不要重新从聊天推断这些事实。",
     ]
     if event_type == "DAILY_REVIEW":
         prompt_parts.append("然后必须调用 get_daily_career_context() 读取今日 Pipeline、面试、跟进、提案、近期变化与用户忽略记录。")

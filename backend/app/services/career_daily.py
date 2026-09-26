@@ -93,11 +93,30 @@ class IgnoredSuggestion(_StrictModel):
     last_ignored_at: str = Field(max_length=50)
 
 
+class DailyResumeState(_StrictModel):
+    current_resume_id: int | None = Field(default=None, gt=0)
+    current_version_number: int = Field(default=0, ge=0)
+    workspace_revision: int = Field(default=0, ge=0)
+    material_change_summary: str = Field(default="", max_length=400)
+    jobs_using_older_resume: list[dict[str, Any]] = Field(default_factory=list, max_length=12)
+
+
+class DailyRoleFamilyFunnel(_StrictModel):
+    role_family: str = Field(min_length=1, max_length=160)
+    saved: int = Field(default=0, ge=0)
+    applied: int = Field(default=0, ge=0)
+    interview: int = Field(default=0, ge=0)
+    offer: int = Field(default=0, ge=0)
+    rejected: int = Field(default=0, ge=0)
+
+
 class DailyCareerContext(_StrictModel):
-    contract_schema: Literal["offeru.daily_career_context.v1"] = Field(
-        default="offeru.daily_career_context.v1", alias="schema"
+    contract_schema: Literal["offeru.daily_career_context.v2"] = Field(
+        default="offeru.daily_career_context.v2", alias="schema"
     )
     review_date: date
+    career_stage: dict[str, Any] | None = None
+    strategy_pack: str = Field(default="", max_length=60)
     pipeline: list[DailyPipelineItem] = Field(default_factory=list, max_length=12)
     follow_ups_due: list[DailyFollowUp] = Field(default_factory=list, max_length=10)
     upcoming_interviews: list[DailyInterview] = Field(default_factory=list, max_length=8)
@@ -105,6 +124,8 @@ class DailyCareerContext(_StrictModel):
     recent_changes: list[DailyChange] = Field(default_factory=list, max_length=12)
     interview_learning: list[DailyLearning] = Field(default_factory=list, max_length=6)
     ignored_suggestions: list[IgnoredSuggestion] = Field(default_factory=list, max_length=20)
+    resume: DailyResumeState = Field(default_factory=DailyResumeState)
+    role_family_funnel: list[DailyRoleFamilyFunnel] = Field(default_factory=list, max_length=12)
 
 
 def _safe(value: Any, limit: int = 300) -> str:
@@ -395,8 +416,26 @@ async def build_daily_career_context(
             if _iso(row.updated_at) > entry["last_ignored_at"]:
                 entry["last_ignored_at"] = _iso(row.updated_at)
 
+    from app.services.career_director import (
+        _build_pipeline_digest,
+        _build_resume_state,
+    )
+
+    async with async_session() as db:
+        resume_state = await _build_resume_state(db, profile_id)
+        pipeline_digest = await _build_pipeline_digest(db)
+        profile_row = await db.get(Profile, int(profile_id)) if profile_id else None
+        base_info = profile_row.base_info_json if profile_row and isinstance(profile_row.base_info_json, dict) else {}
+        stage_raw = base_info.get("career_stage_correction")
+        career_stage = stage_raw if isinstance(stage_raw, dict) else None
+        strategy_pack = ""
+        if isinstance(career_stage, dict):
+            strategy_pack = "campus_search.v1" if career_stage.get("track") == "campus" else "experienced_search.v1"
+
     return DailyCareerContext(
         review_date=today,
+        career_stage=career_stage,
+        strategy_pack=strategy_pack,
         pipeline=pipeline[:12],
         follow_ups_due=follow_ups,
         upcoming_interviews=interviews,
@@ -407,6 +446,19 @@ async def build_daily_career_context(
             IgnoredSuggestion.model_validate(item).model_dump()
             for item in ignored_map.values()
         ][:20],
+        resume=DailyResumeState(
+            current_resume_id=resume_state.current_resume_id,
+            current_version_number=resume_state.current_version_number or 0,
+            workspace_revision=resume_state.workspace_revision,
+            material_change_summary=resume_state.material_change_summary,
+            jobs_using_older_resume=[
+                ref.model_dump(mode="json") for ref in resume_state.jobs_using_older_resume
+            ],
+        ),
+        role_family_funnel=[
+            DailyRoleFamilyFunnel.model_validate(row.model_dump())
+            for row in pipeline_digest.role_family_funnel
+        ],
     ).model_dump(mode="json", by_alias=True)
 
 
