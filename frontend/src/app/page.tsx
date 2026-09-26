@@ -47,6 +47,10 @@ import {
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { useWorkbench } from "@/lib/workbench";
 import { InterviewLifecycleCard } from "@/components/career/InterviewLifecycleCard";
+import { ArtifactViewer } from "@/components/career/ArtifactViewer";
+import { CareerQuestionsPanel } from "@/components/career/CareerQuestionsPanel";
+import { DeliveryList } from "@/components/career/DeliveryList";
+import { readDeliveries } from "@/components/career/deliveries";
 import { ResumeReengagementCard } from "@/components/career/ResumeReengagementCard";
 
 import { resolveApiBase } from "@/lib/apiBase";
@@ -184,6 +188,16 @@ function careerTaskTypeLabel(taskType: string) {
   }[taskType] ?? "后台任务";
 }
 
+function hasCareerTaskQuestions(task: CareerTask | undefined): boolean {
+  if (!task || task.task_type !== "career_director") return false;
+  const briefing = task.result?.briefing;
+  return Boolean(
+    (Array.isArray(briefing?.questions) && briefing.questions.length > 0)
+    || (Array.isArray(briefing?.resume_preparation?.questions)
+      && briefing.resume_preparation.questions.length > 0),
+  );
+}
+
 function AutomationTaskControls({
   taskId,
   status,
@@ -311,6 +325,7 @@ function SectionHeader({
 export default function TodayPage() {
   const { select } = useWorkbench();
   const [statsExpanded, setStatsExpanded] = useState(false);
+  const [activeArtifactId, setActiveArtifactId] = useState("");
 
   const range = useMemo(() => {
     const start = new Date();
@@ -652,12 +667,18 @@ export default function TodayPage() {
               })}
               {dailyBriefQuestions.length > 0 && (
                 <div className="rounded-lg bg-[var(--surface-muted)] px-3 py-2.5">
-                  <p className="text-[11px] font-medium text-[var(--foreground)]">OfferU 想确认</p>
-                  {dailyBriefQuestions.map((question, index) => (
-                    <p key={`${index}-${String(question.question || "")}`} className="mt-1 text-[12px] text-[var(--foreground-muted)]">
-                      {String(question.question || "")}
-                    </p>
-                  ))}
+                  {dailyBriefTask?.task_id ? (
+                    <CareerQuestionsPanel taskId={dailyBriefTask.task_id} heading="OfferU 想确认" />
+                  ) : (
+                    <>
+                      <p className="text-[11px] font-medium text-[var(--foreground)]">OfferU 想确认</p>
+                      {dailyBriefQuestions.map((question, index) => (
+                        <p key={`${index}-${String(question.question || "")}`} className="mt-1 text-[12px] text-[var(--foreground-muted)]">
+                          {String(question.question || "")}
+                        </p>
+                      ))}
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -758,6 +779,9 @@ export default function TodayPage() {
             const isInterviewTask = String(entry.payload?.event_type || "").startsWith("INTERVIEW_");
             const isResumeUpdateTask = entry.payload?.event_type === "RESUME_UPDATED"
               || careerTask?.input?.event_type === "RESUME_UPDATED";
+            const isDailyReviewTask = entry.payload?.event_type === "DAILY_REVIEW"
+              || careerTask?.input?.event_type === "DAILY_REVIEW";
+            const deliveries = readDeliveries(careerTask?.result);
             return (
               <Fragment key={entry.item_id}>
                 {isInterviewTask && careerTask ? (
@@ -771,6 +795,16 @@ export default function TodayPage() {
                 {isResumeUpdateTask && careerTask ? (
                   <div className="px-4 pt-3">
                     <ResumeReengagementCard task={careerTask} />
+                  </div>
+                ) : null}
+                {deliveries.length > 0 ? (
+                  <div className="px-4 pt-3">
+                    <DeliveryList deliveries={deliveries} heading="OfferU 已准备的内容" onOpenArtifact={setActiveArtifactId} />
+                  </div>
+                ) : null}
+                {!isDailyReviewTask && !isInterviewTask && careerTask && hasCareerTaskQuestions(careerTask) ? (
+                  <div className="px-4 pt-3">
+                    <CareerQuestionsPanel taskId={careerTask.task_id} heading="补充信息" />
                   </div>
                 ) : null}
                 <div className="px-4 py-3">
@@ -862,6 +896,8 @@ export default function TodayPage() {
             const percent = careerTaskPercent(task.progress);
             const isInterviewTask = String(task.input?.event_type || "").startsWith("INTERVIEW_");
             const isResumeUpdateTask = task.input?.event_type === "RESUME_UPDATED";
+            const isDailyReviewTask = task.input?.event_type === "DAILY_REVIEW";
+            const deliveries = readDeliveries(task.result);
             const title = `${careerTaskTypeLabel(task.task_type)}${task.target_type && task.target_id
               ? ` · ${task.target_type} #${task.target_id}`
               : ""}`;
@@ -874,6 +910,12 @@ export default function TodayPage() {
                   />
                 ) : null}
                 {isResumeUpdateTask ? <ResumeReengagementCard task={task} /> : null}
+                {deliveries.length > 0 ? (
+                  <DeliveryList deliveries={deliveries} heading="OfferU 已准备的内容" onOpenArtifact={setActiveArtifactId} />
+                ) : null}
+                {!isDailyReviewTask && !isInterviewTask && hasCareerTaskQuestions(task) ? (
+                  <CareerQuestionsPanel taskId={task.task_id} heading="补充信息" />
+                ) : null}
                 <div className="flex items-start gap-3">
                   <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
                     task.status === "failed" || task.status === "blocked"
@@ -1387,6 +1429,11 @@ export default function TodayPage() {
           OfferU 会把待确认动作、临近截止和新机会汇总到这里,帮你决定现在做什么。
         </motion.p>
       )}
+      {activeArtifactId ? (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4">
+          <ArtifactViewer artifactId={activeArtifactId} onClose={() => setActiveArtifactId("")} />
+        </div>
+      ) : null}
     </motion.div>
   );
 }

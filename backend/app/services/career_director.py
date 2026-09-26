@@ -1,9 +1,13 @@
-"""Strict contracts and read-only Career State projection for Career Director."""
+"""Strict contracts and read-only Career State projection for Career Director.
+
+Learning facets are projected through app.services.career_learning so the
+snapshot, interview context and daily review share identical review semantics.
+"""
 
 from __future__ import annotations
 
 import json
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import func, select, update
@@ -125,9 +129,15 @@ class CareerResumeState(_StrictContract):
 class CareerLearningDigest(_StrictContract):
     repeated_weak_areas: list[str] = Field(default_factory=list, max_length=8)
     recurring_question_themes: list[str] = Field(default_factory=list, max_length=8)
+    evidence_gap: list[dict[str, Any]] = Field(default_factory=list, max_length=8)
+    asked_frequency: list[dict[str, Any]] = Field(default_factory=list, max_length=8)
+    accepted_learning_count: int = Field(default=0, ge=0)
+    pending_review_count: int = Field(default=0, ge=0)
+    user_feedback_count: int = Field(default=0, ge=0)
+    causal_hypothesis_count: int = Field(default=0, ge=0)
+    confidence: Literal["low", "medium", "high"] = "low"
     recent_findings_count: int = Field(default=0, ge=0)
     user_corrections_count: int = Field(default=0, ge=0)
-
 
 class CareerAttention(_StrictContract):
     pending_proposals: int = Field(default=0, ge=0)
@@ -185,6 +195,11 @@ class CareerActionTarget(_StrictContract):
 class CareerAction(_StrictContract):
     objective: str = Field(min_length=1, max_length=300)
     why_now: str = Field(min_length=1, max_length=500)
+    action_key: str = Field(default="", max_length=80, pattern=r"^[a-z0-9_.-]{0,80}$")
+    strategy_scope: Literal[
+        "campus_search.v1", "experienced_search.v1", "agnostic"
+    ] = "agnostic"
+    evidence_refs: list[str] = Field(default_factory=list, max_length=12)
     skill: str = Field(default="", max_length=120)
     suggested_operations: list[str] = Field(default_factory=list, max_length=8)
     target_ref: CareerActionTarget | None = None
@@ -284,6 +299,95 @@ class ResumeUpdatePlan(_StrictContract):
 
 
 
+_SectionId = Annotated[int, Field(gt=0)]
+
+
+class ResumePreparationRow(_StrictContract):
+    """Existing resume row schema echoed by the verified row context."""
+
+    section_type: str = Field(min_length=1, max_length=80)
+    title: str = Field(default="", max_length=220)
+    sort_order: int = Field(default=0, ge=0)
+    visible: bool = True
+    content_json: dict[str, Any] = Field(default_factory=dict)
+    source_section_ids: list[_SectionId] = Field(default_factory=list, max_length=12)
+
+
+class ResumePreparationRationale(_StrictContract):
+    source_section_ids: list[_SectionId] = Field(default_factory=list, max_length=12)
+    requirement: str = Field(min_length=1, max_length=500)
+    why: str = Field(min_length=1, max_length=500)
+
+
+class ResumePreparationQuestion(_StrictContract):
+    question: str = Field(min_length=1, max_length=500)
+    why_needed: str = Field(min_length=1, max_length=400)
+    source_section_ids: list[_SectionId] = Field(default_factory=list, max_length=12)
+    requirement: str = Field(min_length=1, max_length=500)
+
+
+class ResumePreparationGap(_StrictContract):
+    requirement: str = Field(min_length=1, max_length=500)
+    status: Literal["unknown", "missing"]
+    explanation: str = Field(min_length=1, max_length=500)
+
+
+class ResumePreparation(_StrictContract):
+    """Bounded resume tailoring proposal bound to a source fingerprint.
+
+    ``source_fingerprint`` must echo the fingerprint emitted by
+    ``get_resume_preparation_context``; persistence fails closed on mismatch so
+    an in-flight source mutation can never be persisted. ``job_id`` /
+    ``replaces_proposal_id`` are optional echoes that must agree with the task
+    target when present.
+    """
+
+    source_fingerprint: str = Field(min_length=1, max_length=128)
+    job_id: int | None = Field(default=None, gt=0)
+    replaces_proposal_id: str | None = Field(default=None, max_length=160)
+    rows: list[ResumePreparationRow] = Field(default_factory=list, max_length=40)
+    rationale: list[ResumePreparationRationale] = Field(
+        default_factory=list, max_length=20
+    )
+    questions: list[ResumePreparationQuestion] = Field(
+        default_factory=list, max_length=3
+    )
+    gaps: list[ResumePreparationGap] = Field(default_factory=list, max_length=20)
+
+
+class PreparedPracticeQuestion(_StrictContract):
+    question: str = Field(min_length=1, max_length=500)
+    focus: str = Field(default="", max_length=300)
+    minutes: int = Field(gt=0, le=180)
+
+
+class PreparedPracticePlan(_StrictContract):
+    duration_minutes: int = Field(gt=0, le=600)
+    questions: list[PreparedPracticeQuestion] = Field(
+        default_factory=list, max_length=12
+    )
+
+
+class PreparedArtifact(_StrictContract):
+    """A persisted-in-review deliverable the briefing materializes later."""
+
+    artifact_type: Literal[
+        "interview_prep", "follow_up_draft", "reengagement_candidate"
+    ]
+    title: str = Field(min_length=1, max_length=240)
+    content_markdown: str = Field(min_length=1, max_length=20000)
+    job_id: int | None = Field(default=None, gt=0)
+    application_id: int | None = Field(default=None, gt=0)
+    calendar_event_id: int | None = Field(default=None, gt=0)
+    action_key: str = Field(
+        default="", max_length=80, pattern=r"^[a-z0-9_.-]{0,80}$"
+    )
+    evidence_refs: list[str] = Field(default_factory=list, max_length=12)
+    practice_plan: PreparedPracticePlan | None = None
+
+
+
+
 
 class CareerBriefing(_StrictContract):
     contract_schema: Literal["offeru.career_briefing.v1"] = Field(
@@ -296,6 +400,10 @@ class CareerBriefing(_StrictContract):
     job_assessment: JobAssessmentPlan | None = None
     interview_lifecycle: InterviewLifecyclePlan | None = None
     resume_update: ResumeUpdatePlan | None = None
+    resume_preparation: ResumePreparation | None = None
+    prepared_artifacts: list[PreparedArtifact] = Field(
+        default_factory=list, max_length=3
+    )
     priorities: list[CareerPriority] = Field(default_factory=list, max_length=3)
     actions: list[CareerAction] = Field(default_factory=list, max_length=3)
     questions: list[CareerQuestion] = Field(default_factory=list, max_length=3)
@@ -441,47 +549,37 @@ async def _build_resume_state(db: Any, profile_id: int | None) -> CareerResumeSt
 
 
 async def _build_learning_digest(db: Any) -> CareerLearningDigest:
-    observations = (
-        await db.execute(
-            select(LearningObservation)
-            .where(LearningObservation.status == "active")
-            .order_by(LearningObservation.observed_at.desc())
-            .limit(40)
-        )
-    ).scalars().all()
-    weak_counts: dict[str, int] = {}
-    theme_counts: dict[str, int] = {}
-    findings = 0
-    for observation in observations:
-        content = observation.content_json if isinstance(observation.content_json, dict) else {}
-        findings += 1
-        for area in content.get("weak_areas") or []:
-            area_text = _safe_text(area, limit=180)
-            if area_text:
-                weak_counts[area_text] = weak_counts.get(area_text, 0) + 1
-        role_intel = content.get("role_intelligence") if isinstance(content.get("role_intelligence"), dict) else {}
-        for focus in role_intel.get("focuses") or []:
-            if not isinstance(focus, dict):
-                continue
-            for gap in focus.get("observed_answer_gaps") or []:
-                gap_text = _safe_text(gap, limit=180)
-                if gap_text:
-                    weak_counts[gap_text] = weak_counts.get(gap_text, 0) + 1
-        for theme in content.get("question_themes") or []:
-            theme_text = _safe_text(theme, limit=120)
-            if theme_text:
-                theme_counts[theme_text] = theme_counts.get(theme_text, 0) + 1
-    repeated_weak = sorted(weak_counts, key=lambda a: (-weak_counts[a], a.casefold()))[:8]
-    themes = sorted(theme_counts, key=lambda a: (-theme_counts[a], a.casefold()))[:8]
+    """Project reviewed learning through the shared career_learning seam.
+
+    Weak areas only count once accepted through the memory inbox on >=2
+    distinct interviews; pending/unreviewed items surface as uncertainty,
+    never as performance. Asked frequency stays a separate facet.
+    """
+
+    from app.services.career_learning import load_learning_evidence, project_learning
+
+    items = await load_learning_evidence(
+        db,
+        observation_types=None,
+        limit=200,
+    )
+    projection = project_learning(items)
     corrections = (
         await db.execute(
             select(func.count(MemoryProposal.id)).where(MemoryProposal.review_note.like("%stage%"))
         )
     ).scalar_one() or 0
     return CareerLearningDigest(
-        repeated_weak_areas=repeated_weak,
-        recurring_question_themes=themes,
-        recent_findings_count=findings,
+        repeated_weak_areas=projection.repeated_weak_areas,
+        recurring_question_themes=projection.recurring_question_themes,
+        evidence_gap=[row.model_dump(mode="json") for row in projection.evidence_gap[:8]],
+        asked_frequency=[row.model_dump(mode="json") for row in projection.asked_frequency[:8]],
+        accepted_learning_count=len(projection.accepted_learning),
+        pending_review_count=projection.pending_review_count,
+        user_feedback_count=len(projection.user_feedback),
+        causal_hypothesis_count=len(projection.causal_hypothesis),
+        confidence=projection.confidence,
+        recent_findings_count=projection.findings_count,
         user_corrections_count=int(corrections),
     )
 
@@ -809,13 +907,17 @@ def parse_career_briefing_response(
         raise ValueError("Career Director 输出必须是 JSON object")
     briefing = CareerBriefing.model_validate(payload)
     if confirmed_stage is not None:
-        strategy_pack = (
-            "campus_search.v1"
-            if confirmed_stage.track == "campus"
-            else "experienced_search.v1"
-        )
+        # A user-confirmed stage is canonical. Keep the model's briefing, but
+        # never let its stage or strategy pack undo the user's correction.
         briefing = briefing.model_copy(
-            update={"career_stage": confirmed_stage, "strategy_pack": strategy_pack}
+            update={
+                "career_stage": confirmed_stage,
+                "strategy_pack": (
+                    "campus_search.v1"
+                    if confirmed_stage.track == "campus"
+                    else "experienced_search.v1"
+                ),
+            }
         )
     return briefing.model_dump(mode="json", by_alias=True)
 

@@ -11,7 +11,7 @@ import sqlite3
 from typing import Any, Callable
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy import event
+from sqlalchemy import MetaData, event
 from sqlalchemy.orm import DeclarativeBase
 
 from app.config import get_settings
@@ -20,7 +20,7 @@ from app.services.security_redaction import safe_error_message
 
 settings = get_settings()
 
-CURRENT_SCHEMA_VERSION = 4
+CURRENT_SCHEMA_VERSION = 5
 
 
 class DatabaseMigrationError(RuntimeError):
@@ -358,11 +358,59 @@ def _migrate_schema_v4(connection) -> None:  # noqa: ANN001
     _auto_migrate(connection)
 
 
+def _migrate_schema_v5(connection) -> None:  # noqa: ANN001
+    """Allow resume_optimization_proposals.research_run_id to be NULL.
+
+    Career Director proposals are built from the verified Profile and the job
+    JD only; they legitimately have no research run.  SQLite cannot relax a
+    NOT NULL constraint in place, so the table is rebuilt transactionally.
+    """
+
+    from sqlalchemy import inspect as sa_inspect, text
+    from sqlalchemy.schema import CreateIndex, CreateTable
+
+    inspector = sa_inspect(connection)
+    if not inspector.has_table("resume_optimization_proposals"):
+        return
+    columns = {
+        column["name"]: column
+        for column in inspector.get_columns("resume_optimization_proposals")
+    }
+    if columns.get("research_run_id", {}).get("nullable"):
+        return
+
+    source = Base.metadata.tables["resume_optimization_proposals"]
+    clone_metadata = MetaData()
+    for foreign_key in source.foreign_keys:
+        referred_table = foreign_key.column.table
+        if referred_table.key not in clone_metadata.tables:
+            referred_table.to_metadata(clone_metadata)
+    rebuilt = source.to_metadata(clone_metadata, name="resume_optimization_proposals_v5")
+    connection.execute(text(str(CreateTable(rebuilt).compile(connection)).strip()))
+    column_names = ", ".join(f'"{column.name}"' for column in source.columns)
+    connection.execute(
+        text(
+            f'INSERT INTO "resume_optimization_proposals_v5" ({column_names}) '
+            f'SELECT {column_names} FROM "resume_optimization_proposals"'
+        )
+    )
+    connection.execute(text('DROP TABLE "resume_optimization_proposals"'))
+    connection.execute(
+        text(
+            'ALTER TABLE "resume_optimization_proposals_v5" '
+            'RENAME TO "resume_optimization_proposals"'
+        )
+    )
+    for index in source.indexes:
+        connection.execute(
+            text(str(CreateIndex(index, if_not_exists=True).compile(connection)).strip())
+        )
 SCHEMA_MIGRATIONS: dict[int, Callable[[Any], None]] = {
     1: _migrate_schema_v1,
     2: _migrate_schema_v2,
     3: _migrate_schema_v3,
     4: _migrate_schema_v4,
+    5: _migrate_schema_v5,
 }
 
 

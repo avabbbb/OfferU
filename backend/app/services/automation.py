@@ -343,6 +343,11 @@ async def _dispatch_job_saved(event: AutomationEvent, rule: dict[str, Any]) -> d
             "automation_event_id": event.event_id,
             "event_type": event.event_type,
             "job_id": job_id,
+            **{
+                key: payload[key]
+                for key in ("profile_id", "replaces_proposal_id", "affected_source_section_ids", "accepted_observation_id")
+                if key in payload
+            },
             "role_intelligence_runtime_provider": provider,
             "role_benchmark_context": {
                 key: str(payload.get(key) or "")
@@ -360,8 +365,8 @@ async def _dispatch_job_saved(event: AutomationEvent, rule: dict[str, Any]) -> d
         task_id=director_task["task_id"],
         target_type="job",
         target_id=str(job_id),
-        title="OfferU 正在评估这个岗位与你的匹配度",
-        body="职业 Agent 会结合岗位要求、你的证据和已准备材料，整理匹配理由与下一步计划。",
+        title="OfferU 正在准备有依据的岗位材料",
+        body="职业 Agent 会读取岗位要求和已验证经历，先完成可审核的简历提案；缺少的关键证据另行询问。",
         payload={"runtime_provider": "codex", "task": director_task, "event_type": "JOB_SAVED"},
     )
     return {
@@ -550,7 +555,7 @@ async def _dispatch_resume_updated(
     event: AutomationEvent,
     rule: dict[str, Any],
 ) -> dict[str, Any]:
-    from app.services.career_tasks import get_career_task, start_career_task
+    from app.services.career_tasks import _task_view, start_career_task
 
     payload = event.payload_json if isinstance(event.payload_json, dict) else {}
     resume_id = int(payload.get("resume_id") or event.target_id or 0)
@@ -603,9 +608,11 @@ async def _dispatch_resume_updated(
     # The bounded task may finish before the initial FYI Inbox row is written.
     # Re-project a terminal task after that write so the result cannot be
     # overwritten by the startup placeholder.
-    current_task = await get_career_task(task["task_id"])
-    if current_task["status"] in {"completed", "failed", "blocked", "cancelled"}:
-        await handle_career_task_finished(task["task_id"])
+    async with async_session() as db:
+        current_row = await db.get(CareerTask, task["task_id"])
+        current_task = _task_view(current_row) if current_row is not None else None
+    if current_task and current_task["status"] in {"completed", "failed", "blocked", "cancelled"}:
+        await _project_career_director_task(current_task)
     return {
         "task": task,
         "resume_id": resume_id,
@@ -758,7 +765,7 @@ async def _prepare_resume_candidate(job_id: int) -> dict[str, Any]:
         }
     proposal = result.get("outputs") if isinstance(result.get("outputs"), dict) else {}
     return {
-        "status": "ready",
+        "status": "ready" if proposal.get("proposal_id") and proposal.get("status") in {"ready", "in_review"} else "blocked",
         "research_run_id": research.run_id,
         "proposal": proposal,
         "next_operation": "review_resume_optimization",

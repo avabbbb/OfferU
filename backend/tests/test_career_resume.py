@@ -21,7 +21,7 @@ from app.models.models import (
     ResumeSection,
     ResumeVersion,
 )
-from app.services import automation, career_director, career_resume, career_tasks
+from app.services import agent_operations, automation, career_delivery, career_director, career_resume, career_tasks
 from app.services import resume_route_operations
 
 
@@ -315,6 +315,8 @@ def test_saved_resume_version_runs_real_registry_path_and_projects_review_candid
                 career_tasks,
                 career_director,
                 career_resume,
+                career_delivery,
+                agent_operations,
                 resume_route_operations,
             ):
                 monkeypatch.setattr(module, "async_session", sessions)
@@ -323,7 +325,7 @@ def test_saved_resume_version_runs_real_registry_path_and_projects_review_candid
 
             monkeypatch.setattr(ops, "async_session", sessions)
             monkeypatch.setattr(career_tasks, "_career_director_workspace", lambda: "H:\\tmp\\offeru")
-            observed: dict[str, object] = {"tool_calls": [], "contexts": []}
+            observed: dict[str, object] = {"tool_calls": [], "contexts": [], "prompt": ""}
 
             class SyntheticCodex:
                 def __init__(self, on_operation):
@@ -336,6 +338,7 @@ def test_saved_resume_version_runs_real_registry_path_and_projects_review_candid
                     return {"threadId": "synthetic-resume-thread"}
 
                 async def start_turn(self, **_kwargs):
+                    observed["prompt"] = str(_kwargs.get("prompt") or "")
                     await self.on_operation("get_career_snapshot", {})
                     context = await self.on_operation(
                         "get_resume_reengagement_context",
@@ -437,6 +440,7 @@ def test_saved_resume_version_runs_real_registry_path_and_projects_review_candid
                 stored_profile = await db.get(Profile, profile_id)
             return {
                 "task": task,
+                "deliveries": task.get("result", {}).get("deliveries", []),
                 "event": event,
                 "inbox": inbox,
                 "events": events,
@@ -445,6 +449,8 @@ def test_saved_resume_version_runs_real_registry_path_and_projects_review_candid
                 "context": observed["contexts"][0],
                 "repeated_context": repeated_context,
                 "tool_calls": task.get("result", {}).get("runtime", {}).get("tool_calls", []),
+                "policy_validation": task.get("result", {}).get("policy_validation", {}),
+                "prompt": observed["prompt"],
                 "profile": stored_profile.base_info_json,
                 "cosmetic": cosmetic,
             }
@@ -454,10 +460,24 @@ def test_saved_resume_version_runs_real_registry_path_and_projects_review_candid
     result = asyncio.run(run())
     assert result["task"]["status"] == "completed", result["task"]
     assert result["tool_calls"] == ["get_career_snapshot", "get_resume_reengagement_context"]
+    assert result["policy_validation"]["ok"] is True
+    assert "offeru.career_director_policy.v1" in result["prompt"]
+    assert '"autonomy_ceiling":"L2"' in result["prompt"]
     assert result["event"].status == "completed"
     assert result["inbox"].category == "needs_review"
     assert result["inbox"].payload_json["resume_update"]["candidates"][0]["job_id"] == result["context"]["candidates"][0]["job_id"]
     assert result["inbox"].payload_json["reengagement_candidates"][0]["company"] == "Synthetic Company"
+    reengagement_deliveries = [
+        delivery
+        for delivery in result["deliveries"]
+        if delivery["artifact_type"] == "reengagement_candidate"
+    ]
+    assert len(reengagement_deliveries) == 1
+    assert reengagement_deliveries[0]["state"] == "ready", (
+        reengagement_deliveries[0].get("reason_code"),
+        reengagement_deliveries[0].get("reason"),
+    )
+    assert reengagement_deliveries[0]["artifact_id"]
     assert result["repeated_context"]["candidates"] == []
     assert any(
         candidate["reason"] == "candidate_still_pending"

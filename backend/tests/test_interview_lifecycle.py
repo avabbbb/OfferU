@@ -24,6 +24,7 @@ from app.models.models import (
 from app.services import (
     agent_runtime,
     automation,
+    career_delivery,
     career_director,
     career_interviews,
     career_job_assessment,
@@ -101,7 +102,16 @@ def _briefing(*, event_id: int, event_type: str) -> dict:
             {
                 "objective": "准备这场面试",
                 "why_now": "明天下午将和目标团队面试。",
-                "skill": "interview_prep",
+                "action_key": (
+                    "interview.debrief"
+                    if event_type == "INTERVIEW_COMPLETED"
+                    else "interview.prepare"
+                ),
+                "skill": (
+                    "interview_debrief"
+                    if event_type == "INTERVIEW_COMPLETED"
+                    else "interview_prep"
+                ),
                 "suggested_operations": [],
                 "target_ref": {"kind": "interview", "id": str(event_id)},
                 "autonomy_level": "L1",
@@ -152,6 +162,7 @@ def test_interview_invitation_uses_live_registry_reads_and_projects_one_task(
                 career_job_assessment,
                 career_memory,
                 legacy_operations,
+                career_delivery,
             ):
                 monkeypatch.setattr(module, "async_session", session)
             import app.ops as ops
@@ -285,6 +296,8 @@ def test_interview_invitation_uses_live_registry_reads_and_projects_one_task(
     assert [row.operation for row in audit_rows] == [
         "get_career_snapshot",
         "get_interview_career_context",
+        "get_career_snapshot",
+        "get_interview_career_context",
     ]
     assert all(row.surface == "career_director" and row.ok for row in audit_rows)
 
@@ -334,6 +347,7 @@ def test_completed_interview_debrief_becomes_reviewable_learning_candidate(
                 career_interviews,
                 career_job_assessment,
                 career_memory,
+                career_delivery,
             ):
                 monkeypatch.setattr(module, "async_session", session)
             import app.ops as ops
@@ -403,6 +417,9 @@ def test_completed_interview_debrief_becomes_reviewable_learning_candidate(
                 f"result={completed.get('result')}"
             )
             completed_task_id = completed["result"]["task"]["task_id"]
+            worker = career_tasks._LIVE_TASKS.get(completed_task_id)
+            if worker is not None:
+                await asyncio.wait_for(worker, timeout=30)
             completed_event = None
             for _ in range(300):
                 completed_task = await career_tasks.get_career_task(completed_task_id)
@@ -415,7 +432,10 @@ def test_completed_interview_debrief_becomes_reviewable_learning_candidate(
                 ):
                     break
                 await asyncio.sleep(0.01)
-            assert completed_task["status"] == "completed", completed_task
+            assert completed_task["status"] == "completed", (
+                completed_task.get("error"),
+                completed_task.get("result"),
+            )
             prompt_questions = completed_task["result"]["briefing"]["questions"]
             answers = [
                 "I coordinated the synthetic metric review with two teammates.",

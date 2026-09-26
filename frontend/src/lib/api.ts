@@ -69,7 +69,7 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
   }
   if (!res.ok) {
     const payload = await res.json().catch(() => ({}));
-    const detail = payload?.detail || payload?.message;
+    const detail = payload?.detail || payload?.message || payload?.error;
     const errorId = res.headers.get("X-OfferU-Error-Id") || payload?.error_id;
     const message = safeClientErrorMessage(detail, `API Error: ${res.status}`);
     throw new Error(errorId ? `${message}（错误 ID: ${errorId}）` : message);
@@ -1859,4 +1859,134 @@ export const connectionsApi = {
     if (params.sources?.length) qs.set("sources", params.sources.join(","));
     return request<JobSourceSearchResult>(`/api/jobs/source-search?${qs.toString()}`);
   },
+};
+
+// ---- 可信主动交付（TRUSTWORTHY_PROACTIVE_DELIVERY_V1）----
+//
+// delivery 由后端 resolve_deliveries 从已持久化实体解析而来：state=ready 只表示
+// 对应 artifact/proposal 已在存储中且可被引用。任何更早阶段都只能标记为
+// suggested / preparing，绝不能把 actions[].expected_outcome 当成已完成成果。
+
+export type CareerDeliveryState =
+  | "suggested"
+  | "preparing"
+  | "ready"
+  | "blocked"
+  | "failed"
+  | "stale";
+
+export type CareerDeliveryArtifactType =
+  | "tailored_resume_proposal"
+  | "interview_prep"
+  | "follow_up_draft"
+  | "reengagement_candidate"
+  | string;
+
+export interface CareerDeliveryProvenance {
+  task_id?: string;
+  evidence_refs?: string[];
+  source_fingerprint?: string;
+  fingerprints?: Record<string, unknown>;
+  last_seen_at?: string | null;
+}
+
+export interface CareerDelivery {
+  state: CareerDeliveryState;
+  task_id?: string;
+  artifact_id?: string | null;
+  artifact_type?: CareerDeliveryArtifactType;
+  job_id?: number | null;
+  application_id?: number | string | null;
+  action_key?: string;
+  title?: string;
+  href?: string;
+  reason?: string;
+  created_at?: string | null;
+  calendar_event_id?: number | null;
+  resume_id?: number | null;
+  application_type?: string;
+  /** follow_up_draft 恒为 false：草稿只持久化，绝不自动发送。 */
+  sent?: boolean;
+  /** interview_prep 已持久化练习进度。 */
+  practice?: { answered: number; total: number; completed: boolean };
+  starts_in_past?: boolean;
+  provenance?: CareerDeliveryProvenance;
+}
+
+export interface CareerArtifact {
+  id: string;
+  artifact_type: string;
+  title: string;
+  content_markdown: string;
+  created_at?: string;
+  related_job_id?: number | null;
+  related_application_id?: number | null;
+  metadata?: Record<string, unknown>;
+}
+
+/** Read prepared career material through the UI's Operation Registry projection. */
+export function getCareerArtifact(artifactId: string): Promise<CareerArtifact> {
+  return request<CareerArtifact>(
+    `/api/agent/runtime/career-artifacts/${encodeURIComponent(String(artifactId || ""))}`,
+  );
+}
+
+export interface CareerQuestionAnswer {
+  status: "pending" | "deferred" | "accepted" | "rejected" | "revoked" | "invalidated" | string;
+  observation_id?: number | null;
+  /** 记忆审核提案 id（注意：与 request 里的 resume proposal_id 不同） */
+  proposal_id?: number | null;
+  answer?: string;
+  answered_at?: string | null;
+  reviewed_at?: string | null;
+}
+
+export interface CareerQuestion {
+  question_index: number;
+  question: string;
+  why_needed?: string;
+  unlocks?: string;
+  optional?: boolean;
+  scope?: "discovery" | "resume_preparation" | string;
+  requirement?: string;
+  source_section_ids?: number[];
+  job_id?: number | null;
+  resume_proposal_id?: string | null;
+  answer?: CareerQuestionAnswer | null;
+}
+
+export interface CareerQuestionsResponse {
+  task_id: string;
+  task_status?: string;
+  questions: CareerQuestion[];
+}
+
+export interface CareerAnswerResponse {
+  task_id: string;
+  question_index: number;
+  scope?: string;
+  job_id?: number | null;
+  resume_proposal_id?: string | null;
+  observation_id?: number;
+  /** 记忆审核提案 id，不是简历提案 id */
+  proposal_id?: number;
+  status: string;
+  duplicate?: boolean;
+  answered_at?: string | null;
+}
+
+export const careerQuestionsApi = {
+  list: (taskId: string) =>
+    request<CareerQuestionsResponse>(
+      `/api/profile/career-questions/${encodeURIComponent(taskId)}`
+    ),
+  /** proposal_id 是简历提案 ResumeOptimizationProposal.proposal_id（投递前评审语境）。 */
+  submit: (
+    taskId: string,
+    data: { question_index: number; answer: string; proposal_id?: string },
+  ) =>
+    request<CareerAnswerResponse>(
+      `/api/profile/career-questions/${encodeURIComponent(taskId)}/answers`,
+      { method: "POST", body: JSON.stringify(data) },
+    ),
 };

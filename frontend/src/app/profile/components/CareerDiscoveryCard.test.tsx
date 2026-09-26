@@ -1,6 +1,15 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const { mockCareerQuestionList, mockCareerQuestionSubmit } = vi.hoisted(() => ({
+  mockCareerQuestionList: vi.fn(),
+  mockCareerQuestionSubmit: vi.fn(),
+}));
+
+vi.mock("@/lib/api", () => ({
+  careerQuestionsApi: { list: mockCareerQuestionList, submit: mockCareerQuestionSubmit },
+}));
 
 import { CareerDiscoveryCard, type CareerBriefing, type CareerSnapshot } from "./CareerDiscoveryCard";
 
@@ -58,6 +67,8 @@ const briefing: CareerBriefing = {
 };
 
 describe("CareerDiscoveryCard", () => {
+  beforeEach(() => vi.clearAllMocks());
+
   it("shows a readable assessment, briefing evidence, goals, and questions without answer inputs", () => {
     render(
       <CareerDiscoveryCard
@@ -148,5 +159,34 @@ describe("CareerDiscoveryCard", () => {
     await user.click(screen.getByRole("button", { name: "提交更正" }));
 
     expect(onCorrect).toHaveBeenCalledWith({ track: "experienced", substage: "career_switch" });
+  });
+
+  it("loads answerable Discovery questions from the CareerTask when its id is available", async () => {
+    mockCareerQuestionList.mockResolvedValue({
+      task_id: "discovery-task-4",
+      questions: [{
+        question_index: 0,
+        question: "你希望下一份工作更偏产品规划还是增长运营？",
+        why_needed: "两个方向需要强调的经历不同。",
+        unlocks: "帮助确定简历重点和岗位筛选方向。",
+        optional: true,
+        answer: null,
+      }],
+    });
+
+    render(
+      <CareerDiscoveryCard
+        snapshot={snapshot}
+        briefing={briefing}
+        status="completed"
+        taskId="discovery-task-4"
+        onStart={vi.fn()}
+        onRefresh={vi.fn()}
+        onCorrect={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByRole("textbox", { name: /你希望下一份工作更偏/ })).toBeInTheDocument();
+    expect(mockCareerQuestionList).toHaveBeenCalledWith("discovery-task-4");
   });
 });

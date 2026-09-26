@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { AlertCircle, Check, LoaderCircle, RefreshCw, Sparkles } from "lucide-react";
+import { CareerQuestionsPanel } from "@/components/career/CareerQuestionsPanel";
 
 export type CareerTrack = "campus" | "experienced";
 export type CareerConfidence = "high" | "medium" | "low";
@@ -58,14 +59,19 @@ export interface CareerBriefing {
   }>;
 }
 
+
 export interface CareerDiscoveryCardProps {
   snapshot: CareerSnapshot | null;
   briefing: CareerBriefing | null;
   status: "idle" | "queued" | "running" | "completed" | "failed";
   error?: string;
+  /** 产生这次简报的真实 CareerTask；只有拿到它才能提交并审核问题答案。 */
+  taskId?: string;
   onStart(): void;
   onRefresh(): void;
   onCorrect(stage: { track: CareerTrack; substage: CareerSubstage }): void;
+  /** 回答被保存/采纳后触发（例如刷新快照或受影响提案）。 */
+  onAnswered?(): void;
 }
 
 const STAGE_LABELS: Record<CareerSubstage, string> = {
@@ -133,6 +139,8 @@ export function CareerDiscoveryCard({
   onStart,
   onRefresh,
   onCorrect,
+  taskId,
+  onAnswered,
 }: CareerDiscoveryCardProps) {
   const [showCorrection, setShowCorrection] = useState(false);
   const [selectedStage, setSelectedStage] = useState("");
@@ -275,7 +283,7 @@ export function CareerDiscoveryCard({
               <div className="grid gap-3 sm:grid-cols-2">
                 {EVIDENCE_GROUPS.map((group) => (
                   <div key={group.key} className="rounded-md border border-[var(--border)] px-3 py-2.5">
-                    <h4 className={"mb-1.5 text-[12px] font-semibold " + group.tone}>{group.title}</h4>
+                    <h4 className={`mb-1.5 text-[12px] font-semibold ${group.tone}`}>{group.title}</h4>
                     <DetailList items={coverage[group.key]} empty={group.empty} />
                   </div>
                 ))}
@@ -286,23 +294,38 @@ export function CareerDiscoveryCard({
           {briefing && briefing.questions.length > 0 && (
             <section aria-labelledby="career-questions-heading">
               <h3 id="career-questions-heading" className="mb-2 text-[13px] font-semibold text-[var(--foreground)]">接下来值得确认的问题</h3>
-              <div className="space-y-2">
-                {briefing.questions.map((item, index) => (
-                  <article key={item.question + "-" + index} className="rounded-md border border-[var(--border)] px-3 py-2.5">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <h4 className="text-[12.5px] font-medium leading-5 text-[var(--foreground)]">{item.question}</h4>
-                      {item.optional && <span className="shrink-0 rounded-full bg-[var(--surface-muted)] px-2 py-0.5 text-[10.5px] text-[var(--foreground-muted)]">可选</span>}
-                    </div>
-                    <p className="mt-1 text-[11.5px] leading-5 text-[var(--foreground-muted)]">想了解：{item.why_needed}</p>
-                    <p className="mt-0.5 text-[11.5px] leading-5 text-[var(--foreground-muted)]">这会帮助我们：{item.unlocks}</p>
-                  </article>
-                ))}
-              </div>
+              {taskId ? (
+                <CareerQuestionsPanel
+                  taskId={taskId}
+                  heading="回答问题以补充职业证据"
+                  onAccepted={onAnswered}
+                  fallback={fallbackQuestionList(briefing)}
+                />
+              ) : (
+                fallbackQuestionList(briefing)
+              )}
             </section>
           )}
         </div>
       )}
     </section>
+  );
+}
+
+function fallbackQuestionList(briefing: CareerBriefing) {
+  return (
+    <div className="space-y-2">
+      {briefing.questions.map((item, index) => (
+        <article key={item.question + "-" + index} className="rounded-md border border-[var(--border)] px-3 py-2.5">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <h4 className="text-[12.5px] font-medium leading-5 text-[var(--foreground)]">{item.question}</h4>
+            {item.optional && <span className="shrink-0 rounded-full bg-[var(--surface-muted)] px-2 py-0.5 text-[10.5px] text-[var(--foreground-muted)]">可选</span>}
+          </div>
+          <p className="mt-1 text-[11.5px] leading-5 text-[var(--foreground-muted)]">想了解：{item.why_needed}</p>
+          <p className="mt-0.5 text-[11.5px] leading-5 text-[var(--foreground-muted)]">这会帮助我们：{item.unlocks}</p>
+        </article>
+      ))}
+    </div>
   );
 }
 

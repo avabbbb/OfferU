@@ -836,12 +836,15 @@ async def create_resume_version_record(
             from app.services.automation import process_queued_automation_event
 
             dispatched = await process_queued_automation_event(automation_event_id)
+            dispatch_result = dispatched.get("result") if isinstance(dispatched.get("result"), dict) else {}
+            dispatched_task = dispatch_result.get("task") if isinstance(dispatch_result.get("task"), dict) else {}
             result["automation"] = {
                 "event_id": automation_event_id,
                 "status": dispatched.get("status", "queued"),
-                "task_id": (dispatched.get("result") or {}).get("task", {}).get("task_id")
-                if isinstance(dispatched.get("result"), dict)
-                else None,
+                # A very fast task may finish and project before dispatch
+                # returns, replacing the initial {task: ...} event payload
+                # with the terminal {task_id: ...} projection result.
+                "task_id": dispatched_task.get("task_id") or dispatch_result.get("task_id"),
             }
         except Exception as exc:
             # ResumeVersion and its outbox event are already committed. Leave

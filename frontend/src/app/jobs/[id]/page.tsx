@@ -33,6 +33,10 @@ import { controlCareerTask, patchJob, useJob, usePools, useProgressBoard, usePro
 import { JobAssessmentPlanCard } from "@/components/jobs/JobAssessmentPlanCard";
 import { InterviewLifecycleCard } from "@/components/career/InterviewLifecycleCard";
 import { ResumeReengagementCard } from "@/components/career/ResumeReengagementCard";
+import { CareerQuestionsPanel } from "@/components/career/CareerQuestionsPanel";
+import { DeliveryList } from "@/components/career/DeliveryList";
+import { ArtifactViewer } from "@/components/career/ArtifactViewer";
+import { readDeliveries } from "@/components/career/deliveries";
 import { RoleIntelligencePanel } from "@/components/jobs/RoleIntelligencePanel";
 import {
   jobResearchApi,
@@ -150,6 +154,7 @@ export default function JobDetailPage() {
     isLoading: progressLoading,
   } = useProgressBoard("all");
   const [selectedAttemptId, setSelectedAttemptId] = useState<number | null>(null);
+  const [activeArtifactId, setActiveArtifactId] = useState("");
   const { data: progressTimeline, error: progressTimelineError, isLoading: progressTimelineLoading } =
     useProgressTimeline(selectedAttemptId);
   const [joinModalOpen, setJoinModalOpen] = useState(false);
@@ -354,6 +359,25 @@ export default function JobDetailPage() {
       && candidate.urgency !== "skip",
     ) ? latestTask : null;
   }, [careerTasksData, jobId]);
+  const jobDeliveries = useMemo(() => {
+    if (!jobId || !careerTasksData?.tasks) return [];
+    const unique = new Map<string, ReturnType<typeof readDeliveries>[number]>();
+    for (const task of careerTasksData.tasks) {
+      if (task.task_type !== "career_director") continue;
+      for (const delivery of readDeliveries(task.result)) {
+        if (Number(delivery.job_id ?? 0) !== jobId) continue;
+        const key = String(delivery.artifact_id || delivery.action_key || `${delivery.artifact_type}-${task.task_id}`);
+        if (!unique.has(key)) unique.set(key, delivery);
+      }
+    }
+    return [...unique.values()];
+  }, [careerTasksData, jobId]);
+  const jobAssessmentHasQuestions = Boolean(
+    (Array.isArray(jobAssessmentTask?.result?.briefing?.questions)
+      && jobAssessmentTask.result.briefing.questions.length > 0)
+    || (Array.isArray(jobAssessmentTask?.result?.briefing?.resume_preparation?.questions)
+      && jobAssessmentTask.result.briefing.resume_preparation.questions.length > 0),
+  );
 
   // Dynamic progress projection — derived from real state, not fabricated.
   const preparationProgress = useMemo(() => {
@@ -645,8 +669,16 @@ export default function JobDetailPage() {
         task={jobAssessmentTask}
         onRetry={() => void controlCareerTask(jobAssessmentTask!.task_id, "retry").catch((err) => alert(safeClientErrorMessage(err, "重试岗位评估失败")))}
       />
+      {jobAssessmentHasQuestions && jobAssessmentTask ? (
+        <CareerQuestionsPanel
+          taskId={jobAssessmentTask.task_id}
+          heading="为岗位评估补充信息"
+          onAccepted={() => void mutateCareerTasks()}
+        />
+      ) : null}
 
       <ResumeReengagementCard task={resumeReengagementTask} jobId={jobId ?? undefined} />
+      <DeliveryList deliveries={jobDeliveries} heading="OfferU 已准备的内容" onOpenArtifact={setActiveArtifactId} />
 
       {interviewLifecycleTasks.map((task) => (
         <InterviewLifecycleCard
@@ -1684,6 +1716,12 @@ export default function JobDetailPage() {
           </ModalFooter>
         </ModalContent>
       </Modal>
+
+      {activeArtifactId ? (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4">
+          <ArtifactViewer artifactId={activeArtifactId} onClose={() => setActiveArtifactId("")} />
+        </div>
+      ) : null}
     </motion.div>
   );
 }
