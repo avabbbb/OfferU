@@ -17,7 +17,7 @@ describe("localRuntime", () => {
   });
 
   it("connects the web surface to the existing local OfferU runtime", async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ status: "ok" }), {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL) => new Response(JSON.stringify({ status: "ok" }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     }));
@@ -29,12 +29,12 @@ describe("localRuntime", () => {
     expect(localStorage.getItem("offeru_web_local_runtime")).toBe("connected");
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    const request = fetchMock.mock.calls[0][0] as Request;
+    const request = fetchMock.mock.calls[0]?.[0] as unknown as Request;
     expect(request.url).toBe("http://127.0.0.1:8766/api/health");
   });
 
   it("fails closed and stays in showcase mode when no local runtime is reachable", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => {
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL) => {
       throw new TypeError("network unavailable");
     }));
 
