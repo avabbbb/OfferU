@@ -8,6 +8,50 @@ from scripts.release.audit_artifacts import audit_artifact_tree
 
 
 class ReleaseArtifactAuditTests(unittest.TestCase):
+    def test_release_manifest_checksum_digits_are_not_phone_numbers(self) -> None:
+        digest = "13812345678" + ("a" * 53)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "release-artifacts"
+            root.mkdir()
+            (root / "artifacts.json").write_text(
+                '[{"name":"OfferU-0.4.0-setup.exe","bytes":1,'
+                f'"sha256":"{digest}"}}]',
+                encoding="utf-8",
+            )
+            (root / "SHA256SUMS.txt").write_text(
+                f"{digest}  OfferU-0.4.0-setup.exe\n", encoding="utf-8"
+            )
+            result = audit_artifact_tree(root)
+
+        self.assertEqual(result["status"], "clear")
+        self.assertEqual(result["findings"], [])
+
+    def test_release_manifest_still_reports_pii_outside_checksum_fields(self) -> None:
+        phone = "13812345678"
+        digest = "a" * 64
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "release-artifacts"
+            root.mkdir()
+            (root / "artifacts.json").write_text(
+                '[{"name":"OfferU-' + phone + '.exe","bytes":1,'
+                f'"sha256":"{digest}"}}]',
+                encoding="utf-8",
+            )
+            (root / "SHA256SUMS.txt").write_text(
+                f"{digest}  OfferU-{phone}.exe\n", encoding="utf-8"
+            )
+            result = audit_artifact_tree(root)
+
+        findings = result["findings"]
+        assert isinstance(findings, list)
+        self.assertEqual(
+            {(item["path"], item["kind"]) for item in findings},
+            {
+                ("artifacts.json", "phone_number"),
+                ("SHA256SUMS.txt", "phone_number"),
+            },
+        )
+
     def test_clean_artifact_tree_has_no_findings(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
