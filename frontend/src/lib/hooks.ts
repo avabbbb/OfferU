@@ -10,6 +10,7 @@ import useSWR from "swr";
 import { SHOWCASE, showcaseHandle } from "@/lib/showcase/router";
 import { showcaseChatResponse } from "@/lib/showcase/llm";
 import { resolveApiBase } from "@/lib/apiBase";
+import { isLocalRuntimeConnected } from "@/lib/localRuntime";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { decideAgentRuntimeActionInDesktop } from "@/lib/desktop-proposal-decision";
 
@@ -23,7 +24,7 @@ function formatBackendNetworkError(_error?: unknown) {
  * 通用 fetcher：SWR 默认请求函数
  * 自动处理 JSON 解析和错误码
  */
-const fetcher = async (url: string) => {  if (SHOWCASE) {
+const fetcher = async (url: string) => {  if (SHOWCASE && !isLocalRuntimeConnected()) {
     // 展示模式：SWR 请求也由本地数据层承载（URL 为完整地址，提取 path）
     try {
       const parsed = new URL(url);
@@ -51,7 +52,7 @@ const fetcher = async (url: string) => {  if (SHOWCASE) {
  * 合成标准 Response，调用方无需感知后端是否存在。
  */
 async function showcaseFetch(url: string, init?: RequestInit): Promise<Response> {
-  if (!SHOWCASE) {
+  if (!SHOWCASE || isLocalRuntimeConnected()) {
     const target = /^https?:\/\//i.test(url)
       ? url
       : `${API_BASE}${url.startsWith("/") ? url : `/${url}`}`;
