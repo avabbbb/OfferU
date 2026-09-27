@@ -114,28 +114,11 @@ Event → Rule → CareerTask → Agent / Runtime → Operation
 
 普通用户主路径：
 
-Install → Launch → Resume + explicitly authorized memory → Profile → save first Job → create/open canonical Job Workspace → Today / Next Best Actions。Desktop 可在后台发现本机 Coding Agent，用户需要时再连接；外置 Agent 接入不得阻塞建立 Profile 或保存第一个 Job。
+Install → Launch → copy one generic OfferU connection prompt → paste it into the local coding Agent already in use → the Agent downloads the canonical OfferU Skill from public GitHub and follows its documented host setup → the local runtime supplies an installation-specific CLI projection only if needed → optional read-only access verification → Resume + explicitly authorized memory → Profile → save first Job → create/open canonical Job Workspace → optionally connect job-search inbox → Today / Next Best Actions。
 
-高级用户允许从支持的外部 Agent 通过 **OfferU Desktop 已安装/更新的 runtime-bound Skill** 直接开始一个 Job，但最终必须解析/创建同一个 canonical Job Workspace，不能形成 Agent-only 第二套项目状态。公共 raw Skill 不得要求用户启动源码开发环境。
+高级用户允许从支持的外部 Agent 通过 OfferU Skill 直接开始一个 Job，但最终必须解析/创建同一个 canonical Job Workspace，不能形成 Agent-only 第二套项目状态。
 
 正常路径不得要求终端，也不得让用户理解 Skill 安装、MCP、Operation Registry、Provider、Harness、FastAPI 或 SQLite。
-
-Surface contract：
-
-```text
-Public Web / Showcase
-= 演示站 + 内置浏览器 Agent + 虚构 IndexedDB 数据
-= 不访问 localhost，不发现/安装本机 Coding Agent，不读取真实 Career Truth
-
-OfferU Desktop (.exe / .dmg)
-= 唯一真实本地 Career OS
-= SQLite Career Truth + packaged runtime + 外置 Coding Agent 接入
-
-Browser Extension
-= 用户触发的 Job Capture / Safe Fill
-```
-
-Web → localhost / Local Network Access 不作为普通用户产品路径。桌面前端若需要访问第三方网络/系统能力，必须经过明确的平台边界（OfferU Runtime / Rust/Tauri plugin），不得默认假设 WebView 与普通浏览器行为一致。
 
 Onboarding Golden Path 必须 100% 通过，并达到 0 uncaught exception、0 blank page、0 developer-only blocker。Today、Pipeline、Profile、Job、Resume 的空状态必须解释原因并给出下一步。
 

@@ -74,12 +74,7 @@ class AgentIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(installed["skill_status"], "INSTALLED")
         path = adapter.skill_path()
         self.assertFalse(path.is_symlink())
-        installed_text = path.read_text(encoding="utf-8")
-        self.assertIn(str(integration._BACKEND_ROOT.resolve()), installed_text)
-        self.assertIn("developer/source projection", installed_text)
-        self.assertIn("-m app.cli doctor --pretty", installed_text)
-        self.assertNotIn("<offeru-cli>", installed_text)
-        self.assertNotIn("<!-- offeru-runtime-binding -->", installed_text)
+        self.assertIn(str(integration._BACKEND_ROOT.resolve()), path.read_text(encoding="utf-8"))
 
         path.write_text(path.read_text(encoding="utf-8") + "\noutdated\n", encoding="utf-8")
         self.assertEqual(adapter.inspect()["skill_status"], "OUTDATED")
@@ -91,15 +86,11 @@ class AgentIntegrationTests(unittest.IsolatedAsyncioTestCase):
             adapter.install()
         self.assertEqual(adapter.repair()["skill_status"], "INSTALLED")
 
-    async def test_runtime_skill_projection_uses_the_current_install_command(self) -> None:
+    async def test_downloadable_skill_is_projected_for_the_current_install(self) -> None:
         content = integration.installed_skill_content()
-        self.assertIn("installed-product Agent router", content)
+        self.assertIn("Install in the Agent you are using", content)
         self.assertIn("get_current_view", content)
         self.assertIn(str(integration._BACKEND_ROOT.resolve()), content)
-        self.assertIn("developer/source projection", content)
-        self.assertIn("-m app.cli doctor --pretty", content)
-        self.assertNotIn("<offeru-cli>", content)
-        self.assertNotIn("<!-- offeru-runtime-binding -->", content)
 
     async def test_codex_child_uses_system_proxy_without_overriding_process_proxy(self) -> None:
         with patch.dict(codex_adapter.os.environ, {}, clear=True), patch.object(

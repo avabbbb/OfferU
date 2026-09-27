@@ -1,13 +1,13 @@
 # OfferU Entry, Onboarding & Dogfood Contract
 
 Status: **CURRENT PRODUCT DETAIL**  
-Updated: 2026-09-25
+Updated: 2026-09-27
 
 This document expands the first-use and distribution contract defined by [Current Product North Star](./current-product.md). If wording conflicts, `GOAL.md` and `current-product.md` win.
 
 The immediate product goal is not “add more features”. It is:
 
-> **A real job seeker can install OfferU, import a Resume, give OfferU a real Job, and reach useful work without understanding the technical stack. Connecting an existing local Coding Agent is an optional Desktop capability, not the first-use gate.**
+> **A real job seeker can install OfferU, connect the AI they already use, give OfferU a real job, and keep working from one durable Job Workspace without understanding the technical stack.**
 
 ## 1. Product pattern we are borrowing
 
@@ -40,13 +40,18 @@ The normal user should experience:
 ~~~text
 Download OfferU
 → install
-→ open OfferU Desktop
+→ open OfferU
+→ copy one generic OfferU connection prompt
+→ paste it into the local Agent already in use
+→ Agent downloads the canonical Skill from the public GitHub repository
+→ Agent resolves the current local runtime command without guessing install paths
+→ Agent follows the setup guide for its current environment
+→ verify access with one read-only Operation
 → import resume
 → optional authorized AI memory
 → save one real Job
 → canonical Job Workspace
 → Today tells the user what needs attention next
-→ optionally connect an existing local Coding Agent
 ~~~
 
 The user must not be asked to install or understand:
@@ -58,22 +63,21 @@ The user must not be asked to install or understand:
 - MCP;
 - Operation Registry;
 - model IDs;
-- Skill folders;
+- Skill folders or provider-specific setup screens;
 - CLI commands.
 
-The Desktop package owns its own runtime dependencies. The external Agent owns its own account/login/model. OfferU reuses that login instead of asking the user to configure duplicate model credentials.
+OfferU's canonical Skill is publicly available in the GitHub repository, independent of whether the local backend is running. The copied prompt asks the Agent to install only that Skill in its own documented Skills directory; the Skill explains host-specific paths. The local backend may provide an installation-specific CLI projection after installation, but it is never the Skill download source. The external Agent owns its own account/login/model. OfferU never asks the user to duplicate model credentials, and copying the prompt is not treated as a successful connection.
 
 If no supported external Agent is ready, the user may continue setup and use the OfferU fallback path. “External-first” must not become “external-Agent-required”.
 
-### Front door B — power user: Desktop-bound Skill-first
+### Front door B — power user: Skill-first
 
-A user already inside a supported Coding Agent may start from that Agent **after OfferU Desktop has installed/updated the runtime-bound Skill**:
+A user already inside a supported coding Agent may start from the Agent:
 
 ~~~text
-OfferU Desktop → Connect Agent
-→ fresh Agent session discovers runtime-bound OfferU Skill
+OfferU Skill available in host
 → “Use OfferU to analyze this job: <JD/URL>”
-→ Agent reads the live OfferU manifest through the projected executable command
+→ Agent reads the live OfferU manifest
 → Agent selects a Skill / Operation
 → read operations execute
 → mutations become OfferU proposals
@@ -83,69 +87,44 @@ OfferU Desktop → Connect Agent
 
 This is not a second CLI product. It is another front door into the same Career Runtime.
 
-A future standalone Skill installer may make this entry as lightweight as Agent-first products such as Hypit, but **OfferU does not currently claim a public `npx skills add offeru` package**. Today, the supported consumer flow is for OfferU Desktop to project/install the canonical Skill into detected hosts.
+OfferU does not claim a published `npx skills add offeru` package. The canonical Skill is the public GitHub `main` file at `https://raw.githubusercontent.com/avabbbb/OfferU/main/.agents/skills/offeru/SKILL.md`; the local runtime endpoint is used only to resolve the CLI command for the running installation.
 
-## 3. Current beginner host contract
+## 3. Generic local-Agent setup contract
 
-Current source-of-truth is `backend/app/services/agent_host_registry.py` plus live connection checks.
+The beginner UI does not ask the user to choose a named host. `backend/app/services/agent_host_registry.py` remains the internal capability source for diagnostics and supported automatic integration, while the user-facing flow starts from one provider-neutral prompt.
 
-### Recommended beginner path
+The prompt points to the canonical Skill in the public GitHub repository. The Agent must identify its current host, install only the OfferU Skill in a documented Skills directory, and follow the setup instructions shipped inside that Skill. If it needs the CLI for a packaged OfferU install, the local backend may return an installation-specific projection; this is runtime binding, not Skill distribution. The Agent must not change account/login, model, credentials, proxy or unrelated settings. If the current host has no documented Skill loader, it reports the limitation instead of guessing.
 
-**Codex** is the current recommended beginner host.
+The Skill may document common host-specific Skills directories because that is setup reference material for the Agent, not a provider choice the user must make. The ordinary OfferU interface does not list provider names or ask the user to pick one.
 
-Current implementation can:
-
-- discover the local Codex executable;
-- keep Codex authentication owned by Codex;
-- install/update the canonical OfferU Skill;
-- perform a short, non-career-data integration challenge;
-- display verified/failed/auth-required state in OfferU;
-- sync the current OfferU view so the Agent can read it through OfferU operations.
-
-### Other installable beginner hosts
-
-**Claude Code** and **OpenCode** are surfaced as beginner hosts and support canonical Skill installation. Their exact login/model/capability verification remains host-specific and should be shown honestly in the Agent Connection panel.
-
-OpenCode currently has reduced public-web research support for `company_research` and `role_intelligence`.
-
-### Hosted-runtime-only paths
-
-OMP, Pi, Gemini CLI and WorkBuddy/CodeBuddy currently act as hosted runtime integrations rather than the same “Desktop automatically installs OfferU Skill” path.
-
-Do not present them as identical to the Codex beginner experience.
-
-Current host exclusions also matter:
-
-- OMP / Pi / WorkBuddy do not currently claim the full `application_assistant` surface;
-- host capability badges must come from live evidence, not host name.
+Copying a prompt is only a handoff. The Agent must download the Skill, execute the connection check and read the current view before OfferU or the user describes it as connected. Skill and Operation capabilities continue to come from the live Registry; host name alone is not evidence of support.
 
 ## 4. Current first-use UI contract
 
-The beginner flow is intentionally short and career-first:
+The implemented beginner wizard is intentionally short:
 
-1. **导入简历**
+1. **准备本地 Agent**
+   - copy one generic connection prompt;
+   - paste it into the local coding Agent already in use;
+   - let the Agent download the canonical GitHub Skill and follow the matching setup guide;
+   - verify with a read-only Operation and report the actual current page.
+   - copying alone never means “connected”; no provider picker or host list is shown.
+
+2. **导入简历**
    - local extraction;
    - show provenance;
    - only reviewed evidence becomes Career Truth.
 
-2. **整理 AI 记忆** — optional
+3. **整理 AI 记忆** — optional
    - explicit authorization;
    - selected excerpts only;
    - imported claims enter observations/candidates first;
    - no automatic promotion to verified Profile facts.
 
-3. **保存目标岗位**
+4. **保存目标岗位**
    - browser capture or manual JD paste;
    - saving a Job does not mean it was applied to;
    - open the canonical Job Workspace.
-
-4. **连接外置 Coding Agent** — optional / Desktop only
-   - detect local Agents;
-   - reuse existing login;
-   - install/repair/update the runtime-bound OfferU Skill where supported;
-   - verify the integration without asking the user to paste prompts or run terminal commands.
-
-The public Web Showcase skips this connection step entirely and uses its built-in demo Agent.
 
 After Agent work starts, protected mutations are surfaced in Desktop as **Pending Proposal Review**. The user can approve or reject individual actions. The Agent must never self-confirm.
 
@@ -251,13 +230,13 @@ Use one real machine, one real user Profile, one verified Agent (prefer Codex fi
 For the first Job:
 
 ~~~text
-launch OfferU Desktop
+launch OfferU
+→ Agent connection ready
 → import real resume
 → review Profile evidence
 → paste/save a real JD
 → open Job Workspace
-→ let OfferU begin useful preparation
-→ optionally connect/use an external Agent for the same Workspace
+→ ask Agent to evaluate the Job
 → inspect Role / Evidence / gaps
 → request tailored Resume proposal
 → approve/reject/edit in Desktop
@@ -359,6 +338,6 @@ For owner dogfood:
 
 For future public beginner release, raise the bar:
 
-> On a clean computer with no Python/Node/Git, a user receives only the OfferU installer. Within roughly ten minutes, they can import a Resume, save the first Job and reach a useful Job Workspace without opening a terminal. If they already use a supported Coding Agent, Desktop can connect it afterwards without exposing Skill folders, localhost, Python or manual prompts.
+> On a clean computer with no Python/Node/Git, a user receives only the OfferU installer and already has a supported Agent account. Within roughly ten minutes, they can connect that Agent, import a Resume, save the first Job and reach a useful Job Workspace without opening a terminal.
 
 This public-release target is stricter than owner dogfood and remains subject to signing, packaging, privacy and clean-machine release gates.

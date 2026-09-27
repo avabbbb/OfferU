@@ -37,8 +37,11 @@ The default experience is:
 
 ~~~
 Install
-→ Find my local AI automatically
-→ Project / register the OfferU Skill where supported
+→ Copy one OfferU connection prompt
+→ Paste it into the local Agent already in use
+→ Agent downloads the canonical OfferU Skill from GitHub and follows its host setup guide
+→ Agent resolves the current local runtime command without guessing install paths
+→ Verify access with one read-only OfferU Operation
 → Resume + explicitly authorized AI memory → Profile
 → Save a real job from the browser
 → Create the canonical Job Workspace
@@ -63,97 +66,72 @@ Profile
 
 - **Today** is the guided action layer. It answers “what matters now?” and shows at most a few primary actions. Opening Today records one idempotent daily Career Director review for the default Profile; the resulting CareerBriefing is projected into Today and the existing Automation Inbox, while the CareerTask remains the durable execution record.
 - **Pipeline** projects application state, timeline and next action from the same canonical events.
-- **Job / Job Workspace** is the durable application workspace for one opportunity: Job Snapshot, Role Intelligence, Evidence Map, application materials, interview preparation and canonical Timeline all converge here. Saving a Job triggers one bounded Career Director assessment against current Career State; the plan is persisted in CareerTask/Automation Inbox and displayed in this workspace. Role Intelligence starts only when that assessment recommends it. Agent conversations are only one way to modify this workspace.
+- **Job / Job Workspace** is the durable application workspace for one opportunity: Job Snapshot, Role Intelligence, Evidence Map, application materials, interview preparation and canonical Timeline all converge here. Saving a Job triggers one bounded Career Director assessment against current Career State; the plan is persisted in CareerTask/Automation Inbox and displayed in this workspace. Role Intelligence is offered only when the assessment recommends it, and starts only after the user chooses it. Agent conversations are only one way to modify this workspace.
 - **Profile** is the long-lived evidence-backed model of the user. Memory is an evolution mechanism for Profile, not a separate silo.
 
 Agent, Skills, Email, Browser Capture, Resume, Role Intelligence and Interview are capabilities across these surfaces, not competing top-level products.
 
+Saving a Job and opening its canonical workspace must work when the embedded Agent or active model configuration is unavailable. OfferU keeps the Job and workspace available, records a retryable blocked CareerTask, and explains what needs configuration. It does not replace Career Director reasoning with a scripted assessment. Role Intelligence is not started by `JOB_SAVED`; a valid recommendation is policy-checked and offered as a user-started Registry operation.
+
 ## Distribution and first-use contract
 
-OfferU now has a strict surface boundary:
-
-~~~text
-Public Web / Showcase
-= product demo + built-in browser Agent + fictional IndexedDB data
-
-OfferU Desktop (.exe / .dmg)
-= real local Career OS + SQLite Career Truth + external Coding Agent integration
-
-Browser Extension
-= user-triggered Job capture / safe fill
-~~~
-
-The public Web surface must **not** probe localhost, request Local Network Access, discover local Coding Agents or pretend to expose the user's real Career Truth. Its built-in Agent is only for product demonstration; if a visitor supplies an optional showcase LLM key, that browser-only configuration remains demo data and never becomes Desktop state.
-
-For normal users, OfferU Desktop owns setup. The intended beginner experience is:
+For normal users, OfferU Desktop owns setup. The intended public beginner experience is:
 
 ~~~text
 Download OfferU
 → install
 → open OfferU
-→ import Resume / establish Profile
+→ copy one generic OfferU connection prompt
+→ paste it into the local Agent already in use
+→ Agent downloads the matching OfferU Skill and follows its own setup guide
+→ verify the current OfferU page with a read-only Operation
+→ import Resume
 → save first Job
-→ OfferU starts useful preparation
-→ optionally connect an existing local Coding Agent from Desktop
+→ useful Job Workspace
 ~~~
 
-External Agent discovery/integration may happen in the background or from Settings, but it must not block the user from establishing Profile or saving the first Job. The normal user must not install Python, Node.js, Git, MCP tooling, manually start a backend, copy runtime commands or understand SQLite/ports. The Desktop package owns its runtime dependencies; the external Agent keeps ownership of its account/login/model.
+The normal user must not be required to install Python, Node.js, Git, MCP tooling, select a provider, or hand-copy Skill files. The generic prompt points to the canonical public Skill in the OfferU GitHub repository; the local runtime projection is used only to resolve the command for the running installation. The Skill explains the active Agent's supported location. The Agent keeps ownership of its own account/login/model, and copying the prompt alone never means the connection is verified.
 
-For power users, Skill-first remains a second front door **only when OfferU Desktop is installed and has projected a runtime-bound Skill**. The raw public Skill is a bootstrap/contract document, not a source-development command sheet.
+Skill-first remains a valid second front door. OfferU does not claim a published standalone `npx skills add offeru` package; the canonical Skill is the `main` branch file in the public GitHub repository at `https://raw.githubusercontent.com/avabbbb/OfferU/main/.agents/skills/offeru/SKILL.md`, while the local Desktop runtime serves only an installation-specific CLI projection.
 
 Detailed first-use, current host/capability boundaries and owner-dogfood acceptance are maintained in [Entry, Onboarding & Dogfood Contract](./entry-onboarding-and-dogfood.md).
 
 ## Two front doors, one Career Truth
 
-OfferU has two real-product entry lanes. Both require the Desktop runtime and converge on the same canonical state.
+OfferU has two valid entry lanes that must converge on the same canonical state.
 
-### Normal user: Desktop-first
+### Normal user: App-first
 
 ~~~
-Install / open OfferU Desktop
+Install OfferU
+→ copy one connection prompt
+→ paste it into the local Agent already in use
+→ Agent installs the version-matched OfferU Skill using its host guide
 → import resume / core evidence
 → save first Job
 → open Job Workspace
 → Guided Today handles the next decisions
-→ optionally connect a detected local Coding Agent
 ~~~
 
-Normal users do not need to know what a Skill, MCP server, Registry, provider topology, Python backend or SQLite file is.
+Normal users do not need to choose an Agent from a provider list or understand MCP, Registry or provider topology. The copied prompt and Skill guide handle the technical steps; Skill installation and a successful readback remain distinct states.
 
-### Power user: Skill-first through Desktop
+### Power user: Skill-first
 
-A user already inside Codex, Claude Code, WorkBuddy/CodeBuddy, OpenCode, OMP, Pi or another supported host may start from the Agent after Desktop has installed/updated the runtime-bound OfferU Skill:
+A user already inside Codex, Claude Code, WorkBuddy/CodeBuddy, OpenCode, OMP, Pi or another supported host may start from the Agent:
 
 ~~~
-OfferU Desktop → Connect Agent
-→ fresh Agent session discovers runtime-bound OfferU Skill
+enable OfferU Skill
 → "analyze this job for me"
 → Agent creates/resolves the canonical Job
 → governed OfferU operations prepare the role
-→ open the same Job Workspace in OfferU Desktop
+→ open the same Job Workspace in OfferU
 ~~~
 
-The Skill must not clone/search the OfferU repository, create a Python environment, start Vite/FastAPI, probe localhost manually or synthesize source commands for a normal career task.
+This must never become a second CLI-only product. Skill-first and App-first are two doors into the same Career Runtime, Job, Pipeline, Profile and audit trail.
 
-The public Web Showcase is **not** a third real-data front door.
+## Reasoning authority: external-first, not external-only
 
-## Career Memory and context
-
-OfferU separates **Career Truth**, **Curated Career Memory**, **episodic learning**, **prospective state**, and **external Agent memory**.
-
-- Career Truth is the structured, user-editable source of record for Profile, Evidence, Jobs, Applications, Resumes, Interviews, Calendar, Proposals and task state.
-- Curated Career Memory is a compact, correctable synthesis of durable preferences, corrections, accepted hypotheses and long-term career learnings.
-- Episodic learning stores detailed debriefs, observations and historical outcomes for on-demand recall; it is not injected wholesale into every Agent run.
-- Prospective state such as follow-ups, deadlines and future obligations stays in deterministic Calendar/Event/CareerTask/Automation lifecycle state rather than prose memory.
-- Codex/OMP/Claude/WorkBuddy memory is an optional authorized source. It enters OfferU through the observation/proposal/evidence gate and never overrides Career Truth.
-
-External Agents should normally consume the **minimum sufficient Career Context assembled by OfferU** for the current task instead of independently reconstructing the user from their own host memory.
-
-Detailed storage, write, recall and promotion rules are defined in [Career Memory & Context Contract](./career-memory-contract.md).
-
-## Reasoning authority: surface-aware, one authority per run
-
-On Desktop, OfferU may prefer a **verified local Agent already owned by the user** — for example Codex, WorkBuddy/CodeBuddy, Claude Code, OpenCode, OMP, Pi or another supported host. The Web Showcase uses its own built-in demo Agent and never participates in local-Agent discovery.
+OfferU prefers a **verified local Agent already owned by the user** — for example Codex, WorkBuddy/CodeBuddy, Claude Code, OpenCode, OMP, Pi or another supported host.
 
 OfferU should:
 
@@ -163,7 +141,7 @@ OfferU should:
 - project the OfferU Skill and the smallest relevant tool surface;
 - preserve the host's native session/model lifecycle when that host is acting as the reasoning engine.
 
-A built-in OfferU Agent is the Web Showcase default and remains an allowed Desktop fallback when no suitable external host is available or when the user explicitly chooses it.
+A built-in OfferU Agent is allowed as a **fallback** when no suitable external host is available or when the user explicitly chooses it.
 
 Exactly one reasoning authority is active for a given Agent Run. External and built-in Agents share the same truth, capability, confirmation and audit boundaries.
 
@@ -228,10 +206,9 @@ The Workspace progressively fills as work completes:
 ~~~
 Job saved
 → Job Snapshot ready
-→ Role Intelligence ready
-→ Evidence Map ready
-→ Resume proposals ready
-→ Interview focus ready
+→ Career Director assessment completed or visibly blocked
+→ user-selected Role Intelligence / Evidence Map / Resume preparation
+→ interview preparation when a real interview is scheduled
 ~~~
 
 Long-running Agent work should surface as product state: completed, needs review, blocked/failed, and next action. Closing an Agent chat must not make the work disappear.
@@ -410,7 +387,6 @@ Do not reintroduce these as defaults:
 - silent application submission or recruiter messaging;
 - a long command/mode menu as the beginner UX;
 - treating historical eval/audit numbers as current capability truth.
-- a public Web → localhost / Local Network Access bridge as the normal product path; real local data and external Coding Agent integration belong to Desktop.
 
 ## Product story and launch order
 

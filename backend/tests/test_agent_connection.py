@@ -4,6 +4,7 @@ import asyncio
 import json
 import time
 import unittest
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.services import agent_connection as connection
@@ -67,6 +68,26 @@ class AgentConnectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(item["live_model_verified"])
         self.assertEqual(item["resume_state"], "NOT_VERIFIED")
         self.assertEqual(item["cancel_state"], "NOT_VERIFIED")
+
+    async def test_copy_prompt_is_generic_and_does_not_embed_checkout_path(self):
+        with (
+            patch.object(connection.runtime, "list_local_executors", AsyncMock(return_value={"items": []})),
+            patch.object(connection, "list_provider_health", AsyncMock(return_value={"providers": []})),
+        ):
+            result = await connection.get_agent_connections()
+
+        prompt = result["connect_prompt"]
+        self.assertIn(
+            "https://raw.githubusercontent.com/avabbbb/OfferU/main/.agents/skills/offeru/SKILL.md",
+            prompt,
+        )
+        self.assertNotIn("http://127.0.0.1:8766", prompt)
+        self.assertIn("get_current_view", prompt)
+        self.assertIn("Operation Registry", prompt)
+        self.assertNotIn(str(Path(__file__).resolve().parents[2]), prompt)
+        self.assertNotIn("Codex", prompt)
+        self.assertNotIn("Claude", prompt)
+        self.assertNotIn("OpenCode", prompt)
 
     async def test_persisted_conformance_states_are_projected_without_exposing_credentials(self):
         item = connection._view(

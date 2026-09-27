@@ -35,9 +35,8 @@ current Eval evidence
 
 当前必须保持的产品模型：
 
-- **Desktop-first 是普通用户真实入口**：安装/打开 OfferU Desktop → 导入 Resume / 建立 Profile → 保存 Job → 打开 canonical Job Workspace → Today 引导下一步；本机 Coding Agent 可后台发现，但“连接 Agent”不得阻塞 Profile 或第一个 Job。
-- **Web Showcase 只做演示**：使用浏览器内置 Demo Agent + 虚构 IndexedDB 数据；不得访问 localhost、请求 Local Network Access、发现/安装本机 Coding Agent，或伪装成真实 Career Truth 客户端。
-- **Skill-first 是 Desktop-bound 高级入口**：Codex / Claude Code / WorkBuddy / OpenCode / OMP / Pi 等宿主只能通过 OfferU Desktop 已安装/更新的 runtime-bound Skill 接入同一 Career Runtime；普通求职任务不得 clone/search OfferU repo、创建 Python 环境、启动 Vite/FastAPI、手工探测 localhost 或要求用户复制连接 prompt。
+- **App-first 是普通用户默认入口**：安装 OfferU → 复制一条通用接入提示词 → 粘贴到正在使用的本地 Coding Agent → Agent 从公开 GitHub 源获取 canonical OfferU Skill，并按其中适配当前宿主的文档完成接入 → 只读回读验证 → 建立 Profile → 保存 Job → 打开 canonical Job Workspace → Today 引导下一步。需要时，运行中的 OfferU 只提供当前安装的 CLI 投影，不承担 Skill 发布/下载。普通 UI 不展示宿主选择列表；复制提示词不等于已连接。
+- **Skill-first 是高级用户入口**：用户可从 Codex / Claude Code / WorkBuddy / OpenCode / OMP / Pi 等支持宿主直接调用 OfferU Skill，但最终必须解析或创建同一个 canonical Job / Application 状态。
 - **Skill 是 Agent entry，不是第二套产品状态**；不得创建 Agent-only Job、隐藏 workspace、重复 Profile 或平行 Application state。
 - **Job / Opportunity 是持久 Job Workspace**：Job Snapshot、Role Intelligence、Evidence Map、Application Materials、Interview、Timeline / Next Action 都属于同一机会工作区。
 - Agent 长任务结果必须逐步物化为 OfferU 可见状态（completed / needs review / blocked / failed / next action），不得只留在聊天文本里。
@@ -109,11 +108,10 @@ Issues 和 PRD 使用当前 Git remote 对应的 GitHub Issues；外部 Pull Req
 - 实现 Agent 负责落地，不重新进行产品问卷或自行新增架构。只有遇到 ADR 冲突、必须扩大文件范围、会改变领域模型或需要新外部权限时，才停止并提出一个阻塞问题。
 - 开工前先读取与任务直接相关的代码和文档，用不超过 10 行复述目标、修改范围和验收映射；没有真实阻塞时立即实施。
 - 修改范围由当前任务目标决定，不要求用户预先枚举每个文件。Agent 可修改完成该纵向切片**直接必要**的相邻文件与测试，但不得借机做无关重构、历史清理或创建无关 ADR/PRD/Issue；若必须扩大到新的领域边界或外部权限，再提出阻塞问题。
-- GUI、CLI、TUI、斜杠 Skill 和本地 Coding Agent 都必须通过同一 Operation Registry；不得复制业务逻辑、直接写数据库、执行隐藏 shell 或绕过 dry-run、确认、审计和数据授权。**Desktop-first 与 Desktop-bound Skill-first 的结果必须落到同一 canonical Job Workspace / Profile / Pipeline。**
+- GUI、CLI、TUI、斜杠 Skill 和本地 Coding Agent 都必须通过同一 Operation Registry；不得复制业务逻辑、直接写数据库、执行隐藏 shell 或绕过 dry-run、确认、审计和数据授权。**Skill-first 与 App-first 的结果必须落到同一 canonical Job Workspace / Profile / Pipeline。**
 - 本地 Coding Agent 只承担可审计重任务。CLI 参数和能力必须通过 capability probe 判断，不能把某个 Codex、Claude 或其他 CLI 版本的 argv 永久写死。
 - Agent 推断、面试反馈、简历建议和投递信号不能直接成为职业事实；必须遵循学习观察、事实门、候选进展和使用者确认规则。
 - 当前产品仅为本地单人版；不要引入 SaaS、多租户、`workspace_id`、组织、计费、登录或为未来需求预埋兼容层。
-- **WebView ≠ 普通浏览器**：桌面端外链、下载、远程 HTTP、文件/剪贴板/系统能力必须检查 Tauri 语义；不要把浏览器 `target=_blank`、跨域 `fetch`、download attribute 等行为默认当成 EXE 等价行为。需要系统能力时走已有 OfferU Runtime / Rust / Tauri plugin 边界。
 - 保持最小实现，优先复用成熟库和现有结构。不得用固定假分、伪造 JSON、静默降级或“返回成功但实际未执行”掩盖失败。
 - 完成后按“修改文件、验收映射、已执行检查及结果、未执行检查、剩余风险”报告。能在当前环境执行的相关自动检查应由 Agent 自己执行；只有环境/凭据/平台限制导致无法运行时，才把命令留给用户，并说明原因。
 
