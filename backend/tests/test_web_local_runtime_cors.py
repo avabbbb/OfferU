@@ -37,7 +37,7 @@ def test_untrusted_public_origin_is_rejected_before_local_api() -> None:
         },
     )
     assert response.status_code == 403
-    assert response.json()["error"]["kind"] == "forbidden_origin"
+    assert "来源未授权" in response.json()["detail"]
 
 
 def test_trusted_web_origin_gets_cors_and_private_network_preflight() -> None:
