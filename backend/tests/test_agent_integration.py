@@ -86,6 +86,12 @@ class AgentIntegrationTests(unittest.IsolatedAsyncioTestCase):
             adapter.install()
         self.assertEqual(adapter.repair()["skill_status"], "INSTALLED")
 
+    async def test_downloadable_skill_is_projected_for_the_current_install(self) -> None:
+        content = integration.installed_skill_content()
+        self.assertIn("Install in the Agent you are using", content)
+        self.assertIn("get_current_view", content)
+        self.assertIn(str(integration._BACKEND_ROOT.resolve()), content)
+
     async def test_codex_child_uses_system_proxy_without_overriding_process_proxy(self) -> None:
         with patch.dict(codex_adapter.os.environ, {}, clear=True), patch.object(
             codex_adapter.urllib.request,

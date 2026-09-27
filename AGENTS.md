@@ -35,7 +35,7 @@ current Eval evidence
 
 当前必须保持的产品模型：
 
-- **App-first 是普通用户默认入口**：安装 OfferU → 自动发现可用本地 Agent → 支持时自动投影/注册 OfferU Skill → 建立 Profile → 保存 Job → 打开 canonical Job Workspace → Today 引导下一步。
+- **App-first 是普通用户默认入口**：安装 OfferU → 复制一条通用接入提示词 → 粘贴到正在使用的本地 Coding Agent → Agent 从公开 GitHub 源获取 canonical OfferU Skill，并按其中适配当前宿主的文档完成接入 → 只读回读验证 → 建立 Profile → 保存 Job → 打开 canonical Job Workspace → Today 引导下一步。需要时，运行中的 OfferU 只提供当前安装的 CLI 投影，不承担 Skill 发布/下载。普通 UI 不展示宿主选择列表；复制提示词不等于已连接。
 - **Skill-first 是高级用户入口**：用户可从 Codex / Claude Code / WorkBuddy / OpenCode / OMP / Pi 等支持宿主直接调用 OfferU Skill，但最终必须解析或创建同一个 canonical Job / Application 状态。
 - **Skill 是 Agent entry，不是第二套产品状态**；不得创建 Agent-only Job、隐藏 workspace、重复 Profile 或平行 Application state。
 - **Job / Opportunity 是持久 Job Workspace**：Job Snapshot、Role Intelligence、Evidence Map、Application Materials、Interview、Timeline / Next Action 都属于同一机会工作区。

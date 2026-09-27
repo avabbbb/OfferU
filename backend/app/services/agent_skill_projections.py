@@ -69,6 +69,18 @@ argument-hint: "[skill-id | goal | JD/URL]"
 
 Work from `backend/`. The live CLI manifest is the source of truth; this generated file contains no business workflow definitions.
 
+## Install in the Agent you are using
+
+The canonical public Skill is `https://raw.githubusercontent.com/avabbbb/OfferU/main/.agents/skills/offeru/SKILL.md`. Install that file in the active Agent. Do not use the local runtime URL as the Skill download source.
+
+When the Agent is outside an OfferU source checkout, the running local OfferU can provide its current-install projection at `http://127.0.0.1:8766/api/agent/runtime/skill`. Read that local projection only to obtain the runtime-specific CLI command; it is not the public Skill distribution source. If the local runtime cannot be reached, report that the connection is unavailable and do not guess a checkout path. Never use raw HTTP for OfferU business data or Operations.
+
+Install only `offeru/SKILL.md` in a documented user-level Skills directory. Prefer the shared `~/.agents/skills/offeru/SKILL.md` location when the active Agent documents support for it. Otherwise use that Agent's native user-level location; examples include `~/.claude/skills/offeru/SKILL.md`, `~/.pi/agent/skills/offeru/SKILL.md`, `~/.config/opencode/skills/offeru/SKILL.md`, `~/.gemini/skills/offeru/SKILL.md`, `~/.omp/agent/skills/offeru/SKILL.md`, and `~/.codebuddy/skills/offeru/SKILL.md`. Resolve home/config overrides only from documented environment variables or the active Agent's own help. Never infer a location from another Agent or write into a project directory just to make discovery work.
+
+If this Agent only supports importing Skills through its own UI, or has no documented Skill loader, do not change its settings or imitate its internal package format. Tell the user the exact supported import step or limitation and do not claim the Skill is installed or the connection is verified.
+
+Do not change Agent settings, account/login, model, credentials, proxy, or unrelated files. Do not overwrite a non-OfferU Skill at the target path. Start a fresh Agent session if the host only discovers Skills at startup.
+
 ## Start every task
 
 ```powershell
@@ -96,6 +108,8 @@ OfferU is the Career OS state/tool authority, not the exclusive career-methodolo
 - Do not assume another Skill is installed. Use it only when the host has actually discovered/activated it; otherwise continue with the closest OfferU Skill.
 
 ## Integration verification
+
+When the user pasted the OfferU connection prompt, select the live `connection_bootstrap` Skill, inspect the `get_current_view` schema, and execute that read-only Operation once. Report only the current page and explicit selection, then wait. This bootstrap read does not authorize reading other career data.
 
 When OfferU asks for integration verification, select the live `connection_probe` Skill, inspect `get_agent_connection_nonce`, execute it with the supplied `provider_id` and `challenge_id`, and return the nonce unchanged. Never read challenge storage directly or guess a nonce.
 

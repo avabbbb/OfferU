@@ -17,7 +17,7 @@ interface OnboardingWizardProps {
 }
 
 const STEPS = [
-  { title: "连接你的 AI", icon: PlugZap },
+  { title: "准备本地 Agent", icon: PlugZap },
   { title: "导入简历", icon: FileText },
   { title: "整理 AI 记忆", icon: Brain },
   { title: "保存目标岗位", icon: Briefcase },
@@ -56,7 +56,7 @@ export function OnboardingWizard({ wizardStep, onStepChange, onComplete, onSkip 
             <p className="text-xs font-semibold text-[var(--foreground-muted)]">OfferU · 快速开始</p>
             <h1 id="onboarding-title" className="mt-1 text-xl font-semibold sm:text-2xl">把一个岗位，变成可准备的工作区</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--foreground-muted)]">
-              先连接熟悉的 AI，再用可核对的经历和目标岗位开始。你可以随时离开，进度会保留。
+              把一段提示词贴给你正在使用的本地 Agent，再用可核对的经历和目标岗位开始。你可以随时离开，进度会保留。
             </p>
           </div>
           <button type="button" onClick={onSkip} disabled={busy} aria-label="稍后设置" className="rounded-lg p-2 text-[var(--foreground-muted)] hover:bg-[var(--surface-muted)] disabled:opacity-50">
@@ -81,11 +81,11 @@ export function OnboardingWizard({ wizardStep, onStepChange, onComplete, onSkip 
           {step === 0 && (
             <div className="space-y-4">
               <p className="text-sm leading-6 text-[var(--foreground-muted)]">
-                OfferU 会检查本机已安装的 Agent，并在支持时安装接入 Skill；已有登录由 Agent 自己管理。
+                复制提示词并粘贴到你正在使用的本地 coding Agent。它会从 GitHub 获取官方 OfferU Skill，再连接本机运行时。
               </p>
-              {progress.connectedAgent && <p role="status" className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">已验证 {progress.connectedAgent.name} 可以使用 OfferU。</p>}
+              {progress.agentPromptCopied && <p role="status" className="rounded-lg bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)]">接入提示词已复制。请粘贴到本地 Agent 完成接入；仅复制不会被标记为已连接。</p>}
               <AgentConnectionPanel />
-              <p className="text-xs leading-5 text-[var(--foreground-muted)]">暂时没有可用 Agent 也可以继续。连接状态不会因为复制指令或跳过此步而被标记为完成。</p>
+              <p className="text-xs leading-5 text-[var(--foreground-muted)]">没有可用 Agent 时也可以继续设置。OfferU 不会替你改动 Agent 的账号、模型、凭据或代理。</p>
             </div>
           )}
 

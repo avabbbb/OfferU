@@ -6,19 +6,15 @@ interface AckResponse {
   outputs: { version: number; route: string; entity_id: string };
 }
 
-const { mockSyncContext, mockConnections, mockUseWorkbench, mockUsePathname } = vi.hoisted(() => ({
+const { mockSyncContext, mockUseWorkbench, mockUsePathname } = vi.hoisted(() => ({
   mockSyncContext: vi.fn<(body: Record<string, unknown>, signal: AbortSignal) => Promise<AckResponse>>(),
-  mockConnections: vi.fn<() => Promise<unknown>>(),
   mockUseWorkbench: vi.fn(),
   mockUsePathname: vi.fn(),
 }));
 
 vi.mock("../lib/api", () => ({
   agentRuntimeApi: {
-    connections: mockConnections,
     syncContext: mockSyncContext,
-    probeConnection: vi.fn(),
-    connectIntegration: vi.fn(),
   },
 }));
 
@@ -35,7 +31,6 @@ function ack(route: string, entityId: string, version = 1): AckResponse {
 describe("AgentContextWriter", () => {
   beforeEach(() => {
     mockSyncContext.mockReset();
-    mockConnections.mockReset().mockResolvedValue({ items: [], checked_at: new Date().toISOString() });
     mockUsePathname.mockReturnValue("/jobs/458");
     mockUseWorkbench.mockReturnValue({ selection: null });
   });

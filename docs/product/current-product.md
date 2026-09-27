@@ -37,8 +37,11 @@ The default experience is:
 
 ~~~
 Install
-→ Find my local AI automatically
-→ Project / register the OfferU Skill where supported
+→ Copy one OfferU connection prompt
+→ Paste it into the local Agent already in use
+→ Agent downloads the canonical OfferU Skill from GitHub and follows its host setup guide
+→ Agent resolves the current local runtime command without guessing install paths
+→ Verify access with one read-only OfferU Operation
 → Resume + explicitly authorized AI memory → Profile
 → Save a real job from the browser
 → Create the canonical Job Workspace
@@ -78,16 +81,18 @@ For normal users, OfferU Desktop owns setup. The intended public beginner experi
 Download OfferU
 → install
 → open OfferU
-→ find an existing supported Agent
-→ prepare/register the OfferU Skill where supported
+→ copy one generic OfferU connection prompt
+→ paste it into the local Agent already in use
+→ Agent downloads the matching OfferU Skill and follows its own setup guide
+→ verify the current OfferU page with a read-only Operation
 → import Resume
 → save first Job
 → useful Job Workspace
 ~~~
 
-The normal user must not be required to install Python, Node.js, Git, MCP tooling or manually copy Skill files. The Desktop package owns its runtime dependencies; the Agent keeps ownership of its own account/login/model.
+The normal user must not be required to install Python, Node.js, Git, MCP tooling, select a provider, or hand-copy Skill files. The generic prompt points to the canonical public Skill in the OfferU GitHub repository; the local runtime projection is used only to resolve the command for the running installation. The Skill explains the active Agent's supported location. The Agent keeps ownership of its own account/login/model, and copying the prompt alone never means the connection is verified.
 
-For power users, Skill-first remains a valid second front door, but OfferU does not currently claim a public standalone `npx skills add offeru` package. The present consumer path is Desktop-assisted Skill installation/projection into detected hosts.
+Skill-first remains a valid second front door. OfferU does not claim a published standalone `npx skills add offeru` package; the canonical Skill is the `main` branch file in the public GitHub repository at `https://raw.githubusercontent.com/avabbbb/OfferU/main/.agents/skills/offeru/SKILL.md`, while the local Desktop runtime serves only an installation-specific CLI projection.
 
 Detailed first-use, current host/capability boundaries and owner-dogfood acceptance are maintained in [Entry, Onboarding & Dogfood Contract](./entry-onboarding-and-dogfood.md).
 
@@ -99,15 +104,16 @@ OfferU has two valid entry lanes that must converge on the same canonical state.
 
 ~~~
 Install OfferU
-→ auto-detect a supported local Agent
-→ project/register OfferU Skill automatically where supported
+→ copy one connection prompt
+→ paste it into the local Agent already in use
+→ Agent installs the version-matched OfferU Skill using its host guide
 → import resume / core evidence
 → save first Job
 → open Job Workspace
 → Guided Today handles the next decisions
 ~~~
 
-Normal users do not need to know what a Skill, MCP server, Registry or provider topology is.
+Normal users do not need to choose an Agent from a provider list or understand MCP, Registry or provider topology. The copied prompt and Skill guide handle the technical steps; Skill installation and a successful readback remain distinct states.
 
 ### Power user: Skill-first
 

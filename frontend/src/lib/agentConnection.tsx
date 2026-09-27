@@ -1,7 +1,6 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import useSWR from "swr";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { agentRuntimeApi, type AgentConnectionsSnapshot } from "./api";
+import { agentRuntimeApi } from "./api";
 import { SHOWCASE } from "./showcase/router";
 import { safeClientErrorMessage } from "./safe-error";
 import { useWorkbench } from "./workbench";
@@ -16,30 +15,13 @@ export interface ContextSyncState {
   version: number | null;
 }
 
-interface ConnectionActivity {
-  id: number;
-  time: string;
-  message: string;
-  failed: boolean;
-}
-
 interface AgentConnectionContextValue {
-  snapshot: AgentConnectionsSnapshot | undefined;
-  loading: boolean;
-  refreshing: boolean;
-  error: string;
-  stale: boolean;
-  offline: boolean;
   open: boolean;
   setOpen: (value: boolean) => void;
-  probing: string | null;
-  integrating: string | null;
-  probe: (id: string) => Promise<void>;
-  connect: (id: string, action: "install" | "update" | "repair") => Promise<void>;
-  refresh: () => void;
+  promptCopied: boolean;
+  markPromptCopied: () => void;
   sync: ContextSyncState;
   retrySync: () => void;
-  activity: ConnectionActivity[];
 }
 
 const ConnectionContext = createContext<AgentConnectionContextValue | null>(null);
@@ -50,10 +32,8 @@ const PAGE_NAMES: Record<string, string> = {
   "/interview": "面试", "/email": "邮箱", "/calendar": "日程",
 };
 
-// 详情页被直接打开时没有列表点选动作，selection 为空。但用户此刻确实在看
-// 一个具体对象，本地 Agent 需要它的标识才能回答"我在看什么"。这里按路由
-// 补出实体，与 providers.tsx 的 AgentContextReporter 保持一致，避免两个
-// 写入者互相覆盖把 entity 清空。
+// Detail routes can be opened directly without a list selection. Keep the
+// current object available to the Agent just as AgentContextReporter does.
 function entityFromRoute(pathname: string): { entity_type: string; entity_id: string } {
   const jobMatch = pathname.match(/^\/jobs\/(\d+)/);
   if (jobMatch) return { entity_type: "job", entity_id: jobMatch[1] };
@@ -66,59 +46,28 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
   const pathname = usePathname();
   const { selection } = useWorkbench();
   const [open, setOpen] = useState(false);
-  const [probing, setProbing] = useState<string | null>(null);
-  const [integrating, setIntegrating] = useState<string | null>(null);
-  const [probeError, setProbeError] = useState("");
-  const [offline, setOffline] = useState(() => typeof navigator !== "undefined" && !navigator.onLine);
-  const [now, setNow] = useState(Date.now());
-  const [receivedAt, setReceivedAt] = useState(0);
+  const [promptCopied, setPromptCopied] = useState(false);
   const [retry, setRetry] = useState(0);
-  const [activity, setActivity] = useState<ConnectionActivity[]>([]);
   const [sync, setSync] = useState<ContextSyncState>({
     status: "idle", title: "", error: "", confirmedAt: null, version: null,
   });
   const mounted = useRef(true);
   const sequence = useRef(0);
-  const activityId = useRef(0);
   const inFlight = useRef(false);
-  const probeInFlight = useRef(false);
   const controller = useRef<AbortController | null>(null);
   const queued = useRef<{ sequence: number; body: AgentContextRequest; title: string } | null>(null);
-  const { data, error, isLoading, isValidating, mutate } = useSWR(
-    SHOWCASE || /^\/resume\/print\//.test(pathname) ? null : "offeru-agent-connections",
-    agentRuntimeApi.connections,
-    { refreshInterval: 15000, dedupingInterval: 5000, errorRetryCount: 2, errorRetryInterval: 10000 },
-  );
-
-  const record = useCallback((message: string, failed = false) => {
-    const event = { id: ++activityId.current, time: new Date().toISOString(), message, failed };
-    setActivity((previous) => [event, ...previous].slice(0, 5));
-  }, []);
 
   useEffect(() => {
     mounted.current = true;
-    const online = () => { setOffline(false); setRetry((value) => value + 1); void mutate().catch(() => undefined); };
-    const offline = () => setOffline(true);
-    const timer = window.setInterval(() => setNow(Date.now()), 15000);
+    const online = () => setRetry((value) => value + 1);
     window.addEventListener("online", online);
-    window.addEventListener("offline", offline);
     return () => {
       mounted.current = false;
       controller.current?.abort();
-      window.clearInterval(timer);
       window.removeEventListener("online", online);
-      window.removeEventListener("offline", offline);
     };
-  }, [mutate]);
+  }, []);
 
-  useEffect(() => {
-    if (data) setReceivedAt(Date.now());
-  }, [data]);
-
-  // Single serialized writer. All callers funnel through `queued` — last
-  // enqueued wins, so stale route/selection writes can never overwrite a newer
-  // one. Backend applies writes in arrival order; keeping one in-flight writer
-  // guarantees arrival order matches intent order.
   const flush = useCallback(async () => {
     if (inFlight.current || !mounted.current) return;
     inFlight.current = true;
@@ -139,13 +88,11 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
           if (mounted.current && sequence.current === next.sequence) {
             setSync({ status: "synced", title: next.title, error: "",
               confirmedAt: new Date().toISOString(), version: response.outputs.version });
-            record(`工作台已收到「${next.title}」`);
           }
         } catch (cause) {
           if (mounted.current && sequence.current === next.sequence) {
             const message = abort.signal.aborted ? "同步超时，请重试。" : safeClientErrorMessage(cause, "同步失败，请重试。");
             setSync((previous) => ({ ...previous, status: "failed", title: next.title, error: message }));
-            record(`「${next.title}」同步失败`, true);
           }
         } finally {
           window.clearTimeout(timeout);
@@ -154,7 +101,7 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
     } finally {
       inFlight.current = false;
     }
-  }, [record]);
+  }, []);
 
   const payload = useMemo<AgentContextRequest>(() => {
     const agentContext = selection?.data?.agentContext;
@@ -187,64 +134,11 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
     return () => window.clearTimeout(timer);
   }, [payload, pathname, retry, flush]);
 
-  const probe = useCallback(async (id: string) => {
-    if (probeInFlight.current || SHOWCASE) return;
-    probeInFlight.current = true;
-    setProbing(id);
-    setProbeError("");
-    const label = data?.items.find((item) => item.id === id)?.name || id;
-    record(`正在检查 ${label}`);
-    try {
-      const result = await agentRuntimeApi.probeConnection(id);
-      if (!mounted.current) return;
-      await mutate(result, { revalidate: false });
-      const item = result.items.find((candidate) => candidate.id === id);
-      record(item?.status === "ready" ? `${label} 接入检查通过` : `${label} 检查完成，查看下一步`, item?.status !== "ready");
-    } catch (cause) {
-      if (mounted.current) {
-        setProbeError(safeClientErrorMessage(cause, "接入检查失败，请重试。"));
-        record(`${label} 接入检查失败`, true);
-      }
-    } finally {
-      probeInFlight.current = false;
-      if (mounted.current) setProbing(null);
-    }
-  }, [data, mutate, record]);
-
-  const connect = useCallback(async (id: string, action: "install" | "update" | "repair") => {
-    if (probeInFlight.current || SHOWCASE) return;
-    probeInFlight.current = true;
-    setIntegrating(id);
-    setProbeError("");
-    const label = data?.items.find((item) => item.id === id)?.name || id;
-    record(`${action === "update" ? "正在更新" : action === "repair" ? "正在修复" : "正在连接"} ${label}`);
-    try {
-      const result = await agentRuntimeApi.connectIntegration(id, action);
-      if (!mounted.current) return;
-      await mutate(result, { revalidate: false });
-      const item = result.items.find((candidate) => candidate.id === id);
-      record(item?.status === "ready" ? `${label} 已验证，可以使用` : `${label} 已处理，请查看下一步`, item?.status !== "ready");
-    } catch (cause) {
-      if (mounted.current) {
-        setProbeError(safeClientErrorMessage(cause, "OfferU 接入失败，请重试。"));
-        record(`${label} 接入失败`, true);
-      }
-    } finally {
-      probeInFlight.current = false;
-      if (mounted.current) setIntegrating(null);
-    }
-  }, [data, mutate, record]);
-
-  const refresh = useCallback(() => { setProbeError(""); void mutate().catch(() => undefined); }, [mutate]);
   const retrySync = useCallback(() => setRetry((value) => value + 1), []);
-  const stale = Boolean(data && receivedAt > 0 && now - receivedAt > 30000);
+  const markPromptCopied = useCallback(() => setPromptCopied(true), []);
 
   return (
-    <ConnectionContext.Provider value={{
-      snapshot: data, loading: isLoading, refreshing: isValidating,
-      error: probeError || (error ? safeClientErrorMessage(error, "状态更新失败") : ""),
-      stale, offline, open, setOpen, probing, integrating, probe, connect, refresh, sync, retrySync, activity,
-    }}>
+    <ConnectionContext.Provider value={{ open, setOpen, promptCopied, markPromptCopied, sync, retrySync }}>
       {children}
     </ConnectionContext.Provider>
   );
