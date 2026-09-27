@@ -284,7 +284,13 @@ async def _append_event(
             }
 
 
-async def _update_task(task_id: str, **values: Any) -> dict[str, Any]:
+async def _update_task(
+    task_id: str,
+    *,
+    event_type: str | None = None,
+    event_payload: dict[str, Any] | None = None,
+    **values: Any,
+) -> dict[str, Any]:
     async with _task_lock(task_id):
         async with async_session() as db:
             row = await db.get(CareerTask, task_id)
@@ -303,6 +309,17 @@ async def _update_task(task_id: str, **values: Any) -> dict[str, Any]:
                     elif key == "error":
                         value = redact_sensitive_text(value or "", max_length=2000)
                     setattr(row, key, value)
+            if event_type:
+                row.event_sequence = int(row.event_sequence or 0) + 1
+                db.add(
+                    CareerTaskEvent(
+                        event_id=f"career_task_evt_{uuid.uuid4().hex}",
+                        task_id=task_id,
+                        sequence=row.event_sequence,
+                        event_type=str(event_type)[:100],
+                        payload_json=_bounded_json(event_payload or {}),
+                    )
+                )
             await db.commit()
             await db.refresh(row)
             return _task_view(row)
@@ -1347,12 +1364,12 @@ async def _run_task(task_id: str) -> None:
                     error=error_message,
                     retryable=True,
                     finished_at=_utc_now(),
-                    progress_json={"stage": "blocked", "percent": 0, "error_id": error_id},
-                )
-                await _append_event(
-                    task_id,
-                    "task.blocked",
-                    {"reason": "cancelled_by_runtime", "error_id": error_id},
+                progress_json={"stage": "blocked", "percent": 0, "error_id": error_id},
+                event_type="task.blocked",
+                event_payload={
+                    "reason": "cancelled_by_runtime",
+                    "error_id": error_id,
+                },
                 )
             raise
         except Exception as exc:  # noqa: BLE001 - persisted task failure is explicit
@@ -1379,12 +1396,12 @@ async def _run_task(task_id: str) -> None:
                     "percent": 0,
                     "error_id": error_id,
                 },
-            )
-            await _append_event(
-                task_id,
-                "task.blocked" if blocked else "task.failed",
-                {
-                    "retryable": bool(blocked or current["attempt_count"] < current["max_attempts"]),
+                event_type="task.blocked" if blocked else "task.failed",
+                event_payload={
+                    "retryable": bool(
+                        blocked
+                        or current["attempt_count"] < current["max_attempts"]
+                    ),
                     "error_id": error_id,
                 },
             )
