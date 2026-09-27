@@ -68,42 +68,42 @@ INBOX_STATUSES = frozenset({"pending", "resolved", "dismissed"})
 _DEFAULT_RULES: dict[str, dict[str, Any]] = {
     "PROFILE_BASELINE_REQUIRED": {
         "task_type": "career_director",
-        "runtime_provider": "codex",
+        "runtime_provider": "pi",
         "enabled": True,
         "automation_level": "L1",
         "description": "首次职业方向发现；结果只作可审核建议，不写入 Career Truth。",
     },
     "DAILY_REVIEW": {
         "task_type": "career_director",
-        "runtime_provider": "codex",
+        "runtime_provider": "pi",
         "enabled": True,
         "automation_level": "L1",
         "description": "每日由真实 Career Director 对当前机会和待办重新排序；不直接修改 Career Truth。",
     },
     "INTERVIEW_INVITATION_DETECTED": {
         "task_type": "career_director",
-        "runtime_provider": "codex",
+        "runtime_provider": "pi",
         "enabled": True,
         "automation_level": "L1",
         "description": "读取已安排面试及当前岗位证据，由 Career Director 准备有依据的练习重点。",
     },
     "INTERVIEW_COMPLETED": {
         "task_type": "career_director",
-        "runtime_provider": "codex",
+        "runtime_provider": "pi",
         "enabled": True,
         "automation_level": "L1",
         "description": "日历面试时间已过后主动生成复盘问题；不写入职业事实。",
     },
     "INTERVIEW_DEBRIEF_CREATED": {
         "task_type": "career_director",
-        "runtime_provider": "codex",
+        "runtime_provider": "pi",
         "enabled": True,
         "automation_level": "L1",
         "description": "分析用户提交的面试复盘，仅生成待审核学习候选。",
     },
     "RESUME_UPDATED": {
         "task_type": "career_director",
-        "runtime_provider": "codex",
+        "runtime_provider": "pi",
         "enabled": True,
         "automation_level": "L1",
         "description": "评估新简历证据是否值得重新联系旧机会；仅准备候选，不发送消息。",
@@ -325,30 +325,60 @@ async def _upsert_inbox(
 
 
 async def _dispatch_job_saved(event: AutomationEvent, rule: dict[str, Any]) -> dict[str, Any]:
+    """Preserve deterministic Role Intelligence and add bounded proactive judgment."""
+
     from app.services.career_tasks import start_career_task
 
     payload = event.payload_json if isinstance(event.payload_json, dict) else {}
     job_id = int(payload.get("job_id") or event.target_id or 0)
     if job_id <= 0:
         raise ValueError("JOB_SAVED 缺少有效 job_id")
+
     policy = rule.get("policy") if isinstance(rule.get("policy"), dict) else {}
-    provider = str(payload.get("runtime_provider") or policy.get("runtime_provider") or "auto")
+    role_provider = str(
+        payload.get("runtime_provider")
+        or policy.get("runtime_provider")
+        or "auto"
+    )
+    role_task = await start_career_task(
+        task_type="role_intelligence",
+        source="automation",
+        target_type="job",
+        target_id=str(job_id),
+        runtime_provider=role_provider,
+        input={
+            "job_id": job_id,
+            "automation_event_id": event.event_id,
+            **{
+                key: str(payload.get(key) or "")
+                for key in ("role_family", "specialization", "seniority", "region", "industry")
+                if payload.get(key)
+            },
+        },
+        output_contract={"schema": "offeru.role_benchmark_result.v1", "type": "object"},
+        idempotency_key=f"automation:{event.event_id}:role-intelligence",
+    )
     director_task = await start_career_task(
         task_type="career_director",
         source="automation",
         target_type="job",
         target_id=str(job_id),
-        runtime_provider="codex",
+        runtime_provider="pi",
         input={
             "automation_event_id": event.event_id,
             "event_type": event.event_type,
             "job_id": job_id,
             **{
                 key: payload[key]
-                for key in ("profile_id", "replaces_proposal_id", "affected_source_section_ids", "accepted_observation_id")
+                for key in (
+                    "profile_id",
+                    "replaces_proposal_id",
+                    "affected_source_section_ids",
+                    "accepted_observation_id",
+                )
                 if key in payload
             },
-            "role_intelligence_runtime_provider": provider,
+            "role_intelligence_runtime_provider": role_provider,
             "role_benchmark_context": {
                 key: str(payload.get(key) or "")
                 for key in ("role_family", "specialization", "seniority", "region", "industry")
@@ -359,22 +389,38 @@ async def _dispatch_job_saved(event: AutomationEvent, rule: dict[str, Any]) -> d
         idempotency_key=f"automation:{event.event_id}:job-career-director",
     )
     await _upsert_inbox(
+        item_id=f"automation_task_{role_task['task_id']}",
+        category="fyi",
+        event_id=event.event_id,
+        task_id=role_task["task_id"],
+        target_type="job",
+        target_id=str(job_id),
+        title="岗位情报后台任务已排队",
+        body=(
+            f"OfferU 已为岗位 #{job_id} 创建 Role Intelligence CareerTask。"
+            "结果会先作为候选/提案进入收件箱，不会静默修改 Career Profile。"
+        ),
+        payload={"runtime_provider": role_provider, "task": role_task},
+    )
+    await _upsert_inbox(
         item_id=f"automation_task_{director_task['task_id']}",
         category="fyi",
         event_id=event.event_id,
         task_id=director_task["task_id"],
         target_type="job",
         target_id=str(job_id),
-        title="OfferU 正在准备有依据的岗位材料",
-        body="职业 Agent 会读取岗位要求和已验证经历，先完成可审核的简历提案；缺少的关键证据另行询问。",
-        payload={"runtime_provider": "codex", "task": director_task, "event_type": "JOB_SAVED"},
+        title="OfferU 正在判断这个岗位接下来最值得做什么",
+        body="内置 Career Director 会读取岗位与职业证据，生成有界的岗位行动计划；它不会替你确认写操作。",
+        payload={"runtime_provider": "pi", "task": director_task, "event_type": "JOB_SAVED"},
     )
     return {
-        "task": director_task,
+        "task": role_task,
+        "role_intelligence_task": role_task,
         "career_director_task": director_task,
-        "task_ids": [director_task["task_id"]],
+        "task_ids": [role_task["task_id"], director_task["task_id"]],
         "job_id": job_id,
-        "runtime_provider": provider,
+        "runtime_provider": role_provider,
+        "career_director_provider": "pi",
     }
 
 
@@ -394,9 +440,11 @@ async def _dispatch_profile_baseline(
 
     payload = event.payload_json if isinstance(event.payload_json, dict) else {}
     policy = rule.get("policy") if isinstance(rule.get("policy"), dict) else {}
-    provider = str(payload.get("runtime_provider") or policy.get("runtime_provider") or "codex")
-    if provider not in {"codex", "codex-app-server"}:
-        raise ValueError("Profile Discovery 需要真实 Codex Runtime")
+    provider = str(payload.get("runtime_provider") or policy.get("runtime_provider") or "pi")
+    if provider in {"codex", "codex-app-server", "auto", "embedded", "builtin", "pi-sdk", "pi-sdk-worker"}:
+        provider = "pi"
+    if provider != "pi":
+        raise ValueError("Profile Discovery 需要 embedded Pi Career Director")
     if event.target_type != "profile" or not str(event.target_id or "").isdigit():
         raise ValueError("PROFILE_BASELINE_REQUIRED 缺少 Profile 目标")
     task = await start_career_task(
@@ -437,9 +485,11 @@ async def _dispatch_daily_review(
 
     payload = event.payload_json if isinstance(event.payload_json, dict) else {}
     policy = rule.get("policy") if isinstance(rule.get("policy"), dict) else {}
-    provider = str(payload.get("runtime_provider") or policy.get("runtime_provider") or "codex")
-    if provider not in {"codex", "codex-app-server"}:
-        raise ValueError("Daily Career Brief 需要真实 Codex Runtime")
+    provider = str(payload.get("runtime_provider") or policy.get("runtime_provider") or "pi")
+    if provider in {"codex", "codex-app-server", "auto", "embedded", "builtin", "pi-sdk", "pi-sdk-worker"}:
+        provider = "pi"
+    if provider != "pi":
+        raise ValueError("Daily Career Brief 需要 embedded Pi Career Director")
     if event.target_type != "profile" or not str(event.target_id or "").isdigit():
         raise ValueError("DAILY_REVIEW 缺少 Profile 目标")
     review_date = str(payload.get("review_date") or "")
@@ -491,9 +541,11 @@ async def _dispatch_interview_event(
     if calendar_event_id <= 0:
         raise ValueError(f"{event.event_type} 缺少有效日历面试 ID")
     job_id = int(payload.get("job_id") or 0) or None
-    provider = str(payload.get("runtime_provider") or rule.get("policy", {}).get("runtime_provider") or "codex")
-    if provider not in {"codex", "codex-app-server"}:
-        raise ValueError("Interview Career Director 需要真实 Codex Runtime")
+    provider = str(payload.get("runtime_provider") or rule.get("policy", {}).get("runtime_provider") or "pi")
+    if provider in {"codex", "codex-app-server", "auto", "embedded", "builtin", "pi-sdk", "pi-sdk-worker"}:
+        provider = "pi"
+    if provider != "pi":
+        raise ValueError("Interview Career Director 需要 embedded Pi Career Director")
     # Keep the CareerTask target identical to its AutomationEvent target so
     # task creation remains bound to the exact triggering interview.
     target_type = event.target_type
@@ -566,9 +618,11 @@ async def _dispatch_resume_updated(
     if event.target_type != "resume" or event.target_id != str(resume_id):
         raise ValueError("RESUME_UPDATED 目标必须是本次简历")
     policy = rule.get("policy") if isinstance(rule.get("policy"), dict) else {}
-    provider = str(payload.get("runtime_provider") or policy.get("runtime_provider") or "codex")
-    if provider not in {"codex", "codex-app-server"}:
-        raise ValueError("Resume Career Director 需要真实 Codex Runtime")
+    provider = str(payload.get("runtime_provider") or policy.get("runtime_provider") or "pi")
+    if provider in {"codex", "codex-app-server", "auto", "embedded", "builtin", "pi-sdk", "pi-sdk-worker"}:
+        provider = "pi"
+    if provider != "pi":
+        raise ValueError("Resume Career Director 需要 embedded Pi Career Director")
     task = await start_career_task(
         task_type="career_director",
         source="automation",
@@ -656,7 +710,7 @@ async def _dispatch_elapsed_interviews() -> dict[str, int]:
             payload={
                 "calendar_event_id": calendar_event.id,
                 "job_id": calendar_event.related_job_id,
-                "runtime_provider": "codex",
+                "runtime_provider": "pi",
             },
             dedupe_key=f"calendar-interview-completed:{calendar_event.id}",
         )
@@ -918,7 +972,7 @@ async def record_calendar_interview_invitation(
         payload={
             "calendar_event_id": calendar_event.id,
             "job_id": calendar_event.related_job_id,
-            "runtime_provider": "codex",
+            "runtime_provider": "pi",
         },
         dedupe_key=f"calendar-interview-invitation:{calendar_event.id}",
     )
