@@ -24,7 +24,6 @@ from app.services import automation, capability_plugins, career_director, career
 from app.services.agent_bridge.server import BridgeSession  # noqa: E402
 from app.services.agent_runtime import (  # noqa: E402
     CANONICAL_AGENT_RUN_EVENT_TYPES,
-    CodexAgentRuntimeProvider,
     PiAgentRuntimeProvider,
     ReplayAgentRunProvider,
     ReplayAgentRuntimeProvider,
@@ -38,15 +37,27 @@ FIXTURE_PATH = BACKEND_DIR / "tests" / "fixtures" / "role_intelligence_v0" / "co
 
 
 class AgentRuntimeConvergenceTests(unittest.TestCase):
-    def test_career_director_effort_is_forwarded_to_the_codex_turn(self) -> None:
-        provider = get_agent_runtime_provider(
+    def test_internal_agent_turn_provider_aliases_converge_on_embedded_pi(self) -> None:
+        for provider_id in (
+            "pi",
+            "pi-sdk",
+            "pi-sdk-worker",
+            "embedded",
+            "builtin",
+            "auto",
             "codex",
-            executable="codex-fixture.exe",
-            turn_effort="low",
-        )
+            "codex-app-server",
+        ):
+            self.assertEqual(
+                career_tasks._normalize_agent_turn_provider(provider_id),
+                "pi",
+                provider_id,
+            )
+        self.assertEqual(career_tasks._normalize_agent_turn_provider("replay"), "replay")
 
-        self.assertIsInstance(provider, CodexAgentRuntimeProvider)
-        self.assertEqual(provider.adapter.turn_effort, "low")
+    def test_codex_is_not_an_internal_agent_runtime_kernel(self) -> None:
+        with self.assertRaises(ValueError):
+            get_agent_runtime_provider("codex")
 
     def test_builtin_provider_status_exposes_live_web_capability_boundary(self) -> None:
         async def flow() -> tuple[dict, dict]:
