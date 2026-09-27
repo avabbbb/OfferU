@@ -8,6 +8,7 @@
 import { SHOWCASE, showcaseHandle } from "./showcase/router";
 import { showcaseChatResponse } from "./showcase/llm";
 import { resolveApiBase } from "./apiBase";
+import { isLocalRuntimeConnected } from "./localRuntime";
 import { safeClientErrorMessage } from "./safe-error";
 import {
   decideAgentRuntimeActionInDesktop,
@@ -53,8 +54,8 @@ function buildQuery(params?: Record<string, unknown>) {
 }
 
 export async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  if (SHOWCASE) {
-    // 展示模式：全部请求由本地 IndexedDB 数据层承载（无需 Python 后端）
+  if (SHOWCASE && !isLocalRuntimeConnected()) {
+    // Web 未连接本机 Runtime 时继续使用 Showcase；连接后复用同一套本地 API。
     return (await showcaseHandle(path, options)) as T;
   }
   let res: Response;
@@ -83,9 +84,8 @@ async function readEventStream<T>(
   onEvent?: (event: string, data: any) => void,
   signal?: AbortSignal
 ): Promise<T> {
-  if (SHOWCASE) {
-    // 展示模式：Agent 工作流端点（optimize/interviews）不接本地数据层，
-    // 返回空结果避免抛错；对话式交互见 profileApi.chat 的合成 SSE。
+  if (SHOWCASE && !isLocalRuntimeConnected()) {
+    // 纯 Demo 不执行真实 Agent 工作流；连接本地 Runtime 后走同一 SSE 协议。
     return {} as T;
   }
   const res = await fetch(`${API_BASE}${path}`, {
@@ -1584,8 +1584,8 @@ export const profileApi = {
     request(`/api/profile/sections/${id}`, { method: "DELETE" }),
 
   chat: async (data: { topic: string; message: string; session_id?: number }) => {
-    if (SHOWCASE) {
-      // 展示模式：合成 SSE 流（本地模板或浏览器直连 LLM），不依赖 Python 后端
+    if (SHOWCASE && !isLocalRuntimeConnected()) {
+      // 未连接本地 Runtime 时保留演示对话；连接后复用真实 Profile Agent。
       return showcaseChatResponse(data.topic || "general", data.message || "");
     }
     const res = await fetch(`${API_BASE}/api/profile/chat`, {
