@@ -1,24 +1,65 @@
-name: macOS desktop package
+name: Build OfferU DMG (macOS)
 
 on:
   workflow_call:
+    inputs:
+      architecture:
+        description: DMG architecture to build
+        required: false
+        type: string
+        default: both
   workflow_dispatch:
+    inputs:
+      architecture:
+        description: DMG architecture to build
+        required: true
+        default: arm64
+        type: choice
+        options:
+          - arm64
+          - x64
+          - both
 
 permissions:
   contents: read
 
 jobs:
+  select-targets:
+    name: Select DMG targets
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.targets.outputs.matrix }}
+    steps:
+      - id: targets
+        name: Resolve requested architecture
+        shell: bash
+        env:
+          ARCHITECTURE: ${{ inputs.architecture }}
+        run: |
+          set -euo pipefail
+          case "${ARCHITECTURE:-both}" in
+            arm64)
+              matrix='{"include":[{"runner":"macos-15","target":"macos-arm64","ci_build_args":"--bundles app,dmg"}]}'
+              ;;
+            x64)
+              matrix='{"include":[{"runner":"macos-15-intel","target":"macos-x64","ci_build_args":"--bundles app,dmg --verbose"}]}'
+              ;;
+            both)
+              matrix='{"include":[{"runner":"macos-15","target":"macos-arm64","ci_build_args":"--bundles app,dmg"},{"runner":"macos-15-intel","target":"macos-x64","ci_build_args":"--bundles app,dmg --verbose"}]}'
+              ;;
+            *)
+              echo "Unsupported architecture: ${ARCHITECTURE}" >&2
+              exit 2
+              ;;
+          esac
+          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
+          echo "Selected architecture: ${ARCHITECTURE:-both}" >> "$GITHUB_STEP_SUMMARY"
+
   package:
+    needs: select-targets
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15
-            target: macos-arm64
-            ci_build_args: --bundles app,dmg
-          - runner: macos-15-intel
-            target: macos-x64
-            ci_build_args: --bundles app,dmg --verbose
+      matrix: ${{ fromJSON(needs.select-targets.outputs.matrix) }}
     runs-on: ${{ matrix.runner }}
     env:
       MACOSX_DEPLOYMENT_TARGET: '13.5'
@@ -138,6 +179,58 @@ jobs:
             python backend/scripts/release/verify_release_artifacts.py release-artifacts --expected-version "$version"
           fi
           python backend/scripts/release/audit_artifacts.py release-artifacts --json
+      - name: Stage one-click DMG
+        id: stage_dmg
+        shell: bash
+        env:
+          RELEASE_TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./frontend/package.json').version")
+          arch="${RELEASE_TARGET#macos-}"
+          shopt -s nullglob
+          dmg_files=(frontend/src-tauri/target/release/bundle/dmg/*.dmg)
+          if [[ "${#dmg_files[@]}" -ne 1 ]]; then
+            printf 'Expected exactly one DMG for one-click staging, found %s\n' "${#dmg_files[@]}" >&2
+            exit 1
+          fi
+          out_dir="$RUNNER_TEMP/offeru-one-click-dmg"
+          mkdir -p "$out_dir"
+          out_file="$out_dir/OfferU_${version}_${arch}.dmg"
+          cp "${dmg_files[0]}" "$out_file"
+          echo "file=$out_file" >> "$GITHUB_OUTPUT"
+          echo "filename=$(basename "$out_file")" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=OfferU-${version}-${arch}-DMG" >> "$GITHUB_OUTPUT"
+
+      - name: Upload one-click DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.stage_dmg.outputs.artifact_name }}
+          path: ${{ steps.stage_dmg.outputs.file }}
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Summarize DMG output
+        shell: bash
+        env:
+          RELEASE_TARGET: ${{ matrix.target }}
+          DMG_FILENAME: ${{ steps.stage_dmg.outputs.filename }}
+          DMG_ARTIFACT: ${{ steps.stage_dmg.outputs.artifact_name }}
+        run: |
+          {
+            echo "### OfferU DMG ready"
+            echo
+            echo "- Target: `$RELEASE_TARGET`"
+            echo "- DMG: `$DMG_FILENAME`"
+            echo "- Actions artifact: `$DMG_ARTIFACT`"
+            echo
+            if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+              echo "Release-tag build: Developer ID signing/notarization checks are required."
+            else
+              echo "Manual/CI build: ad-hoc signed test DMG for local testing; not a public notarized release."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - uses: actions/upload-artifact@v4
         with:
           name: offeru-${{ matrix.target }}
