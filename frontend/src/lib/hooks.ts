@@ -7,7 +7,8 @@
 // =============================================
 
 import useSWR from "swr";
-import { SHOWCASE, showcaseHandle } from "@/lib/showcase/router";
+import { showcaseHandle } from "@/lib/showcase/router";
+import { isDemoRuntime } from "@/lib/localRuntime";
 import { showcaseChatResponse } from "@/lib/showcase/llm";
 import { resolveApiBase } from "@/lib/apiBase";
 import { safeClientErrorMessage } from "@/lib/safe-error";
@@ -23,7 +24,7 @@ function formatBackendNetworkError(_error?: unknown) {
  * 通用 fetcher：SWR 默认请求函数
  * 自动处理 JSON 解析和错误码
  */
-const fetcher = async (url: string) => {  if (SHOWCASE) {
+const fetcher = async (url: string) => {  if (isDemoRuntime()) {
     // 展示模式：SWR 请求也由本地数据层承载（URL 为完整地址，提取 path）
     try {
       const parsed = new URL(url);
@@ -47,11 +48,11 @@ const fetcher = async (url: string) => {  if (SHOWCASE) {
 
 /**
  * 统一后端请求：非展示模式等价 fetch(API_BASE + path)；
- * 展示模式（VITE_SHOWCASE）下由本地 IndexedDB 数据层承载，
+ * Demo runtime 由本地 IndexedDB 承载；Web-local / Desktop 共用 8766，
  * 合成标准 Response，调用方无需感知后端是否存在。
  */
 async function showcaseFetch(url: string, init?: RequestInit): Promise<Response> {
-  if (!SHOWCASE) {
+  if (!isDemoRuntime()) {
     const target = /^https?:\/\//i.test(url)
       ? url
       : `${API_BASE}${url.startsWith("/") ? url : `/${url}`}`;
@@ -385,7 +386,7 @@ export async function controlCareerTask(
     return payload;
   }
 
-  if (!SHOWCASE) {
+  if (!isDemoRuntime()) {
     try {
       const confirmed = await decideAgentRuntimeActionInDesktop(
         String(proposal.run_id),
