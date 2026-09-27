@@ -644,7 +644,9 @@ def test_frontend_api_clients_reject_redirects() -> None:
     assert api_source.count('redirect: "error"') >= 2
     assert hooks_source.count('redirect: "error"') >= 2
     assert 'redirect: "error"' in providers_source
-    assert studio_source.count('redirect: "error"') >= 2
+    assert 'request<Template[]>("/api/studio/templates")' in studio_source
+    assert 'request<{ id?: number }>("/api/studio/generate", {' in studio_source
+    assert 'fetch(`${API_BASE}${path}`, { ...options, redirect: "error" })' in api_source
     assert "streamOptimizeAgentChat(" in optimize_source
     assert "export async function streamOptimizeAgentChat" in hooks_source
     assert "await showcaseFetch(`/api/optimize/agent/chat/stream`" in hooks_source
@@ -653,7 +655,7 @@ def test_frontend_api_clients_reject_redirects() -> None:
         hooks_source.index("async function showcaseFetch") + 800
     ]
     assert 'return fetch(target, { ...init, redirect: "error" })' in showcase_fetch
-    assert settings_source.count('redirect: "error"') >= 1
+    assert 'requestResponse("/api/config/test-llm", { method: "POST" })' in settings_source
     assert 'redirect: "error"' in showcase_source
 
 

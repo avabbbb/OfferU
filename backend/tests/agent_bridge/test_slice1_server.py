@@ -6,6 +6,7 @@ import json
 import sys
 import unittest
 from pathlib import Path
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
@@ -13,7 +14,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from app.database import async_session, init_db  # noqa: E402
-from app.models.models import AgentRunRecord, BridgePairing, JobSearchTask, Profile  # noqa: E402
+from app.models.models import AgentRunEvent, AgentRunRecord, BridgePairing, JobSearchTask, Profile  # noqa: E402
 from app.services.agent_bridge.errors import BridgeProtocolError  # noqa: E402
 from app.services.agent_bridge.event_stream import follow_events  # noqa: E402
 from app.services.agent_bridge.operation_gateway import (  # noqa: E402
@@ -29,6 +30,7 @@ from app.services.agent_bridge.run_coordinator import (  # noqa: E402
 from app.services.agent_bridge.server import BridgeSession  # noqa: E402
 from app.services.agent_run_state import create_agent_run, load_agent_run  # noqa: E402
 from sqlalchemy import select  # noqa: E402
+from sqlalchemy.exc import IntegrityError  # noqa: E402
 
 import secrets  # noqa: E402
 
@@ -109,6 +111,261 @@ class Slice1BridgeTests(unittest.TestCase):
 
         first = self._run(flow())
         self.assertTrue(str(first["leaseId"]).startswith("lease_"))
+
+    def test_attach_reconciles_the_same_session_without_a_duplicate_event(self) -> None:
+        async def flow():
+            run_id = await self._make_run()
+            coordinator = RunCoordinator()
+            identity = {
+                "harness": {"name": "h1", "version": "1"},
+                "adapter": {"name": "a1", "version": "1"},
+                "harness_session_id": "sess-a",
+            }
+            first = await coordinator.attach(run_id=run_id, **identity)
+            before = await load_agent_run(run_id)
+            resumed = await coordinator.attach(
+                run_id=run_id,
+                **identity,
+                lease_id=str(first["leaseId"]),
+                last_event_seq=2,
+            )
+            after = await load_agent_run(run_id)
+            return first, before, resumed, after
+
+        first, before, resumed, after = self._run(flow())
+        self.assertEqual(resumed["leaseId"], first["leaseId"])
+        self.assertEqual(after["event_sequence"], before["event_sequence"])
+        self.assertEqual(after["harness_session_id"], "sess-a")
+
+    def test_attach_replaces_an_expired_lease_on_the_same_persisted_run(self) -> None:
+        async def flow():
+            run_id = await self._make_run()
+            coordinator = RunCoordinator()
+            identity = {
+                "harness": {"name": "h1", "version": "1"},
+                "adapter": {"name": "a1", "version": "1"},
+                "harness_session_id": "sess-a",
+            }
+            first = await coordinator.attach(run_id=run_id, **identity)
+            async with async_session() as db:
+                row = (
+                    await db.execute(
+                        select(AgentRunRecord).where(AgentRunRecord.run_id == run_id)
+                    )
+                ).scalar_one()
+                row.lease_expires_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=1)
+                await db.commit()
+            resumed = await coordinator.attach(
+                run_id=run_id,
+                **identity,
+                lease_id=str(first["leaseId"]),
+                last_event_seq=2,
+            )
+            result = await load_agent_run(run_id)
+            return first, resumed, result
+
+        first, resumed, result = self._run(flow())
+        self.assertNotEqual(resumed["leaseId"], first["leaseId"])
+        self.assertEqual(result["harness_session_id"], "sess-a")
+        self.assertGreater(result["event_sequence"], 1)
+
+    def test_active_attach_requires_the_existing_lease_capability(self) -> None:
+        async def flow():
+            run_id = await self._make_run()
+            coordinator = RunCoordinator()
+            identity = {
+                "harness": {"name": "h1", "version": "1"},
+                "adapter": {"name": "a1", "version": "1"},
+                "harness_session_id": "sess-a",
+            }
+            first = await coordinator.attach(run_id=run_id, **identity)
+            for capability in (None, "lease_wrong"):
+                with self.assertRaises(LeaseLostError):
+                    await coordinator.attach(
+                        run_id=run_id, **identity, lease_id=capability
+                    )
+            retry = await coordinator.attach(
+                run_id=run_id,
+                **identity,
+                lease_id=str(first["leaseId"]),
+                last_event_seq=2,
+            )
+            return first, retry
+
+        first, retry = self._run(flow())
+        self.assertEqual(first["leaseId"], retry["leaseId"])
+
+    def test_lease_renew_requires_and_preserves_the_capability(self) -> None:
+        async def flow():
+            run_id = await self._make_run()
+            coordinator = RunCoordinator()
+            attached = await coordinator.attach(
+                run_id=run_id,
+                harness={"name": "h1", "version": "1"},
+                adapter={"name": "a1", "version": "1"},
+                harness_session_id="sess-renew",
+            )
+            for capability in (None, "lease_wrong"):
+                with self.assertRaises(LeaseLostError):
+                    await coordinator.renew_lease(run_id=run_id, lease_id=capability)
+            renewed = await coordinator.renew_lease(
+                run_id=run_id, lease_id=str(attached["leaseId"])
+            )
+            return attached, renewed
+
+        attached, renewed = self._run(flow())
+        self.assertEqual(renewed["leaseId"], attached["leaseId"])
+
+    def test_attach_rejects_a_client_event_cursor_ahead_of_the_run(self) -> None:
+        async def flow():
+            run_id = await self._make_run()
+            coordinator = RunCoordinator()
+            attached = await coordinator.attach(
+                run_id=run_id,
+                harness={"name": "h1", "version": "1"},
+                adapter={"name": "a1", "version": "1"},
+                harness_session_id="sess-cursor",
+            )
+            with self.assertRaisesRegex(ValueError, "lastEventSeq"):
+                await coordinator.attach(
+                    run_id=run_id,
+                    harness={"name": "h1", "version": "1"},
+                    adapter={"name": "a1", "version": "1"},
+                    harness_session_id="sess-cursor",
+                    lease_id=str(attached["leaseId"]),
+                    last_event_seq=10_000,
+                )
+
+        self._run(flow())
+
+    def test_attach_event_failure_rolls_back_the_lease_for_a_clean_retry(self) -> None:
+        async def flow():
+            run_id = await self._make_run()
+            async with async_session() as db:
+                existing_event = (
+                    await db.execute(
+                        select(AgentRunEvent)
+                        .where(AgentRunEvent.run_id == run_id)
+                        .limit(1)
+                    )
+                ).scalar_one()
+            identity = {
+                "run_id": run_id,
+                "harness": {"name": "h1", "version": "1"},
+                "adapter": {"name": "a1", "version": "1"},
+                "harness_session_id": "sess-a",
+            }
+            coordinator = RunCoordinator()
+            duplicate_event_token = existing_event.event_id.removeprefix("evt_")
+            with patch(
+                "app.services.agent_bridge.run_coordinator.secrets.token_hex",
+                side_effect=["lease-id-token", duplicate_event_token],
+            ):
+                with self.assertRaises(IntegrityError):
+                    await coordinator.attach(**identity)
+            failed = await load_agent_run(run_id)
+            self.assertEqual(failed["lease_id"], "")
+            self.assertEqual(failed["event_sequence"], 2)
+            retried = await coordinator.attach(**identity)
+            succeeded = await load_agent_run(run_id)
+            return retried, succeeded
+
+        retried, succeeded = self._run(flow())
+        self.assertTrue(retried["leaseId"])
+        self.assertEqual(succeeded["lease_id"], retried["leaseId"])
+        self.assertEqual(succeeded["event_sequence"], 3)
+
+    def test_expired_lease_cannot_be_rebound_to_another_harness_session(self) -> None:
+        async def flow():
+            run_id = await self._make_run()
+            coordinator = RunCoordinator()
+            first = await coordinator.attach(
+                run_id=run_id,
+                harness={"name": "h1", "version": "1"},
+                adapter={"name": "a1", "version": "1"},
+                harness_session_id="sess-a",
+            )
+            async with async_session() as db:
+                row = (
+                    await db.execute(
+                        select(AgentRunRecord).where(AgentRunRecord.run_id == run_id)
+                    )
+                ).scalar_one()
+                row.lease_expires_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=1)
+                await db.commit()
+            with self.assertRaises(LeaseLostError):
+                await coordinator.attach(
+                    run_id=run_id,
+                    harness={"name": "h2", "version": "2"},
+                    adapter={"name": "a2", "version": "2"},
+                    harness_session_id="sess-b",
+                    lease_id=str(first["leaseId"]),
+                    last_event_seq=2,
+                )
+            stored = await load_agent_run(run_id)
+            return stored
+
+        stored = self._run(flow())
+        self.assertEqual(stored["harness_name"], "h1")
+        self.assertEqual(stored["harness_session_id"], "sess-a")
+
+    def test_bridge_restart_reconciles_same_run_with_pairing_and_lease(self) -> None:
+        async def flow():
+            run_id = await self._make_run()
+            pairing = await create_bridge_pairing(run_id=run_id)
+            first_session = BridgeSession()
+            await first_session.handle(
+                {"v": 1, "id": "h1", "type": "hello", "payload": _hello_payload()}
+            )
+            await first_session.handle(
+                {"v": 1, "id": "p1", "type": "pairing.request", "payload": {"bootstrapToken": pairing["bootstrapToken"]}}
+            )
+            first = await first_session.handle(
+                {
+                    "v": 1,
+                    "id": "a1",
+                    "type": "run.attach",
+                    "runId": run_id,
+                    "payload": {
+                        "harness": {"name": "fake-harness", "version": "0.0.1"},
+                        "adapter": {"name": "fake-adapter", "version": "0.0.1"},
+                        "harnessSessionId": "sess-restart",
+                    },
+                }
+            )
+            first_lease = first["result"]["leaseId"]
+            before = await load_agent_run(run_id)
+
+            new_pairing = await create_bridge_pairing(run_id=run_id)
+            resumed_session = BridgeSession()
+            await resumed_session.handle(
+                {"v": 1, "id": "h2", "type": "hello", "payload": _hello_payload()}
+            )
+            await resumed_session.handle(
+                {"v": 1, "id": "p2", "type": "pairing.request", "payload": {"bootstrapToken": new_pairing["bootstrapToken"]}}
+            )
+            resumed = await resumed_session.handle(
+                {
+                    "v": 1,
+                    "id": "a2",
+                    "type": "run.attach",
+                    "runId": run_id,
+                    "payload": {
+                        "harness": {"name": "fake-harness", "version": "0.0.1"},
+                        "adapter": {"name": "fake-adapter", "version": "0.0.1"},
+                        "harnessSessionId": "sess-restart",
+                        "leaseId": first_lease,
+                        "lastEventSeq": before["event_sequence"],
+                    },
+                }
+            )
+            after = await load_agent_run(run_id)
+            return first, resumed, before, after
+
+        first, resumed, before, after = self._run(flow())
+        self.assertTrue(resumed["ok"])
+        self.assertEqual(resumed["result"]["leaseId"], first["result"]["leaseId"])
+        self.assertEqual(after["event_sequence"], before["event_sequence"])
 
     def test_session_full_readonly_flow(self) -> None:
         async def flow():

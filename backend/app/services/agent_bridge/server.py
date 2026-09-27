@@ -217,12 +217,20 @@ class BridgeSession:
                 harness=harness,
                 adapter=adapter,
                 harness_session_id=str(payload.get("harnessSessionId") or ""),
+                lease_id=str(payload.get("leaseId") or "") or None,
                 last_event_seq=int(payload.get("lastEventSeq") or 0),
             )
         except LookupError as exc:
             raise BridgeProtocolError(
                 "run_not_found",
                 str(exc),
+                request_id=request_id,
+            ) from exc
+        except LeaseLostError as exc:
+            raise BridgeProtocolError(
+                "lease_lost",
+                "The single-writer lease is held by another connection or expired",
+                retryable=True,
                 request_id=request_id,
             ) from exc
         except ValueError as exc:

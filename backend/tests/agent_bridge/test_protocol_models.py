@@ -149,6 +149,39 @@ class RequestModelTests(unittest.TestCase):
         }
         self.assert_schema_invalid(operation)
 
+    def test_lease_renew_requires_the_capability_token(self) -> None:
+        value = {
+            "v": 1,
+            "id": "req_renew_1",
+            "type": "run.lease.renew",
+            "runId": "run_01J",
+            "payload": {},
+        }
+
+        error = self.assert_schema_invalid(value)
+
+        self.assertTrue(
+            any(issue["path"][-1] == "leaseId" for issue in error.details["issues"])
+        )
+
+    def test_run_attach_requires_a_persistable_harness_session_identity(self) -> None:
+        value = {
+            "v": 1,
+            "id": "req_attach_1",
+            "type": "run.attach",
+            "runId": "run_01J",
+            "payload": {
+                "harness": {"name": "harness", "version": "1"},
+                "adapter": {"name": "adapter", "version": "1"},
+            },
+        }
+
+        error = self.assert_schema_invalid(value)
+
+        self.assertTrue(
+            any(issue["path"][-1] == "harnessSessionId" for issue in error.details["issues"])
+        )
+
     def test_operation_invoke_matches_the_v1_example(self) -> None:
         value = {
             "v": 1,

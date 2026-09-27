@@ -184,25 +184,27 @@ async def get_agent_connections() -> dict[str, Any]:
         runtime.list_local_executors(), list_provider_health(),
     )
     by_id = {item["provider_id"]: item for item in health["providers"]}
-    skill = Path(__file__).resolve().parents[3] / ".agents" / "skills" / "offeru" / "SKILL.md"
-    skill_instruction = (
-        f"请先阅读本机文件 {skill}，按其中的 OfferU 接入约定发现实时能力。"
-        if skill.is_file()
-        else "请先通过 OfferU Agent Bridge 的实时 manifest 发现能力，不要猜测固定命令。"
-    )
-    connect_prompt = (
-        f"{skill_instruction}"
-        "先检查连接，再查看 get_current_view 的 schema，通过该只读 Operation 读取我在 OfferU 中同步的当前页面和选中对象。"
-        "请告诉我你实际读到了什么，然后等待我的任务。不要修改数据、配置、凭据或代理；"
-        "后续业务操作继续使用同一 Operation Registry，写入先在 OfferU 中等待我确认。"
-    )
     return {
         "items": [_view(item, by_id.get(item["id"], {})) for item in detected["items"]],
         "checked_at": datetime.now(timezone.utc).isoformat(),
-        "connect_prompt": connect_prompt,
+        "connect_prompt": build_connect_prompt(),
         "beginner_provider_ids": beginner_host_ids(),
         "recommended_provider_id": recommended_host_id(),
     }
+
+
+def build_connect_prompt() -> str:
+    """Portable manual bootstrap text; the public Skill owns host setup guidance."""
+
+    return (
+        "请接入这台电脑上正在运行的 OfferU。从 https://raw.githubusercontent.com/avabbbb/OfferU/main/.agents/skills/offeru/SKILL.md "
+        "下载官方 OfferU Skill，并按 Skill 中与你当前 Agent 匹配的说明安装；"
+        "只写入这个 Skill 文件，不改 Agent 的其他设置、账号、模型、凭据或代理。"
+        "随后按 Skill 检查本机 OfferU 是否可用；选择 connection_bootstrap Skill，查看 get_current_view 的 schema，并只通过对应的只读 Operation "
+        "读取 OfferU 当前同步页面和显式选中对象。把实际读取结果和连接状态告诉我，然后停止等待我的任务。"
+        "不要读取其他职业数据。Skill 下载 URL 只用于获取静态指引；之后所有业务操作必须走同一 Operation Registry，"
+        "所有写操作都留在 OfferU 等我确认，不得自行批准、提交、发送或联系第三方。"
+    )
 
 
 async def probe_agent_connection(provider_id: str) -> dict[str, Any]:

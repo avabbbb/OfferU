@@ -44,8 +44,8 @@ import {
   type DataIntegrityReport,
   type DataSafetyStatus,
   type PrivacyHygieneStatus,
+  requestResponse,
 } from "@/lib/api";
-import { resolveApiBase } from "@/lib/apiBase";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { isDemoRuntime } from "@/lib/localRuntime";
 import { useConfig, updateConfig } from "@/lib/hooks";
@@ -228,14 +228,14 @@ function TestLlmButton() {
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const testConnection = async () => {
+    if (isDemoRuntime()) {
+      setResult({ success: false, message: "展示模式不能连接本地模型；请先连接本地 OfferU。" });
+      return;
+    }
     setTesting(true);
     setResult(null);
     try {
-      const API_BASE = resolveApiBase();
-      const res = await fetch(`${API_BASE}/api/config/test-llm`, {
-        method: "POST",
-        redirect: "error",
-      });
+      const res = await requestResponse("/api/config/test-llm", { method: "POST" });
       // 非 2xx 时后端返回 {detail} 而不是 {success,message}，
       // 不校验会把失败显示成"模型连接测试完成"。
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -255,6 +255,8 @@ function TestLlmButton() {
         className="border-2 border-white/30 bg-white/10 text-white hover:bg-white/20"
         onPress={testConnection}
         isLoading={testing}
+        isDisabled={isDemoRuntime()}
+        title={isDemoRuntime() ? "连接本地 OfferU 后可测试模型" : undefined}
       >
         测试连接
       </Button>

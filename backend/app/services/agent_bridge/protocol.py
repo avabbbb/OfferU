@@ -194,10 +194,7 @@ class PairingStatusPayload(_StrictPayload):
 class RunAttachPayload(_StrictPayload):
     harness: HarnessIdentity
     adapter: AdapterIdentity
-    harness_session_id: Identifier | None = Field(
-        default=None,
-        alias="harnessSessionId",
-    )
+    harness_session_id: Identifier = Field(alias="harnessSessionId")
     bootstrap_token: NonEmptyString | None = Field(
         default=None,
         alias="bootstrapToken",
@@ -208,7 +205,7 @@ class RunAttachPayload(_StrictPayload):
 
 
 class RunLeaseRenewPayload(_StrictPayload):
-    lease_id: Identifier | None = Field(default=None, alias="leaseId")
+    lease_id: Identifier = Field(alias="leaseId")
 
 
 class ContextSnapshotPayload(_StrictPayload):

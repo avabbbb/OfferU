@@ -53,6 +53,21 @@ function buildQuery(params?: Record<string, unknown>) {
   return sp.toString();
 }
 
+export async function requestResponse(path: string, options?: RequestInit): Promise<Response> {
+  if (isDemoRuntime()) {
+    const data = await showcaseHandle(path, options);
+    return new Response(JSON.stringify(data), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  try {
+    return await fetch(`${API_BASE}${path}`, { ...options, redirect: "error" });
+  } catch {
+    throw new Error("无法连接本地后端，请确认 8766 服务已启动。");
+  }
+}
+
 export async function request<T>(path: string, options?: RequestInit): Promise<T> {
   if (isDemoRuntime()) {
     // Demo runtime: requests stay in IndexedDB. Web-local and Desktop share 8766.
@@ -236,20 +251,22 @@ export const resumeApi = {
 
   // 文件上传
   uploadPhoto: async (resumeId: number, file: File) => {
+    if (isDemoRuntime()) throw new Error("展示模式不会上传到真实简历，请连接本地 OfferU 后重试。");
     const formData = new FormData();
     formData.append("file", file);
-    const res = await fetch(`${API_BASE}/api/resume/${resumeId}/photo`, {
+    const res = await requestResponse(`/api/resume/${resumeId}/photo`, {
       method: "POST",
       body: formData,
-      redirect: "error",
     });
     if (!res.ok) throw new Error(`API Error: ${res.status}`);
     return res.json();
   },
 
   // 导出
-  exportPdf: (id: number) =>
-    fetch(`${API_BASE}/api/resume/${id}/export/pdf`, { method: "POST", redirect: "error" }),
+  exportPdf: (id: number) => {
+    if (isDemoRuntime()) throw new Error("展示模式不能导出本地简历，请连接本地 OfferU 后重试。");
+    return requestResponse(`/api/resume/${id}/export/pdf`, { method: "POST" });
+  },
 
   exportPdfUrl: (id: number) => `${API_BASE}/api/resume/${id}/export/pdf`,
 
@@ -1589,24 +1606,23 @@ export const profileApi = {
       // Demo runtime uses the synthetic browser stream; connected Web uses local Python.
       return showcaseChatResponse(data.topic || "general", data.message || "");
     }
-    const res = await fetch(`${API_BASE}/api/profile/chat`, {
+    const res = await requestResponse("/api/profile/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
-      redirect: "error",
     });
     if (!res.ok) throw new Error(`API Error: ${res.status}`);
     return res;
   },
 
   importResume: async (file: File, parseMode: "ai" | "mechanical" = "ai") => {
+    if (isDemoRuntime()) throw new Error("展示模式不会导入到真实职业档案，请连接本地 OfferU 后重试。");
     const formData = new FormData();
     formData.append("file", file);
     const params = new URLSearchParams({ parse_mode: parseMode });
-    const res = await fetch(`${API_BASE}/api/profile/import-resume?${params.toString()}`, {
+    const res = await requestResponse(`/api/profile/import-resume?${params.toString()}`, {
       method: "POST",
       body: formData,
-      redirect: "error",
     });
     if (!res.ok) throw new Error(`API Error: ${res.status}`);
     return res.json();
@@ -1634,6 +1650,7 @@ export const profileApi = {
     target_city?: string;
     job_goal?: string;
   }): Promise<ProfileAgentResponse> => {
+    if (isDemoRuntime()) throw new Error("展示模式不会启动真实职业档案任务，请连接本地 OfferU 后重试。");
     const formData = new FormData();
     if (data.file) formData.append("file", data.file);
     formData.append("resume_text", data.resume_text || "");
@@ -1641,10 +1658,9 @@ export const profileApi = {
     formData.append("target_city", data.target_city || "");
     formData.append("job_goal", data.job_goal || "");
 
-    const res = await fetch(`${API_BASE}/api/profile/agent/start`, {
+    const res = await requestResponse("/api/profile/agent/start", {
       method: "POST",
       body: formData,
-      redirect: "error",
     });
     if (!res.ok) throw new Error(`API Error: ${res.status}`);
     return res.json();

@@ -44,8 +44,8 @@ import {
 } from "@/lib/hooks";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { useWorkbench } from "@/lib/workbench";
-
-import { resolveApiBase } from "@/lib/apiBase";
+import { requestResponse } from "@/lib/api";
+import { isDemoRuntime } from "@/lib/localRuntime";
 
 type SignalNotification = Notification & { acknowledged_at?: string | null };
 
@@ -354,12 +354,10 @@ export default function TodayPage() {
   const [signalAckBusy, setSignalAckBusy] = useState<number | null>(null);
 
   const acknowledgeSignal = async (id: number) => {
+    if (isDemoRuntime()) return;
     setSignalAckBusy(id);
     try {
-      const response = await fetch(
-        `${resolveApiBase()}/api/email/notifications/${id}/ack`,
-        { method: "POST" },
-      );
+      const response = await requestResponse(`/api/email/notifications/${id}/ack`, { method: "POST" });
       if (!response.ok) {
         throw new Error(`API ${response.status}`);
       }
@@ -1028,8 +1026,9 @@ export default function TodayPage() {
               </button>
               <button
                 type="button"
-                disabled={signalAckBusy === signal.id}
+                disabled={signalAckBusy === signal.id || isDemoRuntime()}
                 onClick={() => void acknowledgeSignal(signal.id)}
+                title={isDemoRuntime() ? "连接本地 OfferU 后可确认真实通知" : undefined}
                 className="shrink-0 rounded-full border border-[var(--border)] px-2.5 py-1 text-[11px] font-medium text-[var(--foreground-muted)] transition-colors hover:border-[var(--foreground-faint)] hover:text-[var(--foreground)] disabled:opacity-50"
               >
                 {signalAckBusy === signal.id ? "处理中…" : "标记已处理"}

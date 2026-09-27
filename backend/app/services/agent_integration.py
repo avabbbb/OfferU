@@ -59,6 +59,12 @@ def _installed_content() -> str:
     return source.replace("python -m app.cli", f"{_command_prefix()} -m app.cli")
 
 
+def installed_skill_content() -> str:
+    """Return the public Skill with only this OfferU install's CLI command projected."""
+
+    return _installed_content()
+
+
 def _skill_metadata(content: str) -> tuple[str, str]:
     match = _MARKER.search(content)
     return (match.group(1), match.group(2)) if match else ("", "")

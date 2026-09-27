@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { type AgentConnection } from "@/lib/api";
 import { connectionTime, useAgentConnection } from "@/lib/agentConnection";
-import { isDemoRuntime, selectDemoRuntime, selectLocalRuntime } from "@/lib/localRuntime";
+import { isDemoRuntime } from "@/lib/localRuntime";
 
 const STATUS = {
   missing: { label: "未检测到", tone: "text-[var(--foreground-muted)]", title: "先准备好本机 Agent", detail: "打开官方指南完成安装，然后回到这里重新检查。" },
@@ -112,26 +112,10 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
   const state = useAgentConnection();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
-  const [runtimeConnecting, setRuntimeConnecting] = useState(false);
-  const [runtimeError, setRuntimeError] = useState("");
   const demoRuntime = isDemoRuntime();
 
-  const connectLocal = async () => {
-    setRuntimeConnecting(true);
-    setRuntimeError("");
-    const result = await selectLocalRuntime();
-    if (!result.ok) {
-      setRuntimeError(result.error || "未检测到本地 OfferU Runtime。");
-      setRuntimeConnecting(false);
-      return;
-    }
-    window.location.reload();
-  };
-
-  const disconnectLocal = () => {
-    selectDemoRuntime();
-    window.location.reload();
-  };
+  const connectLocal = () => state.localRuntime.connect();
+  const disconnectLocal = () => state.localRuntime.disconnect();
   const candidates = state.snapshot?.items || [];
   const beginnerCandidates = candidates.filter((item) => item.beginner);
   const suggested = beginnerCandidates.find((item) => item.recommended)
@@ -168,9 +152,9 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
       {demoRuntime ? <div className="p-6 sm:p-7" data-testid="web-local-runtime-connect">
         <p className="text-sm font-semibold">连接本机 OfferU</p>
         <p className="mt-2 max-w-xl text-xs leading-6 text-[var(--foreground-muted)]">连接后，这个网页会直接使用你电脑上的职业数据和 Coding Agent，不再使用展示数据。浏览器可能会询问是否允许访问本机网络。</p>
-        {runtimeError && <p role="alert" className="mt-3 text-xs font-medium text-red-700">{runtimeError}</p>}
+        {(state.localRuntime.error || state.localRuntime.probing) && <p role={state.localRuntime.error ? "alert" : "status"} className={`mt-3 text-xs font-medium ${state.localRuntime.error ? "text-red-700" : "text-[var(--foreground-muted)]"}`}>{state.localRuntime.error || "正在安全检查本机 OfferU Runtime…"}</p>}
         <Button className="mt-4 bg-[var(--foreground)] px-4 text-xs font-semibold text-[var(--surface)]" size="sm"
-          onPress={() => void connectLocal()} isLoading={runtimeConnecting}>
+          onPress={() => void connectLocal()} isLoading={state.localRuntime.probing}>
           连接本地 OfferU
         </Button>
       </div> : <>

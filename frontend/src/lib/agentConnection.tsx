@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import useSWR from "swr";
 import { usePathname } from "next/navigation";
 import { agentRuntimeApi, type AgentConnectionsSnapshot } from "./api";
-import { isDemoRuntime } from "./localRuntime";
+import { isDemoRuntime, useLocalRuntime } from "./localRuntime";
 import { safeClientErrorMessage } from "./safe-error";
 import { useWorkbench } from "./workbench";
 import type { components } from "./api-types.generated";
@@ -24,6 +24,7 @@ interface ConnectionActivity {
 }
 
 interface AgentConnectionContextValue {
+  localRuntime: ReturnType<typeof useLocalRuntime>;
   snapshot: AgentConnectionsSnapshot | undefined;
   loading: boolean;
   refreshing: boolean;
@@ -64,6 +65,7 @@ function entityFromRoute(pathname: string): { entity_type: string; entity_id: st
 
 export function AgentConnectionProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const localRuntime = useLocalRuntime();
   const { selection } = useWorkbench();
   const [open, setOpen] = useState(false);
   const [probing, setProbing] = useState<string | null>(null);
@@ -185,7 +187,7 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
     setSync((previous) => ({ ...previous, status: "syncing", title: body.title, error: "" }));
     const timer = window.setTimeout(() => void flush(), 250);
     return () => window.clearTimeout(timer);
-  }, [payload, pathname, retry, flush]);
+  }, [payload, pathname, retry, flush, localRuntime.connected]);
 
   const probe = useCallback(async (id: string) => {
     if (probeInFlight.current || isDemoRuntime()) return;
@@ -209,7 +211,7 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
       probeInFlight.current = false;
       if (mounted.current) setProbing(null);
     }
-  }, [data, mutate, record]);
+  }, [data, mutate, record, localRuntime.connected]);
 
   const connect = useCallback(async (id: string, action: "install" | "update" | "repair") => {
     if (probeInFlight.current || isDemoRuntime()) return;
@@ -233,7 +235,7 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
       probeInFlight.current = false;
       if (mounted.current) setIntegrating(null);
     }
-  }, [data, mutate, record]);
+  }, [data, mutate, record, localRuntime.connected]);
 
   const refresh = useCallback(() => { setProbeError(""); void mutate().catch(() => undefined); }, [mutate]);
   const retrySync = useCallback(() => setRetry((value) => value + 1), []);
@@ -241,6 +243,7 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
 
   return (
     <ConnectionContext.Provider value={{
+      localRuntime,
       snapshot: data, loading: isLoading, refreshing: isValidating,
       error: probeError || (error ? safeClientErrorMessage(error, "状态更新失败") : ""),
       stale, offline, open, setOpen, probing, integrating, probe, connect, refresh, sync, retrySync, activity,

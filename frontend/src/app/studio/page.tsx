@@ -3,9 +3,9 @@
 
 import { useState, useEffect } from "react";
 import { Card, Button, Spinner } from "@nextui-org/react";
-import { showcaseHandle } from "@/lib/showcase/router";
 import { isDemoRuntime } from "@/lib/localRuntime";
 import { resolveApiBase } from "@/lib/apiBase";
+import { request } from "@/lib/api";
 
 // 与 lib/api.ts 同款后端地址解析；vite dev 无 proxy，
 // 相对路径 /api/... 会打到 Vite 自身（7410）返回 index.html。
@@ -43,19 +43,8 @@ export default function StudioPage() {
     isDemoRuntime() || !selectedTemplate || Boolean(activeTemplateTokens?.fontFamily);
 
   useEffect(() => {
-    if (isDemoRuntime()) {
-      // 展示模式：模板列表由本地数据层提供（无后端）
-      showcaseHandle("/api/studio/templates").then((data) => {
-        if (Array.isArray(data)) setTemplates(data as Template[]);
-      });
-      return;
-    }
     let cancelled = false;
-    fetch(`${API_BASE}/api/studio/templates`, { redirect: "error" })
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-      })
+    request<Template[]>("/api/studio/templates")
       .then((data) => {
         if (cancelled) return;
         if (Array.isArray(data)) setTemplates(data as Template[]);
@@ -72,13 +61,16 @@ export default function StudioPage() {
 
   const handleGenerate = async () => {
     if (!selectedTemplate) return;
+    if (isDemoRuntime()) {
+      setGenerateError("展示模式只显示模板预览，不会生成或写入真实简历。连接本地 OfferU 后即可使用。");
+      return;
+    }
 
     setLoading(true);
     setGenerateError(null);
     try {
-      const res = await fetch(`${API_BASE}/api/studio/generate`, {
+      const data = await request<{ id?: number }>("/api/studio/generate", {
         method: "POST",
-        redirect: "error",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           profile_id: 1, // 本地单人应用：固定默认 profile
@@ -90,15 +82,6 @@ export default function StudioPage() {
           job_ids: []
         })
       });
-
-      const data = await res.json().catch(() => null);
-      if (!res.ok) {
-        // 失败不伪造成功：不把 undefined 拼成预览地址，也不在 iframe 里静默显示错误页
-        const detail = data?.detail ?? data?.message;
-        throw new Error(
-          typeof detail === "string" && detail ? detail : `生成失败（HTTP ${res.status}）`
-        );
-      }
       if (!data?.id) throw new Error("生成结果缺少简历 ID");
       setPreviewUrl(`${API_BASE}/api/studio/resumes/${data.id}/preview`);
     } catch (err) {
@@ -230,9 +213,9 @@ export default function StudioPage() {
             className="w-full"
             onPress={handleGenerate}
             isLoading={loading}
-            isDisabled={!selectedTemplate}
+            isDisabled={!selectedTemplate || isDemoRuntime()}
           >
-            {loading ? "生成中..." : "生成简历"}
+            {loading ? "生成中..." : isDemoRuntime() ? "连接本地 OfferU 后生成" : "生成简历"}
           </Button>
         </div>
       </div>

@@ -5,6 +5,7 @@ import json
 from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
@@ -435,6 +436,22 @@ async def agent_provider_health() -> dict[str, Any]:
 @runtime_router.get("/runtime/connections")
 async def agent_connections() -> dict[str, Any]:
     return await _ui_operation_outputs("get_agent_connections", {})
+
+
+@runtime_router.get("/runtime/skill", include_in_schema=False)
+async def download_agent_skill() -> PlainTextResponse:
+    """Serve a local CLI projection; public Skill distribution is on GitHub."""
+
+    from app.services.agent_integration import installed_skill_content
+
+    return PlainTextResponse(
+        installed_skill_content(),
+        media_type="text/markdown",
+        headers={
+            "Content-Disposition": 'attachment; filename="offeru-SKILL.md"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @runtime_router.post("/runtime/connections/{provider_id}/probe")
