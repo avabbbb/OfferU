@@ -9,6 +9,7 @@ import {
 import { type AgentConnection } from "@/lib/api";
 import { connectionTime, useAgentConnection } from "@/lib/agentConnection";
 import { SHOWCASE } from "@/lib/showcase/router";
+import { useLocalRuntime } from "@/lib/localRuntime";
 
 const STATUS = {
   missing: { label: "未检测到", tone: "text-[var(--foreground-muted)]", title: "先准备好本机 Agent", detail: "打开官方指南完成安装，然后回到这里重新检查。" },
@@ -68,12 +69,14 @@ function currentStatus(item: AgentConnection) {
 
 export function AgentConnectionStatus({ compact = false }: { compact?: boolean }) {
   const state = useAgentConnection();
+  const localRuntime = useLocalRuntime();
   const ready = state.snapshot?.items.find((item) => currentStatus(item) === STATUS.ready);
   const hasProblem = Boolean(state.error || state.stale || state.sync.status === "failed");
   const pending = Boolean(state.loading || state.probing || state.sync.status === "syncing");
-  const label = SHOWCASE ? "Agent · 展示模式" : hasProblem ? "Agent · 需要处理"
+  const label = SHOWCASE && !localRuntime.connected ? "连接本地 OfferU" : hasProblem ? "Agent · 需要处理"
     : pending ? "Agent · 正在检查 / 同步" : ready ? "Agent · 接入检查通过" : "连接本机 Agent";
-  const detail = state.sync.status === "failed" ? "内容同步失败，点击重试"
+  const detail = SHOWCASE && !localRuntime.connected ? "连接你电脑里的 Agent 和真实职业数据"
+    : state.sync.status === "failed" ? "内容同步失败，点击重试"
     : state.error || state.stale ? "状态未更新，点击查看"
     : ready ? `最近同步 ${connectionTime(state.sync.confirmedAt)}` : "自动检测 · 沿用已有登录";
 
@@ -110,8 +113,11 @@ function SetupStep({ index, title, done, busy, detail }: {
 
 export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean }) {
   const state = useAgentConnection();
+  const localRuntime = useLocalRuntime();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [connectingRuntime, setConnectingRuntime] = useState(false);
+  const [runtimeError, setRuntimeError] = useState("");
   const candidates = state.snapshot?.items || [];
   const beginnerCandidates = candidates.filter((item) => item.beginner);
   const suggested = beginnerCandidates.find((item) => item.recommended)
@@ -145,7 +151,33 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
         <p className="mt-2 max-w-xl text-sm leading-relaxed text-[var(--foreground-muted)]">自动发现本机 Agent，检查接入，把当前工作交给它。同步进展随时可看。</p>
       </div>
 
-      {SHOWCASE ? <p role="status" className="p-6 text-sm text-[var(--foreground-muted)]">这是展示模式。请在本机 OfferU 中连接 Agent，查看真实同步状态。</p> : <>
+      {SHOWCASE && !localRuntime.connected ? <div className="p-6 sm:p-7">
+        <div className="max-w-xl">
+          <p className="text-sm font-semibold text-[var(--foreground)]">连接本地 OfferU</p>
+          <p className="mt-2 text-xs leading-6 text-[var(--foreground-muted)]">
+            直接复用你电脑里的 OfferU Runtime、职业数据和已登录的 OMP / Codex / Claude。无需再配置一套 Web Agent。
+          </p>
+          {runtimeError && <p role="alert" className="mt-3 text-xs text-red-700">{runtimeError}</p>}
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <Button
+              size="sm"
+              isLoading={connectingRuntime}
+              className="bg-[var(--foreground)] px-4 text-xs font-semibold text-[var(--surface)]"
+              onPress={() => {
+                setRuntimeError("");
+                setConnectingRuntime(true);
+                void localRuntime.connect().then((ok) => {
+                  if (!ok) setRuntimeError("没有检测到本机 OfferU。请先启动 OfferU Desktop / Runtime，再重试。");
+                  else state.refresh();
+                }).finally(() => setConnectingRuntime(false));
+              }}
+            >
+              连接本地 OfferU
+            </Button>
+            <span className="text-[11px] text-[var(--foreground-muted)]">只连接 127.0.0.1，不上传本地职业数据。</span>
+          </div>
+        </div>
+      </div> : <>
         {(state.error || state.stale) && <div role="alert" className="mx-5 mt-5 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">
           <AlertCircle size={15} className="mt-0.5 shrink-0" />
           <span className="flex-1">{state.error || "状态暂未更新，下面保留的是上次结果。"}</span>
