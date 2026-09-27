@@ -1,7 +1,7 @@
 import { lazy, Suspense, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { useOnboarding } from "@/lib/useOnboarding";
-import { SHOWCASE } from "@/lib/showcase/router";
+import { isDemoRuntime } from "@/lib/localRuntime";
 
 const OnboardingWizard = lazy(() => import("./OnboardingWizard").then((module) => ({ default: module.OnboardingWizard })));
 
@@ -10,7 +10,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   return <>
     {children}
-    {!SHOWCASE && shouldShowWizard && pathname === "/" && <Suspense fallback={null}>
+    {!isDemoRuntime() && shouldShowWizard && pathname === "/" && <Suspense fallback={null}>
       <OnboardingWizard
         wizardStep={wizardStep}
         onStepChange={setWizardStep}
