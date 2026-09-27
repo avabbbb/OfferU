@@ -50,7 +50,7 @@ import { InterviewLifecycleCard } from "@/components/career/InterviewLifecycleCa
 import { ArtifactViewer } from "@/components/career/ArtifactViewer";
 import { CareerQuestionsPanel } from "@/components/career/CareerQuestionsPanel";
 import { DeliveryList } from "@/components/career/DeliveryList";
-import { readDeliveries } from "@/components/career/deliveries";
+import { readDeliveries, matchDeliveryForAction } from "@/components/career/deliveries";
 import { ResumeReengagementCard } from "@/components/career/ResumeReengagementCard";
 
 import { resolveApiBase } from "@/lib/apiBase";
@@ -427,6 +427,7 @@ export default function TodayPage() {
     ?? dailyBriefInboxItem?.payload?.briefing as Record<string, any> | undefined;
   const dailyBriefActions = Array.isArray(dailyBrief?.actions) ? dailyBrief.actions as Array<Record<string, any>> : [];
   const dailyBriefQuestions = Array.isArray(dailyBrief?.questions) ? dailyBrief.questions as Array<Record<string, any>> : [];
+  const dailyBriefDeliveries = useMemo(() => readDeliveries(dailyBriefTask?.result), [dailyBriefTask]);
   const dismissDailyBrief = async () => {
     if (!dailyBriefInboxItem) return;
     setDailyBriefDismissing(true);
@@ -650,8 +651,10 @@ export default function TodayPage() {
                   : action.autonomy_level === "L2"
                     ? "需要你确认职业信息变更"
                     : action.autonomy_level === "L1"
-                      ? "OfferU 已准备，可审核"
+                      ? "工作区建议，可直接执行"
                       : "状态观察";
+                const matchedDelivery = matchDeliveryForAction(action, dailyBriefDeliveries);
+                const actionPrepared = matchedDelivery?.state === "ready";
                 return (
                   <Link
                     key={String(action.dedupe_key || `${index}-${action.objective}`)}
@@ -660,7 +663,7 @@ export default function TodayPage() {
                   >
                     <span className="block text-[12px] font-semibold text-[var(--foreground)]">{String(action.objective || "查看建议")}</span>
                     <span className="mt-1 block text-[12px] leading-5 text-[var(--foreground-muted)]">为什么现在：{String(action.why_now || "")}</span>
-                    <span className="mt-1 block text-[11px] leading-5 text-[var(--foreground-muted)]">OfferU 已准备：{String(action.expected_outcome || "")}</span>
+                    <span className="mt-1 block text-[11px] leading-5 text-[var(--foreground-muted)]">{actionPrepared ? `OfferU 已准备：${String(action.expected_outcome || "")}` : `预期结果：${String(action.expected_outcome || "")}`}</span>
                     <span className="mt-1 block text-[10px] text-[var(--foreground-faint)]">{autonomyLabel}</span>
                   </Link>
                 );

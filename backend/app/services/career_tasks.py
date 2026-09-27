@@ -646,10 +646,9 @@ async def _run_agent_turn(task: dict[str, Any]) -> dict[str, Any]:
 def _career_director_workspace() -> str:
     """Create a no-data working directory isolated from the Career database."""
 
-    if os.name == "nt":
-        root = Path(r"H:\tmp\offeru\career-director")
-        if not root.drive or not root.parent.parent.parent.exists():
-            raise RuntimeError("Career Director isolated workspace H:\\tmp\\offeru is unavailable")
+    override = os.environ.get("OFFERU_CAREER_DIRECTOR_WORKSPACE")
+    if override:
+        root = Path(override)
     else:
         root = Path(tempfile.gettempdir()) / "offeru" / "career-director"
     root.mkdir(parents=True, exist_ok=True)

@@ -226,7 +226,7 @@ describe("TodayPage", () => {
 
     expect(await screen.findByRole("heading", { name: "今天的求职简报" })).toBeInTheDocument();
     expect(screen.getByText("为什么现在：面试安排在明天下午。")).toBeInTheDocument();
-    expect(screen.getByText("OfferU 已准备：整理岗位重点并完成一轮练习。")).toBeInTheDocument();
+    expect(screen.getByText("预期结果：整理岗位重点并完成一轮练习。")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /准备星辰科技面试/ })).toHaveAttribute("href", "/jobs/101");
 
     fireEvent.click(screen.getByRole("button", { name: "稍后处理" }));
