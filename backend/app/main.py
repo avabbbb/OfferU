@@ -364,15 +364,28 @@ async def add_security_headers(request, call_next):
         if raw_host.startswith("[") and "]" in raw_host
         else raw_host.split(":", 1)[0]
     )
-    if (
+    protected_path = (
         request.url.path.startswith("/api/")
         or request.url.path.startswith("/mcp")
-    ) and host_header not in _LOOPBACK_HOSTS:
+    )
+    if protected_path and host_header not in _LOOPBACK_HOSTS:
         return _error_response(
             request,
             status_code=403,
             detail="请求被拒绝：仅允许本机回环来源",
             kind="forbidden_host",
+        )
+    request_origin = (request.headers.get("origin") or "").strip()
+    if (
+        protected_path
+        and request_origin.startswith(("http://", "https://", "tauri://"))
+        and not _is_allowed_cors_origin(request_origin)
+    ):
+        return _error_response(
+            request,
+            status_code=403,
+            detail="请求被拒绝：来源未授权连接本地 OfferU",
+            kind="forbidden_origin",
         )
     try:
         response = await call_next(request)
