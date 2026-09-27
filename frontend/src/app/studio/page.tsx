@@ -3,7 +3,8 @@
 
 import { useState, useEffect } from "react";
 import { Card, Button, Spinner } from "@nextui-org/react";
-import { SHOWCASE, showcaseHandle } from "@/lib/showcase/router";
+import { showcaseHandle } from "@/lib/showcase/router";
+import { isDemoRuntime } from "@/lib/localRuntime";
 import { resolveApiBase } from "@/lib/apiBase";
 
 // 与 lib/api.ts 同款后端地址解析；vite dev 无 proxy，
@@ -39,10 +40,10 @@ export default function StudioPage() {
   // 选中这类模板时字体控件无效，需要显式禁用而不是静默失效。
   const activeTemplateTokens = templates.find((tpl) => tpl.id === selectedTemplate)?.design_tokens;
   const supportsFontFamily =
-    SHOWCASE || !selectedTemplate || Boolean(activeTemplateTokens?.fontFamily);
+    isDemoRuntime() || !selectedTemplate || Boolean(activeTemplateTokens?.fontFamily);
 
   useEffect(() => {
-    if (SHOWCASE) {
+    if (isDemoRuntime()) {
       // 展示模式：模板列表由本地数据层提供（无后端）
       showcaseHandle("/api/studio/templates").then((data) => {
         if (Array.isArray(data)) setTemplates(data as Template[]);
@@ -137,7 +138,7 @@ export default function StudioPage() {
               onPress={() => setSelectedTemplate(tpl.id)}
             >
               <div className="p-4">
-                {SHOWCASE || previewFailures[tpl.id] ? (
+                {isDemoRuntime() || previewFailures[tpl.id] ? (
                   // 展示模式或资源不可用时保留可操作的品牌占位态
                   <div className="flex h-32 w-full items-center justify-center rounded bg-[#f2e9e1] text-sm font-bold text-[#b3541a]">
                     <span className="text-center">
