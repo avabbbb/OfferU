@@ -167,10 +167,13 @@ app = FastAPI(
 # 重指 LLM base_url 形成数据外泄链）。因此 env 提供的值必须过白名单：仅允许本机回环、
 # tauri 协议与浏览器扩展来源；其余一律拒绝并明示，绝不静默放宽。
 _CORS_ALLOWED_HOSTS = {"localhost", "127.0.0.1", "[::1]", "tauri.localhost"}
+# One trusted public surface may reuse the exact same local Runtime as Desktop.
+# Keep this list exact: never widen loopback access to arbitrary public origins.
+_TRUSTED_WEB_ORIGINS = {"https://avabbbb.github.io"}
 
 
 def _is_allowed_cors_origin(origin: str) -> bool:
-    if origin in ("tauri://localhost",):
+    if origin in ("tauri://localhost",) or origin in _TRUSTED_WEB_ORIGINS:
         return True
     try:
         parts = urlsplit(origin)
@@ -194,12 +197,16 @@ for _origin in (o.strip() for o in settings.cors_origins.split(",")):
         _dropped_cors_origins.append(_origin)
 if _dropped_cors_origins:
     logger.warning(
-        "CORS_ORIGINS 含非本机来源已拒绝: %s（仅允许 localhost/127.0.0.1/tauri 来源）",
+        "CORS_ORIGINS 含未受信任来源已拒绝: %s（仅允许 loopback/tauri/OfferU Web）",
         _dropped_cors_origins,
     )
-# 前端 dev 端口 7410 无条件可用：系统环境变量 CORS_ORIGINS 会覆盖 settings，
-# 且该变量可能在旧值（5140/3000）上漂移，导致浏览器请求被 CORS 拦截。
-for _offeru_frontend_origin in ("http://localhost:7410", "http://127.0.0.1:7410"):
+# 前端 dev 端口与正式 Web surface 无条件可用；二者都只连接这个 loopback API。
+# 系统环境变量 CORS_ORIGINS 会覆盖 settings，所以不能依赖用户手工补白名单。
+for _offeru_frontend_origin in (
+    "http://localhost:7410",
+    "http://127.0.0.1:7410",
+    *_TRUSTED_WEB_ORIGINS,
+):
     if _offeru_frontend_origin not in cors_origins:
         cors_origins.append(_offeru_frontend_origin)
 app.add_middleware(
@@ -410,6 +417,14 @@ async def add_security_headers(request, call_next):
         response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "no-referrer")
     response.headers.setdefault("Permissions-Policy", "camera=(self), microphone=(self), geolocation=()")
+    # Compatibility with browsers that still send the older Private Network
+    # Access preflight while newer browsers use Local Network Access permission.
+    # Only the exact trusted OfferU web origin can receive this grant.
+    if (
+        request.headers.get("origin") in _TRUSTED_WEB_ORIGINS
+        and request.headers.get("access-control-request-private-network") == "true"
+    ):
+        response.headers["Access-Control-Allow-Private-Network"] = "true"
     if request.url.path.startswith("/api/"):
         response.headers.setdefault("Cache-Control", "no-store")
     return response
