@@ -430,14 +430,6 @@ async def add_security_headers(request, call_next):
         response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "no-referrer")
     response.headers.setdefault("Permissions-Policy", "camera=(self), microphone=(self), geolocation=()")
-    # Compatibility with browsers that still send the older Private Network
-    # Access preflight while newer browsers use Local Network Access permission.
-    # Only the exact trusted OfferU web origin can receive this grant.
-    if (
-        request.headers.get("origin") in _TRUSTED_WEB_ORIGINS
-        and request.headers.get("access-control-request-private-network") == "true"
-    ):
-        response.headers["Access-Control-Allow-Private-Network"] = "true"
     if request.url.path.startswith("/api/"):
         response.headers.setdefault("Cache-Control", "no-store")
     return response
