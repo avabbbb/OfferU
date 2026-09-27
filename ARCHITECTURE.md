@@ -97,7 +97,13 @@ Email and other authorized channels create evidence/signals and reviewable progr
 
 ## Built-in runtime code
 
-Legacy/internal runtime workers may remain for fallback, replay, compatibility or bounded executor use. Their existence does not make them the Career Truth owner or the mandatory product shell.
+OfferU has one canonical embedded Agent kernel: the Pi SDK worker under `agent-runtime/`.
+
+External Codex, OMP, Claude and other hosts remain replaceable reasoning/executor integrations. They must not create a second internal Agent kernel. In particular, Codex app-server support is retained for external-host discovery, conformance and bounded execution, not as a parallel OfferU-owned runtime.
+
+The embedded Pi worker may adopt proven harness ergonomics such as persistent sessions, compaction, steer/follow-up, readiness checks and continuation controls while keeping Career Truth, permission and side-effect authority in Python.
+
+Replay remains deterministic test infrastructure. Hosted executors remain bounded subtask infrastructure.
 
 ## Stable technology boundary
 

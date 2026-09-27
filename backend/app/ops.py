@@ -367,7 +367,7 @@ class CareerTaskStartInput(_StrictOperationInput):
     target_id: str = Field(default="", max_length=160)
     runtime_provider: str = Field(
         default="replay",
-        pattern="^(auto|backend_search|codex|codex-app-server|claude|fixture|replay|mock|boss-fixture|plugin:[A-Za-z0-9_.-]+)$",
+        pattern="^(auto|embedded|builtin|pi|pi-sdk|pi-sdk-worker|backend_search|codex|codex-app-server|claude|fixture|replay|mock|boss-fixture|plugin:[A-Za-z0-9_.-]+)$",
     )
     input: dict[str, Any] = Field(default_factory=dict)
     output_contract: dict[str, Any] = Field(default_factory=dict)

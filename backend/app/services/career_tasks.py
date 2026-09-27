@@ -83,6 +83,28 @@ def _is_provider_blocked(value: Any) -> bool:
     return any(marker in text for marker in ("401", "unauthorized", "invalid_api_key", "authentication"))
 
 
+_AGENT_TURN_EMBEDDED_ALIASES = {
+    "auto",
+    "embedded",
+    "builtin",
+    "pi",
+    "pi-sdk",
+    "pi-sdk-worker",
+    # Legacy persisted values from the removed internal Codex kernel.
+    "codex",
+    "codex-app-server",
+}
+
+
+def _normalize_agent_turn_provider(provider_id: str) -> str:
+    clean = str(provider_id or "pi").strip().casefold()
+    if clean in _AGENT_TURN_EMBEDDED_ALIASES:
+        return "pi"
+    if clean in {"fixture", "replay", "mock"}:
+        return "replay"
+    return clean
+
+
 def _record_task_error(
     task_id: str,
     *,
@@ -386,6 +408,8 @@ async def start_career_task(
     if clean_type not in TASK_TYPES:
         raise ValueError(f"不支持的 CareerTask 类型: {clean_type}")
     clean_provider = str(runtime_provider or "replay").strip().casefold()
+    if clean_type == "agent_turn":
+        clean_provider = _normalize_agent_turn_provider(clean_provider)
     payload = redact_secret_value(input if isinstance(input, dict) else {})
     contract = output_contract if isinstance(output_contract, dict) else {}
     key = str(idempotency_key or "").strip() or _idempotency_key(
@@ -465,38 +489,124 @@ async def start_career_task(
 
 
 async def _run_agent_turn(task: dict[str, Any]) -> dict[str, Any]:
-    from app.services.agent_runtime import get_agent_runtime_provider
+    provider_id = _normalize_agent_turn_provider(str(task.get("runtime_provider") or "pi"))
+    payload = task["input"] if isinstance(task.get("input"), dict) else {}
 
-    provider = get_agent_runtime_provider(
-        task["runtime_provider"],
-        run_id=task.get("run_id") or task["task_id"],
+    if provider_id == "replay":
+        from app.services.agent_runtime import get_agent_runtime_provider
+
+        provider = get_agent_runtime_provider("replay")
+        try:
+            await provider.start()
+            cwd = str(payload.get("cwd") or "")
+            await _append_event(
+                task["task_id"],
+                "runtime.ready",
+                {"provider": "replay", "kernel": "fixture"},
+            )
+            await provider.create_thread(
+                cwd=cwd,
+                tool_descriptions=[
+                    str(item) for item in payload.get("tool_descriptions") or []
+                ],
+            )
+            result = await provider.start_turn(
+                prompt=str(payload.get("prompt") or ""),
+                cwd=cwd,
+            )
+            await _update_task(
+                task["task_id"],
+                agent_thread_id=str(
+                    result.get("thread_id") or result.get("threadId") or ""
+                ),
+                agent_turn_id=str(
+                    result.get("turn_id") or result.get("turnId") or ""
+                ),
+                progress_json={"stage": "agent_turn_completed", "percent": 100},
+            )
+            provider_events = await provider.events()
+            await _append_event(
+                task["task_id"],
+                "runtime.events_collected",
+                {
+                    "count": len(provider_events.get("events") or []),
+                    "next": provider_events.get("next", 0),
+                },
+            )
+            return result
+        finally:
+            with contextlib.suppress(Exception):
+                await provider.shutdown()
+
+    if provider_id != "pi":
+        raise ValueError(
+            f"agent_turn 只支持 embedded Pi 或 replay；收到 provider={provider_id}"
+        )
+
+    from app.services.agent_runtime import get_agent_run_provider
+
+    provider = get_agent_run_provider("pi")
+    context_messages = [
+        {"role": str(item.get("role") or ""), "content": str(item.get("content") or "")}
+        for item in (payload.get("context_messages") or [])
+        if isinstance(item, dict)
+        and str(item.get("role") or "") in {"user", "assistant", "system"}
+        and str(item.get("content") or "").strip()
+    ]
+    skill_id = str(payload.get("skill_id") or "discovery").strip() or "discovery"
+    conversation_id = str(
+        payload.get("conversation_id") or f"career-task:{task['task_id']}"
     )
-    try:
-        await provider.start()
-        payload = task["input"] if isinstance(task.get("input"), dict) else {}
-        cwd = str(payload.get("cwd") or "")
-        await _append_event(task["task_id"], "runtime.ready", {"provider": task["runtime_provider"]})
-        await provider.create_thread(
-            cwd=cwd,
-            tool_descriptions=[str(item) for item in payload.get("tool_descriptions") or []],
-        )
-        result = await provider.start_turn(prompt=str(payload.get("prompt") or ""), cwd=cwd)
-        await _update_task(
-            task["task_id"],
-            agent_thread_id=str(result.get("thread_id") or result.get("threadId") or ""),
-            agent_turn_id=str(result.get("turn_id") or result.get("turnId") or ""),
-            progress_json={"stage": "agent_turn_completed", "percent": 100},
-        )
-        provider_events = await provider.events()
-        await _append_event(
-            task["task_id"],
-            "runtime.events_collected",
-            {"count": len(provider_events.get("events") or []), "next": provider_events.get("next", 0)},
-        )
-        return result
-    finally:
-        with contextlib.suppress(Exception):
-            await provider.shutdown()
+    requested_run_id = str(task.get("run_id") or "")
+    if not requested_run_id.startswith("run_"):
+        requested_run_id = ""
+
+    await _append_event(
+        task["task_id"],
+        "runtime.ready",
+        {
+            "provider": "pi",
+            "kernel": "embedded_pi",
+            "legacy_provider_migrated": str(task.get("runtime_provider") or "")
+            in {"codex", "codex-app-server"},
+        },
+    )
+    result = await provider.start_run(
+        message=str(payload.get("prompt") or ""),
+        skill_id=skill_id,
+        conversation_id=conversation_id,
+        task_id=task["task_id"],
+        context_messages=context_messages,
+        requested_run_id=requested_run_id,
+    )
+    run = result.get("run") if isinstance(result.get("run"), dict) else {}
+    runtime = run.get("llm_runtime") if isinstance(run.get("llm_runtime"), dict) else {}
+    assistant_message = str(result.get("assistant_message") or "")
+    await _update_task(
+        task["task_id"],
+        agent_thread_id=str(
+            runtime.get("session_id")
+            or result.get("conversation_id")
+            or conversation_id
+        ),
+        agent_turn_id=str(run.get("id") or ""),
+        run_id=str(run.get("id") or task.get("run_id") or ""),
+        progress_json={"stage": "agent_turn_completed", "percent": 100},
+    )
+    return {
+        "provider_id": "pi",
+        "kernel": "embedded_pi",
+        "run_id": str(run.get("id") or ""),
+        "assistant_message": assistant_message,
+        "structured": {"response": assistant_message},
+        "pending_actions": list(result.get("pending_actions") or []),
+        "active_skill": (
+            result.get("active_skill")
+            if isinstance(result.get("active_skill"), dict)
+            else {}
+        ),
+        "conversation_id": str(result.get("conversation_id") or conversation_id),
+    }
 
 
 async def _run_artifact_task(task: dict[str, Any]) -> dict[str, Any]:

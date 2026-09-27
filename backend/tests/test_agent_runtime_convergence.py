@@ -28,6 +28,7 @@ from app.services.agent_runtime import (  # noqa: E402
     ReplayAgentRunProvider,
     ReplayAgentRuntimeProvider,
     canonical_agent_run_event,
+    get_agent_runtime_provider,
 )
 from app.services.agent_run_state import create_agent_run, save_agent_run  # noqa: E402
 from app.services.harness_operations import save_harness_conversation  # noqa: E402
@@ -54,6 +55,28 @@ class AgentRuntimeConvergenceTests(unittest.TestCase):
 
         self.assertFalse(pi["capabilities"]["live_web_search"])
         self.assertFalse(replay["capabilities"]["live_web_search"])
+
+    def test_internal_agent_turn_provider_aliases_converge_on_embedded_pi(self) -> None:
+        for provider_id in (
+            "pi",
+            "pi-sdk",
+            "pi-sdk-worker",
+            "embedded",
+            "builtin",
+            "auto",
+            "codex",
+            "codex-app-server",
+        ):
+            self.assertEqual(
+                career_tasks._normalize_agent_turn_provider(provider_id),
+                "pi",
+                provider_id,
+            )
+        self.assertEqual(career_tasks._normalize_agent_turn_provider("replay"), "replay")
+
+    def test_codex_is_not_an_internal_agent_runtime_kernel(self) -> None:
+        with self.assertRaises(ValueError):
+            get_agent_runtime_provider("codex")
 
     def test_new_agent_turn_can_create_a_conversation_without_an_id(self) -> None:
         with patch(
