@@ -1,8 +1,10 @@
-"""Run a bounded real-backend CareerTask worker matrix in an isolated workspace.
+"""Run a bounded no-Agent JOB_SAVED CareerTask matrix in an isolated workspace.
 
 This is intentionally separate from the UI smoke: it drives the public HTTP
 surface, waits for the durable worker result, and validates the persisted task
-and automation counts without touching the database directly.
+and automation counts without touching the database directly. The clean CI
+contract is a blocked, retryable Career Director task and no automatic Role
+Intelligence task.
 """
 
 from __future__ import annotations
@@ -48,7 +50,9 @@ def _wait_for_task(client: httpx.Client, job_id: int) -> dict[str, Any]:
             (
                 item
                 for item in payload.get("tasks", [])
-                if isinstance(item, dict) and item.get("task_type") == "role_intelligence"
+                if isinstance(item, dict)
+                and item.get("task_type") == "career_director"
+                and item.get("input", {}).get("event_type") == "JOB_SAVED"
             ),
             None,
         )
@@ -84,6 +88,7 @@ def main() -> None:
     run_key = str(int(time.time() * 1000))
     started_at = time.perf_counter()
     job_ids: list[int] = []
+    job_target_ids: set[str] = set()
     task_ids: list[str] = []
     statuses: list[str] = []
 
@@ -112,11 +117,14 @@ def main() -> None:
             if not isinstance(created, list) or len(created) != 1:
                 raise AssertionError(f"cycle {index} did not create exactly one Job: {response}")
             job_id = int(created[0])
+            job_target_ids.add(str(job_id))
             task = _wait_for_task(client, job_id)
-            if task.get("status") != "completed":
-                raise AssertionError(f"cycle {index} task did not complete: {task}")
-            if task.get("runtime_provider") != "replay":
-                raise AssertionError(f"cycle {index} used an unexpected provider: {task}")
+            if task.get("status") != "blocked":
+                raise AssertionError(f"cycle {index} must expose unavailable Agent: {task}")
+            if task.get("runtime_provider") != "pi":
+                raise AssertionError(f"cycle {index} used an unexpected Career Director: {task}")
+            if not task.get("retryable") or "岗位已保存" not in str(task.get("error") or ""):
+                raise AssertionError(f"cycle {index} hid the no-Agent recovery state: {task}")
             if int(task.get("attempt_count") or 0) != 1:
                 raise AssertionError(f"cycle {index} retried unexpectedly: {task}")
 
@@ -128,7 +136,7 @@ def main() -> None:
             event_types = {
                 str(item.get("type")) for item in events if isinstance(item, dict)
             }
-            if not {"task.queued", "task.started", "task.completed"}.issubset(event_types):
+            if not {"task.queued", "task.started", "task.blocked"}.issubset(event_types):
                 raise AssertionError(
                     f"cycle {index} lacks durable worker lifecycle events: {event_types}"
                 )
@@ -153,7 +161,7 @@ def main() -> None:
         tasks = _request(
             client,
             "GET",
-            "/api/agent/runtime/career-tasks?task_type=role_intelligence&limit=200",
+            "/api/agent/runtime/career-tasks?task_type=career_director&limit=200",
         )
         matching_tasks = [
             item
@@ -165,6 +173,22 @@ def main() -> None:
                 f"expected {CYCLES} unique persisted tasks, found {len(matching_tasks)}"
             )
 
+        role_tasks = _request(
+            client,
+            "GET",
+            "/api/agent/runtime/career-tasks?task_type=role_intelligence&limit=200",
+        )
+        unexpected_role_tasks = [
+            item
+            for item in role_tasks.get("tasks", [])
+            if isinstance(item, dict)
+            and str(item.get("target_id")) in job_target_ids
+        ]
+        if unexpected_role_tasks:
+            raise AssertionError(
+                f"JOB_SAVED must not auto-start Role Intelligence: {unexpected_role_tasks}"
+            )
+
         automation = _request(
             client,
             "GET",
@@ -174,7 +198,7 @@ def main() -> None:
             item
             for item in automation.get("events", [])
             if isinstance(item, dict)
-            and str(item.get("target_id")) in {str(job_id) for job_id in job_ids}
+            and str(item.get("target_id")) in job_target_ids
         ]
         if len(matching_events) != CYCLES:
             raise AssertionError(
@@ -201,7 +225,8 @@ def main() -> None:
         "database_integrity": integrity_check,
         "foreign_key_violations": foreign_key_violations,
         "elapsed_seconds": round(time.perf_counter() - started_at, 3),
-        "runtime_provider": "replay",
+        "runtime_provider": "pi",
+        "role_intelligence_tasks": len(unexpected_role_tasks),
     }
     print(json.dumps(result, ensure_ascii=True, indent=2), flush=True)
 
