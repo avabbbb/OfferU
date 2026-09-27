@@ -70,6 +70,16 @@ _CAMPUS_EVENTS = frozenset({"JOB_SAVED", "DAILY_REVIEW", "PROFILE_BASELINE_REQUI
 # row accidentally lists it.
 DENIED_SIDE_EFFECTS = frozenset({"external", "external_read"})
 
+# JobAssessmentPlan may recommend follow-through Operations which are not
+# executable by Career Director itself.  Keep the recommendation-to-action
+# mapping explicit so every L2/L3 follow-through is anchored to a user-required
+# action for the same saved Job.
+_JOB_ASSESSMENT_OPERATIONS = {
+    "build_role_benchmark": ("job.role_intelligence", "role_intelligence"),
+    "prepare_resume_optimization": ("job.prepare_resume", "resume_prep"),
+    "prepare_role_interview_focus": ("job.role_intelligence", "interview_prep"),
+}
+
 # Bound the model-facing context and the validator's allowlists identically:
 # validation only trusts what the injected context actually listed.
 _EVIDENCE_CAP = 220
@@ -1275,6 +1285,63 @@ async def validate_director_briefing(
                 f"job_assessment.evidence_alignment #{index}",
                 required=True,
             )
+        if event_type == "JOB_SAVED":
+            recommendations = [
+                str(name or "").strip()
+                for name in _list(assessment.get("recommended_operations"))
+            ]
+            if len(recommendations) != len(set(recommendations)):
+                raise DirectorPolicyError(
+                    "job_operation_duplicate", "岗位建议 Operation 不能重复"
+                )
+            action_rows = {
+                str(row.get("action_key") or ""): row
+                for row in actions
+                if isinstance(row, dict)
+            }
+            for operation_name in recommendations:
+                mapping = _JOB_ASSESSMENT_OPERATIONS.get(operation_name)
+                if mapping is None:
+                    raise DirectorPolicyError(
+                        "job_operation_unknown",
+                        f"岗位评估建议了未授权的 Operation '{operation_name}'",
+                    )
+                operation = OPERATIONS.get(operation_name)
+                if operation is None:
+                    raise DirectorPolicyError(
+                        "job_operation_unknown",
+                        f"岗位评估建议的 Operation '{operation_name}' 不在实时 Registry 中",
+                    )
+                action_key, relevance_key = mapping
+                action = action_rows.get(action_key)
+                if action is None:
+                    raise DirectorPolicyError(
+                        "job_operation_action_missing",
+                        f"岗位评估建议 {operation_name} 前必须声明 {action_key} 用户行动",
+                    )
+                if (
+                    str(action.get("autonomy_level") or "") != "L2"
+                    or action.get("requires_user") is not True
+                ):
+                    raise DirectorPolicyError(
+                        "job_operation_requires_user",
+                        f"岗位评估建议 {operation_name} 必须停在 L2 并等待用户操作",
+                    )
+                target_ref = _dict(action.get("target_ref"))
+                if (
+                    str(target_ref.get("kind") or "") != "job"
+                    or str(target_ref.get("id") or "") != str(job_id)
+                ):
+                    raise DirectorPolicyError(
+                        "job_operation_target",
+                        f"岗位评估建议 {operation_name} 必须绑定本次保存的岗位",
+                    )
+                need = _dict(assessment.get(relevance_key))
+                if str(need.get("relevance") or "") not in {"needed", "useful"}:
+                    raise DirectorPolicyError(
+                        "job_operation_not_relevant",
+                        f"岗位评估建议 {operation_name} 与 {relevance_key} 判断不匹配",
+                    )
 
     lifecycle = briefing.get("interview_lifecycle")
     if isinstance(lifecycle, dict):

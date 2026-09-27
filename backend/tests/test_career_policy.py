@@ -166,7 +166,7 @@ def _job_assessment() -> dict:
         "role_intelligence": {"relevance": "useful", "rationale": "已有基准"},
         "resume_prep": {"relevance": "needed", "rationale": "需要定制"},
         "interview_prep": {"relevance": "not_now", "rationale": "尚未到面试"},
-        "recommended_operations": ["build_role_benchmark"],
+        "recommended_operations": [],
     }
 
 
@@ -305,6 +305,62 @@ def test_empty_actions_allowed_for_reasonable_exploration() -> None:
     result = _validate(_briefing(), ctx)
     assert result["ok"] is True
     assert result["actions_validated"] == []
+
+
+def test_role_benchmark_recommendation_requires_matching_user_action() -> None:
+    ctx = _build(_snapshot(track="campus"), target=_job_target())
+    assessment = _job_assessment()
+    assessment["recommended_operations"] = ["build_role_benchmark"]
+    action = _action(
+        action_key="job.role_intelligence",
+        objective="补充同类岗位基准",
+        why_now="岗位刚保存，市场样本可以校准能力重点",
+        skill="role_intelligence",
+        suggested_operations=["get_role_benchmark"],
+        autonomy_level="L2",
+        requires_user=True,
+        dedupe_key="role-benchmark-42",
+        evidence_refs=[],
+    )
+
+    result = _validate(
+        _briefing(actions=[action], job_assessment=assessment),
+        ctx,
+    )
+
+    assert result["ok"] is True
+
+
+def test_role_benchmark_recommendation_fails_without_user_confirmation_action() -> None:
+    ctx = _build(_snapshot(track="campus"), target=_job_target())
+    assessment = _job_assessment()
+    assessment["recommended_operations"] = ["build_role_benchmark"]
+
+    with pytest.raises(ValueError, match="job_operation_action_missing"):
+        _validate(_briefing(job_assessment=assessment), ctx)
+
+    action = _action(
+        action_key="job.role_intelligence",
+        objective="补充同类岗位基准",
+        why_now="岗位刚保存",
+        skill="role_intelligence",
+        suggested_operations=["get_role_benchmark"],
+        autonomy_level="L1",
+        requires_user=True,
+        dedupe_key="role-benchmark-42",
+        evidence_refs=[],
+    )
+    with pytest.raises(ValueError, match="job_operation_requires_user"):
+        _validate(_briefing(actions=[action], job_assessment=assessment), ctx)
+
+
+def test_job_assessment_rejects_unknown_follow_through_operation() -> None:
+    ctx = _build(_snapshot(track="campus"), target=_job_target())
+    assessment = _job_assessment()
+    assessment["recommended_operations"] = ["send_recruiter_message"]
+
+    with pytest.raises(ValueError, match="job_operation_unknown"):
+        _validate(_briefing(job_assessment=assessment), ctx)
 
 
 def test_confirmed_stage_cannot_be_rewritten() -> None:

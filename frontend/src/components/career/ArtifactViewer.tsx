@@ -43,9 +43,10 @@ export function ArtifactViewer({
     return () => { active = false; };
   }, [artifactId]);
 
+  const stale = artifact?.delivery?.state === "stale";
   const html = useMemo(
-    () => markdown.render(artifact?.content_markdown || ""),
-    [artifact?.content_markdown],
+    () => markdown.render(stale ? "" : artifact?.content_markdown || ""),
+    [artifact?.content_markdown, stale],
   );
   const noExternalAction = artifact?.artifact_type === "follow_up_draft"
     || artifact?.artifact_type === "reengagement_candidate";
@@ -89,11 +90,17 @@ export function ArtifactViewer({
       ) : null}
       {artifact && !loading ? (
         <>
-          <div
-            className="prose-chat mt-3 max-h-[60vh] overflow-y-auto rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[13px] leading-6"
-            // markdown-it 的 html:false 会转义 Agent 原文中的 HTML；只注入它生成的 Markdown HTML。
-            dangerouslySetInnerHTML={{ __html: html }}
-          />
+          {stale ? (
+            <p role="alert" className="mt-3 rounded-md border border-amber-500 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-950">
+              生成依据已变化，这份内容已过期。请重新准备后再使用。{artifact.delivery?.reason ? ` ${artifact.delivery.reason}` : ""}
+            </p>
+          ) : (
+            <div
+              className="prose-chat mt-3 max-h-[60vh] overflow-y-auto rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[13px] leading-6"
+              // markdown-it 的 html:false 会转义 Agent 原文中的 HTML；只注入它生成的 Markdown HTML。
+              dangerouslySetInnerHTML={{ __html: html }}
+            />
+          )}
           {noExternalAction ? (
             <p className="mt-3 flex items-center gap-1.5 rounded-md bg-[var(--surface-muted)] px-3 py-2 text-[11.5px] text-[var(--foreground-muted)]">
               <Check size={12} /> 已保存为草稿或候选；OfferU 不会自动发送、联系或提交。

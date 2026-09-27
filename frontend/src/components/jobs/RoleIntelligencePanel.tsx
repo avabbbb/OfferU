@@ -214,7 +214,7 @@ function SignalGroup({ title, description, signals, documents }: { title: string
   );
 }
 
-export function RoleIntelligencePanel({ jobId }: { jobId: number }) {
+export function RoleIntelligencePanel({ jobId, refreshKey = 0 }: { jobId: number; refreshKey?: number }) {
   const router = useRouter();
   const [benchmark, setBenchmark] = useState<RoleBenchmarkDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -239,7 +239,7 @@ export function RoleIntelligencePanel({ jobId }: { jobId: number }) {
 
   useEffect(() => {
     void loadBenchmark();
-  }, [loadBenchmark]);
+  }, [loadBenchmark, refreshKey]);
 
   useEffect(() => {
     // A freshly saved Job may render before the automation worker commits its

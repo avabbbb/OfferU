@@ -845,7 +845,7 @@ export interface RoleBenchmarkDetail extends RoleBenchmarkSummary {
 }
 
 export type RoleBenchmarkBuildRequest = Partial<Omit<Schemas["RoleBenchmarkRequest"], "runtime_id">> & {
-  runtime_id?: "codex" | "claude" | "gemini" | "omp" | "pi" | "opencode" | "codebuddy" | "fixture" | "replay" | "boss-fixture" | `plugin:${string}`;
+  runtime_id?: "auto" | "backend_search" | "codex" | "claude" | "gemini" | "omp" | "pi" | "opencode" | "codebuddy" | "fixture" | "replay" | "boss-fixture" | `plugin:${string}`;
 };
 
 export const roleBenchmarkApi = {
@@ -1922,6 +1922,7 @@ export interface CareerArtifact {
   related_job_id?: number | null;
   related_application_id?: number | null;
   metadata?: Record<string, unknown>;
+  delivery?: CareerDelivery;
 }
 
 /** Read prepared career material through the UI's Operation Registry projection. */

@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from career_director_test_support import install_synthetic_pi_run_provider
 from app.database import Base
 from app.models.models import (
     AutomationEvent,
@@ -212,9 +213,8 @@ def test_interview_invitation_uses_live_registry_reads_and_projects_one_task(
                 async def shutdown(self):
                     return None
 
-            monkeypatch.setattr(
-                agent_runtime,
-                "get_agent_runtime_provider",
+            install_synthetic_pi_run_provider(
+                monkeypatch,
                 lambda _provider, **kwargs: SyntheticCodex(kwargs["on_operation"]),
             )
             monkeypatch.setattr(career_tasks, "_career_director_workspace", lambda: str(tmp_path))
@@ -397,9 +397,8 @@ def test_completed_interview_debrief_becomes_reviewable_learning_candidate(
                 async def shutdown(self):
                     return None
 
-            monkeypatch.setattr(
-                agent_runtime,
-                "get_agent_runtime_provider",
+            install_synthetic_pi_run_provider(
+                monkeypatch,
                 lambda _provider, **kwargs: SyntheticCodex(kwargs["on_operation"]),
             )
             monkeypatch.setattr(career_tasks, "_career_director_workspace", lambda: str(tmp_path))

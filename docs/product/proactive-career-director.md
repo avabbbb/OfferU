@@ -45,6 +45,14 @@ All five planned slices now have implementation code on `feat/proactive-career-d
 - This verifies one local live Profile Discovery integration. The other event slices remain covered by synthetic Registry/runtime integration tests; live OMP/SWE-2 pass³ remains a separate, unrun acceptance gate.
 - Full backend after the effort-boundary change: **813 passed, 10 skipped, 11 subtests passed, 20 warnings** (`OFFERU_TEST_TEMP_ROOT=H:\tmp\offeru\career-director-final-backend-effort-rerun-20260927`). Frontend: **50 passed across 18 files**; typecheck and production build passed. Extension unchanged.
 
+## Implementation update — 2026-09-27: Job Saved without an Agent
+
+The 2026-09-26 checkpoint above records the earlier Role Intelligence launch behavior. Current `JOB_SAVED` behavior is now one bounded Career Director CareerTask only. If the embedded runtime or active model configuration is unavailable, OfferU leaves the saved Job and its canonical workspace usable, marks that task blocked and retryable, and shows the user a recovery message. No scripted assessment or Role Intelligence task is substituted.
+
+Role Intelligence begins only after a valid Career Director recommendation. `career_policy.py` binds each supported recommended Operation to an L2 action for the same Job with `requires_user=true`; the model cannot invoke the external benchmark Operation itself. The Job Workspace offers an explicit user action through the existing Research API and Operation Registry, using the Registry's `auto` runtime selection.
+
+Prepared artifact reads now recompute the delivery against the full current source-fingerprint key set. A newly added or changed source makes the delivery stale; the Registry-backed artifact read suppresses stale Markdown, and the viewer explains that the content must be prepared again.
+
 ---
 
 ## 1. Problem

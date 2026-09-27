@@ -28,4 +28,20 @@ describe("ArtifactViewer", () => {
     expect(screen.queryByRole("button", { name: /发送|联系|提交/ })).not.toBeInTheDocument();
     expect(mockGetCareerArtifact).toHaveBeenCalledWith("artifact-20");
   });
+
+  it("hides persisted content when its source has gone stale", async () => {
+    mockGetCareerArtifact.mockResolvedValue({
+      id: "artifact-stale",
+      artifact_type: "interview_prep",
+      title: "旧面试计划",
+      content_markdown: "不要再使用这份旧材料",
+      delivery: { state: "stale", reason: "岗位要求已经更新" },
+    });
+    render(<ArtifactViewer artifactId="artifact-stale" onClose={vi.fn()} />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("这份内容已过期");
+    expect(screen.getByRole("alert")).toHaveTextContent("岗位要求已经更新");
+    expect(screen.queryByText("不要再使用这份旧材料")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("prepared-artifact-viewer")?.querySelector(".prose-chat")).toBeNull();
+  });
 });

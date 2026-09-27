@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { CareerTask } from "@/lib/hooks";
 import { JobAssessmentPlanCard } from "./JobAssessmentPlanCard";
@@ -61,6 +61,8 @@ describe("JobAssessmentPlanCard", () => {
     expect(screen.getByText("可验证的业务影响")).toBeInTheDocument();
     expect(screen.getByText(/下一步：核对是否有经确认的结果指标/)).toBeInTheDocument();
     expect(screen.getByText(/建议继续：简历准备/)).toBeInTheDocument();
+    expect(screen.getByText("评估已完成")).toBeInTheDocument();
+    expect(screen.queryByText("已准备，可查看")).not.toBeInTheDocument();
   });
 
   it("makes a running assessment visible without inventing a result", () => {
@@ -77,5 +79,25 @@ describe("JobAssessmentPlanCard", () => {
 
     expect(screen.getByRole("alert")).toHaveTextContent("Provider unavailable");
     expect(screen.getByRole("button", { name: "重试评估" })).toBeInTheDocument();
+  });
+
+  it("offers a user-clicked Role Intelligence action only when recommended", () => {
+    const onStartRoleIntelligence = vi.fn();
+    render(<JobAssessmentPlanCard task={task({
+      result: {
+        briefing: {
+          situation_summary: "岗位需要市场样本校准。",
+          job_assessment: {
+            role_intelligence: { relevance: "useful", rationale: "市场样本可补充判断。" },
+            recommended_operations: ["build_role_benchmark"],
+          },
+        },
+      },
+    })} onStartRoleIntelligence={onStartRoleIntelligence} />);
+
+    const startButton = screen.getByRole("button", { name: "开始岗位情报" });
+    expect(screen.getByText(/只有你点击后才会开始/)).toBeInTheDocument();
+    fireEvent.click(startButton);
+    expect(onStartRoleIntelligence).toHaveBeenCalledOnce();
   });
 });

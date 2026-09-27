@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { CareerTask } from "@/lib/hooks";
 
 type CapabilityNeed = {
@@ -60,7 +61,6 @@ const OPERATION_LABELS: Record<string, string> = {
   build_role_benchmark: "岗位情报",
   prepare_resume_optimization: "简历准备",
   prepare_role_interview_focus: "面试准备",
-  create_application_packet: "投递材料包",
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -80,15 +80,38 @@ function readAssessment(task: CareerTask): { summary: string; assessment: JobAss
 export function JobAssessmentPlanCard({
   task,
   onRetry,
+  onStartRoleIntelligence,
+  startingRoleIntelligence = false,
+  roleIntelligenceError = "",
 }: {
   task: CareerTask | null;
   onRetry?: () => void;
+  onStartRoleIntelligence?: () => void | Promise<void>;
+  startingRoleIntelligence?: boolean;
+  roleIntelligenceError?: string;
 }) {
+  const [operationStarting, setOperationStarting] = useState(false);
   if (!task) return null;
 
   const { summary, assessment } = readAssessment(task as AssessmentTask);
   const completed = task.status === "completed" && Boolean(assessment);
   const active = task.status === "queued" || task.status === "running";
+  const roleIntelligenceRecommended = Boolean(
+    completed
+    && ["needed", "useful"].includes(String(assessment?.role_intelligence?.relevance || ""))
+    && assessment?.recommended_operations?.includes("build_role_benchmark")
+    && onStartRoleIntelligence,
+  );
+
+  const startRoleIntelligence = async () => {
+    if (!onStartRoleIntelligence || operationStarting || startingRoleIntelligence) return;
+    setOperationStarting(true);
+    try {
+      await onStartRoleIntelligence();
+    } finally {
+      setOperationStarting(false);
+    }
+  };
 
   return (
     <section
@@ -104,7 +127,7 @@ export function JobAssessmentPlanCard({
           </h2>
         </div>
         <span className="bauhaus-chip bg-[var(--surface-muted)] text-[var(--foreground)]">
-          {completed ? "已准备，可查看" : active ? "正在分析" : task.status === "failed" || task.status === "blocked" ? "需要处理" : "等待开始"}
+          {completed ? "评估已完成" : active ? "正在分析" : task.status === "failed" || task.status === "blocked" ? "需要处理" : task.status === "completed" ? "评估结果不可用" : "等待开始"}
         </span>
       </div>
 
@@ -194,6 +217,22 @@ export function JobAssessmentPlanCard({
               <p className="mt-3 text-xs font-semibold leading-relaxed text-[var(--foreground-muted)]">
                 建议继续：{assessment.recommended_operations.map((name) => OPERATION_LABELS[name] || name).join("、")}。需要修改职业事实或对外提交时，仍由你审核确认。
               </p>
+            ) : null}
+            {roleIntelligenceRecommended ? (
+              <div className="mt-3 space-y-2">
+                <p className="text-xs font-medium leading-relaxed text-[var(--foreground-muted)]">
+                  这会按你当前的岗位情报配置收集同类岗位并保存基准；只有你点击后才会开始。
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void startRoleIntelligence()}
+                  disabled={operationStarting || startingRoleIntelligence}
+                  className="bauhaus-button bauhaus-button-blue !px-4 !py-3 !text-[11px] disabled:cursor-wait disabled:opacity-60"
+                >
+                  {operationStarting || startingRoleIntelligence ? "正在启动岗位情报…" : "开始岗位情报"}
+                </button>
+                {roleIntelligenceError ? <p role="alert" className="text-xs font-semibold text-[var(--primary-red)]">{roleIntelligenceError}</p> : null}
+              </div>
             ) : null}
           </div>
         </>

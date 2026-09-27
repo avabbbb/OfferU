@@ -2434,7 +2434,20 @@ async def get_career_artifact(artifact_id: str) -> dict:
     from app.services.career_artifacts import career_artifact_store
 
     artifact = career_artifact_store.get(artifact_id)
-    return artifact or {"error": f"Career artifact {artifact_id} not found"}
+    if artifact is None:
+        return {"error": f"Career artifact {artifact_id} not found"}
+    metadata = artifact.get("metadata") if isinstance(artifact.get("metadata"), dict) else {}
+    if isinstance(metadata.get("director"), dict):
+        from app.services.career_delivery import get_prepared_artifact
+
+        prepared = await get_prepared_artifact(artifact_id)
+        delivery = prepared.get("delivery") if isinstance(prepared, dict) else None
+        if isinstance(delivery, dict):
+            result = {**artifact, "delivery": delivery}
+            if delivery.get("state") == "stale":
+                result["content_markdown"] = ""
+            return result
+    return artifact
 
 
 async def save_career_artifact(

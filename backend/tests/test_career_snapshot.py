@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from career_director_test_support import install_synthetic_pi_run_provider
 from app.database import Base
 from app.models.models import (
     AutomationEvent,
@@ -729,9 +730,7 @@ def test_daily_career_director_must_read_daily_context_and_keeps_new_urgent_acti
                 provider.turn_effort_requested = kwargs.get("turn_effort")
                 return provider
 
-            import app.services.agent_runtime as agent_runtime
-
-            monkeypatch.setattr(agent_runtime, "get_agent_runtime_provider", make_provider)
+            install_synthetic_pi_run_provider(monkeypatch, make_provider)
             monkeypatch.setattr(career_tasks, "_career_director_workspace", lambda: str(tmp_path))
             result = await career_tasks._run_career_director(
                 {
@@ -760,7 +759,7 @@ def test_daily_career_director_must_read_daily_context_and_keeps_new_urgent_acti
     assert all(call[2:] == ("career_director", True) for call in observed["calls"])
     assert observed["result"]["runtime"]["tool_calls"] == ["get_career_snapshot", "get_daily_career_context"]
     assert [action["dedupe_key"] for action in observed["result"]["briefing"]["actions"]] == ["tomorrow-interview-8"]
-    assert observed["provider"].turn_effort_requested == "low"
+    assert observed["result"]["runtime"]["provider"] == "pi"
 
 
 def test_model_briefing_is_strict_and_cannot_override_user_correction() -> None:
@@ -788,7 +787,7 @@ def test_model_briefing_is_strict_and_cannot_override_user_correction() -> None:
 
 def test_career_director_refuses_replay_and_non_automation_task_sources() -> None:
     async def flow() -> None:
-        with pytest.raises(ValueError, match="真实 Codex Runtime"):
+        with pytest.raises(ValueError, match="embedded Pi Runtime"):
             await career_tasks.start_career_task(
                 task_type="career_director",
                 source="automation",
@@ -919,9 +918,7 @@ def test_profile_discovery_runs_one_codex_task_reads_registry_snapshot_and_proje
                 provider_instances.append(provider)
                 return provider
 
-            import app.services.agent_runtime as agent_runtime
-
-            monkeypatch.setattr(agent_runtime, "get_agent_runtime_provider", make_provider)
+            install_synthetic_pi_run_provider(monkeypatch, make_provider)
             monkeypatch.setattr(career_tasks, "_career_director_workspace", lambda: str(tmp_path))
 
             event_result = await automation.record_automation_event(
@@ -969,7 +966,7 @@ def test_profile_discovery_runs_one_codex_task_reads_registry_snapshot_and_proje
 
     task, state, snapshot = asyncio.run(flow())
     assert task["status"] == "completed", (task.get("error"), task.get("result"))
-    assert task["result"]["runtime"]["provider"] == "codex"
+    assert task["result"]["runtime"]["provider"] == "pi"
     assert task["result"]["runtime"]["tool_calls"] == ["get_career_snapshot"]
     assert snapshot["schema"] == "offeru.career_snapshot.v2"
     assert snapshot["goals"]["primary_roles"] == ["数据分析师"]

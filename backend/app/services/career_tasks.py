@@ -54,6 +54,10 @@ _TASK_LOCKS: dict[str, asyncio.Lock] = {}
 _TASK_CREATE_LOCK = asyncio.Lock()
 
 
+class CareerTaskProviderUnavailable(RuntimeError):
+    """The configured runtime cannot execute the requested bounded task."""
+
+
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -84,8 +88,28 @@ def _safe_error(value: Any) -> str:
 
 def _is_provider_blocked(value: Any) -> bool:
     text = str(value or "").casefold()
-    return any(marker in text for marker in ("401", "unauthorized", "invalid_api_key", "authentication"))
+    return isinstance(value, CareerTaskProviderUnavailable) or any(
+        marker in text
+        for marker in (
+            "401",
+            "unauthorized",
+            "invalid_api_key",
+            "api key",
+            "apikey",
+            "authentication",
+            "缺少模型名称",
+            "缺少 api key",
+        )
+    )
 
+
+def _task_error_message(value: Any) -> str:
+    if isinstance(value, CareerTaskProviderUnavailable):
+        return (
+            "OfferU 内置 Agent 当前不可用。岗位已保存，仍可继续使用岗位工作区；"
+            "配置或恢复 Agent 后可以重试这次评估。"
+        )
+    return _safe_error(value)
 
 
 _AGENT_TURN_EMBEDDED_ALIASES = {
@@ -641,8 +665,6 @@ async def _run_agent_turn(task: dict[str, Any]) -> dict[str, Any]:
         ),
         "conversation_id": str(result.get("conversation_id") or conversation_id),
     }
-
-
 def _career_director_workspace() -> str:
     """Create a no-data working directory isolated from the Career database."""
 
@@ -772,6 +794,22 @@ async def _run_career_director(task: dict[str, Any]) -> dict[str, Any]:
     provider_id = _normalize_agent_turn_provider(str(task.get("runtime_provider") or "pi"))
     if provider_id != "pi":
         raise ValueError("Career Director refuses scripted/replay providers in production")
+
+    provider = get_agent_run_provider("pi")
+    try:
+        provider_status = await provider.status()
+    except Exception as exc:  # noqa: BLE001 - provider health failures are visible as blocked
+        raise CareerTaskProviderUnavailable("embedded Pi runtime status is unavailable") from exc
+    if not isinstance(provider_status, dict) or not provider_status.get("available"):
+        raise CareerTaskProviderUnavailable("embedded Pi runtime is unavailable")
+    try:
+        from app.services.pi_agent_host import resolve_pi_provider_config
+
+        resolve_pi_provider_config()
+    except Exception as exc:  # noqa: BLE001 - missing local model config is a recoverable block
+        raise CareerTaskProviderUnavailable(
+            "the active model provider is not configured"
+        ) from exc
 
     payload = task["input"] if isinstance(task.get("input"), dict) else {}
     allowed_event_types = {
@@ -962,7 +1000,6 @@ async def _run_career_director(task: dict[str, Any]) -> dict[str, Any]:
     )
     prompt = "\n".join(prompt_parts)
 
-    provider = get_agent_run_provider("pi")
     result = await provider.start_run(
         message=prompt,
         skill_id="career_director",
@@ -1110,8 +1147,6 @@ async def _run_career_director(task: dict[str, Any]) -> dict[str, Any]:
             "tool_calls": tool_calls,
         },
     }
-
-
 async def _run_artifact_task(task: dict[str, Any]) -> dict[str, Any]:
     from app.services.artifact_workspace import ArtifactWorkspaceManager
     from app.services.coding_agent_runtime import DeepTaskSpec, execute_deep_task
@@ -1325,10 +1360,10 @@ async def _run_task(task_id: str) -> None:
             current = await get_career_task(task_id)
             if current["status"] == "cancelled":
                 return
-            error_message = "provider authentication failed" if blocked else _safe_error(exc)
+            error_message = _task_error_message(exc)
             error_id = _record_task_error(
                 task_id,
-                message=error_message,
+                message=_safe_error(exc),
                 provider_id=current.get("runtime_provider") or "",
                 run_id=current.get("run_id") or "",
                 kind="provider_blocked" if blocked else "career_task",

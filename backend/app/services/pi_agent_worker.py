@@ -127,6 +127,32 @@ class PiAgentWorkerClient:
             raise PiAgentWorkerError(f"Pi Worker does not own Run {run_id}")
         return await self._command("run.prompt", timeout=timeout, run_id=run_id, message=message)
 
+    async def steer_run(self, run_id: str, message: str) -> dict[str, Any]:
+        if self._active_run_id != run_id:
+            raise PiAgentWorkerError(f"Pi Worker does not own Run {run_id}")
+        clean = str(message or "").strip()
+        if not clean:
+            raise PiAgentWorkerError("Pi steer message must not be empty")
+        return await self._command("run.steer", timeout=15, run_id=run_id, message=clean)
+
+    async def follow_up_run(self, run_id: str, message: str) -> dict[str, Any]:
+        if self._active_run_id != run_id:
+            raise PiAgentWorkerError(f"Pi Worker does not own Run {run_id}")
+        clean = str(message or "").strip()
+        if not clean:
+            raise PiAgentWorkerError("Pi follow-up message must not be empty")
+        return await self._command("run.follow_up", timeout=15, run_id=run_id, message=clean)
+
+    async def compact_run(self, run_id: str, instructions: str = "") -> dict[str, Any]:
+        if self._active_run_id != run_id:
+            raise PiAgentWorkerError(f"Pi Worker does not own Run {run_id}")
+        return await self._command(
+            "run.compact",
+            timeout=120,
+            run_id=run_id,
+            instructions=str(instructions or "").strip(),
+        )
+
     async def abort_run(self, run_id: str) -> dict[str, Any]:
         if self._active_run_id != run_id:
             raise PiAgentWorkerError(f"Pi Worker does not own Run {run_id}")

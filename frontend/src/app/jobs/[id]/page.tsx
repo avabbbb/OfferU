@@ -42,6 +42,7 @@ import {
   jobResearchApi,
   dataModeLabel,
   isFixtureDataMode,
+  roleBenchmarkApi,
   preApplicationApi,
   resumeApi,
   resumeOptimizationApi,
@@ -178,6 +179,9 @@ export default function JobDetailPage() {
   const [resumeProposal, setResumeProposal] = useState<ResumeOptimizationProposalDetail | null>(null);
   const [resumeProposalLoading, setResumeProposalLoading] = useState(false);
   const [resumeProposalError, setResumeProposalError] = useState("");
+  const [roleBenchmarkRefreshKey, setRoleBenchmarkRefreshKey] = useState(0);
+  const [roleBenchmarkStarting, setRoleBenchmarkStarting] = useState(false);
+  const [roleBenchmarkStartError, setRoleBenchmarkStartError] = useState("");
 
   const poolOptions = useMemo(
     () => [{ key: "ungrouped", label: "未分组" }, ...((pickedPools || []).map((pool) => ({ key: String(pool.id), label: pool.name })))],
@@ -306,6 +310,20 @@ export default function JobDetailPage() {
 
   // Fetch the role_intelligence CareerTask for this job — the real progress source.
   const { data: careerTasksData, mutate: mutateCareerTasks } = useCareerTasks(50);
+  const startRecommendedRoleIntelligence = useCallback(async () => {
+    if (!job?.id || roleBenchmarkStarting) return;
+    setRoleBenchmarkStarting(true);
+    setRoleBenchmarkStartError("");
+    try {
+      await roleBenchmarkApi.build(job.id, { runtime_id: "auto" });
+      setRoleBenchmarkRefreshKey((key) => key + 1);
+      await mutateCareerTasks();
+    } catch (cause) {
+      setRoleBenchmarkStartError(safeClientErrorMessage(cause, "岗位情报没有启动"));
+    } finally {
+      setRoleBenchmarkStarting(false);
+    }
+  }, [job?.id, mutateCareerTasks, roleBenchmarkStarting]);
   const preparationTask = useMemo<CareerTask | null>(() => {
     if (!jobId || !careerTasksData?.tasks) return null;
     return careerTasksData.tasks.find(
@@ -668,6 +686,9 @@ export default function JobDetailPage() {
       <JobAssessmentPlanCard
         task={jobAssessmentTask}
         onRetry={() => void controlCareerTask(jobAssessmentTask!.task_id, "retry").catch((err) => alert(safeClientErrorMessage(err, "重试岗位评估失败")))}
+        onStartRoleIntelligence={startRecommendedRoleIntelligence}
+        startingRoleIntelligence={roleBenchmarkStarting}
+        roleIntelligenceError={roleBenchmarkStartError}
       />
       {jobAssessmentHasQuestions && jobAssessmentTask ? (
         <CareerQuestionsPanel
@@ -900,7 +921,7 @@ export default function JobDetailPage() {
         </CardBody>
       </Card>
 
-      <RoleIntelligencePanel jobId={job.id} />
+      <RoleIntelligencePanel jobId={job.id} refreshKey={roleBenchmarkRefreshKey} />
 
       <Card className="bauhaus-panel rounded-none bg-white shadow-none" data-testid="resume-proposal">
         <CardBody className="space-y-5 p-5">

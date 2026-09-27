@@ -255,7 +255,6 @@ class JobAssessmentPlan(_StrictContract):
             "build_role_benchmark",
             "prepare_resume_optimization",
             "prepare_role_interview_focus",
-            "create_application_packet",
         ]
     ] = Field(default_factory=list, max_length=4)
 

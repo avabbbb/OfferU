@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from career_director_test_support import install_synthetic_pi_run_provider
 from app.database import Base
 from app.models.models import (
     ApplicationAttempt,
@@ -375,9 +376,8 @@ def test_saved_resume_version_runs_real_registry_path_and_projects_review_candid
                 async def shutdown(self):
                     return None
 
-            monkeypatch.setattr(
-                agent_runtime,
-                "get_agent_runtime_provider",
+            install_synthetic_pi_run_provider(
+                monkeypatch,
                 lambda _provider, **kwargs: SyntheticCodex(kwargs["on_operation"]),
             )
 

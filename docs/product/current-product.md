@@ -63,10 +63,12 @@ Profile
 
 - **Today** is the guided action layer. It answers “what matters now?” and shows at most a few primary actions. Opening Today records one idempotent daily Career Director review for the default Profile; the resulting CareerBriefing is projected into Today and the existing Automation Inbox, while the CareerTask remains the durable execution record.
 - **Pipeline** projects application state, timeline and next action from the same canonical events.
-- **Job / Job Workspace** is the durable application workspace for one opportunity: Job Snapshot, Role Intelligence, Evidence Map, application materials, interview preparation and canonical Timeline all converge here. Saving a Job triggers one bounded Career Director assessment against current Career State; the plan is persisted in CareerTask/Automation Inbox and displayed in this workspace. Role Intelligence starts only when that assessment recommends it. Agent conversations are only one way to modify this workspace.
+- **Job / Job Workspace** is the durable application workspace for one opportunity: Job Snapshot, Role Intelligence, Evidence Map, application materials, interview preparation and canonical Timeline all converge here. Saving a Job triggers one bounded Career Director assessment against current Career State; the plan is persisted in CareerTask/Automation Inbox and displayed in this workspace. Role Intelligence is offered only when the assessment recommends it, and starts only after the user chooses it. Agent conversations are only one way to modify this workspace.
 - **Profile** is the long-lived evidence-backed model of the user. Memory is an evolution mechanism for Profile, not a separate silo.
 
 Agent, Skills, Email, Browser Capture, Resume, Role Intelligence and Interview are capabilities across these surfaces, not competing top-level products.
+
+Saving a Job and opening its canonical workspace must work when the embedded Agent or active model configuration is unavailable. OfferU keeps the Job and workspace available, records a retryable blocked CareerTask, and explains what needs configuration. It does not replace Career Director reasoning with a scripted assessment. Role Intelligence is not started by `JOB_SAVED`; a valid recommendation is policy-checked and offered as a user-started Registry operation.
 
 ## Distribution and first-use contract
 
@@ -198,10 +200,9 @@ The Workspace progressively fills as work completes:
 ~~~
 Job saved
 → Job Snapshot ready
-→ Role Intelligence ready
-→ Evidence Map ready
-→ Resume proposals ready
-→ Interview focus ready
+→ Career Director assessment completed or visibly blocked
+→ user-selected Role Intelligence / Evidence Map / Resume preparation
+→ interview preparation when a real interview is scheduled
 ~~~
 
 Long-running Agent work should surface as product state: completed, needs review, blocked/failed, and next action. Closing an Agent chat must not make the work disappear.

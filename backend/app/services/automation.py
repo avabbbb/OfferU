@@ -113,7 +113,7 @@ _DEFAULT_RULES: dict[str, dict[str, Any]] = {
         "runtime_provider": "auto",
         "enabled": True,
         "automation_level": "derived_candidate",
-        "description": "保存岗位后后台建立岗位情报；结果仍是候选/提案。",
+        "description": "保存岗位后由 Career Director 做有界评估；岗位情报只在评估建议并经现有权限边界处理后启动。",
     },
 }
 
@@ -325,7 +325,7 @@ async def _upsert_inbox(
 
 
 async def _dispatch_job_saved(event: AutomationEvent, rule: dict[str, Any]) -> dict[str, Any]:
-    """Preserve deterministic Role Intelligence and add bounded proactive judgment."""
+    """Start one bounded Career Director assessment for a saved Job."""
 
     from app.services.career_tasks import start_career_task
 
@@ -334,30 +334,6 @@ async def _dispatch_job_saved(event: AutomationEvent, rule: dict[str, Any]) -> d
     if job_id <= 0:
         raise ValueError("JOB_SAVED 缺少有效 job_id")
 
-    policy = rule.get("policy") if isinstance(rule.get("policy"), dict) else {}
-    role_provider = str(
-        payload.get("runtime_provider")
-        or policy.get("runtime_provider")
-        or "auto"
-    )
-    role_task = await start_career_task(
-        task_type="role_intelligence",
-        source="automation",
-        target_type="job",
-        target_id=str(job_id),
-        runtime_provider=role_provider,
-        input={
-            "job_id": job_id,
-            "automation_event_id": event.event_id,
-            **{
-                key: str(payload.get(key) or "")
-                for key in ("role_family", "specialization", "seniority", "region", "industry")
-                if payload.get(key)
-            },
-        },
-        output_contract={"schema": "offeru.role_benchmark_result.v1", "type": "object"},
-        idempotency_key=f"automation:{event.event_id}:role-intelligence",
-    )
     director_task = await start_career_task(
         task_type="career_director",
         source="automation",
@@ -378,29 +354,9 @@ async def _dispatch_job_saved(event: AutomationEvent, rule: dict[str, Any]) -> d
                 )
                 if key in payload
             },
-            "role_intelligence_runtime_provider": role_provider,
-            "role_benchmark_context": {
-                key: str(payload.get(key) or "")
-                for key in ("role_family", "specialization", "seniority", "region", "industry")
-                if payload.get(key)
-            },
         },
         output_contract={"schema": "offeru.career_briefing.v1", "type": "object"},
         idempotency_key=f"automation:{event.event_id}:job-career-director",
-    )
-    await _upsert_inbox(
-        item_id=f"automation_task_{role_task['task_id']}",
-        category="fyi",
-        event_id=event.event_id,
-        task_id=role_task["task_id"],
-        target_type="job",
-        target_id=str(job_id),
-        title="岗位情报后台任务已排队",
-        body=(
-            f"OfferU 已为岗位 #{job_id} 创建 Role Intelligence CareerTask。"
-            "结果会先作为候选/提案进入收件箱，不会静默修改 Career Profile。"
-        ),
-        payload={"runtime_provider": role_provider, "task": role_task},
     )
     await _upsert_inbox(
         item_id=f"automation_task_{director_task['task_id']}",
@@ -414,22 +370,13 @@ async def _dispatch_job_saved(event: AutomationEvent, rule: dict[str, Any]) -> d
         payload={"runtime_provider": "pi", "task": director_task, "event_type": "JOB_SAVED"},
     )
     return {
-        "task": role_task,
-        "role_intelligence_task": role_task,
+        "task": director_task,
         "career_director_task": director_task,
-        "task_ids": [role_task["task_id"], director_task["task_id"]],
+        "task_ids": [director_task["task_id"]],
         "job_id": job_id,
-        "runtime_provider": role_provider,
+        "runtime_provider": "pi",
         "career_director_provider": "pi",
     }
-
-
-def _job_assessment_recommends_role_intelligence(assessment: dict[str, Any]) -> bool:
-    need = assessment.get("role_intelligence") if isinstance(assessment.get("role_intelligence"), dict) else {}
-    recommendations = assessment.get("recommended_operations")
-    return need.get("relevance") in {"needed", "useful"} and isinstance(recommendations, list) and (
-        "build_role_benchmark" in recommendations
-    )
 
 
 async def _dispatch_profile_baseline(
@@ -1385,6 +1332,8 @@ async def _project_career_director_task(task: dict[str, Any]) -> dict[str, Any] 
         if completed
         else "每日职业简报需要处理"
         if is_daily
+        else "内置 Agent 暂时无法评估这个岗位，岗位仍可继续使用"
+        if is_job_saved and task.get("status") == "blocked"
         else "岗位匹配评估需要处理"
         if is_job_saved
         else "职业方向分析需要处理"
@@ -1418,6 +1367,21 @@ async def _project_career_director_task(task: dict[str, Any]) -> dict[str, Any] 
         if completed
         else f"OfferU 没能完成这次分析：{task.get('error') or '任务失败'}"
     )
+    if is_job_saved and task.get("status") == "blocked":
+        body = str(
+            task.get("error")
+            or "岗位已保存，岗位工作区仍可使用。配置或恢复内置 Agent 后可以重试评估。"
+        )
+    job_assessment = briefing.get("job_assessment") if isinstance(briefing.get("job_assessment"), dict) else {}
+    role_intelligence_recommended = (
+        is_job_saved
+        and completed
+        and isinstance(job_assessment.get("role_intelligence"), dict)
+        and job_assessment["role_intelligence"].get("relevance") in {"needed", "useful"}
+        and "build_role_benchmark" in (job_assessment.get("recommended_operations") or [])
+    )
+    if role_intelligence_recommended:
+        body += " 岗位情报值得补充；你可以在岗位工作区主动开始，OfferU 不会自动访问外部岗位来源。"
     if completed and event_type == "INTERVIEW_DEBRIEF_CREATED":
         body += (
             f" 已整理 {len(learning_proposals)} 条学习候选，均需你在 Profile 记忆收件箱复核。"
@@ -1425,61 +1389,6 @@ async def _project_career_director_task(task: dict[str, Any]) -> dict[str, Any] 
             else " 这次复盘没有形成有直接回答证据的学习候选。"
         )
     review_date = str(input_payload.get("review_date") or "")
-    role_intelligence_task: dict[str, Any] | None = None
-    role_intelligence_error = ""
-    if completed and is_job_saved:
-        assessment = briefing.get("job_assessment") if isinstance(briefing.get("job_assessment"), dict) else {}
-        if _job_assessment_recommends_role_intelligence(assessment):
-            from app.ops import execute_operation
-
-            role_context = input_payload.get("role_benchmark_context") if isinstance(input_payload.get("role_benchmark_context"), dict) else {}
-            start_result = await execute_operation(
-                "start_career_task",
-                {
-                    "task_type": "role_intelligence",
-                    "source": "automation",
-                    "target_type": "job",
-                    "target_id": str(input_payload.get("job_id") or task.get("target_id") or ""),
-                    "runtime_provider": str(input_payload.get("role_intelligence_runtime_provider") or "auto"),
-                    "input": {
-                        "job_id": int(input_payload.get("job_id") or task.get("target_id") or 0),
-                        "automation_event_id": event_id,
-                        **{
-                            key: str(role_context.get(key) or "")
-                            for key in ("role_family", "specialization", "seniority", "region", "industry")
-                            if role_context.get(key)
-                        },
-                    },
-                    "output_contract": {"schema": "offeru.role_benchmark_result.v1", "type": "object"},
-                    "idempotency_key": f"automation:{event_id}:role-intelligence",
-                },
-                surface="automation",
-            )
-            if start_result.get("ok") and isinstance(start_result.get("outputs"), dict):
-                role_intelligence_task = start_result["outputs"]
-                await _upsert_inbox(
-                    item_id=f"automation_task_{role_intelligence_task['task_id']}",
-                    category="fyi",
-                    event_id=event_id,
-                    task_id=role_intelligence_task["task_id"],
-                    target_type="job",
-                    target_id=str(input_payload.get("job_id") or task.get("target_id") or ""),
-                    title="岗位情报准备已开始",
-                    body="岗位评估认为市场样本有助于补充判断；结果会作为候选供你审核。",
-                    payload={"runtime_provider": role_intelligence_task.get("runtime_provider", ""), "task": role_intelligence_task},
-                )
-            else:
-                role_intelligence_error = "; ".join(str(error) for error in start_result.get("errors") or []) or "Role Intelligence task could not start"
-                await _upsert_inbox(
-                    item_id=f"automation_role_intelligence_start_failed_{event_id}",
-                    category="failed",
-                    event_id=event_id,
-                    target_type="job",
-                    target_id=str(input_payload.get("job_id") or task.get("target_id") or ""),
-                    title="岗位情报准备没有开始",
-                    body=role_intelligence_error,
-                    payload={"event_type": event_type, "error": role_intelligence_error},
-                )
     item = await _upsert_inbox(
         item_id=f"automation_task_{task['task_id']}",
         category=category,
@@ -1522,8 +1431,7 @@ async def _project_career_director_task(task: dict[str, Any]) -> dict[str, Any] 
             "task_id": task["task_id"],
             "briefing_schema": briefing.get("schema") if completed else None,
             "inbox_item_id": item["item_id"],
-            "role_intelligence_task_id": role_intelligence_task.get("task_id") if role_intelligence_task else None,
-            "role_intelligence_error": role_intelligence_error or None,
+            "role_intelligence_recommended": role_intelligence_recommended,
             "learning_proposal_count": len(learning_proposals),
             "reengagement_candidate_count": len(reengagement_candidates),
         },

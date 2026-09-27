@@ -1574,7 +1574,9 @@ async def _resolve_store_spec(
             extras=extras,
         )
     changed = sorted(
-        key for key in stored_fps if str(stored_fps.get(key)) != fingerprints.get(key)
+        key
+        for key in set(stored_fps) | set(fingerprints)
+        if str(stored_fps.get(key) or "") != str(fingerprints.get(key) or "")
     )
     added = sorted(key for key in fingerprints if key not in stored_fps)
     if changed or added:
@@ -1737,7 +1739,9 @@ async def _delivery_for_artifact(
             **base,
         )
     changed = sorted(
-        key for key in stored_fps if str(stored_fps.get(key)) != fingerprints.get(key)
+        key
+        for key in set(stored_fps) | set(fingerprints)
+        if str(stored_fps.get(key) or "") != str(fingerprints.get(key) or "")
     )
     if changed:
         return _delivery(
