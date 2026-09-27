@@ -4,7 +4,7 @@ Status: **INTERNAL EMBEDDED AGENT / BOUNDED EXECUTION INFRASTRUCTURE**
 
 This private Node.js package owns OfferU's embedded Agent kernel and bounded hosted-executor support.
 
-The embedded main Agent uses Pi SDK as its canonical in-product kernel. External hosts such as Codex/OMP/Claude remain optional replaceable hosts or bounded executors; Codex is not a second internal Agent kernel.
+The embedded main Agent uses Pi SDK as its canonical in-product kernel. External hosts such as Codex/OMP/Claude remain optional replaceable hosts or bounded executors; Codex is not a second internal Agent kernel. OMP is a reference harness for selected ergonomics, not a runtime dependency of this package.
 
 All reasoning paths still converge on the same Python Career Runtime and Operation Registry.
 
