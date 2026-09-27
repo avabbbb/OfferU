@@ -47,7 +47,7 @@ import {
 } from "@/lib/api";
 import { resolveApiBase } from "@/lib/apiBase";
 import { safeClientErrorMessage } from "@/lib/safe-error";
-import { SHOWCASE } from "@/lib/showcase/router";
+import { isDemoRuntime } from "@/lib/localRuntime";
 import { useConfig, updateConfig } from "@/lib/hooks";
 import { AgentConnectionPanel } from "@/components/workbench/AgentConnectionPanel";
 import { JobSourceConnectionsCard } from "@/components/settings/JobSourceConnectionsCard";
@@ -293,7 +293,7 @@ function LocalDataSafetyCard() {
       const [nextStatus, nextBackups, nextPrivacyHygiene] = await Promise.all([
         dataSafetyApi.status(),
         dataSafetyApi.listBackups(),
-        SHOWCASE ? Promise.resolve<PrivacyHygieneStatus | null>(null) : dataSafetyApi.privacyHygieneStatus(),
+        isDemoRuntime() ? Promise.resolve<PrivacyHygieneStatus | null>(null) : dataSafetyApi.privacyHygieneStatus(),
       ]);
       setStatus(nextStatus);
       setBackups(nextBackups.items || []);
@@ -522,7 +522,7 @@ function LocalDataSafetyCard() {
         )}
 
         <div className="flex flex-wrap gap-2">
-          <Button className="bauhaus-button bauhaus-button-blue !px-4 !py-3 !text-[11px]" onPress={() => void createBackup()} isDisabled={SHOWCASE} isLoading={action === "backup"} startContent={action !== "backup" ? <ShieldCheck size={15} /> : undefined}>
+          <Button className="bauhaus-button bauhaus-button-blue !px-4 !py-3 !text-[11px]" onPress={() => void createBackup()} isDisabled={isDemoRuntime()} isLoading={action === "backup"} startContent={action !== "backup" ? <ShieldCheck size={15} /> : undefined}>
             创建一致性备份
           </Button>
           <Button variant="bordered" onPress={() => void checkIntegrity()} isLoading={action === "integrity"}>
@@ -532,7 +532,7 @@ function LocalDataSafetyCard() {
             导出 JSON
           </Button>
         </div>
-        {SHOWCASE && <p className="text-xs font-semibold text-[var(--foreground-muted)]">Showcase 使用独立 IndexedDB；此处只提供 JSON 导出、完整性说明和 Demo 重置，不伪装成 SQLite 备份。</p>}
+        {isDemoRuntime() && <p className="text-xs font-semibold text-[var(--foreground-muted)]">Showcase 使用独立 IndexedDB；此处只提供 JSON 导出、完整性说明和 Demo 重置，不伪装成 SQLite 备份。</p>}
 
         <div className="bauhaus-panel-sm border-amber-500 bg-amber-50 p-4" data-testid="demo-data-safety">
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -540,7 +540,7 @@ function LocalDataSafetyCard() {
               <p className="bauhaus-label text-amber-800">Demo / Fixture 工作区</p>
               <p className="mt-2 text-sm font-black text-amber-950">重置演示数据与删除真实数据是两件事</p>
               <p className="mt-2 text-sm font-medium leading-relaxed text-amber-900">
-                {SHOWCASE
+                {isDemoRuntime()
                   ? "当前为独立 Showcase IndexedDB。重置会清除这个虚构展示工作区，下一次读取会回到内置演示数据。"
                   : "本地模式只会清除 source=offeru-demo 且 batch_id=offeru-demo-v1 的明确合成数据；不会删除 Profile、真实岗位、真实简历、备份或连接信息。这里没有删除真实用户数据的入口。"}
               </p>
@@ -560,7 +560,7 @@ function LocalDataSafetyCard() {
           </div>
         </div>
 
-        {!SHOWCASE && privacyHygiene && (
+        {!isDemoRuntime() && privacyHygiene && (
           <div
             className={`bauhaus-panel-sm p-4 ${legacyEmailBodyCount || syntheticEmailDataCount ? "border-amber-500 bg-amber-50" : "border-emerald-600 bg-emerald-50"}`}
             data-testid="privacy-hygiene"
@@ -746,9 +746,9 @@ function LocalFeedbackCard() {
     setFeedback(null);
     try {
       let backendDiagnostics: Awaited<ReturnType<typeof diagnosticsApi.bundle>> | null = null;
-      let backendDiagnosticsStatus: "included" | "showcase" | "unavailable" = SHOWCASE ? "showcase" : "unavailable";
+      let backendDiagnosticsStatus: "included" | "showcase" | "unavailable" = isDemoRuntime() ? "showcase" : "unavailable";
       let backendErrorId = "";
-      if (!SHOWCASE) {
+      if (!isDemoRuntime()) {
         try {
           backendDiagnostics = await diagnosticsApi.bundle();
           backendDiagnosticsStatus = "included";
@@ -764,7 +764,7 @@ function LocalFeedbackCard() {
         current_page: window.location.hash || "#/",
         app_version: `frontend@${import.meta.env.VITE_APP_VERSION || "unknown"}`,
         build_mode: import.meta.env.MODE || "unknown",
-        runtime_mode: import.meta.env.VITE_SHOWCASE === "true" ? "showcase" : "local",
+        runtime_mode: isDemoRuntime() ? "showcase" : import.meta.env.VITE_SHOWCASE === "true" ? "web-local" : "local",
         user_note: safeNote,
         note_redacted: safeNote !== trimmed,
         diagnostics: {
