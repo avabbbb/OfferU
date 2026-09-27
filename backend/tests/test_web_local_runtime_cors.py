@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from app.main import _TRUSTED_WEB_ORIGINS, _is_allowed_cors_origin
+from fastapi.testclient import TestClient
+
+from app.main import app, _TRUSTED_WEB_ORIGINS, _is_allowed_cors_origin
 
 
 def test_github_pages_is_the_only_trusted_public_loopback_client() -> None:
@@ -23,3 +25,41 @@ def test_private_network_compatibility_header_stays_exact_origin_scoped() -> Non
     assert 'Access-Control-Allow-Private-Network' in text
     assert 'request.headers.get("origin") in _TRUSTED_WEB_ORIGINS' in text
     assert 'allow_origins=["*"]' not in text
+
+
+def test_untrusted_public_origin_is_rejected_before_local_api() -> None:
+    client = TestClient(app)
+    response = client.get(
+        "/api/health",
+        headers={
+            "Host": "127.0.0.1:8766",
+            "Origin": "https://evil.example",
+        },
+    )
+    assert response.status_code == 403
+    assert response.json()["error"]["kind"] == "forbidden_origin"
+
+
+def test_trusted_web_origin_gets_cors_and_private_network_preflight() -> None:
+    client = TestClient(app)
+    origin = "https://avabbbb.github.io"
+
+    health = client.get(
+        "/api/health",
+        headers={"Host": "127.0.0.1:8766", "Origin": origin},
+    )
+    assert health.status_code == 200
+    assert health.headers["access-control-allow-origin"] == origin
+
+    preflight = client.options(
+        "/api/health",
+        headers={
+            "Host": "127.0.0.1:8766",
+            "Origin": origin,
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Private-Network": "true",
+        },
+    )
+    assert preflight.status_code == 200
+    assert preflight.headers["access-control-allow-origin"] == origin
+    assert preflight.headers["access-control-allow-private-network"] == "true"
