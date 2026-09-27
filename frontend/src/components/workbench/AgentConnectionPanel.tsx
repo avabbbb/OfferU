@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { type AgentConnection } from "@/lib/api";
 import { connectionTime, useAgentConnection } from "@/lib/agentConnection";
-import { SHOWCASE } from "@/lib/showcase/router";
+import { isDemoRuntime, selectDemoRuntime, selectLocalRuntime } from "@/lib/localRuntime";
 
 const STATUS = {
   missing: { label: "未检测到", tone: "text-[var(--foreground-muted)]", title: "先准备好本机 Agent", detail: "打开官方指南完成安装，然后回到这里重新检查。" },
@@ -71,7 +71,7 @@ export function AgentConnectionStatus({ compact = false }: { compact?: boolean }
   const ready = state.snapshot?.items.find((item) => currentStatus(item) === STATUS.ready);
   const hasProblem = Boolean(state.error || state.stale || state.sync.status === "failed");
   const pending = Boolean(state.loading || state.probing || state.sync.status === "syncing");
-  const label = SHOWCASE ? "Agent · 展示模式" : hasProblem ? "Agent · 需要处理"
+  const label = isDemoRuntime() ? "Agent · Demo" : hasProblem ? "Agent · 需要处理"
     : pending ? "Agent · 正在检查 / 同步" : ready ? "Agent · 接入检查通过" : "连接本机 Agent";
   const detail = state.sync.status === "failed" ? "内容同步失败，点击重试"
     : state.error || state.stale ? "状态未更新，点击查看"
@@ -112,6 +112,26 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
   const state = useAgentConnection();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [runtimeConnecting, setRuntimeConnecting] = useState(false);
+  const [runtimeError, setRuntimeError] = useState("");
+  const demoRuntime = isDemoRuntime();
+
+  const connectLocal = async () => {
+    setRuntimeConnecting(true);
+    setRuntimeError("");
+    const result = await selectLocalRuntime();
+    if (!result.ok) {
+      setRuntimeError(result.error || "未检测到本地 OfferU Runtime。");
+      setRuntimeConnecting(false);
+      return;
+    }
+    window.location.reload();
+  };
+
+  const disconnectLocal = () => {
+    selectDemoRuntime();
+    window.location.reload();
+  };
   const candidates = state.snapshot?.items || [];
   const beginnerCandidates = candidates.filter((item) => item.beginner);
   const suggested = beginnerCandidates.find((item) => item.recommended)
@@ -141,11 +161,19 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
           <span className="inline-flex items-center gap-2 text-[11px] font-semibold tracking-wide text-[var(--foreground-muted)]"><Plug size={14} /> 本机 Agent</span>
           <span className="inline-flex items-center gap-1.5 text-[11px] text-[var(--foreground-muted)]"><Laptop size={13} /> 沿用本机配置</span>
         </div>
-        <h3 className="mt-4 text-xl font-semibold tracking-tight sm:text-2xl">让熟悉的 Agent，接着帮你求职。</h3>
-        <p className="mt-2 max-w-xl text-sm leading-relaxed text-[var(--foreground-muted)]">自动发现本机 Agent，检查接入，把当前工作交给它。同步进展随时可看。</p>
+        <h3 className="mt-4 text-xl font-semibold tracking-tight sm:text-2xl">连接你的 AI</h3>
+        <p className="mt-2 max-w-xl text-sm leading-relaxed text-[var(--foreground-muted)]">Web 和 Studio 共用同一个本地 OfferU Runtime。选一个本机 Agent，后续同步和执行都走同一条连接。</p>
       </div>
 
-      {SHOWCASE ? <p role="status" className="p-6 text-sm text-[var(--foreground-muted)]">这是展示模式。请在本机 OfferU 中连接 Agent，查看真实同步状态。</p> : <>
+      {demoRuntime ? <div className="p-6 sm:p-7" data-testid="web-local-runtime-connect">
+        <p className="text-sm font-semibold">连接本机 OfferU</p>
+        <p className="mt-2 max-w-xl text-xs leading-6 text-[var(--foreground-muted)]">连接后，这个网页会直接使用你电脑上的职业数据和 Coding Agent，不再使用展示数据。浏览器可能会询问是否允许访问本机网络。</p>
+        {runtimeError && <p role="alert" className="mt-3 text-xs font-medium text-red-700">{runtimeError}</p>}
+        <Button className="mt-4 bg-[var(--foreground)] px-4 text-xs font-semibold text-[var(--surface)]" size="sm"
+          onPress={() => void connectLocal()} isLoading={runtimeConnecting}>
+          连接本地 OfferU
+        </Button>
+      </div> : <>
         {(state.error || state.stale) && <div role="alert" className="mx-5 mt-5 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">
           <AlertCircle size={15} className="mt-0.5 shrink-0" />
           <span className="flex-1">{state.error || "状态暂未更新，下面保留的是上次结果。"}</span>
@@ -186,15 +214,16 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
               <h4 className="mt-3 text-lg font-semibold tracking-tight">{checking ? "正在确认连接与登录状态" : presentation.title}</h4>
               <p className="mt-2 text-xs leading-6 text-[var(--foreground-muted)]">{presentation.detail}</p>
               {selected.last_error && <div role="alert" className="mt-3 break-words rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">{selected.last_error}</div>}
-              <ol className="my-6 space-y-5" aria-label="接入步骤">
+              {ready ? <div className="my-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+                <p className="font-semibold">{selected.name.replace(" App Server", "").replace(" Agent SDK", " SDK").replace(" CLI", "")} 已连接</p>
+                <p className="mt-1 text-xs leading-5">沿用本机登录；OfferU 会自动同步当前工作，需要确认的操作仍会回到工作台。</p>
+              </div> : <ol className="my-6 space-y-5" aria-label="接入步骤">
                 <SetupStep index={1} title="找到本机 Agent" done={selected.installed} detail={selected.installed ? selected.version || "已发现本机运行环境" : "安装后，OfferU 会自动发现它。"} />
                 <SetupStep index={2} title="安装 OfferU 接入" done={skillInstalled} busy={Boolean(state.integrating)}
                   detail={skillInstalled ? `Skill ${selected.skill_version || "已安装"}` : selected.skill_status === "OUTDATED" ? "已有接入需要更新。" : "OfferU 会自动完成，不需要复制文件或命令。"} />
-                <SetupStep index={3} title="验证 Agent 真能读取" done={localReady} busy={checking}
-                  detail={localReady ? `安全回读通过 · ${connectionTime(selected.checked_at)}` : selected.can_live_verify_skill ? "启动全新 Agent 会话并读取一次短期随机码；不会读取职业数据。" : "需要手动配置（进阶）· 该 Agent 暂不支持自动回读，请展开下方「高级检查详情」查看手动接入说明。"} />
-                <SetupStep index={4} title="同步当前工作" done={syncDone} busy={state.sync.status === "syncing"}
-                  detail={syncDone ? `工作台已收到「${state.sync.title}」，Agent 可按需读取。` : syncFailed ? "同步遇到问题，可在下方重试。" : "自动同步当前页面和显式选中的内容。"} />
-              </ol>
+                <SetupStep index={3} title="验证连接" done={localReady} busy={checking}
+                  detail={localReady ? `连接验证通过 · ${connectionTime(selected.checked_at)}` : selected.can_live_verify_skill ? "OfferU 会自动启动一次安全回读验证。" : "当前 Agent 需要手动检查，详情放在高级设置里。"} />
+              </ol>}
               <div className="flex flex-wrap items-center gap-2">
                 {!selected.installed && selected.docs_url ? <a href={selected.docs_url} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-[var(--foreground)] px-4 text-xs font-semibold text-[var(--surface)]">安装 Agent <ExternalLink size={12} /></a>
                   : integrationAction && selected.can_install_skill ? <Button size="sm" onPress={() => void state.connect(selected.id, integrationAction)} isLoading={checking} isDisabled={Boolean(state.probing || state.integrating)}
@@ -261,10 +290,13 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
               {!state.activity.length && <li>还没有接入或同步活动。</li>}
             </ol>
           </details>
-          <p className="mt-4 flex items-center gap-1.5 text-[10.5px] text-[var(--foreground-muted)]"><span className={`h-1.5 w-1.5 rounded-full ${state.error || state.stale ? "bg-amber-500" : "bg-[var(--foreground-muted)]"}`} />
-            {state.refreshing ? "正在更新状态…" : `状态每 15 秒更新 · 最近 ${connectionTime(state.snapshot?.checked_at)}`}
-            {state.offline && " · 系统提示网络离线"}
-          </p>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-[10.5px] text-[var(--foreground-muted)]">
+            <p className="flex items-center gap-1.5"><span className={`h-1.5 w-1.5 rounded-full ${state.error || state.stale ? "bg-amber-500" : "bg-[var(--foreground-muted)]"}`} />
+              {state.refreshing ? "正在更新状态…" : `状态每 15 秒更新 · 最近 ${connectionTime(state.snapshot?.checked_at)}`}
+              {state.offline && " · 系统提示网络离线"}
+            </p>
+            {import.meta.env.VITE_SHOWCASE === "true" && <button type="button" onClick={disconnectLocal} className="font-semibold underline underline-offset-2">断开本地连接并返回 Demo</button>}
+          </div>
         </div>
       </>}
     </section>
