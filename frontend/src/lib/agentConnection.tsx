@@ -3,6 +3,7 @@ import useSWR from "swr";
 import { usePathname } from "next/navigation";
 import { agentRuntimeApi, type AgentConnectionsSnapshot } from "./api";
 import { SHOWCASE } from "./showcase/router";
+import { useLocalRuntime } from "./localRuntime";
 import { safeClientErrorMessage } from "./safe-error";
 import { useWorkbench } from "./workbench";
 import type { components } from "./api-types.generated";
@@ -65,6 +66,7 @@ function entityFromRoute(pathname: string): { entity_type: string; entity_id: st
 export function AgentConnectionProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { selection } = useWorkbench();
+  const localRuntime = useLocalRuntime();
   const [open, setOpen] = useState(false);
   const [probing, setProbing] = useState<string | null>(null);
   const [integrating, setIntegrating] = useState<string | null>(null);
@@ -85,7 +87,7 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
   const controller = useRef<AbortController | null>(null);
   const queued = useRef<{ sequence: number; body: AgentContextRequest; title: string } | null>(null);
   const { data, error, isLoading, isValidating, mutate } = useSWR(
-    SHOWCASE || /^\/resume\/print\//.test(pathname) ? null : "offeru-agent-connections",
+    (SHOWCASE && !localRuntime.connected) || /^\/resume\/print\//.test(pathname) ? null : "offeru-agent-connections",
     agentRuntimeApi.connections,
     { refreshInterval: 15000, dedupingInterval: 5000, errorRetryCount: 2, errorRetryInterval: 10000 },
   );
@@ -175,7 +177,7 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
   }, [pathname, selection]);
 
   useEffect(() => {
-    if (SHOWCASE || /^\/resume\/print\//.test(pathname)) {
+    if ((SHOWCASE && !localRuntime.connected) || /^\/resume\/print\//.test(pathname)) {
       queued.current = null;
       sequence.current += 1;
       return;
@@ -185,10 +187,10 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
     setSync((previous) => ({ ...previous, status: "syncing", title: body.title, error: "" }));
     const timer = window.setTimeout(() => void flush(), 250);
     return () => window.clearTimeout(timer);
-  }, [payload, pathname, retry, flush]);
+  }, [payload, pathname, retry, flush, localRuntime.connected]);
 
   const probe = useCallback(async (id: string) => {
-    if (probeInFlight.current || SHOWCASE) return;
+    if (probeInFlight.current || (SHOWCASE && !localRuntime.connected)) return;
     probeInFlight.current = true;
     setProbing(id);
     setProbeError("");
@@ -209,10 +211,10 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
       probeInFlight.current = false;
       if (mounted.current) setProbing(null);
     }
-  }, [data, mutate, record]);
+  }, [data, mutate, record, localRuntime.connected]);
 
   const connect = useCallback(async (id: string, action: "install" | "update" | "repair") => {
-    if (probeInFlight.current || SHOWCASE) return;
+    if (probeInFlight.current || (SHOWCASE && !localRuntime.connected)) return;
     probeInFlight.current = true;
     setIntegrating(id);
     setProbeError("");
@@ -233,7 +235,7 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
       probeInFlight.current = false;
       if (mounted.current) setIntegrating(null);
     }
-  }, [data, mutate, record]);
+  }, [data, mutate, record, localRuntime.connected]);
 
   const refresh = useCallback(() => { setProbeError(""); void mutate().catch(() => undefined); }, [mutate]);
   const retrySync = useCallback(() => setRetry((value) => value + 1), []);
