@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import useSWR from "swr";
 import { usePathname } from "next/navigation";
 import { agentRuntimeApi, type AgentConnectionsSnapshot } from "./api";
-import { SHOWCASE } from "./showcase/router";
+import { isDemoRuntime } from "./localRuntime";
 import { safeClientErrorMessage } from "./safe-error";
 import { useWorkbench } from "./workbench";
 import type { components } from "./api-types.generated";
@@ -85,7 +85,7 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
   const controller = useRef<AbortController | null>(null);
   const queued = useRef<{ sequence: number; body: AgentContextRequest; title: string } | null>(null);
   const { data, error, isLoading, isValidating, mutate } = useSWR(
-    SHOWCASE || /^\/resume\/print\//.test(pathname) ? null : "offeru-agent-connections",
+    isDemoRuntime() || /^\/resume\/print\//.test(pathname) ? null : "offeru-agent-connections",
     agentRuntimeApi.connections,
     { refreshInterval: 15000, dedupingInterval: 5000, errorRetryCount: 2, errorRetryInterval: 10000 },
   );
@@ -175,7 +175,7 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
   }, [pathname, selection]);
 
   useEffect(() => {
-    if (SHOWCASE || /^\/resume\/print\//.test(pathname)) {
+    if (isDemoRuntime() || /^\/resume\/print\//.test(pathname)) {
       queued.current = null;
       sequence.current += 1;
       return;
@@ -188,7 +188,7 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
   }, [payload, pathname, retry, flush]);
 
   const probe = useCallback(async (id: string) => {
-    if (probeInFlight.current || SHOWCASE) return;
+    if (probeInFlight.current || isDemoRuntime()) return;
     probeInFlight.current = true;
     setProbing(id);
     setProbeError("");
@@ -212,7 +212,7 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
   }, [data, mutate, record]);
 
   const connect = useCallback(async (id: string, action: "install" | "update" | "repair") => {
-    if (probeInFlight.current || SHOWCASE) return;
+    if (probeInFlight.current || isDemoRuntime()) return;
     probeInFlight.current = true;
     setIntegrating(id);
     setProbeError("");
