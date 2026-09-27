@@ -8,7 +8,7 @@ import { NextUIProvider } from "@nextui-org/react";
 import { SWRConfig } from "swr";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { SHOWCASE } from "@/lib/showcase/router";
+import { isDemoRuntime, selectDemoRuntime } from "@/lib/localRuntime";
 import { resolveApiBase } from "@/lib/apiBase";
 
 const API_BASE = resolveApiBase();
@@ -17,7 +17,7 @@ const BACKEND_STARTUP_TIMEOUT_MS = 45_000;
 const BACKEND_STARTUP_SLOW_HINT_MS = 8_000;
 
 function BackendReadyGate({ children }: { children: React.ReactNode }) {
-  const [ready, setReady] = useState(SHOWCASE);
+  const [ready, setReady] = useState(isDemoRuntime());
   const [startupError, setStartupError] = useState(false);
   const [slowHint, setSlowHint] = useState(false);
   const [probeNonce, setProbeNonce] = useState(0);
@@ -28,7 +28,7 @@ function BackendReadyGate({ children }: { children: React.ReactNode }) {
   } | null>(null);
 
   useEffect(() => {
-    if (SHOWCASE) return; // 展示模式无 Python 后端，直接放行
+    if (isDemoRuntime()) return; // Demo has no Python backend; Web-local and Desktop share 8766.
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     let slowHintTimer: ReturnType<typeof setTimeout> | undefined;
@@ -100,14 +100,25 @@ function BackendReadyGate({ children }: { children: React.ReactNode }) {
                 <p className="mt-2 text-xs leading-5 text-[var(--foreground-muted)]">
                   请确认本地 API 正在 <code>http://127.0.0.1:8766</code> 运行。网页入口是 <code>http://127.0.0.1:7410</code>；8080 只是模型接口，不是网页地址。
                 </p>
-                <button
-                  type="button"
-                  className="bauhaus-button bauhaus-button-red mt-3 !px-4 !py-2 !text-[11px]"
-                  data-testid="backend-ready-retry"
-                  onClick={() => setProbeNonce((value) => value + 1)}
-                >
-                  重新检查
-                </button>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="bauhaus-button bauhaus-button-red !px-4 !py-2 !text-[11px]"
+                    data-testid="backend-ready-retry"
+                    onClick={() => setProbeNonce((value) => value + 1)}
+                  >
+                    重新检查
+                  </button>
+                  {import.meta.env.VITE_SHOWCASE === "true" && (
+                    <button
+                      type="button"
+                      className="bauhaus-button !px-4 !py-2 !text-[11px]"
+                      onClick={() => { selectDemoRuntime(); window.location.reload(); }}
+                    >
+                      返回 Demo
+                    </button>
+                  )}
+                </div>
               </>
             ) : (
               <>
