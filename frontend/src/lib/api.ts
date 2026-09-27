@@ -5,7 +5,8 @@
 // 基于 fetch API，支持 SWR 缓存
 // =============================================
 
-import { SHOWCASE, showcaseHandle } from "./showcase/router";
+import { showcaseHandle } from "./showcase/router";
+import { isDemoRuntime } from "./localRuntime";
 import { showcaseChatResponse } from "./showcase/llm";
 import { resolveApiBase } from "./apiBase";
 import { safeClientErrorMessage } from "./safe-error";
@@ -53,8 +54,8 @@ function buildQuery(params?: Record<string, unknown>) {
 }
 
 export async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  if (SHOWCASE) {
-    // 展示模式：全部请求由本地 IndexedDB 数据层承载（无需 Python 后端）
+  if (isDemoRuntime()) {
+    // Demo runtime: requests stay in IndexedDB. Web-local and Desktop share 8766.
     return (await showcaseHandle(path, options)) as T;
   }
   let res: Response;
@@ -83,8 +84,8 @@ async function readEventStream<T>(
   onEvent?: (event: string, data: any) => void,
   signal?: AbortSignal
 ): Promise<T> {
-  if (SHOWCASE) {
-    // 展示模式：Agent 工作流端点（optimize/interviews）不接本地数据层，
+  if (isDemoRuntime()) {
+    // Demo runtime: Agent workflow endpoints stay synthetic; connected Web uses 8766.
     // 返回空结果避免抛错；对话式交互见 profileApi.chat 的合成 SSE。
     return {} as T;
   }
@@ -1584,8 +1585,8 @@ export const profileApi = {
     request(`/api/profile/sections/${id}`, { method: "DELETE" }),
 
   chat: async (data: { topic: string; message: string; session_id?: number }) => {
-    if (SHOWCASE) {
-      // 展示模式：合成 SSE 流（本地模板或浏览器直连 LLM），不依赖 Python 后端
+    if (isDemoRuntime()) {
+      // Demo runtime uses the synthetic browser stream; connected Web uses local Python.
       return showcaseChatResponse(data.topic || "general", data.message || "");
     }
     const res = await fetch(`${API_BASE}/api/profile/chat`, {
