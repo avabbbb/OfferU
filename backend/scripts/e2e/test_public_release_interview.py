@@ -23,6 +23,7 @@ from release_endpoints import (
 )
 from temp_paths import test_temp_root
 from test_public_release_smoke import (
+    _assert_saved_job_degrades_without_agent,
     _complete_new_user_onboarding,
     _use_replay_provider,
 )
@@ -142,6 +143,7 @@ def main() -> None:
         trace_stopped = False
         try:
             job_id, _job = _create_profile_and_job(page, suffix)
+            task = _assert_saved_job_degrades_without_agent(page, job_id)
             page.wait_for_function(
                 "jobId => window.location.hash.slice(1).split('?')[0] === `/jobs/${jobId}`",
                 arg=job_id,
@@ -355,6 +357,7 @@ def main() -> None:
                 "benchmark_run_id": run_id,
                 "benchmark_data_mode": benchmark.get("data_mode"),
                 "runtime_provider": task["runtime_provider"],
+                "career_director_task_status": task["status"],
                 "job_targeted_training_blocked": True,
                 "targeted_interview_created": False,
                 "generic_interview_id": interview["id"],
