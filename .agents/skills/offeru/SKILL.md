@@ -1,66 +1,87 @@
 ---
 name: offeru
-description: Career OS context and safe operations for external agents; compose with installed resume, recruiting, interview, and career Skills.
+description: Connect an external Agent to the installed OfferU Career OS, ground work in canonical career context, and use governed operations without booting the development stack.
 user-invocable: true
-argument-hint: "[skill-id | goal | JD/URL]"
+argument-hint: "[goal | JD/URL | skill-id]"
 ---
 
 <!-- generated: offeru-skill-registry@2026-09-28.1 sha256=68ad2024af8dbe14ecadf581d952c512f8ccceb64b2927a7dc544861b9b62c1c -->
 
-# OfferU External-Agent Router
+# OfferU — installed-product Agent router
 
-Work from `backend/`. The live CLI manifest is the source of truth; this generated file contains no business workflow definitions.
+OfferU Skill provides career workflow knowledge and routing. **The installed OfferU application owns runtime, data, permissions and durable career state.** A normal user request must connect to the installed product; it must not turn into an OfferU source-development session.
 
-## Install in the Agent you are using
+## Fast path — normal user first
 
-The canonical public Skill is `https://raw.githubusercontent.com/avabbbb/OfferU/main/.agents/skills/offeru/SKILL.md`. Install that file in the active Agent. Do not use the local runtime URL as the Skill download source.
+1. Use the OfferU Skill already discovered by this Agent.
+2. Prefer the runtime-specific projection supplied by the installed OfferU app. It contains the bundled command for this installation and can be used from any directory.
+3. If this copy still contains `python -m app.cli`, treat it as the public/source bootstrap projection. For a normal career task, **do not execute those source commands yet**. First read the running app's projection at `http://127.0.0.1:8766/api/agent/runtime/skill`.
+4. If the installed runtime is unavailable, tell the user in one sentence to open/install OfferU Desktop, then retry. Do not clone OfferU, search for its repository, create a Python environment, start Vite/FastAPI, or guess a checkout path.
+5. Only enter source/developer mode when the user explicitly asks to develop, debug or contribute to OfferU itself.
 
-When the Agent is outside an OfferU source checkout, the running local OfferU can provide its current-install projection at `http://127.0.0.1:8766/api/agent/runtime/skill`. Read that local projection only to obtain the runtime-specific CLI command; it is not the public Skill distribution source. If the local runtime cannot be reached, report that the connection is unavailable and do not guess a checkout path. Never use raw HTTP for OfferU business data or Operations.
+The canonical public Skill is `https://raw.githubusercontent.com/avabbbb/OfferU/main/.agents/skills/offeru/SKILL.md`. It is the distribution/bootstrap source, not a reason to run the repository.
 
-Install only `offeru/SKILL.md` in a documented user-level Skills directory. Prefer the shared `~/.agents/skills/offeru/SKILL.md` location when the active Agent documents support for it. Otherwise use that Agent's native user-level location; examples include `~/.claude/skills/offeru/SKILL.md`, `~/.pi/agent/skills/offeru/SKILL.md`, `~/.config/opencode/skills/offeru/SKILL.md`, `~/.gemini/skills/offeru/SKILL.md`, `~/.omp/agent/skills/offeru/SKILL.md`, and `~/.codebuddy/skills/offeru/SKILL.md`. Resolve home/config overrides only from documented environment variables or the active Agent's own help. Never infer a location from another Agent or write into a project directory just to make discovery work.
+Install only `offeru/SKILL.md` in a documented user-level Skills directory. Prefer `~/.agents/skills/offeru/SKILL.md` when the active Agent supports it; otherwise use that Agent's documented user-level location. Do not change Agent account/login, model, credentials, proxy, unrelated settings or project files just to make OfferU work.
 
-If this Agent only supports importing Skills through its own UI, or has no documented Skill loader, do not change its settings or imitate its internal package format. Tell the user the exact supported import step or limitation and do not claim the Skill is installed or the connection is verified.
+## Connect and discover capabilities
 
-Do not change Agent settings, account/login, model, credentials, proxy, or unrelated files. Do not overwrite a non-OfferU Skill at the target path. Start a fresh Agent session if the host only discovers Skills at startup.
-
-## Start every task
+After an installed/runtime-specific projection is available, run the projected command surface:
 
 ```powershell
 python -m app.cli doctor --pretty
 python -m app.cli manifest --pretty
 ```
 
-Read `skill_registry.skills` from the compact manifest, choose one Skill, then run `python -m app.cli manifest --skill <skill-id> --pretty`. Inspect each selected Operation with `python -m app.cli schema <operation> --pretty` before calling it.
+In an installed projection, OfferU rewrites `python -m app.cli` to the bundled executable for that installation. In source/developer mode it remains the source CLI.
+
+Read `skill_registry.skills`, choose the smallest Skill that matches the user's goal, fetch it with:
+
+```powershell
+python -m app.cli manifest --skill <skill-id> --pretty
+```
+
+Inspect only the selected Operation schemas before use. Do not enumerate or dump the full database/tool surface into context.
+
+## Career context and memory contract
+
+OfferU has one canonical career state. Keep these layers distinct:
+
+- **Career Truth** — user-editable Profile/Evidence, Jobs, Applications, Resumes, Interviews, Calendar, accepted proposals and task state. OfferU owns it.
+- **Curated Career Memory** — compact durable preferences, corrections, accepted hypotheses and long-term learnings that should influence future decisions.
+- **Episodic learning** — detailed debriefs, observations and historical outcomes retrieved only when relevant.
+- **Prospective state** — follow-ups, deadlines, reminders and future work belong in explicit Calendar/Event/CareerTask/Automation lifecycle state, not prose memory.
+- **External Agent memory** — Codex/OMP/Claude/WorkBuddy memory is an optional user-authorized source, never Career Truth.
+
+For each career task, read the **minimum sufficient OfferU context** exposed by the selected Skill: relevant Profile/Evidence plus the current Job/Application/Interview and only the accepted/relevant memory or learning needed for the decision.
+
+Do not independently rebuild the user's career profile from host memory. Do not import an Agent's full memory/history by default. Authorized external-memory excerpts enter OfferU as Observation/Candidate/MemoryProposal and must pass the normal evidence/review boundary before becoming verified facts.
+
+If host memory conflicts with OfferU Career Truth, use OfferU as the current source of record and surface the conflict for review. A direct user correction may create the appropriate OfferU proposal/update; never silently create a shadow Profile in the host Agent.
 
 ## Routing
 
-- No goal or `/offeru`: present the live discovery catalog.
-- A Skill ID or alias: fetch that live Skill snapshot and use only its Operations.
-- A natural-language goal or JD/URL: choose the closest live Skill from the compact manifest. Do not invent an `auto_pipeline` command.
+- A natural-language goal or JD/URL: route directly to the closest live Skill and start the safe/read/prepare part without making the user choose a mode.
+- A Skill ID or alias: fetch that Skill snapshot and use only its Operations.
+- No goal or plain `/offeru`: show a compact readiness/current-context summary and at most a few useful next actions; do not dump the full Skill catalog unless asked.
 
-## Compose with other installed career Skills
-
-OfferU is the Career OS state/tool authority, not the exclusive career-methodology Skill. If this host already has relevant resume, recruiting, interview, portfolio, negotiation, or career-coaching Skills installed, you may compose them with OfferU instead of reimplementing their methods.
-
-- Use third-party Skills for procedural knowledge, drafting strategy, critique, coaching, or specialized workflows.
-- Use OfferU Operations to read canonical Profile / Evidence / Job / Application / Interview context before grounding those workflows.
-- Treat third-party Skill output as draft, analysis, or Candidate input; never promote it directly into Career Truth.
-- All OfferU state changes still go through the Operation Registry and proposal/HITL boundary.
-- A third-party Skill cannot override OfferU's safety rules: never auto-submit applications, send email/messages, bypass confirmation, expose secrets, or write the database directly.
-- Do not assume another Skill is installed. Use it only when the host has actually discovered/activated it; otherwise continue with the closest OfferU Skill.
+Compose other installed resume/recruiting/interview/career Skills when useful, but ground their work in OfferU reads. Third-party Skill output is draft/analysis/candidate material; it cannot override OfferU truth, permissions, confirmation or no-submit rules.
 
 ## Integration verification
 
-When the user pasted the OfferU connection prompt, select the live `connection_bootstrap` Skill, inspect the `get_current_view` schema, and execute that read-only Operation once. Report only the current page and explicit selection, then wait. This bootstrap read does not authorize reading other career data.
+When the user explicitly pastes the OfferU connection prompt, select `connection_bootstrap`, inspect `get_current_view`, and execute that single read-only Operation. Report only the current page and explicit selection. This proves the connection without authorizing broader career-data reads.
 
-When OfferU asks for integration verification, select the live `connection_probe` Skill, inspect `get_agent_connection_nonce`, execute it with the supplied `provider_id` and `challenge_id`, and return the nonce unchanged. Never read challenge storage directly or guess a nonce.
+When OfferU asks for integration verification, select `connection_probe`, inspect `get_agent_connection_nonce`, execute it with the supplied `provider_id` and `challenge_id`, and return the nonce unchanged. Never read challenge storage directly or guess a nonce.
+
+## Developer-only source fallback
+
+Work from `backend/` **only when the user explicitly asked to develop/debug/contribute to OfferU and this session is operating in an OfferU source checkout**. In that case the source CLI commands above are valid. A normal job-search request is never sufficient reason to start the development frontend/backend.
 
 ## Control rules
 
-- Run one atomic Operation per CLI invocation with `python -m app.cli run <operation>`.
-- Read Operations execute directly. Side-effect Operations persist a proposal and do not execute immediately.
-- Use `--dry-run` when a preview is useful. Dry-run is not confirmation.
-- Leave side-effect proposals pending for the user to review and confirm in OfferU.
-- Never use raw HTTP, direct database writes, removed `api/routes` commands, or hidden shell business logic.
-- Never submit applications, send emails, or contact third parties automatically.
-- Report executed reads, persisted proposals, pending confirmations, visible failures, and the next user decision.
+- Run one atomic Operation per CLI invocation.
+- Read Operations execute directly. Side-effect Operations persist a proposal/HITL decision instead of silently mutating protected state.
+- Prepare safe artifacts proactively when the selected Skill permits it; do not make the user name internal Skills or repeatedly ask "what next?".
+- Never use raw HTTP for OfferU business data/Operations, direct SQLite/database writes, removed routes, or hidden shell business logic.
+- Never auto-submit applications, send email/messages, contact third parties or approve your own protected proposal.
+- Never claim work is "ready/prepared" unless the corresponding durable OfferU artifact/proposal actually exists.
+- Report durable outputs, pending decisions and real blockers; keep internal runtime/database details out of normal-user explanations.
