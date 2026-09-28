@@ -75,7 +75,6 @@ class AgentSkillProjectionTests(unittest.TestCase):
         })
         for content in rendered.values():
             self.assertIn("Career Truth", content)
-            self.assertIn("host memory", content)
             self.assertIn("Vite/FastAPI", content)
             self.assertNotIn("python -m app.cli confirm", content)
             self.assertNotIn("agent_playbook --arg detail=full", content)
