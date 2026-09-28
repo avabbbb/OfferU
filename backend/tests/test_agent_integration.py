@@ -74,7 +74,10 @@ class AgentIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(installed["skill_status"], "INSTALLED")
         path = adapter.skill_path()
         self.assertFalse(path.is_symlink())
-        self.assertIn(str(integration._BACKEND_ROOT.resolve()), path.read_text(encoding="utf-8"))
+        installed_text = path.read_text(encoding="utf-8")
+        self.assertIn(str(integration._BACKEND_ROOT.resolve()), installed_text)
+        self.assertIn("developer/source projection", installed_text)
+        self.assertNotIn("<!-- offeru-runtime-binding -->", installed_text)
 
         path.write_text(path.read_text(encoding="utf-8") + "\noutdated\n", encoding="utf-8")
         self.assertEqual(adapter.inspect()["skill_status"], "OUTDATED")
@@ -88,9 +91,11 @@ class AgentIntegrationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_runtime_skill_projection_uses_the_current_install_command(self) -> None:
         content = integration.installed_skill_content()
-        self.assertIn("Install in the Agent you are using", content)
+        self.assertIn("installed-product Agent router", content)
         self.assertIn("get_current_view", content)
         self.assertIn(str(integration._BACKEND_ROOT.resolve()), content)
+        self.assertIn("developer/source projection", content)
+        self.assertNotIn("<!-- offeru-runtime-binding -->", content)
 
     async def test_codex_child_uses_system_proxy_without_overriding_process_proxy(self) -> None:
         with patch.dict(codex_adapter.os.environ, {}, clear=True), patch.object(
