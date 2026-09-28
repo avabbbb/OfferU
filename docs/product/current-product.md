@@ -271,6 +271,20 @@ Resume / User statement / authorized Agent memory / Email / Interview
 
 Authorized local-Agent memory is useful input, but it is not automatically Career Truth.
 
+## Career Memory and context
+
+OfferU separates **Career Truth**, **Curated Career Memory**, **episodic learning**, **prospective state**, and **external Agent memory**.
+
+- Career Truth is the structured, user-editable source of record for Profile, Evidence, Jobs, Applications, Resumes, Interviews, Calendar, Proposals and task state.
+- Curated Career Memory is a compact, correctable synthesis of durable preferences, corrections, accepted hypotheses and long-term career learnings.
+- Episodic learning stores detailed debriefs, observations and historical outcomes for on-demand recall; it is not injected wholesale into every Agent run.
+- Prospective state such as follow-ups, deadlines and future obligations stays in deterministic Calendar/Event/CareerTask/Automation lifecycle state rather than prose memory.
+- Codex/OMP/Claude/WorkBuddy memory is an optional authorized source. It enters OfferU through the observation/proposal/evidence gate and never overrides Career Truth.
+
+External Agents should normally consume the **minimum sufficient Career Context assembled by OfferU** for the current task instead of independently reconstructing the user from their own host memory.
+
+Detailed storage, write, recall and promotion rules are defined in [Career Memory & Context Contract](./career-memory-contract.md).
+
 ## Job capture
 
 The default beginner flow is user-triggered current-page capture:
