@@ -74,9 +74,9 @@ class AgentSkillProjectionTests(unittest.TestCase):
             Path(".copilot/SKILL.md"),
         })
         for content in rendered.values():
-            self.assertIn("python -m app.cli manifest --pretty", content)
-            self.assertIn("python -m app.cli manifest --skill <skill-id> --pretty", content)
-            self.assertIn("career Skills", content)
+            self.assertIn("Career Truth", content)
+            self.assertIn("host memory", content)
+            self.assertIn("Vite/FastAPI", content)
             self.assertNotIn("python -m app.cli confirm", content)
             self.assertNotIn("agent_playbook --arg detail=full", content)
             self.assertNotIn("python -m app.cli api ", content)
@@ -88,16 +88,16 @@ class AgentSkillProjectionTests(unittest.TestCase):
                 Path(".claude/skills/offeru/SKILL.md"),
                 Path(".copilot/SKILL.md"),
             }:
-                self.assertIn("Install in the Agent you are using", content)
+                self.assertIn("installed-product Agent router", content)
                 self.assertIn(
                     "https://raw.githubusercontent.com/avabbbb/OfferU/main/.agents/skills/offeru/SKILL.md",
                     content,
                 )
                 self.assertIn("http://127.0.0.1:8766/api/agent/runtime/skill", content)
-                self.assertIn("runtime-specific CLI", content)
-                self.assertIn("~/.agents/skills/offeru/SKILL.md", content)
-                self.assertIn("~/.omp/agent/skills/offeru/SKILL.md", content)
-                self.assertIn("do not change its settings", content)
+                self.assertIn("do not execute those source commands yet", content)
+                self.assertIn("do not clone OfferU", content)
+                self.assertIn("Curated Career Memory", content)
+                self.assertIn("External Agent memory", content)
                 self.assertIn("get_agent_connection_nonce", content)
                 self.assertIn("get_current_view", content)
 
