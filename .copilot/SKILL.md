@@ -11,6 +11,8 @@ argument-hint: "[goal | JD/URL | skill-id]"
 
 OfferU Skill provides career workflow knowledge and routing. **The installed OfferU application owns runtime, data, permissions and durable career state.** A normal user request must connect to the installed product; it must not turn into an OfferU source-development session.
 
+<!-- offeru-runtime-binding -->
+
 ## Fast path — normal user first
 
 1. Use the OfferU Skill already discovered by this Agent.
