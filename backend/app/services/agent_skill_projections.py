@@ -75,29 +75,27 @@ OfferU Skill provides career workflow knowledge and routing. **The installed Off
 
 1. Use the OfferU Skill already discovered by this Agent.
 2. Prefer the runtime-specific projection supplied by the installed OfferU app. It contains the bundled command for this installation and can be used from any directory.
-3. If this copy still contains `python -m app.cli`, treat it as the public/source bootstrap projection. For a normal career task, **do not execute those source commands yet**. First read the running app's projection at `http://127.0.0.1:8766/api/agent/runtime/skill`.
-4. If the installed runtime is unavailable, tell the user in one sentence to open/install OfferU Desktop, then retry. Do not clone OfferU, search for its repository, create a Python environment, start Vite/FastAPI, or guess a checkout path.
+3. If the runtime binding below is still unresolved, this is only the public bootstrap Skill. For a normal career task, ask the user to open OfferU Desktop and use **连接 Agent / 更新接入** once; then use the runtime-bound Skill installed by the app in a fresh Agent session.
+4. If OfferU Desktop is not running or the runtime-bound Skill is unavailable, stop setup escalation after that one instruction. Do not probe localhost manually, clone/search the OfferU repository, create a Python environment, start Vite/FastAPI, or guess a checkout path.
 5. Only enter source/developer mode when the user explicitly asks to develop, debug or contribute to OfferU itself.
 
-The canonical public Skill is `https://raw.githubusercontent.com/avabbbb/OfferU/main/.agents/skills/offeru/SKILL.md`. It is the distribution/bootstrap source, not a reason to run the repository.
-
-Install only `offeru/SKILL.md` in a documented user-level Skills directory. Prefer `~/.agents/skills/offeru/SKILL.md` when the active Agent supports it; otherwise use that Agent's documented user-level location. Do not change Agent account/login, model, credentials, proxy, unrelated settings or project files just to make OfferU work.
+The canonical public Skill is `https://raw.githubusercontent.com/avabbbb/OfferU/main/.agents/skills/offeru/SKILL.md`. It documents the contract and bootstraps discovery. **OfferU Desktop installs the executable binding.** Normal users do not manually copy runtime commands or configure MCP/ports.
 
 ## Connect and discover capabilities
 
-After an installed/runtime-specific projection is available, run the projected command surface:
+When this Skill is runtime-bound by OfferU Desktop, use the projected command:
 
-```powershell
-python -m app.cli doctor --pretty
-python -m app.cli manifest --pretty
+```text
+<offeru-cli> doctor --pretty
+<offeru-cli> manifest --pretty
 ```
 
-In an installed projection, OfferU rewrites `python -m app.cli` to the bundled executable for that installation. In source/developer mode it remains the source CLI.
+OfferU Desktop replaces `<offeru-cli>` with the bundled executable command for that installation. An unresolved `<offeru-cli>` means the bootstrap is incomplete; do not improvise a Python/source command.
 
 Read `skill_registry.skills`, choose the smallest Skill that matches the user's goal, fetch it with:
 
-```powershell
-python -m app.cli manifest --skill <skill-id> --pretty
+```text
+<offeru-cli> manifest --skill <skill-id> --pretty
 ```
 
 Inspect only the selected Operation schemas before use. Do not enumerate or dump the full database/tool surface into context.
@@ -134,7 +132,7 @@ When OfferU asks for integration verification, select `connection_probe`, inspec
 
 ## Developer-only source fallback
 
-Work from `backend/` **only when the user explicitly asked to develop/debug/contribute to OfferU and this session is operating in an OfferU source checkout**. In that case the source CLI commands above are valid. A normal job-search request is never sufficient reason to start the development frontend/backend.
+Work from `backend/` **only when the user explicitly asked to develop/debug/contribute to OfferU and this session is operating in an OfferU source checkout**. In that developer-only projection, OfferU may bind `<offeru-cli>` to the source CLI. A normal job-search request is never sufficient reason to start the development frontend/backend.
 
 ## Control rules
 
@@ -159,7 +157,7 @@ description = "Connect Codex to the installed OfferU Career OS and operate again
 developer_instructions = """
 Treat the installed OfferU application as the runtime/truth authority. A normal career task must not cause you to clone/search the OfferU repo, create a Python environment, or start Vite/FastAPI.
 
-If the projected commands still use `python -m app.cli`, this is a source/bootstrap projection. For normal user work, first obtain the running app's runtime-specific projection from `http://127.0.0.1:8766/api/agent/runtime/skill`; if unavailable, ask the user to open/install OfferU Desktop and stop setup escalation. Use source CLI only when the user explicitly asks to develop/debug OfferU in a source checkout.
+If the Skill is not runtime-bound by OfferU Desktop, ask the user once to open OfferU Desktop and use **连接 Agent / 更新接入**, then continue in a fresh session. Do not probe localhost manually, locate the repository, or synthesize Python/source commands. Source CLI is developer-only when the user explicitly asks to develop/debug OfferU in a source checkout.
 
 Once connected, run the projected `doctor` and compact `manifest`, select the smallest relevant Skill for the user's natural-language goal, fetch that Skill, inspect only its Operation schemas, and work from the minimum sufficient OfferU context.
 
@@ -190,7 +188,7 @@ skills:
 
 Treat the installed OfferU application as runtime and Career Truth authority. Do not clone/search the OfferU repo, create a Python environment, or start Vite/FastAPI for a normal career request.
 
-If this projection still exposes source `python -m app.cli` commands, obtain the runtime-specific projection from the running OfferU app first. Ask the user to open/install OfferU Desktop if it is unavailable. Source CLI is developer-only when the user explicitly asks to work on OfferU itself.
+If this Skill is not runtime-bound by OfferU Desktop, ask the user once to open OfferU Desktop and use **连接 Agent / 更新接入**. Do not probe localhost manually or synthesize source commands. Source CLI is developer-only when the user explicitly asks to work on OfferU itself.
 
 Use the compact live Skill Registry, select only the relevant Skill, inspect only its Operations, and read the minimum sufficient Profile/Evidence/Job/Application/Interview plus accepted relevant Career Memory.
 
