@@ -48,6 +48,7 @@ import {
   bauhausSelectClassNames,
 } from "@/lib/bauhaus";
 import { safeClientErrorMessage } from "@/lib/safe-error";
+import { ExternalUrlLink, openExternalUrl } from "@/components/ExternalUrlLink";
 
 const PRE_APPLICATION_STAGE_LABELS: Record<string, string> = {
   research_pending: "等待调研",
@@ -1136,15 +1137,13 @@ export default function JobDetailPage() {
                               <p className="mt-2 text-sm font-black text-[var(--foreground)]">{source.title}</p>
                               <p className="mt-1 text-xs font-semibold text-[var(--foreground-muted)]">{source.publisher}</p>
                             </div>
-                            <Link
+                            <ExternalUrlLink
                               href={source.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
                               aria-label={`打开来源 ${source.source_ref}`}
                               className="shrink-0 text-[var(--primary-blue)]"
                             >
                               <ExternalLink size={16} />
-                            </Link>
+                            </ExternalUrlLink>
                           </div>
                           <p className="mt-3 text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
                             {source.excerpt}
@@ -1530,10 +1529,7 @@ export default function JobDetailPage() {
         </Button>
         {job.url ? (
           <Button
-            as={Link}
-            href={job.url}
-            target="_blank"
-            rel="noopener noreferrer"
+            onPress={() => void openExternalUrl(job.url!)}
             endContent={<ExternalLink size={16} />}
             className="bauhaus-button bauhaus-button-outline !justify-center !px-4 !py-3 !text-[11px]"
           >
