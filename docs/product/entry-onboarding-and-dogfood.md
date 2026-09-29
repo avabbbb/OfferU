@@ -7,7 +7,7 @@ This document expands the first-use and distribution contract defined by [Curren
 
 The immediate product goal is not “add more features”. It is:
 
-> **A real job seeker can install OfferU, connect the AI they already use, give OfferU a real job, and keep working from one durable Job Workspace without understanding the technical stack.**
+> **A real job seeker can install OfferU, import a Resume, give OfferU a real Job, and reach useful work without understanding the technical stack. Connecting an existing local Coding Agent is an optional Desktop capability, not the first-use gate.**
 
 ## 1. Product pattern we are borrowing
 
@@ -40,15 +40,13 @@ The normal user should experience:
 ~~~text
 Download OfferU
 → install
-→ open OfferU
-→ “Finding the AI already on this computer…”
-→ choose / verify one supported Agent
-→ OfferU prepares its Skill automatically where supported
+→ open OfferU Desktop
 → import resume
 → optional authorized AI memory
 → save one real Job
 → canonical Job Workspace
 → Today tells the user what needs attention next
+→ optionally connect an existing local Coding Agent
 ~~~
 
 The user must not be asked to install or understand:
@@ -67,14 +65,15 @@ The Desktop package owns its own runtime dependencies. The external Agent owns i
 
 If no supported external Agent is ready, the user may continue setup and use the OfferU fallback path. “External-first” must not become “external-Agent-required”.
 
-### Front door B — power user: Skill-first
+### Front door B — power user: Desktop-bound Skill-first
 
-A user already inside a supported coding Agent may start from the Agent:
+A user already inside a supported Coding Agent may start from that Agent **after OfferU Desktop has installed/updated the runtime-bound Skill**:
 
 ~~~text
-OfferU Skill available in host
+OfferU Desktop → Connect Agent
+→ fresh Agent session discovers runtime-bound OfferU Skill
 → “Use OfferU to analyze this job: <JD/URL>”
-→ Agent reads the live OfferU manifest
+→ Agent reads the live OfferU manifest through the projected executable command
 → Agent selects a Skill / Operation
 → read operations execute
 → mutations become OfferU proposals
@@ -122,29 +121,31 @@ Current host exclusions also matter:
 
 ## 4. Current first-use UI contract
 
-The implemented beginner wizard is intentionally short:
+The beginner flow is intentionally short and career-first:
 
-1. **连接你的 AI**
-   - detect local Agents;
-   - reuse existing login;
-   - install/repair/update OfferU Skill where supported;
-   - verify the integration where evidence is available.
-
-2. **导入简历**
+1. **导入简历**
    - local extraction;
    - show provenance;
    - only reviewed evidence becomes Career Truth.
 
-3. **整理 AI 记忆** — optional
+2. **整理 AI 记忆** — optional
    - explicit authorization;
    - selected excerpts only;
    - imported claims enter observations/candidates first;
    - no automatic promotion to verified Profile facts.
 
-4. **保存目标岗位**
+3. **保存目标岗位**
    - browser capture or manual JD paste;
    - saving a Job does not mean it was applied to;
    - open the canonical Job Workspace.
+
+4. **连接外置 Coding Agent** — optional / Desktop only
+   - detect local Agents;
+   - reuse existing login;
+   - install/repair/update the runtime-bound OfferU Skill where supported;
+   - verify the integration without asking the user to paste prompts or run terminal commands.
+
+The public Web Showcase skips this connection step entirely and uses its built-in demo Agent.
 
 After Agent work starts, protected mutations are surfaced in Desktop as **Pending Proposal Review**. The user can approve or reject individual actions. The Agent must never self-confirm.
 
@@ -250,13 +251,13 @@ Use one real machine, one real user Profile, one verified Agent (prefer Codex fi
 For the first Job:
 
 ~~~text
-launch OfferU
-→ Agent connection ready
+launch OfferU Desktop
 → import real resume
 → review Profile evidence
 → paste/save a real JD
 → open Job Workspace
-→ ask Agent to evaluate the Job
+→ let OfferU begin useful preparation
+→ optionally connect/use an external Agent for the same Workspace
 → inspect Role / Evidence / gaps
 → request tailored Resume proposal
 → approve/reject/edit in Desktop
@@ -358,6 +359,6 @@ For owner dogfood:
 
 For future public beginner release, raise the bar:
 
-> On a clean computer with no Python/Node/Git, a user receives only the OfferU installer and already has a supported Agent account. Within roughly ten minutes, they can connect that Agent, import a Resume, save the first Job and reach a useful Job Workspace without opening a terminal.
+> On a clean computer with no Python/Node/Git, a user receives only the OfferU installer. Within roughly ten minutes, they can import a Resume, save the first Job and reach a useful Job Workspace without opening a terminal. If they already use a supported Coding Agent, Desktop can connect it afterwards without exposing Skill folders, localhost, Python or manual prompts.
 
 This public-release target is stricter than owner dogfood and remains subject to signing, packaging, privacy and clean-machine release gates.

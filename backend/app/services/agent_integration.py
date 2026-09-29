@@ -41,22 +41,40 @@ def _command_prefix() -> str:
 
 
 def _installed_content() -> str:
-    if getattr(sys, "frozen", False):
-        source = (PACKAGE_BACKEND_DIR / "offeru-assets/skills/offeru/SKILL.md").read_text(encoding="utf-8")
-        command = f"{_command_prefix()} --data-dir {_shell_quote(str(runtime_data_dir()))} cli"
-        return source.replace(
-            "Work from `backend/`.",
-            "OfferU is installed locally. Run the bundled commands below from any directory.",
-            1,
-        ).replace("python -m app.cli", command).replace("```powershell", "```powershell" if os.name == "nt" else "```sh")
-    source = _SOURCE_SKILL.read_text(encoding="utf-8")
-    backend = str(_BACKEND_ROOT.resolve())
-    source = source.replace(
-        "Work from `backend/`.",
-        f"Work from the OfferU backend at `{backend}`.",
-        1,
+    source = (
+        (PACKAGE_BACKEND_DIR / "offeru-assets/skills/offeru/SKILL.md").read_text(encoding="utf-8")
+        if getattr(sys, "frozen", False)
+        else _SOURCE_SKILL.read_text(encoding="utf-8")
     )
-    return source.replace("python -m app.cli", f"{_command_prefix()} -m app.cli")
+    if getattr(sys, "frozen", False):
+        command = f"{_command_prefix()} --data-dir {_shell_quote(str(runtime_data_dir()))} cli"
+        binding = (
+            "**Runtime binding:** installed OfferU Desktop. "
+            "Use the bundled command projected below from any directory; "
+            "do not look for a source checkout."
+        )
+        return (
+            source.replace("<!-- offeru-runtime-binding -->", binding, 1)
+            .replace("<offeru-cli>", command)
+            .replace("```powershell", "```powershell" if os.name == "nt" else "```sh")
+        )
+
+    backend = str(_BACKEND_ROOT.resolve())
+    binding = (
+        f"**Runtime binding:** developer/source projection at `{backend}`. "
+        "Use this source checkout only for explicit OfferU development/debugging; "
+        "normal career tasks should connect to the installed Desktop runtime instead."
+    )
+    return (
+        source.replace("<!-- offeru-runtime-binding -->", binding, 1)
+        .replace("<offeru-cli>", f"{_command_prefix()} -m app.cli")
+    )
+
+
+def installed_skill_content() -> str:
+    """Return the public Skill with only this OfferU install's CLI command projected."""
+
+    return _installed_content()
 
 
 def _skill_metadata(content: str) -> tuple[str, str]:

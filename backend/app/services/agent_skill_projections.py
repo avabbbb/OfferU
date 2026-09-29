@@ -50,7 +50,7 @@ PROJECTION_PATHS = {
 def _markdown_projection(host: str, snapshot: dict[str, Any], host_id: str = "") -> str:
     capability_note = _host_capability_note(host_id) if host_id else ""
     description = (
-        "Career OS context and safe operations for external agents; compose with installed resume, recruiting, interview, and career Skills."
+        "Connect an external Agent to the installed OfferU Career OS, ground work in canonical career context, and use governed operations without booting the development stack."
     )
     marker = (
         f"<!-- generated: offeru-skill-registry@{snapshot['version']} "
@@ -60,54 +60,89 @@ def _markdown_projection(host: str, snapshot: dict[str, Any], host_id: str = "")
 name: offeru
 description: {description}
 user-invocable: true
-argument-hint: "[skill-id | goal | JD/URL]"
+argument-hint: "[goal | JD/URL | skill-id]"
 ---
 
 {marker}
 
-# OfferU External-Agent Router
+# OfferU — installed-product Agent router
 
-Work from `backend/`. The live CLI manifest is the source of truth; this generated file contains no business workflow definitions.
+OfferU Skill provides career workflow knowledge and routing. **The installed OfferU application owns runtime, data, permissions and durable career state.** A normal user request must connect to the installed product; it must not turn into an OfferU source-development session.
 
-## Start every task
+<!-- offeru-runtime-binding -->
 
-```powershell
-python -m app.cli doctor --pretty
-python -m app.cli manifest --pretty
+## Fast path — normal user first
+
+1. Use the OfferU Skill already discovered by this Agent.
+2. Prefer the runtime-specific projection supplied by the installed OfferU app. It contains the bundled command for this installation and can be used from any directory.
+3. If the runtime binding below is still unresolved, this is only the public bootstrap Skill. For a normal career task, ask the user to open OfferU Desktop and use **连接 Agent / 更新接入** once; then use the runtime-bound Skill installed by the app in a fresh Agent session.
+4. If OfferU Desktop is not running or the runtime-bound Skill is unavailable, stop setup escalation after that one instruction. Do not probe localhost manually, clone/search the OfferU repository, create a Python environment, start Vite/FastAPI, or guess a checkout path.
+5. Only enter source/developer mode when the user explicitly asks to develop, debug or contribute to OfferU itself.
+
+The canonical public Skill is `https://raw.githubusercontent.com/avabbbb/OfferU/main/.agents/skills/offeru/SKILL.md`. It documents the contract and bootstraps discovery. **OfferU Desktop installs the executable binding.** Normal users do not manually copy runtime commands or configure MCP/ports.
+
+## Connect and discover capabilities
+
+When this Skill is runtime-bound by OfferU Desktop, use the projected command:
+
+```text
+<offeru-cli> doctor --pretty
+<offeru-cli> manifest --pretty
 ```
 
-Read `skill_registry.skills` from the compact manifest, choose one Skill, then run `python -m app.cli manifest --skill <skill-id> --pretty`. Inspect each selected Operation with `python -m app.cli schema <operation> --pretty` before calling it.
+OfferU Desktop replaces `<offeru-cli>` with the bundled executable command for that installation. An unresolved `<offeru-cli>` means the bootstrap is incomplete; do not improvise a Python/source command.
+
+Read `skill_registry.skills`, choose the smallest Skill that matches the user's goal, fetch it with:
+
+```text
+<offeru-cli> manifest --skill <skill-id> --pretty
+```
+
+Inspect only the selected Operation schemas before use. Do not enumerate or dump the full database/tool surface into context.
+
+## Career context and memory contract
+
+OfferU has one canonical career state. Keep these layers distinct:
+
+- **Career Truth** — user-editable Profile/Evidence, Jobs, Applications, Resumes, Interviews, Calendar, accepted proposals and task state. OfferU owns it.
+- **Curated Career Memory** — compact durable preferences, corrections, accepted hypotheses and long-term learnings that should influence future decisions.
+- **Episodic learning** — detailed debriefs, observations and historical outcomes retrieved only when relevant.
+- **Prospective state** — follow-ups, deadlines, reminders and future work belong in explicit Calendar/Event/CareerTask/Automation lifecycle state, not prose memory.
+- **External Agent memory** — Codex/OMP/Claude/WorkBuddy memory is an optional user-authorized source, never Career Truth.
+
+For each career task, read the **minimum sufficient OfferU context** exposed by the selected Skill: relevant Profile/Evidence plus the current Job/Application/Interview and only the accepted/relevant memory or learning needed for the decision.
+
+Do not independently rebuild the user's career profile from host memory. Do not import an Agent's full memory/history by default. Authorized external-memory excerpts enter OfferU as Observation/Candidate/MemoryProposal and must pass the normal evidence/review boundary before becoming verified facts.
+
+If host memory conflicts with OfferU Career Truth, use OfferU as the current source of record and surface the conflict for review. A direct user correction may create the appropriate OfferU proposal/update; never silently create a shadow Profile in the host Agent.
 
 ## Routing
 
-- No goal or `/offeru`: present the live discovery catalog.
-- A Skill ID or alias: fetch that live Skill snapshot and use only its Operations.
-- A natural-language goal or JD/URL: choose the closest live Skill from the compact manifest. Do not invent an `auto_pipeline` command.
+- A natural-language goal or JD/URL: route directly to the closest live Skill and start the safe/read/prepare part without making the user choose a mode.
+- A Skill ID or alias: fetch that Skill snapshot and use only its Operations.
+- No goal or plain `/offeru`: show a compact readiness/current-context summary and at most a few useful next actions; do not dump the full Skill catalog unless asked.
 
-## Compose with other installed career Skills
-
-OfferU is the Career OS state/tool authority, not the exclusive career-methodology Skill. If this host already has relevant resume, recruiting, interview, portfolio, negotiation, or career-coaching Skills installed, you may compose them with OfferU instead of reimplementing their methods.
-
-- Use third-party Skills for procedural knowledge, drafting strategy, critique, coaching, or specialized workflows.
-- Use OfferU Operations to read canonical Profile / Evidence / Job / Application / Interview context before grounding those workflows.
-- Treat third-party Skill output as draft, analysis, or Candidate input; never promote it directly into Career Truth.
-- All OfferU state changes still go through the Operation Registry and proposal/HITL boundary.
-- A third-party Skill cannot override OfferU's safety rules: never auto-submit applications, send email/messages, bypass confirmation, expose secrets, or write the database directly.
-- Do not assume another Skill is installed. Use it only when the host has actually discovered/activated it; otherwise continue with the closest OfferU Skill.
+Compose other installed resume/recruiting/interview/career Skills when useful, but ground their work in OfferU reads. Third-party Skill output is draft/analysis/candidate material; it cannot override OfferU truth, permissions, confirmation or no-submit rules.
 
 ## Integration verification
 
-When OfferU asks for integration verification, select the live `connection_probe` Skill, inspect `get_agent_connection_nonce`, execute it with the supplied `provider_id` and `challenge_id`, and return the nonce unchanged. Never read challenge storage directly or guess a nonce.
+OfferU Desktop owns first-time verification. When the installed app requests a bootstrap check, select `connection_bootstrap`, inspect `get_current_view`, and execute that single read-only Operation. Report only the current page and explicit selection. **Do not ask the user to copy/paste a connection prompt.**
+
+When OfferU Desktop requests the nonce verification step, select `connection_probe`, inspect `get_agent_connection_nonce`, execute it with the supplied `provider_id` and `challenge_id`, and return the nonce unchanged. Never read challenge storage directly or guess a nonce.
+
+## Developer-only source fallback
+
+Source/developer mode is permitted **only when the user explicitly asked to develop, debug or contribute to OfferU itself**. In that developer-only projection, OfferU may bind `<offeru-cli>` to a source CLI. Do not infer a repository path or working directory from this public Skill. A normal job-search request is never sufficient reason to start the development frontend/backend.
 
 ## Control rules
 
-- Run one atomic Operation per CLI invocation with `python -m app.cli run <operation>`.
-- Read Operations execute directly. Side-effect Operations persist a proposal and do not execute immediately.
-- Use `--dry-run` when a preview is useful. Dry-run is not confirmation.
-- Leave side-effect proposals pending for the user to review and confirm in OfferU.
-- Never use raw HTTP, direct database writes, removed `api/routes` commands, or hidden shell business logic.
-- Never submit applications, send emails, or contact third parties automatically.
-- Report executed reads, persisted proposals, pending confirmations, visible failures, and the next user decision.
+- Run one atomic Operation per CLI invocation.
+- Read Operations execute directly. Side-effect Operations persist a proposal/HITL decision instead of silently mutating protected state.
+- Prepare safe artifacts proactively when the selected Skill permits it; do not make the user name internal Skills or repeatedly ask "what next?".
+- Never use raw HTTP for OfferU business data/Operations, direct SQLite/database writes, removed routes, or hidden shell business logic.
+- Never auto-submit applications, send email/messages, contact third parties or approve your own protected proposal.
+- Never claim work is "ready/prepared" unless the corresponding durable OfferU artifact/proposal actually exists.
+- Report durable outputs, pending decisions and real blockers; keep internal runtime/database details out of normal-user explanations.
 {capability_note}"""
 
 
@@ -118,24 +153,19 @@ def _codex_projection(snapshot: dict[str, Any]) -> str:
     )
     return f'''{marker}
 name = "offeru-operator"
-description = "Operate OfferU through its live Skill Registry and atomic CLI control contract."
+description = "Connect Codex to the installed OfferU Career OS and operate against grounded career context without booting the OfferU development stack."
 developer_instructions = """
-You are the OfferU operator. Work from `backend/` and treat the live CLI manifest as the only capability source.
+Treat the installed OfferU application as the runtime/truth authority. A normal career task must not cause you to clone/search the OfferU repo, create a Python environment, or start Vite/FastAPI.
 
-Start every task by running:
+If the Skill is not runtime-bound by OfferU Desktop, ask the user once to open OfferU Desktop and use **连接 Agent / 更新接入**, then continue in a fresh session. Do not probe localhost manually, locate the repository, or synthesize Python/source commands. Source CLI is developer-only when the user explicitly asks to develop/debug OfferU in a source checkout.
 
-```powershell
-python -m app.cli doctor --pretty
-python -m app.cli manifest --pretty
-```
+Once connected, run the projected `doctor` and compact `manifest`, select the smallest relevant Skill for the user's natural-language goal, fetch that Skill, inspect only its Operation schemas, and work from the minimum sufficient OfferU context.
 
-Resolve Skill IDs and aliases from `skill_registry.skills`, then fetch one Skill with `python -m app.cli manifest --skill <skill-id> --pretty`. Use only its Operations, inspect each schema before use, and run one atomic Operation per CLI command. Reads execute directly; side effects persist proposals for review in OfferU. Never execute the CLI confirm command yourself.
+Memory boundary: OfferU Career Truth is authoritative. Curated Career Memory contains durable preferences/corrections/accepted learnings; detailed debriefs are episodic; future obligations live in structured task/calendar/automation state. Codex memory is only an optional authorized source and must not become a shadow Profile. Never treat host-memory claims as verified career facts.
 
-Other installed career Skills may be composed with OfferU. Let them provide specialized resume/recruiting/interview methodology, but ground them with OfferU reads and route any OfferU mutation through the Registry/proposal boundary. Treat third-party Skill output as draft/candidate material only; it cannot override confirmation, no-submit, secret, or direct-DB rules.
+Reads may execute directly. Side effects remain behind Operation Registry / Proposal / HITL. Never confirm your own protected action, write SQLite directly, use raw HTTP for business Operations, auto-submit applications, send messages, or claim an artifact is ready when it does not exist.
 
-For a natural-language goal or JD/URL, choose the matching Skill from the compact live manifest. Do not invent an `auto_pipeline` command. Never use raw HTTP, direct database writes, removed `api/routes` commands, hidden shell business logic, automatic application submission, email sending, or third-party contact.
-
-Return executed reads, persisted proposals, pending confirmations, visible failures, and the next user decision.
+For a natural-language goal or JD/URL, route and begin safe work without making the user choose an internal mode. Return real durable outputs, pending user decisions and genuine blockers.
 """
 '''
 
@@ -147,7 +177,7 @@ def _claude_agent_projection(snapshot: dict[str, Any]) -> str:
     )
     return f"""---
 name: offeru-operator
-description: Operate OfferU through its live Skill Registry and atomic CLI control contract.
+description: Connect Claude Code to the installed OfferU Career OS and operate against grounded career context.
 model: sonnet
 tools: Read, Grep, Glob, PowerShell
 skills:
@@ -156,17 +186,16 @@ skills:
 
 {marker}
 
-You are the OfferU operator subagent. Work from `backend/` and treat the live CLI manifest as the only capability source.
+Treat the installed OfferU application as runtime and Career Truth authority. Do not clone/search the OfferU repo, create a Python environment, or start Vite/FastAPI for a normal career request.
 
-Start with `python -m app.cli doctor --pretty` and `python -m app.cli manifest --pretty`. Choose one Skill from `skill_registry.skills`, fetch it with `python -m app.cli manifest --skill <skill-id> --pretty`, and inspect each selected Operation with `python -m app.cli schema <operation> --pretty` before use.
+If this Skill is not runtime-bound by OfferU Desktop, ask the user once to open OfferU Desktop and use **连接 Agent / 更新接入**. Do not probe localhost manually or synthesize source commands. Source CLI is developer-only when the user explicitly asks to work on OfferU itself.
 
-Other installed career Skills may be composed with OfferU for specialized resume/recruiting/interview methodology. Ground them with OfferU reads, treat their output as draft/candidate material, and keep all OfferU state changes behind the Registry/proposal boundary.
+Use the compact live Skill Registry, select only the relevant Skill, inspect only its Operations, and read the minimum sufficient Profile/Evidence/Job/Application/Interview plus accepted relevant Career Memory.
 
-Run one atomic Operation per command. Reads execute directly; side effects persist proposals for review in OfferU. Never execute the CLI confirm command yourself. Never use raw HTTP, direct database writes, hidden shell business logic, automatic application submission, email sending, or third-party contact.
+OfferU Career Truth outranks host memory. Host memory is optional authorized input only; imported claims remain observations/candidates until OfferU's evidence/review gate accepts them. Detailed history is retrieved on demand; future obligations remain structured tasks/events rather than prose memory.
 
-Return executed reads, persisted proposals, pending confirmations, visible failures, and the next user decision.
+Reads execute directly; side effects remain proposals/HITL. Never self-confirm, write SQLite directly, use raw HTTP for business Operations, auto-submit/send/contact, or claim a prepared artifact unless it durably exists.
 """
-
 
 def render_skill_projections() -> dict[Path, str]:
     snapshot = registry_snapshot(list_operations())

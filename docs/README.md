@@ -36,9 +36,10 @@ Historical audits and dated reports are evidence of what was true when they were
 
 | Area | Current document | Purpose |
 | --- | --- | --- |
-| Product | [Current Product North Star](./product/current-product.md) | Outcome-first Job Workspace, zero-setup App-first UX, Skill-first power-user entry, Guided Today, external-first Agent |
+| Product | [Current Product North Star](./product/current-product.md) | Desktop-first real Career OS, Web Showcase built-in Agent, runtime-bound Skill entry, Guided Today |
 | First use / dogfood | [Entry, Onboarding & Dogfood Contract](./product/entry-onboarding-and-dogfood.md) | Installer/Skill boundary, beginner hosts, current Agent capabilities, owner-dogfood path and marketing evidence |
 | Proactivity | [Proactive Career Director](./product/proactive-career-director.md) | Triggered career judgment, campus/experienced Strategy Packs, autonomy levels, proactive Today/interview/re-engagement and eval contract |
+| Memory / context | [Career Memory & Context Contract](./product/career-memory-contract.md) | Career Truth vs curated memory vs episodic learning vs prospective state vs external Agent memory |
 | Goal | [GOAL.md](../GOAL.md) | Public-release goal and durable release gates |
 | Domain | [CONTEXT.md](../CONTEXT.md) | Career Truth, candidates, evidence, applications, memory and Agent vocabulary |
 | Architecture | [ARCHITECTURE.md](../ARCHITECTURE.md) | Short current system boundary |
@@ -96,10 +97,11 @@ Do not rewrite old eval numbers to make them look current. Preserve the result a
 ~~~
 OfferU Desktop = primary Career OS experience
 Job Workspace = durable product object for one opportunity
-App-first = default normal-user front door
-Skill-first = power-user Agent front door
-External local Agent = preferred reasoning host
-Built-in OfferU Agent = fallback
+Desktop-first = default real-data front door
+Web Showcase = built-in demo Agent + fictional browser data only
+Skill-first = Desktop-bound power-user Agent front door
+External local Agent = Desktop optional/preferred reasoning host
+Built-in OfferU Agent = Web default + Desktop fallback
 Agent Skills = composable methodology / Agent entry layer
 Operation Registry = execution / permission authority
 Career Runtime = canonical truth

@@ -9,6 +9,7 @@ import {
 import { type AgentConnection } from "@/lib/api";
 import { connectionTime, useAgentConnection } from "@/lib/agentConnection";
 import { SHOWCASE } from "@/lib/showcase/router";
+import { ExternalUrlLink } from "@/components/ExternalUrlLink";
 
 const STATUS = {
   missing: { label: "未检测到", tone: "text-[var(--foreground-muted)]", title: "先准备好本机 Agent", detail: "打开官方指南完成安装，然后回到这里重新检查。" },
@@ -71,9 +72,10 @@ export function AgentConnectionStatus({ compact = false }: { compact?: boolean }
   const ready = state.snapshot?.items.find((item) => currentStatus(item) === STATUS.ready);
   const hasProblem = Boolean(state.error || state.stale || state.sync.status === "failed");
   const pending = Boolean(state.loading || state.probing || state.sync.status === "syncing");
-  const label = SHOWCASE ? "Agent · 展示模式" : hasProblem ? "Agent · 需要处理"
+  const label = SHOWCASE ? "Agent · 内置演示" : hasProblem ? "Agent · 需要处理"
     : pending ? "Agent · 正在检查 / 同步" : ready ? "Agent · 接入检查通过" : "连接本机 Agent";
-  const detail = state.sync.status === "failed" ? "内容同步失败，点击重试"
+  const detail = SHOWCASE ? "网页演示使用内置 Agent，不连接本机 Coding Agent"
+    : state.sync.status === "failed" ? "内容同步失败，点击重试"
     : state.error || state.stale ? "状态未更新，点击查看"
     : ready ? `最近同步 ${connectionTime(state.sync.confirmedAt)}` : "自动检测 · 沿用已有登录";
 
@@ -82,7 +84,7 @@ export function AgentConnectionStatus({ compact = false }: { compact?: boolean }
       data-testid="agent-connection-status"
       className={`group flex min-h-10 items-center gap-2.5 rounded-xl border border-[var(--border)] bg-[var(--surface)] text-left text-[var(--foreground)] transition-colors hover:border-[var(--border-strong)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${compact ? "px-3 py-2" : "w-full px-3 py-3"}`}>
       {pending && !hasProblem ? <Loader2 size={16} className="shrink-0 motion-safe:animate-spin" />
-        : <span className={`h-2 w-2 shrink-0 rounded-full ${hasProblem ? "bg-amber-500" : ready ? "bg-emerald-600" : "bg-[var(--foreground-faint)]"}`} />}
+        : <span className={`h-2 w-2 shrink-0 rounded-full ${hasProblem ? "bg-amber-500" : SHOWCASE || ready ? "bg-emerald-600" : "bg-[var(--foreground-faint)]"}`} />}
       <span className="min-w-0 flex-1">
         <span className="block truncate text-xs font-semibold">{label}</span>
         {!compact && <span className="mt-1 block truncate text-[10.5px] text-[var(--foreground-muted)]">{detail}</span>}
@@ -141,11 +143,15 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
           <span className="inline-flex items-center gap-2 text-[11px] font-semibold tracking-wide text-[var(--foreground-muted)]"><Plug size={14} /> 本机 Agent</span>
           <span className="inline-flex items-center gap-1.5 text-[11px] text-[var(--foreground-muted)]"><Laptop size={13} /> 沿用本机配置</span>
         </div>
-        <h3 className="mt-4 text-xl font-semibold tracking-tight sm:text-2xl">让熟悉的 Agent，接着帮你求职。</h3>
-        <p className="mt-2 max-w-xl text-sm leading-relaxed text-[var(--foreground-muted)]">自动发现本机 Agent，检查接入，把当前工作交给它。同步进展随时可看。</p>
+        <h3 className="mt-4 text-xl font-semibold tracking-tight sm:text-2xl">{SHOWCASE ? "网页演示直接使用内置 Agent。" : "让熟悉的 Agent，接着帮你求职。"}</h3>
+        <p className="mt-2 max-w-xl text-sm leading-relaxed text-[var(--foreground-muted)]">{SHOWCASE ? "演示站只使用浏览器内的演示 Agent 与虚构数据，不扫描、不安装、也不连接你电脑里的 Coding Agent。真实本地 Agent 接入只在 OfferU Desktop 中提供。" : "自动发现本机 Agent，检查接入，把当前工作交给它。同步进展随时可看。"}</p>
       </div>
 
-      {SHOWCASE ? <p role="status" className="p-6 text-sm text-[var(--foreground-muted)]">这是展示模式。请在本机 OfferU 中连接 Agent，查看真实同步状态。</p> : <>
+      {SHOWCASE ? <div role="status" className="p-6 text-sm leading-relaxed text-[var(--foreground-muted)]">
+        <p className="font-semibold text-[var(--foreground)]">内置演示 Agent 已就绪</p>
+        <p className="mt-2">你可以直接体验 Profile、Job、Resume 与对话流程。演示站不会尝试访问 localhost，也不会发现或修改本机 Codex、OMP、Claude Code、WorkBuddy 等环境。</p>
+        <p className="mt-2">需要真实 Career Truth、SQLite 数据和外置 Coding Agent 时，请安装并打开 OfferU Desktop。</p>
+      </div> : <>
         {(state.error || state.stale) && <div role="alert" className="mx-5 mt-5 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">
           <AlertCircle size={15} className="mt-0.5 shrink-0" />
           <span className="flex-1">{state.error || "状态暂未更新，下面保留的是上次结果。"}</span>
@@ -196,14 +202,14 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
                   detail={syncDone ? `工作台已收到「${state.sync.title}」，Agent 可按需读取。` : syncFailed ? "同步遇到问题，可在下方重试。" : "自动同步当前页面和显式选中的内容。"} />
               </ol>
               <div className="flex flex-wrap items-center gap-2">
-                {!selected.installed && selected.docs_url ? <a href={selected.docs_url} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-[var(--foreground)] px-4 text-xs font-semibold text-[var(--surface)]">安装 Agent <ExternalLink size={12} /></a>
+                {!selected.installed && selected.docs_url ? <ExternalUrlLink href={selected.docs_url} className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-[var(--foreground)] px-4 text-xs font-semibold text-[var(--surface)]">安装 Agent <ExternalLink size={12} /></ExternalUrlLink>
                   : integrationAction && selected.can_install_skill ? <Button size="sm" onPress={() => void state.connect(selected.id, integrationAction)} isLoading={checking} isDisabled={Boolean(state.probing || state.integrating)}
                     className="bg-[var(--foreground)] px-4 text-xs font-semibold text-[var(--surface)]">{integrationAction === "update" ? "更新接入" : integrationAction === "repair" ? "修复接入" : "连接 OfferU"}</Button>
                   : <Button size="sm" onPress={() => void state.probe(selected.id)} isLoading={checking} isDisabled={Boolean(state.probing || state.integrating)}
                     className={ready ? "border border-[var(--border)] bg-[var(--surface)] text-xs font-semibold text-[var(--foreground)]" : "bg-[var(--foreground)] px-4 text-xs font-semibold text-[var(--surface)]"}>
                     {checking ? "正在验证" : ready ? "重新验证" : selected.status === "auth_required" ? "登录后验证" : "验证接入"}
                   </Button>}
-                {selected.installed && selected.docs_url && <a href={selected.docs_url} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center gap-1.5 px-2 text-xs text-[var(--foreground-muted)]">{selected.status === "auth_required" ? "登录指南" : "官方指南"} <ExternalLink size={12} /></a>}
+                {selected.installed && selected.docs_url && <ExternalUrlLink href={selected.docs_url} className="inline-flex min-h-9 items-center gap-1.5 px-2 text-xs text-[var(--foreground-muted)]">{selected.status === "auth_required" ? "登录指南" : "官方指南"} <ExternalLink size={12} /></ExternalUrlLink>}
               </div>
               <details className="mt-5 text-xs text-[var(--foreground-muted)]">
                 <summary className="w-fit cursor-pointer py-1">高级检查详情</summary>
@@ -276,7 +282,7 @@ export function AgentConnectionDialog() {
   return <Modal isOpen={open} onOpenChange={setOpen} size="3xl" scrollBehavior="inside" placement="center"
     classNames={{ base: "bg-[var(--background)] text-[var(--foreground)]", closeButton: "mt-2 mr-2" }}>
     <ModalContent>
-      <ModalHeader className="px-6 pb-3 pt-5 text-sm font-semibold">Agent 接入与同步</ModalHeader>
+      <ModalHeader className="px-6 pb-3 pt-5 text-sm font-semibold">{SHOWCASE ? "内置演示 Agent" : "Agent 接入与同步"}</ModalHeader>
       <ModalBody className="px-3 pb-4 sm:px-5"><AgentConnectionPanel embedded /></ModalBody>
     </ModalContent>
   </Modal>;
