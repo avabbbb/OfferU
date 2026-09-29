@@ -11,6 +11,7 @@ import {
   MapPin,
 } from "lucide-react";
 import type { Job } from "@/lib/hooks";
+import { ExternalUrlLink } from "@/components/ExternalUrlLink";
 
 const sourceAccentMap: Record<
   string,
@@ -207,15 +208,13 @@ export function JobCard({
             查看详情
           </button>
           {applyUrl ? (
-            <a
+            <ExternalUrlLink
               href={applyUrl}
-              target="_blank"
-              rel="noopener noreferrer"
               className="bauhaus-button bauhaus-button-blue z-20 !min-h-8 !px-3 !py-2 !text-[11px]"
               onClick={(event) => event.stopPropagation()}
             >
               投递入口
-            </a>
+            </ExternalUrlLink>
           ) : rawApplyUrl ? (
             <span
               className="bauhaus-button z-20 !min-h-8 !px-3 !py-2 !text-[11px] cursor-not-allowed border border-black/15 text-black/45"
