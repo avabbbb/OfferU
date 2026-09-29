@@ -1,6 +1,6 @@
 "use client";
 
-import { isTauri } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { AnchorHTMLAttributes, MouseEvent } from "react";
 
 const ALLOWED_EXTERNAL_PROTOCOLS = new Set(["http:", "https:", "mailto:", "tel:"]);
@@ -16,8 +16,7 @@ function normalizedExternalUrl(href: string): string {
 export async function openExternalUrl(href: string): Promise<void> {
   const url = normalizedExternalUrl(href);
   if (isTauri()) {
-    const { openUrl } = await import("@tauri-apps/plugin-opener");
-    await openUrl(url);
+    await invoke("open_external_url", { url });
     return;
   }
   window.open(url, "_blank", "noopener,noreferrer");
