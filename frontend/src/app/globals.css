@@ -1122,16 +1122,16 @@ body {
   background-size: var(--grid-size) var(--grid-size);
 }
 
-.workbench-main h1,
-.workbench-main h2,
-.workbench-main h3,
+.workbench-main h1:not(.resume-body *),
+.workbench-main h2:not(.resume-body *),
+.workbench-main h3:not(.resume-body *),
 .stage-hero h1 {
   font-family: var(--font-serif);
   font-weight: 600;
   letter-spacing: -0.045em;
 }
 
-.workbench-main h1::after,
+.workbench-main h1:not(.resume-body *)::after,
 .stage-hero h1::after {
   display: block;
   width: 2.9rem;
@@ -1143,8 +1143,8 @@ body {
   transform-origin: left center;
 }
 
-.workbench-main h2::after,
-.workbench-main h3::after {
+.workbench-main h2:not(.resume-body *)::after,
+.workbench-main h3:not(.resume-body *)::after {
   display: none;
 }
 

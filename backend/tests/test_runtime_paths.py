@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 from app.runtime_paths import (
@@ -13,6 +14,8 @@ from app.runtime_paths import (
     runtime_data_path,
     runtime_env_file,
     runtime_uploads_dir,
+    packaged_resource_dir,
+    resume_frontend_dir,
 )
 
 
@@ -57,6 +60,25 @@ def test_sidecar_paths_follow_explicit_user_data_dir(monkeypatch, tmp_path: Path
     assert default_database_url() == (
         f"sqlite+aiosqlite:///{(data_dir / 'djm.db').resolve().as_posix()}"
     )
+
+
+def test_packaged_resume_resources_do_not_follow_writable_data(monkeypatch, tmp_path: Path) -> None:
+    from sidecar_entry import configure_runtime
+
+    bundle = tmp_path / "bundle"
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "_MEIPASS", str(bundle), raising=False)
+    monkeypatch.setenv("OFFERU_DATA_DIR", str(tmp_path / "user-data"))
+    monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(tmp_path / "incompatible-browser"))
+    for name in ("DATABASE_URL", "OFFERU_BUILD_MODE", "OFFERU_RUNTIME_MODE", "OFFERU_PORT"):
+        monkeypatch.delenv(name, raising=False)
+
+    configure_runtime()
+
+    assert packaged_resource_dir() == bundle.resolve()
+    assert resume_frontend_dir() == bundle / "resume-frontend"
+    assert runtime_uploads_dir() == tmp_path / "user-data" / "uploads"
+    assert Path(os.environ["PLAYWRIGHT_BROWSERS_PATH"]) == bundle / "resume-browsers"
 
 
 def test_sidecar_entry_configures_writable_runtime(monkeypatch, tmp_path: Path) -> None:

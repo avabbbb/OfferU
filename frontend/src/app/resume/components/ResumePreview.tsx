@@ -139,7 +139,7 @@ function normalizeSectionItem(sectionType: string, item: any, index: number): No
   if (sectionType === "personalExperiences" || sectionType === "custom") {
     return {
       id: `personal-${index}`,
-      title: item.experienceTitle || item.subtitle || item.title || `Experience ${index + 1}`,
+      title: item.experienceTitle ?? item.subtitle ?? item.title ?? "",
       date: dateRange(item.startDate, item.endDate),
       descriptionHtml: item.description || "",
       bullets: visibleBullets(item.description || "", item.hidden_bullet_indexes),
@@ -184,13 +184,13 @@ function normalizeResumeData(props: ResumePreviewProps): NormalizedResumeData {
       sortOrder: section.sort_order || 0,
       items: (section.content_json || [])
         .map((item, index) => normalizeSectionItem(section.section_type, item, index))
-        .filter((item) => item.title || item.bullets.length || item.tags?.length),
+        .filter((item) => item.title || item.descriptionHtml || item.bullets.length || item.tags?.length),
     }));
 
   return {
     userName: props.userName,
     title: props.title || props.contactJson?.headline || props.contactJson?.title || "",
-    photoUrl: props.photoUrl,
+    photoUrl: resolveAssetUrl(props.photoUrl),
     summary: textFromHtml(props.summary),
     summaryHtml: props.summary || "",
     contact: normalizeContactJson(props.contactJson || {}),
@@ -232,6 +232,7 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(function Re
         ref={ref}
         className={`resume-body ${settings.template}`}
         data-template={settings.template}
+        data-page-size={settings.pageSize}
         style={cssVars}
       >
         {template}

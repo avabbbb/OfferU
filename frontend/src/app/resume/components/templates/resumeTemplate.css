@@ -19,8 +19,8 @@
 }
 
 .resume-body {
-  width: 210mm;
-  min-height: 297mm;
+  width: var(--page-width, 210mm);
+  min-height: var(--page-height, 297mm);
   background: #ffffff;
   color: var(--resume-text-body);
   font-family: var(--body-font);
@@ -38,7 +38,7 @@
   background: #ffffff;
   margin: 0 auto;
   min-height: 100vh;
-  width: 210mm;
+  width: var(--page-width, 210mm);
 }
 
 .resume-print .swiss-resume {
@@ -353,16 +353,16 @@
   box-shadow: 0 16px 44px rgba(0, 0, 0, 0.16);
   color: #000000;
   font-family: "Microsoft YaHei", "SimHei", "Noto Sans CJK SC", Arial, sans-serif;
-  font-size: calc(11pt * var(--reference-scale, 1));
-  line-height: 1.38;
-  min-height: 297mm;
+  font-size: var(--font-size-base);
+  line-height: var(--line-height);
+  min-height: var(--page-height, 297mm);
   padding: var(--margin-top) var(--margin-right) var(--margin-bottom) var(--margin-left);
-  width: 210mm;
+  width: var(--page-width, 210mm);
 }
 
 .resume-body.reference-compact {
-  font-size: 10.5pt;
-  line-height: 1.28;
+  font-size: var(--font-size-base);
+  line-height: var(--line-height);
 }
 
 .reference-resume {
@@ -372,39 +372,40 @@
 .reference-header {
   align-items: start;
   display: grid;
-  grid-template-columns: 27mm 1fr 52mm;
-  min-height: 30mm;
+  grid-template-columns: calc(var(--photo-width) + 8mm) minmax(0, 1fr) var(--logo-width);
+  min-height: var(--photo-height);
+  margin-bottom: var(--header-gap);
 }
 
 .reference-photo-slot {
-  min-height: 30mm;
+  min-height: var(--photo-height);
 }
 
 .reference-photo {
   display: block;
-  height: 30mm;
+  height: var(--photo-height);
   object-fit: cover;
   object-position: center top;
-  width: 23mm;
+  width: var(--photo-width);
 }
 
 .reference-identity {
-  padding-left: 2mm;
+  padding-top: 4.5pt;
 }
 
 .reference-name {
-  color: var(--resume-accent-primary, #000000);
-  font-size: 20pt;
+  color: #000000;
+  font-size: var(--name-size);
   font-weight: 800;
   letter-spacing: 0;
   line-height: 1.05;
-  margin: 0 0 4mm;
+  margin: 0 0 2.5mm;
 }
 
 .reference-contact-lines {
-  font-size: 11.5pt;
+  font-size: var(--font-size-base);
   font-weight: 400;
-  line-height: 1.38;
+  line-height: var(--line-height);
 }
 
 .reference-contact-lines p {
@@ -420,29 +421,29 @@
 
 .reference-logo {
   display: block;
-  max-height: 18mm;
-  max-width: 50mm;
+  max-height: var(--logo-height);
+  max-width: var(--logo-width);
   object-fit: contain;
 }
 
 .reference-section {
-  margin-top: 6mm;
+  margin-top: var(--section-gap);
 }
 
 .reference-section-title {
-  border-bottom: 1.2pt solid var(--resume-accent-primary, #000000);
+  border-bottom: 0.6pt solid var(--rule-color);
   color: var(--resume-accent-primary, #000000);
-  font-size: 15pt;
+  font-size: var(--heading-size);
   font-weight: 800;
   line-height: 1.15;
-  margin: 0 0 3mm;
-  padding-bottom: 1mm;
+  margin: 0 0 6.75pt;
+  padding-bottom: 1pt;
 }
 
 .reference-section-body {
   display: flex;
   flex-direction: column;
-  gap: 2.4mm;
+  gap: var(--item-gap);
 }
 
 .reference-item {
@@ -458,8 +459,8 @@
 }
 
 .reference-item-main {
-  font-size: 11.5pt;
-  line-height: 1.35;
+  font-size: var(--font-size-base);
+  line-height: var(--line-height);
   min-width: 0;
 }
 
@@ -468,8 +469,8 @@
 }
 
 .reference-date {
-  font-size: 11.5pt;
-  line-height: 1.35;
+  font-size: var(--font-size-base);
+  line-height: var(--line-height);
   text-align: right;
   white-space: nowrap;
 }
@@ -479,39 +480,39 @@
 .reference-rich,
 .reference-bullets,
 .reference-tags {
-  font-size: 11pt;
+  font-size: var(--font-size-base);
 }
 
 .reference-rich {
-  line-height: 1.38;
-  margin-top: 1mm;
+  line-height: var(--line-height);
+  margin-top: 0;
 }
 
 .reference-rich p {
-  margin: 0 0 1.2mm;
+  margin: 0 0 var(--paragraph-gap);
 }
 
 .reference-rich ul {
   list-style-type: disc;
-  margin: 1mm 0 0;
-  padding-left: 6mm;
+  margin: 0;
+  padding-left: 1.3em;
 }
 
 .reference-rich ol {
   list-style-type: decimal;
-  margin: 1mm 0 0;
-  padding-left: 6mm;
+  margin: 0;
+  padding-left: 1.3em;
 }
 
 .reference-bullets {
   list-style-type: disc;
-  margin: 1mm 0 0;
-  padding-left: 6mm;
+  margin: 0;
+  padding-left: 1.3em;
 }
 
 .reference-rich li,
 .reference-bullets li {
-  margin: 0 0 1mm;
+  margin: 0 0 var(--paragraph-gap);
   padding-left: 0.5mm;
 }
 
@@ -535,21 +536,21 @@
 }
 
 .reference-compact .reference-section {
-  margin-top: 5mm;
+  margin-top: var(--section-gap);
 }
 
 .reference-compact .reference-section-body {
-  gap: 1.7mm;
+  gap: var(--item-gap);
 }
 
 /* No photo only: remove left column, keep logo column */
 .reference-header-no-logo:not(.reference-header-no-photo) {
-  grid-template-columns: 27mm 1fr 0;
+  grid-template-columns: calc(var(--photo-width) + 8mm) minmax(0, 1fr);
 }
 
 /* No logo only: remove right column, keep photo column */
 .reference-header-no-photo:not(.reference-header-no-logo) {
-  grid-template-columns: 0 1fr 52mm;
+  grid-template-columns: minmax(0, 1fr) var(--logo-width);
 }
 
 /* No photo AND no logo: single column, identity takes full width */
@@ -595,7 +596,7 @@
     border: none !important;
     box-shadow: none !important;
     margin: 0 auto !important;
-    max-width: 210mm !important;
+    max-width: none !important;
     min-height: 0 !important;
     position: static !important;
     width: 100% !important;
@@ -613,8 +614,8 @@
   .resume-body {
     background: #ffffff !important;
     box-shadow: none !important;
-    break-inside: avoid-page !important;
-    page-break-inside: avoid !important;
+    break-inside: auto !important;
+    page-break-inside: auto !important;
   }
 
   .resume-item {

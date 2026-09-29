@@ -6,7 +6,6 @@ const JobsPage = lazy(() => import("@/app/jobs/page"));
 const JobDetailPage = lazy(() => import("@/app/jobs/[id]/page"));
 const ResumePage = lazy(() => import("@/app/resume/page"));
 const ResumeDetailPage = lazy(() => import("@/app/resume/[id]/page"));
-const ResumePrintPage = lazy(() => import("@/app/resume/print/[id]/page"));
 const OptimizePage = lazy(() => import("@/app/optimize/page"));
 const ApplicationsPage = lazy(() => import("@/app/applications/page"));
 const InterviewPage = lazy(() => import("@/app/interview/page"));
@@ -35,7 +34,6 @@ export function OfferURoutes() {
         <Route path="/jobs/:id" element={<JobDetailPage />} />
         <Route path="/resume" element={<ResumePage />} />
         <Route path="/resume/:id" element={<ResumeDetailPage />} />
-        <Route path="/resume/print/:id" element={<ResumePrintPage />} />
         <Route path="/optimize" element={<OptimizePage />} />
         <Route path="/applications" element={<ApplicationsPage />} />
         <Route path="/interview" element={<InterviewPage />} />

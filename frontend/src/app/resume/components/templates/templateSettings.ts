@@ -34,6 +34,22 @@ export interface ResumeTemplateSettings {
   compactMode: boolean;
   showContactIcons: boolean;
   accentColor: ResumeAccentColor;
+  exact: {
+    bodySize: number;
+    headingSize: number;
+    nameSize: number;
+    lineHeight: number;
+    sectionGap: number;
+    itemGap: number;
+    paragraphGap: number;
+    headerGap: number;
+    headingColor: string;
+    ruleColor: string;
+    photoWidth: number;
+    photoHeight: number;
+    logoWidth: number;
+    logoHeight: number;
+  };
 }
 
 export interface NormalizedResumeItem {
@@ -75,13 +91,13 @@ export const TEMPLATE_OPTIONS: Array<{
 }> = [
   {
     id: "reference",
-    name: "附件同款",
-    description: "和你提供的 PDF 一致：照片、校徽、黑色正文、横线分区。",
+    name: "中文经典",
+    description: "照片、校徽与横线分区，支持精确调整字号和间距。",
   },
   {
     id: "reference-compact",
-    name: "附件同款·紧凑",
-    description: "保持附件样式，压缩段落间距，适合内容较多的简历。",
+    name: "中文经典·紧凑",
+    description: "较紧凑的单栏排版，适合内容较多的简历。",
   },
   {
     id: "modern",
@@ -109,6 +125,12 @@ export const DEFAULT_TEMPLATE_SETTINGS: ResumeTemplateSettings = {
   compactMode: false,
   showContactIcons: false,
   accentColor: "blue",
+  exact: {
+    bodySize: 10.5, headingSize: 12, nameSize: 16.5,
+    lineHeight: 1.2, sectionGap: 6, itemGap: 2, paragraphGap: 0, headerGap: 9,
+    headingColor: "#1D4ED8", ruleColor: "#000000",
+    photoWidth: 23, photoHeight: 28, logoWidth: 50, logoHeight: 18,
+  },
 };
 
 const SECTION_SPACING_MAP: Record<SpacingLevel, string> = {
@@ -198,9 +220,19 @@ function asAccent(value: unknown): ResumeAccentColor {
 }
 
 function parseMarginMm(value: unknown, fallback: number) {
-  const parsed = Number(value);
+  const parsed = parseFloat(String(value));
   if (!Number.isFinite(parsed)) return fallback;
-  return Math.max(5, Math.min(25, parsed));
+  const mm = String(value).endsWith("cm") ? parsed * 10 : parsed;
+  return Math.max(3, Math.min(30, mm));
+}
+
+function numeric(value: unknown, fallback: number, min: number, max: number) {
+  const parsed = value == null || value === "" ? NaN : parseFloat(String(value));
+  return Number.isFinite(parsed) ? Math.max(min, Math.min(max, parsed)) : fallback;
+}
+
+function color(value: unknown, fallback: string) {
+  return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback;
 }
 
 function bodySizeToLevel(value: unknown, fallback: SpacingLevel): SpacingLevel {
@@ -246,15 +278,17 @@ function lineHeightToLevel(value: unknown, fallback: SpacingLevel): SpacingLevel
 export function normalizeTemplateSettings(config: Record<string, any> = {}): ResumeTemplateSettings {
   const rawTemplate = config.template || config.templateType;
   const template = asTemplate(rawTemplate);
-  const isLegacyTemplate = rawTemplate !== "reference" && rawTemplate !== "reference-compact";
+  const reference = template === "reference" || template === "reference-compact";
+  const accent = asAccent(config.accentColorName || config.accentColor);
+  const base = DEFAULT_TEMPLATE_SETTINGS.exact;
   return {
     template,
     pageSize: config.pageSize === "LETTER" ? "LETTER" : "A4",
     margins: {
-      top: isLegacyTemplate ? DEFAULT_TEMPLATE_SETTINGS.margins.top : parseMarginMm(config.marginTop ?? config.pageMargin, DEFAULT_TEMPLATE_SETTINGS.margins.top),
-      right: isLegacyTemplate ? DEFAULT_TEMPLATE_SETTINGS.margins.right : parseMarginMm(config.marginRight ?? config.pageMargin, DEFAULT_TEMPLATE_SETTINGS.margins.right),
-      bottom: isLegacyTemplate ? DEFAULT_TEMPLATE_SETTINGS.margins.bottom : parseMarginMm(config.marginBottom ?? config.pageMargin, DEFAULT_TEMPLATE_SETTINGS.margins.bottom),
-      left: isLegacyTemplate ? DEFAULT_TEMPLATE_SETTINGS.margins.left : parseMarginMm(config.marginLeft ?? config.pageMargin, DEFAULT_TEMPLATE_SETTINGS.margins.left),
+      top: parseMarginMm(config.marginTop ?? config.pageMargin, DEFAULT_TEMPLATE_SETTINGS.margins.top),
+      right: parseMarginMm(config.marginRight ?? config.pageMargin, DEFAULT_TEMPLATE_SETTINGS.margins.right),
+      bottom: parseMarginMm(config.marginBottom ?? config.pageMargin, DEFAULT_TEMPLATE_SETTINGS.margins.bottom),
+      left: parseMarginMm(config.marginLeft ?? config.pageMargin, DEFAULT_TEMPLATE_SETTINGS.margins.left),
     },
     spacing: {
       section: asSpacingLevel(
@@ -278,7 +312,23 @@ export function normalizeTemplateSettings(config: Record<string, any> = {}): Res
     },
     compactMode: config.compactMode === true || config.compactMode === "true",
     showContactIcons: config.showContactIcons === true || config.showContactIcons === "true",
-    accentColor: asAccent(config.accentColorName || config.accentColor),
+    accentColor: accent,
+    exact: {
+      bodySize: numeric(config.bodySize, config.fontSize ? parseFloat(FONT_SIZE_MAP[asSpacingLevel(config.fontSize, 2)]) : reference ? base.bodySize : 12, 8, 20),
+      headingSize: numeric(config.headingSize, base.headingSize, 8, 28),
+      nameSize: numeric(config.nameSize, base.nameSize, 10, 40),
+      lineHeight: numeric(config.lineHeight, config.lineHeightLevel ? LINE_HEIGHT_MAP[asSpacingLevel(config.lineHeightLevel, 3)] : base.lineHeight, 1, 2),
+      sectionGap: numeric(config.sectionGap, config.sectionSpacing ? parseFloat(SECTION_SPACING_MAP[asSpacingLevel(config.sectionSpacing, 3)]) * 12 : base.sectionGap, 0, 30),
+      itemGap: numeric(config.itemGap, config.itemSpacing ? parseFloat(ITEM_SPACING_MAP[asSpacingLevel(config.itemSpacing, 2)]) * 12 : base.itemGap, 0, 20),
+      paragraphGap: numeric(config.paragraphGap, base.paragraphGap, 0, 16),
+      headerGap: numeric(config.headerGap, base.headerGap, 0, 30),
+      headingColor: color(config.accentColorHex, color(config.accentColor, ACCENT_COLOR_MAP[accent].primary)),
+      ruleColor: color(config.ruleColor, base.ruleColor),
+      photoWidth: numeric(config.photoWidth, base.photoWidth, 10, 50),
+      photoHeight: numeric(config.photoHeight, base.photoHeight, 10, 60),
+      logoWidth: numeric(config.logoWidth, base.logoWidth, 10, 65),
+      logoHeight: numeric(config.logoHeight, base.logoHeight, 5, 40),
+    },
   };
 }
 
@@ -286,10 +336,21 @@ export function settingsToCssVars(settings: ResumeTemplateSettings): CSSProperti
   const compact = settings.compactMode ? 0.6 : 1;
   const accent = ACCENT_COLOR_MAP[settings.accentColor];
   return {
-    "--section-gap": settings.compactMode ? `calc(${SECTION_SPACING_MAP[settings.spacing.section]} * ${compact})` : SECTION_SPACING_MAP[settings.spacing.section],
-    "--item-gap": settings.compactMode ? `calc(${ITEM_SPACING_MAP[settings.spacing.item]} * ${compact})` : ITEM_SPACING_MAP[settings.spacing.item],
-    "--line-height": settings.compactMode ? LINE_HEIGHT_MAP[settings.spacing.lineHeight] * 0.92 : LINE_HEIGHT_MAP[settings.spacing.lineHeight],
-    "--font-size-base": FONT_SIZE_MAP[settings.fontSize.base],
+    "--section-gap": `${settings.exact.sectionGap * compact}pt`,
+    "--item-gap": `${settings.exact.itemGap * compact}pt`,
+    "--paragraph-gap": `${settings.exact.paragraphGap}pt`,
+    "--header-gap": `${settings.exact.headerGap}pt`,
+    "--line-height": settings.exact.lineHeight,
+    "--font-size-base": `${settings.exact.bodySize}pt`,
+    "--heading-size": `${settings.exact.headingSize}pt`,
+    "--name-size": `${settings.exact.nameSize}pt`,
+    "--photo-width": `${settings.exact.photoWidth}mm`,
+    "--photo-height": `${settings.exact.photoHeight}mm`,
+    "--logo-width": `${settings.exact.logoWidth}mm`,
+    "--logo-height": `${settings.exact.logoHeight}mm`,
+    "--page-width": settings.pageSize === "LETTER" ? "215.9mm" : "210mm",
+    "--page-height": settings.pageSize === "LETTER" ? "279.4mm" : "297mm",
+    "--rule-color": settings.exact.ruleColor,
     "--header-scale": HEADER_SCALE_MAP[settings.fontSize.headerScale],
     "--section-header-scale": SECTION_HEADER_SCALE_MAP[settings.fontSize.headerScale],
     "--header-font": FONT_MAP[settings.fontSize.headerFont],
@@ -298,7 +359,7 @@ export function settingsToCssVars(settings: ResumeTemplateSettings): CSSProperti
     "--margin-right": `${settings.margins.right}mm`,
     "--margin-bottom": `${settings.margins.bottom}mm`,
     "--margin-left": `${settings.margins.left}mm`,
-    "--resume-accent-primary": accent.primary,
+    "--resume-accent-primary": settings.exact.headingColor,
     "--resume-accent-light": accent.light,
     "--reference-scale": settings.template === "reference-compact" ? 0.92 : 1,
   } as CSSProperties;
@@ -323,5 +384,19 @@ export function styleConfigFromSettings(settings: ResumeTemplateSettings): Recor
     compactMode: String(settings.compactMode),
     showContactIcons: String(settings.showContactIcons),
     accentColorName: settings.accentColor,
+    bodySize: String(settings.exact.bodySize),
+    headingSize: String(settings.exact.headingSize),
+    nameSize: String(settings.exact.nameSize),
+    lineHeight: String(settings.exact.lineHeight),
+    sectionGap: String(settings.exact.sectionGap),
+    itemGap: String(settings.exact.itemGap),
+    paragraphGap: String(settings.exact.paragraphGap),
+    headerGap: String(settings.exact.headerGap),
+    accentColorHex: settings.exact.headingColor,
+    ruleColor: settings.exact.ruleColor,
+    photoWidth: String(settings.exact.photoWidth),
+    photoHeight: String(settings.exact.photoHeight),
+    logoWidth: String(settings.exact.logoWidth),
+    logoHeight: String(settings.exact.logoHeight),
   };
 }

@@ -25,6 +25,9 @@ const runtime = join(root, "agent-runtime");
 const node = process.env.OFFERU_NODE_PATH || process.execPath;
 const venv = join(backend, ".venv312", windows ? "Scripts/python.exe" : "bin/python");
 const python = process.env.OFFERU_PYTHON_PATH || (existsSync(venv) ? venv : windows ? "python" : "python3");
+const resumeFrontend = join(root, "frontend/dist");
+const resumeBrowsers = join(build, "resume-browsers");
+if (!existsSync(join(resumeFrontend, "index.html"))) throw new Error("Build the frontend before packaging resume export resources.");
 
 function run(command, args, capture = false) {
   const result = spawnSync(command, args, { cwd: root, stdio: capture ? "pipe" : "inherit", encoding: "utf8", windowsHide: true });
@@ -66,10 +69,21 @@ run(process.execPath, [process.env.npm_execpath, "--prefix", stage, "prune", "--
 if (!existsSync(join(stage, "node_modules/@earendil-works/pi-coding-agent"))) throw new Error("Packaged AI runtime is missing.");
 cpSync(node, join(dist, `offeru-node-${nativeTarget}${extension}`));
 
+// Ship the matching managed headless browser; installed users need no browser download.
+const browserInstall = spawnSync(python, ["-m", "playwright", "install", "--only-shell", "chromium"], {
+  cwd: root, stdio: "inherit", windowsHide: true,
+  env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: resumeBrowsers },
+});
+if (browserInstall.error) throw browserInstall.error;
+if (browserInstall.status !== 0) throw new Error("Resume export browser staging failed.");
+
 const args = [
   "-m", "PyInstaller", "--clean", "--noconfirm", "--onefile", "--name", "offeru-backend",
   "--distpath", dist, "--workpath", join(build, "work"), "--specpath", join(build, "spec"),
   "--paths", backend, "--collect-all", "app", "--collect-submodules", "aiosqlite",
+  "--collect-all", "playwright",
+  "--add-data", `${resumeFrontend}${windows ? ";" : ":"}resume-frontend`,
+  "--add-data", `${resumeBrowsers}${windows ? ";" : ":"}resume-browsers`,
   "--add-data", `${join(backend, "app/agents/skills")}${windows ? ";" : ":"}app/agents/skills`,
   "--add-data", `${join(backend, "tests/fixtures")}${windows ? ";" : ":"}tests/fixtures`,
   "--add-data", `${join(root, ".agents/skills/offeru")}${windows ? ";" : ":"}offeru-assets/skills/offeru`,

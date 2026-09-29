@@ -3,10 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ResumeWorkspace } from "@/lib/api";
 
-const { mockWorkspace, mockUpdate, mockReviewProposalItem, mockCreateVersion, mockExportPdf, mockRestoreVersion } =
+const { mockWorkspace, mockUpdate, mockUpdateDesign, mockReviewProposalItem, mockCreateVersion, mockExportPdf, mockRestoreVersion } =
   vi.hoisted(() => ({
     mockWorkspace: vi.fn(),
     mockUpdate: vi.fn(),
+    mockUpdateDesign: vi.fn(),
     mockReviewProposalItem: vi.fn(),
     mockCreateVersion: vi.fn(),
     mockExportPdf: vi.fn(),
@@ -17,6 +18,7 @@ vi.mock("@/lib/api", () => ({
   resumeApi: {
     workspace: mockWorkspace,
     update: mockUpdate,
+    updateDesign: mockUpdateDesign,
     reviewProposalItem: mockReviewProposalItem,
     createVersion: mockCreateVersion,
     exportPdf: mockExportPdf,
@@ -39,9 +41,6 @@ vi.mock("../components/SectionEditor", () => ({
 vi.mock("../components/ResumePreview", () => ({
   default: () => <div data-testid="resume-preview" />,
 }));
-vi.mock("../components/templates/templateSettings", () => ({
-  TEMPLATE_OPTIONS: [],
-}));
 
 import ResumeEditorPage from "./page";
 
@@ -49,6 +48,7 @@ function baseWorkspace(): ResumeWorkspace {
   return {
     resume: {
       id: 7,
+      workspace_revision: 0,
       user_name: "张三",
       title: "后端工程师简历",
       summary: "五年服务端经验",
@@ -170,5 +170,24 @@ describe("ResumeEditorPage", () => {
         edited_text: "",
       }),
     );
+  });
+
+  it("图片上传期间输入的文字仍会保存，并使用上传后的版本号", async () => {
+    const ws = baseWorkspace();
+    mockWorkspace.mockResolvedValue(ws);
+    mockUpdate.mockImplementation(async (_id: number, data: Record<string, unknown>) => ({ ...ws.resume, ...data, workspace_revision: 1 }));
+    let resolveUpload!: (value: unknown) => void;
+    mockUpdateDesign.mockImplementation(() => new Promise((resolve) => { resolveUpload = resolve; }));
+    const user = userEvent.setup();
+    render(<ResumeEditorPage />);
+    await user.click(await screen.findByTestId("resume-panel-design"));
+    await user.upload(screen.getByLabelText("上传照片"), new File(["fixture"], "photo.png", { type: "image/png" }));
+    await waitFor(() => expect(mockUpdateDesign).toHaveBeenCalled());
+    const name = screen.getByTestId("resume-name-input");
+    await user.clear(name);
+    await user.type(name, "上传时的新输入");
+    resolveUpload({ ...ws.resume, photo_url: "/uploads/photos/new.png", workspace_revision: 2 });
+    await waitFor(() => expect(mockUpdate).toHaveBeenLastCalledWith(7, expect.objectContaining({ user_name: "上传时的新输入", expected_revision: 2 })), { timeout: 4000 });
+    expect(name).toHaveValue("上传时的新输入");
   });
 });

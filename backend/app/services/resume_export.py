@@ -1,137 +1,158 @@
-"""Route-independent PDF export for Registry-backed resume operations."""
-
+"""Render one immutable resume snapshot with the same React template as the editor."""
 from __future__ import annotations
 
-from html import escape
-from typing import Any
+import json
+import mimetypes
+import sys
+from pathlib import Path
+from urllib.parse import unquote, urlsplit
+
+import httpx
 
 from app.models.models import Resume
+from app.runtime_paths import packaged_resource_dir, resume_frontend_dir, runtime_uploads_dir
 from app.services.security_redaction import safe_error_message
 
-
-def _text(value: Any) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, (dict, list)):
-        return ", ".join(_text(item) for item in value) if isinstance(value, list) else ""
-    return str(value).strip()
+FRONTEND_BASE_URL = "http://127.0.0.1:7410"
+API_BASE_URL = "http://127.0.0.1:8766"
 
 
-def _description(value: Any) -> str:
-    if isinstance(value, list):
-        items = [_description(item) for item in value]
-        return "".join(f"<li>{item}</li>" for item in items if item)
-    text = _text(value)
-    return escape(text) if text else ""
+def resume_render_snapshot(resume: Resume) -> dict:
+    """Do not re-read the live record while the browser is rendering an export."""
+    return {
+        "id": resume.id,
+        "user_name": resume.user_name,
+        "title": resume.title,
+        "photo_url": resume.photo_url or "",
+        "summary": resume.summary or "",
+        "contact_json": resume.contact_json or {},
+        "style_config": resume.style_config or {},
+        "sections": [
+            {key: getattr(section, key) for key in
+             ("id", "section_type", "title", "visible", "sort_order", "content_json")}
+            for section in resume.sections
+        ],
+    }
 
 
-def _section_item_html(section_type: str, item: dict[str, Any]) -> str:
-    if section_type in {"education", "educationExperiences"}:
-        title = _text(item.get("school") or item.get("schoolName"))
-        subtitle = " / ".join(filter(None, (_text(item.get("degree")), _text(item.get("major")))))
-    elif section_type in {"experience", "workExperiences", "internshipExperiences"}:
-        title = _text(item.get("position") or item.get("positionName"))
-        subtitle = _text(item.get("company") or item.get("companyName"))
-    elif section_type in {"project", "projects"}:
-        title = _text(item.get("name") or item.get("projectName"))
-        subtitle = _text(item.get("role") or item.get("projectRole"))
-    elif section_type in {"skill", "skills"}:
-        title = _text(item.get("category"))
-        subtitle = ", ".join(_text(value) for value in (item.get("items") or []) if _text(value))
-    else:
-        title = _text(item.get("subtitle") or item.get("title") or item.get("experienceTitle"))
-        subtitle = ""
-    description = item.get("description")
-    if description is None:
-        description = item.get("descriptions")
-    body = _description(description)
-    if isinstance(description, list):
-        body = f"<ul>{body}</ul>" if body else ""
-    pieces = [f"<div class=\"resume-entry\"><strong>{escape(title)}</strong>"]
-    if subtitle:
-        pieces.append(f"<span class=\"resume-subtitle\">{escape(subtitle)}</span>")
-    if body:
-        pieces.append(f"<div class=\"resume-description\">{body}</div>")
-    pieces.append("</div>")
-    return "".join(pieces)
+def local_resume_image(url: str):
+    """Only serve existing raster uploads, with the same canonical path boundary."""
+    parsed = urlsplit(url)
+    if f"{parsed.scheme}://{parsed.netloc}" != API_BASE_URL:
+        return None
+    path = unquote(parsed.path)
+    if not path.startswith("/uploads/"):
+        return None
+    root = runtime_uploads_dir().resolve()
+    target = (root / path.removeprefix("/uploads/")).resolve()
+    if not target.is_relative_to(root) or target.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp"}:
+        return None
+    return target if target.is_file() else None
 
 
-def build_resume_export_html(resume: Resume) -> str:
-    """Build a safe, deterministic HTML representation from one Resume source."""
+def local_frontend_asset(root: Path, url: str) -> Path | None:
+    parsed = urlsplit(url)
+    if f"{parsed.scheme}://{parsed.netloc}" != FRONTEND_BASE_URL:
+        return None
+    root = root.resolve()
+    target = (root / (unquote(parsed.path).lstrip("/") or "index.html")).resolve()
+    if not target.is_relative_to(root) or target.suffix.lower() not in {".html", ".js", ".mjs", ".json", ".css", ".woff", ".woff2", ".ttf", ".otf", ".png", ".jpg", ".jpeg", ".webp", ".svg", ".ico", ".wasm"}:
+        return None
+    return target if target.is_file() else None
 
-    contact = resume.contact_json if isinstance(resume.contact_json, dict) else {}
-    contact_line = " · ".join(
-        escape(_text(contact.get(key)))
-        for key in ("phone", "email", "website", "github", "linkedin")
-        if _text(contact.get(key))
-    )
-    style = {"primaryColor": "#1f2937", "bodySize": "11pt", "lineHeight": "1.45"}
-    template = getattr(resume, "template", None)
-    if template is not None and isinstance(template.css_variables, dict):
-        style.update(template.css_variables)
-    if isinstance(resume.style_config, dict):
-        style.update(resume.style_config)
-    primary = escape(_text(style.get("primaryColor")) or "#1f2937")
-    body_size = escape(_text(style.get("bodySize")) or "11pt")
-    line_height = escape(_text(style.get("lineHeight")) or "1.45")
 
-    sections: list[str] = []
-    for section in sorted(resume.sections or [], key=lambda item: item.sort_order or 0):
-        if not section.visible:
-            continue
-        items = section.content_json if isinstance(section.content_json, list) else []
-        entries = "".join(
-            _section_item_html(section.section_type or "custom", item)
-            for item in items
-            if isinstance(item, dict)
-        )
-        if entries:
-            sections.append(
-                f"<section><h2>{escape(_text(section.title))}</h2>{entries}</section>"
-            )
+async def export_frontend_assets() -> Path | None:
+    """Release always uses its own build. Development may use a running Vite server."""
+    if packaged_resource_dir() is None:
+        try:
+            async with httpx.AsyncClient(trust_env=False, timeout=2) as client:
+                response = await client.get(FRONTEND_BASE_URL, follow_redirects=False)
+                if response.status_code == 200:
+                    return None
+        except httpx.HTTPError:
+            pass
+    root = resume_frontend_dir()
+    if not (root / "index.html").is_file():
+        raise RuntimeError("缺少简历排版资源，请修复或重新安装 OfferU；源码环境请先构建前端")
+    return root
 
-    summary = escape(_text(resume.summary))
-    summary_html = f"<section><h2>个人简介</h2><p>{summary}</p></section>" if summary else ""
-    return f"""<!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><style>
-@page {{ size: A4; margin: 16mm; }}
-* {{ box-sizing: border-box; }}
-body {{ font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif; font-size: {body_size}; line-height: {line_height}; color: #111827; margin: 0; }}
-h1 {{ margin: 0; color: {primary}; font-size: 24pt; }}
-h2 {{ margin: 14pt 0 6pt; padding-bottom: 2pt; border-bottom: 1px solid {primary}; color: {primary}; font-size: 13pt; }}
-p {{ margin: 0 0 6pt; }}
-.contact {{ margin-top: 4pt; color: #4b5563; }}
-.resume-entry {{ margin: 0 0 7pt; break-inside: avoid; }}
-.resume-subtitle {{ margin-left: 8pt; color: #4b5563; }}
-.resume-description {{ margin-top: 2pt; }}
-ul {{ margin: 2pt 0 0 16pt; padding: 0; }}
-</style></head><body>
-<header><h1>{escape(_text(resume.user_name))}</h1>{f'<div class="contact">{contact_line}</div>' if contact_line else ''}</header>
-{summary_html}{''.join(sections)}
-</body></html>"""
+
+async def render_resume_snapshot_pdf(snapshot: dict) -> bytes:
+    """Use managed Chromium; never downgrade a designed resume to plain text."""
+    from playwright.async_api import async_playwright
+
+    assets = await export_frontend_assets()
+
+    resume_id = int(snapshot["id"])
+    # Serialize now: subsequent edits must not affect the export in progress.
+    payload = json.dumps(snapshot, ensure_ascii=False)
+    paper = "Letter" if snapshot.get("style_config", {}).get("pageSize") == "LETTER" else "A4"
+    async with async_playwright() as playwright:
+        # In frozen builds, use the bundled headless shell; don't set a global env var
+        # that would hijack headed browser instances (authorized_research, ui_cli).
+        packaged = packaged_resource_dir()
+        launch_kwargs: dict = {"headless": True}
+        if packaged is not None:
+            browsers_root = packaged / "resume-browsers"
+            if browsers_root.is_dir():
+                # Playwright installs to {browsers_root}/chromium_headless_shell-*/chrome-{win,linux,mac}/headless_shell[.exe]
+                shell_dirs = sorted(browsers_root.glob("chromium_headless_shell-*/chrome-*"))
+                for sd in shell_dirs:
+                    candidate = sd / ("headless_shell.exe" if sys.platform == "win32" else "headless_shell")
+                    if candidate.is_file():
+                        launch_kwargs["executable_path"] = str(candidate)
+                        break
+        browser = await playwright.chromium.launch(**launch_kwargs)
+        try:
+            context = await browser.new_context(service_workers="block")
+
+            async def route_request(route):
+                request = route.request
+                parsed = urlsplit(request.url)
+                origin = f"{parsed.scheme}://{parsed.netloc}"
+                if request.method != "GET":
+                    await route.abort()
+                elif origin == API_BASE_URL and parsed.path.rstrip("/") == f"/api/resume/{resume_id}":
+                    await route.fulfill(status=200, content_type="application/json", body=payload,
+                                        headers={"Access-Control-Allow-Origin": FRONTEND_BASE_URL})
+                elif image_path := local_resume_image(request.url):
+                    await route.fulfill(path=str(image_path), content_type=mimetypes.guess_type(str(image_path))[0])
+                elif origin == FRONTEND_BASE_URL and not parsed.path.startswith(("/api/", "/uploads/")):
+                    if assets is None:
+                        await route.continue_()
+                    elif asset := local_frontend_asset(assets, request.url):
+                        content_type = {".js": "application/javascript", ".mjs": "application/javascript", ".css": "text/css", ".json": "application/json", ".woff": "font/woff", ".woff2": "font/woff2", ".ttf": "font/ttf", ".otf": "font/otf", ".wasm": "application/wasm", ".svg": "image/svg+xml"}.get(asset.suffix.lower()) or mimetypes.guess_type(str(asset))[0] or "application/octet-stream"
+                        await route.fulfill(path=str(asset), content_type=content_type)
+                    else:
+                        await route.abort()
+                else:
+                    # Printing must not fetch arbitrary URLs from personal content.
+                    await route.abort()
+
+            await context.route("**/*", route_request)
+            page = await context.new_page()
+            await page.goto(f"{FRONTEND_BASE_URL}/#/resume/print/{resume_id}", wait_until="domcontentloaded", timeout=30000)
+            await page.wait_for_selector('[data-offeru-print-ready="true"] .resume-body', timeout=15000)
+            await page.emulate_media(media="print")
+            await page.add_style_tag(content=f"@page {{ size: {paper}; margin: 0; }}")
+            await page.evaluate("""async () => {
+                await document.fonts.ready;
+                await Promise.all(Array.from(document.querySelectorAll('.resume-body img')).map(async (image) => {
+                    await image.decode();
+                    if (!image.naturalWidth) throw new Error('Resume image failed to load');
+                }));
+            }""")
+            return await page.pdf(format=paper, print_background=True, prefer_css_page_size=True,
+                                  margin={"top": "0", "right": "0", "bottom": "0", "left": "0"})
+        finally:
+            await browser.close()
 
 
 async def render_resume_pdf(resume: Resume) -> tuple[bytes, str]:
-    """Render with the shared PDF service and fail explicitly if unavailable."""
-
-    from app.services.pdf_exporter import export_resume_to_pdf
-
-    html = build_resume_export_html(resume)
     try:
-        return await export_resume_to_pdf(html), "playwright"
-    except Exception as playwright_error:
-        try:
-            import anyio
-            from weasyprint import HTML
-
-            pdf = await anyio.to_thread.run_sync(lambda: HTML(string=html).write_pdf())
-            return pdf, "weasyprint_fallback"
-        except Exception as fallback_error:
-            raise RuntimeError(
-                "PDF 渲染失败。"
-                f"（Playwright: {safe_error_message(playwright_error)}; "
-                f"备用渲染器: {safe_error_message(fallback_error)}）"
-            ) from fallback_error
-
-
-__all__ = ["build_resume_export_html", "render_resume_pdf"]
+        return await render_resume_snapshot_pdf(resume_render_snapshot(resume)), "react-preview"
+    except Exception as exc:
+        raise RuntimeError(
+            "PDF 渲染失败，未生成降级版本。请确认 OfferU 排版资源、字体和图片可用。"
+            f"（{safe_error_message(exc)}）"
+        ) from exc

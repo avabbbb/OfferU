@@ -47,6 +47,7 @@ class TauriSecurityContractTests(unittest.TestCase):
         self.assertNotIn("unsafe-eval", csp)
         self.assertIn("object-src 'none'", csp)
         self.assertIn("frame-ancestors 'none'", csp)
+        self.assertIn("http://127.0.0.1:8766/uploads/", csp)
 
         rust_sources = "\n".join(
             path.read_text(encoding="utf-8")

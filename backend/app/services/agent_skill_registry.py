@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 
-SKILL_REGISTRY_VERSION = "2026-09-27.1"
+SKILL_REGISTRY_VERSION = "2026-09-29.1"
 CONFIRMATION_POLICY = "operation_registry"
 
 
@@ -83,7 +83,7 @@ _SKILLS = (
     _skill("scan_jobs", "岗位发现", "jobs", "partial", "检查本地岗位库并形成可审核的筛选建议。", "job_workflow", ("get_profile", "list_pools", "list_jobs", "job_stats", "batch_triage"), featured=True, order=50, missing=("岗位抓取 Operation", "浏览器岗位存活检查"), aliases=("scan", "岗位扫描")),
     _skill("batch_evaluate", "批量评估", "jobs", "native", "用隔离的本地 coding-agent workers 并行评估岗位，并持久化断点与报告。", "skill_assistant", ("get_profile", "list_profile_evidence", "list_jobs", "get_job", "list_coding_agents", "list_batch_job_evaluations", "get_batch_job_evaluation", "start_batch_job_evaluation", "resume_batch_job_evaluation", "batch_triage"), featured=False, order=60, aliases=("batch", "批量")),
     _skill("tailor_resume", "定制简历", "documents", "native", "先读取岗位调研证据，再从已验证档案事实生成逐项 diff；只有明确接受才创建正式简历。", "resume_workflow", ("get_profile", "inspect_resume_document", "list_jobs", "get_job", "list_resumes", "get_resume", "list_job_research_runs", "get_job_research", "start_job_research", "resume_job_research", "cancel_job_research", "review_job_research", "list_resume_optimizations", "get_resume_optimization", "prepare_resume_optimization", "review_resume_optimization"), featured=True, order=70, aliases=("resume", "简历", "定制简历")),
-    _skill("resume_export", "简历导出", "documents", "native", "检查当前简历并原子导出 ATS 友好的 PDF。", "skill_assistant", ("list_resumes", "get_resume", "export_resume_pdf"), featured=False, order=80, aliases=("pdf", "export")),
+    _skill("resume_export", "简历排版与导出", "documents", "native", "读取简历和当前版本，提交版式、照片与校徽修改提案，确认后按编辑器同一排版导出 PDF；不改写正文。", "skill_assistant", ("list_resumes", "get_resume", "update_resume_design", "export_resume_pdf"), featured=False, order=80, aliases=("pdf", "export", "排版", "简历排版")),
     _skill("cover_letter", "求职信", "documents", "native", "基于真实岗位和简历生成并持久化可审阅求职信。", "skill_assistant", ("get_profile", "list_jobs", "get_job", "list_resumes", "get_resume", "list_career_artifacts", "get_career_artifact", "generate_cover_letter", "save_career_artifact"), featured=False, order=90, aliases=("cover", "求职信")),
     _skill("application_email", "申请邮件", "documents", "native", "生成并持久化正式申请邮件草稿，永不发送。", "skill_assistant", ("get_profile", "list_jobs", "get_job", "list_resumes", "get_resume", "get_application_workspace", "list_career_artifacts", "get_career_artifact", "save_career_artifact"), featured=False, order=100, aliases=("email", "申请邮件")),
     _skill("application_assistant", "投递助手", "applications", "partial", "起草投递材料、预演站外动作并登记待办；外部写入永远停在 OfferU Proposal/HITL。", "skill_assistant", ("get_profile", "list_jobs", "get_job", "get_pre_application_state", "list_resumes", "get_resume", "list_applications", "get_application_workspace", "preview_application_action", "list_application_action_connectors", "list_career_artifacts", "get_career_artifact", "generate_cover_letter", "save_career_artifact", "create_application", "update_application_record"), featured=True, order=110, missing=("ApplicationActionConnector 外部执行器",), aliases=("apply", "投递")),

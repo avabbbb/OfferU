@@ -83,7 +83,7 @@ function ReferenceItem({ item, keywords }: { item: NormalizedResumeItem; keyword
 
   return (
     <article className="reference-item">
-      <div className="reference-item-row">
+      {(primaryTitle || extra || item.date) && <div className="reference-item-row">
         <div className="reference-item-main">
           <strong>
             <HighlightText text={primaryTitle || ""} keywords={keywords} />
@@ -95,7 +95,7 @@ function ReferenceItem({ item, keywords }: { item: NormalizedResumeItem; keyword
           )}
         </div>
         {item.date && <div className="reference-date">{item.date}</div>}
-      </div>
+      </div>}
       {item.url && <div className="reference-line">{item.url}</div>}
       {item.descriptionHtml && rich ? (
         <ReferenceRichText html={item.descriptionHtml} />

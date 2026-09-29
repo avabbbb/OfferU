@@ -463,8 +463,8 @@ def test_resume_export_redacts_renderer_failures() -> None:
     source = (ROOT / "backend/app/services/resume_export.py").read_text(encoding="utf-8")
 
     assert "from app.services.security_redaction import safe_error_message" in source
-    assert "safe_error_message(playwright_error)" in source
-    assert "safe_error_message(fallback_error)" in source
+    assert "safe_error_message(exc)" in source
+    assert "weasyprint_fallback" not in source
     assert "f\"PDF 渲染失败（Playwright: {playwright_error}" not in source
     assert "f\"备用渲染器: {fallback_error}" not in source
 
@@ -538,7 +538,9 @@ def test_user_visible_bridge_and_optional_dependency_errors_are_redacted() -> No
     assert "f\"error: {type(exc).__name__}: {exc}\"" not in bridge_source
     assert "detail=safe_error_message(exc)" in email_source
     assert "detail=str(exc)" not in email_source
-    assert "Playwright is not installed: {safe_error_message(exc)}" in resume_source
+    assert "detail=safe_error_message(exc)" in resume_source
+    renderer_source = (ROOT / "backend/app/services/resume_export.py").read_text(encoding="utf-8")
+    assert "safe_error_message(exc)" in renderer_source
 
 
 def test_skill_pipeline_redacts_skill_failures_before_agent_projection() -> None:

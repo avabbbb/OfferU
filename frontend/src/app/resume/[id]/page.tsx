@@ -42,7 +42,7 @@ import { resumeApi, type ResumeOptimizationProposalDetail, type ResumeWorkspace 
 import type { ResumeDetail, ResumeSectionBlock } from "@/lib/hooks";
 import SectionEditor from "../components/SectionEditor";
 import ResumePreview from "../components/ResumePreview";
-import { TEMPLATE_OPTIONS } from "../components/templates/templateSettings";
+import ResumeDesignPanel from "../components/ResumeDesignPanel";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 
 type DraftResume = ResumeDetail & { sections: ResumeSectionBlock[] };
@@ -89,6 +89,7 @@ function resumeSignature(resume: DraftResume) {
   return JSON.stringify({
     user_name: resume.user_name,
     title: resume.title,
+    photo_url: resume.photo_url,
     summary: resume.summary,
     contact_json: resume.contact_json,
     style_config: resume.style_config,
@@ -192,7 +193,19 @@ export default function ResumeEditorPage() {
   const skipAutosaveRef = useRef(false);
   const lastSavedSignatureRef = useRef("");
   const draftRef = useRef<DraftResume | null>(null);
+  const revisionRef = useRef<number | undefined>(undefined);
+  const saveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
   const undoStackRef = useRef<DraftResume[]>([]);
+
+  const saveDraftRecord = useCallback((candidate: DraftResume) => {
+    const pending = saveQueueRef.current.catch(() => undefined).then(async () => {
+      const saved = await resumeApi.update(candidate.id, { user_name: candidate.user_name, title: candidate.title, summary: candidate.summary, contact_json: candidate.contact_json, template_id: candidate.template_id, style_config: candidate.style_config, language: candidate.language, sections: candidate.sections, expected_revision: revisionRef.current }) as DraftResume;
+      revisionRef.current = saved.workspace_revision;
+      return saved;
+    });
+    saveQueueRef.current = pending;
+    return pending;
+  }, []);
 
   const recordUndo = useCallback((resume: DraftResume) => {
     undoStackRef.current = [...undoStackRef.current, JSON.parse(JSON.stringify(resume))].slice(-40);
@@ -213,6 +226,7 @@ export default function ResumeEditorPage() {
     setLoading(true); setLoadError(null);
     try {
       const next = await resumeApi.workspace(resumeId);
+      revisionRef.current = next.resume.workspace_revision;
       skipAutosaveRef.current = true; hydratedRef.current = true;
       setWorkspace(next); setDraft(next.resume as DraftResume); draftRef.current = next.resume as DraftResume;
     } catch (error) {
@@ -228,14 +242,14 @@ export default function ResumeEditorPage() {
   }, [draft]);
 
   useEffect(() => {
-    if (!draft || !hydratedRef.current) return;
+    if (!draft || !hydratedRef.current || pendingAction === "upload") return;
     if (skipAutosaveRef.current) { skipAutosaveRef.current = false; lastSavedSignatureRef.current = draftSignature; return; }
     if (!draftSignature || draftSignature === lastSavedSignatureRef.current) return;
     const candidateSignature = draftSignature;
     setSaveState("saving");
     const timer = window.setTimeout(async () => {
       try {
-        const saved = await resumeApi.update(draft.id, { user_name: draft.user_name, title: draft.title, summary: draft.summary, contact_json: draft.contact_json, template_id: draft.template_id, style_config: draft.style_config, language: draft.language, sections: draft.sections }) as DraftResume;
+        const saved = await saveDraftRecord(draft);
         if (draftRef.current && resumeSignature(draftRef.current) !== candidateSignature) return;
         lastSavedSignatureRef.current = resumeSignature(saved); skipAutosaveRef.current = true;
         draftRef.current = saved; setDraft(saved); setWorkspace((current) => current ? { ...current, resume: saved } : current); setSaveState("saved");
@@ -245,9 +259,10 @@ export default function ResumeEditorPage() {
       }
     }, 800);
     return () => window.clearTimeout(timer);
-  }, [draft, draftSignature]);
+  }, [draft, draftSignature, pendingAction, saveDraftRecord]);
 
   const setFromWorkspace = useCallback((next: ResumeWorkspace) => {
+    revisionRef.current = next.resume.workspace_revision;
     skipAutosaveRef.current = true; draftRef.current = next.resume as DraftResume; setWorkspace(next); setDraft(next.resume as DraftResume); setSaveState("saved"); setWorkspaceError(null);
   }, []);
   const updateDraft = useCallback((patch: Partial<DraftResume>) => { setDraft((current) => { if (!current) return current; recordUndo(current); return { ...current, ...patch }; }); setSaveState("idle"); }, [recordUndo]);
@@ -263,9 +278,11 @@ export default function ResumeEditorPage() {
 
   const persistDraft = useCallback(async () => {
     if (!draft) return null;
-    const saved = await resumeApi.update(draft.id, { user_name: draft.user_name, title: draft.title, summary: draft.summary, contact_json: draft.contact_json, template_id: draft.template_id, style_config: draft.style_config, language: draft.language, sections: draft.sections }) as DraftResume;
+    const candidateSignature = resumeSignature(draft);
+    const saved = await saveDraftRecord(draft);
+    if (draftRef.current && resumeSignature(draftRef.current) !== candidateSignature) return saved;
     skipAutosaveRef.current = true; lastSavedSignatureRef.current = resumeSignature(saved); draftRef.current = saved; setDraft(saved); setWorkspace((current) => current ? { ...current, resume: saved } : current); setSaveState("saved"); return saved;
-  }, [draft]);
+  }, [draft, saveDraftRecord]);
 
   const retryAutosave = useCallback(async () => {
     if (!draft) return;
@@ -273,13 +290,13 @@ export default function ResumeEditorPage() {
     const candidateSignature = resumeSignature(candidate);
     setSaveState("saving"); setWorkspaceError(null);
     try {
-      const saved = await resumeApi.update(candidate.id, { user_name: candidate.user_name, title: candidate.title, summary: candidate.summary, contact_json: candidate.contact_json, template_id: candidate.template_id, style_config: candidate.style_config, language: candidate.language, sections: candidate.sections }) as DraftResume;
+      const saved = await saveDraftRecord(candidate);
       if (draftRef.current && resumeSignature(draftRef.current) !== candidateSignature) return;
       skipAutosaveRef.current = true; lastSavedSignatureRef.current = resumeSignature(saved); draftRef.current = saved; setDraft(saved); setWorkspace((current) => current ? { ...current, resume: saved } : current); setSaveState("saved");
     } catch (error) {
       setSaveState("failed"); setWorkspaceError(safeClientErrorMessage(error, "无法保存简历修改"));
     }
-  }, [draft]);
+  }, [draft, saveDraftRecord]);
 
   const handleSaveVersion = async () => {
     if (!draft) return; setPendingAction("version");
@@ -306,6 +323,41 @@ export default function ResumeEditorPage() {
     }
     catch (error) { setWorkspaceError(safeClientErrorMessage(error, "PDF 导出失败")); }
     finally { setExporting(false); }
+  };
+
+  const handleAssetUpload = async (kind: "photo" | "logo", file: File | null) => {
+    if (!draft) return;
+    if (file && (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024)) {
+      setWorkspaceError("请选择不超过 5 MB 的 JPG、PNG 或 WebP 图片"); return;
+    }
+    setPendingAction("upload"); setWorkspaceError(null);
+    try {
+      const saved = await persistDraft();
+      if (!saved || saved.workspace_revision == null) throw new Error("缺少简历版本，请刷新后重试");
+      const content = file ? await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result).split(",")[1]);
+        reader.onerror = () => reject(new Error("图片读取失败"));
+        reader.readAsDataURL(file);
+      }) : null;
+      const result = await resumeApi.updateDesign(draft.id, { expected_revision: saved.workspace_revision,
+        ...(file ? { [kind]: { content_b64: content, content_type: file.type } } : { [`remove_${kind}`]: true }) }) as DraftResume;
+      revisionRef.current = result.workspace_revision;
+      lastSavedSignatureRef.current = resumeSignature(result);
+      skipAutosaveRef.current = false;
+      setSaveState("saved");
+      setDraft((current) => {
+        if (!current) return current;
+        const contact = { ...current.contact_json };
+        if (kind === "logo") for (const key of ["schoolLogoUrl", "universityLogoUrl", "logoUrl", "school_logo_url"]) {
+          if (result.contact_json[key]) contact[key] = result.contact_json[key]; else delete contact[key];
+        }
+        return { ...current, photo_url: result.photo_url, contact_json: contact, workspace_revision: result.workspace_revision };
+      });
+      const next = await resumeApi.workspace(draft.id);
+      setWorkspace(next);
+    } catch (error) { setWorkspaceError(safeClientErrorMessage(error, "图片上传失败")); skipAutosaveRef.current = false; }
+    finally { setPendingAction(null); }
   };
 
   const handleProposalAction = async (changeId: string, action: "accept" | "reject", editedText = "") => {
@@ -362,7 +414,7 @@ export default function ResumeEditorPage() {
 
         <aside className="min-w-0 space-y-3" aria-label="简历工作区控制"><div className="flex rounded-xl border border-[var(--border-strong)]/15 bg-[var(--surface)] p-1" role="tablist">{([ ["ai", "AI Proposal", Wand2], ["design", "Design", Sparkles], ["versions", "Versions", History] ] as const).map(([key, label, Icon]) => <button key={key} type="button" role="tab" aria-selected={rightPanel === key} onClick={() => setRightPanel(key)} className={`flex flex-1 items-center justify-center gap-1 rounded-lg px-2 py-2 text-[10px] font-bold ${rightPanel === key ? "bg-black text-white" : "text-[var(--foreground-muted)] hover:bg-black/5"}`} data-testid={`resume-panel-${key}`}><Icon size={12} />{label}</button>)}</div>
           {rightPanel === "ai" && <div className="space-y-3"><div className="rounded-xl border border-[var(--border-strong)]/15 bg-[var(--surface)] p-3"><p className="text-xs font-black">目标岗位上下文</p><p className="mt-1 text-[11px] text-[var(--foreground-muted)]">{targetLabel}</p>{activeProposal?.strategy?.missing_capabilities?.length ? <p className="mt-2 text-[10px] text-amber-800">Evidence Gap：{activeProposal.strategy.missing_capabilities.join("、")}</p> : null}</div>{activeProposal ? <><div className="flex gap-2"><button type="button" onClick={() => void handleAllProposalActions("accept")} disabled={!!pendingAction || activeProposal.fact_gate_status === "blocked"} title={activeProposal.fact_gate_status === "blocked" ? "事实门未通过，请先补充 Evidence" : undefined} className="flex-1 rounded-lg bg-black px-2 py-2 text-[10px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">全部接受</button><button type="button" onClick={() => void handleAllProposalActions("reject")} disabled={!!pendingAction} className="flex-1 rounded-lg border border-[var(--border-strong)]/20 px-2 py-2 text-[10px] font-bold disabled:opacity-50">全部拒绝</button></div><ProposalCard proposal={activeProposal} onAction={(id, action, text) => void handleProposalAction(id, action, text)} pending={pendingAction} /></> : <div className="rounded-xl border border-dashed border-[var(--border-strong)]/20 bg-[var(--surface)] p-4 text-xs text-[var(--foreground-muted)]">当前没有待审核的 AI Proposal。你可以继续手动编辑这份岗位简历。</div>}</div>}
-          {rightPanel === "design" && <div className="space-y-3 rounded-xl border border-[var(--border-strong)]/15 bg-[var(--surface)] p-3" data-testid="resume-design-panel"><div><p className="text-xs font-black">模板</p><div className="mt-2 grid gap-2">{TEMPLATE_OPTIONS.map((template) => <button key={template.id} type="button" onClick={() => setStyle("template", template.id)} className={`rounded-lg border px-3 py-2 text-left ${style.template === template.id ? "border-black bg-black text-white" : "border-[var(--border-strong)]/15 hover:bg-black/5"}`}><span className="block text-[11px] font-bold">{template.name}</span><span className={`mt-1 block text-[10px] ${style.template === template.id ? "text-white/70" : "text-[var(--foreground-muted)]"}`}>{template.description}</span></button>)}</div></div><label className="block text-[11px] font-bold">页面<select value={String(style.pageSize || "A4")} onChange={(event) => setStyle("pageSize", event.target.value)} className="mt-1 w-full rounded-lg border border-[var(--border-strong)]/15 bg-white px-2 py-2 text-xs"><option value="A4">A4</option><option value="LETTER">Letter</option></select></label><label className="block text-[11px] font-bold">强调色<input type="color" value={String(style.accentColorHex || "#1d4ed8")} onChange={(event) => setStyle("accentColorHex", event.target.value)} className="mt-1 h-9 w-full rounded-lg border border-[var(--border-strong)]/15 bg-white p-1" /></label><label className="block text-[11px] font-bold">正文大小 <span className="float-right font-normal text-[var(--foreground-muted)]">{style.bodySize || "12"}pt</span><input type="range" min="10" max="16" step="0.5" value={Number(style.bodySize || 12)} onChange={(event) => setStyle("bodySize", event.target.value)} className="mt-2 w-full" /></label><label className="block text-[11px] font-bold">行高 <span className="float-right font-normal text-[var(--foreground-muted)]">{style.lineHeight || "1.45"}</span><input type="range" min="1.15" max="1.8" step="0.05" value={Number(style.lineHeight || 1.45)} onChange={(event) => setStyle("lineHeight", event.target.value)} className="mt-2 w-full" /></label><label className="block text-[11px] font-bold">段落间距 <span className="float-right font-normal text-[var(--foreground-muted)]">{style.sectionGap || "14"}pt</span><input type="range" min="6" max="24" value={Number(style.sectionGap || 14)} onChange={(event) => setStyle("sectionGap", event.target.value)} className="mt-2 w-full" /></label></div>}
+          {rightPanel === "design" && <ResumeDesignPanel config={style} onChange={setStyle} onUpload={handleAssetUpload} uploading={pendingAction === "upload"} />}
           {rightPanel === "versions" && <div className="space-y-2 rounded-xl border border-[var(--border-strong)]/15 bg-[var(--surface)] p-3" data-testid="resume-version-panel"><div className="mb-2 flex items-center justify-between"><p className="text-xs font-black">版本历史</p><span className="text-[10px] text-[var(--foreground-muted)]">当前 V{workspace.application_packet.current_version_number || 1}</span></div>{workspace.versions.length === 0 && <p className="text-xs text-[var(--foreground-muted)]">保存第一个版本后会显示在这里。</p>}{workspace.versions.map((version) => <div key={version.id} className={`rounded-lg border p-3 ${version.is_current ? "border-emerald-300 bg-emerald-50" : "border-[var(--border-strong)]/10"}`}><div className="flex items-center justify-between"><span className="text-xs font-black">V{version.version_number}</span>{version.is_current && <Badge tone="green">Current</Badge>}</div><p className="mt-1 text-[11px]">{version.change_summary}</p><p className="mt-1 text-[10px] text-[var(--foreground-muted)]">{version.created_by} · {new Date(version.created_at).toLocaleString()}</p>{!version.is_current && <button type="button" onClick={() => void handleRestore(version.id)} disabled={restoring === version.id} className="mt-2 inline-flex items-center gap-1 text-[10px] font-bold underline disabled:opacity-50">{restoring === version.id ? <Loader2 size={11} className="animate-spin" /> : <RotateCcw size={11} />}恢复此版本</button>}</div>)}</div>}
           <div className="rounded-xl border border-[var(--border-strong)]/15 bg-[var(--surface)] p-3 text-[11px]"><p className="font-black">Application Packet</p><div className="mt-2 space-y-1.5 text-[var(--foreground-muted)]"><p className="flex items-center justify-between"><span>Tailored Resume</span><Badge tone="green">V{workspace.application_packet.current_version_number || "Draft"}</Badge></p><p className="flex items-center justify-between"><span>Role Intelligence</span><span>{workspace.application_packet.artifacts.research ? "已关联" : "待准备"}</span></p><p className="flex items-center justify-between"><span>Interview Focus</span><span>{workspace.application_packet.artifacts.interview_focus ? "已关联" : "待准备"}</span></p></div></div>
         </aside>

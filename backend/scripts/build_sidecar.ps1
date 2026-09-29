@@ -16,6 +16,11 @@ $legacyAgentRuntimeDir = Join-Path $legacyTauriResourceDir "agent-runtime"
 $legacyNodeResourcePath = Join-Path $legacyTauriResourceDir "node.exe"
 $buildDir = Join-Path $projectRoot ".tmp\offeru-sidecar-build"
 $distDir = if ($OutputDir) { $OutputDir } else { $frontendBinDir }
+$resumeFrontendDir = Join-Path $projectRoot "frontend\dist"
+$resumeBrowsersDir = Join-Path $buildDir "resume-browsers"
+if (-not (Test-Path -LiteralPath (Join-Path $resumeFrontendDir "index.html") -PathType Leaf)) {
+    throw "Build the frontend before packaging resume export resources."
+}
 
 New-Item -ItemType Directory -Force -Path $distDir | Out-Null
 New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
@@ -104,6 +109,14 @@ Write-Output "Staged Pi runtime at $agentRuntimeReleaseDir"
 Write-Output "Staged Node.js runtime at $nodeResourcePath ($nodeVersionText)"
 
 $entryPath = Join-Path $backendDir "sidecar_entry.py"
+$previousBrowserPath = $env:PLAYWRIGHT_BROWSERS_PATH
+try {
+    $env:PLAYWRIGHT_BROWSERS_PATH = $resumeBrowsersDir
+    & $pythonPath -m playwright install --only-shell chromium
+    if ($LASTEXITCODE -ne 0) { throw "Resume export browser staging failed." }
+} finally {
+    $env:PLAYWRIGHT_BROWSERS_PATH = $previousBrowserPath
+}
 & $pythonPath -m PyInstaller `
     --clean `
     --noconfirm `
@@ -114,7 +127,10 @@ $entryPath = Join-Path $backendDir "sidecar_entry.py"
     --specpath (Join-Path $buildDir "spec") `
     --paths $backendDir `
     --collect-all app `
+    --collect-all playwright `
     --collect-submodules aiosqlite `
+    --add-data "$resumeFrontendDir;resume-frontend" `
+    --add-data "$resumeBrowsersDir;resume-browsers" `
     --add-data "$(Join-Path $backendDir 'app\agents\skills');app\agents\skills" `
     --add-data "$(Join-Path $backendDir 'tests\fixtures');tests\fixtures" `
     $entryPath

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 
@@ -63,6 +64,18 @@ def runtime_env_file() -> Path:
     return runtime_data_dir() / ".env"
 
 
+def packaged_resource_dir() -> Path | None:
+    """Read-only files included by the sidecar builder, separate from user data."""
+    if getattr(sys, "frozen", False):
+        return Path(getattr(sys, "_MEIPASS", PACKAGE_BACKEND_DIR)).resolve()
+    return None
+
+
+def resume_frontend_dir() -> Path:
+    packaged = packaged_resource_dir()
+    return packaged / "resume-frontend" if packaged else PACKAGE_BACKEND_DIR.parent / "frontend" / "dist"
+
+
 def default_database_url() -> str:
     return f"sqlite+aiosqlite:///{(runtime_data_dir() / 'djm.db').as_posix()}"
 
@@ -78,4 +91,6 @@ __all__ = [
     "runtime_data_path",
     "runtime_env_file",
     "runtime_uploads_dir",
+    "packaged_resource_dir",
+    "resume_frontend_dir",
 ]
