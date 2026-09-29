@@ -702,3 +702,62 @@ async def fixture(db):
         "db.execute(write_sql)",
         "db.commit",
     ]
+
+
+def test_desktop_webview_boundary_is_explicit() -> None:
+    frontend_root = ROOT / "frontend" / "src"
+    raw_blank_links = [
+        path.relative_to(ROOT).as_posix()
+        for path in frontend_root.rglob("*.tsx")
+        if 'target="_blank"' in path.read_text(encoding="utf-8")
+    ]
+    assert raw_blank_links == []
+
+    external_link = (frontend_root / "components" / "ExternalUrlLink.tsx").read_text(
+        encoding="utf-8"
+    )
+    assert 'isTauri()' in external_link
+    assert '@tauri-apps/plugin-opener' in external_link
+    assert 'ALLOWED_EXTERNAL_PROTOCOLS' in external_link
+
+    package_json = (ROOT / "frontend" / "package.json").read_text(encoding="utf-8")
+    cargo = (ROOT / "frontend" / "src-tauri" / "Cargo.toml").read_text(encoding="utf-8")
+    tauri_lib = (ROOT / "frontend" / "src-tauri" / "src" / "lib.rs").read_text(
+        encoding="utf-8"
+    )
+    capabilities = (
+        ROOT / "frontend" / "src-tauri" / "capabilities" / "default.json"
+    ).read_text(encoding="utf-8")
+    assert '"@tauri-apps/plugin-opener"' in package_json
+    assert 'tauri-plugin-opener = "2"' in cargo
+    assert "tauri_plugin_opener::init()" in tauri_lib
+    assert '"opener:default"' in capabilities
+
+
+def test_web_showcase_never_becomes_a_local_agent_bridge() -> None:
+    connection = (ROOT / "frontend/src/lib/agentConnection.tsx").read_text(
+        encoding="utf-8"
+    )
+    panel = (ROOT / "frontend/src/components/workbench/AgentConnectionPanel.tsx").read_text(
+        encoding="utf-8"
+    )
+    showcase_llm = (ROOT / "frontend/src/lib/showcase/llm.ts").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'SHOWCASE || /^\\/resume\\/print' in connection
+    assert 'if (probeInFlight.current || SHOWCASE) return;' in connection
+    assert "网页演示使用内置 Agent，不连接本机 Coding Agent" in panel
+    assert "演示站不会尝试访问 localhost" in panel
+    assert "Agent 对话不依赖 Python 后端" in showcase_llm
+
+
+def test_public_skill_does_not_boot_the_development_stack() -> None:
+    skill = (ROOT / ".agents/skills/offeru/SKILL.md").read_text(encoding="utf-8")
+
+    assert "<offeru-cli> doctor --pretty" in skill
+    assert "OfferU Desktop installs the executable binding" in skill
+    assert "连接 Agent / 更新接入" in skill
+    assert "python -m app.cli" not in skill
+    assert "127.0.0.1:8766/api/agent/runtime/skill" not in skill
+    assert "Work from `backend/`" not in skill
