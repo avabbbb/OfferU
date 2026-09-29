@@ -126,13 +126,13 @@ Compose other installed resume/recruiting/interview/career Skills when useful, b
 
 ## Integration verification
 
-When the user explicitly pastes the OfferU connection prompt, select `connection_bootstrap`, inspect `get_current_view`, and execute that single read-only Operation. Report only the current page and explicit selection. This proves the connection without authorizing broader career-data reads.
+OfferU Desktop owns first-time verification. When the installed app requests a bootstrap check, select `connection_bootstrap`, inspect `get_current_view`, and execute that single read-only Operation. Report only the current page and explicit selection. **Do not ask the user to copy/paste a connection prompt.**
 
-When OfferU asks for integration verification, select `connection_probe`, inspect `get_agent_connection_nonce`, execute it with the supplied `provider_id` and `challenge_id`, and return the nonce unchanged. Never read challenge storage directly or guess a nonce.
+When OfferU Desktop requests the nonce verification step, select `connection_probe`, inspect `get_agent_connection_nonce`, execute it with the supplied `provider_id` and `challenge_id`, and return the nonce unchanged. Never read challenge storage directly or guess a nonce.
 
 ## Developer-only source fallback
 
-Work from `backend/` **only when the user explicitly asked to develop/debug/contribute to OfferU and this session is operating in an OfferU source checkout**. In that developer-only projection, OfferU may bind `<offeru-cli>` to the source CLI. A normal job-search request is never sufficient reason to start the development frontend/backend.
+Source/developer mode is permitted **only when the user explicitly asked to develop, debug or contribute to OfferU itself**. In that developer-only projection, OfferU may bind `<offeru-cli>` to a source CLI. Do not infer a repository path or working directory from this public Skill. A normal job-search request is never sufficient reason to start the development frontend/backend.
 
 ## Control rules
 
