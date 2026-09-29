@@ -767,6 +767,8 @@ jobs:
   macos-package:
     needs: [backend-tests, frontend-quality, extension-quality]
     uses: ./.github/workflows/macos-package.yml
+    with:
+      architecture: both
     secrets: inherit
 
   desktop-installed-smoke:
