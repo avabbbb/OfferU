@@ -69,6 +69,24 @@ _ALLOWED_TEXT_MATCHES: dict[tuple[str, str], frozenset[tuple[str, bytes]]] = {
 }
 _CHUNK_SIZE = 1024 * 1024
 _MAX_PATTERN_LENGTH = 256
+_BINARY_CONTAINER_EXTENSIONS = {".exe", ".msi", ".dmg"}
+_CONTEXTUAL_BINARY_SECRET_KINDS = {
+    "bearer_token",
+    "openai_like_key",
+    "github_token",
+    "google_api_key",
+}
+
+
+def _match_has_text_context(window: bytes, start: int, end: int) -> bool:
+    """Ignore accidental token-shaped runs inside compressed installer bytes."""
+    left = max(0, start - 24)
+    right = min(len(window), end + 24)
+    context = window[left:right]
+    if not context:
+        return False
+    printable = sum(byte in (9, 10, 13) or 32 <= byte <= 126 for byte in context)
+    return printable / len(context) >= 0.85
 
 
 def _scan_bytes(
@@ -87,11 +105,17 @@ def _scan_bytes(
                 break
             window = overlap + chunk
             for name, pattern in patterns:
-                if any(
-                    (name, match.group(0)) not in allowed_matches
-                    for match in pattern.finditer(window)
-                ):
+                for match in pattern.finditer(window):
+                    if (name, match.group(0)) in allowed_matches:
+                        continue
+                    if (
+                        path.suffix.casefold() in _BINARY_CONTAINER_EXTENSIONS
+                        and name in _CONTEXTUAL_BINARY_SECRET_KINDS
+                        and not _match_has_text_context(window, match.start(), match.end())
+                    ):
+                        continue
                     findings.add(name)
+                    break
             overlap = window[-_MAX_PATTERN_LENGTH:]
     return findings
 
