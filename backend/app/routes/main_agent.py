@@ -865,6 +865,32 @@ async def stream_runtime_run(body: PiAgentRunRequest):
                     pass
                 except Exception:
                     pass
+            # Mark run as interrupted if still non-terminal
+            if active_run_id:
+                try:
+                    from app.services.agent_run_state import (
+                        load_agent_run,
+                        save_agent_run,
+                    )
+                    run = await load_agent_run(active_run_id)
+                    if run is not None:
+                        status = str(run.get("status") or "")
+                        if status not in {
+                            "completed",
+                            "failed",
+                            "cancelled",
+                            "interrupted",
+                            "needs_reconciliation",
+                            "waiting_confirmation",
+                        }:
+                            run["status"] = "interrupted"
+                            run["recovery_cursor"] = {
+                                **(run.get("recovery_cursor") or {}),
+                                "reason": "client_disconnected",
+                            }
+                            await save_agent_run(run)
+                except Exception:
+                    pass  # Best-effort cleanup
             _background_runtime_tasks.discard(task)
 
     return EventSourceResponse(events())

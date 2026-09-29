@@ -152,6 +152,10 @@ function formatLinkDisplayLabel(label: string, fieldKey?: string): string {
   return trimmed.includes("链接") ? trimmed : `${trimmed}链接`;
 }
 
+function isSafeUrl(url: string): boolean {
+  return /^https?:\/\//i.test(url);
+}
+
 function formatValue(value: unknown, type: string, fieldKey?: string): string {
   if (type === "boolean") {
     return value ? "是" : "否";
@@ -396,18 +400,29 @@ const [emailSyncing, setEmailSyncing] = useState(false);
     return () => window.clearTimeout(timer);
   }, [keyword]);
 
+  // Sync drafts only when the table ID actually changes — not on every workspace refresh.
+  // This prevents saveCell → mutateWorkspace() from clobbering unsaved template/settings edits.
+  const syncedTableIdRef = useRef<number | null | undefined>(undefined);
   useEffect(() => {
     if (!workspace) return;
-    const hasCurrent = workspace.tables.some((table) => table.id === currentTableId);
-    if (currentTableId == null || !hasCurrent) {
-      setCurrentTableId(workspace.current_table_id);
-    }
+    if (syncedTableIdRef.current === currentTableId) return;
+    syncedTableIdRef.current = currentTableId;
     setSettingsDraft({
       auto_row_height: workspace.settings.auto_row_height,
       auto_column_width: workspace.settings.auto_column_width,
       delete_subtable_sync_total_default: workspace.settings.delete_subtable_sync_total_default,
     });
     setTemplateDraft(cloneSchema(workspace.template_schema));
+  }, [workspace, currentTableId]);
+
+  // Workspace data sync: resolve currentTableId / importTargetTableId when needed,
+  // but never overwrite user's unsaved drafts.
+  useEffect(() => {
+    if (!workspace) return;
+    const hasCurrent = workspace.tables.some((table) => table.id === currentTableId);
+    if (currentTableId == null || !hasCurrent) {
+      setCurrentTableId(workspace.current_table_id);
+    }
     if (importTargetTableId == null) {
       setImportTargetTableId(workspace.current_table_id);
     }
@@ -512,11 +527,14 @@ const [emailSyncing, setEmailSyncing] = useState(false);
     setSettingsModalOpen(false);
   };
 
+  const schemaPatchInFlight = useRef(false);
   const handleSchemaPatch = async (mutator: (schema: ApplicationFieldSchema[]) => void) => {
     if (!currentTableId || !currentTable) return;
-    const draft = cloneSchema(currentTable.schema);
-    mutator(draft);
+    if (schemaPatchInFlight.current) return;
+    schemaPatchInFlight.current = true;
     try {
+      const draft = cloneSchema(currentTable.schema);
+      mutator(draft);
       await updateApplicationTableSchema(currentTableId, draft);
       await refreshAll();
     } catch (error) {
@@ -524,6 +542,8 @@ const [emailSyncing, setEmailSyncing] = useState(false);
         tone: "error",
         message: safeClientErrorMessage(error, "更新表格结构失败，请稍后重试。"),
       });
+    } finally {
+      schemaPatchInFlight.current = false;
     }
   };
 
@@ -1396,15 +1416,21 @@ const [emailSyncing, setEmailSyncing] = useState(false);
                         ) : (
                           <div className="flex items-center gap-2">
                             {field.type === "link" ? (
-                              rawLinkValue ? (
-                                <ExternalUrlLink
-                                  href={rawLinkValue}
-                                  className="inline-flex items-center gap-1 text-[var(--foreground)] hover:underline"
-                                  title={rawLinkValue}
-                                >
-                                  <span className={cellClass}>{formatLinkDisplayLabel(field.label, field.field_key)}</span>
-                                  <ExternalLink size={12} />
-                                </ExternalUrlLink>
+                               rawLinkValue ? (
+                                isSafeUrl(rawLinkValue) ? (
+                                  <ExternalUrlLink
+                                    href={rawLinkValue}
+                                    className="inline-flex items-center gap-1 text-[var(--foreground)] hover:underline"
+                                    title={rawLinkValue}
+                                  >
+                                    <span className={cellClass}>{formatLinkDisplayLabel(field.label, field.field_key)}</span>
+                                    <ExternalLink size={12} />
+                                  </ExternalUrlLink>
+                                ) : (
+                                  <span className={cellClass} title={rawLinkValue}>
+                                    {rawLinkValue}
+                                  </span>
+                                )
                               ) : (
                                 <span className={cellClass}>-</span>
                               )

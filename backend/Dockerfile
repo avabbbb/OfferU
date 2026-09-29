@@ -33,12 +33,22 @@ RUN pip install --no-cache-dir \
 	-i https://pypi.tuna.tsinghua.edu.cn/simple/ \
 	-r requirements.txt
 
-COPY . .
+# Install Playwright Chromium browser (needs root for apt-get system deps)
+RUN python -m playwright install --with-deps chromium
+
+# Create non-root user
+RUN useradd -m -u 1000 offeru
+
+# Pre-create and chown runtime directories so the non-root user can write to them
+RUN mkdir -p /app/uploads /app/data && chown -R offeru:offeru /app
+
+# Copy app code owned by the non-root user (avoids root-owned files that
+# the app cannot write to when it creates uploads/, data/, config.json, etc.)
+COPY --chown=offeru:offeru . .
 
 EXPOSE 8766
 
 # Never run as root; curl (installed above) backs the container healthcheck.
-RUN useradd -m -u 1000 offeru
 USER offeru
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD curl -f http://localhost:8766/api/health || exit 1
 

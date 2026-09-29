@@ -700,3 +700,5 @@ async def get_embedding(text: str, model: str = "text-embedding-v3") -> Optional
             redact_sensitive_text(e, max_length=500),
         )
         return None
+    finally:
+        await client.close()

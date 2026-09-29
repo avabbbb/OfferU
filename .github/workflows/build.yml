@@ -705,7 +705,7 @@ jobs:
             }
             $files = @(
               Get-ChildItem frontend/src-tauri/target/release/bundle -Recurse -File -Include *.exe,*.msi
-              Get-ChildItem frontend/src-tauri/binaries -File -Include *.exe
+              Get-ChildItem frontend/src-tauri/binaries/*.exe -File
             ) | Sort-Object FullName -Unique
             if ($files.Count -eq 0) { throw 'No Windows binaries were found to sign' }
             foreach ($file in $files) {
@@ -723,8 +723,9 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $files = @(
             Get-ChildItem frontend/src-tauri/target/release/bundle -Recurse -File -Include *.exe,*.msi
-            Get-ChildItem frontend/src-tauri/binaries -File -Include *.exe
+            Get-ChildItem frontend/src-tauri/binaries/*.exe -File
           ) | Sort-Object FullName -Unique
+          if ($files.Count -eq 0) { throw 'No signed Windows binaries were found to verify' }
           foreach ($file in $files) {
             $signature = Get-AuthenticodeSignature -LiteralPath $file.FullName
             if ($signature.Status -ne 'Valid') { throw "Unsigned or invalid signature: $($file.FullName) [$($signature.Status)]" }

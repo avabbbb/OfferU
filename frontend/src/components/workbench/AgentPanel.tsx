@@ -229,6 +229,8 @@ export function AgentPanel() {
   const [hostedRefreshKey, setHostedRefreshKey] = useState(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const currentConvRef = useRef<string | null>(null);
 
   const hasPendingActions = pendingActions.length > 0;
 
@@ -309,6 +311,11 @@ export function AgentPanel() {
     const content = (text ?? input).trim();
     if (!content || loading || hasPendingActions || interruptedRunId) return;
     const selectedSkillId = skillId || activeSkillId;
+    const currentConversationId = conversationId;
+    currentConvRef.current = currentConversationId;
+    const controller = new AbortController();
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = controller;
     const userMessage: PanelMessage = {
       id: `user-${Date.now()}`,
       role: "user",
@@ -328,9 +335,10 @@ export function AgentPanel() {
         {
           message: content,
           skill_id: selectedSkillId,
-          conversation_id: conversationId,
+          conversation_id: currentConversationId,
         },
         (event, data) => {
+          if (currentConvRef.current !== currentConversationId) return;
           const eventRunId = String(data?.run_id || "");
           if (eventRunId) setActiveRunId(eventRunId);
           if (event === "run.started" || event === "run.created") {
@@ -353,8 +361,10 @@ export function AgentPanel() {
             const delta = String(data?.payload?.delta || "");
             if (delta) setStreamingText((current) => current + delta);
           }
-        }
+        },
+        controller.signal,
       );
+      if (currentConvRef.current !== currentConversationId) return;
       if (!runtimeResponse.ok) {
         throw new Error(runtimeResponse.errors?.join("；") || "Harness Agent Run 执行失败");
       }
@@ -374,14 +384,23 @@ export function AgentPanel() {
       setPendingActions(response.proposed_actions || []);
       refreshConversations();
     } catch (err: any) {
+      if (currentConvRef.current !== currentConversationId) return;
+      if (err instanceof Error && (err.name === "AbortError" || controller.signal.aborted)) return;
       setError(safeClientErrorMessage(err, "OfferU 请求失败"));
     } finally {
-      setStreamingText("");
-      setLoading(false);
+      if (currentConvRef.current === currentConversationId) {
+        setStreamingText("");
+        setLoading(false);
+      }
     }
   };
 
   const startNewConversation = async () => {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    currentConvRef.current = null;
+    setLoading(false);
+    setStreamingText("");
     if (activeRunId && (hasPendingActions || interruptedRunId)) {
       try {
         await agentRuntimeApi.abort(activeRunId);
@@ -407,7 +426,12 @@ export function AgentPanel() {
   };
 
   const loadConversation = async (id: string) => {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    currentConvRef.current = id;
     setError("");
+    setLoading(false);
+    setStreamingText("");
     try {
       if (activeRunId && (hasPendingActions || interruptedRunId)) {
         await agentRuntimeApi.abort(activeRunId);

@@ -632,10 +632,14 @@ async def prepare_resume_optimization(
         selected = candidate["selected"]
         proposed_rows = candidate["proposed_rows"]
         fact_gates = validate_resume_fact_gates(
-            proposed_rows,
+            deepcopy(proposed_rows),
             selected,
             strict_structured_facts=True,
         )
+        for row in proposed_rows:
+            for item in row.get("content_json") or []:
+                if isinstance(item, dict):
+                    item.pop("_gate_warnings", None)
         diff = _build_diff(candidate["original_rows"], proposed_rows)
 
         contact_json = (

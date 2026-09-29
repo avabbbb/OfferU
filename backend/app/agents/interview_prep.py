@@ -11,9 +11,8 @@ import json
 import logging
 from typing import Optional
 
-from app.agents.llm import chat_completion, extract_json
+from app.agents.llm import chat_completion, extract_json, resolve_llm_client_config, _is_local_llm
 from app.agents.desensitize import desensitize, restore
-from app.config import get_settings
 
 _logger = logging.getLogger(__name__)
 
@@ -80,8 +79,8 @@ async def extract_questions(
 
     # 云端 Provider 自动脱敏 PII（面经可能包含个人联系方式等敏感信息）
     pii_mapping: dict = {}
-    settings = get_settings()
-    if settings.llm_provider != "ollama":
+    resolved = resolve_llm_client_config()
+    if not _is_local_llm(resolved.get("base_url", "")):
         raw_text_safe, pii_mapping = desensitize(raw_text_safe)
 
     prompt = EXTRACT_PROMPT.format(

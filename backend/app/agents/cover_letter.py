@@ -9,9 +9,8 @@
 import json
 import logging
 
-from app.agents.llm import chat_completion
+from app.agents.llm import chat_completion, resolve_llm_client_config, _is_local_llm
 from app.agents.desensitize import desensitize, restore
-from app.config import get_settings
 
 _logger = logging.getLogger(__name__)
 
@@ -48,10 +47,10 @@ async def generate_cover_letter(jd: str, resume: str) -> dict:
     jd_safe = jd[:3000]
     resume_safe = resume[:3000]
 
-    # 云端 Provider 自动脱敏 PII（Ollama 本地不需要）
+    # 云端 Provider 自动脱敏 PII（本地 LLM 不需要）
     pii_mapping: dict = {}
-    settings = get_settings()
-    if settings.llm_provider != "ollama":
+    resolved = resolve_llm_client_config()
+    if not _is_local_llm(resolved.get("base_url", "")):
         resume_safe, pii_mapping = desensitize(resume_safe)
 
     prompt = COVER_LETTER_PROMPT.format(jd=jd_safe, resume=resume_safe)

@@ -18,12 +18,13 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
-      - "15432:5432"
+      - "127.0.0.1:15432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-offeru}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-offeru} -d ${DB_NAME:-offeru}"]
       interval: 5s
       timeout: 3s
       retries: 5
+      start_period: 30s
 
   # ---- FastAPI 后端 ----
   backend:
@@ -43,9 +44,9 @@ services:
       - LLM_MODEL=${LLM_MODEL:-qwen-flash}
       - SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY in .env before starting Docker Compose}
       - CORS_ORIGINS=http://localhost:7410,http://127.0.0.1:7410
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8766 --reload --reload-dir /app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8766 --reload --reload-dir /app/app
     ports:
-      - "8766:8766"
+      - "127.0.0.1:8766:8766"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8766/api/health"]
       interval: 10s
@@ -70,7 +71,7 @@ services:
       - CHOKIDAR_USEPOLLING=true
     command: npm run dev -- --host 0.0.0.0
     ports:
-      - "7410:7410"
+      - "127.0.0.1:7410:7410"
     depends_on:
       backend:
         condition: service_healthy

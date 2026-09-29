@@ -49,13 +49,18 @@ function BackendReadyGate({ children }: { children: React.ReactNode }) {
           signal: controller.signal,
         });
         const payload = response.ok ? await response.json() : null;
+        const isDev = import.meta.env.DEV;
+        const versionOk = payload?.version === APP_VERSION;
         if (
           !cancelled
           && payload?.status === "ok"
           && payload?.service === "OfferU"
           && payload?.runtime === "python"
-          && payload?.version === APP_VERSION
+          && (versionOk || isDev)
         ) {
+          if (!versionOk && isDev) {
+            console.warn(`Version mismatch: frontend=${APP_VERSION}, backend=${payload?.version}`);
+          }
           setStartupRecovery(payload.startup_recovery || null);
           setStartupError(false);
           setReady(true);

@@ -64,7 +64,10 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
       ...options,
       redirect: "error",
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && (error.name === "AbortError" || options?.signal?.aborted)) {
+      throw error;
+    }
     throw new Error("无法连接本地后端，请确认 8766 服务已启动。");
   }
   if (!res.ok) {
@@ -74,7 +77,8 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
     const message = safeClientErrorMessage(detail, `API Error: ${res.status}`);
     throw new Error(errorId ? `${message}（错误 ID: ${errorId}）` : message);
   }
-  return res.json();
+  const text = await res.text();
+  return text ? JSON.parse(text) : ({} as T);
 }
 
 async function readEventStream<T>(
@@ -135,20 +139,25 @@ async function readEventStream<T>(
     }
   };
 
-  while (true) {
-    const { done, value } = await reader.read();
-    buffer += decoder.decode(value, { stream: !done }).replace(/\r\n/g, "\n");
-    let boundary = buffer.indexOf("\n\n");
-    while (boundary >= 0) {
-      consume(buffer.slice(0, boundary));
-      buffer = buffer.slice(boundary + 2);
-      boundary = buffer.indexOf("\n\n");
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done }).replace(/\r\n/g, "\n");
+      let boundary = buffer.indexOf("\n\n");
+      while (boundary >= 0) {
+        consume(buffer.slice(0, boundary));
+        buffer = buffer.slice(boundary + 2);
+        boundary = buffer.indexOf("\n\n");
+      }
+      if (done) break;
     }
-    if (done) break;
+    if (buffer.trim()) consume(buffer);
+    if (!result) throw new Error("Agent 流结束但没有返回结果");
+    return result;
+  } finally {
+    reader.cancel().catch(() => {});
+    reader.releaseLock();
   }
-  if (buffer.trim()) consume(buffer);
-  if (!result) throw new Error("Agent 流结束但没有返回结果");
-  return result;
 }
 
 async function streamResult<T>(
@@ -173,8 +182,11 @@ function createAgentRunId() {
   return `run_${crypto.randomUUID().replace(/-/g, "")}`;
 }
 
-function waitForReconnect(delayMs: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, delayMs));
+function waitForReconnect(delayMs: number, signal?: AbortSignal) {
+  return new Promise<void>((resolve) => {
+    const timer: ReturnType<typeof setTimeout> = setTimeout(resolve, delayMs);
+    signal?.addEventListener("abort", () => { clearTimeout(timer); resolve(); }, { once: true });
+  });
 }
 
 export type JobsListQuery = Ops["list_jobs_api_jobs__get"]["parameters"]["query"];
@@ -211,6 +223,8 @@ export const poolsApi = {
     request(`/api/pools/${id}?${buildQuery({ scope })}`, { method: "DELETE" }),
 };
 export const resumeApi = {
+  updateDesign: (id: number, data: { expected_revision: number; style_config?: Record<string, string | number>; photo?: { content_b64: string; content_type: string }; logo?: { content_b64: string; content_type: string }; remove_photo?: boolean; remove_logo?: boolean }) =>
+    request(`/api/resume/${id}/design`, { method: "PATCH", body: JSON.stringify({ ...data, resume_id: id }) }),
   create: (data: any) =>
     request("/api/resume/", { method: "POST", body: JSON.stringify(data) }),
 
@@ -241,6 +255,16 @@ export const resumeApi = {
       method: "POST",
       body: formData,
       redirect: "error",
+    });
+    if (!res.ok) throw new Error(`API Error: ${res.status}`);
+    return res.json();
+  },
+
+  uploadLogo: async (resumeId: number, file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch(`${API_BASE}/api/resume/${resumeId}/logo`, {
+      method: "POST", body: formData, redirect: "error",
     });
     if (!res.ok) throw new Error(`API Error: ${res.status}`);
     return res.json();
@@ -1087,7 +1111,7 @@ export const agentRuntimeApi = {
             after_sequence: lastSequence,
             attempt: failures,
           });
-          await waitForReconnect(delayMs);
+          await waitForReconnect(delayMs, signal);
         }
       }
     };
@@ -1104,7 +1128,7 @@ export const agentRuntimeApi = {
       if (error instanceof Error && (error.name === "AbortError" || signal?.aborted)) {
         throw error;
       }
-      if (error instanceof Error && error.message === "__SSE_UNAVAILABLE__") {
+      if (error instanceof Error && error.message.startsWith("__SSE_UNAVAILABLE__")) {
         return request<AgentRunResponse>("/api/agent/runtime/runs", {
           method: "POST",
           body: JSON.stringify(requestData),
@@ -1119,10 +1143,10 @@ export const agentRuntimeApi = {
         });
         return await followExistingRun();
       } catch (followError) {
-        if (
-          followError instanceof Error
-          && followError.message === "API Error: 404"
-        ) {
+          if (
+            followError instanceof Error
+            && followError.message.startsWith("API Error: 404")
+          ) {
           throw error;
         }
         throw followError;

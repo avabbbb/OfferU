@@ -515,6 +515,14 @@ async def ensure_resume_workspace(
                 # this job first.  Roll back this transaction's pending insert
                 # and re-query the existing resume so we return a single record.
                 await db.rollback()
+                if clean_proposal_id:
+                    proposal = (
+                        await db.execute(
+                            select(ResumeOptimizationProposal).where(
+                                ResumeOptimizationProposal.proposal_id == clean_proposal_id
+                            )
+                        )
+                    ).scalar_one_or_none()
                 resume = (
                     await db.execute(
                         select(Resume)
@@ -578,8 +586,16 @@ def _first_text_difference(before: Any, after: Any) -> str:
                 return changed
         return ""
     if isinstance(before, list) and isinstance(after, list):
-        for before_item, after_item in zip(before, after):
-            changed = _first_text_difference(before_item, after_item)
+        max_len = max(len(before), len(after))
+        for i in range(max_len):
+            b = before[i] if i < len(before) else None
+            a = after[i] if i < len(after) else None
+            if b is None or a is None:
+                text = _first_text_difference(a, b)
+                if text:
+                    return text
+                continue
+            changed = _first_text_difference(b, a)
             if changed:
                 return changed
         return ""

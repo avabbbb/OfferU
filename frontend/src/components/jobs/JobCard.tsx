@@ -74,9 +74,21 @@ export function JobCard({
   };
   const rawApplyUrl = job.apply_url || job.url;
   // 数据源可能返回占位域名（example.invalid 等），这类链接打开即死链。
-  const applyUrl = rawApplyUrl && !/https?:\/\/[^/]*example\.(invalid|test|example|localhost)/i.test(rawApplyUrl)
-    ? rawApplyUrl
-    : "";
+  const isExampleUrl = (url: string) =>
+    /https?:\/\/[^/]*example\.(invalid|test|example|localhost)/i.test(url);
+  const isSafeUrl = (url: string) => {
+    if (!url) return false;
+    try {
+      const parsed = new URL(url);
+      return parsed.protocol === "http:" || parsed.protocol === "https:";
+    } catch {
+      return false;
+    }
+  };
+  const applyUrl =
+    rawApplyUrl && !isExampleUrl(rawApplyUrl) && isSafeUrl(rawApplyUrl)
+      ? rawApplyUrl
+      : "";
 
   const openDetail = () => {
     router.push(`/jobs/${job.id}`);

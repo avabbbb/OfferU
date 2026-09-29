@@ -1,7 +1,7 @@
 __pycache__/
 *.pyc
 *.pyo
-.venv/
+.venv*/
 .env
 .env.local
 *.db
@@ -9,6 +9,9 @@ __pycache__/
 data/
 uploads/
 .pytest_cache/
+.ruff_cache/
+.tmp/
+.e2e-artifacts/
 scripts/
 .vscode/
 .idea/
@@ -17,3 +20,5 @@ scripts/
 *.log
 .DS_Store
 Thumbs.db
+config.json
+doctor_*.txt

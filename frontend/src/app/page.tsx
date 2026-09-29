@@ -53,7 +53,7 @@ import { DeliveryList } from "@/components/career/DeliveryList";
 import { readDeliveries, matchDeliveryForAction } from "@/components/career/deliveries";
 import { ResumeReengagementCard } from "@/components/career/ResumeReengagementCard";
 
-import { resolveApiBase } from "@/lib/apiBase";
+import { request } from "@/lib/api";
 
 type SignalNotification = Notification & { acknowledged_at?: string | null };
 
@@ -386,13 +386,7 @@ export default function TodayPage() {
   const acknowledgeSignal = async (id: number) => {
     setSignalAckBusy(id);
     try {
-      const response = await fetch(
-        `${resolveApiBase()}/api/email/notifications/${id}/ack`,
-        { method: "POST" },
-      );
-      if (!response.ok) {
-        throw new Error(`API ${response.status}`);
-      }
+      await request(`/api/email/notifications/${id}/ack`, { method: "POST" });
       await mutateNotifications(
         (current) =>
           (current ?? []).map((n) =>

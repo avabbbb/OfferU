@@ -2,6 +2,8 @@ node_modules/
 .next/
 .next-dev/
 out/
+dist/
+src-tauri/
 tsconfig.tsbuildinfo
 *.log
 npm-debug.log*
@@ -13,3 +15,6 @@ Thumbs.db
 *.swo
 coverage/
 scripts/
+.playwright-cli/
+.codex-preview/
+.wrangler/
