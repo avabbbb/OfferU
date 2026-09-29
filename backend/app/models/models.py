@@ -730,8 +730,10 @@ class ResumeOptimizationProposal(Base):
     profile_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("profiles.id", ondelete="CASCADE"), index=True
     )
-    research_run_id: Mapped[str] = mapped_column(
-        String(64), ForeignKey("job_research_runs.run_id", ondelete="RESTRICT"), index=True
+    # Nullable: career_director proposals are prepared from verified Profile +
+    # JD only and never reference a research run.
+    research_run_id: Mapped[Optional[str]] = mapped_column(
+        String(64), ForeignKey("job_research_runs.run_id", ondelete="RESTRICT"), nullable=True, index=True
     )
     reference_resume_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("resumes.id", ondelete="SET NULL"), nullable=True, index=True

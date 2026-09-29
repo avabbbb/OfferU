@@ -23,6 +23,7 @@ from release_endpoints import (
 )
 from temp_paths import test_temp_root
 from test_public_release_smoke import (
+    _assert_saved_job_degrades_without_agent,
     _complete_new_user_onboarding,
     _use_replay_provider,
 )
@@ -142,11 +143,18 @@ def main() -> None:
         trace_stopped = False
         try:
             job_id, _job = _create_profile_and_job(page, suffix)
+            task = _assert_saved_job_degrades_without_agent(page, job_id)
             page.wait_for_function(
                 "jobId => window.location.hash.slice(1).split('?')[0] === `/jobs/${jobId}`",
                 arg=job_id,
                 timeout=20000,
             )
+            role_panel = page.get_by_test_id("role-intelligence-panel")
+            expect(role_panel).to_be_visible(timeout=20000)
+            expect(role_panel).to_contain_text("还没有岗位基准")
+            role_panel.get_by_role("button", name="加载 fixture benchmark", exact=True).click()
+            expect(page.get_by_text("加载开发 fixture", exact=True)).to_be_visible(timeout=10000)
+            page.get_by_role("button", name="确认加载", exact=True).click()
             benchmark = _wait_for_role_benchmark(page, job_id)
             tasks = _json_response(
                 page,
@@ -158,16 +166,13 @@ def main() -> None:
                 for item in tasks.get("tasks", [])
                 if item.get("task_type") == "role_intelligence"
             ]
-            if len(role_tasks) != 1:
+            if role_tasks:
                 raise AssertionError(
-                    f"interview smoke expected one role intelligence task, got {len(role_tasks)}"
+                    f"Role Intelligence must not be auto-started by JOB_SAVED: {role_tasks}"
                 )
-            task = role_tasks[0]
-            if task.get("status") != "completed" or task.get("runtime_provider") != "replay":
-                raise AssertionError(f"interview smoke must use a completed replay task: {task}")
             if benchmark.get("data_mode") not in {"fixture", "fixture_plugin"}:
                 raise AssertionError(
-                    "replay Interview smoke expected an explicitly fixture-backed benchmark: "
+                    "Interview smoke expected an explicitly user-loaded fixture benchmark: "
                     f"{benchmark.get('data_mode')}"
                 )
             run_id = str(benchmark["run_id"])
@@ -352,6 +357,7 @@ def main() -> None:
                 "benchmark_run_id": run_id,
                 "benchmark_data_mode": benchmark.get("data_mode"),
                 "runtime_provider": task["runtime_provider"],
+                "career_director_task_status": task["status"],
                 "job_targeted_training_blocked": True,
                 "targeted_interview_created": False,
                 "generic_interview_id": interview["id"],

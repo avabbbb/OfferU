@@ -45,6 +45,7 @@ from app.services.application_workspace import (
     update_settings,
     update_table_schema,
 )
+from app.services.security_redaction import safe_error_message
 
 
 _LEGACY_APPLICATION_CREATE_LOCKS: dict[int, asyncio.Lock] = {}
@@ -346,7 +347,19 @@ async def create_calendar_event(
         db.add(event)
         await db.commit()
         await db.refresh(event)
-        return {"id": event.id, "message": "Event created"}
+        event_id = event.id
+    automation: dict[str, Any] | None = None
+    if str(event_type or "").casefold() == "interview":
+        try:
+            from app.services.automation import record_calendar_interview_invitation
+
+            automation = await record_calendar_interview_invitation(
+                calendar_event_id=event_id,
+                source="calendar_create",
+            )
+        except Exception as exc:
+            automation = {"status": "failed", "error": safe_error_message(exc)}
+    return {"id": event_id, "message": "Event created", "automation": automation}
 
 
 async def auto_fill_calendar_events() -> dict[str, Any]:
@@ -364,6 +377,7 @@ async def auto_fill_calendar_events() -> dict[str, Any]:
         "interview_2": "复面/交叉面",
         "interview_hr": "HR面/终面",
     }
+    created_events: list[CalendarEvent] = []
     async with async_session() as db:
         subq = select(CalendarEvent.related_notification_id).where(
             CalendarEvent.related_notification_id.is_not(None)
@@ -393,9 +407,26 @@ async def auto_fill_calendar_events() -> dict[str, Any]:
             )
             db.add(event)
             created += 1
+            created_events.append(event)
 
         await db.commit()
-        return {"created": created, "scanned": len(notifications)}
+        created_event_ids = [int(event.id) for event in created_events if event.id]
+    automation: list[dict[str, Any]] = []
+    for event_id in created_event_ids:
+        try:
+            from app.services.automation import record_calendar_interview_invitation
+
+            result = await record_calendar_interview_invitation(
+                calendar_event_id=event_id,
+                source="calendar_auto_fill",
+            )
+            if result.get("status") not in {"not_upcoming", "completed", "dispatched"}:
+                automation.append({"calendar_event_id": event_id, "status": result.get("status", "failed")})
+        except Exception as exc:
+            automation.append(
+                {"calendar_event_id": event_id, "status": "failed", "error": safe_error_message(exc)}
+            )
+    return {"created": created, "scanned": len(notifications), "automation": automation}
 
 
 async def collect_interview_experience(

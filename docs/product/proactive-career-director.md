@@ -1,7 +1,7 @@
 # Proactive Career Director
 
 Status: **CURRENT PRODUCT DETAIL / IMPLEMENTATION CONTRACT**  
-Updated: 2026-09-25
+Updated: 2026-09-27
 
 This document defines the product and runtime contract for making OfferU genuinely proactive for non-technical job seekers.
 
@@ -12,6 +12,46 @@ Event → Rule → CareerTask → Agent / Runtime → Operation
 ~~~
 
 If this document conflicts with `GOAL.md` or `docs/product/current-product.md`, the higher authority wins.
+
+## Implementation checkpoint — 2026-09-26
+
+- Slice 1, First-run Profile Discovery, is committed as `73c522e`.
+- Slice 2, Daily Career Brief, is committed as `bb2fb36`.
+- Slice 3, Job Saved Assessment Plan, is committed as `d3508c8`.
+- JOB_SAVED is emitted by the shared job-import Operations, so App, scraper and Agent import paths converge on one idempotent event. A real Codex Career Director reads Career Snapshot and bounded Job context through read-only Registry Operations, validates a strict Job Assessment Plan, and projects it into CareerTask, Automation Inbox and Job Workspace.
+- The existing Role Intelligence task now starts only when the structured assessment marks it needed/useful and recommends `build_role_benchmark`; the launch goes through the Operation Registry and retains idempotency. Career Director cannot write Career Truth or perform external actions.
+- The Job Workspace assessment card covers fit, priority, evidence alignment/gaps, preparation relevance and retryable failures. Targeted backend tests, frontend component tests, typecheck and production build passed for this checkpoint.
+- Slice 4, Interview Prep/Debrief, is implemented in the current working tree. Calendar creation and notification recovery emit an idempotent invitation event; Daily Review scans at most eight elapsed interviews from the past seven days and emits one completion event per calendar item. Each CareerTask remains bound to its exact AutomationEvent target, while its linked Job is used for workspace projection.
+- A real Codex Career Director must read Career Snapshot and the target interview context through Registry Operations. The UI shows the model's preparation focus and practice questions, or asks the model's two or three debrief questions. Answers create source-linked learning observations and pending memory proposals only; unreviewed candidates do not count as repeated weak areas, and no Career Truth is directly changed.
+- Today and the canonical Job Workspace project the current interview lifecycle stage. Synthetic backend integration tests cover invitation, elapsed interview, debrief, source validation, idempotency and no direct truth writes; the focused frontend card test and typecheck pass. Slice 5, Resume Updated Re-engagement, remains. Full backend regression and frontend build are still required after all slices.
+
+## Implementation update — 2026-09-27
+
+All five planned slices now have implementation code on `feat/proactive-career-director`. This dated update records current behavior without rewriting the earlier implementation history above.
+
+- First-run Profile Discovery, Daily Career Brief, Job Saved Assessment, and Interview Prep/Debrief are implemented through the existing Automation → CareerTask → Agent Runtime → Operation Registry path.
+- A saved Resume version emits `RESUME_UPDATED` in the same transaction as its `ResumeVersion`, and only when the version adds evidence. The durable event carries the exact Resume/version reference; Codex is the bounded L1 reasoning provider.
+- The Career Director must read the current Career Snapshot and `get_resume_reengagement_context` through the Registry. Context follows the current Resume version pointer, considers only each Job's newest application attempt, excludes terminal/inactive or too-recent applications, caps the candidate set, and suppresses candidates that already have a pending review item.
+- The first-party `career_policy.py` contract is now wired into every bounded Career Director task. Registry-read policy context supplies the applicable Strategy Pack, action whitelist, targets, evidence references, Operation/Skill allowlists and event autonomy ceiling; the model receives this envelope and the parsed briefing is fail-closed against it, including a fresh source-fingerprint check before any delivery is materialized. A Career Director cannot create a new action key, target, evidence reference or permission level.
+- Resume and Job context is desensitized before the external Agent turn. The returned plan is checked against the target Resume, Registry candidate Job IDs and evidence references, then sensitive content is scrubbed before persistence. No Career Truth write or external contact is available to this path.
+- Positive candidates are materialized in the existing Automation Inbox and CareerTask, shown in Today, and linked to their canonical Job Workspace. The UI only presents candidates for review; it has no send/contact action.
+- Synthetic tests exercise the real Registry path with a mocked provider response, candidate validation, pending-candidate dedupe, outbox idempotency, and no direct Profile mutation. The CareerTask now materializes validated deliveries before completion, and users can read saved artifact content through a UI endpoint backed by the `get_career_artifact` Operation; Markdown rendering disables raw HTML.
+- Initial local Codex attempts using the inherited reasoning effort did not emit a completed Career Director turn. The follow-up below records the resolved bounded-turn configuration and its live evidence.
+
+## Live-runtime follow-up — 2026-09-27
+
+- The Career Director now requests Codex `turn_effort="low"` for its single schema-bounded judgment, independent of the user's global reasoning preference. Explicit `medium` and inherited effort timed out in the same isolated synthetic Profile Discovery scenario; explicit `low` completed. The model still decides the career judgment and makes Registry tool calls; no scripted result is substituted.
+- Codex 0.155.1 completed `PROFILE_BASELINE_REQUIRED` from `H:\tmp\offeru\career-director-live-task-code-path-20260927\smoke.sqlite`: the model issued `get_career_snapshot`, returned a valid briefing with two questions and two actions, passed `career_policy.py` source-fingerprint validation, and emitted `turn/completed`. The CareerTask and AutomationEvent completed. The synthetic Profile's Career Truth did not change and no Proposal or external action was created.
+- This verifies one local live Profile Discovery integration. The other event slices remain covered by synthetic Registry/runtime integration tests; live OMP/SWE-2 pass³ remains a separate, unrun acceptance gate.
+- Full backend after the effort-boundary change: **813 passed, 10 skipped, 11 subtests passed, 20 warnings** (`OFFERU_TEST_TEMP_ROOT=H:\tmp\offeru\career-director-final-backend-effort-rerun-20260927`). Frontend: **50 passed across 18 files**; typecheck and production build passed. Extension unchanged.
+
+## Implementation update — 2026-09-27: Job Saved without an Agent
+
+The 2026-09-26 checkpoint above records the earlier Role Intelligence launch behavior. Current `JOB_SAVED` behavior is now one bounded Career Director CareerTask only. If the embedded runtime or active model configuration is unavailable, OfferU leaves the saved Job and its canonical workspace usable, marks that task blocked and retryable, and shows the user a recovery message. No scripted assessment or Role Intelligence task is substituted.
+
+Role Intelligence begins only after a valid Career Director recommendation. `career_policy.py` binds each supported recommended Operation to an L2 action for the same Job with `requires_user=true`; the model cannot invoke the external benchmark Operation itself. The Job Workspace offers an explicit user action through the existing Research API and Operation Registry, using the Registry's `auto` runtime selection.
+
+Prepared artifact reads now recompute the delivery against the full current source-fingerprint key set. A newly added or changed source makes the delivery stale; the Registry-backed artifact read suppresses stale Markdown, and the viewer explains that the content must be prepared again.
 
 ---
 
@@ -77,9 +117,9 @@ The event vocabulary already includes signals such as:
 - `DAILY_REVIEW`;
 - `WEEKLY_REVIEW`.
 
-But the current built-in automation behavior is much narrower: the main default dispatch is effectively `JOB_SAVED → role_intelligence`; other accepted event types do not yet produce a meaningful career-strategy decision.
+The first four vertical slices now provide bounded Career Director judgments for first-run Profile Discovery, `DAILY_REVIEW`, `JOB_SAVED`, and the interview lifecycle. Resume re-engagement remains the final proactive behavior to implement.
 
-This means OfferU has the durable event/task machinery, but not yet the **career judgment layer** between “an event occurred” and “what should happen next”.
+OfferU is implementing the **career judgment layer** between “an event occurred” and “what should happen next” on top of the existing durable event/task machinery.
 
 ---
 
@@ -542,6 +582,14 @@ Rules:
 - user corrections should influence future prioritization.
 
 Today is the user-facing surface for Career Director output, not a separate source of truth.
+
+### Implementation update — 2026-09-26
+
+The first Daily Career Brief slice now records one idempotent `DAILY_REVIEW` AutomationEvent per default Profile and local calendar day when Today opens. The event uses the existing `AutomationEvent → AutomationRule → CareerTask → Codex Runtime` path. A missing Profile produces a visible skipped response; it does not create one.
+
+The real Career Director must read both `get_career_snapshot` and the new read-only `get_daily_career_context` Operation before returning the strict `offeru.career_briefing.v1` contract. Context is bounded and sanitized and includes active Pipeline rows, due/near-due follow-ups, interviews in the next 14 days, pending review items, recent Profile/Resume changes, interview learning summaries and previously dismissed Brief actions. CareerTask and Automation Inbox persist the model result; Today shows each action's `why_now`, prepared outcome, autonomy boundary and target link.
+
+Today’s “稍后处理” action records a dismissal through the existing Registry proposal boundary. After the same suggestion has been dismissed on two recent Daily Briefs, deterministic policy removes it when either its stable action key or its evidence-sensitive fingerprint matches; a suggestion can reappear after both change. No Career Truth is written by this slice, and no database schema migration was required. The daily trigger runs on Today open, so it does not wake an Agent while the app is closed.
 
 ---
 

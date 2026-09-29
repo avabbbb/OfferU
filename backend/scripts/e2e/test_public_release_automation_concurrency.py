@@ -2,7 +2,9 @@
 
 The test uses one isolated SQLite database and two backend worker processes.
 It verifies that a duplicate signal creates one CareerTask and one inbox
-projection, even when both processes receive the same external event.
+projection, even when both processes receive the same external event. In clean
+CI without a configured Agent, the bounded Career Director task must be
+durably blocked once rather than completing through a scripted fallback.
 """
 
 from __future__ import annotations
@@ -220,13 +222,13 @@ def main() -> None:
     inbox = state["inbox"]
     task_events = state["task_events"]
     event_types = [str(item["event_type"]) for item in task_events]
-    if len(events) != 1 or events[0]["status"] != "completed":
+    if len(events) != 1 or events[0]["status"] != "blocked":
         raise AssertionError(f"automation event was not committed exactly once: {state}")
-    if len(tasks) != 1 or tasks[0]["status"] != "completed" or tasks[0]["attempt_count"] != 1:
+    if len(tasks) != 1 or tasks[0]["status"] != "blocked" or tasks[0]["attempt_count"] != 1:
         raise AssertionError(f"automation task was not executed exactly once: {state}")
     if len(inbox) != 1 or inbox[0]["task_id"] != tasks[0]["task_id"]:
         raise AssertionError(f"automation inbox was duplicated or detached: {state}")
-    if event_types.count("task.started") != 1 or event_types.count("task.completed") != 1:
+    if event_types.count("task.started") != 1 or event_types.count("task.blocked") != 1:
         raise AssertionError(f"task lifecycle was duplicated: {event_types}")
     event_ids = {
         str((result.get("event") or {}).get("event_id") or "")
@@ -247,7 +249,7 @@ def main() -> None:
                 "attempt_count": tasks[0]["attempt_count"],
                 "inbox_items": len(inbox),
                 "task_started_events": event_types.count("task.started"),
-                "task_completed_events": event_types.count("task.completed"),
+                "task_blocked_events": event_types.count("task.blocked"),
                 "elapsed_seconds": round(time.perf_counter() - started_at, 3),
             },
             ensure_ascii=True,

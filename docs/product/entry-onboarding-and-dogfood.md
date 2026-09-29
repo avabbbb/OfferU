@@ -1,7 +1,7 @@
 # OfferU Entry, Onboarding & Dogfood Contract
 
 Status: **CURRENT PRODUCT DETAIL**  
-Updated: 2026-09-25
+Updated: 2026-09-27
 
 This document expands the first-use and distribution contract defined by [Current Product North Star](./current-product.md). If wording conflicts, `GOAL.md` and `current-product.md` win.
 
@@ -41,9 +41,12 @@ The normal user should experience:
 Download OfferU
 → install
 → open OfferU
-→ “Finding the AI already on this computer…”
-→ choose / verify one supported Agent
-→ OfferU prepares its Skill automatically where supported
+→ copy one generic OfferU connection prompt
+→ paste it into the local Agent already in use
+→ Agent downloads the canonical Skill from the public GitHub repository
+→ Agent resolves the current local runtime command without guessing install paths
+→ Agent follows the setup guide for its current environment
+→ verify access with one read-only Operation
 → import resume
 → optional authorized AI memory
 → save one real Job
@@ -60,10 +63,10 @@ The user must not be asked to install or understand:
 - MCP;
 - Operation Registry;
 - model IDs;
-- Skill folders;
+- Skill folders or provider-specific setup screens;
 - CLI commands.
 
-The Desktop package owns its own runtime dependencies. The external Agent owns its own account/login/model. OfferU reuses that login instead of asking the user to configure duplicate model credentials.
+OfferU's canonical Skill is publicly available in the GitHub repository, independent of whether the local backend is running. The copied prompt asks the Agent to install only that Skill in its own documented Skills directory; the Skill explains host-specific paths. The local backend may provide an installation-specific CLI projection after installation, but it is never the Skill download source. The external Agent owns its own account/login/model. OfferU never asks the user to duplicate model credentials, and copying the prompt is not treated as a successful connection.
 
 If no supported external Agent is ready, the user may continue setup and use the OfferU fallback path. “External-first” must not become “external-Agent-required”.
 
@@ -84,51 +87,28 @@ OfferU Skill available in host
 
 This is not a second CLI product. It is another front door into the same Career Runtime.
 
-A future standalone Skill installer may make this entry as lightweight as Agent-first products such as Hypit, but **OfferU does not currently claim a public `npx skills add offeru` package**. Today, the supported consumer flow is for OfferU Desktop to project/install the canonical Skill into detected hosts.
+OfferU does not claim a published `npx skills add offeru` package. The canonical Skill is the public GitHub `main` file at `https://raw.githubusercontent.com/avabbbb/OfferU/main/.agents/skills/offeru/SKILL.md`; the local runtime endpoint is used only to resolve the CLI command for the running installation.
 
-## 3. Current beginner host contract
+## 3. Generic local-Agent setup contract
 
-Current source-of-truth is `backend/app/services/agent_host_registry.py` plus live connection checks.
+The beginner UI does not ask the user to choose a named host. `backend/app/services/agent_host_registry.py` remains the internal capability source for diagnostics and supported automatic integration, while the user-facing flow starts from one provider-neutral prompt.
 
-### Recommended beginner path
+The prompt points to the canonical Skill in the public GitHub repository. The Agent must identify its current host, install only the OfferU Skill in a documented Skills directory, and follow the setup instructions shipped inside that Skill. If it needs the CLI for a packaged OfferU install, the local backend may return an installation-specific projection; this is runtime binding, not Skill distribution. The Agent must not change account/login, model, credentials, proxy or unrelated settings. If the current host has no documented Skill loader, it reports the limitation instead of guessing.
 
-**Codex** is the current recommended beginner host.
+The Skill may document common host-specific Skills directories because that is setup reference material for the Agent, not a provider choice the user must make. The ordinary OfferU interface does not list provider names or ask the user to pick one.
 
-Current implementation can:
-
-- discover the local Codex executable;
-- keep Codex authentication owned by Codex;
-- install/update the canonical OfferU Skill;
-- perform a short, non-career-data integration challenge;
-- display verified/failed/auth-required state in OfferU;
-- sync the current OfferU view so the Agent can read it through OfferU operations.
-
-### Other installable beginner hosts
-
-**Claude Code** and **OpenCode** are surfaced as beginner hosts and support canonical Skill installation. Their exact login/model/capability verification remains host-specific and should be shown honestly in the Agent Connection panel.
-
-OpenCode currently has reduced public-web research support for `company_research` and `role_intelligence`.
-
-### Hosted-runtime-only paths
-
-OMP, Pi, Gemini CLI and WorkBuddy/CodeBuddy currently act as hosted runtime integrations rather than the same “Desktop automatically installs OfferU Skill” path.
-
-Do not present them as identical to the Codex beginner experience.
-
-Current host exclusions also matter:
-
-- OMP / Pi / WorkBuddy do not currently claim the full `application_assistant` surface;
-- host capability badges must come from live evidence, not host name.
+Copying a prompt is only a handoff. The Agent must download the Skill, execute the connection check and read the current view before OfferU or the user describes it as connected. Skill and Operation capabilities continue to come from the live Registry; host name alone is not evidence of support.
 
 ## 4. Current first-use UI contract
 
 The implemented beginner wizard is intentionally short:
 
-1. **连接你的 AI**
-   - detect local Agents;
-   - reuse existing login;
-   - install/repair/update OfferU Skill where supported;
-   - verify the integration where evidence is available.
+1. **准备本地 Agent**
+   - copy one generic connection prompt;
+   - paste it into the local coding Agent already in use;
+   - let the Agent download the canonical GitHub Skill and follow the matching setup guide;
+   - verify with a read-only Operation and report the actual current page.
+   - copying alone never means “connected”; no provider picker or host list is shown.
 
 2. **导入简历**
    - local extraction;

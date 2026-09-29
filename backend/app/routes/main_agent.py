@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
@@ -437,6 +439,22 @@ async def agent_connections() -> dict[str, Any]:
     return await _ui_operation_outputs("get_agent_connections", {})
 
 
+@runtime_router.get("/runtime/skill", include_in_schema=False)
+async def download_agent_skill() -> PlainTextResponse:
+    """Serve a local runtime projection; public Skill distribution is on GitHub."""
+
+    from app.services.agent_integration import installed_skill_content
+
+    return PlainTextResponse(
+        installed_skill_content(),
+        media_type="text/markdown",
+        headers={
+            "Content-Disposition": 'attachment; filename="offeru-SKILL.md"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
 @runtime_router.post("/runtime/connections/{provider_id}/probe")
 async def probe_agent_connection(provider_id: str) -> dict[str, Any]:
     return await _ui_operation_outputs("probe_agent_connection", {"provider_id": provider_id})
@@ -557,6 +575,14 @@ async def career_task_result(task_id: str) -> dict[str, Any]:
     return await _ui_operation_outputs("get_career_task_result", {"task_id": task_id})
 
 
+@runtime_router.get("/runtime/career-artifacts/{artifact_id}")
+async def career_artifact(artifact_id: str) -> dict[str, Any]:
+    artifact = await _ui_operation_outputs("get_career_artifact", {"artifact_id": artifact_id})
+    if artifact.get("error"):
+        raise HTTPException(status_code=404, detail="Career artifact not found")
+    return artifact
+
+
 @runtime_router.post("/runtime/career-tasks/{task_id}/cancel")
 async def cancel_career_task(task_id: str) -> dict[str, Any]:
     return await _ui_operation_projection("cancel_career_task", {"task_id": task_id})
@@ -629,6 +655,28 @@ async def record_automation_event(body: AutomationEventRequest) -> dict[str, Any
     return await _ui_operation_projection(
         "record_automation_event",
         body.model_dump(),
+    )
+
+
+@runtime_router.post("/runtime/automation/daily-review")
+async def trigger_daily_career_review() -> dict[str, Any]:
+    """Record one idempotent daily signal through the Operation Registry."""
+
+    snapshot = await _ui_operation_outputs("get_career_snapshot", {})
+    profile_id = int(snapshot.get("profile_id") or 0)
+    if profile_id <= 0:
+        return {"status": "skipped", "reason": "profile_missing"}
+    review_date = datetime.now().astimezone().date().isoformat()
+    return await _ui_operation_outputs(
+        "record_automation_event",
+        {
+            "event_type": "DAILY_REVIEW",
+            "source": "today_open",
+            "target_type": "profile",
+            "target_id": str(profile_id),
+            "payload": {"review_date": review_date},
+            "dedupe_key": f"daily-review:{profile_id}:{review_date}",
+        },
     )
 
 

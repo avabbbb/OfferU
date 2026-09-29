@@ -12,6 +12,9 @@ const {
   mockUseProgressBoard,
   mockUseProgressCandidates,
   mockMutateNotifications,
+  mockTriggerDailyCareerReview,
+  mockDismissAutomationInboxItem,
+  mockGetCareerArtifact,
 } = vi.hoisted(() => ({
   mockUseJobs: vi.fn(),
   mockUseNotifications: vi.fn(),
@@ -23,6 +26,14 @@ const {
   mockUseProgressBoard: vi.fn(),
   mockUseProgressCandidates: vi.fn(),
   mockMutateNotifications: vi.fn(),
+  mockTriggerDailyCareerReview: vi.fn(),
+  mockDismissAutomationInboxItem: vi.fn(),
+  mockGetCareerArtifact: vi.fn(),
+}));
+
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/api")>(),
+  getCareerArtifact: mockGetCareerArtifact,
 }));
 
 vi.mock("../lib/hooks", () => ({
@@ -36,6 +47,8 @@ vi.mock("../lib/hooks", () => ({
   useProgressBoard: mockUseProgressBoard,
   useProgressCandidates: mockUseProgressCandidates,
   controlCareerTask: vi.fn(),
+  triggerDailyCareerReview: mockTriggerDailyCareerReview,
+  dismissAutomationInboxItem: mockDismissAutomationInboxItem,
 }));
 
 vi.mock("../lib/workbench", () => ({
@@ -49,6 +62,12 @@ vi.mock("../components/onboarding/OnboardingChecklist", () => ({
 
 vi.mock("../components/charts/TrendChart", () => ({
   TrendChart: () => null,
+}));
+
+vi.mock("@/components/career/CareerQuestionsPanel", () => ({
+  CareerQuestionsPanel: ({ taskId, heading }: { taskId: string; heading: string }) => (
+    <section data-testid="career-questions-panel" data-task-id={taskId}>{heading}</section>
+  ),
 }));
 
 vi.mock("../lib/showcase/router", () => ({ SHOWCASE: false }));
@@ -83,6 +102,14 @@ describe("TodayPage", () => {
     mockUseProgressBoard.mockReturnValue({ ...idleHook, data: { companies: [], summary: {} } });
     mockUseProgressCandidates.mockReturnValue({ ...idleHook, data: { items: [], total: 0 } });
     mockUseNotifications.mockReturnValue({ data: [], mutate: mockMutateNotifications });
+    mockTriggerDailyCareerReview.mockResolvedValue({ status: "dispatched" });
+    mockDismissAutomationInboxItem.mockResolvedValue({ status: "dismissed" });
+    mockGetCareerArtifact.mockResolvedValue({
+      id: "prep-artifact-9",
+      artifact_type: "interview_prep",
+      title: "面试准备提纲",
+      content_markdown: "## 准备重点\n\n先整理岗位证据。",
+    });
   });
 
   it("本周无新岗位但已有保存岗位时，不显示“还没有岗位数据”", async () => {
@@ -141,6 +168,223 @@ describe("TodayPage", () => {
     expect(screen.getByText("先确认 2 条求职进展")).toBeInTheDocument();
     expect(screen.getByText("准备 星辰科技 · AI 产品经理")).toBeInTheDocument();
     expect(screen.getByText(/最多只给你 3 个下一步/)).toBeInTheDocument();
+  });
+
+  it("在 Today 展示真实 CareerTask 生成的简报，并允许稍后处理", async () => {
+    setupJobs({ weekTotal: 0, allTotal: 2 });
+    mockUseAutomationInbox.mockReturnValue({
+      ...idleHook,
+      data: {
+        items: [
+          {
+            item_id: "daily-brief-1",
+            category: "needs_review",
+            status: "pending",
+            event_id: "daily-event-1",
+            task_id: "daily-task-1",
+            target_type: "career_brief",
+            target_id: "2026-09-26",
+            title: "今天的求职行动简报已准备",
+            body: "Tomorrow interview takes priority.",
+            payload: { event_type: "DAILY_REVIEW" },
+            task_status: "completed",
+          },
+        ],
+      },
+    });
+    mockUseCareerTasks.mockReturnValue({
+      ...idleHook,
+      data: {
+        tasks: [
+          {
+            task_id: "daily-task-1",
+            task_type: "career_director",
+            status: "completed",
+            input: { event_type: "DAILY_REVIEW" },
+            result: {
+              briefing: {
+                situation_summary: "明天下午有面试，先准备岗位证据。",
+                actions: [
+                  {
+                    objective: "准备星辰科技面试",
+                    why_now: "面试安排在明天下午。",
+                    expected_outcome: "整理岗位重点并完成一轮练习。",
+                    autonomy_level: "L1",
+                    requires_user: true,
+                    dedupe_key: "interview-tomorrow",
+                    target_ref: { kind: "job", id: "101" },
+                  },
+                ],
+                questions: [],
+              },
+            },
+          },
+        ],
+      },
+    });
+    render(<TodayPage />);
+
+    expect(await screen.findByRole("heading", { name: "今天的求职简报" })).toBeInTheDocument();
+    expect(screen.getByText("为什么现在：面试安排在明天下午。")).toBeInTheDocument();
+    expect(screen.getByText("预期结果：整理岗位重点并完成一轮练习。")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /准备星辰科技面试/ })).toHaveAttribute("href", "/jobs/101");
+
+    fireEvent.click(screen.getByRole("button", { name: "稍后处理" }));
+    await waitFor(() => expect(mockDismissAutomationInboxItem).toHaveBeenCalledWith("daily-brief-1"));
+  });
+
+  it("在 Today 让 Daily Review 问题连接持久 CareerTask，并显示可用交付状态", async () => {
+    setupJobs({ weekTotal: 0, allTotal: 2 });
+    mockUseAutomationInbox.mockReturnValue({
+      ...idleHook,
+      data: {
+        items: [{
+          item_id: "daily-brief-questions",
+          category: "needs_review",
+          status: "pending",
+          event_id: "daily-review-event",
+          task_id: "daily-review-task",
+          target_type: "career_brief",
+          target_id: "2026-09-27",
+          title: "今日简报已准备",
+          body: "面试准备优先。",
+          payload: { event_type: "DAILY_REVIEW" },
+          task_status: "completed",
+        }],
+      },
+    });
+    mockUseCareerTasks.mockReturnValue({
+      ...idleHook,
+      data: {
+        tasks: [{
+          task_id: "daily-review-task",
+          task_type: "career_director",
+          status: "completed",
+          input: { event_type: "DAILY_REVIEW" },
+          result: {
+            briefing: {
+              situation_summary: "明天下午有面试。",
+              actions: [],
+              questions: [{ question: "你最想先练哪类问题？" }],
+            },
+            deliveries: [{
+              state: "ready",
+              artifact_id: "prep-artifact-9",
+              artifact_type: "interview_prep",
+              job_id: 42,
+              title: "面试准备提纲",
+              href: "/jobs/42?artifact=prep-artifact-9",
+            }],
+          },
+        }],
+      },
+    });
+
+    render(<TodayPage />);
+
+    expect(await screen.findByTestId("career-questions-panel")).toHaveAttribute("data-task-id", "daily-review-task");
+    expect(screen.getByText("面试准备提纲")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "打开练习" }));
+    expect(await screen.findByRole("dialog", { name: "面试准备提纲" })).toBeInTheDocument();
+    expect(mockGetCareerArtifact).toHaveBeenCalledWith("prep-artifact-9");
+  });
+
+  it("在收件箱前五项之外仍展示简历更新后的正向重新联系候选", async () => {
+    setupJobs({ weekTotal: 0, allTotal: 2 });
+    const filler = Array.from({ length: 5 }, (_, index) => ({
+      item_id: `other-${index + 1}`,
+      category: "fyi",
+      status: "pending",
+      event_id: `event-${index + 1}`,
+      task_id: `task-${index + 1}`,
+      target_type: "job",
+      target_id: String(100 + index),
+      title: "岗位情报正在更新",
+      body: "稍后查看进度。",
+      payload: { event_type: "JOB_SAVED" },
+      task_status: "running",
+    }));
+    mockUseAutomationInbox.mockReturnValue({
+      ...idleHook,
+      data: {
+        items: [
+          ...filler,
+          {
+            item_id: "resume-update-inbox",
+            category: "needs_review",
+            status: "pending",
+            event_id: "resume-update-event",
+            task_id: "resume-update-task",
+            target_type: "resume",
+            target_id: "7",
+            title: "新版简历找到一个可重新考虑的岗位",
+            body: "这只是候选，不会自动联系招聘方。",
+            payload: { event_type: "RESUME_UPDATED" },
+            task_status: "completed",
+          },
+        ],
+      },
+    });
+    mockUseCareerTasks.mockReturnValue({
+      ...idleHook,
+      data: {
+        tasks: [{
+          task_id: "resume-update-task",
+          task_type: "career_director",
+          source: "automation",
+          target_type: "resume",
+          target_id: "7",
+          runtime_provider: "codex",
+          status: "completed",
+          input: { event_type: "RESUME_UPDATED", resume_id: 7 },
+          progress: {},
+          error_id: "",
+          error: "",
+          retryable: false,
+          attempt_count: 1,
+          max_attempts: 2,
+          result_ref: "",
+          result: {
+            briefing: {
+              resume_update: {
+                summary: "新版简历补上了岗位此前看不到的结果证据。",
+                added_evidence_summary: "新增经确认的业务影响数据。",
+                candidates: [
+                  {
+                    job_id: 42,
+                    company: "星辰科技",
+                    role: "产品经理",
+                    worth_reengaging: true,
+                    why: "旧版本没有体现这项已验证成果。",
+                    suggested_angle: "说明项目带来的业务影响。",
+                    urgency: "soon",
+                  },
+                  {
+                    job_id: 43,
+                    company: "云杉科技",
+                    role: "产品负责人",
+                    worth_reengaging: false,
+                    why: "岗位已明确拒绝。",
+                    urgency: "skip",
+                  },
+                ],
+              },
+            },
+          },
+          created_at: null,
+          started_at: null,
+          finished_at: null,
+        }],
+      },
+    });
+
+    render(<TodayPage />);
+
+    expect(await screen.findByTestId("resume-reengagement-card")).toBeInTheDocument();
+    expect(screen.getByText("星辰科技 · 产品经理")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "查看岗位与申请进展" })).toHaveAttribute("href", "/jobs/42");
+    expect(screen.queryByText("云杉科技 · 产品负责人")).not.toBeInTheDocument();
+    expect(screen.getByText(/不会发送消息或联系招聘方/)).toBeInTheDocument();
   });
 
   it("待确认信号可标记已处理，并从待确认列表消失", async () => {

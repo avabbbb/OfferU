@@ -50,6 +50,66 @@ def _use_replay_provider(route) -> None:
     route.continue_(post_data=_replay_provider_payload(route))
 
 
+def _assert_saved_job_degrades_without_agent(page, job_id: int) -> dict:
+    """Verify JOB_SAVED remains usable when CI has no configured model Agent."""
+    payload: dict = {}
+    for _ in range(60):
+        payload = _json_response(
+            page,
+            f"{API_URL}/api/agent/runtime/career-tasks"
+            f"?target_type=job&target_id={job_id}&limit=20",
+        )
+        matching = [
+            item
+            for item in payload.get("tasks", [])
+            if item.get("task_type") == "career_director"
+            and item.get("input", {}).get("event_type") == "JOB_SAVED"
+        ]
+        if len(matching) == 1 and matching[0].get("status") in {
+            "completed",
+            "failed",
+            "blocked",
+        }:
+            break
+        page.wait_for_timeout(500)
+
+    matching = [
+        item
+        for item in payload.get("tasks", [])
+        if item.get("task_type") == "career_director"
+        and item.get("input", {}).get("event_type") == "JOB_SAVED"
+    ]
+    if len(matching) != 1:
+        raise AssertionError(f"JOB_SAVED must create exactly one Career Director task: {matching}")
+    task = matching[0]
+    if task.get("status") != "blocked":
+        raise AssertionError(f"clean CI without a model provider must block honestly: {task}")
+    if "岗位已保存" not in str(task.get("error") or "") or not task.get("retryable"):
+        raise AssertionError(f"blocked assessment must explain recovery and preserve retry: {task}")
+    role_tasks = [
+        item
+        for item in payload.get("tasks", [])
+        if item.get("task_type") == "role_intelligence"
+    ]
+    if role_tasks:
+        raise AssertionError(f"Role Intelligence must not run without a valid recommendation: {role_tasks}")
+
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_function(
+        "jobId => window.location.hash.slice(1).split('?')[0] === `/jobs/${jobId}`",
+        arg=job_id,
+        timeout=20000,
+    )
+    assessment = page.get_by_test_id("job-assessment-plan")
+    expect(assessment).to_be_visible(timeout=30000)
+    expect(assessment.get_by_role("alert")).to_contain_text("岗位已保存", timeout=30000)
+    expect(assessment).not_to_contain_text("已准备，可查看")
+    role_panel = page.get_by_test_id("role-intelligence-panel")
+    expect(role_panel).to_be_visible(timeout=20000)
+    expect(role_panel).to_contain_text("还没有岗位基准")
+    return task
+
+
 def _synthetic_resume_docx() -> bytes:
     """Build a stable, synthetic resume for the visible first-run import flow."""
     from docx import Document
@@ -230,56 +290,7 @@ def main() -> None:
                     f"duplicate submit created {len(matching_jobs)} jobs for {company}"
                 )
 
-            task: dict | None = None
-            for _ in range(60):
-                tasks = _json_response(
-                    page,
-                    f"{API_URL}/api/agent/runtime/career-tasks"
-                    f"?target_type=job&target_id={job_id}&limit=10",
-                )
-                task = next(
-                    (
-                        item
-                        for item in tasks.get("tasks", [])
-                        if item.get("task_type") == "role_intelligence"
-                    ),
-                    None,
-                )
-                if isinstance(task, dict) and task.get("status") in {
-                    "completed",
-                    "failed",
-                    "blocked",
-                }:
-                    break
-                page.wait_for_timeout(500)
-            if not isinstance(task, dict):
-                raise AssertionError(f"role intelligence task was not created for job {job_id}")
-            if task.get("status") != "completed":
-                raise AssertionError(f"replay role intelligence did not complete: {task}")
-            if task.get("runtime_provider") != "replay":
-                raise AssertionError(f"CI smoke must use explicit replay provider: {task}")
-            matching_tasks = [
-                item
-                for item in tasks.get("tasks", [])
-                if item.get("task_type") == "role_intelligence"
-            ]
-            if len(matching_tasks) != 1:
-                raise AssertionError(
-                    f"duplicate submit created {len(matching_tasks)} role intelligence tasks"
-                )
-
-            page.wait_for_function(
-                "jobId => window.location.hash.slice(1).split('?')[0] === `/jobs/${jobId}`",
-                arg=job_id,
-                timeout=20000,
-            )
-            role_panel = page.get_by_test_id("role-intelligence-panel")
-            expect(role_panel).to_be_visible(timeout=20000)
-            expect(role_panel).to_contain_text("20", timeout=30000)
-            expect(page.get_by_text("材料候选", exact=True)).to_be_visible(timeout=30000)
-            body = page.locator("body").inner_text()
-            if "材料候选" not in body or "20" not in body:
-                raise AssertionError("job detail did not expose the prepared packet")
+            task = _assert_saved_job_degrades_without_agent(page, job_id)
 
             # Exercise a transport-level retry after the server has already
             # committed the first request.  The browser receives a synthetic
@@ -332,48 +343,7 @@ def main() -> None:
                     f"transport retry created {len(retry_matches)} jobs for {retry_company}"
                 )
             retry_job_id = int(retry_matches[0]["id"])
-            retry_task: dict | None = None
-            retry_tasks: dict = {}
-            for _ in range(60):
-                retry_tasks = _json_response(
-                    page,
-                    f"{API_URL}/api/agent/runtime/career-tasks"
-                    f"?target_type=job&target_id={retry_job_id}&limit=10",
-                )
-                retry_task = next(
-                    (
-                        item
-                        for item in retry_tasks.get("tasks", [])
-                        if item.get("task_type") == "role_intelligence"
-                    ),
-                    None,
-                )
-                if isinstance(retry_task, dict) and retry_task.get("status") in {
-                    "completed",
-                    "failed",
-                    "blocked",
-                }:
-                    break
-                page.wait_for_timeout(500)
-            if not isinstance(retry_task, dict) or retry_task.get("status") != "completed":
-                raise AssertionError(f"transport retry task did not complete: {retry_task}")
-            retry_matching_tasks = [
-                item
-                for item in retry_tasks.get("tasks", [])
-                if item.get("task_type") == "role_intelligence"
-            ]
-            if len(retry_matching_tasks) != 1:
-                raise AssertionError(
-                    f"transport retry created {len(retry_matching_tasks)} role intelligence tasks"
-                )
-            page.wait_for_function(
-                "jobId => window.location.hash.slice(1).split('?')[0] === `/jobs/${jobId}`",
-                arg=retry_job_id,
-                timeout=20000,
-            )
-            retry_role_panel = page.get_by_test_id("role-intelligence-panel")
-            expect(retry_role_panel).to_be_visible(timeout=20000)
-            expect(retry_role_panel).to_contain_text("20", timeout=30000)
+            retry_task = _assert_saved_job_degrades_without_agent(page, retry_job_id)
 
             expected_bad_responses = [
                 response

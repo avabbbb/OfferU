@@ -69,15 +69,65 @@ _ALLOWED_TEXT_MATCHES: dict[tuple[str, str], frozenset[tuple[str, bytes]]] = {
 }
 _CHUNK_SIZE = 1024 * 1024
 _MAX_PATTERN_LENGTH = 256
+_SHA256_HEX = re.compile(r"[0-9a-f]{64}\Z", re.IGNORECASE)
+_SHA256SUMS_LINE = re.compile(rb"^([0-9a-f]{64})( {2})(.*?)(\r?\n)?$", re.IGNORECASE)
+
+
+def _mask_release_metadata_checksums(path: Path, content: bytes) -> bytes:
+    if path.name.casefold() == "artifacts.json":
+        try:
+            manifest = json.loads(content)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return content
+        if not isinstance(manifest, list):
+            return content
+        changed = False
+        for item in manifest:
+            if not isinstance(item, dict):
+                continue
+            digest = item.get("sha256")
+            if isinstance(digest, str) and _SHA256_HEX.fullmatch(digest):
+                item["sha256"] = ""
+                changed = True
+        return json.dumps(manifest, ensure_ascii=False).encode("utf-8") if changed else content
+
+    if path.name.casefold() == "sha256sums.txt":
+        lines: list[bytes] = []
+        for line in content.splitlines(keepends=True):
+            match = _SHA256SUMS_LINE.fullmatch(line)
+            if match:
+                line = (b"0" * 64) + match.group(2) + match.group(3) + (match.group(4) or b"")
+            lines.append(line)
+        return b"".join(lines)
+    return content
 
 
 def _scan_bytes(
     path: Path,
     *,
     scan_text_pii: bool = False,
+    mask_release_metadata_checksums: bool = False,
     allowed_matches: frozenset[tuple[str, bytes]] = frozenset(),
 ) -> set[str]:
     findings: set[str] = set()
+    if (
+        scan_text_pii
+        and mask_release_metadata_checksums
+        and path.stat().st_size <= _CHUNK_SIZE
+    ):
+        content = path.read_bytes()
+        for name, pattern in _PATTERNS:
+            if pattern.search(content):
+                findings.add(name)
+        pii_content = _mask_release_metadata_checksums(path, content)
+        for name, pattern in _TEXT_PII_PATTERNS:
+            if any(
+                (name, match.group(0)) not in allowed_matches
+                for match in pattern.finditer(pii_content)
+            ):
+                findings.add(name)
+        return findings
+
     overlap = b""
     patterns = _PATTERNS + (_TEXT_PII_PATTERNS if scan_text_pii else ())
     with path.open("rb") as stream:
@@ -128,6 +178,10 @@ def audit_artifact_tree(root: Path) -> dict[str, object]:
             _scan_bytes(
                 path,
                 scan_text_pii=path.suffix.casefold() in _TEXT_EXTENSIONS,
+                mask_release_metadata_checksums=(
+                    root.name.casefold() == "release-artifacts"
+                    and relative.casefold() in {"artifacts.json", "sha256sums.txt"}
+                ),
                 allowed_matches=allowed_matches,
             )
         ):

@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Awaitable, Callable, Optional, get_type_hints
 
+from fastapi.encoders import jsonable_encoder
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -105,6 +106,7 @@ from app.services.agent_operations import (
     get_role_benchmark,
     get_pre_application_state,
     get_interview_scoring_skill,
+    get_interview_career_context,
     get_profile,
     get_profile_evolution_report,
     get_resume,
@@ -167,6 +169,7 @@ from app.services.agent_operations import (
     ingest_application_signal,
     ingest_interview_behavior_events,
     record_automation_event,
+    record_learning_observation,
     record_follow_up,
     revoke_email_account,
     restart_ai_interview,
@@ -193,6 +196,7 @@ from app.services.agent_operations import (
     build_role_benchmark,
     sync_email_notifications,
     submit_ai_interview_answer,
+    submit_interview_debrief,
     update_application_record,
     update_application_status,
     uninstall_capability_plugin,
@@ -283,6 +287,10 @@ from app.services.resume_workspace import (
     get_resume_workspace,
     review_resume_proposal_item,
 )
+from app.services.career_director import build_career_snapshot, correct_career_stage
+from app.services.career_daily import build_daily_career_context
+from app.services.career_job_assessment import build_job_assessment_context
+from app.services.career_resume import get_resume_reengagement_context
 from app.services.data_export import export_user_data
 from app.services.diagnostics import export_diagnostic_bundle
 from app.services.demo_data import reset_demo_data
@@ -360,7 +368,7 @@ class RoleBenchmarkRunInput(_StrictOperationInput):
 
 class CareerTaskStartInput(_StrictOperationInput):
     task_type: str = Field(
-        pattern="^(agent_turn|run_artifact|role_intelligence|plugin_capability)$"
+        pattern="^(agent_turn|run_artifact|role_intelligence|career_director|plugin_capability)$"
     )
     source: str = Field(default="ui", min_length=1, max_length=80)
     target_type: str = Field(default="", max_length=80)
@@ -449,7 +457,7 @@ class InvokePluginCapabilityInput(_StrictOperationInput):
 class RecordAutomationEventInput(_StrictOperationInput):
     event_type: str = Field(
         pattern=(
-            "^(JOB_SAVED|JOB_UPDATED|APPLICATION_CREATED|APPLICATION_SUBMITTED|"
+            "^(JOB_SAVED|PROFILE_BASELINE_REQUIRED|JOB_UPDATED|APPLICATION_CREATED|APPLICATION_SUBMITTED|"
             "APPLICATION_STAGE_CANDIDATE|EMAIL_RECEIVED|INTERVIEW_INVITATION_DETECTED|"
             "REJECTION_DETECTED|OFFER_DETECTED|CAREER_FILE_CHANGED|"
             "CAREER_FACT_CANDIDATE_CREATED|RESUME_UPDATED|INTERVIEW_COMPLETED|"
@@ -571,6 +579,29 @@ class PrepareResumeOptimizationInput(_StrictOperationInput):
     candidate_rows: list[dict[str, Any]] | None = Field(default=None)
     candidate_original_rows: list[dict[str, Any]] | None = Field(default=None)
     source_session_id: str | None = Field(default=None, min_length=1, max_length=60)
+
+
+class ResumePreparationContextInput(_StrictOperationInput):
+    job_id: int = Field(gt=0)
+    replaces_proposal_id: str | None = Field(default=None, max_length=80)
+    affected_source_section_ids: list[PositiveInt] | None = Field(default=None, max_length=30)
+
+
+class PersistDirectorResumeInput(_StrictOperationInput):
+    job_id: int = Field(gt=0)
+    task_id: str = Field(min_length=1, max_length=80)
+    preparation: dict[str, Any]
+    replaces_proposal_id: str | None = Field(default=None, max_length=80)
+
+
+class CareerQuestionTaskInput(_StrictOperationInput):
+    task_id: str = Field(min_length=1, max_length=80)
+
+
+class SubmitCareerAnswerInput(CareerQuestionTaskInput):
+    question_index: int = Field(ge=0, le=2)
+    answer: str = Field(min_length=1, max_length=5000)
+    proposal_id: str | None = Field(default=None, max_length=80)
 
 
 class ListCalendarEventsInput(_StrictOperationInput):
@@ -1205,6 +1236,31 @@ class ListProfileEvidenceInput(_StrictOperationInput):
     limit: int = Field(default=100, ge=1, le=500)
 
 
+class CareerStageCorrectionInput(_StrictOperationInput):
+    track: str = Field(pattern="^(campus|experienced)$")
+    substage: str = Field(
+        pattern="^(internship|fresh_graduate|early_career|experienced_ic|manager|executive|career_switch)$"
+    )
+
+    @model_validator(mode="after")
+    def validate_track(self) -> "CareerStageCorrectionInput":
+        campus = {"internship", "fresh_graduate"}
+        experienced = {"early_career", "experienced_ic", "manager", "executive"}
+        if self.substage in campus and self.track != "campus":
+            raise ValueError("internship/fresh_graduate must use campus track")
+        if self.substage in experienced and self.track != "experienced":
+            raise ValueError("experienced substages must use experienced track")
+        return self
+
+
+class DailyCareerContextInput(_StrictOperationInput):
+    profile_id: int | None = Field(default=None, gt=0)
+
+
+class JobAssessmentContextInput(_StrictOperationInput):
+    job_id: int = Field(gt=0)
+
+
 class AddProfileEvidenceInput(_StrictOperationInput):
     section_type: str = Field(
         pattern="^(education|experience|project|skill|certificate|custom|custom:[a-z0-9_]{6,64})$",
@@ -1234,6 +1290,41 @@ class ListLearningObservationsInput(_StrictOperationInput):
         pattern="^[a-z][a-z0-9_]{1,79}$",
     )
     limit: int = Field(default=100, ge=1, le=500)
+
+
+class InterviewCareerContextInput(_StrictOperationInput):
+    calendar_event_id: int = Field(gt=0)
+    automation_event_id: str = Field(default="", max_length=100)
+
+
+class ResumeReengagementContextInput(_StrictOperationInput):
+    resume_id: int = Field(gt=0)
+    automation_event_id: str = Field(default="", max_length=100)
+
+
+class SubmitInterviewDebriefInput(_StrictOperationInput):
+    calendar_event_id: int = Field(gt=0)
+    answers: list[str] = Field(min_length=1, max_length=3)
+
+    @model_validator(mode="after")
+    def bound_answers(self) -> "SubmitInterviewDebriefInput":
+        if any(len(answer) > 5000 for answer in self.answers):
+            raise ValueError("每条面试复盘答案最多 5000 字符")
+        if not any(answer.strip() for answer in self.answers):
+            raise ValueError("至少填写一条面试复盘答案")
+        return self
+
+
+class RecordLearningObservationInput(_StrictOperationInput):
+    source_type: str = Field(pattern="^[a-z][a-z0-9_]{0,59}$")
+    source_external_id: str = Field(min_length=1, max_length=255)
+    observation_type: str = Field(pattern="^[a-z][a-z0-9_]{0,79}$")
+    content: dict[str, Any] = Field(min_length=1)
+    source_title: str = Field(default="", max_length=300)
+    source_locator: str = Field(default="", max_length=2000)
+    source_metadata: dict[str, Any] = Field(default_factory=dict)
+    observed_at: str | None = Field(default=None, max_length=50)
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=1000)
 
 
 class ListMemoryInboxInput(_StrictOperationInput):
@@ -1281,7 +1372,7 @@ class SaveCareerArtifactInput(_StrictOperationInput):
         pattern=(
             "^(application_answers|application_email|company_research|cover_letter|"
             "follow_up_draft|interview_debrief|interview_prep|interview_risk_review|"
-            "job_evaluation|offer_review|pattern_analysis|reply_digest|skill_gap)$"
+            "job_evaluation|offer_review|pattern_analysis|reply_digest|skill_gap|reengagement_candidate)$"
         )
     )
     title: str = Field(min_length=1, max_length=300)
@@ -1298,7 +1389,7 @@ class ListCareerArtifactsInput(_StrictOperationInput):
         pattern=(
             "^(application_answers|application_email|company_research|cover_letter|"
             "follow_up_draft|interview_debrief|interview_prep|interview_risk_review|"
-            "job_evaluation|offer_review|pattern_analysis|reply_digest|skill_gap)$"
+            "job_evaluation|offer_review|pattern_analysis|reply_digest|skill_gap|reengagement_candidate)$"
         ),
     )
     limit: int = Field(default=100, ge=1, le=500)
@@ -1342,6 +1433,101 @@ class ImportJobBatchInput(_StrictOperationInput):
     keywords: list[str] = Field(default_factory=list, max_length=50)
     location: str = Field(default="", max_length=200)
     pool_id: int | None = Field(default=None, gt=0)
+    runtime_provider: str | None = Field(default=None, min_length=1, max_length=40)
+
+
+async def _record_job_saved_automation(
+    job_ids: list[int],
+    *,
+    source: str,
+    runtime_provider: str,
+) -> dict[str, list[Any]]:
+    events: list[Any] = []
+    errors: list[str] = []
+    for job_id in job_ids:
+        result = await execute_operation(
+            "record_automation_event",
+            {
+                "event_type": "JOB_SAVED",
+                "source": source,
+                "target_type": "job",
+                "target_id": str(job_id),
+                "payload": {"job_id": int(job_id), "runtime_provider": runtime_provider},
+                "dedupe_key": f"job-saved:job:{int(job_id)}",
+            },
+            surface="automation",
+        )
+        if result.get("ok"):
+            events.append(result.get("outputs") or {})
+        else:
+            errors.extend(str(error) for error in result.get("errors") or [])
+    return {"events": events, "errors": errors}
+
+
+def _ingest_runtime_provider(source: str, runtime_provider: str | None) -> str:
+    selected = str(runtime_provider or "").strip()
+    if selected:
+        return selected
+    clean_source = str(source or "").strip().casefold()
+    if clean_source in {"fixture", "replay", "boss-fixture"} or clean_source.startswith("plugin:"):
+        return clean_source
+    return "auto"
+
+
+async def _import_job_batch_and_dispatch(
+    *,
+    jobs: list[dict[str, Any]],
+    source: str = "manual",
+    batch_id: str | None = None,
+    keywords: list[str] | None = None,
+    location: str = "",
+    pool_id: int | None = None,
+    runtime_provider: str | None = None,
+) -> dict[str, Any]:
+    result = await import_job_batch(
+        jobs=jobs,
+        source=source,
+        batch_id=batch_id,
+        keywords=keywords,
+        location=location,
+        pool_id=pool_id,
+    )
+    result["automation"] = await _record_job_saved_automation(
+        result.get("resolved_job_ids") or result.get("created_job_ids") or [],
+        source=str(source or "job_import"),
+        runtime_provider=_ingest_runtime_provider(source, runtime_provider),
+    )
+    return result
+
+
+async def _import_jd_and_dispatch(
+    *,
+    title: str,
+    company: str,
+    jd_text: str,
+    source: str = "agent_import",
+    location: str = "",
+    url: str = "",
+    apply_url: str = "",
+    batch_id: str | None = None,
+) -> dict[str, Any]:
+    result = await import_jd(
+        title=title,
+        company=company,
+        jd_text=jd_text,
+        source=source,
+        location=location,
+        url=url,
+        apply_url=apply_url,
+        batch_id=batch_id,
+    )
+    if result.get("id"):
+        result["automation"] = await _record_job_saved_automation(
+            [int(result["id"])],
+            source=str(source or "agent_import"),
+            runtime_provider=_ingest_runtime_provider(source, None),
+        )
+    return result
 
 
 class StartScraperBatchInput(_StrictOperationInput):
@@ -1678,6 +1864,30 @@ async def _batch_triage_via_canonical_update(
     )
 
 
+async def _get_resume_preparation_context(**kwargs: Any) -> dict[str, Any]:
+    from app.services.resume_optimization import get_resume_preparation_context
+
+    return await get_resume_preparation_context(**kwargs)
+
+
+async def _persist_director_resume_proposal(**kwargs: Any) -> dict[str, Any]:
+    from app.services.resume_optimization import persist_director_resume_proposal
+
+    return await persist_director_resume_proposal(**kwargs)
+
+
+async def _get_career_questions(**kwargs: Any) -> dict[str, Any]:
+    from app.services.career_questions import get_career_questions
+
+    return await get_career_questions(**kwargs)
+
+
+async def _submit_career_answer(**kwargs: Any) -> dict[str, Any]:
+    from app.services.career_questions import submit_career_answer
+
+    return await submit_career_answer(**kwargs)
+
+
 async def _prepare_resume_optimization_after_pre_application(
     **kwargs: Any,
 ) -> dict[str, Any]:
@@ -1736,6 +1946,42 @@ async def _search_jobs_via_sources(
     }
 
 OPERATIONS: dict[str, Operation] = {
+    "get_resume_preparation_context": Operation(
+        name="get_resume_preparation_context",
+        fn=_get_resume_preparation_context,
+        description="读取岗位 JD、已验证职业证据与待修订提案；不生成、不采用简历。",
+        group="career_runtime",
+        input_model=ResumePreparationContextInput,
+        audit_redacted_output_parameters=("sections", "source_rows", "evidence", "jd_text", "original_rows", "proposed_rows"),
+    ),
+    "persist_director_resume_proposal": Operation(
+        name="persist_director_resume_proposal",
+        fn=_persist_director_resume_proposal,
+        description="校验真实 CareerTask 的岗位化草稿并保存为待审核提案；不采用、不投递。",
+        group="resume",
+        side_effects=("write",),
+        input_model=PersistDirectorResumeInput,
+        audit_redacted_parameters=("preparation",),
+        audit_redacted_output_parameters=("original_rows", "proposed_rows", "diff", "strategy", "presentation"),
+    ),
+    "get_career_questions": Operation(
+        name="get_career_questions",
+        fn=_get_career_questions,
+        description="读取指定职业任务的关键问题、回答和审核状态。",
+        group="profile",
+        input_model=CareerQuestionTaskInput,
+        audit_redacted_output_parameters=("questions", "answers"),
+    ),
+    "submit_career_answer": Operation(
+        name="submit_career_answer",
+        fn=_submit_career_answer,
+        description="保存关键问题的回答与来源为待审核候选；不直接改变 Career Truth。",
+        group="profile",
+        side_effects=("write",),
+        input_model=SubmitCareerAnswerInput,
+        audit_redacted_parameters=("answer",),
+        audit_redacted_output_parameters=("answer", "observation", "proposal"),
+    ),
     "get_data_safety_status": Operation(
         name="get_data_safety_status",
         fn=get_data_safety_status,
@@ -1828,6 +2074,69 @@ OPERATIONS: dict[str, Operation] = {
         group="profile",
         input_model=GetProfileInput,
     ),
+    "get_career_snapshot": Operation(
+        name="get_career_snapshot",
+        fn=build_career_snapshot,
+        description="读取脱敏后的职业阶段、求职目标和带来源的有效证据；不创建或修改档案。",
+        group="career_runtime",
+        audit_redacted_output_parameters=("identity", "goals", "profile_coverage"),
+        input_model=GetProfileInput,
+        version="2026-09-26",
+    ),
+    "get_daily_career_context": Operation(
+        name="get_daily_career_context",
+        fn=build_daily_career_context,
+        description="读取有界、脱敏的今日 Pipeline、面试、跟进、提案和近期变化摘要；不修改 Career Truth。",
+        group="career_runtime",
+        audit_redacted_output_parameters=("pipeline", "follow_ups_due", "upcoming_interviews", "pending_proposals", "recent_changes", "interview_learning", "ignored_suggestions"),
+        input_model=DailyCareerContextInput,
+        version="2026-09-26",
+    ),
+    "get_job_assessment_context": Operation(
+        name="get_job_assessment_context",
+        fn=build_job_assessment_context,
+        description="读取指定 canonical Job、现有 Role Intelligence/Application/Resume 提案和未来面试摘要；岗位描述作为不可信数据处理，不修改职业事实。",
+        group="career_runtime",
+        audit_redacted_output_parameters=("job", "role_intelligence", "application_attempts", "resume_materials", "upcoming_interviews"),
+        input_model=JobAssessmentContextInput,
+        version="2026-09-26",
+    ),
+    "get_interview_career_context": Operation(
+        name="get_interview_career_context",
+        fn=get_interview_career_context,
+        description="读取指定真实面试日程、岗位准备状态和精简历史面试学习；复盘答复仅限本次 AutomationEvent。",
+        group="career_runtime",
+        audit_redacted_output_parameters=("interview", "job_assessment", "previous_learning", "repeated_weak_areas", "debrief_answers"),
+        input_model=InterviewCareerContextInput,
+        version="2026-09-26",
+    ),
+    "get_resume_reengagement_context": Operation(
+        name="get_resume_reengagement_context",
+        fn=get_resume_reengagement_context,
+        description="读取新简历版本、material change 和使用旧版本的非终结岗位候选；不联系第三方。",
+        group="career_runtime",
+        audit_redacted_output_parameters=("resume_title", "current_version", "previous_version", "material_change_summary", "added_evidence_hints", "added_evidence", "candidates", "suppressed", "previously_suggested"),
+        input_model=ResumeReengagementContextInput,
+        version="2026-09-27",
+    ),
+    "submit_interview_debrief": Operation(
+        name="submit_interview_debrief",
+        fn=submit_interview_debrief,
+        description="提交用户填写的真实面试复盘答案，幂等启动 Career Director 学习候选分析；不会直接改写职业事实。",
+        group="interview",
+        side_effects=("write",),
+        input_model=SubmitInterviewDebriefInput,
+        version="2026-09-26",
+    ),
+    "correct_career_stage": Operation(
+        name="correct_career_stage",
+        fn=correct_career_stage,
+        description="保存使用者明确选择的职业阶段；仅更新阶段纠正字段，不接受 Agent 自行确认。",
+        group="career_runtime",
+        side_effects=("write",),
+        input_model=CareerStageCorrectionInput,
+        version="2026-09-26",
+    ),
     "list_profile_evidence": Operation(
         name="list_profile_evidence",
         fn=list_profile_evidence,
@@ -1866,6 +2175,15 @@ OPERATIONS: dict[str, Operation] = {
         },
         group="memory",
         input_model=ListLearningObservationsInput,
+    ),
+    "record_learning_observation": Operation(
+        name="record_learning_observation",
+        fn=record_learning_observation,
+        description="保存带来源和幂等键的学习观察；观察本身不是职业事实，后续 Proposal 仍需人工审核。",
+        group="memory",
+        side_effects=("write",),
+        input_model=RecordLearningObservationInput,
+        version="2026-09-26",
     ),
     "list_memory_inbox": Operation(
         name="list_memory_inbox",
@@ -2175,8 +2493,8 @@ OPERATIONS: dict[str, Operation] = {
     ),
     "import_jd": Operation(
         name="import_jd",
-        fn=import_jd,
-        description="导入单条 JD 文本为 Job；按 md5(jd_text) 去重，新建 Job triage_status=inbox。",
+        fn=_import_jd_and_dispatch,
+        description="导入单条 JD 文本为 canonical Job；按 md5(jd_text) 去重。新建岗位会幂等记录 JOB_SAVED 并进入 Career Director / Role Intelligence。",
         parameters={
             "title": "str",
             "company": "str",
@@ -2192,8 +2510,8 @@ OPERATIONS: dict[str, Operation] = {
     ),
     "import_job_batch": Operation(
         name="import_job_batch",
-        fn=import_job_batch,
-        description="批量导入岗位为 Job（浏览器扩展/CLI/采集器统一入口）：逐条按 hash_key 幂等去重，同 batch_id 重放不重复计数；triage_status=inbox。",
+        fn=_import_job_batch_and_dispatch,
+        description="批量导入岗位为 canonical Job（浏览器扩展/CLI/采集器统一入口）：逐条按 hash_key 幂等去重，同 batch_id 重放不重复计数；新建岗位会幂等记录 JOB_SAVED 并进入 Career Director / Role Intelligence。",
         parameters={
             "jobs": "list[object]",
             "source": "str=manual",
@@ -2201,6 +2519,7 @@ OPERATIONS: dict[str, Operation] = {
             "keywords": "list[str]=[]",
             "location": "str?",
             "pool_id": "int?",
+            "runtime_provider": "str?",
         },
         group="jobs",
         side_effects=("write",),
@@ -5221,8 +5540,11 @@ def _audit_failure_envelope(
 
 
 def _audit_inputs(op: Operation, inputs: dict[str, Any]) -> dict[str, Any]:
-    return redact_sensitive_value(
-        _redact_mapping(inputs, set(op.audit_redacted_parameters))
+    return jsonable_encoder(
+        redact_sensitive_value(
+            _redact_mapping(inputs, set(op.audit_redacted_parameters))
+        ),
+        exclude_none=True,
     )
 
 
@@ -5231,7 +5553,7 @@ def _audit_outputs(op: Optional[Operation], outputs: Any) -> Any:
         outputs = _redact_mapping(
             outputs, set(op.audit_redacted_output_parameters)
         )
-    return redact_sensitive_value(outputs)
+    return jsonable_encoder(redact_sensitive_value(outputs), exclude_none=True)
 
 
 def _redact_mapping(

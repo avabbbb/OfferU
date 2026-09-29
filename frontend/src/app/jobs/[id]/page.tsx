@@ -30,11 +30,19 @@ import {
   XCircle,
 } from "lucide-react";
 import { controlCareerTask, patchJob, useJob, usePools, useProgressBoard, useProgressTimeline, useCareerTasks, type CareerTask } from "@/lib/hooks";
+import { JobAssessmentPlanCard } from "@/components/jobs/JobAssessmentPlanCard";
+import { InterviewLifecycleCard } from "@/components/career/InterviewLifecycleCard";
+import { ResumeReengagementCard } from "@/components/career/ResumeReengagementCard";
+import { CareerQuestionsPanel } from "@/components/career/CareerQuestionsPanel";
+import { DeliveryList } from "@/components/career/DeliveryList";
+import { ArtifactViewer } from "@/components/career/ArtifactViewer";
+import { readDeliveries } from "@/components/career/deliveries";
 import { RoleIntelligencePanel } from "@/components/jobs/RoleIntelligencePanel";
 import {
   jobResearchApi,
   dataModeLabel,
   isFixtureDataMode,
+  roleBenchmarkApi,
   preApplicationApi,
   resumeApi,
   resumeOptimizationApi,
@@ -147,6 +155,7 @@ export default function JobDetailPage() {
     isLoading: progressLoading,
   } = useProgressBoard("all");
   const [selectedAttemptId, setSelectedAttemptId] = useState<number | null>(null);
+  const [activeArtifactId, setActiveArtifactId] = useState("");
   const { data: progressTimeline, error: progressTimelineError, isLoading: progressTimelineLoading } =
     useProgressTimeline(selectedAttemptId);
   const [joinModalOpen, setJoinModalOpen] = useState(false);
@@ -170,6 +179,9 @@ export default function JobDetailPage() {
   const [resumeProposal, setResumeProposal] = useState<ResumeOptimizationProposalDetail | null>(null);
   const [resumeProposalLoading, setResumeProposalLoading] = useState(false);
   const [resumeProposalError, setResumeProposalError] = useState("");
+  const [roleBenchmarkRefreshKey, setRoleBenchmarkRefreshKey] = useState(0);
+  const [roleBenchmarkStarting, setRoleBenchmarkStarting] = useState(false);
+  const [roleBenchmarkStartError, setRoleBenchmarkStartError] = useState("");
 
   const poolOptions = useMemo(
     () => [{ key: "ungrouped", label: "未分组" }, ...((pickedPools || []).map((pool) => ({ key: String(pool.id), label: pool.name })))],
@@ -297,13 +309,93 @@ export default function JobDetailPage() {
   }, [loadPreApplication]);
 
   // Fetch the role_intelligence CareerTask for this job — the real progress source.
-  const { data: careerTasksData } = useCareerTasks(50);
+  const { data: careerTasksData, mutate: mutateCareerTasks } = useCareerTasks(50);
+  const startRecommendedRoleIntelligence = useCallback(async () => {
+    if (!job?.id || roleBenchmarkStarting) return;
+    setRoleBenchmarkStarting(true);
+    setRoleBenchmarkStartError("");
+    try {
+      await roleBenchmarkApi.build(job.id, { runtime_id: "auto" });
+      setRoleBenchmarkRefreshKey((key) => key + 1);
+      await mutateCareerTasks();
+    } catch (cause) {
+      setRoleBenchmarkStartError(safeClientErrorMessage(cause, "岗位情报没有启动"));
+    } finally {
+      setRoleBenchmarkStarting(false);
+    }
+  }, [job?.id, mutateCareerTasks, roleBenchmarkStarting]);
   const preparationTask = useMemo<CareerTask | null>(() => {
     if (!jobId || !careerTasksData?.tasks) return null;
     return careerTasksData.tasks.find(
       (t) => t.task_type === "role_intelligence" && t.target_type === "job" && t.target_id === String(jobId)
     ) ?? null;
   }, [careerTasksData, jobId]);
+  const jobAssessmentTask = useMemo<CareerTask | null>(() => {
+    if (!jobId || !careerTasksData?.tasks) return null;
+    return careerTasksData.tasks.find(
+      (t) => t.task_type === "career_director"
+        && t.target_type === "job"
+        && t.target_id === String(jobId)
+        && t.input?.event_type === "JOB_SAVED"
+    ) ?? null;
+  }, [careerTasksData, jobId]);
+  const interviewLifecycleTasks = useMemo(() => {
+    if (!jobId || !careerTasksData?.tasks) return [];
+    const seenInterviews = new Set<number>();
+    return careerTasksData.tasks.filter(
+      (task) => {
+        const calendarEventId = Number(task.input?.calendar_event_id ?? 0);
+        const matchesJob = (
+          (task.target_type === "job" && task.target_id === String(jobId))
+          || Number(task.input?.job_id ?? 0) === jobId
+        );
+        const isInterviewLifecycle = ["INTERVIEW_INVITATION_DETECTED", "INTERVIEW_COMPLETED", "INTERVIEW_DEBRIEF_CREATED"]
+          .includes(String(task.input?.event_type || ""));
+        if (task.task_type !== "career_director" || !matchesJob || !isInterviewLifecycle || !calendarEventId) {
+          return false;
+        }
+        // The API returns newest tasks first. Show only the current lifecycle
+        // stage for each interview instead of repeating old preparation cards.
+        if (seenInterviews.has(calendarEventId)) return false;
+        seenInterviews.add(calendarEventId);
+        return true;
+      },
+    ).slice(0, 3);
+  }, [careerTasksData, jobId]);
+  const resumeReengagementTask = useMemo(() => {
+    if (!jobId || !careerTasksData?.tasks) return null;
+    const latestTask = careerTasksData.tasks.find((task) =>
+      task.task_type === "career_director" && task.input?.event_type === "RESUME_UPDATED",
+    );
+    if (!latestTask || latestTask.status !== "completed") return null;
+    const plan = latestTask.result?.briefing?.resume_update as {
+      candidates?: Array<{ job_id?: number; worth_reengaging?: boolean; urgency?: string }>;
+    } | undefined;
+    return plan?.candidates?.some((candidate) =>
+      Number(candidate.job_id) === jobId
+      && candidate.worth_reengaging === true
+      && candidate.urgency !== "skip",
+    ) ? latestTask : null;
+  }, [careerTasksData, jobId]);
+  const jobDeliveries = useMemo(() => {
+    if (!jobId || !careerTasksData?.tasks) return [];
+    const unique = new Map<string, ReturnType<typeof readDeliveries>[number]>();
+    for (const task of careerTasksData.tasks) {
+      if (task.task_type !== "career_director") continue;
+      for (const delivery of readDeliveries(task.result)) {
+        if (Number(delivery.job_id ?? 0) !== jobId) continue;
+        const key = String(delivery.artifact_id || delivery.action_key || `${delivery.artifact_type}-${task.task_id}`);
+        if (!unique.has(key)) unique.set(key, delivery);
+      }
+    }
+    return [...unique.values()];
+  }, [careerTasksData, jobId]);
+  const jobAssessmentHasQuestions = Boolean(
+    (Array.isArray(jobAssessmentTask?.result?.briefing?.questions)
+      && jobAssessmentTask.result.briefing.questions.length > 0)
+    || (Array.isArray(jobAssessmentTask?.result?.briefing?.resume_preparation?.questions)
+      && jobAssessmentTask.result.briefing.resume_preparation.questions.length > 0),
+  );
 
   // Dynamic progress projection — derived from real state, not fabricated.
   const preparationProgress = useMemo(() => {
@@ -591,6 +683,32 @@ export default function JobDetailPage() {
         </Card>
       )}
 
+      <JobAssessmentPlanCard
+        task={jobAssessmentTask}
+        onRetry={() => void controlCareerTask(jobAssessmentTask!.task_id, "retry").catch((err) => alert(safeClientErrorMessage(err, "重试岗位评估失败")))}
+        onStartRoleIntelligence={startRecommendedRoleIntelligence}
+        startingRoleIntelligence={roleBenchmarkStarting}
+        roleIntelligenceError={roleBenchmarkStartError}
+      />
+      {jobAssessmentHasQuestions && jobAssessmentTask ? (
+        <CareerQuestionsPanel
+          taskId={jobAssessmentTask.task_id}
+          heading="为岗位评估补充信息"
+          onAccepted={() => void mutateCareerTasks()}
+        />
+      ) : null}
+
+      <ResumeReengagementCard task={resumeReengagementTask} jobId={jobId ?? undefined} />
+      <DeliveryList deliveries={jobDeliveries} heading="OfferU 已准备的内容" onOpenArtifact={setActiveArtifactId} />
+
+      {interviewLifecycleTasks.map((task) => (
+        <InterviewLifecycleCard
+          key={task.task_id}
+          task={task}
+          onSubmitted={() => void mutateCareerTasks()}
+        />
+      ))}
+
       <Card className="bauhaus-panel rounded-none bg-white shadow-none" data-testid="job-application-context">
         <CardBody className="space-y-5 p-5">
           <div>
@@ -803,7 +921,7 @@ export default function JobDetailPage() {
         </CardBody>
       </Card>
 
-      <RoleIntelligencePanel jobId={job.id} />
+      <RoleIntelligencePanel jobId={job.id} refreshKey={roleBenchmarkRefreshKey} />
 
       <Card className="bauhaus-panel rounded-none bg-white shadow-none" data-testid="resume-proposal">
         <CardBody className="space-y-5 p-5">
@@ -1619,6 +1737,12 @@ export default function JobDetailPage() {
           </ModalFooter>
         </ModalContent>
       </Modal>
+
+      {activeArtifactId ? (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4">
+          <ArtifactViewer artifactId={activeArtifactId} onClose={() => setActiveArtifactId("")} />
+        </div>
+      ) : null}
     </motion.div>
   );
 }

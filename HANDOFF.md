@@ -1,104 +1,67 @@
 # OfferU Handoff
 
-Updated: 2026-09-25
+Updated: 2026-09-27
 
-Read these first:
+## Read first
 
-1. docs/product/current-product.md
-2. docs/product/entry-onboarding-and-dogfood.md
-3. docs/product/proactive-career-director.md
-4. STATUS.md
-5. CONTEXT.md
-6. ARCHITECTURE.md
-7. docs/evals/LIVE_EVAL.md
-
-Do **not** continue from closed feature branches or historical Harness designs.
-
-## Current main direction
-
-~~~
-Normal user                         Power user
-OfferU Desktop                     external Agent
-      │                                │
-      └────── OfferU Skill / tools ────┘
-                       ↓
-              Operation Registry
-                       ↓
-              Career Runtime
-                       ↓
-              Career Truth
-                       ↓
-            canonical Job Workspace
-~~~
+1. `AGENTS.md`
+2. `GOAL.md`
+3. `docs/product/current-product.md`
+4. `docs/product/proactive-career-director.md`
+5. `docs/product/entry-onboarding-and-dogfood.md`
+6. `STATUS.md`
+7. `CONTEXT.md`, `ARCHITECTURE.md`, and `docs/evals/LIVE_EVAL.md`
 
 ## Current checkpoint
 
-PR #29 has been merged. Its validated Build & Release run passed the deterministic upstream and downstream gates, including backend/frontend/extension, browser/migration/recovery, critical new-user repeatability, macOS arm64/x64 package, Windows package and installed-app smoke.
+The active branch is `feat/proactive-career-director`; `origin/main` was fetched and confirmed at `84b8255`, which is an ancestor of this branch. Do not switch or reset this branch. All five Proactive Career Director slices are implemented through the existing `AutomationEvent → AutomationRule → CareerTask → Agent Runtime → Operation Registry` path.
 
-The next product task is **not another broad feature sprint**.
+- Profile Discovery and Career Stage correction are visible in Profile and Today.
+- Daily Review re-evaluates bounded Career State and projects prioritized actions into Today and Inbox, with repeated-dismissal suppression.
+- JOB_SAVED triggers a model-created assessment plan projected into Inbox and Job Workspace; Role Intelligence starts only when recommended.
+- Interview invitation/prep and completed-interview/debrief are triggered from calendar state. Debrief answers become source-linked learning candidates pending review.
+- Evidence-bearing Resume updates create idempotent re-engagement candidates for review; they cannot contact anyone.
+- `career_policy.py` is enforced in the CareerTask path. The Registry-backed policy envelope constrains action keys, targets, evidence, Operations, Skills and autonomy. The final briefing is source-fingerprint checked before delivery materialization.
+- Saved delivery artifacts are readable through the existing Registry-backed artifact Operation. L2/L3 mutations and external actions retain the existing Proposal/HITL boundary.
 
-Owner dogfood has now identified the first high-value product slice: **runtime proactivity**.
+## Verification
 
-OfferU already has durable Automation, CareerTask, Skill and Operation infrastructure. The missing product behavior is a bounded Career Director that interprets Career State and proactively decides what deserves attention, while preserving the existing permission/truth boundaries.
+- Full backend after the Codex effort-boundary change: **813 passed, 10 skipped, 11 subtests passed** (`OFFERU_TEST_TEMP_ROOT=H:\tmp\offeru\career-director-final-backend-effort-rerun-20260927`).
+- Frontend: **50 tests passed across 18 files**; `npm run typecheck` and `npm run build` passed.
+- Targeted runtime-policy/Resume and interview integration tests passed. Migration v5 is included in the full backend run.
+- The extension was not modified. No real Career database or user Resume/Profile/Job was used or changed.
+- `docs/evals/FINDINGS.md` retains F1/F3 as historical and records the fixture-only seed in cloned eval DBs; it does not claim a business Operation, Proposal or confirmation.
 
-## Continue from here
+## Live local integration smoke
 
-1. Use current main with a dedicated dogfood data directory.
-2. Start with Codex as the first Agent.
-3. Import the owner’s real Resume and review Profile evidence.
-4. Use three real Jobs.
-5. Exercise:
-   - Job evaluation;
-   - pre-application decision;
-   - Evidence gaps;
-   - Resume proposal;
-   - Desktop proposal approve/reject;
-   - PDF export;
-   - Pipeline/Today continuation;
-   - restart/persistence.
-6. Record every point where the owner has to tell the Agent an obvious next action.
-7. Implement only the first Proactive Career Director vertical slice defined in the current design:
-   - First-run Profile Discovery;
-   - Daily Career Brief;
-   - Job-saved Assessment Plan;
-   - Interview Prep / Debrief;
-   - Resume-updated Re-engagement Review.
-8. Evaluate whether user-directed task rate falls without increasing duplicate/irrelevant reminders or autonomy violations.
+Codex 0.155.1 completed a real `PROFILE_BASELINE_REQUIRED` CareerTask from a cloned synthetic database at `H:\tmp\offeru\career-director-live-task-code-path-20260927\smoke.sqlite`. The model issued `get_career_snapshot` through the dynamic Operation Registry tool, returned a schema-valid briefing with two questions and two actions, passed policy validation, and emitted `turn/completed`; the CareerTask and its AutomationEvent completed. The Profile's Career Truth remained unchanged and no Proposal was created. The Profile page reads the completed CareerTask result.
 
-Do not let the blocked OMP isolation requirement stop Codex-first owner dogfood. The OMP/SWE-2 Golden Path remains a separate acceptance workstream and needs an approved isolated environment before pass³.
+The task now sets Codex reasoning effort to `low` for this bounded Career Director turn, independently of the user's global effort preference. The same synthetic request timed out with inherited effort and with explicit `medium`; the explicit `low` turn completed. This is a live Profile Discovery smoke only; the remaining slices are covered by synthetic Registry/runtime integration tests. Real OMP/SWE-2 pass³ was not run and remains a separate acceptance activity, not a blocker for this implementation milestone.
 
-## First-use product contract
+## Local dogfood startup
 
-Normal users should eventually need only:
+In a PowerShell terminal, start the backend in a dedicated persistent data directory:
 
-~~~text
-download OfferU
-→ install
-→ open
-→ OfferU finds an existing supported Agent
-→ OfferU prepares its Skill where supported
-→ Resume
-→ Job
-→ useful Job Workspace
+~~~powershell
+$env:OFFERU_DATA_DIR = 'H:\OfferU-Dogfood'
+New-Item -ItemType Directory -Force -Path $env:OFFERU_DATA_DIR | Out-Null
+Set-Location 'H:\WorkSpace_For_VsCode\Python\OFFERU\backend'
+.\.venv312\Scripts\python.exe run_server.py
 ~~~
 
-No Python, Node, Git, MCP or manual Skill-folder work is acceptable in the public beginner path.
+In a second terminal, start the frontend:
 
-The current development/internal path may still rely on a prepared development environment; this is acceptable for owner dogfood but not a Public Release claim.
+~~~powershell
+Set-Location 'H:\WorkSpace_For_VsCode\Python\OFFERU'
+npm --prefix frontend run dev
+~~~
+
+Open `http://127.0.0.1:7410`, import a Resume, review its Profile evidence and Discovery questions, save one Job, and continue in that canonical Job Workspace. The local Profile Discovery integration has completed once with a real Codex turn; use ordinary review and confirmation for all Career Truth and external actions. This development startup path is not a Public Release installer claim.
 
 ## Non-negotiable boundaries
 
-- Career Runtime owns truth.
-- App-first and Skill-first converge on the same canonical Job Workspace.
-- Agent Skills are entry/methodology layers, not a second database.
-- Agent cannot self-confirm protected mutations.
-- Application submit / recruiter contact remain user-controlled.
-- AI memory and third-party Skill output enter as candidate/evidence, not automatic Career Truth.
-- Do not add another top-level product surface until dogfood proves a real need.
-- Do not implement proactivity as a second infinite Agent loop. Runtime triggers are deterministic; Career Director reasoning is bounded; all execution remains behind CareerTask / Operation Registry / Proposal.
-- Campus and experienced-hire users must use different first-party Strategy Packs; do not solve this with one generic prompt or a fixed daily-application number.
-- Scripted bootstrap/health logic must never masquerade as career judgment.
-
-## Documentation rule
-
-Product interaction changes update current-product.md first. This handoff only describes the current continuation point.
+- Career Runtime owns Career Truth; the Operation Registry owns execution and permission; the active Agent owns reasoning.
+- App-first and Skill-first converge on one Profile, Pipeline and canonical Job Workspace.
+- Do not add a second infinite Agent loop or present scripted reasoning as an Agent result.
+- The model cannot self-confirm protected mutations, promote unreviewed learning to verified truth, submit applications, or send/contact external parties.
+- Keep automated tests and synthetic fixtures isolated under `H:\tmp\offeru`; never run destructive tests against the dogfood database.

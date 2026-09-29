@@ -1338,11 +1338,31 @@ async def review_memory_proposal(
         await db.commit()
         await db.refresh(proposal)
         evidence = await _proposal_evidence(db, [proposal.id])
-        return {
-            **_serialize_proposal(proposal, evidence.get(proposal.id, [])),
-            "profile_write": applied,
-            "duplicate": bool(applied.get("duplicate")),
-        }
+    result = {
+        **_serialize_proposal(proposal, evidence.get(proposal.id, [])),
+        "profile_write": applied,
+        "duplicate": bool(applied.get("duplicate")),
+    }
+    # Bounded follow-up only for user answers accepted through this review
+    # path: job answers re-prepare the exact job proposal, discovery answers
+    # trigger one bounded re-discovery. Rejected/deferred proposals never
+    # reach this point; the hook is idempotent via event dedupe keys.
+    try:
+        from app.services.career_questions import emit_answered_question_followup
+
+        followup = await emit_answered_question_followup(
+            proposal_id=int(proposal.id),
+            source_metadata=source.metadata_json if isinstance(source.metadata_json, dict) else {},
+            observation_content=(
+                observation.content_json if isinstance(observation.content_json, dict) else {}
+            ),
+            observation_id=int(observation.id),
+        )
+    except Exception as exc:  # noqa: BLE001 - review result must not be lost
+        followup = {"emitted": False, "reason": safe_error_message(exc), "event_type": ""}
+    if followup is not None:
+        result["reprepare"] = followup
+    return result
 
 
 async def invalidate_memory_source(

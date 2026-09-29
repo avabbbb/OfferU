@@ -1,20 +1,21 @@
 # OfferU Status
 
-Updated: 2026-09-25
+Updated: 2026-09-27
 
 ## Verdict
 
 ~~~
 OFFERU_PUBLIC_RELEASE_NOT_READY
-OWNER_DOGFOOD_READY
+PROACTIVE_CAREER_DIRECTOR_IMPLEMENTED
+LIVE_CODEX_SYNTHETIC_PROFILE_SMOKE_PASS
 ~~~
 
-OfferU is now suitable for owner dogfood on the current internal/development path. Public distribution still has separate signing, notarization, clean-machine and live external-evidence gates.
+Public distribution still has separate signing, notarization, clean-machine and live external-evidence gates. The five proactive implementation slices are complete and locally regression-tested with isolated synthetic fixtures. A real Codex Profile Discovery CareerTask has now completed through the Registry, Policy validator, persistent CareerTask and Profile result projection.
 
 ## Current phase
 
 ~~~
-OWNER_DOGFOOD_AND_PROACTIVE_DIRECTOR
+PROACTIVE_CAREER_DIRECTOR_IMPLEMENTED
 ~~~
 
 Current product authority: [docs/product/current-product.md](./docs/product/current-product.md).  
@@ -53,27 +54,27 @@ Use a dedicated dogfood data directory. Automated destructive tests must never r
 
 The first owner-dogfood review identified a product-level autonomy gap: OfferU has a broad Skill/Operation surface and durable Automation infrastructure, but normal users still need to know what to ask too often.
 
-The accepted next product slice is the bounded [Proactive Career Director](./docs/product/proactive-career-director.md): event-triggered career-state judgment, campus/experienced Strategy Packs, proactive Profile discovery, Daily/Weekly briefing, interview lifecycle and Resume re-engagement — without introducing a second infinite Agent loop.
+The accepted product slice is the bounded [Proactive Career Director](./docs/product/proactive-career-director.md): event-triggered career-state judgment, campus/experienced Strategy Packs, proactive Profile discovery, Daily/Weekly briefing, interview lifecycle and Resume re-engagement — without introducing a second infinite Agent loop.
+
+Implementation uses synthetic fixtures and isolated test databases. First-run Profile Discovery is committed as `73c522e`; Daily Career Brief as `bb2fb36`; Job Saved Assessment as `d3508c8`; Interview Prep/Debrief and Resume Re-engagement are implemented in the current proactive branch. Resume updates with added evidence enqueue an idempotent `RESUME_UPDATED` event in the same transaction as the canonical ResumeVersion. A bounded Codex Career Director reads Resume, application and Job evidence through the Registry; validated candidates materialize in Today, Inbox and the canonical Job Workspace without direct Career Truth writes or external contact. Do not wait for real Resume/Profile/Job data before coding. Owner dogfood follows final validation.
+
+Interview Prep/Debrief and Resume Updated Re-engagement are implemented with synthetic fixtures. Resume candidate generation uses the current Resume version pointer, only the newest application attempt per Job, active/non-terminal state, a wait window, evidence-reference validation and pending-suggestion dedupe. A candidate is displayed for owner review only; no send/contact capability is available.
 
 ## Active validation
 
-- Real OMP/SWE-2 Agent-native acceptance remains NOT_RUN because the current local machine lacks the approved isolated GUI/runtime environment. This blocks that specific evidence gate, not owner dogfood.
-- Codex is the recommended first dogfood Agent because it has the strongest beginner integration path: detection, Skill installation/update, native login check and live integration verification.
-- Zero-Setup still needs one genuine real-user first-run trace with real Resume + real Job rather than only automated/replay evidence.
+- Full backend regression after the Codex effort-boundary change: **813 passed, 10 skipped, 11 subtests passed** (`OFFERU_TEST_TEMP_ROOT=H:\tmp\offeru\career-director-final-backend-effort-rerun-20260927`).
+- Frontend regression: **50 passed across 18 files**; `npm run typecheck` and `npm run build` passed.
+- Local Codex 0.155.1 smoke used only cloned synthetic data at `H:\tmp\offeru\career-director-live-task-code-path-20260927\smoke.sqlite`. The model-issued `get_career_snapshot` dynamic-tool call completed; Codex returned a valid Profile Discovery briefing, Policy validation passed, and both CareerTask and AutomationEvent completed. The synthetic Profile was not updated as Career Truth. Explicit low effort is now set per bounded Career Director turn; default inherited effort and explicit medium effort did not complete this same scenario.
+- Real OMP/SWE-2 Agent-native acceptance remains NOT_RUN and separate from this coding milestone.
+- Zero-Setup still needs one genuine real-user first-run trace with a real Resume and Job.
 - Public macOS/Windows release still needs legitimate signing/notarization and clean-machine acceptance.
 - Live Role Intelligence, external application execution, contact search, market/policy calibration and legal conclusions remain capability-limited and must not be treated as guaranteed beginner functionality.
 
 ## Current priorities
 
-1. **Dogfood three real Jobs now, while measuring where the user still has to tell the Agent the obvious next action.**
-   - one strong match;
-   - one obvious evidence-gap role;
-   - one aspirational/uncertain role.
-2. Record every point where the owner leaves OfferU for ChatGPT/Codex notes, Word, Excel or manual tracking.
-3. Implement the first bounded Proactive Career Director slice from the accepted design; do not expand every event at once.
-4. In parallel, arrange an approved isolated environment for real OMP/SWE-2 Agent-native Golden Path → fresh-state pass³.
-5. After dogfood evidence, update README/marketing from real captured flows instead of feature claims.
-6. Continue public-release signing/clean-machine work separately; do not let release-only gates block product dogfood.
+1. Begin owner dogfood with a real Resume and the first Job using the dedicated `H:\OfferU-Dogfood` data directory; keep Profile discovery answers user-reviewed.
+2. Evaluate all five event surfaces during ordinary use and correct only observed UX problems.
+3. Keep OMP/SWE-2 pass³ and public-release signing/clean-machine evidence as separate gates.
 
 ## Product boundaries during dogfood
 

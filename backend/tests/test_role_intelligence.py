@@ -25,6 +25,7 @@ from app.ops import OPERATIONS
 from app.ops import execute_operation
 from app.database import Base
 from app.models.models import Job, RoleBenchmarkRun
+from app.routes.research import RoleBenchmarkRequest
 from app.services.agent_skill_registry import resolve_skill
 from app.services import role_intelligence
 from app.services.role_intelligence import (
@@ -599,6 +600,13 @@ asyncio.run(main())
             (operation_names | {"get_profile", "list_profile_evidence"}).issubset(
                 skill.allowed_tools
             )
+        )
+
+    def test_role_benchmark_api_uses_registry_auto_runtime_default(self) -> None:
+        self.assertEqual(RoleBenchmarkRequest().runtime_id, "auto")
+        self.assertEqual(
+            RoleBenchmarkRequest(runtime_id="backend_search").runtime_id,
+            "backend_search",
         )
 
     def test_auto_runtime_resolves_to_concrete_runtime_id(self) -> None:

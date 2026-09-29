@@ -2,7 +2,7 @@
 # OfferU Current Product North Star
 
 Status: **CURRENT PRODUCT AUTHORITY**  
-Updated: 2026-09-25
+Updated: 2026-09-27
 
 This document defines the current product shape of OfferU. Historical audits, dated implementation plans and superseded Harness-specific designs must not override it.
 
@@ -37,8 +37,11 @@ The default experience is:
 
 ~~~
 Install
-→ Find my local AI automatically
-→ Project / register the OfferU Skill where supported
+→ Copy one OfferU connection prompt
+→ Paste it into the local Agent already in use
+→ Agent downloads the canonical OfferU Skill from GitHub and follows its host setup guide
+→ Agent resolves the current local runtime command without guessing install paths
+→ Verify access with one read-only OfferU Operation
 → Resume + explicitly authorized AI memory → Profile
 → Save a real job from the browser
 → Create the canonical Job Workspace
@@ -61,12 +64,14 @@ Job / Opportunity
 Profile
 ~~~
 
-- **Today** is the guided action layer. It answers “what matters now?” and shows at most a few primary actions.
+- **Today** is the guided action layer. It answers “what matters now?” and shows at most a few primary actions. Opening Today records one idempotent daily Career Director review for the default Profile; the resulting CareerBriefing is projected into Today and the existing Automation Inbox, while the CareerTask remains the durable execution record.
 - **Pipeline** projects application state, timeline and next action from the same canonical events.
-- **Job / Job Workspace** is the durable application workspace for one opportunity: Job Snapshot, Role Intelligence, Evidence Map, application materials, interview preparation and canonical Timeline all converge here. Agent conversations are only one way to modify this workspace.
+- **Job / Job Workspace** is the durable application workspace for one opportunity: Job Snapshot, Role Intelligence, Evidence Map, application materials, interview preparation and canonical Timeline all converge here. Saving a Job triggers one bounded Career Director assessment against current Career State; the plan is persisted in CareerTask/Automation Inbox and displayed in this workspace. Role Intelligence is offered only when the assessment recommends it, and starts only after the user chooses it. Agent conversations are only one way to modify this workspace.
 - **Profile** is the long-lived evidence-backed model of the user. Memory is an evolution mechanism for Profile, not a separate silo.
 
 Agent, Skills, Email, Browser Capture, Resume, Role Intelligence and Interview are capabilities across these surfaces, not competing top-level products.
+
+Saving a Job and opening its canonical workspace must work when the embedded Agent or active model configuration is unavailable. OfferU keeps the Job and workspace available, records a retryable blocked CareerTask, and explains what needs configuration. It does not replace Career Director reasoning with a scripted assessment. Role Intelligence is not started by `JOB_SAVED`; a valid recommendation is policy-checked and offered as a user-started Registry operation.
 
 ## Distribution and first-use contract
 
@@ -76,16 +81,18 @@ For normal users, OfferU Desktop owns setup. The intended public beginner experi
 Download OfferU
 → install
 → open OfferU
-→ find an existing supported Agent
-→ prepare/register the OfferU Skill where supported
+→ copy one generic OfferU connection prompt
+→ paste it into the local Agent already in use
+→ Agent downloads the matching OfferU Skill and follows its own setup guide
+→ verify the current OfferU page with a read-only Operation
 → import Resume
 → save first Job
 → useful Job Workspace
 ~~~
 
-The normal user must not be required to install Python, Node.js, Git, MCP tooling or manually copy Skill files. The Desktop package owns its runtime dependencies; the Agent keeps ownership of its own account/login/model.
+The normal user must not be required to install Python, Node.js, Git, MCP tooling, select a provider, or hand-copy Skill files. The generic prompt points to the canonical public Skill in the OfferU GitHub repository; the local runtime projection is used only to resolve the command for the running installation. The Skill explains the active Agent's supported location. The Agent keeps ownership of its own account/login/model, and copying the prompt alone never means the connection is verified.
 
-For power users, Skill-first remains a valid second front door, but OfferU does not currently claim a public standalone `npx skills add offeru` package. The present consumer path is Desktop-assisted Skill installation/projection into detected hosts.
+Skill-first remains a valid second front door. OfferU does not claim a published standalone `npx skills add offeru` package; the canonical Skill is the `main` branch file in the public GitHub repository at `https://raw.githubusercontent.com/avabbbb/OfferU/main/.agents/skills/offeru/SKILL.md`, while the local Desktop runtime serves only an installation-specific CLI projection.
 
 Detailed first-use, current host/capability boundaries and owner-dogfood acceptance are maintained in [Entry, Onboarding & Dogfood Contract](./entry-onboarding-and-dogfood.md).
 
@@ -97,15 +104,16 @@ OfferU has two valid entry lanes that must converge on the same canonical state.
 
 ~~~
 Install OfferU
-→ auto-detect a supported local Agent
-→ project/register OfferU Skill automatically where supported
+→ copy one connection prompt
+→ paste it into the local Agent already in use
+→ Agent installs the version-matched OfferU Skill using its host guide
 → import resume / core evidence
 → save first Job
 → open Job Workspace
 → Guided Today handles the next decisions
 ~~~
 
-Normal users do not need to know what a Skill, MCP server, Registry or provider topology is.
+Normal users do not need to choose an Agent from a provider list or understand MCP, Registry or provider topology. The copied prompt and Skill guide handle the technical steps; Skill installation and a successful readback remain distinct states.
 
 ### Power user: Skill-first
 
@@ -198,10 +206,9 @@ The Workspace progressively fills as work completes:
 ~~~
 Job saved
 → Job Snapshot ready
-→ Role Intelligence ready
-→ Evidence Map ready
-→ Resume proposals ready
-→ Interview focus ready
+→ Career Director assessment completed or visibly blocked
+→ user-selected Role Intelligence / Evidence Map / Resume preparation
+→ interview preparation when a real interview is scheduled
 ~~~
 
 Long-running Agent work should surface as product state: completed, needs review, blocked/failed, and next action. Closing an Agent chat must not make the work disappear.
@@ -233,7 +240,11 @@ This does **not** introduce a second infinite Agent loop. Runtime decides **when
 
 OfferU must distinguish at least campus/fresh-graduate and experienced-hire strategy. Profile sufficiency, Today ranking, interview preparation, re-engagement and follow-up are target- and stage-relative rather than one generic checklist.
 
-The Director may automatically observe/analyze and prepare bounded drafts. It may not self-confirm protected Career Truth changes or irreversible external actions.
+The Director may automatically observe/analyze and prepare bounded drafts. Runtime validates each proposed action, target, evidence reference, Operation, Skill and autonomy level against the current Registry-backed policy context and source fingerprint. It may not self-confirm protected Career Truth changes or irreversible external actions.
+
+When an interview is added to the canonical calendar or recovered from an interview notification, OfferU triggers a bounded Career Director run that reads the current Career Snapshot, linked Job preparation and reviewed interview learning. The resulting preparation plan appears in Today and the same Job Workspace. After a scheduled interview passes, Daily Review creates one debrief task with model-selected questions; submitted answers remain source-linked learning candidates until the user reviews them in the memory inbox. Neither preparation nor debrief writes verified Career Truth or contacts anyone.
+
+Saving a new Resume version with added evidence triggers one bounded re-engagement review against active applications that used an older version. The Career Director judges whether the new evidence changes the case; any positive candidate appears in Today and the canonical Job Workspace for review. OfferU never sends a recruiter message from this trigger.
 
 Detailed design, autonomy levels, Strategy Packs and eval cases are defined in [Proactive Career Director](./proactive-career-director.md).
 
@@ -358,7 +369,7 @@ Current active validation work:
 - run the real external-Agent Golden Path with trusted execution evidence, human-visible HITL and pass^3 once an approved isolated environment is available;
 - validate one clean Zero-Setup first-run journey with real user inputs;
 - validate signed/notarized macOS clean install, upgrade, migration and recovery;
-- implement and dogfood the first bounded Proactive Career Director slice after the current owner-dogfood feedback identified low runtime autonomy as a primary product friction.
+- the first Proactive Career Director implementation is present across five bounded slices on `feat/proactive-career-director`: Profile Discovery, Daily Brief, Job Saved Assessment, Interview Prep/Debrief, and Resume Updated re-engagement. It keeps the existing Automation → CareerTask → Agent Runtime → Operation Registry path and uses isolated synthetic state for coding and automated verification. A real local Codex Profile Discovery turn has completed through the Registry and Policy validator; the next step is owner dogfood. Real career data was not a coding prerequisite. OMP/SWE-2 pass³ remains a separate acceptance activity.
 
 The previous zero-setup proposal (#18) is incorporated into this North Star; this document is the current product authority.
 

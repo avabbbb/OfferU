@@ -114,7 +114,7 @@ Event → Rule → CareerTask → Agent / Runtime → Operation
 
 普通用户主路径：
 
-Install → Launch → auto-detect local AI → 在支持时自动投影/注册 OfferU Skill → Resume + explicitly authorized memory → Profile → save first Job → create/open canonical Job Workspace → optionally connect job-search inbox → Today / Next Best Actions。
+Install → Launch → copy one generic OfferU connection prompt → paste it into the local coding Agent already in use → the Agent downloads the canonical OfferU Skill from public GitHub and follows its documented host setup → the local runtime supplies an installation-specific CLI projection only if needed → optional read-only access verification → Resume + explicitly authorized memory → Profile → save first Job → create/open canonical Job Workspace → optionally connect job-search inbox → Today / Next Best Actions。
 
 高级用户允许从支持的外部 Agent 通过 OfferU Skill 直接开始一个 Job，但最终必须解析/创建同一个 canonical Job Workspace，不能形成 Agent-only 第二套项目状态。
 

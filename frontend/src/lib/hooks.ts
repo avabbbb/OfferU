@@ -12,6 +12,7 @@ import { showcaseChatResponse } from "@/lib/showcase/llm";
 import { resolveApiBase } from "@/lib/apiBase";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { decideAgentRuntimeActionInDesktop } from "@/lib/desktop-proposal-decision";
+import type { CareerDelivery } from "@/lib/api";
 
 const API_BASE = resolveApiBase();
 
@@ -220,6 +221,7 @@ export interface CareerTask {
   target_id: string;
   runtime_provider: string;
   status: CareerTaskStatus;
+  input?: Record<string, any>;
   progress: Record<string, any>;
   error_id: string;
   error: string;
@@ -227,9 +229,96 @@ export interface CareerTask {
   attempt_count: number;
   max_attempts: number;
   result_ref: string;
+  result?: Record<string, any> & { deliveries?: CareerDelivery[] };
   created_at: string | null;
   started_at: string | null;
   finished_at: string | null;
+}
+
+/** Trigger the once-per-day Career Director review from the Today surface. */
+export async function triggerDailyCareerReview(): Promise<Record<string, any>> {
+  let response: Response;
+  try {
+    response = await showcaseFetch("/api/agent/runtime/automation/daily-review", {
+      method: "POST",
+    });
+  } catch {
+    throw new Error(formatBackendNetworkError());
+  }
+  const payload = (await response.json().catch(() => ({}))) as Record<string, any>;
+  if (!response.ok || payload.ok === false || payload.error || payload.detail) {
+    throw new Error(safeClientErrorMessage(payload.detail || payload.error, `今日职业简报启动失败 (${response.status})`));
+  }
+  return (payload.outputs && typeof payload.outputs === "object" ? payload.outputs : payload) as Record<string, any>;
+}
+
+/** Submit answers to the model-generated real interview debrief prompt. */
+export async function submitInterviewDebrief(
+  calendarEventId: number,
+  answers: string[],
+): Promise<Record<string, any>> {
+  let response: Response;
+  try {
+    response = await showcaseFetch("/api/interviews/debriefs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ calendar_event_id: calendarEventId, answers }),
+    });
+  } catch {
+    throw new Error(formatBackendNetworkError());
+  }
+  const payload = (await response.json().catch(() => ({}))) as Record<string, any>;
+  if (!response.ok || payload.ok === false || payload.error || payload.detail) {
+    throw new Error(safeClientErrorMessage(payload.detail || payload.error, `面试复盘提交失败 (${response.status})`));
+  }
+  return (payload.outputs && typeof payload.outputs === "object" ? payload.outputs : payload) as Record<string, any>;
+}
+
+/** Dismiss a user-facing automation suggestion through its Registry proposal boundary. */
+export async function dismissAutomationInboxItem(itemId: string): Promise<Record<string, any>> {
+  const response = await showcaseFetch(
+    `/api/agent/runtime/automation/inbox/${encodeURIComponent(itemId)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "dismiss" }),
+    },
+  );
+  const payload = (await response.json().catch(() => ({}))) as Record<string, any>;
+  if (!response.ok || payload.ok === false || payload.error || payload.detail) {
+    throw new Error(safeClientErrorMessage(payload.detail || payload.error, `稍后处理失败 (${response.status})`));
+  }
+  const projection = payload.outputs && typeof payload.outputs === "object"
+    ? payload.outputs
+    : payload;
+  const proposal = projection.proposal;
+  if (!projection.requires_confirmation || !proposal?.run_id || !proposal?.action_id) {
+    return projection;
+  }
+  if (!SHOWCASE) {
+    const confirmed = await decideAgentRuntimeActionInDesktop(
+      String(proposal.run_id),
+      String(proposal.action_id),
+      true,
+    );
+    if (!confirmed.ok || confirmed.errors?.length) {
+      throw new Error(confirmed.errors?.join("；") || "稍后处理未能保存");
+    }
+    return confirmed;
+  }
+  const confirmation = await showcaseFetch(
+    `/api/agent/runtime/runs/${encodeURIComponent(String(proposal.run_id))}/confirm`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action_id: String(proposal.action_id) }),
+    },
+  );
+  const confirmed = (await confirmation.json().catch(() => ({}))) as Record<string, any>;
+  if (!confirmation.ok || confirmed.ok === false || confirmed.error || confirmed.detail) {
+    throw new Error(safeClientErrorMessage(confirmed.detail || confirmed.error, `稍后处理失败 (${confirmation.status})`));
+  }
+  return confirmed;
 }
 
 // ---- Hooks ----

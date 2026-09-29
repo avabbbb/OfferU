@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.services.security_redaction import safe_error_message
 
@@ -50,6 +50,12 @@ class DeleteInterviewRequest(BaseModel):
 
 class RestartInterviewRequest(BaseModel):
     pass
+
+
+class InterviewDebriefSubmit(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    calendar_event_id: int = Field(gt=0)
+    answers: list[str] = Field(min_length=1, max_length=3)
 
 
 def _operation_outputs(result: dict[str, Any]) -> dict[str, Any]:
@@ -123,6 +129,11 @@ async def list_interviews(
 @router.post("/")
 async def create_interview(data: InterviewCreate):
     return await _execute("create_ai_interview", data.model_dump())
+
+
+@router.post("/debriefs")
+async def submit_interview_debrief(data: InterviewDebriefSubmit):
+    return await _execute("submit_interview_debrief", data.model_dump())
 
 
 @router.get("/focus-plan")

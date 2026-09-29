@@ -41,6 +41,12 @@ class AgentSkillProjectionTests(unittest.TestCase):
             set(selected_skill["allowed_tools"]),
         )
 
+        bootstrap = _manifest(skill="connection_bootstrap")
+        self.assertEqual(
+            {operation["name"] for operation in bootstrap["operations"]},
+            {"get_current_view"},
+        )
+
     def test_slash_commands_resolve_through_the_registry(self) -> None:
         self.assertEqual(resolve_skill("/offeru").id, "discovery")
         self.assertEqual(resolve_skill("/scan").id, "scan_jobs")
@@ -77,8 +83,18 @@ class AgentSkillProjectionTests(unittest.TestCase):
             self.assertNotIn("python -m app.cli routes", content)
             self.assertNotIn("http://localhost:8000/api", content)
         for path, content in rendered.items():
-            if path.name == "SKILL.md":
+            if path in {Path(".agents/skills/offeru/SKILL.md"), Path(".claude/skills/offeru/SKILL.md"), Path(".copilot/SKILL.md")}:
+                self.assertIn("Install in the Agent you are using", content)
+                self.assertIn("https://raw.githubusercontent.com/avabbbb/OfferU/main/.agents/skills/offeru/SKILL.md", content)
+                self.assertIn("http://127.0.0.1:8766/api/agent/runtime/skill", content)
+                self.assertIn("runtime-specific CLI", content)
+                self.assertIn("~/.agents/skills/offeru/SKILL.md", content)
+                self.assertIn("~/.claude/skills/offeru/SKILL.md", content)
+                self.assertIn("~/.pi/agent/skills/offeru/SKILL.md", content)
+                self.assertIn("~/.codebuddy/skills/offeru/SKILL.md", content)
+                self.assertIn("do not change its settings", content)
                 self.assertIn("get_agent_connection_nonce", content)
+                self.assertIn("get_current_view", content)
 
     def test_checked_in_projections_have_no_drift(self) -> None:
         self.assertEqual(projection_drift(PROJECT_ROOT), [])

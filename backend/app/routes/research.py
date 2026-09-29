@@ -46,8 +46,8 @@ class JobResearchReviewRequest(BaseModel):
 
 class RoleBenchmarkRequest(BaseModel):
     runtime_id: str = Field(
-        "codex",
-        pattern=r"^(codex|claude|gemini|omp|pi|opencode|fixture|replay|boss-fixture|plugin:[a-z0-9][a-z0-9_-]{0,63})$",
+        "auto",
+        pattern=r"^(auto|backend_search|codex|claude|gemini|omp|pi|opencode|fixture|replay|boss-fixture|plugin:[a-z0-9][a-z0-9_-]{0,63})$",
     )
     role_family: str = Field("", max_length=120)
     specialization: str = Field("", max_length=160)
