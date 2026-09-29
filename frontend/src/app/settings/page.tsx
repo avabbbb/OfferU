@@ -1308,19 +1308,21 @@ export default function SettingsPage() {
           <div className="space-y-4">
             <span className="bauhaus-chip bg-[var(--surface-muted)] text-[var(--foreground)]">系统配置</span>
             <div>
-              <p className="bauhaus-label text-[var(--foreground-muted)]">AI 与本机连接</p>
-              <h1 className="mt-2 text-4xl font-bold leading-tight md:text-5xl">连接你的工作伙伴</h1>
+              <p className="bauhaus-label text-[var(--foreground-muted)]">{SHOWCASE ? "网页演示 Agent" : "AI 与本机连接"}</p>
+              <h1 className="mt-2 text-4xl font-bold leading-tight md:text-5xl">{SHOWCASE ? "直接体验内置 Agent" : "连接你的工作伙伴"}</h1>
               <p className="mt-3 max-w-2xl text-sm font-medium leading-relaxed text-[var(--foreground-muted)] md:text-base">
-                优先连接已有的本机 Agent；模型接口、密钥和其他技术设置都收在高级设置中。搜索规则、隐私和数据来源仍可直接调整。
+                {SHOWCASE
+                  ? "网页演示只使用浏览器内置 Agent 与虚构 IndexedDB 数据，不连接 localhost，也不会扫描你的本机 Coding Agent。真实数据与外置 Agent 接入请使用 OfferU Desktop。"
+                  : "OfferU Desktop 可以发现并连接已有的本机 Agent；模型接口、密钥和其他技术设置都收在高级设置中。搜索规则、隐私和数据来源仍可直接调整。"}
               </p>
             </div>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-1">
             <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4 text-[var(--foreground)]">
-              <p className="bauhaus-label text-[var(--foreground-muted)]">本机连接</p>
-              <p className="mt-2 text-4xl font-bold">Agent</p>
-              <p className="mt-2 text-sm font-medium text-[var(--foreground-muted)]">在上方检查 Codex、Claude Code 或 OpenCode。</p>
+              <p className="bauhaus-label text-[var(--foreground-muted)]">{SHOWCASE ? "演示模式" : "本机连接"}</p>
+              <p className="mt-2 text-4xl font-bold">{SHOWCASE ? "内置" : "Agent"}</p>
+              <p className="mt-2 text-sm font-medium text-[var(--foreground-muted)]">{SHOWCASE ? "直接使用网页演示 Agent；不会连接本机环境。" : "在下方检查 Codex、Claude Code、OpenCode 等本机 Agent。"}</p>
             </div>
             <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4 text-[var(--foreground)]">
               <p className="bauhaus-label text-[var(--foreground-muted)]">启用来源</p>
