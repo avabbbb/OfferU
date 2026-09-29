@@ -83,6 +83,46 @@ class ReleaseArtifactAuditTests(unittest.TestCase):
         self.assertNotIn(email.decode(), str(result))
         self.assertNotIn(phone.decode(), str(result))
 
+
+    def test_binary_installer_ignores_token_shaped_compressed_noise(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "OfferU.msi").write_bytes(
+                b"\x00\xff\x81\x02" + b"sk-" + b"A" * 32 + b"\x00\x93\xfe\x11"
+            )
+            result = audit_artifact_tree(root)
+
+        self.assertEqual(result["status"], "clear")
+        self.assertEqual(result["findings"], [])
+
+    def test_binary_installer_still_flags_plaintext_credentials(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "OfferU.msi").write_bytes(
+                b'config api_key="sk-' + b"A" * 32 + b'" provider="openai"'
+            )
+            result = audit_artifact_tree(root)
+
+        self.assertEqual(result["status"], "fail")
+        self.assertEqual(
+            result["findings"],
+            [{"path": "OfferU.msi", "kind": "openai_like_key"}],
+        )
+
+    def test_binary_installer_canary_remains_unconditional(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "OfferU.exe").write_bytes(
+                b"\x00\xffOFFERU_RELEASE_CANARY_SECRET_20260929_xxxx\x00\xfe"
+            )
+            result = audit_artifact_tree(root)
+
+        self.assertEqual(result["status"], "fail")
+        self.assertEqual(
+            result["findings"],
+            [{"path": "OfferU.exe", "kind": "offeru_canary"}],
+        )
+
     def test_symlink_is_reported_without_following_it(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
