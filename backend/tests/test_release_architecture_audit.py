@@ -731,6 +731,17 @@ def test_desktop_webview_boundary_is_explicit() -> None:
     assert 'Command::new("xdg-open")' in tauri_lib
     assert "open_external_url" in tauri_lib
 
+    tauri_config = (ROOT / "frontend" / "src-tauri" / "tauri.conf.json").read_text(
+        encoding="utf-8"
+    )
+    for remote_model_origin in (
+        "https://api.openai.com",
+        "https://api.anthropic.com",
+        "https://api.deepseek.com",
+        "https://dashscope.aliyuncs.com",
+    ):
+        assert remote_model_origin not in tauri_config
+
 
 def test_web_showcase_never_becomes_a_local_agent_bridge() -> None:
     connection = (ROOT / "frontend/src/lib/agentConnection.tsx").read_text(
