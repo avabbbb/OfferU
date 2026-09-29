@@ -77,6 +77,8 @@ class AgentIntegrationTests(unittest.IsolatedAsyncioTestCase):
         installed_text = path.read_text(encoding="utf-8")
         self.assertIn(str(integration._BACKEND_ROOT.resolve()), installed_text)
         self.assertIn("developer/source projection", installed_text)
+        self.assertIn("-m app.cli doctor --pretty", installed_text)
+        self.assertNotIn("<offeru-cli>", installed_text)
         self.assertNotIn("<!-- offeru-runtime-binding -->", installed_text)
 
         path.write_text(path.read_text(encoding="utf-8") + "\noutdated\n", encoding="utf-8")
@@ -95,6 +97,8 @@ class AgentIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("get_current_view", content)
         self.assertIn(str(integration._BACKEND_ROOT.resolve()), content)
         self.assertIn("developer/source projection", content)
+        self.assertIn("-m app.cli doctor --pretty", content)
+        self.assertNotIn("<offeru-cli>", content)
         self.assertNotIn("<!-- offeru-runtime-binding -->", content)
 
     async def test_codex_child_uses_system_proxy_without_overriding_process_proxy(self) -> None:
