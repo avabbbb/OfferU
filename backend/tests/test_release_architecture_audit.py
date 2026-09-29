@@ -717,21 +717,19 @@ def test_desktop_webview_boundary_is_explicit() -> None:
         encoding="utf-8"
     )
     assert 'isTauri()' in external_link
-    assert '@tauri-apps/plugin-opener' in external_link
+    assert 'invoke("open_external_url"' in external_link
     assert 'ALLOWED_EXTERNAL_PROTOCOLS' in external_link
 
-    package_json = (ROOT / "frontend" / "package.json").read_text(encoding="utf-8")
-    cargo = (ROOT / "frontend" / "src-tauri" / "Cargo.toml").read_text(encoding="utf-8")
     tauri_lib = (ROOT / "frontend" / "src-tauri" / "src" / "lib.rs").read_text(
         encoding="utf-8"
     )
-    capabilities = (
-        ROOT / "frontend" / "src-tauri" / "capabilities" / "default.json"
-    ).read_text(encoding="utf-8")
-    assert '"@tauri-apps/plugin-opener"' in package_json
-    assert 'tauri-plugin-opener = "2"' in cargo
-    assert "tauri_plugin_opener::init()" in tauri_lib
-    assert '"opener:default"' in capabilities
+    assert "fn open_external_url(" in tauri_lib
+    assert 'tauri::Url::parse(&url)' in tauri_lib
+    assert '"http" | "https" | "mailto" | "tel"' in tauri_lib
+    assert "rundll32.exe" in tauri_lib
+    assert 'Command::new("/usr/bin/open")' in tauri_lib
+    assert 'Command::new("xdg-open")' in tauri_lib
+    assert "open_external_url" in tauri_lib
 
 
 def test_web_showcase_never_becomes_a_local_agent_bridge() -> None:
