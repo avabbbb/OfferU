@@ -46,6 +46,8 @@ import { presentAgentToolCall } from "@/lib/agentToolPresentation";
 import { bauhausFieldClassNames } from "@/lib/bauhaus";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { AgentConnectionStatus } from "./AgentConnectionPanel";
+import { ExternalUrlLink } from "@/components/ExternalUrlLink";
+import { SHOWCASE } from "@/lib/showcase/router";
 
 interface PanelMessage {
   id: string;
@@ -196,14 +198,15 @@ export function AgentPanel() {
     {
       id: "welcome",
       role: "assistant",
-      content:
-        "在这里查看 OfferU 任务与确认请求。你可以从「接入与同步」连接本机 Agent，把当前工作交给它。",
+      content: SHOWCASE
+        ? "这是 OfferU 网页演示 Agent。它只使用演示数据，不连接你电脑里的 Coding Agent；真实本地数据与外置 Agent 请使用 OfferU Desktop。"
+        : "在这里查看 OfferU 任务与确认请求。需要时可从「接入与同步」连接本机 Coding Agent，把当前工作交给它。",
     },
   ]);
   const [input, setInput] = useState("");
   const [pendingActions, setPendingActions] = useState<AgentProposedAction[]>([]);
   const [loading, setLoading] = useState(false);
-  const [progressText, setProgressText] = useState("正在连接 Python AgentKernel...");
+  const [progressText, setProgressText] = useState(SHOWCASE ? "正在准备演示 Agent..." : "正在准备 OfferU Agent...");
   const [streamingText, setStreamingText] = useState("");
   const [error, setError] = useState("");
   const [importedStage, setImportedStage] = useState<string>("unknown");
@@ -1256,14 +1259,12 @@ function JobCardList({ jobs }: { jobs: AgentJobCard[] }) {
                 {[job.location, job.salary_text, job.source].filter(Boolean).join(" / ")}
               </p>
               {job.apply_url && (
-                <a
+                <ExternalUrlLink
                   href={job.apply_url}
-                  target="_blank"
-                  rel="noreferrer"
                   className="mt-1 inline-block text-[12px] font-medium text-[var(--primary-blue)] underline"
                 >
                   打开投递链接
-                </a>
+                </ExternalUrlLink>
               )}
             </div>
           </div>
