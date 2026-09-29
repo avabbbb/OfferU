@@ -13,6 +13,7 @@ import {
 } from "@/lib/api";
 import { bauhausModalContentClassName } from "@/lib/bauhaus";
 import { safeClientErrorMessage } from "@/lib/safe-error";
+import { ExternalUrlLink } from "@/components/ExternalUrlLink";
 
 const DIRECTION_LABELS: Record<string, string> = {
   highly_distinctive: "高度特殊",
@@ -150,9 +151,9 @@ function SignalEvidence({ signal, documents }: { signal: RoleBenchmarkSignal; do
                     <div className="flex items-start justify-between gap-2">
                       <p className="text-xs font-black text-[var(--foreground)]">{item.company} · {item.title}</p>
                       {document?.url && (
-                        <Link href={document.url} target="_blank" rel="noopener noreferrer" aria-label={`打开来源 ${item.source_ref}`} className="text-[var(--primary-blue)]">
+                        <ExternalUrlLink href={document.url} aria-label={`打开来源 ${item.source_ref}`} className="text-[var(--primary-blue)]">
                           <ExternalLink size={14} />
-                        </Link>
+                        </ExternalUrlLink>
                       )}
                     </div>
                     <p className="mt-1 text-xs font-medium leading-relaxed text-[var(--foreground-soft)]">{item.observation.evidence_text}</p>
