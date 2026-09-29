@@ -309,15 +309,61 @@ fn wait_for_python_backend(timeout_secs: u64) -> bool {
     }
 }
 
+#[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    let parsed = tauri::Url::parse(&url).map_err(|_| "外部链接无效".to_string())?;
+    match parsed.scheme() {
+        "http" | "https" | "mailto" | "tel" => {}
+        _ => return Err("不支持此外部链接协议".to_string()),
+    }
+
+    let target = parsed.as_str();
+
+    #[cfg(windows)]
+    {
+        let mut command = Command::new("rundll32.exe");
+        command.arg("url.dll,FileProtocolHandler").arg(target);
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        command.creation_flags(CREATE_NO_WINDOW);
+        return command
+            .spawn()
+            .map(|_| ())
+            .map_err(|_| "无法使用系统默认应用打开链接".to_string());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        return Command::new("/usr/bin/open")
+            .arg(target)
+            .spawn()
+            .map(|_| ())
+            .map_err(|_| "无法使用系统默认应用打开链接".to_string());
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        return Command::new("xdg-open")
+            .arg(target)
+            .spawn()
+            .map(|_| ())
+            .map_err(|_| "无法使用系统默认应用打开链接".to_string());
+    }
+
+    #[allow(unreachable_code)]
+    Err("当前平台暂不支持打开外部链接".to_string())
+}
+
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
         .manage(Children(Mutex::new(Vec::new())))
         .manage(UiApprovalCapability(Uuid::new_v4().to_string()))
         .invoke_handler(tauri::generate_handler![
             decide_agent_proposal,
-            decide_agent_runtime_action
+            decide_agent_runtime_action,
+            open_external_url
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
