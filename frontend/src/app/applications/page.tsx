@@ -67,6 +67,7 @@ import {
   useJobs,
 } from "@/lib/hooks";
 import { safeClientErrorMessage } from "@/lib/safe-error";
+import { ExternalUrlLink } from "@/components/ExternalUrlLink";
 
 type EditingCell = {
   recordId: number;
@@ -1396,16 +1397,14 @@ const [emailSyncing, setEmailSyncing] = useState(false);
                           <div className="flex items-center gap-2">
                             {field.type === "link" ? (
                               rawLinkValue ? (
-                                <a
+                                <ExternalUrlLink
                                   href={rawLinkValue}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
                                   className="inline-flex items-center gap-1 text-[var(--foreground)] hover:underline"
                                   title={rawLinkValue}
                                 >
                                   <span className={cellClass}>{formatLinkDisplayLabel(field.label, field.field_key)}</span>
                                   <ExternalLink size={12} />
-                                </a>
+                                </ExternalUrlLink>
                               ) : (
                                 <span className={cellClass}>-</span>
                               )
