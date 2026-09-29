@@ -657,6 +657,10 @@ export async function syncEmails() {
 /** 获取 Gmail 授权链接 */
 export async function getEmailAuthUrl(): Promise<{ auth_url?: string; message?: string }> {
   const res = await showcaseFetch(`/api/email/auth-url`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(safeClientErrorMessage(err.detail, `获取授权链接失败 (${res.status})`));
+  }
   return res.json();
 }
 
@@ -1162,6 +1166,10 @@ export async function reorderSections(resumeId: number, items: { id: number; sor
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ items }),
   });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(safeClientErrorMessage(err.detail || err.message, `段落排序失败 (${res.status})`));
+  }
   return res.json();
 }
 
@@ -1854,7 +1862,10 @@ export async function streamOptimizeAgentChat(
 
   while (true) {
     const { value, done } = await reader.read();
-    if (done) break;
+    if (done) {
+      buffer += decoder.decode(); // flush remaining bytes
+      break;
+    }
     buffer += decoder.decode(value, { stream: true });
 
     let boundary = findBoundary(buffer);
@@ -2479,7 +2490,10 @@ export async function streamGenerateResumeDraft(
   };
   while (true) {
     const { value, done } = await reader.read();
-    if (done) break;
+    if (done) {
+      buffer += decoder.decode(); // flush remaining bytes
+      break;
+    }
     buffer += decoder.decode(value, { stream: true });
     let boundary = findBoundary(buffer);
     while (boundary >= 0) {

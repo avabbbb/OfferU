@@ -14,13 +14,13 @@ import logging
 import re
 import secrets
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
 import httpx
-from sqlalchemy import desc, func, select
+from sqlalchemy import desc, func, select, update
 from sqlalchemy.orm import selectinload
 
 from app.database import async_session
@@ -205,6 +205,12 @@ async def update_resume_record(resume_id: int, update_data: dict[str, Any]) -> d
     async with async_session() as db:
         resume = await _get_resume(db, resume_id, load_sections=True)
         values = dict(update_data or {})
+        expected_revision = values.pop("expected_revision", None)
+        if expected_revision is not None:
+            claimed = await db.execute(update(Resume).where(Resume.id == resume_id, Resume.workspace_revision == expected_revision)
+                                       .values(workspace_revision=expected_revision).execution_options(synchronize_session=False))
+            if claimed.rowcount != 1 or int(resume.workspace_revision or 0) != expected_revision:
+                raise ValueError("简历已被修改，请刷新后再保存")
         sections = values.pop("sections", None)
         changed = False
         for key, value in values.items():
@@ -241,7 +247,11 @@ async def update_resume_record(resume_id: int, update_data: dict[str, Any]) -> d
                         setattr(section, key, value)
                         changed = True
                 source_section_ids = row.get("source_section_ids")
-                if source_section_ids:
+                if source_section_ids is not None:
+                    source_section_ids = [
+                        item for item in source_section_ids
+                        if isinstance(item, int) and not isinstance(item, bool) and item > 0
+                    ]
                     if section.source_section_ids != source_section_ids:
                         section.source_section_ids = source_section_ids
                         changed = True
@@ -717,7 +727,7 @@ async def batch_optimize_resume_records(
                 try:
                     await auto_write_job_to_total(db, job_id=job_id)
                 except Exception as exc:
-                    entry["error"] = f"自动写入投递总表失败: {safe_error_message(exc)}"
+                    entry["auto_write_error"] = f"自动写入投递总表失败: {safe_error_message(exc)}"
         except Exception as exc:
             entry.update(status="failed", error=safe_error_message(exc))
         results.append(entry)
@@ -796,7 +806,7 @@ async def create_resume_version_record(
                 proposal.status = "accepted"
                 proposal.accepted_resume_id = resume.id
                 proposal.accepted_resume_version_id = version.id
-                proposal.reviewed_at = datetime.utcnow()
+                proposal.reviewed_at = datetime.now(timezone.utc).replace(tzinfo=None)
         from app.services.career_resume import added_resume_evidence
 
         added_evidence = added_resume_evidence(
@@ -911,7 +921,7 @@ async def create_resume_share_record(
             import bcrypt
 
             password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-        expires_at = datetime.utcnow() + timedelta(days=expires_days) if expires_days else None
+        expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=expires_days) if expires_days else None
         share = ResumeShare(
             resume_id=resume_id,
             share_token=token,
@@ -966,7 +976,7 @@ async def access_resume_share_record(share_token: str, password: str | None = No
             raise ValueError("分享链接不存在或已失效")
         if not share.is_active:
             raise ValueError("分享链接已被禁用")
-        if share.expires_at and datetime.utcnow() > share.expires_at:
+        if share.expires_at and datetime.now(timezone.utc).replace(tzinfo=None) > share.expires_at:
             raise ValueError("分享链接已过期")
         if share.password_hash:
             if not password:
@@ -976,7 +986,7 @@ async def access_resume_share_record(share_token: str, password: str | None = No
             if not bcrypt.checkpw(password.encode("utf-8"), share.password_hash.encode("utf-8")):
                 raise ValueError("密码错误")
         share.view_count += 1
-        share.last_viewed_at = datetime.utcnow()
+        share.last_viewed_at = datetime.now(timezone.utc).replace(tzinfo=None)
         await db.commit()
         resume = share.resume
         return {

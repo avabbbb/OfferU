@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import threading
 import uuid
@@ -136,6 +137,46 @@ class ApplicationEventStore:
         if not isinstance(payload, dict) or payload.get("schema") != APPLICATION_EVENT_SCHEMA:
             return None
         return payload
+
+    async def async_record(
+        self,
+        *,
+        application_type: str,
+        application_id: int,
+        event_type: str,
+        source: str,
+        field_key: str | None = None,
+        previous_value: Any = None,
+        value: Any = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return await asyncio.to_thread(
+            self.record,
+            application_type=application_type,
+            application_id=application_id,
+            event_type=event_type,
+            source=source,
+            field_key=field_key,
+            previous_value=previous_value,
+            value=value,
+            metadata=metadata,
+        )
+
+    async def async_list(
+        self,
+        *,
+        application_type: str | None = None,
+        application_id: int | None = None,
+        event_type: str | None = None,
+        limit: int = 1000,
+    ) -> list[dict[str, Any]]:
+        return await asyncio.to_thread(
+            self.list,
+            application_type=application_type,
+            application_id=application_id,
+            event_type=event_type,
+            limit=limit,
+        )
 
 
 def build_application_pattern_analysis(

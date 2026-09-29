@@ -55,6 +55,7 @@ from app.database import get_db
 from app.models.models import Resume, ResumeSection, ResumeTemplate, Job, Profile
 from app.services.application_workspace import auto_write_job_to_total
 from app.services.security_redaction import safe_error_message
+from app.services.resume_design import ResumeDesignInput
 from app.runtime_paths import runtime_backend_dir
 
 router = APIRouter()
@@ -65,7 +66,10 @@ async def _execute_operation(name: str, args: dict[str, Any]) -> Any:
 
     result = await execute_operation(name, args, surface="resume_api")
     if not result.get("ok"):
-        message = "；".join(str(item) for item in result.get("errors") or [])
+        message = "；".join(
+            safe_error_message(ValueError(str(item)))
+            for item in result.get("errors") or []
+        )
         lowered = message.lower()
         if "not found" in lowered or "不存在" in message or "未找到" in message:
             status = 404
@@ -129,6 +133,7 @@ class ResumeUpdate(BaseModel):
     传 sections 时走「按 id diff」同步：有 id 且匹配 → 更新；无 id → 新建；
     请求中缺失的旧 section → 删除。一次 PUT 完成全量段落同步，免去多端点往返。
     """
+    expected_revision: int | None = Field(default=None, ge=0)
     user_name: Optional[str] = None
     title: Optional[str] = None
     summary: Optional[str] = None
@@ -431,6 +436,13 @@ async def update_resume(resume_id: int, data: ResumeUpdate):
         "update_resume_record",
         {"resume_id": resume_id, "update_data": data.model_dump(exclude_none=True)},
     )
+
+
+@router.patch("/{resume_id}/design")
+async def update_design(resume_id: int, data: ResumeDesignInput):
+    if data.resume_id != resume_id:
+        raise HTTPException(status_code=400, detail="简历 ID 不一致")
+    return await _execute_operation("update_resume_design", data.model_dump(exclude_none=True))
 
 
 @router.delete("/{resume_id}")
@@ -1116,7 +1128,11 @@ def _css_token(value: Any) -> Markup:
     实体），直接破坏 CSS；因此剥离可终止 <style> 块的字符（< >）后，
     以 Markup 标记安全透传：CSS 保持可用，标记注入被封死。
     """
-    return Markup(str(value or "").replace("<", "").replace(">", ""))
+    raw = str(value or "").replace("<", "").replace(">", "")
+    # Reject values containing CSS rule delimiters to prevent CSS injection
+    if "}" in raw or ";" in raw:
+        return Markup("")
+    return Markup(raw)
 
 
 def _resolve_photo_url_for_render(photo_url: str) -> str:
@@ -1437,37 +1453,10 @@ def _can_try_weasyprint() -> bool:
 
 
 async def _render_resume_pdf_with_playwright(resume_id: int, resume: Resume) -> bytes:
-    """
-    Render the dedicated frontend print route so PDF output matches the React preview.
-    Falls back to the legacy HTML renderer when managed Chromium is unavailable.
-    浏览器验收与 PDF 渲染只使用 Playwright managed Chromium，不探测系统 Edge。
-    """
-    try:
-        from playwright.async_api import async_playwright
-    except Exception as exc:
-        raise RuntimeError(
-            f"Playwright is not installed: {safe_error_message(exc)}"
-        ) from exc
+    from app.services.resume_export import render_resume_pdf
 
-    # OfferU 的桌面 Web 壳使用 HashRouter；必须保留 hash，否则 Vite
-    # 入口会把无 hash 的打印地址解析成 Today，Playwright 只能等到超时。
-    print_url = f"{FRONTEND_BASE_URL}/#/resume/print/{resume_id}"
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        try:
-            page = await browser.new_page(viewport={"width": 1240, "height": 1754}, device_scale_factor=1)
-            await page.goto(print_url, wait_until="networkidle", timeout=30000)
-            await page.wait_for_selector(".resume-print .resume-body", timeout=15000)
-            await page.emulate_media(media="print")
-            await page.evaluate("document.fonts && document.fonts.ready")
-            return await page.pdf(
-                format="A4",
-                print_background=True,
-                prefer_css_page_size=True,
-                margin={"top": "0", "right": "0", "bottom": "0", "left": "0"},
-            )
-        finally:
-            await browser.close()
+    pdf_bytes, _ = await render_resume_pdf(resume)
+    return pdf_bytes
 
 
 def _render_resume_pdf_bytes(html_str: str) -> bytes:
@@ -1547,16 +1536,15 @@ async def export_pdf(resume_id: int, db: AsyncSession = Depends(get_db)):
     导出简历为 PDF
     ─────────────────────────────────────────────
     1. 读取简历 + 段落 + 模板
-    2. 使用统一 HTML 渲染逻辑（与图片导出共用）
-    3. WeasyPrint 转 PDF
+    2. 将不可变快照交给与编辑器相同的 React 模板
+    3. Chromium 转 PDF，渲染失败时明确报错
     4. StreamingResponse 返回
     """
     resume = await _get_resume_or_404(resume_id, db, load_sections=True)
     try:
         pdf_bytes = await _render_resume_pdf_with_playwright(resume_id, resume)
-    except Exception:
-        html_str = await _render_resume_html_for_export(resume, db)
-        pdf_bytes = await anyio.to_thread.run_sync(_render_resume_pdf_bytes, html_str)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=safe_error_message(exc)) from exc
 
     return StreamingResponse(
         BytesIO(pdf_bytes),
@@ -1577,8 +1565,8 @@ async def export_image(
     """
     导出完整简历为 PNG 图片
     ─────────────────────────────────────────────
-    1. 优先使用 Playwright 渲染（与前端预览一致）
-    2. Fallback: WeasyPrint/ReportLab 生成 PDF，PyMuPDF 光栅化为 PNG
+    1. 使用共享 React / Chromium 渲染器生成 PDF
+    2. PyMuPDF 将 PDF 光栅化为 PNG
     """
     resume = await _get_resume_or_404(resume_id, db, load_sections=True)
     safe_scale = _normalize_export_image_scale(scale)
@@ -1596,12 +1584,11 @@ async def export_image(
             },
         )
 
-    # 优先 Playwright，fallback 到 WeasyPrint/ReportLab
+    # PDF 与图片共用同一排版结果，失败不降级。
     try:
         pdf_bytes = await _render_resume_pdf_with_playwright(resume_id, resume)
-    except Exception:
-        html_str = await _render_resume_html_for_export(resume, db)
-        pdf_bytes = await anyio.to_thread.run_sync(_render_resume_pdf_bytes, html_str)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=safe_error_message(exc)) from exc
 
     try:
         png_bytes = await anyio.to_thread.run_sync(_render_resume_png_from_pdf, pdf_bytes, safe_scale)

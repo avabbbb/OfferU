@@ -1691,8 +1691,9 @@ async def list_jobs(
         if pool_id is not None:
             query = query.where(Job.pool_id == pool_id)
         if keyword:
-            pattern = f"%{keyword}%"
-            query = query.where((Job.title.ilike(pattern)) | (Job.company.ilike(pattern)))
+            escaped = keyword.replace("\\", "\\\\").replace("%", "%%").replace("_", "\\_")
+            pattern = f"%{escaped}%"
+            query = query.where((Job.title.ilike(pattern, escape="\\")) | (Job.company.ilike(pattern, escape="\\")))
 
         total_q = select(func.count()).select_from(query.subquery())
         total = (await db.execute(total_q)).scalar() or 0
@@ -1760,6 +1761,8 @@ async def get_job(job_id: int) -> dict:
 
 
 async def triage_job(job_id: int, status: str, pool_id: Optional[int] = None) -> dict:
+    if status not in VALID_TRIAGE_STATUSES:
+        raise ValueError(f"Unsupported triage_status: {status}")
     async with async_session() as db:
         job = (
             await db.execute(select(Job).where(Job.id == job_id, _public_job_filter()))
@@ -1974,6 +1977,10 @@ async def get_resume(resume_id: int) -> dict:
             "user_name": resume.user_name or "",
             "title": resume.title or "",
             "summary": resume.summary or "",
+            "photo_url": resume.photo_url or "",
+            "workspace_revision": int(resume.workspace_revision or 0),
+            "style_config": resume.style_config or {},
+            "template_id": resume.template_id,
             "contact_json": resume.contact_json or {},
             "sections": [
                 {

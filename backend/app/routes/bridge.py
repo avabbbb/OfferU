@@ -13,6 +13,7 @@ from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from app.ops import execute_operation
+from app.services.agent_bridge.errors import BridgeProtocolError
 from app.services.agent_bridge.operation_gateway import (
     confirm_proposal,
     load_proposal_state,
@@ -70,7 +71,12 @@ async def list_pending_proposals() -> dict[str, Any]:
 @router.get("/proposals/{run_id}")
 async def get_proposal(run_id: str) -> dict[str, Any]:
     """Full confirmation state of one proposal Run."""
-    return await load_proposal_state(run_id=run_id)
+    try:
+        return await load_proposal_state(run_id=run_id)
+    except BridgeProtocolError as exc:
+        if exc.code == "run_not_found":
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 class ProposalDecisionRequest(BaseModel):
@@ -92,11 +98,16 @@ async def confirm_proposal_endpoint(
     if not accepts_authorization(authorization):
         raise HTTPException(status_code=403, detail="该决定只能由 OfferU 桌面工作区提交")
     if body.approve:
-        result = await confirm_proposal(
-            run_id=run_id,
-            action_id=body.action_id,
-            surface="agent_runtime_ui",
-        )
+        try:
+            result = await confirm_proposal(
+                run_id=run_id,
+                action_id=body.action_id,
+                surface="agent_runtime_ui",
+            )
+        except BridgeProtocolError as exc:
+            if exc.code == "run_not_found":
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         return {"approved": True, **result}
     result = await execute_operation(
         "reject_agent_run",

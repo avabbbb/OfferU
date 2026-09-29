@@ -593,7 +593,7 @@ function CompanyGroup({
           >
             {group.records.map((record) => (
               <RecordRow
-                key={record.application_attempt_id}
+                key={record.application_attempt_id ?? `job-${record.job_id}`}
                 record={record}
                 onReviewed={onReviewed}
               />

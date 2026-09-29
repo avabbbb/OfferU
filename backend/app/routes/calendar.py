@@ -6,7 +6,7 @@
 # POST   /api/calendar/auto-fill  Agent 自动填充日程
 # =============================================
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -30,6 +30,14 @@ class EventCreate(BaseModel):
     location: str = ""
     related_job_id: Optional[int] = None
     related_notification_id: Optional[int] = None
+
+
+def _normalize_dt(dt_str: str) -> datetime:
+    """Normalize a datetime string to UTC naive for DB comparison."""
+    dt = datetime.fromisoformat(dt_str)
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
 
 
 async def _execute_operation(name: str, args: dict[str, Any]) -> Any:
@@ -57,13 +65,13 @@ async def list_events(
 
     if start:
         try:
-            start_dt = datetime.fromisoformat(start)
+            start_dt = _normalize_dt(start)
         except ValueError:
             raise HTTPException(status_code=400, detail=f"invalid start datetime: {start}")
         query = query.where(CalendarEvent.start_time >= start_dt)
     if end:
         try:
-            end_dt = datetime.fromisoformat(end)
+            end_dt = _normalize_dt(end)
         except ValueError:
             raise HTTPException(status_code=400, detail=f"invalid end datetime: {end}")
         query = query.where(CalendarEvent.start_time <= end_dt)

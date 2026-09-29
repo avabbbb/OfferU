@@ -1264,7 +1264,8 @@ async def sync_workspace_status_stage_event(
         )
     ).scalar_one_or_none()
     if attempt is None:
-        attempt = ApplicationAttempt(job_id=int(job_id), status="applied")
+        attempt_status = stage if stage in ("prepared", "applied") else "applied"
+        attempt = ApplicationAttempt(job_id=int(job_id), status=attempt_status)
         db.add(attempt)
         await db.flush()
 

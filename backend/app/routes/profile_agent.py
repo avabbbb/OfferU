@@ -25,6 +25,7 @@ from app.services.profile_builder_agent import (
 )
 from app.services.profile_archive import build_personal_archive_from_agent_patch as _build_personal_archive
 from app.services.resume_parser import parse_resume_file
+from app.services.security_redaction import safe_error_message
 
 router = APIRouter()
 
@@ -38,7 +39,10 @@ async def _execute_operation(name: str, args: dict[str, Any]) -> Any:
 
     result = await execute_operation(name, args, surface="profile_agent_api")
     if not result.get("ok"):
-        detail = "；".join(str(item) for item in result.get("errors") or [])
+        detail = "；".join(
+            safe_error_message(ValueError(str(item)))
+            for item in result.get("errors") or []
+        )
         status = 404 if "not found" in detail.lower() or "不存在" in detail else 400
         raise HTTPException(status_code=status, detail=detail or "操作失败")
     return result.get("outputs")

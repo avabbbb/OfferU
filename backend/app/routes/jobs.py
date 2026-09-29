@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field
 
 router = APIRouter()
 
+from app.services.security_redaction import safe_error_message
 from app.services.job_sources.normalize import observations_to_ingest
 from app.services.job_visibility import public_job_filter
 from app.services.job_sources.protocol import JobSearchQuery
@@ -181,7 +182,7 @@ async def list_jobs(
             ).scalar_one_or_none()
             if not pool:
                 raise HTTPException(status_code=404, detail="Pool not found")
-            if triage_status and pool.scope != triage_status:
+            if triage_status and pool.scope != normalized:
                 raise HTTPException(status_code=400, detail="pool scope does not match triage_status")
 
             query = query.where(Job.pool_id == pool_numeric_id)
@@ -572,7 +573,10 @@ def _job_to_dict(job: Job) -> dict:
 def _operation_output_or_error(result: dict) -> dict:
     if result.get("ok"):
         return result.get("outputs") or {}
-    detail = "; ".join(result.get("errors") or ["operation failed"])
+    detail = "; ".join(
+        safe_error_message(ValueError(str(item)))
+        for item in (result.get("errors") or ["operation failed"])
+    )
     status_code = 404 if "not found" in detail.lower() else 400
     if "already exists" in detail.lower():
         status_code = 409

@@ -30,6 +30,10 @@ from app.services.security_redaction import safe_error_message
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+# Hold strong references to background scraper tasks to prevent GC collection
+# before they complete. Tasks auto-remove themselves on completion.
+_background_scraper_tasks: set[asyncio.Task] = set()
+
 
 # ---- 内存中的任务状态（轻量实现，后续可换 Redis / DB） ----
 # 限制最多保留 200 条任务记录，超出后丢弃最旧的；同时按 24h TTL 清理，
@@ -222,7 +226,9 @@ async def run_scraper(req: RunRequest):
     await _append_task(task_info)
 
     # 异步执行爬虫任务
-    asyncio.create_task(_execute_scraper(task_info, scraper, req))
+    task = asyncio.create_task(_execute_scraper(task_info, scraper, req))
+    _background_scraper_tasks.add(task)
+    task.add_done_callback(_background_scraper_tasks.discard)
 
     return {
         "task_id": task_id,

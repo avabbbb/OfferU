@@ -63,7 +63,10 @@ async def _execute_operation(name: str, args: dict[str, Any]) -> Any:
 
     result = await execute_operation(name, args, surface="profile_api")
     if not result.get("ok"):
-        message = "；".join(str(item) for item in result.get("errors") or [])
+        message = "；".join(
+            safe_error_message(ValueError(str(item)))
+            for item in result.get("errors") or []
+        )
         lowered = message.lower()
         if "not found" in lowered or "不存在" in message:
             status = 404

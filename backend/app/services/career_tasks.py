@@ -12,6 +12,7 @@ import contextlib
 import hashlib
 import json
 import os
+import re
 import tempfile
 import uuid
 from datetime import datetime, timezone
@@ -76,8 +77,11 @@ def _safe_error(value: Any) -> str:
         value if isinstance(value, BaseException) else RuntimeError(str(value or "")),
         max_length=2000,
     )
-    lowered = text.casefold()
-    if any(marker in lowered for marker in ("api_key", "apikey", "bearer", "token")):
+    if re.search(
+        r"\b(?:api[_-]?key|api[_-]?token|auth[_-]?token|access[_-]?token|refresh[_-]?token|bearer)\b",
+        text,
+        re.IGNORECASE,
+    ):
         return "provider authentication failed"
     return text[:2000]
 

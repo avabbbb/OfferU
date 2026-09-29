@@ -642,7 +642,7 @@ def _restore_masked_keys(next_cfg: ConfigUpdate, payload_fields: set[str]) -> No
             if not previous:
                 continue
             item.default_headers = {
-                key: previous.default_headers.get(key, value) if value == "[redacted]" else value
+                key: previous.default_headers.get(key, value) if "[redacted]" in str(value) else value
                 for key, value in item.default_headers.items()
             }
 
@@ -940,7 +940,13 @@ async def import_llm_provider(body: LlmProviderImportRequest) -> dict[str, Any]:
     global _current_config
     from app.llm_config_store import import_provider, probe_llm_endpoint
 
-    # 串行化磁盘写入与内存重载，避免与并发 PUT 互相覆盖（C-02）。
+    # SSRF 防护：无论是否 test，都先校验 base_url，避免写入内网地址后被 test_llm_connection 探测
+    # 空 base_url 时跳过校验（预设服务商由 import_provider 自动补全 URL）
+    if body.base_url and body.base_url.strip():
+        ssrf_err = await _validate_external_base_url(body.base_url)
+        if ssrf_err:
+            raise HTTPException(status_code=400, detail=ssrf_err)
+
     async with _config_lock:
         result = import_provider(
             provider_id=body.provider_id,

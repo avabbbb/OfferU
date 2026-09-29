@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 from collections import OrderedDict
@@ -75,22 +76,25 @@ class SemanticSearchService:
         self.client: Optional[AsyncQdrantClient] = None
         self.settings = get_settings()
         self._embedding_cache: _LRUCache = _LRUCache()  # 有界 LRU 内存缓存
+        self._client_lock = asyncio.Lock()
 
     async def _get_client(self) -> AsyncQdrantClient:
         """懒加载 Qdrant 客户端"""
         if self.client is None:
-            # 本地开发：使用内存模式
-            # 生产环境：连接 Docker 容器 (qdrant_host in settings)
-            qdrant_host = getattr(self.settings, "qdrant_host", None)
-            if qdrant_host:
-                self.client = AsyncQdrantClient(host=qdrant_host, port=6333)
-                _logger.info("Connected to configured remote Qdrant")
-            else:
-                self.client = AsyncQdrantClient(":memory:")
-                _logger.warning("Using in-memory Qdrant (data will be lost on restart)")
+            async with self._client_lock:
+                if self.client is None:  # double-check after acquiring lock
+                    # 本地开发：使用内存模式
+                    # 生产环境：连接 Docker 容器 (qdrant_host in settings)
+                    qdrant_host = getattr(self.settings, "qdrant_host", None)
+                    if qdrant_host:
+                        self.client = AsyncQdrantClient(host=qdrant_host, port=6333)
+                        _logger.info("Connected to configured remote Qdrant")
+                    else:
+                        self.client = AsyncQdrantClient(":memory:")
+                        _logger.warning("Using in-memory Qdrant (data will be lost on restart)")
 
-            # 初始化 Collections
-            await self._ensure_collections()
+                    # 初始化 Collections
+                    await self._ensure_collections()
 
         return self.client
 

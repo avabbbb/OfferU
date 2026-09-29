@@ -25,6 +25,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func, select, update
 
 from app.database import async_session
+from app.services.resume_design import ResumeDesignInput, update_resume_design
 from app.services.security_redaction import (
     redact_sensitive_value,
     safe_error_message,
@@ -4119,6 +4120,16 @@ OPERATIONS.update(
             side_effects=("write",),
             input_model=ResumeApplyTemplateInput,
         ),
+        "update_resume_design": Operation(
+            name="update_resume_design",
+            fn=update_resume_design,
+            description="仅修改简历版式、照片和校徽；需要当前 workspace_revision，确认后保存可恢复版本，不改写正文或职业事实。",
+            group="resume",
+            side_effects=("write", "external"),
+            permissions=("local_file:write",),
+            audit_redacted_parameters=("photo", "logo"),
+            input_model=ResumeDesignInput,
+        ),
         "update_resume_record": Operation(
             name="update_resume_record",
             fn=update_resume_record,
@@ -5398,8 +5409,12 @@ async def _claim_authorized_execution(
             await db.commit()
             await db.refresh(row)
             return row.id, None
-    except IntegrityError:
-        pass
+    except IntegrityError as exc:
+        # Only swallow unique constraint violations on the idempotent key
+        if "unique" in str(exc).lower() or "idempotent" in str(exc).lower():
+            pass  # expected race — another process claimed this idempotent key
+        else:
+            raise  # unexpected integrity error (NOT NULL, FK, etc.)
     except Exception as exc:
         raise OperationAuditError(f"无法在执行前写入审计记录: {exc}") from exc
 
@@ -5549,10 +5564,18 @@ def _audit_inputs(op: Operation, inputs: dict[str, Any]) -> dict[str, Any]:
 
 
 def _audit_outputs(op: Optional[Operation], outputs: Any) -> Any:
-    if op is not None and isinstance(outputs, dict):
-        outputs = _redact_mapping(
-            outputs, set(op.audit_redacted_output_parameters)
-        )
+    if op is not None:
+        if isinstance(outputs, dict):
+            outputs = _redact_mapping(
+                outputs, set(op.audit_redacted_output_parameters)
+            )
+        elif isinstance(outputs, list):
+            outputs = [
+                _redact_mapping(item, set(op.audit_redacted_output_parameters))
+                if isinstance(item, dict)
+                else item
+                for item in outputs
+            ]
     return jsonable_encoder(redact_sensitive_value(outputs), exclude_none=True)
 
 

@@ -79,6 +79,8 @@ async def _execute_operation(name: str, args: Optional[dict] = None) -> dict:
             safe_error_message(ValueError(str(item)))
             for item in result.get("errors") or []
         )
+        if "not found" in message.lower() or "不存在" in message:
+            raise HTTPException(status_code=404, detail=message or "操作失败")
         raise HTTPException(status_code=400, detail=message or "操作失败")
     outputs = result.get("outputs")
     if not isinstance(outputs, dict):

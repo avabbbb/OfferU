@@ -168,7 +168,11 @@ class AgentIntegrationAdapter:
             raise ValueError("OfferU Skill 目标目录不能使用符号链接")
         resolved_root = root.resolve()
         resolved_path = path.resolve()
-        if os.path.commonpath([str(resolved_root), str(resolved_path)]) != str(resolved_root):
+        try:
+            common = os.path.commonpath([str(resolved_root), str(resolved_path)])
+        except ValueError:
+            raise ValueError("OfferU Skill 目标路径越过允许目录（可能位于不同盘符）")
+        if common != str(resolved_root):
             raise ValueError("OfferU Skill 目标路径越过允许目录")
         atomic_write_bytes(path, _installed_content().encode("utf-8"))
         return self.inspect()

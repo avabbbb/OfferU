@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update as sql_update
 from sqlalchemy.exc import IntegrityError
 
 from app.database import async_session
@@ -1157,7 +1157,13 @@ async def review_memory_proposal(
                 **_serialize_proposal(proposal, evidence.get(proposal.id, [])),
                 "duplicate": True,
             }
-        if proposal.status not in {"pending", "deferred", "applying"}:
+        if proposal.status == "applying":
+            # Another process is mid-accept; treat as duplicate to avoid double-writes
+            return {
+                **_serialize_proposal(proposal, evidence.get(proposal.id, [])),
+                "duplicate": True,
+            }
+        if proposal.status not in {"pending", "deferred"}:
             raise ValueError("当前提案状态不能接受")
         active_evidence = [
             item
@@ -1192,8 +1198,19 @@ async def review_memory_proposal(
             source_observation,
             source,
         )
-        proposal.status = "applying"
-        proposal.review_note = clean_note
+        # Conditional UPDATE: atomic transition pending/deferred → applying
+        result = await db.execute(
+            sql_update(MemoryProposal)
+            .where(MemoryProposal.id == clean_proposal_id)
+            .where(MemoryProposal.status.in_({"pending", "deferred"}))
+            .values(status="applying", review_note=clean_note)
+        )
+        if result.rowcount == 0:
+            await db.rollback()
+            return {
+                **_serialize_proposal(proposal, evidence.get(proposal.id, [])),
+                "duplicate": True,
+            }
         await db.commit()
 
     from app.services.agent_operations import add_profile_evidence

@@ -226,7 +226,10 @@ async def probe_agent_connection(provider_id: str) -> dict[str, Any]:
                 _resolve_codex_binary,
             )
 
-            executable = item["executable_path"]
+            executable = item.get("executable_path")
+            if not executable:
+                check.update(status="failed", error="未检测到可执行文件")
+                return check
             # npm's Windows .cmd shim can emit an EPIPE when its Node wrapper
             # is terminated after a short read-only probe. Prefer the bundled
             # native binary when it is available; the public result stays

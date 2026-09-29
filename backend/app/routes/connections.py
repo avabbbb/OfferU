@@ -37,7 +37,10 @@ def _cap_names(caps: JobSourceCapabilities) -> list[str]:
 @router.get("/")
 async def list_connections() -> dict[str, Any]:
     """聚合所有注册 JobSource 的用户可读状态。"""
-    statuses = await job_source_router.statuses()
+    try:
+        statuses = await job_source_router.statuses()
+    except Exception:
+        statuses = {}
     connections = []
     for src in job_source_router.sources():
         try:

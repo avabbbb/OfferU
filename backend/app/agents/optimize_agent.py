@@ -1496,7 +1496,10 @@ async def agent_turn_stream(
             # Detect repeated tool failures (same tool 3 errors in a row)
             tool_failed = isinstance(result, dict) and "error" in result
             if tool_failed:
-                consecutive_tool_errors += 1
+                if last_tool_name == tool_name:
+                    consecutive_tool_errors += 1
+                else:
+                    consecutive_tool_errors = 1
             else:
                 consecutive_tool_errors = 0
             last_tool_name = tool_name

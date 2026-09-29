@@ -67,7 +67,7 @@ export function TrendChart({ data }: { data?: TrendPoint[] }) {
         <Bar dataKey="count" barSize={36} stroke="#121212" strokeWidth={2}>
           {chartData.map((point, index) => (
             <Cell
-              key={`${point.date}-${point.count}`}
+              key={`${point.date}-${index}`}
               fill={barColors[index % barColors.length]}
             />
           ))}

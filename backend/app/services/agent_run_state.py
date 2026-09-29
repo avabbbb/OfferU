@@ -693,66 +693,91 @@ async def propose_agent_run_action(
     args: dict[str, Any],
     summary: str,
 ) -> dict[str, Any]:
-    async with async_session() as db:
-        row = (
-            await db.execute(
-                select(AgentRunRecord).where(
-                    AgentRunRecord.run_id == str(run_id)
+    for _ in range(3):
+        async with async_session() as db:
+            row = (
+                await db.execute(
+                    select(AgentRunRecord).where(
+                        AgentRunRecord.run_id == str(run_id)
+                    )
+                )
+            ).scalar_one_or_none()
+            if row is None:
+                raise ValueError(f"Agent Run {run_id} does not exist")
+            if row.status in TERMINAL_STATUSES:
+                raise ValueError(
+                    f"Agent Run {run_id} is terminal ({row.status})"
+                )
+            previous_steps = row.steps_json if isinstance(row.steps_json, list) else []
+            steps = [
+                dict(item)
+                for item in previous_steps
+                if isinstance(item, dict)
+            ]
+            existing = next(
+                (
+                    item
+                    for item in steps
+                    if item.get("status") == "waiting_confirmation"
+                    and str(item.get("tool") or "") == operation
+                    and (item.get("args") or {}) == args
+                ),
+                None,
+            )
+            if existing is not None:
+                return existing
+            action_id = f"{operation}:{len(steps) + 1}"
+            step = _clean_action(
+                {
+                    "id": action_id,
+                    "tool": operation,
+                    "args": args,
+                    "summary": summary,
+                    "risk_level": "confirm",
+                    "requires_confirmation": True,
+                },
+                len(steps) + 1,
+            )
+            step["idempotency_key"] = f"{row.run_id}:{action_id}"
+            steps.append(step)
+            updated_steps = steps
+            new_sequence = (
+                await db.execute(
+                    sql_update(AgentRunRecord)
+                    .where(AgentRunRecord.run_id == str(run_id))
+                    .where(AgentRunRecord.steps_json == previous_steps)  # CAS check
+                    .values(
+                        steps_json=updated_steps,
+                        status="waiting_confirmation",
+                        event_sequence=AgentRunRecord.event_sequence + 1,
+                    )
+                    .returning(AgentRunRecord.event_sequence)
+                )
+            ).scalar_one_or_none()
+            if new_sequence is None:
+                await db.rollback()
+                continue
+            db.add(
+                AgentRunEvent(
+                    event_id=f"evt_{uuid.uuid4().hex}",
+                    run_id=row.run_id,
+                    sequence=int(new_sequence),
+                    event_type="operation.proposed",
+                    payload_json=safe_result_preview(
+                        {
+                            "action_id": action_id,
+                            "operation": operation,
+                            "args": args,
+                            "idempotency_key": step["idempotency_key"],
+                        }
+                    ),
                 )
             )
-        ).scalar_one_or_none()
-        if row is None:
-            raise ValueError(f"Agent Run {run_id} does not exist")
-        if row.status in TERMINAL_STATUSES:
-            raise ValueError(
-                f"Agent Run {run_id} is terminal ({row.status})"
-            )
-        steps = [
-            dict(item)
-            for item in (row.steps_json or [])
-            if isinstance(item, dict)
-        ]
-        existing = next(
-            (
-                item
-                for item in steps
-                if item.get("status") == "waiting_confirmation"
-                and str(item.get("tool") or "") == operation
-                and (item.get("args") or {}) == args
-            ),
-            None,
-        )
-        if existing is not None:
-            return existing
-        action_id = f"{operation}:{len(steps) + 1}"
-        step = _clean_action(
-            {
-                "id": action_id,
-                "tool": operation,
-                "args": args,
-                "summary": summary,
-                "risk_level": "confirm",
-                "requires_confirmation": True,
-            },
-            len(steps) + 1,
-        )
-        step["idempotency_key"] = f"{row.run_id}:{action_id}"
-        steps.append(step)
-        row.steps_json = steps
-        row.status = "waiting_confirmation"
-        event = _append_event_row(
-            row,
-            event_type="operation.proposed",
-            payload={
-                "action_id": action_id,
-                "operation": operation,
-                "args": args,
-                "idempotency_key": step["idempotency_key"],
-            },
-        )
-        db.add(event)
-        await db.commit()
-        return step
+            await db.commit()
+            return step
+    raise RuntimeError(
+        f"Agent Run {run_id} changed concurrently during proposal; please retry"
+    )
 
 
 async def reject_agent_run_action(

@@ -5,6 +5,7 @@ import base64
 import email as email_lib
 import hashlib
 import imaplib
+import logging
 import re
 import secrets
 import ssl
@@ -79,6 +80,7 @@ MAX_GMAIL_MESSAGES_PER_SYNC = 5_000
 MAX_TRANSIENT_BODY_CHARS = 200_000
 _ACCOUNT_LOCKS: dict[tuple[int, str], asyncio.Lock] = {}
 _SYNC_SERVICE_TASK: Optional[asyncio.Task[None]] = None
+_logger = logging.getLogger(__name__)
 
 
 class GmailHistoryExpired(RuntimeError):
@@ -1447,8 +1449,8 @@ async def _email_sync_loop(interval_seconds: int) -> None:
             await sync_email_notifications()
         except asyncio.CancelledError:
             raise
-        except Exception:
-            pass
+        except Exception as exc:
+            _logger.warning("email sync loop failed: %s", redact_sensitive_text(exc, max_length=500))
         await asyncio.sleep(interval_seconds)
 
 
