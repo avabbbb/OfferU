@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import type { ProfileImportResult } from "@/lib/hooks";
 import { safeClientErrorMessage } from "@/lib/safe-error";
+import { ExternalUrlLink } from "@/components/ExternalUrlLink";
 
 // ---------------------------------------------------------------------------
 // 提示词常量
@@ -498,16 +499,14 @@ export default function AIImportModal({ open, onClose, onImport }: AIImportModal
                   { name: "通义千问", url: "https://tongyi.aliyun.com/qianwen/" },
                   { name: "Kimi", url: "https://kimi.moonshot.cn/" },
                 ].map((tool) => (
-                  <a
+                  <ExternalUrlLink
                     key={tool.name}
                     href={tool.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 rounded-md border border-[var(--border-strong)]/15 px-3 py-1.5 text-sm font-medium text-[var(--foreground-muted)] transition hover:border-[var(--border-strong)]/30 hover:text-[var(--foreground)]"
                   >
                     <ExternalLink size={14} />
                     {tool.name}
-                  </a>
+                  </ExternalUrlLink>
                 ))}
               </div>
             </div>
