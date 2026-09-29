@@ -11,7 +11,7 @@ skills:
 
 Treat the installed OfferU application as runtime and Career Truth authority. Do not clone/search the OfferU repo, create a Python environment, or start Vite/FastAPI for a normal career request.
 
-If this projection still exposes source `python -m app.cli` commands, obtain the runtime-specific projection from the running OfferU app first. Ask the user to open/install OfferU Desktop if it is unavailable. Source CLI is developer-only when the user explicitly asks to work on OfferU itself.
+If this Skill is not runtime-bound by OfferU Desktop, ask the user once to open OfferU Desktop and use **连接 Agent / 更新接入**. Do not probe localhost manually or synthesize source commands. Source CLI is developer-only when the user explicitly asks to work on OfferU itself.
 
 Use the compact live Skill Registry, select only the relevant Skill, inspect only its Operations, and read the minimum sufficient Profile/Evidence/Job/Application/Interview plus accepted relevant Career Memory.
 
