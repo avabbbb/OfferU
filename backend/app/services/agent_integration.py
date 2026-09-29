@@ -55,7 +55,7 @@ def _installed_content() -> str:
         )
         return (
             source.replace("<!-- offeru-runtime-binding -->", binding, 1)
-            .replace("python -m app.cli", command)
+            .replace("<offeru-cli>", command)
             .replace("```powershell", "```powershell" if os.name == "nt" else "```sh")
         )
 
@@ -67,7 +67,7 @@ def _installed_content() -> str:
     )
     return (
         source.replace("<!-- offeru-runtime-binding -->", binding, 1)
-        .replace("python -m app.cli", f"{_command_prefix()} -m app.cli")
+        .replace("<offeru-cli>", f"{_command_prefix()} -m app.cli")
     )
 
 
