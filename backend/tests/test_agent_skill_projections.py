@@ -76,6 +76,9 @@ class AgentSkillProjectionTests(unittest.TestCase):
         for content in rendered.values():
             self.assertIn("Career Truth", content)
             self.assertIn("Vite/FastAPI", content)
+            self.assertNotIn("python -m app.cli", content)
+            self.assertNotIn("http://127.0.0.1:8766/api/agent/runtime/skill", content)
+            self.assertNotIn("Work from `backend/`", content)
             self.assertNotIn("python -m app.cli confirm", content)
             self.assertNotIn("agent_playbook --arg detail=full", content)
             self.assertNotIn("python -m app.cli api ", content)
@@ -92,8 +95,9 @@ class AgentSkillProjectionTests(unittest.TestCase):
                     "https://raw.githubusercontent.com/avabbbb/OfferU/main/.agents/skills/offeru/SKILL.md",
                     content,
                 )
-                self.assertIn("http://127.0.0.1:8766/api/agent/runtime/skill", content)
-                self.assertIn("do not execute those source commands yet", content)
+                self.assertIn("<offeru-cli> doctor --pretty", content)
+                self.assertIn("连接 Agent / 更新接入", content)
+                self.assertIn("do not probe localhost manually", content)
                 self.assertIn("do not clone OfferU", content)
                 self.assertIn("Curated Career Memory", content)
                 self.assertIn("External Agent memory", content)
