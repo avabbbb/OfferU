@@ -97,7 +97,7 @@ class AgentSkillProjectionTests(unittest.TestCase):
                 )
                 self.assertIn("<offeru-cli> doctor --pretty", content)
                 self.assertIn("连接 Agent / 更新接入", content)
-                self.assertIn("do not probe localhost manually", content)
+                self.assertIn("Do not probe localhost manually", content)
                 self.assertIn("do not clone OfferU", content)
                 self.assertIn("Curated Career Memory", content)
                 self.assertIn("External Agent memory", content)
