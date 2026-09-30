@@ -24,6 +24,9 @@ class AgentConnectionTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         connection._CHECKS.clear()
         connection._CHECK_LOCK = asyncio.Lock()
+        self.persist_patch = patch.object(connection, "record_connection_check", AsyncMock())
+        self.persist = self.persist_patch.start()
+        self.addCleanup(self.persist_patch.stop)
         integration = {
             "skill_status": "INSTALLED", "skill_version": "1", "skill_hash": "installed",
             "expected_skill_version": "1", "expected_skill_hash": "expected", "registry_hash": "registry",
@@ -69,7 +72,7 @@ class AgentConnectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(item["resume_state"], "NOT_VERIFIED")
         self.assertEqual(item["cancel_state"], "NOT_VERIFIED")
 
-    async def test_copy_prompt_is_generic_and_does_not_embed_checkout_path(self):
+    async def test_legacy_prompt_field_directs_to_desktop_without_manual_setup(self):
         with (
             patch.object(connection.runtime, "list_local_executors", AsyncMock(return_value={"items": []})),
             patch.object(connection, "list_provider_health", AsyncMock(return_value={"providers": []})),
@@ -77,13 +80,10 @@ class AgentConnectionTests(unittest.IsolatedAsyncioTestCase):
             result = await connection.get_agent_connections()
 
         prompt = result["connect_prompt"]
-        self.assertIn(
-            "https://raw.githubusercontent.com/avabbbb/OfferU/main/.agents/skills/offeru/SKILL.md",
-            prompt,
-        )
+        self.assertIn("连接 Agent / 更新接入", prompt)
+        self.assertIn("runtime-bound Skill", prompt)
         self.assertNotIn("http://127.0.0.1:8766", prompt)
-        self.assertIn("get_current_view", prompt)
-        self.assertIn("Operation Registry", prompt)
+        self.assertNotIn("下载官方", prompt)
         self.assertNotIn(str(Path(__file__).resolve().parents[2]), prompt)
         self.assertNotIn("Codex", prompt)
         self.assertNotIn("Claude", prompt)
@@ -143,9 +143,18 @@ class AgentConnectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertIs(result["items"][0]["authenticated"], False)
         adapter.close.assert_awaited_once()
 
-    async def test_custom_provider_without_openai_auth_stays_unverified(self):
+    async def test_custom_provider_needs_live_readback_without_claiming_openai_login(self):
         result, _, _, _ = await self.run_probe({"account": None, "requiresOpenaiAuth": False})
-        self.assertEqual(result["items"][0]["status"], "check_required")
+        self.assertEqual(result["items"][0]["status"], "ready")
+        self.assertTrue(result["items"][0]["connection_verified"])
+        self.assertIsNone(result["items"][0]["authenticated"])
+        self.integration_probe.assert_awaited_once()
+
+    async def test_custom_provider_flag_without_model_readback_cannot_connect(self):
+        self.integration_probe.return_value = {"integration_status": "ERROR", "connection_verified": False, "error": "model unavailable"}
+        result, _, _, _ = await self.run_probe({"account": None, "requiresOpenaiAuth": False})
+        self.assertEqual(result["items"][0]["status"], "failed")
+        self.assertFalse(result["items"][0]["connection_verified"])
         self.assertIsNone(result["items"][0]["authenticated"])
 
     async def test_unknown_account_type_cannot_be_marked_signed_in(self):
@@ -163,6 +172,18 @@ class AgentConnectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(item["status"], "blocked")
         self.assertTrue(item["connection_verified"])
         self.assertEqual(item["last_error"], "401 unauthorized")
+
+    async def test_readback_is_persisted_and_survives_cache_reset_with_matching_identity(self):
+        await self.run_probe({"account": {"type": "chatgpt"}})
+        self.persist.assert_awaited_once()
+        provider_id, saved = self.persist.call_args.args
+        self.assertEqual(provider_id, "codex")
+        connection._CHECKS.clear()
+        health = {"capabilities": {"connection_check": dict(saved)}}
+        self.assertTrue(connection._view(detected(), health)["connection_verified"])
+        self.assertFalse(connection._view(detected(version="2.0.0"), health)["connection_verified"])
+        saved["checked_at"] = "2020-01-01T00:00:00+00:00"
+        self.assertFalse(connection._view(detected(), {"capabilities": {"connection_check": saved}})["connection_verified"])
 
     async def test_local_check_does_not_erase_previous_remote_unavailable_state(self):
         result, _, _, _ = await self.run_probe(

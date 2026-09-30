@@ -117,3 +117,43 @@ def test_list_provider_health_projects_known_and_persisted_states() -> None:
     assert providers["codex"]["status"] == "unavailable"
     assert providers["replay"]["status"] == "ready"
     assert providers["deepseek-harness"]["status"] == "unprobed"
+
+
+def test_connection_readback_survives_database_reopen_without_erasing_provider_failure() -> None:
+    async def flow(path: Path) -> None:
+        url = f"sqlite+aiosqlite:///{path.as_posix()}"
+        engine = create_async_engine(url)
+        sessions = async_sessionmaker(engine, expire_on_commit=False)
+        async with engine.begin() as db:
+            await db.run_sync(Base.metadata.create_all)
+        with patch.object(agent_provider_health, "async_session", sessions):
+            await agent_provider_health.record_provider_health(
+                "codex", available=False, authenticated=False, blocked=True,
+                error="401 unauthorized", capabilities={"conformance": {"cancel_verified": "ERROR"}},
+            )
+            await agent_provider_health.record_connection_check("codex", {
+                "status": "ready", "integration_status": "VERIFIED", "skill_hash": "bound-skill",
+                "checked_at": "2026-09-30T00:00:00+00:00", "at": 1000,
+                "readback_evidence": {"thread_id": "thread", "turn_id": "turn", "operation": "get_agent_connection_nonce", "successful_calls": 1},
+                "error": "token=RELEASE_CANARY_SECRET", "account": "must-not-persist",
+            })
+        await engine.dispose()
+        reopened = create_async_engine(url)
+        try:
+            with patch.object(agent_provider_health, "async_session", async_sessionmaker(reopened, expire_on_commit=False)):
+                view = await agent_provider_health.get_provider_health("codex")
+                assert view["status"] == "blocked" and view["last_error"] == "401 unauthorized"
+                saved = view["capabilities"]["connection_check"]
+                assert saved["readback_evidence"]["turn_id"] == "turn"
+                assert "at" not in saved and "account" not in saved
+                assert "RELEASE_CANARY_SECRET" not in str(saved)
+                refreshed = await agent_provider_health.record_provider_health(
+                    "codex", available=False, blocked=True, capabilities={"stream": True},
+                )
+                assert refreshed["capabilities"]["connection_check"] == saved
+                assert refreshed["status"] == "blocked"
+        finally:
+            await reopened.dispose()
+
+    with TemporaryDirectory() as directory:
+        asyncio.run(flow(Path(directory) / "readback.db"))

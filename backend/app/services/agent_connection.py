@@ -15,7 +15,7 @@ from typing import Any
 
 from app.services import coding_agent_runtime as runtime
 from app.services.agent_integration import integration_manager
-from app.services.agent_provider_health import list_provider_health
+from app.services.agent_provider_health import list_provider_health, record_connection_check
 from app.services.security_redaction import redact_sensitive_text
 
 _CHECKS: dict[str, dict[str, Any]] = {}
@@ -58,11 +58,20 @@ def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
         if can_install
         else str(item.get("executable_path") or "")
     )
-    check = _CHECKS.get(provider_id, {})
-    if (time.monotonic() - check.get("at", 0) > _CHECK_TTL
+    capabilities = health.get("capabilities") if isinstance(health.get("capabilities"), dict) else {}
+    check = _CHECKS.get(provider_id) or capabilities.get("connection_check") or {}
+    try:
+        checked_at = datetime.fromisoformat(str(check.get("checked_at") or ""))
+        age = (datetime.now(timezone.utc) - checked_at.astimezone(timezone.utc)).total_seconds()
+    except (ValueError, TypeError):
+        age = time.monotonic() - check.get("at", 0)
+    if "at" in check:
+        age = max(age, time.monotonic() - check["at"])
+    if (not 0 <= age <= _CHECK_TTL
             or check.get("version") != item.get("version")
-            or check.get("executable") != executable
-            or check.get("skill_hash", integration.get("expected_skill_hash")) != integration.get("expected_skill_hash")):
+            or check.get("detected_executable", check.get("executable")) != executable
+            or check.get("skill_hash", integration.get("expected_skill_hash")) != integration.get("expected_skill_hash")
+            or integration["skill_status"] != "INSTALLED"):
         check = {}
     installed = bool(executable)
     compatible = bool(item.get("contract_compatible"))
@@ -87,7 +96,6 @@ def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
         status = "ready"
     elif check:
         status = check["status"]
-    capabilities = health.get("capabilities") if isinstance(health.get("capabilities"), dict) else {}
     conformance = capabilities.get("conformance") if isinstance(capabilities.get("conformance"), dict) else {}
     conformance_matches = bool(
         conformance.get("binary_path") == item.get("executable_path")
@@ -125,11 +133,12 @@ def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "id": provider_id,
-        "name": item["name"],
+        "name": get_host(provider_id).display_name if get_host(provider_id) else item["name"],
         "installed": installed,
         "compatible": compatible,
         "version": redact_sensitive_text(item.get("version") or "", max_length=160),
         "status": status,
+        "readback_evidence": check.get("readback_evidence") or None,
         "authenticated": (
             check.get("authenticated")
             if check
@@ -194,16 +203,11 @@ async def get_agent_connections() -> dict[str, Any]:
 
 
 def build_connect_prompt() -> str:
-    """Portable bootstrap text; the public Skill owns host setup guidance."""
+    """Legacy response field: direct users to Desktop, never source setup."""
 
     return (
-        "请接入这台电脑上正在运行的 OfferU。从 https://raw.githubusercontent.com/avabbbb/OfferU/main/.agents/skills/offeru/SKILL.md "
-        "下载官方 OfferU Skill，并按 Skill 中与你当前 Agent 匹配的说明安装；"
-        "只写入这个 Skill 文件，不改 Agent 的其他设置、账号、模型、凭据或代理。"
-        "随后按 Skill 检查本机 OfferU 是否可用；选择 connection_bootstrap Skill，查看 get_current_view 的 schema，并只通过对应的只读 Operation "
-        "读取 OfferU 当前同步页面和显式选中对象。把实际读取结果和连接状态告诉我，然后停止等待我的任务。"
-        "不要读取其他职业数据。Skill 下载 URL 只用于获取静态指引；之后所有业务操作必须走同一 Operation Registry，"
-        "所有写操作都留在 OfferU 等我确认，不得自行批准、提交、发送或联系第三方。"
+        "请打开 OfferU Desktop，使用连接 Agent / 更新接入。Desktop 会通过支持的宿主适配安装 runtime-bound Skill 并验证只读 Operation。"
+        "不要启动源码环境、猜测目录、修改账号/凭据/代理或自行确认业务写操作。"
     )
 
 
@@ -215,6 +219,7 @@ async def probe_agent_connection(provider_id: str) -> dict[str, Any]:
         item = await runtime._probe(provider_id, refresh=True)
         check: dict[str, Any] = {
             "version": item.get("version"), "executable": item.get("executable_path"),
+            "detected_executable": item.get("executable_path"),
             "authenticated": None,
             "status": "check_required", "auth_mode": "unknown", "error": "",
             "integration_status": integration_manager.inspect(provider_id).get("skill_status")
@@ -251,9 +256,11 @@ async def probe_agent_connection(provider_id: str) -> dict[str, Any]:
                 kind = details.get("type") if isinstance(details, dict) else None
                 authenticated = kind in {"chatgpt", "apiKey"}
                 if not authenticated and account.get("requiresOpenaiAuth") is False:
-                    # A custom provider may not use OpenAI login; its remote
-                    # authentication cannot be established by this local check.
-                    check["error"] = "本机连接已响应；当前服务商的登录状态需要在实际任务中确认。"
+                    # A custom provider need not use OpenAI login. Only an
+                    # actual model-issued readback can verify its tool path;
+                    # never manufacture a signed-in account from this flag.
+                    check["auth_mode"] = "native_provider"
+                    verify_integration = True
                 elif authenticated or details is None:
                     check.update(
                         authenticated=authenticated,
@@ -277,6 +284,7 @@ async def probe_agent_connection(provider_id: str) -> dict[str, Any]:
                         status="ready" if verification.get("connection_verified") else "failed",
                         integration_status=verification.get("integration_status") or "ERROR",
                         skill_hash=integration.get("expected_skill_hash"),
+                        readback_evidence=verification.get("readback_evidence"),
                         error=verification.get("error") or "",
                     )
                 else:
@@ -305,6 +313,7 @@ async def probe_agent_connection(provider_id: str) -> dict[str, Any]:
                     integration_status=integration["skill_status"],
                 )
         check.update(at=time.monotonic(), checked_at=datetime.now(timezone.utc).isoformat())
+        await record_connection_check(provider_id, check)
         _CHECKS[provider_id] = check
     return await get_agent_connections()
 

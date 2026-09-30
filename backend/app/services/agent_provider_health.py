@@ -121,7 +121,12 @@ async def record_provider_health(
         row.version = str(version or "")[:160]
         row.auth_mode = str(auth_mode or "unknown")[:60]
         row.protocol_version = str(protocol_version or "")[:80]
-        row.capabilities_json = capabilities if isinstance(capabilities, dict) else {}
+        next_capabilities = dict(capabilities or {})
+        prior_capabilities = row.capabilities_json if isinstance(row.capabilities_json, dict) else {}
+        prior_check = prior_capabilities.get("connection_check")
+        if prior_check:
+            next_capabilities["connection_check"] = prior_check
+        row.capabilities_json = next_capabilities
         row.last_error = _clean_error(error)
         row.checked_at = now
         await db.commit()
@@ -139,6 +144,25 @@ async def get_provider_health(provider_id: str) -> dict[str, Any]:
     if not view["provider_id"]:
         view = _builtin_provider_view(clean_id) or {**view, "provider_id": clean_id}
     return view
+
+
+async def record_connection_check(provider_id: str, check: dict[str, Any]) -> None:
+    """Keep readback evidence without clearing provider failures or credentials."""
+    async with async_session() as db:
+        row = await db.get(AgentProviderHealth, provider_id)
+        if row is None:
+            row = AgentProviderHealth(provider_id=provider_id)
+            db.add(row)
+        capabilities = dict(row.capabilities_json) if isinstance(row.capabilities_json, dict) else {}
+        capabilities["connection_check"] = {
+            key: value for key, value in check.items() if key in {
+                "version", "executable", "detected_executable", "authenticated", "status",
+                "auth_mode", "integration_status", "skill_hash", "checked_at", "readback_evidence",
+            }
+        }
+        capabilities["connection_check"]["error"] = _clean_error(check.get("error"))
+        row.capabilities_json = capabilities
+        await db.commit()
 
 
 async def list_provider_health() -> dict[str, Any]:
@@ -165,4 +189,5 @@ __all__ = [
     "list_provider_health",
     "provider_health_view",
     "record_provider_health",
+    "record_connection_check",
 ]
