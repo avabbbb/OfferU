@@ -35,7 +35,7 @@ current Eval evidence
 
 当前必须保持的产品模型：
 
-- **App-first 是普通用户默认入口**：安装 OfferU → 复制一条通用接入提示词 → 粘贴到正在使用的本地 Coding Agent → Agent 从公开 GitHub 源获取 canonical OfferU Skill，并按其中适配当前宿主的文档完成接入 → 只读回读验证 → 建立 Profile → 保存 Job → 打开 canonical Job Workspace → Today 引导下一步。需要时，运行中的 OfferU 只提供当前安装的 CLI 投影，不承担 Skill 发布/下载。普通 UI 不展示宿主选择列表；复制提示词不等于已连接。
+- **App-first 是普通用户默认入口**：安装并打开 Desktop → 建立 Profile → 保存 Job → canonical Job Workspace / Today。用户自带通用 Agent 是核心模式，同时覆盖 Coding 与消费级 Agent；Desktop 通过宿主适配发现、安装/更新 runtime-bound Skill 与正式工具连接，以真实只读回读验证。Agent 接入不阻塞首次职业价值；普通用户不复制连接 Prompt、不手工安装 Skill、不启动 Python/Vite/FastAPI 或源码环境。消费级 Agent 仅使用官方开放且实际验收的 Connector/Remote MCP，未支持的能力如实标记。内置 Agent 可以操作同一 Registry、辅助定制简历，作为备用或用户明确选择的推理主体；一个 Run 只有一个推理主体。
 - **Skill-first 是高级用户入口**：用户可从 Codex / Claude Code / WorkBuddy / OpenCode / OMP / Pi 等支持宿主直接调用 OfferU Skill，但最终必须解析或创建同一个 canonical Job / Application 状态。
 - **Skill 是 Agent entry，不是第二套产品状态**；不得创建 Agent-only Job、隐藏 workspace、重复 Profile 或平行 Application state。
 - **Job / Opportunity 是持久 Job Workspace**：Job Snapshot、Role Intelligence、Evidence Map、Application Materials、Interview、Timeline / Next Action 都属于同一机会工作区。

@@ -752,6 +752,10 @@ def _groups(operations: list[dict[str, Any]]) -> dict[str, int]:
 
 
 def _manifest(*, skill: str = "", group: str = "", all_operations: bool = False) -> dict[str, Any]:
+    from app.services.agent_integration import runtime_cli_command
+    from app.services.agent_skill_registry import tool_contract_snapshot
+
+    command = runtime_cli_command()
     operation_schemas = list_operations()
     full_registry = registry_snapshot(operation_schemas)
     if all_operations:
@@ -788,20 +792,21 @@ def _manifest(*, skill: str = "", group: str = "", all_operations: bool = False)
     return {
         "ok": True,
         "service": "OfferU CLI",
+        "tool_contract": tool_contract_snapshot(),
         "version": APP_VERSION,
         "purpose": "Agent-native control surface for OfferU. External agents discover scoped schemas and run reads; side-effect runs persist proposals for user review inside OfferU.",
         "commands": {
-            "health": "python -m app.cli doctor --pretty",
-            "release_health": "python -m app.cli doctor --require-ready --pretty",
-            "manifest": "python -m app.cli manifest --pretty",
-            "manifest_skill": "python -m app.cli manifest --skill <skill> --pretty",
-            "manifest_group": "python -m app.cli manifest --group <group> --pretty",
-            "manifest_all": "python -m app.cli manifest --all --pretty",
-            "list_operations": "python -m app.cli ops --pretty",
-            "inspect_operation": "python -m app.cli schema <operation> --pretty",
-            "run_operation": "python -m app.cli run <operation> --arg key=value --pretty",
-            "dry_run_mutation": "python -m app.cli run <operation> --arg key=value --dry-run --pretty",
-            "file_input": "python -m app.cli run <operation> --input args.json --pretty",
+            "health": f"{command} doctor --pretty",
+            "release_health": f"{command} doctor --require-ready --pretty",
+            "manifest": f"{command} manifest --pretty",
+            "manifest_skill": f"{command} manifest --skill <skill> --pretty",
+            "manifest_group": f"{command} manifest --group <group> --pretty",
+            "manifest_all": f"{command} manifest --all --pretty",
+            "list_operations": f"{command} ops --pretty",
+            "inspect_operation": f"{command} schema <operation> --pretty",
+            "run_operation": f"{command} run <operation> --arg key=value --pretty",
+            "dry_run_mutation": f"{command} run <operation> --arg key=value --dry-run --pretty",
+            "file_input": f"{command} run <operation> --input args.json --pretty",
         },
         "io_contract": {
             "stdout": "single JSON object",

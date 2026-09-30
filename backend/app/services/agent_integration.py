@@ -40,14 +40,23 @@ def _command_prefix() -> str:
     return ("& " if os.name == "nt" else "") + _shell_quote(executable)
 
 
+def runtime_cli_command() -> str:
+    """The command of this installation, never a guessed source command."""
+    if getattr(sys, "frozen", False):
+        return f"{_command_prefix()} --data-dir {_shell_quote(str(runtime_data_dir()))} cli"
+    return f"{_command_prefix()} -m app.cli"
+
+
 def _installed_content() -> str:
     source = (
         (PACKAGE_BACKEND_DIR / "offeru-assets/skills/offeru/SKILL.md").read_text(encoding="utf-8")
         if getattr(sys, "frozen", False)
         else _SOURCE_SKILL.read_text(encoding="utf-8")
     )
+    if "<!-- offeru-runtime-binding -->" not in source or "<offeru-cli>" not in source:
+        raise ValueError("OfferU Skill is missing its runtime binding; update OfferU Desktop.")
     if getattr(sys, "frozen", False):
-        command = f"{_command_prefix()} --data-dir {_shell_quote(str(runtime_data_dir()))} cli"
+        command = runtime_cli_command()
         binding = (
             "**Runtime binding:** installed OfferU Desktop. "
             "Use the bundled command projected below from any directory; "
@@ -67,14 +76,8 @@ def _installed_content() -> str:
     )
     return (
         source.replace("<!-- offeru-runtime-binding -->", binding, 1)
-        .replace("<offeru-cli>", f"{_command_prefix()} -m app.cli")
+        .replace("<offeru-cli>", runtime_cli_command())
     )
-
-
-def installed_skill_content() -> str:
-    """Return the public Skill with only this OfferU install's CLI command projected."""
-
-    return _installed_content()
 
 
 def installed_skill_content() -> str:

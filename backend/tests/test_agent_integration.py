@@ -88,9 +88,33 @@ class AgentIntegrationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_downloadable_skill_is_projected_for_the_current_install(self) -> None:
         content = integration.installed_skill_content()
-        self.assertIn("Install in the Agent you are using", content)
+        self.assertIn("installed-product Agent router", content)
         self.assertIn("get_current_view", content)
         self.assertIn(str(integration._BACKEND_ROOT.resolve()), content)
+
+    async def test_frozen_skill_and_manifest_use_the_same_bundled_command(self) -> None:
+        from app.cli import _manifest
+
+        assets = self.root / "offeru-assets/skills/offeru"
+        assets.mkdir(parents=True)
+        (assets / "SKILL.md").write_text(integration._SOURCE_SKILL.read_text(encoding="utf-8"), encoding="utf-8")
+        with patch.object(integration, "PACKAGE_BACKEND_DIR", self.root), patch.object(
+            integration.sys, "frozen", True, create=True
+        ), patch.object(integration, "_command_prefix", return_value="& 'H:/Apps/OfferU/offeru.exe'"), patch.object(
+            integration, "runtime_data_dir", return_value=self.root / "user data"
+        ):
+            command = integration.runtime_cli_command()
+            content = integration.installed_skill_content()
+            commands = _manifest()["commands"]
+        self.assertIn(command + " manifest --pretty", content)
+        self.assertTrue(all(value.startswith(command + " ") for value in commands.values()))
+        self.assertNotIn("python -m", content)
+        self.assertNotIn("<offeru-cli>", content)
+
+    async def test_missing_runtime_binding_fails_closed(self) -> None:
+        with patch.object(Path, "read_text", return_value="name: offeru\nold unbound instructions"):
+            with self.assertRaisesRegex(ValueError, "missing its runtime binding"):
+                integration.installed_skill_content()
 
     async def test_codex_child_uses_system_proxy_without_overriding_process_proxy(self) -> None:
         with patch.dict(codex_adapter.os.environ, {}, clear=True), patch.object(

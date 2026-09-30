@@ -6,8 +6,22 @@ from dataclasses import dataclass
 from typing import Any
 
 
-SKILL_REGISTRY_VERSION = "2026-09-29.1"
+SKILL_REGISTRY_VERSION = "2026-09-30.1"
 CONFIRMATION_POLICY = "operation_registry"
+
+
+def tool_contract_snapshot() -> dict[str, Any]:
+    """Shared wire metadata; adapters reuse Registry schemas and execution."""
+    return {
+        "version": "offeru.tool-contract.v1",
+        "schema_authority": "operation_registry",
+        "truth_authority": "career_runtime",
+        "approval_authority": "independent_user",
+        "mutation_path": "execute_or_propose_operation",
+        "bootstrap_skill": "connection_bootstrap",
+        "bootstrap_operations": ["get_current_view"],
+        "skill_registry_version": SKILL_REGISTRY_VERSION,
+    }
 
 
 @dataclass(frozen=True)

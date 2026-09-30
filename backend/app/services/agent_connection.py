@@ -194,16 +194,11 @@ async def get_agent_connections() -> dict[str, Any]:
 
 
 def build_connect_prompt() -> str:
-    """Portable bootstrap text; the public Skill owns host setup guidance."""
+    """Legacy response field: direct users to Desktop, never source setup."""
 
     return (
-        "请接入这台电脑上正在运行的 OfferU。从 https://raw.githubusercontent.com/avabbbb/OfferU/main/.agents/skills/offeru/SKILL.md "
-        "下载官方 OfferU Skill，并按 Skill 中与你当前 Agent 匹配的说明安装；"
-        "只写入这个 Skill 文件，不改 Agent 的其他设置、账号、模型、凭据或代理。"
-        "随后按 Skill 检查本机 OfferU 是否可用；选择 connection_bootstrap Skill，查看 get_current_view 的 schema，并只通过对应的只读 Operation "
-        "读取 OfferU 当前同步页面和显式选中对象。把实际读取结果和连接状态告诉我，然后停止等待我的任务。"
-        "不要读取其他职业数据。Skill 下载 URL 只用于获取静态指引；之后所有业务操作必须走同一 Operation Registry，"
-        "所有写操作都留在 OfferU 等我确认，不得自行批准、提交、发送或联系第三方。"
+        "请打开 OfferU Desktop，使用连接 Agent / 更新接入。Desktop 会通过支持的宿主适配安装 runtime-bound Skill 并验证只读 Operation。"
+        "不要启动源码环境、猜测目录、修改账号/凭据/代理或自行确认业务写操作。"
     )
 
 

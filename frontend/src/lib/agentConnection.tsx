@@ -3,6 +3,7 @@ import { usePathname } from "next/navigation";
 import { agentRuntimeApi } from "./api";
 import { SHOWCASE } from "./showcase/router";
 import { safeClientErrorMessage } from "./safe-error";
+import type { AgentConnection } from "./api";
 import { useWorkbench } from "./workbench";
 import type { components } from "./api-types.generated";
 type AgentContextRequest = components["schemas"]["AgentContextRequest"];
@@ -18,8 +19,8 @@ export interface ContextSyncState {
 interface AgentConnectionContextValue {
   open: boolean;
   setOpen: (value: boolean) => void;
-  promptCopied: boolean;
-  markPromptCopied: () => void;
+  connection: AgentConnection | null;
+  reportConnection: (connection: AgentConnection | null) => void;
   sync: ContextSyncState;
   retrySync: () => void;
 }
@@ -46,7 +47,7 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
   const pathname = usePathname();
   const { selection } = useWorkbench();
   const [open, setOpen] = useState(false);
-  const [promptCopied, setPromptCopied] = useState(false);
+  const [connection, reportConnection] = useState<AgentConnection | null>(null);
   const [retry, setRetry] = useState(0);
   const [sync, setSync] = useState<ContextSyncState>({
     status: "idle", title: "", error: "", confirmedAt: null, version: null,
@@ -135,10 +136,9 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
   }, [payload, pathname, retry, flush]);
 
   const retrySync = useCallback(() => setRetry((value) => value + 1), []);
-  const markPromptCopied = useCallback(() => setPromptCopied(true), []);
 
   return (
-    <ConnectionContext.Provider value={{ open, setOpen, promptCopied, markPromptCopied, sync, retrySync }}>
+    <ConnectionContext.Provider value={{ open, setOpen, connection, reportConnection, sync, retrySync }}>
       {children}
     </ConnectionContext.Provider>
   );
