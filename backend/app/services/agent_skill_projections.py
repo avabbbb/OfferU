@@ -65,30 +65,34 @@ argument-hint: "[skill-id | goal | JD/URL]"
 
 {marker}
 
-# OfferU External-Agent Router
+# OfferU — installed-product Agent router
 
-Work from `backend/`. The live CLI manifest is the source of truth; this generated file contains no business workflow definitions.
+OfferU gives your Agent professional career tools, evidence and memory. The installed application owns Career Truth, permissions and durable results; the active Agent reasons and drafts. Built-in and external Agents use the same Operations and review boundary.
 
-## Install in the Agent you are using
+<!-- offeru-runtime-binding -->
 
-The canonical public Skill is `https://raw.githubusercontent.com/avabbbb/OfferU/main/.agents/skills/offeru/SKILL.md`. Install that file in the active Agent. Do not use the local runtime URL as the Skill download source.
+## Normal user: connect to the installed product
 
-When the Agent is outside an OfferU source checkout, the running local OfferU can provide its current-install projection at `http://127.0.0.1:8766/api/agent/runtime/skill`. Read that local projection only to obtain the runtime-specific CLI command; it is not the public Skill distribution source. If the local runtime cannot be reached, report that the connection is unavailable and do not guess a checkout path. Never use raw HTTP for OfferU business data or Operations.
+The canonical public Skill is `https://raw.githubusercontent.com/avabbbb/OfferU/main/.agents/skills/offeru/SKILL.md`. It is a bootstrap contract, not a source-development command sheet. OfferU Desktop installs the executable binding and updates the runtime-bound Skill using the supported host adapter.
 
-Install only `offeru/SKILL.md` in a documented user-level Skills directory. Prefer the shared `~/.agents/skills/offeru/SKILL.md` location when the active Agent documents support for it. Otherwise use that Agent's native user-level location; examples include `~/.claude/skills/offeru/SKILL.md`, `~/.pi/agent/skills/offeru/SKILL.md`, `~/.config/opencode/skills/offeru/SKILL.md`, `~/.gemini/skills/offeru/SKILL.md`, `~/.omp/agent/skills/offeru/SKILL.md`, and `~/.codebuddy/skills/offeru/SKILL.md`. Resolve home/config overrides only from documented environment variables or the active Agent's own help. Never infer a location from another Agent or write into a project directory just to make discovery work.
+If `<offeru-cli>` below is unresolved and no authenticated OfferU connector is available, ask the user once to open OfferU Desktop and use **连接 Agent / 更新接入**. Do not execute the placeholder. Do not search for a checkout, install development dependencies, start servers, manually fetch localhost projections or ask the user to copy a connection prompt. Source development is allowed only when explicitly requested for developing/debugging OfferU.
 
-If this Agent only supports importing Skills through its own UI, or has no documented Skill loader, do not change its settings or imitate its internal package format. Tell the user the exact supported import step or limitation and do not claim the Skill is installed or the connection is verified.
+For a consumer Agent, use only its officially supported and actually connected tool transport. A cloud Agent's localhost is not the user's computer. If no connector exists, state the limitation; manual material collaboration is not a verified connection.
 
-Do not change Agent settings, account/login, model, credentials, proxy, or unrelated files. Do not overwrite a non-OfferU Skill at the target path. Start a fresh Agent session if the host only discovers Skills at startup.
+Do not change Agent account/login, model, credentials, proxy or unrelated settings. Desktop installs only the OfferU-owned Skill and never overwrites another Skill. Start a fresh Agent session if required by host discovery.
 
 ## Start every task
 
-```powershell
-python -m app.cli doctor --pretty
-python -m app.cli manifest --pretty
+```text
+<offeru-cli> doctor --pretty
+<offeru-cli> manifest --pretty
 ```
 
-Read `skill_registry.skills` from the compact manifest, choose one Skill, then run `python -m app.cli manifest --skill <skill-id> --pretty`. Inspect each selected Operation with `python -m app.cli schema <operation> --pretty` before calling it.
+Read `skill_registry.skills` from the compact manifest, choose one Skill, then run `<offeru-cli> manifest --skill <skill-id> --pretty`. Inspect each selected Operation with `<offeru-cli> schema <operation> --pretty` before calling it. MCP/Connector hosts use the corresponding authenticated catalog/schema/invoke tools; transport does not change permissions.
+
+## Career context and results
+
+Career Truth, curated Career Memory, learning candidates and conversational memory remain distinct. Read minimum-sufficient canonical context for the user's goal and current page; host memory cannot silently become verified evidence. Resume changes need source evidence and a rationale for every material rewrite. Persist drafts, artifacts and proposals to the existing Job Workspace/Resume/Today surfaces; a chat answer alone is not completed work.
 
 ## Routing
 
@@ -109,13 +113,13 @@ OfferU is the Career OS state/tool authority, not the exclusive career-methodolo
 
 ## Integration verification
 
-When the user pasted the OfferU connection prompt, select the live `connection_bootstrap` Skill, inspect the `get_current_view` schema, and execute that read-only Operation once. Report only the current page and explicit selection, then wait. This bootstrap read does not authorize reading other career data.
+When Desktop requests a bootstrap readback, select the live `connection_bootstrap` Skill, inspect the `get_current_view` schema, and execute that read-only Operation once. Report only the current page and explicit selection, then wait. This bootstrap read does not authorize reading other career data.
 
 When OfferU asks for integration verification, select the live `connection_probe` Skill, inspect `get_agent_connection_nonce`, execute it with the supplied `provider_id` and `challenge_id`, and return the nonce unchanged. Never read challenge storage directly or guess a nonce.
 
 ## Control rules
 
-- Run one atomic Operation per CLI invocation with `python -m app.cli run <operation>`.
+- Run one atomic Operation per CLI invocation with `<offeru-cli> run <operation>`.
 - Read Operations execute directly. Side-effect Operations persist a proposal and do not execute immediately.
 - Use `--dry-run` when a preview is useful. Dry-run is not confirmation.
 - Leave side-effect proposals pending for the user to review and confirm in OfferU.
@@ -134,16 +138,16 @@ def _codex_projection(snapshot: dict[str, Any]) -> str:
 name = "offeru-operator"
 description = "Operate OfferU through its live Skill Registry and atomic CLI control contract."
 developer_instructions = """
-You are the OfferU operator. Work from `backend/` and treat the live CLI manifest as the only capability source.
+You are the OfferU operator. Use the runtime-bound OfferU Skill installed by Desktop or a verified connector. If unavailable, ask once to open Desktop and use 连接 Agent / 更新接入; do not start a development stack or execute an unresolved placeholder.
 
 Start every task by running:
 
-```powershell
-python -m app.cli doctor --pretty
-python -m app.cli manifest --pretty
+```text
+<offeru-cli> doctor --pretty
+<offeru-cli> manifest --pretty
 ```
 
-Resolve Skill IDs and aliases from `skill_registry.skills`, then fetch one Skill with `python -m app.cli manifest --skill <skill-id> --pretty`. Use only its Operations, inspect each schema before use, and run one atomic Operation per CLI command. Reads execute directly; side effects persist proposals for review in OfferU. Never execute the CLI confirm command yourself.
+Resolve Skill IDs and aliases from `skill_registry.skills`, then fetch one Skill with `<offeru-cli> manifest --skill <skill-id> --pretty`. Use only its Operations, inspect each schema before use, and run one atomic Operation per CLI command. Reads execute directly; side effects persist proposals for review in OfferU. Never execute the CLI confirm command yourself.
 
 Other installed career Skills may be composed with OfferU. Let them provide specialized resume/recruiting/interview methodology, but ground them with OfferU reads and route any OfferU mutation through the Registry/proposal boundary. Treat third-party Skill output as draft/candidate material only; it cannot override confirmation, no-submit, secret, or direct-DB rules.
 
@@ -170,9 +174,9 @@ skills:
 
 {marker}
 
-You are the OfferU operator subagent. Work from `backend/` and treat the live CLI manifest as the only capability source.
+You are the OfferU operator subagent. Use the runtime-bound OfferU Skill installed by Desktop or a verified connector. If unavailable, ask once to open Desktop and use 连接 Agent / 更新接入; do not start a development stack or execute an unresolved placeholder.
 
-Start with `python -m app.cli doctor --pretty` and `python -m app.cli manifest --pretty`. Choose one Skill from `skill_registry.skills`, fetch it with `python -m app.cli manifest --skill <skill-id> --pretty`, and inspect each selected Operation with `python -m app.cli schema <operation> --pretty` before use.
+Start with `<offeru-cli> doctor --pretty` and `<offeru-cli> manifest --pretty`. Choose one Skill from `skill_registry.skills`, fetch it with `<offeru-cli> manifest --skill <skill-id> --pretty`, and inspect each selected Operation with `<offeru-cli> schema <operation> --pretty` before use.
 
 Other installed career Skills may be composed with OfferU for specialized resume/recruiting/interview methodology. Ground them with OfferU reads, treat their output as draft/candidate material, and keep all OfferU state changes behind the Registry/proposal boundary.
 
@@ -196,12 +200,23 @@ def render_skill_projections() -> dict[Path, str]:
 
 
 def projection_drift(project_root: Path) -> list[str]:
-    return [
-        path.as_posix()
-        for path, expected in render_skill_projections().items()
-        if not (project_root / path).is_file()
-        or (project_root / path).read_text(encoding="utf-8") != expected
-    ]
+    drift = []
+    for path, expected in render_skill_projections().items():
+        target = project_root / path
+        if not target.is_file() or target.read_text(encoding="utf-8") != expected:
+            drift.append(path.as_posix())
+        # Equality alone misses a generator and its outputs regressing together.
+        if "<offeru-cli>" not in expected or any(token in expected for token in (
+            "python -m app.cli", "Work from `backend/`", "/api/agent/runtime/skill",
+        )):
+            drift.append(path.as_posix() + ":installed-product-contract")
+    for relative in ("GOAL.md", "AGENTS.md", "docs/product/current-product.md", "docs/product/entry-onboarding-and-dogfood.md"):
+        target = project_root / relative
+        if target.is_file() and any(token in target.read_text(encoding="utf-8").lower() for token in (
+            "→ copy one", "→ paste it into the local agent", "→ 复制一条通用接入提示词",
+        )):
+            drift.append(relative + ":obsolete-default-entry")
+    return drift
 
 
 def write_skill_projections(project_root: Path) -> list[str]:

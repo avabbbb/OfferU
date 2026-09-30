@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from app.ops import get_operation_schema, list_operations
+from app.services.agent_skill_registry import agent_operation_names, skill_tool_catalog
 from app.services.operation_projection import (
     execute_or_propose_operation,
 )
@@ -62,10 +63,15 @@ mcp = FastMCP(
 async def operation_catalog(
     group: str = "",
     mutation_only: bool = False,
+    skill: str = "",
 ) -> dict[str, Any]:
     """List Registry-generated Operation contracts."""
 
-    operations = list_operations()
+    try:
+        catalog = skill_tool_catalog(list_operations(), skill)
+    except ValueError as exc:
+        return {"ok": False, "errors": [str(exc)]}
+    operations = catalog["operations"]
     if group:
         operations = [item for item in operations if item.get("group") == group]
     if mutation_only:
@@ -80,6 +86,8 @@ async def operation_catalog(
     return {
         "ok": True,
         "operation_count": len(operations),
+        "tool_contract": catalog["tool_contract"],
+        "skill_registry": catalog["skill_registry"],
         "operations": operations,
     }
 
@@ -88,7 +96,7 @@ async def operation_catalog(
 async def operation_schema(operation: str) -> dict[str, Any]:
     """Read one Operation schema from the same Registry used by Python and CLI."""
 
-    schema = get_operation_schema(operation)
+    schema = get_operation_schema(operation) if operation in agent_operation_names() else None
     if schema is None:
         return {"ok": False, "errors": [f"未知操作: {operation}"]}
     return {"ok": True, "schema": schema}
@@ -102,6 +110,8 @@ async def offeru_operation(
 ) -> dict[str, Any]:
     """Execute a read or create a persisted proposal for a side-effect Operation."""
 
+    if operation not in agent_operation_names():
+        return {"ok": False, "errors": ["该操作不属于 Agent Tool Surface"]}
     return await execute_or_propose_operation(
         operation,
         args or {},
