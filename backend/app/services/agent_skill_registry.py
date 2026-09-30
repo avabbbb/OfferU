@@ -6,8 +6,22 @@ from dataclasses import dataclass
 from typing import Any
 
 
-SKILL_REGISTRY_VERSION = "2026-09-29.1"
+SKILL_REGISTRY_VERSION = "2026-09-30.1"
 CONFIRMATION_POLICY = "operation_registry"
+
+
+def tool_contract_snapshot() -> dict[str, Any]:
+    """Shared wire metadata; adapters reuse Registry schemas and execution."""
+    return {
+        "version": "offeru.tool-contract.v1",
+        "schema_authority": "operation_registry",
+        "truth_authority": "career_runtime",
+        "approval_authority": "independent_user",
+        "mutation_path": "execute_or_propose_operation",
+        "bootstrap_skill": "connection_bootstrap",
+        "bootstrap_operations": ["get_current_view"],
+        "skill_registry_version": SKILL_REGISTRY_VERSION,
+    }
 
 
 @dataclass(frozen=True)
@@ -191,6 +205,27 @@ def registry_snapshot(operation_schemas: list[dict[str, Any]] | None = None) -> 
     payload = {"version": SKILL_REGISTRY_VERSION, "skills": skills}
     canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return {**payload, "sha256": hashlib.sha256(canonical.encode("utf-8")).hexdigest()}
+
+
+def skill_tool_catalog(operation_schemas: list[dict[str, Any]], skill_id: str = "") -> dict[str, Any]:
+    """Host-neutral compact discovery; selecting a Skill expands its allowlist."""
+    snapshot = registry_snapshot(operation_schemas)
+    skill = resolve_skill(skill_id) if skill_id else None
+    if skill_id and skill is None:
+        raise ValueError(f"未知技能: {skill_id}")
+    selected = [item for item in snapshot["skills"] if not skill or item["id"] == skill.id]
+    names = set(skill.allowed_tools) if skill else set()
+    return {
+        "tool_contract": tool_contract_snapshot(),
+        "operations": [item for item in operation_schemas if item["name"] in names],
+        "skill_registry": {
+            "version": snapshot["version"], "sha256": snapshot["sha256"],
+            "skills": selected if skill else [{
+                key: value for key, value in item.items()
+                if key not in {"allowed_tools", "confirmation_required_operations", "risk_notes"}
+            } for item in selected],
+        },
+    }
 
 
 def resolve_skill(value: str | None) -> AgentSkill | None:

@@ -31,7 +31,7 @@ Public Release 指一个可公开分发的 local-first 个人 Career OS。陌生
 
 ## Product North Star
 
-OfferU 是 local-first 自动化 Career OS。它持续知道用户是谁、正在投什么、当前发生了什么、岗位真正看重什么以及下一步最值得做什么。系统同时减少 setup burden 与 decision burden：优先复用用户已有本地 Agent，并主动给出 Next Best Action；用户负责事实确认、关键决策和真实世界不可逆行为。
+OfferU 是面向已经拥有通用 Agent、重视求职质量和效率、具备付费意愿的大学生、研究生及社招求职者的 local-first Career OS。Bring Your Own Agent 是核心模式，Coding Agent 与消费级 Agent 都属于目标范围，用户不必会编程。OfferU 持久化职业事实、长期记忆、求职状态、工具、策略、调度、权限和审计；用户自己的 Agent 负责推理、研究、撰写及授权范围内的跨应用执行。系统减少 setup burden 与 decision burden，并主动给出 Next Best Action；用户负责事实确认、关键决策和授权策略。
 
 每个进入本 Release 的改动都必须明显改善至少一项：
 
@@ -50,13 +50,15 @@ OfferU 是 local-first 自动化 Career OS。它持续知道用户是谁、正�
 ```text
 Today
 Pipeline
-Job / Opportunity
+Job Workspace
 Profile
+Resume
+Interview
 ```
 
 其中 **Job / Opportunity 是一个持久的 Job Workspace，而不是一次聊天或单纯详情页**。Job Snapshot、Role Intelligence、Evidence Map、Resume/Application Materials、Interview 与 Timeline 都属于同一机会工作区，并逐步物化 Agent 的准备结果。
 
-Agent 是全局能力；Memory 是 Profile 的演进机制；Resume、Role Intelligence、Research、Application Packet 和 Interview 均属于 Job Workspace。Today、Pipeline、Agent 不拥有独立业务事实，只投影 OfferU Domain Runtime 中同一份 Career Truth。
+Agent 是全局能力；Memory 是 Profile 的演进机制。保留 Resume、Interview 等现有页面，岗位相关的 Fit Check、证据、申请材料/问题、审批及投递记录收敛在现有 Job Workspace。Opportunity 只是 Job 的描述，Application Packet 只是工作区内的聚合，不创建平行实体或生命周期。Today、Pipeline、Agent 不拥有独立业务事实，只投影 OfferU Domain Runtime 中同一份 Career Truth。
 
 ## Stable Technical Boundary
 
@@ -64,13 +66,14 @@ Agent 是全局能力；Memory 是 Profile 的演进机制；Resume、Role Intel
 TypeScript / React = UI、交互、本地 client state
 Python / FastAPI = Career Domain Runtime、Operation Registry、Automation、Data、Business State
 Tauri / Rust = Desktop shell、进程生命周期、OS 集成、Installer / Update boundary
-Agent Host / Runtime = Codex / WorkBuddy / Claude Code / OpenCode / OMP / Pi / future hosts；external-first，OfferU built-in fallback
+Agent Host / Runtime = 用户已有本地或消费级通用 Agent；external-first；OfferU 内置 Agent 可操作同一 Runtime、辅助定制简历，并作为备用或用户明确选择的推理主体
 ```
 
 - 不进行 Python → TypeScript 全量重写；
 - 不新增第二套 Node backend；
 - 不因 Harness 的实现语言迁移 Career Domain Runtime；
 - 当前产品仅为本地单人版，不引入 SaaS、多租户、账号、组织、Billing 或云同步预埋。
+- 正式消费级 Agent 接入允许独立的认证/传输适配；这不迁移本地 Career Truth，也不等于云同步。不得直接公开 8766。工具授权必须可收窄、过期、撤销和审计；工具调用与独立用户批准分离。
 
 ## Stable Authority Model
 
@@ -114,7 +117,7 @@ Event → Rule → CareerTask → Agent / Runtime → Operation
 
 普通用户主路径：
 
-Install → Launch → copy one generic OfferU connection prompt → paste it into the local coding Agent already in use → the Agent downloads the canonical OfferU Skill from public GitHub and follows its documented host setup → the local runtime supplies an installation-specific CLI projection only if needed → optional read-only access verification → Resume + explicitly authorized memory → Profile → save first Job → create/open canonical Job Workspace → optionally connect job-search inbox → Today / Next Best Actions。
+Install → Launch Desktop → Resume + explicitly authorized memory → Profile → save first Job → open canonical Job Workspace → useful preparation / Today。用户自带 Agent 是核心模式：Desktop 发现并通过宿主适配安装/更新 runtime-bound Skill、MCP/CLI 接入，再以真实只读调用验证；接入不能成为建立 Profile 或保存 Job 的阻塞前置。普通用户不复制连接 Prompt、不操作 Skill 目录、不启动源码环境。消费级 Agent 使用官方开放的 Connector/Remote MCP，按实际能力标记状态；没有通过验收的连接不得声称兼容。内置 Agent 保留同一 Registry 下的操作和简历辅助能力，同一 Run 只有一个推理主体。
 
 高级用户允许从支持的外部 Agent 通过 OfferU Skill 直接开始一个 Job，但最终必须解析/创建同一个 canonical Job Workspace，不能形成 Agent-only 第二套项目状态。
 

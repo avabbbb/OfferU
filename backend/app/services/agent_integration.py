@@ -40,14 +40,23 @@ def _command_prefix() -> str:
     return ("& " if os.name == "nt" else "") + _shell_quote(executable)
 
 
+def runtime_cli_command() -> str:
+    """The command of this installation, never a guessed source command."""
+    if getattr(sys, "frozen", False):
+        return f"{_command_prefix()} --data-dir {_shell_quote(str(runtime_data_dir()))} cli"
+    return f"{_command_prefix()} -m app.cli"
+
+
 def _installed_content() -> str:
     source = (
         (PACKAGE_BACKEND_DIR / "offeru-assets/skills/offeru/SKILL.md").read_text(encoding="utf-8")
         if getattr(sys, "frozen", False)
         else _SOURCE_SKILL.read_text(encoding="utf-8")
     )
+    if "<!-- offeru-runtime-binding -->" not in source or "<offeru-cli>" not in source:
+        raise ValueError("OfferU Skill is missing its runtime binding; update OfferU Desktop.")
     if getattr(sys, "frozen", False):
-        command = f"{_command_prefix()} --data-dir {_shell_quote(str(runtime_data_dir()))} cli"
+        command = runtime_cli_command()
         binding = (
             "**Runtime binding:** installed OfferU Desktop. "
             "Use the bundled command projected below from any directory; "
@@ -67,14 +76,8 @@ def _installed_content() -> str:
     )
     return (
         source.replace("<!-- offeru-runtime-binding -->", binding, 1)
-        .replace("<offeru-cli>", f"{_command_prefix()} -m app.cli")
+        .replace("<offeru-cli>", runtime_cli_command())
     )
-
-
-def installed_skill_content() -> str:
-    """Return the public Skill with only this OfferU install's CLI command projected."""
-
-    return _installed_content()
 
 
 def installed_skill_content() -> str:
@@ -320,8 +323,13 @@ class AgentIntegrationManager:
             }
             from app.ops import execute_operation
 
+            probe_calls = 0
+
             async def execute_probe_operation(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-                if name != "get_agent_connection_nonce":
+                nonlocal probe_calls
+                if name != "get_agent_connection_nonce" or arguments != {
+                    "provider_id": provider_id, "challenge_id": challenge["challenge_id"],
+                }:
                     raise ValueError("connection probe 只允许 nonce Operation")
                 operation_result = await execute_operation(
                     name,
@@ -337,10 +345,11 @@ class AgentIntegrationManager:
                 outputs = operation_result.get("outputs")
                 if not isinstance(outputs, dict):
                     raise ValueError("nonce Operation 返回无效")
+                probe_calls += 1
                 return outputs
 
             adapter.on_operation = execute_probe_operation
-            await adapter.create_thread(
+            thread = await adapter.create_thread(
                 cwd=str(workspace),
                 tool_descriptions=[
                     "get_agent_connection_nonce(provider_id: string, challenge_id: 32-char lowercase hex) "
@@ -364,12 +373,23 @@ class AgentIntegrationManager:
                 marker in event_text
                 for marker in ("item/tool/call", "dynamic_tool_call", "custom_tool_call")
             )
-            verified = challenge["nonce"] in final_message and used_operation
+            try:
+                returned_nonce = json.loads(final_message).get("nonce")
+            except (ValueError, AttributeError):
+                returned_nonce = None
+            verified = returned_nonce == challenge["nonce"] and used_operation and probe_calls == 1
             return {
                 **installed,
                 "integration_status": "VERIFIED" if verified else "ERROR",
                 "connection_verified": verified,
                 "checked_at": _iso_now(),
+                "readback_evidence": {
+                    "model": str(thread.get("model") or ""),
+                    "thread_id": str(result.get("threadId") or ""),
+                    "turn_id": str(result.get("turnId") or ""),
+                    "operation": "get_agent_connection_nonce",
+                    "successful_calls": probe_calls,
+                },
                 "error": "" if verified else "Agent 未通过 OfferU Skill 的 nonce readback。",
             }
         except TimeoutError:

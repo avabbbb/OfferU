@@ -91,6 +91,9 @@ def main(argv: Optional[list[str]] = None) -> int:
                 payload["ok"] = ready
                 return _print(payload, args.pretty, exit_code=0 if ready else 1)
             return _print(payload, args.pretty)
+        if args.command == "skill":
+            from app.services.agent_integration import installed_skill_content
+            return _print({"ok": True, "content": installed_skill_content()}, args.pretty)
         if args.command == "manifest":
             try:
                 payload = _manifest(skill=args.skill, group=args.group, all_operations=args.all_operations)
@@ -181,6 +184,8 @@ def _build_parser() -> JsonArgumentParser:
 
     doctor = sub.add_parser("doctor", help="Check runtime configuration and CLI health.", add_help=False)
     doctor.add_argument("--pretty", action="store_true", help="Pretty-print JSON.")
+    skill = sub.add_parser("skill", help="Read this installation's bound OfferU Skill.", add_help=False)
+    skill.add_argument("--pretty", action="store_true", help="Pretty-print JSON.")
     doctor.add_argument(
         "--require-ready",
         action="store_true",
@@ -253,7 +258,7 @@ def _build_parser() -> JsonArgumentParser:
 
 
 def _commands() -> list[str]:
-    return ["doctor", "manifest", "ops", "schema", "run", "conformance", "bridge", "ui"]
+    return ["doctor", "skill", "manifest", "ops", "schema", "run", "conformance", "bridge", "ui"]
 
 
 def _doctor() -> dict[str, Any]:
@@ -752,6 +757,10 @@ def _groups(operations: list[dict[str, Any]]) -> dict[str, int]:
 
 
 def _manifest(*, skill: str = "", group: str = "", all_operations: bool = False) -> dict[str, Any]:
+    from app.services.agent_integration import runtime_cli_command
+    from app.services.agent_skill_registry import skill_tool_catalog, tool_contract_snapshot
+
+    command = runtime_cli_command()
     operation_schemas = list_operations()
     full_registry = registry_snapshot(operation_schemas)
     if all_operations:
@@ -771,13 +780,10 @@ def _manifest(*, skill: str = "", group: str = "", all_operations: bool = False)
             "skills": [_summarize_skill(item) for item in full_registry["skills"] if item.get("group") == group],
         }
     else:
-        operations = []
+        catalog = skill_tool_catalog(operation_schemas)
+        operations = catalog["operations"]
         selector = "catalog"
-        skills = {
-            "version": full_registry["version"],
-            "sha256": full_registry["sha256"],
-            "skills": [_summarize_skill(item) for item in full_registry["skills"]],
-        }
+        skills = catalog["skill_registry"]
     agent_names = agent_operation_names()
     featured_names = agent_operation_names(featured_only=True)
     agent_schemas = [
@@ -788,20 +794,22 @@ def _manifest(*, skill: str = "", group: str = "", all_operations: bool = False)
     return {
         "ok": True,
         "service": "OfferU CLI",
+        "tool_contract": tool_contract_snapshot(),
         "version": APP_VERSION,
         "purpose": "Agent-native control surface for OfferU. External agents discover scoped schemas and run reads; side-effect runs persist proposals for user review inside OfferU.",
         "commands": {
-            "health": "python -m app.cli doctor --pretty",
-            "release_health": "python -m app.cli doctor --require-ready --pretty",
-            "manifest": "python -m app.cli manifest --pretty",
-            "manifest_skill": "python -m app.cli manifest --skill <skill> --pretty",
-            "manifest_group": "python -m app.cli manifest --group <group> --pretty",
-            "manifest_all": "python -m app.cli manifest --all --pretty",
-            "list_operations": "python -m app.cli ops --pretty",
-            "inspect_operation": "python -m app.cli schema <operation> --pretty",
-            "run_operation": "python -m app.cli run <operation> --arg key=value --pretty",
-            "dry_run_mutation": "python -m app.cli run <operation> --arg key=value --dry-run --pretty",
-            "file_input": "python -m app.cli run <operation> --input args.json --pretty",
+            "installed_skill": f"{command} skill --pretty",
+            "health": f"{command} doctor --pretty",
+            "release_health": f"{command} doctor --require-ready --pretty",
+            "manifest": f"{command} manifest --pretty",
+            "manifest_skill": f"{command} manifest --skill <skill> --pretty",
+            "manifest_group": f"{command} manifest --group <group> --pretty",
+            "manifest_all": f"{command} manifest --all --pretty",
+            "list_operations": f"{command} ops --pretty",
+            "inspect_operation": f"{command} schema <operation> --pretty",
+            "run_operation": f"{command} run <operation> --arg key=value --pretty",
+            "dry_run_mutation": f"{command} run <operation> --arg key=value --dry-run --pretty",
+            "file_input": f"{command} run <operation> --input args.json --pretty",
         },
         "io_contract": {
             "stdout": "single JSON object",

@@ -419,7 +419,11 @@ class CodexMainLoopAdapter:
         self.thread_id = str(thread.get("id") or "")
         if not self.thread_id:
             raise RuntimeError("codex thread/start returned no thread id")
-        return {"threadId": self.thread_id, "thread": thread}
+        return {
+            "threadId": self.thread_id, "thread": thread,
+            "model": str(thread_response.get("model") or ""),
+            "modelProvider": str(thread_response.get("modelProvider") or ""),
+        }
 
     async def list_skills(self, *, cwd: str, force_reload: bool = True) -> list[dict[str, Any]]:
         response = await self._request(

@@ -2,13 +2,13 @@
 # OfferU Current Product North Star
 
 Status: **CURRENT PRODUCT AUTHORITY**  
-Updated: 2026-09-27
+Updated: 2026-09-30
 
 This document defines the current product shape of OfferU. Historical audits, dated implementation plans and superseded Harness-specific designs must not override it.
 
 ## Product promise
 
-OfferU is a **local-first AI Career OS** for normal job seekers.
+OfferU is a **local-first Career OS for people who already use a general-purpose Agent**: university students, graduate students and experienced job seekers who value application quality and efficiency and are willing to invest in them. Bring Your Own Agent is a core product mode, covering both Coding and consumer Agents; users need not be programmers.
 
 The category is broad; the first-use promise should be concrete:
 
@@ -37,11 +37,7 @@ The default experience is:
 
 ~~~
 Install
-→ Copy one OfferU connection prompt
-→ Paste it into the local Agent already in use
-→ Agent downloads the canonical OfferU Skill from GitHub and follows its host setup guide
-→ Agent resolves the current local runtime command without guessing install paths
-→ Verify access with one read-only OfferU Operation
+→ Open Desktop
 → Resume + explicitly authorized AI memory → Profile
 → Save a real job from the browser
 → Create the canonical Job Workspace
@@ -50,6 +46,8 @@ Install
 → User confirms important facts and irreversible actions
 → outcomes feed back into Profile and future decisions
 ~~~
+
+Desktop discovers the user's local Agent, installs/updates the runtime-bound Skill through its host adapter and verifies a real read-only Operation. Consumer Agents use officially supported connectors when actually available. Connecting an Agent is central to the product but is not a gate before Profile/Job value. Normal users do not copy connection prompts, hand-install Skills or start a source environment.
 
 The user should experience a durable workspace, not a disposable AI conversation.
 
@@ -60,8 +58,10 @@ The stable top-level product model is:
 ~~~
 Today
 Pipeline
-Job / Opportunity
+Job Workspace
 Profile
+Resume
+Interview
 ~~~
 
 - **Today** is the guided action layer. It answers “what matters now?” and shows at most a few primary actions. Opening Today records one idempotent daily Career Director review for the default Profile; the resulting CareerBriefing is projected into Today and the existing Automation Inbox, while the CareerTask remains the durable execution record.
@@ -81,16 +81,14 @@ For normal users, OfferU Desktop owns setup. The intended public beginner experi
 Download OfferU
 → install
 → open OfferU
-→ copy one generic OfferU connection prompt
-→ paste it into the local Agent already in use
-→ Agent downloads the matching OfferU Skill and follows its own setup guide
-→ verify the current OfferU page with a read-only Operation
 → import Resume
 → save first Job
 → useful Job Workspace
+→ connect the user's Agent through Desktop / supported connector when needed
+→ verify access with a real read-only Operation
 ~~~
 
-The normal user must not be required to install Python, Node.js, Git, MCP tooling, select a provider, or hand-copy Skill files. The generic prompt points to the canonical public Skill in the OfferU GitHub repository; the local runtime projection is used only to resolve the command for the running installation. The Skill explains the active Agent's supported location. The Agent keeps ownership of its own account/login/model, and copying the prompt alone never means the connection is verified.
+The normal user must not be required to install Python, Node.js, Git, MCP tooling or hand-copy Skill files. Desktop discovers supported installed hosts and owns the runtime-bound Skill installation/update. Detected, installed and verified are separate evidence states. The Agent keeps ownership of its account/login/model; host adapters never duplicate career business logic.
 
 Skill-first remains a valid second front door. OfferU does not claim a published standalone `npx skills add offeru` package; the canonical Skill is the `main` branch file in the public GitHub repository at `https://raw.githubusercontent.com/avabbbb/OfferU/main/.agents/skills/offeru/SKILL.md`, while the local Desktop runtime serves only an installation-specific CLI projection.
 
@@ -102,18 +100,20 @@ OfferU has two valid entry lanes that must converge on the same canonical state.
 
 ### Normal user: App-first
 
+The target audience includes university students, graduate students and experienced job seekers who already use a general-purpose Agent and are willing to invest in application quality and efficiency. Their Agent may be a local Coding Agent or a consumer chat/Agent product. Audience coverage does not imply every host can directly access the local Runtime.
+
+Local tool-capable Agents use the canonical Skill and verified Operation readback. Chat-only users can copy material-collaboration instructions, deliberately share the minimum job/evidence material with their chosen Agent, and review its drafts before saving adopted content through existing OfferU UI operations. This manual lane is not a verified connection, an automatic data export or an Agent Run. Direct cloud connectors remain unavailable until their host-specific transport and authorization are implemented and accepted; never ask a cloud Agent to reach its own localhost as if it were the user's computer.
+
 ~~~
 Install OfferU
-→ copy one connection prompt
-→ paste it into the local Agent already in use
-→ Agent installs the version-matched OfferU Skill using its host guide
+→ open Desktop
 → import resume / core evidence
 → save first Job
 → open Job Workspace
 → Guided Today handles the next decisions
 ~~~
 
-Normal users do not need to choose an Agent from a provider list or understand MCP, Registry or provider topology. The copied prompt and Skill guide handle the technical steps; Skill installation and a successful readback remain distinct states.
+Use Desktop's Agent connection action when needed; compatible consumer connectors use their official authorization surface. Do not replace unsupported native consumer chat with a pretend embedded conversation. The bottom/context interaction binds the current Job, Resume, Interview or Today and shows canonical tasks, results and approvals.
 
 ### Power user: Skill-first
 
@@ -131,7 +131,7 @@ This must never become a second CLI-only product. Skill-first and App-first are 
 
 ## Reasoning authority: external-first, not external-only
 
-OfferU prefers a **verified local Agent already owned by the user** — for example Codex, WorkBuddy/CodeBuddy, Claude Code, OpenCode, OMP, Pi or another supported host.
+OfferU prefers the **general-purpose Agent already owned by the user**, through a verified supported connection. Local Coding Agents and consumer Agents are both core target hosts; public vendor capability is distinct from an implemented and accepted OfferU adapter.
 
 OfferU should:
 
@@ -143,11 +143,13 @@ OfferU should:
 
 A built-in OfferU Agent is allowed as a **fallback** when no suitable external host is available or when the user explicitly chooses it.
 
+The built-in Agent remains capable of operating OfferU and assisting with job-tailored resumes through the same Skill allowlists, source evidence, fact gates, draft/proposal path and independent approval. This is one selectable reasoning provider, not a second competing write loop or a weaker permission model.
+
 Exactly one reasoning authority is active for a given Agent Run. External and built-in Agents share the same truth, capability, confirmation and audit boundaries.
 
 ~~~
 Reasoning authority
-  external local Agent (preferred)
+  user's connected general-purpose Agent (preferred)
   OR OfferU fallback Agent
           ↓
 OfferU Skill + optional third-party Career Skills
@@ -322,6 +324,20 @@ OfferU prepares
 ~~~
 
 No silent final submit.
+
+Fit Check shows requirement-by-requirement evidence, hard requirements and unknowns; an unexplained aggregate score is not its decision authority. Application materials, questions, approvals and receipts aggregate in the existing Job Workspace. Do not add a parallel Opportunity, Application Packet database or application lifecycle. A submit click or Agent claim is not a receipt: Pipeline advancement requires attributable success evidence, existing deduplication and stage-event policy.
+
+L0 observe and authorized L1 preparation may progress within a bounded task. L2 protected Career State changes use Proposal/HITL. L3 sending, submission and contact require the existing explicit authorization policy; field filling is classified by its actual side effects and sensitivity, not automatically L2. The current default keeps final external submission with the user. Broader automation needs separately implemented bounded grants, expiry/revocation, receipts, audit and a pause control.
+
+## Host-neutral access and contextual interaction
+
+[OfferU Tool Contract](../architecture/agent-tool-contract.md) projects one Registry, Career Truth, curated Memory, Proposal/HITL and audit across local Skill/CLI/MCP and officially supported remote connectors. Host adapters only handle discovery, authentication, grants, tool registration and capability negotiation. They do not implement career business logic.
+
+The bottom Agent interaction binds Today goals/tasks/approvals, current Job requirements/materials/progress, Resume and version/review context, or Interview schedule/preparation/debrief. Results enter existing pages. OfferU may display managed tasks, results and approvals for any connected host; unsupported consumer-native chat is not embedded or represented as connected. Web Showcase retains Demo Agent and fictional data; Desktop offers the built-in Agent as an explicit fallback through the same governed operations.
+
+Runtime alone schedules AutomationEvent → AutomationRule → CareerTask, owns leases, checkpoints, recovery and deduplication. The selected external Agent performs one bounded task and returns durable outputs; it must not create a second scheduler or infinite reasoning loop. Uncertain submission is reconciled against receipt evidence before retry. The existing Career Director and Strategy Packs remain this loop's career reasoning architecture.
+
+Design target acceptance: real Codex reads Career Truth and authorized Memory, discovers suitable jobs, prepares evidence-backed resume drafts, and leaves review items visible in Today, Job Workspace, Resume and the independent review UI. Connection detection, a nonce readback, unit tests and replay are separate evidence layers and do not prove this complete scenario.
 
 ## Progress sync
 
