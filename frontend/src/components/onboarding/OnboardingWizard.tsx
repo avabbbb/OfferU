@@ -17,7 +17,7 @@ interface OnboardingWizardProps {
 }
 
 const STEPS = [
-  { title: "准备本地 Agent", icon: PlugZap },
+  { title: "准备你的 Agent", icon: PlugZap },
   { title: "导入简历", icon: FileText },
   { title: "整理 AI 记忆", icon: Brain },
   { title: "保存目标岗位", icon: Briefcase },
@@ -56,7 +56,7 @@ export function OnboardingWizard({ wizardStep, onStepChange, onComplete, onSkip 
             <p className="text-xs font-semibold text-[var(--foreground-muted)]">OfferU · 快速开始</p>
             <h1 id="onboarding-title" className="mt-1 text-xl font-semibold sm:text-2xl">把一个岗位，变成可准备的工作区</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--foreground-muted)]">
-              把一段提示词贴给你正在使用的本地 Agent，再用可核对的经历和目标岗位开始。你可以随时离开，进度会保留。
+              用你已有的 Agent 协作，再从可核对的经历和目标岗位开始。你可以随时离开，进度会保留。
             </p>
           </div>
           <button type="button" onClick={onSkip} disabled={busy} aria-label="稍后设置" className="rounded-lg p-2 text-[var(--foreground-muted)] hover:bg-[var(--surface-muted)] disabled:opacity-50">
@@ -81,9 +81,8 @@ export function OnboardingWizard({ wizardStep, onStepChange, onComplete, onSkip 
           {step === 0 && (
             <div className="space-y-4">
               <p className="text-sm leading-6 text-[var(--foreground-muted)]">
-                复制提示词并粘贴到你正在使用的本地 coding Agent。它会从 GitHub 获取官方 OfferU Skill，再连接本机运行时。
+                Desktop 可以发现并连接你已有的 Agent；你也可以先使用内置 Agent，继续建立职业档案和岗位工作区。
               </p>
-              {progress.agentPromptCopied && <p role="status" className="rounded-lg bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)]">接入提示词已复制。请粘贴到本地 Agent 完成接入；仅复制不会被标记为已连接。</p>}
               <AgentConnectionPanel />
               <p className="text-xs leading-5 text-[var(--foreground-muted)]">没有可用 Agent 时也可以继续设置。OfferU 不会替你改动 Agent 的账号、模型、凭据或代理。</p>
             </div>

@@ -4,7 +4,7 @@ This separates two concepts that were previously conflated under the generic
 name "provider"/"runtime":
 
 * **Agent Host Integration** — a third-party agent the *user already owns*
-  (Codex CLI, Claude Code, OpenCode, OMP, WorkBuddy).  OfferU only detects it,
+  (Codex CLI, Claude Code, OpenCode, OMP, CodeBuddy). OfferU only detects it,
   installs/updates the canonical OfferU Skill, and verifies the Bridge.  It does
   NOT own the agent's run lifecycle.
 
@@ -164,13 +164,13 @@ _HOSTS: tuple[AgentHost, ...] = (
     ),
     AgentHost(
         id="codebuddy",
-        display_name="WorkBuddy (CodeBuddy)",
+        display_name="CodeBuddy",
         kind=HOST_KIND_HOSTED_RUNTIME,
         runtime_id="codebuddy",
-        # WorkBuddy has no browser-autofill capability — mirror ASu's explicit
-        # host exclusion instead of pretending feature parity.
+        # This adapter invokes the CodeBuddy CLI. It is not evidence of
+        # WorkBuddy connector compatibility or browser autofill.
         unsupported_skills=("application_assistant",),
-        docs_url="https://www.workbuddy.cn/docs/workbuddy/Overview",
+        docs_url="",
     ),
 )
 

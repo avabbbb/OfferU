@@ -967,6 +967,7 @@ export interface AgentConnection {
   status: "missing" | "incompatible" | "integration_missing" | "outdated" | "check_required" | "ready" | "auth_required" | "blocked" | "failed";
   authenticated: boolean | null;
   connection_verified: boolean;
+  readback_evidence?: { thread_id: string; turn_id: string; model?: string; operation: string; successful_calls: number } | null;
   integration_status: string;
   skill_status: "NOT_INSTALLED" | "INSTALLED" | "OUTDATED" | "ERROR" | "NOT_SUPPORTED" | string;
   skill_version: string;

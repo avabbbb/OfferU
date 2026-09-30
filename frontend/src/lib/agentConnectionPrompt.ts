@@ -1,8 +1,7 @@
-export const OFFERU_SKILL_DOWNLOAD_URL = "https://raw.githubusercontent.com/avabbbb/OfferU/main/.agents/skills/offeru/SKILL.md";
-
-export const OFFERU_CONNECT_PROMPT = [
-  "请接入这台电脑上正在运行的 OfferU。",
-  `从 ${OFFERU_SKILL_DOWNLOAD_URL} 下载官方 OfferU Skill，并按 Skill 中与你当前 Agent 匹配的说明安装；只写入 OfferU Skill 文件，不改 Agent 的其他设置、账号、模型、凭据或代理。`,
-  "随后按 Skill 检查本机 OfferU 是否可用；选择 connection_bootstrap Skill，查看 get_current_view 的 schema，并只通过对应的只读 Operation 读取当前同步页面和显式选中对象。把实际读取结果和连接状态告诉我，然后停止等待我的任务。若本机运行时不可用，明确报告尚未连接，不要猜路径。",
-  "不要读取其他职业数据。GitHub URL 只用于获取公开 Skill；之后所有业务操作必须走同一 Operation Registry，所有写操作都留在 OfferU 等我确认，不得自行批准、提交、发送或联系第三方。",
+export const OFFERU_MATERIAL_COLLABORATION_PROMPT = [
+  "请作为我的求职协作 Agent，基于我接下来主动提供的岗位说明和简历/经历材料帮助我。OfferU 是我的职业档案、岗位工作区与审核界面；这次通过材料协作，不表示你已连接 OfferU，也不授权你读取我的电脑或其他资料。",
+  "先询问本次目标岗位、我想完成的任务，以及完成判断所缺的最少材料。不要一次要求整个职业档案；资料不足时标记未知，不猜测。请提醒我删除不需要的联系方式、证件和其他敏感信息。",
+  "评估岗位时，分别列出有证据支持、证据较弱、缺失/未知和硬性约束，并引用我提供材料中的原文。不要用无依据的匹配百分比决定是否投递。",
+  "修改简历或准备申请回答时，逐项给出原文、建议、对应证据和修改理由；区分事实与推断，不能编造经历、指标或把参与改成主导。所有内容先作为草稿供我审核。",
+  "请把最终结果标明目标岗位并整理为可复制的内容，让我审核后保存到 OfferU 对应岗位工作区。不要声称内容已保存、投递已完成或 Pipeline 已更新；不得替我提交申请、发送消息或联系第三方。",
 ].join("\n\n");
