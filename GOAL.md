@@ -113,6 +113,8 @@ Event → Rule → CareerTask → Agent / Runtime → Operation
 
 ## Core Product Journey
 
+用户在 2026-10-02 细化的完整体验、交互与 Skill 生态要求见 [真实求职用户旅程](docs/product/owner-career-journey.md)。[两个内测 Goal](docs/evals/OWNER_DOGFOOD_GOALS.md) 分别验证内置 Agent 和真实用户从零全链路；目标文档、源码实现、live 结果与真人审核必须分别记录，不能用能力清单替代实际验收。
+
 ### First Run
 
 普通用户主路径：

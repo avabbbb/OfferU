@@ -78,6 +78,9 @@ docs/*
 !docs/adr/**
 !docs/agents/
 !docs/agents/**
+!docs/product/
+docs/product/*
+!docs/product/owner-career-journey.md
 !docs/architecture/
 !docs/architecture/**
 !docs/design/

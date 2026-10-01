@@ -5,6 +5,8 @@ Updated: 2026-09-30
 
 This document expands the first-use and distribution contract defined by [Current Product North Star](./current-product.md). If wording conflicts, `GOAL.md` and `current-product.md` win.
 
+The [owner's 2026-10-02 journey clarification](./owner-career-journey.md) refines the first-use target: prepare the installed app and a visible Profile first, support both resume and no-resume interviews, and configure email/BOSS/browser dependencies when used. The four-step wizard described below is the existing implementation checkpoint, not proof that this entire target is satisfied. Use the [two dogfood Goals](../evals/OWNER_DOGFOOD_GOALS.md) to verify installed-product and real-Agent behavior separately.
+
 The immediate product goal is not “add more features”. It is:
 
 > **A real job seeker can install OfferU, connect the AI they already use, give OfferU a real job, and keep working from one durable Job Workspace without understanding the technical stack.**
