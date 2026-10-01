@@ -117,6 +117,7 @@ class CodexMainLoopAdapter:
         self._events: list[dict[str, Any]] = []
         self.server_info: dict[str, Any] = {}
         self.protocol_version = "1"
+        self.on_event = None
         # Set by the reader when the native app-server exits or its stream
         # fails.  Keeping this separate from ``returncode`` lets pending
         # JSON-RPC requests and the turn waiter fail immediately instead of
@@ -301,6 +302,8 @@ class CodexMainLoopAdapter:
     async def _handle_push(self, msg: dict[str, Any]) -> None:
         """Handle server-initiated requests (e.g. tool calls, approvals)."""
         self._events.append(msg)
+        if self.on_event is not None:
+            await self.on_event(msg)
         method = str(msg.get("method") or "")
         request_id = msg.get("id")
         if method in {"custom_tool_call", "dynamic_tool_call", "item/tool/call"}:
@@ -380,6 +383,7 @@ class CodexMainLoopAdapter:
         *,
         cwd: str,
         tool_descriptions: list[str] | None = None,
+        tool_schemas: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Create one read-only thread, exposing only the supplied tools."""
 
@@ -411,7 +415,7 @@ class CodexMainLoopAdapter:
                     "dynamic tools for business reads. Never self-approve "
                     "side effects; the OfferU workbench overlay decides."
                 ),
-                **({"dynamicTools": dynamic_tools} if dynamic_tools else {}),
+                **({"dynamicTools": tool_schemas if tool_schemas is not None else dynamic_tools} if tool_schemas is not None or dynamic_tools else {}),
                 **self.thread_params,
             },
         )

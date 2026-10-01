@@ -9,7 +9,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, Bot } from "lucide-react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { OnboardingGate } from "@/components/onboarding/OnboardingGate";
@@ -26,9 +25,6 @@ const ContextRail = lazy(() =>
 );
 const CommandPalette = lazy(() =>
   import("./CommandPalette").then((module) => ({ default: module.CommandPalette })),
-);
-const AgentPanel = lazy(() =>
-  import("./AgentPanel").then((module) => ({ default: module.AgentPanel })),
 );
 
 interface FocusRule {
@@ -48,7 +44,8 @@ const FOCUS_RULES: FocusRule[] = [
 ];
 
 function FocusTopBar({ rule }: { rule: FocusRule }) {
-  const [agentOpen, setAgentOpen] = useState(false);
+  const { railMode, railOpen, setRailMode, setRailOpen } = useWorkbench();
+  const agentOpen = railMode === "agent" && railOpen;
 
   return (
     <>
@@ -63,7 +60,7 @@ function FocusTopBar({ rule }: { rule: FocusRule }) {
         <AgentConnectionStatus compact />
         <button
           type="button"
-          onClick={() => setAgentOpen((value) => !value)}
+          onClick={() => { setRailMode("agent"); setRailOpen(!agentOpen); }}
           aria-pressed={agentOpen}
           className={`flex items-center gap-1.5 rounded-md px-2 py-1 text-[13px] font-medium transition-colors duration-[var(--dur-quick)] ${
             agentOpen
@@ -76,22 +73,6 @@ function FocusTopBar({ rule }: { rule: FocusRule }) {
         </button>
       </div>
 
-      {/* 专注模式下按需召回主 Agent — 浮层形式,关闭后完全退出 */}
-      <AnimatePresence>
-        {agentOpen && (
-          <motion.div
-            initial={{ opacity: 0, x: 24 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 24 }}
-            transition={{ type: "spring", stiffness: 400, damping: 34 }}
-            className="offeru-focus-agent fixed bottom-4 right-4 top-14 z-50 w-[min(92vw,340px)] overflow-hidden rounded-lg border border-[var(--border-strong)] bg-[var(--background)] shadow-[0_12px_36px_var(--shadow-medium)]"
-          >
-            <Suspense fallback={null}>
-              <AgentPanel />
-            </Suspense>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </>
   );
 }
@@ -136,14 +117,13 @@ function WorkbenchFrame({ children }: { children: React.ReactNode }) {
     <>
       <div className="offeru-workbench-shell offeru-viewport-shell relative flex w-full overflow-hidden">
         <Sidebar />
-        <main className="workbench-main relative h-full min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-5 pb-36 md:px-6 md:py-6 md:pb-8">
+        <main className="workbench-main relative h-full min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-5 pb-40 md:px-6 md:py-6 md:pb-24">
           <div className="mx-auto max-w-[1600px]">{children}</div>
         </main>
         {pathname !== "/settings" && <div className="fixed bottom-[72px] left-4 z-40 max-w-[calc(100vw-2rem)] md:hidden">
           <AgentConnectionStatus compact />
         </div>}
         <Suspense fallback={null}>
-          <ContextRail />
           <CommandPalette />
         </Suspense>
       </div>
@@ -153,12 +133,15 @@ function WorkbenchFrame({ children }: { children: React.ReactNode }) {
 }
 
 export function WorkbenchShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const focus = FOCUS_RULES.some((rule) => rule.pattern.test(pathname));
   return (
     <WorkbenchProvider>
       <AgentConnectionProvider>
         <WorkbenchFrame>
           <OnboardingGate>{children}</OnboardingGate>
         </WorkbenchFrame>
+        {!/^\/resume\/print\//.test(pathname) && <Suspense fallback={null}><ContextRail focus={focus} /></Suspense>}
         <AgentConnectionDialog />
       </AgentConnectionProvider>
     </WorkbenchProvider>

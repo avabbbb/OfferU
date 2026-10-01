@@ -296,6 +296,13 @@ async def _upsert_inbox(
             )
             db.add(row)
         else:
+            incoming_task = (payload or {}).get("task") or {}
+            if task_id and incoming_task and set(payload or {}).issubset({"task", "runtime_provider", "event_type"}):
+                current_task = await db.get(CareerTask, task_id)
+                if current_task is not None and current_task.status in {"completed", "failed", "cancelled"}:
+                    # A fast worker may already have projected its result.
+                    # Late dispatch copy must not replace that persisted result.
+                    return _inbox_view(row)
             row.category = category
             row.event_id = event_id or row.event_id
             row.task_id = task_id or row.task_id

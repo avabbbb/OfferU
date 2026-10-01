@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
@@ -8,6 +9,7 @@ from app.config import Settings, get_settings
 from app.ops import OPERATIONS, execute_operation
 from app.services.career_memory import record_conversation_observation
 from app.services.agent_run_state import (
+    TERMINAL_STATUSES,
     append_agent_run_event,
     create_agent_run,
     list_agent_run_events,
@@ -106,7 +108,7 @@ def _allowed_operations(skill: AgentSkill) -> list[dict[str, Any]]:
 
 def _system_prompt(skill: AgentSkill) -> str:
     return (
-        "You are OfferU's built-in task Agent. "
+        "You are the user's task Agent operating OfferU. "
         "Python owns task state, domain facts, confirmation, idempotency and audit. "
         "Treat Operation results as the only source of truth and state unknowns plainly. "
         "A mutation result with executed=false is only a proposal; ask the user to confirm it. "
@@ -254,9 +256,12 @@ async def start_pi_agent_run(
     provider_metadata: dict[str, Any] | None = None,
     resume_run_id: str = "",
     requested_run_id: str = "",
+    context_version: int = 0,
     stream_listener: StreamListener | None = None,
 ) -> dict[str, Any]:
     goal = str(message or "").strip()
+    runtime_name = str((provider_metadata or {}).get("runtime") or "pi_sdk_worker")
+    operation_surface = str((provider_metadata or {}).get("provider_id") or "pi")
     if not goal and not resume_run_id:
         raise ValueError("Agent Run 需要非空消息。")
     resume_session_file = ""
@@ -296,12 +301,14 @@ async def start_pi_agent_run(
                 "every mutation is either confirmed exactly once or remains visibly proposed",
             ],
             llm_runtime={
-                "runtime": "pi_sdk_worker",
+                "runtime": runtime_name,
+                **(provider_metadata or {}),
                 "protocol_version": PROTOCOL_VERSION,
                 "stream_protocol": "cursor_v1",
                 "status": "configuring",
             },
             run_id=requested_run_id,
+            context_version=context_version,
         )
     allowed_operations = _allowed_operations(skill)
     run_id = run["id"]
@@ -387,7 +394,7 @@ async def start_pi_agent_run(
                 "parts": parts,
                 "delta_index_start": int(parts[0]["delta_index"]),
                 "delta_index_end": int(parts[-1]["delta_index"]),
-                "runtime": "pi_sdk_worker",
+                "runtime": runtime_name,
             },
         )
         await publish(
@@ -510,7 +517,7 @@ async def start_pi_agent_run(
                         "message.delta",
                         {
                             **delta_part,
-                            "runtime": "pi_sdk_worker",
+                            "runtime": runtime_name,
                         },
                     )
                     if sum(
@@ -524,7 +531,7 @@ async def start_pi_agent_run(
                 event_type,
                 {
                     **payload,
-                    "runtime": "pi_sdk_worker",
+                    "runtime": runtime_name,
                     "source_event": source_type,
                 },
             )
@@ -564,7 +571,7 @@ async def start_pi_agent_run(
                     operation_name,
                     inputs,
                     dry_run=True,
-                    surface="pi",
+                    surface=operation_surface,
                 )
                 if not preview.get("ok"):
                     failed_payload = {
@@ -625,7 +632,7 @@ async def start_pi_agent_run(
             result = await execute_operation(
                 operation_name,
                 inputs,
-                surface="pi",
+                surface=operation_surface,
             )
             completed_type = (
                 "operation.completed"
@@ -662,6 +669,7 @@ async def start_pi_agent_run(
                 session.get("session_file") or expected_session_file
             ),
             "active_tools": list(session.get("active_tools") or []),
+            **({"model": session["model"], "model_provider": session.get("model_provider") or ""} if session.get("model") else {}),
         }
         await save_agent_run(current)
 
@@ -679,6 +687,8 @@ async def start_pi_agent_run(
         assistant_message = str(response.get("assistant_message") or "").strip()
         current = await load_agent_run(run_id)
         assert current is not None
+        if response.get("turn_id"):
+            current["llm_runtime"] = {**(current.get("llm_runtime") or {}), "turn_id": response["turn_id"]}
         pending_actions = pending_actions_for_run(current)
         # 反静默降级：LLM 未返回任何回复且没有待确认动作时，不能当作成功完成。
         # 否则用户看到空白回复无法区分「正常但无输出」与「LLM 故障」。
@@ -741,6 +751,24 @@ async def start_pi_agent_run(
             "active_skill": skill.summary(),
             "guardian": guardian_result,
         }
+    except asyncio.CancelledError:
+        cancelled_safely = True
+        if active_worker.active_run_id == run_id:
+            try:
+                await active_worker.abort_run(run_id)
+            except Exception:
+                cancelled_safely = False
+            finally:
+                try:
+                    await active_worker.dispose_run(run_id)
+                except Exception:
+                    cancelled_safely = False
+        interrupted = await load_agent_run(run_id)
+        if interrupted and interrupted.get("status") not in TERMINAL_STATUSES:
+            interrupted["status"] = "interrupted" if cancelled_safely else "needs_reconciliation"
+            interrupted["failure_reason"] = "stream_disconnected" if cancelled_safely else "executor_cancel_not_confirmed"
+            await save_agent_run(interrupted)
+        raise
     except Exception as exc:
         await flush_delta_buffer()
         if active_worker.active_run_id == run_id:

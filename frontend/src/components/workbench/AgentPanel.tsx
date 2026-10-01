@@ -46,6 +46,8 @@ import { presentAgentToolCall } from "@/lib/agentToolPresentation";
 import { bauhausFieldClassNames } from "@/lib/bauhaus";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { AgentConnectionStatus } from "./AgentConnectionPanel";
+import { resolveTaskExecutor, useAgentConnection } from "@/lib/agentConnection";
+import { isTauri } from "@tauri-apps/api/core";
 import { ExternalUrlLink } from "@/components/ExternalUrlLink";
 import { SHOWCASE } from "@/lib/showcase/router";
 
@@ -194,6 +196,8 @@ function pendingActionsFromRun(run: AgentRunRecord): AgentProposedAction[] {
 }
 
 export function AgentPanel() {
+  const connectionState = useAgentConnection();
+  const [executorMode, setExecutorMode] = useState(SHOWCASE || !isTauri() ? "builtin" : "external");
   const [messages, setMessages] = useState<PanelMessage[]>([
     {
       id: "welcome",
@@ -310,6 +314,16 @@ export function AgentPanel() {
   const sendMessage = async (text?: string, skillId?: string) => {
     const content = (text ?? input).trim();
     if (!content || loading || hasPendingActions || interruptedRunId) return;
+    if (!SHOWCASE && connectionState.sync.status !== "synced") {
+      setError("当前页面尚未同步，请先重试同步后再发送。");
+      return;
+    }
+    const runtimeProvider = resolveTaskExecutor(executorMode, connectionState.connection);
+    if (!runtimeProvider) {
+      setError("请先验证支持当前任务的 Agent，或明确选择内置 Agent 备用。");
+      connectionState.setOpen(true);
+      return;
+    }
     const selectedSkillId = skillId || activeSkillId;
     const currentConversationId = conversationId;
     currentConvRef.current = currentConversationId;
@@ -336,6 +350,8 @@ export function AgentPanel() {
           message: content,
           skill_id: selectedSkillId,
           conversation_id: currentConversationId,
+          runtime_provider: runtimeProvider,
+          context_version: SHOWCASE ? undefined : connectionState.sync.version ?? undefined,
         },
         (event, data) => {
           if (currentConvRef.current !== currentConversationId) return;
@@ -711,6 +727,14 @@ export function AgentPanel() {
     <div className="offeru-agent-panel flex h-full min-h-0 flex-col">
       <div className="border-b border-[var(--border)] p-3">
         <AgentConnectionStatus />
+        <label className="mt-2 flex items-center gap-2 text-xs">执行 Agent
+          <select aria-label="执行 Agent" value={executorMode} disabled={loading || hasPendingActions || Boolean(interruptedRunId)}
+            onChange={(event) => setExecutorMode(event.target.value)} className="min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--surface)] p-1">
+            {!SHOWCASE && isTauri() && <option value="external">{connectionState.connection?.name || "我的 Agent"}</option>}
+            <option value="builtin">{SHOWCASE ? "Demo Agent" : "内置 Agent · 备用"}</option>
+          </select>
+        </label>
+        <p className="mt-1 truncate text-xs text-[var(--foreground-muted)]" data-testid="agent-bound-page">当前页面：{connectionState.sync.title || "等待同步"}</p>
       </div>
       {/* 对话状态行 */}
       <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] px-3 py-2">
@@ -1071,7 +1095,17 @@ export function AgentPanel() {
                 key={action.id}
                 className="flex items-start justify-between gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[12px] text-[var(--foreground)]"
               >
-                <span className="min-w-0 flex-1">{action.summary}</span>
+                <div className="min-w-0 flex-1">
+                  <span>{action.summary}</span>
+                  <details className="mt-1">
+                    <summary className="cursor-pointer">查看提案内容与依据</summary>
+                    <pre className="mt-2 max-h-52 overflow-auto whitespace-pre-wrap break-words rounded border border-[var(--border)] p-2 text-xs">
+                      {typeof action.args.content_markdown === "string"
+                        ? `${action.args.title || ""}\n关联岗位：${action.args.related_job_id || "未指定"}\n\n${action.args.content_markdown}`
+                        : JSON.stringify(action.args, null, 2)}
+                    </pre>
+                  </details>
+                </div>
                 <div className="flex shrink-0 gap-1">
                   <Button
                     onPress={() => decidePendingAction(action, "reject")}

@@ -8,6 +8,12 @@ import { useWorkbench } from "./workbench";
 import type { components } from "./api-types.generated";
 type AgentContextRequest = components["schemas"]["AgentContextRequest"];
 
+export function resolveTaskExecutor(mode: string, connection: AgentConnection | null): string | null {
+  if (mode === "builtin") return "pi";
+  return connection?.can_execute_career_runs && connection.connection_verified && connection.status === "ready"
+    ? connection.id : null;
+}
+
 export interface ContextSyncState {
   status: "idle" | "syncing" | "synced" | "failed";
   title: string;
@@ -87,7 +93,7 @@ export function AgentConnectionProvider({ children }: { children: React.ReactNod
             throw new Error(response.errors?.join("；") || "工作台未确认收到当前内容，请重试。");
           }
           if (mounted.current && sequence.current === next.sequence) {
-            setSync({ status: "synced", title: next.title, error: "",
+            setSync({ status: "synced", title: next.title + (next.body.entity_id ? ` · #${next.body.entity_id}` : ""), error: "",
               confirmedAt: new Date().toISOString(), version: response.outputs.version });
           }
         } catch (cause) {

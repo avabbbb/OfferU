@@ -20,8 +20,10 @@ const InspectorPanel = lazy(() =>
 
 const RAIL_WIDTH = 340;
 
-export function ContextRail() {
+export function ContextRail({ focus = false }: { focus?: boolean }) {
   const { railMode, setRailMode, railOpen, setRailOpen, selection } = useWorkbench();
+  const agentOpen = railMode === "agent" && railOpen;
+  const inspectorOpen = railMode === "inspector" && railOpen;
 
   useEffect(() => {
     if (!railOpen) return;
@@ -34,12 +36,22 @@ export function ContextRail() {
 
   return (
     <>
+      <section aria-label="当前页面的 Agent" data-testid="contextual-agent-dock"
+        className={`fixed bottom-20 left-4 right-4 z-40 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--background)] shadow-xl md:bottom-4 ${focus ? "md:left-4" : "md:left-64"}`}>
+        <button type="button" aria-expanded={agentOpen} onClick={() => { setRailMode("agent"); setRailOpen(!agentOpen); }}
+          className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-semibold">
+          <span>与我的 Agent 处理当前页面</span><span>{agentOpen ? "收起" : "打开"}</span>
+        </button>
+        <div hidden={!agentOpen} className="h-[min(65dvh,640px)] border-t border-[var(--border)]">
+          <Suspense fallback={null}><AgentPanel /></Suspense>
+        </div>
+      </section>
       {/* 收起状态:仅保留一个贴边的展开按钮 */}
-      {!railOpen && (
+      {!inspectorOpen && (
         <button
           type="button"
           aria-label="打开上下文栏"
-          onClick={() => setRailOpen(true)}
+          onClick={() => { setRailMode("inspector"); setRailOpen(true); }}
           className="fixed right-3 top-3 z-40 hidden h-8 w-8 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground-muted)] transition-colors duration-[var(--dur-quick)] hover:border-[var(--border-strong)] hover:text-[var(--foreground)] md:flex"
         >
           <PanelRightOpen size={15} strokeWidth={1.75} />
@@ -47,7 +59,7 @@ export function ContextRail() {
       )}
 
       <AnimatePresence initial={false}>
-        {railOpen && (
+        {inspectorOpen && (
           <motion.button
             key="context-rail-backdrop"
             type="button"
@@ -61,14 +73,14 @@ export function ContextRail() {
             className="fixed inset-y-0 left-60 right-0 z-40 hidden cursor-default border-0 bg-[var(--shadow-medium)] p-0 md:block xl:hidden"
           />
         )}
-        {railOpen && (
+        {inspectorOpen && (
           <motion.aside
             key="context-rail"
             initial={{ width: 0, opacity: 0 }}
             animate={{ width: RAIL_WIDTH, opacity: 1 }}
             exit={{ width: 0, opacity: 0, pointerEvents: "none" }}
             transition={{ type: "spring", stiffness: 380, damping: 36 }}
-            className="context-rail offeru-context-rail fixed inset-y-0 right-0 z-50 hidden min-h-0 shrink-0 overflow-hidden border-l border-[var(--border)] bg-[var(--background)] shadow-[-12px_0_32px_var(--shadow-medium)] md:block xl:relative xl:inset-auto xl:z-auto xl:shadow-none"
+            className="context-rail offeru-context-rail fixed inset-y-0 right-0 z-50 hidden min-h-0 shrink-0 overflow-hidden border-l border-[var(--border)] bg-[var(--background)] shadow-[-12px_0_32px_var(--shadow-medium)] md:block"
           >
             <div className="flex h-full flex-col" style={{ width: RAIL_WIDTH }}>
               {/* 模式切换头 */}
@@ -127,7 +139,7 @@ export function ContextRail() {
                     className="absolute inset-0"
                   >
                     <Suspense fallback={null}>
-                      {railMode === "inspector" ? <InspectorPanel /> : <AgentPanel />}
+                      <InspectorPanel />
                     </Suspense>
                   </motion.div>
                 </AnimatePresence>

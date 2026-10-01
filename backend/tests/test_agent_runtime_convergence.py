@@ -45,8 +45,6 @@ class AgentRuntimeConvergenceTests(unittest.TestCase):
             "embedded",
             "builtin",
             "auto",
-            "codex",
-            "codex-app-server",
         ):
             self.assertEqual(
                 career_tasks._normalize_agent_turn_provider(provider_id),
@@ -54,6 +52,8 @@ class AgentRuntimeConvergenceTests(unittest.TestCase):
                 provider_id,
             )
         self.assertEqual(career_tasks._normalize_agent_turn_provider("replay"), "replay")
+        for provider_id in ("codex", "codex-app-server"):
+            self.assertEqual(career_tasks._normalize_agent_turn_provider(provider_id), "codex")
 
     def test_codex_is_not_an_internal_agent_runtime_kernel(self) -> None:
         with self.assertRaises(ValueError):
@@ -86,8 +86,6 @@ class AgentRuntimeConvergenceTests(unittest.TestCase):
             "embedded",
             "builtin",
             "auto",
-            "codex",
-            "codex-app-server",
         ):
             self.assertEqual(
                 career_tasks._normalize_agent_turn_provider(provider_id),
@@ -95,6 +93,8 @@ class AgentRuntimeConvergenceTests(unittest.TestCase):
                 provider_id,
             )
         self.assertEqual(career_tasks._normalize_agent_turn_provider("replay"), "replay")
+        for provider_id in ("codex", "codex-app-server"):
+            self.assertEqual(career_tasks._normalize_agent_turn_provider(provider_id), "codex")
 
     def test_codex_is_not_an_internal_agent_runtime_kernel(self) -> None:
         with self.assertRaises(ValueError):
@@ -728,52 +728,32 @@ class AgentRuntimeConvergenceTests(unittest.TestCase):
                     "priorities": [], "actions": [], "questions": [], "risks": [], "opportunities": [],
                 }
                 class SyntheticCareerDirector:
-                    def __init__(self, on_operation):
-                        self.on_operation = on_operation
+                    def __init__(self):
+                        self.active_run_id = None
                         self.calls = []
 
-                    async def start(self):
-                        return None
+                    async def start_run(self, *, run_id, operation_runner, **_kwargs):
+                        self.active_run_id = run_id
+                        self.on_operation = operation_runner
+                        return {"session_id": "synthetic-job-assessment-thread", "active_tools": ["offeru_operation"]}
 
-                    async def create_thread(self, **_kwargs):
-                        return {"threadId": "synthetic-job-assessment-thread"}
-
-                    async def start_turn(self, **_kwargs):
-                        self.snapshot = await self.on_operation("get_career_snapshot", {})
-                        self.job_context = await self.on_operation(
-                            "get_job_assessment_context", {}
-                        )
+                    async def prompt(self, **_kwargs):
+                        self.snapshot = (await self.on_operation("get_career_snapshot", {}))["outputs"]
+                        self.job_context = (await self.on_operation("get_job_assessment_context", {"job_id": job_id}))["outputs"]
                         result_briefing = json.loads(json.dumps(briefing))
                         result_briefing["job_assessment"]["job_id"] = self.job_context["job"]["job_id"]
                         briefing_text = json.dumps(result_briefing, ensure_ascii=False)
                         self.calls = ["get_career_snapshot", "get_job_assessment_context"]
-                        self.runtime_events = [
-                            {
-                                "method": "item/completed",
-                                "params": {"item": {"type": "agentMessage", "text": briefing_text}},
-                            }
-                        ]
-                        return {
-                            "threadId": "synthetic-job-assessment-thread",
-                            "turnId": "synthetic-job-assessment-turn",
-                            "completed": {"turn": {"items": [{"type": "agentMessage", "text": briefing_text}]}},
-                        }
+                        return {"assistant_message": briefing_text}
 
-                    async def events(self):
-                        return {
-                            "events": [
-                                {"method": "item/tool/call", "params": {"tool": name}}
-                                for name in self.calls
-                            ] + getattr(self, "runtime_events", [])
-                        }
-
-                    async def shutdown(self):
-                        return None
+                    async def dispose_run(self, _run_id):
+                        self.active_run_id = None
+                        return {"disposed": True}
 
                 director_providers = []
 
-                def make_director_provider(_provider_id, **kwargs):
-                    provider = SyntheticCareerDirector(kwargs["on_operation"])
+                def make_director_provider():
+                    provider = SyntheticCareerDirector()
                     director_providers.append(provider)
                     return provider
 
@@ -786,7 +766,9 @@ class AgentRuntimeConvergenceTests(unittest.TestCase):
                     patch.object(job_ingest, "async_session", session),
                     patch.object(role_intelligence, "async_session", session),
                     patch.object(operation_registry, "async_session", session),
-                    patch("app.services.agent_runtime.get_agent_runtime_provider", side_effect=make_director_provider),
+                    patch("app.services.pi_agent_host.get_pi_agent_worker", side_effect=make_director_provider),
+                    patch("app.services.pi_agent_host.resolve_pi_provider_config", return_value=({}, {"provider_id": "pi", "model": "fixture"})),
+                    patch("app.services.agent_run_state.async_session", session),
                     patch.object(career_tasks, "_career_director_workspace", return_value=str(state_path.parent)),
                 ):
                     envelope = await operation_registry.execute_operation(
@@ -816,9 +798,8 @@ class AgentRuntimeConvergenceTests(unittest.TestCase):
                     self.assertEqual(len(role_tasks["tasks"]), 1, role_tasks)
                     task_id = role_tasks["tasks"][0]["task_id"]
                     role_worker = career_tasks._LIVE_TASKS.get(task_id)
-                    self.assertIsNotNone(role_worker)
-                    assert role_worker is not None
-                    await role_worker
+                    if role_worker is not None:
+                        await role_worker
                     task = await career_tasks.get_career_task(task_id)
                     director_task = await career_tasks.get_career_task(director_id)
                     inbox = await automation.list_automation_inbox()

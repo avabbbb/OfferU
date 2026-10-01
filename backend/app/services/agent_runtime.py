@@ -176,6 +176,7 @@ class AgentRunProvider(Protocol):
         context_messages: list[dict[str, str]],
         requested_run_id: str,
         stream_listener: AgentRunStreamListener | None = None,
+        context_version: int = 0,
     ) -> dict[str, Any]: ...
 
     async def resume_run(self, run_id: str) -> dict[str, Any]: ...
@@ -250,6 +251,7 @@ class PiAgentRuntimeProvider:
         context_messages: list[dict[str, str]],
         requested_run_id: str,
         stream_listener: AgentRunStreamListener | None = None,
+        context_version: int = 0,
     ) -> dict[str, Any]:
         from app.services.pi_agent_host import start_pi_agent_run
 
@@ -261,6 +263,7 @@ class PiAgentRuntimeProvider:
             context_messages=context_messages,
             requested_run_id=requested_run_id,
             stream_listener=stream_listener,
+            context_version=context_version,
         )
 
     async def resume_run(self, run_id: str) -> dict[str, Any]:
@@ -319,6 +322,7 @@ class ReplayAgentRunProvider:
         context_messages: list[dict[str, str]],
         requested_run_id: str,
         stream_listener: AgentRunStreamListener | None = None,
+        context_version: int = 0,
     ) -> dict[str, Any]:
         del context_messages
         from app.services.agent_run_state import (
@@ -350,6 +354,7 @@ class ReplayAgentRunProvider:
                 "status": "running",
             },
             run_id=requested_run_id,
+            context_version=context_version,
         )
         run_id = run["id"]
         cursor = 0
@@ -661,9 +666,9 @@ def get_agent_runtime_provider(
 ) -> AgentRuntimeProvider:
     """Fixture-only low-level runtime seam.
 
-    Production Main Agent reasoning is owned by AgentRunProvider (embedded Pi).
-    External Codex remains available through Agent Bridge / hosted executor
-    integrations; it is intentionally not a second internal Agent kernel.
+    Production task reasoning uses AgentRunProvider and the same durable Run
+    host for native Codex or explicitly selected embedded fallback. This
+    low-level fixture seam does not start a competing internal kernel.
     """
     del run_id, executable, thread_params, on_operation
     clean = str(provider_id or "replay").strip().casefold()
@@ -678,6 +683,9 @@ def get_agent_run_provider(provider_id: str = "pi") -> AgentRunProvider:
     clean = str(provider_id or "pi").strip().casefold()
     if clean in {"pi", "pi-sdk", "pi-sdk-worker"}:
         return PiAgentRuntimeProvider()
+    if clean in {"codex", "codex-app-server"}:
+        from app.services.codex_run import CodexAgentRunProvider
+        return CodexAgentRunProvider()
     if clean in {"replay", "fixture", "mock"}:
         return ReplayAgentRunProvider()
     raise ValueError(f"未知 Main Agent provider: {provider_id}")

@@ -100,14 +100,13 @@ _AGENT_TURN_EMBEDDED_ALIASES = {
     "pi",
     "pi-sdk",
     "pi-sdk-worker",
-    # Legacy persisted values from the removed internal Codex kernel.
-    "codex",
-    "codex-app-server",
 }
 
 
 def _normalize_agent_turn_provider(provider_id: str) -> str:
     clean = str(provider_id or "pi").strip().casefold()
+    if clean in {"codex", "codex-app-server"}:
+        return "codex"
     if clean in _AGENT_TURN_EMBEDDED_ALIASES:
         return "pi"
     if clean in {"fixture", "replay", "mock"}:
@@ -595,14 +594,14 @@ async def _run_agent_turn(task: dict[str, Any]) -> dict[str, Any]:
             with contextlib.suppress(Exception):
                 await provider.shutdown()
 
-    if provider_id != "pi":
+    if provider_id not in {"pi", "codex"}:
         raise ValueError(
-            f"agent_turn 只支持 embedded Pi 或 replay；收到 provider={provider_id}"
+            f"agent_turn 尚不支持 provider={provider_id}；请明确选择已接入的执行器。"
         )
 
     from app.services.agent_runtime import get_agent_run_provider
 
-    provider = get_agent_run_provider("pi")
+    provider = get_agent_run_provider(provider_id)
     context_messages = [
         {"role": str(item.get("role") or ""), "content": str(item.get("content") or "")}
         for item in (payload.get("context_messages") or [])
@@ -622,10 +621,9 @@ async def _run_agent_turn(task: dict[str, Any]) -> dict[str, Any]:
         task["task_id"],
         "runtime.ready",
         {
-            "provider": "pi",
-            "kernel": "embedded_pi",
-            "legacy_provider_migrated": str(task.get("runtime_provider") or "")
-            in {"codex", "codex-app-server"},
+            "provider": provider_id,
+            "kernel": "native_codex" if provider_id == "codex" else "embedded_pi",
+            "legacy_provider_migrated": False,
         },
     )
     result = await provider.start_run(
@@ -638,6 +636,8 @@ async def _run_agent_turn(task: dict[str, Any]) -> dict[str, Any]:
     )
     run = result.get("run") if isinstance(result.get("run"), dict) else {}
     runtime = run.get("llm_runtime") if isinstance(run.get("llm_runtime"), dict) else {}
+    if not result.get("ok"):
+        raise RuntimeError("；".join(result.get("errors") or []) or "Agent Run 未成功完成。")
     assistant_message = str(result.get("assistant_message") or "")
     await _update_task(
         task["task_id"],
@@ -651,8 +651,8 @@ async def _run_agent_turn(task: dict[str, Any]) -> dict[str, Any]:
         progress_json={"stage": "agent_turn_completed", "percent": 100},
     )
     return {
-        "provider_id": "pi",
-        "kernel": "embedded_pi",
+        "provider_id": provider_id,
+        "kernel": "native_codex" if provider_id == "codex" else "embedded_pi",
         "run_id": str(run.get("id") or ""),
         "assistant_message": assistant_message,
         "structured": {"response": assistant_message},

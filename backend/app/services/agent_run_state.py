@@ -9,8 +9,8 @@ from typing import Any
 from sqlalchemy import select, update as sql_update
 
 from app.database import async_session
-from app.models.models import AgentRunEvent, AgentRunRecord, JobSearchTask
-from app.services.security_redaction import redact_sensitive_value
+from app.models.models import AgentRunEvent, AgentRunRecord, JobSearchTask, CareerTask
+from app.services.security_redaction import redact_sensitive_value, redact_secret_value
 
 RUN_SCHEMA_VERSION = "offeru.agent_runs.v2"
 ACTIVE_STATUSES = {
@@ -39,11 +39,20 @@ def safe_result_preview(value: Any, limit: int = 6000) -> Any:
     return {"preview": text[:limit], "truncated": True}
 
 
+def _protected_action_snapshot(action: dict[str, Any]) -> dict[str, Any]:
+    result = redact_sensitive_value(action)
+    args = action.get("args") if isinstance(action.get("args"), dict) else {}
+    # Local approval payloads are executable user content, not log previews.
+    # Preserve contact details and complete drafts; credentials stay redacted.
+    result["args"] = redact_secret_value(args, max_length=max(1000, len(json.dumps(args, ensure_ascii=False)) + 1))
+    return result
+
+
 def _clean_action(action: dict[str, Any], index: int) -> dict[str, Any]:
     tool = str(action.get("tool") or "").strip()
     action_id = str(action.get("id") or f"{tool}:{index}").strip()
     raw_args = action.get("args") if isinstance(action.get("args"), dict) else {}
-    args = redact_sensitive_value(raw_args)
+    args = _protected_action_snapshot({"args": raw_args})["args"]
     requires_confirmation = bool(action.get("requires_confirmation", True))
     return {
         "id": action_id,
@@ -70,7 +79,7 @@ def _clean_run(run: Any) -> dict[str, Any] | None:
     if not run_id or not task_id:
         return None
     steps = [
-        redact_sensitive_value(step)
+        _protected_action_snapshot(step)
         for step in (run.get("steps") or [])
         if isinstance(step, dict) and str(step.get("id") or "").strip()
     ]
@@ -132,7 +141,7 @@ def _row_to_run(row: AgentRunRecord) -> dict[str, Any]:
         "skill_snapshot": redact_sensitive_value(row.skill_snapshot_json or {}),
         "status": row.status or "created",
         "exit_criteria": row.exit_criteria_json or [],
-        "steps": redact_sensitive_value(row.steps_json or []),
+        "steps": [_protected_action_snapshot(step) for step in (row.steps_json or [])],
         "llm_runtime": redact_sensitive_value(row.llm_runtime_json or {}),
         "recovery_cursor": redact_sensitive_value(row.recovery_cursor_json or {}),
         "final_result": redact_sensitive_value(row.final_result_json or {}),
@@ -166,7 +175,16 @@ async def _resolve_task(
             )
         ).scalar_one_or_none()
         if task is None:
-            raise ValueError(f"JobSearchTask {task_id} does not exist")
+            canonical = await db.get(CareerTask, task_id)
+            if canonical is None:
+                raise ValueError(f"Career task {task_id} does not exist")
+            # Compatibility FK projection: retain the canonical identity.
+            # Scheduling, retries and results remain owned by CareerTask.
+            task = JobSearchTask(task_id=task_id, conversation_id=conversation_id,
+                                 title=goal[:300], goal=goal[:4000], status="active",
+                                 domain_refs_json={"career_task_id": task_id})
+            db.add(task)
+            await db.flush()
         return task
 
     if conversation_id:
@@ -279,6 +297,7 @@ async def create_agent_run(
     exit_criteria: list[str] | None = None,
     llm_runtime: dict[str, Any] | None = None,
     run_id: str = "",
+    context_version: int = 0,
 ) -> dict[str, Any]:
     now = _now_iso()
     steps = [_clean_action(action, index + 1) for index, action in enumerate(actions)]
@@ -323,6 +342,7 @@ async def create_agent_run(
             final_result_json={},
             failure_reason="",
             event_sequence=0,
+            context_version=context_version,
         )
         db.add(row)
         await db.flush()

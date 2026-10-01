@@ -68,6 +68,7 @@ class PiAgentRunRequest(BaseModel):
         max_length=40,
         pattern=r"^[a-z0-9][a-z0-9_-]*$",
     )
+    context_version: int | None = Field(default=None, ge=1)
 
 
 class PiAgentConfirmationRequest(BaseModel):
@@ -175,6 +176,15 @@ async def _provider_for_run(run_id: str):
         runtime = run.get("llm_runtime") if isinstance(run.get("llm_runtime"), dict) else {}
         provider_id = str(runtime.get("provider_id") or "pi")
     return _main_agent_provider(provider_id)
+
+
+async def _bind_current_page(body: PiAgentRunRequest) -> None:
+    if body.context_version is None:
+        return  # Compatibility callers may submit explicit entity-bound goals.
+    current = await _ui_operation_outputs("get_current_view", {})
+    if current.get("version") != body.context_version:
+        raise HTTPException(status_code=409, detail="当前页面上下文已变化，请同步后重试。")
+    body.message += "\n\nOfferU current page (context, not evidence of career facts):\n" + json.dumps(current, ensure_ascii=False)
 
 
 def _runtime_stream_error_payload(
@@ -702,6 +712,7 @@ async def start_runtime_run(body: PiAgentRunRequest) -> dict[str, Any]:
             existing = await load_agent_run(body.run_id)
             if existing is not None:
                 return _runtime_response_from_run(existing)
+        await _bind_current_page(body)
         previous = (
             get_conversation(body.conversation_id)
             if body.conversation_id
@@ -726,6 +737,7 @@ async def start_runtime_run(body: PiAgentRunRequest) -> dict[str, Any]:
             task_id=str(body.task_id or ""),
             context_messages=previous_messages,
             requested_run_id=str(body.run_id or ""),
+            **({"context_version": body.context_version} if body.context_version is not None else {}),
         )
         assistant_message = str(result.get("assistant_message") or "").strip()
         if assistant_message:
@@ -753,6 +765,8 @@ async def stream_runtime_run(body: PiAgentRunRequest):
 
     if body.run_id and await load_agent_run(body.run_id) is not None:
         return await follow_runtime_run_events(body.run_id)
+
+    await _bind_current_page(body)
 
     previous = (
         get_conversation(body.conversation_id)
@@ -795,6 +809,7 @@ async def stream_runtime_run(body: PiAgentRunRequest):
                 task_id=str(body.task_id or ""),
                 context_messages=previous_messages,
                 requested_run_id=str(body.run_id or ""),
+                **({"context_version": body.context_version} if body.context_version is not None else {}),
                 stream_listener=listener,
             )
             assistant_message = str(result.get("assistant_message") or "").strip()

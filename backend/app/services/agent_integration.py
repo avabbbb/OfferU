@@ -324,13 +324,16 @@ class AgentIntegrationManager:
             from app.ops import execute_operation
 
             probe_calls = 0
+            probe_output = None
 
             async def execute_probe_operation(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-                nonlocal probe_calls
+                nonlocal probe_calls, probe_output
                 if name != "get_agent_connection_nonce" or arguments != {
                     "provider_id": provider_id, "challenge_id": challenge["challenge_id"],
                 }:
                     raise ValueError("connection probe 只允许 nonce Operation")
+                if probe_output is not None:
+                    return probe_output  # Same probe delivery; never consume a second challenge.
                 operation_result = await execute_operation(
                     name,
                     arguments,
@@ -346,6 +349,7 @@ class AgentIntegrationManager:
                 if not isinstance(outputs, dict):
                     raise ValueError("nonce Operation 返回无效")
                 probe_calls += 1
+                probe_output = outputs
                 return outputs
 
             adapter.on_operation = execute_probe_operation
@@ -363,7 +367,7 @@ class AgentIntegrationManager:
                     "Verify the installed OfferU integration. Use the OfferU Skill, select the "
                     "connection_probe Skill, then call the offered read-only nonce Operation for "
                     f"provider_id=codex and challenge_id={challenge['challenge_id']}. "
-                    "Return only JSON with one nonce field. "
+                    "Call the nonce Operation exactly once, retain its returned value, and return only JSON with one nonce field. "
                     "Do not use shell, read repository source or challenge storage directly, or guess."
                 ),
             )

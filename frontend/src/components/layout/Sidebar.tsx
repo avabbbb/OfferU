@@ -39,7 +39,7 @@ interface NavItem {
 const stageItems: NavItem[] = [
   { href: "/", label: "Today", hint: "下一步", icon: Sun, match: ["/"] },
   { href: "/applications?view=board", label: "Pipeline", hint: "投递进展", icon: Send, match: ["/applications", "/email", "/calendar"] },
-  { href: "/jobs", label: "Opportunity", hint: "目标岗位", icon: Briefcase, match: ["/jobs"] },
+  { href: "/jobs", label: "Job Workspace", hint: "目标岗位", icon: Briefcase, match: ["/jobs"] },
   { href: "/profile", label: "Profile", hint: "职业档案", icon: UserRound, match: ["/profile"] },
 ];
 

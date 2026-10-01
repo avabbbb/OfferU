@@ -976,6 +976,7 @@ export interface AgentConnection {
   expected_skill_hash: string;
   can_install_skill: boolean;
   can_live_verify_skill: boolean;
+  can_execute_career_runs?: boolean;
   auth_mode: string;
   checked_at: string | null;
   detected_at: string | null;
@@ -1017,7 +1018,7 @@ export interface AgentViewSnapshot {
 
 export const agentRuntimeApi = {
   connections: () => request<AgentConnectionsSnapshot>("/api/agent/runtime/connections", {
-    signal: AbortSignal.timeout(20000),
+    signal: AbortSignal.timeout(50000),
   }),
   probeConnection: (providerId: string) => request<AgentConnectionsSnapshot>(
     `/api/agent/runtime/connections/${encodeURIComponent(providerId)}/probe`,
@@ -1042,6 +1043,7 @@ export const agentRuntimeApi = {
     conversation_id?: string | null;
     task_id?: string | null;
     runtime_provider?: string;
+    context_version?: number;
   }, onEvent?: (event: string, data: any) => void, signal?: AbortSignal) => {
     const runId = createAgentRunId();
     const requestData = { ...data, run_id: runId };

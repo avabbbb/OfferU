@@ -157,6 +157,7 @@ def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
         "expected_skill_hash": integration["expected_skill_hash"],
         "can_install_skill": integration["can_install"],
         "can_live_verify_skill": integration["can_live_verify"],
+        "can_execute_career_runs": provider_id == "codex",
         "auth_mode": check.get("auth_mode", "native_probe" if persisted_authenticated else "unknown"),
         "checked_at": check.get("checked_at") or conformance.get("last_probe_at"),
         "detected_at": item.get("checked_at"),

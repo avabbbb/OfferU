@@ -5602,6 +5602,8 @@ export interface components {
             task_id?: string | null;
             /** Run Id */
             run_id?: string | null;
+            /** Context Version */
+            context_version?: number | null;
             /**
              * Runtime Provider
              * @default pi

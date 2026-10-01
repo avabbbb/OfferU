@@ -2,7 +2,7 @@
 # OfferU Current Product North Star
 
 Status: **CURRENT PRODUCT AUTHORITY**  
-Updated: 2026-09-30
+Updated: 2026-10-01
 
 This document defines the current product shape of OfferU. Historical audits, dated implementation plans and superseded Harness-specific designs must not override it.
 
@@ -146,6 +146,8 @@ A built-in OfferU Agent is allowed as a **fallback** when no suitable external h
 The built-in Agent remains capable of operating OfferU and assisting with job-tailored resumes through the same Skill allowlists, source evidence, fact gates, draft/proposal path and independent approval. This is one selectable reasoning provider, not a second competing write loop or a weaker permission model.
 
 Exactly one reasoning authority is active for a given Agent Run. External and built-in Agents share the same truth, capability, confirmation and audit boundaries.
+
+The current contextual UI keeps one mounted bottom Agent panel across existing pages. Desktop defaults to the connected executor; built-in execution requires explicit selection. The first bounded external executor is native Codex through the existing durable Run host, with Skill-scoped Registry calls and independent proposal decisions. A synchronized page version is checked before launch and persisted with the Run. Public host support does not imply other adapters are implemented. Native Desktop installation, consumer connectors, external Director routing and the complete multi-job resume scenario still require separate implementation/acceptance; this local slice must not be advertised as completing them.
 
 ~~~
 Reasoning authority
