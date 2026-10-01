@@ -1120,19 +1120,14 @@ async def optimize_agent_chat(
 async def optimize_agent_chat_stream(
     body: OptimizeAgentChatRequest,
 ):
-    from app.agents.optimize_agent import chat_turn_stream
-    from app.database import async_session
-
     async def _stream():
-        async with async_session() as db:
-            async for event in chat_turn_stream(
-                session_id=body.session_id,
-                user_message=body.message,
-                action=body.action,
-                feedback=body.feedback,
-                db=db,
-            ):
-                yield event
+        result = await _execute_agent_operation(
+            "stream_optimize_agent_session",
+            {"session_id": body.session_id, "message": body.message,
+             "action": body.action, "feedback": body.feedback},
+        )
+        for event in result.get("events") or []:
+            yield event
 
     return StreamingResponse(
         _stream(),

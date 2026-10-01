@@ -15,6 +15,7 @@ from app.services.agent_bridge import codex_adapter
 class FakeCodexAdapter:
     final_nonce = ""
     include_operation_event = True
+    repeat_read = False
 
     def __init__(self, **options: object):
         self.closed = False
@@ -40,6 +41,9 @@ class FakeCodexAdapter:
         nonce = (await self.on_operation("get_agent_connection_nonce", {
             "provider_id": "codex", "challenge_id": challenge_id,
         }))["nonce"]
+        if self.repeat_read:
+            repeated = await self.on_operation("get_agent_connection_nonce", {"provider_id": "codex", "challenge_id": challenge_id})
+            assert repeated["nonce"] == nonce
         returned = self.final_nonce or nonce
         return {"finalMessage": f'{{"nonce":"{returned}"}}', "threadId": "test", "turnId": "test-turn"}
 
@@ -179,6 +183,21 @@ class AgentIntegrationTests(unittest.IsolatedAsyncioTestCase):
             result = await manager.probe("opencode", "opencode.exe")
         self.assertEqual(result["integration_status"], "DISCOVERED")
         self.assertFalse(result["connection_verified"])
+
+    async def test_repeated_probe_delivery_reuses_one_registry_read(self) -> None:
+        from app.ops import execute_operation
+        manager = integration.AgentIntegrationManager()
+        manager.install("codex")
+        FakeCodexAdapter.repeat_read = True
+        try:
+            with patch("app.services.agent_bridge.codex_adapter.CodexMainLoopAdapter", FakeCodexAdapter), \
+                 patch("app.ops.execute_operation", wraps=execute_operation) as operation:
+                verified = await manager.probe("codex", "codex.exe")
+                self.assertTrue(verified["connection_verified"])
+                self.assertEqual(operation.await_count, 1)
+                self.assertEqual(verified["readback_evidence"]["successful_calls"], 1)
+        finally:
+            FakeCodexAdapter.repeat_read = False
 
 
 if __name__ == "__main__":
