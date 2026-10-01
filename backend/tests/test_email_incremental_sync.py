@@ -23,6 +23,7 @@ from app.models.models import (
     EmailAccount,
     EmailSyncRun,
     ExternalProgressSignal,
+    LearningObservation,
 )
 from app.ops import OPERATIONS, execute_operation
 from app.services.agent_skill_registry import resolve_skill
@@ -148,6 +149,9 @@ class EmailIncrementalSyncTests(unittest.TestCase):
                 "app.services.application_progress.async_session",
                 self._test_session,
             ),
+            # Sync and revocation also persist Career Memory observations.
+            # Keep the whole business chain on this test's isolated database.
+            patch("app.services.career_memory.async_session", self._test_session),
         ]
         for session_patch in self._session_patches:
             session_patch.start()
@@ -506,6 +510,15 @@ class EmailIncrementalSyncTests(unittest.TestCase):
                         )
                     )
                 ).scalars().all()
+                observations = (
+                    await db.execute(
+                        select(LearningObservation).where(
+                            LearningObservation.id.in_(first["observation_ids"])
+                        )
+                    )
+                ).scalars().all()
+                self.assertEqual(len(observations), 1)
+                self.assertEqual(second["observation_ids"], first["observation_ids"])
             return first, second, len(signals), signals[0], stored.sync_cursor_json
 
         first, second, signal_count, signal, cursor = asyncio.run(run())
