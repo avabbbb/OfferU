@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import json
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
@@ -23,38 +25,37 @@ from app.services.main_agent_guardian import (
     guardian_prompt_advice,
 )
 from app.services.operation_projection import confirm_operation_proposal
-from app.services.pi_agent_worker import (
+from app.services.embedded_agent_worker import (
     PROTOCOL_VERSION,
-    PiAgentWorkerClient,
-    get_pi_agent_worker,
+    EmbeddedAgentWorker,
+    get_embedded_agent_worker,
 )
 from app.services.security_redaction import safe_error_message
 from app.runtime_paths import runtime_data_path
 
 
 _EVENT_TYPES = {
+    "tool.started": "runtime.tool_started",
+    "tool.progress": "runtime.tool_progress",
+    "tool.completed": "runtime.tool_completed",
+    "kernel.agent_start": "runtime.agent_started",
+    "kernel.agent_end": "runtime.agent_settled",
+    "kernel.turn_start": "runtime.turn_started",
+    "kernel.turn_end": "runtime.turn_completed",
+    "kernel.compaction_start": "runtime.compaction_started",
+    "kernel.compaction_end": "runtime.compaction_completed",
     "message.delta": "message.delta",
     "run.started": "runtime.session_started",
     "run.aborted": "runtime.aborted",
     "run.disposed": "runtime.disposed",
     "runtime.fatal": "runtime.failed",
-    "pi.agent_start": "runtime.agent_started",
-    "pi.agent_end": "runtime.agent_completed",
-    "pi.agent_settled": "runtime.agent_settled",
-    "pi.turn_start": "runtime.turn_started",
-    "pi.turn_end": "runtime.turn_completed",
-    "pi.tool_execution_start": "runtime.tool_started",
-    "pi.tool_execution_end": "runtime.tool_completed",
-    "pi.compaction_start": "runtime.compaction_started",
-    "pi.compaction_end": "runtime.compaction_completed",
-    "pi.auto_retry_start": "runtime.retry_started",
-    "pi.auto_retry_end": "runtime.retry_completed",
 }
-_SESSION_DIRECTORY = runtime_data_path("pi_sessions")
+_SESSION_DIRECTORY = runtime_data_path("python_agent_sessions")
+_CONTINUATION_LOCKS: dict[str, asyncio.Lock] = {}
 StreamListener = Callable[[dict[str, Any]], Awaitable[None]]
 
 
-def resolve_pi_provider_config(
+def resolve_embedded_provider_config(
     settings: Settings | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Resolve the active OpenAI-compatible provider without persisting its key.
@@ -74,7 +75,8 @@ def resolve_pi_provider_config(
         "api_key": resolved["api_key"],
     }
     public = {
-        "runtime": "pi_sdk_worker",
+        "runtime": "python_agent",
+        "provider_id": "embedded",
         "protocol_version": PROTOCOL_VERSION,
         "provider": resolved["provider"],
         "model": model,
@@ -100,7 +102,7 @@ def _allowed_operations(skill: AgentSkill) -> list[dict[str, Any]]:
         if name in OPERATIONS
     ]
     if not allowed:
-        raise ValueError(f"Skill {skill.id} 没有可投影到 Pi 的 Operation。")
+        raise ValueError(f"Skill {skill.id} 没有可用的 Registry Operation。")
     return allowed
 
 
@@ -242,19 +244,20 @@ async def _fail_run(run_id: str, error: Exception) -> dict[str, Any]:
     )
 
 
-async def start_pi_agent_run(
+async def start_embedded_agent_run(
     *,
     message: str,
     skill_id: str,
     conversation_id: str = "",
     task_id: str = "",
     context_messages: list[dict[str, str]] | None = None,
-    worker: PiAgentWorkerClient | None = None,
+    worker: EmbeddedAgentWorker | None = None,
     provider_config: dict[str, Any] | None = None,
     provider_metadata: dict[str, Any] | None = None,
     resume_run_id: str = "",
     requested_run_id: str = "",
     stream_listener: StreamListener | None = None,
+    continuation: bool = False,
 ) -> dict[str, Any]:
     goal = str(message or "").strip()
     if not goal and not resume_run_id:
@@ -264,7 +267,9 @@ async def start_pi_agent_run(
         run = await load_agent_run(resume_run_id)
         if run is None:
             raise ValueError(f"Agent Run {resume_run_id} 不存在。")
-        if run.get("status") != "interrupted":
+        if (run.get("llm_runtime") or {}).get("runtime") != "python_agent":
+            raise ValueError("旧 Pi 会话已保留为历史，不能由新内核自动重放；请开启新的任务。")
+        if run.get("status") not in ({"completed", "interrupted"} if continuation else {"interrupted"}):
             raise ValueError(
                 f"Agent Run {resume_run_id} 不能恢复（status={run.get('status')}）。"
             )
@@ -296,7 +301,8 @@ async def start_pi_agent_run(
                 "every mutation is either confirmed exactly once or remains visibly proposed",
             ],
             llm_runtime={
-                "runtime": "pi_sdk_worker",
+                "runtime": "python_agent",
+                "provider_id": "embedded",
                 "protocol_version": PROTOCOL_VERSION,
                 "stream_protocol": "cursor_v1",
                 "status": "configuring",
@@ -305,10 +311,10 @@ async def start_pi_agent_run(
         )
     allowed_operations = _allowed_operations(skill)
     run_id = run["id"]
-    active_worker = worker or get_pi_agent_worker()
+    active_worker = worker or get_embedded_agent_worker()
     expected_session_file = (
         resume_session_file
-        or str(_SESSION_DIRECTORY / f"{run_id}.jsonl")
+        or str(_SESSION_DIRECTORY / f"{run_id}.json")
     )
 
     async def publish(
@@ -387,7 +393,8 @@ async def start_pi_agent_run(
                 "parts": parts,
                 "delta_index_start": int(parts[0]["delta_index"]),
                 "delta_index_end": int(parts[-1]["delta_index"]),
-                "runtime": "pi_sdk_worker",
+                "runtime": "python_agent",
+                "provider_id": "embedded",
             },
         )
         await publish(
@@ -449,14 +456,15 @@ async def start_pi_agent_run(
                 {"error": guardian_error_message},
             )
         if resume_run_id and not resume_session_file:
-            raise ValueError("Run 没有可恢复的 Pi Session 文件。")
+            raise ValueError("Run 没有可恢复的 Python Agent Session 文件。")
         if resume_run_id and worker is None and not Path(resume_session_file).is_file():
-            raise ValueError("Run 的 Pi Session 文件不存在，不能确定性恢复。")
+            raise ValueError("Run 的 Python Agent Session 文件不存在，不能确定性恢复。")
         if provider_config is None:
-            provider_config, resolved_metadata = resolve_pi_provider_config()
+            provider_config, resolved_metadata = resolve_embedded_provider_config()
         else:
             resolved_metadata = provider_metadata or {
-                "runtime": "pi_sdk_worker",
+                "runtime": "python_agent",
+                "provider_id": "embedded",
                 "protocol_version": PROTOCOL_VERSION,
                 "provider": str(provider_config.get("name") or "test"),
                 "model": str(provider_config.get("model") or ""),
@@ -510,7 +518,8 @@ async def start_pi_agent_run(
                         "message.delta",
                         {
                             **delta_part,
-                            "runtime": "pi_sdk_worker",
+                            "runtime": "python_agent",
+                "provider_id": "embedded",
                         },
                     )
                     if sum(
@@ -524,7 +533,8 @@ async def start_pi_agent_run(
                 event_type,
                 {
                     **payload,
-                    "runtime": "pi_sdk_worker",
+                    "runtime": "python_agent",
+                "provider_id": "embedded",
                     "source_event": source_type,
                 },
             )
@@ -560,11 +570,21 @@ async def start_pi_agent_run(
                 }
             inputs = arguments if isinstance(arguments, dict) else {}
             if operation.is_mutation:
+                latest = await load_agent_run(run_id)
+                for step in (latest or {}).get("steps") or []:
+                    if step.get("tool") == operation_name and step.get("args") == inputs:
+                        if step.get("status") == "completed":
+                            return {"ok": True, "outputs": {"executed": True, "already_completed": True,
+                                "action_id": step["id"], "receipt": step.get("result")}}
+                        if step.get("status") == "waiting_confirmation":
+                            return {"ok": True, "outputs": {"executed": False, "requires_confirmation": True,
+                                "proposal": {"run_id": run_id, "action_id": step["id"], "operation": operation_name,
+                                             "args": inputs, "status": "waiting_confirmation"}}}
                 preview = await execute_operation(
                     operation_name,
                     inputs,
                     dry_run=True,
-                    surface="pi",
+                    surface="embedded",
                 )
                 if not preview.get("ok"):
                     failed_payload = {
@@ -625,7 +645,7 @@ async def start_pi_agent_run(
             result = await execute_operation(
                 operation_name,
                 inputs,
-                surface="pi",
+                surface="embedded",
             )
             completed_type = (
                 "operation.completed"
@@ -666,9 +686,9 @@ async def start_pi_agent_run(
         await save_agent_run(current)
 
         prompt_message = (
-            "Resume this interrupted OfferU Agent Run from the persisted Pi "
+            "Resume this interrupted OfferU Agent Run from the persisted Python Agent "
             f"Session. Do not claim interrupted work completed. Original goal:\n{goal}"
-            if resume_run_id
+            if resume_run_id and not continuation
             else _prompt_with_context(goal, context_messages)
         )
         prompt_message = (
@@ -818,17 +838,17 @@ async def start_pi_agent_run(
         }
 
 
-async def resume_pi_agent_run(
+async def resume_embedded_agent_run(
     run_id: str,
     *,
-    worker: PiAgentWorkerClient | None = None,
+    worker: EmbeddedAgentWorker | None = None,
     provider_config: dict[str, Any] | None = None,
     provider_metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     run = await load_agent_run(run_id)
     if run is None:
         raise ValueError(f"Agent Run {run_id} 不存在。")
-    return await start_pi_agent_run(
+    return await start_embedded_agent_run(
         message=str(run.get("goal") or ""),
         skill_id=str(run.get("skill_id") or ""),
         conversation_id=str(run.get("conversation_id") or ""),
@@ -840,18 +860,57 @@ async def resume_pi_agent_run(
     )
 
 
-async def confirm_pi_agent_action(
+async def confirm_embedded_agent_action(
     run_id: str,
     *,
     action_id: str,
-    worker: PiAgentWorkerClient | None = None,
+    worker: EmbeddedAgentWorker | None = None,
 ) -> dict[str, Any]:
     result = await confirm_operation_proposal(
         run_id,
         action_id=action_id,
         surface="agent_runtime_ui",
     )
-    active_worker = worker or get_pi_agent_worker()
+    # Only the request that executed the last protected action may start a
+    # continuation. Duplicate confirms return receipts without another model turn.
+    if result.get("ok") and result.get("tool_calls"):
+        async with _CONTINUATION_LOCKS.setdefault(run_id, asyncio.Lock()):
+            latest = await load_agent_run(run_id)
+            if latest and latest.get("status") == "completed" and not pending_actions_for_run(latest):
+                metadata = latest.get("llm_runtime") or {}
+                completed = sorted(str(step["id"]) for step in latest.get("steps") or [] if step.get("status") == "completed")
+                if metadata.get("continued_action_ids") != completed and metadata.get("runtime") == "python_agent":
+                    active = worker or get_embedded_agent_worker()
+                    if active.active_run_id == run_id:
+                        await active.dispose_run(run_id)
+                    latest["llm_runtime"] = {**metadata, "continued_action_ids": completed}
+                    await save_agent_run(latest, event_type="continuation.requested", event_payload={"action_ids": completed})
+                    receipts = [{"action_id": step["id"], "operation": step["tool"], "args": step.get("args"),
+                                 "result": step.get("result")} for step in latest.get("steps") or [] if step.get("status") == "completed"]
+                    try:
+                        continued = await start_embedded_agent_run(
+                            message="The following operations were independently approved and executed. Consume these receipts, "
+                                    "read back the affected state and continue the original goal; do not repeat these mutations.\n"
+                                    + json.dumps(receipts, ensure_ascii=False, default=str)
+                                    + "\nOriginal goal:\n" + str(latest.get("goal") or ""),
+                            skill_id=str(latest["skill_id"]), resume_run_id=run_id, worker=worker, continuation=True,
+                        )
+                    except Exception as exc:
+                        # The approved action already committed. Never report it as
+                        # failed or encourage replay because model startup failed.
+                        latest = await load_agent_run(run_id)
+                        latest["status"] = "failed"
+                        latest["failure_reason"] = safe_error_message(exc)
+                        await save_agent_run(latest, event_type="runtime.failed", event_payload={
+                            "phase": "continuation_start", "error": latest["failure_reason"],
+                        })
+                        continued = {"ok": False, "run": latest, "errors": [latest["failure_reason"]]}
+                    result["run"] = continued["run"]
+                    result["continuation"] = continued
+                    # Approval success and continuation success are separate outcomes.
+                    if not continued.get("ok"):
+                        result.setdefault("warnings", []).append("动作已执行；Agent 续跑失败，请查看 Run 的失败原因。")
+    active_worker = worker or get_embedded_agent_worker()
     if active_worker.active_run_id == run_id:
         try:
             await active_worker.dispose_run(run_id)
@@ -865,7 +924,7 @@ async def confirm_pi_agent_action(
                 payload={"error": safe_error_message(exc), "phase": "dispose_after_confirm"},
             )
             result.setdefault("warnings", []).append(
-                "操作已处理，但 Pi Session 释放失败；Worker 会在下次启动时显式报错。"
+                "操作已处理，但 Python Agent Session 释放失败；Worker 会在下次启动时显式报错。"
             )
     run = result.get("run") if isinstance(result.get("run"), dict) else None
     if run is not None and run.get("status") in {
@@ -903,11 +962,11 @@ async def confirm_pi_agent_action(
     return result
 
 
-async def reject_pi_agent_action(
+async def reject_embedded_agent_action(
     run_id: str,
     *,
     action_id: str,
-    worker: PiAgentWorkerClient | None = None,
+    worker: EmbeddedAgentWorker | None = None,
 ) -> dict[str, Any]:
     operation = await execute_operation(
         "reject_agent_run",
@@ -925,7 +984,7 @@ async def reject_pi_agent_action(
         raise ValueError("拒绝结果缺少持久化 Agent Run。")
 
     warnings = list(operation.get("warnings") or [])
-    active_worker = worker or get_pi_agent_worker()
+    active_worker = worker or get_embedded_agent_worker()
     if active_worker.active_run_id == run_id:
         try:
             await active_worker.dispose_run(run_id)
@@ -936,7 +995,7 @@ async def reject_pi_agent_action(
                 payload={"error": safe_error_message(exc), "phase": "dispose_after_reject"},
             )
             warnings.append(
-                "操作已处理，但 Pi Session 释放失败；Worker 会在下次启动时显式报错。"
+                "操作已处理，但 Python Agent Session 释放失败；Worker 会在下次启动时显式报错。"
             )
 
     run = await load_agent_run(run_id) or run
@@ -974,10 +1033,10 @@ async def reject_pi_agent_action(
     }
 
 
-async def abort_pi_agent_run(
+async def abort_embedded_agent_run(
     run_id: str,
     *,
-    worker: PiAgentWorkerClient | None = None,
+    worker: EmbeddedAgentWorker | None = None,
 ) -> dict[str, Any]:
     run = await load_agent_run(run_id)
     if run is None:
@@ -985,7 +1044,7 @@ async def abort_pi_agent_run(
     if run.get("status") in {"completed", "failed", "cancelled", "needs_reconciliation"}:
         return {"ok": True, "run": run, "warnings": ["Run 已经结束。"]}
 
-    active_worker = worker or get_pi_agent_worker()
+    active_worker = worker or get_embedded_agent_worker()
     if active_worker.active_run_id == run_id:
         await active_worker.abort_run(run_id)
         await active_worker.dispose_run(run_id)

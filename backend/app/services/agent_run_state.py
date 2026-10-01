@@ -9,7 +9,7 @@ from typing import Any
 from sqlalchemy import select, update as sql_update
 
 from app.database import async_session
-from app.models.models import AgentRunEvent, AgentRunRecord, JobSearchTask
+from app.models.models import AgentRunEvent, AgentRunRecord, CareerTask, JobSearchTask
 from app.services.security_redaction import redact_sensitive_value
 
 RUN_SCHEMA_VERSION = "offeru.agent_runs.v2"
@@ -166,7 +166,21 @@ async def _resolve_task(
             )
         ).scalar_one_or_none()
         if task is None:
-            raise ValueError(f"JobSearchTask {task_id} does not exist")
+            career_task = await db.get(CareerTask, task_id)
+            if career_task is None:
+                raise ValueError(f"JobSearchTask {task_id} does not exist")
+            # Existing scheduled tasks own their lifecycle; the Run's required
+            # task container uses the same identity and canonical domain refs.
+            task = JobSearchTask(
+                task_id=task_id, conversation_id=conversation_id,
+                title=(goal or "OfferU Agent task")[:300], goal=(goal or "")[:4000],
+                status="active", primary_job_id=(int(career_task.target_id)
+                    if career_task.target_type == "job" and str(career_task.target_id or "").isdigit() else None),
+                domain_refs_json={"career_task_id": task_id, "target_type": career_task.target_type,
+                                  "target_id": career_task.target_id},
+            )
+            db.add(task)
+            await db.flush()
         return task
 
     if conversation_id:
@@ -582,7 +596,7 @@ async def recover_interrupted_agent_runs() -> dict[str, int]:
                 if isinstance(row.llm_runtime_json, dict)
                 else {}
             )
-            if runtime.get("runtime") != "pi_sdk_worker":
+            if runtime.get("runtime") not in {"pi_sdk_worker", "python_agent"}:
                 continue
             steps = [
                 dict(item)
@@ -641,7 +655,8 @@ async def recover_interrupted_agent_runs() -> dict[str, int]:
                         event_type="recovery.interrupted",
                         payload={
                             "previous_status": previous_status,
-                            "resume_available": bool(runtime.get("session_file")),
+                            "resume_available": runtime.get("runtime") == "python_agent" and bool(runtime.get("session_file")),
+                            "legacy_session_preserved": runtime.get("runtime") == "pi_sdk_worker",
                         },
                     )
                 )

@@ -44,7 +44,7 @@ const pythonArch = run(python, ["-c", "import platform; print(platform.machine()
 if (!(process.arch === "arm64" ? ["arm64", "aarch64"] : ["amd64", "x86_64"]).includes(pythonArch)) {
   throw new Error("Python architecture does not match this build.");
 }
-if (!existsSync(join(runtime, "node_modules/@earendil-works/pi-coding-agent"))) {
+if (!existsSync(join(runtime, "node_modules/@anthropic-ai/claude-agent-sdk"))) {
   throw new Error("Install agent-runtime dependencies with npm ci before packaging.");
 }
 mkdirSync(temp, { recursive: true });
@@ -57,16 +57,16 @@ if (existsSync(stage)) {
   rmSync(stage, { recursive: true });
 }
 mkdirSync(join(stage, "src"), { recursive: true });
-cpSync(join(runtime, "src/worker.mjs"), join(stage, "src/worker.mjs"));
+cpSync(join(runtime, "src/hosted-executor-worker.mjs"), join(stage, "src/hosted-executor-worker.mjs"));
 cpSync(join(runtime, "node_modules"), join(stage, "node_modules"), { recursive: true });
 cpSync(join(runtime, "package-lock.json"), join(stage, "package-lock.json"));
 const manifest = JSON.parse(readFileSync(join(runtime, "package.json"), "utf8"));
-// Keep the existing minimum Pi bundle; the optional hosted Claude SDK is not shipped.
-delete manifest.dependencies["@anthropic-ai/claude-agent-sdk"];
+// Node is used only for the optional external Claude hosted executor.
+// The migrated embedded Python kernel is collected with app by PyInstaller.
 writeFileSync(join(stage, "package.json"), JSON.stringify(manifest, null, 2) + "\n");
 if (!process.env.npm_execpath) throw new Error("Run this builder through npm run build:sidecar.");
 run(process.execPath, [process.env.npm_execpath, "--prefix", stage, "prune", "--omit=dev", "--ignore-scripts", "--offline"]);
-if (!existsSync(join(stage, "node_modules/@earendil-works/pi-coding-agent"))) throw new Error("Packaged AI runtime is missing.");
+if (!existsSync(join(stage, "node_modules/@anthropic-ai/claude-agent-sdk"))) throw new Error("Packaged external executor SDK is missing.");
 cpSync(node, join(dist, `offeru-node-${nativeTarget}${extension}`));
 
 // Ship the matching managed headless browser; installed users need no browser download.

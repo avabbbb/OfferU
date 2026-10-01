@@ -47,7 +47,7 @@ $nodePath = if ($env:OFFERU_NODE_PATH) {
     (Get-Command node -ErrorAction Stop).Source
 }
 if (-not $nodePath -or -not (Test-Path -LiteralPath $nodePath -PathType Leaf)) {
-    throw "Node.js executable was not found; the packaged Pi runtime requires Node >=22.19.0"
+    throw "Node.js executable was not found; the packaged External executor runtime requires Node >=22.19.0"
 }
 $nodeVersionText = (& $nodePath --version).Trim()
 $nodeVersion = $nodeVersionText.TrimStart("v")
@@ -57,15 +57,15 @@ try {
     throw "Unable to determine Node.js version from '$nodeVersionText'"
 }
 if ($parsedNodeVersion -lt [version]"22.19.0") {
-    throw "Node.js $nodeVersionText is too old; the packaged Pi runtime requires Node >=22.19.0"
+    throw "Node.js $nodeVersionText is too old; the packaged External executor runtime requires Node >=22.19.0"
 }
 
-if (-not (Test-Path -LiteralPath (Join-Path $agentRuntimeSourceDir "src\worker.mjs") -PathType Leaf)) {
-    throw "Pi runtime source is missing: agent-runtime/src/worker.mjs"
+if (-not (Test-Path -LiteralPath (Join-Path $agentRuntimeSourceDir "src\hosted-executor-worker.mjs") -PathType Leaf)) {
+    throw "External executor runtime source is missing: agent-runtime/src/hosted-executor-worker.mjs"
 }
 $sourceNodeModules = Join-Path $agentRuntimeSourceDir "node_modules"
-if (-not (Test-Path -LiteralPath (Join-Path $sourceNodeModules "@earendil-works\pi-coding-agent") -PathType Container)) {
-    throw "Pi runtime dependencies are missing; run npm ci in agent-runtime before packaging"
+if (-not (Test-Path -LiteralPath (Join-Path $sourceNodeModules "@anthropic-ai\claude-agent-sdk") -PathType Container)) {
+    throw "External executor runtime dependencies are missing; run npm ci in agent-runtime before packaging"
 }
 
 if (Test-Path -LiteralPath $agentRuntimeReleaseDir) {
@@ -73,39 +73,30 @@ if (Test-Path -LiteralPath $agentRuntimeReleaseDir) {
 }
 New-Item -ItemType Directory -Force -Path (Join-Path $agentRuntimeReleaseDir "src") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $agentRuntimeReleaseDir "node_modules") | Out-Null
-Copy-Item -LiteralPath (Join-Path $agentRuntimeSourceDir "src\worker.mjs") -Destination (Join-Path $agentRuntimeReleaseDir "src\worker.mjs") -Force
+Copy-Item -LiteralPath (Join-Path $agentRuntimeSourceDir "src\hosted-executor-worker.mjs") -Destination (Join-Path $agentRuntimeReleaseDir "src\hosted-executor-worker.mjs") -Force
 Copy-Item -LiteralPath (Join-Path $agentRuntimeSourceDir "package.json") -Destination (Join-Path $agentRuntimeReleaseDir "package.json") -Force
 Get-ChildItem -LiteralPath $sourceNodeModules -Force | ForEach-Object {
     Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $agentRuntimeReleaseDir "node_modules") -Recurse -Force
 }
 
-# Pi is the minimum packaged live runtime. The optional Claude hosted worker
-# is deliberately excluded so the release bundle does not ship its platform
-# binary and SDK when that provider is not part of the core desktop path.
-$releaseAnthropicDir = Join-Path $agentRuntimeReleaseDir "node_modules\@anthropic-ai"
-if (Test-Path -LiteralPath $releaseAnthropicDir -PathType Container) {
-    Get-ChildItem -LiteralPath $releaseAnthropicDir -Directory -Force |
-        Where-Object { $_.Name -like "claude-agent-sdk*" } |
-        Remove-Item -Recurse -Force
-}
+# Ship the existing optional Claude hosted executor; embedded reasoning is Python.
 $releaseManifestPath = Join-Path $agentRuntimeReleaseDir "package.json"
 $releaseManifest = Get-Content -LiteralPath $releaseManifestPath -Raw | ConvertFrom-Json
-$releaseManifest.dependencies.PSObject.Properties.Remove("@anthropic-ai/claude-agent-sdk")
 $releaseManifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $releaseManifestPath -Encoding utf8
 $npmPath = (Get-Command npm -ErrorAction Stop).Source
 & $npmPath --prefix $agentRuntimeReleaseDir prune --omit=dev --ignore-scripts
 if ($LASTEXITCODE -ne 0) {
-    throw "Packaged Pi runtime dependency pruning failed with exit code $LASTEXITCODE"
+    throw "Packaged External executor runtime dependency pruning failed with exit code $LASTEXITCODE"
 }
 Copy-Item -LiteralPath $nodePath -Destination $nodeResourcePath -Force
 
-if (-not (Test-Path -LiteralPath (Join-Path $agentRuntimeReleaseDir "node_modules\@earendil-works\pi-coding-agent") -PathType Container)) {
-    throw "Packaged Pi runtime staging failed: pi-coding-agent is missing"
+if (-not (Test-Path -LiteralPath (Join-Path $agentRuntimeReleaseDir "node_modules\@anthropic-ai\claude-agent-sdk") -PathType Container)) {
+    throw "Packaged External executor runtime staging failed: claude-agent-sdk is missing"
 }
 if (-not (Test-Path -LiteralPath $nodeResourcePath -PathType Leaf)) {
     throw "Packaged Node.js runtime staging failed: $nodeResourcePath"
 }
-Write-Output "Staged Pi runtime at $agentRuntimeReleaseDir"
+Write-Output "Staged External executor runtime at $agentRuntimeReleaseDir"
 Write-Output "Staged Node.js runtime at $nodeResourcePath ($nodeVersionText)"
 
 $entryPath = Join-Path $backendDir "sidecar_entry.py"

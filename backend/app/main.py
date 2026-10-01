@@ -141,10 +141,10 @@ async def lifespan(app: FastAPI):
             yield
     finally:
         from app.services.coding_agent_runtime import shutdown_hosted_executors
-        from app.services.pi_agent_worker import close_pi_agent_worker
+        from app.services.embedded_agent_worker import close_embedded_agent_worker
 
         await shutdown_hosted_executors()
-        await close_pi_agent_worker()
+        await close_embedded_agent_worker()
         await stop_authorized_research_service()
         await stop_email_sync_service()
         await stop_memory_distill_service()

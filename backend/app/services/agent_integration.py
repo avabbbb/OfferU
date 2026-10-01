@@ -323,8 +323,13 @@ class AgentIntegrationManager:
             }
             from app.ops import execute_operation
 
+            probe_calls = 0
+
             async def execute_probe_operation(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-                if name != "get_agent_connection_nonce":
+                nonlocal probe_calls
+                if name != "get_agent_connection_nonce" or arguments != {
+                    "provider_id": provider_id, "challenge_id": challenge["challenge_id"],
+                }:
                     raise ValueError("connection probe 只允许 nonce Operation")
                 operation_result = await execute_operation(
                     name,
@@ -340,6 +345,7 @@ class AgentIntegrationManager:
                 outputs = operation_result.get("outputs")
                 if not isinstance(outputs, dict):
                     raise ValueError("nonce Operation 返回无效")
+                probe_calls += 1
                 return outputs
 
             adapter.on_operation = execute_probe_operation
@@ -367,12 +373,22 @@ class AgentIntegrationManager:
                 marker in event_text
                 for marker in ("item/tool/call", "dynamic_tool_call", "custom_tool_call")
             )
-            verified = challenge["nonce"] in final_message and used_operation
+            try:
+                returned_nonce = json.loads(final_message).get("nonce")
+            except (ValueError, AttributeError):
+                returned_nonce = None
+            verified = returned_nonce == challenge["nonce"] and used_operation and probe_calls == 1
             return {
                 **installed,
                 "integration_status": "VERIFIED" if verified else "ERROR",
                 "connection_verified": verified,
                 "checked_at": _iso_now(),
+                "readback_evidence": {
+                    "thread_id": str(result.get("threadId") or ""),
+                    "turn_id": str(result.get("turnId") or ""),
+                    "operation": "get_agent_connection_nonce",
+                    "successful_calls": probe_calls,
+                },
                 "error": "" if verified else "Agent 未通过 OfferU Skill 的 nonce readback。",
             }
         except TimeoutError:

@@ -1,16 +1,15 @@
 # OfferU Agent Runtime Workers
 
-Status: **INTERNAL EMBEDDED AGENT / BOUNDED EXECUTION INFRASTRUCTURE**
+Status: **OPTIONAL EXTERNAL EXECUTOR INFRASTRUCTURE**
 
-This private Node.js package owns OfferU's embedded Agent kernel and bounded hosted-executor support.
+This private Node.js package supports bounded external Claude hosted tasks.
 
-The embedded main Agent uses Pi SDK as its canonical in-product kernel. External hosts such as Codex/OMP/Claude remain optional replaceable hosts or bounded executors; Codex is not a second internal Agent kernel. OMP is a reference harness for selected ergonomics, not a runtime dependency of this package.
+The embedded main Agent uses the Python source migrated from `luyishui/OfferU` under `backend/app/agent/`. It does not start a Node/Pi worker. External hosts such as Codex/OMP/Pi/Claude remain replaceable hosts or bounded executors.
 
 All reasoning paths still converge on the same Python Career Runtime and Operation Registry.
 
 ## Existing workers
 
-- src/worker.mjs embeds @earendil-works/pi-coding-agent for the canonical embedded Agent path. It exposes persistent sessions plus steer/follow-up/compaction controls inspired by mature Pi/OMP harness UX without requiring an OMP/Bun migration.
 - src/hosted-executor-worker.mjs uses @anthropic-ai/claude-agent-sdk for bounded hosted Claude tasks.
 
 ## Boundary
@@ -31,10 +30,8 @@ npm install --ignore-scripts
 npm start
 ~~~
 
-src/worker.mjs uses the existing offeru.pi-worker.v1 local process protocol and is managed by backend/app/services/pi_agent_worker.py.
-
 src/hosted-executor-worker.mjs uses a separate local process contract and is managed by backend/app/services/coding_agent_runtime.py.
 
-Do not expose either worker as a network service.
+Do not expose this worker as a network service.
 
 Current Agent product authority: ../docs/architecture/agent-system.md.

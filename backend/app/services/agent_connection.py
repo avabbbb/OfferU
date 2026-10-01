@@ -15,7 +15,7 @@ from typing import Any
 
 from app.services import coding_agent_runtime as runtime
 from app.services.agent_integration import integration_manager
-from app.services.agent_provider_health import list_provider_health
+from app.services.agent_provider_health import list_provider_health, record_connection_check
 from app.services.security_redaction import redact_sensitive_text
 
 _CHECKS: dict[str, dict[str, Any]] = {}
@@ -58,11 +58,20 @@ def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
         if can_install
         else str(item.get("executable_path") or "")
     )
-    check = _CHECKS.get(provider_id, {})
-    if (time.monotonic() - check.get("at", 0) > _CHECK_TTL
+    capabilities = health.get("capabilities") if isinstance(health.get("capabilities"), dict) else {}
+    check = _CHECKS.get(provider_id) or capabilities.get("connection_check") or {}
+    try:
+        checked_at = datetime.fromisoformat(str(check.get("checked_at") or ""))
+        age = (datetime.now(timezone.utc) - checked_at.astimezone(timezone.utc)).total_seconds()
+    except (ValueError, TypeError):
+        age = time.monotonic() - check.get("at", 0)
+    if "at" in check:
+        age = max(age, time.monotonic() - check["at"])
+    if (not 0 <= age <= _CHECK_TTL
             or check.get("version") != item.get("version")
-            or check.get("executable") != executable
-            or check.get("skill_hash", integration.get("expected_skill_hash")) != integration.get("expected_skill_hash")):
+            or check.get("detected_executable", check.get("executable")) != executable
+            or check.get("skill_hash", integration.get("expected_skill_hash")) != integration.get("expected_skill_hash")
+            or integration["skill_status"] != "INSTALLED"):
         check = {}
     installed = bool(executable)
     compatible = bool(item.get("contract_compatible"))
@@ -87,7 +96,6 @@ def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
         status = "ready"
     elif check:
         status = check["status"]
-    capabilities = health.get("capabilities") if isinstance(health.get("capabilities"), dict) else {}
     conformance = capabilities.get("conformance") if isinstance(capabilities.get("conformance"), dict) else {}
     conformance_matches = bool(
         conformance.get("binary_path") == item.get("executable_path")
@@ -130,6 +138,7 @@ def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
         "compatible": compatible,
         "version": redact_sensitive_text(item.get("version") or "", max_length=160),
         "status": status,
+        "readback_evidence": check.get("readback_evidence") or None,
         "authenticated": (
             check.get("authenticated")
             if check
@@ -210,6 +219,7 @@ async def probe_agent_connection(provider_id: str) -> dict[str, Any]:
         item = await runtime._probe(provider_id, refresh=True)
         check: dict[str, Any] = {
             "version": item.get("version"), "executable": item.get("executable_path"),
+            "detected_executable": item.get("executable_path"),
             "authenticated": None,
             "status": "check_required", "auth_mode": "unknown", "error": "",
             "integration_status": integration_manager.inspect(provider_id).get("skill_status")
@@ -272,6 +282,7 @@ async def probe_agent_connection(provider_id: str) -> dict[str, Any]:
                         status="ready" if verification.get("connection_verified") else "failed",
                         integration_status=verification.get("integration_status") or "ERROR",
                         skill_hash=integration.get("expected_skill_hash"),
+                        readback_evidence=verification.get("readback_evidence"),
                         error=verification.get("error") or "",
                     )
                 else:
@@ -300,6 +311,7 @@ async def probe_agent_connection(provider_id: str) -> dict[str, Any]:
                     integration_status=integration["skill_status"],
                 )
         check.update(at=time.monotonic(), checked_at=datetime.now(timezone.utc).isoformat())
+        await record_connection_check(provider_id, check)
         _CHECKS[provider_id] = check
     return await get_agent_connections()
 

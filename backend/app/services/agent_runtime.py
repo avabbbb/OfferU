@@ -65,6 +65,10 @@ _RUN_EVENT_MAP = {
     "runtime.agent_completed": "assistant.message",
     "pi.agent_end": "assistant.message",
     "runtime.tool_started": "tool.started",
+    "kernel.agent_start": "reasoning.status",
+    "kernel.turn_start": "reasoning.status",
+    "kernel.turn_end": "reasoning.status",
+    "kernel.agent_end": "reasoning.status",
     "tool.started": "tool.started",
     "pi.tool_execution_start": "tool.started",
     "runtime.tool_progress": "tool.progress",
@@ -187,27 +191,26 @@ class AgentRunProvider(Protocol):
     async def abort_run(self, run_id: str) -> dict[str, Any]: ...
 
 
-class PiAgentRuntimeProvider:
-    """Anti-corruption adapter around the existing Pi host implementation.
+class EmbeddedAgentRuntimeProvider:
+    """Adapter for the migrated Python Agent and existing governed Run host.
 
-    Pi remains a replaceable executor.  The adapter is the only place that
-    knows the legacy host function names; API routes and the React client do
-    not import or branch on Pi internals.
+    The migrated Python loop is the embedded reasoning kernel. API routes and
+    the React client use the governed Run contract without kernel internals.
     """
 
-    provider_id = "pi"
-    version = "pi-sdk-worker"
+    provider_id = "embedded"
+    version = "luyishui-offeru-3a446ff"
     protocol_version = "offeru.agent-runtime.v1"
 
     async def status(self) -> dict[str, Any]:
-        from app.services.pi_agent_worker import get_pi_agent_worker
+        from app.services.embedded_agent_worker import get_embedded_agent_worker
 
         try:
-            probe = await get_pi_agent_worker().probe()
+            probe = await get_embedded_agent_worker().probe()
         except Exception as exc:
             return {
                 "provider_id": self.provider_id,
-                "runtime": "pi_sdk_worker",
+                "runtime": "python_agent",
                 "status": "unavailable",
                 "available": False,
                 "authenticated": None,
@@ -224,7 +227,7 @@ class PiAgentRuntimeProvider:
             }
         return {
             "provider_id": self.provider_id,
-            "runtime": "pi_sdk_worker",
+            "runtime": "python_agent",
             "status": "ready" if probe.get("available", True) else "unavailable",
             "available": bool(probe.get("available", True)),
             "authenticated": None,
@@ -251,9 +254,9 @@ class PiAgentRuntimeProvider:
         requested_run_id: str,
         stream_listener: AgentRunStreamListener | None = None,
     ) -> dict[str, Any]:
-        from app.services.pi_agent_host import start_pi_agent_run
+        from app.services.embedded_agent_host import start_embedded_agent_run
 
-        return await start_pi_agent_run(
+        return await start_embedded_agent_run(
             message=message,
             skill_id=skill_id,
             conversation_id=conversation_id,
@@ -264,24 +267,24 @@ class PiAgentRuntimeProvider:
         )
 
     async def resume_run(self, run_id: str) -> dict[str, Any]:
-        from app.services.pi_agent_host import resume_pi_agent_run
+        from app.services.embedded_agent_host import resume_embedded_agent_run
 
-        return await resume_pi_agent_run(run_id)
+        return await resume_embedded_agent_run(run_id)
 
     async def confirm_run(self, run_id: str, *, action_id: str) -> dict[str, Any]:
-        from app.services.pi_agent_host import confirm_pi_agent_action
+        from app.services.embedded_agent_host import confirm_embedded_agent_action
 
-        return await confirm_pi_agent_action(run_id, action_id=action_id)
+        return await confirm_embedded_agent_action(run_id, action_id=action_id)
 
     async def reject_run(self, run_id: str, *, action_id: str) -> dict[str, Any]:
-        from app.services.pi_agent_host import reject_pi_agent_action
+        from app.services.embedded_agent_host import reject_embedded_agent_action
 
-        return await reject_pi_agent_action(run_id, action_id=action_id)
+        return await reject_embedded_agent_action(run_id, action_id=action_id)
 
     async def abort_run(self, run_id: str) -> dict[str, Any]:
-        from app.services.pi_agent_host import abort_pi_agent_run
+        from app.services.embedded_agent_host import abort_embedded_agent_run
 
-        return await abort_pi_agent_run(run_id)
+        return await abort_embedded_agent_run(run_id)
 
 
 class ReplayAgentRunProvider:
@@ -661,7 +664,7 @@ def get_agent_runtime_provider(
 ) -> AgentRuntimeProvider:
     """Fixture-only low-level runtime seam.
 
-    Production Main Agent reasoning is owned by AgentRunProvider (embedded Pi).
+    Production Main Agent reasoning is owned by AgentRunProvider (embedded Python Agent).
     External Codex remains available through Agent Bridge / hosted executor
     integrations; it is intentionally not a second internal Agent kernel.
     """
@@ -672,12 +675,12 @@ def get_agent_runtime_provider(
     raise ValueError(f"未知 Agent Runtime provider: {provider_id}")
 
 
-def get_agent_run_provider(provider_id: str = "pi") -> AgentRunProvider:
+def get_agent_run_provider(provider_id: str = "embedded") -> AgentRunProvider:
     """Resolve the Main Agent provider without leaking provider details upward."""
 
-    clean = str(provider_id or "pi").strip().casefold()
-    if clean in {"pi", "pi-sdk", "pi-sdk-worker"}:
-        return PiAgentRuntimeProvider()
+    clean = str(provider_id or "embedded").strip().casefold()
+    if clean in {"embedded", "builtin", "auto", "python", "pi", "pi-sdk", "pi-sdk-worker"}:
+        return EmbeddedAgentRuntimeProvider()
     if clean in {"replay", "fixture", "mock"}:
         return ReplayAgentRunProvider()
     raise ValueError(f"未知 Main Agent provider: {provider_id}")
@@ -688,7 +691,7 @@ __all__ = [
     "AgentRunStreamListener",
     "AgentRuntimeProvider",
     "CANONICAL_AGENT_RUN_EVENT_TYPES",
-    "PiAgentRuntimeProvider",
+    "EmbeddedAgentRuntimeProvider",
     "ReplayAgentRunProvider",
     "ReplayAgentRuntimeProvider",
     "canonical_agent_run_event",

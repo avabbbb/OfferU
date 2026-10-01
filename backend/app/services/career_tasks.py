@@ -97,7 +97,9 @@ _AGENT_TURN_EMBEDDED_ALIASES = {
     "auto",
     "embedded",
     "builtin",
+    "python",
     "pi",
+    "embedded",
     "pi-sdk",
     "pi-sdk-worker",
     # Legacy persisted values from the removed internal Codex kernel.
@@ -107,9 +109,9 @@ _AGENT_TURN_EMBEDDED_ALIASES = {
 
 
 def _normalize_agent_turn_provider(provider_id: str) -> str:
-    clean = str(provider_id or "pi").strip().casefold()
+    clean = str(provider_id or "embedded").strip().casefold()
     if clean in _AGENT_TURN_EMBEDDED_ALIASES:
-        return "pi"
+        return "embedded"
     if clean in {"fixture", "replay", "mock"}:
         return "replay"
     return clean
@@ -449,8 +451,8 @@ async def start_career_task(
     payload = redact_secret_value(input if isinstance(input, dict) else {})
     contract = output_contract if isinstance(output_contract, dict) else {}
     if clean_type == "career_director":
-        if clean_provider != "pi":
-            raise ValueError("Career Director 必须使用 embedded Pi Runtime")
+        if clean_provider != "embedded":
+            raise ValueError("Career Director 必须使用 embedded Python Runtime")
         if str(source or "") != "automation":
             raise ValueError("Career Director 只能由显式 AutomationEvent 触发")
         if not str(payload.get("automation_event_id") or "").strip():
@@ -546,7 +548,7 @@ async def start_career_task(
 
 
 async def _run_agent_turn(task: dict[str, Any]) -> dict[str, Any]:
-    provider_id = _normalize_agent_turn_provider(str(task.get("runtime_provider") or "pi"))
+    provider_id = _normalize_agent_turn_provider(str(task.get("runtime_provider") or "embedded"))
     payload = task["input"] if isinstance(task.get("input"), dict) else {}
 
     if provider_id == "replay":
@@ -595,14 +597,14 @@ async def _run_agent_turn(task: dict[str, Any]) -> dict[str, Any]:
             with contextlib.suppress(Exception):
                 await provider.shutdown()
 
-    if provider_id != "pi":
+    if provider_id != "embedded":
         raise ValueError(
-            f"agent_turn 只支持 embedded Pi 或 replay；收到 provider={provider_id}"
+            f"agent_turn 只支持 embedded Python 或 replay；收到 provider={provider_id}"
         )
 
     from app.services.agent_runtime import get_agent_run_provider
 
-    provider = get_agent_run_provider("pi")
+    provider = get_agent_run_provider("embedded")
     context_messages = [
         {"role": str(item.get("role") or ""), "content": str(item.get("content") or "")}
         for item in (payload.get("context_messages") or [])
@@ -622,7 +624,7 @@ async def _run_agent_turn(task: dict[str, Any]) -> dict[str, Any]:
         task["task_id"],
         "runtime.ready",
         {
-            "provider": "pi",
+            "provider": "embedded",
             "kernel": "embedded_pi",
             "legacy_provider_migrated": str(task.get("runtime_provider") or "")
             in {"codex", "codex-app-server"},
@@ -651,7 +653,7 @@ async def _run_agent_turn(task: dict[str, Any]) -> dict[str, Any]:
         progress_json={"stage": "agent_turn_completed", "percent": 100},
     )
     return {
-        "provider_id": "pi",
+        "provider_id": "embedded",
         "kernel": "embedded_pi",
         "run_id": str(run.get("id") or ""),
         "assistant_message": assistant_message,
@@ -774,7 +776,7 @@ def _validate_resume_reengagement_plan(
 
 
 async def _run_career_director(task: dict[str, Any]) -> dict[str, Any]:
-    """Run one bounded, read-only Career Director judgment through embedded Pi."""
+    """Run one bounded, read-only Career Director judgment through embedded Python."""
 
     from app.agents.desensitize import desensitize, restore
     from app.ops import execute_operation
@@ -792,8 +794,8 @@ async def _run_career_director(task: dict[str, Any]) -> dict[str, Any]:
         validate_director_briefing,
     )
 
-    provider_id = _normalize_agent_turn_provider(str(task.get("runtime_provider") or "pi"))
-    if provider_id != "pi":
+    provider_id = _normalize_agent_turn_provider(str(task.get("runtime_provider") or "embedded"))
+    if provider_id != "embedded":
         raise ValueError("Career Director refuses scripted/replay providers in production")
 
     payload = task["input"] if isinstance(task.get("input"), dict) else {}
@@ -840,7 +842,7 @@ async def _run_career_director(task: dict[str, Any]) -> dict[str, Any]:
         return outputs
 
     # Deterministic preflight defines the exact policy envelope that will
-    # validate the model output.  The Pi Agent still has to read the Career
+    # validate the model output.  The embedded Agent still has to read the Career
     # Snapshot itself through the read-only career_director Skill.
     profile_id = int(payload.get("profile_id") or 0)
     policy_snapshot = await _policy_read("get_career_snapshot", {})
@@ -985,7 +987,7 @@ async def _run_career_director(task: dict[str, Any]) -> dict[str, Any]:
     )
     prompt = "\n".join(prompt_parts)
 
-    provider = get_agent_run_provider("pi")
+    provider = get_agent_run_provider("embedded")
     result = await provider.start_run(
         message=prompt,
         skill_id="career_director",
@@ -997,7 +999,7 @@ async def _run_career_director(task: dict[str, Any]) -> dict[str, Any]:
     run = result.get("run") if isinstance(result.get("run"), dict) else {}
     run_id = str(run.get("id") or "")
     if not run_id:
-        raise RuntimeError("Career Director Pi Run 未返回 durable run_id")
+        raise RuntimeError("Career Director Agent Run 未返回 durable run_id")
 
     run_events = await list_agent_run_events(run_id)
     tool_calls: list[str] = []
@@ -1119,7 +1121,7 @@ async def _run_career_director(task: dict[str, Any]) -> dict[str, Any]:
     await _append_event(
         task["task_id"],
         "runtime.events_collected",
-        {"count": len(run_events), "tool_calls": tool_calls, "provider": "pi"},
+        {"count": len(run_events), "tool_calls": tool_calls, "provider": "embedded"},
     )
     return {
         "schema": "offeru.career_director_result.v1",
@@ -1127,7 +1129,7 @@ async def _run_career_director(task: dict[str, Any]) -> dict[str, Any]:
         "deliveries": deliveries,
         "policy_validation": policy_validation,
         "runtime": {
-            "provider": "pi",
+            "provider": "embedded",
             "run_id": run_id,
             "session_id": str(runtime_meta.get("session_id") or ""),
             "tool_calls": tool_calls,

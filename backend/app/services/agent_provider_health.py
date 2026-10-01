@@ -16,7 +16,7 @@ from app.database import async_session
 from app.models.models import AgentProviderHealth
 from app.services.security_redaction import redact_sensitive_text
 
-KNOWN_PROVIDER_IDS = ("pi", "replay", "codex", "deepseek-harness")
+KNOWN_PROVIDER_IDS = ("embedded", "replay", "codex", "deepseek-harness")
 
 
 def _builtin_provider_view(provider_id: str) -> dict[str, Any] | None:
@@ -121,7 +121,11 @@ async def record_provider_health(
         row.version = str(version or "")[:160]
         row.auth_mode = str(auth_mode or "unknown")[:60]
         row.protocol_version = str(protocol_version or "")[:80]
-        row.capabilities_json = capabilities if isinstance(capabilities, dict) else {}
+        next_capabilities = dict(capabilities or {})
+        prior_check = (row.capabilities_json or {}).get("connection_check")
+        if prior_check:
+            next_capabilities["connection_check"] = prior_check
+        row.capabilities_json = next_capabilities
         row.last_error = _clean_error(error)
         row.checked_at = now
         await db.commit()
@@ -139,6 +143,21 @@ async def get_provider_health(provider_id: str) -> dict[str, Any]:
     if not view["provider_id"]:
         view = _builtin_provider_view(clean_id) or {**view, "provider_id": clean_id}
     return view
+
+
+async def record_connection_check(provider_id: str, check: dict[str, Any]) -> None:
+    """Keep readback evidence without clearing provider failures or credentials."""
+    async with async_session() as db:
+        row = await db.get(AgentProviderHealth, provider_id)
+        if row is None:
+            row = AgentProviderHealth(provider_id=provider_id)
+            db.add(row)
+        capabilities = dict(row.capabilities_json or {})
+        capabilities["connection_check"] = {
+            key: value for key, value in check.items() if key != "at"
+        }
+        row.capabilities_json = capabilities
+        await db.commit()
 
 
 async def list_provider_health() -> dict[str, Any]:

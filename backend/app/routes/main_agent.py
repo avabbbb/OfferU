@@ -63,7 +63,7 @@ class PiAgentRunRequest(BaseModel):
         pattern=r"^run_[a-f0-9]{16,32}$",
     )
     runtime_provider: str = Field(
-        default="pi",
+        default="embedded",
         min_length=1,
         max_length=40,
         pattern=r"^[a-z0-9][a-z0-9_-]*$",
@@ -157,7 +157,7 @@ async def _ui_operation_projection(
     return outputs
 
 
-def _main_agent_provider(provider_id: str = "pi"):
+def _main_agent_provider(provider_id: str = "embedded"):
     """Resolve the provider at the anti-corruption boundary only."""
 
     try:
@@ -170,10 +170,10 @@ async def _provider_for_run(run_id: str):
     from app.services.agent_run_state import load_agent_run
 
     run = await load_agent_run(run_id)
-    provider_id = "pi"
+    provider_id = "embedded"
     if run is not None:
         runtime = run.get("llm_runtime") if isinstance(run.get("llm_runtime"), dict) else {}
-        provider_id = str(runtime.get("provider_id") or "pi")
+        provider_id = str(runtime.get("provider_id") or "embedded")
     return _main_agent_provider(provider_id)
 
 
@@ -425,7 +425,7 @@ async def follow_runtime_run_events(
 async def runtime_status() -> dict[str, Any]:
     """Probe the configured Main Agent provider without leaking its implementation."""
 
-    provider = _main_agent_provider("pi")
+    provider = _main_agent_provider("embedded")
     return await provider.status()
 
 

@@ -34,3 +34,11 @@ OfferU 自有代码使用本仓库 [MIT License](./LICENSE)。
 - `frontend/src-tauri/Cargo.lock`
 
 最终 RC artifact 必须包含本文件、`RELEASE_NOTES.md`、`LICENSE` 和生成的 checksum；在法律/许可证审阅完成前，发布清单保持 `PARTIAL`。
+
+## Migrated OfferU Agent source
+
+Python Agent primitives and React tool-stream reducer/view were migrated from
+[luyishui/OfferU](https://github.com/luyishui/OfferU), commit
+`3a446ff941da66000ba2cc24e5d2e5d19cd3a2e5`, under MIT. Copyright (c) 2025 Chunxu Han.
+The complete original license is preserved in `backend/app/agent/LICENSE`.
+Adaptation details are recorded in `backend/app/agent/UPSTREAM.md`.

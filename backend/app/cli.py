@@ -753,7 +753,7 @@ def _groups(operations: list[dict[str, Any]]) -> dict[str, int]:
 
 def _manifest(*, skill: str = "", group: str = "", all_operations: bool = False) -> dict[str, Any]:
     from app.services.agent_integration import runtime_cli_command
-    from app.services.agent_skill_registry import tool_contract_snapshot
+    from app.services.agent_skill_registry import skill_tool_catalog, tool_contract_snapshot
 
     command = runtime_cli_command()
     operation_schemas = list_operations()
@@ -775,13 +775,10 @@ def _manifest(*, skill: str = "", group: str = "", all_operations: bool = False)
             "skills": [_summarize_skill(item) for item in full_registry["skills"] if item.get("group") == group],
         }
     else:
-        operations = []
+        catalog = skill_tool_catalog(operation_schemas)
+        operations = catalog["operations"]
         selector = "catalog"
-        skills = {
-            "version": full_registry["version"],
-            "sha256": full_registry["sha256"],
-            "skills": [_summarize_skill(item) for item in full_registry["skills"]],
-        }
+        skills = catalog["skill_registry"]
     agent_names = agent_operation_names()
     featured_names = agent_operation_names(featured_only=True)
     agent_schemas = [
