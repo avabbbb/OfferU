@@ -299,7 +299,224 @@ Every stage: WORKS / PARTIAL / BROKEN / NOT IMPLEMENTED / NOT TESTED.
 
 Code existence or unit tests do not count as WORKS unless a normal user can reach the capability through the intended product surface.
 
-## 21. Immediate priorities
+
+## 21. Skill ecosystem and composition
+
+OfferU should be maintainable as an ecosystem of Skills rather than one giant prompt file.
+
+A future dedicated repository such as `offeru-skills` may contain:
+- the top-level OfferU router/orchestrator Skill;
+- first-party sub-Skills for profile, discovery, ranking, resume, application, interview and maintenance;
+- versioned shared conventions;
+- test fixtures and evals for each Skill.
+
+OfferU Desktop remains the Career Truth/runtime product. The Skill repository contains methodology and orchestration, not a second database or business authority.
+
+The active local Agent may also call independently installed third-party Skills when useful, for example:
+- resume-writing methodology;
+- interview coaching;
+- web/company research;
+- BOSS CLI;
+- browser automation;
+- other user-selected career Skills.
+
+Third-party Skills may contribute analysis/drafts, but adopted output must still pass OfferU provenance/evidence/governance rules. A Skill may not silently upgrade an inference into Career Truth.
+
+Skill composition should therefore look like:
+
+```text
+User intent
+→ OfferU top-level Skill
+→ choose OfferU sub-Skill
+→ optionally call external methodology/tool Skill
+→ normalize result into OfferU evidence/artifact
+→ Desktop shows result/decision
+→ canonical Career Truth changes only through governed OfferU operations
+```
+
+This keeps OfferU extensible without forcing every capability into the core repository.
+
+## 22. BOSS re-engagement lifecycle
+
+BOSS job discovery, recommendation, applied-list sync, interview sync and communicated-Boss sync should feed the same canonical Job/Application queue.
+
+Current boss-cli candidate-side limitations matter:
+- `greet` / `batch-greet` exist;
+- ordinary candidate-side free-form message sending is not currently exposed;
+- repeated use is rate-limited and relies on reverse-engineered endpoints.
+
+Therefore OfferU should model re-engagement rather than blindly re-running greet on a timer.
+
+Suggested policy:
+- detect whether a role was already greeted/applied/communicated;
+- detect whether the job changed/reopened or the user's resume materially changed;
+- surface a re-engagement candidate;
+- for a genuinely new/reopened job, a new greet may be offered;
+- for an existing conversation, prepare a follow-up intent/message, but only execute when the connector actually supports it and policy/account safety allows it;
+- keep cooldown, dedupe, last-contact time and outcome.
+
+Never treat repeated greetings as a guaranteed messaging channel.
+
+## 23. Counterparty intelligence: Company / Org / Team / Interviewer
+
+OfferU should model not only the candidate but also the counterparty around each serious Job.
+
+For each target Job maintain a structured intelligence view:
+
+```text
+Company
+→ business/product/current strategy
+→ hiring org / business group
+→ team
+→ role owner / hiring manager when known
+→ recruiter / HR
+→ interviewers by round
+```
+
+Evidence may come from:
+- official company/career pages;
+- current JD and related JDs;
+- public team/product pages;
+- reliable public profiles/posts;
+- user-provided recruiter/interviewer information;
+- interview invitations;
+- community interview experiences (clearly labeled as anecdotal);
+- previous rounds in the same hiring process.
+
+Do not invent private preferences or personality traits. Separate:
+- sourced fact;
+- public signal;
+- user observation;
+- inference/unknown.
+
+Desktop should show a compact Company/Team Intelligence panel:
+- business group/team;
+- what the team appears to build;
+- role-specific priorities;
+- hiring process/rounds when known;
+- people/roles involved;
+- open questions to verify;
+- evidence links and freshness.
+
+## 24. Round-specific interview intelligence and questions-to-ask
+
+Every interview round has a different information goal.
+
+OfferU should prepare both:
+1. likely questions the user may receive;
+2. high-value questions the user should ask.
+
+Examples:
+
+Recruiter / HR:
+- remaining process and timeline;
+- role ownership/reporting line;
+- hiring location/contract details;
+- compensation process when appropriate;
+- team/round information that can be shared.
+
+Hiring manager / direct manager:
+- current team priorities;
+- success criteria in 3–6 months;
+- what distinguishes strong performers;
+- team composition and collaboration;
+- biggest current bottleneck/risk;
+- what this role owns vs supports.
+
+Peer / cross-functional / technical round:
+- real workflow and interfaces;
+- decision-making boundaries;
+- quality/review expectations;
+- production/tooling constraints;
+- examples of recent problems the team solved.
+
+Final / leadership round:
+- business priority;
+- org direction;
+- scope/growth trajectory;
+- why the role exists now;
+- major tradeoffs expected from the hire.
+
+Questions should be personalized from the current unknowns in Company/Team Intelligence rather than shown as a generic static checklist.
+
+Answers learned during interviews become new sourced observations attached to the Job/team, not automatically universal Career Truth.
+
+## 25. Interview Intelligence Memory
+
+OfferU needs a durable interview-learning model, not only per-interview summaries.
+
+Maintain:
+- question bank;
+- story/evidence bank;
+- round history;
+- interviewer/team observations;
+- answer performance;
+- user corrections;
+- repeated weak areas;
+- repeated high-frequency themes;
+- company/team-specific learned facts;
+- unanswered questions for the next round.
+
+After each real interview:
+
+```text
+recall actual questions
+→ capture interviewer reaction/follow-ups
+→ evaluate answer against evidence
+→ mark strong/uncertain/weak
+→ identify missing story/knowledge
+→ update question/story bank after review
+→ feed the next round's preparation
+```
+
+Future prep should combine:
+- target Job + Role Benchmark;
+- current round;
+- submitted Resume Version;
+- company/team intelligence;
+- public interview reports from current sources when available;
+- the user's previous interview history;
+- questions frequently appearing across the user's recent search;
+- answers/stories that previously performed poorly.
+
+Community sources such as interview forums may provide useful current signals, but they must remain attributed/anecdotal and should not be treated as facts about a specific interviewer.
+
+## 26. Desktop is the Career Operations Cockpit
+
+The Desktop is not an embedded replacement for the user's Agent.
+
+Its job is to make durable career work visible and controllable.
+
+The user should see structured, persistent outputs rather than searching old conversations:
+
+- Profile/evidence map;
+- ranked Job queue;
+- Company/Team Intelligence;
+- Role Benchmark;
+- resume strategy + animated/visible before-after diffs;
+- accepted Resume Versions;
+- application state/receipts;
+- recruiter/contact/re-engagement state;
+- interview timeline;
+- round-specific preparation;
+- interview question/story bank;
+- debrief/learning changes;
+- Today's priorities;
+- history/distillation.
+
+Agent conversations are execution/control surfaces. Desktop is the inspectable system of record.
+
+Important work should produce a visible state change:
+- newly discovered evidence highlights;
+- a resume section diff animates/highlights what changed;
+- a Job score explains what moved;
+- a new interview signal appears on the timeline;
+- accepted learning visibly updates the interview/profile intelligence.
+
+The design goal is not decorative animation. Motion/highlight is used to answer: "what just changed, why, and what needs my attention?"
+
+
+## 27. Immediate priorities
 
 P0:
 1. understandable Profile + evidence/provenance;
