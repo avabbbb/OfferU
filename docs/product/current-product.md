@@ -6,6 +6,8 @@ Updated: 2026-09-30
 
 This document defines the current product shape of OfferU. Historical audits, dated implementation plans and superseded Harness-specific designs must not override it.
 
+The owner's 2026-10-02 acceptance clarification is defined in [Real job-seeker journey](./owner-career-journey.md): progressive setup with a visible evidence-backed Profile; fresh research for current-world claims and native Ask for material user decisions; explainable job ranking; shared role research for resume and interview work; section-level review; real debrief learning; and distinct refresh/reset/history-distillation routes. These are product requirements, not claims of completed implementation. Run the [two dogfood Goals](../evals/OWNER_DOGFOOD_GOALS.md) and retain explicit gaps.
+
 ## Product promise
 
 OfferU is a **local-first Career OS for people who already use a general-purpose Agent**: university students, graduate students and experienced job seekers who value application quality and efficiency and are willing to invest in them. Bring Your Own Agent is a core product mode, covering both Coding and consumer Agents; users need not be programmers.

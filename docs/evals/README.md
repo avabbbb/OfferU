@@ -2,6 +2,8 @@
 
 本目录是 OfferU 的验收事实入口。功能是否可用、Harness 是否受支持、版本是否可供内测，必须由可复现任务、脱敏轨迹和最终业务状态共同证明，不能由功能清单、截图、构建成功或模型自评决定。
 
+用户完整求职体验的执行任务见 [两个内测 Goal](./OWNER_DOGFOOD_GOALS.md)：A 验收真实内置 Agent；B 验收真实用户从零的安装、Profile、岗位、简历、投递准备、面试学习与再访。对应 [源码能力核对](./reports/2026-10-02-owner-journey-capability-audit.md) 是静态证据，不是 live 通过报告。
+
 当前基础候选套件是 [`offeru-core-v1`](./offeru-core-v1.md)，Public Release 总 Gate 见 [`RELEASE_CHECKLIST.md`](../../RELEASE_CHECKLIST.md)。在产生符合本手册与 [`report-schema.json`](./report-schema.json) 的有效 Public Release 报告前，统一表述为：**Internal Beta 检查点存在；Public Release NOT READY；尚无正式 Public Release baseline**。
 
 长期 Career Profile、模糊目标、跨 Provider Harness 泛化和安全硬门槛由 [`OfferU-EvolveBench v1`](./offeru-evolve-bench-v1.md) 负责。它与 `offeru-core-v1` 分开计分；EvolveBench 的 `NOT_RUN`/`BLOCKED` 不能冒充核心或真实集成通过。
