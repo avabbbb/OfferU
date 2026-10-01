@@ -1,10 +1,12 @@
 "use client";
 
 // =============================================
-// OfferU 主 Agent 面板 — Python Run Host → Harness Agent
+// OfferU 主 Agent 面板 — Python Run Host → migrated Agent kernel
 // 对话仍是交互记录；任务、Run、事件、提案、确认和审计由后端控制。
 // =============================================
 
+import { ToolExecutionList } from "./EmbeddedAgentStreamView";
+import { applyRuntimeToolEvent, createInitialAgentStreamState } from "@/lib/embeddedAgentStream";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, Textarea } from "@nextui-org/react";
 import {
@@ -206,6 +208,7 @@ export function AgentPanel() {
   const [input, setInput] = useState("");
   const [pendingActions, setPendingActions] = useState<AgentProposedAction[]>([]);
   const [loading, setLoading] = useState(false);
+  const [toolStream, setToolStream] = useState(createInitialAgentStreamState);
   const [progressText, setProgressText] = useState(SHOWCASE ? "正在准备演示 Agent..." : "正在准备 OfferU Agent...");
   const [streamingText, setStreamingText] = useState("");
   const [error, setError] = useState("");
@@ -326,8 +329,9 @@ export function AgentPanel() {
     setMessages(nextMessages);
     setInput("");
     setLoading(true);
-    setProgressText("正在创建任务 Run 并启动 Harness Session...");
+    setProgressText("正在启动内置助手...");
     setStreamingText("");
+    setToolStream(createInitialAgentStreamState());
     setError("");
 
     try {
@@ -339,17 +343,18 @@ export function AgentPanel() {
         },
         (event, data) => {
           if (currentConvRef.current !== currentConversationId) return;
+          setToolStream((current) => applyRuntimeToolEvent(current, event, data || {}));
           const eventRunId = String(data?.run_id || "");
           if (eventRunId) setActiveRunId(eventRunId);
           if (event === "run.started" || event === "run.created") {
-            setProgressText("Run 已持久化，正在启动 Harness Session...");
+            setProgressText("任务已保存，正在启动助手...");
           } else if (event === "executor.started" || event === "runtime.session_started") {
-            setProgressText("Harness Session 已就绪，正在执行当前 Skill...");
+            setProgressText("助手已就绪，正在处理当前任务...");
           } else if (event === "tool.started" || event === "runtime.tool_started") {
-            setProgressText("Harness 正在调用 OfferU Operation...");
+            setProgressText("助手正在调用 OfferU 工具...");
           } else if (event === "operation.started") {
             setProgressText(`正在读取：${data?.payload?.operation || "OfferU 数据"}`);
-          } else if (event === "operation.proposed") {
+          } else if ((event === "operation.proposed" || event === "approval.requested")) {
             setProgressText("写操作已形成提案，等待本轮回答完成...");
           } else if (event === "runtime.retry_started") {
             setProgressText("模型调用正在安全重试...");
@@ -366,7 +371,7 @@ export function AgentPanel() {
       );
       if (currentConvRef.current !== currentConversationId) return;
       if (!runtimeResponse.ok) {
-        throw new Error(runtimeResponse.errors?.join("；") || "Harness Agent Run 执行失败");
+        throw new Error(runtimeResponse.errors?.join("；") || "内置助手执行失败");
       }
       const response = toPanelResponse(runtimeResponse);
       const assistantMessage: PanelMessage = {
@@ -401,6 +406,7 @@ export function AgentPanel() {
     currentConvRef.current = null;
     setLoading(false);
     setStreamingText("");
+    setToolStream(createInitialAgentStreamState());
     if (activeRunId && (hasPendingActions || interruptedRunId)) {
       try {
         await agentRuntimeApi.abort(activeRunId);
@@ -432,6 +438,7 @@ export function AgentPanel() {
     setError("");
     setLoading(false);
     setStreamingText("");
+    setToolStream(createInitialAgentStreamState());
     try {
       if (activeRunId && (hasPendingActions || interruptedRunId)) {
         await agentRuntimeApi.abort(activeRunId);
@@ -458,6 +465,14 @@ export function AgentPanel() {
       });
       const latestRun = runResult.runs[0];
       setActiveRun(latestRun || null);
+      if (latestRun) {
+        try {
+          const history = await agentRuntimeApi.events(latestRun.id, 0, AbortSignal.timeout(5000));
+          if (currentConvRef.current === id) setToolStream(history.events.reduce(
+            (state, event) => applyRuntimeToolEvent(state, event.type, event), createInitialAgentStreamState(),
+          ));
+        } catch { /* Keep the saved conversation visible if event history is unavailable. */ }
+      }
       if (latestRun?.status === "waiting_confirmation") {
         setActiveRunId(latestRun.id);
         setActiveSkillId(latestRun.skill_id || "discovery");
@@ -515,15 +530,49 @@ export function AgentPanel() {
     decision: "approve" | "reject",
   ) => {
     if (!activeRunId || loading) return;
+    const decidedRunId = activeRunId;
+    const decidedConversationId = currentConvRef.current;
+    const progressController = new AbortController();
+    abortControllerRef.current = progressController;
+    let stopped = false;
+    let sequence = 0;
+    let progress: Promise<void> | undefined;
     setLoading(true);
     setProgressText(
       decision === "approve" ? "正在通过 Registry 执行此动作..." : "正在记录此动作的拒绝...",
     );
     setError("");
     try {
+      if (decision === "approve") {
+        // Start from the stored cursor so the first turn is not replayed into
+        // the continuation UI. The native approval capability stays in Tauri.
+        try {
+          const baseline = await agentRuntimeApi.events(decidedRunId, 0, AbortSignal.timeout(5000));
+          sequence = baseline.last_sequence;
+        } catch { /* The decision can still proceed if progress is unavailable. */ }
+        progress = (async () => {
+          while (!stopped && !progressController.signal.aborted) {
+            try {
+              const batch = await agentRuntimeApi.events(decidedRunId, sequence, progressController.signal);
+              if (stopped || currentConvRef.current !== decidedConversationId) return;
+              for (const event of batch.events) {
+                sequence = Math.max(sequence, event.sequence);
+                setToolStream((current) => applyRuntimeToolEvent(current, event.type, event));
+                if (event.type === "continuation.requested") setProgressText("动作已执行，助手正在回读结果并继续任务...");
+                if (event.type === "message.delta") {
+                  const delta = String(event.payload?.delta || "");
+                  if (delta) setStreamingText((current) => current + delta);
+                }
+              }
+            } catch { if (progressController.signal.aborted) return; }
+            if (!stopped) await new Promise((resolve) => window.setTimeout(resolve, 750));
+          }
+        })();
+      }
       const result = decision === "approve"
-        ? await agentRuntimeApi.confirm(activeRunId, action.id)
-        : await agentRuntimeApi.reject(activeRunId, action.id);
+        ? await agentRuntimeApi.confirm(decidedRunId, action.id)
+        : await agentRuntimeApi.reject(decidedRunId, action.id);
+      if (currentConvRef.current !== decidedConversationId) return;
       if (!result.ok || result.errors?.length) {
         throw new Error(
           safeClientErrorMessage(
@@ -533,12 +582,20 @@ export function AgentPanel() {
         );
       }
       const finalRun = result.run;
+      if (decision === "approve") {
+        try {
+          const tail = await agentRuntimeApi.events(decidedRunId, sequence, AbortSignal.timeout(5000));
+          if (currentConvRef.current === decidedConversationId) setToolStream((state) => tail.events.reduce(
+            (current, event) => applyRuntimeToolEvent(current, event.type, event), state,
+          ));
+        } catch { /* Approval outcome remains authoritative if progress cannot refresh. */ }
+      }
       const remaining = pendingActionsFromRun(finalRun);
       const message = decision === "reject"
         ? `已拒绝“${action.summary}”；该动作不会执行。${remaining.length > 0 ? `仍有 ${remaining.length} 个动作等待确认。` : "本次 Run 已结束，可以继续对话。"}`
         : remaining.length > 0
-          ? `已执行“${action.summary}”，仍有 ${remaining.length} 个动作等待确认。`
-          : "已通过 OfferU Operation Registry 执行确认动作，并完成审计。";
+          ? `${result.continuation?.assistant_message || `已执行“${action.summary}”。`}\n仍有 ${remaining.length} 个动作等待确认。`
+          : (result.continuation?.assistant_message || "已通过 OfferU Operation Registry 执行确认动作，并完成审计。");
       const response: AgentResponse = {
         assistant_message: message,
         mode: finalRun.mode,
@@ -557,8 +614,11 @@ export function AgentPanel() {
         },
       ]);
       setPendingActions(remaining);
+      setActiveRun(finalRun);
+      if (result.warnings?.length) setError(result.warnings.join("；"));
       if (remaining.length === 0) setActiveRunId(null);
     } catch (err: any) {
+      if (currentConvRef.current !== decidedConversationId) return;
       setError(
         safeClientErrorMessage(
           err,
@@ -566,7 +626,13 @@ export function AgentPanel() {
         ),
       );
     } finally {
-      setLoading(false);
+      stopped = true;
+      progressController.abort();
+      await progress;
+      if (currentConvRef.current === decidedConversationId) {
+        setStreamingText("");
+        setLoading(false);
+      }
     }
   };
 
@@ -598,7 +664,7 @@ export function AgentPanel() {
   const resumeInterruptedRun = async () => {
     if (!interruptedRunId || loading) return;
     setLoading(true);
-    setProgressText("正在从持久化 Harness Session 恢复 Run...");
+    setProgressText("正在从已保存的 Agent 会话恢复任务...");
     setError("");
     try {
       const runtimeResponse = await agentRuntimeApi.resume(interruptedRunId);
@@ -736,7 +802,7 @@ export function AgentPanel() {
             托管 {hostedSessions.filter((item) => HOSTED_ACTIVE_STATUSES.has(item.status)).length || hostedSessions.length}
             {hostedOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
           </button>
-          <span className="bauhaus-chip !py-0.5 !text-[10.5px]">Harness</span>
+          <span className="bauhaus-chip !py-0.5 !text-[10.5px]">内置助手</span>
           {activeRun && activeRun.harness_name && (
             <span
               className="bauhaus-chip !py-0.5 !text-[10.5px]"
@@ -1028,6 +1094,7 @@ export function AgentPanel() {
               </div>
             </div>
           )}
+          <ToolExecutionList executions={toolStream.toolExecutions} />
           {loading && (
             <div className="inline-flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[12.5px] text-[var(--foreground-soft)]">
               <Loader2 size={13} className="animate-spin" />
@@ -1041,7 +1108,7 @@ export function AgentPanel() {
         <div className="border-t border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2.5">
           <p className="text-[12px] font-semibold text-[var(--foreground)]">检测到中断的 Agent Run</p>
           <p className="mt-1 text-[11.5px] leading-5 text-[var(--foreground-soft)]">
-            OfferU 不会自动重放工具。你可以从已持久化的 Harness Session 显式恢复，或取消本次 Run。
+            OfferU 不会自动重放工具。你可以从已保存的 Agent 会话恢复，或取消本次任务。
           </p>
           <div className="mt-2 flex gap-1.5">
             <Button
@@ -1071,7 +1138,13 @@ export function AgentPanel() {
                 key={action.id}
                 className="flex items-start justify-between gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[12px] text-[var(--foreground)]"
               >
-                <span className="min-w-0 flex-1">{action.summary}</span>
+                <div className="min-w-0 flex-1">
+                  <p>{action.summary}</p>
+                  <details className="mt-1 text-[11px] text-[var(--foreground-soft)]">
+                    <summary className="cursor-pointer">查看本次操作范围</summary>
+                    <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words">{JSON.stringify(action.args || {}, null, 2)}</pre>
+                  </details>
+                </div>
                 <div className="flex shrink-0 gap-1">
                   <Button
                     onPress={() => decidePendingAction(action, "reject")}

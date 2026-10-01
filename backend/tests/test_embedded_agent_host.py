@@ -30,15 +30,15 @@ from app.services.agent_run_state import (
     save_agent_run,
 )
 from app.services.agent_skill_registry import resolve_skill
-from app.services.pi_agent_host import (
-    confirm_pi_agent_action,
-    resolve_pi_provider_config,
-    resume_pi_agent_run,
-    start_pi_agent_run,
+from app.services.embedded_agent_host import (
+    confirm_embedded_agent_action,
+    resolve_embedded_provider_config,
+    resume_embedded_agent_run,
+    start_embedded_agent_run,
 )
 
 
-class FakePiWorker:
+class FakeEmbeddedWorker:
     def __init__(self) -> None:
         self.active_run_id: str | None = None
         self.allowed_operations: list[dict[str, Any]] = []
@@ -96,6 +96,8 @@ class FakePiWorker:
         timeout: float = 180,
     ) -> dict[str, Any]:
         assert run_id == self.active_run_id
+        if message.startswith("The following operations were independently approved"):
+            return {"assistant_message": "已核对经过用户确认的执行结果。"}
         self.last_prompt = message
         await self._event_listener(
             {
@@ -138,7 +140,7 @@ class FakePiWorker:
         return {"run_id": run_id}
 
 
-class PiAgentHostTests(unittest.TestCase):
+class EmbeddedAgentHostTests(unittest.TestCase):
     def test_stream_route_forwards_real_delta_before_final_response(self) -> None:
         from app.routes.main_agent import PiAgentRunRequest, stream_runtime_run
 
@@ -190,7 +192,7 @@ class PiAgentHostTests(unittest.TestCase):
 
         with (
             patch(
-                "app.services.pi_agent_host.start_pi_agent_run",
+                "app.services.embedded_agent_host.start_embedded_agent_run",
                 side_effect=fake_start,
             ),
             patch(
@@ -328,7 +330,7 @@ class PiAgentHostTests(unittest.TestCase):
                 skill_snapshot={"id": "discovery", "name": "技能中心"},
                 actions=[],
                 llm_runtime={
-                    "runtime": "pi_sdk_worker",
+                    "runtime": "python_agent",
                     "stream_protocol": "cursor_v1",
                 },
             )
@@ -366,7 +368,7 @@ class PiAgentHostTests(unittest.TestCase):
         self.assertIn("游标补播完成", items[-1]["data"])
 
     def test_ollama_provider_config_never_exposes_private_value_in_metadata(self) -> None:
-        private, public = resolve_pi_provider_config(
+        private, public = resolve_embedded_provider_config(
             Settings(
                 llm_provider="ollama",
                 llm_model="qwen3:8b",
@@ -381,7 +383,7 @@ class PiAgentHostTests(unittest.TestCase):
         self.assertEqual(public["model"], "qwen3:8b")
 
     def test_openai_legacy_config_uses_official_compatible_base_url(self) -> None:
-        private, public = resolve_pi_provider_config(
+        private, public = resolve_embedded_provider_config(
             Settings(
                 llm_provider="openai",
                 llm_model="gpt-5",
@@ -397,7 +399,7 @@ class PiAgentHostTests(unittest.TestCase):
         calls = 0
         run_status_while_confirming: str | None = None
         original = OPERATIONS["start_job_research"]
-        worker = FakePiWorker()
+        worker = FakeEmbeddedWorker()
         secret = "pi-host-secret-must-not-persist"
         streamed_events: list[dict[str, Any]] = []
 
@@ -420,7 +422,7 @@ class PiAgentHostTests(unittest.TestCase):
 
         async def run() -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], str]:
             await init_db()
-            started = await start_pi_agent_run(
+            started = await start_embedded_agent_run(
                 message="研究这个岗位，确认后启动调研。",
                 skill_id="company_research",
                 conversation_id="pi-host-control-plane-test",
@@ -436,7 +438,7 @@ class PiAgentHostTests(unittest.TestCase):
                     "api_key": secret,
                 },
                 provider_metadata={
-                    "runtime": "pi_sdk_worker",
+                    "runtime": "python_agent",
                     "protocol_version": "offeru.pi-worker.v1",
                     "provider": "test-provider",
                     "model": "test-model",
@@ -445,11 +447,14 @@ class PiAgentHostTests(unittest.TestCase):
                 stream_listener=stream_listener,
             )
             action_id = started["pending_actions"][0]["id"]
-            confirmed = await confirm_pi_agent_action(
-                started["run"]["id"],
-                action_id=action_id,
-                worker=worker,
-            )
+            with patch("app.services.embedded_agent_host.resolve_embedded_provider_config", return_value=(
+                {"name": "test-provider", "model": "test-model"}, {"runtime": "python_agent", "provider_id": "embedded"},
+            )):
+                confirmed = await confirm_embedded_agent_action(
+                    started["run"]["id"],
+                    action_id=action_id,
+                    worker=worker,
+                )
             stored = await load_agent_run(started["run"]["id"])
             assert stored is not None
             events = await list_agent_run_events(started["run"]["id"])
@@ -523,7 +528,7 @@ class PiAgentHostTests(unittest.TestCase):
         turn_finished_events = [
             event for event in events if event["type"] == "run.turn_finished"
         ]
-        self.assertEqual(len(turn_finished_events), 2)
+        self.assertEqual(len(turn_finished_events), 3)
         self.assertFalse(
             turn_finished_events[-1]["payload"]["requires_confirmation"]
         )
@@ -604,7 +609,7 @@ class PiAgentHostTests(unittest.TestCase):
                     },
                 ],
                 llm_runtime={
-                    "runtime": "pi_sdk_worker",
+                    "runtime": "python_agent",
                     "stream_protocol": "cursor_v1",
                 },
             )
@@ -614,10 +619,10 @@ class PiAgentHostTests(unittest.TestCase):
                 "turn_finished": True,
             }
             await save_agent_run(created)
-            confirmed = await confirm_pi_agent_action(
+            confirmed = await confirm_embedded_agent_action(
                 created["id"],
                 action_id="start_job_research:first",
-                worker=FakePiWorker(),
+                worker=FakeEmbeddedWorker(),
             )
             events = await list_agent_run_events(created["id"])
             response = await follow_runtime_run_events(created["id"])
@@ -658,7 +663,7 @@ class PiAgentHostTests(unittest.TestCase):
         self.assertIn("waiting_confirmation", stream_items[-1]["data"])
 
     def test_restart_marks_run_interrupted_and_explicitly_resumes_same_session(self) -> None:
-        worker = FakePiWorker()
+        worker = FakeEmbeddedWorker()
 
         async def run() -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
             await init_db()
@@ -677,7 +682,7 @@ class PiAgentHostTests(unittest.TestCase):
                 },
                 actions=[],
                 llm_runtime={
-                    "runtime": "pi_sdk_worker",
+                    "runtime": "python_agent",
                     "protocol_version": "offeru.pi-worker.v1",
                     "session_id": created_session_id,
                     "session_file": "H:/temporary/pi-recovery-session.jsonl",
@@ -689,7 +694,7 @@ class PiAgentHostTests(unittest.TestCase):
             await recover_interrupted_agent_runs()
             interrupted = await load_agent_run(created["id"])
             assert interrupted is not None
-            resumed = await resume_pi_agent_run(
+            resumed = await resume_embedded_agent_run(
                 created["id"],
                 worker=worker,
                 provider_config={
@@ -699,7 +704,7 @@ class PiAgentHostTests(unittest.TestCase):
                     "api_key": "resume-test-secret",
                 },
                 provider_metadata={
-                    "runtime": "pi_sdk_worker",
+                    "runtime": "python_agent",
                     "protocol_version": "offeru.pi-worker.v1",
                     "provider": "test-provider",
                     "model": "test-model",
@@ -748,7 +753,7 @@ class PiAgentHostTests(unittest.TestCase):
                     }
                 ],
                 llm_runtime={
-                    "runtime": "pi_sdk_worker",
+                    "runtime": "python_agent",
                     "session_file": "H:/temporary/uncertain-session.jsonl",
                 },
             )

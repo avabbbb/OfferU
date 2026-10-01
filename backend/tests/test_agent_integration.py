@@ -37,9 +37,11 @@ class FakeCodexAdapter:
     async def start_turn(self, *, prompt: str, cwd: str, skill: dict | None = None) -> dict:
         assert skill and skill["name"] == "offeru"
         challenge_id = re.search(r"challenge_id=([a-f0-9]{32})", prompt).group(1)  # type: ignore[union-attr]
-        nonce = integration.get_connection_nonce("codex", challenge_id)["nonce"]
+        nonce = (await self.on_operation("get_agent_connection_nonce", {
+            "provider_id": "codex", "challenge_id": challenge_id,
+        }))["nonce"]
         returned = self.final_nonce or nonce
-        return {"finalMessage": f'{{"nonce":"{returned}"}}'}
+        return {"finalMessage": f'{{"nonce":"{returned}"}}', "threadId": "test", "turnId": "test-turn"}
 
     def events(self) -> list[dict]:
         operation = "get_agent_connection_nonce" if self.include_operation_event else "other_operation"

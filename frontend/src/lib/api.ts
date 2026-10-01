@@ -580,6 +580,7 @@ export interface AgentRunResponse {
 }
 
 export interface AgentConfirmationResponse {
+  continuation?: AgentRunResponse;
   ok: boolean;
   run: AgentRunRecord;
   tool_calls: AgentToolCall[];
@@ -1173,7 +1174,7 @@ export const agentRuntimeApi = {
     request<{ runs: AgentRunRecord[] }>(
       `/api/agent/runs?${buildQuery(params)}`
     ),
-  events: (runId: string, afterSequence = 0) =>
+  events: (runId: string, afterSequence = 0, signal?: AbortSignal) =>
     request<{
       run_id: string;
       events: Array<{
@@ -1188,7 +1189,7 @@ export const agentRuntimeApi = {
     }>(
       `/api/agent/runs/${encodeURIComponent(runId)}/events?${buildQuery({
         after_sequence: afterSequence,
-      })}`
+      })}`, { signal }
     ),
 };
 

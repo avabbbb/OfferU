@@ -4,7 +4,7 @@ Authority: GOAL → current-product → CONTEXT/current ADRs → Registry/live e
 
 ## Executors and transports
 
-External Agent is preferred reasoning/execution authority; built-in Pi remains a selectable provider and can use the same governed tools to prepare job-tailored resume changes. Exactly one reasoning provider owns a Run at a time. Local CLI/Bridge/MCP and officially supported remote connectors project the same business contract; authentication/transport implementations can differ. Unsupported host-native chat cannot be represented as embedded live chat.
+External Agent is preferred reasoning/execution authority; the migrated built-in Python Agent remains a selectable provider and can use the same governed tools to prepare job-tailored resume changes. Exactly one reasoning provider owns a Run at a time. Local CLI/Bridge/MCP and officially supported remote connectors project the same business contract; authentication/transport implementations can differ. Unsupported host-native chat cannot be represented as embedded live chat.
 
 ## Discovery and invocation
 

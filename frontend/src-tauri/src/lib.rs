@@ -19,13 +19,14 @@ async fn post_approval_request(
     app: AppHandle,
     path: String,
     body: serde_json::Value,
+    timeout: Duration,
 ) -> Result<serde_json::Value, String> {
     let token = app.state::<UiApprovalCapability>().0.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let client = reqwest::blocking::Client::builder()
             .no_proxy()
             .redirect(reqwest::redirect::Policy::none())
-            .timeout(Duration::from_secs(15))
+            .timeout(timeout)
             .build()
             .map_err(|_| "无法连接 OfferU 本地服务".to_string())?;
         let response = client
@@ -70,6 +71,7 @@ async fn decide_agent_proposal(
         app,
         format!("/api/bridge/proposals/{run_id}/confirm"),
         serde_json::json!({"approve": approve, "action_id": action_id}),
+        Duration::from_secs(15),
     )
     .await
 }
@@ -81,14 +83,41 @@ async fn decide_agent_runtime_action(
     action_id: String,
     approve: bool,
 ) -> Result<serde_json::Value, String> {
-    let (run_id, action_id) = validate_approval_input(run_id, action_id)?;
+    let (run_id, action_id) = validate_runtime_approval_input(run_id, action_id)?;
     let decision = if approve { "confirm" } else { "reject" };
     post_approval_request(
         app,
         format!("/api/agent/runtime/runs/{run_id}/{decision}"),
         serde_json::json!({"action_id": action_id}),
+        Duration::from_secs(if approve { 240 } else { 15 }),
     )
     .await
+}
+
+fn validate_runtime_approval_input(run_id: String, action_id: String) -> Result<(String, String), String> {
+    let suffix = run_id.strip_prefix("run_").ok_or("任务标识无效")?;
+    if !(16..=32).contains(&suffix.len())
+        || !suffix.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        || action_id.trim().is_empty()
+        || action_id.len() > 200
+    {
+        return Err("任务或动作标识无效".to_string());
+    }
+    Ok((run_id, action_id))
+}
+
+#[cfg(test)]
+mod approval_tests {
+    use super::validate_runtime_approval_input;
+
+    #[test]
+    fn accepts_runtime_ids_and_rejects_path_injection() {
+        assert!(validate_runtime_approval_input("run_0123456789abcdef".into(), "update:1".into()).is_ok());
+        for id in ["run_0123456789abcdef/confirm", "../run_0123456789abcdef", "run_short", "run_0123456789abcdeg"] {
+            assert!(validate_runtime_approval_input(id.into(), "update:1".into()).is_err());
+        }
+        assert!(validate_runtime_approval_input("run_0123456789abcdef".into(), " ".into()).is_err());
+    }
 }
 
 fn find_packaged_file(resource_dir: &std::path::Path, names: &[&str]) -> Option<std::path::PathBuf> {

@@ -97,11 +97,11 @@ Email and other authorized channels create evidence/signals and reviewable progr
 
 ## Built-in runtime code
 
-OfferU has one canonical embedded Agent kernel: the Pi SDK worker under `agent-runtime/`.
+OfferU has one canonical embedded Agent kernel: the Python source migrated from `luyishui/OfferU` commit `3a446ff941da66000ba2cc24e5d2e5d19cd3a2e5` under `backend/app/agent/`. `embedded_agent_worker.py` adapts that loop to the existing Career Runtime, Registry and durable Run lifecycle.
 
 External Codex, OMP, Claude and other hosts remain replaceable reasoning/executor integrations. They must not create a second internal Agent kernel. In particular, Codex app-server support is retained for external-host discovery, conformance and bounded execution, not as a parallel OfferU-owned runtime.
 
-The embedded Pi worker may adopt proven harness ergonomics such as persistent sessions, compaction, steer/follow-up, readiness checks and continuation controls while keeping Career Truth, permission and side-effect authority in Python.
+The migrated Python loop owns model turns, streaming, compaction and session controls. Career Truth, permission, proposals, idempotency and audit remain in the existing Python services. Pi JSONL sessions are retained as history and are not silently replayed by the new kernel. `agent-runtime/` remains only for the optional external Claude hosted executor.
 
 Replay remains deterministic test infrastructure. Hosted executors remain bounded subtask infrastructure.
 

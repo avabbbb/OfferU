@@ -118,6 +118,20 @@ class AgentSkillProjectionTests(unittest.TestCase):
         self.assertIn("built-in Agent remains capable", source)
         self.assertIn("exactly one", source.lower())
 
+    def test_mcp_default_catalog_is_compact_and_internal_operations_fail_closed(self) -> None:
+        from app.mcp_server import operation_catalog, operation_schema, offeru_operation
+        from app.services.agent_skill_registry import agent_operation_names
+        from app.ops import list_operations
+
+        default = asyncio.run(operation_catalog())
+        self.assertEqual(default["operations"], [])
+        self.assertEqual(default["skill_registry"], _manifest()["skill_registry"])
+        selected = asyncio.run(operation_catalog(skill="connection_bootstrap"))
+        self.assertEqual([item["name"] for item in selected["operations"]], ["get_current_view"])
+        internal = next(item["name"] for item in list_operations() if item["name"] not in agent_operation_names())
+        self.assertFalse(asyncio.run(operation_schema(internal))["ok"])
+        self.assertFalse(asyncio.run(offeru_operation(internal))["ok"])
+        self.assertFalse(asyncio.run(operation_catalog(skill="missing_skill"))["ok"])
 
 
 if __name__ == "__main__":

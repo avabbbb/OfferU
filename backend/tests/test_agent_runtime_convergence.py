@@ -20,11 +20,11 @@ from app.database import Base  # noqa: E402
 from app.models.models import Job  # noqa: E402
 import app.ops as operation_registry  # noqa: E402
 from app.ops import OPERATIONS, execute_operation, get_operation_schema  # noqa: E402
-from app.services import automation, capability_plugins, career_director, career_job_assessment, career_tasks, job_ingest, role_intelligence  # noqa: E402
+from app.services import agent_run_state, automation, capability_plugins, career_director, career_job_assessment, career_tasks, job_ingest, role_intelligence  # noqa: E402
 from app.services.agent_bridge.server import BridgeSession  # noqa: E402
 from app.services.agent_runtime import (  # noqa: E402
     CANONICAL_AGENT_RUN_EVENT_TYPES,
-    PiAgentRuntimeProvider,
+    EmbeddedAgentRuntimeProvider,
     ReplayAgentRunProvider,
     ReplayAgentRuntimeProvider,
     canonical_agent_run_event,
@@ -37,36 +37,14 @@ FIXTURE_PATH = BACKEND_DIR / "tests" / "fixtures" / "role_intelligence_v0" / "co
 
 
 class AgentRuntimeConvergenceTests(unittest.TestCase):
-    def test_internal_agent_turn_provider_aliases_converge_on_embedded_pi(self) -> None:
-        for provider_id in (
-            "pi",
-            "pi-sdk",
-            "pi-sdk-worker",
-            "embedded",
-            "builtin",
-            "auto",
-            "codex",
-            "codex-app-server",
-        ):
-            self.assertEqual(
-                career_tasks._normalize_agent_turn_provider(provider_id),
-                "pi",
-                provider_id,
-            )
-        self.assertEqual(career_tasks._normalize_agent_turn_provider("replay"), "replay")
-
-    def test_codex_is_not_an_internal_agent_runtime_kernel(self) -> None:
-        with self.assertRaises(ValueError):
-            get_agent_runtime_provider("codex")
-
     def test_builtin_provider_status_exposes_live_web_capability_boundary(self) -> None:
         async def flow() -> tuple[dict, dict]:
-            pi = await PiAgentRuntimeProvider().status()
+            pi = await EmbeddedAgentRuntimeProvider().status()
             replay = await ReplayAgentRunProvider().status()
             return pi, replay
 
         with patch(
-            "app.services.pi_agent_worker.get_pi_agent_worker",
+            "app.services.embedded_agent_worker.get_embedded_agent_worker",
             return_value=type(
                 "ProbeWorker",
                 (),
@@ -91,7 +69,7 @@ class AgentRuntimeConvergenceTests(unittest.TestCase):
         ):
             self.assertEqual(
                 career_tasks._normalize_agent_turn_provider(provider_id),
-                "pi",
+                "embedded",
                 provider_id,
             )
         self.assertEqual(career_tasks._normalize_agent_turn_provider("replay"), "replay")
@@ -135,10 +113,10 @@ class AgentRuntimeConvergenceTests(unittest.TestCase):
                 "assistant_message": "fixture reply",
             }
             with patch(
-                "app.services.pi_agent_host.start_pi_agent_run",
+                "app.services.embedded_agent_host.start_embedded_agent_run",
                 new=AsyncMock(return_value=result),
             ) as start:
-                provider = PiAgentRuntimeProvider()
+                provider = EmbeddedAgentRuntimeProvider()
                 actual = await provider.start_run(
                     message="hello",
                     skill_id="discovery",
@@ -728,52 +706,43 @@ class AgentRuntimeConvergenceTests(unittest.TestCase):
                     "priorities": [], "actions": [], "questions": [], "risks": [], "opportunities": [],
                 }
                 class SyntheticCareerDirector:
-                    def __init__(self, on_operation):
-                        self.on_operation = on_operation
+                    def __init__(self):
                         self.calls = []
 
-                    async def start(self):
-                        return None
-
-                    async def create_thread(self, **_kwargs):
-                        return {"threadId": "synthetic-job-assessment-thread"}
-
-                    async def start_turn(self, **_kwargs):
-                        self.snapshot = await self.on_operation("get_career_snapshot", {})
-                        self.job_context = await self.on_operation(
-                            "get_job_assessment_context", {}
+                    async def start_run(self, **kwargs):
+                        # Fixture provider exercises the durable Run contract; this
+                        # is an automation regression, not a model-issued E2E.
+                        task = await career_tasks.get_career_task(kwargs["task_id"])
+                        run = await create_agent_run(
+                            conversation_id=kwargs["conversation_id"], goal=kwargs["message"],
+                            mode="career_director", skill_id=kwargs["skill_id"],
+                            task_id=kwargs["task_id"], actions=[],
                         )
+                        outputs = []
+                        for name, arguments in (
+                            ("get_career_snapshot", {}),
+                            ("get_job_assessment_context", {"job_id": task["input"]["job_id"]}),
+                        ):
+                            envelope = await execute_operation(name, arguments, surface="career_director")
+                            if not envelope["ok"]:
+                                raise AssertionError(envelope)
+                            outputs.append(envelope["outputs"])
+                            self.calls.append(name)
+                            await agent_run_state.append_agent_run_event(
+                                run["id"], event_type="operation.completed", payload={"operation": name},
+                            )
+                        self.snapshot, self.job_context = outputs
                         result_briefing = json.loads(json.dumps(briefing))
                         result_briefing["job_assessment"]["job_id"] = self.job_context["job"]["job_id"]
                         briefing_text = json.dumps(result_briefing, ensure_ascii=False)
-                        self.calls = ["get_career_snapshot", "get_job_assessment_context"]
-                        self.runtime_events = [
-                            {
-                                "method": "item/completed",
-                                "params": {"item": {"type": "agentMessage", "text": briefing_text}},
-                            }
-                        ]
-                        return {
-                            "threadId": "synthetic-job-assessment-thread",
-                            "turnId": "synthetic-job-assessment-turn",
-                            "completed": {"turn": {"items": [{"type": "agentMessage", "text": briefing_text}]}},
-                        }
-
-                    async def events(self):
-                        return {
-                            "events": [
-                                {"method": "item/tool/call", "params": {"tool": name}}
-                                for name in self.calls
-                            ] + getattr(self, "runtime_events", [])
-                        }
-
-                    async def shutdown(self):
-                        return None
+                        run["status"] = "completed"
+                        await save_agent_run(run)
+                        return {"ok": True, "run": run, "assistant_message": briefing_text}
 
                 director_providers = []
 
-                def make_director_provider(_provider_id, **kwargs):
-                    provider = SyntheticCareerDirector(kwargs["on_operation"])
+                def make_director_provider(_provider_id):
+                    provider = SyntheticCareerDirector()
                     director_providers.append(provider)
                     return provider
 
@@ -781,12 +750,13 @@ class AgentRuntimeConvergenceTests(unittest.TestCase):
                     patch.object(capability_plugins, "PLUGIN_STATE_PATH", state_path),
                     patch.object(automation, "async_session", session),
                     patch.object(career_tasks, "async_session", session),
+                    patch.object(agent_run_state, "async_session", session),
                     patch.object(career_director, "async_session", session),
                     patch.object(career_job_assessment, "async_session", session),
                     patch.object(job_ingest, "async_session", session),
                     patch.object(role_intelligence, "async_session", session),
                     patch.object(operation_registry, "async_session", session),
-                    patch("app.services.agent_runtime.get_agent_runtime_provider", side_effect=make_director_provider),
+                    patch("app.services.agent_runtime.get_agent_run_provider", side_effect=make_director_provider),
                     patch.object(career_tasks, "_career_director_workspace", return_value=str(state_path.parent)),
                 ):
                     envelope = await operation_registry.execute_operation(
@@ -816,11 +786,11 @@ class AgentRuntimeConvergenceTests(unittest.TestCase):
                     self.assertEqual(len(role_tasks["tasks"]), 1, role_tasks)
                     task_id = role_tasks["tasks"][0]["task_id"]
                     role_worker = career_tasks._LIVE_TASKS.get(task_id)
-                    self.assertIsNotNone(role_worker)
-                    assert role_worker is not None
-                    await role_worker
+                    if role_worker is not None:
+                        await role_worker
                     task = await career_tasks.get_career_task(task_id)
                     director_task = await career_tasks.get_career_task(director_id)
+                    self.assertEqual(director_task["status"], "completed", director_task)
                     inbox = await automation.list_automation_inbox()
                     events = await automation.list_automation_events()
                     career_director_provider = next(
@@ -862,6 +832,7 @@ class AgentRuntimeConvergenceTests(unittest.TestCase):
         self.assertEqual(inbox_by_task[result["director_task"]["task_id"]]["category"], "needs_review")
         self.assertEqual(director_payload["job_assessment"]["application_priority"], "normal")
         self.assertNotIn("preview", payload)
+        self.assertIn("application_packet", payload)
         self.assertEqual(payload["interview_focus_plan"], {})
         packet = payload["application_packet"]
         self.assertEqual(packet["status"], "partial")

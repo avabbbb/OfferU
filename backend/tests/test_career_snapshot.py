@@ -34,6 +34,30 @@ from app.services.career_director import (
 )
 
 
+class FixtureDirectorRunProvider:
+    """Recorded reasoning fixture; never represents a live Agent E2E."""
+
+    def __init__(self, message, operations):
+        self.message, self.operations = message, operations
+
+    async def start_run(self, **kwargs):
+        import app.ops as ops
+        from app.services import agent_run_state
+        self.launch = kwargs
+        run = await agent_run_state.create_agent_run(
+            conversation_id=kwargs["conversation_id"], goal=kwargs["message"],
+            task_id=kwargs["task_id"], mode="career_director", skill_id=kwargs["skill_id"], actions=[],
+        )
+        for operation in self.operations:
+            result = await ops.execute_operation(operation, {}, surface="career_director", audit=True)
+            assert result["ok"], result
+            if operation == "get_career_snapshot": self.read_snapshot = result["outputs"]
+            await agent_run_state.append_agent_run_event(run["id"], event_type="operation.completed", payload={"operation": operation})
+        run["status"] = "completed"
+        await agent_run_state.save_agent_run(run)
+        return {"ok": True, "run": run, "assistant_message": self.message}
+
+
 def _briefing(
     *,
     track: str = "campus",
@@ -686,52 +710,10 @@ def test_daily_career_director_must_read_daily_context_and_keeps_new_urgent_acti
             )
             message = json.dumps(briefing_payload, ensure_ascii=False)
 
-            class SyntheticCodex:
-                async def start(self):
-                    return None
-
-                async def create_thread(self, **_kwargs):
-                    return {"threadId": "synthetic-daily-thread"}
-
-                async def start_turn(self, **_kwargs):
-                    self.runtime_events = [
-                        {
-                            "method": "item/completed",
-                            "params": {"item": {"type": "agentMessage", "text": message}},
-                        }
-                    ]
-                    self.snapshot = await provider.on_operation("get_career_snapshot", {})
-                    self.daily_context = await provider.on_operation("get_daily_career_context", {})
-                    return {
-                        "threadId": "synthetic-daily-thread",
-                        "turnId": "synthetic-daily-turn",
-                        "completed": {"turn": {"items": [{"type": "agentMessage", "text": message}]}},
-                    }
-
-                async def events(self):
-                    return {
-                        "events": [
-                            {"method": "item/tool/call", "params": {"tool": "get_career_snapshot"}},
-                            {"method": "item/tool/call", "params": {"tool": "get_daily_career_context"}},
-                            *self.runtime_events,
-                        ]
-                    }
-
-                async def shutdown(self):
-                    return None
-
-            provider = None
-
-            def make_provider(_provider_id, **kwargs):
-                nonlocal provider
-                provider = SyntheticCodex()
-                provider.on_operation = kwargs["on_operation"]
-                provider.turn_effort_requested = kwargs.get("turn_effort")
-                return provider
-
-            import app.services.agent_runtime as agent_runtime
-
-            monkeypatch.setattr(agent_runtime, "get_agent_runtime_provider", make_provider)
+            provider = FixtureDirectorRunProvider(message, ["get_career_snapshot", "get_daily_career_context"])
+            from app.services import agent_runtime, agent_run_state
+            monkeypatch.setattr(agent_run_state, "async_session", session)
+            monkeypatch.setattr(agent_runtime, "get_agent_run_provider", lambda _provider_id: provider)
             monkeypatch.setattr(career_tasks, "_career_director_workspace", lambda: str(tmp_path))
             result = await career_tasks._run_career_director(
                 {
@@ -760,7 +742,7 @@ def test_daily_career_director_must_read_daily_context_and_keeps_new_urgent_acti
     assert all(call[2:] == ("career_director", True) for call in observed["calls"])
     assert observed["result"]["runtime"]["tool_calls"] == ["get_career_snapshot", "get_daily_career_context"]
     assert [action["dedupe_key"] for action in observed["result"]["briefing"]["actions"]] == ["tomorrow-interview-8"]
-    assert observed["provider"].turn_effort_requested == "low"
+    assert observed["provider"].launch["skill_id"] == "career_director"
 
 
 def test_model_briefing_is_strict_and_cannot_override_user_correction() -> None:
@@ -788,7 +770,7 @@ def test_model_briefing_is_strict_and_cannot_override_user_correction() -> None:
 
 def test_career_director_refuses_replay_and_non_automation_task_sources() -> None:
     async def flow() -> None:
-        with pytest.raises(ValueError, match="真实 Codex Runtime"):
+        with pytest.raises(ValueError, match="embedded.*Runtime"):
             await career_tasks.start_career_task(
                 task_type="career_director",
                 source="automation",
@@ -812,7 +794,7 @@ def test_career_director_refuses_replay_and_non_automation_task_sources() -> Non
     asyncio.run(flow())
 
 
-def test_profile_discovery_runs_one_codex_task_reads_registry_snapshot_and_projects_result(
+def test_profile_discovery_runs_one_embedded_task_reads_registry_snapshot_and_projects_result(
     tmp_path, monkeypatch
 ) -> None:
     async def flow() -> tuple[dict, dict, dict, dict, int]:
@@ -861,67 +843,16 @@ def test_profile_discovery_runs_one_codex_task_reads_registry_snapshot_and_proje
 
             monkeypatch.setattr(ops, "async_session", session)
 
-            class SyntheticCodex:
-                def __init__(self, on_operation):
-                    self.on_operation = on_operation
-                    self.read_snapshot = None
-
-                async def start(self):
-                    return None
-
-                async def create_thread(self, **_kwargs):
-                    return {"threadId": "synthetic-thread"}
-
-                async def start_turn(self, **_kwargs):
-                    self.read_snapshot = await self.on_operation("get_career_snapshot", {})
-                    message = json.dumps(_briefing(), ensure_ascii=False)
-                    self.runtime_events = [
-                        {
-                            "method": "item/completed",
-                            "params": {"item": {"type": "agentMessage", "text": message}},
-                        },
-                        {
-                            "method": "turn/completed",
-                            "params": {
-                                "turn": {
-                                    "id": "synthetic-turn",
-                                    "items": [{"type": "agentMessage", "text": message}],
-                                }
-                            },
-                        },
-                    ]
-                    return {
-                        "threadId": "synthetic-thread",
-                        "turnId": "synthetic-turn",
-                        "completed": {
-                            "turn": {
-                                "id": "synthetic-turn",
-                                "items": [{"type": "agentMessage", "text": message}],
-                            }
-                        },
-                    }
-
-                async def events(self):
-                    return {
-                        "events": [
-                            {"method": "item/tool/call", "params": {"tool": "get_career_snapshot"}},
-                            *getattr(self, "runtime_events", []),
-                        ]
-                    }
-
-                async def shutdown(self):
-                    return None
-
             provider_instances = []
 
-            def make_provider(_provider_id, **kwargs):
-                provider = SyntheticCodex(kwargs["on_operation"])
+            def make_provider(_provider_id):
+                provider = FixtureDirectorRunProvider(json.dumps(_briefing(), ensure_ascii=False), ["get_career_snapshot"])
                 provider_instances.append(provider)
                 return provider
 
-            import app.services.agent_runtime as agent_runtime
-
-            monkeypatch.setattr(agent_runtime, "get_agent_runtime_provider", make_provider)
+            from app.services import agent_runtime, agent_run_state
+            monkeypatch.setattr(agent_run_state, "async_session", session)
+            monkeypatch.setattr(agent_runtime, "get_agent_run_provider", make_provider)
             monkeypatch.setattr(career_tasks, "_career_director_workspace", lambda: str(tmp_path))
 
             event_result = await automation.record_automation_event(
@@ -969,7 +900,7 @@ def test_profile_discovery_runs_one_codex_task_reads_registry_snapshot_and_proje
 
     task, state, snapshot = asyncio.run(flow())
     assert task["status"] == "completed", (task.get("error"), task.get("result"))
-    assert task["result"]["runtime"]["provider"] == "codex"
+    assert task["result"]["runtime"]["provider"] == "embedded"
     assert task["result"]["runtime"]["tool_calls"] == ["get_career_snapshot"]
     assert snapshot["schema"] == "offeru.career_snapshot.v2"
     assert snapshot["goals"]["primary_roles"] == ["数据分析师"]

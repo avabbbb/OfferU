@@ -1,7 +1,7 @@
 # Agent System
 
 Status: **CURRENT ARCHITECTURE**  
-Updated: 2026-09-23
+Updated: 2026-10-01
 
 ## Summary
 
@@ -22,6 +22,14 @@ Career Runtime
 ~~~
 
 Exactly one Agent is the active reasoning authority for a Run.
+
+The built-in fallback now runs the Python Agent loop migrated from
+`luyishui/OfferU` at `3a446ff941da66000ba2cc24e5d2e5d19cd3a2e5`.
+Its streaming provider, hooks, proposal coordination and compaction operate
+behind the existing AgentRun host and Operation Registry. Session persistence
+uses versioned JSON within OfferU's runtime data directory. Legacy Pi JSONL
+sessions remain history and are not automatically replayed by this kernel.
+External Pi and the optional hosted Claude executor retain their own host roles.
 
 ## Host model
 

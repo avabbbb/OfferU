@@ -617,7 +617,7 @@ def test_extension_direct_fetches_reject_redirects() -> None:
 
 
 def test_pi_guardian_failure_uses_shared_safe_error_boundary() -> None:
-    source = (ROOT / "backend/app/services/pi_agent_host.py").read_text(encoding="utf-8")
+    source = (ROOT / "backend/app/services/embedded_agent_host.py").read_text(encoding="utf-8")
     assert "guardian_error_message = safe_error_message(guardian_error)" in source
     assert '"error": guardian_error_message' in source
     assert '"error": str(guardian_error)[:500]' not in source
