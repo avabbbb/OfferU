@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="color-scheme" content="light dark" />
+<title>OfferU · Career OS Product Blueprint</title>
+<style>
+:root{
+  --bg:#f5f5f7;--surface:rgba(255,255,255,.78);--surface-solid:#fff;--text:#1d1d1f;--muted:#6e6e73;
+  --hair:rgba(0,0,0,.08);--accent:#0071e3;--accent2:#5e5ce6;--green:#1f9d55;--orange:#d97706;--red:#d92d20;
+  --shadow:0 18px 60px rgba(0,0,0,.08);--radius:28px;--radius-sm:18px;--blur:24px;
+}
+@media(prefers-color-scheme:dark){:root{--bg:#000;--surface:rgba(28,28,30,.82);--surface-solid:#1c1c1e;--text:#f5f5f7;--muted:#a1a1a6;--hair:rgba(255,255,255,.10);--shadow:0 20px 70px rgba(0,0,0,.42)}}
+[data-theme="light"]{--bg:#f5f5f7;--surface:rgba(255,255,255,.82);--surface-solid:#fff;--text:#1d1d1f;--muted:#6e6e73;--hair:rgba(0,0,0,.08);--shadow:0 18px 60px rgba(0,0,0,.08)}
+[data-theme="dark"]{--bg:#000;--surface:rgba(28,28,30,.86);--surface-solid:#1c1c1e;--text:#f5f5f7;--muted:#a1a1a6;--hair:rgba(255,255,255,.10);--shadow:0 20px 70px rgba(0,0,0,.42)}
+*{box-sizing:border-box} html{scroll-behavior:smooth} body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","PingFang SC","Helvetica Neue",Arial,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none} button{font:inherit}.wrap{width:min(1240px,calc(100% - 40px));margin:auto}
+nav{position:sticky;top:0;z-index:50;border-bottom:1px solid var(--hair);background:color-mix(in srgb,var(--bg) 70%,transparent);backdrop-filter:saturate(180%) blur(24px)}
+.navin{height:58px;display:flex;align-items:center;gap:18px}.brand{font-weight:700;letter-spacing:-.03em}.navlinks{display:flex;gap:6px;overflow:auto;scrollbar-width:none}.navlinks a{font-size:12px;color:var(--muted);padding:8px 10px;border-radius:999px;white-space:nowrap}.navlinks a:hover{background:var(--hair);color:var(--text)}.spacer{flex:1}.iconbtn{width:34px;height:34px;border:1px solid var(--hair);border-radius:50%;background:var(--surface);color:var(--text);cursor:pointer}
+.hero{padding:104px 0 74px;text-align:center}.eyebrow{font-size:14px;font-weight:700;color:var(--accent);letter-spacing:.02em}.hero h1{font-size:clamp(48px,8vw,96px);line-height:.96;letter-spacing:-.065em;margin:18px auto 26px;max-width:1100px}.hero p{font-size:clamp(19px,2.2vw,28px);letter-spacing:-.025em;color:var(--muted);max-width:850px;margin:0 auto}.hero .pillrow{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:30px}.pill{padding:9px 13px;border:1px solid var(--hair);border-radius:999px;background:var(--surface);font-size:12px;color:var(--muted)}
+.section{padding:58px 0}.sectionhead{display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:end;margin-bottom:28px}.kicker{font-size:12px;font-weight:800;color:var(--accent);letter-spacing:.08em;text-transform:uppercase}.section h2{font-size:clamp(34px,5vw,62px);line-height:1.03;letter-spacing:-.05em;margin:8px 0 0}.lead{font-size:17px;color:var(--muted);max-width:560px;margin:0 0 6px auto}.card{background:var(--surface);border:1px solid var(--hair);border-radius:var(--radius);box-shadow:var(--shadow);backdrop-filter:blur(var(--blur));overflow:hidden}.pad{padding:28px}.grid2{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.metric{padding:22px}.metric b{display:block;font-size:26px;letter-spacing:-.04em}.metric span{font-size:12px;color:var(--muted)}
+.flow{display:flex;align-items:stretch;gap:10px;overflow-x:auto;padding:4px 2px 14px;scroll-snap-type:x proximity}.step{min-width:170px;scroll-snap-align:start;background:var(--surface);border:1px solid var(--hair);border-radius:22px;padding:18px;position:relative}.step .n{width:28px;height:28px;display:grid;place-items:center;border-radius:50%;background:var(--accent);color:white;font-size:12px;font-weight:800;margin-bottom:30px}.step h3{font-size:15px;margin:0 0 6px}.step p{font-size:12px;color:var(--muted);margin:0}.arrow{align-self:center;color:var(--muted);font-size:20px;min-width:18px}
+.arch{padding:34px}.layers{display:grid;gap:14px}.layer{border:1px solid var(--hair);border-radius:22px;padding:22px;display:grid;grid-template-columns:180px 1fr;gap:18px;align-items:center}.layer strong{font-size:18px}.chips{display:flex;flex-wrap:wrap;gap:8px}.chip{font-size:12px;padding:8px 10px;border-radius:999px;background:color-mix(in srgb,var(--accent) 9%,var(--surface-solid));border:1px solid color-mix(in srgb,var(--accent) 18%,var(--hair))}.layer.core{background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 10%,var(--surface)),var(--surface))}
+.skillmap{display:grid;grid-template-columns:260px 1fr;gap:16px}.skillroot{display:flex;align-items:center;justify-content:center;min-height:330px;text-align:center;background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 18%,var(--surface)),var(--surface));padding:30px}.skillroot .orb{width:130px;height:130px;border-radius:32px;background:linear-gradient(145deg,#0a84ff,#5e5ce6);display:grid;place-items:center;color:white;font-size:24px;font-weight:800;box-shadow:0 20px 50px rgba(0,113,227,.25);margin:auto auto 18px}.skillgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.skill{min-height:115px;padding:15px;border:1px solid var(--hair);border-radius:18px;background:var(--surface)}.skill b{font-size:13px}.skill p{font-size:11px;color:var(--muted);margin:8px 0 0}.skill.external{border-style:dashed}
+.mock{display:grid;grid-template-columns:210px 1fr;min-height:680px}.sidebar{padding:18px;border-right:1px solid var(--hair);background:color-mix(in srgb,var(--surface-solid) 70%,transparent)}.traffic{display:flex;gap:7px;margin:2px 0 24px}.dot{width:11px;height:11px;border-radius:50%;background:#ff5f57}.dot:nth-child(2){background:#febc2e}.dot:nth-child(3){background:#28c840}.sidebrand{font-weight:700;margin-bottom:20px}.sideitem{padding:10px 12px;border-radius:12px;font-size:13px;color:var(--muted);margin:2px 0}.sideitem.active{background:var(--hair);color:var(--text);font-weight:650}.workspace{padding:24px;background:color-mix(in srgb,var(--bg) 45%,transparent)}.topbar{display:flex;align-items:center;gap:12px;margin-bottom:18px}.jobtitle{font-size:25px;font-weight:750;letter-spacing:-.035em}.status{font-size:11px;padding:6px 8px;border-radius:999px;background:color-mix(in srgb,var(--green) 12%,transparent);color:var(--green);font-weight:700}.tabbar{display:flex;gap:6px;overflow:auto;margin-bottom:16px}.tabbar button{border:0;background:transparent;color:var(--muted);padding:9px 12px;border-radius:10px;cursor:pointer;white-space:nowrap}.tabbar button.on{background:var(--surface-solid);color:var(--text);box-shadow:0 2px 12px rgba(0,0,0,.05)}.panel{display:none}.panel.on{display:block}.dashgrid{display:grid;grid-template-columns:1.15fr .85fr;gap:12px}.mini{padding:18px;border:1px solid var(--hair);border-radius:18px;background:var(--surface-solid)}.mini h4{margin:0 0 12px;font-size:13px}.bar{height:7px;border-radius:999px;background:var(--hair);overflow:hidden;margin-top:7px}.bar i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--accent),var(--accent2))}.row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid var(--hair);font-size:12px}.row:first-of-type{border-top:0}.muted{color:var(--muted)}
+.diff{display:grid;grid-template-columns:1fr 1fr;gap:10px}.diffbox{padding:15px;border-radius:16px;border:1px solid var(--hair);background:var(--surface-solid);font-size:12px}.del{background:color-mix(in srgb,var(--red) 8%,var(--surface-solid));text-decoration:line-through;color:color-mix(in srgb,var(--red) 75%,var(--text))}.add{background:color-mix(in srgb,var(--green) 8%,var(--surface-solid));color:color-mix(in srgb,var(--green) 75%,var(--text))}.hl{animation:pulse 2.7s ease-in-out infinite}@keyframes pulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 0%,transparent)}50%{box-shadow:0 0 0 7px color-mix(in srgb,var(--accent) 8%,transparent)}}
+.dual{display:grid;grid-template-columns:1fr 80px 1fr;gap:12px;align-items:center}.decision{padding:24px}.decision h3{margin:0 0 8px;font-size:24px;letter-spacing:-.03em}.decision p{color:var(--muted);font-size:13px;margin:0}.decision .ex{margin-top:18px;font-size:12px;line-height:1.7}.centerarrow{text-align:center;color:var(--muted);font-size:28px}
+.entitygrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.entity{padding:18px;border:1px solid var(--hair);border-radius:18px;background:var(--surface-solid)}.entity .tag{font-size:10px;color:var(--accent);font-weight:800;text-transform:uppercase}.entity h4{margin:9px 0 4px;font-size:15px}.entity p{font-size:11px;color:var(--muted);margin:0}.connector{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.conn{padding:22px}.conn h3{margin:0 0 8px;font-size:18px}.conn p{font-size:12px;color:var(--muted)}.conn ul{padding-left:16px;font-size:12px;color:var(--muted);line-height:1.8}.lazy{font-size:10px;font-weight:800;color:var(--orange);letter-spacing:.05em}
+.loop{position:relative;display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.loop .node{padding:18px;border-radius:20px;border:1px solid var(--hair);background:var(--surface)}.node .num{font-size:11px;color:var(--accent);font-weight:800}.node h4{margin:12px 0 6px}.node p{margin:0;font-size:11px;color:var(--muted)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:16px;color:var(--muted);font-size:11px}.legend i{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px}.fact{background:var(--green)}.signal{background:var(--accent)}.obs{background:var(--orange)}.unknown{background:var(--muted)}
+.timeline{display:grid;grid-template-columns:1fr 1fr;gap:14px}.hist{padding:24px}.hist h3{font-size:20px;margin:0 0 16px}.historynode{padding:14px 0;border-top:1px solid var(--hair)}.historynode:first-of-type{border:0}.historynode b{font-size:13px}.historynode p{font-size:11px;color:var(--muted);margin:4px 0}
+.matrix{width:100%;border-collapse:separate;border-spacing:0;overflow:hidden;border-radius:18px;border:1px solid var(--hair);font-size:12px}.matrix th,.matrix td{text-align:left;padding:12px;border-bottom:1px solid var(--hair)}.matrix tr:last-child td{border-bottom:0}.matrix th{color:var(--muted);font-weight:600;background:color-mix(in srgb,var(--surface-solid) 72%,transparent)}.badge{padding:4px 7px;border-radius:999px;font-size:10px;font-weight:800}.works{background:color-mix(in srgb,var(--green) 12%,transparent);color:var(--green)}.partial{background:color-mix(in srgb,var(--orange) 12%,transparent);color:var(--orange)}.target{background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent)}
+.callout{font-size:clamp(25px,4vw,48px);line-height:1.1;letter-spacing:-.05em;padding:44px;text-align:center}.callout em{font-style:normal;color:var(--accent)}
+footer{padding:70px 0 90px;color:var(--muted);font-size:12px;text-align:center}
+.reveal{opacity:0;transform:translateY(16px);transition:.65s ease}.reveal.in{opacity:1;transform:none}
+@media(max-width:900px){.sectionhead,.grid2,.grid3,.dashgrid,.timeline,.dual,.mock{grid-template-columns:1fr}.grid4,.skillgrid,.entitygrid,.connector,.loop{grid-template-columns:repeat(2,1fr)}.skillmap{grid-template-columns:1fr}.sidebar{display:none}.layer{grid-template-columns:1fr}.lead{margin:0}.diff{grid-template-columns:1fr}.centerarrow{transform:rotate(90deg)}}
+@media(max-width:560px){.wrap{width:min(100% - 24px,1240px)}.hero{padding-top:70px}.grid4,.skillgrid,.entitygrid,.connector,.loop{grid-template-columns:1fr}.card{border-radius:22px}.pad{padding:20px}.section{padding:42px 0}.sectionhead{gap:14px}.callout{padding:28px}.navlinks{display:none}}
+</style>
+</head>
+<body>
+<nav><div class="wrap navin"><div class="brand">OfferU Blueprint</div><div class="navlinks"><a href="#vision">愿景</a><a href="#journey">用户旅程</a><a href="#skills">Skill 生态</a><a href="#desktop">Desktop</a><a href="#data">数据流</a><a href="#hitl">HITL</a><a href="#interview">面试</a><a href="#maintain">历史</a></div><div class="spacer"></div><button class="iconbtn" id="theme" title="切换主题">◐</button></div></nav>
+
+<header class="hero wrap reveal in">
+  <div class="eyebrow">CAREER OS · PRODUCT BLUEPRINT</div>
+  <h1>Agent 可以换。<br/>职业状态不能丢。</h1>
+  <p>OfferU 不是另一个求职聊天框，而是一套由 Skill 生态驱动、由 Desktop 承载长期职业状态的 Career Operations System。</p>
+  <div class="pillrow"><span class="pill">目标体验 / 非实现状态</span><span class="pill">One Profile</span><span class="pill">One Career Truth</span><span class="pill">Decision-level HITL</span><span class="pill">Skill-first Ecosystem</span></div>
+</header>
+
+<main>
+<section class="section wrap reveal" id="vision">
+ <div class="sectionhead"><div><div class="kicker">01 · Product Thesis</div><h2>把“求职”从聊天，变成持续运转的系统。</h2></div><p class="lead">Agent 负责研究、推理和执行；Skill 负责方法；Desktop 负责把长期状态、证据、版本、情报和决定变成可见资产。</p></div>
+ <div class="card arch">
+  <div class="layers">
+   <div class="layer"><strong>Any Agent</strong><div class="chips"><span class="chip">Codex</span><span class="chip">OMP / Pi</span><span class="chip">Claude Code</span><span class="chip">WorkBuddy</span><span class="chip">Gemini</span><span class="chip">Future Agent</span></div></div>
+   <div class="layer"><strong>Skill Ecosystem</strong><div class="chips"><span class="chip">OfferU Router</span><span class="chip">Profile</span><span class="chip">Job Discovery</span><span class="chip">Resume</span><span class="chip">Interview</span><span class="chip">3rd-party Skills</span></div></div>
+   <div class="layer core"><strong>OfferU Runtime</strong><div class="chips"><span class="chip">Career Truth</span><span class="chip">Evidence / Provenance</span><span class="chip">Job Workspace</span><span class="chip">Operations</span><span class="chip">Audit</span><span class="chip">Decision / Approval</span></div></div>
+   <div class="layer"><strong>Desktop Cockpit</strong><div class="chips"><span class="chip">Today</span><span class="chip">Profile</span><span class="chip">Ranked Jobs</span><span class="chip">Resume Diff</span><span class="chip">Pipeline</span><span class="chip">Interview Intelligence</span></div></div>
+  </div>
+ </div>
+ <div class="grid4" style="margin-top:14px"><div class="card metric"><b>1</b><span>份长期 Career Truth</span></div><div class="card metric"><b>1</b><span>个用户感知的 OfferU Skill</span></div><div class="card metric"><b>Few</b><span>真正需要人的关键决策</span></div><div class="card metric"><b>∞</b><span>可替换 Agent / Connector / Skill</span></div></div>
+</section>
+
+<section class="section wrap reveal" id="journey">
+ <div class="sectionhead"><div><div class="kicker">02 · End-to-End Journey</div><h2>从建档到复盘，每一步都给下一步喂数据。</h2></div><p class="lead">不是一堆独立功能，而是一条可循环的“发现 → 判断 → 准备 → 投递 → 学习”工作流。</p></div>
+ <div class="flow">
+  <div class="step"><div class="n">1</div><h3>Minimal Start</h3><p>安装 OfferU，连接一个 Agent 或使用内置 Agent。</p></div><div class="arrow">→</div>
+  <div class="step"><div class="n">2</div><h3>Profile</h3><p>Resume + 对话 + 授权 Memory，形成完整证据档案。</p></div><div class="arrow">→</div>
+  <div class="step"><div class="n">3</div><h3>Daily Discovery</h3><p>大厂 ATS、BOSS、网页来源，低成本扫描去重。</p></div><div class="arrow">→</div>
+  <div class="step"><div class="n">4</div><h3>Rank</h3><p>按目标、硬要求、证据、偏好和风险排序。</p></div><div class="arrow">→</div>
+  <div class="step"><div class="n">5</div><h3>Role Benchmark</h3><p>相似岗位共性 + 目标岗位独特点 + Team 情报。</p></div><div class="arrow">→</div>
+  <div class="step"><div class="n">6</div><h3>Tailor Resume</h3><p>基于真实证据和原风格，逐段 Before / After。</p></div><div class="arrow">→</div>
+  <div class="step"><div class="n">7</div><h3>Apply Assist</h3><p>按需启用 Browser Automation、注册、登录、填表。</p></div><div class="arrow">→</div>
+  <div class="step"><div class="n">8</div><h3>Progress</h3><p>Receipt / Email / BOSS / Calendar → Pipeline。</p></div><div class="arrow">→</div>
+  <div class="step"><div class="n">9</div><h3>Interview Prep</h3><p>岗位、团队、面经、历史弱项与 Story Bank 联合准备。</p></div><div class="arrow">→</div>
+  <div class="step"><div class="n">10</div><h3>Debrief</h3><p>真实问题、追问、答案表现和新情报沉淀。</p></div><div class="arrow">→</div>
+  <div class="step"><div class="n">11</div><h3>Career Learning</h3><p>经审核的 Learning 回流 Profile / Memory。</p></div><div class="arrow">→</div>
+  <div class="step"><div class="n">12</div><h3>Next Daily Review</h3><p>下一次排序、简历和面试更懂你。</p></div>
+ </div>
+</section>
+
+<section class="section wrap reveal" id="skills">
+ <div class="sectionhead"><div><div class="kicker">03 · Skill Ecosystem</div><h2>用户只看到一个 OfferU。<br/>里面是一套可组合 Skill。</h2></div><p class="lead">Tool 是能力原子，Skill 是业务工作流。BOSS 的 search / greet / applied 不应各自成为产品入口，而是被更高层 Skill 组合。</p></div>
+ <div class="skillmap">
+  <div class="card skillroot"><div><div class="orb">OfferU</div><b>Top-level Router Skill</b><p class="muted">读取 Intent + Career State + 可用能力，自动选择子 Skill。</p></div></div>
+  <div class="skillgrid">
+   <div class="skill"><b>Initialize</b><p>Resume discovery · Profile interview · Memory import</p></div>
+   <div class="skill"><b>Daily Job Discovery</b><p>ATS + BOSS + Web → filter → dedupe</p></div>
+   <div class="skill"><b>Job Ranking</b><p>Hard req · evidence · goal · risk</p></div>
+   <div class="skill"><b>Role Intelligence</b><p>Comparable JDs · target delta · team</p></div>
+   <div class="skill"><b>Tailor Resume</b><p>Evidence map · structure · section diffs</p></div>
+   <div class="skill"><b>Application</b><p>Browser · form fill · receipt</p></div>
+   <div class="skill"><b>BOSS Sync</b><p>Search · applied · interviews · chat state</p></div>
+   <div class="skill"><b>Re-engagement</b><p>Cooldown · resume update · contact state</p></div>
+   <div class="skill"><b>Interview Plan</b><p>Role · round · team · question strategy</p></div>
+   <div class="skill"><b>Interview Practice</b><p>Turn-based · follow-up · story bank</p></div>
+   <div class="skill"><b>Interview Debrief</b><p>Question bank · answer learning · next round</p></div>
+   <div class="skill"><b>Daily Review</b><p>Jobs · follow-up · interview · pending decisions</p></div>
+   <div class="skill external"><b>External Skill ↗</b><p>Resume writing / research / coaching methodology</p></div>
+   <div class="skill external"><b>External Skill ↗</b><p>Browser automation / specialized connectors</p></div>
+   <div class="skill external"><b>External Skill ↗</b><p>Future ecosystem Skill</p></div>
+   <div class="skill"><b>History Distill</b><p>Old sessions → compact historical nodes</p></div>
+  </div>
+ </div>
+</section>
+
+<section class="section wrap reveal" id="desktop">
+ <div class="sectionhead"><div><div class="kicker">04 · Desktop Interaction</div><h2>Desktop 是驾驶舱。<br/>不是第二个聊天框。</h2></div><p class="lead">重要 Agent 工作必须在这里留下“看得见的状态变化”。点击下面的标签，体验同一个 Job Workspace 如何承载长期资产。</p></div>
+ <div class="card mock">
+  <aside class="sidebar"><div class="traffic"><i class="dot"></i><i class="dot"></i><i class="dot"></i></div><div class="sidebrand">OfferU</div><div class="sideitem">Today</div><div class="sideitem">Pipeline</div><div class="sideitem active">Jobs</div><div class="sideitem">Profile</div><div class="sideitem">Resumes</div><div class="sideitem">Interviews</div></aside>
+  <div class="workspace">
+   <div class="topbar"><div class="jobtitle">腾讯 · Agent Runtime 技术产品</div><span class="status">High Priority</span></div>
+   <div class="tabbar" id="tabs"><button class="on" data-tab="overview">Overview</button><button data-tab="role">Role Intelligence</button><button data-tab="team">Company & Team</button><button data-tab="resume">Resume Diff</button><button data-tab="application">Application</button><button data-tab="interview">Interview</button></div>
+   <div class="panel on" id="overview">
+    <div class="dashgrid"><div class="mini"><h4>Why this ranks #1</h4><div class="row"><span>Agent / Runtime 产品经验</span><b>Strong</b></div><div class="row"><span>开源 / Developer Ecosystem</span><b>Strong</b></div><div class="row"><span>国际客户 / 英语口语</span><b class="muted">Gap</b></div><div class="row"><span>地点 · 深圳</span><b>Fit</b></div></div><div class="mini"><h4>Fit Evidence</h4><span class="muted" style="font-size:11px">不是“成功率”，而是投递优先级。</span><div style="margin-top:16px">Hard requirements<div class="bar"><i style="width:88%"></i></div></div><div style="margin-top:12px">Evidence match<div class="bar"><i style="width:82%"></i></div></div><div style="margin-top:12px">Goal alignment<div class="bar"><i style="width:94%"></i></div></div></div></div>
+   </div>
+   <div class="panel" id="role"><div class="grid2"><div class="mini"><h4>Common / Table Stakes · 21 similar JDs</h4><div class="row"><span>Agent / LLM 产品</span><b>18 / 21</b></div><div class="row"><span>技术方案 / 架构理解</span><b>16 / 21</b></div><div class="row"><span>客户需求抽象</span><b>14 / 21</b></div><div class="row"><span>英文沟通</span><b>12 / 21</b></div></div><div class="mini hl"><h4>Target-specific Signals</h4><div class="row"><span>Agent Runtime</span><b>Unique</b></div><div class="row"><span>海外国际客户</span><b>Unique</b></div><div class="row"><span>Developer Ecosystem</span><b>High</b></div><div class="row"><span>Solution Architecture</span><b>High</b></div></div></div></div>
+   <div class="panel" id="team"><div class="grid3"><div class="mini"><h4>Business Group</h4><p class="muted" style="font-size:12px">来源：官方招聘页 / 产品页 / 公开报道</p><b>CSIG · Agent Platform</b></div><div class="mini"><h4>Team Signals</h4><div class="row"><span>当前重点</span><b>Runtime</b></div><div class="row"><span>客户</span><b>International</b></div><div class="row"><span>Unknown</span><b>汇报线</b></div></div><div class="mini"><h4>Questions to Ask</h4><div class="row"><span>HR</span><b>后续流程？</b></div><div class="row"><span>HM</span><b>3–6 月成功标准？</b></div><div class="row"><span>Peer</span><b>真实协作边界？</b></div></div></div></div>
+   <div class="panel" id="resume"><div class="mini"><h4>Project Experience · Before / After</h4><div class="diff"><div class="diffbox"><b>Before</b><p class="del">负责 AI 项目开发与产品相关工作，参与多个项目落地。</p></div><div class="diffbox hl"><b>After · evidence-grounded</b><p class="add">主导 Agent 工作流与可视化生成产品从 0→1 落地，将技术能力包装为可复用产品链路，并通过真实项目持续验证。</p></div></div><div class="row"><span>为什么改</span><b>对齐 Runtime / Product Delivery</b></div><div class="row"><span>依据</span><b>Profile evidence + Role Benchmark</b></div></div></div>
+   <div class="panel" id="application"><div class="grid2"><div class="mini"><h4>Application State</h4><div class="row"><span>Materials ready</span><b>✓</b></div><div class="row"><span>Form prepared</span><b>✓</b></div><div class="row"><span>User reviewed</span><b>✓</b></div><div class="row"><span>Submitted</span><b class="muted">Pending</b></div><div class="row"><span>Receipt verified</span><b class="muted">—</b></div></div><div class="mini"><h4>Just-in-time capability</h4><p class="muted" style="font-size:12px">只有点击“辅助投递”时才检测 Browser Automation。手机号、OTP、CAPTCHA、2FA 由用户接管。</p><div class="row"><span>Playwright</span><b>Ready</b></div><div class="row"><span>Portal account</span><b>Need sign-in</b></div></div></div></div>
+   <div class="panel" id="interview"><div class="grid2"><div class="mini"><h4>Round 2 · Hiring Manager</h4><div class="row"><span>本轮重点</span><b>产品判断 / Runtime</b></div><div class="row"><span>历史弱项</span><b>英语表达</b></div><div class="row"><span>高频真题</span><b>Agent Architecture</b></div><div class="row"><span>Story Bank</span><b>OfferU / Flovart</b></div></div><div class="mini hl"><h4>Learning from last round</h4><div class="row"><span>实际追问</span><b>商业化</b></div><div class="row"><span>表现</span><b class="muted">一般</b></div><div class="row"><span>下一轮动作</span><b>补 90s Story</b></div><div class="row"><span>新 Team 情报</span><b>海外客户优先</b></div></div></div></div>
+  </div>
+ </div>
+</section>
+
+<section class="section wrap reveal" id="data">
+ <div class="sectionhead"><div><div class="kicker">05 · Data Model</div><h2>不仅建“我的 Profile”。<br/>也建“对方的 Intelligence”。</h2></div><p class="lead">OfferU 的长期价值来自两个持续增长的认知模型：Candidate Profile 与 Counterparty Intelligence，中间由 Job Workspace 串联。</p></div>
+ <div class="entitygrid">
+  <div class="entity"><div class="tag">Candidate</div><h4>Career Profile</h4><p>经历 · 项目 · 开源 · 技能 · 目标 · 约束 · Evidence · Learning</p></div>
+  <div class="entity"><div class="tag">Counterparty</div><h4>Company / Team</h4><p>事业群 · 团队 · 产品 · 招聘流程 · Recruiter · Interviewer</p></div>
+  <div class="entity"><div class="tag">Target</div><h4>Job Workspace</h4><p>JD · Fit · Role Benchmark · Materials · Timeline · Interview</p></div>
+  <div class="entity"><div class="tag">Learning</div><h4>Interview Memory</h4><p>Question Bank · Story Bank · Weak Areas · Team Observations</p></div>
+ </div>
+ <div class="card pad" style="margin-top:14px">
+  <svg viewBox="0 0 1100 330" width="100%" role="img" aria-label="OfferU data flow">
+   <defs><linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="#0071e3"/><stop offset="1" stop-color="#5e5ce6"/></linearGradient><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8e8e93"/></marker></defs>
+   <g font-family="-apple-system,PingFang SC" font-size="18" fill="currentColor">
+    <rect x="20" y="40" width="210" height="90" rx="22" fill="none" stroke="url(#g)" stroke-width="2"/><text x="125" y="75" text-anchor="middle" font-weight="700">Candidate Profile</text><text x="125" y="103" text-anchor="middle" font-size="13" fill="#8e8e93">事实 / Evidence / Goals</text>
+    <rect x="20" y="200" width="210" height="90" rx="22" fill="none" stroke="#8e8e93"/><text x="125" y="235" text-anchor="middle" font-weight="700">Company Intelligence</text><text x="125" y="263" text-anchor="middle" font-size="13" fill="#8e8e93">Company / Team / People</text>
+    <rect x="445" y="105" width="210" height="110" rx="26" fill="url(#g)" opacity=".95"/><text x="550" y="150" text-anchor="middle" fill="white" font-weight="800">Job Workspace</text><text x="550" y="177" text-anchor="middle" fill="white" font-size="13">Role Benchmark · Timeline</text>
+    <rect x="870" y="25" width="210" height="75" rx="20" fill="none" stroke="#8e8e93"/><text x="975" y="58" text-anchor="middle" font-weight="700">Resume Versions</text><text x="975" y="81" text-anchor="middle" font-size="13" fill="#8e8e93">Job-specific artifacts</text>
+    <rect x="870" y="128" width="210" height="75" rx="20" fill="none" stroke="#8e8e93"/><text x="975" y="161" text-anchor="middle" font-weight="700">Application</text><text x="975" y="184" text-anchor="middle" font-size="13" fill="#8e8e93">Receipt / Progress</text>
+    <rect x="870" y="231" width="210" height="75" rx="20" fill="none" stroke="#8e8e93"/><text x="975" y="264" text-anchor="middle" font-weight="700">Interview Memory</text><text x="975" y="287" text-anchor="middle" font-size="13" fill="#8e8e93">Questions / Stories / Learning</text>
+   </g>
+   <g stroke="#8e8e93" stroke-width="2" fill="none" marker-end="url(#arr)"><path d="M230 85 C330 85 340 135 445 145"/><path d="M230 245 C330 245 340 190 445 175"/><path d="M655 145 C750 130 780 70 870 64"/><path d="M655 160 C760 160 780 165 870 165"/><path d="M655 178 C760 205 780 265 870 267"/><path d="M975 231 C900 218 780 210 655 190"/></g>
+  </svg>
+  <div class="legend"><span><i class="fact"></i>Verified fact</span><span><i class="signal"></i>Public signal</span><span><i class="obs"></i>User observation</span><span><i class="unknown"></i>Unknown / inference</span></div>
+ </div>
+</section>
+
+<section class="section wrap reveal" id="hitl">
+ <div class="sectionhead"><div><div class="kicker">06 · Human in the Loop</div><h2>不要审批 79 个命令。<br/>只在人真正该决定的地方停下来。</h2></div><p class="lead">把 Ask 与 Approval 分开：Ask 是协作，Approval 是授权。底层写操作可以审计，但不等于都需要用户点击。</p></div>
+ <div class="dual">
+  <div class="card decision"><h3>Ask</h3><p>“你想怎么做？”</p><div class="ex">✓ 产品型还是技术型定位<br/>✓ 是否突出开源<br/>✓ 哪几个岗位今天优先投<br/>✓ 是否授权读取工作目录</div></div>
+  <div class="centerarrow">≠</div>
+  <div class="card decision"><h3>Approval</h3><p>“我要执行高风险 / 不可逆动作。”</p><div class="ex">✓ 新 Career Truth<br/>✓ 外部发送 / 最终提交<br/>✓ 敏感字段 / 账号注册<br/>✓ 删除重要用户数据</div></div>
+ </div>
+ <div class="card pad" style="margin-top:14px"><b>Resume Tailoring · 正确的 4 个决策</b><div class="flow" style="margin-top:16px"><div class="step"><div class="n">1</div><h3>定位 / 结构</h3><p>产品 vs 技术、Section 顺序。</p></div><div class="arrow">→</div><div class="step"><div class="n">2</div><h3>经历取舍</h3><p>突出、弱化、删除哪些证据。</p></div><div class="arrow">→</div><div class="step"><div class="n">3</div><h3>Section Diff</h3><p>逐段 Before / After。</p></div><div class="arrow">→</div><div class="step"><div class="n">4</div><h3>Final Resume</h3><p>采用这一版并生成版本。</p></div></div></div>
+</section>
+
+<section class="section wrap reveal">
+ <div class="sectionhead"><div><div class="kicker">07 · Connectors & Lazy Setup</div><h2>能力按需出现。<br/>不要第一天把用户配到崩溃。</h2></div><p class="lead">Onboarding 只完成 Desktop + Profile + Goals。BOSS、邮箱、Playwright、ATS 登录都在第一次真正需要时才配置。</p></div>
+ <div class="connector">
+  <div class="card conn"><div class="lazy">JUST-IN-TIME</div><h3>BOSS Connector</h3><p>定位：Job + Progress，不是 Profile importer。</p><ul><li>Search / Detail / Recommendation</li><li>Applied / Interviews / Chat state</li><li>Greet / re-engagement candidates</li><li>映射回同一 Job / Application</li></ul></div>
+  <div class="card conn"><div class="lazy">JUST-IN-TIME</div><h3>Browser Automation</h3><p>只有用户点击投递辅助时才检测。</p><ul><li>注册 / 登录 / 填表 / 上传</li><li>复用已授权登录态</li><li>OTP / CAPTCHA / 2FA 用户接管</li><li>Receipt capture</li></ul></div>
+  <div class="card conn"><div class="lazy">JUST-IN-TIME</div><h3>Email / Calendar</h3><p>作为进展 Evidence Source，而不是直接改 Pipeline。</p><ul><li>分类 / 关联 / 去重</li><li>Ambiguity review</li><li>Interview signal</li><li>Progress candidate → stage event</li></ul></div>
+ </div>
+</section>
+
+<section class="section wrap reveal" id="interview">
+ <div class="sectionhead"><div><div class="kicker">08 · Interview Intelligence</div><h2>准备和复盘是同一条学习回路。</h2></div><p class="lead">每次真实面试不只是“总结”，而是更新 Question Bank、Story Bank、Team Intelligence 与个人弱项，下一轮直接复用。</p></div>
+ <div class="loop">
+  <div class="node"><div class="num">01</div><h4>Research</h4><p>Role Benchmark · Company / Team · 公开面经 · 当前 round</p></div>
+  <div class="node"><div class="num">02</div><h4>Prepare</h4><p>Likely questions · Story selection · Questions to ask</p></div>
+  <div class="node"><div class="num">03</div><h4>Real Interview</h4><p>实际问题 · 追问 · 对方反应 · 新团队信息</p></div>
+  <div class="node"><div class="num">04</div><h4>Debrief</h4><p>逐题复盘 · 强弱项 · 缺失 story / knowledge</p></div>
+  <div class="node"><div class="num">05</div><h4>Question Bank</h4><p>近期哪些主题在真实求职中被频繁考察</p></div>
+  <div class="node"><div class="num">06</div><h4>Story Bank</h4><p>哪些 STAR / Project story 表达有效，哪些需要重写</p></div>
+  <div class="node"><div class="num">07</div><h4>Career Learning</h4><p>经用户审核的长期学习进入 Memory / Profile</p></div>
+  <div class="node"><div class="num">08</div><h4>Next Round</h4><p>下一次准备自动继承，而不是从零开始</p></div>
+ </div>
+</section>
+
+<section class="section wrap reveal" id="maintain">
+ <div class="sectionhead"><div><div class="kicker">09 · Long-lived Product</div><h2>用户几天不打开，系统也不能失忆。</h2></div><p class="lead">测试需要“全清”；长期用户需要“蒸馏继续”。两条路径不能混在一起。</p></div>
+ <div class="timeline">
+  <div class="card hist"><h3>Clean Reset · Owner Dogfood</h3><div class="historynode"><b>1. Backup</b><p>备份 OfferU 数据，不动外部真实简历与 Agent Memory。</p></div><div class="historynode"><b>2. Clear</b><p>清 Career data / onboarding / session / cache。</p></div><div class="historynode"><b>3. Fresh Start</b><p>模拟真正第一次安装用户。</p></div></div>
+  <div class="card hist"><h3>Distill & Continue · Real User</h3><div class="historynode"><b>旧对话 / 旧 Task / 旧 Cache</b><p>检测 stale / duplicate / transient。</p></div><div class="historynode"><b>→ Historical Node</b><p>“投递腾讯 Agent Runtime；简历改为产品/FDE 双定位；英语口语为主要缺口。”</p></div><div class="historynode"><b>→ Refresh</b><p>保留事实、决策、证据与结果；刷新外部现实信息。</p></div></div>
+ </div>
+</section>
+
+<section class="section wrap reveal">
+ <div class="sectionhead"><div><div class="kicker">10 · Acceptance Model</div><h2>“有代码”不等于“产品做好了”。</h2></div><p class="lead">每个能力都要同时回答源码、产品路径、真人验收三层问题。</p></div>
+ <div class="card pad"><table class="matrix"><thead><tr><th>Capability</th><th>Source / code exists</th><th>Product path reachable</th><th>Real owner acceptance</th></tr></thead><tbody><tr><td>Profile onboarding</td><td><span class="badge works">YES</span></td><td><span class="badge partial">VERIFY</span></td><td><span class="badge target">DOGFOOD</span></td></tr><tr><td>Ranked daily jobs</td><td><span class="badge partial">PARTIAL</span></td><td><span class="badge target">TARGET</span></td><td><span class="badge target">NOT TESTED</span></td></tr><tr><td>Resume section diff</td><td><span class="badge partial">VERIFY</span></td><td><span class="badge target">TARGET</span></td><td><span class="badge target">NOT TESTED</span></td></tr><tr><td>Interview learning loop</td><td><span class="badge works">YES / PARTIAL</span></td><td><span class="badge partial">VERIFY</span></td><td><span class="badge target">DOGFOOD</span></td></tr></tbody></table></div>
+</section>
+
+<section class="section wrap reveal"><div class="card callout">One Profile. One Career Truth.<br/><em>One ranked work queue.</em><br/>A few meaningful decisions.<br/>Every outcome improves the next one.</div></section>
+</main>
+
+<footer class="wrap">OfferU Career OS · Concept Blueprint · 2026-10-02<br/>This page describes the target product experience and data/interaction design, not the current implementation status.</footer>
+<script>
+const root=document.documentElement; document.getElementById('theme').onclick=()=>{const current=root.dataset.theme; root.dataset.theme=current==='dark'?'light':current==='light'?'dark':(matchMedia('(prefers-color-scheme: dark)').matches?'light':'dark')};
+const tabs=[...document.querySelectorAll('#tabs button')]; tabs.forEach(b=>b.onclick=()=>{tabs.forEach(x=>x.classList.remove('on'));document.querySelectorAll('.panel').forEach(x=>x.classList.remove('on'));b.classList.add('on');document.getElementById(b.dataset.tab).classList.add('on')});
+const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting)e.target.classList.add('in')}),{threshold:.08});document.querySelectorAll('.reveal').forEach(x=>io.observe(x));
+</script>
+</body></html>
