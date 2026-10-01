@@ -757,9 +757,9 @@ def test_web_showcase_never_becomes_a_local_agent_bridge() -> None:
     )
 
     assert 'SHOWCASE || /^\\/resume\\/print' in connection
-    assert 'if (probeInFlight.current || SHOWCASE) return;' in connection
-    assert "网页演示使用内置 Agent，不连接本机 Coding Agent" in panel
-    assert "演示站不会尝试访问 localhost" in panel
+    assert 'if (!desktop || SHOWCASE) return;' in panel
+    assert "展示模式使用 Demo Agent 和虚构数据" in panel
+    assert "当前网页不会扫描本机或安装接入文件" in panel
     assert "Agent 对话不依赖 Python 后端" in showcase_llm
 
 

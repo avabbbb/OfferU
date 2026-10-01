@@ -1,7 +1,7 @@
 # OfferU Entry, Onboarding & Dogfood Contract
 
 Status: **CURRENT PRODUCT DETAIL**  
-Updated: 2026-09-27
+Updated: 2026-09-30
 
 This document expands the first-use and distribution contract defined by [Current Product North Star](./current-product.md). If wording conflicts, `GOAL.md` and `current-product.md` win.
 
@@ -41,17 +41,13 @@ The normal user should experience:
 Download OfferU
 → install
 → open OfferU
-→ copy one generic OfferU connection prompt
-→ paste it into the local Agent already in use
-→ Agent downloads the canonical Skill from the public GitHub repository
-→ Agent resolves the current local runtime command without guessing install paths
-→ Agent follows the setup guide for its current environment
-→ verify access with one read-only Operation
 → import resume
 → optional authorized AI memory
 → save one real Job
 → canonical Job Workspace
 → Today tells the user what needs attention next
+→ connect/update an existing Agent through Desktop when needed
+→ verify access with a real read-only Operation
 ~~~
 
 The user must not be asked to install or understand:
@@ -66,7 +62,7 @@ The user must not be asked to install or understand:
 - Skill folders or provider-specific setup screens;
 - CLI commands.
 
-OfferU's canonical Skill is publicly available in the GitHub repository, independent of whether the local backend is running. The copied prompt asks the Agent to install only that Skill in its own documented Skills directory; the Skill explains host-specific paths. The local backend may provide an installation-specific CLI projection after installation, but it is never the Skill download source. The external Agent owns its own account/login/model. OfferU never asks the user to duplicate model credentials, and copying the prompt is not treated as a successful connection.
+OfferU's canonical Skill is publicly available as a bootstrap contract. Desktop installs/updates the runtime-bound projection through a supported host adapter; ordinary users never copy connection prompts or manage Skill folders. The external Agent owns its account/login/model. Discovery, Skill installation and real Operation readback remain distinct. Consumer Agents use officially supported connectors only when the actual transport/auth and account capabilities are accepted; manual material collaboration is an explicit fallback, not a connection.
 
 If no supported external Agent is ready, the user may continue setup and use the OfferU fallback path. “External-first” must not become “external-Agent-required”.
 
@@ -103,12 +99,12 @@ Copying a prompt is only a handoff. The Agent must download the Skill, execute t
 
 The implemented beginner wizard is intentionally short:
 
-1. **准备本地 Agent**
-   - copy one generic connection prompt;
-   - paste it into the local coding Agent already in use;
-   - let the Agent download the canonical GitHub Skill and follow the matching setup guide;
-   - verify with a read-only Operation and report the actual current page.
-   - copying alone never means “connected”; no provider picker or host list is shown.
+1. **准备你的 Agent** — optional during first value
+   - Desktop discovers supported installed hosts;
+   - install/update runtime-bound Skill through the existing adapter;
+   - verify with a real model-issued read-only Operation;
+   - show detected, installed, verified and blocked separately; advanced host details do not gate Profile/Job setup;
+   - users may continue with the built-in Agent without changing any authority or permission rule.
 
 2. **导入简历**
    - local extraction;

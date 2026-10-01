@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from app.ops import get_operation_schema, list_operations
+from app.services.agent_skill_registry import tool_contract_snapshot
 from app.services.operation_projection import (
     execute_or_propose_operation,
 )
@@ -79,6 +80,7 @@ async def operation_catalog(
         ]
     return {
         "ok": True,
+        "tool_contract": tool_contract_snapshot(),
         "operation_count": len(operations),
         "operations": operations,
     }

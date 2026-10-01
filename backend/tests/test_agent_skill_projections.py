@@ -47,6 +47,15 @@ class AgentSkillProjectionTests(unittest.TestCase):
             {"get_current_view"},
         )
 
+    def test_cli_and_mcp_advertise_one_tool_contract(self) -> None:
+        from app.mcp_server import operation_catalog
+
+        cli_contract = _manifest()["tool_contract"]
+        mcp_contract = asyncio.run(operation_catalog())["tool_contract"]
+        self.assertEqual(cli_contract, mcp_contract)
+        self.assertEqual(cli_contract["approval_authority"], "independent_user")
+        self.assertEqual(cli_contract["bootstrap_operations"], ["get_current_view"])
+
     def test_slash_commands_resolve_through_the_registry(self) -> None:
         self.assertEqual(resolve_skill("/offeru").id, "discovery")
         self.assertEqual(resolve_skill("/scan").id, "scan_jobs")
@@ -74,9 +83,13 @@ class AgentSkillProjectionTests(unittest.TestCase):
             Path(".copilot/SKILL.md"),
         })
         for content in rendered.values():
-            self.assertIn("python -m app.cli manifest --pretty", content)
-            self.assertIn("python -m app.cli manifest --skill <skill-id> --pretty", content)
+            self.assertIn("<offeru-cli> manifest --pretty", content)
+            self.assertIn("<offeru-cli> manifest --skill <skill-id> --pretty", content)
             self.assertIn("career Skills", content)
+            self.assertNotIn("python -m app.cli", content)
+            self.assertNotIn("Work from `backend/`", content)
+            self.assertNotIn("~/.claude/skills", content)
+            self.assertNotIn("/api/agent/runtime/skill", content)
             self.assertNotIn("python -m app.cli confirm", content)
             self.assertNotIn("agent_playbook --arg detail=full", content)
             self.assertNotIn("python -m app.cli api ", content)
@@ -84,20 +97,27 @@ class AgentSkillProjectionTests(unittest.TestCase):
             self.assertNotIn("http://localhost:8000/api", content)
         for path, content in rendered.items():
             if path in {Path(".agents/skills/offeru/SKILL.md"), Path(".claude/skills/offeru/SKILL.md"), Path(".copilot/SKILL.md")}:
-                self.assertIn("Install in the Agent you are using", content)
+                self.assertIn("installed-product Agent router", content)
                 self.assertIn("https://raw.githubusercontent.com/avabbbb/OfferU/main/.agents/skills/offeru/SKILL.md", content)
-                self.assertIn("http://127.0.0.1:8766/api/agent/runtime/skill", content)
-                self.assertIn("runtime-specific CLI", content)
-                self.assertIn("~/.agents/skills/offeru/SKILL.md", content)
-                self.assertIn("~/.claude/skills/offeru/SKILL.md", content)
-                self.assertIn("~/.pi/agent/skills/offeru/SKILL.md", content)
-                self.assertIn("~/.codebuddy/skills/offeru/SKILL.md", content)
-                self.assertIn("do not change its settings", content)
+                self.assertIn("<!-- offeru-runtime-binding -->", content)
+                self.assertIn("连接 Agent / 更新接入", content)
+                self.assertIn("Source development is allowed only", content)
                 self.assertIn("get_agent_connection_nonce", content)
                 self.assertIn("get_current_view", content)
 
     def test_checked_in_projections_have_no_drift(self) -> None:
         self.assertEqual(projection_drift(PROJECT_ROOT), [])
+
+    def test_product_authorities_do_not_restore_copy_prompt_onboarding(self) -> None:
+        for name in ("GOAL.md", "AGENTS.md", "docs/product/current-product.md", "docs/product/entry-onboarding-and-dogfood.md"):
+            with self.subTest(authority=name):
+                source = (PROJECT_ROOT / name).read_text(encoding="utf-8")
+                for old_step in ("→ copy one", "→ paste it into the local Agent", "→ 复制一条通用接入提示词"):
+                    self.assertNotIn(old_step, source)
+        source = (PROJECT_ROOT / "docs/product/current-product.md").read_text(encoding="utf-8")
+        self.assertIn("built-in Agent remains capable", source)
+        self.assertIn("exactly one", source.lower())
+
 
 
 if __name__ == "__main__":

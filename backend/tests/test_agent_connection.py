@@ -69,7 +69,7 @@ class AgentConnectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(item["resume_state"], "NOT_VERIFIED")
         self.assertEqual(item["cancel_state"], "NOT_VERIFIED")
 
-    async def test_copy_prompt_is_generic_and_does_not_embed_checkout_path(self):
+    async def test_legacy_prompt_field_directs_to_desktop_without_manual_setup(self):
         with (
             patch.object(connection.runtime, "list_local_executors", AsyncMock(return_value={"items": []})),
             patch.object(connection, "list_provider_health", AsyncMock(return_value={"providers": []})),
@@ -77,13 +77,10 @@ class AgentConnectionTests(unittest.IsolatedAsyncioTestCase):
             result = await connection.get_agent_connections()
 
         prompt = result["connect_prompt"]
-        self.assertIn(
-            "https://raw.githubusercontent.com/avabbbb/OfferU/main/.agents/skills/offeru/SKILL.md",
-            prompt,
-        )
+        self.assertIn("连接 Agent / 更新接入", prompt)
+        self.assertIn("runtime-bound Skill", prompt)
         self.assertNotIn("http://127.0.0.1:8766", prompt)
-        self.assertIn("get_current_view", prompt)
-        self.assertIn("Operation Registry", prompt)
+        self.assertNotIn("下载官方", prompt)
         self.assertNotIn(str(Path(__file__).resolve().parents[2]), prompt)
         self.assertNotIn("Codex", prompt)
         self.assertNotIn("Claude", prompt)
