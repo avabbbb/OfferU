@@ -5,6 +5,8 @@ Date: 2026-10-01
 
 This document records the product and interaction direction established during owner dogfood. Higher-level authority remains GOAL.md and docs/product/current-product.md.
 
+Interactive visual blueprint: [OfferU Career OS Product Blueprint](./offeru-career-os-blueprint.html). The HTML is a target-experience/design artifact, not implementation-status evidence.
+
 ## 1. Product outcome
 
 OfferU should behave as a continuous career operating system rather than a collection of disconnected tools.
