@@ -51,6 +51,8 @@ import { SHOWCASE } from "@/lib/showcase/router";
 import { useConfig, updateConfig } from "@/lib/hooks";
 import { AgentConnectionPanel } from "@/components/workbench/AgentConnectionPanel";
 import { JobSourceConnectionsCard } from "@/components/settings/JobSourceConnectionsCard";
+import BuildIdentityPanel from "@/components/settings/BuildIdentityPanel";
+import { FreshResetPanel } from "@/components/settings/FreshResetPanel";
 
 interface ProviderPreset {
   id: string;
@@ -1344,7 +1346,9 @@ export default function SettingsPage() {
       <JobSourceConnectionsCard />
 
 
+      <BuildIdentityPanel />
       <LocalDataSafetyCard />
+      <FreshResetPanel />
 
       <LocalFeedbackCard />
 

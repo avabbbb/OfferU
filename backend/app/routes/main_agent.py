@@ -1127,6 +1127,12 @@ async def reset_demo_data() -> dict[str, Any]:
     return await _ui_operation_outputs("reset_demo_data", {})
 
 
+@router.post("/data/fresh-reset/proposal")
+async def propose_fresh_local_reset() -> dict[str, Any]:
+    """Persist the protected reset proposal; execution awaits Desktop approval."""
+    return await _ui_operation_projection("reset_local_business_data", {})
+
+
 @router.get("/data/safety/status")
 async def data_safety_status() -> dict[str, Any]:
     return await _ui_operation_outputs("get_data_safety_status", {})

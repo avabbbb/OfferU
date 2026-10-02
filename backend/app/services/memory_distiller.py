@@ -27,6 +27,7 @@ from app.config import get_settings
 from app.services.security_redaction import safe_error_message
 from app.database import async_session
 from app.models.models import CareerSource, LearningObservation, ProfileSection
+from app.services.reset_write_guard import reset_write_guard
 
 _logger = logging.getLogger(__name__)
 
@@ -203,7 +204,7 @@ async def _related_observation_context(query_text: str) -> list[str]:
         return []
 
 
-async def distill_observations(
+async def _distill_observations_unlocked(
     *,
     observation_ids: Optional[list[int]] = None,
     limit: int = 20,
@@ -331,7 +332,10 @@ async def distill_observations(
 
     consolidation = None
     if distilled_ids:
-        consolidation = await consolidate_memory_observations(observation_ids=distilled_ids)
+        consolidation = await consolidate_memory_observations(
+            observation_ids=distilled_ids,
+            _reset_guard_held=True,
+        )
 
     return {
         "processed": len(rows),
@@ -342,7 +346,19 @@ async def distill_observations(
     }
 
 
-async def distill_conversation(
+async def distill_observations(
+    *,
+    observation_ids: Optional[list[int]] = None,
+    limit: int = 20,
+) -> dict[str, Any]:
+    async with reset_write_guard():
+        return await _distill_observations_unlocked(
+            observation_ids=observation_ids,
+            limit=limit,
+        )
+
+
+async def _distill_conversation_unlocked(
     *,
     conversation_text: str,
     session_key: str,
@@ -397,11 +413,25 @@ async def distill_conversation(
     )
     if observation.get("duplicate"):
         return {"recorded": False, "reason": "duplicate", "observation_id": observation.get("id")}
-    result = await distill_observations(observation_ids=[int(observation["id"])])
+    result = await _distill_observations_unlocked(observation_ids=[int(observation["id"])])
     return {"recorded": True, "observation_id": observation.get("id"), **result}
 
 
-async def promote_session_memory() -> dict[str, Any]:
+async def distill_conversation(
+    *,
+    conversation_text: str,
+    session_key: str,
+    metadata: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    async with reset_write_guard():
+        return await _distill_conversation_unlocked(
+            conversation_text=conversation_text,
+            session_key=session_key,
+            metadata=metadata,
+        )
+
+
+async def _promote_session_memory_unlocked() -> dict[str, Any]:
     """把 harness 会话记忆(JSON 文件)打包为一条 observation → 提炼 → 收件箱。
 
     单向 session → career：career_memory 不回写 harness_memory，避免循环。"""
@@ -436,8 +466,13 @@ async def promote_session_memory() -> dict[str, Any]:
     )
     if observation.get("duplicate"):
         return {"recorded": False, "reason": "duplicate", "observation_id": observation.get("id")}
-    result = await distill_observations(observation_ids=[int(observation["id"])])
+    result = await _distill_observations_unlocked(observation_ids=[int(observation["id"])])
     return {"recorded": True, "observation_id": observation.get("id"), **result}
+
+
+async def promote_session_memory() -> dict[str, Any]:
+    async with reset_write_guard():
+        return await _promote_session_memory_unlocked()
 
 
 async def search_memory(*, query: str, limit: int = 8) -> dict[str, Any]:

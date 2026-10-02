@@ -8,7 +8,7 @@ Read `AGENTS.md`, `GOAL.md`, `docs/product/current-product.md`, `CONTEXT.md` and
 
 ## Current continuation
 
-The S0/S1 implementation goal is paused, with unfinished changes preserved. Do not continue it without a user resume. S0 work is in isolated worktree `H:\tmp\offeru\s0-20261002\worktree`, branch `feat/s0-state-runtime-integrity`, from `588d86082e99323da15fb5dd584916d3d938471a`. The original checkout has existing changes; do not overwrite or reset them. Inspect actual Git status before continuing; these locations identify this checkpoint rather than permanent launch configuration.
+The owner resumed S0/S1 implementation on 2026-10-02. S0 work is in isolated worktree `H:\tmp\offeru\s0-20261002\worktree`, branch `feat/s0-state-runtime-integrity`, from `588d86082e99323da15fb5dd584916d3d938471a`. The original checkout has existing changes; do not overwrite or reset them. Inspect actual Git status before continuing; these locations identify this checkpoint rather than permanent launch configuration.
 
 Finish S0 before entering S1: truthful packet/resource readiness and Job projection; normal and abnormal Desktop shutdown; backed-up isolated clean reset without stale sessions returning; matching compiled Desktop/sidecar identity visible in the product. Build and run the current source package. A prior installer, seeded old build resource or passing unit test is not packaged-Desktop acceptance.
 

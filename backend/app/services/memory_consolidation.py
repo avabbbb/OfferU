@@ -9,6 +9,7 @@ from app.models.models import CareerSource, LearningObservation, ProfileSection
 from app.services.career_memory import TARGET_TIERS, create_memory_proposal
 from app.services.profile_schema import is_valid_profile_section_type, normalize_section_type_alias
 from app.services.security_redaction import safe_error_message
+from app.services.reset_write_guard import reset_write_guard
 
 
 def _clean_text(value: Any, field: str, *, limit: int, required: bool = False) -> str:
@@ -77,7 +78,7 @@ async def _current_value(candidate: dict[str, Any]) -> dict[str, Any]:
     return dict(current.content_json or {}) if current is not None else {}
 
 
-async def consolidate_memory_observations(
+async def _consolidate_memory_observations_unlocked(
     *,
     observation_ids: Optional[list[int]] = None,
     limit: int = 100,
@@ -169,3 +170,21 @@ async def consolidate_memory_observations(
         "errors": errors,
         "proposals": proposals,
     }
+
+
+async def consolidate_memory_observations(
+    *,
+    observation_ids: Optional[list[int]] = None,
+    limit: int = 100,
+    _reset_guard_held: bool = False,
+) -> dict[str, Any]:
+    if _reset_guard_held:
+        return await _consolidate_memory_observations_unlocked(
+            observation_ids=observation_ids,
+            limit=limit,
+        )
+    async with reset_write_guard():
+        return await _consolidate_memory_observations_unlocked(
+            observation_ids=observation_ids,
+            limit=limit,
+        )

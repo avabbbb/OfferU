@@ -13,7 +13,7 @@ import asyncio
 import hashlib
 import logging
 from collections import OrderedDict
-from typing import Optional
+from typing import Any, Optional
 
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import Distance, PointStruct, VectorParams, FieldCondition, Filter, MatchValue
@@ -67,6 +67,9 @@ class _LRUCache:
         if key in self:
             return self[key]
         return default
+
+    def clear(self) -> None:
+        self._data.clear()
 
 
 class SemanticSearchService:
@@ -371,6 +374,23 @@ class SemanticSearchService:
             collection_name=COLLECTION_MEMORY_OBSERVATIONS,
             points_selector=[observation_id],
         )
+
+    async def reset_career_indexes(self) -> dict[str, Any]:
+        """Clear only OfferU-owned Career collections and their process cache."""
+        self._embedding_cache.clear()
+        client = await self._get_client()
+        collections = await client.get_collections()
+        existing = {item.name for item in collections.collections}
+        names = (
+            COLLECTION_PROFILE_BULLETS,
+            COLLECTION_JOB_DESCRIPTIONS,
+            COLLECTION_MEMORY_OBSERVATIONS,
+        )
+        cleared = [name for name in names if name in existing]
+        for name in cleared:
+            await client.delete_collection(collection_name=name)
+        await self._ensure_collections()
+        return {"collections_cleared": cleared, "embedding_cache_cleared": True}
 
 
 # =============================================

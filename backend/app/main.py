@@ -458,7 +458,9 @@ if _HAS_MCP and mcp_server is not None:
 @app.get("/api/health")
 async def health_check():
     from app.services.startup_recovery import get_startup_recovery_status
+    from app.services.runtime_identity import get_runtime_identity
 
+    identity = get_runtime_identity(app.version)
     database_url = settings.database_url
     database_path = (
         database_url.rsplit("///", 1)[-1]
@@ -478,9 +480,43 @@ async def health_check():
         "database_path": database_filename,
         "database_path_redacted": True,
         "runtime_mode": os.getenv("OFFERU_RUNTIME_MODE") or os.getenv("OFFERU_INTERVIEW_RUNTIME") or "local",
+        "runtime_instance_id": identity["runtime_instance_id"],
+        "build_identity": {
+            key: identity[key]
+            for key in (
+                "version",
+                "commit",
+                "build_timestamp",
+                "data_root",
+                "runtime_type",
+                "dirty",
+                "source_fingerprint",
+                "build_source",
+            )
+        },
         "runtime": "python",
         "architecture": "file-first-agent-kernel",
         "mcp_enabled": _HAS_MCP,
         "startup_restore": startup_restore,
         "startup_recovery": get_startup_recovery_status(),
     }
+
+
+@app.get("/api/diagnostics/runtime-identity")
+async def diagnostics_runtime_identity(request: Request) -> dict[str, object]:
+    """Expose the local runtime identity to the installed Diagnostics/About UI."""
+
+    client = request.client
+    if client is None:
+        raise HTTPException(status_code=403, detail="本地诊断信息仅供本机查看")
+    try:
+        import ipaddress
+
+        if not ipaddress.ip_address(client.host).is_loopback:
+            raise HTTPException(status_code=403, detail="本地诊断信息仅供本机查看")
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail="本地诊断信息仅供本机查看") from exc
+
+    from app.services.runtime_identity import get_runtime_identity
+
+    return get_runtime_identity(app.version)

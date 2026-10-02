@@ -15,6 +15,7 @@ $legacyTauriResourceDir = Join-Path $projectRoot "frontend\src-tauri\resources"
 $legacyAgentRuntimeDir = Join-Path $legacyTauriResourceDir "agent-runtime"
 $legacyNodeResourcePath = Join-Path $legacyTauriResourceDir "node.exe"
 $buildDir = Join-Path $projectRoot ".tmp\offeru-sidecar-build"
+$buildIdentityPath = Join-Path $tauriResourceDir "offeru-build-identity.json"
 $distDir = if ($OutputDir) { $OutputDir } else { $frontendBinDir }
 $resumeFrontendDir = Join-Path $projectRoot "frontend\dist"
 $resumeBrowsersDir = Join-Path $buildDir "resume-browsers"
@@ -49,6 +50,7 @@ $nodePath = if ($env:OFFERU_NODE_PATH) {
 if (-not $nodePath -or -not (Test-Path -LiteralPath $nodePath -PathType Leaf)) {
     throw "Node.js executable was not found; the packaged External executor runtime requires Node >=22.19.0"
 }
+
 $nodeVersionText = (& $nodePath --version).Trim()
 $nodeVersion = $nodeVersionText.TrimStart("v")
 try {
@@ -58,6 +60,11 @@ try {
 }
 if ($parsedNodeVersion -lt [version]"22.19.0") {
     throw "Node.js $nodeVersionText is too old; the packaged External executor runtime requires Node >=22.19.0"
+}
+
+& $nodePath (Join-Path $backendDir "scripts\build_identity.mjs") --output $buildIdentityPath
+if ($LASTEXITCODE -ne 0) {
+    throw "Could not create the immutable OfferU build identity artifact."
 }
 
 if (-not (Test-Path -LiteralPath (Join-Path $agentRuntimeSourceDir "src\hosted-executor-worker.mjs") -PathType Leaf)) {
@@ -122,6 +129,7 @@ try {
     --collect-submodules aiosqlite `
     --add-data "$resumeFrontendDir;resume-frontend" `
     --add-data "$resumeBrowsersDir;resume-browsers" `
+    --add-data "$buildIdentityPath;offeru-assets" `
     --add-data "$(Join-Path $backendDir 'app\agents\skills');app\agents\skills" `
     --add-data "$(Join-Path $backendDir 'tests\fixtures');tests\fixtures" `
     $entryPath

@@ -871,9 +871,16 @@ async def confirm_embedded_agent_action(
         action_id=action_id,
         surface="agent_runtime_ui",
     )
+    latest = await load_agent_run(run_id)
+    reset_terminal = any(
+        isinstance(step, dict)
+        and step.get("tool") == "reset_local_business_data"
+        and step.get("status") in {"completed", "failed", "uncertain"}
+        for step in (latest or {}).get("steps") or []
+    )
     # Only the request that executed the last protected action may start a
     # continuation. Duplicate confirms return receipts without another model turn.
-    if result.get("ok") and result.get("tool_calls"):
+    if not reset_terminal and result.get("ok") and result.get("tool_calls"):
         async with _CONTINUATION_LOCKS.setdefault(run_id, asyncio.Lock()):
             latest = await load_agent_run(run_id)
             if latest and latest.get("status") == "completed" and not pending_actions_for_run(latest):
@@ -910,6 +917,27 @@ async def confirm_embedded_agent_action(
                     # Approval success and continuation success are separate outcomes.
                     if not continued.get("ok"):
                         result.setdefault("warnings", []).append("动作已执行；Agent 续跑失败，请查看 Run 的失败原因。")
+    if reset_terminal:
+        active_worker = worker or get_embedded_agent_worker()
+        try:
+            await active_worker.forget_run_after_fresh_reset(run_id)
+        except Exception as exc:
+            result.setdefault("warnings", []).append(
+                "Reset 已处理，但旧 Python Agent 会话未能正常释放；请重启 OfferU 后再开始新会话。"
+            )
+            await append_agent_run_event(
+                run_id,
+                event_type="runtime.failed",
+                payload={"error": safe_error_message(exc), "phase": "fresh_reset_dispose"},
+            )
+        if latest and latest.get("task_id"):
+            from app.services.career_tasks import stop_live_career_task_after_fresh_reset
+
+            await stop_live_career_task_after_fresh_reset(str(latest["task_id"]))
+        latest = await load_agent_run(run_id)
+        if latest is not None:
+            result["run"] = latest
+        result.pop("continuation", None)
     active_worker = worker or get_embedded_agent_worker()
     if active_worker.active_run_id == run_id:
         try:

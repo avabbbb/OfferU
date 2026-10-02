@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { controlCareerTask, patchJob, useJob, usePools, useProgressBoard, useProgressTimeline, useCareerTasks, type CareerTask } from "@/lib/hooks";
 import { JobAssessmentPlanCard } from "@/components/jobs/JobAssessmentPlanCard";
+import { JobPreparationProgress } from "@/components/jobs/JobPreparationProgress";
 import { InterviewLifecycleCard } from "@/components/career/InterviewLifecycleCard";
 import { ResumeReengagementCard } from "@/components/career/ResumeReengagementCard";
 import { CareerQuestionsPanel } from "@/components/career/CareerQuestionsPanel";
@@ -56,6 +57,10 @@ import {
 } from "@/lib/bauhaus";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { ExternalUrlLink, openExternalUrl } from "@/components/ExternalUrlLink";
+import {
+  projectJobPreparationProgress,
+  type RoleBenchmarkLoadState,
+} from "@/lib/jobPreparationProgress";
 
 const PRE_APPLICATION_STAGE_LABELS: Record<string, string> = {
   research_pending: "等待调研",
@@ -165,6 +170,11 @@ export default function JobDetailPage() {
   const [research, setResearch] = useState<JobResearchRunDetail | null>(null);
   const [researchLoading, setResearchLoading] = useState(false);
   const [researchError, setResearchError] = useState("");
+  const [benchmarkProgress, setBenchmarkProgress] = useState<RoleBenchmarkLoadState>({
+    benchmark: null,
+    loading: true,
+    error: "",
+  });
   const [reviewNote, setReviewNote] = useState("");
   const [reviewAction, setReviewAction] = useState<"accept" | "reject" | null>(null);
   const [preApplication, setPreApplication] = useState<PreApplicationState | null>(null);
@@ -381,57 +391,36 @@ export default function JobDetailPage() {
   );
 
   // Dynamic progress projection — derived from real state, not fabricated.
-  const preparationProgress = useMemo(() => {
-    if (!jobId) return null;
-    const stage = String(preparationTask?.progress?.stage || "");
-    const taskStatus = preparationTask?.status || "";
-    const benchmarkDone = preApplication?.stage === "resume_proposal_ready" || preApplication?.stage === "decision_ready";
-    const proposalDone = Boolean(resumeProposal);
-    const hasBenchmark = preparationTask?.status === "completed" && preparationTask?.result_ref?.includes("role_benchmark");
+  // Reuse the benchmark readback already rendered by RoleIntelligencePanel.
+  const reportBenchmarkProgress = useCallback((state: RoleBenchmarkLoadState) => {
+    setBenchmarkProgress(state);
+  }, []);
 
-    // Build stages dynamically — only show what actually happened or is happening.
-    const stages: { key: string; label: string; state: "done" | "active" | "pending" | "skipped" | "failed" }[] = [];
-
-    // Stage 1: job saved (always done if we're on this page)
-    stages.push({ key: "saved", label: "岗位已保存", state: "done" });
-
-    // Stage 2: career task queued/running
-    if (preparationTask) {
-      const isActive = ["queued", "running"].includes(taskStatus);
-      const isDone = ["completed", "agent_turn_completed"].includes(taskStatus) || stage === "agent_turn_completed";
-      const isFailed = taskStatus === "failed" || taskStatus === "blocked";
-      stages.push({
-        key: "task",
-        label: taskStatus === "queued" ? "已排队等待准备" : taskStatus === "running" ? "正在准备岗位情报" : taskStatus === "completed" ? "岗位情报任务完成" : taskStatus === "blocked" ? "准备任务被阻塞" : taskStatus === "failed" ? "准备任务失败" : "准备中",
-        state: isFailed ? "failed" : isDone ? "done" : isActive ? "active" : "pending",
-      });
-    }
-
-    // Stage 3: benchmark / research
-    if (hasBenchmark || benchmarkDone) {
-      stages.push({ key: "benchmark", label: "同类岗位基准分析完成", state: "done" });
-    } else if (preparationTask && ["running", "queued"].includes(taskStatus)) {
-      stages.push({ key: "benchmark", label: "正在分析同类岗位", state: "active" });
-    } else if (preparationTask && taskStatus === "completed" && !hasBenchmark) {
-      stages.push({ key: "benchmark", label: "岗位基准分析（已完成）", state: "done" });
-    }
-
-    // Stage 4: pre-application decision
-    if (preApplication?.stage === "resume_proposal_ready" || preApplication?.stage === "decision_ready") {
-      stages.push({ key: "decision", label: "投前决策就绪", state: "done" });
-    } else if (preApplication?.stage) {
-      stages.push({ key: "decision", label: `投前决策：${preApplication.stage}`, state: "active" });
-    }
-
-    // Stage 5: resume proposal
-    if (proposalDone) {
-      stages.push({ key: "proposal", label: "简历候选已生成", state: "done" });
-    } else if (preApplication?.stage === "resume_proposal_ready") {
-      stages.push({ key: "proposal", label: "正在生成简历候选", state: "active" });
-    }
-
-    return stages.length > 1 ? stages : null;
-  }, [jobId, preparationTask, preApplication, resumeProposal, research]);
+  const preparationProgress = useMemo(() => projectJobPreparationProgress({
+    jobId,
+    preparationTask,
+    preApplicationStage: preApplication?.stage || null,
+    research,
+    researchLoading,
+    researchError,
+    benchmark: benchmarkProgress.benchmark,
+    benchmarkLoading: benchmarkProgress.loading,
+    benchmarkError: benchmarkProgress.error,
+    proposal: resumeProposal,
+    proposalLoading: resumeProposalLoading,
+    proposalError: resumeProposalError,
+  }), [
+    jobId,
+    preparationTask,
+    preApplication?.stage,
+    research,
+    researchLoading,
+    researchError,
+    benchmarkProgress,
+    resumeProposal,
+    resumeProposalLoading,
+    resumeProposalError,
+  ]);
 
   const handleResearchReview = async (action: "accept" | "reject") => {
     if (!research || reviewAction) return;
@@ -868,14 +857,7 @@ export default function JobDetailPage() {
           {preparationProgress && (
             <div className="border-t border-[var(--border)] pt-4">
               <p className="bauhaus-label text-[var(--foreground-muted)]">准备进度</p>
-              <div className="mt-3 space-y-1.5">
-                {preparationProgress.map((stage) => (
-                  <div key={stage.key} className={`flex items-center gap-2 text-xs font-semibold ${stage.state === "done" ? "text-[var(--foreground-muted)]" : stage.state === "active" ? "text-[var(--foreground)]" : stage.state === "failed" ? "text-[var(--primary-red)]" : "text-[var(--foreground-soft)]"}`}>
-                    <span className={`inline-block h-1.5 w-1.5 rounded-full ${stage.state === "done" ? "bg-[var(--primary-blue)]" : stage.state === "active" ? "bg-[var(--primary-yellow)]" : stage.state === "failed" ? "bg-[var(--primary-red)]" : "bg-[var(--border)]"}`} />
-                    {stage.label}
-                  </div>
-                ))}
-              </div>
+              <JobPreparationProgress stages={preparationProgress} />
               {preparationTask?.status === "failed" && preparationTask.retryable && (
                 <Button size="sm" variant="flat" color="warning" className="mt-3 !px-3 !py-1.5 !text-[11px]"
                   onPress={() => void controlCareerTask(preparationTask.task_id, "retry").catch((err) => alert(safeClientErrorMessage(err, "重试准备任务失败")))}>
@@ -901,7 +883,7 @@ export default function JobDetailPage() {
         </CardBody>
       </Card>
 
-      <RoleIntelligencePanel jobId={job.id} />
+      <RoleIntelligencePanel jobId={job.id} onBenchmarkStateChange={reportBenchmarkProgress} />
 
       <Card className="bauhaus-panel rounded-none bg-white shadow-none" data-testid="resume-proposal">
         <CardBody className="space-y-5 p-5">

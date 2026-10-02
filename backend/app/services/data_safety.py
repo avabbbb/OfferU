@@ -22,6 +22,11 @@ import zipfile
 from sqlalchemy.engine import make_url
 from app.services.security_redaction import safe_error_message
 from app.runtime_paths import runtime_backend_dir
+from app.services.reset_inventory import (
+    RESET_DATA_DIRECTORIES,
+    RESET_DATA_FILE_DEFAULTS,
+    RESET_DATA_FILES,
+)
 
 
 BACKEND_DIR = runtime_backend_dir()
@@ -31,6 +36,7 @@ ARCHIVE_SUFFIX = ".offeru-backup"
 MAX_ARCHIVE_FILES = 20_000
 MAX_ARCHIVE_BYTES = 8 * 1024 * 1024 * 1024
 _BACKUP_ID = re.compile(r"^[a-f0-9]{32}$")
+_LEGACY_ASSET_ROOTS = ("uploads", "data/artifacts")
 _LOCK = threading.RLock()
 
 
@@ -66,6 +72,10 @@ class DataSafetyLayout:
     @property
     def artifacts_dir(self) -> Path:
         return self.backend_dir / "data" / "artifacts"
+
+    @property
+    def data_dir(self) -> Path:
+        return self.backend_dir / "data"
 
 
 def _utc_now() -> str:
@@ -273,10 +283,17 @@ def _copy_assets(source_root: Path, destination_root: Path) -> None:
 
 
 def _snapshot_files(snapshot_dir: Path) -> list[dict[str, Any]]:
-    roots = (
+    roots = [
         (snapshot_dir / "database.sqlite3", "database.sqlite3"),
         (snapshot_dir / "uploads", "uploads"),
-        (snapshot_dir / "data" / "artifacts", "data/artifacts"),
+    ]
+    roots.extend(
+        (snapshot_dir / "data" / name, f"data/{name}")
+        for name in RESET_DATA_DIRECTORIES
+    )
+    roots.extend(
+        (snapshot_dir / "data" / name, f"data/{name}")
+        for name in RESET_DATA_FILES
     )
     items: list[dict[str, Any]] = []
     for path, archive_name in roots:
@@ -299,6 +316,28 @@ def _snapshot_files(snapshot_dir: Path) -> list[dict[str, Any]]:
                 }
             )
     return sorted(items, key=lambda value: str(value["path"]))
+
+
+def _allowed_asset_root(value: Any) -> bool:
+    root = str(value or "")
+    return (
+        root == "uploads"
+        or root in {f"data/{name}" for name in RESET_DATA_DIRECTORIES}
+        or root in {f"data/{name}" for name in RESET_DATA_FILES}
+    )
+
+
+def _manifest_asset_roots(manifest: dict[str, Any]) -> tuple[str, ...]:
+    roots = manifest.get("asset_roots")
+    if roots is None:  # v1 archives created before the reset inventory extension
+        return _LEGACY_ASSET_ROOTS
+    if (
+        not isinstance(roots, list)
+        or len(roots) != len(set(str(item) for item in roots))
+        or not all(_allowed_asset_root(item) for item in roots)
+    ):
+        raise DataSafetyError("备份 manifest 的受管资产范围无效。")
+    return tuple(str(item) for item in roots)
 
 
 def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
@@ -329,7 +368,7 @@ def create_backup(
 ) -> dict[str, Any]:
     """Create an online SQLite snapshot plus managed assets in a verified archive."""
 
-    if reason not in {"user", "pre_restore", "pre_migration"}:
+    if reason not in {"user", "pre_restore", "pre_migration", "pre_reset"}:
         raise DataSafetyError("不支持的备份原因。")
     with _LOCK:
         _ensure_layout_directories(layout, create_root=True, create_backup=True)
@@ -346,7 +385,25 @@ def create_backup(
             if snapshot_report["status"] != "ok":
                 raise DataSafetyError("SQLite 在线备份快照完整性检查未通过。")
             _copy_assets(layout.uploads_dir, snapshot_dir / "uploads")
-            _copy_assets(layout.artifacts_dir, snapshot_dir / "data" / "artifacts")
+            data_snapshot = snapshot_dir / "data"
+            for name in RESET_DATA_DIRECTORIES:
+                source = layout.data_dir / name
+                _assert_managed_tree(source, layout.backend_dir)
+                _copy_assets(source, data_snapshot / name)
+            for name in RESET_DATA_FILES:
+                source = layout.data_dir / name
+                _assert_managed_tree(source, layout.backend_dir)
+                destination = data_snapshot / name
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                if source.is_symlink() or (source.exists() and not source.is_file()):
+                    raise DataSafetyError(f"受管运行文件不是安全的本地文件: {name}")
+                if source.is_file():
+                    shutil.copy2(source, destination)
+                else:
+                    destination.write_text(
+                        json.dumps(RESET_DATA_FILE_DEFAULTS[name], ensure_ascii=False),
+                        encoding="utf-8",
+                    )
             files = _snapshot_files(snapshot_dir)
             manifest = {
                 "backup_format": BACKUP_FORMAT,
@@ -356,6 +413,13 @@ def create_backup(
                 "hash": _aggregate_hash(files),
                 "created_at": _utc_now(),
                 "reason": reason,
+                "asset_roots": sorted(
+                    [
+                        "uploads",
+                        *(f"data/{name}" for name in RESET_DATA_DIRECTORIES),
+                        *(f"data/{name}" for name in RESET_DATA_FILES),
+                    ]
+                ),
                 "files": files,
             }
             manifest_path = snapshot_dir / "manifest.json"
@@ -373,7 +437,8 @@ def create_backup(
                 ) as archive:
                     archive.write(manifest_path, "manifest.json")
                     archive.writestr("uploads/", b"")
-                    archive.writestr("data/artifacts/", b"")
+                    for name in RESET_DATA_DIRECTORIES:
+                        archive.writestr(f"data/{name}/", b"")
                     for item in files:
                         archive.write(snapshot_dir / str(item["path"]), str(item["path"]))
                 os.replace(temporary_archive, archive_path)
@@ -403,13 +468,18 @@ def _validate_member(info: zipfile.ZipInfo) -> bool:
     mode = info.external_attr >> 16
     if stat.S_ISLNK(mode):
         raise DataSafetyError("备份归档不能包含符号链接。")
+    allowed_reset_directory = any(
+        name == f"data/{directory}/" or name.startswith(f"data/{directory}/")
+        for directory in RESET_DATA_DIRECTORIES
+    )
+    allowed_reset_file = name in {f"data/{filename}" for filename in RESET_DATA_FILES}
     allowed = (
         name == "manifest.json"
         or name == "database.sqlite3"
         or name == "uploads/"
         or name.startswith("uploads/")
-        or name == "data/artifacts/"
-        or name.startswith("data/artifacts/")
+        or allowed_reset_directory
+        or allowed_reset_file
     )
     if not allowed:
         raise DataSafetyError("备份归档包含非 OfferU 受管文件。")
@@ -443,6 +513,7 @@ def _validated_archive(archive_path: Path, *, expected_backup_id: str | None = N
         raise DataSafetyError("备份归档无法安全读取。") from exc
     if not isinstance(manifest, dict) or manifest.get("backup_format") != BACKUP_FORMAT:
         raise DataSafetyError("备份 manifest 版本不受支持。")
+    asset_roots = set(_manifest_asset_roots(manifest))
     backup_id = str(manifest.get("backup_id") or "")
     if not _BACKUP_ID.fullmatch(backup_id):
         raise DataSafetyError("备份 manifest 的 backup_id 无效。")
@@ -475,6 +546,11 @@ def _validated_archive(archive_path: Path, *, expected_backup_id: str | None = N
     archive_files = {info.filename for info in infos if not info.is_dir() and info.filename != "manifest.json"}
     if archive_files != expected_names:
         raise DataSafetyError("备份归档成员与 manifest 不一致。")
+    if any(
+        info.is_dir() and info.filename.rstrip("/") not in asset_roots
+        for info in infos
+    ):
+        raise DataSafetyError("备份归档包含 manifest 未声明的受管目录。")
     if str(manifest.get("hash") or "") != _aggregate_hash(raw_files):
         raise DataSafetyError("备份 manifest 聚合哈希无效。")
     return manifest, infos
@@ -494,8 +570,14 @@ def _materialize_archive(archive_path: Path, destination: Path, *, expected_back
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=f".{expected_backup_id}-", dir=destination.parent))
     try:
-        (temporary / "uploads").mkdir(parents=True)
-        (temporary / "data" / "artifacts").mkdir(parents=True)
+        for root in _manifest_asset_roots(manifest):
+            target = temporary.joinpath(*PurePosixPath(root).parts)
+            if root == "uploads" or root in {
+                f"data/{name}" for name in RESET_DATA_DIRECTORIES
+            }:
+                target.mkdir(parents=True, exist_ok=True)
+            else:
+                target.parent.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(archive_path, "r") as archive:
             records = {str(item["path"]): item for item in manifest["files"]}
             for name, record in records.items():
@@ -614,13 +696,32 @@ def _verify_installed_state(layout: DataSafetyLayout, manifest: dict[str, Any]) 
             "sha256": _sha256_file(layout.database_path),
         }
     ]
-    for root, prefix in ((layout.uploads_dir, "uploads"), (layout.artifacts_dir, "data/artifacts")):
-        for path in _safe_asset_files(root):
+    for root_name in _manifest_asset_roots(manifest):
+        target = (
+            layout.uploads_dir
+            if root_name == "uploads"
+            else layout.backend_dir.joinpath(*PurePosixPath(root_name).parts)
+        )
+        is_directory = root_name == "uploads" or root_name in {
+            f"data/{name}" for name in RESET_DATA_DIRECTORIES
+        }
+        if is_directory:
+            for path in _safe_asset_files(target):
+                installed.append(
+                    {
+                        "path": f"{root_name}/{path.relative_to(target).as_posix()}",
+                        "size": path.stat().st_size,
+                        "sha256": _sha256_file(path),
+                    }
+                )
+        else:
+            if target.is_symlink() or not target.is_file():
+                raise DataSafetyError(f"替换后的受管运行文件缺失或不安全: {target.name}")
             installed.append(
                 {
-                    "path": f"{prefix}/{path.relative_to(root).as_posix()}",
-                    "size": path.stat().st_size,
-                    "sha256": _sha256_file(path),
+                    "path": root_name,
+                    "size": target.stat().st_size,
+                    "sha256": _sha256_file(target),
                 }
             )
     installed.sort(key=lambda value: str(value["path"]))
@@ -631,11 +732,18 @@ def _verify_installed_state(layout: DataSafetyLayout, manifest: dict[str, Any]) 
 def _install_snapshot(layout: DataSafetyLayout, snapshot_dir: Path, manifest: dict[str, Any]) -> None:
     _assert_managed_tree(snapshot_dir, layout.backend_dir)
     token = uuid4().hex
-    targets = (
-        (snapshot_dir / "database.sqlite3", layout.database_path, False),
-        (snapshot_dir / "uploads", layout.uploads_dir, True),
-        (snapshot_dir / "data" / "artifacts", layout.artifacts_dir, True),
-    )
+    targets = [(snapshot_dir / "database.sqlite3", layout.database_path, False)]
+    for root_name in _manifest_asset_roots(manifest):
+        source = snapshot_dir.joinpath(*PurePosixPath(root_name).parts)
+        target = (
+            layout.uploads_dir
+            if root_name == "uploads"
+            else layout.backend_dir.joinpath(*PurePosixPath(root_name).parts)
+        )
+        is_directory = root_name == "uploads" or root_name in {
+            f"data/{name}" for name in RESET_DATA_DIRECTORIES
+        }
+        targets.append((source, target, is_directory))
     prepared: list[tuple[Path, Path, Path, bool, bool]] = []
     moved_sidecars: list[tuple[Path, Path]] = []
     try:
@@ -857,8 +965,8 @@ async def get_data_safety_status() -> dict[str, Any]:
     return await asyncio.to_thread(data_safety_status, _runtime_layout())
 
 
-async def create_data_backup() -> dict[str, Any]:
-    result = await asyncio.to_thread(create_backup, _runtime_layout())
+async def create_data_backup(*, reason: str = "user") -> dict[str, Any]:
+    result = await asyncio.to_thread(create_backup, _runtime_layout(), reason=reason)
     return {key: value for key, value in result.items() if key != "archive_path"}
 
 

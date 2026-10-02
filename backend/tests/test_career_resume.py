@@ -21,7 +21,15 @@ from app.models.models import (
     ResumeSection,
     ResumeVersion,
 )
-from app.services import agent_operations, automation, career_delivery, career_director, career_resume, career_tasks
+from app.services import (
+    agent_operations,
+    agent_run_state,
+    automation,
+    career_delivery,
+    career_director,
+    career_resume,
+    career_tasks,
+)
 from app.services import resume_route_operations
 
 
@@ -231,7 +239,7 @@ def test_resume_plan_is_bound_to_registry_candidates_and_evidence() -> None:
         )
 
 
-def test_saved_resume_version_runs_real_registry_path_and_projects_review_candidate(monkeypatch, tmp_path) -> None:
+def test_saved_resume_version_uses_synthetic_provider_with_real_registry_path(monkeypatch, tmp_path) -> None:
     async def run() -> dict:
         # This path starts a background CareerTask while the AutomationEvent
         # dispatcher is finishing its own transaction. A file-backed isolated
@@ -317,6 +325,7 @@ def test_saved_resume_version_runs_real_registry_path_and_projects_review_candid
                 career_resume,
                 career_delivery,
                 agent_operations,
+                agent_run_state,
                 resume_route_operations,
             ):
                 monkeypatch.setattr(module, "async_session", sessions)
@@ -327,58 +336,97 @@ def test_saved_resume_version_runs_real_registry_path_and_projects_review_candid
             monkeypatch.setattr(career_tasks, "_career_director_workspace", lambda: "H:\\tmp\\offeru")
             observed: dict[str, object] = {"tool_calls": [], "contexts": [], "prompt": ""}
 
-            class SyntheticCodex:
-                def __init__(self, on_operation):
-                    self.on_operation = on_operation
+            class SyntheticEmbeddedRunProvider:
+                """Deterministic unit fixture at the current AgentRunProvider seam.
 
-                async def start(self):
-                    return None
+                It issues synthetic reasoning output, while reads, audit rows,
+                durable Run events, Policy validation and delivery persistence
+                all pass through their production services.
+                """
 
-                async def create_thread(self, **_kwargs):
-                    return {"threadId": "synthetic-resume-thread"}
-
-                async def start_turn(self, **_kwargs):
-                    observed["prompt"] = str(_kwargs.get("prompt") or "")
-                    await self.on_operation("get_career_snapshot", {})
-                    context = await self.on_operation(
-                        "get_resume_reengagement_context",
-                        {"resume_id": resume_id},
+                async def start_run(
+                    self,
+                    *,
+                    message,
+                    skill_id,
+                    conversation_id,
+                    task_id,
+                    context_messages,
+                    requested_run_id,
+                    **_kwargs,
+                ):
+                    del context_messages
+                    observed["prompt"] = message
+                    run = await agent_run_state.create_agent_run(
+                        conversation_id=conversation_id,
+                        goal="Synthetic Career Director fixture",
+                        mode="career_director",
+                        skill_id=skill_id,
+                        task_id=task_id,
+                        actions=[],
+                        llm_runtime={
+                            "runtime": "synthetic_test_provider",
+                            "provider_id": "synthetic_fixture",
+                        },
+                        run_id=requested_run_id,
                     )
-                    observed["contexts"].append(context)
-                    evidence_refs = context["candidates"][0]["evidence_refs"]
-                    observed["tool_calls"].extend(
-                        ["get_career_snapshot", "get_resume_reengagement_context"]
-                    )
-                    message = json.dumps(
-                        _career_briefing(resume_id, job_id, ["resume_added_1", "job.description", "application.stage"]),
+                    model_context = {}
+                    for operation, arguments in (
+                        ("get_career_snapshot", {}),
+                        ("get_resume_reengagement_context", {"resume_id": resume_id}),
+                    ):
+                        await agent_run_state.append_agent_run_event(
+                            run["id"],
+                            event_type="operation.started",
+                            payload={"operation": operation, "fixture": "synthetic_unit"},
+                        )
+                        envelope = await ops.execute_operation(
+                            operation,
+                            arguments,
+                            surface="career_director",
+                            audit=True,
+                        )
+                        if not envelope.get("ok") or not isinstance(envelope.get("outputs"), dict):
+                            raise AssertionError(f"synthetic provider Registry read failed: {operation}")
+                        outputs = envelope["outputs"]
+                        await agent_run_state.append_agent_run_event(
+                            run["id"],
+                            event_type="operation.completed",
+                            payload={"operation": operation, "fixture": "synthetic_unit"},
+                        )
+                        observed["tool_calls"].append(operation)
+                        if operation == "get_resume_reengagement_context":
+                            model_context = outputs
+                    observed["contexts"].append(model_context)
+                    candidate = model_context["candidates"][0]
+                    assistant_message = json.dumps(
+                        _career_briefing(
+                            resume_id,
+                            int(candidate["job_id"]),
+                            list(candidate["evidence_refs"]),
+                        ),
                         ensure_ascii=False,
                     )
-                    return {
-                        "threadId": "synthetic-resume-thread",
-                        "turnId": "synthetic-resume-turn",
-                        "completed": {
-                            "turn": {
-                                "id": "synthetic-resume-turn",
-                                "items": [{"type": "agentMessage", "text": message}],
-                            }
-                        },
+                    run["status"] = "completed"
+                    run["final_result"] = {
+                        "assistant_message": assistant_message,
+                        "requires_confirmation": False,
+                        "turn_finished": True,
                     }
-
-                async def events(self):
+                    run = await agent_run_state.save_agent_run(run)
                     return {
-                        "events": [
-                            {"method": "item/tool/call", "params": {"tool": name}}
-                            for name in observed["tool_calls"]
-                        ]
+                        "ok": True,
+                        "run": run,
+                        "assistant_message": assistant_message,
+                        "pending_actions": [],
+                        "active_skill": {"id": skill_id},
+                        "conversation_id": conversation_id,
                     }
-
-                async def shutdown(self):
-                    return None
 
             monkeypatch.setattr(
                 agent_runtime,
-                "get_agent_runtime_provider",
-                lambda _provider, **kwargs: SyntheticCodex(kwargs["on_operation"]),
+                "get_agent_run_provider",
+                lambda _provider="embedded": SyntheticEmbeddedRunProvider(),
             )
 
             saved = await resume_route_operations.create_resume_version_record(

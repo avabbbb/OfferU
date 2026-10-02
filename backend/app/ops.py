@@ -318,6 +318,13 @@ class DataRestoreInput(_StrictOperationInput):
     backup_id: str = Field(pattern=r"^[a-f0-9]{32}$")
 
 
+class DataBackupInput(_StrictOperationInput):
+    reason: str = Field(
+        default="user",
+        pattern=r"^(user|pre_restore|pre_migration|pre_reset)$",
+    )
+
+
 class DataSafetyConfirmationInput(_StrictOperationInput):
     pass
 
@@ -2010,11 +2017,11 @@ OPERATIONS: dict[str, Operation] = {
     "create_data_backup": Operation(
         name="create_data_backup",
         fn=create_data_backup,
-        description="确认后使用 SQLite Online Backup API 创建一致性快照，并保存受管资产 manifest 与哈希。",
+        description="使用 SQLite Online Backup API 创建一致性快照，并保存受管职业运行资产 manifest 与哈希。",
         group="governance",
         side_effects=("write",),
-        input_model=_StrictOperationInput,
-        version="2026-08-30",
+        input_model=DataBackupInput,
+        version="2026-10-02",
     ),
     "stage_data_restore": Operation(
         name="stage_data_restore",
@@ -2062,7 +2069,7 @@ OPERATIONS: dict[str, Operation] = {
     "reset_local_business_data": Operation(
         name="reset_local_business_data",
         fn=reset_local_business_data,
-        description="确认后清空当前本地业务工作区（岗位、档案、简历、投递、面试、记忆与运行产物），恢复为空白默认档案；保留配置、凭据、OAuth 账户元数据、内置模板、备份和操作审计。",
+        description="独立确认后先取消旧的后台任务并创建可恢复备份，再清空本机 OfferU 职业数据、Agent 会话、运行产物与索引；恢复空白默认档案，并保留配置、凭据、外部 Agent memory、OAuth 账户元数据、内置模板、备份和审计。",
         group="governance",
         side_effects=("write",),
         input_model=DataSafetyConfirmationInput,

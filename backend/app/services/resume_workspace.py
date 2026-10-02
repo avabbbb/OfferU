@@ -34,6 +34,7 @@ from app.services.resume_fact_gates import validate_edited_text
 from app.services.resume_builder import _profile_to_contact_json
 from app.services.resume_optimization import _proposal_detail
 from app.services.resume_versions import create_version_snapshot
+from app.services.packet_readiness import project_packet_state
 
 
 def _now() -> datetime:
@@ -292,24 +293,15 @@ async def _workspace_payload(
                 .order_by(Application.updated_at.desc())
             )
         ).scalars().first()
-    current_version = next(
-        (item for item in versions if item.id == resume.current_version_id),
-        versions[0] if versions else None,
+    packet = await project_packet_state(
+        db,
+        job=job,
+        resume=resume,
+        proposals=proposals,
+        versions=versions,
+        attempts=attempts,
+        legacy_application_id=legacy_application.id if legacy_application else None,
     )
-    packet = {
-        "job_id": job.id if job else resume.target_job_id,
-        "resume_id": resume.id,
-        "current_version_id": current_version.id if current_version else None,
-        "current_version_number": current_version.version_number if current_version else None,
-        "status": "ready" if current_version else "draft",
-        "application_id": resume.application_id or (legacy_application.id if legacy_application else None),
-        "application_attempt_id": next((item.id for item in attempts if item.resume_id == resume.id), None),
-        "artifacts": {
-            "resume": True,
-            "research": bool(proposals),
-            "interview_focus": bool(proposals),
-        },
-    }
     return {
         "resume": _resume_dict(resume, jobs),
         "job": _job_dict(job),

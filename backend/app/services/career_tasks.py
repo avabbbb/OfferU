@@ -1427,6 +1427,17 @@ async def cancel_career_task(task_id: str) -> dict[str, Any]:
     return cancelled
 
 
+async def stop_live_career_task_after_fresh_reset(task_id: str) -> bool:
+    """Stop the reset's caller only after its Registry action has checkpointed."""
+    task_key = str(task_id or "")
+    worker = _LIVE_TASKS.get(task_key)
+    if worker is None or worker.done() or worker is asyncio.current_task():
+        return False
+    worker.cancel()
+    await asyncio.gather(worker, return_exceptions=True)
+    return True
+
+
 async def retry_career_task(task_id: str) -> dict[str, Any]:
     task_key = str(task_id or "")
     async with _task_lock(task_key):
@@ -1598,4 +1609,5 @@ __all__ = [
     "retry_career_task",
     "resume_career_task",
     "start_career_task",
+    "stop_live_career_task_after_fresh_reset",
 ]

@@ -38,7 +38,11 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { resumeApi, type ResumeOptimizationProposalDetail, type ResumeWorkspace } from "@/lib/api";
+import { resumeApi, type ResumeOptimizationProposalDetail, type ResumePacketArtifactState, type ResumeWorkspace } from "@/lib/api";
+import {
+  projectRoleBenchmarkArtifact,
+  roleBenchmarkArtifactVerificationLabel,
+} from "@/lib/jobPreparationProgress";
 import type { ResumeDetail, ResumeSectionBlock } from "@/lib/hooks";
 import SectionEditor from "../components/SectionEditor";
 import ResumePreview from "../components/ResumePreview";
@@ -133,6 +137,156 @@ function SortableSectionCard({
 function Badge({ children, tone = "neutral" }: { children: React.ReactNode; tone?: "neutral" | "green" | "orange" | "red" }) {
   const tones = { neutral: "bg-black/5 text-[var(--foreground-muted)]", green: "bg-emerald-100 text-emerald-800", orange: "bg-amber-100 text-amber-800", red: "bg-red-100 text-red-800" };
   return <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${tones[tone]}`}>{children}</span>;
+}
+
+type PacketStatus = { label: string; tone: "neutral" | "green" | "orange" | "red" };
+
+function resumePacketStatus(state?: ResumePacketArtifactState["resume"]): PacketStatus {
+  if (!state) return { label: "简历状态无法验证", tone: "neutral" };
+  if (!state.exists) return { label: "简历尚未关联", tone: "neutral" };
+  if (state.ready && state.adopted && state.adoption_status === "adopted") return { label: "简历版本已采纳", tone: "green" };
+  if (state.ready && !state.adopted && state.adoption_status === "user_saved") return { label: "简历版本已保存", tone: "green" };
+  if (state.ready) return { label: "简历状态无法验证", tone: "neutral" };
+  if (state.current_version_matches_resume === false) return { label: "简历版本与当前内容不一致", tone: "orange" };
+  if (state.adoption_status === "not_adopted") return { label: "简历提案尚未采纳", tone: "orange" };
+  return { label: "简历版本尚未准备", tone: "neutral" };
+}
+
+function researchPacketStatus(state: ResumePacketArtifactState["research"] | undefined, jobId: number | null): PacketStatus {
+  if (!state) return { label: "岗位研究状态无法验证", tone: "neutral" };
+  if (!state.exists && state.proposal_run_id) return { label: "简历提案关联的岗位研究不可用", tone: "orange" };
+  if (!state.exists || state.status === "unavailable") return { label: "岗位研究不可用", tone: "neutral" };
+  if (state.status === "failed") return { label: "岗位研究失败", tone: "red" };
+  if (state.status === "blocked") return { label: "岗位研究受阻", tone: "red" };
+  if (state.status === "running") return { label: "岗位研究进行中", tone: "orange" };
+  if (state.status === "pending") return { label: "岗位研究等待执行", tone: "orange" };
+  if (state.status === "completed" && state.linked_to_resume !== true) return { label: "岗位研究未关联此简历", tone: "orange" };
+  if (state.status === "completed" && (!state.run_id || !state.proposal_run_id)) return { label: "岗位研究引用无法验证", tone: "orange" };
+  if (state.status === "completed" && state.run_id !== state.proposal_run_id) return { label: "岗位研究与简历提案引用不匹配", tone: "orange" };
+  if (state.status === "completed" && state.target_job_matches === false) return { label: "岗位研究关联了其他岗位", tone: "orange" };
+  if (state.status === "completed" && (jobId == null || state.target_job_id !== jobId || state.target_job_matches !== true)) {
+    return { label: "岗位研究与当前岗位关联无法验证", tone: "orange" };
+  }
+  if (state.status === "completed" && !state.data_mode) return { label: "岗位研究来源无法验证", tone: "orange" };
+  if (state.status === "completed" && state.data_mode === "replay") return { label: "岗位研究回放结果（仅供验收）", tone: "orange" };
+  if (state.status === "completed" && state.data_mode && !["live", "fixture", "fixture_plugin"].includes(state.data_mode)) {
+    return { label: "岗位研究来源无法验证", tone: "orange" };
+  }
+  if (state.status === "completed" && (state.data_mode === "fixture" || state.data_mode === "fixture_plugin")) {
+    if (state.review_status === "rejected") return { label: "样本岗位研究已拒绝", tone: "neutral" };
+    if (state.review_status === "accepted" && state.adopted) {
+      return { label: "样本岗位研究已审核", tone: "orange" };
+    }
+    return { label: "样本岗位研究待审核", tone: "orange" };
+  }
+  if (state.status === "completed" && state.ready && state.verification_status === "verified" && state.adopted && state.linked_to_resume && state.run_id && state.run_id === state.proposal_run_id) {
+    return { label: "岗位研究已审核", tone: "green" };
+  }
+  if (state.status === "completed" && ["pending", "candidate"].includes(String(state.review_status || ""))) {
+    return { label: "岗位研究待审核", tone: "orange" };
+  }
+  if (state.status === "completed" && state.review_status === "rejected") return { label: "岗位研究已拒绝", tone: "neutral" };
+  if (state.status === "completed") return { label: "岗位研究尚未就绪", tone: "orange" };
+  return { label: "岗位研究状态无法验证", tone: "neutral" };
+}
+
+function benchmarkPacketStatus(state: ResumePacketArtifactState["benchmark"] | undefined): PacketStatus {
+  if (!state) return { label: "岗位基准状态无法验证", tone: "neutral" };
+  if (!state.exists || state.status === "not_built") return { label: "岗位基准尚未构建", tone: "neutral" };
+  if (state.status === "failed") return { label: "岗位基准失败", tone: "red" };
+  if (state.status === "blocked") return { label: "岗位基准受阻", tone: "red" };
+  if (state.status === "running") return { label: "岗位基准分析中", tone: "orange" };
+  if (state.status === "pending") return { label: "岗位基准等待执行", tone: "orange" };
+  if (state.status === "completed") {
+    const artifact = projectRoleBenchmarkArtifact(state);
+    if (artifact === "verified") return { label: "岗位基准已就绪", tone: "green" };
+    if (artifact === "fixture") return { label: "样本岗位基准已生成（仅供本地验收）", tone: "orange" };
+    if (artifact === "replay") return { label: "岗位基准回放结果（仅供验收）", tone: "orange" };
+    if (artifact === "insufficient_sample") return { label: "岗位基准样本不足", tone: "orange" };
+    if (artifact === "fixture_insufficient_sample") return { label: "样本岗位基准样本不足（仅供本地验收）", tone: "orange" };
+    return { label: roleBenchmarkArtifactVerificationLabel(state), tone: "orange" };
+  }
+  return { label: "岗位基准状态无法验证", tone: "neutral" };
+}
+
+function interviewPacketStatus(state: ResumePacketArtifactState["interview_focus"] | undefined, resumeId: number): PacketStatus {
+  if (!state) return { label: "面试准备状态无法验证", tone: "neutral" };
+  if (!state.exists || state.status === "not_built") return { label: "面试准备尚未构建", tone: "neutral" };
+  if (state.status === "failed") return { label: "面试准备失败", tone: "red" };
+  if (state.status === "blocked") return { label: "面试准备受阻", tone: "red" };
+  if (state.status === "running" || state.status === "active") return { label: "面试准备进行中", tone: "orange" };
+  if (state.status === "completed") {
+    if (!state.interview_id || state.resume_id !== resumeId || !state.focus_schema || !state.benchmark_run_id) {
+      return { label: "面试准备引用无法验证", tone: "orange" };
+    }
+    if (state.ready) return { label: "面试准备已就绪", tone: "green" };
+    return { label: "面试准备尚未就绪", tone: "orange" };
+  }
+  return { label: "面试准备状态无法验证", tone: "neutral" };
+}
+
+function packetDocumentsStatus(state?: ResumePacketArtifactState["documents"]): PacketStatus {
+  if (!state) return { label: "关联材料状态无法验证", tone: "neutral" };
+  if (!state.exists || state.count < 1) return { label: "暂无关联材料", tone: "neutral" };
+  if (!state.items.length || state.items.length !== state.count) {
+    return { label: `${state.count} 份材料的版本无法完整核验`, tone: "orange" };
+  }
+  const matched = state.items.filter((item) => item.version_matches_resume === true && item.matches_current_version === true).length;
+  return {
+    label: `${matched} / ${state.count} 当前版本匹配`,
+    tone: matched === state.count ? "green" : "orange",
+  };
+}
+
+function externalSubmissionStatus(state?: ResumeWorkspace["application_packet"]["external_submission"]): PacketStatus {
+  if (!state) return { label: "投递状态无法验证", tone: "neutral" };
+  if (state.scope !== "recorded_only" || state.receipt_verified !== false) {
+    return { label: "投递记录无法验证", tone: "orange" };
+  }
+  const successfulStatuses = ["submitted", "applied"];
+  const historyIsValid = Boolean(
+    state.completed
+      && state.recorded
+      && state.attempt_id != null
+      && successfulStatuses.includes(state.status || "")
+      && state.resume_version_id != null
+      && typeof state.matches_current_version === "boolean",
+  );
+  if (state.completed && !historyIsValid) return { label: "投递记录无法验证", tone: "orange" };
+
+  const historyLabel = historyIsValid
+    ? `记录为已投递，使用${state.matches_current_version ? "当前版本" : "旧版本"}`
+    : null;
+  const latestStatus = state.latest_attempt?.status ?? state.status;
+  const latestLabels: Record<string, PacketStatus> = {
+    queued: { label: "最近一次投递尝试等待执行", tone: "orange" },
+    pending: { label: "最近一次投递尝试等待执行", tone: "orange" },
+    running: { label: "最近一次投递尝试进行中", tone: "orange" },
+    waiting_for_approval: { label: "最近一次投递尝试待审核", tone: "orange" },
+    failed: { label: "最近一次投递尝试失败", tone: "red" },
+    blocked: { label: "最近一次投递尝试受阻", tone: "red" },
+    cancelled: { label: "最近一次投递尝试已取消", tone: "neutral" },
+  };
+  const latestLabel = latestStatus ? latestLabels[latestStatus] : undefined;
+  if (latestLabel) {
+    return {
+      label: historyLabel ? `${latestLabel.label}；${historyLabel}` : latestLabel.label,
+      tone: latestLabel.tone,
+    };
+  }
+  if (historyLabel) return { label: historyLabel, tone: state.matches_current_version ? "green" : "orange" };
+  if (!state.recorded && !state.latest_attempt) return { label: "尚无投递记录", tone: "neutral" };
+  if (successfulStatuses.includes(latestStatus || "")) return { label: "投递记录缺少简历版本信息", tone: "orange" };
+  return { label: "投递记录状态无法验证", tone: "orange" };
+}
+
+function PacketRow({ label, status }: { label: string; status: PacketStatus }) {
+  return (
+    <p className="flex items-center justify-between gap-2">
+      <span>{label}</span>
+      <Badge tone={status.tone}>{status.label}</Badge>
+    </p>
+  );
 }
 
 function ProposalCard({
@@ -391,13 +545,21 @@ export default function ResumeEditorPage() {
   const style = draft.style_config || {};
   const setStyle = (key: string, value: string) => updateDraft({ style_config: { ...style, [key]: value } });
   const targetLabel = workspace.job ? `${workspace.job.company} · ${workspace.job.title}` : "未绑定目标岗位";
+  const packetArtifactState = workspace.application_packet.artifact_state;
+  const packetResumeStatus = resumePacketStatus(packetArtifactState?.resume);
+  const packetJobId = workspace.job?.id ?? workspace.application_packet.job_id;
+  const packetResearchStatus = researchPacketStatus(packetArtifactState?.research, packetJobId);
+  const packetBenchmarkStatus = benchmarkPacketStatus(packetArtifactState?.benchmark);
+  const packetInterviewStatus = interviewPacketStatus(packetArtifactState?.interview_focus, draft.id);
+  const packetDocumentStatus = packetDocumentsStatus(packetArtifactState?.documents);
+  const packetSubmissionStatus = externalSubmissionStatus(workspace.application_packet.external_submission);
   const activeProposal = workspace.proposals.find((item) => ["ready", "in_review", "blocked"].includes(item.status));
   const staleProposal = workspace.proposals.find((item) => item.status === "stale");
 
   return (
     <div className="offeru-viewport-min-height bg-[var(--background)] px-4 pb-8 pt-4 text-[var(--foreground)]" data-testid="resume-workspace">
       <header className="mx-auto flex max-w-[1800px] flex-wrap items-center justify-between gap-3 border-b border-[var(--border-strong)]/15 pb-4">
-        <div className="flex min-w-0 items-center gap-3"><button type="button" onClick={() => router.back()} aria-label="返回" className="rounded-lg border border-[var(--border-strong)]/15 p-2 hover:bg-black/5"><ArrowLeft size={16} /></button><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h1 className="truncate text-lg font-black">Resume Workspace</h1><Badge tone="green">{workspace.application_packet.status === "ready" ? "已准备" : "草稿"}</Badge></div><p className="mt-1 truncate text-xs text-[var(--foreground-muted)]">{targetLabel}</p></div></div>
+        <div className="flex min-w-0 items-center gap-3"><button type="button" onClick={() => router.back()} aria-label="返回" className="rounded-lg border border-[var(--border-strong)]/15 p-2 hover:bg-black/5"><ArrowLeft size={16} /></button><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h1 className="truncate text-lg font-black">Resume Workspace</h1><Badge tone={packetResumeStatus.tone}>{packetResumeStatus.label}</Badge></div><p className="mt-1 truncate text-xs text-[var(--foreground-muted)]">{targetLabel}</p></div></div>
         <div className="flex flex-wrap items-center gap-2"><span className={`text-[11px] ${saveState === "failed" ? "text-red-600" : "text-[var(--foreground-muted)]"}`} data-testid="resume-save-status">{saveState === "saving" && "正在保存…"}{saveState === "saved" && "已保存"}{saveState === "failed" && "保存失败"}</span><button type="button" onClick={handleUndo} disabled={!canUndo} aria-label="撤销最近一次编辑" className="inline-flex items-center gap-1 rounded-lg border border-[var(--border-strong)]/20 px-3 py-2 text-xs font-bold hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40" data-testid="resume-undo"><Undo2 size={13} />撤销</button><button type="button" onClick={() => void handleSaveVersion()} disabled={pendingAction === "version"} className="inline-flex items-center gap-1 rounded-lg border border-[var(--border-strong)]/20 px-3 py-2 text-xs font-bold hover:bg-black/5 disabled:opacity-50" data-testid="resume-save-version">{pendingAction === "version" ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}保存版本</button><button type="button" onClick={() => void handleExport()} disabled={exporting} className="inline-flex items-center gap-1 rounded-lg bg-black px-3 py-2 text-xs font-bold text-white disabled:opacity-50" data-testid="resume-export-pdf">{exporting ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}导出 PDF</button></div>
       </header>
 
@@ -416,7 +578,20 @@ export default function ResumeEditorPage() {
           {rightPanel === "ai" && <div className="space-y-3"><div className="rounded-xl border border-[var(--border-strong)]/15 bg-[var(--surface)] p-3"><p className="text-xs font-black">目标岗位上下文</p><p className="mt-1 text-[11px] text-[var(--foreground-muted)]">{targetLabel}</p>{activeProposal?.strategy?.missing_capabilities?.length ? <p className="mt-2 text-[10px] text-amber-800">Evidence Gap：{activeProposal.strategy.missing_capabilities.join("、")}</p> : null}</div>{activeProposal ? <><div className="flex gap-2"><button type="button" onClick={() => void handleAllProposalActions("accept")} disabled={!!pendingAction || activeProposal.fact_gate_status === "blocked"} title={activeProposal.fact_gate_status === "blocked" ? "事实门未通过，请先补充 Evidence" : undefined} className="flex-1 rounded-lg bg-black px-2 py-2 text-[10px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">全部接受</button><button type="button" onClick={() => void handleAllProposalActions("reject")} disabled={!!pendingAction} className="flex-1 rounded-lg border border-[var(--border-strong)]/20 px-2 py-2 text-[10px] font-bold disabled:opacity-50">全部拒绝</button></div><ProposalCard proposal={activeProposal} onAction={(id, action, text) => void handleProposalAction(id, action, text)} pending={pendingAction} /></> : <div className="rounded-xl border border-dashed border-[var(--border-strong)]/20 bg-[var(--surface)] p-4 text-xs text-[var(--foreground-muted)]">当前没有待审核的 AI Proposal。你可以继续手动编辑这份岗位简历。</div>}</div>}
           {rightPanel === "design" && <ResumeDesignPanel config={style} onChange={setStyle} onUpload={handleAssetUpload} uploading={pendingAction === "upload"} />}
           {rightPanel === "versions" && <div className="space-y-2 rounded-xl border border-[var(--border-strong)]/15 bg-[var(--surface)] p-3" data-testid="resume-version-panel"><div className="mb-2 flex items-center justify-between"><p className="text-xs font-black">版本历史</p><span className="text-[10px] text-[var(--foreground-muted)]">当前 V{workspace.application_packet.current_version_number || 1}</span></div>{workspace.versions.length === 0 && <p className="text-xs text-[var(--foreground-muted)]">保存第一个版本后会显示在这里。</p>}{workspace.versions.map((version) => <div key={version.id} className={`rounded-lg border p-3 ${version.is_current ? "border-emerald-300 bg-emerald-50" : "border-[var(--border-strong)]/10"}`}><div className="flex items-center justify-between"><span className="text-xs font-black">V{version.version_number}</span>{version.is_current && <Badge tone="green">Current</Badge>}</div><p className="mt-1 text-[11px]">{version.change_summary}</p><p className="mt-1 text-[10px] text-[var(--foreground-muted)]">{version.created_by} · {new Date(version.created_at).toLocaleString()}</p>{!version.is_current && <button type="button" onClick={() => void handleRestore(version.id)} disabled={restoring === version.id} className="mt-2 inline-flex items-center gap-1 text-[10px] font-bold underline disabled:opacity-50">{restoring === version.id ? <Loader2 size={11} className="animate-spin" /> : <RotateCcw size={11} />}恢复此版本</button>}</div>)}</div>}
-          <div className="rounded-xl border border-[var(--border-strong)]/15 bg-[var(--surface)] p-3 text-[11px]"><p className="font-black">Application Packet</p><div className="mt-2 space-y-1.5 text-[var(--foreground-muted)]"><p className="flex items-center justify-between"><span>Tailored Resume</span><Badge tone="green">V{workspace.application_packet.current_version_number || "Draft"}</Badge></p><p className="flex items-center justify-between"><span>Role Intelligence</span><span>{workspace.application_packet.artifacts.research ? "已关联" : "待准备"}</span></p><p className="flex items-center justify-between"><span>Interview Focus</span><span>{workspace.application_packet.artifacts.interview_focus ? "已关联" : "待准备"}</span></p></div></div>
+          <div className="rounded-xl border border-[var(--border-strong)]/15 bg-[var(--surface)] p-3 text-[11px]" data-testid="application-packet-summary">
+            <p className="font-black">Application Packet</p>
+            <div className="mt-2 space-y-1.5 text-[var(--foreground-muted)]">
+              <PacketRow label="Tailored Resume" status={{
+                ...packetResumeStatus,
+                label: `${packetResumeStatus.label}${workspace.application_packet.current_version_number ? ` · V${workspace.application_packet.current_version_number}` : ""}`,
+              }} />
+              <PacketRow label="岗位研究" status={packetResearchStatus} />
+              <PacketRow label="岗位基准" status={packetBenchmarkStatus} />
+              <PacketRow label="面试准备" status={packetInterviewStatus} />
+              <PacketRow label="关联材料" status={packetDocumentStatus} />
+              <PacketRow label="外部投递" status={packetSubmissionStatus} />
+            </div>
+          </div>
         </aside>
       </div>
     </div>

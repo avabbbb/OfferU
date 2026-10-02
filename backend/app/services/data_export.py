@@ -128,7 +128,7 @@ def _serialize_row(row: Any) -> dict[str, Any]:
     }
 
 
-async def export_user_data() -> dict[str, Any]:
+async def _export_user_data_unlocked() -> dict[str, Any]:
     """Return a portable snapshot of core local career state.
 
     This is deliberately read-only. Provider credentials, email account
@@ -158,3 +158,11 @@ async def export_user_data() -> dict[str, Any]:
         "counts": counts,
         "data": sections,
     }
+
+
+async def export_user_data() -> dict[str, Any]:
+    """Serialize exports against reset so old state cannot finish afterward."""
+    from app.services.reset_write_guard import reset_write_guard
+
+    async with reset_write_guard():
+        return await _export_user_data_unlocked()

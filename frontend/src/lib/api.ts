@@ -338,6 +338,121 @@ export interface ResumeVersionDetail extends ResumeVersionSummary {
   content_snapshot: Record<string, any>;
 }
 
+export interface ResumePacketAssetBaseState {
+  exists: boolean;
+  ready: boolean;
+  status?: string;
+}
+
+export interface ResumePacketResumeState extends ResumePacketAssetBaseState {
+  adopted: boolean;
+  adoption_status?: string;
+  adoption_source?: string | null;
+  adoption_source_version_id?: number | null;
+  current_version_matches_resume?: boolean;
+  current_version_id?: number | null;
+  current_version_number?: number | null;
+}
+
+export interface ResumePacketResearchState extends ResumePacketAssetBaseState {
+  adopted: boolean;
+  linked_to_resume: boolean;
+  verification_status?: string;
+  data_mode?: string | null;
+  run_id?: string | null;
+  proposal_run_id?: string | null;
+  review_status?: string | null;
+  schema_version?: string | null;
+  runtime_id?: string | null;
+  runtime_version?: string | null;
+  target_job_id?: number | null;
+  target_job_matches?: boolean;
+}
+
+export interface ResumePacketBenchmarkState extends ResumePacketAssetBaseState {
+  run_id?: string | null;
+  verification_status?: string;
+  data_mode?: string | null;
+  benchmark_status?: string;
+  sample_sufficient?: boolean;
+  artifact_verification?: RoleBenchmarkArtifactVerification | null;
+  schema_version?: string | null;
+  result_schema?: string | null;
+  algorithm_version?: string | null;
+  taxonomy_version?: string | null;
+  runtime_id?: string | null;
+  runtime_version?: string | null;
+  target_snapshot?: {
+    exists: boolean;
+    verified: boolean;
+    job_id?: number | null;
+    source_ref?: string | null;
+    description_hash?: string | null;
+  };
+  valid_sample_count?: number | null;
+  minimum_sample_count?: number | null;
+}
+
+export interface ResumePacketInterviewFocusState extends ResumePacketAssetBaseState {
+  interview_id?: number | null;
+  resume_id?: number | null;
+  focus_schema?: string | null;
+  benchmark_run_id?: string | null;
+}
+
+export interface ResumePacketDocumentState {
+  id: string | number | null;
+  artifact_type?: string | null;
+  created_at?: string | null;
+  resume_id?: number | null;
+  resume_version_id?: number | null;
+  version_matches_resume?: boolean | null;
+  matches_current_version?: boolean;
+}
+
+export interface ResumePacketArtifactState {
+  resume: ResumePacketResumeState;
+  research: ResumePacketResearchState;
+  benchmark: ResumePacketBenchmarkState;
+  interview_focus: ResumePacketInterviewFocusState;
+  documents: {
+    exists: boolean;
+    count: number;
+    items: ResumePacketDocumentState[];
+  };
+}
+
+export interface ResumePacketExternalAttempt {
+  attempt_id: number | null;
+  job_id: number | null;
+  resume_id: number | null;
+  status: string | null;
+  resume_version_id: number | null;
+  matches_current_version: boolean;
+}
+
+export interface ResumePacketExternalSubmission extends ResumePacketExternalAttempt {
+  scope: "recorded_only";
+  receipt_verified: false;
+  recorded: boolean;
+  completed: boolean;
+  latest_attempt: ResumePacketExternalAttempt | null;
+}
+
+export interface ResumeApplicationPacket {
+  job_id: number | null;
+  resume_id: number;
+  current_version_id: number | null;
+  current_version_number: number | null;
+  status: string;
+  status_scope?: string;
+  application_id: number | null;
+  application_attempt_id: number | null;
+  artifacts: Record<string, boolean>;
+  artifact_state?: ResumePacketArtifactState;
+  external_submission?: ResumePacketExternalSubmission;
+}
+
 export interface ResumeWorkspace {
   resume: Record<string, any> & {
     id: number;
@@ -361,16 +476,7 @@ export interface ResumeWorkspace {
     content_hash: string;
     is_tailored: boolean;
   };
-  application_packet: {
-    job_id: number | null;
-    resume_id: number;
-    current_version_id: number | null;
-    current_version_number: number | null;
-    status: string;
-    application_id: number | null;
-    application_attempt_id: number | null;
-    artifacts: Record<string, boolean>;
-  };
+  application_packet: ResumeApplicationPacket;
   proposals: ResumeOptimizationProposalDetail[];
   versions: ResumeVersionSummary[];
 }
@@ -844,6 +950,7 @@ export interface RoleBenchmarkSummary {
   status?: string;
   benchmark_status?: "READY" | "INSUFFICIENT_SAMPLE" | "BLOCKED_EXTERNAL" | string;
   sample_sufficient?: boolean;
+  artifact_verification?: RoleBenchmarkArtifactVerification | null;
   last_error?: string | null;
   error_id?: string | null;
   provider_blocked?: boolean;
@@ -855,6 +962,16 @@ export interface RoleBenchmarkSummary {
   completed_at?: string | null;
   scheduled?: boolean;
   reused_active_run?: boolean;
+}
+
+export interface RoleBenchmarkArtifactVerification {
+  ready: boolean;
+  status: "verified" | "unverified" | string;
+  reasons: string[];
+  target_snapshot: {
+    exists: boolean;
+    verified: boolean;
+  };
 }
 
 export interface RoleBenchmarkDetail extends RoleBenchmarkSummary {

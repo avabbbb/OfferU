@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Card, CardBody, Chip, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Spinner } from "@nextui-org/react";
 import { AlertTriangle, CheckCircle2, ExternalLink, RefreshCw } from "lucide-react";
@@ -11,6 +11,11 @@ import {
   type RoleBenchmarkDocument,
   type RoleBenchmarkSignal,
 } from "@/lib/api";
+import {
+  projectRoleBenchmarkArtifact,
+  roleBenchmarkArtifactVerificationMessage,
+  type RoleBenchmarkLoadState,
+} from "@/lib/jobPreparationProgress";
 import { bauhausModalContentClassName } from "@/lib/bauhaus";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { ExternalUrlLink } from "@/components/ExternalUrlLink";
@@ -215,9 +220,16 @@ function SignalGroup({ title, description, signals, documents }: { title: string
   );
 }
 
-export function RoleIntelligencePanel({ jobId }: { jobId: number }) {
+export function RoleIntelligencePanel({
+  jobId,
+  onBenchmarkStateChange,
+}: {
+  jobId: number;
+  onBenchmarkStateChange?: (state: RoleBenchmarkLoadState) => void;
+}) {
   const router = useRouter();
   const [benchmark, setBenchmark] = useState<RoleBenchmarkDetail | null>(null);
+  const benchmarkRef = useRef<RoleBenchmarkDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [building, setBuilding] = useState(false);
   const [fixtureConfirmOpen, setFixtureConfirmOpen] = useState(false);
@@ -228,15 +240,26 @@ export function RoleIntelligencePanel({ jobId }: { jobId: number }) {
     if (!Number.isInteger(jobId) || jobId <= 0) return;
     setLoading(true);
     setError("");
+    const currentBenchmark = benchmarkRef.current;
+    onBenchmarkStateChange?.({ benchmark: currentBenchmark, loading: !currentBenchmark, error: "" });
     try {
       const result = await roleBenchmarkApi.forJob(jobId);
-      setBenchmark(result.found === false || !result.run_id ? null : result);
+      const nextBenchmark = result.found === false ? null : result;
+      benchmarkRef.current = nextBenchmark;
+      setBenchmark(nextBenchmark);
+      onBenchmarkStateChange?.({ benchmark: nextBenchmark, loading: false, error: "" });
     } catch (cause) {
-      setError(safeClientErrorMessage(cause, "岗位情报加载失败"));
+      const message = safeClientErrorMessage(cause, "岗位情报加载失败");
+      setError(message);
+      onBenchmarkStateChange?.({ benchmark: benchmarkRef.current, loading: false, error: message });
     } finally {
       setLoading(false);
     }
-  }, [jobId]);
+  }, [jobId, onBenchmarkStateChange]);
+
+  useEffect(() => {
+    benchmarkRef.current = benchmark;
+  }, [benchmark]);
 
   useEffect(() => {
     void loadBenchmark();
@@ -267,6 +290,14 @@ export function RoleIntelligencePanel({ jobId }: { jobId: number }) {
 
   const documents = benchmark?.documents || [];
   const signals = benchmark?.signals || [];
+  const benchmarkArtifact = benchmark ? projectRoleBenchmarkArtifact(benchmark) : null;
+  const benchmarkIntegrityMessage = benchmark?.status === "completed"
+    ? benchmarkArtifact === "unverified"
+      ? roleBenchmarkArtifactVerificationMessage(benchmark)
+      : benchmarkArtifact === "replay"
+        ? "岗位基准回放结果仅用于验收，已隐藏这份数据。"
+        : ""
+    : "";
   const distinctive = signals.filter((signal) => signal.direction === "distinctive" || signal.direction === "highly_distinctive");
   const common = signals.filter((signal) => signal.direction === "common");
   const missing = signals.filter((signal) => signal.direction === "missing_common");
@@ -301,11 +332,15 @@ export function RoleIntelligencePanel({ jobId }: { jobId: number }) {
           </div>
         ) : !benchmark ? (
           <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
-            <p className="text-sm font-black text-[var(--foreground)]">还没有岗位基准</p>
+            <p className="text-sm font-black text-[var(--foreground)]">岗位基准尚未构建</p>
             <p className="mt-1 text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">真实外部采集仍受 provider 验收状态控制。当前开发环境可以加载去标识化 fixture，验证 Job Detail 的数据呈现和 evidence gap。</p>
             {fixtureEnabled && (
               <Button onPress={() => setFixtureConfirmOpen(true)} className="bauhaus-button bauhaus-button-yellow mt-4 !px-4 !py-3 !text-[11px]">加载 fixture benchmark</Button>
             )}
+          </div>
+        ) : benchmarkIntegrityMessage ? (
+          <div role="alert" className="bauhaus-panel-sm border-[var(--primary-red)] bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
+            {benchmarkIntegrityMessage}
           </div>
         ) : benchmark.status !== "completed" ? (
           <div className={`bauhaus-panel-sm p-4 ${benchmark.status === "failed" || benchmark.status === "blocked" ? "border-[var(--primary-red)] bg-red-50" : "bg-[var(--surface-muted)]"}`}>
@@ -356,7 +391,7 @@ export function RoleIntelligencePanel({ jobId }: { jobId: number }) {
             </div>
 
             {(benchmark.data_mode === "fixture" || benchmark.data_mode === "fixture_plugin") && <div className="bauhaus-panel-sm border-amber-500 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-950">Fixture benchmark：仅用于本地产品验收，不代表实时市场数据。</div>}
-            {!benchmark.sample_sufficient && <div className="bauhaus-panel-sm flex items-start gap-3 border-amber-500 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-950"><AlertTriangle className="mt-0.5 shrink-0" size={18} />样本不足（{benchmark.valid_sample_count ?? 0} / {benchmark.minimum_sample_count ?? 15}），不生成正式市场频率结论。</div>}
+            {benchmark.sample_sufficient === false && <div className="bauhaus-panel-sm flex items-start gap-3 border-amber-500 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-950"><AlertTriangle className="mt-0.5 shrink-0" size={18} />样本不足（{benchmark.valid_sample_count ?? 0} / {benchmark.minimum_sample_count ?? 15}），不生成正式市场频率结论。</div>}
 
             <div className="grid gap-3 md:grid-cols-3">
               <Metric label="Role Family" value={String(targetProfile.role_family || "unknown")} />

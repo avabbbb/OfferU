@@ -5,9 +5,9 @@ Updated: 2026-10-02
 ## Current verdict
 
 `OFFERU_PUBLIC_RELEASE_NOT_READY`
-`S0_IMPLEMENTATION_AND_ACCEPTANCE_PAUSED`
+`S0_IMPLEMENTATION_AND_ACCEPTANCE_IN_PROGRESS`
 
-The implementation goal is currently paused; preserve the work in progress and resume only when requested. Its pending scope checks truthful readiness, Job/resource linkage, Desktop-owned process cleanup, isolated Clean Reset and visible build identity. Some targeted implementation checks have run; the complete current packaged Desktop acceptance has not passed yet. Earlier build or synthetic smoke results do not close these gates.
+The owner resumed S0/S1 implementation on 2026-10-02. Its pending scope checks truthful readiness, Job/resource linkage, Desktop-owned process cleanup, isolated Clean Reset and visible build identity. Some targeted implementation checks have run; the complete current packaged Desktop acceptance has not passed yet. Earlier build or synthetic smoke results do not close these gates.
 
 S0 uses synthetic isolated data only. After its baseline is fixed, S1-A checks the Embedded Agent with a real Provider through normal credential configuration. S1-B then checks a real Resume copy and Job through Profile, Ask, tailoring, Desktop diff, meaningful review and restart persistence. Neither S1 acceptance is complete.
 

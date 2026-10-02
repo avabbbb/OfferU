@@ -49,6 +49,8 @@ if (!existsSync(join(runtime, "node_modules/@anthropic-ai/claude-agent-sdk"))) {
 }
 mkdirSync(temp, { recursive: true });
 if (realpathSync(temp) !== join(realpathSync(root), ".tmp")) throw new Error("Build directory resolves outside the workspace.");
+const buildIdentityPath = join(temp, "offeru-build-identity.json");
+run(node, [join(backend, "scripts/build_identity.mjs"), "--output", buildIdentityPath]);
 mkdirSync(dist, { recursive: true });
 mkdirSync(build, { recursive: true });
 // Resolve the actual deletion target before replacing only our staging folder.
@@ -84,6 +86,7 @@ const args = [
   "--collect-all", "playwright",
   "--add-data", `${resumeFrontend}${windows ? ";" : ":"}resume-frontend`,
   "--add-data", `${resumeBrowsers}${windows ? ";" : ":"}resume-browsers`,
+  "--add-data", `${buildIdentityPath}${windows ? ";" : ":"}offeru-assets`,
   "--add-data", `${join(backend, "app/agents/skills")}${windows ? ";" : ":"}app/agents/skills`,
   "--add-data", `${join(backend, "tests/fixtures")}${windows ? ";" : ":"}tests/fixtures`,
   "--add-data", `${join(root, ".agents/skills/offeru")}${windows ? ";" : ":"}offeru-assets/skills/offeru`,
