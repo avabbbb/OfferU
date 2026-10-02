@@ -2,7 +2,7 @@
 # OfferU Documentation
 
 Status: **CURRENT NAVIGATION AUTHORITY**  
-Updated: 2026-09-25
+Updated: 2026-10-02
 
 OfferU has accumulated design documents, audits, eval reports and implementation snapshots across several architecture generations. This page defines which documents are authoritative **now**.
 
@@ -71,6 +71,8 @@ A date in a filename is a strong signal that the file may be a snapshot rather t
 
 ## Historical material
 
+The [archive index](./archive/README.md) explains distilled checkpoints and their original sources.
+
 Treat these as historical unless a current authority page explicitly adopts their conclusion:
 
 - docs/archive/**;
@@ -80,7 +82,7 @@ Treat these as historical unless a current authority page explicitly adopts thei
 - old release scorecards tied to an earlier commit;
 - deprecated Main-Agent/Pi architecture notes.
 
-Do not rewrite old eval numbers to make them look current. Preserve the result and mark its scope.
+Do not rewrite old eval numbers to make them look current. Preserve the result and mark its scope. A dated report can still be current evidence for its exact revision; age alone does not make a valid contract or reproducible report obsolete.
 
 ## Rules for future docs
 

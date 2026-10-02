@@ -2,7 +2,7 @@
 # OfferU Current Product North Star
 
 Status: **CURRENT PRODUCT AUTHORITY**  
-Updated: 2026-09-30
+Updated: 2026-10-02
 
 This document defines the current product shape of OfferU. Historical audits, dated implementation plans and superseded Harness-specific designs must not override it.
 
@@ -380,14 +380,9 @@ Recently landed on main:
 - permissioned Codex memory-summary import through the existing evidence/memory-proposal gate;
 - macOS desktop packaging foundation for arm64/x64.
 
-Current active validation work:
+Current validation status is maintained in [STATUS.md](../../STATUS.md) and the [owner dogfood Goals](../evals/OWNER_DOGFOOD_GOALS.md). S0 precedes real Provider and Resume acceptance; this product contract does not declare those gates complete.
 
-- deterministic Build & Release gates are green on the merged #29 baseline; keep them green rather than adding broad new feature scope;
-- start owner dogfood with real Resume + real Jobs through the App-first entry;
-- run the real external-Agent Golden Path with trusted execution evidence, human-visible HITL and pass^3 once an approved isolated environment is available;
-- validate one clean Zero-Setup first-run journey with real user inputs;
-- validate signed/notarized macOS clean install, upgrade, migration and recovery;
-- the first Proactive Career Director implementation is present across five bounded slices on `feat/proactive-career-director`: Profile Discovery, Daily Brief, Job Saved Assessment, Interview Prep/Debrief, and Resume Updated re-engagement. It keeps the existing Automation → CareerTask → Agent Runtime → Operation Registry path and uses isolated synthetic state for coding and automated verification. A real local Codex Profile Discovery turn has completed through the Registry and Policy validator; the next step is owner dogfood. Real career data was not a coding prerequisite. OMP/SWE-2 pass³ remains a separate acceptance activity.
+The older #29 build baseline and 2026-09-27 proactive implementation/live synthetic smoke are historical evidence. The latter is [distilled here](../archive/checkpoints/2026-09-27-proactive-career-director.md). Signing/notarization, clean-machine acceptance and genuine user journeys require their own current evidence.
 
 The previous zero-setup proposal (#18) is incorporated into this North Star; this document is the current product authority.
 

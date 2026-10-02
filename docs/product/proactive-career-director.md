@@ -1,7 +1,7 @@
 # Proactive Career Director
 
 Status: **CURRENT PRODUCT DETAIL / IMPLEMENTATION CONTRACT**  
-Updated: 2026-09-27
+Updated: 2026-10-02
 
 This document defines the product and runtime contract for making OfferU genuinely proactive for non-technical job seekers.
 
@@ -13,39 +13,9 @@ Event → Rule → CareerTask → Agent / Runtime → Operation
 
 If this document conflicts with `GOAL.md` or `docs/product/current-product.md`, the higher authority wins.
 
-## Implementation checkpoint — 2026-09-26
+## Historical implementation evidence
 
-- Slice 1, First-run Profile Discovery, is committed as `73c522e`.
-- Slice 2, Daily Career Brief, is committed as `bb2fb36`.
-- Slice 3, Job Saved Assessment Plan, is committed as `d3508c8`.
-- JOB_SAVED is emitted by the shared job-import Operations, so App, scraper and Agent import paths converge on one idempotent event. A real Codex Career Director reads Career Snapshot and bounded Job context through read-only Registry Operations, validates a strict Job Assessment Plan, and projects it into CareerTask, Automation Inbox and Job Workspace.
-- The existing Role Intelligence task now starts only when the structured assessment marks it needed/useful and recommends `build_role_benchmark`; the launch goes through the Operation Registry and retains idempotency. Career Director cannot write Career Truth or perform external actions.
-- The Job Workspace assessment card covers fit, priority, evidence alignment/gaps, preparation relevance and retryable failures. Targeted backend tests, frontend component tests, typecheck and production build passed for this checkpoint.
-- Slice 4, Interview Prep/Debrief, is implemented in the current working tree. Calendar creation and notification recovery emit an idempotent invitation event; Daily Review scans at most eight elapsed interviews from the past seven days and emits one completion event per calendar item. Each CareerTask remains bound to its exact AutomationEvent target, while its linked Job is used for workspace projection.
-- A real Codex Career Director must read Career Snapshot and the target interview context through Registry Operations. The UI shows the model's preparation focus and practice questions, or asks the model's two or three debrief questions. Answers create source-linked learning observations and pending memory proposals only; unreviewed candidates do not count as repeated weak areas, and no Career Truth is directly changed.
-- Today and the canonical Job Workspace project the current interview lifecycle stage. Synthetic backend integration tests cover invitation, elapsed interview, debrief, source validation, idempotency and no direct truth writes; the focused frontend card test and typecheck pass. Slice 5, Resume Updated Re-engagement, remains. Full backend regression and frontend build are still required after all slices.
-
-## Implementation update — 2026-09-27
-
-All five planned slices now have implementation code on `feat/proactive-career-director`. This dated update records current behavior without rewriting the earlier implementation history above.
-
-- First-run Profile Discovery, Daily Career Brief, Job Saved Assessment, and Interview Prep/Debrief are implemented through the existing Automation → CareerTask → Agent Runtime → Operation Registry path.
-- A saved Resume version emits `RESUME_UPDATED` in the same transaction as its `ResumeVersion`, and only when the version adds evidence. The durable event carries the exact Resume/version reference; Codex is the bounded L1 reasoning provider.
-- The Career Director must read the current Career Snapshot and `get_resume_reengagement_context` through the Registry. Context follows the current Resume version pointer, considers only each Job's newest application attempt, excludes terminal/inactive or too-recent applications, caps the candidate set, and suppresses candidates that already have a pending review item.
-- The first-party `career_policy.py` contract is now wired into every bounded Career Director task. Registry-read policy context supplies the applicable Strategy Pack, action whitelist, targets, evidence references, Operation/Skill allowlists and event autonomy ceiling; the model receives this envelope and the parsed briefing is fail-closed against it, including a fresh source-fingerprint check before any delivery is materialized. A Career Director cannot create a new action key, target, evidence reference or permission level.
-- Resume and Job context is desensitized before the external Agent turn. The returned plan is checked against the target Resume, Registry candidate Job IDs and evidence references, then sensitive content is scrubbed before persistence. No Career Truth write or external contact is available to this path.
-- Positive candidates are materialized in the existing Automation Inbox and CareerTask, shown in Today, and linked to their canonical Job Workspace. The UI only presents candidates for review; it has no send/contact action.
-- Synthetic tests exercise the real Registry path with a mocked provider response, candidate validation, pending-candidate dedupe, outbox idempotency, and no direct Profile mutation. The CareerTask now materializes validated deliveries before completion, and users can read saved artifact content through a UI endpoint backed by the `get_career_artifact` Operation; Markdown rendering disables raw HTML.
-- Initial local Codex attempts using the inherited reasoning effort did not emit a completed Career Director turn. The follow-up below records the resolved bounded-turn configuration and its live evidence.
-
-## Live-runtime follow-up — 2026-09-27
-
-- The Career Director now requests Codex `turn_effort="low"` for its single schema-bounded judgment, independent of the user's global reasoning preference. Explicit `medium` and inherited effort timed out in the same isolated synthetic Profile Discovery scenario; explicit `low` completed. The model still decides the career judgment and makes Registry tool calls; no scripted result is substituted.
-- Codex 0.155.1 completed `PROFILE_BASELINE_REQUIRED` from `H:\tmp\offeru\career-director-live-task-code-path-20260927\smoke.sqlite`: the model issued `get_career_snapshot`, returned a valid briefing with two questions and two actions, passed `career_policy.py` source-fingerprint validation, and emitted `turn/completed`. The CareerTask and AutomationEvent completed. The synthetic Profile's Career Truth did not change and no Proposal or external action was created.
-- This verifies one local live Profile Discovery integration. The other event slices remain covered by synthetic Registry/runtime integration tests; live OMP/SWE-2 pass³ remains a separate, unrun acceptance gate.
-- Full backend after the effort-boundary change: **813 passed, 10 skipped, 11 subtests passed, 20 warnings** (`OFFERU_TEST_TEMP_ROOT=H:\tmp\offeru\career-director-final-backend-effort-rerun-20260927`). Frontend: **50 passed across 18 files**; typecheck and production build passed. Extension unchanged.
-
----
+The 2026-09-26/27 slice commits, synthetic regression and single live Codex smoke are [distilled in the historical checkpoint](../archive/checkpoints/2026-09-27-proactive-career-director.md), with pinned original text. They do not establish current Desktop, Provider or owner acceptance. Current implementation status belongs in [STATUS.md](../../STATUS.md); the product/runtime contract below remains active.
 
 ## 1. Problem
 
