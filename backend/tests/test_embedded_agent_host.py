@@ -683,6 +683,9 @@ class EmbeddedAgentHostTests(unittest.TestCase):
                 actions=[],
                 llm_runtime={
                     "runtime": "python_agent",
+                    "provider_id": "embedded",
+                    "provider": "ollama",
+                    "model": "native-lifecycle-fixture",
                     "protocol_version": "offeru.pi-worker.v1",
                     "session_id": created_session_id,
                     "session_file": "H:/temporary/pi-recovery-session.jsonl",
@@ -718,6 +721,16 @@ class EmbeddedAgentHostTests(unittest.TestCase):
         interrupted, resumed, events = asyncio.run(run())
 
         self.assertEqual(interrupted["status"], "interrupted")
+        self.assertEqual(interrupted["llm_runtime"]["status"], "interrupted")
+        self.assertEqual(interrupted["llm_runtime"]["provider_id"], "embedded")
+        self.assertEqual(interrupted["llm_runtime"]["provider"], "ollama")
+        self.assertEqual(
+            interrupted["llm_runtime"]["model"], "native-lifecycle-fixture"
+        )
+        self.assertEqual(
+            interrupted["llm_runtime"]["session_file"],
+            "H:/temporary/pi-recovery-session.jsonl",
+        )
         self.assertEqual(resumed["run"]["id"], interrupted["id"])
         self.assertEqual(resumed["run"]["status"], "waiting_confirmation")
         self.assertEqual(
@@ -754,7 +767,11 @@ class EmbeddedAgentHostTests(unittest.TestCase):
                 ],
                 llm_runtime={
                     "runtime": "python_agent",
+                    "provider_id": "embedded",
+                    "provider": "ollama",
+                    "model": "native-lifecycle-fixture",
                     "session_file": "H:/temporary/uncertain-session.jsonl",
+                    "status": "active",
                 },
             )
             created["status"] = "executing"
@@ -769,6 +786,18 @@ class EmbeddedAgentHostTests(unittest.TestCase):
         stored, events = asyncio.run(run())
 
         self.assertEqual(stored["status"], "needs_reconciliation")
+        self.assertEqual(
+            stored["llm_runtime"]["status"], "needs_reconciliation"
+        )
+        self.assertEqual(stored["llm_runtime"]["provider_id"], "embedded")
+        self.assertEqual(stored["llm_runtime"]["provider"], "ollama")
+        self.assertEqual(
+            stored["llm_runtime"]["model"], "native-lifecycle-fixture"
+        )
+        self.assertEqual(
+            stored["llm_runtime"]["session_file"],
+            "H:/temporary/uncertain-session.jsonl",
+        )
         self.assertEqual(stored["steps"][0]["status"], "executing")
         self.assertIn("automatic replay is forbidden", stored["failure_reason"])
         event_types = {event["type"] for event in events}
