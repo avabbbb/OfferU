@@ -32,6 +32,31 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const COMMIT = /^[0-9a-f]{40}$/;
 const FINGERPRINT = /^sha256:[0-9a-f]{64}$/;
 
+export type DesktopBackendStatus = {
+  state: "starting" | "ready" | "failed";
+  reason: string | null;
+  pid: number | null;
+  exit_code: number | null;
+};
+
+export async function getDesktopBackendStatus(timeoutMs = 1_000): Promise<DesktopBackendStatus | null> {
+  if (!isTauri()) return null;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const result = await Promise.race([
+    invoke<unknown>("get_desktop_backend_status").catch(() => null),
+    new Promise<null>((resolve) => { timeout = setTimeout(() => resolve(null), timeoutMs); }),
+  ]).finally(() => clearTimeout(timeout));
+  if (!result || typeof result !== "object") return null;
+  const value = result as Record<string, unknown>;
+  if (value.state !== "starting" && value.state !== "ready" && value.state !== "failed") return null;
+  return {
+    state: value.state,
+    reason: typeof value.reason === "string" ? value.reason : null,
+    pid: typeof value.pid === "number" && Number.isInteger(value.pid) ? value.pid : null,
+    exit_code: typeof value.exit_code === "number" && Number.isInteger(value.exit_code) ? value.exit_code : null,
+  };
+}
+
 function nullableText(value: unknown): string | null {
   return typeof value === "string" && value.trim() && value !== "unknown" ? value : null;
 }

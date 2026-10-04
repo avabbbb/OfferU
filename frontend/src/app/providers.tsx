@@ -12,6 +12,7 @@ import { SHOWCASE } from "@/lib/showcase/router";
 import { resolveApiBase } from "@/lib/apiBase";
 import {
   getDesktopRuntimeIdentity,
+  getDesktopBackendStatus,
   isDesktopRuntime,
   matchesDesktopRuntimeIdentity,
 } from "@/lib/runtimeIdentityApi";
@@ -25,7 +26,7 @@ export function BackendReadyGate({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(SHOWCASE);
   const [startupError, setStartupError] = useState(false);
   const [slowHint, setSlowHint] = useState(false);
-  const [readinessState, setReadinessState] = useState<"waiting" | "connection" | "identity-mismatch" | "native-identity-unavailable">("waiting");
+  const [readinessState, setReadinessState] = useState<"waiting" | "connection" | "identity-mismatch" | "native-identity-unavailable" | "backend-failed">("waiting");
   const [probeNonce, setProbeNonce] = useState(0);
   const [startupRecovery, setStartupRecovery] = useState<{
     status: string;
@@ -48,6 +49,16 @@ export function BackendReadyGate({ children }: { children: React.ReactNode }) {
       if (!cancelled) setSlowHint(true);
     }, BACKEND_STARTUP_SLOW_HINT_MS);
     const probe = async () => {
+      if (desktopRuntime) {
+        const status = await getDesktopBackendStatus();
+        if (cancelled) return;
+        if (status?.state === "failed") {
+          setReadinessState("backend-failed");
+          setStartupError(true);
+          clearTimeout(slowHintTimer);
+          return;
+        }
+      }
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 1200);
       try {
@@ -130,12 +141,14 @@ export function BackendReadyGate({ children }: { children: React.ReactNode }) {
             {startupError ? (
               <>
                 <p className="text-sm font-semibold">
-                  {readinessState === "identity-mismatch" || readinessState === "native-identity-unavailable"
+                  {readinessState === "backend-failed" ? "OfferU 后端启动失败" : readinessState === "identity-mismatch" || readinessState === "native-identity-unavailable"
                     ? "无法验证当前桌面运行身份"
                     : "无法连接 OfferU 后端"}
                 </p>
                 <p className="mt-2 text-xs leading-5 text-[var(--foreground-muted)]">
-                  {readinessState === "identity-mismatch" || readinessState === "native-identity-unavailable" ? (
+                  {isDesktopRuntime() ? (
+                    <>请关闭并重新打开 OfferU。如果仍未恢复，请更新或重新安装当前版本；保留本地数据与诊断记录。</>
+                  ) : readinessState === "identity-mismatch" || readinessState === "native-identity-unavailable" ? (
                     <>检测到本地服务与当前桌面实例不匹配，或安装包身份资料缺失。请关闭并重新打开 OfferU；如果仍未恢复，请更新或重新安装当前版本。</>
                   ) : (
                     <>请确认本地 API 正在 <code>http://127.0.0.1:8766</code> 运行。网页入口是 <code>http://127.0.0.1:7410</code>；8080 只是模型接口，不是网页地址。</>
@@ -156,7 +169,7 @@ export function BackendReadyGate({ children }: { children: React.ReactNode }) {
                 {slowHint && (
                   <>
                     <p className="mt-2 text-xs leading-5 text-[var(--foreground-muted)]">
-                      连接时间较长，仍在重试。若本地服务未启动，请先在终端启动后端（端口 8766）。
+                      {isDesktopRuntime() ? "首次启动可能需要较长时间，仍在检查本地服务。" : "连接时间较长，仍在重试。若本地服务未启动，请先在终端启动后端（端口 8766）。"}
                     </p>
                     <button
                       type="button"

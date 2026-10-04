@@ -25,6 +25,45 @@ struct Children(Arc<Mutex<Option<ProcessTree>>>);
 struct DesktopRuntimeIdentityState(Mutex<Option<DesktopRuntimeIdentity>>);
 
 #[derive(Clone, serde::Serialize)]
+struct DesktopBackendStatus {
+    state: &'static str,
+    reason: Option<&'static str>,
+    pid: Option<u32>,
+    exit_code: Option<i32>,
+}
+
+impl Default for DesktopBackendStatus {
+    fn default() -> Self {
+        Self {
+            state: "starting",
+            reason: None,
+            pid: None,
+            exit_code: None,
+        }
+    }
+}
+
+#[derive(Default)]
+struct DesktopBackendStatusState(Mutex<DesktopBackendStatus>);
+
+#[tauri::command]
+fn get_desktop_backend_status(
+    state: tauri::State<'_, DesktopBackendStatusState>,
+) -> Result<DesktopBackendStatus, String> {
+    state
+        .0
+        .lock()
+        .map(|value| value.clone())
+        .map_err(|_| "Desktop backend status is unavailable".to_string())
+}
+
+fn set_desktop_backend_status(app: &AppHandle, status: DesktopBackendStatus) {
+    if let Ok(mut value) = app.state::<DesktopBackendStatusState>().0.lock() {
+        *value = status;
+    }
+}
+
+#[derive(Clone, serde::Serialize)]
 struct DesktopRuntimeIdentity {
     runtime_instance_id: String,
     version: String,
@@ -867,11 +906,13 @@ pub fn run() {
     tauri::Builder::default()
         .manage(Children::default())
         .manage(DesktopRuntimeIdentityState::default())
+        .manage(DesktopBackendStatusState::default())
         .manage(UiApprovalCapability(Uuid::new_v4().to_string()))
         .invoke_handler(tauri::generate_handler![
             decide_agent_proposal,
             decide_agent_runtime_action,
             get_desktop_runtime_identity,
+            get_desktop_backend_status,
             open_external_url
         ])
         .setup(|app| {
@@ -886,6 +927,7 @@ pub fn run() {
                 Ok(path) => path,
                 Err(error) => {
                     eprintln!("[OfferU] backend startup failed: {error}");
+                    set_desktop_backend_status(app.handle(), DesktopBackendStatus { state: "failed", reason: Some("data_root_failed"), ..Default::default() });
                     app.emit("offeru-ready", false).ok();
                     return Ok(());
                 }
@@ -939,6 +981,12 @@ pub fn run() {
                             ProcessState::WaitError(kind) => Some(format!("{kind:?}")),
                             _ => process.job_query_error_kind.map(|kind| format!("{kind:?}")),
                         });
+                        set_desktop_backend_status(&handle, DesktopBackendStatus {
+                            state: if startup.ready { "ready" } else { "failed" },
+                            reason: if startup.ready { None } else { Some(startup.state) },
+                            pid: process.map(|process| process.pid),
+                            exit_code,
+                        });
                         let owned_job_state = match process {
                             None => "unavailable",
                             Some(process) if process.job_query_error_kind.is_some() => {
@@ -984,6 +1032,7 @@ pub fn run() {
                 }
                 Err(error) => {
                     eprintln!("[OfferU] backend startup failed: {error}");
+                    set_desktop_backend_status(app.handle(), DesktopBackendStatus { state: "failed", reason: Some("spawn_failed"), ..Default::default() });
                     handle.emit("offeru-ready", false).ok();
                 }
             }

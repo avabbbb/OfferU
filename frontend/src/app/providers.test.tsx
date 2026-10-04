@@ -43,7 +43,7 @@ function matchingHealth() {
 describe("BackendReadyGate desktop identity check", () => {
   beforeEach(() => {
     mocks.isTauri.mockReset().mockReturnValue(true);
-    mocks.invoke.mockReset().mockResolvedValue(expected);
+    mocks.invoke.mockReset().mockImplementation(async (command: string) => command === "get_desktop_runtime_identity" ? expected : null);
     mocks.fetch.mockReset().mockResolvedValue({ ok: true, json: async () => matchingHealth() });
     vi.stubGlobal("fetch", mocks.fetch);
   });
@@ -81,10 +81,21 @@ describe("BackendReadyGate desktop identity check", () => {
   });
 
   it("does not mount the app when native expected identity is unavailable", async () => {
-    mocks.invoke.mockResolvedValueOnce(null);
+    mocks.invoke.mockResolvedValue(null);
     render(<BackendReadyGate><div>ready child</div></BackendReadyGate>);
 
     await waitFor(() => expect(screen.getByTestId("backend-ready-gate").getAttribute("data-readiness-state")).toBe("native-identity-unavailable"));
     expect(screen.queryByText("ready child")).toBeNull();
+  });
+
+  it("shows a native startup failure without waiting for HTTP or mounting stale health", async () => {
+    mocks.invoke.mockImplementation(async (command: string) => command === "get_desktop_backend_status"
+      ? { state: "failed", reason: "process_exited_job_empty", pid: 1234, exit_code: 23 }
+      : expected);
+    render(<BackendReadyGate><div>ready child</div></BackendReadyGate>);
+    expect(await screen.findByText("OfferU 后端启动失败")).toBeTruthy();
+    expect(screen.queryByText("ready child")).toBeNull();
+    expect(mocks.fetch).not.toHaveBeenCalled();
+    expect(screen.queryByText(/请先在终端启动后端/)).toBeNull();
   });
 });
