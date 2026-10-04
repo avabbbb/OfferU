@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import builtins
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -236,7 +237,8 @@ def test_registry_confirmed_reset_clears_synthetic_state_and_restores_backup(
         runtime_url = f"sqlite+aiosqlite:///{database_path.as_posix()}"
         runtime_engine = create_async_engine(runtime_url)
         assert Path(runtime_engine.url.database).resolve() == database_path.resolve()
-        assert Path(runtime_engine.url.database).drive.upper() == "H:"
+        if os.name == "nt" and Path("H:/tmp").exists():
+            assert Path(runtime_engine.url.database).drive.upper() == "H:"
 
         def bind_engine(engine):
             factory = async_sessionmaker(engine, expire_on_commit=False)
