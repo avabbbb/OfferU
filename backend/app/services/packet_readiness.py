@@ -341,8 +341,17 @@ async def project_packet_state(
     research_run = None
     referenced_research_run_id = None
     if job_id is not None:
+        resume_proposals = [
+            item
+            for item in proposals
+            if item.job_id == job_id
+            and (
+                item.workspace_resume_id == resume.id
+                or item.accepted_resume_id == resume.id
+            )
+        ]
         referenced_research_run_id = next(
-            (item.research_run_id for item in proposals if item.research_run_id),
+            (item.research_run_id for item in resume_proposals if item.research_run_id),
             None,
         )
         research_query = select(JobResearchRun).where(JobResearchRun.job_id == job_id)

@@ -235,6 +235,8 @@ def test_registry_confirmed_reset_clears_synthetic_state_and_restores_backup(
         database_path = root / "djm.db"
         runtime_url = f"sqlite+aiosqlite:///{database_path.as_posix()}"
         runtime_engine = create_async_engine(runtime_url)
+        assert Path(runtime_engine.url.database).resolve() == database_path.resolve()
+        assert Path(runtime_engine.url.database).drive.upper() == "H:"
 
         def bind_engine(engine):
             factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -319,7 +321,18 @@ def test_registry_confirmed_reset_clears_synthetic_state_and_restores_backup(
                     status="running",
                     idempotency_key="synthetic-active-task-key",
                 )
-                db.add_all((resume, proposal_row, active_task))
+                unregistered_task = CareerTask(
+                    task_id="synthetic-unregistered-task",
+                    task_type="career_director",
+                    source="test_fixture",
+                    target_type="job",
+                    target_id=str(job.id),
+                    input_json={"synthetic_context": "unregistered old job"},
+                    output_contract_json={},
+                    status="running",
+                    idempotency_key="synthetic-unregistered-task-key",
+                )
+                db.add_all((resume, proposal_row, active_task, unregistered_task))
                 await db.commit()
                 profile_id = profile.id
                 job_id = job.id
@@ -379,6 +392,7 @@ def test_registry_confirmed_reset_clears_synthetic_state_and_restores_backup(
             assert receipt["ok"] is True
             assert len(receipt["tool_calls"]) == 1
             backup_id = receipt["run"]["steps"][0]["result"]["outputs"]["backup"]["backup_id"]
+            assert receipt["run"]["steps"][0]["result"]["outputs"]["quiesced"]["career_tasks"] == 2
             backups = list_backups(layout)
             assert len(backups["items"]) == 1
             assert backups["items"][0]["backup_id"] == backup_id
@@ -483,6 +497,60 @@ def test_registry_confirmed_reset_clears_synthetic_state_and_restores_backup(
             assert uploaded_resume.read_text(encoding="utf-8") == "synthetic uploaded resume"
             assert external_resume.read_text(encoding="utf-8") == "synthetic external resume"
             assert external_memory.read_text(encoding="utf-8") == "synthetic external memory"
+
+            # A file cleanup failure after the database transaction must not
+            # be reported as a completed Registry action. The pre-reset backup
+            # remains available to recover the partially cleared workspace.
+            partial_session = root / "data" / "python_agent_sessions" / "run_partial12345678.json"
+            partial_session.parent.mkdir(parents=True, exist_ok=True)
+            partial_session.write_text('{"messages":["synthetic partial cleanup"]}', encoding="utf-8")
+            partial_proposal = await execute_or_propose_operation(
+                "reset_local_business_data",
+                {},
+                surface="agent_runtime_ui",
+            )
+            assert partial_proposal["ok"] is True
+            assert partial_proposal["outputs"]["requires_confirmation"] is True
+            partial_run_id = partial_proposal["outputs"]["proposal"]["run_id"]
+            partial_action_id = partial_proposal["outputs"]["proposal"]["action_id"]
+            clear_directory_contents = reset_service._clear_directory_contents
+
+            def clear_then_fail(directory: Path, *, boundary: Path) -> int:
+                cleared = clear_directory_contents(directory, boundary=boundary)
+                if directory.name == "python_agent_sessions":
+                    raise OSError("synthetic partial file cleanup failure")
+                return cleared
+
+            with monkeypatch.context() as failure_patch:
+                failure_patch.setattr(
+                    reset_service,
+                    "_clear_directory_contents",
+                    clear_then_fail,
+                )
+                partial_receipt = await confirm_operation_proposal(
+                    partial_run_id,
+                    surface="agent_runtime_ui",
+                    action_id=partial_action_id,
+                )
+
+            assert partial_receipt["ok"] is False
+            assert partial_receipt["run"]["status"] == "failed"
+            assert partial_receipt["run"]["steps"][0]["status"] == "failed"
+            assert partial_receipt["run"]["steps"][0]["error"]
+            assert not partial_session.exists()
+            assert list_backups(layout)["items"][0]["reason"] == "pre_reset"
+            async with session_factory() as db:
+                assert len((await db.execute(select(Job))).scalars().all()) == 0
+                assert len((await db.execute(select(Resume))).scalars().all()) == 0
+                failed_audits = (
+                    await db.execute(
+                        select(OperationAuditLog)
+                        .where(OperationAuditLog.operation == "reset_local_business_data")
+                        .order_by(OperationAuditLog.id.desc())
+                    )
+                ).scalars().all()
+                assert failed_audits[0].status == "failed"
+                assert failed_audits[0].ok is False
         finally:
             career_tasks._LIVE_TASKS.pop("synthetic-active-task", None)
             await runtime_engine.dispose()

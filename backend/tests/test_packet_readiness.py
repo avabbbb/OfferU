@@ -136,6 +136,113 @@ class ApplicationPacketReadinessTests(unittest.TestCase):
             "not_adopted",
         )
 
+    def test_same_job_other_resume_proposal_does_not_link_research(self) -> None:
+        async def run() -> dict:
+            engine, sessions = await _database()
+            async with sessions() as db:
+                profile = Profile(name="Synthetic Candidate", is_default=True)
+                job = Job(
+                    title="Target role",
+                    company="Target Co",
+                    raw_description="Target job.",
+                    hash_key=hashlib.sha256(b"same-job-wrong-resume").hexdigest(),
+                )
+                db.add_all([profile, job])
+                await db.flush()
+                current_resume = Resume(
+                    user_name=profile.name,
+                    title="Current resume",
+                    source_mode="job_tailored_workspace",
+                    target_job_id=job.id,
+                    source_profile_id=profile.id,
+                    sections=[],
+                )
+                other_resume = Resume(
+                    user_name=profile.name,
+                    title="Other resume for same job",
+                    source_mode="job_tailored_workspace",
+                    target_job_id=job.id,
+                    source_profile_id=profile.id,
+                    sections=[],
+                )
+                db.add_all([current_resume, other_resume])
+                await db.flush()
+                other_version = ResumeVersion(
+                    resume_id=other_resume.id,
+                    version_number=1,
+                    content_snapshot={"summary": "Other resume snapshot"},
+                )
+                db.add(other_version)
+                await db.flush()
+                other_attempt = ApplicationAttempt(
+                    job_id=job.id,
+                    resume_id=other_resume.id,
+                    resume_version_id=other_version.id,
+                    status="submitted",
+                )
+                company_dossier = ResearchDossier(
+                    dossier_key="same-job-wrong-resume-company",
+                    dossier_type="company",
+                    company_name=job.company,
+                    job_id=job.id,
+                )
+                role_dossier = ResearchDossier(
+                    dossier_key="same-job-wrong-resume-role",
+                    dossier_type="role",
+                    company_name=job.company,
+                    job_id=job.id,
+                )
+                db.add_all([company_dossier, role_dossier])
+                await db.flush()
+                research = JobResearchRun(
+                    run_id="research_for_other_resume",
+                    job_id=job.id,
+                    company_dossier_id=company_dossier.id,
+                    role_dossier_id=role_dossier.id,
+                    status="completed",
+                    review_status="accepted",
+                    result_json={},
+                )
+                db.add(research)
+                proposal = ResumeOptimizationProposal(
+                    proposal_id="proposal_for_other_resume",
+                    job_id=job.id,
+                    profile_id=profile.id,
+                    research_run_id=research.run_id,
+                    status="accepted",
+                    source_snapshot_hash="synthetic-source",
+                    research_snapshot_hash="synthetic-research",
+                    workspace_resume_id=other_resume.id,
+                    accepted_resume_id=other_resume.id,
+                )
+                db.add_all([proposal, other_attempt])
+                await db.commit()
+                packet = await packet_readiness.project_packet_state(
+                    db,
+                    job=job,
+                    resume=current_resume,
+                    proposals=[proposal],
+                    versions=[],
+                    attempts=[other_attempt],
+                    legacy_application_id=None,
+                )
+            await engine.dispose()
+            return packet
+
+        with patch.object(
+            packet_readiness.career_artifact_store,
+            "list",
+            return_value={"items": []},
+        ):
+            packet = asyncio.run(run())
+        research_state = packet["artifact_state"]["research"]
+        self.assertTrue(research_state["exists"])
+        self.assertFalse(research_state["ready"])
+        self.assertFalse(research_state["linked_to_resume"])
+        self.assertIsNone(research_state["proposal_run_id"])
+        self.assertFalse(packet["external_submission"]["recorded"])
+        self.assertIsNone(packet["external_submission"]["status"])
+
     def test_orphaned_latest_version_is_not_used_without_current_pointer(self) -> None:
         async def run() -> dict:
             engine, sessions = await _database()
@@ -489,6 +596,16 @@ class ApplicationPacketReadinessTests(unittest.TestCase):
                                 )
                             )
                         ).scalars().all()
+                    )
+                    current_job_description = job.raw_description
+                    job.raw_description = f"{current_job_description} changed after collection"
+                    stale_jd_verification = role_intelligence.verify_benchmark_artifact(
+                        benchmark, job=job, documents=documents
+                    )
+                    job.raw_description = current_job_description
+                    self.assertFalse(stale_jd_verification["ready"])
+                    self.assertIn(
+                        "target_snapshot_mismatch", stale_jd_verification["reasons"]
                     )
                     research = await db.get(JobResearchRun, "research_packet_valid")
                     research_findings = list(
