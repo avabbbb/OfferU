@@ -236,6 +236,7 @@ async def _fail_run(run_id: str, error: Exception) -> dict[str, Any]:
     if run is None:
         raise error
     run["status"] = "failed"
+    run["llm_runtime"] = {**(run.get("llm_runtime") or {}), "status": "failed"}
     run["failure_reason"] = safe_error_message(error)
     return await save_agent_run(
         run,
