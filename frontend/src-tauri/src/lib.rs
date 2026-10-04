@@ -16,7 +16,7 @@ use uuid::Uuid;
 
 mod process_lifecycle;
 
-use process_lifecycle::ProcessTree;
+use process_lifecycle::{ProcessSnapshot, ProcessState, ProcessTree};
 
 #[derive(Default)]
 struct Children(Arc<Mutex<Option<ProcessTree>>>);
@@ -455,7 +455,7 @@ fn configure_backend_command(
         .env("OFFERU_PORT", "8766")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        .stderr(Stdio::piped());
 
     if let Some(commit) = build_commit() {
         command.env("OFFERU_BUILD_COMMIT", commit);
@@ -701,11 +701,18 @@ fn health_response_matches(
         && build_identity_matches(object, data_root, expected_runtime_type)
 }
 
-fn owned_backend_is_alive(children: &Arc<Mutex<Option<ProcessTree>>>) -> bool {
+struct BackendStartupReport {
+    ready: bool,
+    state: &'static str,
+    process: Option<ProcessSnapshot>,
+    elapsed_ms: u128,
+}
+
+fn owned_backend_snapshot(children: &Arc<Mutex<Option<ProcessTree>>>) -> Option<ProcessSnapshot> {
     children
         .lock()
-        .map(|mut children| children.as_mut().is_some_and(ProcessTree::is_alive))
-        .unwrap_or(false)
+        .ok()
+        .and_then(|mut children| children.as_mut().map(ProcessTree::snapshot))
 }
 
 fn terminate_owned_backend(children: &Arc<Mutex<Option<ProcessTree>>>) {
@@ -722,7 +729,14 @@ fn wait_for_python_backend(
     runtime_instance_id: &str,
     expected_runtime_type: &str,
     timeout_secs: u64,
-) -> bool {
+) -> BackendStartupReport {
+    let started = std::time::Instant::now();
+    let report = |ready, state, process| BackendStartupReport {
+        ready,
+        state,
+        process,
+        elapsed_ms: started.elapsed().as_millis(),
+    };
     let deadline = std::time::Instant::now() + Duration::from_secs(timeout_secs);
     let client = match reqwest::blocking::Client::builder()
         .no_proxy()
@@ -730,17 +744,24 @@ fn wait_for_python_backend(
         .build()
     {
         Ok(client) => client,
-        Err(error) => {
-            eprintln!(
-                "[OfferU] cannot create direct loopback health client: {}",
-                error
-            );
-            return false;
+        Err(_) => {
+            return report(
+                false,
+                "health_probe_client_error",
+                owned_backend_snapshot(children),
+            )
         }
     };
     loop {
-        if !owned_backend_is_alive(children) {
-            return false;
+        let Some(process) = owned_backend_snapshot(children) else {
+            return report(false, "process_unavailable", None);
+        };
+        match process.state {
+            ProcessState::Running => {}
+            ProcessState::Exited(_) => {
+                return report(false, exited_job_state(&process), Some(process))
+            }
+            ProcessState::WaitError(_) => return report(false, "try_wait_error", Some(process)),
         }
         if let Ok(response) = client
             .get("http://127.0.0.1:8766/api/health")
@@ -760,14 +781,39 @@ fn wait_for_python_backend(
                         expected_runtime_type,
                     )
                 });
-            if response_ok && health_identity_ok && owned_backend_is_alive(children) {
-                return true;
+            if response_ok && health_identity_ok {
+                if let Some(process) = owned_backend_snapshot(children) {
+                    if process.state == ProcessState::Running {
+                        return report(true, "ready", Some(process));
+                    }
+                    if let ProcessState::Exited(_) = process.state {
+                        return report(false, exited_job_state(&process), Some(process));
+                    }
+                    if let ProcessState::WaitError(_) = process.state {
+                        return report(false, "try_wait_error", Some(process));
+                    }
+                } else {
+                    return report(false, "process_unavailable", None);
+                }
             }
         }
         if std::time::Instant::now() >= deadline {
-            return false;
+            return report(false, "startup_timeout", owned_backend_snapshot(children));
         }
         thread::sleep(Duration::from_millis(700));
+    }
+}
+
+fn exited_job_state(process: &ProcessSnapshot) -> &'static str {
+    let Some(process_ids) = process.job_live_process_ids.as_ref() else {
+        return "process_exited_job_state_unknown";
+    };
+    if process_ids.iter().any(|pid| *pid != process.pid) {
+        "process_exited_job_payload_alive"
+    } else if process_ids.contains(&process.pid) {
+        "process_exited_job_root_only"
+    } else {
+        "process_exited_job_empty"
     }
 }
 
@@ -877,18 +923,63 @@ pub fn run() {
                     *children.lock().unwrap() = Some(child);
                     let children_for_wait = children.clone();
                     thread::spawn(move || {
-                        let backend_ok = wait_for_python_backend(
+                        let startup = wait_for_python_backend(
                             &children_for_wait,
                             &data_root,
                             &runtime_instance_id,
                             &expected_runtime_type,
                             45,
                         );
-                        println!("[OfferU] backend_ready={}", backend_ok);
-                        if !backend_ok {
+                        let process = startup.process.as_ref();
+                        let exit_code = match process.map(|process| process.state) {
+                            Some(ProcessState::Exited(code)) => code,
+                            _ => None,
+                        };
+                        let error_kind = process.and_then(|process| match process.state {
+                            ProcessState::WaitError(kind) => Some(format!("{kind:?}")),
+                            _ => process.job_query_error_kind.map(|kind| format!("{kind:?}")),
+                        });
+                        let owned_job_state = match process {
+                            None => "unavailable",
+                            Some(process) if process.job_query_error_kind.is_some() => {
+                                "query_error"
+                            }
+                            Some(process) => match process.job_live_process_ids.as_deref() {
+                                None => "unavailable",
+                                Some(process_ids)
+                                    if process_ids.iter().any(|pid| *pid != process.pid) =>
+                                {
+                                    "payload_alive"
+                                }
+                                Some(process_ids) if process_ids.contains(&process.pid) => {
+                                    "root_alive"
+                                }
+                                Some(_) => "empty",
+                            },
+                        };
+                        println!(
+                            "[OfferU] backend_startup={}",
+                            serde_json::json!({
+                                "pid": process.map(|process| process.pid),
+                                "status": startup.state,
+                                "root_status": process.map(|process| process.state.name()),
+                                "exit_code": exit_code,
+                                "error_kind": error_kind,
+                                "elapsed_ms": startup.elapsed_ms,
+                                "stderr_bytes": process.map(|process| process.stderr.bytes),
+                                "stderr_markers": process.map(|process| &process.stderr.markers),
+                                "owned_job": {
+                                    "status": owned_job_state,
+                                    "active_process_count_snapshot": process.and_then(|process| process.job_active_process_count_snapshot),
+                                },
+                            })
+                        );
+                        if !startup.ready {
                             terminate_owned_backend(&children_for_wait);
                         }
-                        handle.emit("offeru-ready", backend_ok).ok();
+                        handle
+                            .emit("offeru-ready", startup.ready)
+                            .ok();
                     });
                 }
                 Err(error) => {
