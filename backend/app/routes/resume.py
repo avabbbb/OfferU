@@ -376,6 +376,20 @@ class ResumeProposalItemReviewRequest(BaseModel):
     edited_text: str = Field(default="", max_length=20_000)
 
 
+class ResumeProposalItemsReviewRequest(BaseModel):
+    resume_id: int = Field(..., gt=0)
+    change_ids: list[str] = Field(..., min_length=1, max_length=200)
+    action: str = Field(..., pattern="^(accept|reject)$")
+
+
+@router.post("/workspace/proposals/{proposal_id}/review-items")
+async def review_resume_proposal_items(proposal_id: str, body: ResumeProposalItemsReviewRequest):
+    return await _execute_operation(
+        "review_resume_proposal_items",
+        {"proposal_id": proposal_id, **body.model_dump()},
+    )
+
+
 @router.get("/workspace/{resume_id}")
 async def get_resume_workspace(resume_id: int):
     return await _execute_operation("get_resume_workspace", {"resume_id": resume_id})

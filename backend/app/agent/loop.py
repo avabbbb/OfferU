@@ -332,7 +332,7 @@ async def _execute_tool_calls(
     finalized.sort(key=lambda entry: entry.index)
     return {
         "finalized": finalized,
-        "terminate": bool(finalized) and all(entry.terminate for entry in finalized),
+        "terminate": any(entry.terminate for entry in finalized),
     }
 
 
@@ -353,6 +353,16 @@ async def _execute_tool_calls_sequential(
             entry = await _execute_prepared_tool_call(context, assistant_message, prepared_or_final, config, emit)
         await _emit_tool_end_and_message(emit, entry)
         finalized.append(entry)
+        if entry.terminate:
+            for skipped_index, skipped_call in enumerate(tool_calls[index + 1 :], start=index + 1):
+                await _emit_tool_start(emit, skipped_call)
+                skipped = _finalized_error(
+                    skipped_index, skipped_call, "Skipped because the tool paused this Run"
+                )
+                skipped.terminate = True
+                await _emit_tool_end_and_message(emit, skipped)
+                finalized.append(skipped)
+            break
         if config.cancel and config.cancel.cancelled:
             break
     return finalized

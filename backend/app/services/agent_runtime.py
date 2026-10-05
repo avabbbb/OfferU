@@ -83,6 +83,14 @@ _RUN_EVENT_MAP = {
     "operation.failed": "tool.failed",
     "operation.rejected": "approval.resolved",
     "operation.proposed": "approval.requested",
+    "decision.plan_proposed": "approval.requested",
+    "decision.group_decided": "approval.resolved",
+    "run.waiting_decision": "approval.requested",
+    "run.waiting_confirmation": "approval.requested",
+    "input.required": "approval.requested",
+    "input.answered": "approval.resolved",
+    "run.waiting_input": "approval.requested",
+    "continuation.requested": "reasoning.status",
     "approval.requested": "approval.requested",
     "approval.resolved": "approval.resolved",
     "task.progress": "task.progress",
@@ -331,10 +339,21 @@ class ReplayAgentRunProvider:
             pending_actions_for_run,
             save_agent_run,
         )
-        from app.services.agent_skill_registry import resolve_run_skill
+        from app.services.agent_skill_registry import (
+            SkillRoutingError,
+            resolve_declared_skill,
+        )
 
         goal = str(message or "").strip()
-        skill = resolve_run_skill(goal, skill_id)
+        # Replay stays deterministic: declared Skills resolve locally, while
+        # "auto" would require the model router and fails visibly instead of
+        # silently degrading.
+        declared = resolve_declared_skill(goal, skill_id)
+        if declared is None:
+            raise SkillRoutingError(
+                "Replay provider 不支持 Skill 自动路由；请显式指定 skill_id。"
+            )
+        skill, routing = declared
         run = await create_agent_run(
             conversation_id=conversation_id,
             task_id=task_id,
@@ -342,7 +361,7 @@ class ReplayAgentRunProvider:
             mode=skill.mode,
             skill_id=skill.id,
             skill_version=skill.version,
-            skill_snapshot=skill.summary(),
+            skill_snapshot={**skill.summary(), "routing": routing.provenance()},
             actions=[],
             exit_criteria=["the replay response is persisted"],
             llm_runtime={
@@ -399,7 +418,7 @@ class ReplayAgentRunProvider:
             "assistant_message": response_text,
             "turn_finished": True,
             "requires_confirmation": False,
-            "active_skill": skill.summary(),
+            "active_skill": {**skill.summary(), "routing": routing.provenance()},
         }
         saved = await save_agent_run(run)
         for event in await list_agent_run_events(run_id, after_sequence=cursor):
@@ -409,7 +428,7 @@ class ReplayAgentRunProvider:
             "run": saved,
             "assistant_message": response_text,
             "pending_actions": pending_actions_for_run(saved),
-            "active_skill": skill.summary(),
+            "active_skill": saved["final_result"]["active_skill"],
             "conversation_id": conversation_id,
         }
 

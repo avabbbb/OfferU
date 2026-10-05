@@ -13,7 +13,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
@@ -34,6 +34,7 @@ from app.services.resume_fact_gates import validate_edited_text
 from app.services.resume_builder import _profile_to_contact_json
 from app.services.resume_optimization import _proposal_detail
 from app.services.resume_versions import create_version_snapshot
+from app.services.packet_readiness import project_packet_state
 
 
 def _now() -> datetime:
@@ -166,7 +167,7 @@ async def _has_live_director_proposal(
     job_id: int,
     proposal_id: Optional[str] = None,
 ) -> bool:
-    from app.services.resume_optimization import DIRECTOR_SOURCE_MODE
+    from app.services.resume_optimization import DIRECTOR_SOURCE_MODE, EXTERNAL_SOURCE_MODE
 
     query = select(ResumeOptimizationProposal).where(
         ResumeOptimizationProposal.job_id == job_id
@@ -177,7 +178,7 @@ async def _has_live_director_proposal(
         )
     proposals = list((await db.execute(query)).scalars().all())
     return any(
-        (proposal.trace_json or {}).get("source_mode") == DIRECTOR_SOURCE_MODE
+        (proposal.trace_json or {}).get("source_mode") in {DIRECTOR_SOURCE_MODE, EXTERNAL_SOURCE_MODE}
         and proposal.status in {"ready", "blocked", "in_review", "accepted"}
         for proposal in proposals
     )
@@ -292,24 +293,15 @@ async def _workspace_payload(
                 .order_by(Application.updated_at.desc())
             )
         ).scalars().first()
-    current_version = next(
-        (item for item in versions if item.id == resume.current_version_id),
-        versions[0] if versions else None,
+    packet = await project_packet_state(
+        db,
+        job=job,
+        resume=resume,
+        proposals=proposals,
+        versions=versions,
+        attempts=attempts,
+        legacy_application_id=legacy_application.id if legacy_application else None,
     )
-    packet = {
-        "job_id": job.id if job else resume.target_job_id,
-        "resume_id": resume.id,
-        "current_version_id": current_version.id if current_version else None,
-        "current_version_number": current_version.version_number if current_version else None,
-        "status": "ready" if current_version else "draft",
-        "application_id": resume.application_id or (legacy_application.id if legacy_application else None),
-        "application_attempt_id": next((item.id for item in attempts if item.resume_id == resume.id), None),
-        "artifacts": {
-            "resume": True,
-            "research": bool(proposals),
-            "interview_focus": bool(proposals),
-        },
-    }
     return {
         "resume": _resume_dict(resume, jobs),
         "job": _job_dict(job),
@@ -623,25 +615,46 @@ def _find_section(resume: Resume, row: Optional[dict[str, Any]]) -> Optional[Res
 
 
 async def review_resume_proposal_item(
+    proposal_id: str, resume_id: int, change_id: str, action: str, edited_text: str = "",
+) -> dict[str, Any]:
+    return await _review_resume_proposal_items(proposal_id, resume_id, [change_id], action, edited_text)
+
+
+async def review_resume_proposal_items(
+    proposal_id: str, resume_id: int, change_ids: list[str], action: str,
+) -> dict[str, Any]:
+    """Apply one explicitly reviewed set atomically; never approve unrelated operations."""
+    return await _review_resume_proposal_items(proposal_id, resume_id, change_ids, action)
+
+
+async def _review_resume_proposal_items(
     proposal_id: str,
     resume_id: int,
-    change_id: str,
+    change_ids: list[str],
     action: str,
     edited_text: str = "",
 ) -> dict[str, Any]:
     clean_proposal_id = _text(proposal_id, "proposal_id", 80)
     clean_resume_id = _positive_id(resume_id, "resume_id")
-    clean_change_id = _text(change_id, "change_id", 120)
+    if not isinstance(change_ids, list) or not 1 <= len(change_ids) <= 200:
+        raise ValueError("change_ids 必须包含 1 至 200 个条目")
+    clean_change_ids = [_text(value, "change_id", 120) for value in change_ids]
+    if any(not value for value in clean_change_ids) or len(set(clean_change_ids)) != len(clean_change_ids):
+        raise ValueError("change_ids 不得为空或重复")
     clean_action = _text(action, "action", 20).lower()
     clean_edited_text = _text(edited_text, "edited_text", 20_000)
     if clean_action not in {"accept", "reject"}:
         raise ValueError("action 只能是 accept 或 reject")
     async with async_session() as db:
+        # SQLite ignores row locks. Acquire its write reservation before reading
+        # the revision and review map, so retries/concurrent reviews cannot race.
+        if db.bind.dialect.name == "sqlite":
+            await db.execute(text("BEGIN IMMEDIATE"))
         proposal = (
             await db.execute(
                 select(ResumeOptimizationProposal).where(
                     ResumeOptimizationProposal.proposal_id == clean_proposal_id
-                )
+                ).with_for_update()
             )
         ).scalar_one_or_none()
         if proposal is None:
@@ -650,19 +663,14 @@ async def review_resume_proposal_item(
             raise ValueError("该提案尚未绑定当前 Resume Workspace")
         resume = await _load_resume(db, clean_resume_id)
         job = await db.get(Job, proposal.job_id)
-        diff = next(
-            (
-                item
-                for item in (proposal.diff_json or [])
-                if isinstance(item, dict) and item.get("change_id") == clean_change_id
-            ),
-            None,
-        )
-        if diff is None:
+        diffs = {str(item.get("change_id")): item for item in (proposal.diff_json or []) if isinstance(item, dict)}
+        if any(change_id not in diffs for change_id in clean_change_ids):
             raise ValueError("提案条目不存在，可能需要重新生成提案")
         reviews = dict(proposal.item_reviews_json or {})
-        previous = reviews.get(clean_change_id)
-        if isinstance(previous, dict):
+        if any(isinstance(reviews.get(change_id), dict) and reviews[change_id].get("action") != clean_action for change_id in clean_change_ids):
+            raise ValueError("该条目已有不同审核结果，请重新查看提案")
+        pending_ids = [change_id for change_id in clean_change_ids if not isinstance(reviews.get(change_id), dict)]
+        if not pending_ids:
             return {
                 **await _workspace_payload(db, resume, job=job, proposal_id=proposal.proposal_id),
                 "duplicate": True,
@@ -720,96 +728,101 @@ async def review_resume_proposal_item(
                 proposal.reviewed_at = _now()
                 await db.commit()
                 raise ValueError(proposal.review_note)
-            before = diff.get("before") if isinstance(diff.get("before"), dict) else None
-            after = diff.get("after") if isinstance(diff.get("after"), dict) else None
-            target = _find_section(resume, before or after)
-            change_type = str(diff.get("change_type") or "modified")
-            if change_type == "added" and after:
-                target = _row_to_section(after, len(resume.sections))
-                target.resume_id = resume.id
-                db.add(target)
-                await db.flush()
-            elif target is None:
-                raise ValueError("提案目标段落已变化，请重新生成提案")
-            elif change_type == "removed":
-                target.visible = False
-            elif after:
-                if clean_edited_text:
-                    # User-supplied text bypasses the generated content, so it
-                    # must re-run the fact gate against the proposal's verified
-                    # source evidence. Unsupported claims require an explicit
-                    # second submission (confirmation) instead of silent apply.
-                    # Runs BEFORE any section mutation: only the pending flag
-                    # is committed when confirmation is required.
-                    pending_key = f"{clean_change_id}:pending_edit"
-                    pending = reviews.get(pending_key)
-                    confirmed = (
-                        isinstance(pending, dict)
-                        and pending.get("edited_text") == clean_edited_text
-                    )
-                    if not confirmed:
-                        source_ids = _source_ids(proposal.source_section_ids_json)
-                        for diff_row in (before, after):
-                            if isinstance(diff_row, dict):
-                                for sid in _source_ids(diff_row.get("source_section_ids")):
-                                    if sid not in source_ids:
-                                        source_ids.append(sid)
-                        source_sections = []
-                        if source_ids:
-                            source_sections = list(
-                                (
-                                    await db.execute(
-                                        select(ProfileSection).where(
-                                            ProfileSection.id.in_(source_ids)
+        for clean_change_id in pending_ids:
+            diff = diffs[clean_change_id]
+            if clean_action == "accept":
+                before = diff.get("before") if isinstance(diff.get("before"), dict) else None
+                after = diff.get("after") if isinstance(diff.get("after"), dict) else None
+                target = _find_section(resume, before or after)
+                change_type = str(diff.get("change_type") or "modified")
+                if change_type == "added" and after:
+                    target = _row_to_section(after, len(resume.sections))
+                    target.resume_id = resume.id
+                    db.add(target)
+                    await db.flush()
+                elif target is None:
+                    raise ValueError("提案目标段落已变化，请重新生成提案")
+                elif change_type == "removed":
+                    target.visible = False
+                elif after:
+                    if clean_edited_text:
+                        # User-supplied text bypasses the generated content, so it
+                        # must re-run the fact gate against the proposal's verified
+                        # source evidence. Unsupported claims require an explicit
+                        # second submission (confirmation) instead of silent apply.
+                        # Runs BEFORE any section mutation: only the pending flag
+                        # is committed when confirmation is required.
+                        pending_key = f"{clean_change_id}:pending_edit"
+                        pending = reviews.get(pending_key)
+                        confirmed = (
+                            isinstance(pending, dict)
+                            and pending.get("edited_text") == clean_edited_text
+                        )
+                        if not confirmed:
+                            source_ids = _source_ids(proposal.source_section_ids_json)
+                            for diff_row in (before, after):
+                                if isinstance(diff_row, dict):
+                                    for sid in _source_ids(diff_row.get("source_section_ids")):
+                                        if sid not in source_ids:
+                                            source_ids.append(sid)
+                            source_sections = []
+                            if source_ids:
+                                source_sections = list(
+                                    (
+                                        await db.execute(
+                                            select(ProfileSection).where(
+                                                ProfileSection.id.in_(source_ids)
+                                            )
                                         )
-                                    )
-                                ).scalars().all()
-                            )
-                        gate = validate_edited_text(source_sections, clean_edited_text)
-                        if gate["requires_user_confirmation"]:
-                            reviews[pending_key] = {
-                                "edited_text": clean_edited_text,
-                                "warnings": gate["warnings"],
-                                "flagged_at": _now().isoformat(),
-                            }
-                            proposal.item_reviews_json = reviews
-                            await db.commit()
-                            claims = "、".join(
-                                gate["unsupported_metrics"]
-                                + gate["unsupported_named_claims"]
-                            )
-                            raise ValueError(
-                                "编辑文本包含来源中不存在的声明"
-                                f"（{claims}）。如确认无误，请再次提交相同文本以确认。"
-                            )
-                        reviews.pop(pending_key, None)
-                target.section_type = _row_section_type(str(after.get("section_type") or target.section_type))
-                target.title = str(after.get("title") or target.title)
-                target.sort_order = int(after.get("sort_order", target.sort_order))
-                target.visible = bool(after.get("visible", True))
-                target.content_json = copy.deepcopy(after.get("content_json") or [])
-                target.source_section_ids = _source_ids(after.get("source_section_ids")) or target.source_section_ids
-                if clean_edited_text:
-                    suggested_text = _first_text_difference(
-                        after.get("content_json"),
-                        before.get("content_json") if before else None,
-                    )
-                    updated, changed = _replace_first_text(
-                        target.content_json,
-                        suggested_text,
-                        clean_edited_text,
-                    )
-                    target.content_json = updated
+                                    ).scalars().all()
+                                )
+                            gate = validate_edited_text(source_sections, clean_edited_text)
+                            if gate["requires_user_confirmation"]:
+                                reviews[pending_key] = {
+                                    "edited_text": clean_edited_text,
+                                    "warnings": gate["warnings"],
+                                    "flagged_at": _now().isoformat(),
+                                }
+                                proposal.item_reviews_json = reviews
+                                await db.commit()
+                                claims = "、".join(
+                                    gate["unsupported_metrics"]
+                                    + gate["unsupported_named_claims"]
+                                )
+                                raise ValueError(
+                                    "编辑文本包含来源中不存在的声明"
+                                    f"（{claims}）。如确认无误，请再次提交相同文本以确认。"
+                                )
+                            reviews.pop(pending_key, None)
+                    target.section_type = _row_section_type(str(after.get("section_type") or target.section_type))
+                    target.title = str(after.get("title") or target.title)
+                    target.sort_order = int(after.get("sort_order", target.sort_order))
+                    target.visible = bool(after.get("visible", True))
+                    target.content_json = copy.deepcopy(after.get("content_json") or [])
+                    target.source_section_ids = _source_ids(after.get("source_section_ids")) or target.source_section_ids
+                    if clean_edited_text:
+                        suggested_text = _first_text_difference(
+                            after.get("content_json"),
+                            before.get("content_json") if before else None,
+                        )
+                        updated, changed = _replace_first_text(
+                            target.content_json,
+                            suggested_text,
+                            clean_edited_text,
+                        )
+                        target.content_json = updated
+            reviews[clean_change_id] = {
+                "action": clean_action,
+                "edited_text": clean_edited_text,
+                "reviewed_at": _now().isoformat(),
+            }
+        if clean_action == "accept":
             resume.workspace_revision = int(resume.workspace_revision or 0) + 1
-        reviews[clean_change_id] = {
-            "action": clean_action,
-            "edited_text": clean_edited_text,
-            "reviewed_at": _now().isoformat(),
-        }
         proposal.item_reviews_json = reviews
         if proposal.status in {"ready", "blocked"}:
             proposal.status = "in_review"
-        proposal.workspace_snapshot_hash = workspace_content_hash(resume)
+        if clean_action == "accept":
+            proposal.workspace_snapshot_hash = workspace_content_hash(resume)
         await db.commit()
         resume = await _load_resume(db, resume.id)
         return {

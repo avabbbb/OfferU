@@ -9,19 +9,48 @@ from typing import Any
 from sqlalchemy import select, update as sql_update
 
 from app.database import async_session
-from app.models.models import AgentRunEvent, AgentRunRecord, CareerTask, JobSearchTask
+from app.models.models import (
+    AgentInputRequest,
+    AgentRunEvent,
+    AgentRunRecord,
+    CareerTask,
+    JobSearchTask,
+)
 from app.services.security_redaction import redact_sensitive_value
+
+# Eagerly import proposal_plan_store so its module-level ``async_session``
+# binding is captured at app import time (the real ``app.database.async_session``).
+# Lazy import would otherwise first run inside a test that has patched
+# ``app.database.async_session`` to an isolated (later disposed) session, leaving
+# proposal_plan_store pinned to a dead engine and breaking recovery/confirmation
+# for every subsequent Run in the same process (cross-test pollution).
+import app.services.proposal_plan_store as _proposal_plan_store  # noqa: F401
 
 RUN_SCHEMA_VERSION = "offeru.agent_runs.v2"
 ACTIVE_STATUSES = {
     "created",
     "planning",
     "waiting_confirmation",
+    "waiting_decision",
+    "waiting_input",
     "executing",
     "interrupted",
 }
 TERMINAL_STATUSES = {"completed", "cancelled", "failed", "needs_reconciliation"}
+# Recoverable pauses that keep the persisted session resumable; restart
+# recovery must never classify them as terminal work.
+WAITING_STATUSES = {"waiting_confirmation", "waiting_decision", "waiting_input"}
 MAX_RUNS = 200
+
+
+def proposal_execution_blocker(run: dict[str, Any]) -> str:
+    legacy = (run.get("recovery_cursor") or {}).get("proposal_v2_legacy") or {}
+    if run.get("legacy_review_required") or any(isinstance(item, dict) and item.get("classification") == "needs_review" for item in legacy.values()):
+        return "旧提案原始参数无法验证；请在当前工作区重新准备并审核具体改动。"
+    runtime = run.get("llm_runtime") or {}
+    if runtime.get("runtime") == "pi_sdk_worker":
+        return "旧 Pi 会话仅供历史查阅，不能通过当前 Python Agent 重放操作；请重新发起任务。"
+    return ""
 
 
 def _now_iso() -> str:
@@ -385,6 +414,15 @@ async def save_agent_run(
     event_type: str = "",
     event_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    from app.services.proposal_plan_store import list_plans
+    try:
+        # Cross-store read for status projection only: an unreachable plan
+        # store must never block persisting the run itself. Fail safe to
+        # "no plans bound to this run" and let the run's own step statuses
+        # decide the next status.
+        plans = await list_plans(run_id=str(run.get("id") or ""))
+    except Exception:
+        plans = []
     cleaned = _clean_run({**run, "updated_at": _now_iso()})
     if cleaned is None:
         raise ValueError("Invalid agent run")
@@ -406,6 +444,7 @@ async def save_agent_run(
                 raise ValueError(f"Agent Run {cleaned['id']} does not exist")
             previous_status = row.status
             previous_failure_reason = row.failure_reason
+            previous_event_sequence = int(row.event_sequence or 0)
             previous_steps = row.steps_json if isinstance(row.steps_json, list) else []
             merged_steps, has_rejected_steps = _preserve_rejected_steps(
                 previous_steps, cleaned["steps"]
@@ -457,12 +496,18 @@ async def save_agent_run(
                 "event_sequence": AgentRunRecord.event_sequence
                 + len(pending_events),
             }
+            if plans:
+                # Run steps are historical evidence only. New node authorization
+                # and execution state never get written back through this save.
+                values["steps_json"] = previous_steps
+                values["status"] = _plan_run_status(plans, cleaned["status"])
             new_sequence = (
                 await db.execute(
                     sql_update(AgentRunRecord)
                     .where(AgentRunRecord.run_id == cleaned["id"])
                     .where(AgentRunRecord.status == previous_status)
                     .where(AgentRunRecord.steps_json == previous_steps)
+                    .where(AgentRunRecord.event_sequence == previous_event_sequence)
                     .values(**values)
                     .returning(AgentRunRecord.event_sequence)
                 )
@@ -500,7 +545,73 @@ async def load_agent_run(run_id: str | None) -> dict[str, Any] | None:
                 )
             )
         ).scalar_one_or_none()
-        return _row_to_run(row) if row is not None else None
+        result = _row_to_run(row) if row is not None else None
+    return await _attach_plan_projection(result) if result is not None else None
+
+
+def _plan_run_status(plans: list[dict[str, Any]], fallback: str) -> str:
+    if fallback in {"waiting_input", "waiting_user_input"}:
+        return fallback
+    if fallback == "cancelled":
+        return "cancelled"
+    groups = [group for plan in plans if plan.get("status") != "replaced" for group in plan.get("groups") or []]
+    if any(group.get("status") == "needs_reconciliation" for group in groups):
+        return "needs_reconciliation"
+    if any(group.get("status") == "executing" for group in groups):
+        return "executing"
+    if any(group.get("status") in {"pending", "approved", "paused", "stale"} for group in groups):
+        return "waiting_confirmation"
+    # Committed plan does not prove the reasoning task completed.
+    return fallback
+
+
+async def _attach_plan_projection(run: dict[str, Any]) -> dict[str, Any]:
+    from app.services.proposal_plan_store import list_plans
+    try:
+        # Cross-store projection read: an unreachable plan store must never
+        # break loading the run itself; fall back to the unprojected run.
+        plans = await list_plans(run_id=run["id"])
+    except Exception:
+        plans = []
+    if not plans:
+        legacy = (run.get("recovery_cursor") or {}).get("proposal_v2_legacy") or {}
+        if any(isinstance(item, dict) and item.get("classification") == "needs_review" for item in legacy.values()):
+            run["legacy_review_required"] = True
+            run["proposal_authority"] = "proposal-plan-v2"
+            run["steps"] = [{**step, "status": "blocked", "projection_only": True} for step in run.get("steps") or []]
+            run["failure_reason"] = proposal_execution_blocker(run)
+        return run
+    steps = []
+    for plan in plans:
+        if plan.get("status") == "replaced":
+            continue
+        for group in plan.get("groups") or []:
+            for node in group.get("nodes") or []:
+                status = node["status"]
+                if status == "pending":
+                    status = "waiting_confirmation" if group["status"] == "pending" else "blocked"
+                steps.append({"id": node["id"], "tool": node["operation"], "args": node["args"],
+                              "summary": node["summary"], "status": status, "idempotency_key": node["idempotency_key"],
+                              "requires_confirmation": group["status"] == "pending", "plan_id": plan["id"],
+                              "group_id": group["id"], "group_digest": group["digest"], "projection_only": True,
+                              "result": node.get("result"), "error": node.get("error")})
+    run.update(steps=steps, proposal_plans=plans, proposal_authority="proposal-plan-v2", status=_plan_run_status(plans, run["status"]))
+    if run.get("mode") == "ui_operation_request" and run["status"] not in {"cancelled", "needs_reconciliation"}:
+        groups = [group for plan in plans if plan.get("status") != "replaced" for group in plan.get("groups") or []]
+        if groups and all(group["status"] in {"completed", "rejected", "blocked"} for group in groups):
+            run["status"] = "completed" if any(group["status"] == "completed" for group in groups) else "failed"
+    return run
+
+
+async def sync_proposal_plan_state(run_id: str, *, event_type: str = "proposal.plan_ready",
+                                   payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    run = await load_agent_run(run_id)
+    if run is None:
+        raise ValueError("Agent Run does not exist")
+    await save_agent_run(run, event_type=event_type, event_payload=payload or {})
+    result = await load_agent_run(run_id)
+    assert result is not None
+    return result
 
 
 async def find_active_agent_run(
@@ -580,6 +691,17 @@ async def list_agent_run_events(
 async def recover_interrupted_agent_runs() -> dict[str, int]:
     """Classify non-terminal Runs after process restart without replaying work."""
 
+    from app.services.proposal_plan_store import (
+        migrate_legacy_proposals,
+        recover_executing_nodes,
+        list_plans,
+    )
+    # These only classify/control proposal state. They never invoke business
+    # Operations or a reasoning engine during migration/startup.
+    await migrate_legacy_proposals()
+    await recover_executing_nodes()
+    plan_run_ids = {plan["run_id"] for plan in await list_plans()}
+
     recovered = 0
     reconciliation_required = 0
     async with async_session() as db:
@@ -591,6 +713,20 @@ async def recover_interrupted_agent_runs() -> dict[str, int]:
             )
         ).scalars().all()
         for row in rows:
+            if row.run_id in plan_run_ids:
+                plans = await list_plans(run_id=row.run_id)
+                previous_status = row.status
+                row.status = _plan_run_status(plans, "interrupted")
+                if row.status == "needs_reconciliation":
+                    row.failure_reason = "Run has an interrupted Operation with unknown effects; automatic replay is forbidden until reconciliation."
+                    db.add(_append_event_row(row, event_type="recovery.reconciliation_required",
+                        payload={"previous_status": previous_status, "reason": row.failure_reason, "authority": "proposal-plan-v2"}))
+                    db.add(_append_event_row(row, event_type="run.failed",
+                        payload={"status": row.status, "failure_reason": row.failure_reason}))
+                    reconciliation_required += 1
+                else:
+                    recovered += 1
+                continue
             runtime = (
                 row.llm_runtime_json
                 if isinstance(row.llm_runtime_json, dict)
@@ -701,268 +837,14 @@ async def append_agent_run_event(
         }
 
 
-async def propose_agent_run_action(
-    run_id: str,
-    *,
-    operation: str,
-    args: dict[str, Any],
-    summary: str,
-) -> dict[str, Any]:
-    for _ in range(3):
-        async with async_session() as db:
-            row = (
-                await db.execute(
-                    select(AgentRunRecord).where(
-                        AgentRunRecord.run_id == str(run_id)
-                    )
-                )
-            ).scalar_one_or_none()
-            if row is None:
-                raise ValueError(f"Agent Run {run_id} does not exist")
-            if row.status in TERMINAL_STATUSES:
-                raise ValueError(
-                    f"Agent Run {run_id} is terminal ({row.status})"
-                )
-            previous_steps = row.steps_json if isinstance(row.steps_json, list) else []
-            steps = [
-                dict(item)
-                for item in previous_steps
-                if isinstance(item, dict)
-            ]
-            existing = next(
-                (
-                    item
-                    for item in steps
-                    if item.get("status") == "waiting_confirmation"
-                    and str(item.get("tool") or "") == operation
-                    and (item.get("args") or {}) == args
-                ),
-                None,
-            )
-            if existing is not None:
-                return existing
-            action_id = f"{operation}:{len(steps) + 1}"
-            step = _clean_action(
-                {
-                    "id": action_id,
-                    "tool": operation,
-                    "args": args,
-                    "summary": summary,
-                    "risk_level": "confirm",
-                    "requires_confirmation": True,
-                },
-                len(steps) + 1,
-            )
-            step["idempotency_key"] = f"{row.run_id}:{action_id}"
-            steps.append(step)
-            updated_steps = steps
-            new_sequence = (
-                await db.execute(
-                    sql_update(AgentRunRecord)
-                    .where(AgentRunRecord.run_id == str(run_id))
-                    .where(AgentRunRecord.steps_json == previous_steps)  # CAS check
-                    .values(
-                        steps_json=updated_steps,
-                        status="waiting_confirmation",
-                        event_sequence=AgentRunRecord.event_sequence + 1,
-                    )
-                    .returning(AgentRunRecord.event_sequence)
-                )
-            ).scalar_one_or_none()
-            if new_sequence is None:
-                await db.rollback()
-                continue
-            db.add(
-                AgentRunEvent(
-                    event_id=f"evt_{uuid.uuid4().hex}",
-                    run_id=row.run_id,
-                    sequence=int(new_sequence),
-                    event_type="operation.proposed",
-                    payload_json=safe_result_preview(
-                        {
-                            "action_id": action_id,
-                            "operation": operation,
-                            "args": args,
-                            "idempotency_key": step["idempotency_key"],
-                        }
-                    ),
-                )
-            )
-            await db.commit()
-            return step
-    raise RuntimeError(
-        f"Agent Run {run_id} changed concurrently during proposal; please retry"
-    )
+async def propose_agent_run_action(run_id: str, *, operation: str, args: dict[str, Any], summary: str) -> dict[str, Any]:
+    """Legacy write interface retired; steps are read-only history/projections."""
+    raise ValueError("Operation-level proposal writes are retired; prepare and review a Proposal Plan")
 
 
-async def reject_agent_run_action(
-    run_id: str, *, action_id: str | None = None
-) -> dict[str, Any]:
-    """Reject exactly one pending action with a compare-and-set transition."""
-    clean_run_id = str(run_id or "").strip()
-    clean_action_id = str(action_id or "").strip()
-    if not clean_run_id:
-        return {"error": "拒绝动作必须提供 Agent Run id。"}
-
-    # Compare the full JSON snapshot as well as the target step. A concurrent
-    # update to a sibling action then causes a retry instead of being erased by
-    # writing a stale steps_json array.
-    for _ in range(3):
-        async with async_session() as db:
-            row = (
-                await db.execute(
-                    select(AgentRunRecord).where(
-                        AgentRunRecord.run_id == clean_run_id
-                    )
-                )
-            ).scalar_one_or_none()
-            if row is None:
-                return {"error": f"Agent Run {clean_run_id} 不存在。"}
-            current_run = _row_to_run(row)
-            current_steps = row.steps_json if isinstance(row.steps_json, list) else []
-        steps = [dict(step) if isinstance(step, dict) else step for step in current_steps]
-        target_action_id = clean_action_id
-        if not target_action_id:
-            pending = [
-                step
-                for step in steps
-                if isinstance(step, dict)
-                and step.get("status") == "waiting_confirmation"
-            ]
-            if len(pending) != 1:
-                return {
-                    "error": (
-                        "拒绝动作必须提供 action_id；仅当 Agent Run 恰有一个待确认动作时"
-                        "才允许省略。"
-                    )
-                }
-            target_action_id = str(pending[0].get("id") or "")
-        index = next(
-            (
-                position
-                for position, step in enumerate(steps)
-                if isinstance(step, dict)
-                and str(step.get("id") or "") == target_action_id
-            ),
-            None,
-        )
-        if index is None:
-            return {"error": f"Agent Run 动作 {target_action_id} 不存在。"}
-
-        current_status = str(steps[index].get("status") or "")
-        if current_status == "rejected":
-            return {
-                "rejected": True,
-                "action_id": target_action_id,
-                "action_status": "rejected",
-                "run_status": current_run["status"],
-                "runStatus": current_run["status"],
-                "run": current_run,
-                "warnings": ["该动作已拒绝；没有重复写入状态或事件。"],
-            }
-        if current_status != "waiting_confirmation":
-            return {
-                "error": (
-                    f"动作 {target_action_id} 当前状态为 {current_status or 'unknown'}；"
-                    "只有 waiting_confirmation 动作可以拒绝。"
-                )
-            }
-        if current_run["status"] in TERMINAL_STATUSES:
-            return {
-                "error": f"Agent Run 当前已终结（{current_run['status']}），不能再拒绝动作。"
-            }
-
-        now = datetime.now(timezone.utc)
-        steps[index]["status"] = "rejected"
-        steps[index]["rejected_at"] = now.isoformat()
-        next_status = _run_status_from_steps(
-            steps, fallback=str(current_run.get("status") or "executing")
-        )
-        pending_events: list[tuple[str, dict[str, Any]]] = [
-            (
-                "operation.rejected",
-                {
-                    "action_id": target_action_id,
-                    "operation": str(steps[index].get("tool") or ""),
-                    "idempotency_key": str(steps[index].get("idempotency_key") or ""),
-                    "status": "rejected",
-                },
-            )
-        ]
-        if next_status in TERMINAL_STATUSES and next_status != current_run["status"]:
-            terminal_type = {
-                "completed": "run.completed",
-                "cancelled": "run.cancelled",
-                "failed": "run.failed",
-                "needs_reconciliation": "run.failed",
-            }[next_status]
-            pending_events.append(
-                (
-                    terminal_type,
-                    {
-                        "status": next_status,
-                        "action_id": target_action_id,
-                        "reason": "proposal_rejected",
-                    },
-                )
-            )
-
-        event_count = len(pending_events)
-        async with async_session() as db:
-            new_sequence = (
-                await db.execute(
-                    sql_update(AgentRunRecord)
-                    .where(AgentRunRecord.run_id == clean_run_id)
-                    .where(AgentRunRecord.status.notin_(TERMINAL_STATUSES))
-                    .where(AgentRunRecord.steps_json == current_steps)
-                    .where(
-                        AgentRunRecord.steps_json[index]["id"].as_string()
-                        == target_action_id
-                    )
-                    .where(
-                        AgentRunRecord.steps_json[index]["status"].as_string()
-                        == "waiting_confirmation"
-                    )
-                    .values(
-                        status=next_status,
-                        steps_json=steps,
-                        updated_at=now.replace(tzinfo=None),
-                        event_sequence=AgentRunRecord.event_sequence + event_count,
-                    )
-                    .returning(AgentRunRecord.event_sequence)
-                )
-            ).scalar_one_or_none()
-            if new_sequence is None:
-                await db.rollback()
-                continue
-            base_sequence = int(new_sequence) - event_count
-            for offset, (event_type, payload) in enumerate(pending_events):
-                db.add(
-                    AgentRunEvent(
-                        event_id=f"evt_{uuid.uuid4().hex}",
-                        run_id=clean_run_id,
-                        sequence=base_sequence + offset + 1,
-                        event_type=event_type,
-                        payload_json=safe_result_preview(payload),
-                    )
-                )
-            await db.commit()
-        run = await load_agent_run(clean_run_id)
-        if run is None:
-            return {"error": f"Agent Run {clean_run_id} 在拒绝后无法重新读取。"}
-        return {
-            "rejected": True,
-            "action_id": target_action_id,
-            "action_status": "rejected",
-            "run_status": run["status"],
-            "runStatus": run["status"],
-            "run": run,
-            "warnings": ["已拒绝该动作；该动作不会通过后续确认执行。"],
-        }
-
-    return {
-        "error": "Agent Run 状态正在并发变化；本次拒绝未写入，请刷新后重试。"
-    }
+async def reject_agent_run_action(run_id: str, *, action_id: str | None = None) -> dict[str, Any]:
+    """Legacy step-backed rejection cannot mint a ConfirmationDecision."""
+    return {"error": "Legacy action decisions are retired; reject the displayed ConfirmationGroup in Desktop"}
 
 
 def pending_actions_for_run(run: dict[str, Any]) -> list[dict[str, Any]]:
@@ -981,6 +863,10 @@ def pending_actions_for_run(run: dict[str, Any]) -> list[dict[str, Any]]:
                 ),
                 "summary": str(step.get("summary") or step.get("tool") or ""),
                 "risk_level": str(step.get("risk_level") or "confirm"),
+                "plan_id": step.get("plan_id"),
+                "group_id": step.get("group_id"),
+                "group_digest": step.get("group_digest"),
+                "projection_only": bool(step.get("projection_only")),
                 "requires_confirmation": bool(
                     step.get("requires_confirmation", True)
                 ),
@@ -1017,3 +903,311 @@ def mark_run_actions_executed(
         run.get("steps") or [], fallback="executing"
     )
     return run
+
+
+# ---------------------------------------------------------------------------
+# Structured Ask (AgentInputRequest) persistence.
+#
+# A request is collaboration about preferences/strategy — it is never a
+# proposal and never authorizes a mutation. At most one request may be
+# ``pending`` per run; identical Ask calls in the same turn collapse onto the
+# already persisted row instead of stacking prompts.
+# ---------------------------------------------------------------------------
+
+
+def _input_request_signature(question: str, options: list[Any]) -> str:
+    payload = {
+        "question": str(question or ""),
+        "options": options if isinstance(options, list) else [],
+    }
+    return canonical_json_digest(payload)
+
+
+def canonical_json_digest(value: Any) -> str:
+    """Contract canonical JSON digest — delegated to the Domain implementation."""
+
+    from app.services.proposal_plan_builder import canonical_digest
+
+    return canonical_digest(value)
+
+
+def _input_request_view(row: AgentInputRequest) -> dict[str, Any]:
+    answer = row.answer_json if isinstance(row.answer_json, dict) else None
+    return {
+        "request_id": row.request_id,
+        "run_id": row.run_id,
+        "status": row.status,
+        "question": row.question,
+        "reason": row.reason or "",
+        "options": list(row.options_json or []),
+        "allow_free_text": bool(row.allow_free_text),
+        "answer": answer,
+        "answer_digest": row.answer_digest or "",
+        "created_at": str(row.created_at or ""),
+        "answered_at": str(row.answered_at or ""),
+        "consumed_at": str(row.consumed_at or ""),
+    }
+
+
+async def create_agent_input_request(
+    run_id: str,
+    *,
+    question: str,
+    reason: str = "",
+    options: list[dict[str, Any]] | None = None,
+    allow_free_text: bool = True,
+) -> dict[str, Any]:
+    """Persist one pending Ask for a run, or return the identical pending one.
+
+    A second pending request with different content is refused so a run always
+    waits on exactly one question; the Ask tool may retry identical arguments
+    safely.
+    """
+
+    clean_question = str(question or "").strip()
+    if not clean_question:
+        raise ValueError("request_user_input 需要非空 question。")
+    clean_options = [
+        {
+            key: value
+            for key, value in dict(item).items()
+            if key in {"option_id", "label", "description"}
+        }
+        for item in (options or [])
+        if isinstance(item, dict) and str(item.get("option_id") or "").strip()
+    ]
+    signature = _input_request_signature(clean_question, clean_options)
+    for _ in range(3):
+        async with async_session() as db:
+            row = (
+                await db.execute(
+                    select(AgentRunRecord).where(
+                        AgentRunRecord.run_id == str(run_id)
+                    )
+                )
+            ).scalar_one_or_none()
+            if row is None:
+                raise ValueError(f"Agent Run {run_id} does not exist")
+            if row.status in TERMINAL_STATUSES:
+                raise ValueError(
+                    f"Agent Run {run_id} is terminal ({row.status})"
+                )
+            pending = (
+                (
+                    await db.execute(
+                        select(AgentInputRequest).where(
+                            AgentInputRequest.run_id == str(run_id),
+                            AgentInputRequest.status == "pending",
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            if pending:
+                identical = next(
+                    (
+                        item
+                        for item in pending
+                        if _input_request_signature(
+                            item.question, list(item.options_json or [])
+                        )
+                        == signature
+                    ),
+                    None,
+                )
+                if identical is not None:
+                    return _input_request_view(identical)
+                raise ValueError(
+                    "该 Agent Run 已有一个待回答的提问；请先回答它再提问。"
+                )
+            request = AgentInputRequest(
+                request_id=f"input_{uuid.uuid4().hex}",
+                run_id=row.run_id,
+                status="pending",
+                question=clean_question[:4000],
+                reason=str(reason or "")[:2000],
+                options_json=redact_sensitive_value(clean_options),
+                allow_free_text=bool(allow_free_text),
+                answer_json=None,
+                answer_digest="",
+            )
+            db.add(request)
+            # Persist the wait with the question so a restart between the
+            # tool result and host projection cannot hide the unanswered Ask.
+            row.status = "waiting_input"
+            try:
+                await db.commit()
+            except Exception:
+                await db.rollback()
+                continue
+            await db.refresh(request)
+            return _input_request_view(request)
+    raise RuntimeError(
+        f"Agent Run {run_id} changed concurrently while asking for input; retry"
+    )
+
+
+async def list_pending_agent_input_requests(run_id: str) -> list[dict[str, Any]]:
+    async with async_session() as db:
+        rows = (
+            (
+                await db.execute(
+                    select(AgentInputRequest)
+                    .where(
+                        AgentInputRequest.run_id == str(run_id),
+                        AgentInputRequest.status == "pending",
+                    )
+                    .order_by(AgentInputRequest.created_at)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return [_input_request_view(row) for row in rows]
+
+
+async def load_agent_input_request(
+    run_id: str, request_id: str
+) -> dict[str, Any] | None:
+    async with async_session() as db:
+        row = (
+            await db.execute(
+                select(AgentInputRequest).where(
+                    AgentInputRequest.run_id == str(run_id),
+                    AgentInputRequest.request_id == str(request_id),
+                )
+            )
+        ).scalar_one_or_none()
+        return _input_request_view(row) if row is not None else None
+
+
+async def answer_agent_input_request(
+    run_id: str,
+    request_id: str,
+    *,
+    answer: dict[str, Any],
+) -> dict[str, Any]:
+    """Store one answer idempotently; ``consumed_at`` stays untouched here.
+
+    Returns ``{"ok", "request", "duplicate"}`` — a replayed identical answer
+    returns the stored row, a mismatched replay on an answered request fails
+    closed.
+    """
+
+    clean_answer = redact_sensitive_value(
+        answer if isinstance(answer, dict) else {}
+    )
+    digest = canonical_json_digest(clean_answer)
+    for _ in range(3):
+        async with async_session() as db:
+            row = (
+                await db.execute(
+                    select(AgentInputRequest).where(
+                        AgentInputRequest.run_id == str(run_id),
+                        AgentInputRequest.request_id == str(request_id),
+                    )
+                )
+            ).scalar_one_or_none()
+            if row is None:
+                return {"ok": False, "error": "not_found"}
+            if row.status == "answered":
+                if (
+                    row.answer_digest == digest
+                    and isinstance(row.answer_json, dict)
+                    and row.answer_json == clean_answer
+                ):
+                    return {
+                        "ok": True,
+                        "request": _input_request_view(row),
+                        "duplicate": True,
+                    }
+                return {
+                    "ok": False,
+                    "error": "conflict",
+                    "request": _input_request_view(row),
+                }
+            if row.status != "pending":
+                return {
+                    "ok": False,
+                    "error": "conflict",
+                    "request": _input_request_view(row),
+                }
+            claimed = (
+                await db.execute(
+                    sql_update(AgentInputRequest)
+                    .where(
+                        AgentInputRequest.request_id == row.request_id,
+                        AgentInputRequest.status == "pending",
+                    )
+                    .values(
+                        status="answered",
+                        answer_json=clean_answer,
+                        answer_digest=digest,
+                        answered_at=datetime.now(timezone.utc).replace(
+                            tzinfo=None
+                        ),
+                    )
+                )
+            ).rowcount or 0
+            if not claimed:
+                await db.rollback()
+                continue
+            await db.commit()
+            await db.refresh(row)
+            return {
+                "ok": True,
+                "request": _input_request_view(row),
+                "duplicate": False,
+            }
+    return {"ok": False, "error": "conflict"}
+
+
+async def consume_agent_input_request(request_id: str) -> bool:
+    """Claim the one allowed same-run continuation for an answered request."""
+
+    async with async_session() as db:
+        claimed = (
+            await db.execute(
+                sql_update(AgentInputRequest)
+                .where(
+                    AgentInputRequest.request_id == str(request_id),
+                    AgentInputRequest.status == "answered",
+                    AgentInputRequest.consumed_at.is_(None),
+                )
+                .values(
+                    consumed_at=datetime.now(timezone.utc).replace(tzinfo=None)
+                )
+            )
+        ).rowcount or 0
+        await db.commit()
+        return bool(claimed)
+
+
+async def expire_pending_agent_input_requests(
+    run_id: str, *, reason: str = ""
+) -> int:
+    """Fail closed on run end: a pending Ask can never outlive its turn."""
+
+    async with async_session() as db:
+        rows = (
+            (
+                await db.execute(
+                    select(AgentInputRequest).where(
+                        AgentInputRequest.run_id == str(run_id),
+                        AgentInputRequest.status == "pending",
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for row in rows:
+            row.status = "expired"
+            if reason:
+                row.answer_json = {
+                    **(row.answer_json if isinstance(row.answer_json, dict) else {}),
+                    "expired_reason": str(reason)[:500],
+                }
+        await db.commit()
+        return len(rows)

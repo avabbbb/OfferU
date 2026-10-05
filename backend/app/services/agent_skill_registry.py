@@ -1,17 +1,36 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 from dataclasses import dataclass
 from typing import Any
 
+from app.services.security_redaction import safe_error_message
 
-SKILL_REGISTRY_VERSION = "2026-09-30.1"
+
+SKILL_REGISTRY_VERSION = "2026-10-04.1"
 CONFIRMATION_POLICY = "operation_registry"
+
+# skill_id sentinel: request-level "let the router pick once"; never a registered Skill.
+AUTO_SKILL_ID = "auto"
+
+# Auto routing MUST NEVER land on integration/privileged Skills; they stay
+# reachable only through explicit slash commands or explicit skill_id.
+_NON_ROUTABLE_SKILL_IDS = frozenset(
+    {"connection_bootstrap", "connection_probe", "career_director"}
+)
+# One bounded classification call per new Run; independent of per-request
+# llm_timeout so a slow provider cannot silently stall routing forever.
+SKILL_ROUTER_TIMEOUT_SECONDS = 30.0
+_ROUTER_CONTEXT_MESSAGES = 6
+_ROUTER_MESSAGE_CHARS = 400
 
 
 def tool_contract_snapshot() -> dict[str, Any]:
     """Shared wire metadata; adapters reuse Registry schemas and execution."""
+    from app.services.agent_integration import pending_connection_challenges
+
     return {
         "version": "offeru.tool-contract.v1",
         "schema_authority": "operation_registry",
@@ -20,7 +39,10 @@ def tool_contract_snapshot() -> dict[str, Any]:
         "mutation_path": "execute_or_propose_operation",
         "bootstrap_skill": "connection_bootstrap",
         "bootstrap_operations": ["get_current_view"],
+        "default_skill_id": AUTO_SKILL_ID,
         "skill_registry_version": SKILL_REGISTRY_VERSION,
+        "connection_verification": pending_connection_challenges(),
+        "interaction_authority": "active_host_native_input",
     }
 
 
@@ -78,7 +100,11 @@ def _skill(
         status=status,
         description=description,
         mode=mode,
-        allowed_tools=frozenset(tools),
+        allowed_tools=frozenset(tools) | (
+            frozenset({"prepare_proposal_plan", "get_proposal_plan", "list_proposal_plans"})
+            if status == "native" and id not in {"connection_bootstrap", "connection_probe", "discovery"}
+            else frozenset()
+        ) | (frozenset({"review_resume_proposal_items"}) if id == "tailor_resume" else frozenset()),
         featured=featured,
         order=order,
         missing_capabilities=missing,
@@ -92,11 +118,11 @@ _SKILLS = (
     _skill("career_director", "职业总监", "system", "native", "在明确 AutomationEvent 下读取最小 Career State，生成有界、可审核的主动职业判断；只读，不直接修改 Career Truth。", "career_director", ("get_career_snapshot", "get_daily_career_context", "get_job_assessment_context", "get_interview_career_context"), featured=False, order=12, aliases=("director", "职业总监")),
     _skill("connection_probe", "连接验证", "system", "native", "仅用于 OfferU 发起的短时本机 Agent 集成验证；读取一次非敏感 nonce，不读取职业档案。", "skill_assistant", ("get_agent_connection_nonce",), featured=False, order=15, aliases=("verify_connection",)),
     _skill("pre_application_decision", "投前决策闭环", "pipeline", "native", "围绕一个真实岗位检查职业证据和调研，生成可复核投前决策；只有使用者确认投或有条件投后才生成简历提案。", "pre_application_workflow", ("get_profile", "list_jobs", "get_job", "get_pre_application_state", "prepare_pre_application_decision", "review_pre_application_decision", "start_job_research", "resume_job_research", "cancel_job_research", "review_job_research", "prepare_resume_optimization"), featured=True, order=20, aliases=("pre_application", "投前决策", "投前")),
-    _skill("evaluate_job", "岗位评估", "jobs", "native", "基于档案与真实岗位内容做证据化匹配。", "skill_assistant", ("get_profile", "list_jobs", "get_job", "list_career_artifacts", "save_career_artifact", "triage_job"), featured=True, order=30, aliases=("job", "岗位匹配")),
+    _skill("evaluate_job", "岗位评估", "jobs", "native", "基于档案与真实岗位内容做证据化匹配；粘贴的 JD 文本先经确认导入为 canonical Job 再评估。", "skill_assistant", ("get_profile", "list_jobs", "get_job", "import_jd", "list_career_artifacts", "save_career_artifact", "triage_job"), featured=True, order=30, aliases=("job", "岗位匹配")),
     _skill("compare_jobs", "岗位对比", "jobs", "native", "用统一维度比较多个岗位并给出有门槛的优先级。", "skill_assistant", ("get_profile", "list_jobs", "get_job", "batch_triage"), featured=True, order=40, aliases=("jobs", "岗位对比")),
     _skill("scan_jobs", "岗位发现", "jobs", "partial", "检查本地岗位库并形成可审核的筛选建议。", "job_workflow", ("get_profile", "list_pools", "list_jobs", "job_stats", "batch_triage"), featured=True, order=50, missing=("岗位抓取 Operation", "浏览器岗位存活检查"), aliases=("scan", "岗位扫描")),
     _skill("batch_evaluate", "批量评估", "jobs", "native", "用隔离的本地 coding-agent workers 并行评估岗位，并持久化断点与报告。", "skill_assistant", ("get_profile", "list_profile_evidence", "list_jobs", "get_job", "list_coding_agents", "list_batch_job_evaluations", "get_batch_job_evaluation", "start_batch_job_evaluation", "resume_batch_job_evaluation", "batch_triage"), featured=False, order=60, aliases=("batch", "批量")),
-    _skill("tailor_resume", "定制简历", "documents", "native", "先读取岗位调研证据，再从已验证档案事实生成逐项 diff；只有明确接受才创建正式简历。", "resume_workflow", ("get_profile", "inspect_resume_document", "list_jobs", "get_job", "list_resumes", "get_resume", "list_job_research_runs", "get_job_research", "start_job_research", "resume_job_research", "cancel_job_research", "review_job_research", "list_resume_optimizations", "get_resume_optimization", "prepare_resume_optimization", "review_resume_optimization"), featured=True, order=70, aliases=("resume", "简历", "定制简历")),
+    _skill("tailor_resume", "定制简历", "documents", "native", "由当前 Agent 联网、询问定位与结构，再从已验证档案提交岗位化草稿；按语义分组提交决策计划，独立审核后采用。", "resume_workflow", ("get_profile", "inspect_resume_document", "list_jobs", "get_job", "list_resumes", "get_resume", "list_job_research_runs", "get_job_research", "start_job_research", "resume_job_research", "cancel_job_research", "review_job_research", "list_resume_optimizations", "get_resume_optimization", "prepare_resume_optimization", "review_resume_optimization", "get_resume_preparation_context", "persist_external_resume_proposal", "get_resume_workspace", "ensure_resume_workspace", "propose_resume_decision_plan"), featured=True, order=70, aliases=("resume", "简历", "定制简历")),
     _skill("resume_export", "简历排版与导出", "documents", "native", "读取简历和当前版本，提交版式、照片与校徽修改提案，确认后按编辑器同一排版导出 PDF；不改写正文。", "skill_assistant", ("list_resumes", "get_resume", "update_resume_design", "export_resume_pdf"), featured=False, order=80, aliases=("pdf", "export", "排版", "简历排版")),
     _skill("cover_letter", "求职信", "documents", "native", "基于真实岗位和简历生成并持久化可审阅求职信。", "skill_assistant", ("get_profile", "list_jobs", "get_job", "list_resumes", "get_resume", "list_career_artifacts", "get_career_artifact", "generate_cover_letter", "save_career_artifact"), featured=False, order=90, aliases=("cover", "求职信")),
     _skill("application_email", "申请邮件", "documents", "native", "生成并持久化正式申请邮件草稿，永不发送。", "skill_assistant", ("get_profile", "list_jobs", "get_job", "list_resumes", "get_resume", "get_application_workspace", "list_career_artifacts", "get_career_artifact", "save_career_artifact"), featured=False, order=100, aliases=("email", "申请邮件")),
@@ -245,63 +271,190 @@ def resolve_slash_skill(user_message: str | None) -> AgentSkill | None:
     return resolve_skill(command) if command.startswith("/") else None
 
 
-def resolve_run_skill(user_message: str | None, selected_skill_id: str | None) -> AgentSkill:
-    command = str(user_message or "").strip().split(maxsplit=1)[0]
-    requested = command if command.startswith("/") else str(selected_skill_id or "")
+class SkillRoutingError(ValueError):
+    """Auto Skill routing failed; surfaced instead of silently picking a Skill."""
+
+
+@dataclass(frozen=True)
+class SkillRouting:
+    """How a Run's Skill was chosen; recorded once and frozen with the Run.
+
+    The frozen provenance is exactly ``via``/``requested``/``reason``. The
+    canonical Career State the router saw is prompt input only; it must never
+    leak into persisted Run provenance or the display Skill summary.
+    """
+
+    via: str  # "explicit" | "slash" | "auto"
+    requested: str = ""
+    reason: str = ""
+
+    def provenance(self) -> dict[str, Any]:
+        return {"via": self.via, "requested": self.requested, "reason": self.reason}
+
+
+def _is_routable_skill(skill: AgentSkill) -> bool:
+    """Auto routing may only land on user-facing business Skills.
+
+    Integration probes and the autonomous Career Director stay explicit-only,
+    and plugin Skills are never auto-selected because their tool surface is an
+    arbitrary plugin capability, not a governed Operation allowlist.
+    """
+    return skill.id not in _NON_ROUTABLE_SKILL_IDS and skill.group != "plugin"
+
+
+def _routable_skills() -> list[AgentSkill]:
+    from app.ops import OPERATIONS
+
+    return [
+        skill
+        for skill in (*_SKILLS, *_directory_skills(), *_plugin_skills())
+        if _is_routable_skill(skill)
+        and any(name in OPERATIONS for name in skill.allowed_tools)
+    ]
+
+
+def _auto_requested(value: str | None) -> bool:
+    return (
+        str(value or "").strip().lower().lstrip("/").replace("-", "_")
+        == AUTO_SKILL_ID
+    )
+
+
+def resolve_declared_skill(
+    user_message: str | None,
+    selected_skill_id: str | None,
+) -> tuple[AgentSkill, SkillRouting] | None:
+    """Resolve the explicitly declared Skill without model routing.
+
+    Slash commands win over a UI skill_id, matching the historical contract;
+    unknown declared ids raise instead of falling back. Returns None when the
+    request is (or defaults to) auto routing.
+    """
+    goal = str(user_message or "").strip()
+    command = goal.split(maxsplit=1)[0] if goal else ""
+    requested = str(selected_skill_id or "").strip()
+    if command.startswith("/"):
+        skill = resolve_skill(command)
+        if skill is None:
+            raise ValueError(f"未知技能: {command}")
+        return skill, SkillRouting(via="slash", requested=command)
+    if _auto_requested(requested) or not requested:
+        return None
     skill = resolve_skill(requested)
     if skill is None:
         raise ValueError(f"未知技能: {requested}")
-    return skill
+    return skill, SkillRouting(via="explicit", requested=requested)
 
 
-def fallback_skill(mode: str) -> AgentSkill:
-    preferred = {
-        "career_exploration": "title_discovery",
-        "job_workflow": "scan_jobs",
-        "resume_workflow": "tailor_resume",
-        "application_tracking": "tracker",
-        "follow_up": "follow_up",
-    }.get(mode, "discovery")
-    return resolve_skill(preferred) or _SKILLS[0]
+def _router_transcript(
+    user_message: str,
+    context_messages: list[dict[str, str]] | None,
+) -> str:
+    """Build a bounded, desensitized routing transcript from untrusted text."""
+    from app.agents.desensitize import desensitize
+
+    rows: list[str] = []
+    for item in (context_messages or [])[-_ROUTER_CONTEXT_MESSAGES:]:
+        role = str(item.get("role") or "").strip()
+        content = str(item.get("content") or "").strip()
+        if role not in {"user", "assistant"} or not content:
+            continue
+        masked, _ = desensitize(content[:_ROUTER_MESSAGE_CHARS])
+        rows.append(f"{role}: {masked}")
+    masked_goal, _ = desensitize(str(user_message or "").strip()[:2000])
+    rows.append(f"current user: {masked_goal}")
+    return "\n".join(rows)
 
 
-async def select_skill(*, user_message: str, explicit_skill_id: str | None, fallback_mode: str) -> tuple[AgentSkill, str]:
-    if explicit_skill_id:
-        selected = resolve_skill(explicit_skill_id)
-        if selected is None:
-            raise ValueError(f"未知技能: {explicit_skill_id}")
-        return selected, "explicit_ui_selection"
+async def _auto_route_skill(
+    *,
+    user_message: str,
+    context_messages: list[dict[str, str]] | None,
+    requested: str,
+    routing_context: dict[str, Any] | None = None,
+) -> tuple[AgentSkill, SkillRouting]:
+    """Classify one routable Skill through the canonical configured LLM.
 
-    selected = resolve_slash_skill(user_message)
-    if selected is not None:
-        return selected, "explicit_slash_command"
+    Any failure (timeout, provider/model error, non-JSON or unknown/privileged
+    reply) raises SkillRoutingError before business execution; routing never
+    silently degrades to a fixed Skill.
+    """
+    from app.agents.llm import chat_completion, extract_json
 
-    visible = [
-        skill
-        for skill in (*_SKILLS, *_directory_skills(), *_plugin_skills())
-        if skill.featured
-    ]
-    rows = "\n".join(f"- {skill.id}: {skill.description}" for skill in visible)
+    candidates = _routable_skills()
+    if not candidates:
+        raise SkillRoutingError("Skill 自动路由没有可用候选；请显式选择技能。")
+    catalog_rows = "\n".join(
+        f'- "{skill.id}": {skill.description}' for skill in candidates
+    )
     try:
-        from app.agents.llm import chat_completion, extract_json
-        raw = await chat_completion(
-            messages=[
-                {"role": "system", "content": (
-                    "Choose exactly one OfferU skill for the user's complete goal. "
-                    "Return JSON only: {\"skill_id\":\"...\",\"reason\":\"...\"}. "
-                    "Do not plan or execute tools.\n\n" + rows
-                )},
-                {"role": "user", "content": user_message[:2000]},
-            ],
-            temperature=0.0,
-            json_mode=True,
-            max_tokens=200,
-            tier="fast",
+        raw = await asyncio.wait_for(
+            chat_completion(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You route one user request to exactly one OfferU Skill. "
+                            "Pick the skill whose purpose best matches the goal; "
+                            'respond with JSON only: {"skill_id":"<id>","reason":"<short>"} '
+                            "using an id copied verbatim from this list:\n"
+                            + catalog_rows
+                        ),
+                    },
+                    {"role": "user", "content": _router_transcript(user_message, context_messages)
+                     + "\nCanonical current Career State:\n" + json.dumps(routing_context or {}, ensure_ascii=False)},
+                ],
+                temperature=0.0,
+                json_mode=True,
+                max_tokens=200,
+            ),
+            timeout=SKILL_ROUTER_TIMEOUT_SECONDS,
         )
-        parsed = extract_json(raw or "")
-        selected = resolve_skill(parsed.get("skill_id") if isinstance(parsed, dict) else None)
-        if selected is not None:
-            return selected, str(parsed.get("reason") or "model_router")[:300]
-    except Exception:
-        pass
-    return fallback_skill(fallback_mode), "deterministic_fallback"
+    except asyncio.TimeoutError:
+        raise SkillRoutingError(
+            f"Skill 自动路由超时（{int(SKILL_ROUTER_TIMEOUT_SECONDS)}s），请显式选择技能后重试。"
+        )
+    except Exception as exc:
+        raise SkillRoutingError(
+            f"Skill 自动路由失败：{safe_error_message(exc)}"
+        ) from exc
+    if not raw:
+        raise SkillRoutingError("Skill 自动路由无响应（LLM 未返回结果）；请显式选择技能后重试。")
+    parsed = extract_json(raw)
+    selected_id = str(parsed.get("skill_id") or "").strip() if isinstance(parsed, dict) else ""
+    resolved = resolve_skill(selected_id) if selected_id else None
+    if resolved is None or resolved.id not in {skill.id for skill in candidates}:
+        raise SkillRoutingError(
+            f"Skill 自动路由返回了无效技能（{selected_id or '空响应'}）；请显式选择技能后重试。"
+        )
+    reason = str(parsed.get("reason") or "") if isinstance(parsed, dict) else ""
+    return resolved, SkillRouting(
+        via="auto",
+        requested=requested or AUTO_SKILL_ID,
+        reason=reason[:300],
+    )
+
+
+async def resolve_run_skill(
+    user_message: str | None,
+    selected_skill_id: str | None,
+    context_messages: list[dict[str, str]] | None = None,
+    *,
+    routing_context: dict[str, Any] | None = None,
+) -> tuple[AgentSkill, SkillRouting]:
+    """Resolve the Skill for one new Run: declared inputs first, auto routing second.
+
+    - Explicit skill_id and slash commands resolve deterministically; unknown
+      ids raise ValueError and never fall back.
+    - skill_id="auto" (or empty) runs exactly one bounded classification through
+      the canonical configured LLM and may only return a routable Skill.
+    """
+    declared = resolve_declared_skill(user_message, selected_skill_id)
+    if declared is not None:
+        return declared
+    return await _auto_route_skill(
+        user_message=str(user_message or "").strip(),
+        context_messages=context_messages,
+        requested=str(selected_skill_id or "").strip(),
+        routing_context=routing_context,
+    )

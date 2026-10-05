@@ -1168,9 +1168,15 @@ async def connect_agent_integration(provider_id: str, action: str = "install") -
 
 
 async def get_agent_connection_nonce(provider_id: str, challenge_id: str) -> dict:
-    from app.services.agent_integration import get_connection_nonce
+    from app.services.agent_integration import get_connection_nonce, complete_connection_challenge
+    from app.services.agent_connection import record_external_readback
 
-    return get_connection_nonce(provider_id, challenge_id)
+    result = await asyncio.to_thread(get_connection_nonce, provider_id, challenge_id, consume=False)
+    if await record_external_readback(provider_id, challenge_id):
+        await asyncio.to_thread(complete_connection_challenge, provider_id, challenge_id)
+    else:
+        await asyncio.to_thread(get_connection_nonce, provider_id, challenge_id)
+    return result
 
 
 async def list_capability_plugins() -> dict:
@@ -1998,7 +2004,7 @@ async def get_resume(resume_id: int) -> dict:
         }
 
 
-async def export_resume_pdf(resume_id: int) -> dict:
+async def _export_resume_pdf_unlocked(resume_id: int) -> dict:
     """Render and atomically persist an ATS-readable PDF on explicit confirmation."""
     from app.services.agent_files import atomic_write_bytes
     from app.services.resume_export import render_resume_pdf
@@ -2028,6 +2034,14 @@ async def export_resume_pdf(resume_id: int) -> dict:
         "renderer": renderer,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+async def export_resume_pdf(resume_id: int) -> dict:
+    """Prevent a pre-reset render from being written after the reset clears exports."""
+    from app.services.reset_write_guard import reset_write_guard
+
+    async with reset_write_guard():
+        return await _export_resume_pdf_unlocked(resume_id)
 
 
 _APPLICATION_STATUS_TO_WORKSPACE = {

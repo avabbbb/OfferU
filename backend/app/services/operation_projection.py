@@ -1,13 +1,149 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any
 
 from app.ops import OPERATIONS, execute_operation
-from app.services.agent_run_coordinator import AgentRunCoordinator
-from app.services.agent_run_state import (
-    create_agent_run,
-    load_agent_run,
-)
+
+
+def _error(operation: str, message: str) -> dict[str, Any]:
+    return {"ok": False, "operation": operation, "errors": [message], "outputs": {}}
+
+
+async def _run_scope(
+    run_id: str,
+    *,
+    allowed_operations: Iterable[str] | None = None,
+) -> tuple[dict[str, Any] | None, frozenset[str]]:
+    from app.services.agent_run_state import load_agent_run
+
+    run = await load_agent_run(run_id)
+    if run is None:
+        return None, frozenset()
+    saved = frozenset(
+        str(name)
+        for name in ((run.get("skill_snapshot") or {}).get("allowed_tools") or [])
+        if str(name)
+    )
+    if allowed_operations is None:
+        return run, saved
+    requested = frozenset(str(name) for name in allowed_operations if str(name))
+    if not requested.issubset(saved):
+        return None, frozenset()
+    return run, requested
+
+
+def _affected_entities(args: dict[str, Any]) -> list[dict[str, str]]:
+    entities: list[dict[str, str]] = []
+    for key, kind in (
+        ("job_id", "job"),
+        ("profile_id", "profile"),
+        ("resume_id", "resume"),
+        ("proposal_id", "resume_proposal"),
+        ("application_id", "application"),
+        ("interview_id", "interview"),
+        ("task_id", "career_task"),
+    ):
+        value = args.get(key)
+        if value is not None and str(value).strip():
+            entities.append({"kind": kind, "id": str(value)})
+    target_type = str(args.get("target_type") or "").strip()
+    target_id = str(args.get("target_id") or "").strip()
+    if target_type and target_id:
+        entities.append({"kind": target_type, "id": target_id})
+    return entities
+
+
+async def _create_visible_ui_run(
+    operation: str,
+    args: dict[str, Any],
+    *,
+    conversation_id: str,
+    summary: str,
+) -> dict[str, Any]:
+    """Bind an explicit UI request to a visible deterministic audit Run."""
+
+    from app.services.agent_run_state import create_agent_run
+
+    existing_task_id = (
+        str(args.get("task_id") or "")
+        if operation in {"cancel_career_task", "retry_career_task", "resume_career_task"}
+        else ""
+    )
+    allowed = sorted({operation, "prepare_proposal_plan", "get_proposal_plan", "list_proposal_plans"})
+    entities = _affected_entities(args)
+    return await create_agent_run(
+        conversation_id=conversation_id,
+        goal=f"OfferU UI request: {summary}",
+        mode="ui_operation_request",
+        skill_id="operation_registry",
+        skill_version="proposal-plan-v2",
+        skill_snapshot={
+            "version": "ui-operation-request.v1",
+            "allowed_tools": allowed,
+            "domain_refs": entities,
+        },
+        task_id=existing_task_id,
+        actions=[],
+        exit_criteria=["the exact user-requested Registry operation is reviewed and completed or visibly blocked"],
+        llm_runtime={"runtime": "none", "reason": "explicit_ui_operation_request"},
+    )
+
+
+async def _execute_plan_preparation(
+    args: dict[str, Any],
+    *,
+    surface: str,
+    run_id: str = "",
+    allowed_operations: Iterable[str] | None = None,
+) -> dict[str, Any]:
+    bound_run_id = str(run_id or args.get("run_id") or "").strip()
+    if not bound_run_id:
+        return _error(
+            "prepare_proposal_plan",
+            "Plan preparation requires an existing Agent Run; no hidden Run is created.",
+        )
+    supplied_run_id = str(args.get("run_id") or "").strip()
+    if supplied_run_id and supplied_run_id != bound_run_id:
+        return _error("prepare_proposal_plan", "Plan Run differs from the attached Agent Run.")
+    run, allowed = await _run_scope(
+        bound_run_id,
+        allowed_operations=allowed_operations,
+    )
+    if run is None:
+        return _error("prepare_proposal_plan", "Agent Run or Skill scope is unavailable.")
+    if "prepare_proposal_plan" not in allowed:
+        return _error("prepare_proposal_plan", "Plan staging is outside the persisted Run Skill scope.")
+    from app.services.proposal_plan_preparation import plan_preparation_context
+
+    try:
+        with plan_preparation_context(bound_run_id, set(allowed)):
+            result = await execute_operation(
+                "prepare_proposal_plan",
+                {**args, "run_id": bound_run_id},
+                surface=surface,
+            )
+        outputs = result.get("outputs") if isinstance(result.get("outputs"), dict) else {}
+        plan = outputs.get("plan") if isinstance(outputs.get("plan"), dict) else {}
+        plan_id = str(outputs.get("plan_id") or plan.get("id") or "")
+        if (
+            result.get("ok")
+            and outputs.get("executed") is False
+            and outputs.get("requires_confirmation") is True
+            and plan_id
+        ):
+            from app.services.agent_run_state import sync_proposal_plan_state
+
+            await sync_proposal_plan_state(
+                bound_run_id,
+                event_type="proposal.plan_ready",
+                payload={"plan_id": plan_id, "plan_digest": plan.get("digest") or outputs.get("plan_digest")},
+            )
+        return result
+    except Exception as exc:
+        from app.services.security_redaction import safe_error_message
+
+        return _error("prepare_proposal_plan", safe_error_message(exc))
 
 
 async def execute_or_propose_operation(
@@ -17,71 +153,88 @@ async def execute_or_propose_operation(
     surface: str,
     dry_run: bool = False,
     conversation_id: str = "",
+    run_id: str = "",
+    allowed_operations: Iterable[str] | None = None,
 ) -> dict[str, Any]:
-    """Execute a read or persist one confirmation proposal for a mutation."""
+    """Execute a safe Registry operation or stage a protected write as a Plan.
 
+    A protected single-operation compatibility call becomes one exact
+    singleton group in the current Run. Multi-operation semantic grouping is
+    supplied explicitly through ``prepare_proposal_plan`` by the active Agent.
+    """
+
+    inputs = args if isinstance(args, dict) else {}
     operation = OPERATIONS.get(name)
-    inputs = args or {}
-    if operation is None or not operation.is_mutation or dry_run:
-        return await execute_operation(
+    if name == "prepare_proposal_plan":
+        return await _execute_plan_preparation(
+            inputs,
+            surface=surface,
+            run_id=run_id,
+            allowed_operations=allowed_operations,
+        )
+    if operation is None or not operation.requires_confirmation or dry_run:
+        return await execute_operation(name, inputs, dry_run=dry_run, surface=surface)
+
+    bound_run_id = str(run_id or "").strip()
+    if not bound_run_id and surface == "agent_runtime_ui":
+        preview = await execute_operation(name, inputs, dry_run=True, surface=surface)
+        if not preview.get("ok"):
+            return preview
+        visible_run = await _create_visible_ui_run(
             name,
             inputs,
-            dry_run=dry_run,
-            surface=surface,
+            conversation_id=conversation_id,
+            summary=operation.description or name,
         )
-
-    preview = await execute_operation(
-        name,
-        inputs,
-        dry_run=True,
-        surface=surface,
+        bound_run_id = str(visible_run.get("id") or "")
+    if not bound_run_id:
+        return _error(
+            name,
+            "Protected operations require an existing Agent Run; no hidden Run is created.",
+        )
+    run, allowed = await _run_scope(
+        bound_run_id,
+        allowed_operations=allowed_operations,
     )
+    if run is None:
+        return _error(name, "Agent Run or Skill scope is unavailable.")
+    if name not in allowed or "prepare_proposal_plan" not in allowed:
+        return _error(name, "Operation is outside the persisted Run Skill scope.")
+
+    preview = await execute_operation(name, inputs, dry_run=True, surface=surface)
     if not preview.get("ok"):
         return preview
 
-    action_id = f"{name}:1"
-    run = await create_agent_run(
-        conversation_id=conversation_id,
-        goal=f"Execute OfferU Operation {name}",
-        mode="operation_projection",
-        skill_id="operation_registry",
-        actions=[
+    intent_id = "legacy_singleton"
+    summary = operation.description or name
+    plan_args = {
+        "run_id": bound_run_id,
+        "title": summary[:500],
+        "intents": [
             {
-                "id": action_id,
-                "tool": name,
-                # 持久化原始（未 redact）参数供 confirm 重放；审计行仍由
-                # execute_operation 在 _record_audit 中独立 redact。
-                # 不能使用 preview["inputs"]：dry-run envelope 的 inputs 已
-                # 经 _audit_inputs 替换敏感参数为 sha256 占位，重放必然失败。
+                "id": intent_id,
+                "operation": name,
                 "args": inputs,
-                "summary": operation.description,
-                "risk_level": "confirm",
-                "requires_confirmation": True,
+                "summary": summary,
+                "affected_entities": _affected_entities(inputs),
             }
         ],
-        exit_criteria=[f"{name} completed exactly once or failed visibly"],
-        llm_runtime={"runtime": "none", "reason": "deterministic_operation_proposal"},
-    )
-    step = run["steps"][0]
-    return {
-        **preview,
-        "outputs": {
-            "executed": False,
-            "requires_confirmation": True,
-            "proposal": {
-                "run_id": run["id"],
-                "task_id": run["task_id"],
-                "action_id": step["id"],
-                "idempotency_key": step["idempotency_key"],
-                "operation": step["tool"],
-                "args": step["args"],
-                "status": step["status"],
-            },
-        },
-        "warnings": [
-            "副作用尚未执行；提案已持久化，必须通过独立确认调用执行。",
+        "groups": [
+            {
+                "id": "legacy_singleton_group",
+                "title": summary[:500],
+                "rationale": "Compatibility request for this exact Registry operation and input.",
+                "summary": summary,
+                "node_ids": [intent_id],
+            }
         ],
     }
+    return await _execute_plan_preparation(
+        plan_args,
+        surface=surface,
+        run_id=bound_run_id,
+        allowed_operations=allowed,
+    )
 
 
 async def confirm_operation_proposal(
@@ -89,119 +242,143 @@ async def confirm_operation_proposal(
     *,
     surface: str,
     action_id: str = "",
+    authorization_source: str | None = None,
+    plan_digest: str = "",
+    group_digest: str = "",
+    decision_id: str = "",
 ) -> dict[str, Any]:
-    """Execute one persisted proposal through the Registry authorization boundary."""
+    """Compatibility adapter for an old action button, limited to one node.
 
-    run = await load_agent_run(run_id)
-    if run is None:
-        return {"ok": False, "errors": [f"Agent Run {run_id} 不存在。"]}
-    recoverable = [
-        {
-            "id": str(step.get("id") or ""),
-            "tool": str(step.get("tool") or ""),
-            "args": step.get("args") if isinstance(step.get("args"), dict) else {},
-        }
-        for step in (run.get("steps") or [])
-        if isinstance(step, dict)
-        and step.get("status") in {"waiting_confirmation", "executing"}
-    ]
-    selected = (
-        next(
-            (item for item in recoverable if str(item.get("id") or "") == action_id),
-            None,
-        )
-        if action_id
-        else recoverable[0] if len(recoverable) == 1 else None
-    )
-    if selected is None:
-        completed_steps = [
-            step
-            for step in (run.get("steps") or [])
-            if isinstance(step, dict) and step.get("status") == "completed"
-        ]
-        rejected_target = any(
-            isinstance(step, dict)
-            and str(step.get("id") or "") == action_id
-            and step.get("status") == "rejected"
-            for step in (run.get("steps") or [])
-        )
-        if run.get("status") == "completed" and not rejected_target and (
-            (action_id and any(str(step.get("id") or "") == action_id for step in completed_steps))
-            or (not action_id and len(completed_steps) == 1)
-        ):
-            return {
-                "ok": True,
-                "run": run,
-                "tool_calls": [],
-                "warnings": ["该提案已完成；没有重放副作用。"],
-            }
-        if not action_id and len(recoverable) > 1:
-            return {
-                "ok": False,
-                "run": run,
-                "errors": ["该 Run 有多个待处理动作，确认时必须指定 action_id。"],
-            }
-        return {
-            "ok": False,
-            "run": run,
-            "errors": ["没有找到匹配的待确认动作。"],
-        }
+    New review surfaces use the plan/group endpoint and submit both displayed
+    digests. This adapter cannot approve a multi-node group or an old step that
+    has no equivalent immutable Plan.
+    """
 
-    async def registry_runner(operation: str, inputs: dict[str, Any]) -> Any:
-        result = await execute_operation(
-            operation,
-            inputs,
-            surface=surface,
+    if not authorization_source:
+        return _error("confirm_proposal", "Independent OfferU UI authorization is required.")
+    if not plan_digest or not group_digest:
+        return _error(
+            "confirm_proposal",
+            "This action-only confirmation has no displayed Plan snapshot. Reopen PlanReview and decide the group using both displayed digests.",
         )
-        if result.get("ok"):
-            return result
-        return {
-            "error": "; ".join(str(item) for item in result.get("errors") or [])
-            or f"{operation} failed",
-            "operation_result": result,
-        }
+    from app.services.agent_run_state import sync_proposal_plan_state
+    from app.services.proposal_plan_builder import PlanValidationError, canonical_digest, verify_plan_snapshot
+    from app.services.proposal_plan_store import list_plans
+    from app.services.agent_run_coordinator import AgentRunCoordinator
 
-    execution = await AgentRunCoordinator().execute_confirmed(
-        run=run,
-        confirmed_action_ids=[str(selected["id"])],
-        tool_runner=registry_runner,
-    )
-    final_run = execution["run"]
-    final_step = next(
-        (
-            step
-            for step in final_run.get("steps") or []
-            if isinstance(step, dict)
-            and str(step.get("id") or "") == str(selected["id"])
-        ),
-        {},
-    )
-    action_completed = str(final_step.get("status") or "") == "completed"
-    failed = any(
-        isinstance(call.get("result"), dict) and call["result"].get("error")
-        for call in execution["tool_calls"]
-        if isinstance(call, dict)
-    )
-    errors = [
-        str(call["result"]["error"])
-        for call in execution["tool_calls"]
-        if isinstance(call, dict)
-        and isinstance(call.get("result"), dict)
-        and call["result"].get("error")
-    ]
-    if not action_completed and not errors:
-        status = str(final_step.get("status") or "unknown")
-        errors.append(
-            "该动作未执行成功；"
-            + {
-                "rejected": "用户已拒绝，不能确认执行。",
-                "waiting_confirmation": "仍待确认，本次未执行。",
-                "executing": "正由另一请求处理，本次未报告成功。",
-                "uncertain": "执行状态不确定，需要先核对副作用。",
-            }.get(status, f"最终状态为 {status}。")
+    clean_action_id = str(action_id or "").strip()
+    if not clean_action_id:
+        return _error("confirm_proposal", "An exact action_id is required.")
+    plans = await list_plans(run_id=run_id)
+    matches: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for plan in plans:
+        if plan.get("status") == "replaced":
+            continue
+        try:
+            verify_plan_snapshot(plan)
+        except PlanValidationError:
+            return _error("confirm_proposal", "The stored Plan no longer verifies; reopen PlanReview before deciding.")
+        for group in plan.get("groups") or []:
+            if any(str(node.get("id") or "") == clean_action_id for node in group.get("nodes") or []):
+                matches.append((plan, group))
+    if len(matches) != 1:
+        return _error("confirm_proposal", "No exact current Plan node matches this action_id.")
+    plan, group = matches[0]
+    if len(group.get("nodes") or []) != 1:
+        return _error(
+            "confirm_proposal",
+            "This legacy action belongs to a multi-node group; use the displayed group decision.",
         )
-    return {
-        "ok": not failed and action_completed,
-        **execution,
-        "errors": errors,
-    }
+    if plan.get("digest") != plan_digest or group.get("digest") != group_digest:
+        return _error("confirm_proposal", "The displayed Plan snapshot changed; reload PlanReview before deciding.")
+    decision_id = decision_id or "decision_" + canonical_digest(
+        {"run_id": run_id, "action_id": clean_action_id, "plan_digest": plan_digest,
+         "group_digest": group_digest, "decision": "approve"}
+    )[:32]
+    result = await AgentRunCoordinator().confirm_group(
+        plan["id"],
+        group["id"],
+        plan_digest=plan["digest"],
+        group_digest=group["digest"],
+        decision_id=decision_id,
+        authorization_source=authorization_source,
+        surface=surface,
+    )
+    if result.get("ok"):
+        await sync_proposal_plan_state(
+            run_id,
+            event_type="proposal.group_decided",
+            payload={"plan_id": plan["id"], "group_id": group["id"], "decision": "approve"},
+        )
+    return result
+
+
+async def reject_operation_proposal(
+    run_id: str,
+    *,
+    surface: str,
+    action_id: str = "",
+    authorization_source: str | None = None,
+    plan_digest: str = "",
+    group_digest: str = "",
+    decision_id: str = "",
+) -> dict[str, Any]:
+    """Compatibility rejection with the same exact-singleton bound as approve."""
+
+    if not authorization_source:
+        return _error("reject_proposal", "Independent OfferU UI authorization is required.")
+    if not plan_digest or not group_digest:
+        return _error(
+            "reject_proposal",
+            "This action-only decision has no displayed Plan snapshot. Reopen PlanReview and decide the group using both displayed digests.",
+        )
+    from app.services.agent_run_state import sync_proposal_plan_state
+    from app.services.proposal_plan_builder import PlanValidationError, canonical_digest, verify_plan_snapshot
+    from app.services.proposal_plan_store import list_plans
+    from app.services.agent_run_coordinator import AgentRunCoordinator
+
+    clean_action_id = str(action_id or "").strip()
+    if not clean_action_id:
+        return _error("reject_proposal", "An exact action_id is required.")
+    plans = await list_plans(run_id=run_id)
+    matches: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for plan in plans:
+        if plan.get("status") == "replaced":
+            continue
+        try:
+            verify_plan_snapshot(plan)
+        except PlanValidationError:
+            return _error("reject_proposal", "The stored Plan no longer verifies; reopen PlanReview before deciding.")
+        for group in plan.get("groups") or []:
+            if any(str(node.get("id") or "") == clean_action_id for node in group.get("nodes") or []):
+                matches.append((plan, group))
+    if len(matches) != 1:
+        return _error("reject_proposal", "No exact current Plan node matches this action_id.")
+    plan, group = matches[0]
+    if len(group.get("nodes") or []) != 1:
+        return _error(
+            "reject_proposal",
+            "This legacy action belongs to a multi-node group; use the displayed group decision.",
+        )
+    if plan.get("digest") != plan_digest or group.get("digest") != group_digest:
+        return _error("reject_proposal", "The displayed Plan snapshot changed; reload PlanReview before deciding.")
+    decision_id = decision_id or "decision_" + canonical_digest(
+        {"run_id": run_id, "action_id": clean_action_id, "plan_digest": plan_digest,
+         "group_digest": group_digest, "decision": "reject"}
+    )[:32]
+    result = await AgentRunCoordinator().reject_group(
+        plan["id"],
+        group["id"],
+        plan_digest=plan["digest"],
+        group_digest=group["digest"],
+        decision_id=decision_id,
+        authorization_source=authorization_source,
+        surface=surface,
+    )
+    if result.get("ok"):
+        await sync_proposal_plan_state(
+            run_id,
+            event_type="proposal.group_decided",
+            payload={"plan_id": plan["id"], "group_id": group["id"], "decision": "reject"},
+        )
+    return result

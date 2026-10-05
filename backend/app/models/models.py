@@ -1090,6 +1090,172 @@ class AgentRunEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
 
 
+class ProposalExecutionPlan(Base):
+    """Immutable proposal snapshot attached to the existing reasoning Run."""
+
+    __tablename__ = "proposal_plans"
+    __table_args__ = (
+        UniqueConstraint("run_id", "lineage_id", "revision", name="uq_proposal_plan_revision"),
+        UniqueConstraint("run_id", "legacy_action_id", name="uq_proposal_plan_legacy_action"),
+    )
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    run_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("agent_runs.run_id", ondelete="CASCADE"), index=True
+    )
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    lineage_id: Mapped[str] = mapped_column(String(80), index=True)
+    parent_plan_id: Mapped[Optional[str]] = mapped_column(
+        String(80), ForeignKey("proposal_plans.id", ondelete="SET NULL"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(String(32), default="sealed", index=True)
+    snapshot_json: Mapped[str] = mapped_column(Text)
+    legacy_action_id: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), index=True
+    )
+
+
+class ProposalConfirmationGroup(Base):
+    """Runtime state and fencing for one immutable, reviewable node group."""
+
+    __tablename__ = "proposal_confirmation_groups"
+    __table_args__ = (
+        UniqueConstraint("plan_id", "ordinal", name="uq_proposal_group_ordinal"),
+    )
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    plan_id: Mapped[str] = mapped_column(
+        String(80), ForeignKey("proposal_plans.id", ondelete="CASCADE"), index=True
+    )
+    ordinal: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    snapshot_json: Mapped[str] = mapped_column(Text)
+    decision_id: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    decision_plan_digest: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    decision_group_digest: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    active_node_id: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    active_claim_id: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    lease_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    pause_reason: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), index=True
+    )
+
+
+class ProposalOperationNode(Base):
+    """A sealed Registry call and its mutable execution checkpoint."""
+
+    __tablename__ = "proposal_operation_nodes"
+    __table_args__ = (
+        UniqueConstraint("group_id", "ordinal", name="uq_proposal_node_ordinal"),
+        UniqueConstraint("idempotency_key", name="uq_proposal_node_idempotency"),
+        UniqueConstraint("effect_identity", name="uq_proposal_node_effect_identity"),
+    )
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    group_id: Mapped[str] = mapped_column(
+        String(80), ForeignKey("proposal_confirmation_groups.id", ondelete="CASCADE"), index=True
+    )
+    ordinal: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    snapshot_json: Mapped[str] = mapped_column(Text)
+    idempotency_key: Mapped[str] = mapped_column(String(180))
+    effect_identity: Mapped[str] = mapped_column(String(180))
+    claim_id: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    lease_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    result_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    error_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    receipt_id: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), index=True
+    )
+
+
+class ProposalConfirmationDecision(Base):
+    """Append-only user decision bound to one exact plan/group digest pair."""
+
+    __tablename__ = "proposal_confirmation_decisions"
+    __table_args__ = (
+        UniqueConstraint("event_id", name="uq_proposal_decision_event"),
+        UniqueConstraint("plan_id", "group_id", name="uq_proposal_group_decision"),
+    )
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    event_id: Mapped[str] = mapped_column(String(100), index=True)
+    plan_id: Mapped[str] = mapped_column(
+        String(80), ForeignKey("proposal_plans.id", ondelete="CASCADE"), index=True
+    )
+    group_id: Mapped[str] = mapped_column(
+        String(80), ForeignKey("proposal_confirmation_groups.id", ondelete="CASCADE"), index=True
+    )
+    plan_digest: Mapped[str] = mapped_column(String(64))
+    group_digest: Mapped[str] = mapped_column(String(64))
+    decision: Mapped[str] = mapped_column(String(16))
+    # Persist a non-secret UI source reference (for example "desktop-ui"), never a bearer.
+    authorization_source: Mapped[str] = mapped_column(String(120))
+    surface: Mapped[str] = mapped_column(String(40), default="desktop")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+
+
+class ProposalExecutionReceipt(Base):
+    """Durable per-attempt execution or reconciliation evidence."""
+
+    __tablename__ = "proposal_execution_receipts"
+    __table_args__ = (
+        UniqueConstraint("idempotency_key", name="uq_proposal_receipt_idempotency"),
+    )
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    node_id: Mapped[str] = mapped_column(
+        String(80), ForeignKey("proposal_operation_nodes.id", ondelete="CASCADE"), index=True
+    )
+    attempt_id: Mapped[str] = mapped_column(String(120), index=True)
+    effect_identity: Mapped[str] = mapped_column(String(180), index=True)
+    idempotency_key: Mapped[str] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(32), index=True)
+    effect_state: Mapped[str] = mapped_column(String(24), index=True)
+    result_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    audit_ref: Mapped[str] = mapped_column(String(180), default="")
+    error_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class ProposalContinuation(Base):
+    """Transactional outbox that returns durable receipts to the originating Run."""
+
+    __tablename__ = "proposal_continuations"
+    __table_args__ = (
+        UniqueConstraint("run_id", "group_id", name="uq_proposal_continuation_run_group"),
+        UniqueConstraint("idempotency_key", name="uq_proposal_continuation_idempotency"),
+    )
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    idempotency_key: Mapped[str] = mapped_column(String(180))
+    run_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("agent_runs.run_id", ondelete="CASCADE"), index=True
+    )
+    group_id: Mapped[str] = mapped_column(
+        String(80), ForeignKey("proposal_confirmation_groups.id", ondelete="CASCADE"), index=True
+    )
+    receipt_ids_json: Mapped[list] = mapped_column(JSON, default=list)
+    delivered_receipt_ids_json: Mapped[list] = mapped_column(JSON, default=list)
+    claimed_receipt_ids_json: Mapped[list] = mapped_column(JSON, default=list)
+    claim_payload_digest: Mapped[str] = mapped_column(String(64), default="")
+    status: Mapped[str] = mapped_column(String(24), default="pending", index=True)
+    claim_id: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    lease_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+    delivered_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
 class BridgePairing(Base):
     """一次 Agent Bridge 配对：bootstrap token 与 Run 绑定，用后即焚。"""
 
@@ -1905,3 +2071,249 @@ class RoleDeltaSignal(Base):
     priority: Mapped[float] = mapped_column(Float, default=0.0, index=True)
     evidence_refs_json: Mapped[list] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+# =============================================
+# Proposal v2：决策级 HITL（schema version 6，纯新增表）
+# =============================================
+# 语义分层：DecisionGroup 是使用者批准的语义单元；
+# OperationNode 是经过现有 Operation Registry 执行/审计的原子操作；
+# ConfirmationDecision 是一次防重放的批准/拒绝事实；
+# ExecutionReceipt 是每个节点的执行结果回执；
+# AgentInputRequest 是结构化提问（Ask），不是授权提案。
+# =============================================
+
+class ProposalPlan(Base):
+    """决策计划：一次 run 的封存审批材料与状态（历史原型表）；
+    v2 执行权威链路见 ProposalExecutionPlan（proposal_plans）。
+    """
+
+    __tablename__ = "legacy_decision_proposal_plans"
+    __table_args__ = (
+        UniqueConstraint(
+            "run_id",
+            "revision",
+            name="uq_proposal_plan_run_revision",
+        ),
+        Index("ix_proposal_plan_run_status", "run_id", "status"),
+    )
+
+    plan_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    run_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("agent_runs.run_id", ondelete="CASCADE"),
+        index=True,
+    )
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    title: Mapped[str] = mapped_column(String(300), default="")
+    purpose: Mapped[str] = mapped_column(Text, default="")
+    # draft / pending / executing / completed / partially_completed /
+    # failed / needs_reconciliation / rejected / superseded
+    status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    # sealed 展示 + 执行材料；sealed_at 之后任何变化都需要新 plan revision。
+    immutable_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    plan_digest: Mapped[str] = mapped_column(String(64), default="", index=True)
+    supersedes_plan_id: Mapped[Optional[str]] = mapped_column(
+        String(64),
+        ForeignKey("legacy_decision_proposal_plans.plan_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), index=True
+    )
+    sealed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    groups: Mapped[list["DecisionGroup"]] = relationship(
+        back_populates="plan",
+        cascade="all, delete-orphan",
+        order_by="DecisionGroup.sequence",
+        lazy="selectin",
+    )
+
+
+# 历史兼容别名：迁移前的原型类名，保留旧引用（含外部脚本）平滑过渡。
+LegacyDecisionPlan = ProposalPlan
+
+
+class DecisionGroup(Base):
+    """使用者一次批准/拒绝的语义决策组；只允许依赖同 plan 内更早的组。"""
+
+    __tablename__ = "decision_groups"
+    __table_args__ = (
+        UniqueConstraint(
+            "plan_id",
+            "sequence",
+            name="uq_decision_group_plan_sequence",
+        ),
+        Index("ix_decision_group_plan_status", "plan_id", "status"),
+    )
+
+    group_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    plan_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("legacy_decision_proposal_plans.plan_id", ondelete="CASCADE"),
+        index=True,
+    )
+    sequence: Mapped[int] = mapped_column(Integer)
+    title: Mapped[str] = mapped_column(String(300), default="")
+    summary: Mapped[str] = mapped_column(Text, default="")
+    # L1 / L2 / L3
+    risk_level: Mapped[str] = mapped_column(String(8), default="L2", index=True)
+    # pending / approved / rejected / blocked / executing / completed /
+    # failed / needs_reconciliation / stale
+    status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    dependency_group_ids_json: Mapped[list] = mapped_column(JSON, default=list)
+    display_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    group_digest: Mapped[str] = mapped_column(String(64), default="", index=True)
+
+    plan: Mapped["ProposalPlan"] = relationship(back_populates="groups")
+    nodes: Mapped[list["OperationNode"]] = relationship(
+        back_populates="group",
+        cascade="all, delete-orphan",
+        order_by="OperationNode.sequence",
+        lazy="selectin",
+    )
+
+
+class OperationNode(Base):
+    """组内一个经 Operation Registry 执行的原子操作节点；args 是确切的 Registry 参数。"""
+
+    __tablename__ = "operation_nodes"
+    __table_args__ = (
+        UniqueConstraint(
+            "group_id",
+            "sequence",
+            name="uq_operation_node_group_sequence",
+        ),
+        Index("ix_operation_node_plan_status", "plan_id", "status"),
+    )
+
+    node_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    plan_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("legacy_decision_proposal_plans.plan_id", ondelete="CASCADE"),
+        index=True,
+    )
+    group_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("decision_groups.group_id", ondelete="CASCADE"),
+        index=True,
+    )
+    sequence: Mapped[int] = mapped_column(Integer)
+    operation: Mapped[str] = mapped_column(String(120), index=True)
+    operation_version: Mapped[str] = mapped_column(String(40), default="")
+    args_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    args_digest: Mapped[str] = mapped_column(String(64), default="")
+    target_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    target_digest: Mapped[str] = mapped_column(String(64), default="")
+    # decision-node:<node_id>:<args_digest>
+    idempotency_key: Mapped[str] = mapped_column(String(180), unique=True, index=True)
+    # pending / authorized / blocked / executing / completed / failed /
+    # uncertain / rejected / stale
+    status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    group: Mapped["DecisionGroup"] = relationship(back_populates="nodes")
+
+
+class ConfirmationDecision(Base):
+    """一次组级批准/拒绝事实；decision_id 幂等，任何字段不一致的重放都拒绝。"""
+
+    __tablename__ = "confirmation_decisions"
+    __table_args__ = (
+        Index("ix_confirmation_decision_group", "group_id"),
+        Index("ix_confirmation_decision_plan", "plan_id"),
+    )
+
+    decision_id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    plan_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("legacy_decision_proposal_plans.plan_id", ondelete="CASCADE"),
+        index=True,
+    )
+    group_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("decision_groups.group_id", ondelete="CASCADE"),
+    )
+    # approve / reject
+    decision: Mapped[str] = mapped_column(String(16), index=True)
+    plan_digest: Mapped[str] = mapped_column(String(64), default="")
+    group_digest: Mapped[str] = mapped_column(String(64), default="")
+    surface: Mapped[str] = mapped_column(String(40), default="unknown", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+
+
+class ExecutionReceipt(Base):
+    """一个 OperationNode 的执行回执；每个 node 至多一条，结果已脱敏。"""
+
+    __tablename__ = "execution_receipts"
+    __table_args__ = (
+        Index("ix_execution_receipt_plan", "plan_id"),
+        Index("ix_execution_receipt_group", "group_id"),
+    )
+
+    receipt_id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    node_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("operation_nodes.node_id", ondelete="CASCADE"),
+        unique=True,
+        index=True,
+    )
+    plan_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("legacy_decision_proposal_plans.plan_id", ondelete="CASCADE"),
+        index=True,
+    )
+    group_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("decision_groups.group_id", ondelete="CASCADE"),
+    )
+    operation: Mapped[str] = mapped_column(String(120), index=True)
+    idempotency_key: Mapped[str] = mapped_column(String(180), default="", index=True)
+    audit_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("operation_audit_logs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    status: Mapped[str] = mapped_column(String(40), default="", index=True)
+    # committed / no_effect / unknown
+    effect_state: Mapped[str] = mapped_column(String(24), default="unknown", index=True)
+    before_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    after_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    result_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    errors_json: Mapped[list] = mapped_column(JSON, default=list)
+    warnings_json: Mapped[list] = mapped_column(JSON, default=list)
+    result_digest: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class AgentInputRequest(Base):
+    """结构化 Ask：一次等待使用者回答的提问；不是提案，绝不授权任何变更。"""
+
+    __tablename__ = "agent_input_requests"
+    __table_args__ = (
+        Index("ix_agent_input_request_run_status", "run_id", "status"),
+    )
+
+    request_id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    run_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("agent_runs.run_id", ondelete="CASCADE"),
+        index=True,
+    )
+    # pending / answered / cancelled / expired
+    status: Mapped[str] = mapped_column(String(24), default="pending", index=True)
+    question: Mapped[str] = mapped_column(Text, default="")
+    reason: Mapped[str] = mapped_column(Text, default="")
+    options_json: Mapped[list] = mapped_column(JSON, default=list)
+    allow_free_text: Mapped[bool] = mapped_column(Boolean, default=True)
+    answer_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    answer_digest: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+    answered_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    consumed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

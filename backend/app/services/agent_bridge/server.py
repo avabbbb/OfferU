@@ -9,9 +9,9 @@ docs/architecture/agent-bridge-protocol.md:
   successful `run.attach`;
 - the single-writer lease gates event append, operation invoke, and finish.
 
-Slice 1 scope: hello, pairing (bootstrap token), run.attach, lease renew,
-context/skill snapshot, operation.list/schema/invoke (read-only),
-proposal.get, event.append/follow, run.finish. No mutations, no MCP.
+Surface scope: hello, pairing, run.attach, lease renew, context/skill snapshot,
+Registry reads and L1 Plan staging, same-Run proposal readback, event append/follow,
+and run.finish. Bridge clients never receive an approval capability.
 """
 
 from __future__ import annotations
@@ -27,7 +27,6 @@ from app.services.agent_bridge.event_stream import (
     follow_events,
 )
 from app.services.agent_bridge.operation_gateway import (
-    confirm_proposal,
     granted_operations,
     invoke_operation,
     invoke_workspace_delegate,
@@ -115,15 +114,13 @@ class BridgeSession:
         if message_type == "context.snapshot":
             return await self._context_snapshot(request_id, payload)
         if message_type == "skill.snapshot":
-            return success_response(request_id, self._skill_snapshot())
+            return success_response(request_id, await self._skill_snapshot(request_id))
         if message_type == "operation.list":
-            return success_response(request_id, {"operations": granted_operations()})
+            return success_response(request_id, {"operations": await self._granted_operations(request_id)})
         if message_type == "operation.schema":
             name = str(payload.get("operation") or "")
-            schema = next(
-                (item for item in granted_operations() if item.get("name") == name),
-                None,
-            )
+            operations = await self._granted_operations(request_id)
+            schema = next((item for item in operations if item.get("name") == name), None)
             if schema is None:
                 raise BridgeProtocolError(
                     "grant_denied",
@@ -181,7 +178,8 @@ class BridgeSession:
                 "paired": False,
                 "constraints": {
                     "runRequiredMessageTypes": list(RUN_REQUIRED_MESSAGE_TYPES),
-                    "readOnly": True,
+                    "planPreparation": True,
+                    "protectedWritesRequireNativeUiApproval": True,
                 },
             },
         )
@@ -360,7 +358,8 @@ class BridgeSession:
                     "prompt": prompt,
                     "timeout_seconds": max(1, min(timeout_seconds, 3600)),
                     "web_search_mode": web_search_mode,
-                }
+                },
+                run_id=str(self.run_id or ""),
             )
         except ValueError as exc:
             raise BridgeProtocolError("context_unavailable", str(exc), request_id=request_id) from exc
@@ -377,7 +376,8 @@ class BridgeSession:
                 event_type="operation.proposal_pending",
                 payload={
                     "operation": "delegate_career_task",
-                    "proposalRunId": (result.get("proposal") or {}).get("runId"),
+                    "proposalRunId": str(self.run_id or ""),
+                    "planId": result.get("planId"),
                     "surface": "bridge",
                 },
             )
@@ -425,23 +425,37 @@ class BridgeSession:
                     "version": str(run.get("skill_version") or ""),
                 },
                 "grantedOperations": sorted(
-                    item.get("name") for item in granted_operations()
+                    item.get("name") for item in await self._granted_operations(request_id)
                 ),
             },
         )
 
-    def _skill_snapshot(self) -> dict[str, Any]:
+    async def _run_allowed_tools(self, request_id: str) -> tuple[dict[str, Any], set[str]]:
+        from app.services.agent_run_state import load_agent_run
+
+        run = await load_agent_run(str(self.run_id or ""))
+        if run is None:
+            raise BridgeProtocolError("run_not_found", "Agent Run does not exist", request_id=request_id)
+        allowed = set((run.get("skill_snapshot") or {}).get("allowed_tools") or [])
+        return run, allowed
+
+    async def _granted_operations(self, request_id: str) -> list[dict[str, Any]]:
+        _, allowed = await self._run_allowed_tools(request_id)
+        return [item for item in granted_operations() if item.get("name") in allowed]
+
+    async def _skill_snapshot(self, request_id: str) -> dict[str, Any]:
         from app.services.agent_skill_registry import registry_snapshot
 
+        run, allowed = await self._run_allowed_tools(request_id)
         snapshot = registry_snapshot()
         skills = [
-            skill
+            {**skill, "allowed_tools": sorted(set(skill.get("allowed_tools") or []) & allowed)}
             for skill in snapshot.get("skills", [])
-            if set(skill.get("allowed_tools") or []) & {op["name"] for op in granted_operations()}
+            if str(skill.get("id") or "") == str(run.get("skill_id") or "")
         ]
         return {
             "skills": skills,
-            "grantedOperations": sorted(op["name"] for op in granted_operations()),
+            "grantedOperations": sorted(item["name"] for item in granted_operations() if item.get("name") in allowed),
         }
 
     async def _invoke(self, request_id: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -463,6 +477,7 @@ class BridgeSession:
         result = await invoke_operation(
             operation=operation,
             arguments=arguments,
+            run_id=str(self.run_id or ""),
         )
         result = dict(result)
         if result.get("requiresConfirmation"):
@@ -471,7 +486,8 @@ class BridgeSession:
                 event_type="operation.proposal_pending",
                 payload={
                     "operation": operation,
-                    "proposalRunId": (result.get("proposal") or {}).get("runId"),
+                    "proposalRunId": str(self.run_id or ""),
+                    "planId": result.get("planId"),
                     "idempotencyKey": idempotency_key,
                     "surface": "bridge",
                 },
@@ -491,31 +507,29 @@ class BridgeSession:
     async def _proposal_get(
         self, request_id: str, payload: dict[str, Any]
     ) -> dict[str, Any]:
-        proposal_run_id = str(payload.get("proposalId") or "")
-        state = await load_proposal_state(run_id=proposal_run_id)
+        proposal_ref = str(payload.get("proposalId") or self.run_id or "")
+        if proposal_ref.startswith("plan_"):
+            from app.services.proposal_plan_store import get_plan
+
+            plan = await get_plan(proposal_ref)
+            if plan is None:
+                raise BridgeProtocolError("run_not_found", "Proposal Plan does not exist", request_id=request_id)
+            if str(plan.get("run_id") or "") != str(self.run_id or ""):
+                raise BridgeProtocolError("grant_denied", "Plan is outside the attached Run", request_id=request_id)
+        elif proposal_ref != str(self.run_id or ""):
+            raise BridgeProtocolError("grant_denied", "Proposal readback is limited to the attached Run", request_id=request_id)
+        state = await load_proposal_state(run_id=proposal_ref)
         return success_response(request_id, state)
 
     async def _proposal_confirm(
         self, request_id: str, payload: dict[str, Any]
     ) -> dict[str, Any]:
-        # The single-writer lease does NOT gate confirmation: the approver is
-        # the human in the OfferU overlay, a different principal from the
-        # Bridge writer. Idempotency lives in confirm_operation_proposal.
-        action_id = str(payload.get("actionId") or "")
-        result = await confirm_proposal(
-            run_id=str(payload.get("proposalId") or ""),
-            action_id=action_id,
+        del payload
+        raise BridgeProtocolError(
+            "human_approval_required",
+            "Proposal decisions require the independent OfferU UI approval capability",
+            request_id=request_id,
         )
-        await append_standard_event(
-            run_id=str(self.run_id),
-            event_type="operation.confirmed",
-            payload={
-                "proposalRunId": str(payload.get("proposalId") or ""),
-                "actionId": action_id,
-                "surface": "bridge_overlay",
-            },
-        )
-        return success_response(request_id, result)
 
     async def _event_append(
         self, request_id: str, payload: dict[str, Any]

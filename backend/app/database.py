@@ -20,7 +20,7 @@ from app.services.security_redaction import safe_error_message
 
 settings = get_settings()
 
-CURRENT_SCHEMA_VERSION = 5
+CURRENT_SCHEMA_VERSION = 7
 
 
 class DatabaseMigrationError(RuntimeError):
@@ -73,6 +73,8 @@ async def init_db(*, backend_dir: Path | None = None):
     )
     try:
         async with engine.begin() as conn:
+            if engine.dialect.name == "sqlite":
+                await conn.run_sync(_preserve_prototype_decision_history)
             await conn.run_sync(Base.metadata.create_all)
             if engine.dialect.name == "sqlite":
                 await conn.run_sync(run_schema_migrations)
@@ -405,12 +407,64 @@ def _migrate_schema_v5(connection) -> None:  # noqa: ANN001
         connection.execute(
             text(str(CreateIndex(index, if_not_exists=True).compile(connection)).strip())
         )
+
+
+def _migrate_schema_v6(connection) -> None:  # noqa: ANN001
+    """Create durable Proposal v2 records without inventing legacy grants."""
+
+    from app.models.models import (
+        ProposalConfirmationDecision,
+        ProposalConfirmationGroup,
+        ProposalContinuation,
+        ProposalExecutionPlan,
+        ProposalExecutionReceipt,
+        ProposalOperationNode,
+    )
+
+    Base.metadata.create_all(
+        connection,
+        tables=[
+            ProposalExecutionPlan.__table__,
+            ProposalConfirmationGroup.__table__,
+            ProposalOperationNode.__table__,
+            ProposalConfirmationDecision.__table__,
+            ProposalExecutionReceipt.__table__,
+            ProposalContinuation.__table__,
+        ],
+        checkfirst=True,
+    )
+
+
+def _preserve_prototype_decision_history(connection) -> None:
+    """Preserve the incompatible prototype v6 table; never import its grants."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(connection)
+    if not inspector.has_table("proposal_plans"):
+        return
+    columns = {column["name"] for column in inspector.get_columns("proposal_plans")}
+    if "id" in columns and "snapshot_json" in columns:
+        return
+    if not {"plan_id", "immutable_json"}.issubset(columns):
+        raise DatabaseMigrationError("proposal_plans 的旧列结构无法识别，未覆盖历史数据。")
+    if inspector.has_table("legacy_decision_proposal_plans"):
+        raise DatabaseMigrationError("旧计划归档表已存在，未覆盖任一版本的数据。")
+    connection.execute(text('ALTER TABLE "proposal_plans" RENAME TO "legacy_decision_proposal_plans"'))
+
+
+def _migrate_schema_v7(connection) -> None:
+    _preserve_prototype_decision_history(connection)
+    _migrate_schema_v6(connection)
+
+
 SCHEMA_MIGRATIONS: dict[int, Callable[[Any], None]] = {
     1: _migrate_schema_v1,
     2: _migrate_schema_v2,
     3: _migrate_schema_v3,
     4: _migrate_schema_v4,
     5: _migrate_schema_v5,
+    6: _migrate_schema_v6,
+    7: _migrate_schema_v7,
 }
 
 

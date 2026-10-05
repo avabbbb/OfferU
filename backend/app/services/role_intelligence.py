@@ -1685,6 +1685,131 @@ def _target_document(job: Job, target_payload: dict[str, Any]) -> dict[str, Any]
     )
 
 
+def _target_snapshot_matches(
+    run: RoleBenchmarkRun,
+    job: Job | None,
+    document: RoleBenchmarkDocument,
+) -> bool:
+    if job is None or run.target_job_id != job.id:
+        return False
+    snapshot = document.normalized_json if isinstance(document.normalized_json, dict) else {}
+    role_profile = snapshot.get("role_profile")
+    if not isinstance(role_profile, dict):
+        return False
+    raw_description = str(snapshot.get("raw_description") or "").strip()
+    if not raw_description:
+        return False
+    try:
+        snapshot_description_hash = description_hash(raw_description)
+        current_url = canonicalize_url(job.url or "")
+        current_description_matches = (
+            not str(job.raw_description or "").strip()
+            or snapshot_description_hash == description_hash(job.raw_description)
+        )
+    except (TypeError, ValueError):
+        return False
+
+    return bool(
+        document.run_id == run.run_id
+        and document.document_kind == "target"
+        and document.job_id == job.id
+        and document.source_ref == f"job:{job.id}"
+        and document.title == job.title
+        and document.company == job.company
+        and document.location == (job.location or "")
+        and document.industry == (job.company_industry or "")
+        and document.source == (job.source or "job")
+        and document.canonical_url == current_url
+        and document.description_hash == snapshot.get("description_hash")
+        and document.description_hash == snapshot_description_hash
+        and snapshot.get("schema") == ROLE_JD_SCHEMA
+        and snapshot.get("document_kind") == "target"
+        and snapshot.get("job_id") == job.id
+        and snapshot.get("source_ref") == f"job:{job.id}"
+        and snapshot.get("source") == (job.source or "job")
+        and snapshot.get("title") == job.title
+        and snapshot.get("company") == job.company
+        and snapshot.get("location") == (job.location or "")
+        and snapshot.get("industry") == (job.company_industry or "")
+        and snapshot.get("canonical_url") == current_url
+        and role_profile.get("schema") == ROLE_JD_SCHEMA
+        and role_profile == (run.target_profile_json or {})
+        and document.role_family == role_profile.get("role_family")
+        and document.specialization == role_profile.get("specialization")
+        and document.seniority == role_profile.get("seniority")
+        and document.domain == role_profile.get("domain")
+        and current_description_matches
+    )
+
+
+def verify_benchmark_artifact(
+    run: RoleBenchmarkRun,
+    *,
+    job: Job | None,
+    documents: list[RoleBenchmarkDocument],
+) -> dict[str, Any]:
+    """Verify the persisted benchmark metadata and target snapshot as one truth gate."""
+    reasons: list[str] = []
+    summary = _run_summary(run)
+    result = run.result_json if isinstance(run.result_json, dict) else {}
+    trace = run.trace_json if isinstance(run.trace_json, dict) else {}
+    sample = result.get("sample") if isinstance(result.get("sample"), dict) else {}
+    targets = [item for item in documents if item.document_kind == "target"]
+
+    if summary.get("status") != "completed":
+        reasons.append("run_not_completed")
+    if summary.get("data_mode") not in {"live", "live_backend", "live_plugin"}:
+        reasons.append("fixture_or_unknown_data_mode")
+    if not run.runtime_id or not summary.get("runtime_version"):
+        reasons.append("runtime_metadata_missing")
+    if (
+        run.schema_version != ROLE_BENCHMARK_OUTPUT_SCHEMA_ID
+        or result.get("schema") != ROLE_BENCHMARK_RESULT_SCHEMA
+        or trace.get("result_schema") != ROLE_BENCHMARK_RESULT_SCHEMA
+    ):
+        reasons.append("schema_mismatch")
+    if (
+        run.algorithm_version != ROLE_BENCHMARK_ALGORITHM_VERSION
+        or result.get("algorithm_version") != ROLE_BENCHMARK_ALGORITHM_VERSION
+    ):
+        reasons.append("algorithm_mismatch")
+    if result.get("taxonomy_version") != CAPABILITY_TAXONOMY_VERSION:
+        reasons.append("taxonomy_mismatch")
+    if not (
+        isinstance(result.get("signals"), list)
+        and sample.get("valid_comparator_count") == run.valid_sample_count
+        and sample.get("minimum_required") == run.min_sample_count
+        and sample.get("sufficient") is True
+        and summary.get("sample_sufficient") is True
+    ):
+        reasons.append("sample_metadata_mismatch")
+    included_comparators = sum(
+        item.document_kind == "comparator" and item.inclusion_status == "included"
+        for item in documents
+    )
+    if included_comparators != run.valid_sample_count:
+        reasons.append("comparator_snapshot_count_mismatch")
+    if job is None or run.target_job_id != job.id:
+        reasons.append("target_job_mismatch")
+    target_snapshot_verified = False
+    if len(targets) != 1:
+        reasons.append("target_snapshot_missing_or_ambiguous")
+    else:
+        target_snapshot_verified = _target_snapshot_matches(run, job, targets[0])
+        if not target_snapshot_verified:
+            reasons.append("target_snapshot_mismatch")
+
+    return {
+        "ready": not reasons,
+        "status": "verified" if not reasons else "unverified",
+        "reasons": reasons,
+        "target_snapshot": {
+            "exists": bool(targets),
+            "verified": target_snapshot_verified,
+        },
+    }
+
+
 async def _persist_benchmark(
     *,
     run_id: str,
@@ -2154,6 +2279,11 @@ async def get_role_benchmark(
             (item for item in documents if item.document_kind == "target"),
             None,
         )
+        artifact_verification = verify_benchmark_artifact(
+            run,
+            job=target_job,
+            documents=documents,
+        )
         serialized_signals: list[dict[str, Any]] = []
         for signal in signals:
             payload = _serialize_signal(signal)
@@ -2191,6 +2321,7 @@ async def get_role_benchmark(
             )
         return {
             **_run_summary(run),
+            "artifact_verification": artifact_verification,
             "latest_attempt": (
                 _run_summary(latest_attempt)
                 if latest_attempt is not None and latest_attempt.run_id != run.run_id

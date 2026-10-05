@@ -914,6 +914,8 @@ async def test_llm_connection():
 class FetchModelsRequest(BaseModel):
     base_url: str = Field(..., min_length=1)
     api_key: str = Field(default="")
+    config_id: str = ""
+    api_format: Literal["openai", "anthropic"] = "openai"
 
 
 class LlmProviderImportRequest(BaseModel):
@@ -1017,10 +1019,22 @@ async def fetch_models(body: FetchModelsRequest):
     if validation_error is not None:
         raise HTTPException(status_code=400, detail=validation_error)
 
+    if not api_key or "*" in api_key:
+        stored = next((item for item in _current_config.llm_api_configs if item.id == body.config_id), None)
+        if stored is not None:
+            if stored.base_url.rstrip("/") != base_url:
+                raise HTTPException(status_code=400, detail="接口地址已更改，请重新填写密钥后获取模型。")
+            api_key = stored.api_key
+        elif "*" in api_key:
+            raise HTTPException(status_code=400, detail="请填写有效密钥后获取模型。")
+    from app.llm_config_store import resolve_api_key
+    api_key = resolve_api_key(api_key)
+    if not api_key:
+        raise HTTPException(status_code=400, detail="请填写 API Key 后获取模型。")
+
     models_url = f"{base_url}/models"
-    headers: dict = {}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
+    headers = ({"x-api-key": api_key, "anthropic-version": "2023-06-01"}
+               if body.api_format == "anthropic" else {"Authorization": f"Bearer {api_key}"})
 
     safe_base_url = redact_sensitive_text(base_url, max_length=300)
 
@@ -1058,7 +1072,7 @@ async def fetch_models(body: FetchModelsRequest):
             if model_id:
                 model_list.append({
                     "id": model_id,
-                    "name": m.get("name") or model_id,
+                    "name": m.get("display_name") or m.get("name") or model_id,
                     "owned_by": m.get("owned_by", ""),
                 })
 

@@ -51,7 +51,7 @@ mcp = FastMCP(
     "OfferU Operation Registry",
     instructions=(
         "OfferU MCP 是统一 Operation Registry 的薄投影，不包含数据库、业务服务或任意 HTTP 逃生口。"
-        "先用 operation_catalog / operation_schema 发现能力。读操作直接执行；副作用操作只会创建持久化提案。"
+        "先用 operation_catalog / operation_schema 发现能力。读操作和标记 L1_prepare 的草稿准备直接执行；requires_confirmation 的操作创建持久化提案。"
         "MCP 不提供批准接口；使用者必须在 OfferU 桌面工作区审核并决定提案。"
     ),
     stateless_http=True,
@@ -107,6 +107,7 @@ async def offeru_operation(
     operation: str,
     args: dict[str, Any] | None = None,
     dry_run: bool = False,
+    run_id: str = "",
 ) -> dict[str, Any]:
     """Execute a read or create a persisted proposal for a side-effect Operation."""
 
@@ -117,6 +118,7 @@ async def offeru_operation(
         args or {},
         surface="mcp",
         dry_run=dry_run,
+        run_id=run_id,
     )
 
 

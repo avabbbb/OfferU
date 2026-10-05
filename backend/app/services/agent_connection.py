@@ -15,6 +15,7 @@ from typing import Any
 
 from app.services import coding_agent_runtime as runtime
 from app.services.agent_integration import integration_manager
+from app.services.agent_integration import create_connection_challenge, pending_connection_challenges
 from app.services.agent_provider_health import list_provider_health, record_connection_check
 from app.services.security_redaction import redact_sensitive_text
 
@@ -30,13 +31,9 @@ from app.services.agent_host_registry import (
 
 
 def _can_install_skill(provider_id: str) -> bool:
-    """Whether OfferU can install/update the canonical Skill into this host.
-
-    Replaces the former hard-coded _BEGINNER_PROVIDER_IDS gate: a host that is
-    only a hosted runtime (pi/omp/gemini/codebuddy) has no skill-install face.
-    """
+    """Documented install adapters; independent of hosted execution support."""
     host = get_host(provider_id)
-    return bool(host and host.can_install_skill)
+    return provider_id == "external" or bool(host and host.can_install_skill)
 
 
 def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
@@ -59,7 +56,7 @@ def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
         else str(item.get("executable_path") or "")
     )
     capabilities = health.get("capabilities") if isinstance(health.get("capabilities"), dict) else {}
-    check = _CHECKS.get(provider_id) or capabilities.get("connection_check") or {}
+    check = capabilities.get("connection_check") or _CHECKS.get(provider_id) or {}
     try:
         checked_at = datetime.fromisoformat(str(check.get("checked_at") or ""))
         age = (datetime.now(timezone.utc) - checked_at.astimezone(timezone.utc)).total_seconds()
@@ -67,24 +64,27 @@ def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
         age = time.monotonic() - check.get("at", 0)
     if "at" in check:
         age = max(age, time.monotonic() - check["at"])
-    if (not 0 <= age <= _CHECK_TTL
+    validity = 86400 if check.get("auth_mode") == "host_owned" else _CHECK_TTL
+    if (not 0 <= age <= validity
             or check.get("version") != item.get("version")
             or check.get("detected_executable", check.get("executable")) != executable
             or check.get("skill_hash", integration.get("expected_skill_hash")) != integration.get("expected_skill_hash")
             or integration["skill_status"] != "INSTALLED"):
         check = {}
-    installed = bool(executable)
+    installed = bool(executable) or provider_id == "external"
     compatible = bool(item.get("contract_compatible"))
+    external_session = bool(item.get("external_session")) or check.get("auth_mode") == "host_owned"
+    provider_health_applies = not external_session
     status = "check_required"
     if not installed:
         status = "missing"
     elif not compatible:
         status = "incompatible"
-    elif health.get("blocked") or health.get("status") == "blocked":
+    elif provider_health_applies and (health.get("blocked") or health.get("status") == "blocked"):
         status = "blocked"
-    elif health.get("authenticated") is False or health.get("status") == "auth_required":
+    elif provider_health_applies and (health.get("authenticated") is False or health.get("status") == "auth_required"):
         status = "auth_required"
-    elif health.get("status") == "unavailable" and health.get("checked_at"):
+    elif provider_health_applies and health.get("status") == "unavailable" and health.get("checked_at"):
         status = "failed"
     elif integration["skill_status"] == "NOT_INSTALLED":
         status = "integration_missing"
@@ -98,7 +98,7 @@ def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
         status = check["status"]
     conformance = capabilities.get("conformance") if isinstance(capabilities.get("conformance"), dict) else {}
     conformance_matches = bool(
-        conformance.get("binary_path") == item.get("executable_path")
+        not external_session and conformance.get("binary_path") == item.get("executable_path")
         and conformance.get("version") == item.get("version")
     )
     persisted_authenticated = conformance_matches and conformance.get("native_auth_detected") == "VERIFIED"
@@ -161,7 +161,7 @@ def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
         "checked_at": check.get("checked_at") or conformance.get("last_probe_at"),
         "detected_at": item.get("checked_at"),
         "last_error": redact_sensitive_text(
-            health.get("last_error") or check.get("error") or integration.get("error") or "", max_length=500,
+            (health.get("last_error") if provider_health_applies else "") or check.get("error") or integration.get("error") or "", max_length=500,
         ),
         "provider_checked_at": health.get("checked_at"),
         "docs_url": (get_host(provider_id).docs_url if get_host(provider_id) else ""),
@@ -185,21 +185,40 @@ def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
         "conformance_checked_at": conformance.get("last_probe_at") if conformance_matches else None,
         "beginner": bool(get_host(provider_id) and get_host(provider_id).beginner),
         "recommended": bool(get_host(provider_id) and get_host(provider_id).recommended),
+        "transport": "local_cli",
+        "capabilities": {"tools": "VERIFIED" if check.get("integration_status") == "VERIFIED" else "NOT_VERIFIED", "interactive_input": "HOST_OWNED", "web": "HOST_OWNED", "streaming": "HOST_OWNED"},
+        "verification_challenge": next((value for value in pending_connection_challenges() if value["provider_id"] == provider_id), None),
     }
 
 
 async def get_agent_connections() -> dict[str, Any]:
-    detected, health = await asyncio.gather(
-        runtime.list_local_executors(), list_provider_health(),
-    )
+    # Skill discovery never starts a provider or probes hosted CLI flags.
+    def detect() -> list[dict[str, Any]]:
+        items = []
+        for provider_id, adapter in integration_manager.adapters.items():
+            executable = adapter.detected_executable()
+            host = get_host(provider_id)
+            items.append({"id": provider_id, "name": host.display_name if host else "通用 Agent", "executable_path": executable,
+                          "version": "", "external_session": True,
+                          "contract_compatible": bool(executable) or provider_id == "external"})
+        return items
+    detected, health = await asyncio.gather(asyncio.to_thread(detect), list_provider_health())
     by_id = {item["provider_id"]: item for item in health["providers"]}
     return {
-        "items": [_view(item, by_id.get(item["id"], {})) for item in detected["items"]],
+        "items": [_view(item, by_id.get(item["id"], {})) for item in detected],
         "checked_at": datetime.now(timezone.utc).isoformat(),
         "connect_prompt": build_connect_prompt(),
         "beginner_provider_ids": beginner_host_ids(),
-        "recommended_provider_id": recommended_host_id(),
+        "recommended_provider_id": "external",
     }
+
+
+async def _get_hosted_agent_connections() -> dict[str, Any]:
+    """Explicit legacy diagnostics only; never used by the connection window."""
+    detected, health = await asyncio.gather(runtime.list_local_executors(), list_provider_health())
+    by_id = {item["provider_id"]: item for item in health["providers"]}
+    return {"items": [_view(item, by_id.get(item["id"], {})) for item in detected["items"]],
+            "checked_at": datetime.now(timezone.utc).isoformat(), "connect_prompt": build_connect_prompt()}
 
 
 def build_connect_prompt() -> str:
@@ -212,6 +231,59 @@ def build_connect_prompt() -> str:
 
 
 async def probe_agent_connection(provider_id: str) -> dict[str, Any]:
+    """Arm a readback in the user's existing host, without starting any Agent."""
+    adapter = integration_manager.adapter(provider_id)
+    installed = await asyncio.to_thread(adapter.inspect)
+    if installed["skill_status"] != "INSTALLED":
+        raise ValueError("请先安装或更新 OfferU Skill")
+    async with _CHECK_LOCK:
+        challenge = await asyncio.to_thread(create_connection_challenge, provider_id)
+        executable = await asyncio.to_thread(adapter.detected_executable)
+        check = {"version": "", "executable": executable, "detected_executable": executable,
+                 "status": "check_required", "integration_status": "INSTALLED", "authenticated": None,
+                 "skill_hash": installed["expected_skill_hash"], "challenge_id": challenge["challenge_id"],
+                 "checked_at": datetime.now(timezone.utc).isoformat(), "auth_mode": "host_owned",
+                 "error": "接入已准备。请在你已有的 Agent 中使用 OfferU；只读回读后自动显示连接结果。"}
+        await record_connection_check(provider_id, check)
+        _CHECKS[provider_id] = check
+    return await get_agent_connections()
+
+
+async def record_external_readback(provider_id: str, challenge_id: str) -> bool:
+    """Compare-and-set this connection's evidence, independently of hosted health."""
+    from sqlalchemy import select, text
+    from app.models.models import AgentProviderHealth
+    from app.services.agent_provider_health import async_session
+
+    installed = await asyncio.to_thread(integration_manager.inspect, provider_id)
+    async with async_session() as db:
+        if db.bind.dialect.name == "sqlite":
+            await db.execute(text("BEGIN IMMEDIATE"))
+        row = (await db.execute(select(AgentProviderHealth).where(
+            AgentProviderHealth.provider_id == provider_id
+        ).with_for_update())).scalar_one_or_none()
+        capabilities = dict(row.capabilities_json or {}) if row else {}
+        check = dict(capabilities.get("connection_check") or {})
+        if check.get("auth_mode") != "host_owned":
+            return False  # Explicit hosted diagnostics own their separate proof.
+        if check.get("challenge_id") != challenge_id:
+            raise ValueError("连接验证已被新的请求替换，请重新回读")
+        if check.get("skill_hash") != installed["expected_skill_hash"] or installed["skill_status"] != "INSTALLED":
+            raise ValueError("OfferU Skill 已变化，请重新连接")
+        if check.get("integration_status") == "VERIFIED":
+            return True
+        check.update(status="ready", integration_status="VERIFIED", error="",
+                     checked_at=datetime.now(timezone.utc).isoformat(),
+                     readback_evidence={"operation": "get_agent_connection_nonce", "challenge_id": challenge_id,
+                                        "successful_calls": 1, "evidence_kind": "tool_readback"})
+        capabilities["connection_check"] = check
+        row.capabilities_json = capabilities
+        await db.commit()
+        _CHECKS[provider_id] = check
+    return True
+
+
+async def probe_hosted_agent_connection(provider_id: str) -> dict[str, Any]:
     if provider_id not in runtime.RUNTIME_DEFINITIONS:
         raise ValueError("未知的本地 Agent")
     # Serialize user-triggered probes; polling only reads their cached result.
@@ -313,17 +385,14 @@ async def probe_agent_connection(provider_id: str) -> dict[str, Any]:
         check.update(at=time.monotonic(), checked_at=datetime.now(timezone.utc).isoformat())
         await record_connection_check(provider_id, check)
         _CHECKS[provider_id] = check
-    return await get_agent_connections()
+    return await _get_hosted_agent_connections()
 
 
 async def connect_agent_integration(provider_id: str, action: str = "install") -> dict[str, Any]:
     if not _can_install_skill(provider_id):
         raise ValueError("当前 Agent 尚不支持自动安装 OfferU Skill")
-    item = await runtime._probe(provider_id, refresh=True)
-    executable = integration_manager.adapter(provider_id).detected_executable(
-        str(item.get("executable_path") or "")
-    )
-    if not executable:
+    executable = await asyncio.to_thread(integration_manager.adapter(provider_id).detected_executable)
+    if not executable and provider_id != "external":
         raise ValueError("未检测到本机 Agent，请先安装后重试")
     await asyncio.to_thread(integration_manager.install, provider_id, action)
     return await probe_agent_connection(provider_id)

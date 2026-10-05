@@ -12,10 +12,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
+from filelock import FileLock
 
 from app.runtime_paths import PACKAGE_BACKEND_DIR, runtime_data_dir, runtime_data_path
 from app.services.agent_files import atomic_write_bytes, atomic_write_json
 from app.services.security_redaction import redact_sensitive_text
+from app.services.agent_methodology import methodology_assets
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -24,7 +26,7 @@ _SOURCE_SKILL = _PROJECT_ROOT / ".agents" / "skills" / "offeru" / "SKILL.md"
 _CHALLENGE_TTL_SECONDS = 300
 _CHALLENGE_LOCK = threading.Lock()
 _MARKER = re.compile(r"generated: offeru-skill-registry@([^\s]+) sha256=([a-f0-9]{64})")
-_PROVIDER_IDS = ("codex", "opencode", "claude")
+_PROVIDER_IDS = ("external", "codex", "opencode", "claude", "omp", "pi", "gemini", "codebuddy")
 
 
 def _sha256(payload: bytes) -> str:
@@ -98,6 +100,12 @@ class AgentIntegrationAdapter:
 
     def skill_root(self) -> Path:
         home = Path.home()
+        if self.provider_id == "external":
+            return home / ".agents" / "skills"
+        if self.provider_id in {"omp", "pi"}:
+            return Path(os.environ.get("PI_CODING_AGENT_DIR") or home / f".{self.provider_id}" / "agent") / "skills"
+        if self.provider_id in {"gemini", "codebuddy"}:
+            return home / f".{self.provider_id}" / "skills"
         if self.provider_id == "codex":
             return Path(os.environ.get("CODEX_HOME") or home / ".codex") / "skills"
         if self.provider_id == "claude":
@@ -109,12 +117,11 @@ class AgentIntegrationAdapter:
         return self.skill_root() / "offeru" / "SKILL.md"
 
     def detected_executable(self, fallback: str = "") -> str:
-        if self.provider_id == "codex":
-            return fallback
+        if self.provider_id == "external":
+            return ""
         from app.services.coding_agent_runtime import _resolve_executable
 
-        binary = "claude" if self.provider_id == "claude" else "opencode"
-        return _resolve_executable(binary) or ""
+        return fallback or _resolve_executable(self.provider_id) or ""
 
     def inspect(self) -> dict[str, Any]:
         expected = _installed_content()
@@ -146,7 +153,7 @@ class AgentIntegrationAdapter:
             state = "ERROR"
             error = "目标目录存在非 OfferU Skill；只有明确修复后才会覆盖。"
         elif installed == expected:
-            state = "INSTALLED"
+            state = "INSTALLED" if self._methods_match() else "OUTDATED"
             error = ""
         else:
             state = "OUTDATED"
@@ -167,7 +174,7 @@ class AgentIntegrationAdapter:
         current = self.inspect()
         if current["skill_status"] == "ERROR" and action != "repair":
             raise ValueError(current["error"])
-        if path.is_symlink() or root.is_symlink():
+        if path.is_symlink() or path.parent.is_symlink() or root.is_symlink():
             raise ValueError("OfferU Skill 目标目录不能使用符号链接")
         resolved_root = root.resolve()
         resolved_path = path.resolve()
@@ -177,8 +184,26 @@ class AgentIntegrationAdapter:
             raise ValueError("OfferU Skill 目标路径越过允许目录（可能位于不同盘符）")
         if common != str(resolved_root):
             raise ValueError("OfferU Skill 目标路径越过允许目录")
+        assets = methodology_assets()
+        for relative, payload in assets.items():
+            target = path.parent / relative
+            if target.is_symlink() or not target.resolve().is_relative_to(path.parent.resolve()):
+                raise ValueError("OfferU 方法文件目标路径越过允许目录")
+            atomic_write_bytes(target, payload)
         atomic_write_bytes(path, _installed_content().encode("utf-8"))
         return self.inspect()
+
+    def _methods_match(self) -> bool:
+        for relative, expected in methodology_assets().items():
+            target = self.skill_path().parent / relative
+            if target.is_symlink() or not target.resolve().is_relative_to(self.skill_path().parent.resolve()):
+                return False
+            try:
+                if target.read_bytes() != expected:
+                    return False
+            except OSError:
+                return False
+        return True
 
     def update(self) -> dict[str, Any]:
         return self.install("update")
@@ -208,6 +233,10 @@ class AgentIntegrationManager:
             adapter.provider_id: adapter
             for adapter in (CodexIntegration(), OpenCodeIntegration(), ClaudeCodeIntegration())
         }
+        self.adapters.update({
+            provider_id: AgentIntegrationAdapter(provider_id, provider_id)
+            for provider_id in _PROVIDER_IDS if provider_id not in self.adapters
+        })
 
     def adapter(self, provider_id: str) -> AgentIntegrationAdapter:
         clean = str(provider_id or "").strip().lower()
@@ -414,6 +443,12 @@ def _challenge_path() -> Path:
     return runtime_data_path("agent_integration_challenges.json")
 
 
+def _challenge_file_lock() -> FileLock:
+    path = _challenge_path().with_suffix(".lock")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return FileLock(str(path), timeout=5)
+
+
 def _load_challenges() -> dict[str, dict[str, Any]]:
     try:
         payload = json.loads(_challenge_path().read_text(encoding="utf-8"))
@@ -425,12 +460,13 @@ def _load_challenges() -> dict[str, dict[str, Any]]:
 def create_connection_challenge(provider_id: str) -> dict[str, str]:
     if provider_id not in _PROVIDER_IDS:
         raise ValueError("未知的 Agent integration provider")
-    with _CHALLENGE_LOCK:
+    with _CHALLENGE_LOCK, _challenge_file_lock():
         now = time.time()
         challenges = {
             key: value
             for key, value in _load_challenges().items()
             if isinstance(value, dict) and float(value.get("expires_at") or 0) > now
+            and value.get("provider_id") != provider_id
         }
         challenge_id = uuid4().hex
         nonce = uuid4().hex
@@ -438,13 +474,14 @@ def create_connection_challenge(provider_id: str) -> dict[str, str]:
             "provider_id": provider_id,
             "nonce": nonce,
             "expires_at": now + _CHALLENGE_TTL_SECONDS,
+            "skill_hash": _sha256(_installed_content().encode("utf-8")),
         }
         atomic_write_json(_challenge_path(), challenges)
         return {"challenge_id": challenge_id, "nonce": nonce}
 
 
-def get_connection_nonce(provider_id: str, challenge_id: str) -> dict[str, str]:
-    with _CHALLENGE_LOCK:
+def get_connection_nonce(provider_id: str, challenge_id: str, *, consume: bool = True) -> dict[str, str]:
+    with _CHALLENGE_LOCK, _challenge_file_lock():
         challenges = _load_challenges()
         clean_id = str(challenge_id or "").strip()
         challenge = challenges.get(clean_id)
@@ -452,10 +489,34 @@ def get_connection_nonce(provider_id: str, challenge_id: str) -> dict[str, str]:
             raise ValueError("OfferU connection challenge 不存在")
         if float(challenge.get("expires_at") or 0) <= time.time():
             raise ValueError("OfferU connection challenge 已过期")
+        if challenge.get("skill_hash") != _sha256(_installed_content().encode("utf-8")):
+            raise ValueError("OfferU Skill 已更新，请重新验证连接")
         nonce = str(challenge.get("nonce") or "")
-        challenges.pop(clean_id, None)
-        atomic_write_json(_challenge_path(), challenges)
+        if consume:
+            challenges.pop(clean_id, None)
+            atomic_write_json(_challenge_path(), challenges)
         return {"nonce": nonce}
+
+
+def complete_connection_challenge(provider_id: str, challenge_id: str) -> None:
+    """Retain a short-lived receipt so a lost response can be retried."""
+    with _CHALLENGE_LOCK, _challenge_file_lock():
+        challenges = _load_challenges()
+        challenge = challenges.get(challenge_id)
+        if isinstance(challenge, dict) and challenge.get("provider_id") == provider_id:
+            challenge["completed"] = True
+            atomic_write_json(_challenge_path(), challenges)
+
+
+def pending_connection_challenges() -> list[dict[str, str]]:
+    """Public challenge IDs only; the nonce remains available through its Operation."""
+    now = time.time()
+    return [
+        {"provider_id": str(value["provider_id"]), "challenge_id": key}
+        for key, value in _load_challenges().items()
+        if isinstance(value, dict) and float(value.get("expires_at") or 0) > now
+        and not value.get("completed")
+    ]
 
 
 integration_manager = AgentIntegrationManager()

@@ -7,12 +7,17 @@ and diagnostic output can distinguish a clean startup from a degraded one.
 
 from __future__ import annotations
 
+import asyncio
+import time
 from collections.abc import Awaitable, Callable
 from copy import deepcopy
 from typing import Any
 
 from app.services.security_redaction import safe_error_message
 
+STARTUP_RECOVERY_BUDGET_SECONDS = 20
+RECOVERY_STAGE_TIMEOUT_SECONDS = 5
+_DEADLINE = 0.0
 
 _STATUS: dict[str, Any] = {
     "status": "not_started",
@@ -22,6 +27,8 @@ _STATUS: dict[str, Any] = {
 
 
 def reset_startup_recovery() -> None:
+    global _DEADLINE
+    _DEADLINE = time.monotonic() + STARTUP_RECOVERY_BUDGET_SECONDS
     _STATUS.clear()
     _STATUS.update(
         {
@@ -46,7 +53,19 @@ async def run_startup_recovery(
 
     clean_name = str(name or "recovery").strip()[:80] or "recovery"
     try:
-        result = await operation()
+        remaining = _DEADLINE - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("Optional startup recovery budget exhausted")
+        # Cancellation stays in this task and unwinds DB transaction contexts;
+        # never leave a timed-out recovery running invisibly in the background.
+        async with asyncio.timeout(min(remaining, RECOVERY_STAGE_TIMEOUT_SECONDS)):
+            result = await operation()
+    except asyncio.CancelledError:
+        _STATUS.setdefault("checks", {})[clean_name] = {"status": "cancelled"}
+        failed_checks = _STATUS.setdefault("failed_checks", [])
+        if clean_name not in failed_checks:
+            failed_checks.append(clean_name)
+        raise
     except Exception as exc:  # recovery is non-critical but never silent
         from app.services.diagnostics import new_error_id, record_error
 
@@ -63,6 +82,7 @@ async def run_startup_recovery(
         checks[clean_name] = {
             "status": "failed",
             "error_id": error_id,
+            "reason": "timeout" if isinstance(exc, TimeoutError) else "error",
         }
         failed_checks = _STATUS.setdefault("failed_checks", [])
         if clean_name not in failed_checks:

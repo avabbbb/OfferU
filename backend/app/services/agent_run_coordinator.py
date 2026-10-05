@@ -83,13 +83,74 @@ def _replay_owned_steps(
 class AgentRunCoordinator:
     """Durable boundary between a confirmed plan and business side effects.
 
-    Each step is claimed through an atomic conditional UPDATE
-    (``waiting_confirmation`` -> ``executing``) before its tool runs, so a
-    duplicate concurrent confirmation can never execute the same step twice.
-    The step is checkpointed again after execution. If the process dies
-    while a step is ``executing``, the next confirmation marks it uncertain
-    and refuses automatic replay instead of risking a duplicate write.
+    Proposal v2 group confirmations route through the persisted plan store
+    (``confirm_group`` / ``reject_group`` / ``dispatch_group``); the legacy
+    single-step confirm path keeps its own atomic claim: each step is claimed
+    through a conditional UPDATE (``waiting_confirmation`` -> ``executing``)
+    before its tool runs, so a duplicate concurrent confirmation can never
+    execute the same step twice. The step is checkpointed again after
+    execution. If the process dies while a step is ``executing``, the next
+    confirmation marks it uncertain and refuses automatic replay instead of
+    risking a duplicate write.
     """
+
+    async def confirm_group(
+        self,
+        plan_id: str,
+        group_id: str,
+        *,
+        plan_digest: str,
+        group_digest: str,
+        decision_id: str,
+        authorization_source: str,
+        surface: str,
+    ) -> dict[str, Any]:
+        from app.services.proposal_plan_execution import confirm_group
+
+        return await confirm_group(
+            plan_id,
+            group_id,
+            plan_digest=plan_digest,
+            group_digest=group_digest,
+            decision_id=decision_id,
+            authorization_source=authorization_source,
+            surface=surface,
+        )
+
+    async def reject_group(
+        self,
+        plan_id: str,
+        group_id: str,
+        *,
+        plan_digest: str,
+        group_digest: str,
+        decision_id: str,
+        authorization_source: str,
+        surface: str,
+    ) -> dict[str, Any]:
+        from app.services.proposal_plan_execution import reject_group
+
+        return await reject_group(
+            plan_id,
+            group_id,
+            plan_digest=plan_digest,
+            group_digest=group_digest,
+            decision_id=decision_id,
+            authorization_source=authorization_source,
+            surface=surface,
+        )
+
+    async def dispatch_group(
+        self,
+        plan_id: str,
+        group_id: str,
+        *,
+        surface: str = "agent_runtime_ui",
+    ) -> dict[str, Any]:
+        """Resume a previously approved group; the store remains the claim gate."""
+        from app.services.proposal_plan_execution import dispatch_approved_group
+
+        return await dispatch_approved_group(plan_id, group_id, surface=surface)
 
     async def execute_confirmed(
         self,

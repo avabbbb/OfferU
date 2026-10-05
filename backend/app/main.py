@@ -80,6 +80,9 @@ async def lifespan(app: FastAPI):
     from app.services.agent_run_state import recover_interrupted_agent_runs
 
     await run_startup_recovery("agent_runs", recover_interrupted_agent_runs)
+    from app.services.decision_execution import recover_decision_execution
+
+    await run_startup_recovery("decision_execution", recover_decision_execution)
     from app.services.career_tasks import recover_career_tasks
 
     await run_startup_recovery("career_tasks", recover_career_tasks)
@@ -458,7 +461,9 @@ if _HAS_MCP and mcp_server is not None:
 @app.get("/api/health")
 async def health_check():
     from app.services.startup_recovery import get_startup_recovery_status
+    from app.services.runtime_identity import get_runtime_identity
 
+    identity = get_runtime_identity(app.version)
     database_url = settings.database_url
     database_path = (
         database_url.rsplit("///", 1)[-1]
@@ -478,9 +483,28 @@ async def health_check():
         "database_path": database_filename,
         "database_path_redacted": True,
         "runtime_mode": os.getenv("OFFERU_RUNTIME_MODE") or os.getenv("OFFERU_INTERVIEW_RUNTIME") or "local",
+        "runtime_instance_id": identity["runtime_instance_id"],
+        "build_identity": {key: identity[key] for key in (
+            "version", "commit", "build_timestamp", "data_root", "runtime_type",
+            "dirty", "source_fingerprint", "build_source",
+        )},
         "runtime": "python",
         "architecture": "file-first-agent-kernel",
         "mcp_enabled": _HAS_MCP,
         "startup_restore": startup_restore,
         "startup_recovery": get_startup_recovery_status(),
     }
+
+
+@app.get("/api/diagnostics/runtime-identity")
+async def diagnostics_runtime_identity(request: Request) -> dict[str, object]:
+    import ipaddress
+    if request.client is None:
+        raise HTTPException(status_code=403, detail="本地诊断信息仅供本机查看")
+    try:
+        if not ipaddress.ip_address(request.client.host).is_loopback:
+            raise HTTPException(status_code=403, detail="本地诊断信息仅供本机查看")
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail="本地诊断信息仅供本机查看") from exc
+    from app.services.runtime_identity import get_runtime_identity
+    return get_runtime_identity(app.version)

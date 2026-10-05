@@ -133,43 +133,42 @@ _HOSTS: tuple[AgentHost, ...] = (
         beginner=True,
         can_install_skill=True,
         runtime_id="opencode",
-        # OpenCode runs ``run --pure``: no OfferU-controlled public-web adapter
-        # is projected, so web-research skills degrade to limited.
-        limited_skills=("company_research", "role_intelligence"),
+        # Hosted-run limitations belong to runtime capability evidence, not
+        # this external Skill installation adapter.
         docs_url="https://opencode.ai/docs/",
     ),
     AgentHost(
         id="pi",
         display_name="Pi Coding Agent",
-        kind=HOST_KIND_HOSTED_RUNTIME,
+        kind=HOST_KIND_BOTH,
+        can_install_skill=True,
         runtime_id="pi",
-        # Pi is a hosted executor only — no canonical skill install surface.
-        unsupported_skills=("application_assistant",),
         docs_url="https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent",
     ),
     AgentHost(
         id="omp",
         display_name="Oh My Pi",
-        kind=HOST_KIND_HOSTED_RUNTIME,
+        kind=HOST_KIND_BOTH,
+        can_install_skill=True,
         runtime_id="omp",
-        unsupported_skills=("application_assistant",),
         docs_url="https://github.com/can1357/oh-my-pi",
     ),
     AgentHost(
         id="gemini",
         display_name="Gemini CLI",
-        kind=HOST_KIND_HOSTED_RUNTIME,
+        kind=HOST_KIND_BOTH,
+        can_install_skill=True,
         runtime_id="gemini",
         docs_url="https://github.com/google-gemini/gemini-cli",
     ),
     AgentHost(
         id="codebuddy",
-        display_name="WorkBuddy (CodeBuddy)",
-        kind=HOST_KIND_HOSTED_RUNTIME,
+        display_name="CodeBuddy CLI",
+        kind=HOST_KIND_BOTH,
+        can_install_skill=True,
         runtime_id="codebuddy",
-        # WorkBuddy has no browser-autofill capability — mirror ASu's explicit
-        # host exclusion instead of pretending feature parity.
-        unsupported_skills=("application_assistant",),
+        # This adapter is for the documented CLI loader; it does not claim
+        # a verified WorkBuddy Desktop connector.
         docs_url="https://www.workbuddy.cn/docs/workbuddy/Overview",
     ),
 )

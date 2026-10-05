@@ -182,6 +182,7 @@ RUNTIME_DEFINITIONS = {
 }
 
 _PROBE_CACHE: dict[str, tuple[str, int, dict[str, Any]]] = {}
+_PROBE_IN_FLIGHT: dict[str, asyncio.Task] = {}
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _AGENT_RUNTIME_DIR = Path(
     os.environ.get("OFFERU_AGENT_RUNTIME_DIR") or (_PROJECT_ROOT / "agent-runtime")
@@ -223,6 +224,7 @@ class DeepTaskSpec:
     task_id: str = ""
     capability_grant: dict[str, Any] = field(default_factory=dict)
     max_turns: int = 40
+    startup_timeout_seconds: float = 60
 
 
 __all__ = [
@@ -409,6 +411,21 @@ async def _terminate_process(process: asyncio.subprocess.Process) -> None:
 
 
 async def _probe(runtime_id: str, *, refresh: bool = False) -> dict[str, Any]:
+    pending = _PROBE_IN_FLIGHT.get(runtime_id)
+    if pending is None or pending.done() or pending.get_loop() is not asyncio.get_running_loop():
+        pending = asyncio.create_task(_probe_once(runtime_id, refresh=refresh))
+        _PROBE_IN_FLIGHT[runtime_id] = pending
+
+        def finished(completed: asyncio.Task) -> None:
+            if _PROBE_IN_FLIGHT.get(runtime_id) is completed:
+                _PROBE_IN_FLIGHT.pop(runtime_id, None)
+
+        pending.add_done_callback(finished)
+    # One cancelled UI request must not cancel discovery for other callers.
+    return dict(await asyncio.shield(pending))
+
+
+async def _probe_once(runtime_id: str, *, refresh: bool = False) -> dict[str, Any]:
     definition = RUNTIME_DEFINITIONS[runtime_id]
     executable = _resolve_executable(definition["binary"])
     if not executable:
@@ -1754,6 +1771,104 @@ async def shutdown_hosted_executors() -> None:
     _LIVE_HOSTED_ADAPTERS.clear()
 
 
+def _pi_model_activity(line: bytes) -> bool:
+    try:
+        event = json.loads(line)
+    except (ValueError, UnicodeDecodeError):
+        return False
+    if not isinstance(event, dict):
+        return False
+    event_type = event.get("type")
+    if event_type == "tool_execution_start":
+        return True
+    if event_type == "message_update":
+        update = event.get("assistantMessageEvent")
+        return isinstance(update, dict) and update.get("type") in {
+            f"{kind}_{phase}" for kind in ("thinking", "text", "toolcall")
+            for phase in ("start", "delta", "end")
+        }
+    message = event.get("message")
+    return (event_type == "message_end" and isinstance(message, dict)
+            and message.get("role") == "assistant")
+
+
+async def _collect_worker_output(
+    process: asyncio.subprocess.Process,
+    prompt: bytes,
+    *,
+    startup_timeout: float | None,
+    progress: Callable[[dict[str, Any]], Awaitable[None]],
+    activity_classifier: Callable[[bytes], bool] | None = None,
+) -> tuple[bytes, bytes]:
+    """Drain both pipes with bounded memory; output is activity, not success."""
+    first_output = asyncio.Event()
+    stdout = bytearray()
+    stderr = bytearray()
+    started = time.monotonic()
+    last_report = started
+
+    async def read(stream: asyncio.StreamReader, destination: bytearray, *, primary: bool) -> None:
+        nonlocal last_report
+        pending_line = bytearray()
+        while chunk := await stream.read(65536):
+            destination.extend(chunk)
+            if primary:
+                if len(destination) > 2_000_000:
+                    raise RuntimeError("Agent 输出超过 2 MB 限制")
+                previous_activity = first_output.is_set()
+                if activity_classifier is None:
+                    first_output.set()
+                elif not previous_activity:
+                    pending_line.extend(chunk)
+                    while b"\n" in pending_line:
+                        line, _, remainder = pending_line.partition(b"\n")
+                        pending_line = bytearray(remainder)
+                        if activity_classifier(bytes(line)):
+                            first_output.set()
+                            pending_line.clear()
+                            break
+                if len(destination) == len(chunk) or first_output.is_set() != previous_activity or time.monotonic() - last_report >= 5:
+                    last_report = time.monotonic()
+                    await progress({"stage": "executor_output" if first_output.is_set() else "executor_starting",
+                                    "startup_activity_observed": first_output.is_set(), "stdout_bytes": len(stdout),
+                                    "elapsed_seconds": round(last_report - started, 1)})
+            else:
+                del destination[:-4000]
+
+    async def send() -> None:
+        try:
+            process.stdin.write(prompt)
+            await process.stdin.drain()
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # Let exit status and bounded stderr explain early exits.
+        finally:
+            process.stdin.close()
+
+    readers = [asyncio.create_task(read(process.stdout, stdout, primary=True)),
+               asyncio.create_task(read(process.stderr, stderr, primary=False)),
+               asyncio.create_task(send()), asyncio.create_task(process.wait())]
+    completion = asyncio.gather(*readers)
+    output_waiter = asyncio.create_task(first_output.wait())
+    try:
+        await progress({"stage": "executor_starting", "startup_timeout_seconds": startup_timeout})
+        if startup_timeout is not None:
+            done, _ = await asyncio.wait(
+                {completion, output_waiter}, timeout=startup_timeout,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if not done:
+                detail = "仍无模型活动" if activity_classifier else "仍无输出"
+                raise RuntimeError(f"Agent 启动后 {startup_timeout:g} 秒{detail}；请在 Agent 原生界面检查登录和模型连接")
+        await completion
+        return bytes(stdout), bytes(stderr)
+    finally:
+        output_waiter.cancel()
+        completion.cancel()
+        for reader in readers:
+            reader.cancel()
+        await asyncio.gather(output_waiter, completion, *readers, return_exceptions=True)
+
+
 async def execute_deep_task(task: DeepTaskSpec) -> dict[str, Any]:
     """Execute one bounded task and return a normalized result plus audit trace.
 
@@ -1934,10 +2049,27 @@ async def execute_deep_task(task: DeepTaskSpec) -> dict[str, Any]:
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
     )
+
+    async def report_progress(payload: dict[str, Any]) -> None:
+        # Other executor callers use correlation IDs, not CareerTask IDs.
+        if task.task_id and task.task_type == "run_artifact":
+            from app.services.career_tasks import _update_task
+
+            await _update_task(task.task_id, progress_json=payload,
+                               event_type="task.progress", event_payload=payload)
+
     try:
         stdout_bytes, stderr_bytes = await asyncio.wait_for(
-            process.communicate(effective_prompt.encode("utf-8")),
+            _collect_worker_output(
+                process, effective_prompt.encode("utf-8"),
+                # Gemini's JSON result is buffered; absence of early output
+                # cannot establish failed startup for that protocol.
+                startup_timeout=None if runtime_id == "gemini" else max(20, float(task.startup_timeout_seconds)),
+                progress=report_progress,
+                activity_classifier=_pi_model_activity if runtime_id in {"pi", "omp"} else None,
+            ),
             timeout=max(30, min(int(timeout_seconds), 2700)),
         )
     except asyncio.CancelledError:
@@ -1948,6 +2080,9 @@ async def execute_deep_task(task: DeepTaskSpec) -> dict[str, Any]:
     except asyncio.TimeoutError:
         await _terminate_process(process)
         raise RuntimeError(f"{definition['name']} worker 超时")
+    except Exception:
+        await _terminate_process(process)
+        raise
 
     stdout = stdout_bytes.decode("utf-8", errors="replace")[-2_000_000:]
     stderr = redact_sensitive_text(

@@ -11,7 +11,13 @@ from pydantic import TypeAdapter
 
 from app.agent.compaction import compact_messages, should_compact
 from app.agent.hooks import AFTER_TOOL_CALL, BEFORE_TOOL_CALL, SAVE_POINT, HookRegistry
-from app.agent.loop import AgentContext, AgentLoopConfig, LoopTool, run_agent_loop
+from app.agent.loop import (
+    AgentContext,
+    AgentLoopConfig,
+    LoopTool,
+    ToolExecutionResult,
+    run_agent_loop,
+)
 from app.agent.messages import convert_to_llm, create_text_message
 from app.agent.proposal_hook import ProposalHook
 from app.agent.provider import LlmStreamProvider
@@ -43,10 +49,12 @@ class EmbeddedAgentWorker:
         self._cancel = CancelToken()
         self._steering: list[AgentMessage] = []
         self._follow_up: list[AgentMessage] = []
+        self._continuation_checkpoints: dict[str, str] = {}
         self._task: asyncio.Task[Any] | None = None
         self._provider: Any = None
         self._hooks = HookRegistry()
         self._proposal_hook: ProposalHook | None = None
+        self._host_tools: dict[str, dict[str, Any]] = {}
         self._start_lock = asyncio.Lock()
         self._prompt_lock = asyncio.Lock()
 
@@ -55,6 +63,10 @@ class EmbeddedAgentWorker:
                 "version": "luyishui-offeru-3a446ff", "session_scope": "one_session_per_agent_run",
                 "features": {"persistent_sessions": True, "compaction": True, "steer": True,
                              "follow_up": True, "registry_tools_only": True}}
+
+    @property
+    def prompt_active(self) -> bool:
+        return self._prompt_lock.locked()
 
     async def _emit(self, event: str, payload: dict[str, Any]) -> None:
         if self._event_listener:
@@ -66,6 +78,7 @@ class EmbeddedAgentWorker:
         payload = redact_secret_value({
             "protocol_version": PROTOCOL_VERSION, "version": SESSION_VERSION,
             "run_id": self.active_run_id, "messages": [item.model_dump(mode="json") for item in self._messages],
+            "continuation_checkpoints": dict(self._continuation_checkpoints),
         })
         # The generic secret filter also matches telemetry names such as
         # input_tokens. Restore only these typed integer counters, never strings.
@@ -78,7 +91,9 @@ class EmbeddedAgentWorker:
 
     async def start_run(self, *, run_id: str, system_prompt: str, provider: dict[str, Any],
                         allowed_operations: list[dict[str, Any]], operation_runner: Any,
-                        event_listener: Any = None, session_directory: str = "", session_file: str = "") -> dict[str, Any]:
+                        event_listener: Any = None, session_directory: str = "", session_file: str = "",
+                        host_tools: list[dict[str, Any]] | None = None,
+                        pending_proposals: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         del provider  # Model credentials/configuration stay in the canonical LLM layer.
         async with self._start_lock:
             if self.active_run_id:
@@ -90,12 +105,21 @@ class EmbeddedAgentWorker:
             if not session_directory or path.parent != directory or path.name != f"{run_id}.json":
                 raise EmbeddedAgentWorkerError("Session must stay within its runtime directory")
             messages: list[AgentMessage] = []
+            continuation_checkpoints: dict[str, str] = {}
             if session_file:
                 payload = json.loads(path.read_text(encoding="utf-8"))
                 if (payload.get("protocol_version") != PROTOCOL_VERSION or payload.get("run_id") != run_id
                         or payload.get("version") != SESSION_VERSION):
                     raise EmbeddedAgentWorkerError("Session version/identity mismatch; refusing replay")
                 messages = _MESSAGES.validate_python(payload["messages"])
+                stored_checkpoints = payload.get("continuation_checkpoints") or {}
+                if not isinstance(stored_checkpoints, dict) or any(
+                    not re.fullmatch(r"continuation_[a-f0-9]{32}", str(key))
+                    or not re.fullmatch(r"[a-f0-9]{64}", str(value))
+                    for key, value in stored_checkpoints.items()
+                ):
+                    raise EmbeddedAgentWorkerError("Session continuation checkpoint is invalid")
+                continuation_checkpoints = {str(key): str(value) for key, value in stored_checkpoints.items()}
                 if messages and isinstance(messages[-1], AssistantMessage) and any(
                     block.type == "toolCall" for block in messages[-1].content
                 ):
@@ -106,22 +130,28 @@ class EmbeddedAgentWorker:
             self.active_run_id = run_id
             self._session_path = path
             self._messages = messages
+            self._continuation_checkpoints = continuation_checkpoints
             self._system_prompt = system_prompt
             self._operations = allowed_operations
             self._operation_runner = operation_runner
             self._event_listener = event_listener
+            self._host_tools = {
+                str(item.get("name") or ""): dict(item)
+                for item in (host_tools or [])
+                if isinstance(item, dict) and str(item.get("name") or "")
+            }
             self._cancel = CancelToken()
             self._steering = []
             self._follow_up = []
             self._hooks = HookRegistry()
-            self._proposal_hook = ProposalHook()
+            self._proposal_hook = ProposalHook(pending_proposals=pending_proposals)
             self._hooks.on(BEFORE_TOOL_CALL, self._proposal_hook.before_tool_call)
             self._hooks.on(AFTER_TOOL_CALL, self._proposal_hook.after_tool_call)
             self._hooks.on(SAVE_POINT, self._save_turn)
             self._save()
             await self._emit("run.started", {"session_id": run_id, "kernel": "python"})
             return {"session_id": run_id, "session_file": str(path), "sdk_version": "luyishui-3a446ff",
-                    "active_tools": [item["name"] for item in allowed_operations]}
+                    "active_tools": [item["name"] for item in allowed_operations] + sorted(self._host_tools)}
 
     async def _save_turn(self, payload: dict[str, Any]) -> None:
         self._messages = list(payload["context"].messages)
@@ -146,9 +176,49 @@ class EmbeddedAgentWorker:
         if isinstance(proposal, dict):
             details.update(status="proposal_required", proposal={**proposal,
                 "proposal_id": proposal.get("action_id"), "tool_name": name, "locked_payload": args})
+        try:
+            content = json.dumps(result, ensure_ascii=False, allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            return ToolResultMessage(
+                tool_call_id=call_id,
+                tool_name=name,
+                content=[TextContent(text="Operation result was not valid JSON; the Run did not receive a success projection.")],
+                details={"operation": name, "serialization_error": type(exc).__name__},
+                is_error=True,
+            )
         return ToolResultMessage(tool_call_id=call_id, tool_name=name,
+            content=[TextContent(text=content)], details=details, is_error=not result.get("ok", False))
+
+    async def _execute_host_tool(self, name: str, call_id: str, args: dict[str, Any], cancel: Any, on_update: Any) -> Any:
+        """Run a host-side loop tool (e.g. request_user_input).
+
+        Host tools never go through the Operation Registry and carry no
+        mutation authority; a truthy ``terminate`` in the result ends the
+        current turn so the run can pause on a durable record.
+        """
+
+        del on_update
+        cancel.throw_if_cancelled()
+        spec = self._host_tools.get(name) or {}
+        execute = spec.get("execute")
+        if execute is None:
+            return ToolResultMessage(
+                tool_call_id=call_id,
+                tool_name=name,
+                content=[TextContent(text=f"ERROR: host tool {name} is not bound")],
+                is_error=True,
+            )
+        result = await execute(args)
+        if not isinstance(result, dict):
+            result = {"ok": False, "errors": [f"host tool {name} returned an invalid result"]}
+        message = ToolResultMessage(
+            tool_call_id=call_id,
+            tool_name=name,
             content=[TextContent(text=json.dumps(result, ensure_ascii=False, default=str))],
-            details=details, is_error=not result.get("ok", False))
+            details=dict(result),
+            is_error=not result.get("ok", False),
+        )
+        return ToolExecutionResult(message=message, terminate=bool(result.get("terminate")))
 
     async def _on_loop_event(self, event: dict[str, Any]) -> None:
         kind = event["type"]
@@ -191,17 +261,43 @@ class EmbeddedAgentWorker:
             context = await self._compact(context)
         return {"context": context}
 
-    async def prompt(self, *, run_id: str, message: str, timeout: float = 180) -> dict[str, Any]:
+    async def prompt(self, *, run_id: str, message: str, timeout: float = 180,
+                     delivery_id: str = "") -> dict[str, Any]:
         self._check_run(run_id)
         if self._prompt_lock.locked():
             raise EmbeddedAgentWorkerError("A model turn is already running")
         async with self._prompt_lock:
-            self._messages.append(create_text_message(message))
+            if delivery_id:
+                if not re.fullmatch(r"continuation_[a-f0-9]{32}", delivery_id):
+                    raise EmbeddedAgentWorkerError("Invalid continuation delivery ID")
+                from app.services.proposal_plan_builder import canonical_digest
+
+                checkpoint_digest = canonical_digest({"message": message})
+                previous_digest = self._continuation_checkpoints.get(delivery_id)
+                if previous_digest and previous_digest != checkpoint_digest:
+                    raise EmbeddedAgentWorkerError("Continuation payload changed after its session checkpoint")
+                if previous_digest is None:
+                    self._messages.append(create_text_message(message))
+                    self._continuation_checkpoints[delivery_id] = checkpoint_digest
+            else:
+                self._messages.append(create_text_message(message))
             self._save()
             tools = [LoopTool(name=item["name"], description=item.get("description", ""),
                 parameters=item.get("input_schema") or {"type": "object", "properties": {}},
                 execute=lambda call_id, args, cancel, update, name=item["name"]: self._execute(name, call_id, args, cancel, update),
                 execution_mode="sequential") for item in self._operations]
+            tools += [
+                LoopTool(
+                    name=name,
+                    description=str(spec.get("description") or ""),
+                    parameters=spec.get("input_schema") or {"type": "object", "properties": {}},
+                    execute=lambda call_id, args, cancel, update, tool=name: self._execute_host_tool(
+                        tool, call_id, args, cancel, update
+                    ),
+                    execution_mode="sequential",
+                )
+                for name, spec in sorted(self._host_tools.items())
+            ]
             context = AgentContext(system_prompt=self._system_prompt, messages=list(self._messages), tools=tools)
             config = AgentLoopConfig(stream_fn=self._provider.stream, convert_to_llm=convert_to_llm,
                 tools=tools, hooks=self._hooks, cancel=self._cancel,

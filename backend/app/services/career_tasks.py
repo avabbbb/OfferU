@@ -313,8 +313,15 @@ async def _resolved_task_view(row: CareerTask) -> dict[str, Any]:
     view = _task_view(row)
     if row.task_type == "career_director":
         from app.services.career_delivery import resolve_deliveries
+        from app.services.agent_run_state import list_agent_runs
 
         view["result"] = {**view["result"], "deliveries": await resolve_deliveries(view)}
+        if row.status in {"failed", "blocked"}:
+            runs = await list_agent_runs(task_id=row.task_id, limit=1)
+            if runs and runs[0].get("status") == "failed" and runs[0].get("failure_reason"):
+                view["error"] = _safe_error(runs[0]["failure_reason"])
+                view["error_source"] = "agent_run"
+                view["run_id"] = runs[0]["id"]
     return view
 
 
@@ -996,6 +1003,9 @@ async def _run_career_director(task: dict[str, Any]) -> dict[str, Any]:
         context_messages=[],
         requested_run_id="",
     )
+    if not result.get("ok"):
+        errors = result.get("errors") or [(result.get("run") or {}).get("failure_reason") or "内置 Agent 执行失败"]
+        raise RuntimeError(safe_error_message(RuntimeError("；".join(str(error) for error in errors))))
     run = result.get("run") if isinstance(result.get("run"), dict) else {}
     run_id = str(run.get("id") or "")
     if not run_id:

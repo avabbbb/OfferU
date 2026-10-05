@@ -1638,7 +1638,19 @@ async def list_automation_inbox(
                 await db.execute(select(CareerTask).where(CareerTask.task_id.in_(task_ids)))
             ).scalars().all()
             task_map = {task.task_id: task for task in task_rows}
-    return {"items": [_inbox_view(row, task_map.get(row.task_id)) for row in rows]}
+    items = []
+    from app.services.career_tasks import _resolved_task_view
+    for row in rows:
+        task = task_map.get(row.task_id)
+        view = _inbox_view(row, task)
+        if task is not None and task.task_type == "career_director" and task.status in {"failed", "blocked"}:
+            resolved = await _resolved_task_view(task)
+            view["task_error"] = resolved["error"]
+            if resolved.get("error_source") == "agent_run":
+                view["body"] = "本次分析未完成，请处理模型连接后重试。"
+                view["payload"] = {**view["payload"], "task": {**(view["payload"].get("task") or {}), "error": resolved["error"]}}
+        items.append(view)
+    return {"items": items}
 
 
 async def resolve_automation_inbox_item(*, item_id: str, action: str) -> dict[str, Any]:

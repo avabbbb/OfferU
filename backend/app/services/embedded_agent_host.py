@@ -2,29 +2,46 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from app.agents.llm import resolve_llm_client_config, resolve_model_for_tier
 from app.config import Settings, get_settings
-from app.ops import OPERATIONS, execute_operation
+from app.ops import OPERATIONS, execute_operation, set_operation_run_context
 from app.services.career_memory import record_conversation_observation
 from app.services.agent_run_state import (
+    answer_agent_input_request,
     append_agent_run_event,
+    consume_agent_input_request,
+    create_agent_input_request,
     create_agent_run,
+    expire_pending_agent_input_requests,
     list_agent_run_events,
+    list_pending_agent_input_requests,
+    load_agent_input_request,
     load_agent_run,
     pending_actions_for_run,
-    propose_agent_run_action,
     safe_result_preview,
     save_agent_run,
 )
-from app.services.agent_skill_registry import AgentSkill, resolve_run_skill, resolve_skill
+from app.services.agent_skill_registry import (
+    AgentSkill,
+    SkillRouting,
+    SkillRoutingError,
+    resolve_declared_skill,
+    resolve_run_skill,
+    resolve_skill,
+)
 from app.services.main_agent_guardian import (
     evaluate_main_agent_guardian,
     guardian_prompt_advice,
 )
-from app.services.operation_projection import confirm_operation_proposal
+from app.services.operation_projection import (
+    confirm_operation_proposal,
+    execute_or_propose_operation,
+    reject_operation_proposal,
+)
 from app.services.embedded_agent_worker import (
     PROTOCOL_VERSION,
     EmbeddedAgentWorker,
@@ -32,6 +49,7 @@ from app.services.embedded_agent_worker import (
 )
 from app.services.security_redaction import safe_error_message
 from app.runtime_paths import runtime_data_path
+from app.services.agent_methodology import METHOD_SKILL_IDS, get_agent_methodology
 
 
 _EVENT_TYPES = {
@@ -51,9 +69,7 @@ _EVENT_TYPES = {
     "runtime.fatal": "runtime.failed",
 }
 _SESSION_DIRECTORY = runtime_data_path("python_agent_sessions")
-_CONTINUATION_LOCKS: dict[str, asyncio.Lock] = {}
 StreamListener = Callable[[dict[str, Any]], Awaitable[None]]
-
 
 def resolve_embedded_provider_config(
     settings: Settings | None = None,
@@ -84,15 +100,120 @@ def resolve_embedded_provider_config(
     }
     return private, public
 
-
-def _skill_snapshot(skill: AgentSkill) -> dict[str, Any]:
+def _skill_snapshot(
+    skill: AgentSkill,
+    routing: SkillRouting | None = None,
+) -> dict[str, Any]:
     snapshot = skill.summary()
     snapshot["confirmation_required_operations"] = sorted(
         name
         for name in skill.allowed_tools
-        if name in OPERATIONS and OPERATIONS[name].is_mutation
+        if name in OPERATIONS and OPERATIONS[name].requires_confirmation
     )
+    if routing is not None:
+        snapshot["routing"] = routing.provenance()
+    if skill.id in METHOD_SKILL_IDS:
+        method = get_agent_methodology(skill.id)
+        if method["status"] != "ready":
+            raise ValueError("OfferU 业务方法文件不可用，请更新当前安装。")
+        snapshot["methodology"] = {key: method[key] for key in ("source_ref", "version", "sha256")}
     return snapshot
+
+
+async def _skill_routing_context() -> dict[str, Any]:
+    """Read only the canonical current view and compact Career State for routing."""
+    results: dict[str, dict[str, Any]] = {}
+    for operation, arguments in (
+        ("get_current_view", {"scope": "default"}),
+        ("get_career_snapshot", {}),
+    ):
+        result = await execute_operation(
+            operation,
+            arguments,
+            surface="agent_skill_router",
+            audit=True,
+        )
+        outputs = _operation_outputs(result)
+        if not isinstance(outputs, dict):
+            errors = result.get("errors") if isinstance(result, dict) else None
+            detail = next(
+                (str(item).strip() for item in errors or [] if str(item).strip()),
+                "",
+            )
+            raise SkillRoutingError(
+                f"自动选择 Skill 需要读取 {operation}，但当前 OfferU 上下文不可用。"
+                + (
+                    f" {safe_error_message(ValueError(detail))}"
+                    if detail
+                    else ""
+                )
+            )
+        results[operation] = outputs
+
+    view = results["get_current_view"]
+    snapshot = results["get_career_snapshot"]
+    identity = snapshot.get("identity") if isinstance(snapshot.get("identity"), dict) else {}
+    career_stage = (
+        identity.get("career_stage")
+        if isinstance(identity.get("career_stage"), dict)
+        else {}
+    )
+    coverage = (
+        snapshot.get("profile_coverage")
+        if isinstance(snapshot.get("profile_coverage"), dict)
+        else {}
+    )
+
+    def count(items: Any) -> int:
+        return len(items) if isinstance(items, list) else 0
+
+    entity_type = str(view.get("entity_type") or "")
+    entity_id = str(view.get("entity_id") or "")
+    numeric_id = int(entity_id) if entity_id.isdigit() and int(entity_id) > 0 else None
+    return {
+        "source_operations": ["get_current_view", "get_career_snapshot"],
+        "current_view": {
+            "route": str(view.get("route") or "")[:120],
+            "job_id": numeric_id if entity_type == "job" else None,
+            "resume_id": numeric_id if entity_type == "resume" else None,
+        },
+        "career_state": {
+            "profile_available": bool(snapshot.get("profile_id")),
+            "career_stage": {
+                key: career_stage.get(key)
+                for key in ("track", "substage", "confidence")
+                if career_stage.get(key) is not None
+            },
+            "strategy_pack": snapshot.get("strategy_pack"),
+            "evidence_counts": {
+                "strong": count(coverage.get("strong_evidence")),
+                "weak": count(coverage.get("weak_evidence")),
+                "missing": count(coverage.get("missing_evidence")),
+                "unknown": count(coverage.get("unknowns")),
+                "underexpressed": count(coverage.get("underexpressed_strengths")),
+            },
+        },
+    }
+
+
+
+def _active_skill_summary(
+    skill: AgentSkill,
+    run: dict[str, Any] | None,
+    routing: SkillRouting | None,
+) -> dict[str, Any]:
+    """Display-only Skill view; frozen Run provenance wins over live routing."""
+    summary = skill.summary()
+    frozen = (run or {}).get("skill_snapshot")
+    frozen_routing = frozen.get("routing") if isinstance(frozen, dict) else None
+    provenance = (
+        frozen_routing
+        if isinstance(frozen_routing, dict)
+        else (routing.provenance() if routing is not None else None)
+    )
+    if provenance:
+        summary["routing"] = provenance
+    return summary
 
 
 def _allowed_operations(skill: AgentSkill) -> list[dict[str, Any]]:
@@ -106,15 +227,31 @@ def _allowed_operations(skill: AgentSkill) -> list[dict[str, Any]]:
     return allowed
 
 
-def _system_prompt(skill: AgentSkill) -> str:
-    return (
+def _system_prompt(skill: AgentSkill, snapshot: dict[str, Any] | None = None) -> str:
+    prompt = (
         "You are OfferU's built-in task Agent. "
-        "Python owns task state, domain facts, confirmation, idempotency and audit. "
-        "Treat Operation results as the only source of truth and state unknowns plainly. "
-        "A mutation result with executed=false is only a proposal; ask the user to confirm it. "
+        "OfferU Runtime owns career truth, Registry validation, execution, independent approval and audit. "
+        "Treat Operation results and receipts as the only source of truth; state unknowns plainly. "
+        "Use prepare_proposal_plan to seal multiple already-prepared protected changes into explicit semantic groups; "
+        "the Plan stages review only and never executes its nodes. Use one group for one coherent user decision, "
+        "without forcing an arbitrary group count. For resume adoption, prefer one review_resume_proposal_items "
+        "intent containing the complete displayed change_ids; do not create one operation per bullet. "
+        "A direct protected operation is only a compatibility singleton Plan. Never confirm a Plan yourself. "
+        "After staging, stop and wait for independent UI approval and durable execution receipts before continuing. "
+        "Use request_user_input when a preference or trade-off only the user can decide is missing. "
+        "Ask answers are user intent only; they never approve a Plan, authorize a protected mutation, or change Career Truth. "
         f"Active Skill: {skill.name} ({skill.id}, version {skill.version}). "
         f"Skill purpose: {skill.description}"
     )
+    if skill.id in METHOD_SKILL_IDS:
+        method = get_agent_methodology(skill.id)
+        frozen = (snapshot or {}).get("methodology")
+        if method["status"] != "ready" or (frozen is not None and any(
+            frozen.get(key) != method[key] for key in ("source_ref", "version", "sha256")
+        )):
+            raise ValueError("本次 Run 的业务方法已变化或不可用，不能隐式替换后恢复。")
+        prompt += "\n\nOfferU shared business method:\n" + method["text"]
+    return prompt
 
 
 def _prompt_with_context(
@@ -235,6 +372,14 @@ async def _fail_run(run_id: str, error: Exception) -> dict[str, Any]:
     run = await load_agent_run(run_id)
     if run is None:
         raise error
+    # A pending Ask can never outlive its turn: expire it so restart recovery
+    # never leaves an answerable-looking request on a dead run.
+    try:
+        await expire_pending_agent_input_requests(
+            run_id, reason="run_failed"
+        )
+    except Exception:
+        pass
     run["status"] = "failed"
     run["failure_reason"] = safe_error_message(error)
     return await save_agent_run(
@@ -258,18 +403,33 @@ async def start_embedded_agent_run(
     requested_run_id: str = "",
     stream_listener: StreamListener | None = None,
     continuation: bool = False,
+    continuation_id: str = "",
+    delivery_id: str = "",
 ) -> dict[str, Any]:
     goal = str(message or "").strip()
     if not goal and not resume_run_id:
         raise ValueError("Agent Run 需要非空消息。")
     resume_session_file = ""
+    routing: SkillRouting | None = None
     if resume_run_id:
         run = await load_agent_run(resume_run_id)
         if run is None:
             raise ValueError(f"Agent Run {resume_run_id} 不存在。")
         if (run.get("llm_runtime") or {}).get("runtime") != "python_agent":
             raise ValueError("旧 Pi 会话已保留为历史，不能由新内核自动重放；请开启新的任务。")
-        if run.get("status") not in ({"completed", "interrupted"} if continuation else {"interrupted"}):
+        continuation_statuses = {"completed", "interrupted", "waiting_confirmation", "waiting_input"}
+        if continuation and run.get("status") == "failed":
+            from app.services.proposal_plan_store import list_continuations
+
+            retryable = any(
+                str(item.get("id") or "") == continuation_id
+                and str(item.get("status") or "") == "delivering"
+                for item in await list_continuations(run_id=resume_run_id)
+            )
+            if retryable:
+                continuation_statuses.add("failed")
+        allowed_resume_statuses = continuation_statuses if continuation else {"interrupted"}
+        if run.get("status") not in allowed_resume_statuses:
             raise ValueError(
                 f"Agent Run {resume_run_id} 不能恢复（status={run.get('status')}）。"
             )
@@ -286,7 +446,14 @@ async def start_embedded_agent_run(
             (run.get("llm_runtime") or {}).get("session_file") or ""
         ).strip()
     else:
-        skill = resolve_run_skill(goal, skill_id)
+        # Routing happens once, before the Run exists: the persisted snapshot
+        # freezes Skill, tool allowlist and route provenance for resume.
+        declared = resolve_declared_skill(goal, skill_id)
+        if declared is not None:
+            skill, routing = declared
+        else:
+            routing_context = await _skill_routing_context()
+            skill, routing = await resolve_run_skill(goal, skill_id, context_messages, routing_context=routing_context)
         run = await create_agent_run(
             conversation_id=conversation_id,
             task_id=task_id,
@@ -294,7 +461,7 @@ async def start_embedded_agent_run(
             mode=skill.mode,
             skill_id=skill.id,
             skill_version=skill.version,
-            skill_snapshot=_skill_snapshot(skill),
+            skill_snapshot=_skill_snapshot(skill, routing),
             actions=[],
             exit_criteria=[
                 "the user goal is answered from Operation evidence",
@@ -413,6 +580,11 @@ async def start_embedded_agent_run(
                 "task_id": run["task_id"],
                 "skill_id": skill.id,
                 "skill_version": skill.version,
+                "routing": (
+                    routing.provenance()
+                    if routing is not None
+                    else (run.get("skill_snapshot") or {}).get("routing")
+                ),
                 "status": run["status"],
             },
         )
@@ -539,6 +711,10 @@ async def start_embedded_agent_run(
                 },
             )
 
+        # Ask is a durable interaction record, separate from Proposal Plan
+        # approval. The post-turn resolver reloads both sources of truth.
+        turn_state: dict[str, Any] = {"input_request": None}
+
         async def run_operation(
             operation_name: str,
             arguments: dict[str, Any],
@@ -569,84 +745,42 @@ async def start_embedded_agent_run(
                     "errors": [f"未知操作: {operation_name}"],
                 }
             inputs = arguments if isinstance(arguments, dict) else {}
-            if operation.is_mutation:
-                latest = await load_agent_run(run_id)
-                for step in (latest or {}).get("steps") or []:
-                    if step.get("tool") == operation_name and step.get("args") == inputs:
-                        if step.get("status") == "completed":
-                            return {"ok": True, "outputs": {"executed": True, "already_completed": True,
-                                "action_id": step["id"], "receipt": step.get("result")}}
-                        if step.get("status") == "waiting_confirmation":
-                            return {"ok": True, "outputs": {"executed": False, "requires_confirmation": True,
-                                "proposal": {"run_id": run_id, "action_id": step["id"], "operation": operation_name,
-                                             "args": inputs, "status": "waiting_confirmation"}}}
-                preview = await execute_operation(
-                    operation_name,
-                    inputs,
-                    dry_run=True,
-                    surface="embedded",
-                )
-                if not preview.get("ok"):
-                    failed_payload = {
-                        "operation": operation_name,
-                        "args": inputs,
-                        "errors": preview.get("errors") or [],
-                        "phase": "proposal_validation",
-                    }
-                    await persist_and_publish("operation.failed", failed_payload)
-                    return preview
-                step = await propose_agent_run_action(
-                    run_id,
-                    operation=operation_name,
-                    # 持久化原始（未 redact）参数供 confirm 重放；preview 的
-                    # inputs 已被 dry-run 审计替换为 sha256 占位，重放必失败。
-                    args=inputs,
-                    summary=operation.description,
-                )
-                await publish(
-                    "operation.proposed",
-                    {
-                        "action_id": step["id"],
-                        "operation": operation_name,
-                        "args": step["args"],
-                        "summary": step["summary"],
-                        "idempotency_key": step["idempotency_key"],
-                    },
-                )
-                proposal_run = await load_agent_run(run_id)
-                if proposal_run is not None:
-                    await publish(
-                        "stream.cursor",
-                        {"cursor_for": "operation.proposed"},
-                        sequence=int(proposal_run.get("event_sequence") or 0),
-                    )
-                return {
-                    **preview,
-                    "outputs": {
-                        "executed": False,
-                        "requires_confirmation": True,
-                        "proposal": {
-                            "run_id": run_id,
-                            "task_id": run["task_id"],
-                            "action_id": step["id"],
-                            "idempotency_key": step["idempotency_key"],
-                            "operation": step["tool"],
-                            "args": step["args"],
-                            "status": step["status"],
-                        },
-                    },
-                    "warnings": [
-                        "副作用尚未执行；提案已写入当前 Agent Run，等待用户确认。"
-                    ],
-                }
-
             started_payload = {"operation": operation_name, "args": inputs}
             await persist_and_publish("operation.started", started_payload)
-            result = await execute_operation(
-                operation_name,
-                inputs,
-                surface="embedded",
-            )
+            with set_operation_run_context(run_id):
+                result = await execute_or_propose_operation(
+                    operation_name,
+                    inputs,
+                    surface="embedded",
+                    run_id=run_id,
+                    allowed_operations=skill.allowed_tools,
+                )
+            outputs = result.get("outputs") if isinstance(result.get("outputs"), dict) else {}
+            plan = outputs.get("plan") if isinstance(outputs.get("plan"), dict) else None
+            plan_id = str(outputs.get("plan_id") or (plan or {}).get("id") or "")
+            if (
+                result.get("ok")
+                and outputs.get("executed") is False
+                and outputs.get("requires_confirmation") is True
+                and plan_id
+            ):
+                group_summaries = [
+                    {"id": group.get("id"), "title": group.get("title"), "summary": group.get("summary")}
+                    for group in (plan or {}).get("groups") or []
+                ]
+                payload = {
+                    "plan_id": plan_id,
+                    "plan_digest": (plan or {}).get("digest") or outputs.get("plan_digest"),
+                    "group_summaries": group_summaries,
+                }
+                await publish("proposal.plan_ready", payload)
+                latest = await load_agent_run(run_id)
+                if latest is not None:
+                    await publish(
+                        "stream.cursor",
+                        {"cursor_for": "proposal.plan_ready"},
+                        sequence=int(latest.get("event_sequence") or 0),
+                    )
             completed_type = (
                 "operation.completed"
                 if result.get("ok")
@@ -660,15 +794,94 @@ async def start_embedded_agent_run(
             await persist_and_publish(completed_type, completed_payload)
             return result
 
+        async def _request_user_input(args: dict[str, Any]) -> dict[str, Any]:
+            """Built-in Ask: persist one AgentInputRequest, pause the turn.
+
+            Ask is collaboration about preferences/strategy — it writes no
+            Career data and authorizes no mutation. Persisting the request
+            first means a crash still leaves a resumable waiting_input run.
+            """
+
+            arguments = args if isinstance(args, dict) else {}
+            try:
+                request = await create_agent_input_request(
+                    run_id,
+                    question=str(arguments.get("question") or ""),
+                    reason=str(arguments.get("reason") or ""),
+                    options=[
+                        item
+                        for item in (arguments.get("options") or [])
+                        if isinstance(item, dict)
+                    ],
+                    allow_free_text=bool(arguments.get("allow_free_text", True)),
+                )
+            except Exception as exc:
+                return {"ok": False, "errors": [safe_error_message(exc)]}
+            turn_state["input_request"] = request
+            await persist_and_publish(
+                "input.required",
+                {"request": request, "run_id": run_id},
+            )
+            input_run = await load_agent_run(run_id)
+            if input_run is not None:
+                await publish(
+                    "stream.cursor",
+                    {"cursor_for": "input.required"},
+                    sequence=int(input_run.get("event_sequence") or 0),
+                )
+            return {
+                "ok": True,
+                "terminate": True,
+                "input_request": request,
+                "message": "提问已持久化，Run 暂停为 waiting_input，等待用户回答后自动续跑。",
+            }
+
+        host_tools = [
+            {
+                "name": "request_user_input",
+                "description": (
+                    "向用户提出一个结构化问题（Ask）。仅当缺少的用户偏好或取舍"
+                    "决定无法从现有数据推断时使用；绝不能用来请求批准受保护"
+                    "变更或代替用户做决定。调用后本轮立即结束。"
+                ),
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "question": {"type": "string", "minLength": 1},
+                        "reason": {"type": "string"},
+                        "options": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "option_id": {"type": "string"},
+                                    "label": {"type": "string"},
+                                    "description": {"type": "string"},
+                                },
+                                "required": ["option_id", "label"],
+                                "additionalProperties": False,
+                            },
+                        },
+                        "allow_free_text": {"type": "boolean"},
+                    },
+                    "required": ["question"],
+                    "additionalProperties": False,
+                },
+                "execute": _request_user_input,
+            }
+        ]
+
         session = await active_worker.start_run(
             run_id=run_id,
-            system_prompt=_system_prompt(skill),
+            system_prompt=_system_prompt(skill, run.get("skill_snapshot")),
             provider=provider_config,
             allowed_operations=allowed_operations,
             operation_runner=run_operation,
             event_listener=on_event,
             session_directory=str(_SESSION_DIRECTORY),
             session_file=resume_session_file,
+            host_tools=host_tools,
+            pending_proposals=list(run.get("proposal_plans") or []),
         )
         current = await load_agent_run(run_id)
         assert current is not None
@@ -694,33 +907,82 @@ async def start_embedded_agent_run(
         prompt_message = (
             f"{prompt_message}\n\n{guardian_prompt_advice(guardian_result)}"
         )
-        response = await active_worker.prompt(run_id=run_id, message=prompt_message)
+        response = await active_worker.prompt(
+            run_id=run_id,
+            message=prompt_message,
+            delivery_id=delivery_id,
+        )
         await flush_delta_buffer()
         assistant_message = str(response.get("assistant_message") or "").strip()
         current = await load_agent_run(run_id)
         assert current is not None
         pending_actions = pending_actions_for_run(current)
-        # 反静默降级：LLM 未返回任何回复且没有待确认动作时，不能当作成功完成。
+        proposal_plans = list(current.get("proposal_plans") or [])
+        plan_groups = [
+            group
+            for plan in proposal_plans
+            if isinstance(plan, dict) and plan.get("status") != "replaced"
+            for group in plan.get("groups") or []
+            if isinstance(group, dict)
+        ]
+        pending_plan = any(
+            group.get("status") in {"pending", "approved", "executing", "paused", "stale"}
+            for group in plan_groups
+        )
+        needs_reconciliation = any(
+            group.get("status") == "needs_reconciliation" for group in plan_groups
+        )
+        # Reload durable Ask state rather than trusting the in-memory turn flag;
+        # a crash after persistence must still leave the question visible.
+        input_request = turn_state.get("input_request")
+        if input_request is None:
+            pending_requests = await list_pending_agent_input_requests(run_id)
+            input_request = pending_requests[0] if pending_requests else None
+        # 反静默降级：LLM 未返回任何回复且没有待用户处理的事项时，不能当作成功完成。
         # 否则用户看到空白回复无法区分「正常但无输出」与「LLM 故障」。
-        if not assistant_message and not pending_actions:
+        if (
+            not assistant_message
+            and not pending_actions
+            and not pending_plan
+            and not needs_reconciliation
+            and input_request is None
+        ):
             raise RuntimeError(
                 "主 Agent 未返回任何回复，也没有待确认动作；"
                 "请检查 LLM API Key / 模型 / Base URL 配置是否有效。"
             )
+        final_result = dict(current.get("final_result") or {})
         current["final_result"] = {
+            **final_result,
             "assistant_message": assistant_message,
-            "requires_confirmation": bool(pending_actions),
-            "active_skill": skill.summary(),
+            "requires_confirmation": bool(pending_actions or pending_plan),
+            "requires_input": input_request is not None,
+            "input_request": input_request,
+            "active_skill": _active_skill_summary(skill, current, routing),
             "guardian": guardian_result,
             "learning_observation": learning_observation,
             "turn_finished": False,
         }
-        if pending_actions:
+        if input_request is not None:
+            current["status"] = "waiting_input"
+            current = await save_agent_run(current)
+            await publish(
+                "run.waiting_input",
+                {"input_request": input_request},
+            )
+        elif needs_reconciliation:
+            current["status"] = "needs_reconciliation"
+            current = await save_agent_run(current)
+            await publish(
+                "run.blocked",
+                {"status": "needs_reconciliation", "proposal_plans": proposal_plans},
+            )
+        elif pending_plan or pending_actions:
             current["status"] = "waiting_confirmation"
             current = await save_agent_run(current)
             await publish(
                 "run.waiting_confirmation",
-                {"pending_actions": pending_actions},
+                {"pending_actions": pending_actions, "proposal_plans": proposal_plans},
             )
         else:
             current["status"] = "completed"
@@ -743,7 +1005,7 @@ async def start_embedded_agent_run(
             "run.turn_finished",
             {
                 "status": current["status"],
-                "requires_confirmation": bool(pending_actions),
+                "requires_confirmation": bool(pending_actions or pending_plan),
             },
         )
         current = await load_agent_run(run_id) or current
@@ -758,7 +1020,9 @@ async def start_embedded_agent_run(
             "run": current,
             "assistant_message": assistant_message,
             "pending_actions": pending_actions,
-            "active_skill": skill.summary(),
+            "proposal_plans": proposal_plans,
+            "input_request": input_request,
+            "active_skill": _active_skill_summary(skill, current, routing),
             "guardian": guardian_result,
         }
     except Exception as exc:
@@ -791,7 +1055,7 @@ async def start_embedded_agent_run(
                     or ""
                 ),
                 "pending_actions": [],
-                "active_skill": skill.summary(),
+                "active_skill": _active_skill_summary(skill, cancelled, routing),
                 "errors": ["Run 已由使用者取消。"],
             }
         failed = await _fail_run(run_id, exc)
@@ -832,7 +1096,7 @@ async def start_embedded_agent_run(
             "run": failed,
             "assistant_message": "",
             "pending_actions": [],
-            "active_skill": skill.summary(),
+            "active_skill": _active_skill_summary(skill, failed, routing),
             "guardian": guardian_result,
             "errors": [safe_error_message(exc)],
         }
@@ -860,105 +1124,177 @@ async def resume_embedded_agent_run(
     )
 
 
+async def answer_agent_input(
+    run_id: str,
+    request_id: str,
+    *,
+    answer_id: str,
+    selected_option_ids: list[str] | None = None,
+    free_text: str = "",
+    worker: EmbeddedAgentWorker | None = None,
+) -> dict[str, Any]:
+    """Persist one Ask answer, then continue the same run exactly once.
+
+    The answer is collaboration data, not authorization: it never touches a
+    protected Operation. ``answer_id`` dedupes client retries; the persisted
+    answer digest decides whether a replay is identical (returns stored
+    state) or conflicting (fails closed). ``consumed_at`` bounds the run to a
+    single continuation.
+    """
+
+    answer = {
+        "answer_id": str(answer_id or "").strip(),
+        "selected_option_ids": [
+            str(item)
+            for item in (selected_option_ids or [])
+            if str(item or "").strip()
+        ],
+        "free_text": str(free_text or "")[:4000],
+    }
+    stored = await answer_agent_input_request(
+        run_id, request_id, answer=answer
+    )
+    if not stored.get("ok"):
+        reason = stored.get("error")
+        result: dict[str, Any] = {
+            "ok": False,
+            "errors": [
+                "input request 不存在于该 Run。"
+                if reason == "not_found"
+                else "input request 已有不同的回答；拒绝覆盖。"
+            ],
+        }
+        if isinstance(stored.get("request"), dict):
+            result["request"] = stored["request"]
+        return result
+    request = stored["request"]
+    run = await load_agent_run(run_id)
+    result = {
+        "ok": True,
+        "request": request,
+        "duplicate": bool(stored.get("duplicate")),
+        "run": run,
+    }
+    if stored.get("duplicate"):
+        result["warnings"] = ["相同回答已持久化；没有重复续跑。"]
+        return result
+    await append_agent_run_event(
+        run_id,
+        event_type="input.answered",
+        payload={"request_id": request_id, "answer_id": answer["answer_id"]},
+    )
+
+    if not await consume_agent_input_request(request_id):
+        # Continuation already claimed by a racing caller; never start twice.
+        result["run"] = await load_agent_run(run_id) or run
+        result["warnings"] = ["该回答已触发过续跑；返回当前持久化状态。"]
+        return result
+
+    active_worker = worker or get_embedded_agent_worker()
+    if active_worker.active_run_id == run_id:
+        try:
+            await active_worker.dispose_run(run_id)
+        except Exception:
+            pass
+    answer_text = (
+        "The user answered your earlier question (persisted answer, the only "
+        "authoritative content). Continue the original goal; do not ask the "
+        "same question again.\n"
+        + json.dumps(
+            {
+                "question": request.get("question"),
+                "answer": request.get("answer") or answer,
+            },
+            ensure_ascii=False,
+            default=str,
+        )
+        + "\nOriginal goal:\n"
+        + str((run or {}).get("goal") or "")
+    )
+    async with _CONTINUATION_LOCKS.setdefault(run_id, asyncio.Lock()):
+        latest = await load_agent_run(run_id)
+        if latest is None or latest.get("status") == "cancelled":
+            result["run"] = latest or run
+            result["warnings"] = ["Run 已取消；回答已持久化但未续跑。"]
+            return result
+        try:
+            continued = await start_embedded_agent_run(
+                message=answer_text,
+                skill_id=str(latest["skill_id"]),
+                resume_run_id=run_id,
+                worker=worker,
+                continuation=True,
+            )
+        except Exception as exc:
+            latest = await load_agent_run(run_id)
+            if latest is not None:
+                latest["status"] = "failed"
+                latest["failure_reason"] = safe_error_message(exc)
+                await save_agent_run(
+                    latest,
+                    event_type="runtime.failed",
+                    event_payload={
+                        "phase": "input_continuation",
+                        "error": latest["failure_reason"],
+                    },
+                )
+            continued = {
+                "ok": False,
+                "run": latest,
+                "errors": [safe_error_message(exc)],
+            }
+    result["run"] = continued.get("run") or result["run"]
+    result["continuation"] = continued
+    if not continued.get("ok"):
+        result["warnings"] = ["回答已持久化；Agent 续跑失败，请查看 Run 的失败原因。"]
+    else:
+        from app.services.proposal_plan_continuation import deliver_continuations
+
+        delivery = await deliver_continuations(run_id)
+        result["run"] = delivery.get("run") or result["run"]
+        result["proposal_continuation"] = delivery
+    return result
+
+
+
+
 async def confirm_embedded_agent_action(
     run_id: str,
     *,
     action_id: str,
     worker: EmbeddedAgentWorker | None = None,
+    authorization_source: str | None = None,
+    plan_digest: str = "",
+    group_digest: str = "",
+    decision_id: str = "",
 ) -> dict[str, Any]:
+    del worker  # Kept for provider-call compatibility; only the shared worker resumes Runs.
     result = await confirm_operation_proposal(
         run_id,
         action_id=action_id,
         surface="agent_runtime_ui",
+        authorization_source=authorization_source,
+        plan_digest=plan_digest,
+        group_digest=group_digest,
+        decision_id=decision_id,
     )
-    # Only the request that executed the last protected action may start a
-    # continuation. Duplicate confirms return receipts without another model turn.
-    if result.get("ok") and result.get("tool_calls"):
-        async with _CONTINUATION_LOCKS.setdefault(run_id, asyncio.Lock()):
-            latest = await load_agent_run(run_id)
-            if latest and latest.get("status") == "completed" and not pending_actions_for_run(latest):
-                metadata = latest.get("llm_runtime") or {}
-                completed = sorted(str(step["id"]) for step in latest.get("steps") or [] if step.get("status") == "completed")
-                if metadata.get("continued_action_ids") != completed and metadata.get("runtime") == "python_agent":
-                    active = worker or get_embedded_agent_worker()
-                    if active.active_run_id == run_id:
-                        await active.dispose_run(run_id)
-                    latest["llm_runtime"] = {**metadata, "continued_action_ids": completed}
-                    await save_agent_run(latest, event_type="continuation.requested", event_payload={"action_ids": completed})
-                    receipts = [{"action_id": step["id"], "operation": step["tool"], "args": step.get("args"),
-                                 "result": step.get("result")} for step in latest.get("steps") or [] if step.get("status") == "completed"]
-                    try:
-                        continued = await start_embedded_agent_run(
-                            message="The following operations were independently approved and executed. Consume these receipts, "
-                                    "read back the affected state and continue the original goal; do not repeat these mutations.\n"
-                                    + json.dumps(receipts, ensure_ascii=False, default=str)
-                                    + "\nOriginal goal:\n" + str(latest.get("goal") or ""),
-                            skill_id=str(latest["skill_id"]), resume_run_id=run_id, worker=worker, continuation=True,
-                        )
-                    except Exception as exc:
-                        # The approved action already committed. Never report it as
-                        # failed or encourage replay because model startup failed.
-                        latest = await load_agent_run(run_id)
-                        latest["status"] = "failed"
-                        latest["failure_reason"] = safe_error_message(exc)
-                        await save_agent_run(latest, event_type="runtime.failed", event_payload={
-                            "phase": "continuation_start", "error": latest["failure_reason"],
-                        })
-                        continued = {"ok": False, "run": latest, "errors": [latest["failure_reason"]]}
-                    result["run"] = continued["run"]
-                    result["continuation"] = continued
-                    # Approval success and continuation success are separate outcomes.
-                    if not continued.get("ok"):
-                        result.setdefault("warnings", []).append("动作已执行；Agent 续跑失败，请查看 Run 的失败原因。")
-    active_worker = worker or get_embedded_agent_worker()
-    if active_worker.active_run_id == run_id:
-        try:
-            await active_worker.dispose_run(run_id)
-            latest = await load_agent_run(run_id)
-            if latest is not None:
-                result["run"] = latest
-        except Exception as exc:
-            await append_agent_run_event(
-                run_id,
-                event_type="runtime.failed",
-                payload={"error": safe_error_message(exc), "phase": "dispose_after_confirm"},
-            )
-            result.setdefault("warnings", []).append(
-                "操作已处理，但 Python Agent Session 释放失败；Worker 会在下次启动时显式报错。"
-            )
-    run = result.get("run") if isinstance(result.get("run"), dict) else None
-    if run is not None and run.get("status") in {
-        "completed",
-        "failed",
-        "cancelled",
-        "waiting_confirmation",
-        "needs_reconciliation",
-    }:
-        final_result = run.get("final_result") or {}
-        action_finished = bool(result.get("tool_calls"))
-        requires_confirmation = (
-            run.get("status") == "waiting_confirmation"
-            and bool(pending_actions_for_run(run))
-        )
-        if (
-            action_finished
-            or final_result.get("turn_finished") is not True
-            or final_result.get("requires_confirmation")
-            is not requires_confirmation
-        ):
-            run["final_result"] = {
-                **final_result,
-                "requires_confirmation": requires_confirmation,
-                "turn_finished": True,
-            }
-            result["run"] = await save_agent_run(
-                run,
-                event_type="run.turn_finished",
-                event_payload={
-                    "status": str(run.get("status") or ""),
-                    "requires_confirmation": requires_confirmation,
-                },
-            )
+    if not result.get("ok"):
+        return result
+    from app.services.proposal_plan_continuation import deliver_continuations
+
+    delivery = await deliver_continuations(run_id)
+    if delivery.get("run") is not None:
+        result["run"] = delivery["run"]
+    result["continuation"] = next(
+        (
+            item
+            for item in delivery.get("continuations") or []
+            if str(item.get("group_id") or "") == str(result.get("group", {}).get("id") or "")
+        ),
+        None,
+    )
+    if int(delivery.get("failed") or 0):
+        result.setdefault("warnings", []).append("用户决定和已提交操作保持成功；Agent续跑失败状态已持久化。")
     return result
 
 
@@ -967,70 +1303,39 @@ async def reject_embedded_agent_action(
     *,
     action_id: str,
     worker: EmbeddedAgentWorker | None = None,
+    authorization_source: str | None = None,
+    plan_digest: str = "",
+    group_digest: str = "",
+    decision_id: str = "",
 ) -> dict[str, Any]:
-    operation = await execute_operation(
-        "reject_agent_run",
-        {"run_id": run_id, "action_id": action_id},
+    del worker
+    result = await reject_operation_proposal(
+        run_id,
+        action_id=action_id,
         surface="agent_runtime_ui",
+        authorization_source=authorization_source,
+        plan_digest=plan_digest,
+        group_digest=group_digest,
+        decision_id=decision_id,
     )
-    if not operation.get("ok"):
-        raise ValueError(
-            "; ".join(str(item) for item in operation.get("errors") or [])
-            or "拒绝动作失败。"
-        )
-    outputs = operation.get("outputs") if isinstance(operation.get("outputs"), dict) else {}
-    run = outputs.get("run") if isinstance(outputs.get("run"), dict) else None
-    if run is None:
-        raise ValueError("拒绝结果缺少持久化 Agent Run。")
+    if not result.get("ok"):
+        return result
+    from app.services.proposal_plan_continuation import deliver_continuations
 
-    warnings = list(operation.get("warnings") or [])
-    active_worker = worker or get_embedded_agent_worker()
-    if active_worker.active_run_id == run_id:
-        try:
-            await active_worker.dispose_run(run_id)
-        except Exception as exc:
-            await append_agent_run_event(
-                run_id,
-                event_type="runtime.failed",
-                payload={"error": safe_error_message(exc), "phase": "dispose_after_reject"},
-            )
-            warnings.append(
-                "操作已处理，但 Python Agent Session 释放失败；Worker 会在下次启动时显式报错。"
-            )
-
-    run = await load_agent_run(run_id) or run
-    pending_actions = pending_actions_for_run(run)
-    turn_finished = str(run.get("status") or "") != "executing"
-    requires_confirmation = (
-        str(run.get("status") or "") == "waiting_confirmation"
-        and bool(pending_actions)
+    delivery = await deliver_continuations(run_id)
+    if delivery.get("run") is not None:
+        result["run"] = delivery["run"]
+    result["continuation"] = next(
+        (
+            item
+            for item in delivery.get("continuations") or []
+            if str(item.get("group_id") or "") == str(result.get("group", {}).get("id") or "")
+        ),
+        None,
     )
-    final_result = run.get("final_result") if isinstance(run.get("final_result"), dict) else {}
-    changed = (
-        final_result.get("requires_confirmation") is not requires_confirmation
-        or final_result.get("turn_finished") is not turn_finished
-    )
-    run["final_result"] = {
-        **final_result,
-        "requires_confirmation": requires_confirmation,
-        "turn_finished": turn_finished,
-    }
-    if changed:
-        run = await save_agent_run(
-            run,
-            event_type="run.turn_finished",
-            event_payload={
-                "status": str(run.get("status") or ""),
-                "requires_confirmation": requires_confirmation,
-            },
-        )
-    return {
-        "ok": True,
-        "run": run,
-        "pending_actions": pending_actions_for_run(run),
-        "tool_calls": [],
-        "warnings": warnings,
-    }
+    if int(delivery.get("failed") or 0):
+        result.setdefault("warnings", []).append("拒绝决定已记录；Agent续跑失败状态已持久化。")
+    return result
 
 
 async def abort_embedded_agent_run(
@@ -1049,6 +1354,10 @@ async def abort_embedded_agent_run(
         await active_worker.abort_run(run_id)
         await active_worker.dispose_run(run_id)
     run = await load_agent_run(run_id) or run
+    try:
+        await expire_pending_agent_input_requests(run_id, reason="run_cancelled")
+    except Exception:
+        pass
     run["status"] = "cancelled"
     run["failure_reason"] = "cancelled_by_user"
     run["final_result"] = {

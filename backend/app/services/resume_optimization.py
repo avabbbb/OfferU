@@ -748,6 +748,7 @@ async def prepare_resume_optimization(
 # ---------------------------------------------------------------------------
 
 DIRECTOR_SOURCE_MODE = "career_director"
+EXTERNAL_SOURCE_MODE = "external_agent"
 _DIRECTOR_CONTEXT_SCHEMA = "offeru.resume_preparation_context.v1"
 _DIRECTOR_PREPARATION_SCHEMA = "offeru.resume_preparation.v1"
 _MAX_PREPARATION_SECTIONS = 40
@@ -971,12 +972,12 @@ async def get_resume_preparation_context(
     replaces_proposal_id: Optional[str] = None,
     affected_source_section_ids: Optional[list[int]] = None,
 ) -> dict[str, Any]:
-    """Read-only context a real Career Director uses to author resume_preparation.
+    """Read-only context the active Agent uses to author resume_preparation.
 
     Returns the full verified evidence rows (not summaries), the canonical
     baseline resume rows, the replaced proposal's rows/diff/review state for
     localized reprepare, and a source_fingerprint that
-    ``persist_director_resume_proposal`` re-verifies to reject in-flight
+    both prepared-proposal persistence paths re-verify to reject in-flight
     source changes.
     """
     clean_job_id = _clean_positive_int(job_id, "job_id")
@@ -1134,334 +1135,418 @@ async def persist_director_resume_proposal(
         if affected is not None and effective_replaces is None:
             raise ValueError("affected_source_section_ids 只能配合 replaces_proposal_id 使用")
 
-        # Idempotent per real task: a replayed/duplicated call returns the
-        # already persisted proposal instead of writing a second one.
-        proposal_id = _director_proposal_id(clean_task_id)
-        existing = (
+        return await _persist_prepared_resume_proposal(
+            db=db, clean_job_id=clean_job_id, origin_id=clean_task_id,
+            source_mode=DIRECTOR_SOURCE_MODE, task_input=task_input,
+            preparation=preparation, effective_replaces=effective_replaces,
+            affected=affected,
+        )
+
+
+async def persist_external_resume_proposal(
+    job_id: int,
+    preparation: dict[str, Any],
+    request_id: str,
+    replaces_proposal_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Store the active external Agent's draft for independent human review.
+
+    No embedded reasoning or automation task is created. Host Ask answers are
+    preferences in strategy, never verified Profile facts or adoption consent.
+    """
+    clean_job_id = _clean_positive_int(job_id, "job_id")
+    clean_request_id = _clean_text(request_id, "request_id", 80)
+    if not clean_request_id:
+        raise ValueError("request_id 不能为空")
+    clean_replaces = _clean_text(replaces_proposal_id, "replaces_proposal_id", 80) or None
+    if not isinstance(preparation, dict):
+        raise ValueError("preparation 必须是对象")
+    affected = _clean_id_list(preparation.get("affected_source_section_ids"), "affected_source_section_ids")
+    if affected is not None and clean_replaces is None:
+        raise ValueError("affected_source_section_ids 只能配合 replaces_proposal_id 使用")
+    raw_decisions = preparation.get("user_decisions", [])
+    if not isinstance(raw_decisions, list) or len(raw_decisions) > 10:
+        raise ValueError("preparation.user_decisions 必须是不超过 10 条的数组")
+    user_decisions = []
+    for index, item in enumerate(raw_decisions):
+        if not isinstance(item, dict) or set(item) != {"question", "answer"}:
+            raise ValueError("user_decisions 仅允许 question 和 answer")
+        decision = {
+            key: _clean_text(item[key], f"user_decisions[{index}].{key}", 2000)
+            for key in ("question", "answer")
+        }
+        if not all(decision.values()):
+            raise ValueError("user_decisions.question/answer 不能为空")
+        user_decisions.append(decision)
+    origin_id = f"external:{clean_job_id}:{clean_request_id}"
+    async with async_session() as db:
+        return await _persist_prepared_resume_proposal(
+            db=db, clean_job_id=clean_job_id, origin_id=origin_id,
+            source_mode=EXTERNAL_SOURCE_MODE, task_input={},
+            preparation=preparation, effective_replaces=clean_replaces,
+            affected=affected, user_decisions=user_decisions,
+            request_id=clean_request_id,
+            request_fingerprint=_sha256({"preparation": preparation, "replaces": clean_replaces}),
+        )
+
+
+async def _persist_prepared_resume_proposal(
+    *, db: AsyncSession, clean_job_id: int, origin_id: str,
+    source_mode: str, task_input: dict[str, Any], preparation: dict[str, Any],
+    effective_replaces: Optional[str], affected: Optional[list[int]],
+    user_decisions: Optional[list[dict[str, str]]] = None,
+    request_id: Optional[str] = None, request_fingerprint: Optional[str] = None,
+) -> dict[str, Any]:
+    """Shared snapshot, evidence, fact-gate and persisted review boundary."""
+    origin_key = "request_origin" if source_mode == EXTERNAL_SOURCE_MODE else "task_id"
+    origin_metadata = {origin_key: origin_id}
+    if request_id:
+        origin_metadata.update(request_id=request_id, request_fingerprint=request_fingerprint)
+    # Idempotent per origin: a replayed/duplicated call returns the
+    # already persisted proposal instead of writing a second one.
+    proposal_id = _director_proposal_id(origin_id)
+    existing = (
+        await db.execute(
+            select(ResumeOptimizationProposal).where(
+                ResumeOptimizationProposal.proposal_id == proposal_id
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        existing_trace = existing.trace_json or {}
+        if existing_trace.get("source_mode") != source_mode or existing_trace.get(origin_key) != origin_id:
+            raise ValueError("提案 ID 冲突：已有提案并非来自该来源")
+        if request_fingerprint and existing_trace.get("request_fingerprint") != request_fingerprint:
+            raise ValueError("request_id 已用于不同的简历准备内容")
+        job = (
+            await db.execute(select(Job).where(Job.id == existing.job_id))
+        ).scalar_one_or_none()
+        return {**_proposal_detail(existing, job), "duplicate": True}
+
+    base = await _load_director_base(
+        db,
+        job_id=clean_job_id,
+        replaces_proposal_id=effective_replaces,
+    )
+    job = base["job"]
+    jd_text = base["jd_text"]
+    profile = base["profile"]
+    sections = base["sections"]
+    replaced = base["replaced"]
+
+    input_profile_id = task_input.get("profile_id")
+    if (
+        input_profile_id is not None
+        and isinstance(input_profile_id, int)
+        and not isinstance(input_profile_id, bool)
+        and input_profile_id != profile.id
+    ):
+        raise ValueError("CareerTask 输入的 profile_id 与当前已验证 Profile 不一致")
+
+    fingerprint = _director_source_fingerprint(
+        job_id=job.id,
+        jd_text=jd_text,
+        profile_id=profile.id,
+        sections=sections,
+        replaces_proposal_id=effective_replaces,
+        affected_source_section_ids=affected,
+    )
+    echoed = _clean_text(
+        preparation.get("source_fingerprint"), "preparation.source_fingerprint", 128
+    )
+    if not echoed or echoed != fingerprint:
+        raise ValueError(
+            "preparation.source_fingerprint 与当前岗位/档案快照不一致，"
+            "请重新调用 get_resume_preparation_context 后再准备"
+        )
+    echoed_job = preparation.get("job_id")
+    if echoed_job is not None and echoed_job != clean_job_id:
+        raise ValueError("preparation.job_id 与任务岗位不一致")
+    echoed_replaces = _clean_text(
+        preparation.get("replaces_proposal_id"), "preparation.replaces_proposal_id", 80
+    ) or None
+    if echoed_replaces and echoed_replaces != effective_replaces:
+        raise ValueError("preparation.replaces_proposal_id 与任务输入不一致")
+
+    model_rows = _validated_resume_rows(preparation.get("rows"), "preparation.rows")
+    for index, row in enumerate(model_rows):
+        if len(_canonical_json(row["content_json"])) > _MAX_PREPARATION_CONTENT_CHARS:
+            raise ValueError(f"preparation.rows[{index}].content_json 超出大小上限")
+    section_by_id = {section.id: section for section in sections}
+    known_ids = set(section_by_id)
+    referenced = list(dict.fromkeys(
+        source_id
+        for row in model_rows
+        for source_id in row["source_section_ids"]
+    ))
+    missing = [item for item in referenced if item not in known_ids]
+    if missing:
+        raise ValueError(
+            "preparation.rows 引用了不存在的已验证档案: "
+            + ", ".join(str(item) for item in missing)
+        )
+
+    rationale = _clean_director_rationale(
+        preparation.get("rationale"), jd_text, known_ids
+    )
+    questions = _clean_director_questions(
+        preparation.get("questions"), jd_text, known_ids
+    )
+    gaps = _clean_director_gaps(preparation.get("gaps"))
+
+    # Per-row fact gate: unsupported model claims are excluded, but rows
+    # backed by verified evidence survive instead of blocking everything.
+    supported_rows: list[dict[str, Any]] = []
+    excluded_rows: list[dict[str, Any]] = []
+    carry_warnings: list[dict[str, Any]] = []
+    for index, row in enumerate(model_rows):
+        row_sources = [section_by_id[source_id] for source_id in row["source_section_ids"]]
+        gate = validate_resume_fact_gates(
+            [deepcopy(row)],
+            row_sources,
+            strict_structured_facts=True,
+        )
+        blocking = [
+            warning
+            for warning in gate["warnings"]
+            if warning.get("issue") in _BLOCKING_GATE_ISSUES
+        ]
+        if blocking:
+            excluded_rows.append({
+                "row_index": index,
+                "section_key": _row_key(row),
+                "title": row.get("title") or "",
+                "issues": blocking,
+            })
+            continue
+        for item in row["content_json"]:
+            if isinstance(item, dict):
+                item.pop("_gate_warnings", None)
+        carry_warnings.extend(gate["warnings"])
+        supported_rows.append(row)
+    if not supported_rows:
+        raise ValueError(
+            "模型提案的所有段落均无法回溯到已验证档案事实，未保存提案"
+        )
+
+    affected_set = set(affected or [])
+    out_of_scope_keys: list[str] = []
+    if replaced is not None and affected is not None:
+        # Localized reprepare: only rows citing affected evidence may
+        # change; unrelated proposed rows and their reviews carry over.
+        previous_rows = [
+            row for row in (replaced.proposed_rows_json or [])
+            if isinstance(row, dict)
+        ]
+        affected_keys = {
+            _row_key(row) for row in previous_rows if _row_in_scope(row, affected_set)
+        }
+        kept_model_rows: list[dict[str, Any]] = []
+        for row in supported_rows:
+            if _row_in_scope(row, affected_set) or _row_key(row) in affected_keys:
+                kept_model_rows.append(row)
+            else:
+                out_of_scope_keys.append(_row_key(row))
+        merged = [
+            row for row in previous_rows if not _row_in_scope(row, affected_set)
+        ] + kept_model_rows
+        proposed_rows = _validated_resume_rows(merged, "merged_rows")
+        proposed_rows = sorted(proposed_rows, key=lambda row: row["sort_order"])
+    else:
+        proposed_rows = supported_rows
+
+    selected = [
+        section_by_id[source_id]
+        for source_id in dict.fromkeys(
+            source_id
+            for row in proposed_rows
+            for source_id in row["source_section_ids"]
+        )
+    ]
+    fact_gates = validate_resume_fact_gates(
+        deepcopy(proposed_rows),
+        selected,
+        strict_structured_facts=True,
+    )
+    from app.services.resume_optimize_support import (
+        _build_resume_sections,
+        _bullet_text,
+        _missing_keywords,
+    )
+
+    # Baseline must be the user's current Profile order so the diff and
+    # per-item review targets stay honest.
+    original_rows = _build_resume_sections(sections)
+    diff = _build_diff(original_rows, proposed_rows)
+    if source_mode == EXTERNAL_SOURCE_MODE:
+        for change in diff:
+            change_sources = set(change["source_section_ids"])
+            if not any(
+                item["why"] and change_sources.intersection(item["source_section_ids"])
+                for item in rationale
+            ):
+                raise ValueError("每个改写段落必须提供关联已验证证据和岗位要求的 rationale")
+
+    carried_reviews: dict[str, Any] = {}
+    if replaced is not None:
+        new_change_ids = {item["change_id"] for item in diff}
+        for key, value in (replaced.item_reviews_json or {}).items():
+            base_key = key[:-13] if key.endswith(":pending_edit") else key
+            if base_key in new_change_ids:
+                carried_reviews[key] = value
+
+    if replaced is not None and isinstance(replaced.presentation_json, dict):
+        presentation = _json_safe(replaced.presentation_json)
+    else:
+        presentation = {
+            "contact_json": _json_safe(_profile_to_contact_json(profile)),
+            "style_config": {},
+            "template_id": None,
+            "language": "zh",
+            "content_policy": "verified_profile_only",
+        }
+
+    reprepare_sequence = (
+        int((replaced.trace_json or {}).get("reprepare_sequence") or 0) + 1
+        if replaced is not None
+        else 0
+    )
+    # External selection/omission decisions compare against the comprehensive
+    # baseline, so edits to omitted evidence must invalidate that comparison too.
+    snapshot_sections = sections if source_mode == EXTERNAL_SOURCE_MODE else selected
+    evidence_refs = [
+        f"profile_section:{source_id}"
+        for source_id in sorted({s.id for s in snapshot_sections})
+    ]
+    proposal = ResumeOptimizationProposal(
+        proposal_id=proposal_id,
+        job_id=job.id,
+        profile_id=profile.id,
+        research_run_id=None,
+        reference_resume_id=(
+            replaced.reference_resume_id if replaced is not None else None
+        ),
+        status=(
+            "in_review"
+            if carried_reviews
+            else "blocked" if fact_gates["status"] == "blocked" else "ready"
+        ),
+        source_section_ids_json=[section.id for section in snapshot_sections],
+        source_snapshot_hash=_profile_snapshot_hash(snapshot_sections),
+        research_snapshot_hash=_sha256({"source_mode": source_mode, "jd_sha256": _sha256(jd_text)}),
+        original_summary="",
+        proposed_summary="",
+        original_rows_json=_json_safe(original_rows),
+        proposed_rows_json=_json_safe(proposed_rows),
+        diff_json=_json_safe(diff),
+        strategy_json=_json_safe({
+            "job_description_sha256": _sha256(jd_text),
+            "source_mode": source_mode,
+            **origin_metadata,
+            "schema": _DIRECTOR_PREPARATION_SCHEMA,
+            "replaces_proposal_id": effective_replaces,
+            "reprepare_sequence": reprepare_sequence,
+            "affected_source_section_ids": sorted(affected_set),
+            "selected_source_section_ids": [section.id for section in selected],
+            "rationale": rationale,
+            "questions": questions,
+            "gaps": gaps,
+            "excluded_rows": excluded_rows,
+            "out_of_scope_row_keys": out_of_scope_keys,
+            "missing_capabilities": _missing_keywords(
+                jd_text, [_bullet_text(section) for section in selected]
+            ),
+            "scoring_policy": "no_unvalidated_ats_score",
+            **({"user_decisions": user_decisions} if user_decisions else {}),
+        }),
+        presentation_json=presentation,
+        fact_gates_json=_json_safe(fact_gates),
+        trace_json=_json_safe({
+            "source_mode": source_mode,
+            **origin_metadata,
+            "replaces_proposal_id": effective_replaces,
+            "reprepare_sequence": reprepare_sequence,
+            "affected_source_section_ids": sorted(affected_set),
+            "source_fingerprint": fingerprint,
+            "jd_sha256": _sha256(jd_text),
+            "profile_snapshot_hash": _profile_snapshot_hash(sections),
+            "evidence_refs": evidence_refs,
+            "selection_origin": f"{source_mode}_model",
+            "rewrite_applied": bool(diff),
+            "rewrite_status": "applied" if diff else "skipped",
+            "pipeline": {
+                source_mode: {
+                    "status": "completed",
+                    **origin_metadata,
+                    "rewrite_status": "applied" if diff else "skipped",
+                }
+            },
+            "questions": questions,
+            "excluded_rows": excluded_rows,
+            "out_of_scope_row_keys": out_of_scope_keys,
+            "carried_review_change_ids": sorted(carried_reviews),
+            "profile_verified_fact_count": len(sections),
+            "selected_fact_count": len(selected),
+        }),
+        item_reviews_json=carried_reviews,
+    )
+    # Carry the workspace binding so per-item review continues against the
+    # same editable resume; the hash is recomputed from current content so
+    # manual edits made during generation stay protected by the stale check.
+    if replaced is not None and replaced.workspace_resume_id:
+        resume = (
+            await db.execute(
+                select(Resume)
+                .where(Resume.id == replaced.workspace_resume_id)
+                .options(selectinload(Resume.sections))
+            )
+        ).scalar_one_or_none()
+        if resume is not None:
+            from app.services.resume_workspace import workspace_content_hash
+
+            proposal.workspace_resume_id = resume.id
+            proposal.workspace_snapshot_hash = workspace_content_hash(resume)
+
+    supersede_statuses = ("ready", "blocked", "in_review")
+    superseded = (
+        await db.execute(
+            select(ResumeOptimizationProposal).where(
+                ResumeOptimizationProposal.job_id == job.id,
+                ResumeOptimizationProposal.status.in_(supersede_statuses),
+                ResumeOptimizationProposal.proposal_id != proposal.proposal_id,
+            )
+        )
+    ).scalars().all()
+    # Do not autoflush the new unique proposal during the query above;
+    # concurrent replay conflicts must be caught by the commit guard below.
+    db.add(proposal)
+    for older in superseded:
+        older.status = "stale"
+        older.review_note = (
+            f"已被新提案 {proposal.proposal_id} 取代，请审核最新提案"
+        )
+        older.reviewed_at = _now()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        winner = (
             await db.execute(
                 select(ResumeOptimizationProposal).where(
                     ResumeOptimizationProposal.proposal_id == proposal_id
                 )
             )
         ).scalar_one_or_none()
-        if existing is not None:
-            existing_trace = existing.trace_json or {}
-            if existing_trace.get("task_id") != clean_task_id:
-                raise ValueError("提案 ID 冲突：已有提案并非来自该任务")
-            job = (
-                await db.execute(select(Job).where(Job.id == existing.job_id))
-            ).scalar_one_or_none()
-            return {**_proposal_detail(existing, job), "duplicate": True}
-
-        base = await _load_director_base(
-            db,
-            job_id=clean_job_id,
-            replaces_proposal_id=effective_replaces,
-        )
-        job = base["job"]
-        jd_text = base["jd_text"]
-        profile = base["profile"]
-        sections = base["sections"]
-        replaced = base["replaced"]
-
-        input_profile_id = task_input.get("profile_id")
-        if (
-            input_profile_id is not None
-            and isinstance(input_profile_id, int)
-            and not isinstance(input_profile_id, bool)
-            and input_profile_id != profile.id
-        ):
-            raise ValueError("CareerTask 输入的 profile_id 与当前已验证 Profile 不一致")
-
-        fingerprint = _director_source_fingerprint(
-            job_id=job.id,
-            jd_text=jd_text,
-            profile_id=profile.id,
-            sections=sections,
-            replaces_proposal_id=effective_replaces,
-            affected_source_section_ids=affected,
-        )
-        echoed = _clean_text(
-            preparation.get("source_fingerprint"), "preparation.source_fingerprint", 128
-        )
-        if not echoed or echoed != fingerprint:
-            raise ValueError(
-                "preparation.source_fingerprint 与当前岗位/档案快照不一致，"
-                "请重新调用 get_resume_preparation_context 后再准备"
-            )
-        echoed_job = preparation.get("job_id")
-        if echoed_job is not None and echoed_job != clean_job_id:
-            raise ValueError("preparation.job_id 与任务岗位不一致")
-        echoed_replaces = _clean_text(
-            preparation.get("replaces_proposal_id"), "preparation.replaces_proposal_id", 80
-        ) or None
-        if echoed_replaces and echoed_replaces != effective_replaces:
-            raise ValueError("preparation.replaces_proposal_id 与任务输入不一致")
-
-        model_rows = _validated_resume_rows(preparation.get("rows"), "preparation.rows")
-        for index, row in enumerate(model_rows):
-            if len(_canonical_json(row["content_json"])) > _MAX_PREPARATION_CONTENT_CHARS:
-                raise ValueError(f"preparation.rows[{index}].content_json 超出大小上限")
-        section_by_id = {section.id: section for section in sections}
-        known_ids = set(section_by_id)
-        referenced = list(dict.fromkeys(
-            source_id
-            for row in model_rows
-            for source_id in row["source_section_ids"]
-        ))
-        missing = [item for item in referenced if item not in known_ids]
-        if missing:
-            raise ValueError(
-                "preparation.rows 引用了不存在的已验证档案: "
-                + ", ".join(str(item) for item in missing)
-            )
-
-        rationale = _clean_director_rationale(
-            preparation.get("rationale"), jd_text, known_ids
-        )
-        questions = _clean_director_questions(
-            preparation.get("questions"), jd_text, known_ids
-        )
-        gaps = _clean_director_gaps(preparation.get("gaps"))
-
-        # Per-row fact gate: unsupported model claims are excluded, but rows
-        # backed by verified evidence survive instead of blocking everything.
-        supported_rows: list[dict[str, Any]] = []
-        excluded_rows: list[dict[str, Any]] = []
-        carry_warnings: list[dict[str, Any]] = []
-        for index, row in enumerate(model_rows):
-            row_sources = [section_by_id[source_id] for source_id in row["source_section_ids"]]
-            gate = validate_resume_fact_gates(
-                [deepcopy(row)],
-                row_sources,
-                strict_structured_facts=True,
-            )
-            blocking = [
-                warning
-                for warning in gate["warnings"]
-                if warning.get("issue") in _BLOCKING_GATE_ISSUES
-            ]
-            if blocking:
-                excluded_rows.append({
-                    "row_index": index,
-                    "section_key": _row_key(row),
-                    "title": row.get("title") or "",
-                    "issues": blocking,
-                })
-                continue
-            for item in row["content_json"]:
-                if isinstance(item, dict):
-                    item.pop("_gate_warnings", None)
-            carry_warnings.extend(gate["warnings"])
-            supported_rows.append(row)
-        if not supported_rows:
-            raise ValueError(
-                "模型提案的所有段落均无法回溯到已验证档案事实，未保存提案"
-            )
-
-        affected_set = set(affected or [])
-        out_of_scope_keys: list[str] = []
-        if replaced is not None and affected is not None:
-            # Localized reprepare: only rows citing affected evidence may
-            # change; unrelated proposed rows and their reviews carry over.
-            previous_rows = [
-                row for row in (replaced.proposed_rows_json or [])
-                if isinstance(row, dict)
-            ]
-            affected_keys = {
-                _row_key(row) for row in previous_rows if _row_in_scope(row, affected_set)
-            }
-            kept_model_rows: list[dict[str, Any]] = []
-            for row in supported_rows:
-                if _row_in_scope(row, affected_set) or _row_key(row) in affected_keys:
-                    kept_model_rows.append(row)
-                else:
-                    out_of_scope_keys.append(_row_key(row))
-            merged = [
-                row for row in previous_rows if not _row_in_scope(row, affected_set)
-            ] + kept_model_rows
-            proposed_rows = _validated_resume_rows(merged, "merged_rows")
-            proposed_rows = sorted(proposed_rows, key=lambda row: row["sort_order"])
-        else:
-            proposed_rows = supported_rows
-
-        selected = [
-            section_by_id[source_id]
-            for source_id in dict.fromkeys(
-                source_id
-                for row in proposed_rows
-                for source_id in row["source_section_ids"]
-            )
-        ]
-        fact_gates = validate_resume_fact_gates(
-            deepcopy(proposed_rows),
-            selected,
-            strict_structured_facts=True,
-        )
-        from app.services.resume_optimize_support import (
-            _build_resume_sections,
-            _bullet_text,
-            _missing_keywords,
-        )
-
-        # Baseline must be the user's current Profile order so the diff and
-        # per-item review targets stay honest.
-        original_rows = _build_resume_sections(sections)
-        diff = _build_diff(original_rows, proposed_rows)
-
-        carried_reviews: dict[str, Any] = {}
-        if replaced is not None:
-            new_change_ids = {item["change_id"] for item in diff}
-            for key, value in (replaced.item_reviews_json or {}).items():
-                base_key = key[:-13] if key.endswith(":pending_edit") else key
-                if base_key in new_change_ids:
-                    carried_reviews[key] = value
-
-        if replaced is not None and isinstance(replaced.presentation_json, dict):
-            presentation = _json_safe(replaced.presentation_json)
-        else:
-            presentation = {
-                "contact_json": _json_safe(_profile_to_contact_json(profile)),
-                "style_config": {},
-                "template_id": None,
-                "language": "zh",
-                "content_policy": "verified_profile_only",
-            }
-
-        reprepare_sequence = (
-            int((replaced.trace_json or {}).get("reprepare_sequence") or 0) + 1
-            if replaced is not None
-            else 0
-        )
-        evidence_refs = [
-            f"profile_section:{source_id}"
-            for source_id in sorted({s.id for s in selected})
-        ]
-        proposal = ResumeOptimizationProposal(
-            proposal_id=proposal_id,
-            job_id=job.id,
-            profile_id=profile.id,
-            research_run_id=None,
-            reference_resume_id=(
-                replaced.reference_resume_id if replaced is not None else None
-            ),
-            status=(
-                "in_review"
-                if carried_reviews
-                else "blocked" if fact_gates["status"] == "blocked" else "ready"
-            ),
-            source_section_ids_json=[section.id for section in selected],
-            source_snapshot_hash=_profile_snapshot_hash(selected),
-            research_snapshot_hash=_sha256({"source_mode": DIRECTOR_SOURCE_MODE, "jd_sha256": _sha256(jd_text)}),
-            original_summary="",
-            proposed_summary="",
-            original_rows_json=_json_safe(original_rows),
-            proposed_rows_json=_json_safe(proposed_rows),
-            diff_json=_json_safe(diff),
-            strategy_json=_json_safe({
-                "job_description_sha256": _sha256(jd_text),
-                "source_mode": DIRECTOR_SOURCE_MODE,
-                "task_id": clean_task_id,
-                "schema": _DIRECTOR_PREPARATION_SCHEMA,
-                "replaces_proposal_id": effective_replaces,
-                "reprepare_sequence": reprepare_sequence,
-                "affected_source_section_ids": sorted(affected_set),
-                "selected_source_section_ids": [section.id for section in selected],
-                "rationale": rationale,
-                "questions": questions,
-                "gaps": gaps,
-                "excluded_rows": excluded_rows,
-                "out_of_scope_row_keys": out_of_scope_keys,
-                "missing_capabilities": _missing_keywords(
-                    jd_text, [_bullet_text(section) for section in selected]
-                ),
-                "scoring_policy": "no_unvalidated_ats_score",
-            }),
-            presentation_json=presentation,
-            fact_gates_json=_json_safe(fact_gates),
-            trace_json=_json_safe({
-                "source_mode": DIRECTOR_SOURCE_MODE,
-                "task_id": clean_task_id,
-                "replaces_proposal_id": effective_replaces,
-                "reprepare_sequence": reprepare_sequence,
-                "affected_source_section_ids": sorted(affected_set),
-                "source_fingerprint": fingerprint,
-                "jd_sha256": _sha256(jd_text),
-                "profile_snapshot_hash": _profile_snapshot_hash(sections),
-                "evidence_refs": evidence_refs,
-                "selection_origin": "career_director_model",
-                "rewrite_applied": bool(diff),
-                "rewrite_status": "applied" if diff else "skipped",
-                "pipeline": {
-                    "career_director": {
-                        "status": "completed",
-                        "task_id": clean_task_id,
-                        "rewrite_status": "applied" if diff else "skipped",
-                    }
-                },
-                "questions": questions,
-                "excluded_rows": excluded_rows,
-                "out_of_scope_row_keys": out_of_scope_keys,
-                "carried_review_change_ids": sorted(carried_reviews),
-                "profile_verified_fact_count": len(sections),
-                "selected_fact_count": len(selected),
-            }),
-            item_reviews_json=carried_reviews,
-        )
-        # Carry the workspace binding so per-item review continues against the
-        # same editable resume; the hash is recomputed from current content so
-        # manual edits made during generation stay protected by the stale check.
-        if replaced is not None and replaced.workspace_resume_id:
-            resume = (
-                await db.execute(
-                    select(Resume)
-                    .where(Resume.id == replaced.workspace_resume_id)
-                    .options(selectinload(Resume.sections))
-                )
-            ).scalar_one_or_none()
-            if resume is not None:
-                from app.services.resume_workspace import workspace_content_hash
-
-                proposal.workspace_resume_id = resume.id
-                proposal.workspace_snapshot_hash = workspace_content_hash(resume)
-
-        db.add(proposal)
-        supersede_statuses = ("ready", "blocked", "in_review")
-        superseded = (
-            await db.execute(
-                select(ResumeOptimizationProposal).where(
-                    ResumeOptimizationProposal.job_id == job.id,
-                    ResumeOptimizationProposal.status.in_(supersede_statuses),
-                    ResumeOptimizationProposal.proposal_id != proposal.proposal_id,
-                )
-            )
-        ).scalars().all()
-        for older in superseded:
-            older.status = "stale"
-            older.review_note = (
-                f"已被新提案 {proposal.proposal_id} 取代，请审核最新提案"
-            )
-            older.reviewed_at = _now()
-        try:
-            await db.commit()
-        except IntegrityError:
-            await db.rollback()
-            winner = (
-                await db.execute(
-                    select(ResumeOptimizationProposal).where(
-                        ResumeOptimizationProposal.proposal_id == proposal_id
-                    )
-                )
-            ).scalar_one_or_none()
-            if winner is None:
-                raise
-            job_row = (
-                await db.execute(select(Job).where(Job.id == winner.job_id))
-            ).scalar_one_or_none()
-            return {**_proposal_detail(winner, job_row), "duplicate": True}
-        await db.refresh(proposal)
-        return {**_proposal_detail(proposal, job), "duplicate": False}
-
+        if winner is None:
+            raise
+        if request_fingerprint and (winner.trace_json or {}).get("request_fingerprint") != request_fingerprint:
+            raise ValueError("request_id 已用于不同的简历准备内容")
+        job_row = (
+            await db.execute(select(Job).where(Job.id == winner.job_id))
+        ).scalar_one_or_none()
+        return {**_proposal_detail(winner, job_row), "duplicate": True}
+    await db.refresh(proposal)
+    return {**_proposal_detail(proposal, job), "duplicate": False}
 
 async def list_resume_optimizations(
     *,
@@ -1732,7 +1817,7 @@ async def review_resume_optimization(
 
         presentation = proposal.presentation_json or {}
         trace = proposal.trace_json or {}
-        is_director = trace.get("source_mode") == DIRECTOR_SOURCE_MODE
+        is_prepared_agent = trace.get("source_mode") in {DIRECTOR_SOURCE_MODE, EXTERNAL_SOURCE_MODE}
         source_snapshot = _build_source_profile_snapshot(profile, sections)
         source_snapshot.update({
             "source_snapshot_hash": proposal.source_snapshot_hash,
@@ -1747,7 +1832,7 @@ async def review_resume_optimization(
             profile=profile,
             title=f"{job.company} - {job.title} 定制简历",
             summary=proposal.proposed_summary or "",
-            source_mode=DIRECTOR_SOURCE_MODE if is_director else "per_job_reviewed",
+            source_mode=trace["source_mode"] if is_prepared_agent else "per_job_reviewed",
             source_job_ids=[job.id],
             contact_json=presentation.get("contact_json") or {},
             style_config=presentation.get("style_config") or {},
@@ -1773,10 +1858,12 @@ async def review_resume_optimization(
             "research_snapshot_hash": proposal.research_snapshot_hash,
             "diff_sha256": _sha256(proposal.diff_json or []),
         }
-        if is_director:
+        if is_prepared_agent:
             snapshot["provenance"]["task_id"] = trace.get("task_id") or ""
             snapshot["provenance"]["source_fingerprint"] = trace.get("source_fingerprint") or ""
-            snapshot["provenance"]["source_mode"] = DIRECTOR_SOURCE_MODE
+            snapshot["provenance"]["source_mode"] = trace["source_mode"]
+            if trace.get("request_id"):
+                snapshot["provenance"]["request_id"] = trace["request_id"]
         source_ids_by_type = {
             _row_key(row): row.get("source_section_ids") or []
             for row in proposed_rows

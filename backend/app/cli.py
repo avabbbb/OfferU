@@ -140,7 +140,14 @@ def main(argv: Optional[list[str]] = None) -> int:
                 return _print({"ok": False, "errors": [pair_args]}, args.pretty, exit_code=1)
             op_args.update(file_args)
             op_args.update(pair_args)
-            result = asyncio.run(_run_operation(args.name, op_args, dry_run=args.dry_run))
+            result = asyncio.run(
+                _run_operation(
+                    args.name,
+                    op_args,
+                    dry_run=args.dry_run,
+                    run_id=str(args.run_id or ""),
+                )
+            )
             return _print(result, args.pretty, exit_code=0 if result.get("ok") else 1)
         if args.command == "conformance":
             result = asyncio.run(
@@ -219,6 +226,7 @@ def _build_parser() -> JsonArgumentParser:
     run.add_argument("--input", dest="input_file", default="", help="Path to a JSON object file passed as operation args.")
     run.add_argument("--arg", dest="arg_pairs", action="append", default=[], help="Single key=value arg. May be repeated.")
     run.add_argument("--dry-run", action="store_true", help="Skip mutation, LLM, or external side-effect operations.")
+    run.add_argument("--run-id", default="", help="Bind protected Plan preparation to an existing Agent Run.")
     run.add_argument("--pretty", action="store_true", help="Pretty-print JSON.")
 
     conformance = sub.add_parser(
@@ -791,7 +799,7 @@ def _manifest(*, skill: str = "", group: str = "", all_operations: bool = False)
         "service": "OfferU CLI",
         "tool_contract": tool_contract_snapshot(),
         "version": APP_VERSION,
-        "purpose": "Agent-native control surface for OfferU. External agents discover scoped schemas and run reads; side-effect runs persist proposals for user review inside OfferU.",
+        "purpose": "Agent-native control surface for OfferU. External agents discover scoped schemas, read context and prepare reviewable drafts; protected changes persist a DecisionPlan for user review inside OfferU.",
         "commands": {
             "health": f"{command} doctor --pretty",
             "release_health": f"{command} doctor --require-ready --pretty",
@@ -814,7 +822,9 @@ def _manifest(*, skill: str = "", group: str = "", all_operations: bool = False)
         "safety": {
             "auto_submit_applications": False,
             "machine_mode_interactive_prompts": False,
-            "side_effect_operations_create_persisted_proposal": True,
+            "side_effect_operations_create_persisted_decision_plan": True,
+            "confirmation_policy": "requires_confirmation from the live Operation schema",
+            "preparation_does_not_adopt_content": True,
             "user_approval_happens_in_offeru": True,
             "explicit_user_confirmation_required": True,
             "raw_api_capability": False,
@@ -843,13 +853,14 @@ def _manifest(*, skill: str = "", group: str = "", all_operations: bool = False)
     }
 
 
-async def _run_operation(name: str, args: dict[str, Any], *, dry_run: bool) -> dict[str, Any]:
+async def _run_operation(name: str, args: dict[str, Any], *, dry_run: bool, run_id: str = "") -> dict[str, Any]:
     await init_db()
     return await execute_or_propose_operation(
         name,
         args,
         dry_run=dry_run,
         surface="cli",
+        run_id=run_id,
     )
 
 
