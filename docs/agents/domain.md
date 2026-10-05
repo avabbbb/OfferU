@@ -6,13 +6,13 @@
 
 OfferU 采用一个领域上下文：
 
-1. 先读根目录 [`CONTEXT.md`](../../CONTEXT.md)；
-2. 再读 [`docs/adr/README.md`](../adr/README.md) 中相关编号；
-3. 最后读 [`docs/README.md`](../README.md) 指向的对应主题设计。
+1. 先按 [`AGENTS.md`](../../AGENTS.md) 的事实源顺序读取 [`GOAL.md`](../../GOAL.md) 和 [当前产品](../product/current-product.md)；
+2. 再读根目录 [`CONTEXT.md`](../../CONTEXT.md) 与 [当前决策摘要](../adr/README.md)；
+3. 最后读 [`docs/README.md`](../README.md) 指向的相关架构主题与当前代码/证据。
 
-Issue 标题、测试名称和实现说明使用 `CONTEXT.md` 的术语，并避开其中列出的误称。新概念若是实际领域缺口，先补 `CONTEXT.md`；难以逆转的架构取舍追加到同一 ADR 账本，不创建新的 ADR 文件。
+Issue 标题、测试名称和实现说明使用 `CONTEXT.md` 的术语。新概念若是实际领域缺口，先补 `CONTEXT.md`；长期架构取舍更新当前决策摘要，不恢复历史编号账本，也不为普通实现调整创建新的 ADR 文件。
 
-发现实现或计划与现行 ADR 冲突时，明确写出 ADR 编号、冲突行为和影响。不得静默覆盖，也不得把 superseded 决策当作当前实现依据。
+发现实现或计划与现行决策冲突时，明确写出决策标题、冲突行为和影响。需要历史来由时读 [发展历史](../history/development-history.md) 再定位原始归档；不得把 superseded 决策当作当前实现依据。
 
 ## Issue tracker
 
@@ -51,7 +51,7 @@ Issues 与 PRD 发布到当前 Git remote 对应的 GitHub Issues。所有操作
 
 - 用户可见结果；
 - 允许修改的文件范围；
-- 相关 `CONTEXT` 术语和 ADR 编号；
+- 相关 `CONTEXT` 术语和当前决策标题；
 - 现状证据与失败症状；
 - 验收映射和用户需执行的命令；
 - 明确不做的事项与外部权限。

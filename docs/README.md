@@ -2,7 +2,7 @@
 # OfferU Documentation
 
 Status: **CURRENT NAVIGATION AUTHORITY**  
-Updated: 2026-09-25
+Updated: 2026-10-05
 
 OfferU has accumulated design documents, audits, eval reports and implementation snapshots across several architecture generations. This page defines which documents are authoritative **now**.
 
@@ -52,6 +52,8 @@ Historical audits and dated reports are evidence of what was true when they were
 | Eval | [Live Eval](./evals/LIVE_EVAL.md) | current Agent eval contract and execution model |
 | Status | [STATUS.md](../STATUS.md) | current implementation state and blockers |
 | Handoff | [HANDOFF.md](../HANDOFF.md) | latest continuation context for Coding Agents |
+| Merge review | [Main readiness review](./evals/reports/2026-10-05-main-readiness-review.md) | Bilingual summaries of ready, conditional and held changes; evidence is bound to the reviewed checkout |
+| History | [Development History / 发展历史](./history/development-history.md) | Distilled evolution, superseded directions and links to original checkpoints; not current authority |
 
 ## Product design rationale
 
@@ -70,6 +72,8 @@ These explain why current product rules exist; they are references, not higher a
 A date in a filename is a strong signal that the file may be a snapshot rather than timeless authority.
 
 ## Historical material
+
+Start with [Development History / 发展历史](./history/development-history.md). Open the [archive index](./archive/README.md) only when the original decision or dated evidence is needed.
 
 Treat these as historical unless a current authority page explicitly adopts their conclusion:
 
@@ -91,6 +95,7 @@ Do not rewrite old eval numbers to make them look current. Preserve the result a
 5. Eval reports state the commit/runtime/model and remain evidence, not architecture.
 6. A new Coding Agent should be able to identify current authority without reading historical reports.
 7. If a document is kept only for archaeology, move it under docs/archive/ or add a clear historical header.
+8. Distill superseded checkpoints into the development history; preserve their original results and old-path links. A dated filename alone does not retire a still-current design such as Tool Surface V2.
 
 ## Current product summary
 

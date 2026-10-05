@@ -78,6 +78,9 @@ docs/*
 !docs/adr/**
 !docs/agents/
 !docs/agents/**
+!docs/history/
+docs/history/*
+!docs/history/*.md
 !docs/product/
 docs/product/*
 !docs/product/owner-career-journey.md
