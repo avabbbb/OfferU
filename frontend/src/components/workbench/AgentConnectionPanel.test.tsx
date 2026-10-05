@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -25,6 +25,34 @@ describe("AgentConnectionPanel", () => {
     mocks.connections.mockResolvedValue(snapshot());
   });
 
+  it("prepares one generic connection and observes an existing host readback", async () => {
+    let tick: () => Promise<void> = async () => { throw new Error("readback polling was not scheduled"); };
+    const nativeInterval = window.setInterval.bind(window);
+    const interval = vi.spyOn(window, "setInterval").mockImplementation((handler) => {
+      tick = handler as () => Promise<void>;
+      return nativeInterval(() => {}, 60000) as unknown as ReturnType<typeof setInterval>;
+    });
+    try {
+      const user = userEvent.setup();
+      const generic = { id: "external", name: "通用 Agent" };
+      const pending = snapshot({ ...generic, skill_status: "INSTALLED", status: "check_required",
+        verification_challenge: { provider_id: "external", challenge_id: "a".repeat(32) } });
+      mocks.connections.mockResolvedValueOnce(snapshot(generic)).mockResolvedValue(
+        snapshot({ ...generic, skill_status: "INSTALLED", connection_verified: true, status: "ready" })
+      );
+      mocks.install.mockResolvedValue(pending);
+      const view = render(<AgentConnectionPanel />);
+      await user.click(screen.getByRole("button", { name: "发现本机 Agent" }));
+      await user.click(screen.getByRole("button", { name: "连接 通用 Agent" }));
+      expect(mocks.install).toHaveBeenCalledWith("external", "install");
+      expect(screen.getByText(/OfferU 不会另起一个 Agent 会话/)).toBeInTheDocument();
+      expect(mocks.probe).not.toHaveBeenCalled();
+      await act(async () => { await tick(); });
+      expect(screen.getByText(/已完成真实工具回读/)).toBeInTheDocument();
+      view.unmount();
+    } finally { interval.mockRestore(); }
+  });
+
   it("uses Desktop discovery without a copy-prompt or installation-directory flow", () => {
     render(<AgentConnectionPanel />);
     expect(screen.getByRole("button", { name: "发现本机 Agent" })).toBeInTheDocument();
@@ -42,7 +70,7 @@ describe("AgentConnectionPanel", () => {
     expect(await screen.findByText("已发现 Agent，接入尚未完成。")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "连接 Codex" }));
     expect(mocks.install).toHaveBeenCalledWith("codex", "install");
-    expect(await screen.findByText(/Agent 已完成真实工具读取/)).toBeInTheDocument();
+    expect(await screen.findByText(/已完成真实工具回读/)).toBeInTheDocument();
   });
 
   it("does not claim installed-only or remotely blocked hosts are ready", async () => {

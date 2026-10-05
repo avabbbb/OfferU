@@ -96,6 +96,19 @@ function FocusTopBar({ rule }: { rule: FocusRule }) {
   );
 }
 
+/**
+ * 右下角审阅坞：Proposal v2 计划审阅 + 旧版逐步动作确认（仅遗留提案存在时渲染）。
+ */
+function ReviewDock() {
+  return (
+    <div className="pointer-events-none fixed bottom-4 right-4 z-[60] max-w-[calc(100vw-2rem)]">
+      <div className="pointer-events-auto flex flex-col items-end gap-2">
+        <PendingProposalReview />
+      </div>
+    </div>
+  );
+}
+
 function WorkbenchFrame({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { clearSelection, selection } = useWorkbench();
@@ -127,7 +140,7 @@ function WorkbenchFrame({ children }: { children: React.ReactNode }) {
             {children}
           </main>
         </div>
-        <PendingProposalReview />
+        <ReviewDock />
       </>
     );
   }
@@ -147,7 +160,7 @@ function WorkbenchFrame({ children }: { children: React.ReactNode }) {
           <CommandPalette />
         </Suspense>
       </div>
-      <PendingProposalReview />
+      <ReviewDock />
     </>
   );
 }

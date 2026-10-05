@@ -6,6 +6,7 @@
 // =============================================
 
 import { ToolExecutionList } from "./EmbeddedAgentStreamView";
+import { AgentAskPanel } from "./AgentAskPanel";
 import { applyRuntimeToolEvent, createInitialAgentStreamState } from "@/lib/embeddedAgentStream";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, Textarea } from "@nextui-org/react";
@@ -13,6 +14,7 @@ import {
   Activity,
   AlertTriangle,
   Briefcase,
+  ClipboardCheck,
   ChevronDown,
   ChevronUp,
   History,
@@ -31,6 +33,7 @@ import {
   agentSupportApi,
   hostedExecutorApi,
   agentRuntimeApi,
+  AUTO_SKILL_ID,
   type AgentCareerPath,
   type AgentConversationSummary,
   type AgentJobCard,
@@ -50,6 +53,8 @@ import { safeClientErrorMessage } from "@/lib/safe-error";
 import { AgentConnectionStatus } from "./AgentConnectionPanel";
 import { ExternalUrlLink } from "@/components/ExternalUrlLink";
 import { SHOWCASE } from "@/lib/showcase/router";
+import Link from "next/link";
+import { agentRecovery, MODEL_SETTINGS_ROUTE } from "@/lib/agentRecovery";
 
 interface PanelMessage {
   id: string;
@@ -163,15 +168,63 @@ function previewJson(value: unknown) {
   }
 }
 
+function runHasProposalPlan(run?: AgentRunRecord | null) {
+  return Boolean(run && (
+    run.proposal_authority?.startsWith("proposal-plan")
+    || run.proposal_plans?.length
+  ));
+}
+
+function isPlanProjection(action: AgentProposedAction) {
+  return Boolean(action.plan_id || action.group_id || action.projection_only);
+}
+
+function visiblePendingActions(actions: AgentProposedAction[], run?: AgentRunRecord | null) {
+  if (runHasProposalPlan(run)) return [];
+  return actions.filter((action) => !isPlanProjection(action));
+}
+
+function pendingActionsFromResponse(response: AgentRunResponse) {
+  return visiblePendingActions(response.pending_actions || [], response.run);
+}
+
+function runPlanGroups(run: AgentRunRecord) {
+  return (run.proposal_plans || []).flatMap((plan) => plan.groups || []);
+}
+
+function planReviewSummary(run: AgentRunRecord, loading: boolean) {
+  if (loading) return "正在刷新改动组和执行回执…";
+  const groups = runPlanGroups(run);
+  const pending = groups.filter((group) => group.status === "pending").length;
+  const reconciliation = groups.filter((group) => group.status === "needs_reconciliation").length;
+  const paused = groups.filter((group) => group.status === "paused").length;
+  if (pending) return `${pending} 个改动组等待你审核。审核入口会显示具体修改、证据和理由。`;
+  if (reconciliation) return `${reconciliation} 个改动组需要核对执行结果；不会自动重放。`;
+  if (paused) return `${paused} 个改动组已暂停，等待核对或修复。`;
+  const continuations = (run.proposal_plans || []).flatMap((plan) => plan.continuations || []);
+  const continuation = continuations[continuations.length - 1];
+  if (continuation?.receiver === "ui_result_projection" && continuation.status === "delivered") {
+    return "执行结果已存回原任务；Agent 没有自动恢复推理。";
+  }
+  if (continuation?.status === "failed") return "原任务回执投影失败，可重试查看。";
+  if (continuation?.status === "delivered") return "回执已保存；接收方式未提供。";
+  return `计划状态：${run.status}。打开计划审核查看各组状态与回执。`;
+}
+
+function primaryPlanId(run: AgentRunRecord) {
+  return run.proposal_plans?.find((plan) => plan.status !== "replaced")?.id;
+}
+
 function toPanelResponse(response: AgentRunResponse): AgentResponse {
   const guardian = response.guardian || {};
+  const proposedActions = pendingActionsFromResponse(response);
   return {
     assistant_message: response.assistant_message,
     mode: response.run.mode,
     active_skill: response.active_skill,
-    requires_confirmation: response.pending_actions.length > 0,
+    requires_confirmation: proposedActions.length > 0,
     tool_calls: [],
-    proposed_actions: response.pending_actions,
+    proposed_actions: proposedActions,
     user_stage: guardian.user_stage,
     stage_confidence: guardian.stage_confidence,
     stage_signals: guardian.stage_signals,
@@ -183,7 +236,7 @@ function toPanelResponse(response: AgentRunResponse): AgentResponse {
 }
 
 function pendingActionsFromRun(run: AgentRunRecord): AgentProposedAction[] {
-  return (run.steps || [])
+  return visiblePendingActions((run.steps || [])
     .filter((step) => step.status === "waiting_confirmation")
     .map((step) => ({
       id: step.id,
@@ -192,7 +245,11 @@ function pendingActionsFromRun(run: AgentRunRecord): AgentProposedAction[] {
       risk_level: step.risk_level,
       requires_confirmation: step.requires_confirmation,
       args: step.args,
-    }));
+      plan_id: step.plan_id,
+      group_id: step.group_id,
+      group_digest: step.group_digest,
+      projection_only: step.projection_only,
+    })), run);
 }
 
 export function AgentPanel() {
@@ -207,6 +264,8 @@ export function AgentPanel() {
   ]);
   const [input, setInput] = useState("");
   const [pendingActions, setPendingActions] = useState<AgentProposedAction[]>([]);
+  const [planReviewLoading, setPlanReviewLoading] = useState(false);
+  const [planReviewNotice, setPlanReviewNotice] = useState("");
   const [loading, setLoading] = useState(false);
   const [toolStream, setToolStream] = useState(createInitialAgentStreamState);
   const [progressText, setProgressText] = useState(SHOWCASE ? "正在准备演示 Agent..." : "正在准备 OfferU Agent...");
@@ -218,7 +277,7 @@ export function AgentPanel() {
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [activeRun, setActiveRun] = useState<AgentRunRecord | null>(null);
   const [interruptedRunId, setInterruptedRunId] = useState<string | null>(null);
-  const [activeSkillId, setActiveSkillId] = useState("discovery");
+  const [selectedSkillId, setSelectedSkillId] = useState<string>(AUTO_SKILL_ID);
   const [skills, setSkills] = useState<AgentSkill[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [conversations, setConversations] = useState<AgentConversationSummary[]>([]);
@@ -234,8 +293,14 @@ export function AgentPanel() {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const currentConvRef = useRef<string | null>(null);
-
   const hasPendingActions = pendingActions.length > 0;
+  const [reviewPending, setReviewPending] = useState(0);
+  const hasPlanReview = runHasProposalPlan(activeRun);
+  const planGroups = activeRun ? runPlanGroups(activeRun) : [];
+  const planPendingGroupCount = planGroups.filter((group) => group.status === "pending").length;
+  const hasPendingPlanReview = hasPlanReview && !["cancelled", "aborted"].includes(activeRun?.status || "") && (
+    planPendingGroupCount > 0 || ["waiting_confirmation", "executing"].includes(activeRun?.status || "")
+  );
 
   const latestResponse = useMemo(() => {
     return [...messages].reverse().find((message) => message.response)?.response;
@@ -243,6 +308,20 @@ export function AgentPanel() {
 
   const latestMode = latestResponse?.active_skill?.name || latestResponse?.mode || "ready";
   const latestStage = latestResponse?.user_stage || importedStage || "unknown";
+
+  // The last Run's frozen Skill is display-only; it never changes the user's auto/manual choice.
+  const resolvedSkillId =
+    activeRun?.skill_id && activeRun.skill_id !== AUTO_SKILL_ID ? activeRun.skill_id : "";
+  const resolvedSkill = skills.find((skill) => skill.id === resolvedSkillId);
+  const resolvedSkillName = resolvedSkillId
+    ? (latestResponse?.active_skill?.id === resolvedSkillId && latestResponse.active_skill.name)
+      || resolvedSkill?.name
+      || activeRun?.skill_snapshot?.name
+      || resolvedSkillId
+    : "";
+  const resolvedRoutingReason = latestResponse?.active_skill?.id === resolvedSkillId
+    ? latestResponse.active_skill.routing?.reason
+    : undefined;
 
   const refreshConversations = async () => {
     try {
@@ -252,6 +331,40 @@ export function AgentPanel() {
       setConversations([]);
     }
   };
+
+  useEffect(() => {
+    const cleared = () => {
+      // Backend reset already ended the old session. Clear its local
+      // projection without cancelling or approving any surviving receipt.
+      abortControllerRef.current?.abort();
+      abortControllerRef.current = null;
+      currentConvRef.current = null;
+      setMessages([]);
+      setInput("");
+      setLoading(false);
+      setStreamingText("");
+      setToolStream(createInitialAgentStreamState());
+      setActiveRun(null);
+      setActiveRunId(null);
+      setInterruptedRunId(null);
+      setPendingActions([]);
+      setReviewPending(0);
+      setPlanReviewNotice("");
+      setConversationId(null);
+      setConversationTitle("新对话");
+      setConversations([]);
+      setSelectedSkillId(AUTO_SKILL_ID);
+      setImportedStage("unknown");
+      setHostedSessions([]);
+      setHostedDetail(null);
+      setSelectedHostedSessionId(null);
+      setHostedError("");
+      setPlanReviewLoading(false);
+      setError("");
+    };
+    window.addEventListener("offeru-career-reset", cleared);
+    return () => window.removeEventListener("offeru-career-reset", cleared);
+  }, []);
 
   useEffect(() => {
     refreshConversations();
@@ -310,10 +423,10 @@ export function AgentPanel() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, loading]);
 
-  const sendMessage = async (text?: string, skillId?: string) => {
+  const sendMessage = async (text?: string, explicitSkillId?: string) => {
     const content = (text ?? input).trim();
-    if (!content || loading || hasPendingActions || interruptedRunId) return;
-    const selectedSkillId = skillId || activeSkillId;
+    if (!content || loading || hasPendingActions || hasPendingPlanReview || reviewPending > 0 || interruptedRunId) return;
+    const requestSkillId = explicitSkillId || selectedSkillId;
     const currentConversationId = conversationId;
     currentConvRef.current = currentConversationId;
     const controller = new AbortController();
@@ -332,13 +445,15 @@ export function AgentPanel() {
     setProgressText("正在启动内置助手...");
     setStreamingText("");
     setToolStream(createInitialAgentStreamState());
+    setPlanReviewNotice("");
+    setPlanReviewLoading(false);
     setError("");
 
     try {
       const runtimeResponse = await agentRuntimeApi.start(
         {
           message: content,
-          skill_id: selectedSkillId,
+          skill_id: requestSkillId,
           conversation_id: currentConversationId,
         },
         (event, data) => {
@@ -354,8 +469,32 @@ export function AgentPanel() {
             setProgressText("助手正在调用 OfferU 工具...");
           } else if (event === "operation.started") {
             setProgressText(`正在读取：${data?.payload?.operation || "OfferU 数据"}`);
-          } else if ((event === "operation.proposed" || event === "approval.requested")) {
-            setProgressText("写操作已形成提案，等待本轮回答完成...");
+          } else if (event === "proposal.plan_ready") {
+            const planRunId = String(data?.run_id || data?.payload?.run_id || eventRunId || "");
+            setPlanReviewNotice("改动组已生成，正在读取计划审核和回执状态…");
+            if (planRunId) {
+              setActiveRunId(planRunId);
+              setPlanReviewLoading(true);
+              void agentRuntimeApi.run(planRunId)
+                .then(({ run }) => {
+                  if (currentConvRef.current !== currentConversationId) return;
+                  setActiveRun(run);
+                  setPendingActions(pendingActionsFromRun(run));
+                  setPlanReviewNotice(planReviewSummary(run, false));
+                })
+                .catch(() => {
+                  if (currentConvRef.current === currentConversationId) {
+                    setPlanReviewNotice("计划已生成，但暂时无法刷新组状态；可以打开计划审核重试读取。");
+                  }
+                })
+                .finally(() => {
+                  if (currentConvRef.current === currentConversationId) setPlanReviewLoading(false);
+                });
+            }
+          } else if (event === "operation.proposed" || event === "approval.requested" || event === "decision.plan_proposed") {
+            setProgressText("审核请求已生成，正在等待持久审核状态...");
+          } else if (event === "input.required") {
+            setProgressText("助手需要你的回答后继续...");
           } else if (event === "runtime.retry_started") {
             setProgressText("模型调用正在安全重试...");
           } else if (event === "runtime.compaction_started") {
@@ -371,6 +510,12 @@ export function AgentPanel() {
       );
       if (currentConvRef.current !== currentConversationId) return;
       if (!runtimeResponse.ok) {
+        setActiveRunId(runtimeResponse.run.id);
+        setActiveRun(runtimeResponse.run);
+        if (runtimeResponse.conversation_id) {
+          currentConvRef.current = runtimeResponse.conversation_id;
+          setConversationId(runtimeResponse.conversation_id);
+        }
         throw new Error(runtimeResponse.errors?.join("；") || "内置助手执行失败");
       }
       const response = toPanelResponse(runtimeResponse);
@@ -380,20 +525,23 @@ export function AgentPanel() {
         content: response.assistant_message,
         response,
       };
-      if (response.conversation_id) setConversationId(response.conversation_id);
+      if (response.conversation_id) {
+        currentConvRef.current = response.conversation_id;
+        setConversationId(response.conversation_id);
+      }
       if (response.conversation_title) setConversationTitle(response.conversation_title);
       setActiveRunId(runtimeResponse.run.id);
       setActiveRun(runtimeResponse.run);
-      setActiveSkillId(runtimeResponse.active_skill.id);
       setMessages((prev) => [...prev, assistantMessage]);
       setPendingActions(response.proposed_actions || []);
       refreshConversations();
     } catch (err: any) {
-      if (currentConvRef.current !== currentConversationId) return;
+      if (abortControllerRef.current !== controller) return;
       if (err instanceof Error && (err.name === "AbortError" || controller.signal.aborted)) return;
       setError(safeClientErrorMessage(err, "OfferU 请求失败"));
+      setInput((current) => current || content);
     } finally {
-      if (currentConvRef.current === currentConversationId) {
+      if (abortControllerRef.current === controller) {
         setStreamingText("");
         setLoading(false);
       }
@@ -407,7 +555,7 @@ export function AgentPanel() {
     setLoading(false);
     setStreamingText("");
     setToolStream(createInitialAgentStreamState());
-    if (activeRunId && (hasPendingActions || interruptedRunId)) {
+    if (activeRunId && (hasPendingActions || hasPendingPlanReview || reviewPending > 0 || interruptedRunId)) {
       try {
         await agentRuntimeApi.abort(activeRunId);
       } catch {
@@ -419,14 +567,17 @@ export function AgentPanel() {
     setActiveRunId(null);
     setActiveRun(null);
     setInterruptedRunId(null);
-    setActiveSkillId("discovery");
+    setPlanReviewNotice("");
+    setPlanReviewLoading(false);
+    setSelectedSkillId(AUTO_SKILL_ID);
     setPendingActions([]);
+    setReviewPending(0);
     setHistoryOpen(false);
     setMessages([
       {
         id: `welcome-${Date.now()}`,
         role: "assistant",
-        content: "新对话已开始。选择上方技能，或直接描述你要推进的求职任务。",
+        content: "新对话已开始。直接描述你的求职任务，助手会自动选择合适的 Skill；也可以在上方手动指定。",
       },
     ]);
   };
@@ -440,7 +591,7 @@ export function AgentPanel() {
     setStreamingText("");
     setToolStream(createInitialAgentStreamState());
     try {
-      if (activeRunId && (hasPendingActions || interruptedRunId)) {
+      if (activeRunId && (hasPendingActions || hasPendingPlanReview || reviewPending > 0 || interruptedRunId)) {
         await agentRuntimeApi.abort(activeRunId);
       }
       const conversation = await agentSupportApi.conversation(id);
@@ -449,8 +600,10 @@ export function AgentPanel() {
       setActiveRunId(null);
       setActiveRun(null);
       setInterruptedRunId(null);
-      setActiveSkillId("discovery");
+      setPlanReviewNotice("");
+      setPlanReviewLoading(false);
       setPendingActions([]);
+      setReviewPending(0);
       setHistoryOpen(false);
       setMessages(
         (conversation.messages || []).map((message, index) => ({
@@ -475,12 +628,15 @@ export function AgentPanel() {
       }
       if (latestRun?.status === "waiting_confirmation") {
         setActiveRunId(latestRun.id);
-        setActiveSkillId(latestRun.skill_id || "discovery");
         setPendingActions(pendingActionsFromRun(latestRun));
+      } else if (
+        latestRun?.status === "waiting_decision"
+        || latestRun?.status === "waiting_input"
+      ) {
+        setActiveRunId(latestRun.id);
       } else if (latestRun?.status === "interrupted") {
         setActiveRunId(latestRun.id);
         setInterruptedRunId(latestRun.id);
-        setActiveSkillId(latestRun.skill_id || "discovery");
       }
     } catch (err: any) {
       setError(safeClientErrorMessage(err, "加载历史对话失败"));
@@ -500,7 +656,7 @@ export function AgentPanel() {
         const status = result.runs[0]?.status;
         if (
           !cancelled
-          && (status === "waiting_confirmation" || status === "interrupted")
+          && ["waiting_confirmation", "waiting_decision", "waiting_input", "interrupted"].includes(status || "")
         ) {
           await loadConversation(latestConversation.id);
         }
@@ -514,6 +670,68 @@ export function AgentPanel() {
     };
   }, [conversationId, conversations]);
 
+  useEffect(() => {
+    let disposed = false;
+    let refreshSequence = 0;
+    const handleRunReviewRefresh = (event: Event) => {
+      const runId = String((event as CustomEvent<{ run_id?: string }>).detail?.run_id || "");
+      if (!runId || runId !== activeRunId) return;
+      const targetConversationId = currentConvRef.current;
+      if (!targetConversationId) return;
+      const sequence = ++refreshSequence;
+      void (async () => {
+        try {
+          const { run } = await agentRuntimeApi.run(runId);
+          if (
+            disposed
+            || sequence !== refreshSequence
+            || currentConvRef.current !== targetConversationId
+            || run.id !== runId
+          ) return;
+          setActiveRun(run);
+          setPendingActions(pendingActionsFromRun(run));
+          setInterruptedRunId(run.status === "interrupted" ? runId : null);
+
+          // Read persisted conversation messages after the Run refresh. Never
+          // turn a decision receipt/continuation envelope into an assistant reply.
+          const conversation = await agentSupportApi.conversation(targetConversationId);
+          if (
+            disposed
+            || sequence !== refreshSequence
+            || currentConvRef.current !== targetConversationId
+          ) return;
+          const persistedAssistantMessages = (conversation.messages || [])
+            .filter((message) => message.role === "assistant" && String(message.content || "").trim())
+            .map((message, index) => ({
+              id: `${targetConversationId}-refresh-${index}`,
+              role: "assistant" as const,
+              content: String(message.content),
+            }));
+          setMessages((current) => {
+            const seen = new Set(current.filter((message) => message.role === "assistant").map((message) => message.content));
+            const additions = persistedAssistantMessages.filter((message) => {
+              if (seen.has(message.content)) return false;
+              seen.add(message.content);
+              return true;
+            });
+            return additions.length ? [...current, ...additions] : current;
+          });
+          setPlanReviewNotice(planReviewSummary(run, false));
+        } catch {
+          if (!disposed && currentConvRef.current === targetConversationId) {
+            setPlanReviewNotice("统一审核入口已触发状态刷新，但当前 Run 暂时无法回读；请核对审核回执。 ");
+          }
+        }
+      })();
+    };
+    window.addEventListener("offeru-run-review-refresh", handleRunReviewRefresh);
+    return () => {
+      disposed = true;
+      refreshSequence += 1;
+      window.removeEventListener("offeru-run-review-refresh", handleRunReviewRefresh);
+    };
+  }, [activeRunId]);
+
   const removeConversation = async (id: string) => {
     setError("");
     try {
@@ -525,133 +743,27 @@ export function AgentPanel() {
     }
   };
 
-  const decidePendingAction = async (
-    action: AgentProposedAction,
-    decision: "approve" | "reject",
-  ) => {
-    if (!activeRunId || loading) return;
-    const decidedRunId = activeRunId;
-    const decidedConversationId = currentConvRef.current;
-    const progressController = new AbortController();
-    abortControllerRef.current = progressController;
-    let stopped = false;
-    let sequence = 0;
-    let progress: Promise<void> | undefined;
-    setLoading(true);
-    setProgressText(
-      decision === "approve" ? "正在通过 Registry 执行此动作..." : "正在记录此动作的拒绝...",
-    );
-    setError("");
-    try {
-      if (decision === "approve") {
-        // Start from the stored cursor so the first turn is not replayed into
-        // the continuation UI. The native approval capability stays in Tauri.
-        try {
-          const baseline = await agentRuntimeApi.events(decidedRunId, 0, AbortSignal.timeout(5000));
-          sequence = baseline.last_sequence;
-        } catch { /* The decision can still proceed if progress is unavailable. */ }
-        progress = (async () => {
-          while (!stopped && !progressController.signal.aborted) {
-            try {
-              const batch = await agentRuntimeApi.events(decidedRunId, sequence, progressController.signal);
-              if (stopped || currentConvRef.current !== decidedConversationId) return;
-              for (const event of batch.events) {
-                sequence = Math.max(sequence, event.sequence);
-                setToolStream((current) => applyRuntimeToolEvent(current, event.type, event));
-                if (event.type === "continuation.requested") setProgressText("动作已执行，助手正在回读结果并继续任务...");
-                if (event.type === "message.delta") {
-                  const delta = String(event.payload?.delta || "");
-                  if (delta) setStreamingText((current) => current + delta);
-                }
-              }
-            } catch { if (progressController.signal.aborted) return; }
-            if (!stopped) await new Promise((resolve) => window.setTimeout(resolve, 750));
-          }
-        })();
-      }
-      const result = decision === "approve"
-        ? await agentRuntimeApi.confirm(decidedRunId, action.id)
-        : await agentRuntimeApi.reject(decidedRunId, action.id);
-      if (currentConvRef.current !== decidedConversationId) return;
-      if (!result.ok || result.errors?.length) {
-        throw new Error(
-          safeClientErrorMessage(
-            result.errors?.join("；") || "动作决定未能保存",
-            decision === "approve" ? "确认动作执行失败" : "拒绝动作失败",
-          ),
-        );
-      }
-      const finalRun = result.run;
-      if (decision === "approve") {
-        try {
-          const tail = await agentRuntimeApi.events(decidedRunId, sequence, AbortSignal.timeout(5000));
-          if (currentConvRef.current === decidedConversationId) setToolStream((state) => tail.events.reduce(
-            (current, event) => applyRuntimeToolEvent(current, event.type, event), state,
-          ));
-        } catch { /* Approval outcome remains authoritative if progress cannot refresh. */ }
-      }
-      const remaining = pendingActionsFromRun(finalRun);
-      const message = decision === "reject"
-        ? `已拒绝“${action.summary}”；该动作不会执行。${remaining.length > 0 ? `仍有 ${remaining.length} 个动作等待确认。` : "本次 Run 已结束，可以继续对话。"}`
-        : remaining.length > 0
-          ? `${result.continuation?.assistant_message || `已执行“${action.summary}”。`}\n仍有 ${remaining.length} 个动作等待确认。`
-          : (result.continuation?.assistant_message || "已通过 OfferU Operation Registry 执行确认动作，并完成审计。");
-      const response: AgentResponse = {
-        assistant_message: message,
-        mode: finalRun.mode,
-        active_skill: latestResponse?.active_skill,
-        requires_confirmation: remaining.length > 0,
-        tool_calls: result.tool_calls || [],
-        proposed_actions: remaining,
-      };
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `assistant-confirm-${Date.now()}`,
-          role: "assistant",
-          content: response.assistant_message,
-          response,
-        },
-      ]);
-      setPendingActions(remaining);
-      setActiveRun(finalRun);
-      if (result.warnings?.length) setError(result.warnings.join("；"));
-      if (remaining.length === 0) setActiveRunId(null);
-    } catch (err: any) {
-      if (currentConvRef.current !== decidedConversationId) return;
-      setError(
-        safeClientErrorMessage(
-          err,
-          decision === "approve" ? "确认动作失败" : "拒绝动作失败",
-        ),
-      );
-    } finally {
-      stopped = true;
-      progressController.abort();
-      await progress;
-      if (currentConvRef.current === decidedConversationId) {
-        setStreamingText("");
-        setLoading(false);
-      }
-    }
-  };
-
   const abortPendingRun = async () => {
     if (!activeRunId || loading) return;
     setLoading(true);
     setProgressText("正在取消当前 Run...");
     setError("");
     try {
-      await agentRuntimeApi.abort(activeRunId);
+      const result = await agentRuntimeApi.abort(activeRunId);
+      setActiveRun(result.run);
       setActiveRunId(null);
       setInterruptedRunId(null);
       setPendingActions([]);
+      setReviewPending(0);
+      setPlanReviewNotice("当前 Run 已取消；取消本身不会批准待审核组，已执行节点以回执状态为准。");
       setMessages((prev) => [
         ...prev,
         {
           id: `assistant-abort-${Date.now()}`,
           role: "assistant",
-          content: "已取消当前 Run，未执行待确认写操作。",
+          content: runHasProposalPlan(activeRun)
+            ? "已取消当前 Run；计划组决定未因此批准，已执行节点状态以回执为准。"
+            : "已取消当前 Run，未执行待确认写操作。",
         },
       ]);
     } catch (err: any) {
@@ -659,6 +771,23 @@ export function AgentPanel() {
     } finally {
       setLoading(false);
     }
+  };
+  // Ask 回答落地后刷新同一 Run；只有后端返回的助手消息才进入对话。
+  const handleReviewChanged = (result: {
+    run?: { id?: string; status?: string } & Record<string, unknown>;
+  }) => {
+    const runRecord = result.run as AgentRunRecord | undefined;
+    if (runRecord) setActiveRun(runRecord);
+    const runId = runRecord?.id || activeRunId;
+    if (runId) window.dispatchEvent(new CustomEvent("offeru-run-review-refresh", { detail: { run_id: runId } }));
+    setPlanReviewNotice("回答已提交；正在回读同一 Run 的持久状态和实际消息。");
+  };
+
+  const openPlanReview = () => {
+    if (!activeRun) return;
+    window.dispatchEvent(new CustomEvent("offeru-open-plan-review", {
+      detail: { run_id: activeRun.id, plan_id: primaryPlanId(activeRun) },
+    }));
   };
 
   const resumeInterruptedRun = async () => {
@@ -683,6 +812,7 @@ export function AgentPanel() {
       ]);
       setPendingActions(response.proposed_actions || []);
       setActiveRunId(runtimeResponse.run.id);
+      setActiveRun(runtimeResponse.run);
       setInterruptedRunId(null);
       if (response.conversation_title) {
         setConversationTitle(response.conversation_title);
@@ -803,6 +933,7 @@ export function AgentPanel() {
             {hostedOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
           </button>
           <span className="bauhaus-chip !py-0.5 !text-[10.5px]">内置助手</span>
+          <Link href={MODEL_SETTINGS_ROUTE} className="text-[11px] text-[var(--foreground-muted)] underline underline-offset-4 hover:text-[var(--foreground)] focus-visible:ring-2">模型设置</Link>
           {activeRun && activeRun.harness_name && (
             <span
               className="bauhaus-chip !py-0.5 !text-[10.5px]"
@@ -1025,24 +1156,37 @@ export function AgentPanel() {
       <div className="flex flex-wrap gap-1.5 border-b border-[var(--border)] px-3 py-2">
         <select
           aria-label="当前 Agent Skill"
-          value={activeSkillId}
-          disabled={loading || hasPendingActions || Boolean(interruptedRunId)}
-          onChange={(event) => setActiveSkillId(event.target.value)}
+          title="默认由助手按任务自动选择 Skill"
+          value={selectedSkillId}
+          disabled={loading || hasPendingActions || hasPendingPlanReview || Boolean(interruptedRunId)}
+          onChange={(event) => setSelectedSkillId(event.target.value)}
           className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[11.5px] text-[var(--foreground)] outline-none disabled:opacity-50"
         >
-          {skills.length === 0 && <option value="discovery">技能中心</option>}
+          <option value={AUTO_SKILL_ID}>自动选择技能</option>
           {skills.map((skill) => (
             <option key={skill.id} value={skill.id}>
               {skill.name}{skill.status === "partial" ? "（部分能力）" : ""}
             </option>
           ))}
+          {selectedSkillId !== AUTO_SKILL_ID
+            && !skills.some((skill) => skill.id === selectedSkillId) && (
+            <option value={selectedSkillId}>{selectedSkillId}</option>
+          )}
         </select>
+        {selectedSkillId === AUTO_SKILL_ID && resolvedSkillName && (
+          <span
+            className="bauhaus-chip !py-0.5 !text-[10.5px]"
+            title={resolvedRoutingReason || `本 Run 已解析为 ${resolvedSkillId}；选择仍保持自动`}
+          >
+            本轮：{resolvedSkillName}
+          </span>
+        )}
         <div className="basis-full" />
         {QUICK_ACTIONS.map((action) => (
           <button
             key={action.label}
             type="button"
-            disabled={loading || hasPendingActions || Boolean(interruptedRunId)}
+            disabled={loading || hasPendingActions || hasPendingPlanReview || Boolean(interruptedRunId)}
             onClick={() => sendMessage(action.prompt, action.skillId)}
             className="bauhaus-chip cursor-pointer transition-colors duration-[var(--dur-quick)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -1129,54 +1273,80 @@ export function AgentPanel() {
         </div>
       )}
 
-      {hasPendingActions && (
-        <div className="border-t border-[var(--border)] bg-[var(--status-blush)] px-3 py-2.5">
-          <p className="text-[12px] font-semibold text-[var(--foreground)]">逐项审核动作</p>
-          <div className="mt-1.5 space-y-1.5">
-            {pendingActions.map((action) => (
-              <div
-                key={action.id}
-                className="flex items-start justify-between gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[12px] text-[var(--foreground)]"
-              >
-                <div className="min-w-0 flex-1">
-                  <p>{action.summary}</p>
-                  <details className="mt-1 text-[11px] text-[var(--foreground-soft)]">
-                    <summary className="cursor-pointer">查看本次操作范围</summary>
-                    <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words">{JSON.stringify(action.args || {}, null, 2)}</pre>
-                  </details>
-                </div>
-                <div className="flex shrink-0 gap-1">
-                  <Button
-                    onPress={() => decidePendingAction(action, "reject")}
-                    isDisabled={loading}
-                    className="bauhaus-button bauhaus-button-outline !min-h-7 !justify-center !px-2 !py-1 !text-[11px]"
-                  >
-                    拒绝
-                  </Button>
-                  <Button
-                    onPress={() => decidePendingAction(action, "approve")}
-                    isDisabled={loading}
-                    className="bauhaus-button bauhaus-button-red !min-h-7 !justify-center !px-2 !py-1 !text-[11px]"
-                  >
-                    确认
-                  </Button>
-                </div>
-              </div>
-            ))}
+      {hasPlanReview && activeRun && (
+        <div data-testid="agent-plan-review" className="space-y-2 border-t border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2.5">
+          <div className="flex items-start gap-2">
+            {planReviewLoading ? <Loader2 size={13} className="mt-0.5 animate-spin text-[var(--primary-blue)]" /> : <ClipboardCheck size={13} className="mt-0.5 text-[var(--primary-blue)]" />}
+            <div className="min-w-0 flex-1">
+              <p className="text-[12px] font-semibold text-[var(--foreground)]">计划组审核状态</p>
+              <p role="status" className="mt-0.5 text-[11px] leading-4 text-[var(--foreground-soft)]">
+                {planReviewNotice || planReviewSummary(activeRun, planReviewLoading)}
+              </p>
+              {planPendingGroupCount > 0 && (
+                <p className="mt-0.5 text-[10px] text-[var(--foreground-muted)]">{planPendingGroupCount} 个组等待一次组级决定。</p>
+              )}
+            </div>
           </div>
-          <Button
-            onPress={abortPendingRun}
-            isDisabled={loading}
-            className="bauhaus-button bauhaus-button-outline mt-1.5 !min-h-8 !w-full !justify-center !py-1 !text-[12px]"
-          >
-            取消本次 Run
-          </Button>
+          <div className="flex gap-1.5">
+            <button
+              type="button"
+              aria-label="打开计划审核"
+              onClick={openPlanReview}
+              className="bauhaus-button bauhaus-button-red !min-h-8 !flex-1 !justify-center !py-1 !text-[11px]"
+            >
+              打开计划审核
+            </button>
+            {hasPendingPlanReview && activeRunId && (
+              <Button
+                onPress={abortPendingRun}
+                isDisabled={loading}
+                className="bauhaus-button bauhaus-button-outline !min-h-8 !flex-1 !justify-center !py-1 !text-[11px]"
+              >
+                取消本次 Run
+              </Button>
+            )}
+          </div>
         </div>
       )}
 
+      {hasPendingActions && (
+        <div className="border-t border-[var(--border)] bg-[var(--status-blush)] px-3 py-2.5">
+          <p className="text-[12px] font-semibold text-[var(--foreground)]">有 {pendingActions.length} 项待审核请求</p>
+          <p className="mt-1 text-[11px] leading-4 text-[var(--foreground-soft)]">请在工作台统一审核入口查看并决定。这个 Run 面板只显示状态，不直接批准或拒绝动作。</p>
+          <div className="mt-2 flex gap-1.5">
+            <Button
+              onPress={() => window.dispatchEvent(new Event("offeru-open-pending-proposals"))}
+              className="bauhaus-button bauhaus-button-red !min-h-8 !flex-1 !justify-center !py-1 !text-[11px]"
+            >
+              打开统一审核
+            </Button>
+            <Button
+              onPress={abortPendingRun}
+              isDisabled={loading}
+              className="bauhaus-button bauhaus-button-outline !min-h-8 !flex-1 !justify-center !py-1 !text-[11px]"
+            >
+              取消本次 Run
+            </Button>
+          </div>
+        </div>
+      )}
+      {activeRunId && activeRun?.status === "waiting_input" && (
+        <div data-testid="agent-ask-panel">
+          <AgentAskPanel
+          runId={activeRunId}
+          onAnswered={handleReviewChanged}
+          onPendingChange={setReviewPending}
+        />
+        </div>
+      )}
+
+
       {error && (
-        <div className="border-t border-[var(--border)] bg-[var(--status-blush)] px-3 py-1.5 text-[12px] font-medium text-[var(--primary-red)]">
-          {error}
+        <div role="alert" className="space-y-2 border-t border-[var(--border)] bg-[var(--status-blush)] px-3 py-3 text-[12px]">
+          <p className="font-semibold text-[var(--foreground)]">{agentRecovery(error).title}</p>
+          <p className="break-words text-[var(--primary-red)]">{error}</p>
+          <p className="text-[var(--foreground-muted)]">{agentRecovery(error).hint}</p>
+          {agentRecovery(error).configure && <Link href={MODEL_SETTINGS_ROUTE} className="inline-flex rounded-md bg-[var(--foreground)] px-3 py-2 font-medium text-[var(--surface)] focus-visible:ring-2">配置内置 Agent</Link>}
         </div>
       )}
 
@@ -1189,14 +1359,14 @@ export function AgentPanel() {
             minRows={1}
             maxRows={4}
             placeholder={
-              hasPendingActions || interruptedRunId
+      hasPendingActions || hasPendingPlanReview || reviewPending > 0 || interruptedRunId
                 ? "请先处理当前 Run"
                 : "问 OfferU，或说你要推进哪一步..."
             }
             variant="bordered"
             className="flex-1"
             classNames={bauhausFieldClassNames}
-            isDisabled={loading || hasPendingActions || Boolean(interruptedRunId)}
+            isDisabled={loading || hasPendingActions || hasPendingPlanReview || reviewPending > 0 || Boolean(interruptedRunId)}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
@@ -1208,7 +1378,7 @@ export function AgentPanel() {
             isIconOnly
             aria-label="发送"
             onPress={() => sendMessage()}
-            isDisabled={!input.trim() || loading || hasPendingActions || Boolean(interruptedRunId)}
+            isDisabled={!input.trim() || loading || hasPendingActions || hasPendingPlanReview || reviewPending > 0 || Boolean(interruptedRunId)}
             className="bauhaus-button bauhaus-button-outline !min-h-9 !min-w-9 !px-0 !py-0"
           >
             {loading ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}

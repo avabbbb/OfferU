@@ -122,6 +122,18 @@ describe("TodayPage", () => {
     expect(screen.queryByText("保存第一个岗位")).not.toBeInTheDocument();
   });
 
+  it("directs provider authentication failures to model settings instead of blind retries", async () => {
+    mockUseAutomationInbox.mockReturnValue({ ...idleHook, data: { items: [{
+      item_id: "blocked-daily", category: "career_brief", task_id: "blocked-task", title: "每日简报需要处理", body: "old misleading failure",
+      status: "pending", task_status: "blocked", task_error: "provider authentication failed", task_retryable: true,
+      payload: { task: { task_type: "career_director", status: "blocked", error: "provider authentication failed" } },
+    }] } });
+    render(<TodayPage />);
+    expect(await screen.findByRole("link", { name: "检查模型连接" })).toHaveAttribute("href", "/settings?section=models");
+    expect(screen.queryByText("old misleading failure")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "配置后重试" })).toBeInTheDocument();
+  });
+
   it("岗位总数为 0 时保留真实空状态和引导动作", async () => {
     setupJobs({ weekTotal: 0, allTotal: 0 });
     render(<TodayPage />);

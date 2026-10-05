@@ -15,6 +15,9 @@ $legacyTauriResourceDir = Join-Path $projectRoot "frontend\src-tauri\resources"
 $legacyAgentRuntimeDir = Join-Path $legacyTauriResourceDir "agent-runtime"
 $legacyNodeResourcePath = Join-Path $legacyTauriResourceDir "node.exe"
 $buildDir = Join-Path $projectRoot ".tmp\offeru-sidecar-build"
+$buildIdentityPath = Join-Path $tauriResourceDir "offeru-build-identity.json"
+$env:PYTHONPATH = (@($backendDir, $env:PYTHONPATH) | Where-Object { $_ }) -join [System.IO.Path]::PathSeparator
+$env:PYINSTALLER_CONFIG_DIR = Join-Path $buildDir "pyinstaller-cache"
 $distDir = if ($OutputDir) { $OutputDir } else { $frontendBinDir }
 $resumeFrontendDir = Join-Path $projectRoot "frontend\dist"
 $resumeBrowsersDir = Join-Path $buildDir "resume-browsers"
@@ -25,7 +28,28 @@ if (-not (Test-Path -LiteralPath (Join-Path $resumeFrontendDir "index.html") -Pa
 New-Item -ItemType Directory -Force -Path $distDir | Out-Null
 New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
 New-Item -ItemType Directory -Force -Path $tauriResourceDir | Out-Null
+
+function Assert-WorkspaceRemovalTarget([string]$RemovalPath) {
+    $workspaceBoundary = [System.IO.Path]::GetFullPath($projectRoot).TrimEnd('\', '/')
+    $absoluteTarget = [System.IO.Path]::GetFullPath($RemovalPath)
+    if (-not $absoluteTarget.StartsWith($workspaceBoundary + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Build cleanup target escapes the workspace."
+    }
+    $ancestor = $absoluteTarget
+    while ($ancestor.Length -ge $workspaceBoundary.Length) {
+        if (Test-Path -LiteralPath $ancestor) {
+            $item = Get-Item -LiteralPath $ancestor -Force
+            if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+                throw "Build cleanup refuses a linked path."
+            }
+        }
+        if ($ancestor -eq $workspaceBoundary) { break }
+        $ancestor = Split-Path -Parent $ancestor
+    }
+}
+
 if (Test-Path -LiteralPath $legacyAgentRuntimeDir) {
+    Assert-WorkspaceRemovalTarget $legacyAgentRuntimeDir
     Remove-Item -LiteralPath $legacyAgentRuntimeDir -Recurse -Force
 }
 if (Test-Path -LiteralPath $legacyNodeResourcePath) {
@@ -49,6 +73,7 @@ $nodePath = if ($env:OFFERU_NODE_PATH) {
 if (-not $nodePath -or -not (Test-Path -LiteralPath $nodePath -PathType Leaf)) {
     throw "Node.js executable was not found; the packaged External executor runtime requires Node >=22.19.0"
 }
+
 $nodeVersionText = (& $nodePath --version).Trim()
 $nodeVersion = $nodeVersionText.TrimStart("v")
 try {
@@ -60,6 +85,11 @@ if ($parsedNodeVersion -lt [version]"22.19.0") {
     throw "Node.js $nodeVersionText is too old; the packaged External executor runtime requires Node >=22.19.0"
 }
 
+& $nodePath (Join-Path $backendDir "scripts\build_identity.mjs") --output $buildIdentityPath
+if ($LASTEXITCODE -ne 0) {
+    throw "Could not create the immutable OfferU build identity artifact."
+}
+
 if (-not (Test-Path -LiteralPath (Join-Path $agentRuntimeSourceDir "src\hosted-executor-worker.mjs") -PathType Leaf)) {
     throw "External executor runtime source is missing: agent-runtime/src/hosted-executor-worker.mjs"
 }
@@ -69,6 +99,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $sourceNodeModules "@anthropic-ai\cl
 }
 
 if (Test-Path -LiteralPath $agentRuntimeReleaseDir) {
+    Assert-WorkspaceRemovalTarget $agentRuntimeReleaseDir
     Remove-Item -LiteralPath $agentRuntimeReleaseDir -Recurse -Force
 }
 New-Item -ItemType Directory -Force -Path (Join-Path $agentRuntimeReleaseDir "src") | Out-Null
@@ -122,6 +153,7 @@ try {
     --collect-submodules aiosqlite `
     --add-data "$resumeFrontendDir;resume-frontend" `
     --add-data "$resumeBrowsersDir;resume-browsers" `
+    --add-data "$buildIdentityPath;offeru-assets" `
     --add-data "$(Join-Path $backendDir 'app\agents\skills');app\agents\skills" `
     --add-data "$(Join-Path $backendDir 'tests\fixtures');tests\fixtures" `
     $entryPath

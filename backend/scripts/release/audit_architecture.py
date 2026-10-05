@@ -60,6 +60,9 @@ EXPLICIT_ROUTE_BOUNDARIES = {
     ("main_agent.py", "reject_runtime_action"),
     ("main_agent.py", "resume_runtime_run"),
     ("main_agent.py", "abort_runtime_run"),
+    # Structured Ask answers control the same Agent Run; they confer no
+    # Operation approval and do not commit Career Truth.
+    ("main_agent.py", "answer_input_request"),
     ("main_agent.py", "cancel_hosted_executor_session_from_ui"),
     ("main_agent.py", "resume_hosted_executor_session_from_ui"),
     ("profile.py", "instant_draft"),
@@ -88,6 +91,14 @@ REGISTRY_HELPERS = {
     "_execute_agent_operation",
     "_operation_outputs",
     "execute_or_propose_operation",
+    # Proposal v2 adapters validate independent UI authorization, then dispatch
+    # every business node through confirmed_operation -> execute_operation.
+    "confirm_group",
+    "reject_group",
+    "confirm_operation_proposal",
+    "reject_operation_proposal",
+    "confirm_embedded_agent_action",
+    "reject_embedded_agent_action",
 }
 
 PROVIDER_COMPARISON = re.compile(
@@ -275,8 +286,23 @@ def _calls_registry(node: ast.AST, helpers: dict[str, ast.AST]) -> bool:
     visited: set[str] = set()
 
     def walk(current: ast.AST) -> bool:
+        coordinator_names = {
+            assignment.targets[0].id
+            for assignment in ast.walk(current)
+            if isinstance(assignment, ast.Assign) and len(assignment.targets) == 1
+            and isinstance(assignment.targets[0], ast.Name)
+            and isinstance(assignment.value, ast.Call)
+            and isinstance(assignment.value.func, ast.Name)
+            and assignment.value.func.id == "AgentRunCoordinator"
+        }
         for call in ast.walk(current):
-            if not isinstance(call, ast.Call) or not isinstance(call.func, ast.Name):
+            if not isinstance(call, ast.Call):
+                continue
+            if isinstance(call.func, ast.Attribute) and isinstance(call.func.value, ast.Name):
+                if call.func.value.id in coordinator_names and call.func.attr in {"confirm_group", "reject_group"}:
+                    return True
+                continue
+            if not isinstance(call.func, ast.Name):
                 continue
             name = call.func.id
             if name in REGISTRY_HELPERS:

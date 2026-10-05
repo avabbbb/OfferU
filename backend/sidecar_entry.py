@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import sys
 
-from app.runtime_paths import OFFERU_BACKEND_PORT
+from app.runtime_paths import OFFERU_BACKEND_PORT, packaged_resource_dir
 
 
 def configure_runtime() -> Path:
@@ -26,6 +26,9 @@ def configure_runtime() -> Path:
     os.environ.setdefault("OFFERU_BUILD_MODE", "release")
     os.environ.setdefault("OFFERU_RUNTIME_MODE", "desktop-sidecar")
     os.environ["OFFERU_PORT"] = str(OFFERU_BACKEND_PORT)
+    packaged = packaged_resource_dir()
+    if packaged is not None:
+        os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(packaged / "resume-browsers")
     return data_dir
 
 

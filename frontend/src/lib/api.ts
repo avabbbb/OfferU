@@ -10,12 +10,35 @@ import { showcaseChatResponse } from "./showcase/llm";
 import { resolveApiBase } from "./apiBase";
 import { safeClientErrorMessage } from "./safe-error";
 import {
+  decideAgentDecisionGroupInDesktop,
   decideAgentRuntimeActionInDesktop,
+  decidePlanGroupInDesktop,
   decideProposalInDesktop,
 } from "./desktop-proposal-decision";
+import type {
+  AgentInputAnswerBody,
+  AgentInputAnswerResult,
+  DecisionGroupDecisionBody,
+  DecisionGroupDecisionResult,
+} from "./decisionPlans";
 import type { components, operations } from "./api-types.generated";
 type Schemas = components["schemas"];
 type Ops = operations;
+export type {
+  AgentInputAnswerBody,
+  AgentInputAnswerResult,
+  AgentInputOption,
+  AgentInputRequestView,
+  DecisionGroupDecisionBody,
+  DecisionGroupDecisionResult,
+  DecisionGroupStatus,
+  DecisionGroupView,
+  DecisionNodeStatus,
+  DecisionNodeView,
+  DecisionPlanStatus,
+  DecisionPlanView,
+  ExecutionReceiptView,
+} from "./decisionPlans";
 
 const API_BASE = resolveApiBase();
 
@@ -81,6 +104,10 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
   return text ? JSON.parse(text) : ({} as T);
 }
 
+class AgentStreamFailure extends Error {
+  constructor(message: string, readonly terminal: boolean) { super(message); }
+}
+
 async function readEventStream<T>(
   path: string,
   options: RequestInit,
@@ -106,8 +133,10 @@ async function readEventStream<T>(
     throw new Error(errorId ? `__SSE_UNAVAILABLE__（错误 ID: ${errorId}）` : "__SSE_UNAVAILABLE__");
   }
   if (!res.ok) {
+    const payload = await res.json().catch(() => ({}));
     const errorId = res.headers.get("X-OfferU-Error-Id");
-    throw new Error(errorId ? `API Error: ${res.status}（错误 ID: ${errorId}）` : `API Error: ${res.status}`);
+    const message = safeClientErrorMessage(payload?.detail || payload?.message || payload?.error, `API Error: ${res.status}`);
+    throw new AgentStreamFailure(errorId ? `${message}（错误 ID: ${errorId}）` : message, res.status >= 400 && res.status < 500);
   }
   if (!res.body) throw new Error("Agent 流式响应不可用");
 
@@ -135,7 +164,7 @@ async function readEventStream<T>(
         "Agent 流式请求失败",
       );
       const errorId = data?.error_id;
-      throw new Error(errorId ? `${message}（错误 ID: ${errorId}）` : message);
+      throw new AgentStreamFailure(errorId ? `${message}（错误 ID: ${errorId}）` : message, true);
     }
   };
 
@@ -289,6 +318,14 @@ export const resumeApi = {
       body: JSON.stringify(data),
     }),
 
+  reviewProposalItems: (
+    proposalId: string,
+    data: { resume_id: number; change_ids: string[]; action: "accept" | "reject" },
+  ) => request<ResumeWorkspace>(
+    `/api/resume/workspace/proposals/${encodeURIComponent(proposalId)}/review-items`,
+    { method: "POST", body: JSON.stringify(data) },
+  ),
+
   reviewProposalItem: (
     proposalId: string,
     data: {
@@ -428,6 +465,10 @@ export interface AgentProposedAction {
   risk_level: "read" | "write" | "confirm";
   requires_confirmation: boolean;
   args: Record<string, unknown>;
+  plan_id?: string;
+  group_id?: string;
+  group_digest?: string;
+  projection_only?: boolean;
 }
 
 export interface AgentSkill {
@@ -439,7 +480,12 @@ export interface AgentSkill {
   featured: boolean;
   order: number;
   missing_capabilities: string[];
+  /** Present when the runtime selected this Skill; display-only provenance. */
+  routing?: { via?: string; routed_from?: string; reason?: string };
 }
+
+/** Natural-language turns send this sentinel; the runtime resolves one business Skill once per Run. */
+export const AUTO_SKILL_ID = "auto";
 
 export interface AgentCareerPath {
   title: string;
@@ -547,6 +593,8 @@ export interface AgentRunRecord {
   skill_snapshot: Record<string, any>;
   status: string;
   steps: AgentRunStep[];
+  proposal_authority?: string;
+  proposal_plans?: AgentProposalPlan[];
   llm_runtime: Record<string, any>;
   final_result: Record<string, any>;
   failure_reason: string;
@@ -605,6 +653,8 @@ export interface AgentPendingProposal {
 export interface AgentPendingProposalsResponse {
   total: number;
   items: AgentPendingProposal[];
+  unavailable?: Array<AgentPendingProposal & { reason: string }>;
+  unavailable_total?: number;
 }
 
 export interface AgentProposalDecisionResponse {
@@ -613,6 +663,106 @@ export interface AgentProposalDecisionResponse {
   runStatus?: string;
   errors?: string[];
   warnings?: string[];
+}
+
+export interface AgentPlanChangeDisplay {
+  before?: unknown;
+  after?: unknown;
+  evidence?: unknown;
+  rationale?: string;
+  summary?: string;
+  target?: string;
+}
+
+export interface AgentPlanNodeDisplay extends AgentPlanChangeDisplay {
+  changes?: AgentPlanChangeDisplay[];
+}
+
+export interface AgentPlanReceipt {
+  id: string;
+  node_id?: string;
+  status: string;
+  effect_state?: "no_effect" | "committed" | "partial" | "unknown" | string;
+  result?: unknown;
+  audit_ref?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AgentPlanNode {
+  id: string;
+  group_id?: string;
+  operation: string;
+  summary: string;
+  status: string;
+  display?: AgentPlanNodeDisplay | null;
+  /** Safe operation details only; raw operation args are never returned to the review UI. */
+  redacted_args?: Record<string, unknown>;
+  redactedArgs?: Record<string, unknown>;
+  receipt?: AgentPlanReceipt | null;
+  receipts?: AgentPlanReceipt[];
+  receipt_ids?: string[];
+  dependency_node_ids?: string[];
+}
+
+export interface AgentPlanContinuation {
+  id: string;
+  group_id?: string;
+  run_id?: string;
+  status: string;
+  receiver?: string | null;
+  receipt_ids?: string[];
+  error?: string | null;
+}
+
+export interface AgentConfirmationGroup {
+  id: string;
+  plan_id?: string;
+  title: string;
+  rationale?: string;
+  summary: string;
+  affected_entities?: Array<string | {
+    kind?: string;
+    id?: string | number;
+    title?: string;
+    name?: string;
+  }>;
+  risk?: string;
+  dependency_group_ids?: string[];
+  digest: string;
+  status: string;
+  nodes: AgentPlanNode[];
+}
+
+export interface AgentProposalPlan {
+  id: string;
+  run_id: string;
+  revision: number;
+  status: string;
+  digest: string;
+  title: string;
+  groups: AgentConfirmationGroup[];
+  continuations?: AgentPlanContinuation[];
+  refresh_from?: { plan_id: string; group_ids: string[]; completed_receipt_ids: string[] };
+}
+
+export interface AgentPlansResponse {
+  items: AgentProposalPlan[];
+  total: number;
+}
+
+export interface AgentPlanDecisionResponse {
+  ok: boolean;
+  plan?: AgentProposalPlan;
+  group?: AgentConfirmationGroup;
+  receipts?: AgentPlanReceipt[];
+  errors?: string[];
+  duplicate?: boolean;
+  continuation?: AgentPlanContinuation | null;
+  run_status?: string;
+  successor_plan_id?: string;
+  successor_plan?: AgentProposalPlan;
+  refresh_error?: string | null;
 }
 
 export interface HostedExecutorEvent {
@@ -996,6 +1146,9 @@ export interface AgentConnection {
   conformance_checked_at: string | null;
   beginner?: boolean;
   recommended?: boolean;
+  transport?: string;
+  capabilities?: Record<string, string>;
+  verification_challenge?: { provider_id: string; challenge_id: string } | null;
 }
 
 export interface AgentConnectionsSnapshot {
@@ -1021,11 +1174,11 @@ export const agentRuntimeApi = {
   }),
   probeConnection: (providerId: string) => request<AgentConnectionsSnapshot>(
     `/api/agent/runtime/connections/${encodeURIComponent(providerId)}/probe`,
-    { method: "POST", signal: AbortSignal.timeout(360000) },
+    { method: "POST", signal: AbortSignal.timeout(20000) },
   ),
   connectIntegration: (providerId: string, action: "install" | "update" | "repair") => request<AgentConnectionsSnapshot>(
     `/api/agent/runtime/connections/${encodeURIComponent(providerId)}/integration`,
-    { method: "POST", body: JSON.stringify({ action }), signal: AbortSignal.timeout(360000) },
+    { method: "POST", body: JSON.stringify({ action }), signal: AbortSignal.timeout(20000) },
   ),
   syncContext: (data: Schemas["AgentContextRequest"], signal: AbortSignal) => request<{
     ok: boolean; outputs?: AgentViewSnapshot; errors?: string[];
@@ -1038,13 +1191,13 @@ export const agentRuntimeApi = {
     request<{ providers: AgentProviderHealth[] }>("/api/agent/runtime/providers/health"),
   start: async (data: {
     message: string;
-    skill_id: string;
+    skill_id?: string;
     conversation_id?: string | null;
     task_id?: string | null;
     runtime_provider?: string;
   }, onEvent?: (event: string, data: any) => void, signal?: AbortSignal) => {
     const runId = createAgentRunId();
-    const requestData = { ...data, run_id: runId };
+    const requestData = { ...data, skill_id: data.skill_id || AUTO_SKILL_ID, run_id: runId };
     let lastSequence = 0;
     let nextDeltaIndex = 0;
 
@@ -1104,6 +1257,7 @@ export const agentRuntimeApi = {
           if (error instanceof Error && (error.name === "AbortError" || signal?.aborted)) {
             throw error;
           }
+          if (error instanceof AgentStreamFailure && error.terminal) throw error;
           failures += 1;
           if (failures >= 8) throw error;
           const delayMs = Math.min(250 * (2 ** (failures - 1)), 2000);
@@ -1129,6 +1283,7 @@ export const agentRuntimeApi = {
       if (error instanceof Error && (error.name === "AbortError" || signal?.aborted)) {
         throw error;
       }
+      if (error instanceof AgentStreamFailure && error.terminal) throw error;
       if (error instanceof Error && error.message.startsWith("__SSE_UNAVAILABLE__")) {
         return request<AgentRunResponse>("/api/agent/runtime/runs", {
           method: "POST",
@@ -1191,6 +1346,41 @@ export const agentRuntimeApi = {
         after_sequence: afterSequence,
       })}`, { signal }
     ),
+  /** Proposal v2 Plan Review: pending decision plans across runs. */
+  decisionPlansPending: () =>
+    request<{ plans: unknown[] }>("/api/agent/runtime/decision-plans/pending", {
+      signal: AbortSignal.timeout(15000),
+    }),
+  /** Active decision plan for one run (`null` when the run has none). */
+  decisionPlan: (runId: string) =>
+    request<{ run_id: string; plan: unknown }>(
+      `/api/agent/runtime/runs/${encodeURIComponent(runId)}/decision-plan`
+    ),
+  /**
+   * Approving or rejecting a DecisionGroup requires the desktop approval
+   * capability, so this always goes through the native Tauri command.
+   */
+  decideDecisionGroup: (
+    runId: string,
+    groupId: string,
+    body: DecisionGroupDecisionBody,
+  ): Promise<DecisionGroupDecisionResult> =>
+    decideAgentDecisionGroupInDesktop(runId, groupId, body),
+  /** Built-in Ask: pending input requests for one run (read-only, no token). */
+  inputRequestsPending: (runId: string) =>
+    request<{ requests: unknown[] }>(
+      `/api/agent/runtime/runs/${encodeURIComponent(runId)}/input-requests/pending`
+    ),
+  /** Built-in Ask answers are collaboration, not authorization: plain request. */
+  answerInputRequest: (
+    runId: string,
+    requestId: string,
+    body: AgentInputAnswerBody,
+  ) =>
+    request<AgentInputAnswerResult>(
+      `/api/agent/runtime/runs/${encodeURIComponent(runId)}/input-requests/${encodeURIComponent(requestId)}/answer`,
+      { method: "POST", body: JSON.stringify(body) }
+    ),
 };
 
 export const bridgeProposalApi = {
@@ -1200,6 +1390,27 @@ export const bridgeProposalApi = {
     }),
   decide: (runId: string, actionId: string, approve: boolean) =>
     decideProposalInDesktop(runId, actionId, approve),
+};
+
+export const agentPlansApi = {
+  list: (params?: { run_id?: string }) =>
+    request<AgentPlansResponse>(`/api/agent/plans?${buildQuery(params)}`, {
+      signal: AbortSignal.timeout(15000),
+    }),
+  get: (planId: string) =>
+    request<AgentProposalPlan>(`/api/agent/plans/${encodeURIComponent(planId)}`, {
+      signal: AbortSignal.timeout(15000),
+    }),
+  decideGroup: (
+    planId: string,
+    groupId: string,
+    decision: { approve: boolean; plan_digest: string; group_digest: string; decision_id: string },
+  ) => decidePlanGroupInDesktop(planId, groupId, {
+    approve: decision.approve,
+    planDigest: decision.plan_digest,
+    groupDigest: decision.group_digest,
+    decisionId: decision.decision_id,
+  }),
 };
 
 export const hostedExecutorApi = {
@@ -1919,7 +2130,7 @@ export interface CareerDelivery {
   state: CareerDeliveryState;
   task_id?: string;
   artifact_id?: string | null;
-  artifact_type?: CareerDeliveryArtifactType;
+  artifact_type?: CareerDeliveryArtifactType | CareerArtifact["artifact_type"];
   job_id?: number | null;
   application_id?: number | string | null;
   action_key?: string;

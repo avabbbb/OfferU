@@ -45,6 +45,7 @@ import {
   useProgressCandidates,
 } from "@/lib/hooks";
 import { safeClientErrorMessage } from "@/lib/safe-error";
+import { agentRecovery, MODEL_SETTINGS_ROUTE } from "@/lib/agentRecovery";
 import { useWorkbench } from "@/lib/workbench";
 import { InterviewLifecycleCard } from "@/components/career/InterviewLifecycleCard";
 import { ArtifactViewer } from "@/components/career/ArtifactViewer";
@@ -204,17 +205,25 @@ function AutomationTaskControls({
   retryable,
   busy,
   onAction,
+  error = "",
 }: {
   taskId: string;
   status: string;
   retryable: boolean;
   busy: string | null;
   onAction: (taskId: string, action: "cancel" | "retry") => void;
+  error?: string;
 }) {
   if (!taskId) return null;
   const cancelable = status === "queued" || status === "running" || status === "waiting_for_approval";
   const retryableStatus = (status === "failed" || status === "blocked") && retryable;
   const terminalFailure = (status === "failed" || status === "blocked") && !retryable;
+  if ((status === "failed" || status === "blocked") && agentRecovery(error).configure) {
+    return <div className="flex flex-wrap items-center gap-2">
+      <Link href={MODEL_SETTINGS_ROUTE} className="text-[11px] font-medium text-[var(--primary-red)] underline underline-offset-4">检查模型连接</Link>
+      {retryable && <button type="button" disabled={busy !== null} onClick={() => onAction(taskId, "retry")} className="rounded border border-[var(--border)] px-2 py-1 text-[11px] disabled:opacity-50">配置后重试</button>}
+    </div>;
+  }
   if (!cancelable && !retryableStatus && !terminalFailure) return null;
   if (terminalFailure) {
     return (
@@ -607,7 +616,9 @@ export default function TodayPage() {
                 <h2 id="daily-career-brief" className="text-[13px] font-semibold text-[var(--foreground)]">今天的求职简报</h2>
               </div>
               <p className="mt-2 text-[13px] leading-5 text-[var(--foreground)]">
-                {String(dailyBrief?.situation_summary || dailyBriefInboxItem.body || "OfferU 正在综合你的岗位进展和近期安排。")}
+                {dailyBriefInboxItem.task_status === "failed" || dailyBriefInboxItem.task_status === "blocked"
+                  ? "今天的简报尚未生成。需要先处理下面的问题。"
+                  : String(dailyBrief?.situation_summary || dailyBriefInboxItem.body || "OfferU 正在综合你的岗位进展和近期安排。")}
               </p>
             </div>
             {dailyBriefInboxItem.task_status === "completed" && (
@@ -880,6 +891,7 @@ export default function TodayPage() {
                     taskId={entry.task_id}
                     status={task.status}
                     retryable={task.retryable}
+                    error={task.error}
                     busy={taskAction}
                     onAction={handleCareerTaskAction}
                   />
@@ -975,6 +987,7 @@ export default function TodayPage() {
                     taskId={task.task_id}
                     status={task.status}
                     retryable={task.retryable}
+                    error={task.error}
                     busy={taskAction}
                     onAction={handleCareerTaskAction}
                   />

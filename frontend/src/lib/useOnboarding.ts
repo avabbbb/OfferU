@@ -20,6 +20,17 @@ const DEFAULT_STATE: OnboardingState = {
   wizardStep: 0,
 };
 
+export function resetOnboardingForFreshStart() {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // The app can still show the first-run wizard for this active page.
+  }
+  window.dispatchEvent(new CustomEvent(SYNC_EVENT, { detail: DEFAULT_STATE }));
+  window.dispatchEvent(new Event("offeru-career-reset"));
+}
+
 function normalizeStep(value: unknown): number {
   return typeof value === "number" && Number.isInteger(value)
     ? Math.max(0, Math.min(value, MAX_STEP))

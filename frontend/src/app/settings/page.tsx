@@ -1,6 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { ModelPicker } from "@/components/settings/ModelPicker";
+import { FreshResetPanel } from "@/components/settings/FreshResetPanel";
+import BuildIdentityPanel from "@/components/settings/BuildIdentityPanel";
 import { motion } from "framer-motion";
 import {
   Button,
@@ -140,6 +144,11 @@ const bauhausFieldClassNames = {
   errorMessage: "font-medium text-[#D02020]",
 };
 
+const modelFieldClassNames = {
+  inputWrapper: "rounded-lg border border-[var(--border)] bg-[var(--surface)] shadow-none",
+  input: "text-[var(--foreground)]", label: "text-sm text-[var(--foreground-muted)]",
+};
+
 const bauhausModalContentClassName =
   "max-h-[88vh] border border-[var(--border-strong)] bg-[var(--surface-muted)] text-[var(--foreground)] shadow-[4px_4px_0_0_rgba(18,18,18,0.45)]";
 
@@ -252,14 +261,14 @@ function TestLlmButton() {
     <>
       <Button
         size="sm"
-        className="border-2 border-white/30 bg-white/10 text-white hover:bg-white/20"
+        className="rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)]"
         onPress={testConnection}
         isLoading={testing}
       >
         测试连接
       </Button>
       {result && (
-        <span className={`text-xs ${result.success ? "text-green-300" : "text-red-300"}`}>
+        <span className={`text-xs ${result.success ? "text-green-700" : "text-red-600"}`}>
           {result.message}
         </span>
       )}
@@ -627,7 +636,7 @@ function LocalDataSafetyCard() {
             <div key={backup.backup_id} className="bauhaus-panel-sm flex flex-wrap items-center justify-between gap-3 bg-[var(--surface-muted)] p-3" data-testid={`data-backup-${backup.backup_id}`}>
               <div>
                 <p className="text-sm font-black">
-                  {backup.reason === "pre_restore" ? "恢复前自动备份" : backup.reason === "pre_migration" ? "迁移前自动备份" : "手动备份"} · {backup.backup_id.slice(0, 8)}
+                  {backup.reason === "pre_restore" ? "恢复前自动备份" : backup.reason === "pre_migration" ? "迁移前自动备份" : backup.reason === "pre_reset" ? "全清前自动备份" : "手动备份"} · {backup.backup_id.slice(0, 8)}
                 </p>
                 <p className="mt-1 text-xs font-medium text-[var(--foreground-muted)]">{new Date(backup.created_at).toLocaleString()} · {formatBytes(backup.size_bytes)} · v{backup.version}</p>
               </div>
@@ -849,6 +858,12 @@ function redactFeedbackText(value: string): string {
 export default function SettingsPage() {
   const { data, mutate } = useConfig();
   const config = data as SettingsConfigPayload | undefined;
+  const searchParams = useSearchParams();
+  const modelSectionRef = useRef<HTMLElement>(null);
+  const modelSectionRequested = searchParams.get("section") === "models";
+  useEffect(() => {
+    if (modelSectionRequested) modelSectionRef.current?.scrollIntoView({ block: "start" });
+  }, [modelSectionRequested]);
 
   const [apiSaving, setApiSaving] = useState(false);
   const [apiSaved, setApiSaved] = useState(false);
@@ -912,12 +927,13 @@ export default function SettingsPage() {
   );
 
   const resolvedFormServiceName = useMemo(() => {
-    return formCustomServiceName.trim();
-  }, [formCustomServiceName]);
+    if (formCustomServiceName.trim()) return formCustomServiceName.trim();
+    try { return new URL(formBaseUrl).hostname; } catch { return ""; }
+  }, [formCustomServiceName, formBaseUrl]);
 
   const resolvedFormProviderId = useMemo(() => {
-    return normalizeProviderId(formCustomServiceName || "custom");
-  }, [formCustomServiceName]);
+    return normalizeProviderId(resolvedFormServiceName || "custom");
+  }, [resolvedFormServiceName]);
 
   const resolvedFormModel = useMemo(() => formCustomModel.trim(), [formCustomModel]);
 
@@ -957,7 +973,7 @@ export default function SettingsPage() {
   };
 
   useEffect(() => {
-    if (!isEditorOpen) return;
+    if (!isEditorOpen || Object.keys(formErrors).length === 0) return;
     setFormErrors(validateEditorForm());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -1141,7 +1157,7 @@ export default function SettingsPage() {
     setSelectedConfigId(targetId);
   };
 
-  const handleSubmitEditor = () => {
+  const handleSubmitEditor = async () => {
     const errors = validateEditorForm();
     setFormErrors(errors);
     if (Object.keys(errors).length > 0) {
@@ -1171,25 +1187,13 @@ export default function SettingsPage() {
       notes: previous?.notes || "",
     };
 
-    setApiConfigs((prev) => {
-      let next = editingConfigId
-        ? prev.map((item) => (item.id === editingConfigId ? nextConfig : item))
-        : [...prev, nextConfig];
-
-      const shouldForceOneActive = !next.some((item) => item.is_active);
-      if (nextConfig.is_active || shouldForceOneActive) {
-        next = next.map((item) => ({ ...item, is_active: item.id === nextConfig.id }));
-      }
-      return next;
-    });
-
-    setSelectedConfigId(nextConfig.id);
-    onEditorClose();
-    markApiDirty();
-    setListFeedback({
-      type: "success",
-      message: `${editingConfigId ? "配置已更新" : "配置已新增"}，请点击“保存模型配置”提交`,
-    });
+    let next = editingConfigId
+      ? apiConfigs.map((item) => item.id === editingConfigId ? nextConfig : item)
+      : [...apiConfigs, nextConfig];
+    if (nextConfig.is_active || !next.some((item) => item.is_active)) {
+      next = next.map((item) => ({ ...item, is_active: item.id === nextConfig.id }));
+    }
+    if (await handleSaveApiSettings(next)) onEditorClose();
   };
 
   const handleDeleteConfig = () => {
@@ -1214,12 +1218,12 @@ export default function SettingsPage() {
     setListFeedback({ type: "success", message: "配置已删除，请点击“保存模型配置”提交" });
   };
 
-  const handleSaveApiSettings = async () => {
+  const handleSaveApiSettings = async (configs = apiConfigs) => {
     setApiSaving(true);
     setApiSaveError("");
     setListFeedback(null);
 
-    const { normalizedConfigs, activeConfig } = normalizeApiConfigsForSave(apiConfigs);
+    const { normalizedConfigs, activeConfig } = normalizeApiConfigsForSave(configs);
 
     const getProviderConfig = (providerId: string) =>
       normalizedConfigs.find((item) => item.provider_id === providerId) || null;
@@ -1261,8 +1265,10 @@ export default function SettingsPage() {
         type: "success",
         message: normalizedConfigs.length > 0 ? "模型配置已保存" : "模型配置已清空并保存",
       });
+      return true;
     } catch (error) {
       setApiSaveError(safeClientErrorMessage(error, "模型配置保存失败，请稍后重试"));
+      return false;
     } finally {
       setApiSaving(false);
     }
@@ -1313,7 +1319,7 @@ export default function SettingsPage() {
               <p className="mt-3 max-w-2xl text-sm font-medium leading-relaxed text-[var(--foreground-muted)] md:text-base">
                 {SHOWCASE
                   ? "网页演示只使用浏览器内置 Agent 与虚构 IndexedDB 数据，不连接 localhost，也不会扫描你的本机 Coding Agent。真实数据与外置 Agent 接入请使用 OfferU Desktop。"
-                  : "OfferU Desktop 可以发现并连接已有的本机 Agent；模型接口、密钥和其他技术设置都收在高级设置中。搜索规则、隐私和数据来源仍可直接调整。"}
+                  : "连接已有 Agent，或为内置 Agent 配置模型服务。模型连接、搜索规则和数据安全在这里统一管理。"}
               </p>
             </div>
           </div>
@@ -1344,231 +1350,50 @@ export default function SettingsPage() {
       <JobSourceConnectionsCard />
 
 
+      <section id="model-settings" ref={modelSectionRef} className="scroll-mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)]" data-testid="embedded-model-settings">
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--border)] p-5">
+          <div>
+            <p className="text-xs font-medium text-[var(--foreground-muted)]">内置 Agent</p>
+            <h2 className="mt-1 text-xl font-semibold">模型连接</h2>
+            <p className="mt-2 text-sm text-[var(--foreground-muted)]">连接模型服务，获取可用模型。右侧内置 Agent 使用当前激活的配置。</p>
+          </div>
+          <Button onPress={openCreateEditor} startContent={<Plus size={16} />} className="rounded-lg bg-[var(--foreground)] text-[var(--surface)]">添加模型服务</Button>
+        </div>
+        <div className="space-y-4 p-5">
+          {providerPresetError && <p role="alert" className="text-sm text-red-600">{providerPresetError}</p>}
+          {config?.vault_status && !config.vault_status.available && <p role="alert" className="text-sm text-red-600">系统钥匙串不可用，密钥无法保存：{config.vault_status.error}</p>}
+          {apiConfigs.length === 0 ? <div className="rounded-lg bg-[var(--surface-muted)] p-6">
+            <p className="font-medium">还没有连接模型服务</p>
+            <p className="mt-2 text-sm text-[var(--foreground-muted)]">添加接口地址和密钥后，会自动获取模型列表。密钥只保存到系统钥匙串。</p>
+          </div> : apiConfigs.map((item) => <div key={item.id} className={`flex flex-wrap items-center gap-4 rounded-lg border p-4 ${item.is_active ? "border-[var(--primary-blue)] bg-[var(--surface-muted)]" : "border-[var(--border)]"}`}>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2"><h3 className="font-semibold">{item.service_name}</h3>{item.is_active && <span className="rounded bg-[var(--surface)] px-2 py-1 text-xs text-[var(--primary-blue)]">当前使用</span>}{disabledProviders.includes(item.provider_id) && <span className="text-xs text-red-600">已禁用</span>}</div>
+              <p className="mt-1 break-all text-sm">{item.model}</p>
+              <p className="mt-1 break-all text-xs text-[var(--foreground-muted)]">{item.base_url}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {!item.is_active && <Button size="sm" variant="flat" onPress={() => handleActivateConfig(item.id)}>使用此配置</Button>}
+              <Button size="sm" variant="light" onPress={() => openEditEditor(item)}>编辑</Button>
+              <Button size="sm" variant="light" onPress={() => { setSelectedConfigId(item.id); onDeleteOpen(); }}>删除</Button>
+            </div>
+          </div>)}
+          {config?.active_llm_summary && <div className="flex flex-wrap items-center gap-3 border-t border-[var(--border)] pt-4"><span className="text-sm text-[var(--foreground-muted)]">已保存：{config.active_llm_summary.service_name} · {config.active_llm_summary.model}</span><TestLlmButton /></div>}
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-[var(--foreground-muted)]">{apiDirty ? "配置有未保存的修改" : "密钥保存在系统钥匙串"}</p>
+            {apiDirty && <Button isLoading={apiSaving} onPress={() => void handleSaveApiSettings()} className="rounded-lg bg-[var(--primary-blue)] text-white">保存模型配置</Button>}
+          </div>
+          {listFeedback && <p role="status" className={`text-sm ${listFeedback.type === "error" ? "text-red-600" : "text-[var(--foreground-muted)]"}`}>{listFeedback.message}</p>}
+          {apiSaveError && <p role="alert" className="text-sm text-red-600">{apiSaveError}</p>}
+        </div>
+      </section>
+
       <LocalDataSafetyCard />
+      <FreshResetPanel />
+      <BuildIdentityPanel />
 
       <LocalFeedbackCard />
 
-      <details className="group" data-testid="advanced-model-settings">
-        <summary className="bauhaus-panel cursor-pointer list-none px-5 py-4 text-sm font-bold text-[var(--foreground)] md:px-6">
-          高级设置：模型接口与技术细节 <span className="ml-2 text-xs font-medium text-[var(--foreground-muted)] group-open:hidden">（默认收起）</span>
-        </summary>
-      <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
-        <CardBody className="space-y-5 p-5 md:p-6">
-          <div className="flex items-center gap-3">
-            <div className="bauhaus-panel-sm flex h-11 w-11 items-center justify-center bg-[var(--primary-blue)] text-white">
-              <Key size={18} />
-            </div>
-            <div>
-              <p className="bauhaus-label text-[var(--foreground-muted)]">模型供应商</p>
-              <h3 className="text-2xl font-bold text-[var(--foreground)]">大模型接口管理</h3>
-            </div>
-          </div>
-          <p className="text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
-            请在此处配置模型接口信息。新增、删除、编辑后，仍需点击本模块底部的“保存模型配置”完成提交。
-          </p>
-          {config?.vault_status && !config.vault_status.available && (
-            <div className="bauhaus-panel-sm flex items-start gap-2 bg-[var(--primary-red)] px-3 py-3 text-xs font-medium text-white">
-              <AlertCircle size={14} className="mt-0.5 shrink-0" />
-              <span>
-                系统钥匙串不可用，密钥不会被保存。请修复后重试：{config.vault_status.error}
-              </span>
-            </div>
-          )}
-          {config?.vault_status?.available && (
-            <p className="text-xs font-medium text-[var(--foreground-muted)]">
-              密钥只写入系统钥匙串，配置文件中仅保留引用。
-            </p>
-          )}
-          <p className="bauhaus-panel-sm bg-[var(--surface-muted)] px-4 py-3 text-xs font-semibold leading-relaxed text-[var(--foreground-muted)]">
-            这里的地址是模型服务端点，不是 OfferU 网页地址。若看到 <code>http://127.0.0.1:8080</code>，它只代表可选的 llama.cpp 模型接口；网页入口始终是 <code>http://127.0.0.1:7410</code>。
-          </p>
-          {providerPresetError && <div role="alert" className="bauhaus-panel-sm bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-900">{providerPresetError}</div>}
 
-          {/* 当前生效配置摘要 (PRD §7.1 Req 4) */}
-          {config?.active_llm_summary && (
-            <div className="bauhaus-panel-sm bg-[var(--primary-blue)] px-4 py-4 text-sm text-white">
-              <div className="mb-1 flex items-center gap-2">
-                <div className={`h-2 w-2 rounded-full ${
-                  config.active_llm_summary.source === "active_config" ? "bg-green-400" :
-                  config.active_llm_summary.source === "ollama" ? "bg-yellow-400" : "bg-orange-400"
-                }`} />
-                <span className="font-medium text-white/90">当前生效配置</span>
-                <Chip
-                  size="sm"
-                  variant="flat"
-                  className="border border-[var(--border-strong)] bg-white text-[var(--foreground)]"
-                  color={
-                  config.active_llm_summary.source === "active_config" ? "success" :
-                  config.active_llm_summary.source === "ollama" ? "warning" : "danger"
-                }
-                >
-                  {config.active_llm_summary.source === "active_config" ? "已激活配置" :
-                   config.active_llm_summary.source === "ollama" ? "本地 Ollama" : "旧配置回退"}
-                </Chip>
-              </div>
-              <div className="ml-4 grid grid-cols-1 gap-x-6 gap-y-1 text-white/70 sm:grid-cols-3">
-                <span>服务商: <span className="text-white">{config.active_llm_summary.service_name}</span></span>
-                <span>模型: <span className="text-white">{config.active_llm_summary.model}</span></span>
-                <span className="truncate">模型接口（非网页）: <span className="text-white">{config.active_llm_summary.base_url}</span></span>
-              </div>
-              <div className="mt-3 ml-4 flex items-center gap-3">
-                <TestLlmButton />
-              </div>
-            </div>
-          )}
-
-          <div className="bauhaus-panel-sm overflow-x-auto bg-[var(--surface-muted)]">
-            <table className="w-full min-w-[780px] text-sm">
-              <thead className="bg-[var(--foreground)] text-white">
-                <tr>
-                  <th className="px-3 py-3 text-left font-semibold tracking-[0.06em]">服务商</th>
-                  <th className="px-3 py-3 text-left font-semibold tracking-[0.04em]">模型名称</th>
-                  <th className="px-3 py-3 text-left font-semibold tracking-[0.04em]">模型接口地址（非网页）</th>
-                  <th className="px-3 py-3 text-left font-semibold tracking-[0.04em]">密钥状态</th>
-                  <th className="px-3 py-3 text-center font-semibold tracking-[0.06em]">禁用</th>
-                  <th className="px-3 py-3 text-center font-semibold tracking-[0.06em]">是否激活</th>
-                </tr>
-              </thead>
-              <tbody>
-                {apiConfigs.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="px-3 py-8 text-center font-medium text-[var(--foreground-muted)]">
-                      暂无配置，请点击“新增”创建第一条配置
-                    </td>
-                  </tr>
-                )}
-                {apiConfigs.map((item) => {
-                  const isSelected = selectedConfigId === item.id;
-                  return (
-                    <tr
-                      key={item.id}
-                      className={`cursor-pointer border-t-2 border-[var(--border-strong)]/10 transition-colors ${
-                        isSelected ? "bg-[#F0C020]" : "bg-white hover:bg-[var(--surface-muted)]"
-                      }`}
-                      onClick={() => handleRowClick(item.id)}
-                    >
-                      <td className="px-3 py-3">
-                        <div className="font-bold text-[var(--foreground)]">{item.service_name}</div>
-                        <div className="text-[11px] font-medium tracking-[0.04em] text-[var(--foreground-muted)]">{item.provider_id}</div>
-                      </td>
-                      <td className="px-3 py-3 text-[var(--foreground-muted)]">{item.model}</td>
-                      <td className="px-3 py-3 break-all text-[var(--foreground-muted)]">{item.base_url}</td>
-                      <td className="px-3 py-3 text-[var(--foreground-muted)]">{displayMaskedKey(item.api_key)}</td>
-                      <td className="px-3 py-3 text-center">
-                        <input
-                          type="checkbox"
-                          checked={disabledProviders.includes(item.provider_id)}
-                          onChange={() => {
-                            setDisabledProviders((prev) =>
-                              prev.includes(item.provider_id)
-                                ? prev.filter((pid) => pid !== item.provider_id)
-                                : [...prev, item.provider_id]
-                            );
-                            markApiDirty();
-                          }}
-                          onClick={(event) => event.stopPropagation()}
-                          className="h-4 w-4 cursor-pointer"
-                          aria-label={`禁用 ${item.service_name}`}
-                        />
-                      </td>
-                      <td className="px-3 py-3 text-center">
-                        <input
-                          type="radio"
-                          name="active-llm-config"
-                          checked={item.is_active}
-                          onChange={() => handleActivateConfig(item.id)}
-                          onClick={(event) => event.stopPropagation()}
-                          className="h-4 w-4 cursor-pointer"
-                          aria-label={`激活 ${item.service_name}`}
-                        />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="flex flex-wrap gap-2">
-              <Button
-                size="sm"
-                startContent={<Plus size={14} />}
-                onPress={openCreateEditor}
-                className="bauhaus-button bauhaus-button-blue !px-4 !py-3 !text-[11px]"
-              >
-                新增
-              </Button>
-              <Button
-                size="sm"
-                startContent={<Trash2 size={14} />}
-                isDisabled={!selectedConfig}
-                onPress={onDeleteOpen}
-                className="bauhaus-button bauhaus-button-red !px-4 !py-3 !text-[11px]"
-              >
-                删除
-              </Button>
-              <Button
-                size="sm"
-                startContent={<SquarePen size={14} />}
-                isDisabled={!selectedConfig}
-                onPress={() => {
-                  if (selectedConfig) openEditEditor(selectedConfig);
-                }}
-                className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
-              >
-                编辑
-              </Button>
-            </div>
-
-            <div className="flex items-center gap-2 self-start md:self-auto">
-              <Chip
-                size="sm"
-                variant="flat"
-                className={
-                  apiDirty
-                    ? "border border-[var(--border-strong)] bg-[#F0C020] text-[var(--foreground)]"
-                    : "border border-[var(--border-strong)] bg-white text-[var(--foreground-muted)]"
-                }
-              >
-                {apiDirty ? "有未保存改动" : "已同步"}
-              </Chip>
-              <Button
-                size="sm"
-                startContent={apiSaved ? <Check size={14} /> : <Save size={14} />}
-                isLoading={apiSaving}
-                onPress={handleSaveApiSettings}
-                className={`bauhaus-button !px-4 !py-3 !text-[11px] ${
-                  apiSaved ? "bauhaus-button-yellow" : "bauhaus-button-red"
-                }`}
-              >
-                {apiSaved ? "已保存" : "保存模型配置"}
-              </Button>
-            </div>
-          </div>
-
-          {listFeedback && (
-            <div
-              className={`bauhaus-panel-sm px-3 py-3 text-xs font-medium ${
-                listFeedback.type === "success"
-                  ? "bg-[#F0C020] text-[var(--foreground)]"
-                  : "bg-[var(--primary-red)] text-white"
-              }`}
-            >
-              {listFeedback.message}
-            </div>
-          )}
-
-          {apiSaveError && (
-            <div className="bauhaus-panel-sm flex items-center gap-2 bg-[var(--primary-red)] px-3 py-3 text-xs font-medium text-white">
-              <AlertCircle size={14} />
-              <span>{apiSaveError}</span>
-            </div>
-          )}
-        </CardBody>
-      </Card>
-
-      </details>
 
       <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
         <CardBody className="space-y-4 p-5 md:p-6">
@@ -1806,23 +1631,17 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <Modal isOpen={isEditorOpen} onClose={onEditorClose} size="3xl" placement="center" scrollBehavior="inside">
-        <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b-2 border-[var(--border-strong)] px-6 py-5 text-xl font-black tracking-[-0.06em]">
+      <Modal isOpen={isEditorOpen} onClose={onEditorClose} size="xl" placement="center" scrollBehavior="inside">
+        <ModalContent className="max-h-[88vh] rounded-xl border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] shadow-xl">
+          <ModalHeader className="border-b border-[var(--border)] px-6 py-4 text-lg font-semibold">
             {editingConfigId ? "编辑模型配置" : "新增模型配置"}
           </ModalHeader>
-          <ModalBody className="grid grid-cols-1 gap-4 overflow-y-auto px-6 py-6 md:grid-cols-2">
-            <label className="text-xs font-semibold text-[var(--foreground-muted)]">接口协议
-              <select value={formProviderChoice} onChange={(event) => setFormProviderChoice(event.target.value)} className="mt-2 block min-h-10 w-full border border-[var(--border-strong)] bg-white px-3 text-sm">
-                {providerPresets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}
-              </select>
-              {formErrors.api_format && <p className="mt-1 text-xs text-red-600">{formErrors.api_format}</p>}
-            </label>
-            <Input label="服务名称" variant="bordered" value={formCustomServiceName} onValueChange={setFormCustomServiceName} placeholder="例如：我的模型服务" isInvalid={Boolean(formErrors.service_name)} errorMessage={formErrors.service_name} classNames={bauhausFieldClassNames} />
-            <Input label="模型 ID" variant="bordered" value={formCustomModel} onValueChange={setFormCustomModel} placeholder="例如：claude-sonnet-4-5" isInvalid={Boolean(formErrors.model)} errorMessage={formErrors.model} classNames={bauhausFieldClassNames} />
-            <Input label="接口地址" variant="bordered" value={formBaseUrl} onValueChange={setFormBaseUrl} placeholder="https://..." isInvalid={Boolean(formErrors.base_url)} errorMessage={formErrors.base_url} classNames={bauhausFieldClassNames} />
+          <ModalBody className="space-y-5 overflow-y-auto px-6 py-5">
+            <Input label="接口地址" variant="bordered" value={formBaseUrl} onValueChange={setFormBaseUrl} placeholder="https://你的服务地址/v1" type="url" autoComplete="off" spellCheck={false} isInvalid={Boolean(formErrors.base_url)} errorMessage={formErrors.base_url} classNames={modelFieldClassNames} />
             <Input
               label="API 密钥"
+              autoComplete="off"
+              spellCheck={false}
               variant="bordered"
               value={formApiKey}
               onValueChange={setFormApiKey}
@@ -1831,7 +1650,7 @@ export default function SettingsPage() {
               isDisabled={false}
               isInvalid={Boolean(formErrors.api_key)}
               errorMessage={formErrors.api_key}
-              classNames={bauhausFieldClassNames}
+              classNames={modelFieldClassNames}
               endContent={
                 <button
                   type="button"
@@ -1845,28 +1664,45 @@ export default function SettingsPage() {
               }
             />
 
+            {apiSaveError && <p role="alert" className="text-sm text-red-600">{apiSaveError}</p>}
+            <ModelPicker key={editingConfigId || "new"} baseUrl={formBaseUrl} apiKey={formApiKey} apiFormat={currentFormPreset?.api_format || ""} configId={editingConfigId || ""} value={formCustomModel} onChange={setFormCustomModel} error={formErrors.model} />
+
+            <details className="rounded-lg border border-[var(--border)] p-3">
+              <summary className="cursor-pointer text-sm text-[var(--foreground-muted)]">接口协议与显示名称</summary>
+              <div className="mt-4 space-y-4">
+            <label className="text-xs font-semibold text-[var(--foreground-muted)]">接口协议
+              <select value={formProviderChoice} onChange={(event) => setFormProviderChoice(event.target.value)} className="mt-2 block min-h-10 w-full border border-[var(--border-strong)] bg-white px-3 text-sm">
+                {providerPresets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}
+              </select>
+              {formErrors.api_format && <p className="mt-1 text-xs text-red-600">{formErrors.api_format}</p>}
+            </label>
+            <Input label="显示名称（可选）" variant="bordered" value={formCustomServiceName} onValueChange={setFormCustomServiceName} placeholder="默认使用接口的域名" isInvalid={Boolean(formErrors.service_name)} errorMessage={formErrors.service_name} classNames={modelFieldClassNames} />
+              </div>
+            </details>
+
             <Checkbox isSelected={formIsActive} onValueChange={setFormIsActive} className="md:col-span-2">
               设为当前激活配置
             </Checkbox>
 
             <Divider className="my-1 border-[var(--border-strong)]/10 md:col-span-2" />
             <p className="text-xs font-medium text-[var(--foreground-muted)] md:col-span-2">
-              服务名称、模型 ID 和接口地址由你自行填写；本地端点可以不填写 API key。
+              填写接口地址和密钥后，选择自动获取的模型。服务不提供列表时，可手动填写模型 ID。
             </p>
           </ModalBody>
-          <ModalFooter className="border-t-2 border-[var(--border-strong)] px-6 py-5">
+          <ModalFooter className="border-t border-[var(--border)] px-6 py-4">
             <Button
               variant="light"
-              className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
+              className="rounded-lg border border-[var(--border)] px-4 text-[var(--foreground)]"
               onPress={onEditorClose}
             >
               取消
             </Button>
             <Button
-              className="bauhaus-button bauhaus-button-blue !px-4 !py-3 !text-[11px]"
-              onPress={handleSubmitEditor}
+              className="rounded-lg bg-[var(--foreground)] px-4 text-[var(--surface)]"
+              isLoading={apiSaving}
+              onPress={() => void handleSubmitEditor()}
             >
-              保存
+              保存并连接
             </Button>
           </ModalFooter>
         </ModalContent>

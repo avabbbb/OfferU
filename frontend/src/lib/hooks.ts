@@ -12,7 +12,15 @@ import { showcaseChatResponse } from "@/lib/showcase/llm";
 import { resolveApiBase } from "@/lib/apiBase";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { decideAgentRuntimeActionInDesktop } from "@/lib/desktop-proposal-decision";
-import type { CareerDelivery } from "@/lib/api";
+import type { CareerArtifact, CareerDelivery } from "@/lib/api";
+
+export function useJobCareerArtifacts(jobId: number) {
+  return useSWR<{ items: Array<Pick<CareerArtifact, "id" | "title" | "artifact_type" | "related_job_id">>; total: number }>(
+    jobId ? `${API_BASE}/api/agent/runtime/career-artifacts?related_job_id=${jobId}` : null,
+    fetcher,
+    { refreshInterval: 5000 },
+  );
+}
 
 const API_BASE = resolveApiBase();
 

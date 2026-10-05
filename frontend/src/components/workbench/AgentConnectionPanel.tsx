@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { Button, Modal, ModalBody, ModalContent, ModalHeader } from "@nextui-org/react";
 import { AlertCircle, ArrowRight, Check, Copy, Loader2, Plug, RefreshCw } from "lucide-react";
@@ -45,12 +45,30 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
   const selected = candidates.find((item) => item.id === selectedId)
     || candidates.find((item) => item.id === connections?.recommended_provider_id)
     || candidates[0];
-  const applySnapshot = (snapshot: AgentConnectionsSnapshot) => {
+  const applySnapshot = useCallback((snapshot: AgentConnectionsSnapshot) => {
     setConnections(snapshot);
     const available = snapshot.items.filter((item) => item.installed && item.compatible && item.can_install_skill);
     state.reportConnection(available.find((item) => item.id === selectedId)
       || available.find((item) => item.id === snapshot.recommended_provider_id) || available[0] || null);
-  };
+  }, [selectedId, state.reportConnection]);
+
+  const polling = useRef(false);
+  const awaitingReadback = Boolean(selected?.verification_challenge);
+  useEffect(() => {
+    if (!desktop || SHOWCASE || !awaitingReadback || busy || (!embedded && !state.open)) return;
+    let active = true;
+    const timer = window.setInterval(async () => {
+      if (polling.current || document.hidden) return;
+      polling.current = true;
+      try {
+        const snapshot = await agentRuntimeApi.connections();
+        if (active) applySnapshot(snapshot);
+      } catch (cause) {
+        if (active) setError(safeClientErrorMessage(cause, "连接回读暂时无法更新，请重试。"));
+      } finally { polling.current = false; }
+    }, 2000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [desktop, awaitingReadback, busy, embedded, state.open, applySnapshot]);
 
   const discover = async () => {
     if (!desktop || SHOWCASE) return;
@@ -91,7 +109,7 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
         <span className="inline-flex items-center gap-2 text-[11px] font-semibold tracking-wide text-[var(--foreground-muted)]"><Plug size={14} /> 你的 Agent</span>
         <h3 className="mt-4 text-xl font-semibold tracking-tight sm:text-2xl">把 OfferU 交给你正在使用的 Agent。</h3>
         <p className="mt-2 max-w-xl text-sm leading-relaxed text-[var(--foreground-muted)]">
-          OfferU 为你的 Agent 提供职业档案、岗位工具和审核工作区。Desktop 会安装或更新接入，并检查真实读取结果；你也可以先用内置 Agent 操作 OfferU、准备岗位简历。
+          OfferU 为你已有的 Agent 提供职业档案、岗位工具和审核工作区。准备接入后，在你的 Agent 中使用 OfferU，连接结果会自动回读。你也可以先用内置 Agent 操作 OfferU、准备岗位简历。
         </p>
       </div>
 
@@ -102,13 +120,14 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
           </Button>
           {selected && <div className="rounded-xl border border-[var(--border)] p-4">
             <p className="text-sm font-semibold">{selected.name}</p>
-            <p role="status" className="mt-2 text-xs text-[var(--foreground-muted)]">{busy ? "正在接入并检查真实读取，请稍候…" : selected.connection_verified && selected.status === "ready" ? "已验证连接：Agent 已完成真实工具读取。" : selected.last_error || (selected.skill_status === "INSTALLED" ? "接入文件已安装，真实连接尚未验证。" : "已发现 Agent，接入尚未完成。")}</p>
+            <p role="status" className="mt-2 text-xs text-[var(--foreground-muted)]">{busy ? "正在准备接入…" : selected.connection_verified && selected.status === "ready" ? "已验证连接：已完成真实工具回读。" : selected.last_error || (selected.skill_status === "INSTALLED" ? "接入文件已安装，真实连接尚未验证。" : selected.id === "external" ? "一套 OfferU 接入，适用于能加载 Skill 并执行本地工具的 Agent。" : "已发现 Agent，接入尚未完成。")}</p>
             <Button size="sm" onPress={() => void connect()} isDisabled={busy || (selected.connection_verified && selected.status === "ready")} className="mt-3">
               {selected.connection_verified && selected.status === "ready" ? "已验证连接" : selected.skill_status === "INSTALLED" ? "验证连接" : selected.skill_status === "OUTDATED" ? "更新接入并验证" : `连接 ${selected.name}`}
             </Button>
           </div>}
+          {awaitingReadback && <p role="status" className="text-xs leading-relaxed text-[var(--foreground-muted)]">接入已准备。现在到你已有的 Agent 中使用 OfferU Skill；完成只读验证后，这里会自动更新。OfferU 不会另起一个 Agent 会话。</p>}
           {connections && !selected && <p role="status" className="text-xs text-[var(--foreground-muted)]">尚未发现可自动接入的本地 Agent。可以继续使用内置 Agent；消费级 Agent 的连接需由对应宿主支持。</p>}
-          {candidates.length > 1 && <details className="text-xs"><summary className="cursor-pointer">其他已发现的 Agent</summary><div className="mt-2 flex flex-wrap gap-2">{candidates.filter((item) => item.id !== selected?.id).map((item) => <Button key={item.id} size="sm" isDisabled={busy} onPress={() => { setSelectedId(item.id); state.reportConnection(item); }}>{item.name}</Button>)}</div></details>}
+          {candidates.length > 1 && <details className="text-xs"><summary className="cursor-pointer">选择其他安装位置</summary><div className="mt-2 flex flex-wrap gap-2">{candidates.filter((item) => item.id !== selected?.id).map((item) => <Button key={item.id} size="sm" isDisabled={busy} onPress={() => { setSelectedId(item.id); state.reportConnection(item); }}>{item.name}</Button>)}</div></details>}
         </div> : <p role="status" className="text-xs text-[var(--foreground-muted)]">请在 OfferU Desktop 中连接你的 Agent。当前网页不会扫描本机或安装接入文件。</p>}
         {error && <p role="alert" className="flex gap-2 text-xs text-amber-800"><AlertCircle size={14} />{error}</p>}
         <p className="text-[11px] leading-relaxed text-[var(--foreground-muted)]">

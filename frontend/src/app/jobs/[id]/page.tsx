@@ -29,7 +29,7 @@ import {
   Send,
   XCircle,
 } from "lucide-react";
-import { controlCareerTask, patchJob, useJob, usePools, useProgressBoard, useProgressTimeline, useCareerTasks, type CareerTask } from "@/lib/hooks";
+import { controlCareerTask, patchJob, useJob, usePools, useProgressBoard, useProgressTimeline, useCareerTasks, useJobCareerArtifacts, type CareerTask } from "@/lib/hooks";
 import { JobAssessmentPlanCard } from "@/components/jobs/JobAssessmentPlanCard";
 import { InterviewLifecycleCard } from "@/components/career/InterviewLifecycleCard";
 import { ResumeReengagementCard } from "@/components/career/ResumeReengagementCard";
@@ -307,6 +307,7 @@ export default function JobDetailPage() {
 
   // Fetch the role_intelligence CareerTask for this job — the real progress source.
   const { data: careerTasksData, mutate: mutateCareerTasks } = useCareerTasks(50);
+  const { data: jobArtifacts, error: jobArtifactsError } = useJobCareerArtifacts(jobId || 0);
   const preparationTask = useMemo<CareerTask | null>(() => {
     if (!jobId || !careerTasksData?.tasks) return null;
     return careerTasksData.tasks.find(
@@ -361,9 +362,9 @@ export default function JobDetailPage() {
     ) ? latestTask : null;
   }, [careerTasksData, jobId]);
   const jobDeliveries = useMemo(() => {
-    if (!jobId || !careerTasksData?.tasks) return [];
+    if (!jobId) return [];
     const unique = new Map<string, ReturnType<typeof readDeliveries>[number]>();
-    for (const task of careerTasksData.tasks) {
+    for (const task of careerTasksData?.tasks || []) {
       if (task.task_type !== "career_director") continue;
       for (const delivery of readDeliveries(task.result)) {
         if (Number(delivery.job_id ?? 0) !== jobId) continue;
@@ -371,8 +372,12 @@ export default function JobDetailPage() {
         if (!unique.has(key)) unique.set(key, delivery);
       }
     }
+    for (const artifact of jobArtifacts?.items || []) {
+      if (!unique.has(artifact.id)) unique.set(artifact.id, { state: "ready", artifact_id: artifact.id,
+        artifact_type: artifact.artifact_type, job_id: artifact.related_job_id, title: artifact.title });
+    }
     return [...unique.values()];
-  }, [careerTasksData, jobId]);
+  }, [careerTasksData, jobId, jobArtifacts]);
   const jobAssessmentHasQuestions = Boolean(
     (Array.isArray(jobAssessmentTask?.result?.briefing?.questions)
       && jobAssessmentTask.result.briefing.questions.length > 0)
@@ -680,6 +685,7 @@ export default function JobDetailPage() {
 
       <ResumeReengagementCard task={resumeReengagementTask} jobId={jobId ?? undefined} />
       <DeliveryList deliveries={jobDeliveries} heading="OfferU 已准备的内容" onOpenArtifact={setActiveArtifactId} />
+      {jobArtifactsError && <p role="alert" className="text-sm text-[var(--primary-red)]">{safeClientErrorMessage(jobArtifactsError, "岗位材料暂时无法读取")}</p>}
 
       {interviewLifecycleTasks.map((task) => (
         <InterviewLifecycleCard

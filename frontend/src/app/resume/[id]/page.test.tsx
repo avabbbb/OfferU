@@ -3,12 +3,13 @@ import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ResumeWorkspace } from "@/lib/api";
 
-const { mockWorkspace, mockUpdate, mockUpdateDesign, mockReviewProposalItem, mockCreateVersion, mockExportPdf, mockRestoreVersion } =
+const { mockWorkspace, mockUpdate, mockUpdateDesign, mockReviewProposalItem, mockReviewProposalItems, mockCreateVersion, mockExportPdf, mockRestoreVersion } =
   vi.hoisted(() => ({
     mockWorkspace: vi.fn(),
     mockUpdate: vi.fn(),
     mockUpdateDesign: vi.fn(),
     mockReviewProposalItem: vi.fn(),
+    mockReviewProposalItems: vi.fn(),
     mockCreateVersion: vi.fn(),
     mockExportPdf: vi.fn(),
     mockRestoreVersion: vi.fn(),
@@ -20,6 +21,7 @@ vi.mock("@/lib/api", () => ({
     update: mockUpdate,
     updateDesign: mockUpdateDesign,
     reviewProposalItem: mockReviewProposalItem,
+    reviewProposalItems: mockReviewProposalItems,
     createVersion: mockCreateVersion,
     exportPdf: mockExportPdf,
     restoreVersion: mockRestoreVersion,
@@ -122,6 +124,45 @@ describe("ResumeEditorPage", () => {
     vi.clearAllMocks();
     mockWorkspace.mockResolvedValue(baseWorkspace());
     mockUpdate.mockImplementation(async (_id: number, data: Record<string, unknown>) => ({ id: 7, ...data }));
+  });
+
+  it("整份采用只发送一次批量审核，不逐项请求", async () => {
+    const ws = workspaceWithProposal();
+    ws.proposals[0].diff.push({ ...ws.proposals[0].diff[0], change_id: "c2" });
+    mockWorkspace.mockResolvedValue(ws);
+    mockReviewProposalItems.mockResolvedValue(baseWorkspace());
+    const user = userEvent.setup();
+    render(<ResumeEditorPage />);
+    await user.click(await screen.findByRole("button", { name: "全部接受" }));
+    await waitFor(() => expect(mockReviewProposalItems).toHaveBeenCalledTimes(1));
+    expect(mockReviewProposalItems).toHaveBeenCalledWith("prop-1", { resume_id: 7, change_ids: ["c1", "c2"], action: "accept" });
+    expect(mockReviewProposalItem).not.toHaveBeenCalled();
+  });
+
+  it("按段落一次审核并展示证据和岗位改写理由", async () => {
+    const ws = workspaceWithProposal();
+    ws.proposals[0].diff[0].source_section_ids = [9];
+    ws.proposals[0].strategy.rationale = [{ source_section_ids: [9], requirement: "高并发服务", why: "突出可验证的系统经验" }];
+    mockWorkspace.mockResolvedValue(ws);
+    mockReviewProposalItems.mockResolvedValue(baseWorkspace());
+    const user = userEvent.setup();
+    render(<ResumeEditorPage />);
+    expect(await screen.findByText(/Profile #9/)).toBeInTheDocument();
+    expect(screen.getByText(/突出可验证的系统经验/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "采用本段" }));
+    await waitFor(() => expect(mockReviewProposalItems).toHaveBeenCalledWith("prop-1", { resume_id: 7, change_ids: ["c1"], action: "accept" }));
+    expect(mockReviewProposalItem).not.toHaveBeenCalled();
+  });
+
+  it("采用前展示段落顺序与显示隐藏的变化", async () => {
+    const ws = workspaceWithProposal();
+    ws.proposals[0].diff[0].before = { title: "游戏经历", sort_order: 2, visible: true };
+    ws.proposals[0].diff[0].after = { title: "游戏经历", sort_order: 0, visible: false };
+    mockWorkspace.mockResolvedValue(ws);
+    render(<ResumeEditorPage />);
+    expect(await screen.findByLabelText("结构调整对比")).toHaveTextContent("调整前：游戏经历 · 第 3 段 · 显示");
+    expect(screen.getByLabelText("结构调整对比")).toHaveTextContent("调整后：游戏经历 · 第 1 段 · 隐藏");
+    expect(mockReviewProposalItems).not.toHaveBeenCalled();
   });
 
   it("加载失败时给出错误与返回入口而不是空白页", async () => {

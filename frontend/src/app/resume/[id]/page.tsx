@@ -138,37 +138,71 @@ function Badge({ children, tone = "neutral" }: { children: React.ReactNode; tone
 function ProposalCard({
   proposal,
   onAction,
+  onGroupAction,
+  onHasEdits,
   pending,
 }: {
   proposal: ResumeOptimizationProposalDetail;
   onAction: (changeId: string, action: "accept" | "reject", editedText?: string) => void;
+  onGroupAction: (changeIds: string[], action: "accept" | "reject") => void;
+  onHasEdits: (hasEdits: boolean) => void;
   pending: string | null;
 }) {
   const [edited, setEdited] = useState<Record<string, string>>({});
   const reviews = proposal.item_reviews || {};
   const changes = proposal.diff || [];
+  useEffect(() => {
+    onHasEdits(changes.some((change) => !reviews[String(change.change_id)] && !!edited[String(change.change_id)]));
+  }, [changes, reviews, edited, onHasEdits]);
   const factGateBlocked = proposal.fact_gate_status === "blocked";
+  const groups = Object.entries(changes.reduce<Record<string, typeof changes>>((result, change) => {
+    const key = String(change.section_type || change.before?.section_type || change.after?.section_type || change.section_key || change.title || "内容变化");
+    (result[key] ||= []).push(change);
+    return result;
+  }, {}));
   return (
     <div className="space-y-3" data-testid="resume-proposal-queue">
       <div className="rounded-xl border border-violet-200 bg-violet-50 p-3">
         <div className="flex items-center justify-between gap-2">
-          <div><p className="text-xs font-black text-violet-950">AI 建议 · {changes.length} 条</p><p className="mt-1 text-[11px] text-violet-800">保留原简历，逐条决定是否应用到当前岗位版本。</p></div>
+          <div><p className="text-xs font-black text-violet-950">AI 建议 · {groups.length} 组</p><p className="mt-1 text-[11px] text-violet-800">按结构与段落比较岗位版本；每组一次采用，仍可单独修改。</p></div>
           <Badge tone={proposal.fact_gate_status === "passed" ? "green" : "orange"}>事实门：{proposal.fact_gate_status === "passed" ? "通过" : proposal.fact_gate_status}</Badge>
         </div>
       </div>
       {changes.length === 0 && <div className="rounded-xl border border-dashed border-[var(--border-strong)]/20 p-4 text-xs text-[var(--foreground-muted)]">当前提案没有需要审核的变化。</div>}
-      {changes.map((change) => {
+      {groups.map(([key, group]) => {
+        const ids = group.filter((change) => !reviews[String(change.change_id)]).map((change) => String(change.change_id));
+        return <section key={key} className="space-y-2" data-testid="resume-proposal-group">
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-violet-50 p-2">
+            <p className="text-xs font-black">段落 · {EDITOR_SECTION_TYPES.find(([type]) => type === key)?.[1] || group[0].before?.title || group[0].after?.title || group[0].title || key}</p>
+            {ids.length > 0 && <div className="flex gap-2"><button type="button" disabled={!!pending || factGateBlocked || ids.some((id) => !!edited[id])} onClick={() => onGroupAction(ids, "accept")} className="rounded bg-black px-2 py-1 text-[11px] text-white disabled:opacity-50">采用本段</button><button type="button" disabled={!!pending} onClick={() => onGroupAction(ids, "reject")} className="rounded border px-2 py-1 text-[11px] disabled:opacity-50">保留本段原文</button></div>}
+          </div>
+          {group.map((change) => {
         const id = String(change.change_id || "");
         const reviewed = reviews[id]?.action;
         const text = proposalChange(change);
+        const structureChanged = Boolean(change.before || change.after) && (!change.before || !change.after ||
+          ["title", "sort_order", "visible"].some((field) => change.before?.[field] !== change.after?.[field]));
+        const structure = (row: Record<string, any> | undefined) => row
+          ? `${row.title || "本段"} · ${typeof row.sort_order === "number" ? `第 ${row.sort_order + 1} 段 · ` : ""}${row.visible === false ? "隐藏" : "显示"}`
+          : "不包含本段";
+        const sourceIds = change.source_section_ids || change.after?.source_section_ids || change.before?.source_section_ids || [];
+        const rationale = (proposal.strategy?.rationale || []).filter((item: Record<string, any>) => (item.source_section_ids || []).some((id: number) => sourceIds.includes(id)));
         return (
           <div key={id} className={`rounded-xl border p-3 ${reviewed ? "border-emerald-200 bg-emerald-50/50" : "border-[var(--border-strong)]/15 bg-[var(--surface)]"}`} data-testid={`resume-proposal-${id}`}>
             <div className="flex items-center justify-between gap-2"><div className="flex min-w-0 items-center gap-2"><Sparkles size={13} className="shrink-0 text-violet-600" /><p className="truncate text-xs font-black">{change.title || change.section_key || "内容变化"}</p></div>{reviewed && <Badge tone="green">{reviewed === "accept" ? "已接受" : "已拒绝"}</Badge>}</div>
             <div className="mt-3 space-y-2 text-[11px] leading-relaxed">{text.before && <div className="rounded-lg bg-red-50 p-2 text-red-900"><span className="font-bold">Before · </span>{text.before}</div>}{text.after && <div className="rounded-lg bg-emerald-50 p-2 text-emerald-900"><span className="font-bold">After · </span>{text.after}</div>}</div>
+            {structureChanged && <div aria-label="结构调整对比" className="mt-2 rounded-lg bg-violet-50 p-2 text-[11px] text-violet-950"><p>调整前：{structure(change.before)}</p><p>调整后：{structure(change.after)}</p></div>}
+            <div className="mt-2 space-y-1 text-[10px] text-[var(--foreground-muted)]">
+              <p>原始证据：{sourceIds.length ? sourceIds.map((id: number) => `Profile #${id}`).join("、") : "未提供引用"}</p>
+              {rationale.map((item: Record<string, any>, index: number) => <p key={index}>岗位要求：{item.requirement} · 改写理由：{item.why || item.reason || item.rationale || item.emphasis || "见岗位策略"}</p>)}
+              {!rationale.length && <p>岗位要求与改写理由：{change.rationale || change.reason || "未提供，请先向 Agent 核对"}</p>}
+            </div>
             <p className="mt-2 text-[10px] text-[var(--foreground-muted)]">{change.change_type === "reordered" ? "根据岗位相关性调整顺序" : "岗位化建议，接受前仍可编辑"}</p>
-            {!reviewed && <><textarea value={edited[id] || ""} onChange={(event) => setEdited((current) => ({ ...current, [id]: event.target.value }))} placeholder="可选：改写 After 后再接受" aria-label="编辑 AI 建议" className="mt-3 min-h-16 w-full resize-y rounded-lg border border-[var(--border-strong)]/15 bg-white p-2 text-[11px] outline-none focus:border-violet-400" /><div className="mt-3 flex gap-2"><button type="button" disabled={pending === id || factGateBlocked} title={factGateBlocked ? "事实门未通过，请先补充 Evidence" : undefined} onClick={() => onAction(id, "accept", edited[id])} className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg bg-black px-3 py-2 text-[11px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">{pending === id ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}{factGateBlocked ? "需补充证据" : "接受"}</button><button type="button" disabled={pending === id} onClick={() => onAction(id, "reject")} className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-[var(--border-strong)]/20 px-3 py-2 text-[11px] font-bold disabled:opacity-50"><X size={12} />拒绝</button></div></>}
+            {!reviewed && <><textarea value={edited[id] || ""} onChange={(event) => setEdited((current) => ({ ...current, [id]: event.target.value }))} placeholder="可选：改写 After 后再接受" aria-label="编辑 AI 建议" className="mt-3 min-h-16 w-full resize-y rounded-lg border border-[var(--border-strong)]/15 bg-white p-2 text-[11px] outline-none focus:border-violet-400" /><div className="mt-3 flex gap-2"><button type="button" disabled={!!pending || factGateBlocked} title={factGateBlocked ? "事实门未通过，请先补充 Evidence" : undefined} onClick={() => onAction(id, "accept", edited[id])} className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg bg-black px-3 py-2 text-[11px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">{pending === id ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}{factGateBlocked ? "需补充证据" : "接受"}</button><button type="button" disabled={!!pending} onClick={() => onAction(id, "reject")} className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-[var(--border-strong)]/20 px-3 py-2 text-[11px] font-bold disabled:opacity-50"><X size={12} />拒绝</button></div></>}
           </div>
         );
+          })}
+        </section>;
       })}
     </div>
   );
@@ -186,6 +220,7 @@ export default function ResumeEditorPage() {
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [rightPanel, setRightPanel] = useState<"ai" | "design" | "versions">("ai");
   const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [hasEditedProposal, setHasEditedProposal] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [restoring, setRestoring] = useState<number | null>(null);
   const [canUndo, setCanUndo] = useState(false);
@@ -369,13 +404,21 @@ export default function ResumeEditorPage() {
     finally { setPendingAction(null); }
   };
 
-  const handleAllProposalActions = async (action: "accept" | "reject") => {
-    if (!workspace || !draft) return;
-    let current = workspace; const proposal = current.proposals.find((item) => ["ready", "in_review", "blocked"].includes(item.status)); if (!proposal) return;
-    const pending = proposal.diff.filter((item) => !proposal.item_reviews?.[String(item.change_id || "")]); setPendingAction(`all-${action}`);
-    try { for (const item of pending) { const previous = current.resume as DraftResume; current = await resumeApi.reviewProposalItem(proposal.proposal_id, { resume_id: draft.id, change_id: String(item.change_id), action }); if (action === "accept") recordUndo(previous); setFromWorkspace(current); } }
-    catch (error) { setWorkspaceError(safeClientErrorMessage(error, "批量审核失败")); await loadWorkspace(); }
+  const handleProposalGroupAction = async (changeIds: string[], action: "accept" | "reject") => {
+    if (!workspace || !draft || !changeIds.length) return;
+    const proposal = workspace.proposals.find((item) => ["ready", "in_review", "blocked"].includes(item.status)); if (!proposal) return;
+    setPendingAction(`group-${action}`); setWorkspaceError(null);
+    try {
+      const next = await resumeApi.reviewProposalItems(proposal.proposal_id, { resume_id: draft.id, change_ids: changeIds, action });
+      if (action === "accept") recordUndo(draft);
+      setFromWorkspace(next);
+    } catch (error) { setWorkspaceError(safeClientErrorMessage(error, "段落审核失败")); await loadWorkspace(); }
     finally { setPendingAction(null); }
+  };
+
+  const handleAllProposalActions = async (action: "accept" | "reject") => {
+    const proposal = workspace?.proposals.find((item) => ["ready", "in_review", "blocked"].includes(item.status)); if (!proposal) return;
+    await handleProposalGroupAction(proposal.diff.filter((item) => !proposal.item_reviews?.[String(item.change_id || "")]).map((item) => String(item.change_id)), action);
   };
 
   const handleRestore = async (versionId: number) => {
@@ -413,7 +456,7 @@ export default function ResumeEditorPage() {
         <section className="min-w-0 rounded-xl border border-[var(--border-strong)]/15 bg-[#e9e9e7] p-3" aria-label="简历实时预览"><div className="mb-3 flex items-center justify-between text-xs"><div className="flex items-center gap-2 font-black"><Eye size={14} />Live Preview <Badge>{style.pageSize === "LETTER" ? "Letter" : "A4"}</Badge></div><span className="text-[10px] text-[var(--foreground-muted)]">编辑即更新</span></div><div className="min-h-[900px] overflow-auto rounded-lg bg-[#d7d7d4] p-4"><div className="mx-auto w-fit origin-top scale-[0.78] pb-[-180px] shadow-2xl" data-testid="resume-live-preview"><ResumePreview userName={draft.user_name} title={draft.title} photoUrl={draft.photo_url} summary={draft.summary} contactJson={draft.contact_json || {}} sections={draft.sections} styleConfig={style} highlightKeywords={workspace.job?.keywords || []} /></div></div></section>
 
         <aside className="min-w-0 space-y-3" aria-label="简历工作区控制"><div className="flex rounded-xl border border-[var(--border-strong)]/15 bg-[var(--surface)] p-1" role="tablist">{([ ["ai", "AI Proposal", Wand2], ["design", "Design", Sparkles], ["versions", "Versions", History] ] as const).map(([key, label, Icon]) => <button key={key} type="button" role="tab" aria-selected={rightPanel === key} onClick={() => setRightPanel(key)} className={`flex flex-1 items-center justify-center gap-1 rounded-lg px-2 py-2 text-[10px] font-bold ${rightPanel === key ? "bg-black text-white" : "text-[var(--foreground-muted)] hover:bg-black/5"}`} data-testid={`resume-panel-${key}`}><Icon size={12} />{label}</button>)}</div>
-          {rightPanel === "ai" && <div className="space-y-3"><div className="rounded-xl border border-[var(--border-strong)]/15 bg-[var(--surface)] p-3"><p className="text-xs font-black">目标岗位上下文</p><p className="mt-1 text-[11px] text-[var(--foreground-muted)]">{targetLabel}</p>{activeProposal?.strategy?.missing_capabilities?.length ? <p className="mt-2 text-[10px] text-amber-800">Evidence Gap：{activeProposal.strategy.missing_capabilities.join("、")}</p> : null}</div>{activeProposal ? <><div className="flex gap-2"><button type="button" onClick={() => void handleAllProposalActions("accept")} disabled={!!pendingAction || activeProposal.fact_gate_status === "blocked"} title={activeProposal.fact_gate_status === "blocked" ? "事实门未通过，请先补充 Evidence" : undefined} className="flex-1 rounded-lg bg-black px-2 py-2 text-[10px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">全部接受</button><button type="button" onClick={() => void handleAllProposalActions("reject")} disabled={!!pendingAction} className="flex-1 rounded-lg border border-[var(--border-strong)]/20 px-2 py-2 text-[10px] font-bold disabled:opacity-50">全部拒绝</button></div><ProposalCard proposal={activeProposal} onAction={(id, action, text) => void handleProposalAction(id, action, text)} pending={pendingAction} /></> : <div className="rounded-xl border border-dashed border-[var(--border-strong)]/20 bg-[var(--surface)] p-4 text-xs text-[var(--foreground-muted)]">当前没有待审核的 AI Proposal。你可以继续手动编辑这份岗位简历。</div>}</div>}
+          {rightPanel === "ai" && <div className="space-y-3"><div className="rounded-xl border border-[var(--border-strong)]/15 bg-[var(--surface)] p-3"><p className="text-xs font-black">目标岗位上下文</p><p className="mt-1 text-[11px] text-[var(--foreground-muted)]">{targetLabel}</p>{activeProposal?.strategy?.missing_capabilities?.length ? <p className="mt-2 text-[10px] text-amber-800">Evidence Gap：{activeProposal.strategy.missing_capabilities.join("、")}</p> : null}</div>{activeProposal ? <><div className="flex gap-2"><button type="button" onClick={() => void handleAllProposalActions("accept")} disabled={!!pendingAction || hasEditedProposal || activeProposal.fact_gate_status === "blocked"} title={activeProposal.fact_gate_status === "blocked" ? "事实门未通过，请先补充 Evidence" : undefined} className="flex-1 rounded-lg bg-black px-2 py-2 text-[10px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">全部接受</button><button type="button" onClick={() => void handleAllProposalActions("reject")} disabled={!!pendingAction} className="flex-1 rounded-lg border border-[var(--border-strong)]/20 px-2 py-2 text-[10px] font-bold disabled:opacity-50">全部拒绝</button></div><ProposalCard proposal={activeProposal} onAction={(id, action, text) => void handleProposalAction(id, action, text)} onHasEdits={setHasEditedProposal} onGroupAction={(ids, action) => void handleProposalGroupAction(ids, action)} pending={pendingAction} /></> : <div className="rounded-xl border border-dashed border-[var(--border-strong)]/20 bg-[var(--surface)] p-4 text-xs text-[var(--foreground-muted)]">当前没有待审核的 AI Proposal。你可以继续手动编辑这份岗位简历。</div>}</div>}
           {rightPanel === "design" && <ResumeDesignPanel config={style} onChange={setStyle} onUpload={handleAssetUpload} uploading={pendingAction === "upload"} />}
           {rightPanel === "versions" && <div className="space-y-2 rounded-xl border border-[var(--border-strong)]/15 bg-[var(--surface)] p-3" data-testid="resume-version-panel"><div className="mb-2 flex items-center justify-between"><p className="text-xs font-black">版本历史</p><span className="text-[10px] text-[var(--foreground-muted)]">当前 V{workspace.application_packet.current_version_number || 1}</span></div>{workspace.versions.length === 0 && <p className="text-xs text-[var(--foreground-muted)]">保存第一个版本后会显示在这里。</p>}{workspace.versions.map((version) => <div key={version.id} className={`rounded-lg border p-3 ${version.is_current ? "border-emerald-300 bg-emerald-50" : "border-[var(--border-strong)]/10"}`}><div className="flex items-center justify-between"><span className="text-xs font-black">V{version.version_number}</span>{version.is_current && <Badge tone="green">Current</Badge>}</div><p className="mt-1 text-[11px]">{version.change_summary}</p><p className="mt-1 text-[10px] text-[var(--foreground-muted)]">{version.created_by} · {new Date(version.created_at).toLocaleString()}</p>{!version.is_current && <button type="button" onClick={() => void handleRestore(version.id)} disabled={restoring === version.id} className="mt-2 inline-flex items-center gap-1 text-[10px] font-bold underline disabled:opacity-50">{restoring === version.id ? <Loader2 size={11} className="animate-spin" /> : <RotateCcw size={11} />}恢复此版本</button>}</div>)}</div>}
           <div className="rounded-xl border border-[var(--border-strong)]/15 bg-[var(--surface)] p-3 text-[11px]"><p className="font-black">Application Packet</p><div className="mt-2 space-y-1.5 text-[var(--foreground-muted)]"><p className="flex items-center justify-between"><span>Tailored Resume</span><Badge tone="green">V{workspace.application_packet.current_version_number || "Draft"}</Badge></p><p className="flex items-center justify-between"><span>Role Intelligence</span><span>{workspace.application_packet.artifacts.research ? "已关联" : "待准备"}</span></p><p className="flex items-center justify-between"><span>Interview Focus</span><span>{workspace.application_packet.artifacts.interview_focus ? "已关联" : "待准备"}</span></p></div></div>

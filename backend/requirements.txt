@@ -27,6 +27,8 @@ jieba>=0.42.0
 mcp>=1.27.0,<2
 bcrypt>=4.0.0
 keyring>=25.6.0
+filelock>=3.16,<4
 
 # Vector Database for Semantic Search (Phase 1)
 qdrant-client>=1.12.0
+PyYAML>=6.0

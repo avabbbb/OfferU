@@ -10,16 +10,23 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { SHOWCASE } from "@/lib/showcase/router";
 import { resolveApiBase } from "@/lib/apiBase";
+import {
+  getDesktopRuntimeIdentity,
+  getDesktopBackendStatus,
+  isDesktopRuntime,
+  matchesDesktopRuntimeIdentity,
+} from "@/lib/runtimeIdentityApi";
 
 const API_BASE = resolveApiBase();
 const APP_VERSION = import.meta.env.VITE_APP_VERSION || "0.0.0";
 const BACKEND_STARTUP_TIMEOUT_MS = 45_000;
 const BACKEND_STARTUP_SLOW_HINT_MS = 8_000;
 
-function BackendReadyGate({ children }: { children: React.ReactNode }) {
+export function BackendReadyGate({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(SHOWCASE);
   const [startupError, setStartupError] = useState(false);
   const [slowHint, setSlowHint] = useState(false);
+  const [readinessState, setReadinessState] = useState<"waiting" | "connection" | "identity-mismatch" | "native-identity-unavailable" | "backend-failed">("waiting");
   const [probeNonce, setProbeNonce] = useState(0);
   const [startupRecovery, setStartupRecovery] = useState<{
     status: string;
@@ -29,17 +36,29 @@ function BackendReadyGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (SHOWCASE) return; // 展示模式无 Python 后端，直接放行
+    const desktopRuntime = isDesktopRuntime();
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     let slowHintTimer: ReturnType<typeof setTimeout> | undefined;
     setReady(false);
     setStartupError(false);
     setSlowHint(false);
+    setReadinessState("waiting");
     const deadline = Date.now() + BACKEND_STARTUP_TIMEOUT_MS;
     slowHintTimer = setTimeout(() => {
       if (!cancelled) setSlowHint(true);
     }, BACKEND_STARTUP_SLOW_HINT_MS);
     const probe = async () => {
+      if (desktopRuntime) {
+        const status = await getDesktopBackendStatus();
+        if (cancelled) return;
+        if (status?.state === "failed") {
+          setReadinessState("backend-failed");
+          setStartupError(true);
+          clearTimeout(slowHintTimer);
+          return;
+        }
+      }
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 1200);
       try {
@@ -51,7 +70,22 @@ function BackendReadyGate({ children }: { children: React.ReactNode }) {
         const payload = response.ok ? await response.json() : null;
         const isDev = import.meta.env.DEV;
         const versionOk = payload?.version === APP_VERSION;
-        if (
+        if (desktopRuntime) {
+          const expected = await getDesktopRuntimeIdentity();
+          if (!expected) {
+            if (!cancelled) setReadinessState("native-identity-unavailable");
+          } else if (matchesDesktopRuntimeIdentity(expected, payload, isDev ? "source" : "release")) {
+            if (!cancelled) {
+              setStartupRecovery(payload.startup_recovery || null);
+              setStartupError(false);
+              setReadinessState("waiting");
+              setReady(true);
+            }
+            return;
+          } else if (!cancelled) {
+            setReadinessState("identity-mismatch");
+          }
+        } else if (
           !cancelled
           && payload?.status === "ok"
           && payload?.service === "OfferU"
@@ -63,11 +97,15 @@ function BackendReadyGate({ children }: { children: React.ReactNode }) {
           }
           setStartupRecovery(payload.startup_recovery || null);
           setStartupError(false);
+          setReadinessState("waiting");
           setReady(true);
           return;
+        } else if (!cancelled) {
+          setReadinessState("connection");
         }
       } catch {
         // Desktop startup is expected to race the Python process once.
+        if (!cancelled) setReadinessState("connection");
       } finally {
         clearTimeout(timeout);
       }
@@ -92,6 +130,7 @@ function BackendReadyGate({ children }: { children: React.ReactNode }) {
         <div
           className="bauhaus-panel flex max-w-[520px] items-start gap-4 bg-[var(--surface)] px-6 py-5"
           data-testid="backend-ready-gate"
+          data-readiness-state={readinessState}
         >
           <span
             className={`mt-1 h-5 w-5 shrink-0 ${startupError ? "bg-[var(--primary-red)]" : "animate-pulse bg-[var(--primary-red)]"}`}
@@ -101,9 +140,19 @@ function BackendReadyGate({ children }: { children: React.ReactNode }) {
             <p className="bauhaus-label text-[var(--foreground-muted)]">OfferU</p>
             {startupError ? (
               <>
-                <p className="text-sm font-semibold">无法连接 OfferU 后端</p>
+                <p className="text-sm font-semibold">
+                  {readinessState === "backend-failed" ? "OfferU 后端启动失败" : readinessState === "identity-mismatch" || readinessState === "native-identity-unavailable"
+                    ? "无法验证当前桌面运行身份"
+                    : "无法连接 OfferU 后端"}
+                </p>
                 <p className="mt-2 text-xs leading-5 text-[var(--foreground-muted)]">
-                  请确认本地 API 正在 <code>http://127.0.0.1:8766</code> 运行。网页入口是 <code>http://127.0.0.1:7410</code>；8080 只是模型接口，不是网页地址。
+                  {isDesktopRuntime() ? (
+                    <>请关闭并重新打开 OfferU。如果仍未恢复，请更新或重新安装当前版本；保留本地数据与诊断记录。</>
+                  ) : readinessState === "identity-mismatch" || readinessState === "native-identity-unavailable" ? (
+                    <>检测到本地服务与当前桌面实例不匹配，或安装包身份资料缺失。请关闭并重新打开 OfferU；如果仍未恢复，请更新或重新安装当前版本。</>
+                  ) : (
+                    <>请确认本地 API 正在 <code>http://127.0.0.1:8766</code> 运行。网页入口是 <code>http://127.0.0.1:7410</code>；8080 只是模型接口，不是网页地址。</>
+                  )}
                 </p>
                 <button
                   type="button"
@@ -120,7 +169,7 @@ function BackendReadyGate({ children }: { children: React.ReactNode }) {
                 {slowHint && (
                   <>
                     <p className="mt-2 text-xs leading-5 text-[var(--foreground-muted)]">
-                      连接时间较长，仍在重试。若本地服务未启动，请先在终端启动后端（端口 8766）。
+                      {isDesktopRuntime() ? "首次启动可能需要较长时间，仍在检查本地服务。" : "连接时间较长，仍在重试。若本地服务未启动，请先在终端启动后端（端口 8766）。"}
                     </p>
                     <button
                       type="button"

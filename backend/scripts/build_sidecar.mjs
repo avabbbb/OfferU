@@ -1,6 +1,6 @@
 // Native desktop build: the installed app never needs Python, Node, or npm.
 import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve, sep } from "node:path";
+import { delimiter, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
@@ -27,10 +27,15 @@ const venv = join(backend, ".venv312", windows ? "Scripts/python.exe" : "bin/pyt
 const python = process.env.OFFERU_PYTHON_PATH || (existsSync(venv) ? venv : windows ? "python" : "python3");
 const resumeFrontend = join(root, "frontend/dist");
 const resumeBrowsers = join(build, "resume-browsers");
+const pythonBuildEnvironment = {
+  ...process.env,
+  PYTHONPATH: [backend, process.env.PYTHONPATH].filter(Boolean).join(delimiter),
+  PYINSTALLER_CONFIG_DIR: join(build, "pyinstaller-cache"),
+};
 if (!existsSync(join(resumeFrontend, "index.html"))) throw new Error("Build the frontend before packaging resume export resources.");
 
 function run(command, args, capture = false) {
-  const result = spawnSync(command, args, { cwd: root, stdio: capture ? "pipe" : "inherit", encoding: "utf8", windowsHide: true });
+  const result = spawnSync(command, args, { cwd: root, env: pythonBuildEnvironment, stdio: capture ? "pipe" : "inherit", encoding: "utf8", windowsHide: true });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(`${command} exited with ${result.status}: ${result.stderr || "see build output"}`);
   return result.stdout?.trim();
@@ -41,6 +46,7 @@ const [major, minor] = nodeInfo.version.split(".").map(Number);
 if (major < 22 || (major === 22 && minor < 19)) throw new Error("The bundled runtime requires Node >= 22.19.0.");
 if (nodeInfo.arch !== process.arch || nodeInfo.platform !== process.platform) throw new Error("Node architecture does not match this build.");
 const pythonArch = run(python, ["-c", "import platform; print(platform.machine().lower())"], true);
+run(python, ["-c", "from pathlib import Path; import app; assert Path(app.__file__).resolve().parent == Path(__import__('sys').argv[1]).resolve() / 'app', 'Wrong OfferU app package'", backend], true);
 if (!(process.arch === "arm64" ? ["arm64", "aarch64"] : ["amd64", "x86_64"]).includes(pythonArch)) {
   throw new Error("Python architecture does not match this build.");
 }
@@ -49,6 +55,8 @@ if (!existsSync(join(runtime, "node_modules/@anthropic-ai/claude-agent-sdk"))) {
 }
 mkdirSync(temp, { recursive: true });
 if (realpathSync(temp) !== join(realpathSync(root), ".tmp")) throw new Error("Build directory resolves outside the workspace.");
+const buildIdentityPath = join(temp, "offeru-build-identity.json");
+run(node, [join(backend, "scripts/build_identity.mjs"), "--output", buildIdentityPath]);
 mkdirSync(dist, { recursive: true });
 mkdirSync(build, { recursive: true });
 // Resolve the actual deletion target before replacing only our staging folder.
@@ -84,6 +92,7 @@ const args = [
   "--collect-all", "playwright",
   "--add-data", `${resumeFrontend}${windows ? ";" : ":"}resume-frontend`,
   "--add-data", `${resumeBrowsers}${windows ? ";" : ":"}resume-browsers`,
+  "--add-data", `${buildIdentityPath}${windows ? ";" : ":"}offeru-assets`,
   "--add-data", `${join(backend, "app/agents/skills")}${windows ? ";" : ":"}app/agents/skills`,
   "--add-data", `${join(backend, "tests/fixtures")}${windows ? ";" : ":"}tests/fixtures`,
   "--add-data", `${join(root, ".agents/skills/offeru")}${windows ? ";" : ":"}offeru-assets/skills/offeru`,

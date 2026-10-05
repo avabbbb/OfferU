@@ -106,7 +106,7 @@ function DeliveryRow({
             onClick={() => onOpenArtifact(String(delivery.artifact_id))}
             className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[var(--border)] px-2 py-1 text-[11px] font-medium text-[var(--foreground)] hover:bg-[var(--surface-muted)]"
           >
-            {delivery.artifact_type === "interview_prep" ? "打开练习" : "查看"}
+            {delivery.artifact_type === "interview_prep" && delivery.practice?.total ? "打开练习" : "查看"}
             <ArrowRight size={11} />
           </button>
         ) : (
