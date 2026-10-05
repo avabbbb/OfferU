@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 import sqlite3
 import tempfile
@@ -10,10 +11,12 @@ from types import SimpleNamespace
 
 from sqlalchemy import MetaData, create_engine, inspect, text
 from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.orm import Session
 from sqlalchemy.schema import CreateTable
 
 from app.database import (
     Base,
+    CURRENT_SCHEMA_VERSION,
     DatabaseMigrationError,
     SCHEMA_MIGRATIONS,
     prepare_schema_migration,
@@ -23,7 +26,7 @@ from app.database import (
 from app.services.data_safety import DataSafetyLayout, database_integrity_report, list_backups
 
 # Register every current ORM table before create_all/smoke checks run.
-import app.models.models  # noqa: F401, E402
+from app.models.models import AgentRunRecord, JobSearchTask  # noqa: E402
 
 
 class DatabaseMigrationTests(unittest.TestCase):
@@ -66,7 +69,7 @@ class DatabaseMigrationTests(unittest.TestCase):
                 with engine.begin() as connection:
                     Base.metadata.create_all(connection)
                     result = run_schema_migrations(connection)
-                    self.assertEqual(result, {"from_version": 0, "to_version": 5})
+                    self.assertEqual(result, {"from_version": 0, "to_version": CURRENT_SCHEMA_VERSION})
             finally:
                 engine.dispose()
 
@@ -84,7 +87,7 @@ class DatabaseMigrationTests(unittest.TestCase):
 
             connection = sqlite3.connect(database_path)
             try:
-                self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 5)
+                self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], CURRENT_SCHEMA_VERSION)
                 job_status = connection.execute(
                     "SELECT triage_status FROM jobs WHERE id = 1"
                 ).fetchone()[0]
@@ -129,11 +132,73 @@ class DatabaseMigrationTests(unittest.TestCase):
             engine = create_engine(f"sqlite:///{database_path.as_posix()}")
             try:
                 with engine.begin() as connection:
-                    self.assertEqual(run_schema_migrations(connection), {"from_version": 1, "to_version": 5})
+                    self.assertEqual(run_schema_migrations(connection), {"from_version": 1, "to_version": CURRENT_SCHEMA_VERSION})
             finally:
                 engine.dispose()
             self.assertEqual(schema_migration_status(url)["status"], "ready")
             self.assertEqual(len(list_backups(layout)["items"]), 1)
+
+    def test_v5_agent_run_proposals_are_preserved_and_v6_replay_is_idempotent(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "version-five.db"
+            engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+            legacy_steps = [
+                {
+                    "id": "resume.accept:1",
+                    "tool": "resume.accept",
+                    "args": {"proposal_id": "proposal-old"},
+                    "status": "waiting_confirmation",
+                }
+            ]
+            try:
+                with engine.begin() as connection:
+                    Base.metadata.create_all(connection)
+                    for table_name in (
+                        "proposal_continuations",
+                        "proposal_execution_receipts",
+                        "proposal_confirmation_decisions",
+                        "proposal_operation_nodes",
+                        "proposal_confirmation_groups",
+                        "proposal_plans",
+                    ):
+                        connection.exec_driver_sql(f'DROP TABLE "{table_name}"')
+                with Session(engine) as session, session.begin():
+                    session.add(JobSearchTask(task_id="task-old"))
+                    session.add(
+                        AgentRunRecord(
+                            run_id="run-old",
+                            task_id="task-old",
+                            steps_json=legacy_steps,
+                        )
+                    )
+                with engine.begin() as connection:
+                    connection.execute(text("PRAGMA user_version = 5"))
+                    self.assertEqual(
+                        run_schema_migrations(connection),
+                        {"from_version": 5, "to_version": CURRENT_SCHEMA_VERSION},
+                    )
+                    self.assertEqual(
+                        run_schema_migrations(connection),
+                        {"from_version": CURRENT_SCHEMA_VERSION, "to_version": CURRENT_SCHEMA_VERSION},
+                    )
+                    preserved = connection.execute(
+                        text("SELECT steps_json FROM agent_runs WHERE run_id = 'run-old'")
+                    ).scalar_one()
+                    self.assertEqual(json.loads(preserved), legacy_steps)
+                    self.assertEqual(
+                        connection.execute(
+                            text("SELECT COUNT(*) FROM proposal_plans")
+                        ).scalar_one(),
+                        0,
+                    )
+                    self.assertEqual(
+                        connection.execute(
+                            text("SELECT COUNT(*) FROM proposal_confirmation_decisions")
+                        ).scalar_one(),
+                        0,
+                    )
+            finally:
+                engine.dispose()
 
     def test_v4_resume_proposals_become_nullable_without_losing_constraints_or_data(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -161,9 +226,7 @@ class DatabaseMigrationTests(unittest.TestCase):
                     }
                     for table in Base.metadata.sorted_tables:
                         if table.name not in migration_support_tables:
-                            connection.exec_driver_sql(
-                                f'CREATE TABLE "{table.name}" ("id" INTEGER PRIMARY KEY)'
-                            )
+                            connection.execute(CreateTable(table))
                     connection.exec_driver_sql('INSERT INTO "jobs" ("id") VALUES (11)')
                     connection.exec_driver_sql('INSERT INTO "profiles" ("id") VALUES (12)')
                     connection.exec_driver_sql(
@@ -192,9 +255,8 @@ class DatabaseMigrationTests(unittest.TestCase):
 
                     self.assertEqual(
                         run_schema_migrations(connection),
-                        {"from_version": 4, "to_version": 5},
+                        {"from_version": 4, "to_version": CURRENT_SCHEMA_VERSION},
                     )
-
                     research_run_column = next(
                         column
                         for column in inspect(connection).get_columns("resume_optimization_proposals")
@@ -257,6 +319,149 @@ class DatabaseMigrationTests(unittest.TestCase):
                     )
             finally:
                 engine.dispose()
+
+    def test_v5_to_v6_adds_decision_tables_without_touching_existing_rows(self) -> None:
+        """v5→v6 is additive: pre-existing rows and schema survive untouched.
+
+        Mirrors the real init_db ordering: a v5 file lacks the v6 tables,
+        create_all adds them (IF NOT EXISTS), then run_schema_migrations bumps
+        the version marker without rewriting existing rows.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "version-five.db"
+            engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+            v6_tables = {
+                "proposal_plans",
+                "decision_groups",
+                "operation_nodes",
+                "confirmation_decisions",
+                "execution_receipts",
+                "agent_input_requests",
+            }
+            try:
+                with engine.begin() as connection:
+                    for table in Base.metadata.sorted_tables:
+                        if table.name in v6_tables:
+                            continue
+                        connection.execute(CreateTable(table))
+                    connection.execute(
+                        Base.metadata.tables["jobs"].insert().values(
+                            id=7,
+                            title="存续岗位",
+                            company="存续公司",
+                            triage_status="picked",
+                            hash_key="keep-me",
+                        )
+                    )
+                    connection.exec_driver_sql("PRAGMA user_version = 5")
+
+                with engine.begin() as connection:
+                    Base.metadata.create_all(connection)
+                    self.assertEqual(
+                        run_schema_migrations(connection),
+                        {"from_version": 5, "to_version": CURRENT_SCHEMA_VERSION},
+                    )
+
+                with engine.begin() as connection:
+                    names = {
+                        row[0]
+                        for row in connection.exec_driver_sql(
+                            "SELECT name FROM sqlite_master WHERE type = 'table'"
+                        )
+                    }
+                    for table_name in v6_tables:
+                        self.assertIn(table_name, names)
+                    row = connection.exec_driver_sql(
+                        "SELECT title, company, triage_status, hash_key "
+                        "FROM jobs WHERE id = 7"
+                    ).one()
+                    self.assertEqual(row, ("存续岗位", "存续公司", "picked", "keep-me"))
+                    version = connection.exec_driver_sql(
+                        "PRAGMA user_version"
+                    ).scalar_one()
+                    self.assertEqual(version, CURRENT_SCHEMA_VERSION)
+                    for table_name in v6_tables:
+                        count = connection.exec_driver_sql(
+                            f'SELECT COUNT(*) FROM "{table_name}"'
+                        ).scalar_one()
+                        self.assertEqual(count, 0)
+            finally:
+                engine.dispose()
+
+    def test_v6_migration_is_idempotent_when_tables_already_exist(self) -> None:
+        """If create_all already created v6 tables, migration must not fail."""
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "version-five-pre-created.db"
+            engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+            try:
+                with engine.begin() as connection:
+                    Base.metadata.create_all(connection)
+                    connection.exec_driver_sql("PRAGMA user_version = 5")
+                    self.assertEqual(
+                        run_schema_migrations(connection),
+                        {"from_version": 5, "to_version": CURRENT_SCHEMA_VERSION},
+                    )
+            finally:
+                engine.dispose()
+
+
+    def test_prototype_v6_history_is_preserved_without_migrating_approval(self) -> None:
+        from app.database import _preserve_prototype_decision_history
+
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "prototype-v6.db"
+            engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+            try:
+                with engine.begin() as connection:
+                    connection.exec_driver_sql("PRAGMA foreign_keys = ON")
+                    connection.exec_driver_sql(
+                        "CREATE TABLE proposal_plans (plan_id TEXT PRIMARY KEY, immutable_json JSON NOT NULL)"
+                    )
+                    connection.exec_driver_sql(
+                        "CREATE TABLE historical_link (id TEXT PRIMARY KEY, plan_id TEXT REFERENCES proposal_plans(plan_id))"
+                    )
+                    connection.exec_driver_sql(
+                        "INSERT INTO proposal_plans VALUES ('owner-old-plan', '{\"approved\":true}')"
+                    )
+                    connection.exec_driver_sql("INSERT INTO historical_link VALUES ('link', 'owner-old-plan')")
+                    connection.exec_driver_sql("PRAGMA user_version = 6")
+                url = f"sqlite+aiosqlite:///{database_path.as_posix()}"
+                layout = DataSafetyLayout(backend_dir=Path(directory), database_path=database_path)
+                prepared = asyncio.run(prepare_schema_migration(url, backend_dir=Path(directory)))
+                self.assertTrue(prepared["required"])
+                self.assertEqual(len(list_backups(layout)["items"]), 1)
+                with engine.begin() as connection:
+                    # init_db must archive before create_all encounters the incompatible table.
+                    _preserve_prototype_decision_history(connection)
+                    Base.metadata.create_all(connection)
+                    run_schema_migrations(connection)
+                    archived = connection.exec_driver_sql(
+                        "SELECT immutable_json FROM legacy_decision_proposal_plans WHERE plan_id = 'owner-old-plan'"
+                    ).scalar_one()
+                    self.assertEqual(json.loads(archived), {"approved": True})
+                    self.assertEqual(inspect(connection).get_foreign_keys("historical_link")[0]["referred_table"],
+                                     "legacy_decision_proposal_plans")
+                    self.assertEqual(connection.exec_driver_sql("PRAGMA foreign_key_check").all(), [])
+                    for table in ("proposal_plans", "proposal_confirmation_decisions", "proposal_execution_receipts"):
+                        self.assertEqual(connection.exec_driver_sql(f'SELECT COUNT(*) FROM "{table}"').scalar_one(), 0)
+                    self.assertEqual(run_schema_migrations(connection)["from_version"], CURRENT_SCHEMA_VERSION)
+            finally:
+                engine.dispose()
+
+    def test_unrecognized_plan_table_fails_closed_and_preserves_rows(self) -> None:
+        from app.database import _preserve_prototype_decision_history
+
+        engine = create_engine("sqlite://")
+        try:
+            with engine.begin() as connection:
+                connection.exec_driver_sql("CREATE TABLE proposal_plans (unexpected TEXT)")
+                connection.exec_driver_sql("INSERT INTO proposal_plans VALUES ('must-survive')")
+                with self.assertRaisesRegex(DatabaseMigrationError, "无法识别"):
+                    _preserve_prototype_decision_history(connection)
+                self.assertEqual(connection.exec_driver_sql("SELECT unexpected FROM proposal_plans").scalar_one(),
+                                 "must-survive")
+        finally:
+            engine.dispose()
 
     def test_future_schema_version_fails_closed_without_creating_backup(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

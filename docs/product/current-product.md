@@ -2,7 +2,7 @@
 # OfferU Current Product North Star
 
 Status: **CURRENT PRODUCT AUTHORITY**  
-Updated: 2026-09-30
+Updated: 2026-10-01
 
 This document defines the current product shape of OfferU. Historical audits, dated implementation plans and superseded Harness-specific designs must not override it.
 
@@ -50,6 +50,10 @@ Install
 ~~~
 
 Desktop discovers the user's local Agent, installs/updates the runtime-bound Skill through its host adapter and verifies a real read-only Operation. Consumer Agents use officially supported connectors when actually available. Connecting an Agent is central to the product but is not a gate before Profile/Job value. Normal users do not copy connection prompts, hand-install Skills or start a source environment.
+
+The connection surface is one **Use my Agent** window. The default local path installs the same runtime-bound Skill into the shared Agent Skills directory; documented host-specific installation locations are optional adapters. Discovery does not run CLI help/version probes or start a reasoning session. The user's existing host reads the current view and completes a short-lived Registry nonce readback; Desktop projects that evidence. This proves local tool transport, not model login, native Ask, web, streaming or compatibility with an untested host. Brand names are display/installation metadata, never career-policy authority.
+
+The active host owns native structured input and current-web research. Ask resolves positioning, section order and experience-selection decisions. A scoped L1 preparation Operation may persist an evidence-checked external draft and bind its Job Resume Workspace without another approval; it cannot adopt content, change Profile facts or perform external actions. Resume adoption uses section comparisons or one bounded atomic review of displayed change IDs, preserving per-change evidence/rationale, fact gates, stale detection and audit. Ask answers remain drafting strategy and never self-confirm an OfferU proposal.
 
 The user should experience a durable workspace, not a disposable AI conversation.
 

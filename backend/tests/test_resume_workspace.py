@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import tempfile
+from pathlib import Path
 import unittest
 from unittest.mock import AsyncMock, patch
 
@@ -260,6 +262,103 @@ class ResumeWorkspaceTests(unittest.TestCase):
         result = asyncio.run(run())
         self.assertEqual(result["description"], "old evidence refined")
         self.assertFalse(result["duplicate"])
+
+    def test_batch_review_is_atomic_and_retry_is_idempotent(self) -> None:
+        async def run(invalid_target: bool) -> dict:
+            engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+            sessions = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+            async with engine.begin() as connection:
+                await connection.run_sync(Base.metadata.create_all)
+            fixture = await _seed(sessions, "batch")
+            with patch.object(resume_workspace, "async_session", sessions), patch.object(
+                resume_workspace, "get_pre_application_state",
+                new=AsyncMock(return_value={"stage": "resume_proposal_ready"}),
+            ):
+                workspace = await resume_workspace.ensure_resume_workspace(
+                    job_id=fixture["job_id"], proposal_id=fixture["proposal_id"]
+                )
+                async with sessions() as db:
+                    proposal = await db.get(ResumeOptimizationProposal, fixture["proposal_id"])
+                    first = proposal.diff_json[0]
+                    second = {**first, "change_id": "second"}
+                    if invalid_target:
+                        second = {**second, "before": {"title": "missing", "section_type": "education"}, "after": {"title": "missing"}}
+                    else:
+                        second = {**second, "change_type": "added", "after": {**first["after"], "title": "新增项目", "source_section_ids": []}}
+                    proposal.diff_json = [first, second]
+                    await db.commit()
+                args = dict(proposal_id=fixture["proposal_id"], resume_id=workspace["resume"]["id"],
+                            change_ids=[fixture["change_id"], "second"], action="accept")
+                if invalid_target:
+                    with self.assertRaisesRegex(ValueError, "目标段落"):
+                        await resume_workspace.review_resume_proposal_items(**args)
+                else:
+                    await resume_workspace.review_resume_proposal_items(**args)
+                    retry = await resume_workspace.review_resume_proposal_items(**args)
+                    self.assertTrue(retry["duplicate"])
+                    with self.assertRaisesRegex(ValueError, "不同审核"):
+                        await resume_workspace.review_resume_proposal_items(**{**args, "action": "reject"})
+                async with sessions() as db:
+                    proposal = await db.get(ResumeOptimizationProposal, fixture["proposal_id"])
+                    resume = await resume_workspace._load_resume(db, workspace["resume"]["id"])
+                    result = {"reviews": proposal.item_reviews_json or {}, "revision": resume.workspace_revision,
+                              "sections": len(resume.sections), "description": resume.sections[0].content_json[0]["description"],
+                              "initial_revision": workspace["resume"]["workspace_revision"]}
+            await engine.dispose()
+            return result
+
+        for invalid in [False, True]:
+            with self.subTest(invalid_target=invalid):
+                result = asyncio.run(run(invalid))
+                self.assertEqual(result["revision"], result["initial_revision"] + (0 if invalid else 1))
+                self.assertEqual(len(result["reviews"]), 0 if invalid else 2)
+                self.assertEqual(result["sections"], 1 if invalid else 2)
+                self.assertEqual(result["description"], "old evidence" if invalid else "new evidence")
+
+    def test_concurrent_batch_retry_changes_resume_once(self) -> None:
+        async def run(database_path: Path) -> None:
+            engine = create_async_engine(f"sqlite+aiosqlite:///{database_path.as_posix()}")
+            sessions = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+            async with engine.begin() as connection:
+                await connection.run_sync(Base.metadata.create_all)
+            fixture = await _seed(sessions, "concurrent-batch")
+            with patch.object(resume_workspace, "async_session", sessions), patch.object(
+                resume_workspace, "get_pre_application_state", new=AsyncMock(return_value={"stage": "resume_proposal_ready"}),
+            ):
+                workspace = await resume_workspace.ensure_resume_workspace(job_id=fixture["job_id"], proposal_id=fixture["proposal_id"])
+                args = dict(proposal_id=fixture["proposal_id"], resume_id=workspace["resume"]["id"], change_ids=[fixture["change_id"]], action="accept")
+                results = await asyncio.gather(*[resume_workspace.review_resume_proposal_items(**args) for _ in range(2)])
+                self.assertEqual(sorted(result["duplicate"] for result in results), [False, True])
+                async with sessions() as db:
+                    resume = await db.get(Resume, workspace["resume"]["id"])
+                    self.assertEqual(resume.workspace_revision, workspace["resume"]["workspace_revision"] + 1)
+            await engine.dispose()
+        Path("H:/tmp/offeru").mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir="H:/tmp/offeru") as temp_dir:
+            asyncio.run(run(Path(temp_dir) / "batch.db"))
+
+    def test_batch_review_reject_does_not_refresh_stale_workspace_hash(self) -> None:
+        async def run() -> None:
+            engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+            sessions = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+            async with engine.begin() as connection:
+                await connection.run_sync(Base.metadata.create_all)
+            fixture = await _seed(sessions, "reject-stale")
+            with patch.object(resume_workspace, "async_session", sessions), patch.object(
+                resume_workspace, "get_pre_application_state", new=AsyncMock(return_value={"stage": "resume_proposal_ready"}),
+            ):
+                workspace = await resume_workspace.ensure_resume_workspace(job_id=fixture["job_id"], proposal_id=fixture["proposal_id"])
+                async with sessions() as db:
+                    proposal = await db.get(ResumeOptimizationProposal, fixture["proposal_id"])
+                    proposal.diff_json = [*proposal.diff_json, {**proposal.diff_json[0], "change_id": "other"}]
+                    resume = await db.get(Resume, workspace["resume"]["id"])
+                    resume.summary = "manual edit"
+                    await db.commit()
+                await resume_workspace.review_resume_proposal_items(fixture["proposal_id"], workspace["resume"]["id"], ["other"], "reject")
+                with self.assertRaisesRegex(ValueError, "过期"):
+                    await resume_workspace.review_resume_proposal_items(fixture["proposal_id"], workspace["resume"]["id"], [fixture["change_id"]], "accept")
+            await engine.dispose()
+        asyncio.run(run())
 
     def test_workspace_requires_confirmed_pre_application_decision(self) -> None:
         async def run() -> None:

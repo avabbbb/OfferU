@@ -1,7 +1,7 @@
 # OfferU Entry, Onboarding & Dogfood Contract
 
 Status: **CURRENT PRODUCT DETAIL**  
-Updated: 2026-09-30
+Updated: 2026-10-01
 
 This document expands the first-use and distribution contract defined by [Current Product North Star](./current-product.md). If wording conflicts, `GOAL.md` and `current-product.md` win.
 
@@ -78,7 +78,7 @@ OfferU Skill available in host
 → Agent reads the live OfferU manifest
 → Agent selects a Skill / Operation
 → read operations execute
-→ mutations become OfferU proposals
+→ L1 tools prepare reviewable drafts; protected changes become OfferU proposals
 → user reviews them in OfferU Desktop
 → the same Job Workspace updates
 ~~~
@@ -89,13 +89,11 @@ OfferU does not claim a published `npx skills add offeru` package. The canonical
 
 ## 3. Generic local-Agent setup contract
 
-The beginner UI does not ask the user to choose a named host. `backend/app/services/agent_host_registry.py` remains the internal capability source for diagnostics and supported automatic integration, while the user-facing flow starts from one provider-neutral prompt.
+One connection window prepares the canonical runtime-bound OfferU Skill. The default local installation uses the shared Agent Skills directory; supported native installation locations remain optional thin adapters. An unknown future host that can load the Skill and invoke local tools can use the same contract without a new career-policy branch. Hosts with other documented loaders can import the installation-bound Skill; direct consumer/cloud transport remains unavailable until its official connection is implemented and accepted.
 
-The prompt points to the canonical Skill in the public GitHub repository. The Agent must identify its current host, install only the OfferU Skill in a documented Skills directory, and follow the setup instructions shipped inside that Skill. If it needs the CLI for a packaged OfferU install, the local backend may return an installation-specific projection; this is runtime binding, not Skill distribution. The Agent must not change account/login, model, credentials, proxy or unrelated settings. If the current host has no documented Skill loader, it reports the limitation instead of guessing.
+Discovery checks executable/file presence only. It never runs a hosted CLI capability probe or starts a model session. After preparation, the user invokes OfferU in their existing Agent. The live Tool Contract exposes a short-lived challenge ID, the Agent reads the current view through the bootstrap Skill and reads the nonce through the Registry. Desktop refreshes the persisted tool-readback evidence. Expired/replaced challenges and changed Skill bindings fail closed.
 
-The Skill may document common host-specific Skills directories because that is setup reference material for the Agent, not a provider choice the user must make. The ordinary OfferU interface does not list provider names or ask the user to pick one.
-
-Copying a prompt is only a handoff. The Agent must download the Skill, execute the connection check and read the current view before OfferU or the user describes it as connected. Skill and Operation capabilities continue to come from the live Registry; host name alone is not evidence of support.
+Readback is evidence of tool transport. Native Ask, web, streaming, login and actual model behavior remain host-owned or separately verified; no detected brand receives an automatic capability badge. The Agent retains its own account, model, credentials and proxy. A pending connection never blocks Profile, Job or fallback value.
 
 ## 4. Current first-use UI contract
 
@@ -124,7 +122,7 @@ The implemented beginner wizard is intentionally short:
    - saving a Job does not mean it was applied to;
    - open the canonical Job Workspace.
 
-After Agent work starts, protected mutations are surfaced in Desktop as **Pending Proposal Review**. The user can approve or reject individual actions. The Agent must never self-confirm.
+After Agent work starts, protected changes remain independently reviewable in Desktop. Resume drafting uses native Ask for positioning and structure, then section-level Before/After evidence comparisons. Section or full-document adoption submits a bounded set of displayed change IDs atomically; it does not approve arbitrary queued Operations. New Profile facts and external actions keep their own review boundary. The Agent must never self-confirm.
 
 ## 5. What the Agent can do today
 

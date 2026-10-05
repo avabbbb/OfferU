@@ -97,6 +97,10 @@ Operation
 
 GUI、CLI、TUI、Slash Skill、Agent、Automation、Plugin 和 Browser Extension 的业务写入都必须经过同一 Operation Registry。外部提交、邮件、私信、发布、购买和接受 Offer 不得自动执行。
 
+用户已有 Agent 的接入统一为一个窗口、一份 runtime-bound Skill 和同一 Tool Contract。安装位置/传输适配可以不同，但普通连接不得启动另一套 Agent 会话，也不以 hosted runtime CLI flags 作为 Skill 可用前提。真实只读回读只证明工具链路，不能冒充模型、原生 Ask、联网或流式能力验收。
+
+交互区分 Ask 与采用审核：Ask 决定定位、结构和经历取舍；明确标记为 L1 Prepare 的外部草稿持久化及工作区绑定可在任务范围内直接执行，不得改写 Profile 或自动采用。使用者按段落 Before/After 或整份已展示的改动集合审核，批量采用必须原子执行并保留逐项证据、事实门、过期检查与审计，不得把一次 Ask 当成对未见改写或外部动作的批准。
+
 ## Automation and Truth Invariants
 
 唯一 Automation 模型是：

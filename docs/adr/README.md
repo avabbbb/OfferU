@@ -35,6 +35,10 @@ UI, Agent, browser extension, email sync, automation and Skills project or propo
 
 Governed business actions pass through the Operation Registry. Protected side effects use Proposal/HITL, idempotency and audit. An Agent cannot approve its own protected mutation.
 
+### Decision Plan authorization migration
+
+Decision accepted for implementation planning on 2026-10-02; not yet implemented or product-accepted. Replace operation-level pending Proposal authority with persistent Plan/ConfirmationGroup/OperationNode decisions and receipts, keeping Career Truth, Operation Registry, independent user authorization, audit and idempotency. AgentRun steps become a compatibility projection. This avoids parallel approval engines while allowing one reviewed semantic group to authorize multiple exact Operations; it does not imply cross-Operation atomicity. Preserve Coordinator concurrency/recovery invariants while migrating their storage implementation. Domain resume/memory proposals retain their evidence and review content. See [migration design and open decisions](../architecture/embedded-agent-proposal-integration-draft.md).
+
 ### Tool discovery
 
 The Operation Registry is broader than the Agent-facing tool catalog.

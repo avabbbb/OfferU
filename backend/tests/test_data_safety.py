@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 import shutil
 import sqlite3
@@ -18,6 +19,7 @@ from app.ops import OPERATIONS, execute_operation
 from app.services.data_safety import (
     DataSafetyError,
     DataSafetyLayout,
+    _aggregate_hash,
     _validate_member,
     apply_pending_restore_before_database_connect,
     cancel_pending_restore,
@@ -100,6 +102,96 @@ class DataSafetyTests(unittest.TestCase):
             backups = list_backups(layout)
             self.assertEqual(len(backups["items"]), 6)
             self.assertEqual(backups["invalid"], [])
+
+    def test_pre_reset_backup_restores_embedded_sessions_and_missing_runtime_files(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            layout = self._layout(Path(directory))
+            _write_state(layout, "before-reset")
+            session_root = layout.data_dir / "python_agent_sessions"
+            session_root.mkdir(parents=True)
+            session_canary = session_root / "run_synthetic12345678.json"
+            session_canary.write_text('{"messages":["synthetic old context"]}', encoding="utf-8")
+
+            backup = create_backup(layout, reason="pre_reset", app_version="test")
+            self.assertEqual(backup["reason"], "pre_reset")
+
+            _write_state(layout, "after-reset")
+            shutil.rmtree(session_root)
+            staged = stage_restore(layout, backup_id=backup["backup_id"])
+            self.assertTrue(staged["pending_restart"])
+            applied = apply_pending_restore_before_database_connect(
+                database_url=f"sqlite+aiosqlite:///{layout.database_path.as_posix()}",
+                backend_dir=layout.backend_dir,
+            )
+
+            self.assertTrue(applied["applied"])
+            self.assertEqual(
+                _read_state(layout),
+                ("before-reset", "upload:before-reset", '{"value":"before-reset"}'),
+            )
+            self.assertEqual(
+                session_canary.read_text(encoding="utf-8"),
+                '{"messages":["synthetic old context"]}',
+            )
+            self.assertEqual(
+                json.loads((layout.data_dir / "harness_agent_memory.json").read_text(encoding="utf-8"))["facts"],
+                [],
+            )
+            self.assertEqual(
+                json.loads((layout.data_dir / "harness_agent_conversations.json").read_text(encoding="utf-8"))["conversations"],
+                [],
+            )
+
+    def test_legacy_backup_without_reset_inventory_keeps_newer_runtime_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            layout = self._layout(Path(directory))
+            _write_state(layout, "legacy-backup")
+            backup = create_backup(layout, app_version="legacy-fixture")
+            archive_path = layout.backup_dir / f'{backup["backup_id"]}.offeru-backup'
+            python_sessions = layout.data_dir / "python_agent_sessions"
+            python_sessions.mkdir(parents=True)
+            session_file = python_sessions / "run_current12345678.json"
+            session_file.write_text('{"messages":["kept current runtime state"]}', encoding="utf-8")
+
+            with zipfile.ZipFile(archive_path, "r") as source:
+                manifest = json.loads(source.read("manifest.json"))
+                legacy_files = [
+                    item
+                    for item in manifest["files"]
+                    if item["path"] == "database.sqlite3"
+                    or item["path"].startswith("uploads/")
+                    or item["path"].startswith("data/artifacts/")
+                ]
+                manifest.pop("asset_roots", None)
+                manifest["files"] = legacy_files
+                manifest["hash"] = _aggregate_hash(legacy_files)
+                member_payloads = {
+                    str(item["path"]): source.read(str(item["path"]))
+                    for item in legacy_files
+                }
+
+            replacement = archive_path.with_suffix(".legacy")
+            with zipfile.ZipFile(replacement, "w", compression=zipfile.ZIP_DEFLATED) as target:
+                target.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False))
+                target.writestr("uploads/", b"")
+                target.writestr("data/artifacts/", b"")
+                for name, payload in member_payloads.items():
+                    target.writestr(name, payload)
+            replacement.replace(archive_path)
+
+            _write_state(layout, "mutated")
+            stage_restore(layout, backup_id=backup["backup_id"])
+            applied = apply_pending_restore_before_database_connect(
+                database_url=f"sqlite+aiosqlite:///{layout.database_path.as_posix()}",
+                backend_dir=layout.backend_dir,
+            )
+
+            self.assertTrue(applied["applied"])
+            self.assertEqual(_read_state(layout)[0], "legacy-backup")
+            self.assertEqual(
+                session_file.read_text(encoding="utf-8"),
+                '{"messages":["kept current runtime state"]}',
+            )
 
     def test_staging_is_idempotent_and_cancel_preserves_backup(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

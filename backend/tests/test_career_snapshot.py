@@ -600,8 +600,9 @@ def test_today_daily_review_route_uses_registry_and_dedupes_by_profile_and_local
     assert response["status"] == "dispatched"
 
 
+@pytest.mark.parametrize("provider_failure", [False, True])
 def test_daily_career_director_must_read_daily_context_and_keeps_new_urgent_action(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, provider_failure
 ) -> None:
     async def flow() -> dict:
         engine = create_async_engine(
@@ -711,11 +712,14 @@ def test_daily_career_director_must_read_daily_context_and_keeps_new_urgent_acti
             message = json.dumps(briefing_payload, ensure_ascii=False)
 
             provider = FixtureDirectorRunProvider(message, ["get_career_snapshot", "get_daily_career_context"])
+            if provider_failure:
+                from unittest.mock import AsyncMock
+                provider.start_run = AsyncMock(return_value={"ok": False, "run": {"id": "run_0123456789abcdef"}, "errors": ["Provider 401: Invalid API key"]})
             from app.services import agent_runtime, agent_run_state
             monkeypatch.setattr(agent_run_state, "async_session", session)
             monkeypatch.setattr(agent_runtime, "get_agent_run_provider", lambda _provider_id: provider)
             monkeypatch.setattr(career_tasks, "_career_director_workspace", lambda: str(tmp_path))
-            result = await career_tasks._run_career_director(
+            request = (
                 {
                     "task_id": task_id,
                     "runtime_provider": "codex",
@@ -728,11 +732,19 @@ def test_daily_career_director_must_read_daily_context_and_keeps_new_urgent_acti
                     },
                 }
             )
+            if provider_failure:
+                with pytest.raises(RuntimeError, match="401"):
+                    await career_tasks._run_career_director(request)
+                return {"failed_provider": True}
+            result = await career_tasks._run_career_director(request)
             return {"result": result, "calls": calls, "provider": provider}
         finally:
             await engine.dispose()
 
     observed = asyncio.run(flow())
+    if provider_failure:
+        assert observed["failed_provider"]
+        return
     assert [call[0] for call in observed["calls"]] == [
         "get_career_snapshot",
         "get_daily_career_context",

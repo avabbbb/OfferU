@@ -72,7 +72,7 @@ class AgentHostRegistryTests(unittest.TestCase):
             sum(1 for h in list_hosts() if h.recommended), 1
         )
 
-    def test_unsupported_skill_never_projects_as_full(self) -> None:
+    def test_external_skill_support_does_not_infer_hosted_runtime_limits(self) -> None:
         matrix = host_capability_matrix(
             ["application_assistant", "role_intelligence", "company_research"]
         )
@@ -80,14 +80,12 @@ class AgentHostRegistryTests(unittest.TestCase):
             self.assertIn(host_id, {h.id for h in list_hosts()})
             for tier in support.values():
                 self.assertIn(tier, (SUPPORT_FULL, SUPPORT_LIMITED, SUPPORT_UNSUPPORTED))
-        # WorkBuddy / hosted-only executors cannot browser-autofill.
-        self.assertEqual(
-            matrix["codebuddy"]["application_assistant"], SUPPORT_UNSUPPORTED
-        )
-        # OpenCode has no controlled public-web adapter → research is limited.
-        self.assertEqual(
-            matrix["opencode"]["role_intelligence"], SUPPORT_LIMITED
-        )
+        # Shared Operation access is separate from host-native browser/web
+        # capabilities. A brand name is neither a grant nor live evidence.
+        self.assertTrue(all(tier == SUPPORT_FULL for support in matrix.values() for tier in support.values()))
+        self.assertFalse(RUNTIME_DEFINITIONS["opencode"]["capabilities_decl"]["supports_live_web_search"])
+        for host_id in ("pi", "omp", "gemini", "codebuddy"):
+            self.assertTrue(get_host(host_id).can_install_skill)
 
     def test_skill_host_ids_are_install_capable(self) -> None:
         for host_id in skill_host_ids():

@@ -41,3 +41,14 @@ def test_career_artifact_route_returns_not_found_without_leaking_store_details(m
 
     assert error.value.status_code == 404
     assert error.value.detail == "Career artifact not found"
+
+
+def test_job_artifact_list_is_read_from_registry_not_agent_task_cache(monkeypatch):
+    calls = []
+    async def outputs(operation, args):
+        calls.append((operation, args))
+        return {"total": 1, "items": [{"id": "artifact_synthetic", "related_job_id": 478}]}
+    monkeypatch.setattr(main_agent, "_ui_operation_outputs", outputs)
+    result = asyncio.run(main_agent.career_artifacts(478))
+    assert result["items"][0]["related_job_id"] == 478
+    assert calls == [("list_career_artifacts", {"related_job_id": 478, "limit": 100})]

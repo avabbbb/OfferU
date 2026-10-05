@@ -8,6 +8,7 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 from unittest.mock import AsyncMock, patch
 
 from sqlalchemy import select
@@ -48,6 +49,9 @@ class FakeEmbeddedWorker:
         self.resume_session_file = ""
         self._operation_runner = None
         self._event_listener = None
+        self.mutation_name = "start_job_research"
+        self.mutation_args = {"job_id": 74291}
+        self.prompt_active = False
 
     async def start_run(
         self,
@@ -60,6 +64,8 @@ class FakeEmbeddedWorker:
         event_listener,
         session_directory: str = "",
         session_file: str = "",
+        pending_proposals: list[dict[str, Any]] | None = None,
+        host_tools: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         self.active_run_id = run_id
         self.allowed_operations = allowed_operations
@@ -94,9 +100,10 @@ class FakeEmbeddedWorker:
         run_id: str,
         message: str,
         timeout: float = 180,
+        delivery_id: str = "",
     ) -> dict[str, Any]:
         assert run_id == self.active_run_id
-        if message.startswith("The following operations were independently approved"):
+        if "Outbox ID:" in message and "Receipts:" in message:
             return {"assistant_message": "已核对经过用户确认的执行结果。"}
         self.last_prompt = message
         await self._event_listener(
@@ -112,8 +119,8 @@ class FakeEmbeddedWorker:
             {"scope": "pi-test"},
         )
         proposal = await self._operation_runner(
-            "start_job_research",
-            {"job_id": 74291},
+            self.mutation_name,
+            self.mutation_args,
         )
         self.operation_results = [denied, proposal]
         return {
@@ -138,6 +145,40 @@ class FakeEmbeddedWorker:
                 }
             )
         return {"run_id": run_id}
+
+
+class AutoEvaluateWorker(FakeEmbeddedWorker):
+    """Fake kernel that exercises list_jobs then proposes a JD import."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+
+    async def prompt(
+        self,
+        *,
+        run_id: str,
+        message: str,
+        timeout: float = 180,
+        delivery_id: str = "",
+    ) -> dict[str, Any]:
+        assert run_id == self.active_run_id
+        self.last_prompt = message
+        listed = await self._operation_runner("list_jobs", {})
+        imported = await self._operation_runner(
+            "import_jd",
+            {
+                "title": "测试后端工程师",
+                "company": "测试公司",
+                "jd_text": "负责后端服务开发与维护。",
+            },
+        )
+        self.calls = [("list_jobs", listed), ("import_jd", imported)]
+        return {
+            "run_id": run_id,
+            "session_id": "pi-session-test",
+            "assistant_message": "已读取岗位；导入 JD 需要确认。",
+        }
 
 
 class EmbeddedAgentHostTests(unittest.TestCase):
@@ -395,47 +436,86 @@ class EmbeddedAgentHostTests(unittest.TestCase):
         self.assertEqual(private["api_key"], "test-openai-key")
         self.assertNotIn("api_key", public)
 
-    def test_pi_run_freezes_skill_proposes_write_and_confirms_once(self) -> None:
-        calls = 0
-        run_status_while_confirming: str | None = None
-        original = OPERATIONS["start_job_research"]
+    def test_embedded_run_freezes_skill_and_adopts_one_reviewed_registry_node(self) -> None:
+        """Fake host orchestration; live-model evidence is tracked separately."""
+        from app.models.models import ResumeSection
+        from test_migrated_agent_kernel import _seed_reviewable_resume
+        from uuid import uuid4
+        from app.services import embedded_agent_host, embedded_agent_worker, ui_approval_capability
+        from app.services.proposal_plan_store import list_plans
         worker = FakeEmbeddedWorker()
-        secret = "pi-host-secret-must-not-persist"
-        streamed_events: list[dict[str, Any]] = []
-
-        async def fake_start_job_research(
-            job_id: int,
-            runtime_id: str = "codex",
-        ) -> dict[str, Any]:
-            nonlocal calls, run_status_while_confirming
-            calls += 1
-            confirming_run = await load_agent_run(worker.active_run_id)
-            run_status_while_confirming = str((confirming_run or {}).get("status") or "")
-            return {
-                "run_id": f"research-{job_id}",
-                "job_id": job_id,
-                "runtime_id": runtime_id,
-            }
-
-        async def stream_listener(event: dict[str, Any]) -> None:
+        worker.mutation_name = "review_resume_proposal_items"
+        secret = "host-private-fixture-do-not-persist"
+        streamed_events = []
+        async def listener(event):
             streamed_events.append(event)
+        async def run():
+            await init_db()
+            seed = await _seed_reviewable_resume(uuid4().hex)
+            worker.mutation_args = {"proposal_id": seed["proposal_id"], "resume_id": seed["resume_id"],
+                "change_ids": seed["change_ids"], "action": "accept"}
+            started = await start_embedded_agent_run(message="Prepare a reviewed resume addition.",
+                skill_id="tailor_resume", conversation_id="host-plan-fixture",
+                context_messages=[{"role": "user", "content": "Prior user context"}], worker=worker,
+                provider_config={"name": "fixture", "model": "fixture", "api_key": secret},
+                provider_metadata={"runtime": "python_agent", "provider_id": "embedded"},
+                stream_listener=listener)
+            self.assertTrue(started["ok"], started)
+            self.assertEqual(started["run"]["status"], "waiting_confirmation")
+            self.assertIn("Prior user context", worker.last_prompt)
+            plan = (await list_plans(run_id=started["run"]["id"]))[0]
+            group = plan["groups"][0]
+            node = group["nodes"][0]
+            self.assertEqual(len(group["nodes"]), 1)
+            decision = {"action_id": node["id"], "authorization_source": "Bearer synthetic-host-native",
+                "plan_digest": plan["digest"], "group_digest": group["digest"]}
+            with patch.object(ui_approval_capability, "accepts_authorization", side_effect=lambda value: value == decision["authorization_source"]), patch.object(embedded_agent_worker, "get_embedded_agent_worker", return_value=worker), patch.object(embedded_agent_host, "resolve_embedded_provider_config", return_value=({"name": "fixture", "model": "fixture"}, {"runtime": "python_agent", "provider_id": "embedded"})):
+                confirmed = await confirm_embedded_agent_action(started["run"]["id"], **decision)
+                replay = await confirm_embedded_agent_action(started["run"]["id"], **decision)
+            self.assertTrue(confirmed["ok"], confirmed)
+            self.assertTrue(replay["ok"] and replay["duplicate"], replay)
+            stored = await load_agent_run(started["run"]["id"])
+            self.assertEqual(stored["status"], "completed")
+            self.assertEqual(confirmed["continuation"]["status"], "delivered")
+            async with async_session() as db:
+                audits = (await db.execute(select(OperationAuditLog).where(OperationAuditLog.idempotency_key == node["idempotency_key"]))).scalars().all()
+                sections = (await db.execute(select(ResumeSection).where(ResumeSection.resume_id == seed["resume_id"]).order_by(ResumeSection.sort_order))).scalars().all()
+            self.assertEqual(len(audits), 1)
+            self.assertTrue(audits[0].ok)
+            self.assertEqual(audits[0].surface, "agent_runtime_ui")
+            self.assertEqual([section.content_json[0]["description"] for section in sections], seed["expected_after"])
+            events = await list_agent_run_events(stored["id"])
+            self.assertEqual([event["sequence"] for event in events], list(range(1, len(events) + 1)))
+            self.assertEqual(len([event for event in events if event["type"] == "continuation.accepted"]), 1)
+            self.assertIn("proposal.plan_ready", {event["type"] for event in streamed_events})
+            self.assertNotIn(secret, json.dumps(stored))
+            self.assertFalse(worker.operation_results[0]["ok"])
+            self.assertFalse(worker.operation_results[1]["outputs"]["executed"])
+            self.assertIn("review_resume_proposal_items", {item["name"] for item in worker.allowed_operations})
+            self.assertNotIn("set_current_view", {item["name"] for item in worker.allowed_operations})
+        asyncio.run(run())
 
-        async def run() -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], str]:
+    def test_auto_skill_id_routes_new_run_and_freezes_tools(self) -> None:
+        from sqlalchemy import func
+
+        from app.models.models import AgentRunRecord, Job
+
+        worker = AutoEvaluateWorker()
+        conversation_id = f"auto-route-{uuid4().hex}"
+
+        async def run() -> tuple[dict[str, Any], int, int]:
             await init_db()
             started = await start_embedded_agent_run(
-                message="研究这个岗位，确认后启动调研。",
-                skill_id="company_research",
-                conversation_id="pi-host-control-plane-test",
-                context_messages=[
-                    {"role": "user", "content": "上一轮：只研究公开信息"},
-                    {"role": "assistant", "content": "明白，我会保留证据边界。"},
-                ],
+                message="读取我的岗位列表",
+                skill_id="auto",
+                conversation_id=conversation_id,
+                context_messages=[{"role": "user", "content": "我在看后端岗位"}],
                 worker=worker,
                 provider_config={
                     "name": "test-provider",
                     "model": "test-model",
                     "base_url": "https://example.invalid/v1",
-                    "api_key": secret,
+                    "api_key": "auto-test-secret",
                 },
                 provider_metadata={
                     "runtime": "python_agent",
@@ -444,229 +524,154 @@ class EmbeddedAgentHostTests(unittest.TestCase):
                     "model": "test-model",
                     "source": "test",
                 },
-                stream_listener=stream_listener,
             )
-            action_id = started["pending_actions"][0]["id"]
-            with patch("app.services.embedded_agent_host.resolve_embedded_provider_config", return_value=(
-                {"name": "test-provider", "model": "test-model"}, {"runtime": "python_agent", "provider_id": "embedded"},
-            )):
-                confirmed = await confirm_embedded_agent_action(
-                    started["run"]["id"],
-                    action_id=action_id,
-                    worker=worker,
-                )
-            stored = await load_agent_run(started["run"]["id"])
-            assert stored is not None
-            events = await list_agent_run_events(started["run"]["id"])
             async with async_session() as db:
-                audit = (
-                    await db.execute(
-                        select(OperationAuditLog).where(
-                            OperationAuditLog.idempotency_key
-                            == stored["steps"][0]["idempotency_key"]
+                job_count = int(
+                    (
+                        await db.execute(
+                            select(func.count(Job.id)).where(
+                                Job.title == "测试后端工程师"
+                            )
                         )
-                    )
-                ).scalar_one()
-            return started, confirmed, events, audit.surface
+                    ).scalar_one()
+                )
+                run_count = int(
+                    (
+                        await db.execute(
+                            select(func.count(AgentRunRecord.run_id)).where(
+                                AgentRunRecord.conversation_id
+                                == conversation_id
+                            )
+                        )
+                    ).scalar_one()
+                )
+            return started, job_count, run_count
 
-        OPERATIONS["start_job_research"] = replace(
-            original,
-            fn=fake_start_job_research,
-        )
-        try:
-            started, confirmed, events, approval_surface = asyncio.run(run())
-        finally:
-            OPERATIONS["start_job_research"] = original
+        with patch(
+            "app.agents.llm.chat_completion",
+            new=AsyncMock(return_value='{"skill_id":"evaluate_job","reason":"岗位相关"}'),
+        ) as router:
+            started, job_count, run_count = asyncio.run(run())
 
+        # One bounded router call selected a business Skill; the Run froze the
+        # resolved tools plus route provenance.
+        router.assert_awaited_once()
         self.assertTrue(started["ok"])
-        self.assertIn("上一轮：只研究公开信息", worker.last_prompt)
-        self.assertIn("Current user request", worker.last_prompt)
+        self.assertEqual(started["run"]["skill_id"], "evaluate_job")
+        self.assertEqual(started["active_skill"]["id"], "evaluate_job")
+        self.assertEqual(
+            started["active_skill"]["routing"],
+            {"via": "auto", "requested": "auto", "reason": "岗位相关"},
+        )
+        snapshot = started["run"]["skill_snapshot"]
+        self.assertEqual(snapshot["routing"]["via"], "auto")
+        self.assertEqual(snapshot["allowed_tools"], sorted(snapshot["allowed_tools"]))
+        self.assertIn("import_jd", snapshot["allowed_tools"])
+        granted = {item["name"] for item in worker.allowed_operations}
+        self.assertIn("list_jobs", granted)
+        self.assertIn("import_jd", granted)
+        self.assertNotIn("start_job_research", granted)
+        self.assertNotIn("set_current_view", granted)
+
+        # Read Operations execute directly; the pasted-JD import stays a
+        # proposal and never writes a Job before confirmation.
+        self.assertEqual(worker.calls[0][0], "list_jobs")
+        self.assertTrue(worker.calls[0][1]["ok"])
+        self.assertEqual(worker.calls[1][0], "import_jd")
+        self.assertTrue(worker.calls[1][1]["ok"])
+        plan = worker.calls[1][1]["outputs"]["plan"]
+        self.assertFalse(worker.calls[1][1]["outputs"]["executed"])
+        self.assertEqual(plan["status"], "sealed")
+        self.assertEqual(plan["groups"][0]["status"], "pending")
         self.assertEqual(started["run"]["status"], "waiting_confirmation")
         self.assertEqual(len(started["pending_actions"]), 1)
-        self.assertFalse(worker.operation_results[0]["ok"])
-        self.assertTrue(worker.operation_results[1]["ok"])
-        self.assertFalse(
-            worker.operation_results[1]["outputs"]["executed"]
-        )
-        self.assertEqual(calls, 1)
-        self.assertEqual(approval_surface, "agent_runtime_ui")
-        self.assertEqual(run_status_while_confirming, "executing")
-        self.assertTrue(confirmed["ok"])
-        self.assertEqual(confirmed["run"]["status"], "completed")
-        self.assertTrue(confirmed["run"]["final_result"]["turn_finished"])
-        self.assertFalse(
-            confirmed["run"]["final_result"]["requires_confirmation"]
-        )
+        self.assertEqual(job_count, 0)
+        self.assertEqual(run_count, 1)
+
+    def test_auto_router_failure_creates_no_phantom_run(self) -> None:
+        from sqlalchemy import func
+
+        from app.models.models import AgentRunRecord
+        from app.services.agent_skill_registry import SkillRoutingError
+
+        worker = AutoEvaluateWorker()
+
+        async def run() -> int:
+            await init_db()
+            try:
+                await start_embedded_agent_run(
+                    message="读取我的岗位列表",
+                    skill_id="auto",
+                    conversation_id="pi-auto-routing-failure-test",
+                    worker=worker,
+                    provider_config={"name": "test-provider", "model": "test-model"},
+                )
+            except SkillRoutingError:
+                pass
+            else:
+                raise AssertionError("auto routing failure must be raised")
+            async with async_session() as db:
+                return int(
+                    (
+                        await db.execute(
+                            select(func.count(AgentRunRecord.run_id)).where(
+                                AgentRunRecord.conversation_id
+                                == "pi-auto-routing-failure-test"
+                            )
+                        )
+                    ).scalar_one()
+                )
+
+        with patch(
+            "app.agents.llm.chat_completion",
+            new=AsyncMock(return_value=None),
+        ):
+            run_count = asyncio.run(run())
+
+        # Router failure surfaces before business execution: no Run row, no
+        # tool call, no worker session.
+        self.assertEqual(run_count, 0)
+        self.assertEqual(worker.calls, [])
         self.assertIsNone(worker.active_run_id)
 
-        granted = {item["name"] for item in worker.allowed_operations}
-        self.assertIn("start_job_research", granted)
-        self.assertNotIn("set_current_view", granted)
-        self.assertTrue(
-            all("input_schema" in item for item in worker.allowed_operations)
-        )
-        persisted_text = json.dumps(confirmed["run"], ensure_ascii=False)
-        self.assertNotIn(secret, persisted_text)
-        self.assertEqual(
-            confirmed["run"]["skill_snapshot"]["allowed_tools"],
-            sorted(confirmed["run"]["skill_snapshot"]["allowed_tools"]),
-        )
-
-        sequences = [event["sequence"] for event in events]
-        self.assertEqual(sequences, list(range(1, len(events) + 1)))
-        event_types = {event["type"] for event in events}
-        self.assertIn("guardian.advice", event_types)
-        self.assertIn("guardian.reviewed", event_types)
-        self.assertIn("runtime.session_started", event_types)
-        self.assertIn("message.delta", event_types)
-        self.assertIn("operation.denied", event_types)
-        self.assertIn("operation.proposed", event_types)
-        self.assertIn("operation.started", event_types)
-        self.assertIn("operation.completed", event_types)
-        self.assertIn("run.completed", event_types)
-        self.assertIn("runtime.disposed", event_types)
-        turn_finished_events = [
-            event for event in events if event["type"] == "run.turn_finished"
-        ]
-        self.assertEqual(len(turn_finished_events), 3)
-        self.assertFalse(
-            turn_finished_events[-1]["payload"]["requires_confirmation"]
-        )
-        disposed_sequence = next(
-            event["sequence"]
-            for event in events
-            if event["type"] == "runtime.disposed"
-        )
-        self.assertGreater(turn_finished_events[-1]["sequence"], disposed_sequence)
-        streamed_types = {event["type"] for event in streamed_events}
-        self.assertIn("run.created", streamed_types)
-        self.assertIn("runtime.starting", streamed_types)
-        self.assertIn("runtime.session_started", streamed_types)
-        self.assertIn("message.delta", streamed_types)
-        self.assertIn("operation.denied", streamed_types)
-        self.assertIn("operation.proposed", streamed_types)
-        self.assertIn("run.waiting_confirmation", streamed_types)
-        self.assertIn("guardian.advice", streamed_types)
-        self.assertIn("guardian.reviewed", streamed_types)
-        durable_events = [
-            event for event in streamed_events if event.get("durable")
-        ]
-        self.assertTrue(durable_events)
-        self.assertTrue(
-            all(int(event.get("sequence") or 0) > 0 for event in durable_events)
-        )
-        self.assertNotIn("tool_calls", started["guardian"])
-        self.assertNotIn("proposed_actions", started["guardian"])
-
-    def test_confirm_with_remaining_action_finishes_current_turn(self) -> None:
-        calls: list[int] = []
-        original = OPERATIONS["start_job_research"]
-
-        async def fake_start_job_research(
-            job_id: int,
-            runtime_id: str = "codex",
-        ) -> dict[str, Any]:
-            calls.append(job_id)
-            return {
-                "run_id": f"research-{job_id}",
-                "job_id": job_id,
-                "runtime_id": runtime_id,
-            }
-
-        async def run() -> tuple[
-            dict[str, Any],
-            list[dict[str, Any]],
-            list[dict[str, Any]],
-        ]:
-            from app.routes.main_agent import follow_runtime_run_events
-
+    def test_legacy_action_only_confirmation_never_executes_a_sibling(self) -> None:
+        from app.models.models import AgentRunRecord, ProposalConfirmationDecision, ProposalExecutionPlan
+        from app.services import ui_approval_capability
+        calls = []
+        async def fake_write(**kwargs):
+            calls.append(kwargs)
+            return {"ok": True}
+        async def run():
             await init_db()
-            created = await create_agent_run(
-                conversation_id="pi-multi-confirm-test",
-                goal="依次确认两个岗位调研",
-                mode="skill_assistant",
-                skill_id="company_research",
-                skill_version="2026-07-29.1",
-                skill_snapshot={
-                    "id": "company_research",
-                    "version": "2026-07-29.1",
-                    "allowed_tools": ["start_job_research"],
-                },
-                actions=[
-                    {
-                        "id": "start_job_research:first",
-                        "tool": "start_job_research",
-                        "args": {"job_id": 81001},
-                        "summary": "启动第一个岗位调研",
-                        "requires_confirmation": True,
-                    },
-                    {
-                        "id": "start_job_research:second",
-                        "tool": "start_job_research",
-                        "args": {"job_id": 81002},
-                        "summary": "启动第二个岗位调研",
-                        "requires_confirmation": True,
-                    },
-                ],
-                llm_runtime={
-                    "runtime": "python_agent",
-                    "stream_protocol": "cursor_v1",
-                },
-            )
-            created["status"] = "waiting_confirmation"
-            created["final_result"] = {
-                "requires_confirmation": True,
-                "turn_finished": True,
-            }
-            await save_agent_run(created)
-            confirmed = await confirm_embedded_agent_action(
-                created["id"],
-                action_id="start_job_research:first",
-                worker=FakeEmbeddedWorker(),
-            )
+            created = await create_agent_run(conversation_id="legacy-sibling-denial", goal="Preserve old proposals",
+                mode="skill_assistant", skill_id="company_research", actions=[
+                    {"id": "research:first", "tool": "start_job_research", "args": {"job_id": 81001}},
+                    {"id": "research:second", "tool": "start_job_research", "args": {"job_id": 81002}},
+                ], skill_snapshot={"allowed_tools": ["start_job_research"]}, llm_runtime={"runtime": "python_agent"})
+            with patch.object(ui_approval_capability, "accepts_authorization", return_value=True), patch.dict(OPERATIONS, {"start_job_research": replace(OPERATIONS["start_job_research"], fn=fake_write)}):
+                result = await confirm_embedded_agent_action(created["id"], action_id="research:first", authorization_source="Bearer synthetic-native")
+            self.assertFalse(result["ok"])
+            self.assertEqual(calls, [])
+            async with async_session() as db:
+                row = (await db.execute(select(AgentRunRecord).where(AgentRunRecord.run_id == created["id"]))).scalar_one()
+                self.assertEqual([step["status"] for step in row.steps_json], ["waiting_confirmation", "waiting_confirmation"])
+                decisions = (await db.execute(select(ProposalConfirmationDecision).join(ProposalExecutionPlan,
+                    ProposalConfirmationDecision.plan_id == ProposalExecutionPlan.id).where(ProposalExecutionPlan.run_id == created["id"]))).scalars().all()
+                self.assertEqual(decisions, [])
             events = await list_agent_run_events(created["id"])
-            response = await follow_runtime_run_events(created["id"])
-
-            async def consume_stream() -> list[dict[str, Any]]:
-                items: list[dict[str, Any]] = []
-                async for item in response.body_iterator:
-                    items.append(item)
-                return items
-
-            stream_items = await asyncio.wait_for(consume_stream(), timeout=1)
-            return confirmed, events, stream_items
-
-        OPERATIONS["start_job_research"] = replace(
-            original,
-            fn=fake_start_job_research,
-        )
-        try:
-            confirmed, events, stream_items = asyncio.run(run())
-        finally:
-            OPERATIONS["start_job_research"] = original
-
-        self.assertEqual(calls, [81001])
-        self.assertEqual(confirmed["run"]["status"], "waiting_confirmation")
-        self.assertEqual(len(confirmed["pending_actions"]), 1)
-        self.assertTrue(confirmed["run"]["final_result"]["turn_finished"])
-        self.assertTrue(
-            confirmed["run"]["final_result"]["requires_confirmation"]
-        )
-        turn_finished_events = [
-            event for event in events if event["type"] == "run.turn_finished"
-        ]
-        self.assertEqual(len(turn_finished_events), 1)
-        self.assertTrue(
-            turn_finished_events[-1]["payload"]["requires_confirmation"]
-        )
-        self.assertEqual(stream_items[-1]["event"], "message")
-        self.assertIn("waiting_confirmation", stream_items[-1]["data"])
+            self.assertNotIn("operation.started", {event["type"] for event in events})
+        asyncio.run(run())
 
     def test_restart_marks_run_interrupted_and_explicitly_resumes_same_session(self) -> None:
         worker = FakeEmbeddedWorker()
 
         async def run() -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
             await init_db()
+            from app.models.models import Job
+            async with async_session() as db:
+                if await db.get(Job, 74291) is None:
+                    db.add(Job(id=74291, title="Synthetic recovery role", company="Fixture", raw_description="Public synthetic JD", hash_key="host-recovery-job"))
+                    await db.commit()
             skill = resolve_skill("company_research")
             assert skill is not None
             created = await create_agent_run(
@@ -769,7 +774,8 @@ class EmbeddedAgentHostTests(unittest.TestCase):
         stored, events = asyncio.run(run())
 
         self.assertEqual(stored["status"], "needs_reconciliation")
-        self.assertEqual(stored["steps"][0]["status"], "executing")
+        self.assertEqual(stored["steps"][0]["status"], "uncertain")
+        self.assertTrue(stored["steps"][0]["projection_only"])
         self.assertIn("automatic replay is forbidden", stored["failure_reason"])
         event_types = {event["type"] for event in events}
         self.assertIn("recovery.reconciliation_required", event_types)

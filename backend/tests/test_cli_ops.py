@@ -19,9 +19,9 @@ os.chdir(BACKEND_DIR)
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from app.database import Base, init_db
+from app.database import Base, async_session, init_db
 from app.mcp_server import HAS_MCP_SERVER, mcp
-from app.services.agent_run_state import load_agent_run
+from app.services.agent_run_state import create_agent_run, load_agent_run
 from app.models.models import Application, Job
 from app.ops import (
     OPERATIONS,
@@ -229,7 +229,7 @@ class OperationRegistryTests(unittest.TestCase):
             self.assertIs(input_schema.get("additionalProperties"), False, name)
             self.assertIsInstance(input_schema.get("properties"), dict, name)
             self.assertTrue(required_output_keys.issubset(schema["output_contract"]), name)
-            self.assertEqual(schema["requires_confirmation"], operation.is_mutation, name)
+            self.assertEqual(schema["requires_confirmation"], operation.requires_confirmation, name)
             self.assertEqual(schema["supports_dry_run"], operation.is_mutation, name)
             self.assertTrue(schema["operation_version"], name)
 
@@ -750,9 +750,17 @@ class CliBlackBoxTests(unittest.TestCase):
         self.assertTrue(payload["outputs"]["skipped"])
 
     def test_cli_cannot_confirm_a_persisted_proposal(self) -> None:
+        async def attached_run():
+            await init_db()
+            return await create_agent_run(conversation_id="cli-confirm-denial", goal="Review the current view request",
+                mode="external_cli", skill_id="fixture", actions=[],
+                skill_snapshot={"allowed_tools": ["set_current_view", "prepare_proposal_plan"]},
+                llm_runtime={"runtime": "external_cli", "host": "synthetic-test"})
+        run = asyncio.run(attached_run())
         proposal = self.run_cli(
             "run",
             "set_current_view",
+            "--run-id", run["id"],
             "--arg",
             "scope=cli-control-plane-test",
             "--arg",
@@ -762,8 +770,9 @@ class CliBlackBoxTests(unittest.TestCase):
         self.assertEqual(proposal["_exit_code"], 0)
         self.assertTrue(proposal["ok"])
         self.assertFalse(proposal["outputs"]["executed"])
-        run_id = proposal["outputs"]["proposal"]["run_id"]
-        action_id = proposal["outputs"]["proposal"]["action_id"]
+        plan = proposal["outputs"]["plan"]
+        run_id = plan["run_id"]
+        action_id = plan["groups"][0]["nodes"][0]["id"]
 
         result = self.run_cli("confirm", run_id, "--action", action_id)
         persisted = asyncio.run(load_agent_run(run_id))
@@ -899,22 +908,35 @@ class OperationProjectionSafetyTests(unittest.TestCase):
     def test_projection_persists_then_executes_exactly_once(self) -> None:
         async def run() -> tuple[dict, dict, dict]:
             await init_db()
+            async with async_session() as db:
+                job = Job(title="Projection fixture", company="Synthetic", hash_key=uuid.uuid4().hex)
+                db.add(job)
+                await db.commit()
+            attached = await create_agent_run(conversation_id="projection-external", goal="Review this job",
+                mode="external_cli", skill_id="fixture", actions=[],
+                skill_snapshot={"allowed_tools": ["triage_job", "prepare_proposal_plan"]},
+                llm_runtime={"runtime": "external_cli", "host": "synthetic-test"})
             proposal = await execute_or_propose_operation(
-                "set_current_view",
-                {"scope": "projection-test", "route": "/jobs/99"},
-                surface="mcp",
+                "triage_job", {"job_id": job.id, "status": "picked"},
+                surface="mcp", run_id=attached["id"],
             )
-            proposal_data = proposal["outputs"]["proposal"]
-            first = await confirm_operation_proposal(
-                proposal_data["run_id"],
-                action_id=proposal_data["action_id"],
-                surface="agent_runtime_ui",
-            )
-            second = await confirm_operation_proposal(
-                proposal_data["run_id"],
-                action_id=proposal_data["action_id"],
-                surface="agent_runtime_ui",
-            )
+            self.assertTrue(proposal["ok"], proposal)
+            plan = proposal["outputs"]["plan"]
+            group = plan["groups"][0]
+            decision = {"action_id": group["nodes"][0]["id"], "surface": "agent_runtime_ui",
+                "authorization_source": "Bearer synthetic-projection-native", "plan_digest": plan["digest"],
+                "group_digest": group["digest"], "decision_id": f"decision_{uuid.uuid4().hex}"}
+            with patch("app.services.ui_approval_capability.accepts_authorization", side_effect=lambda value: value == decision["authorization_source"]):
+                first = await confirm_operation_proposal(attached["id"], **decision)
+                second = await confirm_operation_proposal(attached["id"], **decision)
+            from app.models.models import OperationAuditLog
+            from sqlalchemy import select
+            async with async_session() as db:
+                self.assertEqual((await db.get(Job, job.id)).triage_status, "picked")
+                audits = (await db.execute(select(OperationAuditLog).where(
+                    OperationAuditLog.idempotency_key == group["nodes"][0]["idempotency_key"]))).scalars().all()
+                self.assertEqual(len(audits), 1)
+                self.assertTrue(audits[0].ok)
             return proposal, first, second
 
         proposal, first, second = asyncio.run(run())
@@ -922,17 +944,21 @@ class OperationProjectionSafetyTests(unittest.TestCase):
         self.assertTrue(proposal["ok"])
         self.assertFalse(proposal["outputs"]["executed"])
         self.assertTrue(first["ok"])
-        self.assertEqual(len(first["tool_calls"]), 1)
+        self.assertEqual(len(first["receipts"]), 1)
+        self.assertEqual(first["receipts"][0]["effect_state"], "committed")
         self.assertTrue(second["ok"])
-        self.assertEqual(second["tool_calls"], [])
+        self.assertTrue(second["duplicate"])
+        self.assertEqual(second["receipts"][0]["id"], first["receipts"][0]["id"])
 
     def test_confirm_unknown_persisted_proposal_fails(self) -> None:
-        result = asyncio.run(
-            confirm_operation_proposal("missing", surface="agent_runtime_ui")
-        )
+        with patch("app.services.ui_approval_capability.accepts_authorization", return_value=True):
+            result = asyncio.run(confirm_operation_proposal("missing", action_id="missing-node",
+                authorization_source="Bearer synthetic-native", plan_digest="a" * 64,
+                group_digest="b" * 64, surface="agent_runtime_ui"))
 
         self.assertFalse(result["ok"])
-        self.assertIn("不存在", result["errors"][0])
+        self.assertEqual(result["outputs"], {})
+        self.assertIsNone(asyncio.run(load_agent_run("missing")))
 
 
 @unittest.skipUnless(HAS_MCP_SERVER, "MCP server dependency is optional")

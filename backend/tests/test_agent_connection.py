@@ -60,7 +60,7 @@ class AgentConnectionTests(unittest.IsolatedAsyncioTestCase):
             patch("app.services.agent_bridge.codex_adapter._resolve_codex_binary", return_value=item.get("executable_path") or ""),
             patch("app.services.agent_bridge.codex_adapter.CodexMainLoopAdapter", return_value=adapter) as factory,
         ):
-            result = await connection.probe_agent_connection(item["id"])
+            result = await connection.probe_hosted_agent_connection(item["id"])
         return result, adapter, probe, factory
 
     async def test_discovery_is_not_a_successful_connection_or_login(self):
@@ -224,7 +224,7 @@ class AgentConnectionTests(unittest.IsolatedAsyncioTestCase):
             with self.subTest(provider_id=provider_id):
                 with patch.object(connection.runtime, "_probe", AsyncMock()) as probe:
                     with self.assertRaises(ValueError):
-                        await connection.probe_agent_connection(provider_id)
+                        await connection.probe_hosted_agent_connection(provider_id)
                     probe.assert_not_called()
 
     async def test_incompatible_cli_never_starts_a_protocol_session(self):

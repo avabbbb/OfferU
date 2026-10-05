@@ -106,6 +106,15 @@ The user does not need to understand which mode/Skill/tool to invoke next; Offer
 **Proposal / HITL**  
 A protected mutation pauses for review before execution.
 
+**Proposal Plan**
+A reviewable plan of intended career changes associated with one Agent Run. A plan describes intended work and does not by itself grant execution authority.
+
+**Confirmation Group / 决策组**
+A fixed, reviewable set of intended changes that the user can authorize together. Authorization covers the displayed scope, not future changes or unrelated actions.
+
+**Ask**
+A question that resolves a career choice or missing evidence. An answer does not itself authorize undisplayed protected changes.
+
 **False Success**  
 The Agent claims a task succeeded when trustworthy execution/outcome evidence does not show success.
 
