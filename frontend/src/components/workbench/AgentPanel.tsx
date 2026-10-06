@@ -63,6 +63,13 @@ interface PanelMessage {
   response?: AgentResponse;
 }
 
+interface ResumeCandidate {
+  conversationId: string;
+  conversationTitle: string;
+  runId: string;
+  status: string;
+}
+
 const QUICK_ACTIONS = [
   {
     label: "确认身份",
@@ -91,6 +98,15 @@ const STAGE_LABELS: Record<string, string> = {
   experienced: "社招",
   unknown: "待确认",
 };
+
+const RESUMABLE_RUN_STATUSES = new Set([
+  "queued",
+  "running",
+  "waiting_confirmation",
+  "waiting_decision",
+  "waiting_input",
+  "interrupted",
+]);
 
 const HOSTED_STATUS_LABELS: Record<string, string> = {
   created: "已创建",
@@ -274,6 +290,7 @@ export function AgentPanel() {
   const [importedStage, setImportedStage] = useState<string>("unknown");
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversationTitle, setConversationTitle] = useState("新对话");
+  const [resumeCandidate, setResumeCandidate] = useState<ResumeCandidate | null>(null);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [activeRun, setActiveRun] = useState<AgentRunRecord | null>(null);
   const [interruptedRunId, setInterruptedRunId] = useState<string | null>(null);
@@ -292,6 +309,8 @@ export function AgentPanel() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const sendRequestPendingRef = useRef(false);
+  const suppressResumePromptRef = useRef(false);
   const currentConvRef = useRef<string | null>(null);
   const hasPendingActions = pendingActions.length > 0;
   const [reviewPending, setReviewPending] = useState(0);
@@ -338,6 +357,8 @@ export function AgentPanel() {
       // projection without cancelling or approving any surviving receipt.
       abortControllerRef.current?.abort();
       abortControllerRef.current = null;
+      sendRequestPendingRef.current = false;
+      suppressResumePromptRef.current = false;
       currentConvRef.current = null;
       setMessages([]);
       setInput("");
@@ -352,6 +373,7 @@ export function AgentPanel() {
       setPlanReviewNotice("");
       setConversationId(null);
       setConversationTitle("新对话");
+      setResumeCandidate(null);
       setConversations([]);
       setSelectedSkillId(AUTO_SKILL_ID);
       setImportedStage("unknown");
@@ -364,6 +386,12 @@ export function AgentPanel() {
     };
     window.addEventListener("offeru-career-reset", cleared);
     return () => window.removeEventListener("offeru-career-reset", cleared);
+  }, []);
+
+  useEffect(() => () => {
+    const controller = abortControllerRef.current;
+    abortControllerRef.current = null;
+    controller?.abort();
   }, []);
 
   useEffect(() => {
@@ -425,13 +453,15 @@ export function AgentPanel() {
 
   const sendMessage = async (text?: string, explicitSkillId?: string) => {
     const content = (text ?? input).trim();
-    if (!content || loading || hasPendingActions || hasPendingPlanReview || reviewPending > 0 || interruptedRunId) return;
+    if (!content || loading || sendRequestPendingRef.current) return;
     const requestSkillId = explicitSkillId || selectedSkillId;
     const currentConversationId = conversationId;
+    suppressResumePromptRef.current = true;
+    setResumeCandidate(null);
     currentConvRef.current = currentConversationId;
     const controller = new AbortController();
-    abortControllerRef.current?.abort();
     abortControllerRef.current = controller;
+    sendRequestPendingRef.current = true;
     const userMessage: PanelMessage = {
       id: `user-${Date.now()}`,
       role: "user",
@@ -542,26 +572,29 @@ export function AgentPanel() {
       setInput((current) => current || content);
     } finally {
       if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+        sendRequestPendingRef.current = false;
         setStreamingText("");
         setLoading(false);
       }
     }
   };
 
-  const startNewConversation = async () => {
-    abortControllerRef.current?.abort();
+  const detachActiveStream = () => {
+    const controller = abortControllerRef.current;
     abortControllerRef.current = null;
-    currentConvRef.current = null;
+    sendRequestPendingRef.current = false;
+    controller?.abort();
     setLoading(false);
+  };
+
+  const startNewConversation = () => {
+    suppressResumePromptRef.current = true;
+    setResumeCandidate(null);
+    detachActiveStream();
+    currentConvRef.current = null;
     setStreamingText("");
     setToolStream(createInitialAgentStreamState());
-    if (activeRunId && (hasPendingActions || hasPendingPlanReview || reviewPending > 0 || interruptedRunId)) {
-      try {
-        await agentRuntimeApi.abort(activeRunId);
-      } catch {
-        // 新对话仍可开始；后端会让残留 Worker 冲突显式失败。
-      }
-    }
     setConversationId(null);
     setConversationTitle("新对话");
     setActiveRunId(null);
@@ -583,17 +616,14 @@ export function AgentPanel() {
   };
 
   const loadConversation = async (id: string) => {
-    abortControllerRef.current?.abort();
-    abortControllerRef.current = null;
+    suppressResumePromptRef.current = true;
+    setResumeCandidate(null);
+    detachActiveStream();
     currentConvRef.current = id;
     setError("");
-    setLoading(false);
     setStreamingText("");
     setToolStream(createInitialAgentStreamState());
     try {
-      if (activeRunId && (hasPendingActions || hasPendingPlanReview || reviewPending > 0 || interruptedRunId)) {
-        await agentRuntimeApi.abort(activeRunId);
-      }
       const conversation = await agentSupportApi.conversation(id);
       setConversationId(conversation.id);
       setConversationTitle(conversation.title || "历史对话");
@@ -644,27 +674,30 @@ export function AgentPanel() {
   };
 
   useEffect(() => {
-    if (conversationId || conversations.length === 0) return;
+    if (conversationId || conversations.length === 0 || suppressResumePromptRef.current) return;
     let cancelled = false;
-    const restoreLatestActiveRun = async () => {
+    const findLatestActiveRun = async () => {
       const latestConversation = conversations[0];
       try {
         const result = await agentRuntimeApi.runs({
           conversation_id: latestConversation.id,
           limit: 1,
         });
-        const status = result.runs[0]?.status;
-        if (
-          !cancelled
-          && ["waiting_confirmation", "waiting_decision", "waiting_input", "interrupted"].includes(status || "")
-        ) {
-          await loadConversation(latestConversation.id);
+        const latestRun = result.runs[0];
+        if (!cancelled && !suppressResumePromptRef.current && latestRun
+          && RESUMABLE_RUN_STATUSES.has(latestRun.status)) {
+          setResumeCandidate({
+            conversationId: latestConversation.id,
+            conversationTitle: latestConversation.title || "历史对话",
+            runId: latestRun.id,
+            status: latestRun.status,
+          });
         }
       } catch {
-        // 没有可恢复 Run 时保留新对话欢迎页。
+        // Keep the new conversation available if persisted Run state cannot be read.
       }
     };
-    void restoreLatestActiveRun();
+    void findLatestActiveRun();
     return () => {
       cancelled = true;
     };
@@ -999,6 +1032,34 @@ export function AgentPanel() {
         </div>
       )}
 
+      {resumeCandidate && !conversationId && (
+        <div role="status" className="border-b border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2.5">
+          <p className="text-[12px] font-semibold text-[var(--foreground)]">上次任务仍在等待处理</p>
+          <p className="mt-0.5 text-[11px] leading-4 text-[var(--foreground-soft)]">
+            {resumeCandidate.conversationTitle} · {resumeCandidate.status}。你可以先继续查看，也可以留到稍后。
+          </p>
+          <div className="mt-2 flex gap-1.5">
+            <button
+              type="button"
+              onClick={() => { void loadConversation(resumeCandidate.conversationId); }}
+              className="bauhaus-button bauhaus-button-red !min-h-8 !flex-1 !justify-center !py-1 !text-[11px]"
+            >
+              继续上次任务
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                suppressResumePromptRef.current = true;
+                setResumeCandidate(null);
+              }}
+              className="bauhaus-button bauhaus-button-outline !min-h-8 !flex-1 !justify-center !py-1 !text-[11px]"
+            >
+              稍后
+            </button>
+          </div>
+        </div>
+      )}
+
       {hostedOpen && (
         <section className="border-b border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2.5">
           <div className="flex items-center justify-between gap-2">
@@ -1158,7 +1219,7 @@ export function AgentPanel() {
           aria-label="当前 Agent Skill"
           title="默认由助手按任务自动选择 Skill"
           value={selectedSkillId}
-          disabled={loading || hasPendingActions || hasPendingPlanReview || Boolean(interruptedRunId)}
+          disabled={loading}
           onChange={(event) => setSelectedSkillId(event.target.value)}
           className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[11.5px] text-[var(--foreground)] outline-none disabled:opacity-50"
         >
@@ -1186,7 +1247,7 @@ export function AgentPanel() {
           <button
             key={action.label}
             type="button"
-            disabled={loading || hasPendingActions || hasPendingPlanReview || Boolean(interruptedRunId)}
+            disabled={loading}
             onClick={() => sendMessage(action.prompt, action.skillId)}
             className="bauhaus-chip cursor-pointer transition-colors duration-[var(--dur-quick)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -1359,14 +1420,17 @@ export function AgentPanel() {
             minRows={1}
             maxRows={4}
             placeholder={
-      hasPendingActions || hasPendingPlanReview || reviewPending > 0 || interruptedRunId
-                ? "请先处理当前 Run"
+              hasPendingActions || hasPendingPlanReview || reviewPending > 0
+                ? "继续对话或说明如何调整；旧审核仍需单独决定"
+                : interruptedRunId
+                  ? "Run 已中断；可继续对话或开始其他任务"
+                  : loading
+                    ? "正在处理；可先写下下一步..."
                 : "问 OfferU，或说你要推进哪一步..."
             }
             variant="bordered"
             className="flex-1"
             classNames={bauhausFieldClassNames}
-            isDisabled={loading || hasPendingActions || hasPendingPlanReview || reviewPending > 0 || Boolean(interruptedRunId)}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
@@ -1378,7 +1442,7 @@ export function AgentPanel() {
             isIconOnly
             aria-label="发送"
             onPress={() => sendMessage()}
-            isDisabled={!input.trim() || loading || hasPendingActions || hasPendingPlanReview || reviewPending > 0 || Boolean(interruptedRunId)}
+            isDisabled={!input.trim() || loading}
             className="bauhaus-button bauhaus-button-outline !min-h-9 !min-w-9 !px-0 !py-0"
           >
             {loading ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}

@@ -181,7 +181,7 @@ export function AgentAskPanel({
 }: {
   runId: string;
   onAnswered?: (result: AgentInputAnswerResult) => void;
-  /** 待答数量变化时通知父级（用于锁定输入区）。 */
+  /** 待答数量变化时通知父级，用于呈现任务状态；普通对话仍保持可用。 */
   onPendingChange?: (pending: number) => void;
 }) {
   const [requests, setRequests] = useState<AgentInputRequestView[]>([]);

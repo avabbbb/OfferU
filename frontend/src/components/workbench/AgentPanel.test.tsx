@@ -13,6 +13,7 @@ const api = vi.hoisted(() => ({
   resume: vi.fn(),
   confirm: vi.fn(),
   reject: vi.fn(),
+  inputRequestsPending: vi.fn(),
   conversations: vi.fn(),
   conversation: vi.fn(),
   deleteConversation: vi.fn(),
@@ -30,6 +31,7 @@ vi.mock("@/lib/api", () => ({
     resume: api.resume,
     confirm: api.confirm,
     reject: api.reject,
+    inputRequestsPending: api.inputRequestsPending,
   },
   agentSupportApi: {
     conversations: api.conversations,
@@ -116,6 +118,7 @@ beforeEach(() => {
   api.runs.mockResolvedValue({ runs: [] });
   api.events.mockResolvedValue({ run_id: "run-1", events: [], last_sequence: 0 });
   api.run.mockResolvedValue({ run: runRecord() });
+  api.inputRequestsPending.mockResolvedValue({ requests: [] });
   api.abort.mockResolvedValue({ ok: true, run: runRecord({ status: "cancelled" }) });
   api.hostedSessions.mockResolvedValue({ items: [] });
 });
@@ -145,6 +148,243 @@ describe("Embedded Agent configuration recovery", () => {
     expect(input).toHaveValue("读取我的岗位");
     expect(api.start).toHaveBeenCalledTimes(1);
     expect(api.start.mock.calls[0][0].skill_id).toBe("auto");
+  });
+});
+
+describe("durable Run chat and navigation", () => {
+  const pendingProposalResponse = () => runResponse({
+    run: runRecord({ id: "run-pending", status: "waiting_confirmation" }),
+    pending_actions: [{
+      id: "proposal-1",
+      tool: "prepare_resume_draft",
+      summary: "准备岗位化简历草稿",
+      risk_level: "confirm",
+      requires_confirmation: true,
+      args: {},
+    }],
+  });
+
+  it("keeps chat editable and sendable while a proposal awaits its separate decision", async () => {
+    let calls = 0;
+    api.start.mockImplementation(async () => (
+      calls++ === 0
+        ? pendingProposalResponse()
+        : runResponse({ run: runRecord({ id: "run-follow-up" }) })
+    ));
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.type(screen.getByRole("textbox"), "准备岗位草稿");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    await screen.findByText("有 1 项待审核请求");
+
+    const input = screen.getByRole("textbox");
+    expect(input).toBeEnabled();
+    await user.type(input, "先解释一下这项修改");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    await waitFor(() => expect(api.start).toHaveBeenCalledTimes(2));
+    expect(api.start.mock.calls[1][0]).toMatchObject({
+      message: "先解释一下这项修改",
+      conversation_id: "conv-1",
+    });
+    expect(api.confirm).not.toHaveBeenCalled();
+    expect(api.reject).not.toHaveBeenCalled();
+    expect(api.abort).not.toHaveBeenCalled();
+  });
+
+  it("does not semantically cancel a pending Run when starting another conversation", async () => {
+    api.start.mockResolvedValueOnce(pendingProposalResponse());
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.type(screen.getByRole("textbox"), "准备岗位草稿");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    await screen.findByText("有 1 项待审核请求");
+    await user.click(screen.getByRole("button", { name: "测试对话" }));
+    await user.click(screen.getByRole("button", { name: "新建" }));
+
+    expect(api.abort).not.toHaveBeenCalled();
+    expect(await screen.findByText(/新对话已开始/)).toBeInTheDocument();
+  });
+
+  it("does not semantically cancel a pending Run when loading another conversation", async () => {
+    api.start.mockResolvedValueOnce(pendingProposalResponse());
+    api.conversations.mockResolvedValue({
+      conversations: [{
+        id: "conv-9",
+        title: "旧对话",
+        created_at: "",
+        updated_at: "",
+        message_count: 1,
+        last_message: "旧消息",
+      }],
+    });
+    api.conversation.mockResolvedValue({
+      id: "conv-9",
+      title: "旧对话",
+      created_at: "",
+      updated_at: "",
+      messages: [{ role: "user", content: "旧消息" }],
+    });
+    api.runs.mockResolvedValue({ runs: [runRecord({ id: "run-history", conversation_id: "conv-9" })] });
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.type(screen.getByRole("textbox"), "准备岗位草稿");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    await screen.findByText("有 1 项待审核请求");
+    await user.click(screen.getByRole("button", { name: "测试对话" }));
+    await user.click(await screen.findByRole("button", { name: /旧对话/ }));
+
+    await screen.findByText("旧消息");
+    expect(api.abort).not.toHaveBeenCalled();
+  });
+
+  it("offers continue or later for a pending Run instead of auto-opening it", async () => {
+    api.conversations.mockResolvedValue({
+      conversations: [{
+        id: "conv-9",
+        title: "旧对话",
+        created_at: "",
+        updated_at: "",
+        message_count: 1,
+        last_message: "需要补充信息",
+      }],
+    });
+    api.runs.mockResolvedValue({
+      runs: [runRecord({ id: "run-9", conversation_id: "conv-9", status: "waiting_input" })],
+    });
+    const user = userEvent.setup();
+    renderPanel();
+
+    expect(await screen.findByRole("button", { name: "继续上次任务" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "稍后" })).toBeEnabled();
+    expect(api.conversation).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "稍后" }));
+    expect(api.conversation).not.toHaveBeenCalled();
+  });
+
+  it("allows a new message while an Ask answer remains pending", async () => {
+    let calls = 0;
+    api.start.mockImplementation(async () => (
+      calls++ === 0
+        ? runResponse({ run: runRecord({ id: "run-ask", status: "waiting_input" }) })
+        : runResponse({ run: runRecord({ id: "run-follow-up" }) })
+    ));
+    api.inputRequestsPending.mockResolvedValue({
+      requests: [{
+        request_id: "ask-1",
+        run_id: "run-ask",
+        status: "pending",
+        question: "如何定位这段经历？",
+        reason: "会影响简历结构",
+        options: [{ option_id: "lead", label: "突出带头工作" }],
+        allow_free_text: true,
+      }],
+    });
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.type(screen.getByRole("textbox"), "准备经历");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    await screen.findByRole("region", { name: "助手提问：如何定位这段经历？" });
+
+    const input = screen.getByPlaceholderText(/继续对话或说明如何调整/);
+    expect(input).toBeEnabled();
+    await user.type(input, "先说明这段经历的证据");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    await waitFor(() => expect(api.start).toHaveBeenCalledTimes(2));
+    expect(api.start.mock.calls[1][0]).toMatchObject({
+      message: "先说明这段经历的证据",
+      conversation_id: "conv-1",
+    });
+  });
+
+  it("allows a new message after reopening an interrupted Run", async () => {
+    api.conversations.mockResolvedValue({
+      conversations: [{
+        id: "conv-9",
+        title: "中断的对话",
+        created_at: "",
+        updated_at: "",
+        message_count: 1,
+        last_message: "读取中断",
+      }],
+    });
+    api.runs.mockResolvedValue({
+      runs: [runRecord({ id: "run-interrupted", conversation_id: "conv-9", status: "interrupted" })],
+    });
+    api.conversation.mockResolvedValue({
+      id: "conv-9",
+      title: "中断的对话",
+      created_at: "",
+      updated_at: "",
+      messages: [{ role: "user", content: "读取中断" }],
+    });
+    api.start.mockResolvedValueOnce(runResponse({ run: runRecord({ id: "run-follow-up" }) }));
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(await screen.findByRole("button", { name: "继续上次任务" }));
+    await screen.findByText("读取中断");
+
+    const input = screen.getByRole("textbox");
+    expect(input).toBeEnabled();
+    await user.type(input, "继续分析另一岗位");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    await waitFor(() => expect(api.start).toHaveBeenCalledTimes(1));
+    expect(api.start.mock.calls[0][0]).toMatchObject({
+      message: "继续分析另一岗位",
+      conversation_id: "conv-9",
+    });
+  });
+
+  it("keeps the composer editable during a request while preventing duplicate starts", async () => {
+    let resolveFirst: ((value: ReturnType<typeof runResponse>) => void) | undefined;
+    api.start.mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }));
+    api.start.mockResolvedValueOnce(runResponse({ run: runRecord({ id: "run-next" }) }));
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.type(screen.getByRole("textbox"), "第一次请求");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    const input = screen.getByRole("textbox");
+    expect(input).toBeEnabled();
+    await user.type(input, "下一条消息");
+    expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(api.start).toHaveBeenCalledTimes(1);
+
+    await act(async () => { resolveFirst?.(runResponse()); });
+    await screen.findByText("已处理");
+    expect(input).toHaveValue("下一条消息");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    await waitFor(() => expect(api.start).toHaveBeenCalledTimes(2));
+  });
+
+  it("detaches the stream when the panel closes without cancelling its durable Run", async () => {
+    let requestSignal: AbortSignal | undefined;
+    api.start.mockImplementationOnce((_payload, _onEvent, signal: AbortSignal) => {
+      requestSignal = signal;
+      return new Promise((_resolve, reject) => {
+        signal.addEventListener("abort", () => {
+          const error = new Error("stream detached");
+          error.name = "AbortError";
+          reject(error);
+        }, { once: true });
+      });
+    });
+    const user = userEvent.setup();
+    const view = renderPanel();
+    await user.type(screen.getByRole("textbox"), "读取我的岗位");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    await waitFor(() => expect(api.start).toHaveBeenCalledTimes(1));
+
+    view.unmount();
+
+    expect(requestSignal?.aborted).toBe(true);
+    expect(api.abort).not.toHaveBeenCalled();
   });
 });
 
