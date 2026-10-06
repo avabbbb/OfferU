@@ -46,7 +46,8 @@ def test_agent_cannot_grant_itself_permission_to_read_memory(summary):
             "preview_local_memory_source", {"source_id": SOURCE_ID, "consent": True}, surface="cli", audit=False,
         ))
     assert result["ok"] is False
-    assert result["outputs"] == {"executed": False, "requires_confirmation": True}
+    assert result["outputs"] is None
+    assert result["errors"]  # consent=True supplies no independent authorization.
     assert "text" in get_operation_schema("preview_local_memory_source")["audit_redacted_output_parameters"]
 
 

@@ -74,370 +74,124 @@ class AgentControlPlaneTests(unittest.TestCase):
         self.assertNotIn("from app.services.job_research", source)
 
     def test_same_confirmed_research_action_executes_at_most_once(self) -> None:
-        calls = 0
-        original = OPERATIONS["start_job_research"]
-
-        async def fake_start_job_research(
-            job_id: int,
-            runtime_id: str = "codex",
-        ) -> dict:
-            nonlocal calls
-            calls += 1
-            return {
-                "run_id": f"research-{job_id}",
-                "job_id": job_id,
-                "runtime_id": runtime_id,
-            }
-
-        async def run() -> tuple[dict, dict, dict, int, list[dict]]:
-            await init_db()
-            proposal = await execute_or_propose_operation(
-                "start_job_research",
-                {"job_id": 42},
-                surface="cli",
-            )
-            item = proposal["outputs"]["proposal"]
-            first = await confirm_operation_proposal(
-                item["run_id"],
-                action_id=item["action_id"],
-                surface="agent_runtime_ui",
-            )
-            second = await confirm_operation_proposal(
-                item["run_id"],
-                action_id=item["action_id"],
-                surface="agent_runtime_ui",
-            )
-            async with async_session() as db:
-                audit_count = (
-                    await db.execute(
-                        select(func.count(OperationAuditLog.id)).where(
-                            OperationAuditLog.idempotency_key
-                            == item["idempotency_key"]
-                        )
-                    )
-                ).scalar_one()
-            events = await list_agent_run_events(item["run_id"])
-            return first, second, item, audit_count, events
-
-        OPERATIONS["start_job_research"] = replace(
-            original,
-            fn=fake_start_job_research,
-        )
-        try:
-            first, second, item, audit_count, events = asyncio.run(run())
-        finally:
-            OPERATIONS["start_job_research"] = original
-
-        self.assertTrue(first["ok"])
-        self.assertTrue(second["ok"])
-        self.assertEqual(second["tool_calls"], [])
-        self.assertEqual(calls, 1)
-        self.assertEqual(audit_count, 1)
-        self.assertTrue(item["idempotency_key"])
-        self.assertTrue(item["task_id"].startswith("task_"))
-        self.assertEqual(
-            [event["sequence"] for event in events],
-            list(range(1, len(events) + 1)),
-        )
-        self.assertIn("operation.proposed", {event["type"] for event in events})
-        self.assertIn("operation.started", {event["type"] for event in events})
-        self.assertIn("operation.completed", {event["type"] for event in events})
-        self.assertIn("run.completed", {event["type"] for event in events})
+        asyncio.run(_exercise_group_control("duplicate"))
 
     def test_interrupted_executing_step_requires_reconciliation(self) -> None:
-        async def run() -> tuple[dict, list[dict]]:
-            await init_db()
-            proposal = await execute_or_propose_operation(
-                "set_current_view",
-                {"scope": "interrupted-run", "route": "/not-executed"},
-                surface="cli",
-            )
-            item = proposal["outputs"]["proposal"]
-            stored = await load_agent_run(item["run_id"])
-            assert stored is not None
-            stored["status"] = "executing"
-            stored["steps"][0]["status"] = "executing"
-            await save_agent_run(stored)
-
-            result = await confirm_operation_proposal(
-                item["run_id"],
-                action_id=item["action_id"],
-                surface="agent_runtime_ui",
-            )
-            events = await list_agent_run_events(item["run_id"])
-            return result, events
-
-        result, events = asyncio.run(run())
-
-        self.assertFalse(result["ok"])
-        self.assertTrue(result["uncertain"])
-        self.assertEqual(result["run"]["status"], "needs_reconciliation")
-        self.assertIn("operation.failed", {event["type"] for event in events})
-        self.assertIn("run.failed", {event["type"] for event in events})
+        asyncio.run(_exercise_group_control("recovery"))
 
     def test_reject_one_action_preserves_siblings_and_audits_decision(self) -> None:
-        async def run() -> tuple[dict, dict, list[dict], list[OperationAuditLog]]:
-            await init_db()
-            created = await create_agent_run(
-                conversation_id=f"reject-{uuid.uuid4().hex}",
-                goal="Prepare two independent proposals",
-                mode="general",
-                actions=[
-                    {
-                        "id": "action-one",
-                        "tool": "set_current_view",
-                        "args": {"scope": "reject-one", "route": "/jobs/1"},
-                    },
-                    {
-                        "id": "action-two",
-                        "tool": "set_current_view",
-                        "args": {"scope": "reject-two", "route": "/jobs/2"},
-                    },
-                ],
-            )
-            stale = await load_agent_run(created["id"])
-            assert stale is not None
-            ambiguous = await execute_operation(
-                "reject_agent_run",
-                {"run_id": created["id"]},
-                surface="agent_runtime_ui",
-            )
-            result = await execute_operation(
-                "reject_agent_run",
-                {"run_id": created["id"], "action_id": "action-one"},
-                surface="agent_runtime_ui",
-            )
-            single = await create_agent_run(
-                conversation_id=f"reject-single-{uuid.uuid4().hex}",
-                goal="Reject one proposal through the legacy call shape",
-                mode="general",
-                actions=[
-                    {
-                        "id": "single-action",
-                        "tool": "set_current_view",
-                        "args": {"scope": "reject-single", "route": "/jobs/4"},
-                    }
-                ],
-            )
-            fallback = await execute_operation(
-                "reject_agent_run",
-                {"run_id": single["id"]},
-                surface="agent_runtime_ui",
-            )
-            single_run = await load_agent_run(single["id"])
-            assert single_run is not None
-            single_events = await list_agent_run_events(single["id"])
-            stale["final_result"] = {"assistant_message": "stale provider save"}
-            await save_agent_run(stale)
-            persisted = await load_agent_run(created["id"])
-            assert persisted is not None
-            events = await list_agent_run_events(created["id"])
-            async with async_session() as db:
-                audits = (
-                    await db.execute(
-                        select(OperationAuditLog)
-                        .where(
-                            OperationAuditLog.operation == "reject_agent_run",
-                            OperationAuditLog.surface == "agent_runtime_ui",
-                        )
-                        .order_by(OperationAuditLog.id.asc())
-                    )
-                ).scalars().all()
-            rejected_run = dict(persisted)
-            persisted["status"] = "failed"
-            persisted["failure_reason"] = "durable provider failure"
-            await save_agent_run(persisted)
-            await save_agent_run(stale)
-            protected = await load_agent_run(created["id"])
-            assert protected is not None
-            return (
-                ambiguous,
-                {
-                    "result": result,
-                    "run": rejected_run,
-                    "protected": protected,
-                    "fallback": fallback,
-                    "single_run": single_run,
-                    "single_events": single_events,
-                },
-                events,
-                audits,
-            )
-
-        ambiguous, payload, events, audits = asyncio.run(run())
-        result = payload["result"]
-        run = payload["run"]
-        protected = payload["protected"]
-        fallback = payload["fallback"]
-        single_run = payload["single_run"]
-        self.assertFalse(ambiguous["ok"])
-        self.assertIn("action_id", " ".join(ambiguous["errors"]))
-        self.assertTrue(result["ok"])
-        self.assertEqual(result["outputs"]["action_status"], "rejected")
-        self.assertEqual(result["outputs"]["run"]["id"], run["id"])
-        self.assertEqual(run["status"], "waiting_confirmation")
-        self.assertEqual(
-            {step["id"]: step["status"] for step in run["steps"]},
-            {"action-one": "rejected", "action-two": "waiting_confirmation"},
-        )
-        self.assertTrue(run["steps"][0]["rejected_at"])
-        self.assertEqual(
-            sum(event["type"] == "operation.rejected" for event in events), 1
-        )
-        self.assertEqual(
-            [event["sequence"] for event in events],
-            list(range(1, len(events) + 1)),
-        )
-        matching_audits = [
-            row
-            for row in audits
-            if (row.inputs_json or {}).get("run_id") == run["id"]
-            and (row.inputs_json or {}).get("action_id") == "action-one"
-        ]
-        self.assertEqual(len(matching_audits), 1)
-        self.assertEqual(matching_audits[0].status, "completed")
-        self.assertEqual(protected["status"], "failed")
-        self.assertEqual(protected["failure_reason"], "durable provider failure")
-        self.assertEqual(
-            {step["id"]: step["status"] for step in protected["steps"]},
-            {"action-one": "rejected", "action-two": "waiting_confirmation"},
-        )
-        self.assertTrue(fallback["ok"])
-        self.assertEqual(fallback["outputs"]["action_id"], "single-action")
-        self.assertEqual(single_run["status"], "completed")
-        self.assertEqual(single_run["steps"][0]["status"], "rejected")
-        self.assertEqual(
-            [event["type"] for event in payload["single_events"]][-2:],
-            ["operation.rejected", "run.completed"],
-        )
+        asyncio.run(_exercise_group_control("reject"))
 
     def test_confirming_one_action_leaves_sibling_proposal_pending(self) -> None:
-        calls: list[dict] = []
-        original = OPERATIONS["start_job_research"]
-
-        async def fake_start_job_research(job_id: int, runtime_id: str = "codex") -> dict:
-            calls.append({"job_id": job_id, "runtime_id": runtime_id})
-            return {"run_id": f"research-{job_id}", "job_id": job_id, "runtime_id": runtime_id}
-
-        async def run() -> tuple[dict, dict]:
-            await init_db()
-            created = await create_agent_run(
-                conversation_id=f"confirm-one-{uuid.uuid4().hex}",
-                goal="Prepare two independent proposals",
-                mode="general",
-                actions=[
-                    {
-                        "id": "action-one",
-                        "tool": "start_job_research",
-                        "args": {"job_id": 1},
-                    },
-                    {
-                        "id": "action-two",
-                        "tool": "start_job_research",
-                        "args": {"job_id": 2},
-                    },
-                ],
-            )
-            result = await confirm_operation_proposal(
-                created["id"], action_id="action-one", surface="agent_runtime_ui"
-            )
-            persisted = await load_agent_run(created["id"])
-            assert persisted is not None
-            return result, persisted
-
-        OPERATIONS["start_job_research"] = replace(original, fn=fake_start_job_research)
-        try:
-            result, persisted = asyncio.run(run())
-        finally:
-            OPERATIONS["start_job_research"] = original
-
-        self.assertTrue(result["ok"])
-        self.assertEqual(len(result["tool_calls"]), 1)
-        self.assertEqual(calls, [{"job_id": 1, "runtime_id": "codex"}])
-        self.assertEqual(persisted["status"], "waiting_confirmation")
-        self.assertEqual(
-            {step["id"]: step["status"] for step in persisted["steps"]},
-            {"action-one": "completed", "action-two": "waiting_confirmation"},
-        )
+        asyncio.run(_exercise_group_control("sibling"))
 
     def test_confirm_and_reject_race_has_one_action_transition_winner(self) -> None:
-        calls = 0
-        original = OPERATIONS["set_current_view"]
+        asyncio.run(_exercise_group_control("race"))
 
-        async def fake_set_current_view(scope: str, route: str) -> dict:
-            nonlocal calls
-            calls += 1
-            return {"scope": scope, "route": route}
 
-        async def run() -> tuple[dict, dict, dict]:
-            await init_db()
-            created = await create_agent_run(
-                conversation_id=f"decision-race-{uuid.uuid4().hex}",
-                goal="Race confirm against reject",
-                mode="general",
-                actions=[
-                    {
-                        "id": "action-race",
-                        "tool": "set_current_view",
-                        "args": {"scope": "decision-race", "route": "/jobs/3"},
-                    }
-                ],
-            )
-            initial_loads = 0
-            both_loaded = asyncio.Event()
-            projection_load = operation_projection.load_agent_run
-            state_load = agent_run_state.load_agent_run
 
-            async def synchronized_load(loader, run_id: str):
-                nonlocal initial_loads
-                value = await loader(run_id)
-                if run_id == created["id"] and value is not None:
-                    initial_loads += 1
-                    if initial_loads == 2:
-                        both_loaded.set()
-                    await both_loaded.wait()
-                return value
+async def _exercise_group_control(case):
+    """Real isolated Registry writes with synthetic independent native authorization.
 
-            async def projection_barrier_load(run_id: str):
-                return await synchronized_load(projection_load, run_id)
+    The former action tests now protect the same idempotency, recovery,
+    sibling isolation and decision-CAS invariants at the v2 group boundary.
+    """
+    import tempfile
+    import pytest
+    from app.models.models import Job, ProposalConfirmationDecision
+    from app.services.agent_skill_registry import resolve_skill
+    from app.services.proposal_plan_preparation import prepare_proposal_plan
+    from app.services import proposal_plan_execution as execution, proposal_plan_store as store
+    from tests.proposal_v2_fixtures import make_db
 
-            async def state_barrier_load(run_id: str | None):
-                return await synchronized_load(state_load, run_id)
-
-            with (
-                patch.object(operation_projection, "load_agent_run", projection_barrier_load),
-                patch.object(agent_run_state, "load_agent_run", state_barrier_load),
-            ):
-                confirmed, rejected = await asyncio.gather(
-                    confirm_operation_proposal(
-                        created["id"], action_id="action-race", surface="agent_runtime_ui"
-                    ),
-                    execute_operation(
-                        "reject_agent_run",
-                        {"run_id": created["id"], "action_id": "action-race"},
-                        surface="agent_runtime_ui",
-                    ),
-                )
-            persisted = await load_agent_run(created["id"])
-            assert persisted is not None
-            return confirmed, rejected, persisted
-
-        OPERATIONS["set_current_view"] = replace(original, fn=fake_set_current_view)
+    with tempfile.TemporaryDirectory() as directory, pytest.MonkeyPatch.context() as patches:
+        database = make_db(Path(directory), patches)
+        await database.start(create_schema=True)
         try:
-            confirmed, rejected, persisted = asyncio.run(run())
+            patches.setattr("app.services.ui_approval_capability.accepts_authorization", lambda token: token == "Bearer control-test")
+            async with database.sessions() as db:
+                jobs = [Job(title=f"Reviewed role {i}", company="Fixture", hash_key=uuid.uuid4().hex) for i in range(2)]
+                db.add_all(jobs)
+                await db.commit()
+            skill = resolve_skill("evaluate_job")
+            run = await create_agent_run(conversation_id=uuid.uuid4().hex, goal="Review two roles", mode=skill.mode,
+                skill_id=skill.id, skill_snapshot=skill.summary(), actions=[])
+            prepared = await prepare_proposal_plan(run_id=run["id"], title="Reviewed roles",
+                intents=[{"id": f"job-{i}", "operation": "triage_job", "args": {"job_id": job.id, "status": "picked"},
+                          "summary": "Keep the reviewed role"} for i, job in enumerate(jobs)],
+                groups=[{"title": f"Review role {i}", "node_ids": [f"job-{i}"]} for i in range(2)])
+            plan = prepared["plan"]
+            first, sibling = plan["groups"]
+            decision_id = "decision_" + uuid.uuid4().hex
+            kwargs = dict(plan_digest=plan["digest"], group_digest=first["digest"], decision_id=decision_id,
+                          authorization_source="Bearer control-test", surface="agent_runtime_ui")
+            if case == "recovery":
+                await store.record_decision({"id": decision_id, "event_id": decision_id, "plan_id": plan["id"],
+                    "group_id": first["id"], "decision": "approve", **{**kwargs, "authorization_source": "desktop-ui"}})
+                node = first["nodes"][0]
+                assert await store.claim_node(node["id"], claim_id="interrupted-control-test")
+                recovered = await store.recover_executing_nodes(run["id"])
+                assert recovered["needs_reconciliation"] == 1
+                binding = await store.get_node_authorization(node["id"])
+                assert binding["node"]["status"] == "uncertain"
+                assert binding["receipt"]["effect_state"] == "unknown"
+                assert await store.claim_node(node["id"], claim_id="forbidden-replay") is None
+                async with database.sessions() as db:
+                    assert (await db.get(Job, jobs[0].id)).triage_status != "picked"
+                return
+            if case == "reject":
+                result = await execution.reject_group(plan["id"], first["id"], **kwargs)
+                assert result["ok"], result
+                current = await store.get_plan(plan["id"])
+                assert current["groups"][0]["status"] == "rejected"
+                assert current["groups"][1]["status"] == "pending"
+                assert current["groups"][1]["nodes"][0]["attempt_count"] == 0
+                async with database.sessions() as db:
+                    decisions = (await db.execute(select(ProposalConfirmationDecision).where(
+                        ProposalConfirmationDecision.group_id == first["id"]))).scalars().all()
+                    assert len(decisions) == 1 and decisions[0].decision == "reject"
+                    assert (await db.get(Job, jobs[0].id)).triage_status != "picked"
+                return
+            if case == "race":
+                results = await asyncio.gather(
+                    execution.confirm_group(plan["id"], first["id"], **kwargs),
+                    execution.reject_group(plan["id"], first["id"], **{**kwargs, "decision_id": "decision_" + uuid.uuid4().hex}),
+                    return_exceptions=True)
+                async with database.sessions() as db:
+                    decisions = (await db.execute(select(ProposalConfirmationDecision).where(
+                        ProposalConfirmationDecision.group_id == first["id"]))).scalars().all()
+                    assert len(decisions) == 1
+                    audits = (await db.execute(select(OperationAuditLog).where(
+                        OperationAuditLog.idempotency_key == first["nodes"][0]["idempotency_key"]))).scalars().all()
+                    if decisions[0].decision == "approve":
+                        assert len(audits) == 1 and audits[0].ok
+                        assert (await db.get(Job, jobs[0].id)).triage_status == "picked"
+                    else:
+                        assert not audits
+                        assert (await db.get(Job, jobs[0].id)).triage_status != "picked"
+                assert sum(isinstance(value, dict) and value.get("ok") is True for value in results) == 1
+                return
+            result = await execution.confirm_group(plan["id"], first["id"], **kwargs)
+            assert result["ok"], result
+            assert result["receipts"][0]["effect_state"] == "committed"
+            if case == "duplicate":
+                replay = await execution.confirm_group(plan["id"], first["id"], **kwargs)
+                assert replay["ok"] and replay["duplicate"]
+                async with database.sessions() as db:
+                    audits = (await db.execute(select(OperationAuditLog).where(
+                        OperationAuditLog.idempotency_key == first["nodes"][0]["idempotency_key"]))).scalars().all()
+                    assert len(audits) == 1 and audits[0].ok
+                    assert (await db.get(Job, jobs[0].id)).triage_status == "picked"
+            else:
+                current = result.get("successor_plan") or await store.get_plan(plan["id"])
+                pending = [group for group in current["groups"] if group["status"] == "pending"]
+                assert len(pending) == 1
+                assert pending[0]["nodes"][0]["args"]["job_id"] == jobs[1].id
+                assert pending[0]["nodes"][0]["attempt_count"] == 0
+                async with database.sessions() as db:
+                    assert (await db.get(Job, jobs[1].id)).triage_status != "picked"
         finally:
-            OPERATIONS["set_current_view"] = original
-
-        step = persisted["steps"][0]
-        if step["status"] == "rejected":
-            self.assertEqual(calls, 0)
-            self.assertTrue(rejected["ok"])
-            self.assertFalse(confirmed["ok"])
-        else:
-            self.assertEqual(step["status"], "completed")
-            self.assertEqual(calls, 1)
-            self.assertTrue(confirmed["ok"])
-            self.assertFalse(rejected["ok"])
+            await database.close()
 
 
 if __name__ == "__main__":

@@ -1,7 +1,9 @@
 import asyncio
+from dataclasses import replace
 from unittest.mock import AsyncMock, patch
 
 from app.database import init_db
+from app.ops import OPERATIONS
 from app.routes.bridge import list_pending_proposals
 from app.services.agent_run_state import create_agent_run, load_agent_run
 from app.services.operation_projection import confirm_operation_proposal
@@ -22,11 +24,26 @@ def test_old_pi_proposals_remain_history_and_cannot_execute():
         pending = await list_pending_proposals()
         assert run["id"] not in [item["runId"] for item in pending["items"]]
         assert run["id"] in [item["runId"] for item in pending["unavailable"]]
-        with patch("app.services.operation_projection.AgentRunCoordinator.execute_confirmed", new=AsyncMock()) as execute:
-            result = await confirm_operation_proposal(run["id"], action_id="research:1", surface="agent_runtime_ui")
+        original = OPERATIONS["start_job_research"]
+        execute = AsyncMock(return_value={"run_id": "unexpected", "job_id": 74291})
+        OPERATIONS["start_job_research"] = replace(original, fn=execute)
+        try:
+            result = await confirm_operation_proposal(
+                run["id"],
+                action_id="research:1",
+                surface="agent_runtime_ui",
+                authorization_source="Bearer legacy-test-ui",
+                plan_digest="0" * 64,
+                group_digest="0" * 64,
+            )
+        finally:
+            OPERATIONS["start_job_research"] = original
         assert not result["ok"]
         execute.assert_not_awaited()
-        assert (await load_agent_run(run["id"]))["status"] == "waiting_confirmation"
+        recovered = await load_agent_run(run["id"])
+        assert recovered["status"] == "waiting_confirmation"
+        assert recovered["steps"][0]["id"] == "research:1"
+        assert recovered["steps"][0]["status"] == "waiting_confirmation"
     asyncio.run(flow())
 
 

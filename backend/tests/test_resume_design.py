@@ -3,6 +3,7 @@ import base64
 from contextlib import AsyncExitStack
 from io import BytesIO
 from unittest.mock import patch
+from uuid import uuid4
 
 from PIL import Image
 import pytest
@@ -36,7 +37,12 @@ async def scenario(tmp_path, callback):
             await db.commit()
             resume_id = resume.id
         async with AsyncExitStack() as stack:
-            for module in ("app.services.resume_design", "app.services.resume_route_operations", "app.ops", "app.services.agent_run_state", "app.services.agent_run_coordinator"):
+            for module in (
+                "app.services.resume_design", "app.services.resume_route_operations", "app.ops",
+                "app.services.agent_run_state", "app.services.agent_run_coordinator",
+                "app.services.proposal_plan_store", "app.services.proposal_plan_sources",
+                "app.services.proposal_plan_execution",
+            ):
                 stack.enter_context(patch(f"{module}.async_session", sessions))
             stack.enter_context(patch.object(design, "runtime_uploads_dir", lambda folder: tmp_path / "uploads" / folder))
             await callback(sessions, resume_id)
@@ -118,26 +124,81 @@ def test_concurrent_designs_cannot_overwrite_each_other(tmp_path):
 
 
 def test_proposal_is_pending_then_confirmed_once_with_redacted_audit(tmp_path):
-    """Fixture confirmation boundary test; this is not a human/Agent-native E2E."""
-    from app.services.operation_projection import execute_or_propose_operation, confirm_operation_proposal
+    """Fixture v2 confirmation boundary test; this is not a human/Agent-native E2E."""
     from app.cli import _manifest
+    from app.models.models import AgentRunRecord
+    from app.services.agent_run_state import create_agent_run
+    from app.services.agent_skill_registry import resolve_skill
+    from app.services.proposal_plan_execution import confirm_group
+    from app.services.proposal_plan_preparation import prepare_proposal_plan
+    from app.services import ui_approval_capability
+
     assert "update_resume_design" in {op["name"] for op in _manifest(skill="resume_export")["operations"]}
+
     async def check(sessions, resume_id):
-        proposed = await execute_or_propose_operation("update_resume_design", {"resume_id": resume_id, "expected_revision": 0,
-            "style_config": {"accentColorHex": "#7c3aed"}, "photo": image_payload()}, surface="cli")
-        assert proposed["ok"], proposed
-        item = proposed["outputs"]["proposal"]
+        skill = resolve_skill("resume_export")
+        run = await create_agent_run(
+            conversation_id=f"resume-design-{uuid4().hex}",
+            goal="Review the resume design update",
+            mode="resume_export",
+            skill_id=skill.id,
+            skill_version=skill.version,
+            skill_snapshot=skill.summary(),
+            actions=[],
+        )
+        prepared = await prepare_proposal_plan(
+            run_id=run["id"],
+            title="Reviewed resume design",
+            intents=[{
+                "id": "design-update",
+                "operation": "update_resume_design",
+                "args": {
+                    "resume_id": resume_id,
+                    "expected_revision": 0,
+                    "style_config": {"accentColorHex": "#7c3aed"},
+                    "photo": image_payload(),
+                },
+                "summary": "Update the reviewed resume design and photo",
+            }],
+            groups=[{
+                "id": "design-review",
+                "title": "Resume design",
+                "summary": "Apply the displayed style and photo change",
+                "rationale": "The user reviews the exact design effect before it is applied.",
+                "node_ids": ["design-update"],
+            }],
+        )
+        plan = prepared["plan"]
+        group = plan["groups"][0]
+        node = group["nodes"][0]
         async with sessions() as db:
             assert (await db.get(Resume, resume_id)).workspace_revision == 0
+            stored_run = await db.get(AgentRunRecord, run["id"])
+            assert stored_run is not None
         assert not list((tmp_path / "uploads").rglob("*.png"))
-        first = await confirm_operation_proposal(item["run_id"], action_id=item["action_id"], surface="agent_runtime_ui")
-        assert first["ok"], first
-        second = await confirm_operation_proposal(item["run_id"], action_id=item["action_id"], surface="agent_runtime_ui")
-        assert second["ok"] and not second["tool_calls"]
+        token = "Bearer resume-design-test-ui"
+        with patch.object(ui_approval_capability, "accepts_authorization", side_effect=lambda value: value == token):
+            first = await confirm_group(
+                plan["id"], group["id"], plan_digest=plan["digest"], group_digest=group["digest"],
+                decision_id=f"decision_{uuid4().hex}", authorization_source=token, surface="agent_runtime_ui",
+            )
+            assert first["ok"], first
+            assert first["group"]["status"] == "completed"
+            assert len(first["receipts"]) == 1
+            assert first["receipts"][0]["effect_state"] == "committed"
+            second = await confirm_group(
+                plan["id"], group["id"], plan_digest=plan["digest"], group_digest=group["digest"],
+                decision_id=first["group"]["decision_id"], authorization_source=token, surface="agent_runtime_ui",
+            )
+            assert second["ok"] and second["duplicate"]
         async with sessions() as db:
             assert (await db.get(Resume, resume_id)).workspace_revision == 1
             audits = (await db.execute(select(OperationAuditLog))).scalars().all()
             assert audits
             assert image_payload()["content_b64"] not in repr([a.__dict__ for a in audits])
+            receipt_audit = await db.get(OperationAuditLog, int(first["receipts"][0]["audit_ref"]))
+            assert receipt_audit is not None and receipt_audit.ok and receipt_audit.status == "completed"
+            assert receipt_audit.idempotency_key == node["idempotency_key"]
+            assert len([a for a in audits if a.idempotency_key == node["idempotency_key"]]) == 1
         assert len(list((tmp_path / "uploads").rglob("*.png"))) == 1
     asyncio.run(scenario(tmp_path, check))
