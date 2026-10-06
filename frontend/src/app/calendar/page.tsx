@@ -16,7 +16,7 @@ import {
   Tabs,
   Input,
   useDisclosure,
-} from "@nextui-org/react";
+} from "@heroui/react";
 import { Calendar as CalendarIcon, List, Plus, Sparkles } from "lucide-react";
 import { createCalendarEvent, useCalendarEvents } from "@/lib/hooks";
 import {

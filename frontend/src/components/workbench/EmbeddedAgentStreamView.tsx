@@ -1,6 +1,6 @@
 // Migrated from luyishui/OfferU @ 3a446ff, MIT. Tool reducer cases and view
 // remain upstream source; the event adapter binds the existing Career Runtime.
-import { Chip } from "@nextui-org/react";
+import { Chip } from "@heroui/react";
 import { CheckCircle2, Loader2, Wrench, XCircle } from "lucide-react";
 import type { ToolExecutionState } from "@/lib/embeddedAgentStream";
 export function ToolExecutionList({ executions }: { executions: Record<string, ToolExecutionState> }) {

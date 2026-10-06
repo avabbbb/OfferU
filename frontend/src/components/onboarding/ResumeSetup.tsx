@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Button, Checkbox } from "@nextui-org/react";
+import { Button, Checkbox } from "@heroui/react";
 import { confirmProfileCandidate, importProfileResume, updateProfileData, type ProfileData, type ProfileImportResult } from "@/lib/hooks";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { getProfileBulletText, parseProfileSectionDraft } from "@/lib/profileSchema";

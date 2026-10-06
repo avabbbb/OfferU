@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import MarkdownIt from "markdown-it";
-import { Button } from "@nextui-org/react";
+import { Button } from "@heroui/react";
 import { FileText, MessageSquare, Play, SendHorizonal, Square } from "lucide-react";
 import { streamOptimizeAgentChat, OptimizeAgentStreamEvent, type OptimizeSessionDetail } from "@/lib/hooks";
 import { request } from "@/lib/api";

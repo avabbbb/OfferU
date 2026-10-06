@@ -11,7 +11,7 @@
 import { useMemo, useState } from "react";
 import { useSWRConfig } from "swr";
 import Link from "next/link";
-import { Button, Chip, Spinner, Tooltip } from "@nextui-org/react";
+import { Button, Chip, Spinner, Tooltip } from "@heroui/react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Building2,

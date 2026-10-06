@@ -16,7 +16,7 @@
 
 "use client";
 
-import { Card, CardBody, Slider } from "@nextui-org/react";
+import { Card, CardBody, Slider } from "@heroui/react";
 import { Palette, Type, AlignVerticalSpaceAround } from "lucide-react";
 
 /** 默认样式值，与后端 DEFAULT_STYLE 保持一致 */

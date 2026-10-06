@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Spinner } from "@nextui-org/react";
+import { Button, Spinner } from "@heroui/react";
 import { Camera, CameraOff, ShieldCheck } from "lucide-react";
 import type { FaceLandmarkerResult, GestureRecognizerResult } from "@mediapipe/tasks-vision";
 import SkeletonOverlay from "../../pose/components/SkeletonOverlay";

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Button, Input } from "@nextui-org/react";
+import { Button, Input } from "@heroui/react";
 import { useSWRConfig } from "swr";
 import { dataSafetyApi } from "@/lib/api";
 import { resolveApiBase } from "@/lib/apiBase";
