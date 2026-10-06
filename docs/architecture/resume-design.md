@@ -1,5 +1,7 @@
 # Resume presentation and export
 
+> Product interaction target: [Resume Canvas — Document-first, AI-assisted Resume Experience](../product/resume-canvas-design.md). This architecture document describes presentation/export mechanics; it must not be interpreted as requiring Proposal cards or a separate form editor as the primary Resume UX.
+
 The canonical Resume owns content, `style_config`, `photo_url` and the school logo reference in `contact_json`. The editor and exports use the same React templates; a separate document or Agent-only resume is not created.
 
 ## Agent entry
