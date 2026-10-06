@@ -28,6 +28,7 @@ from app.services.agent_bridge.run_coordinator import (  # noqa: E402
 )
 from app.services.agent_bridge.server import BridgeSession  # noqa: E402
 from app.services.agent_run_state import create_agent_run, load_agent_run  # noqa: E402
+from app.services.agent_skill_registry import resolve_skill  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 
 import secrets  # noqa: E402
@@ -65,11 +66,15 @@ class Slice1BridgeTests(unittest.TestCase):
             if profile is None:
                 db.add(Profile(name="Bridge fixture", is_default=True))
                 await db.commit()
+        skill = resolve_skill("discovery")
+        assert skill is not None
         run = await create_agent_run(
             conversation_id=f"slice1-{_SALT}-{id(object())}",
             goal="Slice 1 只读链路验收",
-            mode="general",
-            skill_id="pre_application_decision",
+            mode=skill.mode,
+            skill_id=skill.id,
+            skill_version=skill.version,
+            skill_snapshot=skill.summary(),
             actions=[],
         )
         return str(run["id"])
@@ -282,10 +287,16 @@ class Slice1BridgeTests(unittest.TestCase):
         operations = granted_operations()
 
         self.assertTrue(operations)
-        self.assertTrue(
-            all(item["side_effects"] == ["read"] for item in operations)
-        )
+        names = {item["name"] for item in operations}
+        self.assertIn("prepare_proposal_plan", names)
+        self.assertTrue(all(
+            item["side_effects"] == ["read"]
+            or (item["name"] == "prepare_proposal_plan" and item["autonomy_level"] == "L1_prepare")
+            for item in operations
+        ))
         self.assertNotIn("triage_job", {item["name"] for item in operations})
+        self.assertNotIn("connect_imap_account", names)
+        self.assertNotIn("preview_local_memory_source", names)
 
     def test_run_messages_require_pairing_first(self) -> None:
         async def flow():
