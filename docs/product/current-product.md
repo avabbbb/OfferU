@@ -57,6 +57,10 @@ The active host owns native structured input and current-web research. Ask resol
 
 The user should experience a durable workspace, not a disposable AI conversation.
 
+### Resume as an editable artifact
+
+Resume is a durable **document surface**, not a Proposal administration screen. The current target experience is defined in [Resume Canvas — Document-first, AI-assisted Resume Experience](./resume-canvas-design.md): AI prepares evidence-grounded edits, while the user directly edits the finished document, sees contextual inline diffs, can undo/restore meaningful checkpoints, and keeps full manual control after AI generation. Proposal/Fact Gate/audit infrastructure remains underneath the Canvas rather than becoming the primary editing UX.
+
 ## Product information architecture
 
 The stable top-level product model is:
