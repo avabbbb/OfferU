@@ -273,6 +273,12 @@ Rules:
 
 Power users may still use direct Agent chat, Skills, CLI and batch workflows.
 
+### Agentic interaction boundary
+
+Guided does not mean a workflow engine that locks the user into internal state. OfferU follows the current [Agentic Interaction Policy](./agentic-interaction-policy.md): deterministic code enforces hard safety/data invariants, while the active Agent/reviewer decides whether a specific bounded action should be AUTO, ASK, REVIEW, AUTHORIZE or BLOCK from the user's goal, current Career State, Memory, prior decisions and actual effect.
+
+Pending technical state never globally disables conversation. Navigation does not imply Run cancellation. The user Inbox counts only genuine `needs_user_*` work; reconciliation, execution and repair remain system work unless a concrete semantic conflict requires a person. Internal transaction groups do not automatically become multiple user approvals.
+
 ## Progressive Profile
 
 Do not front-load a giant onboarding form.
