@@ -1,0 +1,31 @@
+name: PR Baseline Freshness
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  branch-freshness:
+    name: PR includes latest main
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Fetch current base
+        shell: bash
+        run: |
+          git fetch --no-tags origin "${{ github.event.pull_request.base.ref }}:refs/remotes/origin/${{ github.event.pull_request.base.ref }}"
+
+      - name: Reject stale PR baseline
+        run: |
+          python backend/scripts/dev/branch_guard.py \
+            --mode pr \
+            --base-ref "origin/${{ github.event.pull_request.base.ref }}" \
+            --no-fetch

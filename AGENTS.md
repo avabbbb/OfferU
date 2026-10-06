@@ -144,6 +144,10 @@ Issues 和 PRD 使用当前 Git remote 对应的 GitHub Issues；外部 Pull Req
 
 ### 本地分支预算与归档
 
+- **分支规则现在有机器闸门，不再只靠提醒**：开始一轮开发前运行 `python backend/scripts/dev/branch_guard.py --mode start`；集成 worker 前运行 `--mode integrate`；任何真人/Desktop/安装包验收前必须运行 `--mode owner-test`。Guard 会先 fetch `origin/main`，HEAD 落后 main 或本地命名分支超过 3 条时直接失败；集成/真人验收默认还要求 clean worktree。详细规则见 `docs/agents/branch-and-test-baseline.md`。
+- **子代理默认只用 detached worktree，不创建永久 worker 分支**：主代理先记录唯一 integration baseline SHA，再用 `git worktree add --detach <H:/tmp/offeru/...> <integration-sha>` 隔离；子代理提交后返回 commit SHA，由主代理尽早审查并合入唯一集成分支。不得为 Luna/review/fix/experiment 每项工作长期新增命名分支。
+- **真人测试必须证明“源码身份”和“运行物身份”一致**：`--mode owner-test` 输出 HEAD、origin/main、ahead/behind、dirty、branch/worktree 数；启动 Desktop/后端后再用 `--runtime-health-url http://127.0.0.1:8766/api/health` 核对运行时 `build_identity.commit == HEAD`。源码已更新但实际运行旧 EXE/sidecar/DMG 时，测试结果一律不能算当前版本验收。
+- **PR 也不得长期漂在旧 main 上**：`.github/workflows/branch-freshness.yml` 从 PR 实际 head 检查当前 base 是否为其祖先。失败时先同步当前 main 再继续集成/验收；不要在 stale PR 上继续堆新功能。
 - **本地最多三条分支**：保留 `main`、当前开发分支、当前集成分支。此次为 `main`、`feat/agent-contract-desktop-binding`、`codex/proposal-v2-integration-20261002`；任务切换时调整职责，不能不断累加实验、评审或子代理分支。需要隔离并行时优先 `git worktree add --detach`，主代理审查并集成明确提交。
 - **减少分支不等于合并所有功能**：已合并内容与 cherry-pick 后的等价修改核对后收尾；未验收内容列入待集成清单，不能为了数量目标混进 main。移除含独有提交的分支前，必须生成并验证可恢复 Git bundle、保存原分支 SHA 和工作树状态；有未提交改动的 worktree 保留目录及文件，不 force-remove、不 reset。归档不计为功能完成。
 - **归档必须能实际恢复**：持久归档放在仓库 Git common directory 的 `archives/`，不能只有临时目录中的单份备份；在隔离目录恢复并比对原 SHA，记录恢复命令。远端分支和开放 PR 单独核对，未获授权不删除或改写远端。当前清单与恢复步骤见 `docs/agents/branch-consolidation-20261005.md`。
