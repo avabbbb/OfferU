@@ -84,11 +84,27 @@ jobs:
         working-directory: frontend
         run: npm audit --omit=dev --audit-level=high
 
-      - name: Audit Agent runtime production dependencies
+  agent-runtime-quality:
+    name: Agent runtime install and audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: agent-runtime/package-lock.json
+
+      - name: Install agent runtime dependencies
         working-directory: agent-runtime
-        run: |
-          npm ci
-          npm audit --omit=dev --audit-level=high
+        run: npm ci
+
+      - name: Audit agent runtime production dependencies
+        working-directory: agent-runtime
+        run: npm audit --omit=dev --audit-level=high
 
   rust-security-audit:
     name: RustSec dependency audit
