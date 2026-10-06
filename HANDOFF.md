@@ -1,7 +1,7 @@
 # OfferU Handoff
 
 Status: **CURRENT CONTINUATION INDEX**
-Updated: 2026-10-05
+Updated: 2026-10-06
 
 ## Read first
 
@@ -13,11 +13,16 @@ Updated: 2026-10-05
 
 ## Current source boundaries
 
-The last reviewed main is `265cad5`; the development checkout is `588d860` plus substantial uncommitted changes. The isolated Proposal v2 integration is `cf8deae`. Re-check HEAD, status, worktree and artifact identities: none of these identifiers includes the current working-tree content by itself.
+Current main is `c58c069`; active development is solely `fix/main-ci-green` (implementation checkpoint `8a28e54`). Earlier dirty UX/review work is preserved in `stash@{0}` (`pre-sync-offeru-2026-10-06`) and a restore-verified Git archive. Do not apply that stash wholesale or resume implementation in old worktrees. Re-check live HEAD, status and artifact identities before acceptance.
 
-Current development has `decision_plans` / `decision_execution` and related UI work, while the earlier isolated integration has `proposal_plan_*` services. Review the exact schema, authority and caller contracts before applying that integration. Do not create parallel approval authorities or overwrite the user's implementation to match an older report.
+Proposal v2 integration is already in main. The current task migrates obsolete CI contracts, fixes demonstrated product/security regressions and preserves independent authorization, source versions and receipts. Do not restore action-level approval or create parallel approval authorities. The older review below is historical context, not an instruction to merge the old integration branch again.
 
 ## Immediate delivery work
+
+- Finish the full Backend regression and publish the single CI repair PR; frontend tests/typecheck/build already pass, while dependency audit remains blocked on unpatched `braces`.
+- Keep main unchanged until the candidate is reviewed. Source/fixture checks do not prove the running EXE contains these changes or that a real owner journey passes.
+
+### Historical delivery checklist — 2026-10-05
 
 - The independent documentation slice is ready for its link/archive checks and review; bilingual summaries are in the main-readiness report.
 - Model discovery has scoped automatic evidence but a keyless-request compatibility change; complete that slice before claiming it ready.
