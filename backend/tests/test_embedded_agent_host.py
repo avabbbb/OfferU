@@ -182,6 +182,48 @@ class AutoEvaluateWorker(FakeEmbeddedWorker):
 
 
 class EmbeddedAgentHostTests(unittest.TestCase):
+    def test_busy_worker_failure_keeps_existing_run_and_reports_terminal_runtime(self) -> None:
+        async def run() -> tuple[dict, dict, str | None]:
+            await init_db()
+            existing = await create_agent_run(
+                conversation_id="synthetic-busy-existing",
+                goal="Synthetic running task",
+                mode="general",
+                skill_id="discovery",
+                skill_version="synthetic",
+                skill_snapshot={},
+                actions=[],
+                llm_runtime={"runtime": "python_agent", "status": "active"},
+            )
+            existing["status"] = "executing"
+            await save_agent_run(existing)
+
+            class BusyWorker(FakeEmbeddedWorker):
+                async def start_run(self, **kwargs) -> dict:
+                    raise RuntimeError(f"An Agent Run is already active: {self.active_run_id}")
+
+            worker = BusyWorker()
+            worker.active_run_id = existing["id"]
+            failed = await start_embedded_agent_run(
+                message="Synthetic competing task",
+                skill_id="discovery",
+                worker=worker,
+                provider_config={"name": "synthetic", "model": "synthetic-busy-model"},
+                provider_metadata={"provider": "synthetic", "model": "synthetic-busy-model"},
+            )
+            stored_existing = await load_agent_run(existing["id"])
+            assert stored_existing is not None
+            return failed, stored_existing, worker.active_run_id
+
+        failed, existing, active_run_id = asyncio.run(run())
+        self.assertFalse(failed["ok"])
+        self.assertEqual(failed["run"]["status"], "failed")
+        self.assertEqual(failed["run"]["llm_runtime"]["status"], "failed")
+        self.assertEqual(failed["run"]["llm_runtime"]["model"], "synthetic-busy-model")
+        self.assertEqual(existing["status"], "executing")
+        self.assertEqual(existing["llm_runtime"]["status"], "active")
+        self.assertEqual(active_run_id, existing["id"])
+
     def test_stream_route_forwards_real_delta_before_final_response(self) -> None:
         from app.routes.main_agent import PiAgentRunRequest, stream_runtime_run
 
