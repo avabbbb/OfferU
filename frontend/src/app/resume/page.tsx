@@ -11,7 +11,7 @@
 import { useState, useEffect, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Card, CardBody, Button, Chip, Input, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure, Checkbox, Textarea } from "@nextui-org/react";
+import { Card, CardBody, Button, Chip, Input, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure, Checkbox, Textarea } from "@heroui/react";
 import { Plus, FileText, Trash2, Edit3, Globe, Upload, CheckCircle2 } from "lucide-react";
 import {
   ResumeBrief,

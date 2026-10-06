@@ -49,7 +49,7 @@ export function ModelPicker({ baseUrl, apiKey, apiFormat, configId, value, onCha
       <option value="">{loading ? "正在获取模型…" : "选择一个可用模型"}</option>
       {value && !models.some((model) => model.id === value) && <option value={value}>{value}（当前配置）</option>}
       {models.map((model) => <option key={model.id} value={model.id}>{model.name === model.id ? model.id : `${model.name} · ${model.id}`}</option>)}
-    </select> : <input id="embedded-model" name="model" autoComplete="off" spellCheck={false} value={value} onChange={(event) => onChange(event.target.value)} placeholder="输入服务支持的模型 ID…" className={field} aria-invalid={!!error} />}
+    </select> : <input id="embedded-model" name="model" autoComplete="off" spellCheck="false" value={value} onChange={(event) => onChange(event.target.value)} placeholder="输入服务支持的模型 ID…" className={field} aria-invalid={!!error} />}
     <p id="model-status" role="status" className="text-xs leading-relaxed text-[var(--foreground-muted)]">{status}</p>
     {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
     <div className="flex gap-4 text-xs">

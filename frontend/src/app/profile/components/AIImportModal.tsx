@@ -9,7 +9,7 @@ import {
   ModalFooter,
   ModalHeader,
   Textarea,
-} from "@nextui-org/react";
+} from "@heroui/react";
 import {
   CheckCircle2,
   ChevronLeft,

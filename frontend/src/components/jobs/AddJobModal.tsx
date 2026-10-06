@@ -10,7 +10,7 @@ import {
   ModalFooter,
   ModalHeader,
   Textarea,
-} from "@nextui-org/react";
+} from "@heroui/react";
 import { ingestJob, type JobPreparationMode } from "@/lib/hooks";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 

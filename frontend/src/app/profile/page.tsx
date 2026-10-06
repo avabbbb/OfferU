@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Spinner } from "@nextui-org/react";
+import { Spinner } from "@heroui/react";
 import {
   type ArchiveTab,
   type PersonalArchive,

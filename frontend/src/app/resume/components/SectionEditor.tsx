@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Input, Button, Textarea } from "@nextui-org/react";
+import { Input, Button, Textarea } from "@heroui/react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Eye, EyeOff, Plus, Trash2, GripVertical } from "lucide-react";
 import {

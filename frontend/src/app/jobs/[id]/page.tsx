@@ -17,7 +17,7 @@ import {
   Select,
   SelectItem,
   Spinner,
-} from "@nextui-org/react";
+} from "@heroui/react";
 import {
   ArrowLeft,
   Building2,

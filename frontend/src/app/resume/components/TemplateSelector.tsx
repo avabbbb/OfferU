@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Popover, PopoverContent, PopoverTrigger } from "@nextui-org/react";
+import { Button, Popover, PopoverContent, PopoverTrigger } from "@heroui/react";
 import { Check, LayoutTemplate } from "lucide-react";
 import { TEMPLATE_OPTIONS, type ResumeTemplateType } from "./templates/templateSettings";
 

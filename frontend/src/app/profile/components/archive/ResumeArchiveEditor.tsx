@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Button, Card, CardBody, Input, Textarea } from "@nextui-org/react";
+import { Button, Card, CardBody, Input, Textarea } from "@heroui/react";
 import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Plus, Save, Trash2 } from "lucide-react";
 import RichTextEditor from "@/app/resume/components/RichTextEditor";
 import {
