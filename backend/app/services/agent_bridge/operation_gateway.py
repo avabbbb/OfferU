@@ -221,6 +221,7 @@ async def load_proposal_state(*, run_id: str) -> dict[str, Any]:
     """Read Plan receipts for an attached Run or one of its Plan IDs."""
     from app.services.agent_run_state import load_agent_run
     from app.services.proposal_plan_continuation import continuation_view, plan_review_view
+    from app.services.agentic_interaction_policy import project_current_sources
     from app.services.proposal_plan_store import get_plan, list_continuations, list_plans
 
     selected_plan = await get_plan(run_id) if str(run_id).startswith("plan_") else None
@@ -250,7 +251,8 @@ async def load_proposal_state(*, run_id: str) -> dict[str, Any]:
         "steps": steps,
         "proposalAuthority": str(run.get("proposal_authority") or ""),
         "legacyReviewRequired": bool(run.get("legacy_review_required")),
-        "plans": [plan_review_view(plan, continuations=continuations) for plan in plans],
+        "plans": [await project_current_sources(plan_review_view(plan, continuations=continuations))
+                  for plan in plans],
         "continuations": [continuation_view(item) for item in continuations],
     }
 

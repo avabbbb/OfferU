@@ -753,6 +753,15 @@ async def _decide_group(
             raise PlanValidationError("Plan 或 Group 摘要已变化，请重新审核当前内容。")
         if len(group.get("nodes") or []) == 0:
             raise PlanValidationError("不能决定没有节点的确认组。")
+        from app.services.agentic_interaction_policy import assess_group
+        readiness = assess_group(group)
+        if readiness["reviewability"]["status"] != "ready":
+            raise PlanValidationError(
+                "Review packet needs preparation: "
+                + ", ".join(readiness["reviewability"]["reason_codes"])
+            )
+        if not readiness["reviewability"]["counts_as_user_decision"]:
+            raise PlanValidationError("This Operation is not waiting for a user decision")
         if not decision_id.startswith("decision_") or len(decision_id) != 41:
             raise PlanValidationError("decision_id 格式无效。")
     except PlanValidationError as exc:

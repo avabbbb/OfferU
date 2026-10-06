@@ -20,6 +20,7 @@ import type {
   AgentInputAnswerResult,
   DecisionGroupDecisionBody,
   DecisionGroupDecisionResult,
+  InteractionState,
 } from "./decisionPlans";
 import type { components, operations } from "./api-types.generated";
 type Schemas = components["schemas"];
@@ -31,13 +32,19 @@ export type {
   AgentInputRequestView,
   DecisionGroupDecisionBody,
   DecisionGroupDecisionResult,
+  DecisionGroupRevisionBody,
+  DecisionGroupRevisionResult,
   DecisionGroupStatus,
   DecisionGroupView,
   DecisionNodeStatus,
   DecisionNodeView,
   DecisionPlanStatus,
   DecisionPlanView,
+  DecisionPlanReviewReconcileResult,
   ExecutionReceiptView,
+  InteractionState,
+  Reviewability,
+  ReviewabilityStatus,
 } from "./decisionPlans";
 
 const API_BASE = resolveApiBase();
@@ -698,6 +705,7 @@ export interface AgentRunRecord {
   skill_version: string;
   skill_snapshot: Record<string, any>;
   status: string;
+  interaction_state?: InteractionState;
   steps: AgentRunStep[];
   proposal_authority?: string;
   proposal_plans?: AgentProposalPlan[];

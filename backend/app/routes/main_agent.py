@@ -391,15 +391,33 @@ def _runtime_turn_is_finished(run: dict[str, Any]) -> bool:
 @runtime_router.get("/runtime/decision-plans/pending")
 async def pending_decision_plans(limit: int = 50) -> dict[str, Any]:
     from app.services.proposal_plan_store import list_plans
+    from app.services.proposal_plan_continuation import reviewed_plan_view
     plans = await list_plans(pending_only=True)
-    return {"plans": plans[:max(1, min(limit, 100))], "proposal_authority": "proposal-plan-v2"}
+    visible = []
+    for plan in plans:
+        view = await reviewed_plan_view(plan)
+        user_groups = [group for group in view["groups"]
+                       if group.get("reviewability", {}).get("counts_as_user_decision")
+                       and group.get("interaction_state") in {"needs_user_review", "needs_user_authorization"}]
+        if not user_groups:
+            continue
+        view["groups"] = user_groups
+        view["interaction_state"] = next(
+            (group["interaction_state"] for group in user_groups
+             if group["interaction_state"] in {"needs_user_input", "needs_user_review", "needs_user_authorization"}),
+            "none",
+        )
+        visible.append(view)
+    return {"plans": visible[:max(1, min(limit, 100))], "proposal_authority": "proposal-plan-v2"}
 
 
 @runtime_router.get("/runtime/runs/{run_id}/decision-plan")
 async def run_decision_plan(run_id: str) -> dict[str, Any]:
     from app.services.proposal_plan_store import list_plans
+    from app.services.proposal_plan_continuation import reviewed_plan_view
     plans = await list_plans(run_id=run_id, pending_only=True)
-    return {"run_id": run_id, "plan": plans[-1] if plans else None, "proposal_authority": "proposal-plan-v2"}
+    return {"run_id": run_id, "plan": await reviewed_plan_view(plans[-1]) if plans else None,
+            "proposal_authority": "proposal-plan-v2"}
 
 
 @runtime_router.post("/runtime/runs/{run_id}/decision-groups/{group_id}/decision")
@@ -1050,7 +1068,7 @@ async def list_proposal_plans_endpoint(
     """Read the local Plan queue through the same run-scoped API boundary."""
 
     from app.services.proposal_plan_builder import PlanValidationError, verify_plan_snapshot
-    from app.services.proposal_plan_continuation import plan_review_view
+    from app.services.proposal_plan_continuation import reviewed_plan_view
     from app.services.proposal_plan_store import list_continuations, list_plans
 
     plans = await list_plans(run_id=run_id)
@@ -1060,7 +1078,7 @@ async def list_proposal_plans_endpoint(
             verify_plan_snapshot(plan)
     except PlanValidationError as exc:
         raise HTTPException(status_code=409, detail=safe_error_message(exc)) from exc
-    items = [plan_review_view(plan, continuations=continuations) for plan in plans]
+    items = [await reviewed_plan_view(plan, continuations=continuations) for plan in plans]
     return {"items": items, "total": len(items)}
 
 
@@ -1071,7 +1089,7 @@ async def get_proposal_plan_endpoint(
     """Return the exact stored review display without raw args or snapshots."""
 
     from app.services.proposal_plan_builder import PlanValidationError, verify_plan_snapshot
-    from app.services.proposal_plan_continuation import plan_review_view
+    from app.services.proposal_plan_continuation import reviewed_plan_view
     from app.services.proposal_plan_store import get_plan, list_continuations
 
     plan = await get_plan(plan_id)
@@ -1082,7 +1100,7 @@ async def get_proposal_plan_endpoint(
     except PlanValidationError as exc:
         raise HTTPException(status_code=409, detail=safe_error_message(exc)) from exc
     continuations = await list_continuations(run_id=str(plan.get("run_id") or ""))
-    return {"plan": plan_review_view(plan, continuations=continuations)}
+    return {"plan": await reviewed_plan_view(plan, continuations=continuations)}
 
 
 @runtime_router.post("/plans/{plan_id}/groups/{group_id}/decision")
@@ -1145,7 +1163,7 @@ async def decide_proposal_plan_group_endpoint(
         ),
         None,
     )
-    from app.services.proposal_plan_continuation import continuation_view, plan_review_view
+    from app.services.proposal_plan_continuation import continuation_view, reviewed_plan_view
 
     try:
         current_plan = await get_plan(plan_id)
@@ -1158,11 +1176,11 @@ async def decide_proposal_plan_group_endpoint(
         "ok": True,
         "approved": bool(body.approve),
         "duplicate": bool(result.get("duplicate")),
-        "plan": plan_review_view(current_plan, continuations=continuations) if current_plan else None,
+        "plan": await reviewed_plan_view(current_plan, continuations=continuations) if current_plan else None,
         "receipts": list(result.get("receipts") or []),
         "successor_plan_id": result.get("successor_plan_id"),
         "refresh_error": result.get("refresh_error"),
-        "successor_plan": plan_review_view(result["successor_plan"]) if result.get("successor_plan") else None,
+        "successor_plan": await reviewed_plan_view(result["successor_plan"]) if result.get("successor_plan") else None,
         "continuation": continuation_view(continuation) if continuation else None,
         "run_status": (delivery.get("run") or {}).get("status"),
         "continuation_error": delivery.get("error"),

@@ -85,6 +85,7 @@ def _continuation_record(value: Any, fallback: Mapping[str, Any]) -> dict[str, A
 
 def plan_review_view(plan: Mapping[str, Any], *, continuations: list[Mapping[str, Any]] | None = None) -> dict[str, Any]:
     """Project the exact review display while hiding stored args and snapshots."""
+    from app.services.agentic_interaction_policy import assess_group, run_interaction_state
 
     result = {key: value for key, value in plan.items() if key not in {"snapshot", "snapshot_json"}}
     result["continuations"] = [
@@ -108,9 +109,20 @@ def plan_review_view(plan: Mapping[str, Any], *, continuations: list[Mapping[str
             )
             nodes.append(node)
         group["nodes"] = nodes
+        group.update(assess_group(group))
         groups.append(group)
     result["groups"] = groups
+    result["interaction_state"] = run_interaction_state({"proposal_plans": [result]})
     return result
+
+
+async def reviewed_plan_view(
+    plan: Mapping[str, Any], *, continuations: list[Mapping[str, Any]] | None = None
+) -> dict[str, Any]:
+    """Return a display-safe Plan with canonical source freshness checked."""
+    from app.services.agentic_interaction_policy import project_current_sources
+
+    return await project_current_sources(plan_review_view(plan, continuations=continuations))
 
 
 def _receipt_rows(continuation: Mapping[str, Any], plans: list[Mapping[str, Any]]) -> list[dict[str, Any]]:

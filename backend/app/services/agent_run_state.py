@@ -574,13 +574,18 @@ async def _attach_plan_projection(run: dict[str, Any]) -> dict[str, Any]:
     except Exception:
         plans = []
     if not plans:
+        from app.services.agentic_interaction_policy import run_interaction_state
         legacy = (run.get("recovery_cursor") or {}).get("proposal_v2_legacy") or {}
         if any(isinstance(item, dict) and item.get("classification") == "needs_review" for item in legacy.values()):
             run["legacy_review_required"] = True
             run["proposal_authority"] = "proposal-plan-v2"
             run["steps"] = [{**step, "status": "blocked", "projection_only": True} for step in run.get("steps") or []]
             run["failure_reason"] = proposal_execution_blocker(run)
+        run["interaction_state"] = run_interaction_state(run)
         return run
+    from app.services.agentic_interaction_policy import project_current_sources, run_interaction_state
+    for plan in plans:
+        await project_current_sources(plan)
     steps = []
     for plan in plans:
         if plan.get("status") == "replaced":
@@ -596,6 +601,7 @@ async def _attach_plan_projection(run: dict[str, Any]) -> dict[str, Any]:
                               "group_id": group["id"], "group_digest": group["digest"], "projection_only": True,
                               "result": node.get("result"), "error": node.get("error")})
     run.update(steps=steps, proposal_plans=plans, proposal_authority="proposal-plan-v2", status=_plan_run_status(plans, run["status"]))
+    run["interaction_state"] = run_interaction_state(run)
     if run.get("mode") == "ui_operation_request" and run["status"] not in {"cancelled", "needs_reconciliation"}:
         groups = [group for plan in plans if plan.get("status") != "replaced" for group in plan.get("groups") or []]
         if groups and all(group["status"] in {"completed", "rejected", "blocked"} for group in groups):

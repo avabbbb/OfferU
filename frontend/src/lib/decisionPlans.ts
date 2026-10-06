@@ -44,6 +44,26 @@ export type DecisionNodeStatus =
   | "stale"
   | string;
 
+export type InteractionState =
+  | "none"
+  | "needs_user_input"
+  | "needs_user_review"
+  | "needs_user_authorization"
+  | "system_recovering"
+  | "system_blocked";
+
+export type ReviewabilityStatus =
+  | "ready"
+  | "needs_preparation"
+  | "needs_reconciliation"
+  | "archived";
+
+export interface Reviewability {
+  status: ReviewabilityStatus;
+  reason_codes: string[];
+  counts_as_user_decision: boolean;
+}
+
 export interface DecisionNodeView {
   node_id: string;
   sequence: number;
@@ -66,6 +86,8 @@ export interface DecisionGroupView {
   summary: string;
   risk_level: "L1" | "L2" | "L3" | string;
   status: DecisionGroupStatus;
+  interaction_state: InteractionState;
+  reviewability: Reviewability;
   group_digest: string;
   dependency_group_ids: string[];
   /** display_json: display-safe Before/After/Why/evidence material. */
@@ -96,6 +118,7 @@ export interface DecisionPlanView {
   title: string;
   purpose: string;
   status: DecisionPlanStatus;
+  interaction_state: InteractionState;
   plan_digest: string;
   supersedes_plan_id?: string | null;
   created_at?: string;
@@ -126,6 +149,33 @@ export interface DecisionGroupDecisionBody {
   group_digest: string;
   decision_id: string;
   decision: "approve" | "reject";
+}
+
+export interface DecisionGroupRevisionBody {
+  feedback: string;
+  plan_digest: string;
+  group_digest: string;
+  request_id: string;
+}
+
+export interface DecisionGroupRevisionResult {
+  ok: boolean;
+  status: "queued" | "needs_preparation" | "revised" | string;
+  run_id: string;
+  plan_id: string;
+  group_id: string;
+  duplicate: boolean;
+  plan?: DecisionPlanView;
+  errors?: string[];
+}
+
+export interface DecisionPlanReviewReconcileResult {
+  original_pending: number;
+  repaired: number;
+  archived: number;
+  needs_preparation: number;
+  needs_reconciliation: number;
+  needs_user_decision: number;
 }
 
 export interface AgentInputAnswerBody {
@@ -201,8 +251,17 @@ export function normalizeDecisionGroup(raw: unknown, index: number): DecisionGro
     sequence: typeof record.sequence === "number" ? record.sequence : index + 1,
     title: asString(record.title),
     summary: asString(record.summary),
-    risk_level: asString(record.risk_level, "L1"),
+    risk_level: asString(record.risk_level ?? record.risk, "L1"),
     status: asString(record.status, "pending"),
+    interaction_state: asString(record.interaction_state, "none") as InteractionState,
+    reviewability: (() => {
+      const value = asRecord(record.reviewability);
+      return {
+        status: asString(value.status, "needs_preparation") as ReviewabilityStatus,
+        reason_codes: asArray(value.reason_codes).map((item) => asString(item)),
+        counts_as_user_decision: Boolean(value.counts_as_user_decision),
+      };
+    })(),
     group_digest: asString(record.group_digest),
     dependency_group_ids: asArray(record.dependency_group_ids ?? record.dependency_group_ids_json).map(
       (value) => asString(value),
@@ -223,6 +282,7 @@ export function normalizeDecisionPlan(raw: unknown): DecisionPlanView {
     title: asString(record.title),
     purpose: asString(record.purpose),
     status: asString(record.status, "pending"),
+    interaction_state: asString(record.interaction_state, "none") as InteractionState,
     plan_digest: asString(record.plan_digest ?? record.digest),
     supersedes_plan_id: (record.supersedes_plan_id as string | null | undefined) ?? null,
     created_at: asString(record.created_at) || undefined,
@@ -256,7 +316,9 @@ export function normalizeInputRequest(raw: unknown): AgentInputRequestView {
 
 /** A group is actionable only while it awaits a fresh human decision. */
 export function isGroupActionable(group: DecisionGroupView): boolean {
-  return group.status === "pending";
+  return group.status === "pending" && group.reviewability?.status === "ready"
+    && group.reviewability.counts_as_user_decision
+    && ["needs_user_review", "needs_user_authorization"].includes(group.interaction_state);
 }
 
 export function hasPendingGroups(plan: DecisionPlanView): boolean {

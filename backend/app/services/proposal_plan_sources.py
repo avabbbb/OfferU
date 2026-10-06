@@ -166,8 +166,24 @@ async def capture_sources(intents: list[dict[str, Any]]) -> list[dict[str, Any]]
                 intent["display"] = {"before": [section.title for section in sections], "after": [section.title for section in after],
                                      "rationale": str(intent.get("summary") or "")}
             elif intent.get("operation") == "create_resume_section":
-                intent["display"] = {"before": None, "after": {"标题": args.get("title", ""), "内容": args.get("content_json", []),
-                                     "显示": args.get("visible", True), "顺序": args.get("sort_order", 0)}, "rationale": str(intent.get("summary") or "")}
+                resume_id = int(args.get("resume_id") or 0)
+                resume = await db.get(Resume, resume_id)
+                if resume is None:
+                    raise PlanValidationError("Resume is missing")
+                sections = (await db.execute(select(ResumeSection).where(
+                    ResumeSection.resume_id == resume_id
+                ).order_by(ResumeSection.sort_order, ResumeSection.id))).scalars().all()
+                intent["display"] = {
+                    "before": {
+                        "resume_id": resume_id,
+                        "sections": [{"id": section.id, "title": section.title,
+                                      "sort_order": section.sort_order} for section in sections],
+                    },
+                    "after": {"标题": args.get("title", ""), "内容": args.get("content_json", []),
+                              "显示": args.get("visible", True), "顺序": args.get("sort_order", 0)},
+                    "rationale": str(intent.get("summary") or ""),
+                    "evidence_refs": [f"resume:{resume_id}"],
+                }
             elif intent.get("operation") == "create_resume_version_record":
                 intent["display"] = {"before": "当前版本历史", "after": {"新版本说明": args.get("change_summary", ""), "简历": args.get("resume_id")},
                                      "rationale": str(intent.get("summary") or "")}
