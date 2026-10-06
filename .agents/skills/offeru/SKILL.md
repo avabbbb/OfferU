@@ -73,10 +73,10 @@ Ask answers establish preferences; they are not permission to self-confirm pendi
 
 After selecting a live Skill, read its method relative to this installed `SKILL.md` directory. These are the same versioned assets used by the embedded Agent. A method does not add Operations or grant permissions. If the linked file is missing, report the missing method and update the OfferU connection; do not invent its workflow.
 
-- `company_research`: [skills/research/SKILL.md](skills/research/SKILL.md), version 1.0.0, sha256 `8f73dd713fc5956eeb917ea21ecb85bdbfa8ec27ea11ac2c9c9b534a49cb7091`
-- `profile_onboarding`: [skills/profile_onboarding/SKILL.md](skills/profile_onboarding/SKILL.md), version 1.0.0, sha256 `170c606c1314077d6ea3793318f2d7b491c1c2369f9090b252a97be236452256`
-- `role_intelligence`: [skills/research/SKILL.md](skills/research/SKILL.md), version 1.0.0, sha256 `8f73dd713fc5956eeb917ea21ecb85bdbfa8ec27ea11ac2c9c9b534a49cb7091`
-- `tailor_resume`: [skills/tailor_resume/SKILL.md](skills/tailor_resume/SKILL.md), version 1.0.0, sha256 `d86c2d8f1b7cacc0dd82620a41cc1c0704de7feb3c3b1c66a1b186ceb0f7d9f0`
+- `company_research`: [skills/research/SKILL.md](skills/research/SKILL.md), version 1.0.0, sha256 `68ce86816f7c12915057cd69562b3fc865303b379edcc88606b7c6bc8a7713a1`
+- `profile_onboarding`: [skills/profile_onboarding/SKILL.md](skills/profile_onboarding/SKILL.md), version 1.0.0, sha256 `01091c03e1d56c785951e7b709addd1aa0b245322156b6f7cc8bdde12bfcb96a`
+- `role_intelligence`: [skills/research/SKILL.md](skills/research/SKILL.md), version 1.0.0, sha256 `68ce86816f7c12915057cd69562b3fc865303b379edcc88606b7c6bc8a7713a1`
+- `tailor_resume`: [skills/tailor_resume/SKILL.md](skills/tailor_resume/SKILL.md), version 1.0.0, sha256 `a6907a4cf0822da3938f5dffd9546efed70471df1287dbb792dcb44ee4cfe97d`
 
 ## Routing
 

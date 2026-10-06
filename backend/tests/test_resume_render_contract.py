@@ -37,9 +37,14 @@ def test_route_and_agent_share_renderer():
 def test_bundled_frontend_paths_are_confined(tmp_path):
     (tmp_path / "index.html").write_text("fixture", encoding="utf-8")
     (tmp_path / "config.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "assets" / "renderer.js").write_text("export {};", encoding="utf-8")
+    (tmp_path / "assets" / "config.json").write_text("{}", encoding="utf-8")
     assert resume_export.local_frontend_asset(tmp_path, "http://127.0.0.1:7410/") == tmp_path / "index.html"
+    assert resume_export.local_frontend_asset(tmp_path, "http://127.0.0.1:7410/assets/renderer.js") == tmp_path / "assets" / "renderer.js"
     for url in ("https://example.com/index.html", "http://127.0.0.1:7410/%2e%2e/outside.html",
-                "http://127.0.0.1:7410/..%5coutside.html", "http://127.0.0.1:7410/config.json"):
+                "http://127.0.0.1:7410/..%5coutside.html", "http://127.0.0.1:7410/config.json",
+                "http://127.0.0.1:7410/assets/config.json"):
         assert resume_export.local_frontend_asset(tmp_path, url) is None
 
 

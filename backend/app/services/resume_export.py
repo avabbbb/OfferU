@@ -56,7 +56,9 @@ def local_frontend_asset(root: Path, url: str) -> Path | None:
         return None
     root = root.resolve()
     target = (root / (unquote(parsed.path).lstrip("/") or "index.html")).resolve()
-    if not target.is_relative_to(root) or target.suffix.lower() not in {".html", ".js", ".mjs", ".json", ".css", ".woff", ".woff2", ".ttf", ".otf", ".png", ".jpg", ".jpeg", ".webp", ".svg", ".ico", ".wasm"}:
+    # JSON imports are bundled into JS by Vite; configuration files are not
+    # renderer assets and must never be exposed through this interception.
+    if not target.is_relative_to(root) or target.suffix.lower() not in {".html", ".js", ".mjs", ".css", ".woff", ".woff2", ".ttf", ".otf", ".png", ".jpg", ".jpeg", ".webp", ".svg", ".ico", ".wasm"}:
         return None
     return target if target.is_file() else None
 
