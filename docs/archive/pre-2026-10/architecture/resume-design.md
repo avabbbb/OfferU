@@ -1,3 +1,5 @@
+> **已归档（2026-10）**：本文不再是当前权威。当前文档：05-module-resume.md（位于 `docs/`）。
+
 # Resume presentation and export
 
 > Product interaction target: [Resume Canvas — Document-first, AI-assisted Resume Experience](../product/resume-canvas-design.md). This architecture document describes presentation/export mechanics; it must not be interpreted as requiring Proposal cards or a separate form editor as the primary Resume UX.
