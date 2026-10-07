@@ -58,6 +58,14 @@ import {
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { ExternalUrlLink, openExternalUrl } from "@/components/ExternalUrlLink";
 
+const MANUAL_DECISION_STAGES = new Set([
+  "needs_research",
+  "research_running",
+  "research_failed",
+  "research_needs_review",
+  "research_rejected",
+]);
+
 const WORKSPACE_SECTIONS = [
   { id: "role-intelligence-panel", label: "岗位情报" },
   { id: "job-research-handback", label: "调研证据" },
@@ -582,6 +590,51 @@ export default function JobDetailPage() {
     );
   }
 
+  const manualNeedsRationale = MANUAL_DECISION_STAGES.has(preApplication?.stage || "");
+  const manualDecisionForm = (
+    <div className="mt-4 space-y-3">
+                        <p className="text-xs font-medium leading-relaxed text-amber-900">
+                          {manualNeedsRationale
+                            ? "调研还不可用时，你可以只凭 JD 和自己已确认的经历做决定。这会记录为人工决定；JD 或档案变化后需要重新决定。"
+                            : "模型暂时不可用，或你不想等 AI 建议时，可以直接给出投/不投决定。这会记录为人工决定，不调用模型。"}
+                        </p>
+                        <Select
+                          label="你的投前决定"
+                          aria-label="你的投前决定"
+                          selectedKeys={manualChoice ? [manualChoice] : []}
+                          onSelectionChange={(keys) => {
+                            const value = Array.from(keys)[0] as PreApplicationDecisionChoice | undefined;
+                            setManualChoice(value || "");
+                          }}
+                          classNames={bauhausSelectClassNames}
+                        >
+                          {PRE_APPLICATION_DECISION_OPTIONS.map((option) => (
+                            <SelectItem key={option.value}>{option.label}</SelectItem>
+                          ))}
+                        </Select>
+                        <label htmlFor="manual-decision-rationale" className="bauhaus-label text-[var(--foreground-muted)]">
+                          {manualNeedsRationale ? "决定依据（必填）" : "决定依据（可选）"}
+                        </label>
+                        <textarea
+                          id="manual-decision-rationale"
+                          value={manualRationale}
+                          onChange={(event) => setManualRationale(event.target.value)}
+                          maxLength={2000}
+                          rows={3}
+                          placeholder="记录你作出这个决定的理由。"
+                          className="w-full border border-[var(--border-strong)] bg-white px-4 py-3 text-sm font-medium text-[var(--foreground)] outline-none focus:border-[var(--primary-blue)]"
+                        />
+                        <Button
+                          onPress={() => void handleManualPreApplication()}
+                          isLoading={preApplicationAction === "manual"}
+                          isDisabled={!manualChoice || (manualNeedsRationale && !manualRationale.trim())}
+                          className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
+                        >
+                          提交人工投前决策
+                        </Button>
+                      </div>
+  );
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 18 }}
@@ -975,6 +1028,23 @@ export default function JobDetailPage() {
                 <span className="mx-2">·</span>调研 {preApplication.research_run?.status === "completed" ? "已完成" : preApplication.research_run?.status ? "进行中" : "未开始"}
               </p>
 
+              {manualNeedsRationale && !preApplication.decision && (
+                <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
+                  <p className="text-sm leading-relaxed text-[var(--foreground-soft)]">
+                    还没有可用的调研。可以等岗位情报完成，也可以现在自己决定投不投。
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setManualOpen((open) => !open)}
+                    aria-expanded={manualOpen}
+                    className="mt-2 text-xs font-semibold text-[var(--foreground)] underline underline-offset-4"
+                  >
+                    {manualOpen ? "收起" : "不用 AI，我自己决定"}
+                  </button>
+                  {manualOpen && manualDecisionForm}
+                </div>
+              )}
+
               {preApplication.stage === "needs_decision" && (
                 <div className="bauhaus-panel-sm border-amber-500 bg-amber-50 p-4">
                   <p className="text-sm font-semibold leading-relaxed text-amber-950">
@@ -997,48 +1067,8 @@ export default function JobDetailPage() {
                     >
                       {manualOpen ? "收起人工决策" : "AI 不可用？由你本人人工决定"}
                     </button>
-                    {manualOpen && (
-                      <div className="mt-4 space-y-3">
-                        <p className="text-xs font-medium leading-relaxed text-amber-900">
-                          模型/Provider 暂时不可用，或你不想等 AI 建议时，可以直接给出投/不投决定。
-                          这会记录为 decision_source=manual，不调用模型。
-                        </p>
-                        <Select
-                          label="你的投前决定"
-                          aria-label="你的投前决定"
-                          selectedKeys={manualChoice ? [manualChoice] : []}
-                          onSelectionChange={(keys) => {
-                            const value = Array.from(keys)[0] as PreApplicationDecisionChoice | undefined;
-                            setManualChoice(value || "");
-                          }}
-                          classNames={bauhausSelectClassNames}
-                        >
-                          {PRE_APPLICATION_DECISION_OPTIONS.map((option) => (
-                            <SelectItem key={option.value}>{option.label}</SelectItem>
-                          ))}
-                        </Select>
-                        <label htmlFor="manual-decision-rationale" className="bauhaus-label text-[var(--foreground-muted)]">
-                          决定依据（可选）
-                        </label>
-                        <textarea
-                          id="manual-decision-rationale"
-                          value={manualRationale}
-                          onChange={(event) => setManualRationale(event.target.value)}
-                          maxLength={2000}
-                          rows={3}
-                          placeholder="记录你作出这个决定的理由。"
-                          className="w-full border border-[var(--border-strong)] bg-white px-4 py-3 text-sm font-medium text-[var(--foreground)] outline-none focus:border-[var(--primary-blue)]"
-                        />
-                        <Button
-                          onPress={() => void handleManualPreApplication()}
-                          isLoading={preApplicationAction === "manual"}
-                          isDisabled={!manualChoice}
-                          className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
-                        >
-                          提交人工投前决策
-                        </Button>
-                      </div>
-                    )}
+                    {manualOpen && manualDecisionForm}
+
                   </div>
                 </div>
               )}

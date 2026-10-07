@@ -70,25 +70,26 @@ function resolveStep(p: Props): Step {
         const configIssue = CONFIG_ERROR.test(p.taskError || "");
         return {
           title: configIssue ? "岗位情报没跑起来：缺少可用的 AI 配置" : "岗位情报准备失败",
-          body: configIssue ? "在设置里连接模型或本机 Agent，然后回来重试。" : (p.taskError || "任务失败，可以重试。"),
+          body: configIssue ? "在设置里连接模型或本机 Agent 后重试；也可以不等 AI，只凭 JD 和你的经历自己决定投不投。" : (p.taskError || "任务失败，可以重试。"),
           tone: "blocked",
           primary: configIssue
             ? { kind: "link", href: "/settings", label: "去设置" }
             : p.canRetryTask ? { kind: "run", run: p.onRetryTask, label: "重试" } : { kind: "link", href: "/settings", label: "检查设置" },
-          secondary: configIssue && p.canRetryTask ? { kind: "run", run: p.onRetryTask, label: "已配置，重试" } : undefined,
+          secondary: manual,
         };
       }
       return {
         title: "正在准备岗位情报",
         body: taskActive || p.stage === "research_running" ? "OfferU 正在对比同类岗位和你的档案，完成后这里会提示你审核。" : "岗位情报还没开始。",
         tone: "waiting",
+        secondary: manual,
       };
     case "research_failed":
-      return { title: "调研失败", body: "这次调研没有拿到可用证据。可以重试岗位情报，或者直接自己决定。", tone: "blocked", primary: p.canRetryTask ? { kind: "run", run: p.onRetryTask, label: "重试" } : { kind: "link", href: "/settings", label: "检查设置" } };
+      return { title: "调研失败", body: "这次调研没有拿到可用证据。可以重试岗位情报，或者直接自己决定。", tone: "blocked", primary: p.canRetryTask ? { kind: "run", run: p.onRetryTask, label: "重试" } : { kind: "link", href: "/settings", label: "检查设置" }, secondary: manual };
     case "research_needs_review":
-      return { title: "审核调研证据", body: "AI 找到的证据还不能直接用。看一眼来源，接受后才会进入投前判断。", tone: "action", primary: { kind: "scroll", target: "job-research-handback", label: "去审核证据" } };
+      return { title: "审核调研证据", body: "AI 找到的证据还不能直接用。看一眼来源，接受后才会进入投前判断。", tone: "action", primary: { kind: "scroll", target: "job-research-handback", label: "去审核证据" }, secondary: manual };
     case "research_rejected":
-      return { title: "你拒绝了这次调研", body: "需要一份你认可的调研才能进入投前判断。可以重新跑岗位情报。", tone: "blocked", primary: p.canRetryTask ? { kind: "run", run: p.onRetryTask, label: "重新调研" } : { kind: "scroll", target: "job-research-handback", label: "查看调研" } };
+      return { title: "你拒绝了这次调研", body: "可以重新跑岗位情报，或者只凭 JD 和你的经历自己决定。", tone: "blocked", primary: manual, secondary: p.canRetryTask ? { kind: "run", run: p.onRetryTask, label: "重新调研" } : undefined };
     case "needs_decision":
       return { title: "生成投前建议", body: "证据已确认。让 AI 给出投不投的建议，最后由你确认。", tone: "action", primary: { kind: "run", run: p.onPrepareDecision, label: "生成建议", busy: p.preparing }, secondary: manual };
     case "needs_decision_review":

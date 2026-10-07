@@ -28,7 +28,7 @@ describe("JobNextStepCard", () => {
     renderCard({ taskStatus: "failed", taskError: "LLM API Key 未配置（provider=deepseek）", canRetryTask: true });
     expect(screen.getByText("岗位情报没跑起来：缺少可用的 AI 配置")).toBeInTheDocument();
     expect(screen.getByText("去设置").closest("a")).toHaveAttribute("href", expect.stringContaining("/settings"));
-    expect(screen.getByRole("button", { name: "已配置，重试" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "不用 AI，我自己决定" })).toBeInTheDocument();
   });
 
   it("需要投前决定时可以生成建议，也可以自己决定", async () => {
