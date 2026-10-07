@@ -17,6 +17,7 @@ type JobWorkspaceOverviewProps = {
   interviewActive: boolean;
   interviewNeedsReview: boolean;
   timelineStage?: string;
+  timelineCompleted?: boolean;
   timelineEventCount: number;
   timelineNextAction?: string;
 };
@@ -35,6 +36,7 @@ function scrollToSection(targetId: string) {
 
 function taskStatus(status?: string): JobWorkspaceOverviewStatus {
   if (status === "queued" || status === "running" || status === "pending") return "进行中";
+  if (status === "waiting_for_approval" || status === "failed" || status === "blocked") return "需要你审核";
   if (status === "completed" || status === "agent_turn_completed") return "已完成";
   return "未开始";
 }
@@ -73,6 +75,7 @@ export function JobWorkspaceOverview({
   interviewActive,
   interviewNeedsReview,
   timelineStage,
+  timelineCompleted = false,
   timelineEventCount,
   timelineNextAction,
 }: JobWorkspaceOverviewProps) {
@@ -103,19 +106,23 @@ export function JobWorkspaceOverview({
     const supportedCount = signals.filter((signal) => signal.evidence_gap?.status === "supported").length;
     const gapCount = signals.filter((signal) => ["partial", "missing"].includes(signal.evidence_gap?.status || "")).length;
 
-    const roleStatus = benchmarkLoading
-      ? "进行中"
-      : benchmark?.status === "completed"
-        ? "已完成"
-        : benchmark?.status === "pending" || benchmark?.status === "running"
-          ? "进行中"
+    const roleStatus: JobWorkspaceOverviewStatus = benchmark?.status === "completed"
+      ? "已完成"
+      : benchmark?.status === "pending" || benchmark?.status === "running"
+        ? "进行中"
+        : benchmark?.status === "failed" || benchmark?.status === "blocked"
+          ? "需要你审核"
           : taskStatus(roleTaskStatus);
 
     const roleValue = benchmark?.status === "completed"
       ? `${benchmark.valid_sample_count ?? 0} 个参考岗位`
-      : roleStatus === "进行中"
-        ? "正在分析"
-        : "尚未生成";
+      : benchmarkLoading && !benchmark
+        ? "正在读取状态"
+        : roleStatus === "进行中"
+          ? "正在分析"
+          : roleStatus === "需要你审核"
+            ? "任务需要处理"
+            : "尚未生成";
 
     const roleDescription = benchmark?.status === "completed"
       ? benchmark.sample_sufficient === false
@@ -151,9 +158,11 @@ export function JobWorkspaceOverview({
           ? "最近的面试 lifecycle 已有持久结果。"
           : "尚未有与这个岗位关联的面试任务。";
 
-    const timelineStatus: JobWorkspaceOverviewStatus = timelineEventCount > 0 || timelineStage
-      ? "进行中"
-      : "未开始";
+    const timelineStatus: JobWorkspaceOverviewStatus = timelineCompleted
+      ? "已完成"
+      : timelineEventCount > 0 || timelineStage
+        ? "进行中"
+        : "未开始";
 
     return [
       {
@@ -225,6 +234,7 @@ export function JobWorkspaceOverview({
     roleTaskStatus,
     snapshotDescription,
     snapshotValue,
+    timelineCompleted,
     timelineEventCount,
     timelineNextAction,
     timelineStage,
