@@ -493,7 +493,14 @@ def test_registry_confirmed_reset_clears_synthetic_state_and_restores_backup(
             assert partial_receipt["group"]["nodes"][0]["status"] == "uncertain"
             assert partial_receipt["group"]["nodes"][0]["error"]
             assert not partial_session.exists()
-            assert list_backups(layout)["items"][0]["reason"] == "pre_reset"
+            # The invariant: this failed reset's pre_reset backup exists and
+            # remains available for recovery. A prior restore may legitimately
+            # have produced a pre_restore backup that sorts first, so we must
+            # not depend on list position.
+            post_failure_backups = list_backups(layout)["items"]
+            assert any(
+                item["reason"] == "pre_reset" for item in post_failure_backups
+            ), [item["reason"] for item in post_failure_backups]
             async with session_factory() as db:
                 assert len((await db.execute(select(Job))).scalars().all()) == 0
                 assert len((await db.execute(select(Resume))).scalars().all()) == 0
