@@ -1,3 +1,5 @@
+> **已归档（2026-10）**：本文不再是当前权威。当前文档：09-quality-and-release.md（位于 `docs/`）。
+
 # 给测试 Agent 的两个 Goal
 
 状态：**EXECUTABLE ACCEPTANCE TASKS / NOT RUN**

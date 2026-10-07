@@ -1,3 +1,5 @@
+> **已归档（2026-10）**：本文不再是当前权威。当前文档：09-quality-and-release.md（位于 `docs/`）。
+
 # Case Authoring
 
 如何给 OfferU Live Agent Eval 新增一道题。

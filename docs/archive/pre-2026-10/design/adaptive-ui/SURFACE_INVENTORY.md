@@ -1,3 +1,5 @@
+> **已归档（2026-10）**：本文不再是当前权威。当前文档：02-interaction-design.md（§9）（位于 `docs/`）。
+
 # OfferU Adaptive UI Surface Inventory
 
 更新时间：2026-09-09
