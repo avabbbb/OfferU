@@ -676,6 +676,7 @@ export default function JobDetailPage() {
           task.result?.briefing?.interview_lifecycle?.mode === "learning_review"
         )}
         timelineStage={currentApplicationStage ? applicationStageLabel(currentApplicationStage) : undefined}
+        timelineCompleted={["offer", "rejected"].includes(currentApplicationStage)}
         timelineEventCount={progressTimeline?.timeline?.length ?? 0}
         timelineNextAction={currentNextAction || undefined}
       />
