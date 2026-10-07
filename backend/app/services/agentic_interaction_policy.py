@@ -57,7 +57,14 @@ def _review_packet_reasons(group: Mapping[str, Any]) -> list[str]:
     display = group.get("display") if isinstance(group.get("display"), Mapping) else {}
     nodes = [node for node in group.get("nodes") or [] if isinstance(node, Mapping)]
     displays = [display, *(node.get("display") for node in nodes if isinstance(node.get("display"), Mapping))]
-    changes = display.get("changes") if isinstance(display.get("changes"), list) else []
+    # The review material lives on node displays too: the plan source
+    # enrichment projects change rows onto the executing node, not the group.
+    changes = [
+        item
+        for shown in displays
+        for item in (shown.get("changes") or [])
+        if isinstance(item, Mapping)
+    ]
     reasons: list[str] = []
     has_before = any("before" in item and _present(item.get("before")) for item in displays)
     has_after = any("after" in item and _present(item.get("after")) for item in displays)

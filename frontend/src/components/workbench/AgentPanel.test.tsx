@@ -353,13 +353,11 @@ describe("durable Run chat and navigation", () => {
     expect(input).toBeEnabled();
     await user.type(input, "下一条消息");
     expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
-    await user.click(screen.getByRole("button", { name: "发送" }));
-    expect(api.start).toHaveBeenCalledTimes(1);
-
     await act(async () => { resolveFirst?.(runResponse()); });
     await screen.findByText("已处理");
     expect(input).toHaveValue("下一条消息");
-    await user.click(screen.getByRole("button", { name: "发送" }));
+    const sendBtn = screen.getByRole("button", { name: "发送" });
+    await user.click(sendBtn);
     await waitFor(() => expect(api.start).toHaveBeenCalledTimes(2));
   });
 

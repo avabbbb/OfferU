@@ -185,7 +185,6 @@ def test_workbench_singleton_adapter_requires_displayed_digests_and_executes_reg
                 select(OperationAuditLog).where(OperationAuditLog.idempotency_key == node["idempotency_key"])
             )).scalars().all())
         assert no_audit == []
-
         decision = ProposalDecisionRequest(
             approve=True,
             action_id=node["id"],
