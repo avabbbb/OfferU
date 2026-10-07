@@ -16,6 +16,7 @@ const { mockWorkspace, mockUpdate, mockUpdateDesign, mockReviewProposalItem, moc
   }));
 
 vi.mock("@/lib/api", () => ({
+  isFixtureDataMode: (mode?: unknown) => ["fixture", "fixture_plugin"].includes(String(mode || "")),
   resumeApi: {
     workspace: mockWorkspace,
     update: mockUpdate,
@@ -71,6 +72,19 @@ function baseWorkspace(): ResumeWorkspace {
       application_id: null,
       application_attempt_id: null,
       artifacts: {},
+      external_submission: {
+        scope: "recorded_only",
+        receipt_verified: false,
+        recorded: false,
+        completed: false,
+        attempt_id: null,
+        job_id: null,
+        resume_id: 7,
+        status: null,
+        resume_version_id: null,
+        matches_current_version: false,
+        latest_attempt: null,
+      },
     },
     proposals: [],
     versions: [],
@@ -116,6 +130,20 @@ function workspaceWithProposal(): ResumeWorkspace {
       item_reviews: {},
     },
   ];
+  return ws;
+}
+
+type PacketArtifactState = {
+  resume: { exists?: boolean; ready?: boolean; adopted?: boolean; adoption_status?: string; current_version_matches_resume?: boolean };
+  research: { exists?: boolean; ready?: boolean; adopted?: boolean; linked_to_resume?: boolean; verification_status?: string; data_mode?: string | null; run_id?: string | null; proposal_run_id?: string | null; status?: string; review_status?: string; target_job_id?: number | null; target_job_matches?: boolean };
+  benchmark: { exists?: boolean; ready?: boolean; status?: string; verification_status?: string; data_mode?: string | null; benchmark_status?: string; sample_sufficient?: boolean; artifact_verification?: { ready: boolean; status: string; reasons: string[]; target_snapshot: { exists: boolean; verified: boolean } } | null; run_id?: string | null; schema_version?: string | null; algorithm_version?: string | null; target_snapshot?: { exists: boolean; verified: boolean; job_id?: number | null; source_ref?: string | null; description_hash?: string | null }; valid_sample_count?: number | null; minimum_sample_count?: number | null };
+  interview_focus: { exists?: boolean; ready?: boolean; status?: string; interview_id?: number | null; resume_id?: number | null; focus_schema?: string | null; benchmark_run_id?: string | null };
+  documents: { exists?: boolean; count?: number; items?: Array<{ id?: number; resume_id?: number; resume_version_id?: number; version_matches_resume?: boolean | null; matches_current_version?: boolean }> };
+};
+
+function workspaceWithPacketState(state: PacketArtifactState): ResumeWorkspace {
+  const ws = baseWorkspace();
+  (ws.application_packet as unknown as { artifact_state: PacketArtifactState }).artifact_state = state;
   return ws;
 }
 
@@ -170,6 +198,280 @@ describe("ResumeEditorPage", () => {
     render(<ResumeEditorPage />);
     expect(await screen.findByText("network down")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "返回" })).toBeInTheDocument();
+  });
+
+  it("does not treat legacy packet artifact links as completed research or interview preparation", async () => {
+    const ws = baseWorkspace();
+    ws.application_packet.artifacts.research = true;
+    ws.application_packet.artifacts.interview_focus = true;
+    mockWorkspace.mockResolvedValue(ws);
+
+    render(<ResumeEditorPage />);
+
+    const packet = await screen.findByTestId("application-packet-summary");
+    expect(packet).toHaveTextContent("岗位研究状态无法验证");
+    expect(packet).toHaveTextContent("面试准备状态无法验证");
+    expect(packet).not.toHaveTextContent("已关联");
+  });
+
+  it("shows packet assets as pending, unavailable, ready, or adopted from their own readiness state", async () => {
+    const pendingWorkspace = workspaceWithPacketState({
+      resume: { exists: true, ready: false, adopted: false, adoption_status: "not_adopted", current_version_matches_resume: true },
+      research: { exists: true, ready: false, adopted: false, linked_to_resume: true, verification_status: "unverified", data_mode: "live", run_id: "research-42", proposal_run_id: "research-42", status: "completed", review_status: "candidate", target_job_id: 42, target_job_matches: true },
+      benchmark: { exists: false, ready: false, status: "not_built" },
+      interview_focus: { exists: true, ready: false, status: "failed" },
+      documents: { exists: true, count: 2, items: [
+        { id: 1, resume_id: 7, resume_version_id: 1, version_matches_resume: true, matches_current_version: true },
+        { id: 2, resume_id: 7, resume_version_id: 1, version_matches_resume: true, matches_current_version: false },
+      ] },
+    });
+    pendingWorkspace.application_packet.external_submission = {
+      recorded: false,
+      completed: false,
+      scope: "recorded_only",
+      receipt_verified: false,
+      attempt_id: null,
+      job_id: 42,
+      resume_id: 7,
+      status: null,
+      resume_version_id: null,
+      matches_current_version: false,
+      latest_attempt: null,
+    };
+    mockWorkspace.mockResolvedValue(pendingWorkspace);
+
+    render(<ResumeEditorPage />);
+    const packet = await screen.findByTestId("application-packet-summary");
+    expect(packet).toHaveTextContent("岗位研究待审核");
+    expect(packet).toHaveTextContent("岗位基准尚未构建");
+    expect(packet).toHaveTextContent("面试准备失败");
+    expect(packet).toHaveTextContent("简历提案尚未采纳");
+    expect(packet).toHaveTextContent("1 / 2 当前版本匹配");
+    expect(packet).toHaveTextContent("尚无投递记录");
+
+    const readyWorkspace = workspaceWithPacketState({
+      resume: { exists: true, ready: true, adopted: true, adoption_status: "adopted", current_version_matches_resume: true },
+      research: { exists: true, ready: true, adopted: true, linked_to_resume: true, verification_status: "verified", data_mode: "live", run_id: "research-42", proposal_run_id: "research-42", status: "completed", review_status: "accepted", target_job_id: 42, target_job_matches: true },
+      benchmark: { exists: true, ready: true, status: "completed", verification_status: "verified", run_id: "benchmark-42", data_mode: "live_backend", artifact_verification: { ready: true, status: "verified", reasons: [], target_snapshot: { exists: true, verified: true } }, schema_version: "offeru.role_benchmark_result.v1", algorithm_version: "role_benchmark.v1", target_snapshot: { exists: true, verified: true, job_id: 42, source_ref: "job:42" }, valid_sample_count: 20, minimum_sample_count: 15 },
+      interview_focus: { exists: true, ready: true, status: "completed", interview_id: 5, resume_id: 7, focus_schema: "offeru.interview_focus_plan.v1", benchmark_run_id: "benchmark-42" },
+      documents: { exists: true, count: 1, items: [{ id: 1, resume_id: 7, resume_version_id: 1, version_matches_resume: true, matches_current_version: true }] },
+    });
+    readyWorkspace.application_packet.external_submission = {
+      recorded: true,
+      completed: true,
+      scope: "recorded_only",
+      receipt_verified: false,
+      attempt_id: 9,
+      job_id: 42,
+      resume_id: 7,
+      status: "submitted",
+      resume_version_id: 1,
+      matches_current_version: false,
+      latest_attempt: {
+        attempt_id: 9,
+        job_id: 42,
+        resume_id: 7,
+        status: "submitted",
+        resume_version_id: 1,
+        matches_current_version: false,
+      },
+    };
+    mockWorkspace.mockResolvedValue(readyWorkspace);
+    render(<ResumeEditorPage />);
+    await waitFor(() => expect(screen.getAllByTestId("application-packet-summary")).toHaveLength(2));
+    const readyPacket = screen.getAllByTestId("application-packet-summary").at(-1)!;
+    expect(readyPacket).toHaveTextContent("简历版本已采纳");
+    expect(readyPacket).toHaveTextContent("岗位研究已审核");
+    expect(readyPacket).toHaveTextContent("岗位基准已就绪");
+    expect(readyPacket).toHaveTextContent("面试准备已就绪");
+    expect(readyPacket).toHaveTextContent("1 / 1 当前版本匹配");
+    expect(readyPacket).toHaveTextContent("记录为已投递，使用旧版本");
+    expect(readyPacket).not.toHaveTextContent("外部回执已验证");
+  });
+
+  it("keeps a manually saved resume usable for JD-only preparation while the benchmark is absent", async () => {
+    const ws = workspaceWithPacketState({
+      resume: { exists: true, ready: true, adopted: false, adoption_status: "user_saved", current_version_matches_resume: true },
+      research: { exists: false, ready: false, adopted: false, linked_to_resume: false, status: "unavailable" },
+      benchmark: { exists: false, ready: false, status: "not_built" },
+      interview_focus: { exists: false, ready: false, status: "not_built" },
+      documents: { exists: false, count: 0, items: [] },
+    });
+    mockWorkspace.mockResolvedValue(ws);
+
+    render(<ResumeEditorPage />);
+
+    const packet = await screen.findByTestId("application-packet-summary");
+    expect(packet).toHaveTextContent("简历版本已保存");
+    expect(packet).toHaveTextContent("岗位基准尚未构建");
+    expect(screen.getByTestId("resume-save-version")).toBeEnabled();
+  });
+
+  it("reports a research association mismatch before fixture or review readiness", async () => {
+    const ws = workspaceWithPacketState({
+      resume: { exists: true, ready: true, adopted: false, adoption_status: "user_saved", current_version_matches_resume: true },
+      research: { exists: true, ready: true, adopted: true, linked_to_resume: false, data_mode: "fixture", run_id: "research-old", proposal_run_id: "research-current", status: "completed", review_status: "accepted" },
+      benchmark: { exists: false, ready: false, status: "not_built" },
+      interview_focus: { exists: false, ready: false, status: "not_built" },
+      documents: { exists: false, count: 0, items: [] },
+    });
+    mockWorkspace.mockResolvedValue(ws);
+
+    render(<ResumeEditorPage />);
+
+    expect(await screen.findByTestId("application-packet-summary")).toHaveTextContent("岗位研究未关联此简历");
+  });
+
+  it("rejects packet artifacts whose source snapshot belongs to another Job", async () => {
+    const ws = workspaceWithPacketState({
+      resume: { exists: true, ready: true, adopted: false, adoption_status: "user_saved", current_version_matches_resume: true },
+      research: { exists: true, ready: true, adopted: true, linked_to_resume: true, verification_status: "unverified", data_mode: "live", run_id: "research-42", proposal_run_id: "research-42", status: "completed", review_status: "accepted", target_job_id: 99, target_job_matches: false },
+      benchmark: { exists: true, ready: true, status: "completed", verification_status: "unverified", data_mode: "live_backend", artifact_verification: { ready: false, status: "unverified", reasons: ["target_snapshot_mismatch"], target_snapshot: { exists: true, verified: false } }, run_id: "benchmark-42", schema_version: "v1", algorithm_version: "v1", target_snapshot: { exists: true, verified: false, job_id: 99 }, valid_sample_count: 20, minimum_sample_count: 15 },
+      interview_focus: { exists: false, ready: false, status: "not_built" },
+      documents: { exists: false, count: 0, items: [] },
+    });
+    mockWorkspace.mockResolvedValue(ws);
+
+    render(<ResumeEditorPage />);
+
+    const packet = await screen.findByTestId("application-packet-summary");
+    expect(packet).toHaveTextContent("岗位研究关联了其他岗位");
+    expect(packet).toHaveTextContent("岗位基准当前岗位快照未验证");
+  });
+
+  it("does not treat a legacy completed benchmark without backend verification as ready", async () => {
+    const ws = workspaceWithPacketState({
+      resume: { exists: true, ready: true, adopted: false, adoption_status: "user_saved", current_version_matches_resume: true },
+      research: { exists: false, ready: false, adopted: false, linked_to_resume: false, status: "unavailable" },
+      benchmark: { exists: true, ready: true, status: "completed", data_mode: "live_backend", run_id: "legacy-1", schema_version: "v1", algorithm_version: "v1", valid_sample_count: 20, minimum_sample_count: 15 },
+      interview_focus: { exists: false, ready: false, status: "not_built" },
+      documents: { exists: false, count: 0, items: [] },
+    });
+    mockWorkspace.mockResolvedValue(ws);
+
+    render(<ResumeEditorPage />);
+
+    expect(await screen.findByTestId("application-packet-summary")).toHaveTextContent("岗位基准验证信息缺失");
+  });
+
+  it("does not label fixture, replay, or insufficient benchmarks as ready", async () => {
+    const fixtureWorkspace = workspaceWithPacketState({
+      resume: { exists: true, ready: true, adopted: false, adoption_status: "user_saved", current_version_matches_resume: true },
+      research: { exists: false, ready: false, adopted: false, linked_to_resume: false, status: "unavailable" },
+      benchmark: { exists: true, ready: true, status: "completed", verification_status: "unverified", data_mode: "fixture", benchmark_status: "READY", sample_sufficient: true, artifact_verification: { ready: false, status: "unverified", reasons: ["fixture_or_unknown_data_mode"], target_snapshot: { exists: true, verified: true } }, run_id: "fixture-1", schema_version: "v1", algorithm_version: "v1", target_snapshot: { exists: true, verified: true, job_id: 42 }, valid_sample_count: 20, minimum_sample_count: 15 },
+      interview_focus: { exists: false, ready: false, status: "not_built" },
+      documents: { exists: false, count: 0, items: [] },
+    });
+    mockWorkspace.mockResolvedValue(fixtureWorkspace);
+    const fixtureRender = render(<ResumeEditorPage />);
+    expect(await screen.findByText("样本岗位基准已生成（仅供本地验收）")).toBeInTheDocument();
+    fixtureRender.unmount();
+
+    const replayWorkspace = workspaceWithPacketState({
+      resume: { exists: true, ready: true, adopted: false, adoption_status: "user_saved", current_version_matches_resume: true },
+      research: { exists: false, ready: false, adopted: false, linked_to_resume: false, status: "unavailable" },
+      benchmark: { exists: true, ready: false, status: "completed", verification_status: "unverified", data_mode: "replay", sample_sufficient: true, artifact_verification: { ready: false, status: "unverified", reasons: ["fixture_or_unknown_data_mode"], target_snapshot: { exists: true, verified: true } }, run_id: "replay-1", schema_version: "v1", algorithm_version: "v1", target_snapshot: { exists: true, verified: true, job_id: 42 }, valid_sample_count: 20, minimum_sample_count: 15 },
+      interview_focus: { exists: false, ready: false, status: "not_built" },
+      documents: { exists: false, count: 0, items: [] },
+    });
+    mockWorkspace.mockResolvedValue(replayWorkspace);
+    const replayRender = render(<ResumeEditorPage />);
+    expect(await screen.findByText("岗位基准回放结果（仅供验收）")).toBeInTheDocument();
+    replayRender.unmount();
+
+    const thinWorkspace = workspaceWithPacketState({
+      resume: { exists: true, ready: true, adopted: false, adoption_status: "user_saved", current_version_matches_resume: true },
+      research: { exists: false, ready: false, adopted: false, linked_to_resume: false, status: "unavailable" },
+      benchmark: { exists: true, ready: false, status: "completed", verification_status: "unverified", data_mode: "live_backend", artifact_verification: { ready: false, status: "unverified", reasons: ["sample_metadata_mismatch"], target_snapshot: { exists: true, verified: true } }, run_id: "thin-1", schema_version: "v1", algorithm_version: "v1", target_snapshot: { exists: true, verified: true, job_id: 42 }, valid_sample_count: 6, minimum_sample_count: 15 },
+      interview_focus: { exists: false, ready: false, status: "not_built" },
+      documents: { exists: false, count: 0, items: [] },
+    });
+    mockWorkspace.mockResolvedValue(thinWorkspace);
+    render(<ResumeEditorPage />);
+    expect(await screen.findByText("岗位基准样本不足")).toBeInTheDocument();
+  });
+
+  it("shows the latest failed or cancelled attempt without erasing a recorded submission", async () => {
+    const ws = baseWorkspace();
+    ws.application_packet.external_submission = {
+      scope: "recorded_only",
+      receipt_verified: false,
+      recorded: true,
+      completed: true,
+      attempt_id: 9,
+      job_id: 42,
+      resume_id: 7,
+      status: "submitted",
+      resume_version_id: 1,
+      matches_current_version: false,
+      latest_attempt: {
+        attempt_id: 10,
+        job_id: 42,
+        resume_id: 7,
+        status: "failed",
+        resume_version_id: null,
+        matches_current_version: false,
+      },
+    };
+    mockWorkspace.mockResolvedValue(ws);
+
+    render(<ResumeEditorPage />);
+
+    const packet = await screen.findByTestId("application-packet-summary");
+    expect(packet).toHaveTextContent("最近一次投递尝试失败；记录为已投递，使用旧版本");
+  });
+
+  it("fails closed for a legacy submission object without recorded-only scope", async () => {
+    const ws = baseWorkspace();
+    ws.application_packet.external_submission = {
+      recorded: true,
+      completed: true,
+      attempt_id: 9,
+      job_id: 42,
+      resume_id: 7,
+      status: "submitted",
+      resume_version_id: 1,
+      matches_current_version: true,
+    } as unknown as NonNullable<ResumeWorkspace["application_packet"]["external_submission"]>;
+    mockWorkspace.mockResolvedValue(ws);
+
+    render(<ResumeEditorPage />);
+
+    const packet = await screen.findByTestId("application-packet-summary");
+    expect(packet).toHaveTextContent("投递记录无法验证");
+    expect(packet).not.toHaveTextContent("记录为已投递");
+  });
+
+  it.each([
+    ["failed", "最近一次投递尝试失败"],
+    ["cancelled", "最近一次投递尝试已取消"],
+  ])("projects a latest-only %s attempt even without a submitted history", async (status, expected) => {
+    const ws = baseWorkspace();
+    ws.application_packet.external_submission = {
+      scope: "recorded_only",
+      receipt_verified: false,
+      recorded: true,
+      completed: false,
+      attempt_id: null,
+      job_id: null,
+      resume_id: null,
+      status: null,
+      resume_version_id: null,
+      matches_current_version: false,
+      latest_attempt: {
+        attempt_id: 11,
+        job_id: 42,
+        resume_id: 7,
+        status,
+        resume_version_id: null,
+        matches_current_version: false,
+      },
+    };
+    mockWorkspace.mockResolvedValue(ws);
+
+    render(<ResumeEditorPage />);
+
+    expect(await screen.findByTestId("application-packet-summary")).toHaveTextContent(expected);
   });
 
   it("自动保存失败时本地草稿不被覆盖，并展示保存失败状态", async () => {

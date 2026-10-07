@@ -358,6 +358,25 @@ class EmbeddedAgentWorker:
         self.active_run_id = None
         self._provider = None
 
+    async def forget_run_after_fresh_reset(self, run_id: str) -> None:
+        """Dispose a reset-approved Run and erase its volatile career context."""
+        async with self._start_lock:
+            if self.active_run_id != run_id:
+                return
+            await self.dispose_run(run_id)
+            self._messages.clear()
+            self._system_prompt = ""
+            self._operations.clear()
+            self._operation_runner = None
+            self._event_listener = None
+            self._session_path = None
+            self._steering.clear()
+            self._follow_up.clear()
+            self._task = None
+            self._proposal_hook = None
+            self._hooks = HookRegistry()
+            self._cancel = CancelToken()
+
     async def close(self) -> None:
         if self.active_run_id:
             await self.dispose_run(self.active_run_id)

@@ -796,6 +796,9 @@ async def recover_interrupted_agent_runs() -> dict[str, int]:
                         },
                     )
                 )
+            # Keep the transport descriptor aligned with the recovered Run
+            # lifecycle while preserving provider/model/session metadata.
+            row.llm_runtime_json = {**runtime, "status": row.status}
         await db.commit()
     return {
         "interrupted": recovered,

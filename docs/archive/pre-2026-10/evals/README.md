@@ -16,8 +16,8 @@
 
 | 问题 | 权威来源 |
 | --- | --- |
-| 系统应该做什么 | [`CONTEXT.md`](../../CONTEXT.md) 与最新 accepted ADR |
-| 目标架构如何工作 | [10 份活跃设计](../README.md) |
+| 系统应该做什么 | [`GOAL.md`](../../GOAL.md) → [Current Product](../product/current-product.md) → [`CONTEXT.md`](../../CONTEXT.md) → accepted ADR |
+| 目标架构如何工作 | [当前架构文档入口](../README.md) |
 | 当前暴露了什么 | 实时 `doctor`、`manifest`、`ops`、`schema` 与 capability probe |
 | 当前版本做到了什么 | 与当前 commit 对应的有效 Eval 报告和 artifacts |
 | 过去为何改变 | Git 历史；不作为当前能力证明 |
@@ -110,5 +110,5 @@ DSH、Codex、Claude Code、OpenCode 和 Pi 共用同一业务任务与安全断
 - 用户可见行为改变时，先更新 Task 或 grader，再改实现。
 - 历史失败修复并稳定通过后，加入 regression suite。
 - 不为提高分数删除困难样例；无效任务应标记 `INVALID` 并解释修订。
-- 日期化报告只有在仍对应当前可定位 commit 且满足 schema 时才保留。
-- 过期报告删除后从 Git 历史追溯，不在仓库内另建 archive。
+- 日期化报告必须标明可定位 commit、数据范围与验证限制；符合 schema 的旧结果仍可作为该版本的历史证据，不代表当前 PASS。
+- 过时实施结论从当前入口移出并蒸馏到 [历史目录](../archive/README.md)，保留原文或固定 Git 来源；不要修改旧测试数字，也不要仅因日期删除仍有效的契约或报告。
