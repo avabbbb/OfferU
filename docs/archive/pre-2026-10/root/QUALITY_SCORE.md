@@ -1,3 +1,5 @@
+> **已归档（2026-10）**：本文不再是当前权威。当前文档：09-quality-and-release.md（位于 `docs/`）。
+
 # OfferU Public Release Quality Score
 
 更新时间：2026-09-09

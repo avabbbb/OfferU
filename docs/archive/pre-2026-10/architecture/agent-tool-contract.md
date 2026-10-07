@@ -1,3 +1,5 @@
+> **已归档（2026-10）**：本文不再是当前权威。当前文档：08-module-agent-runtime.md（位于 `docs/`）。
+
 # Host-neutral OfferU Tool Contract v1
 
 Authority: GOAL → current-product → CONTEXT/current ADRs → Registry/live evidence. This contract reuses existing Operations, Skill Registry, AgentRun and CareerTask; it introduces no new database or scheduler.
