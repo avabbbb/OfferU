@@ -70,7 +70,7 @@ Replay/Fixture、合成公司和比较岗位不代表实时市场数据。Showca
 
 真实 `backend/offeru.db` 不得用于自动化写入验收。为每次 E2E 设置新的隔离 `DATABASE_URL`、workspace 和 browser state，并确认没有把临时环境变量留给用户环境。
 
-停服后手工复制 SQLite 文件只能用于开发期应急副本，不是 Public Release Backup Gate。正式备份必须使用 SQLite Online Backup API，包含 DB、相关资产和版本 manifest；正式恢复必须经过 staging、完整性检查、重启与失败回滚。当前权威状态见 [`STATUS.md`](./STATUS.md)。
+停服后手工复制 SQLite 文件只能用于开发期应急副本，不是 Public Release Backup Gate。正式备份必须使用 SQLite Online Backup API，包含 DB、相关资产和版本 manifest；正式恢复必须经过 staging、完整性检查、重启与失败回滚。当前权威状态见 [`RELEASE_CHECKLIST.md`](./RELEASE_CHECKLIST.md)。
 
 Settings 的 JSON export 用于可读数据携带，不等于完整备份，也不能原样恢复 Provider 凭据或全部本地资产。
 
@@ -91,7 +91,7 @@ npm run build
 
 ## Current facts and goals
 
-- Internal Beta 历史路径：[`INTERNAL_BETA.md`](./INTERNAL_BETA.md)
-- 唯一最终目标：[`GOAL.md`](./GOAL.md)
-- 当前 Gate：[`STATUS.md`](./STATUS.md)
+- 设计文档入口：[`docs/README.md`](./docs/README.md)
+- 发布终点与验收：[`docs/09-quality-and-release.md`](./docs/09-quality-and-release.md)
+- 当前 Gate：[`RELEASE_CHECKLIST.md`](./RELEASE_CHECKLIST.md)、[`KNOWN_ISSUES.md`](./KNOWN_ISSUES.md)
 - Release matrix：[`RELEASE_CHECKLIST.md`](./RELEASE_CHECKLIST.md)
