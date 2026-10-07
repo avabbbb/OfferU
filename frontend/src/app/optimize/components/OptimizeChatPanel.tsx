@@ -59,10 +59,35 @@ interface OptimizeChatPanelProps {
   jobIds: number[];
   mode: "per_job" | "combined";
   disabled: boolean;
+  /** "profile" | "job" | free text; explains why starting is not possible yet. */
+  blockedReason?: string;
   profileId: number | null;
   referenceResumeId: number | null;
   loadSessionId?: string | null;
   onLoadSessionConsumed?: () => void;
+}
+
+const PHASES = [
+  { key: "confirming", label: "确认目标" },
+  { key: "analyzing", label: "分析差距" },
+  { key: "framework", label: "确认框架" },
+  { key: "rewriting", label: "逐段改写" },
+  { key: "completed", label: "生成提案" },
+];
+
+function BlockedHint({ reason }: { reason: string }) {
+  if (reason === "profile") {
+    return (
+      <p className="text-sm text-[var(--foreground-muted)]">
+        档案里还没有已确认的经历，AI 没有可用的事实。
+        <Link href="/profile" className="ml-1 font-semibold text-[var(--foreground)] underline">去补充档案</Link>
+      </p>
+    );
+  }
+  if (reason === "job") {
+    return <p className="text-sm text-[var(--foreground-muted)]">先在左侧选一个目标岗位。</p>;
+  }
+  return reason ? <p className="text-sm text-[var(--foreground-muted)]">{reason}</p> : null;
 }
 
 let _msgCounter = 0;
@@ -91,7 +116,7 @@ function SafeHtmlContent({ content, className }: { content: string; className?: 
   );
 }
 
-export function OptimizeChatPanel({ jobIds, mode, disabled, profileId, referenceResumeId, loadSessionId, onLoadSessionConsumed }: OptimizeChatPanelProps) {
+export function OptimizeChatPanel({ jobIds, mode, disabled, blockedReason = "", profileId, referenceResumeId, loadSessionId, onLoadSessionConsumed }: OptimizeChatPanelProps) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [phase, setPhase] = useState<string>("idle");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -427,56 +452,59 @@ export function OptimizeChatPanel({ jobIds, mode, disabled, profileId, reference
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <div className="shrink-0 border-b border-[var(--border-strong)]/12 p-5 md:p-6">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <p className="bauhaus-label text-[var(--foreground-muted)]">步骤三 · AI 对话优化</p>
-            <h2 className="mt-2 text-3xl font-bold leading-tight md:text-4xl">智能优化工作流</h2>
-          </div>
-          <div className="bauhaus-panel-sm bg-[var(--surface-muted)] px-4 py-3 text-[var(--foreground)]">
-            <p className="bauhaus-label text-[var(--foreground-muted)]">阶段</p>
-            <p className="mt-2 text-sm font-bold">
-              {phase === "idle"
-                ? "待启动"
-                : phase === "confirming"
-                  ? "确认中"
-                  : phase === "analyzing"
-                    ? "分析中"
-                    : phase === "framework"
-                      ? "框架确认"
-                      : phase === "rewriting"
-                        ? "逐段改写"
-                        : phase === "completed"
-                          ? "已完成"
-                          : phase}
-            </p>
-          </div>
-        </div>
-      </div>
-
+      {phase !== "idle" && (
+        <ol aria-label="定制进度" className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-[var(--border)] px-5 py-2 text-xs">
+          {PHASES.map((item, index) => {
+            const current = PHASES.findIndex((p) => p.key === phase);
+            const state = index < current ? "done" : index === current ? "active" : "todo";
+            return (
+              <li key={item.key} className="flex items-center gap-1 whitespace-nowrap">
+                {index > 0 && <span className="mx-1 h-px w-4 bg-[var(--border)]" />}
+                <span
+                  className={
+                    state === "active"
+                      ? "font-semibold text-[var(--foreground)]"
+                      : state === "done"
+                        ? "text-[var(--foreground-soft)]"
+                        : "text-[var(--foreground-muted)]"
+                  }
+                >
+                  {state === "done" ? "✓ " : ""}{item.label}
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+      )}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <div
           ref={scrollRef}
           className="flex-1 overflow-y-auto p-5 md:p-6 custom-scrollbar"
         >
           {messages.length === 0 && (
-            <div className="flex min-h-64 flex-col items-center justify-center gap-4 text-center">
-              <MessageSquare size={48} className="text-[var(--foreground-muted)]" />
-              <p className="text-sm font-medium text-[var(--foreground-muted)]">
-                选择岗位后点击「开始优化」，AI 将引导你逐步完成简历定制。
-              </p>
-              <Button
-                className="bauhaus-button bauhaus-button-red"
-                startContent={<Play size={16} />}
-                onPress={startSession}
-                isDisabled={disabled || jobIds.length === 0 || loading}
-                isLoading={loading}
-              >
-                开始优化
-              </Button>
+            <div className="mx-auto flex min-h-64 max-w-md flex-col items-center justify-center gap-4 text-center">
+              <MessageSquare size={36} className="text-[var(--foreground-muted)]" />
+              <div className="space-y-1">
+                <p className="text-[15px] font-semibold text-[var(--foreground)]">按这个岗位改写简历</p>
+                <p className="text-sm text-[var(--foreground-muted)]">
+                  AI 会先确认目标、分析差距，再逐段给出修改。每一条都要你审核，你接受后才会生成正式简历。
+                </p>
+              </div>
+              {blockedReason ? (
+                <BlockedHint reason={blockedReason} />
+              ) : (
+                <Button
+                  className="bauhaus-button bauhaus-button-red"
+                  startContent={<Play size={16} />}
+                  onPress={startSession}
+                  isDisabled={disabled || jobIds.length === 0 || loading}
+                  isLoading={loading}
+                >
+                  开始定制
+                </Button>
+              )}
             </div>
           )}
-
           <div className="space-y-4">
             {messages.map((msg) => (
               <div
@@ -606,14 +634,19 @@ export function OptimizeChatPanel({ jobIds, mode, disabled, profileId, reference
                   )}
 
                   {msg.proposal_id && !msg.resume_id && (
-                    <div className="mt-3 border border-[var(--border-strong)]/15 bg-[var(--status-blush)] p-3">
-                      <p className="text-sm font-bold text-[var(--foreground)]">可审核提案</p>
-                      <p className="mt-1 break-all text-xs font-medium text-[var(--foreground-muted)]">
-                        {msg.proposal_id}
-                      </p>
-                      <p className="mt-2 text-xs font-medium leading-relaxed text-[var(--foreground-muted)]">
-                        继续让 AI 展示逐项 diff 和事实门；确认无误后再明确接受或拒绝。
-                      </p>
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-[var(--border)] bg-[var(--surface-muted)] p-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-[var(--foreground)]">简历提案已生成，等你审核</p>
+                        <p className="mt-0.5 text-xs text-[var(--foreground-muted)]">逐条查看修改和证据，接受后才会写入简历。</p>
+                      </div>
+                      {jobIds[0] ? (
+                        <Link
+                          href={`/jobs/${jobIds[0]}?focus=materials`}
+                          className="bauhaus-button bauhaus-button-sm bauhaus-button-red shrink-0"
+                        >
+                          去审核
+                        </Link>
+                      ) : null}
                     </div>
                   )}
                 </div>
@@ -678,7 +711,7 @@ export function OptimizeChatPanel({ jobIds, mode, disabled, profileId, reference
                 isDisabled={disabled || jobIds.length === 0 || loading}
                 isLoading={loading}
               >
-                重试启动
+                重新开始
               </Button>
             </div>
           )
