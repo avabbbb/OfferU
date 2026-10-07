@@ -810,7 +810,7 @@ const BOSS_COOKIE_DOMAIN = "zhipin.com";
  *
  * 三条硬约束：
  * 1. Cookie 只在本次调用内存在 —— 不写 `chrome.storage.local`，不写日志，
- *    也不回传给 popup（见 docs/architecture/browser-extension.md）；
+ *    也不回传给 popup（见 docs/04-module-job-workspace.md）；
  * 2. 缺少 wt2 时直接失败，不把"写入了别的字段"当成登录成功；
  * 3. 以后端回读到的状态为准，不以写入请求返回 200 判定成功。
  */

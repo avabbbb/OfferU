@@ -13,25 +13,17 @@ Playwright MCP 或Browser 来访问/截图/识别/探索网站的视觉和代码
 
 ## 当前事实源与产品模型
 
-当产品/架构文档冲突时，按以下顺序：
+当产品/架构文档冲突时，按以下顺序（2026-10 文档重构后只有三层）：
 
 ```text
-GOAL.md
-  ↓
-docs/product/current-product.md
-  ↓
-CONTEXT.md
-  ↓
-docs/adr/README.md
-  ↓
-ARCHITECTURE.md + current architecture topic docs
+docs/README.md + docs/01–09（唯一设计权威：总体、交互、各模块）
   ↓
 live code / Registry / Host / generated Skill projections
   ↓
-current Eval evidence
+docs/evidence/ 下与当前 commit 对应的验收证据
 ```
 
-`docs/archive/**`、旧 dated report、旧 harness/DSH/Pi 方案只作历史证据，不得覆盖当前 authority。
+发现文档与代码不一致时，在同一个 PR 里修正其中一方。`docs/archive/**`、旧 dated report、旧 harness/DSH/Pi 方案只作历史证据，不得覆盖当前 authority。文档总数不超过 10 篇，维护规则见 `docs/README.md`。
 
 当前必须保持的产品模型：
 
@@ -45,7 +37,7 @@ current Eval evidence
 
 ## Proactive Career Director 施工约束
 
-涉及“主动 Agent / 自主求职 / Daily / Weekly / Profile 挖潜 / 面试提醒 / 自动投递策略”的实现，必须先读 `docs/product/proactive-career-director.md`，并遵守：
+涉及“主动 Agent / 自主求职 / Daily / Weekly / Profile 挖潜 / 面试提醒 / 自动投递策略”的实现，必须先读 `docs/08-module-agent-runtime.md` §8 与 `docs/02-interaction-design.md` §4，并遵守：
 
 - **不得新增第二个无限 Agent Loop**。唯一自动化骨架仍是 `AutomationEvent → AutomationRule → CareerTask → Agent/Runtime → Operation`；Career Director 只能在明确事件/日程/状态变化触发时做一次有界判断。
 - **Runtime 决定何时唤醒，模型决定当前什么最重要，Operation Registry/Policy 决定什么能执行**。不要把职业判断硬编码成脚本，也不要把权限交给模型。
@@ -67,8 +59,8 @@ current Eval evidence
 - 写代码保持最少行数，能简单实现就不要引入复杂抽象。
 - 标准格式、协议、解析、压缩、加密、日期等通用能力优先使用成熟稳定的库，不要手写底层实现，除非用户明确要求或项目已有实现必须沿用。
 - 不要为了“兼容更多场景”写大量分支，只实现当前明确需要的功能。
-- OfferU 已进入 Public Release 准备路径，**不得再假设旧数据可以直接丢弃**。涉及 schema / persistence / version 的变更必须按 `GOAL.md` 的 migration、backup/restore、upgrade 规则处理；只有明确标记为开发 fixture/demo 的数据才能按任务要求 reset。
-- 修改代码后必须做与改动范围匹配的验证，并如实报告：后端至少运行相关 pytest；前端改动至少 typecheck + 相关 test，影响构建/路由/依赖时再跑 production build；跨层、release/security/migration 变更按 `GOAL.md` / CI 对应 gate 扩大验证。文档-only 改动不要求无意义地跑全量构建。**未运行或失败的检查必须明确写出，绝不把“看起来没问题”当 PASS。**
+- OfferU 已进入 Public Release 准备路径，**不得再假设旧数据可以直接丢弃**。涉及 schema / persistence / version 的变更必须按 `docs/09-quality-and-release.md` 的 migration、backup/restore、upgrade 规则处理；只有明确标记为开发 fixture/demo 的数据才能按任务要求 reset。
+- 修改代码后必须做与改动范围匹配的验证，并如实报告：后端至少运行相关 pytest；前端改动至少 typecheck + 相关 test，影响构建/路由/依赖时再跑 production build；跨层、release/security/migration 变更按 `docs/09-quality-and-release.md` / CI 对应 gate 扩大验证。文档-only 改动不要求无意义地跑全量构建。**未运行或失败的检查必须明确写出，绝不把“看起来没问题”当 PASS。**
 - 不要改无关文件，不要顺手重构。
 - 如果工作区已有用户改动，不要回滚，不要覆盖；只在必要范围内追加修改。
 - **前端 dev 端口固定 7410，后端固定 8766**：两个端口均避开 AI/框架常用端口（3000/3300/5173/8000/8080/11434 等）与当前 winnat 动态排除段。winnat 排除段会漂移（曾见 2942-3041，后又出现 4229-4328，4321 因此 EACCES），改端口前必须先执行 `netsh interface ipv4 show excludedportrange protocol=tcp` 确认不在任何段内。改前端端口必须同步 `frontend/package.json` 的 `scripts.dev` / `scripts.start`、`frontend/vite.config.ts`（含 TAURI HMR 端口 7411）、`frontend/src-tauri/tauri.conf.json` 的 `devUrl`、`backend/app/config.py` 默认 CORS、`backend/app/routes/email.py`、`backend/app/routes/resume.py` 的 `FRONTEND_BASE_URL`、`.env.example` 与 `backend/.env`；`frontendDist` 必须继续指向静态目录 `../dist`，不能改成 localhost URL。
@@ -91,19 +83,19 @@ current Eval evidence
 
 ### Issue tracker
 
-Issues 和 PRD 使用当前 Git remote 对应的 GitHub Issues；外部 Pull Request 不作为需求分诊入口。详见 `docs/agents/issue-tracker.md`。
+Issues 和 PRD 使用当前 Git remote 对应的 GitHub Issues，统一用 `gh` CLI（`gh issue create --body-file`、`gh issue view <n> --comments`、`gh issue list`、`gh issue comment`、`gh issue edit --add-label`、`gh issue close`）。多行正文用临时 body 文件。Pull Request 只承载代码评审，不进入需求分诊。
 
 ### Triage labels
 
-分诊使用 `needs-triage`、`needs-info`、`ready-for-agent`、`ready-for-human`、`wontfix` 五个标准状态标签。详见 `docs/agents/triage-labels.md`。
+每个 Issue 使用一个状态标签：`needs-triage`、`needs-info`、`ready-for-agent`、`ready-for-human`、`wontfix`。不创建同义标签；状态变化由证据或明确决策驱动。`ready-for-agent` 任务至少写明：用户可见结果、允许修改的范围、相关术语（`docs/01-overall-design.md` §10）、现状证据、验收映射、明确不做的事。
 
 ### Domain docs
 
-项目采用根目录 `CONTEXT.md` 与 `docs/adr/` 的单上下文领域文档布局。详见 `docs/agents/domain.md`。
+领域术语与不变量见 `docs/01-overall-design.md`；交互规则见 `docs/02-interaction-design.md`；各模块规则见 `docs/03`–`docs/08`。新概念若是实际领域缺口，先补对应文档，不新建 ADR 文件。
 
 ## 实现 Agent 准则
 
-- 实现阶段先按“当前事实源”读取 `GOAL.md`、`docs/product/current-product.md`，再按任务读取 `CONTEXT.md`、相关 ADR / architecture docs 与 live code。评审意见、聊天总结、历史报告与当前 authority 冲突时，以当前 authority + live code/evidence 为准。
+- 实现阶段先按“当前事实源”读取 `docs/01-overall-design.md`、`docs/02-interaction-design.md`，再按任务读取对应模块文档与 live code。评审意见、聊天总结、历史报告与当前 authority 冲突时，以当前 authority + live code/evidence 为准。
 - 一次只实现一个边界明确、可独立验收的纵向切片。不要同时铺开多个模块，也不要把数据库、API、前端分别做成长期未闭环的横向工程。
 - 实现 Agent 负责落地，不重新进行产品问卷或自行新增架构。只有遇到 ADR 冲突、必须扩大文件范围、会改变领域模型或需要新外部权限时，才停止并提出一个阻塞问题。
 - 开工前先读取与任务直接相关的代码和文档，用不超过 10 行复述目标、修改范围和验收映射；没有真实阻塞时立即实施。
@@ -117,7 +109,7 @@ Issues 和 PRD 使用当前 Git remote 对应的 GitHub Issues；外部 Pull Req
 
 ### 复杂迁移与多代理交付约束
 
-以下规则来自 Proposal v2 施工中的返工与交付延迟，适用于跨持久化、授权、Agent 和 UI 的迁移。它们规定施工顺序，不减少用户已授权的最终范围，也不降低 `GOAL.md` 的安全、迁移与发布要求。
+以下规则来自 Proposal v2 施工中的返工与交付延迟，适用于跨持久化、授权、Agent 和 UI 的迁移。它们规定施工顺序，不减少用户已授权的最终范围，也不降低 `docs/09-quality-and-release.md` 的安全、迁移与发布要求。
 
 - **首个集成门必须是完整业务链路**：开工时在已有任务文档中明确最小切片、完成断言和交付位置。涉及审批时，首切片至少包含提案准备 → 实际界面展示 → 独立授权 → Registry 执行 → 持久状态与 Audit/Receipt → 原 Run 续跑 → 重启回读。必要的授权、防重与恢复随切片一起实现；首切片未闭环前，不铺开其他业务域、通用效果框架或无关兼容层。模拟批准只能证明自动回归；真人边界按实际条件另记。
 - **尽早验证整个任务，不只验证第一个动作**：实现最小生产接缝后立即运行跨层用例，集成失败先修复再扩大范围。多组 Plan 必须从第一组跑到最后一组，并断言真实持久结果、批准次数、逐节点 Audit、重复请求及续跑；必须覆盖前组修改来源版本后后组的行为。仅有分组数量正确、首组成功或单模块测试通过，不能称整份 Plan 可用。失败保留最小复现，禁止放宽摘要、版本或权限校验来换取绿灯。
@@ -144,7 +136,7 @@ Issues 和 PRD 使用当前 Git remote 对应的 GitHub Issues；外部 Pull Req
 
 ### 本地分支预算与归档
 
-- **分支规则现在有机器闸门，不再只靠提醒**：开始一轮开发前运行 `python backend/scripts/dev/branch_guard.py --mode start`；集成 worker 前运行 `--mode integrate`；任何真人/Desktop/安装包验收前必须运行 `--mode owner-test`。Guard 会先 fetch `origin/main`，HEAD 落后 main 或本地命名分支超过 3 条时直接失败；集成/真人验收默认还要求 clean worktree。详细规则见 `docs/agents/branch-and-test-baseline.md`。
+- **分支规则现在有机器闸门，不再只靠提醒**：开始一轮开发前运行 `python backend/scripts/dev/branch_guard.py --mode start`；集成 worker 前运行 `--mode integrate`；任何真人/Desktop/安装包验收前必须运行 `--mode owner-test`。Guard 会先 fetch `origin/main`，HEAD 落后 main 或本地命名分支超过 3 条时直接失败；集成/真人验收默认还要求 clean worktree。详细规则以 `backend/scripts/dev/branch_guard.py` 为准；原始说明已归档在 `docs/archive/pre-2026-10/agents/branch-and-test-baseline.md`。
 - **子代理默认只用 detached worktree，不创建永久 worker 分支**：主代理先记录唯一 integration baseline SHA，再用 `git worktree add --detach <H:/tmp/offeru/...> <integration-sha>` 隔离；子代理提交后返回 commit SHA，由主代理尽早审查并合入唯一集成分支。不得为 Luna/review/fix/experiment 每项工作长期新增命名分支。
 - **真人测试必须证明“源码身份”和“运行物身份”一致**：`--mode owner-test` 输出 HEAD、origin/main、ahead/behind、dirty、branch/worktree 数；启动 Desktop/后端后再用 `--runtime-health-url http://127.0.0.1:8766/api/health` 核对运行时 `build_identity.commit == HEAD`。源码已更新但实际运行旧 EXE/sidecar/DMG 时，测试结果一律不能算当前版本验收。
 - **PR 也不得长期漂在旧 main 上**：`.github/workflows/branch-freshness.yml` 从 PR 实际 head 检查当前 base 是否为其祖先。失败时先同步当前 main 再继续集成/验收；不要在 stale PR 上继续堆新功能。
