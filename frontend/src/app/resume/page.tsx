@@ -271,65 +271,43 @@ export default function ResumesListPage() {
       transition={{ type: "spring", stiffness: 360, damping: 34, mass: 0.82 }}
       className="stage-page stage-page--resume space-y-6"
     >
-      <section className="stage-hero bauhaus-panel overflow-hidden bg-[var(--surface)]">
-        <div className="grid gap-6 border-b border-[var(--border)] p-6 md:p-8 xl:grid-cols-[1.05fr_0.95fr]">
-          <div className="space-y-4">
-            <span className="bauhaus-chip bg-[var(--surface-muted)] text-[var(--foreground)]">简历管理中心</span>
-            <div>
-              <p className="bauhaus-label text-[var(--foreground-soft)]">创建、管理与迭代</p>
-              <h1 className="mt-2 text-3xl font-bold leading-tight md:text-5xl">材料</h1>
-              <p className="mt-3 max-w-2xl text-sm font-medium leading-relaxed text-[var(--foreground-soft)] md:text-base">
-                在这里集中管理所有简历版本。你可以快速新建、进入编辑器、删除旧稿，并保留不同岗位定制所需的多份副本。
-              </p>
-            </div>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-1">
-            <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4 text-[var(--foreground)]">
-              <p className="bauhaus-label text-[var(--foreground-soft)]">简历数量</p>
-              <p className="mt-2 text-3xl font-bold">{resumes?.length ?? 0}</p>
-              <p className="mt-2 text-sm font-medium text-[var(--foreground-soft)]">当前已保存的简历总数。</p>
-            </div>
-            <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4 text-[var(--foreground)]">
-              <p className="bauhaus-label text-[var(--foreground-soft)]">档案姓名</p>
-              <p className="mt-2 truncate text-2xl font-semibold">
-                {String(profileData?.base_info_json?.name || profileData?.name || "未命名用户")}
-              </p>
-              <p className="mt-2 text-sm font-medium text-[var(--foreground-soft)]">新建简历时会默认写入这份档案姓名。</p>
-            </div>
-            <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4 text-[var(--foreground)]">
-              <p className="bauhaus-label text-[var(--foreground-soft)]">快捷操作</p>
-              <Button
-                startContent={<Plus size={16} />}
-                onPress={onOpen}
-                className="bauhaus-button bauhaus-button-outline mt-3 !w-full !justify-center !px-4 !py-3 !text-[11px]"
-              >
-                新建简历
-              </Button>
-              <label className="mt-2 block">
-                <input
-                  type="file"
-                  accept=".pdf,.docx"
-                  className="hidden"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) void handleUploadResume(f);
-                    e.target.value = "";
-                  }}
-                />
-                <Button
-                  as="span"
-                  startContent={<Upload size={16} />}
-                  isLoading={uploading}
-                  className="bauhaus-button bauhaus-button-outline !w-full !justify-center !px-4 !py-3 !text-[11px] cursor-pointer"
-                >
-                  上传简历
-                </Button>
-              </label>
-            </div>
-          </div>
+      <header className="flex flex-wrap items-end justify-between gap-3 px-1">
+        <div>
+          <h1 className="text-[22px] font-semibold tracking-tight text-[var(--foreground)]">简历</h1>
+          <p className="mt-1 text-[13px] text-[var(--foreground-muted)]">
+            {resumes?.length ? `${resumes.length} 份简历。` : ""}通用版本在这里维护；针对某个岗位的版本从岗位详情或「简历定制」生成。
+          </p>
         </div>
-      </section>
+        <div className="flex flex-wrap gap-2">
+          <label className="block">
+            <input
+              type="file"
+              accept=".pdf,.docx"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void handleUploadResume(f);
+                e.target.value = "";
+              }}
+            />
+            <Button
+              as="span"
+              startContent={<Upload size={15} />}
+              isLoading={uploading}
+              className="bauhaus-button bauhaus-button-outline !px-4 !py-2.5 !text-[12px] cursor-pointer"
+            >
+              上传 PDF / Word
+            </Button>
+          </label>
+          <Button
+            startContent={<Plus size={15} />}
+            onPress={onOpen}
+            className="bauhaus-button bauhaus-button-red !px-4 !py-2.5 !text-[12px]"
+          >
+            新建简历
+          </Button>
+        </div>
+      </header>
 
       {actionError && (
         <div role="alert" className="bauhaus-panel-sm flex items-center justify-between bg-[var(--status-blush)] px-4 py-3 text-sm font-semibold text-[var(--primary-red)]">
@@ -431,23 +409,16 @@ export default function ResumesListPage() {
             animate={{ opacity: 1 }}
             className="bauhaus-panel col-span-full overflow-hidden bg-[var(--surface)]"
           >
-            <div className="grid gap-6 p-8 md:grid-cols-[1.05fr_0.95fr] md:p-10">
-              <div className="space-y-3">
-              <span className="bauhaus-chip bg-[var(--surface-muted)] text-[var(--foreground)]">暂无简历草稿</span>
-              <h2 className="text-3xl font-bold md:text-5xl">
-                从第一份
-                <br />
-                简历开始
-              </h2>
-                <p className="max-w-xl text-sm font-medium leading-relaxed text-[var(--foreground-soft)] md:text-base">
-                  还没有简历。点击上方「新建简历」开始第一份版本，然后再按岗位逐步复制和打磨。
-                </p>
-              </div>
-              <div className="bauhaus-panel-sm flex min-h-[220px] items-center justify-center bg-[var(--surface-muted)] p-6 text-[var(--foreground)]">
-                <div className="text-center">
-                  <FileText size={54} className="mx-auto" aria-hidden="true" />
-                  <p className="mt-4 text-lg font-semibold">随时创建新版本</p>
-                </div>
+            <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
+              <FileText size={36} className="text-[var(--foreground-muted)]" aria-hidden="true" />
+              <h2 className="text-lg font-semibold text-[var(--foreground)]">还没有简历</h2>
+              <p className="max-w-md text-sm leading-relaxed text-[var(--foreground-muted)]">
+                上传一份现有简历最快，OfferU 会把内容拆进档案，由你确认后再使用；也可以从空白开始。
+              </p>
+              <div className="mt-2 flex gap-2">
+                <Button startContent={<Plus size={15} />} onPress={onOpen} className="bauhaus-button bauhaus-button-red !px-4 !py-2.5 !text-[12px]">
+                  新建简历
+                </Button>
               </div>
             </div>
           </motion.section>
