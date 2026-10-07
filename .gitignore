@@ -71,35 +71,17 @@ coverage/
 *playwright-cli/
 backend/.playwright-cli/
 .temp/
-# 文档默认保持本地；只版本化当前事实链、Eval、归档索引与 Agent 配置。
+# 文档默认保持本地；只版本化 10 篇当前设计文档、证据目录与归档。
 docs/*
 !docs/README.md
-!docs/adr/
-!docs/adr/**
-!docs/agents/
-!docs/agents/**
-!docs/history/
-docs/history/*
-!docs/history/*.md
-!docs/product/
-docs/product/*
-!docs/product/owner-career-journey.md
-!docs/architecture/
-!docs/architecture/**
-!docs/design/
-docs/design/*
-!docs/design/browser-extension-interaction.md
-!docs/design/adaptive-ui/
-!docs/design/adaptive-ui/**
-!docs/evals/
-!docs/evals/**
-!docs/implementation/
-docs/implementation/*
-!docs/implementation/deepseek-browser-extension-framework-brief.md
+!docs/0[1-9]-*.md
+!docs/evidence/
+!docs/evidence/**
 !docs/archive/
 !docs/archive/**
 # Eval 原始截图/trace 默认只保留本地；正式报告必须包含脱敏后的关键证据。
-docs/evals/reports/artifacts/
+docs/evidence/reports/artifacts/
+docs/archive/pre-2026-10/evals/reports/artifacts/
 artifacts/
 
 # ---- 本地 E2E / Playwright / 发布诊断临时产物（可能含敏感数据） ----

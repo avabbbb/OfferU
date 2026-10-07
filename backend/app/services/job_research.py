@@ -273,7 +273,7 @@ def _evidence_level(finding_type: str, source_refs: list[str], sources: dict[str
     if finding_type in _HARD_FINDINGS:
         # 硬事实（公司业务/产品/岗位要求）优先由官网、招聘官网等官方来源支撑；
         # 但官方来源可能因站点 JS 渲染 / 反爬 / 聚合站转载而不可得。按
-        # CONTEXT.md「证据不足是可解释退出状态」，此时把结论降级为
+        # docs/01-overall-design.md「证据不足是可解释退出状态」，此时把结论降级为
         # single_signal（有来源、未官方验证）而非让整个研究崩溃，交由审核决定。
         if not any(
             sources[source_ref]["source_class"].startswith("official_")

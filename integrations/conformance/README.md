@@ -35,4 +35,4 @@ runner 退出码：0 = 全部场景通过；1 = 任一失败。失败输出到 s
 
 - Slice 1 起把 `fake_harness.py` 替换为真实 adapter（DSH plugin / Codex app-server），
   场景文件保持不变即可复跑；
-- 当前 Host/Runtime 验收边界见 `docs/architecture/harness-integrations.md` 与 `docs/evals/LIVE_EVAL.md`；本目录保留较低层协议 conformance，不再依赖已移除的 migration-roadmap 文档。
+- 当前 Host/Runtime 验收边界见 `docs/08-module-agent-runtime.md` 与 `docs/09-quality-and-release.md`；本目录保留较低层协议 conformance，不再依赖已移除的 migration-roadmap 文档。
