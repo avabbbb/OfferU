@@ -39,6 +39,8 @@ const group = (updates: Record<string, unknown> = {}) => ({
   status: "pending",
   group_digest: GROUP_DIGEST,
   dependency_group_ids: [],
+  reviewability: { status: "ready", reason_codes: [], counts_as_user_decision: true },
+  interaction_state: "needs_user_review",
   display: {
     before: "负责内部工具开发",
     after: "主导内部工具开发，支撑 30 人团队",
