@@ -615,10 +615,18 @@ async def get_pre_application_state(job_id: int) -> dict[str, Any]:
     elif context["stage"] != "needs_decision":
         return state
     else:
-        decision = decision_store.latest(
+        research_decision = decision_store.latest(
             job_id=clean_job_id,
             input_hash=str(context["input_hash"]),
-        ) or (_latest_manual_decision(clean_job_id, manual_hash) if manual_hash else None)
+        )
+        manual_decision = _latest_manual_decision(clean_job_id, manual_hash) if manual_hash else None
+        decision = research_decision or manual_decision
+        if research_decision is None and manual_decision is not None:
+            # Research became usable after the user already made a valid manual
+            # decision. Keep that decision in force, but surface a non-mutating
+            # prompt so the user may explicitly ask for a fresh recommendation.
+            state["manual_decision_without_research"] = True
+            state["research_refresh_available"] = True
     if decision is None:
         stale = decision_store.latest(job_id=clean_job_id)
         if stale is not None:
