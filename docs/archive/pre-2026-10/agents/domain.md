@@ -1,3 +1,5 @@
+> **已归档（2026-10）**：本文不再是当前权威。当前文档：AGENTS.md（位于 `docs/`）。
+
 # OfferU 工程协作规则
 
 本文件合并领域文档、Issue tracker 与 triage 约定。实现 Agent 先遵循根目录 `AGENTS.md`，再使用本页。
