@@ -1,3 +1,5 @@
+> **已归档（2026-10）**：本文不再是当前权威。当前文档：04-module-job-workspace.md（位于 `docs/`）。
+
 # OfferU 浏览器扩展
 
 > 状态：accepted target design；迁移未完成  

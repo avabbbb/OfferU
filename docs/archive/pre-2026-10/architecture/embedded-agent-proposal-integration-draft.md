@@ -1,3 +1,5 @@
+> **已归档（2026-10）**：本文不再是当前权威。当前文档：08-module-agent-runtime.md（位于 `docs/`）。
+
 # Proposal v2：从 Operation Approval 到 Decision Plan
 
 日期：2026-10-02。状态：替换授权层的方向已确定；执行失败、迁移细则与交互仍待讨论。未实施，不声明产品验收通过。
