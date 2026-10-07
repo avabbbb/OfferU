@@ -116,9 +116,6 @@ def assess_group(group: Mapping[str, Any], *, source_current: bool | None = True
     reasons = _review_packet_reasons(group)
     if source_current is False:
         reasons.append("source_changed_or_unavailable")
-    if reasons:
-        return {"reviewability": {"status": "needs_preparation", "reason_codes": sorted(set(reasons)), "counts_as_user_decision": False},
-                "interaction_state": "system_recovering"}
 
     operations = {str(node.get("operation") or "") for node in nodes}
     risk = str(group.get("risk") or "")
@@ -128,6 +125,14 @@ def assess_group(group: Mapping[str, Any], *, source_current: bool | None = True
                 "interaction_state": "system_blocked"}
     if risk == "external" or operations & _DESTRUCTIVE_OPERATIONS:
         outcome = "AUTHORIZE"
+    if outcome == "AUTHORIZE" and reasons:
+        # Owner-authorized destructive actions show their own preview payload
+        # and intentionally clear sources; only the affected scope still
+        # gates them. Diff material and source freshness do not apply.
+        reasons = [code for code in reasons if code == "missing_scope"]
+    if reasons:
+        return {"reviewability": {"status": "needs_preparation", "reason_codes": sorted(set(reasons)), "counts_as_user_decision": False},
+                "interaction_state": "system_recovering"}
     if outcome == "BLOCK":
         return {"reviewability": {"status": "needs_preparation", "reason_codes": ["policy_blocked"], "counts_as_user_decision": False},
                 "interaction_state": "system_blocked"}
