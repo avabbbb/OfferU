@@ -128,7 +128,7 @@ class JobResearchValidationTests(unittest.TestCase):
             _validated_research_result(payload)
 
     def test_hard_fact_without_official_source_is_downgraded_not_rejected(self) -> None:
-        # CONTEXT.md：证据不足是可解释退出状态。硬事实（公司业务/产品/岗位要求）
+        # docs/01-overall-design.md：证据不足是可解释退出状态。硬事实（公司业务/产品/岗位要求）
         # 无官方来源时降级为 single_signal，而不是让整个研究崩溃。
         payload = copy.deepcopy(_worker_payload())
         payload["sources"][0]["source_class"] = "public_community"

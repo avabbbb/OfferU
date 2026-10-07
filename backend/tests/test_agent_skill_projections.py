@@ -196,12 +196,12 @@ class AgentSkillProjectionTests(unittest.TestCase):
         self.assertEqual(projection_drift(PROJECT_ROOT), [])
 
     def test_product_authorities_do_not_restore_copy_prompt_onboarding(self) -> None:
-        for name in ("GOAL.md", "AGENTS.md", "docs/product/current-product.md", "docs/product/entry-onboarding-and-dogfood.md"):
+        for name in ("AGENTS.md", "docs/README.md", "docs/01-overall-design.md", "docs/08-module-agent-runtime.md"):
             with self.subTest(authority=name):
                 source = (PROJECT_ROOT / name).read_text(encoding="utf-8")
                 for old_step in ("→ copy one", "→ paste it into the local Agent", "→ 复制一条通用接入提示词"):
                     self.assertNotIn(old_step, source)
-        source = (PROJECT_ROOT / "docs/product/current-product.md").read_text(encoding="utf-8")
+        source = (PROJECT_ROOT / "docs/01-overall-design.md").read_text(encoding="utf-8")
         self.assertIn("built-in Agent remains capable", source)
         self.assertIn("exactly one", source.lower())
 
