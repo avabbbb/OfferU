@@ -23,8 +23,8 @@ vi.mock("@/lib/api", () => ({
   },
 }));
 
-vi.mock("@/components/workbench/AgentAskPanel", () => ({
-  AgentAskPanel: ({ runId }: { runId: string }) => <div data-testid="ask-panel">ask:{runId}</div>,
+vi.mock("@/components/workbench/RunReviewPanel", () => ({
+  RunReviewPanel: ({ runId }: { runId: string }) => <div data-testid="run-review-panel">review:{runId}</div>,
 }));
 
 import { OptimizeChatPanel } from "./OptimizeChatPanel";
@@ -111,25 +111,18 @@ describe("OptimizeChatPanel Runtime integration", () => {
 
     renderPanel();
 
-    expect(await screen.findByTestId("ask-panel")).toHaveTextContent(waiting.id);
+    expect(await screen.findByTestId("run-review-panel")).toHaveTextContent(waiting.id);
     expect(api.runs).toHaveBeenCalledWith({ task_id: "tailor_resume:job:7", limit: 1 });
   });
 
-  it("opens the existing Proposal v2 review for the same Run", async () => {
+  it("reuses the existing RunReviewPanel for Proposal v2 on the same Run", async () => {
     const waiting = runRecord("waiting_decision");
     api.runs.mockResolvedValue({ runs: [waiting] });
     api.run.mockResolvedValue({ run: waiting });
-    const listener = vi.fn();
-    window.addEventListener("offeru-open-plan-review", listener as EventListener);
 
-    const user = userEvent.setup();
     renderPanel();
-    await user.click(await screen.findByRole("button", { name: "审核改动组" }));
 
-    expect(listener).toHaveBeenCalledTimes(1);
-    const event = listener.mock.calls[0][0] as CustomEvent;
-    expect(event.detail.run_id).toBe(waiting.id);
-    expect(event.detail.plan_id).toBe("plan_0123456789abcdef0123456789abcdef");
-    window.removeEventListener("offeru-open-plan-review", listener as EventListener);
+    expect(await screen.findByTestId("run-review-panel")).toHaveTextContent(waiting.id);
+    expect(screen.getByText("审核 section-level 改动组")).toBeInTheDocument();
   });
 });
