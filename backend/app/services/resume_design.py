@@ -20,7 +20,7 @@ from app.services.resume_versions import create_version_snapshot
 
 class DesignPatch(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
-    template: Literal["reference", "reference-compact", "modern", "modern-two-column", "swiss-single", "swiss-two-column"] | None = None
+    template: Literal["editorial", "reference", "reference-compact", "modern", "modern-two-column", "swiss-single", "swiss-two-column"] | None = None
     pageSize: Literal["A4", "LETTER"] | None = None
     bodySize: float | None = Field(default=None, ge=8, le=20)
     headingSize: float | None = Field(default=None, ge=8, le=28)

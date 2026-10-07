@@ -6,6 +6,7 @@ import { ResumeSwissTwoColumn } from "./templates/ResumeSwissTwoColumn";
 import { ResumeModernSingle } from "./templates/ResumeModernSingle";
 import { ResumeModernTwoColumn } from "./templates/ResumeModernTwoColumn";
 import { ResumeReference } from "./templates/ResumeReference";
+import { ResumeEditorial } from "./templates/ResumeEditorial";
 import {
   normalizeTemplateSettings,
   settingsToCssVars,
@@ -213,6 +214,9 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(function Re
       settings.template === "reference-compact"
     ) {
       return <ResumeReference data={data} highlightKeywords={highlightKeywords} template={settings.template} />;
+    }
+    if (settings.template === "editorial") {
+      return <ResumeEditorial data={data} highlightKeywords={highlightKeywords} />;
     }
     if (settings.template === "swiss-two-column") {
       return <ResumeSwissTwoColumn data={data} highlightKeywords={highlightKeywords} />;

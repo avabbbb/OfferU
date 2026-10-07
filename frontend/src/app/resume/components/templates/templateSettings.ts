@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 
 export type ResumeTemplateType =
+  | "editorial"
   | "reference"
   | "reference-compact"
   | "swiss-single"
@@ -90,6 +91,11 @@ export const TEMPLATE_OPTIONS: Array<{
   description: string;
 }> = [
   {
+    id: "editorial",
+    name: "纸 · Editorial",
+    description: "暖纸底、墨蓝点缀、衬线层级，克制耐读，适合打印和 PDF。",
+  },
+  {
     id: "reference",
     name: "中文经典",
     description: "照片、校徽与横线分区，支持精确调整字号和间距。",
@@ -117,7 +123,7 @@ export const TEMPLATE_OPTIONS: Array<{
 ];
 
 export const DEFAULT_TEMPLATE_SETTINGS: ResumeTemplateSettings = {
-  template: "reference",
+  template: "editorial",
   pageSize: "A4",
   margins: { top: 8, right: 8, bottom: 8, left: 8 },
   spacing: { section: 3, item: 2, lineHeight: 3 },
@@ -202,6 +208,7 @@ function asSpacingLevel(value: unknown, fallback: SpacingLevel): SpacingLevel {
 
 function asTemplate(value: unknown): ResumeTemplateType {
   if (
+    value === "editorial" ||
     value === "reference" ||
     value === "reference-compact" ||
     value === "swiss-single" ||

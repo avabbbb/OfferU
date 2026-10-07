@@ -5375,7 +5375,7 @@ export interface components {
         /** DesignPatch */
         DesignPatch: {
             /** Template */
-            template?: ("reference" | "reference-compact" | "modern" | "modern-two-column" | "swiss-single" | "swiss-two-column") | null;
+            template?: ("editorial" | "reference" | "reference-compact" | "modern" | "modern-two-column" | "swiss-single" | "swiss-two-column") | null;
             /** Pagesize */
             pageSize?: ("A4" | "LETTER") | null;
             /** Bodysize */

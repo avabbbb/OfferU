@@ -640,3 +640,112 @@
     print-color-adjust: exact !important;
   }
 }
+
+/* ---------------------------------------------------------------
+ * 纸 · Editorial (template id "editorial")
+ * Editorial print rules after tw93/Kami (MIT): parchment canvas,
+ * single ink-blue accent, serif hierarchy at weights 400/500 only,
+ * warm greys, hairline rules, dense resume leading.
+ * ------------------------------------------------------------- */
+.resume-body.editorial {
+  --ed-parchment: #f5f4ed;
+  --ed-border: #e8e6dc;
+  --ed-ink: #141413;
+  --ed-dark: #3d3d3a;
+  --ed-olive: #504e49;
+  --ed-stone: #6b6a64;
+  --ed-brand: #1b365d;
+  --ed-serif: "Source Han Serif SC", "Noto Serif CJK SC", "Noto Serif SC", "Songti SC", "STSong", "SimSun", Charter, Georgia, serif;
+  background: var(--ed-parchment);
+  color: var(--ed-ink);
+  font-family: var(--ed-serif);
+  font-size: var(--font-size-base, 9.4pt);
+  line-height: 1.42;
+  letter-spacing: 0.2pt;
+  padding: 11mm 13mm;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.resume-body.editorial .ed-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8mm;
+  padding-bottom: 2.4mm;
+  margin-bottom: 4.2mm;
+  border-bottom: 0.6pt solid var(--ed-border);
+}
+.resume-body.editorial .ed-name {
+  font-size: 25pt;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0.5pt;
+  color: var(--ed-ink);
+  margin: 0;
+}
+.resume-body.editorial .ed-tagline {
+  margin-top: 2mm;
+  font-size: 10pt;
+  color: var(--ed-brand);
+  font-weight: 500;
+}
+.resume-body.editorial .ed-contact {
+  text-align: right;
+  font-size: 8.8pt;
+  line-height: 1.55;
+  color: var(--ed-stone);
+}
+.resume-body.editorial .ed-loc { color: var(--ed-olive); font-weight: 500; }
+.resume-body.editorial .ed-section { break-inside: auto; }
+.resume-body.editorial .ed-section-title {
+  font-size: 12pt;
+  font-weight: 500;
+  color: var(--ed-ink);
+  margin: 5.4mm 0 1.8mm;
+  padding-bottom: 1mm;
+  border-bottom: 0.5pt solid var(--ed-border);
+  letter-spacing: 0.6pt;
+}
+.resume-body.editorial .ed-section:first-of-type .ed-section-title { margin-top: 0; }
+.resume-body.editorial .ed-summary { color: var(--ed-dark); }
+.resume-body.editorial .ed-item { padding-top: 1.4mm; break-inside: avoid; }
+.resume-body.editorial .ed-item + .ed-item { margin-top: 1.6mm; }
+.resume-body.editorial .ed-item-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4mm;
+}
+.resume-body.editorial .ed-item-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 2.4mm; min-width: 0; }
+.resume-body.editorial .ed-org { font-size: 10.2pt; font-weight: 500; color: var(--ed-ink); }
+.resume-body.editorial .ed-role { font-size: 9.2pt; color: var(--ed-olive); }
+.resume-body.editorial .ed-date {
+  flex-shrink: 0;
+  font-size: 8.8pt;
+  color: var(--ed-stone);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.resume-body.editorial .ed-list { margin: 0.9mm 0 0; padding: 0; list-style: none; }
+.resume-body.editorial .ed-list li {
+  position: relative;
+  padding-left: 3.4mm;
+  color: var(--ed-dark);
+}
+.resume-body.editorial .ed-list li + li { margin-top: 0.5mm; }
+.resume-body.editorial .ed-list li::before {
+  content: "";
+  position: absolute;
+  left: 0.6mm;
+  top: 0.62em;
+  width: 1.1mm;
+  height: 1.1mm;
+  border-radius: 50%;
+  background: var(--ed-brand);
+}
+.resume-body.editorial .ed-rich { margin-top: 0.9mm; color: var(--ed-dark); }
+.resume-body.editorial .ed-rich ul { margin: 0; padding-left: 4mm; }
+.resume-body.editorial .ed-tags { margin-top: 0.8mm; color: var(--ed-dark); }
+.resume-body.editorial .ed-sep { margin: 0 1.6mm; color: var(--ed-border); }
+.resume-body.editorial strong, .resume-body.editorial b { font-weight: 500; color: var(--ed-ink); }
+.resume-body.editorial .resume-highlight, .resume-body.editorial mark { background: #eef2f7; color: inherit; }
