@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
@@ -120,17 +121,28 @@ def open_release_url(url: str, *, timeout: float = 2.0):
     return _LOCAL_LOOPBACK_OPENER.open(normalized, timeout=timeout)
 
 
-def assert_release_frontend_ready(*, timeout: float = 2.0) -> None:
-    """Reject an unreachable or unrelated page before any browser is created."""
+def assert_release_frontend_ready(*, timeout: float = 2.0, deadline: float = 30.0) -> None:
+    """Reject an unreachable or unrelated page before any browser is created.
 
-    try:
-        with open_release_url(release_frontend_url(), timeout=timeout) as response:
-            if not 200 <= response.status < 300:
-                raise RuntimeError(f"frontend returned HTTP {response.status}")
-            if b"OfferU" not in response.read(8192):
-                raise RuntimeError("frontend did not return the OfferU page identity")
-    except (HTTPError, OSError, URLError) as exc:
-        raise RuntimeError("OfferU frontend is not ready at 127.0.0.1:7410") from exc
+    The dev server can take a few seconds to accept its first connection, so
+    connection-level failures retry until ``deadline``. Identity failures
+    (a responding page that is not OfferU) still fail immediately.
+    """
+
+    waited = 0.0
+    while True:
+        try:
+            with open_release_url(release_frontend_url(), timeout=timeout) as response:
+                if not 200 <= response.status < 300:
+                    raise RuntimeError(f"frontend returned HTTP {response.status}")
+                if b"OfferU" not in response.read(8192):
+                    raise RuntimeError("frontend did not return the OfferU page identity")
+            return
+        except (HTTPError, OSError, URLError) as exc:
+            if waited >= deadline:
+                raise RuntimeError("OfferU frontend is not ready at 127.0.0.1:7410") from exc
+            time.sleep(1.0)
+            waited += 1.0
 
 
 def assert_release_backend_ready(

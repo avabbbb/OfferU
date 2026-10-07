@@ -1,7 +1,7 @@
 """Agent Bridge stdio server (Slice 1).
 
 Persistent bidirectional JSONL loop over stdin/stdout. Wire rules from
-docs/architecture/agent-bridge-protocol.md:
+docs/archive/pre-2026-10/architecture/agent-bridge-protocol.md:
 
 - one JSON object per line; stdout carries responses and server events only;
 - diagnostics go to stderr and never echo request payloads;

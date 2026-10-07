@@ -25,7 +25,7 @@
 - 当前 `0.4.0` Windows NSIS/MSI 可以安装并运行 Python sidecar，但 Authenticode 状态仍为 `NotSigned`；在取得合法代码签名证书前不得作为公开发布 installer 分发。
 - 当前没有 previous-release installer，因此升级/迁移 Golden Path 尚未验证；Tauri updater 也未启用，不能宣传自动更新。
 - Release-mode Doctor、packaged PDF 和 staged Provider 的 Pi smoke 已通过；当前开发配置选择的 `deepseek-v4-flash-free` 由上游返回 `model unavailable`，界面应保持失败可见，不应回退成伪造成功。
-- [Live Role Intelligence report](docs/evals/reports/2026-09-01-codex-offeru-public-release-live-role.md)：Pi CLI `0.74.0` 的真实网页研究任务未返回结构化结果；Pi/OMP 已 fail closed，不作为 live web research Provider。Codex live 仍需要外部认证。
+- [Live Role Intelligence report](docs/archive/pre-2026-10/evals/reports/2026-09-01-codex-offeru-public-release-live-role.md)：Pi CLI `0.74.0` 的真实网页研究任务未返回结构化结果；Pi/OMP 已 fail closed，不作为 live web research Provider。Codex live 仍需要外部认证。
 - 当前 10/10、50/50 浏览器证据使用隔离 Replay/Fixture workspace；这不替代 clean OS 上由独立测试者完成安装、Profile、Job、Resume、Interview、Learning 的人工验收。
 - 正常工作区仍有 3 条来源不明的历史 `InterviewNotification.email_body`（共 506 字符）。未取得明确产品/隐私决定前不自动删除；这项残余阻止 Security/Privacy 完整发布结论。
 

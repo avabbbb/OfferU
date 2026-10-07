@@ -17,8 +17,8 @@
   <a href="./README.md">English</a> ·
   <strong>简体中文</strong> ·
   <a href="./QUICKSTART.md">快速开始</a> ·
-  <a href="./INTERNAL_BETA.md">内测验收</a> ·
-  <a href="./ARCHITECTURE.md">架构</a> ·
+  <a href="./docs/09-quality-and-release.md">质量与发布</a> ·
+  <a href="./docs/01-overall-design.md">总体设计</a> ·
   <a href="./docs/README.md">文档</a>
 </p>
 
@@ -31,7 +31,7 @@
 </p>
 
 <p align="center">
-  <em>Internal Beta —— 源码可用，签名安装包尚未发布。详见 <a href="./STATUS.md">Status</a>。</em>
+  <em>Internal Beta —— 源码可用，签名安装包尚未发布。详见 <a href="./KNOWN_ISSUES.md">已知问题</a>。</em>
 </p>
 
 <table>
@@ -285,7 +285,7 @@ flowchart LR
 这也是为什么底层 Agent Harness 可以持续演进，而职业事实始终不会被搬进模型或外部 Runtime。
 GUI、CLI、TUI、Skill 和 Agent 集成共用同一个 Operation Registry，没有任何一个入口能自己写业务状态。
 
-完整边界见 [ARCHITECTURE.md](./ARCHITECTURE.md)，领域词汇与不变量见 [CONTEXT.md](./CONTEXT.md)。
+完整边界与领域词汇见 [总体设计](./docs/01-overall-design.md)。
 
 ---
 
@@ -326,7 +326,7 @@ OfferU 还没有对外发布签名安装包。源码开发与内测请看：
 
 - [DEVELOPMENT.md](./DEVELOPMENT.md) —— 环境与开发启动
 - [QUICKSTART.md](./QUICKSTART.md) —— 最快的本地路径
-- [INTERNAL_BETA.md](./INTERNAL_BETA.md) —— 内测验收与 Golden Path
+- [质量与发布](./docs/09-quality-and-release.md) —— 验收 Goal 与发布门槛
 
 面向普通用户的最终路径是：
 
@@ -352,10 +352,9 @@ OfferU 还没有对外发布签名安装包。源码开发与内测请看：
 OfferU 用证据驱动的发布 Gate 判断能否发布，构建成功不等于可以发布。当前状态、验证证据、
 已知问题和质量评分见：
 
-- [STATUS.md](./STATUS.md)
-- [RELEASE_CHECKLIST.md](./RELEASE_CHECKLIST.md)
-- [QUALITY_SCORE.md](./QUALITY_SCORE.md)
 - [KNOWN_ISSUES.md](./KNOWN_ISSUES.md)
+- [RELEASE_CHECKLIST.md](./RELEASE_CHECKLIST.md)
+- [质量与发布](./docs/09-quality-and-release.md)
 
 开发者建议检查命令：
 
@@ -388,9 +387,9 @@ npm run build
 
 OfferU 正在快速走向公开的本地优先版本。贡献前请先读：
 
-- [CONTEXT.md](./CONTEXT.md) —— 领域词汇与不变量
-- [ARCHITECTURE.md](./ARCHITECTURE.md) —— 系统边界
-- [docs/adr/README.md](./docs/adr/README.md) —— 已接受的架构决策
+- [总体设计](./docs/01-overall-design.md) —— 产品、权威模型与术语
+- [交互设计](./docs/02-interaction-design.md) —— 导航、打断与防死锁规则
+- [Agent 运行时与安全](./docs/08-module-agent-runtime.md) —— Agent 接入、Registry 与审批
 - [DEVELOPMENT.md](./DEVELOPMENT.md) —— 开发设置
 
 请不要绕过 Operation Registry 直接做业务变更，也不要引入第二个职业事实来源。

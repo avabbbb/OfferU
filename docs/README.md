@@ -1,118 +1,67 @@
+# OfferU 文档
 
-# OfferU Documentation
+> 状态：**当前文档入口** · 重构于 2026-10（旧文档见 [archive/](./archive/README.md)）
 
-Status: **CURRENT NAVIGATION AUTHORITY**  
-Updated: 2026-10-05
+## 一句话
 
-OfferU has accumulated design documents, audits, eval reports and implementation snapshots across several architecture generations. This page defines which documents are authoritative **now**.
+**给 OfferU 一个岗位，它会告诉你：这个岗位真正要什么，你能拿出什么证据，下一步该准备什么。**
 
-## Current authority order
+OfferU 是一个本地优先（local-first）的求职工作台。你的职业事实、岗位、简历版本、投递进展和面试复盘都保存在你自己的电脑上。AI 负责研究、判断和起草；需要你做决定的事情，由你来决定。
 
-When documents disagree, use this order:
+```text
+保存一个岗位
+  → 岗位要求 × 你能证明的经历
+  → 岗位工作区：研究 · 证据 · 定制简历 · 投递 · 面试
+  → 「今天」告诉你下一步
+  → 结果回流到职业档案，下一次更准
+```
 
-~~~
-GOAL.md
-  release goal and durable product constraints
-        ↓
-docs/product/current-product.md
-  current product North Star and interaction model
-        ↓
-CONTEXT.md
-  current domain language and invariants
-        ↓
-docs/adr/README.md
-  accepted decisions and explicit supersession history
-        ↓
-ARCHITECTURE.md + current architecture topic docs
-        ↓
-live code / Operation Registry / Host Registry / generated Skill projections
-        ↓
-current Eval evidence
-~~~
+## 文档地图（共 10 篇）
 
-Historical audits and dated reports are evidence of what was true when they were produced. They do **not** override current product or architecture authority.
-
-## Start here
-
-| Area | Current document | Purpose |
+| # | 文档 | 回答的问题 |
 | --- | --- | --- |
-| Product | [Current Product North Star](./product/current-product.md) | Desktop-first real Career OS, Web Showcase built-in Agent, runtime-bound Skill entry, Guided Today |
-| First use / dogfood | [Entry, Onboarding & Dogfood Contract](./product/entry-onboarding-and-dogfood.md) | Installer/Skill boundary, beginner hosts, current Agent capabilities, owner-dogfood path and marketing evidence |
-| Proactivity | [Proactive Career Director](./product/proactive-career-director.md) | Triggered career judgment, campus/experienced Strategy Packs, autonomy levels, proactive Today/interview/re-engagement and eval contract |
-| Memory / context | [Career Memory & Context Contract](./product/career-memory-contract.md) | Career Truth vs curated memory vs episodic learning vs prospective state vs external Agent memory |
-| Goal | [GOAL.md](../GOAL.md) | Public-release goal and durable release gates |
-| Domain | [CONTEXT.md](../CONTEXT.md) | Career Truth, candidates, evidence, applications, memory and Agent vocabulary |
-| Architecture | [ARCHITECTURE.md](../ARCHITECTURE.md) | Short current system boundary |
-| Agent | [Agent system](./architecture/agent-system.md) | Agent hosts, Skills, tool surface, Registry and runtime responsibilities |
-| Integrations | [Agent host integrations](./architecture/harness-integrations.md) | Local-host discovery, auth ownership and runtime capability contract |
-| UX | [Workbench interaction](./architecture/workbench-interaction.md) | Guided Today, progressive onboarding and Power mode |
-| Security | [Operation security](./architecture/operation-security.md) | permissions, proposals, confirmation and failure rules |
-| Browser | [Browser extension](./architecture/browser-extension.md) | user-triggered job capture and safe Smart Fill |
-| Tool surface | [Tool Surface V2](./architecture/2026-09-22-tool-surface-v2.md) | Registry vs Agent Tool Surface vs Active Skill Surface |
-| Eval | [Live Eval](./evals/LIVE_EVAL.md) | current Agent eval contract and execution model |
-| Status | [STATUS.md](../STATUS.md) | current implementation state and blockers |
-| Handoff | [HANDOFF.md](../HANDOFF.md) | latest continuation context for Coding Agents |
-| Merge review | [Main readiness review](./evals/reports/2026-10-05-main-readiness-review.md) | Bilingual summaries of ready, conditional and held changes; evidence is bound to the reviewed checkout |
-| History | [Development History / 发展历史](./history/development-history.md) | Distilled evolution, superseded directions and links to original checkpoints; not current authority |
+| 00 | 本页 | OfferU 是什么，文档怎么读 |
+| 01 | [总体设计](./01-overall-design.md) | 给谁用、核心闭环、信息架构、系统边界、权威模型、术语 |
+| 02 | [交互设计](./02-interaction-design.md) | 导航、打断规则、审批呈现、防死锁、不硬编码、文案规范、已知交互缺陷 |
+| 03 | [模块：职业档案与记忆](./03-module-profile.md) | Career Truth、证据、候选审核、记忆分层、渐进建档 |
+| 04 | [模块：岗位工作区](./04-module-job-workspace.md) | 岗位采集、排序、Role Intelligence、Evidence Map、投递协助 |
+| 05 | [模块：简历](./05-module-resume.md) | 文档式编辑、按岗位定制、AI 改动呈现、版本与导出 |
+| 06 | [模块：投递进展](./06-module-pipeline.md) | 投递阶段、邮件/日历/平台信号、进展候选、跟进 |
+| 07 | [模块：面试](./07-module-interview.md) | 分轮准备、练习、逐题复盘、学习回流 |
+| 08 | [模块：Agent 运行时与安全](./08-module-agent-runtime.md) | Agent 接入、Skill、Operation Registry、Run 生命周期、权限与审批 |
+| 09 | [质量与发布](./09-quality-and-release.md) | Eval 体系、可靠性与安全不变量、发布门槛、证据规则 |
 
-## Product design rationale
+推荐阅读顺序：**新用户或贡献者** 00 → 01 → 02；**做某个模块** 01 → 02 → 对应模块；**做 Agent / 安全** 01 → 08 → 09。
 
-These explain why current product rules exist; they are references, not higher authority.
+## 权威顺序（只有三层）
 
-- [Skill-first Agent Entry, Job Workspace & Product Story](./product/skill-first-job-workspace-story.md) — rationale and external reference patterns behind the now-adopted App-first / Skill-first dual entry, canonical Job Workspace and outcome-first product story.
+```text
+1. 本目录 00–09            ← 产品与架构的唯一设计权威
+2. 实时代码 / Operation Registry / 生成的 Skill 投影   ← 「现在实际做到了什么」
+3. docs/evidence/ 下的验收报告                         ← 「某个版本被证明做到了什么」
+```
 
-## Document status classes
+- 设计文档与代码不一致时：先判断是代码缺陷还是文档过时，然后**在同一个 PR 里**修正其中一方。
+- `docs/archive/**` 只用于考古，不覆盖以上三层。
 
-- **CURRENT AUTHORITY** — actively defines current product/architecture.
-- **CURRENT EVIDENCE** — current reproducible validation or status; does not define product direction.
-- **HISTORICAL SNAPSHOT** — accurate for a dated commit/experiment; not a current spec.
-- **SUPERSEDED** — retained only because the decision history is useful.
-- **PROPOSAL** — not accepted until promoted by the appropriate authority.
+## 根目录保留的文件
 
-A date in a filename is a strong signal that the file may be a snapshot rather than timeless authority.
+| 文件 | 为什么留在根目录 |
+| --- | --- |
+| `README.md` / `README_ZH.md` | 项目门面 |
+| `QUICKSTART.md` | 安装与首次运行 |
+| `DEVELOPMENT.md` | 开发环境与命令 |
+| `AGENTS.md` | Coding Agent 的施工约束 |
+| `RELEASE_CHECKLIST.md` / `KNOWN_ISSUES.md` / `RELEASE_NOTES.md` | 发布脚本（`backend/scripts/release/*`）和 CI 直接读取 |
+| `SECURITY.md` | GitHub 安全策略约定位置 |
+| `LICENSE` / `THIRD_PARTY_NOTICES.md` | 法律文件 |
 
-## Historical material
+## 文档维护规则
 
-Start with [Development History / 发展历史](./history/development-history.md). Open the [archive index](./archive/README.md) only when the original decision or dated evidence is needed.
-
-Treat these as historical unless a current authority page explicitly adopts their conclusion:
-
-- docs/archive/**;
-- docs/evals/reports/**;
-- dated operation inventories and audit reports;
-- old provider-specific or DSH-specific implementation plans;
-- old release scorecards tied to an earlier commit;
-- deprecated Main-Agent/Pi architecture notes.
-
-Do not rewrite old eval numbers to make them look current. Preserve the result and mark its scope.
-
-## Rules for future docs
-
-1. Prefer updating an existing current authority page over adding another dated “vNext design”.
-2. New long-lived architecture decisions go into docs/adr/README.md with explicit supersession.
-3. Product interaction changes update docs/product/current-product.md.
-4. Dynamic capability counts come from live Registry/Host/Skill code, not hand-maintained prose.
-5. Eval reports state the commit/runtime/model and remain evidence, not architecture.
-6. A new Coding Agent should be able to identify current authority without reading historical reports.
-7. If a document is kept only for archaeology, move it under docs/archive/ or add a clear historical header.
-8. Distill superseded checkpoints into the development history; preserve their original results and old-path links. A dated filename alone does not retire a still-current design such as Tool Surface V2.
-
-## Current product summary
-
-~~~
-OfferU Desktop = primary Career OS experience
-Job Workspace = durable product object for one opportunity
-Desktop-first = default real-data front door
-Web Showcase = built-in demo Agent + fictional browser data only
-Skill-first = Desktop-bound power-user Agent front door
-External local Agent = Desktop optional/preferred reasoning host
-Built-in OfferU Agent = Web default + Desktop fallback
-Agent Skills = composable methodology / Agent entry layer
-Operation Registry = execution / permission authority
-Career Runtime = canonical truth
-Today = guided next-best-action layer
-Browser = user-triggered job capture / safe fill
-Email = evidence → candidate → reviewed stage event
-~~~
-
-See [Current Product North Star](./product/current-product.md) for the complete product contract.
+1. **总数不超过 10 篇。** 不新增 dated 设计稿或「vNext 方案」，直接修改对应文档。
+2. **每篇不超过约 300 行。** 超过时先删掉重复和过时内容，不要拆出新文件。
+3. **不写会过期的数字**，比如测试通过数、Operation 数量、commit 号、模型名。这些以实时代码和 `docs/evidence/` 为准。
+4. **提案要标注。** 尚未被产品负责人确认的设计，用 `> PROPOSAL` 块标出；确认后去掉标记。
+5. **验收报告不是设计。** 新报告放在 `docs/evidence/reports/YYYY-MM-DD-<slug>.md`，必须写明 commit、运行时和模型；格式见 [09](./09-quality-and-release.md)。
+6. **归档方式。** 过时内容用 `git mv` 移到 `docs/archive/`，保留原有路径结构，在文件开头加一行归档说明，并更新 [archive/README.md](./archive/README.md) 的映射表。
+7. **改了用户可见的交互，就同步改 02。** 改了某个模块的规则，就同步改对应的模块文档。

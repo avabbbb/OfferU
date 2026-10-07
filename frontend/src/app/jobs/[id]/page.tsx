@@ -39,6 +39,7 @@ import { ArtifactViewer } from "@/components/career/ArtifactViewer";
 import { readDeliveries } from "@/components/career/deliveries";
 import { RoleIntelligencePanel } from "@/components/jobs/RoleIntelligencePanel";
 import { JobNextStepCard, scrollToWorkspaceSection } from "@/components/jobs/JobNextStepCard";
+import { JobWorkspaceOverview } from "@/components/jobs/JobWorkspaceOverview";
 import {
   jobResearchApi,
   dataModeLabel,
@@ -642,21 +643,27 @@ export default function JobDetailPage() {
       transition={{ type: "spring", stiffness: 380, damping: 28 }}
       className="mx-auto max-w-5xl space-y-5"
     >
-      <section className="bauhaus-panel bg-white p-5 md:p-6" data-testid="job-header">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex min-w-0 items-start gap-3">
-            <Button
-              isIconOnly
-              aria-label="返回机会列表"
-              variant="light"
-              onPress={() => router.push("/jobs")}
-              className="mt-0.5 min-h-9 min-w-9 border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)]"
-            >
-              <ArrowLeft size={16} />
-            </Button>
-            <div className="min-w-0">
-              <h1 className="text-2xl font-semibold leading-tight tracking-tight text-[var(--foreground)] sm:text-[28px]">{job.title}</h1>
-              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[var(--foreground-muted)]">
+      <section id="job-snapshot" className="bauhaus-panel scroll-mt-6 overflow-hidden bg-white">
+        <div className="grid gap-6 p-6 md:p-8 xl:grid-cols-[1.05fr_0.95fr]">
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                isIconOnly
+                variant="light"
+                onPress={() => router.push("/jobs")}
+                className="min-h-11 min-w-11 border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] "
+              >
+                <ArrowLeft size={18} />
+              </Button>
+              <span className="bauhaus-chip bg-[var(--surface-muted)] text-[var(--foreground)]">岗位档案</span>
+            </div>
+
+            <div>
+              <p className="bauhaus-label text-[var(--foreground-muted)]">详情表</p>
+              <h1 className="mt-3 text-4xl font-black leading-[0.92] tracking-[-0.06em] text-[var(--foreground)] sm:text-5xl">
+                {job.title}
+              </h1>
+              <div className="mt-4 flex flex-wrap items-center gap-3 text-sm font-medium text-[var(--foreground-muted)]">
                 <span className="flex items-center gap-1"><Building2 size={14} /> {job.company}</span>
                 {job.location && <span className="flex items-center gap-1"><MapPin size={14} /> {job.location}</span>}
                 {job.salary_text && <span>{job.salary_text}</span>}
@@ -700,6 +707,25 @@ export default function JobDetailPage() {
           ))}
         </nav>
       </section>
+
+      <JobWorkspaceOverview
+        jobId={job.id}
+        snapshotValue="岗位已保存"
+        snapshotDescription={[job.company, job.location].filter(Boolean).join(" · ")}
+        roleTaskStatus={preparationTask?.status}
+        materialStatus={resumeProposal?.status}
+        materialChangeCount={resumeProposal?.change_count ?? 0}
+        materialFactGateStatus={resumeProposal?.fact_gate_status}
+        interviewTaskCount={interviewLifecycleTasks.length}
+        interviewActive={interviewLifecycleTasks.some((task) => ["queued", "running"].includes(task.status))}
+        interviewNeedsReview={interviewLifecycleTasks.some((task) =>
+          task.result?.briefing?.interview_lifecycle?.mode === "learning_review"
+        )}
+        timelineStage={currentApplicationStage ? applicationStageLabel(currentApplicationStage) : undefined}
+        timelineCompleted={["offer", "rejected"].includes(currentApplicationStage)}
+        timelineEventCount={progressTimeline?.timeline?.length ?? 0}
+        timelineNextAction={currentNextAction || undefined}
+      />
 
       <JobNextStepCard
         stage={preApplication?.stage || ""}
@@ -752,6 +778,7 @@ export default function JobDetailPage() {
       <DeliveryList deliveries={jobDeliveries} heading="OfferU 已准备的内容" onOpenArtifact={setActiveArtifactId} />
       {jobArtifactsError && <p role="alert" className="text-sm text-[var(--primary-red)]">{safeClientErrorMessage(jobArtifactsError, "岗位材料暂时无法读取")}</p>}
 
+      <div id="evidence-map" className="scroll-mt-6" aria-hidden="true" />
       <RoleIntelligencePanel jobId={job.id} />
 
       <Card id="job-research-handback" className="bauhaus-panel scroll-mt-6 rounded-none bg-white shadow-none" data-testid="job-research-handback">
@@ -1202,6 +1229,7 @@ export default function JobDetailPage() {
         </CardBody>
       </Card>
 
+      <div id="materials" className="scroll-mt-6" aria-hidden="true" />
       <Card id="resume-proposal" className="bauhaus-panel scroll-mt-6 rounded-none bg-white shadow-none" data-testid="resume-proposal">
         <CardBody className="space-y-5 p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1389,6 +1417,7 @@ export default function JobDetailPage() {
         </CardBody>
       </Card>
 
+      <div id="interview" className="scroll-mt-6" aria-hidden="true" />
       {interviewLifecycleTasks.map((task) => (
         <InterviewLifecycleCard
           key={task.task_id}
@@ -1397,6 +1426,7 @@ export default function JobDetailPage() {
         />
       ))}
 
+      <div id="timeline" className="scroll-mt-6" aria-hidden="true" />
       <Card id="job-application-context" className="bauhaus-panel scroll-mt-6 rounded-none bg-white shadow-none" data-testid="job-application-context">
         <CardBody className="space-y-5 p-5">
           <div>
