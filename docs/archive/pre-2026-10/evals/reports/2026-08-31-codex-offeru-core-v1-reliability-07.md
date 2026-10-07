@@ -1,3 +1,5 @@
+> **已归档（2026-10）**：本文不再是当前权威。当前文档：历史证据，见 09-quality-and-release.md（位于 `docs/`）。
+
 # OfferU Core v1 Reliability 07 — email test isolation
 
 日期：2026-08-31  
