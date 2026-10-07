@@ -1,3 +1,5 @@
+> **已归档（2026-10）**：本文不再是当前权威。当前文档：04-module-job-workspace.md（位于 `docs/`）。
+
 # SiteRulePack v1 规范
 
 > 状态：normative draft，供 `EXT-FRAME-001` 实现  

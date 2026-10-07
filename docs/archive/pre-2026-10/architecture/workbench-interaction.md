@@ -1,3 +1,5 @@
+> **已归档（2026-10）**：本文不再是当前权威。当前文档：02-interaction-design.md（位于 `docs/`）。
+
 # Workbench Interaction
 
 Status: **CURRENT PRODUCT INTERACTION**  

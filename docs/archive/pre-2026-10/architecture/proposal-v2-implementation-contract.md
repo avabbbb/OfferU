@@ -1,3 +1,5 @@
+> **已归档（2026-10）**：本文不再是当前权威。当前文档：08-module-agent-runtime.md（位于 `docs/`）。
+
 # Proposal v2 implementation contract
 
 Implementation coordination only, 2026-10-02. Follow GOAL/current-product and [handoff](./proposal-v2-migration-handoff.md). This freezes shared interfaces, not a second design proposal.
