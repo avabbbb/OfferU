@@ -1,3 +1,5 @@
+> **已归档（2026-10）**：本文不再是当前权威。当前文档：历史证据，见 09-quality-and-release.md（位于 `docs/`）。
+
 # Unified Agent access: source audit and implementation plan
 
 Baseline: `e1dbbaf`; integration branch `feat/agent-contract-desktop-binding`. User instructions on 2026-09-30 supersede the copy-a-connection-prompt default and preserve a useful built-in Agent. This report records current evidence, not a claim of universal compatibility.

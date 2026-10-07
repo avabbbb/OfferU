@@ -1,3 +1,5 @@
+> **已归档（2026-10）**：本文不再是当前权威。当前文档：历史证据，见 09-quality-and-release.md（位于 `docs/`）。
+
 # 用户完整求职旅程：当前能力核对
 
 日期：2026-10-02。状态：**SOURCE AUDIT COMPLETE / LIVE OWNER JOURNEY NOT_RUN**。

@@ -1,3 +1,5 @@
+> **已归档（2026-10）**：本文不再是当前权威。当前文档：历史证据，见 09-quality-and-release.md（位于 `docs/`）。
+
 # PR #51 设计对照评估与下一轮重构方案
 
 日期：2026-10-02。状态：**SOURCE ASSESSMENT / REFACTOR PLAN；独立测试结果另行记录**。

@@ -1,3 +1,5 @@
+> **已归档（2026-10）**：本文不再是当前权威。当前文档：历史证据，见 09-quality-and-release.md（位于 `docs/`）。
+
 # OfferU 全面代码评审与 Resident Agent 接入评估
 
 日期：2026-09-30。评审基线：`e1dbbaf`，本次 fetch 后 `HEAD...origin/main` 为 `0 0`。这是风险导向的跨模块评审，不是逐行穷尽审计，也不是 Public Release E2E 验收。此次没有修复业务代码。
