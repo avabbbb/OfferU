@@ -43,7 +43,7 @@ describe("RoleIntelligencePanel benchmark readback", () => {
     mockForJob.mockResolvedValue({ found: false, target_job_id: 42 });
     const report = vi.fn();
 
-    render(<RoleIntelligencePanel jobId={42} onBenchmarkStateChange={report} />);
+    render(<RoleIntelligencePanel jobId={42} />);
 
     expect(await screen.findByText("岗位基准尚未构建")).toBeInTheDocument();
     await waitFor(() => expect(report).toHaveBeenLastCalledWith({ benchmark: null, loading: false, error: "" }));
@@ -54,7 +54,7 @@ describe("RoleIntelligencePanel benchmark readback", () => {
     mockForJob.mockResolvedValue(result);
     const report = vi.fn();
 
-    render(<RoleIntelligencePanel jobId={42} onBenchmarkStateChange={report} />);
+    render(<RoleIntelligencePanel jobId={42} />);
 
     expect(await screen.findByText("参考岗位")).toBeInTheDocument();
     await waitFor(() => expect(report).toHaveBeenLastCalledWith({ benchmark: result, loading: false, error: "" }));
@@ -69,7 +69,7 @@ describe("RoleIntelligencePanel benchmark readback", () => {
     mockForJob.mockResolvedValue(result);
     const report = vi.fn();
 
-    render(<RoleIntelligencePanel jobId={42} onBenchmarkStateChange={report} />);
+    render(<RoleIntelligencePanel jobId={42} />);
 
     expect(await screen.findByText(/Fixture benchmark：仅用于本地产品验收/)).toBeInTheDocument();
     await waitFor(() => expect(report).toHaveBeenLastCalledWith({ benchmark: result, loading: false, error: "" }));
@@ -96,7 +96,7 @@ describe("RoleIntelligencePanel benchmark readback", () => {
     mockForJob.mockResolvedValue(result);
     const report = vi.fn();
 
-    render(<RoleIntelligencePanel jobId={42} onBenchmarkStateChange={report} />);
+    render(<RoleIntelligencePanel jobId={42} />);
 
     expect(await screen.findByRole("alert")).toHaveTextContent("岗位基准验证未通过：产物关联了其他岗位");
     await waitFor(() => expect(report).toHaveBeenLastCalledWith({ benchmark: result, loading: false, error: "" }));
