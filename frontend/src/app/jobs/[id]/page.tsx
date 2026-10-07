@@ -711,6 +711,7 @@ export default function JobDetailPage() {
         interviewFirst={interviewPreparationPriority}
         jobId={job.id}
         preparing={preApplicationAction === "prepare"}
+        researchRefreshAvailable={Boolean(preApplication?.research_refresh_available)}
         onRetryTask={() => {
           if (!preparationTask) return;
           void controlCareerTask(preparationTask.task_id, "retry")
