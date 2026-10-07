@@ -647,9 +647,9 @@ def test_frontend_api_clients_reject_redirects() -> None:
     assert hooks_source.count('redirect: "error"') >= 2
     assert 'redirect: "error"' in providers_source
     assert studio_source.count('redirect: "error"') >= 2
-    assert "streamOptimizeAgentChat(" in optimize_source
-    assert "export async function streamOptimizeAgentChat" in hooks_source
-    assert "await showcaseFetch(`/api/optimize/agent/chat/stream`" in hooks_source
+    assert "agentRuntimeApi.start(" in optimize_source
+    assert 'skill_id: "tailor_resume"' in optimize_source
+    assert "/api/optimize/agent/" not in optimize_source
     showcase_fetch = hooks_source[
         hooks_source.index("async function showcaseFetch") :
         hooks_source.index("async function showcaseFetch") + 800

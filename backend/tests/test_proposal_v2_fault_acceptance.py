@@ -1482,3 +1482,238 @@ def test_actual_resume_effect_backup_restore_restart_passes_three_consecutive_cy
                 assert effect_rows[0].effect_identity == expected["effect_identity"]
 
     asyncio.run(run())
+
+def test_tailor_resume_fixture_runs_ask_plan_receipts_and_workspace_on_one_run(
+    proposal_v2_db, monkeypatch
+):
+    """Deterministic CI proof for one canonical resume-tailoring Run.
+
+    This is a fixture reasoner boundary, not live-model or human acceptance.
+    It verifies Ask -> same Run -> semantic Proposal v2 groups -> real Registry
+    receipts -> same-Run continuation -> accepted job Resume Version.
+    """
+
+    async def run():
+        from app.models.models import ResumeOptimizationProposal, ResumeVersion
+        from app.ops import set_operation_run_context
+        from app.services import (
+            agent_run_state,
+            proposal_plan_continuation,
+            proposal_plan_store,
+            resume_decision_plans,
+            resume_workspace,
+        )
+        from proposal_v2_fixtures import seed_reviewable_resume_proposal
+
+        _permit_test_ui_capability(monkeypatch)
+        monkeypatch.setattr(
+            resume_decision_plans, "async_session", proposal_v2_db.sessions
+        )
+        seed = await seed_reviewable_resume_proposal(
+            proposal_v2_db, "tailor-runtime-loop"
+        )
+
+        async with proposal_v2_db.sessions() as db:
+            proposal = await db.get(ResumeOptimizationProposal, seed["proposal_id"])
+            source_id = seed["source_section_id"]
+            before_rows, after_rows, changes = [], [], []
+            for index, (section_type, title) in enumerate(
+                (("experience", "工作经历"), ("project", "项目经历"), ("skills", "技能"))
+            ):
+                before = {
+                    "section_type": section_type,
+                    "title": title,
+                    "sort_order": index,
+                    "visible": True,
+                    "content_json": [{"description": f"原始 {title} 证据"}],
+                    "source_section_ids": [source_id],
+                }
+                after = {
+                    **before,
+                    "content_json": [{"description": f"岗位化 {title} 证据"}],
+                }
+                change_id = f"tailor-runtime-{index}"
+                before_rows.append(before)
+                after_rows.append(after)
+                changes.append(
+                    {
+                        "change_id": change_id,
+                        "change_type": "modified",
+                        "section_key": f"{section_type}:{title}",
+                        "section_type": section_type,
+                        "title": title,
+                        "source_section_ids": [source_id],
+                        "before": before,
+                        "after": after,
+                    }
+                )
+            proposal.original_rows_json = before_rows
+            proposal.proposed_rows_json = after_rows
+            proposal.diff_json = changes
+            await db.commit()
+
+        monkeypatch.setattr(
+            resume_workspace,
+            "get_pre_application_state",
+            AsyncMock(return_value={"stage": "resume_proposal_ready"}),
+        )
+        workspace = await resume_workspace.ensure_resume_workspace(
+            job_id=seed["job_id"], proposal_id=seed["proposal_id"]
+        )
+        resume_id = workspace["resume"]["id"]
+
+        run_id = f"run_{uuid4().hex[:16]}"
+        await agent_run_state.create_agent_run(
+            conversation_id=f"tailor-runtime-{run_id}",
+            goal=f"Tailor resume for Job #{seed['job_id']}",
+            mode="resume_workflow",
+            skill_id="tailor_resume",
+            actions=[],
+            run_id=run_id,
+        )
+
+        ask = await agent_run_state.create_agent_input_request(
+            run_id,
+            question="这份简历更应该突出产品判断还是技术实现？",
+            reason="定位会改变摘要与经历排序。",
+            options=[
+                {
+                    "option_id": "recommended-product",
+                    "label": "产品判断（推荐）",
+                    "description": "岗位要求更偏产品 ownership。",
+                },
+                {
+                    "option_id": "technical",
+                    "label": "技术实现",
+                    "description": "更强调工程深度。",
+                },
+            ],
+            allow_free_text=True,
+        )
+        waiting = await agent_run_state.load_agent_run(run_id)
+        assert waiting["status"] == "waiting_input"
+
+        answered = await agent_run_state.answer_agent_input_request(
+            run_id,
+            ask["request_id"],
+            answer={
+                "answer_id": "tailor-runtime-answer",
+                "selected_option_ids": ["recommended-product"],
+                "free_text": "",
+            },
+        )
+        assert answered["ok"] is True
+        assert await agent_run_state.consume_agent_input_request(ask["request_id"])
+        same_run = await agent_run_state.load_agent_run(run_id)
+        same_run["status"] = "executing"
+        await agent_run_state.save_agent_run(
+            same_run,
+            event_type="continuation.requested",
+            event_payload={"source": "fixture_ask_answer"},
+        )
+
+        groups = [
+            {
+                "title": "定位与工作经历",
+                "summary": "采用与岗位最相关的工作经历表达",
+                "change_ids": ["tailor-runtime-0"],
+                "dependency_indices": [],
+                "display": {
+                    "why": "对应岗位的 ownership 要求",
+                    "evidence": [f"profile:{seed['source_section_id']}"],
+                },
+            },
+            {
+                "title": "项目经历",
+                "summary": "采用岗位相关项目表达",
+                "change_ids": ["tailor-runtime-1"],
+                "dependency_indices": [0],
+                "display": {
+                    "why": "补强项目证据",
+                    "evidence": [f"profile:{seed['source_section_id']}"],
+                },
+            },
+            {
+                "title": "技能",
+                "summary": "采用与 JD 对齐的技能表达",
+                "change_ids": ["tailor-runtime-2"],
+                "dependency_indices": [1],
+                "display": {
+                    "why": "只保留有证据的技能",
+                    "evidence": [f"profile:{seed['source_section_id']}"],
+                },
+            },
+        ]
+        with set_operation_run_context(run_id):
+            prepared = await resume_decision_plans.propose_resume_decision_plan(
+                proposal_id=seed["proposal_id"],
+                resume_id=resume_id,
+                groups=groups,
+            )
+        plan = prepared["plan"]
+        assert plan["run_id"] == run_id
+        assert len(plan["groups"]) == 3
+
+        receipt_ids: list[str] = []
+        current_plan = plan
+        while any(group["status"] == "pending" for group in current_plan["groups"]):
+            group = next(
+                group for group in current_plan["groups"] if group["status"] == "pending"
+            )
+            result = await _confirm(current_plan, group)
+            assert result["ok"] is True, result
+            receipt_ids.extend(
+                str(receipt["id"]) for receipt in result.get("receipts") or []
+            )
+            next_plan_id = result.get("successor_plan_id") or current_plan["id"]
+            current_plan = await proposal_plan_store.get_plan(next_plan_id)
+
+        assert receipt_ids
+        async with proposal_v2_db.sessions() as db:
+            proposal = await db.get(ResumeOptimizationProposal, seed["proposal_id"])
+            assert proposal.status == "accepted"
+            assert proposal.accepted_resume_id == resume_id
+            assert proposal.accepted_resume_version_id is not None
+            version = await db.get(ResumeVersion, proposal.accepted_resume_version_id)
+            assert version is not None
+            accepted_version_id = proposal.accepted_resume_version_id
+
+        continuation_calls: list[dict] = []
+
+        async def resume_same_run(*, run, continuation, receipts, delivery_id):
+            assert run["id"] == run_id
+            continuation_calls.append(
+                {
+                    "continuation_id": continuation["id"],
+                    "receipt_ids": [str(item["id"]) for item in receipts],
+                    "delivery_id": delivery_id,
+                }
+            )
+            latest = await agent_run_state.load_agent_run(run_id)
+            latest["status"] = "completed"
+            latest["final_result"] = {
+                "accepted_resume_id": resume_id,
+                "accepted_resume_version_id": accepted_version_id,
+            }
+            await agent_run_state.save_agent_run(
+                latest,
+                event_type="run.completed",
+                event_payload={"source": "fixture_receipt_continuation"},
+            )
+            return {"ok": True, "run_id": run_id}
+
+        delivery = await proposal_plan_continuation.deliver_continuations(
+            run_id, resume_agent=resume_same_run
+        )
+        assert delivery["delivered"] >= 1
+        assert continuation_calls
+        assert all(call["receipt_ids"] for call in continuation_calls)
+
+        final_run = await agent_run_state.load_agent_run(run_id)
+        assert final_run["id"] == run_id
+        assert final_run["status"] == "completed"
+        assert final_run["final_result"]["accepted_resume_id"] == resume_id
+        assert final_run["final_result"]["accepted_resume_version_id"] == accepted_version_id
+
+    asyncio.run(run())
+

@@ -1,44 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { Button, Spinner } from "@heroui/react";
-import { FileText, MessageSquare, Trash2, X } from "lucide-react";
-import {
-  OptimizeSessionSummary,
-  fetchOptimizeSessions,
-  deleteOptimizeSession,
-} from "@/lib/hooks";
+import { History, RefreshCw, X } from "lucide-react";
+import { agentRuntimeApi, type AgentRunRecord } from "@/lib/api";
 import { safeClientErrorMessage } from "@/lib/safe-error";
+import { runStatusLabel, tailorResumeTaskId } from "./runtimeTailorResume";
 
 interface ConversationListProps {
-  onSelect: (sessionId: string) => void;
+  jobId: number | null;
+  onSelect: (runId: string) => void;
   onClose: () => void;
 }
 
-function phaseLabel(phase: string): string {
-  const map: Record<string, string> = {
-    confirming: "确认中",
-    analyzing: "分析中",
-    framework: "框架确认",
-    rewriting: "逐段改写",
-    completed: "已完成",
-  };
-  return map[phase] || phase;
-}
-
-function phaseColor(phase: string): string {
-  const map: Record<string, string> = {
-    confirming: "bg-[var(--surface-muted)] text-[var(--foreground)]",
-    analyzing: "bg-[var(--surface-muted)] text-[var(--foreground)]",
-    framework: "bg-[var(--surface-muted)] text-[var(--foreground)]",
-    rewriting: "bg-[var(--status-blush)] text-[var(--foreground)]",
-    completed: "bg-[var(--surface-muted)] text-[var(--foreground)]",
-  };
-  return map[phase] || "bg-[var(--surface-muted)] text-[var(--foreground)]";
-}
-
-function formatTime(iso: string): string {
+function formatTime(iso?: string): string {
+  if (!iso) return "";
   try {
     const d = new Date(iso);
     const now = new Date();
@@ -56,133 +32,98 @@ function formatTime(iso: string): string {
   }
 }
 
-export function ConversationList({ onSelect, onClose }: ConversationListProps) {
-  const [sessions, setSessions] = useState<OptimizeSessionSummary[]>([]);
+export function ConversationList({ jobId, onSelect, onClose }: ConversationListProps) {
+  const [runs, setRuns] = useState<AgentRunRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState<string | null>(null);
+  const [error, setError] = useState("");
 
-  const loadSessions = async () => {
+  const loadRuns = async () => {
+    if (!jobId) {
+      setRuns([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
-    setError(null);
+    setError("");
     try {
-      const data = await fetchOptimizeSessions();
-      setSessions(Array.isArray(data) ? data : []);
-    } catch (err: any) {
-      setError(safeClientErrorMessage(err, "加载失败"));
+      const result = await agentRuntimeApi.runs({
+        task_id: tailorResumeTaskId(jobId),
+        limit: 20,
+      });
+      setRuns((result.runs || []).filter((run) => run.skill_id === "tailor_resume"));
+    } catch (err) {
+      setError(safeClientErrorMessage(err, "加载历史 Run 失败"));
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    void loadSessions();
-  }, []);
-
-  const handleDelete = async (sessionId: string) => {
-    if (!window.confirm("确定删除此对话？")) return;
-    setDeleting(sessionId);
-    setDeleteError(null);
-    try {
-      await deleteOptimizeSession(sessionId);
-      setSessions((prev) => prev.filter((s) => s.session_id !== sessionId));
-    } catch (err: any) {
-      setDeleteError(safeClientErrorMessage(err, "删除失败"));
-    } finally {
-      setDeleting(null);
-    }
-  };
+    void loadRuns();
+  }, [jobId]);
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <div className="shrink-0 border-b border-[var(--border-strong)]/12 p-5 md:p-6">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <p className="bauhaus-label text-[var(--foreground-muted)]">对话管理</p>
-            <h2 className="mt-2 text-2xl font-bold leading-tight md:text-3xl">优化对话记录</h2>
-          </div>
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-5 py-3">
+        <div>
+          <p className="text-sm font-semibold text-[var(--foreground)]">历史定制 Run</p>
+          <p className="mt-0.5 text-xs text-[var(--foreground-muted)]">这些记录来自统一 Agent Runtime，不再读取旧 Optimize Session。</p>
+        </div>
+        <div className="flex items-center gap-1">
           <button
             type="button"
-            onClick={onClose}
-            className="flex h-9 w-9 items-center justify-center border border-[var(--border-strong)]/15 bg-[var(--surface-muted)] text-[var(--foreground-muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+            aria-label="刷新历史 Run"
+            onClick={() => void loadRuns()}
+            className="rounded-md p-2 text-[var(--foreground-muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
           >
-            <X size={16} />
+            <RefreshCw size={14} />
+          </button>
+          <button
+            type="button"
+            aria-label="关闭历史 Run"
+            onClick={onClose}
+            className="rounded-md p-2 text-[var(--foreground-muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+          >
+            <X size={15} />
           </button>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-5 md:p-6 custom-scrollbar">
-        {deleteError && (
-          <div className="mb-3 border border-[#c95548]/30 bg-[var(--primary-red)]/5 px-3 py-2 text-xs font-medium text-[#c95548]">
-            {deleteError}
-          </div>
-        )}
+      <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
         {loading ? (
-          <div className="flex min-h-48 items-center justify-center gap-3 text-sm font-medium text-[var(--foreground-muted)]">
-            <Spinner size="sm" color="warning" />
-            <span>正在加载对话列表…</span>
+          <div className="flex min-h-48 items-center justify-center gap-2 text-sm text-[var(--foreground-muted)]">
+            <Spinner size="sm" color="warning" /> 正在读取 Runtime 历史…
           </div>
         ) : error ? (
           <div className="flex min-h-48 flex-col items-center justify-center gap-3 text-center">
-            <p className="text-sm font-medium text-[#c95548]">{error}</p>
-            <Button
-              size="sm"
-              className="bauhaus-button bauhaus-button-outline"
-              onPress={() => void loadSessions()}
-            >
+            <p role="alert" className="text-sm text-[var(--primary-red)]">{error}</p>
+            <Button size="sm" className="bauhaus-button bauhaus-button-outline" onPress={() => void loadRuns()}>
               重试
             </Button>
           </div>
-        ) : sessions.length === 0 ? (
-          <div className="flex min-h-48 flex-col items-center justify-center gap-3 text-center">
-            <MessageSquare size={36} className="text-[var(--foreground-muted)]" />
-            <p className="text-sm font-medium text-[var(--foreground-muted)]">暂无优化对话记录</p>
+        ) : runs.length === 0 ? (
+          <div className="flex min-h-48 flex-col items-center justify-center gap-3 text-center text-sm text-[var(--foreground-muted)]">
+            <History size={30} />
+            <p>这个岗位还没有简历定制 Run。</p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {sessions.map((session) => (
-              <div
-                key={session.session_id}
-                className="group border border-[var(--border-strong)]/15 bg-white p-4 shadow-[1px_1px_0_0_rgba(18,18,18,0.08)] transition-transform hover:-translate-y-[1px]"
+          <div className="space-y-2">
+            {runs.map((run) => (
+              <button
+                key={run.id}
+                type="button"
+                onClick={() => onSelect(run.id)}
+                className="w-full rounded-[10px] border border-[var(--border)] bg-white p-3 text-left transition-colors hover:bg-[var(--surface-muted)]"
               >
-                <div className="flex items-start justify-between gap-3">
-                  <button
-                    type="button"
-                    onClick={() => onSelect(session.session_id)}
-                    className="min-w-0 flex-1 text-left"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className={`inline-block px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${phaseColor(session.phase)}`}>
-                        {phaseLabel(session.phase)}
-                      </span>
-                    </div>
-                    <h3 className="mt-2 line-clamp-2 text-sm font-semibold text-[var(--foreground)]">
-                      {session.title || `对话 ${session.session_id.slice(0, 8)}`}
-                    </h3>
-                    <p className="mt-1 text-xs text-[var(--foreground-muted)]">
-                      {formatTime(session.updated_at || session.created_at)}
-                    </p>
-                    {session.resume_id && (
-                      <div className="mt-2 flex items-center gap-1 text-xs text-[var(--foreground-muted)]">
-                        <FileText size={12} />
-                        <span>简历 #{session.resume_id}</span>
-                      </div>
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void handleDelete(session.session_id);
-                    }}
-                    disabled={deleting === session.session_id}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center border border-[var(--border-strong)]/10 text-[var(--foreground-muted)] transition-colors hover:border-[#c95548] hover:text-[#c95548] disabled:opacity-40"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-semibold text-[var(--foreground)]">{runStatusLabel(run.status)}</span>
+                  <span className="text-[11px] text-[var(--foreground-muted)]">{formatTime(run.updated_at || run.created_at)}</span>
                 </div>
-              </div>
+                <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-[var(--foreground-muted)]">
+                  {run.goal || "岗位简历定制"}
+                </p>
+                <p className="mt-2 font-mono text-[10px] text-[var(--foreground-muted)]">{run.id}</p>
+              </button>
             ))}
           </div>
         )}

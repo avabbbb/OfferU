@@ -36,7 +36,7 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
   const [seedJob, setSeedJob] = useState<Job | null>(null);
   const [referenceResumeId, setReferenceResumeId] = useState<number | null>(null);
   const [showConversationList, setShowConversationList] = useState(false);
-  const [loadSessionId, setLoadSessionId] = useState<string | null>(null);
+  const [loadRunId, setLoadRunId] = useState<string | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loadingJobs, setLoadingJobs] = useState(false);
   const [jobsError, setJobsError] = useState("");
@@ -230,8 +230,9 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
         <div className="min-h-0 flex-1">
           {showConversationList ? (
             <ConversationList
-              onSelect={(sid) => {
-                setLoadSessionId(sid);
+              jobId={selectedJobId}
+              onSelect={(runId) => {
+                setLoadRunId(runId);
                 setShowConversationList(false);
               }}
               onClose={() => setShowConversationList(false)}
@@ -244,8 +245,8 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
               blockedReason={blockedReason}
               profileId={profileData?.id ?? null}
               referenceResumeId={referenceResumeId}
-              loadSessionId={loadSessionId}
-              onLoadSessionConsumed={() => setLoadSessionId(null)}
+              loadRunId={loadRunId}
+              onLoadRunConsumed={() => setLoadRunId(null)}
             />
           )}
         </div>

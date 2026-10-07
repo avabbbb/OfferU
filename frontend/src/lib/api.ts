@@ -1087,6 +1087,8 @@ export interface PreApplicationState {
     attempts?: number;
   } | null;
   stale_decision_id?: string | null;
+  manual_decision_without_research?: boolean;
+  research_refresh_available?: boolean;
   decision?: PreApplicationDecisionRecord | null;
   resume_proposal?: {
     proposal_id: string;
