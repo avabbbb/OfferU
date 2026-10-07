@@ -121,7 +121,7 @@ def main() -> None:
             task = _wait_for_task(client, job_id)
             if task.get("status") != "blocked":
                 raise AssertionError(f"cycle {index} must expose unavailable Agent: {task}")
-            if task.get("runtime_provider") != "pi":
+            if task.get("runtime_provider") != "embedded":
                 raise AssertionError(f"cycle {index} used an unexpected Career Director: {task}")
             if not task.get("retryable") or "岗位已保存" not in str(task.get("error") or ""):
                 raise AssertionError(f"cycle {index} hid the no-Agent recovery state: {task}")
