@@ -255,6 +255,8 @@ class PreApplicationDecisionContractTests(unittest.TestCase):
         self.assertTrue(state["manual_decision_without_research"])
         self.assertNotIn("manual_input_hash", state)
         self.assertEqual("ready_for_resume_proposal", later_state["stage"])
+        self.assertTrue(later_state["manual_decision_without_research"])
+        self.assertTrue(later_state["research_refresh_available"])
 
     def test_user_choice_parser_does_not_treat_pre_application_as_go(self) -> None:
         self.assertIsNone(extract_pre_application_final_decision("投前决策 岗位 #7"))
