@@ -374,6 +374,18 @@ async def _load_current_context(job_id: int) -> dict[str, Any]:
             job_title=str(job.title or ""),
             jd_text=str(job.raw_description or ""),
         )
+        # A human may decide go/no-go from the job and their own verified
+        # evidence alone when research is unavailable. That decision binds to
+        # this research-free input, so it goes stale when the JD or evidence
+        # change, exactly like an evidence-backed decision.
+        manual_input_hash = _canonical_hash(
+            {
+                "job": job_row,
+                "profile_id": profile.id,
+                "profile_evidence": [_profile_evidence(section) for section in sections],
+                "research": None,
+            }
+        )
 
         latest_run = (
             await db.execute(
@@ -389,6 +401,7 @@ async def _load_current_context(job_id: int) -> dict[str, Any]:
                 "job": job_row,
                 "profile_id": profile.id,
                 "profile_evidence_count": len(sections),
+                "manual_input_hash": manual_input_hash,
             }
         if latest_run.status in {"pending", "running"}:
             return {
@@ -396,6 +409,7 @@ async def _load_current_context(job_id: int) -> dict[str, Any]:
                 "job": job_row,
                 "profile_id": profile.id,
                 "profile_evidence_count": len(sections),
+                "manual_input_hash": manual_input_hash,
                 "research_run": {
                     "run_id": latest_run.run_id,
                     "status": latest_run.status,
@@ -408,6 +422,7 @@ async def _load_current_context(job_id: int) -> dict[str, Any]:
                 "job": job_row,
                 "profile_id": profile.id,
                 "profile_evidence_count": len(sections),
+                "manual_input_hash": manual_input_hash,
                 "research_run": {
                     "run_id": latest_run.run_id,
                     "status": latest_run.status,
@@ -425,6 +440,7 @@ async def _load_current_context(job_id: int) -> dict[str, Any]:
                 "job": job_row,
                 "profile_id": profile.id,
                 "profile_evidence_count": len(sections),
+                "manual_input_hash": manual_input_hash,
                 "research_run": {
                     "run_id": latest_run.run_id,
                     "status": latest_run.status,
@@ -459,6 +475,7 @@ async def _load_current_context(job_id: int) -> dict[str, Any]:
                 "job": job_row,
                 "profile_id": profile.id,
                 "profile_evidence_count": len(sections),
+                "manual_input_hash": manual_input_hash,
                 "research_run": {
                     "run_id": latest_run.run_id,
                     "status": "invalid",
@@ -477,6 +494,7 @@ async def _load_current_context(job_id: int) -> dict[str, Any]:
                     "job": job_row,
                     "profile_id": profile.id,
                     "profile_evidence_count": len(sections),
+                "manual_input_hash": manual_input_hash,
                     "research_run": {
                         "run_id": latest_run.run_id,
                         "status": "invalid",
@@ -525,6 +543,7 @@ async def _load_current_context(job_id: int) -> dict[str, Any]:
             "job": job_row,
             "profile_id": profile.id,
             "profile_evidence_count": len(profile_rows),
+            "manual_input_hash": manual_input_hash,
             "research_run": {
                 "run_id": latest_run.run_id,
                 "status": latest_run.status,
@@ -558,6 +577,7 @@ def _public_state(context: dict[str, Any]) -> dict[str, Any]:
         if key
         not in {
             "decision_input",
+            "manual_input_hash",
             "allowed_source_refs",
             "profile_source_refs",
             "latest_resume_proposal",
@@ -565,17 +585,40 @@ def _public_state(context: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# Stages where research is not usable yet; a manual decision may still be made.
+MANUAL_DECISION_STAGES = {
+    "needs_research",
+    "research_running",
+    "research_failed",
+    "research_needs_review",
+    "research_rejected",
+}
+
+
+def _latest_manual_decision(job_id: int, manual_hash: str) -> dict[str, Any] | None:
+    decision = decision_store.latest(job_id=job_id, input_hash=manual_hash)
+    if decision is None or decision.get("decision_source") != "manual":
+        return None
+    return decision
+
+
 async def get_pre_application_state(job_id: int) -> dict[str, Any]:
     clean_job_id = _clean_job_id(job_id)
     context = await _load_current_context(clean_job_id)
     state = _public_state(context)
-    if context["stage"] != "needs_decision":
+    manual_hash = str(context.get("manual_input_hash") or "")
+    if context["stage"] in MANUAL_DECISION_STAGES and manual_hash:
+        decision = _latest_manual_decision(clean_job_id, manual_hash)
+        if decision is None:
+            return state
+        state["manual_decision_without_research"] = True
+    elif context["stage"] != "needs_decision":
         return state
-
-    decision = decision_store.latest(
-        job_id=clean_job_id,
-        input_hash=str(context["input_hash"]),
-    )
+    else:
+        decision = decision_store.latest(
+            job_id=clean_job_id,
+            input_hash=str(context["input_hash"]),
+        ) or (_latest_manual_decision(clean_job_id, manual_hash) if manual_hash else None)
     if decision is None:
         stale = decision_store.latest(job_id=clean_job_id)
         if stale is not None:
@@ -702,14 +745,17 @@ async def submit_manual_pre_application_decision(
     clean_rationale = _clean_text(rationale, "rationale", 2000)
 
     context = await _load_current_context(clean_job_id)
-    if context["stage"] != "needs_decision":
+    without_research = context["stage"] in MANUAL_DECISION_STAGES
+    if context["stage"] != "needs_decision" and not without_research:
         raise ValueError(f"当前投前决策阶段为 {context['stage']}，不能提交人工决策")
+    input_hash = str(
+        context["manual_input_hash"] if without_research else context["input_hash"]
+    )
+    if without_research and not clean_rationale:
+        raise ValueError("没有可用调研时人工决定，必须写明理由")
 
     # 幂等：同 input_hash 已有人工/AI 决策时直接返回，不重复造。
-    existing = decision_store.latest(
-        job_id=clean_job_id,
-        input_hash=str(context["input_hash"]),
-    )
+    existing = decision_store.latest(job_id=clean_job_id, input_hash=input_hash)
     if existing is not None:
         return existing
 
@@ -717,10 +763,10 @@ async def submit_manual_pre_application_decision(
         {
             "job_id": clean_job_id,
             "profile_id": context["profile_id"],
-            "research_run_id": str(
-                (context.get("research_run") or {}).get("run_id") or ""
-            ),
-            "input_hash": context["input_hash"],
+            "research_run_id": ""
+            if without_research
+            else str((context.get("research_run") or {}).get("run_id") or ""),
+            "input_hash": input_hash,
             "agent_recommendation": None,
             "decision": {
                 "recommendation": clean_final,

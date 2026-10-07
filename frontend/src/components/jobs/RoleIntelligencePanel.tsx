@@ -302,7 +302,7 @@ export function RoleIntelligencePanel({ jobId }: { jobId: number }) {
         ) : !benchmark ? (
           <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
             <p className="text-sm font-black text-[var(--foreground)]">还没有岗位基准</p>
-            <p className="mt-1 text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">真实外部采集仍受 provider 验收状态控制。当前开发环境可以加载去标识化 fixture，验证 Job Detail 的数据呈现和 evidence gap。</p>
+            <p className="mt-1 text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">{fixtureEnabled ? "开发环境：可以加载去标识化 fixture，验证数据呈现和 evidence gap。" : "岗位情报完成后，这里会显示这个岗位和同类岗位的差别，以及你还缺哪些证据。"}</p>
             {fixtureEnabled && (
               <Button onPress={() => setFixtureConfirmOpen(true)} className="bauhaus-button bauhaus-button-yellow mt-4 !px-4 !py-3 !text-[11px]">加载 fixture benchmark</Button>
             )}

@@ -57,10 +57,20 @@ describe("AddJobModal", () => {
       title: "后端工程师",
       company: "字节跳动",
       source: "manual",
-      runtime_provider: "replay",
+      runtime_provider: "auto",
     });
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith(456));
     expect(onClose).toHaveBeenCalledWith("created");
+  });
+
+  it("勾选离线演示时才使用 replay", async () => {
+    mockIngestJob.mockResolvedValue({ created: 1, skipped: 0, created_job_ids: [7], resolved_job_ids: [7], failed: [] });
+    renderModal({});
+    const user = await fillRequiredFields();
+    await user.click(screen.getByTestId("add-job-demo-mode"));
+    await user.click(screen.getByTestId("add-job-submit"));
+    await waitFor(() => expect(mockIngestJob).toHaveBeenCalledTimes(1));
+    expect(mockIngestJob.mock.calls[0][0]).toMatchObject({ runtime_provider: "replay" });
   });
 
   it("提交进行中禁用按钮并阻止重复点击", async () => {

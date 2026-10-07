@@ -208,6 +208,54 @@ class PreApplicationDecisionContractTests(unittest.TestCase):
         self.assertEqual("no_go", reviewed_no_go["final_decision"])
         self.assertEqual("completed_no_go", no_go_state["stage"])
 
+    def test_manual_decision_works_without_usable_research(self) -> None:
+        research_missing = {
+            "stage": "needs_research",
+            "job": {"id": 7, "source_ref": "job:7"},
+            "profile_id": 3,
+            "profile_evidence_count": 1,
+            "manual_input_hash": "manual-hash-7",
+        }
+
+        async def run() -> tuple[dict, dict, dict]:
+            with tempfile.TemporaryDirectory() as directory:
+                store = pre_application_decisions.PreApplicationDecisionStore(Path(directory))
+                with (
+                    patch.object(pre_application_decisions, "decision_store", store),
+                    patch.object(
+                        pre_application_decisions,
+                        "_load_current_context",
+                        AsyncMock(return_value=research_missing),
+                    ),
+                ):
+                    with self.assertRaises(ValueError):
+                        await pre_application_decisions.submit_manual_pre_application_decision(7, "go", "")
+                    decision = await pre_application_decisions.submit_manual_pre_application_decision(
+                        7, "go", "AI 调研不可用，我按 JD 和自己的经历判断可以投"
+                    )
+                    state = await pre_application_decisions.get_pre_application_state(7)
+                # Once research is accepted, the research-free manual decision still counts.
+                later = {**_context(), "manual_input_hash": "manual-hash-7"}
+                with (
+                    patch.object(pre_application_decisions, "decision_store", store),
+                    patch.object(
+                        pre_application_decisions,
+                        "_load_current_context",
+                        AsyncMock(return_value=later),
+                    ),
+                ):
+                    later_state = await pre_application_decisions.get_pre_application_state(7)
+                return decision, state, later_state
+
+        decision, state, later_state = asyncio.run(run())
+        self.assertEqual("manual", decision["decision_source"])
+        self.assertEqual("", decision["research_run_id"])
+        self.assertEqual("manual-hash-7", decision["input_hash"])
+        self.assertEqual("ready_for_resume_proposal", state["stage"])
+        self.assertTrue(state["manual_decision_without_research"])
+        self.assertNotIn("manual_input_hash", state)
+        self.assertEqual("ready_for_resume_proposal", later_state["stage"])
+
     def test_user_choice_parser_does_not_treat_pre_application_as_go(self) -> None:
         self.assertIsNone(extract_pre_application_final_decision("投前决策 岗位 #7"))
         self.assertEqual("go", extract_pre_application_final_decision("确认投"))

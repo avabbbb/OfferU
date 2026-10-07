@@ -59,11 +59,95 @@ interface OptimizeChatPanelProps {
   jobIds: number[];
   mode: "per_job" | "combined";
   disabled: boolean;
+  /** "profile" | "job" | free text; explains why starting is not possible yet. */
+  blockedReason?: string;
   profileId: number | null;
   referenceResumeId: number | null;
   loadSessionId?: string | null;
   onLoadSessionConsumed?: () => void;
 }
+
+const PHASES = [
+  { key: "confirming", label: "确认目标" },
+  { key: "analyzing", label: "分析差距" },
+  { key: "framework", label: "确认框架" },
+  { key: "rewriting", label: "逐段改写" },
+  { key: "completed", label: "生成提案" },
+];
+
+function BlockedHint({ reason }: { reason: string }) {
+  if (reason === "profile") {
+    return (
+      <p className="text-sm text-[var(--foreground-muted)]">
+        档案里还没有已确认的经历，AI 没有可用的事实。
+        <Link href="/profile" className="ml-1 font-semibold text-[var(--foreground)] underline">去补充档案</Link>
+      </p>
+    );
+  }
+  if (reason === "job") {
+    return <p className="text-sm text-[var(--foreground-muted)]">先在左侧选一个目标岗位。</p>;
+  }
+  return reason ? <p className="text-sm text-[var(--foreground-muted)]">{reason}</p> : null;
+}
+
+function SuggestionCard({ suggestion, index }: { suggestion: Suggestion; index: number }) {
+  const removed = suggestion.diff?.deleted?.length ? suggestion.diff.deleted : suggestion.original ? [suggestion.original] : [];
+  const added = suggestion.diff?.added?.length ? suggestion.diff.added : suggestion.suggested ? [suggestion.suggested] : [];
+  const requirements = suggestion.matched_jd_requirements || [];
+  const keywords = suggestion.injected_keywords || [];
+  return (
+    <article className="overflow-hidden rounded-[10px] border border-[var(--border)] bg-white">
+      <header className="flex items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2">
+        <span className="text-xs font-semibold text-[var(--foreground)]">
+          {String(index + 1).padStart(2, "0")} · {suggestion.section_title || "修改建议"}
+        </span>
+        {requirements.length > 0 && (
+          <span className="truncate text-[11px] text-[var(--foreground-muted)]">对应 {requirements.length} 条岗位要求</span>
+        )}
+      </header>
+      <div className="grid gap-px bg-[var(--border)] sm:grid-cols-2">
+        <div className="bg-white p-3">
+          <p className="mb-1 text-[11px] font-semibold text-[var(--foreground-muted)]">原文</p>
+          {removed.length ? (
+            removed.map((text, i) => (
+              <p key={i} className="text-[13px] leading-relaxed text-[var(--foreground-muted)] line-through decoration-[var(--primary-red)]/40">{text}</p>
+            ))
+          ) : (
+            <p className="text-[13px] text-[var(--foreground-muted)]">新增内容</p>
+          )}
+        </div>
+        <div className="bg-[#f3f8f4] p-3">
+          <p className="mb-1 text-[11px] font-semibold text-[#13804f]">建议改为</p>
+          {added.map((text, i) => (
+            <SafeHtmlContent key={i} content={text} className="prose-chat text-[13px] leading-relaxed text-[var(--foreground)]" />
+          ))}
+        </div>
+      </div>
+      {(suggestion.reason || requirements.length > 0 || keywords.length > 0) && (
+        <footer className="space-y-1.5 border-t border-[var(--border)] px-3 py-2 text-[12px] leading-relaxed text-[var(--foreground-soft)]">
+          {suggestion.reason && <p>{suggestion.reason}</p>}
+          {(requirements.length > 0 || keywords.length > 0) && (
+            <div className="flex flex-wrap gap-1">
+              {requirements.map((item) => (
+                <span key={`r-${item}`} className="rounded-full border border-[var(--border)] px-2 py-0.5 text-[11px]">{item}</span>
+              ))}
+              {keywords.map((item) => (
+                <span key={`k-${item}`} className="rounded-full bg-[var(--surface-muted)] px-2 py-0.5 text-[11px] text-[var(--foreground-muted)]">#{item}</span>
+              ))}
+            </div>
+          )}
+        </footer>
+      )}
+    </article>
+  );
+}
+
+const QUICK_REPLIES: Record<string, string[]> = {
+  confirming: ["目标没问题，继续", "我更想突出项目经历"],
+  analyzing: ["先说最大的差距", "哪些要求我完全没有证据？"],
+  framework: ["按这个框架继续", "把最相关的经历放到最前面"],
+  rewriting: ["这段再量化一些", "语气更简洁", "这一段保持原样"],
+};
 
 let _msgCounter = 0;
 function nextMsgId(): string {
@@ -91,7 +175,7 @@ function SafeHtmlContent({ content, className }: { content: string; className?: 
   );
 }
 
-export function OptimizeChatPanel({ jobIds, mode, disabled, profileId, referenceResumeId, loadSessionId, onLoadSessionConsumed }: OptimizeChatPanelProps) {
+export function OptimizeChatPanel({ jobIds, mode, disabled, blockedReason = "", profileId, referenceResumeId, loadSessionId, onLoadSessionConsumed }: OptimizeChatPanelProps) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [phase, setPhase] = useState<string>("idle");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -427,56 +511,59 @@ export function OptimizeChatPanel({ jobIds, mode, disabled, profileId, reference
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <div className="shrink-0 border-b border-[var(--border-strong)]/12 p-5 md:p-6">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <p className="bauhaus-label text-[var(--foreground-muted)]">步骤三 · AI 对话优化</p>
-            <h2 className="mt-2 text-3xl font-bold leading-tight md:text-4xl">智能优化工作流</h2>
-          </div>
-          <div className="bauhaus-panel-sm bg-[var(--surface-muted)] px-4 py-3 text-[var(--foreground)]">
-            <p className="bauhaus-label text-[var(--foreground-muted)]">阶段</p>
-            <p className="mt-2 text-sm font-bold">
-              {phase === "idle"
-                ? "待启动"
-                : phase === "confirming"
-                  ? "确认中"
-                  : phase === "analyzing"
-                    ? "分析中"
-                    : phase === "framework"
-                      ? "框架确认"
-                      : phase === "rewriting"
-                        ? "逐段改写"
-                        : phase === "completed"
-                          ? "已完成"
-                          : phase}
-            </p>
-          </div>
-        </div>
-      </div>
-
+      {phase !== "idle" && (
+        <ol aria-label="定制进度" className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-[var(--border)] px-5 py-2 text-xs">
+          {PHASES.map((item, index) => {
+            const current = PHASES.findIndex((p) => p.key === phase);
+            const state = index < current ? "done" : index === current ? "active" : "todo";
+            return (
+              <li key={item.key} className="flex items-center gap-1 whitespace-nowrap">
+                {index > 0 && <span className="mx-1 h-px w-4 bg-[var(--border)]" />}
+                <span
+                  className={
+                    state === "active"
+                      ? "font-semibold text-[var(--foreground)]"
+                      : state === "done"
+                        ? "text-[var(--foreground-soft)]"
+                        : "text-[var(--foreground-muted)]"
+                  }
+                >
+                  {state === "done" ? "✓ " : ""}{item.label}
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+      )}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <div
           ref={scrollRef}
           className="flex-1 overflow-y-auto p-5 md:p-6 custom-scrollbar"
         >
           {messages.length === 0 && (
-            <div className="flex min-h-64 flex-col items-center justify-center gap-4 text-center">
-              <MessageSquare size={48} className="text-[var(--foreground-muted)]" />
-              <p className="text-sm font-medium text-[var(--foreground-muted)]">
-                选择岗位后点击「开始优化」，AI 将引导你逐步完成简历定制。
-              </p>
-              <Button
-                className="bauhaus-button bauhaus-button-red"
-                startContent={<Play size={16} />}
-                onPress={startSession}
-                isDisabled={disabled || jobIds.length === 0 || loading}
-                isLoading={loading}
-              >
-                开始优化
-              </Button>
+            <div className="mx-auto flex min-h-64 max-w-md flex-col items-center justify-center gap-4 text-center">
+              <MessageSquare size={36} className="text-[var(--foreground-muted)]" />
+              <div className="space-y-1">
+                <p className="text-[15px] font-semibold text-[var(--foreground)]">按这个岗位改写简历</p>
+                <p className="text-sm text-[var(--foreground-muted)]">
+                  AI 会先确认目标、分析差距，再逐段给出修改。每一条都要你审核，你接受后才会生成正式简历。
+                </p>
+              </div>
+              {blockedReason ? (
+                <BlockedHint reason={blockedReason} />
+              ) : (
+                <Button
+                  className="bauhaus-button bauhaus-button-red"
+                  startContent={<Play size={16} />}
+                  onPress={startSession}
+                  isDisabled={disabled || jobIds.length === 0 || loading}
+                  isLoading={loading}
+                >
+                  开始定制
+                </Button>
+              )}
             </div>
           )}
-
           <div className="space-y-4">
             {messages.map((msg) => (
               <div
@@ -484,10 +571,10 @@ export function OptimizeChatPanel({ jobIds, mode, disabled, profileId, reference
                 className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 <div
-                  className={`max-w-[85%] border border-[var(--border-strong)]/15 p-4 text-sm leading-relaxed shadow-[1px_1px_0_0_rgba(18,18,18,0.08)] ${
+                  className={`text-sm leading-relaxed text-[var(--foreground)] ${
                     msg.role === "user"
-                      ? "bg-[var(--surface-muted)] text-[var(--foreground)]"
-                      : "bg-white text-[var(--foreground)]"
+                      ? "max-w-[75%] rounded-[14px] rounded-br-[4px] bg-[var(--foreground)] px-4 py-2.5 text-[var(--surface)]"
+                      : "w-full max-w-[720px]"
                   }`}
                 >
                   {msg.role === "assistant" ? (
@@ -496,70 +583,9 @@ export function OptimizeChatPanel({ jobIds, mode, disabled, profileId, reference
 
                       {msg.suggestions && msg.suggestions.length > 0 && (
                         <div className="mt-3 space-y-3">
-                          {msg.suggestions.map((sug, idx) => (
-                            <div
-                              key={idx}
-                              className="border border-[var(--border-strong)]/10 bg-[var(--surface-muted)] p-3"
-                            >
-                              {sug.section_title && (
-                                <p className="bauhaus-label text-[var(--foreground-muted)] mb-2">{sug.section_title}</p>
-                              )}
-
-                              {sug.diff && sug.diff.deleted.length > 0 ? (
-                                <div className="space-y-2">
-                                  <div>
-                                    <p className="text-xs font-semibold text-[var(--foreground-muted)] mb-1">删除内容</p>
-                                    {sug.diff.deleted.map((d, i) => (
-                                      <del
-                                        key={i}
-                                        className="prose-chat text-sm leading-relaxed block"
-                                        style={{ color: "#999" }}
-                                      >
-                                        {d}
-                                      </del>
-                                    ))}
-                                  </div>
-                                  <div>
-                                    <p className="text-xs font-semibold text-[var(--foreground-muted)] mb-1">新增内容</p>
-                                    {sug.diff.added.map((a, i) => (
-                                      <SafeHtmlContent
-                                        key={i}
-                                        content={a}
-                                        className="text-sm leading-relaxed prose-chat"
-                                      />
-                                    ))}
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="space-y-1">
-                                  <p className="text-xs font-semibold text-[var(--foreground-muted)]">原文</p>
-                                  <p className="text-sm text-[var(--foreground-muted)] line-through">{sug.original}</p>
-                                  <p className="text-xs font-semibold text-[var(--foreground-muted)] mt-1">建议</p>
-                                  <SafeHtmlContent
-                                    content={sug.suggested}
-                                    className="text-sm leading-relaxed prose-chat"
-                                  />
-                                </div>
-                              )}
-
-                              {sug.reason && (
-                                <p className="mt-2 text-xs text-[var(--foreground-muted)]">💡 {sug.reason}</p>
-                              )}
-                              {sug.matched_jd_requirements && sug.matched_jd_requirements.length > 0 && (
-                                <p className="mt-1 text-xs text-[var(--foreground-muted)]">
-                                  匹配JD要求: {sug.matched_jd_requirements.join("、")}
-                                </p>
-                              )}
-                              {sug.injected_keywords && sug.injected_keywords.length > 0 && (
-                                <p className="mt-1 text-xs text-[var(--foreground-muted)]">
-                                  注入关键词: {sug.injected_keywords.join("、")}
-                                </p>
-                              )}
-                            </div>
-                          ))}
+                          {msg.suggestions.map((sug, idx) => <SuggestionCard key={idx} suggestion={sug} index={idx} />)}
                         </div>
                       )}
-
                       {msg.confirmRequest && (
                         <div className="mt-3 border border-[var(--border-strong)]/15 bg-[var(--surface-muted)] p-4">
                           <p className="text-sm font-bold text-[var(--foreground)]">{msg.confirmRequest.summary}</p>
@@ -606,14 +632,19 @@ export function OptimizeChatPanel({ jobIds, mode, disabled, profileId, reference
                   )}
 
                   {msg.proposal_id && !msg.resume_id && (
-                    <div className="mt-3 border border-[var(--border-strong)]/15 bg-[var(--status-blush)] p-3">
-                      <p className="text-sm font-bold text-[var(--foreground)]">可审核提案</p>
-                      <p className="mt-1 break-all text-xs font-medium text-[var(--foreground-muted)]">
-                        {msg.proposal_id}
-                      </p>
-                      <p className="mt-2 text-xs font-medium leading-relaxed text-[var(--foreground-muted)]">
-                        继续让 AI 展示逐项 diff 和事实门；确认无误后再明确接受或拒绝。
-                      </p>
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-[var(--border)] bg-[var(--surface-muted)] p-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-[var(--foreground)]">简历提案已生成，等你审核</p>
+                        <p className="mt-0.5 text-xs text-[var(--foreground-muted)]">逐条查看修改和证据，接受后才会写入简历。</p>
+                      </div>
+                      {jobIds[0] ? (
+                        <Link
+                          href={`/jobs/${jobIds[0]}?focus=materials`}
+                          className="bauhaus-button bauhaus-button-sm bauhaus-button-red shrink-0"
+                        >
+                          去审核
+                        </Link>
+                      ) : null}
                     </div>
                   )}
                 </div>
@@ -632,38 +663,54 @@ export function OptimizeChatPanel({ jobIds, mode, disabled, profileId, reference
         </div>
 
         {sessionId ? (
-          <div className="shrink-0 border-t border-[var(--border-strong)]/12 p-4">
+          <div className="shrink-0 space-y-2 border-t border-[var(--border)] p-3">
+            {!loading && (QUICK_REPLIES[phase] || []).length > 0 && (
+              <div className="flex flex-wrap gap-1.5" aria-label="快捷回复">
+                {(QUICK_REPLIES[phase] || []).map((text) => (
+                  <button
+                    key={text}
+                    type="button"
+                    onClick={() => setInput(text)}
+                    className="rounded-full border border-[var(--border)] px-3 py-1 text-xs text-[var(--foreground-muted)] transition-colors hover:border-[var(--foreground)] hover:text-[var(--foreground)]"
+                  >
+                    {text}
+                  </button>
+                ))}
+              </div>
+            )}
             <form
               onSubmit={(e) => {
                 e.preventDefault();
                 void sendMessage();
               }}
-              className="flex items-end gap-2"
+              className="flex items-end gap-2 rounded-[12px] border border-[var(--border)] bg-white p-1.5 focus-within:border-[var(--foreground)]"
             >
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
-                rows={1}
-                className="flex-1 resize-none border border-[var(--border-strong)]/15 bg-white px-3 py-2 text-sm text-[var(--foreground)] placeholder:text-[var(--foreground-muted)] focus:outline-none focus:ring-1 focus:ring-black/20"
+                placeholder={loading ? "AI 正在处理…" : "回复 AI，或说说你想怎么改（Enter 发送，Shift+Enter 换行）"}
+                rows={2}
+                className="max-h-40 min-h-[44px] flex-1 resize-none bg-transparent px-2 py-1.5 text-sm text-[var(--foreground)] placeholder:text-[var(--foreground-muted)] focus:outline-none"
                 disabled={loading}
               />
               {loading ? (
                 <button
                   type="button"
                   onClick={handleStopGeneration}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center border border-red-400 bg-red-500 text-white transition-colors hover:bg-red-600"
+                  aria-label="停止生成"
+                  className="flex h-9 shrink-0 items-center gap-1.5 rounded-[9px] border border-[var(--border)] px-3 text-xs font-semibold text-[var(--foreground)] hover:bg-[var(--surface-muted)]"
                 >
-                  <Square size={14} fill="currentColor" />
+                  <Square size={12} fill="currentColor" /> 停止
                 </button>
               ) : (
                 <button
                   type="submit"
                   disabled={!input.trim()}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center border border-[var(--border-strong)]/15 bg-[var(--surface-muted)] text-[var(--foreground-muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)] disabled:opacity-40 disabled:cursor-not-allowed"
+                  aria-label="发送"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] bg-[var(--foreground)] text-[var(--surface)] transition-opacity disabled:opacity-30"
                 >
-                  <SendHorizonal size={16} />
+                  <SendHorizonal size={15} />
                 </button>
               )}
             </form>
@@ -678,7 +725,7 @@ export function OptimizeChatPanel({ jobIds, mode, disabled, profileId, reference
                 isDisabled={disabled || jobIds.length === 0 || loading}
                 isLoading={loading}
               >
-                重试启动
+                重新开始
               </Button>
             </div>
           )
