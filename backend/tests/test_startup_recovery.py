@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from types import SimpleNamespace
 
 import pytest
 from app.services import startup_recovery
@@ -89,6 +90,11 @@ def test_hanging_stage_times_out_unwinds_and_allows_next_fast_recovery(monkeypat
 def test_shared_budget_caps_serial_stages_and_skips_remaining_operations(monkeypatch) -> None:
     monkeypatch.setattr(startup_recovery, "STARTUP_RECOVERY_BUDGET_SECONDS", 0.06)
     monkeypatch.setattr(startup_recovery, "RECOVERY_STAGE_TIMEOUT_SECONDS", 0.04)
+    # Windows loop timers can expire before the high-resolution monotonic
+    # clock reaches a deadline. Test the shared-budget decision with an exact
+    # clock; the adjacent test separately covers real timeout cancellation.
+    ticks = iter((100.0, 100.0, 100.04, 100.061))
+    monkeypatch.setattr(startup_recovery, "time", SimpleNamespace(monotonic=lambda: next(ticks)))
     invoked = []
 
     async def hanging():
@@ -103,8 +109,7 @@ def test_shared_budget_caps_serial_stages_and_skips_remaining_operations(monkeyp
         return time.monotonic() - started
 
     elapsed = asyncio.run(run())
-    # Diagnostic overhead also consumes the shared wall-clock budget.
-    assert 1 <= len(invoked) <= 2
+    assert len(invoked) == 2
     assert elapsed < 0.5
     status = finish_startup_recovery()
     assert status["status"] == "degraded"

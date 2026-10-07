@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
-import { Button, Checkbox, Chip, Input, Progress, Spinner, Textarea } from "@nextui-org/react";
+import { Button, Checkbox, Chip, Input, Progress, Spinner, Textarea } from "@heroui/react";
 import {
   ArrowRight,
   Bot,

@@ -9,7 +9,7 @@ import { ToolExecutionList } from "./EmbeddedAgentStreamView";
 import { AgentAskPanel } from "./AgentAskPanel";
 import { applyRuntimeToolEvent, createInitialAgentStreamState } from "@/lib/embeddedAgentStream";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Button, Textarea } from "@nextui-org/react";
+import { Button, Textarea } from "@heroui/react";
 import {
   Activity,
   AlertTriangle,

@@ -264,7 +264,6 @@ class EmailIncrementalSyncTests(unittest.TestCase):
                     "provider": "qq",
                 },
                 surface="agent",
-                audit=False,
             )
             self.assertFalse(result["ok"])
             self.assertTrue(result["outputs"]["requires_confirmation"])

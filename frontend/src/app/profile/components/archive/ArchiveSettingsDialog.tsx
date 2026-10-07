@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Switch } from "@nextui-org/react";
+import { Button, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Switch } from "@heroui/react";
 import { RefreshCcw } from "lucide-react";
 
 interface ArchiveSettingsDialogProps {

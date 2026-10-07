@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
-import { Button, Card, CardBody, Input, Select, SelectItem, Textarea } from "@nextui-org/react";
+import { Button, Card, CardBody, Input, Select, SelectItem, Textarea } from "@heroui/react";
 import { ChevronDown, ChevronUp, Plus, RotateCcw, Save, Trash2, Upload } from "lucide-react";
 import type {
   ApplicationArchive,

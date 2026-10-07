@@ -40,13 +40,19 @@ def test_preview_is_bounded_and_does_not_silently_truncate(summary):
 
 def test_agent_cannot_grant_itself_permission_to_read_memory(summary):
     from app.ops import execute_operation, get_operation_schema
+    from app.database import init_db
 
-    with patch.object(Path, "open", side_effect=AssertionError("unconfirmed Agent must not read")):
-        result = asyncio.run(execute_operation(
-            "preview_local_memory_source", {"source_id": SOURCE_ID, "consent": True}, surface="cli", audit=False,
-        ))
+    async def run():
+        await init_db()
+        with patch.object(Path, "open", side_effect=AssertionError("unconfirmed Agent must not read")):
+            return await execute_operation(
+                "preview_local_memory_source", {"source_id": SOURCE_ID, "consent": True}, surface="cli",
+            )
+    result = asyncio.run(run())
     assert result["ok"] is False
-    assert result["outputs"] == {"executed": False, "requires_confirmation": True}
+    assert result["outputs"]["requires_confirmation"] is True
+    assert result["outputs"]["executed"] is False
+    assert result["errors"]  # consent=True supplies no independent authorization.
     assert "text" in get_operation_schema("preview_local_memory_source")["audit_redacted_output_parameters"]
 
 

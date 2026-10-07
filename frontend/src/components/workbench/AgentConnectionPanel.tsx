@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
-import { Button, Modal, ModalBody, ModalContent, ModalHeader } from "@nextui-org/react";
+import { Button, Modal, ModalBody, ModalContent, ModalHeader } from "@heroui/react";
 import { AlertCircle, ArrowRight, Check, Copy, Loader2, Plug, RefreshCw } from "lucide-react";
 import { connectionTime, useAgentConnection } from "@/lib/agentConnection";
 import { OFFERU_MATERIAL_COLLABORATION_PROMPT } from "@/lib/agentConnectionPrompt";

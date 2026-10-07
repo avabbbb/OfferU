@@ -22,6 +22,7 @@ from app.models.models import (
     ProfileSection,
 )
 from app.services import (
+    agent_run_state,
     agent_runtime,
     automation,
     career_delivery,
@@ -32,6 +33,35 @@ from app.services import (
     career_tasks,
     legacy_operations,
 )
+
+
+def _current_run_provider(legacy_type):
+    """Synthetic model fixture on the current durable Run provider interface."""
+    from app.ops import execute_operation
+    from app.services.agent_skill_registry import resolve_skill
+
+    class Provider:
+        async def start_run(self, **request):
+            skill = resolve_skill(request["skill_id"])
+            run = await agent_run_state.create_agent_run(
+                conversation_id=request["conversation_id"], goal=request["message"],
+                task_id=request["task_id"], mode=skill.mode, skill_id=skill.id,
+                skill_snapshot=skill.summary(), actions=[],
+                llm_runtime={"runtime": "synthetic_fixture"},
+            )
+            async def on_operation(name, args):
+                assert name in skill.allowed_tools
+                result = await execute_operation(name, args, surface="career_director")
+                assert result["ok"], result
+                await agent_run_state.append_agent_run_event(run["id"], event_type="operation.completed",
+                    payload={"operation": name, "result": result})
+                return result["outputs"]
+            turn = await legacy_type(on_operation).start_turn(request["message"])
+            message = turn["completed"]["turn"]["items"][0]["text"]
+            run["status"] = "completed"
+            run = await agent_run_state.save_agent_run(run)
+            return {"ok": True, "run": run, "assistant_message": message}
+    return Provider()
 
 
 def _briefing(*, event_id: int, event_type: str) -> dict:
@@ -155,6 +185,7 @@ def test_interview_invitation_uses_live_registry_reads_and_projects_one_task(
                 profile_id, job_id = profile.id, job.id
 
             for module in (
+                agent_run_state,
                 automation,
                 career_tasks,
                 career_director,
@@ -214,8 +245,8 @@ def test_interview_invitation_uses_live_registry_reads_and_projects_one_task(
 
             monkeypatch.setattr(
                 agent_runtime,
-                "get_agent_runtime_provider",
-                lambda _provider, **kwargs: SyntheticCodex(kwargs["on_operation"]),
+                "get_agent_run_provider",
+                lambda _provider: _current_run_provider(SyntheticCodex),
             )
             monkeypatch.setattr(career_tasks, "_career_director_workspace", lambda: str(tmp_path))
 
@@ -341,6 +372,7 @@ def test_completed_interview_debrief_becomes_reviewable_learning_candidate(
                 profile_id, job_id, interview_id = profile.id, job.id, interview.id
 
             for module in (
+                agent_run_state,
                 automation,
                 career_tasks,
                 career_director,
@@ -399,8 +431,8 @@ def test_completed_interview_debrief_becomes_reviewable_learning_candidate(
 
             monkeypatch.setattr(
                 agent_runtime,
-                "get_agent_runtime_provider",
-                lambda _provider, **kwargs: SyntheticCodex(kwargs["on_operation"]),
+                "get_agent_run_provider",
+                lambda _provider: _current_run_provider(SyntheticCodex),
             )
             monkeypatch.setattr(career_tasks, "_career_director_workspace", lambda: str(tmp_path))
 

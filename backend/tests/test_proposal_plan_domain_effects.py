@@ -25,7 +25,9 @@ def test_job_and_default_profile_group_commits_real_registry_effects(tmp_path, m
             await db.commit()
         run_id = f'run_{uuid4().hex[:16]}'
         await agent_run_state.create_agent_run(conversation_id=run_id, goal='Domain review',
-            mode='proposal_v2_fixture', skill_id='tailor_resume', actions=[], run_id=run_id)
+            # Trusted Runtime fixture scope, not an Agent Skill acceptance claim.
+            mode='proposal_v2_fixture', actions=[], run_id=run_id,
+            skill_snapshot={'allowed_tools': ['triage_job', 'update_profile', 'create_target_role']})
         intents = [
             {'id': 'job', 'operation': 'triage_job', 'args': {'job_id': job.id, 'status': 'picked'}, 'summary': 'Select the displayed job'},
             {'id': 'profile', 'operation': 'update_profile', 'args': {'headline': 'Reviewed headline'}, 'summary': 'Revise profile headline'},
@@ -37,13 +39,18 @@ def test_job_and_default_profile_group_commits_real_registry_effects(tmp_path, m
         ])
         await store.create_plan(plan)
         receipts = []
-        for group in plan['groups']:
-            result = await execution.confirm_group(plan['id'], group['id'], plan_digest=plan['digest'],
+        current = plan
+        while pending := [group for group in current['groups'] if group['status'] == 'pending']:
+            group = pending[0]
+            result = await execution.confirm_group(current['id'], group['id'], plan_digest=current['digest'],
                 group_digest=group['digest'], decision_id=f'decision_{uuid4().hex}',
                 authorization_source='Bearer synthetic-native-domain', surface='agent_runtime_ui')
             assert result['ok'], result
             assert result['group']['status'] == 'completed'
             receipts.extend(result['receipts'])
+            # Committed effects re-snapshot the still-unapproved remainder;
+            # never approve its stale parent digest or reuse the old decision.
+            current = result.get('successor_plan') or await store.get_plan(current['id'])
         assert len(receipts) == 3
         assert all(receipt['effect_state'] == 'committed' for receipt in receipts)
         async with database.sessions() as db:
@@ -51,7 +58,7 @@ def test_job_and_default_profile_group_commits_real_registry_effects(tmp_path, m
             assert (await db.get(Profile, profile.id)).headline == 'Reviewed headline'
             roles = (await db.execute(select(ProfileTargetRole).where(ProfileTargetRole.profile_id == profile.id))).scalars().all()
             assert [role.role_name for role in roles] == ['Product']
-            keys = [node['idempotency_key'] for group in plan['groups'] for node in group['nodes']]
+            keys = [receipt['result']['audit_attempt_key'] for receipt in receipts]
             audits = (await db.execute(select(OperationAuditLog).where(OperationAuditLog.idempotency_key.in_(keys)))).scalars().all()
             assert len(audits) == 3 and all(audit.ok and audit.status == 'completed' for audit in audits)
         await database.close()

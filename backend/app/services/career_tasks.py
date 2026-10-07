@@ -91,6 +91,21 @@ def _is_provider_blocked(value: Any) -> bool:
     return any(marker in text for marker in ("401", "unauthorized", "invalid_api_key", "authentication"))
 
 
+def _is_provider_unconfigured(value: Any) -> bool:
+    """A missing model-service configuration is recoverable, not a task failure."""
+    text = str(value or "").casefold()
+    return any(
+        marker in text
+        for marker in ("未配置", "not configured", "no api key", "missing api key")
+    )
+
+
+def _provider_unconfigured_message(task: dict[str, Any]) -> str:
+    if task.get("task_type") == "career_director" and task.get("target_type") == "job":
+        return "岗位已保存；当前内置 Agent 不可用（模型服务未配置）。配置或恢复内置 Agent 后可以重试评估。"
+    return "当前内置 Agent 不可用（模型服务未配置）；配置或恢复后可以重试。"
+
+
 
 
 _AGENT_TURN_EMBEDDED_ALIASES = {
@@ -316,7 +331,9 @@ async def _resolved_task_view(row: CareerTask) -> dict[str, Any]:
         from app.services.agent_run_state import list_agent_runs
 
         view["result"] = {**view["result"], "deliveries": await resolve_deliveries(view)}
-        if row.status in {"failed", "blocked"}:
+        # Blocked tasks carry the deliberate no-Agent recovery copy; only a
+        # genuine failure surfaces the agent run's raw failure reason.
+        if row.status == "failed":
             runs = await list_agent_runs(task_id=row.task_id, limit=1)
             if runs and runs[0].get("status") == "failed" and runs[0].get("failure_reason"):
                 view["error"] = _safe_error(runs[0]["failure_reason"])
@@ -1356,11 +1373,18 @@ async def _run_task(task_id: str) -> None:
                 )
             raise
         except Exception as exc:  # noqa: BLE001 - persisted task failure is explicit
-            blocked = _is_provider_blocked(exc)
+            blocked_auth = _is_provider_blocked(exc)
+            blocked_config = not blocked_auth and _is_provider_unconfigured(exc)
+            blocked = blocked_auth or blocked_config
             current = await get_career_task(task_id)
             if current["status"] == "cancelled":
                 return
-            error_message = "provider authentication failed" if blocked else _safe_error(exc)
+            if blocked_auth:
+                error_message = "provider authentication failed"
+            elif blocked_config:
+                error_message = _provider_unconfigured_message(task)
+            else:
+                error_message = _safe_error(exc)
             error_id = _record_task_error(
                 task_id,
                 message=error_message,

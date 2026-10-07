@@ -18,7 +18,7 @@ import {
   Tabs,
   Textarea,
   useDisclosure,
-} from "@nextui-org/react";
+} from "@heroui/react";
 import {
   Briefcase,
   Building2,

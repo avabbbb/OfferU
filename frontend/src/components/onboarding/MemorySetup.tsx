@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button, Checkbox, Input, Textarea } from "@nextui-org/react";
+import { Button, Checkbox, Input, Textarea } from "@heroui/react";
 import { memoryApi, type MemoryInboxItem } from "@/lib/api";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 

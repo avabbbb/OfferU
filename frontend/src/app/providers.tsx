@@ -1,10 +1,10 @@
 // =============================================
-// NextUI + SWR Provider 包装 + Onboarding 引导
+// HeroUI + SWR Provider 包装 + Onboarding 引导
 // =============================================
 
 "use client";
 
-import { NextUIProvider } from "@nextui-org/react";
+import { HeroUIProvider } from "@heroui/react";
 import { SWRConfig } from "swr";
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -231,11 +231,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
         dedupingInterval: 5000,
       }}
     >
-      <NextUIProvider>
+      <HeroUIProvider>
         <BackendReadyGate>
           {children}
         </BackendReadyGate>
-      </NextUIProvider>
+      </HeroUIProvider>
     </SWRConfig>
   );
 }

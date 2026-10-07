@@ -50,6 +50,61 @@ def _use_replay_provider(route) -> None:
     route.continue_(post_data=_replay_provider_payload(route))
 
 
+def _career_task_json(page, path: str) -> dict:
+    response = page.request.get(f"{API_URL}{path}")
+    if not response.ok:
+        raise AssertionError(f"request failed: {response.status} {path}")
+    payload = response.json()
+    if not isinstance(payload, dict):
+        raise AssertionError(f"expected object response: {path}")
+    return payload
+
+
+def _assert_saved_job_degrades_without_agent(page, job_id: int) -> dict:
+    """The JOB_SAVED automation must land in the honest no-Agent recovery state.
+
+    Mirrors the worker-soak contract: the career_director task for a saved job
+    ends as ``blocked`` (not ``failed``), stays retryable, keeps its recovery
+    copy, and never hides the saved job behind an unresolved error.
+    """
+    deadline = time.time() + 60
+    latest: list = []
+    while time.time() < deadline:
+        payload = _career_task_json(
+            page,
+            f"/api/agent/runtime/career-tasks?target_type=job&target_id={job_id}&limit=10",
+        )
+        latest = payload.get("tasks", []) if isinstance(payload.get("tasks"), list) else []
+        task = next(
+            (
+                item
+                for item in latest
+                if isinstance(item, dict)
+                and item.get("task_type") == "career_director"
+                and isinstance(item.get("input"), dict)
+                and item.get("input", {}).get("event_type") == "JOB_SAVED"
+            ),
+            None,
+        )
+        if isinstance(task, dict) and task.get("status") in {
+            "completed",
+            "failed",
+            "blocked",
+            "cancelled",
+        }:
+            if task.get("status") != "blocked":
+                raise AssertionError(f"saved job must expose the no-Agent recovery state: {task}")
+            if not task.get("retryable"):
+                raise AssertionError(f"saved job must stay retryable without an Agent: {task}")
+            if "岗位已保存" not in str(task.get("error") or ""):
+                raise AssertionError(f"saved job hid the recovery message: {task}")
+            return task
+        time.sleep(1)
+    raise AssertionError(
+        f"career_director task for job {job_id} did not reach a terminal state: {latest}"
+    )
+
+
 def _synthetic_resume_docx() -> bytes:
     """Build a stable, synthetic resume for the visible first-run import flow."""
     from docx import Document
@@ -73,11 +128,13 @@ def _complete_new_user_onboarding(page, suffix: str) -> None:
     )
     agent_panel = wizard.get_by_test_id("agent-provider-health")
     expect(agent_panel).to_be_visible(timeout=20000)
+    # The web release keeps the browser-mode connection notice (the Desktop
+    # scan UI only runs inside Tauri). The wizard itself keeps the stable
+    # "continue without an Agent" contract for the release flow.
     expect(agent_panel).to_contain_text(
-        "检测到 0 个本机运行环境。连接能力以检查结果为准。", timeout=30000
+        "请在 OfferU Desktop 中连接你的 Agent", timeout=30000
     )
-    expect(agent_panel.get_by_text("未检测到", exact=True).first).to_be_visible()
-    expect(wizard.get_by_text("暂时没有可用 Agent 也可以继续。", exact=False)).to_be_visible()
+    expect(wizard.get_by_text("没有可用 Agent 时也可以继续设置", exact=False)).to_be_visible()
     page.get_by_role("button", name="继续", exact=True).click()
 
     resume_input = page.get_by_label("选择简历文件", exact=True)

@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Button, Chip, Input, Spinner, Textarea } from "@nextui-org/react";
+import { Button, Chip, Input, Spinner, Textarea } from "@heroui/react";
 import {
   ArrowLeft,
   ArrowRight,

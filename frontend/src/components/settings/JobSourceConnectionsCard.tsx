@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Button, Chip, Spinner } from "@nextui-org/react";
+import { Button, Chip, Spinner } from "@heroui/react";
 import { Plug, RefreshCw } from "lucide-react";
 import { connectionsApi, type JobSourceConnection } from "@/lib/api";
 

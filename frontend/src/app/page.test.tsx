@@ -286,6 +286,7 @@ describe("TodayPage", () => {
               job_id: 42,
               title: "面试准备提纲",
               href: "/jobs/42?artifact=prep-artifact-9",
+              practice: { answered: 0, total: 1, completed: false },
             }],
           },
         }],

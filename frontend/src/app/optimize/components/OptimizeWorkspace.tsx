@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Chip, Input, Select, SelectItem, Spinner } from "@nextui-org/react";
+import { Chip, Input, Select, SelectItem, Spinner } from "@heroui/react";
 import {
   CheckCircle2,
   FolderOpen,
