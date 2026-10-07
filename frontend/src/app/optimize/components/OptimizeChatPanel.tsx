@@ -275,7 +275,7 @@ export function OptimizeChatPanel({
     }
   }, [run?.id, loading]);
 
-  const handleReviewChanged = (result: { run?: { id?: string; status?: string } & Record<string, unknown>; continuation?: { assistant_message?: string } | null }) => {
+  const handleReviewChanged = (result: any) => {
     const continuationMessage = String(result.continuation?.assistant_message || "").trim();
     if (continuationMessage) setMessages((current) => [...current, continuationMessage]);
     if (run?.id) {
