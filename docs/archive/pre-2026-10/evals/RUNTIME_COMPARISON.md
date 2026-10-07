@@ -1,3 +1,5 @@
+> **已归档（2026-10）**：本文不再是当前权威。当前文档：09-quality-and-release.md（位于 `docs/`）。
+
 # Runtime Comparison
 
 目标（GOAL §16）：同一批 Case、同一 Seed、同一 Grader，横向比较不同外部 Coding Agent，

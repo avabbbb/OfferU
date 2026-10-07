@@ -1,3 +1,5 @@
+> **已归档（2026-10）**：本文不再是当前权威。当前文档：09-quality-and-release.md（位于 `docs/`）。
+
 # Real OMP Agent E2E Test Guide
 
 This guide describes OfferU's **real Agent-native** acceptance path.
