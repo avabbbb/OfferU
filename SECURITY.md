@@ -12,7 +12,7 @@ SECURITY_NOT_VERIFIED
 
 ## Security 01 current evidence
 
-当前报告：[2026-08-31-codex-offeru-core-v1-security-01](docs/evals/reports/2026-08-31-codex-offeru-core-v1-security-01.md)，对应 commit `7529c59`。
+当前报告：[2026-08-31-codex-offeru-core-v1-security-01](docs/archive/pre-2026-10/evals/reports/2026-08-31-codex-offeru-core-v1-security-01.md)，对应 commit `7529c59`。
 
 已验证的子项包括：
 
@@ -27,7 +27,7 @@ SECURITY_NOT_VERIFIED
 
 ## Security 02 current evidence
 
-当前补充报告：[2026-08-31-codex-offeru-core-v1-security-02](docs/evals/reports/2026-08-31-codex-offeru-core-v1-security-02.md)，对应 commit `485871b`。
+当前补充报告：[2026-08-31-codex-offeru-core-v1-security-02](docs/archive/pre-2026-10/evals/reports/2026-08-31-codex-offeru-core-v1-security-02.md)，对应 commit `485871b`。
 
 本轮已验证：
 
@@ -71,7 +71,7 @@ SECURITY_NOT_VERIFIED
 
 ## Security 09 current evidence
 
-当前补充报告：[Public Release Provider Health Matrix](docs/evals/reports/2026-09-02-codex-offeru-public-release-provider-health.md)。
+当前补充报告：[Public Release Provider Health Matrix](docs/archive/pre-2026-10/evals/reports/2026-09-02-codex-offeru-public-release-provider-health.md)。
 
 - 健康状态只从统一投影输出 `unprobed`、`ready`、`auth_required`、`blocked`、`unavailable`；
 - 已知 Provider 列表固定为 `pi`、`replay`、`codex`、`deepseek-harness`，不存在 Provider 时不会默认显示为可用；
@@ -82,7 +82,7 @@ SECURITY_NOT_VERIFIED
 
 ## Security 11 current evidence
 
-当前补充报告：[durable error redaction boundary](docs/evals/reports/2026-09-02-codex-offeru-public-release-durable-error-redaction.md)。
+当前补充报告：[durable error redaction boundary](docs/archive/pre-2026-10/evals/reports/2026-09-02-codex-offeru-public-release-durable-error-redaction.md)。
 
 - Provider health 的读取/写入路径现在都使用同时处理凭据和直接 PII 的 bounded redaction，旧持久化行也不会原样返回；
 - CareerTask、AutomationEvent 和 Hosted Executor 的错误字段在 durable write 与 API projection 两侧都不再依赖 secret-only redaction；Hosted Executor Provider event payload 也有写入/读取两侧的直接 PII redaction；

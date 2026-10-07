@@ -34,4 +34,4 @@ src/hosted-executor-worker.mjs uses a separate local process contract and is man
 
 Do not expose this worker as a network service.
 
-Current Agent product authority: ../docs/architecture/agent-system.md.
+Current Agent product authority: ../docs/08-module-agent-runtime.md.
