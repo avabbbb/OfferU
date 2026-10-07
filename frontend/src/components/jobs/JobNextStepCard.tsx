@@ -25,6 +25,7 @@ type Props = {
   interviewFirst: boolean;
   jobId: number;
   preparing: boolean;
+  researchRefreshAvailable?: boolean;
   onRetryTask: () => void;
   onPrepareDecision: () => void;
   onManualDecision: () => void;
@@ -49,6 +50,16 @@ function resolveStep(p: Props): Step {
   const manual: JobNextStepAction = { kind: "run", run: p.onManualDecision, label: "不用 AI，我自己决定" };
   const taskFailed = p.taskStatus === "failed" || p.taskStatus === "blocked";
   const taskActive = p.taskStatus === "queued" || p.taskStatus === "running";
+
+  if (p.researchRefreshAvailable && p.stage === "ready_for_resume_proposal") {
+    return {
+      title: "有新的岗位情报，要重新评估吗？",
+      body: "你之前的人工决定仍然有效，不会被新调研静默覆盖。只有你主动重新评估，才会生成一份基于新证据的建议。",
+      tone: "action",
+      primary: { kind: "run", run: p.onPrepareDecision, label: "基于新情报重新评估", busy: p.preparing },
+      secondary: { kind: "link", href: `/optimize?job_ids=${p.jobId}`, label: "继续用当前决定" },
+    };
+  }
 
   if (p.interviewFirst) {
     return {
