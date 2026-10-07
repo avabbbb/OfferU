@@ -161,7 +161,7 @@ def test_registry_confirmed_reset_clears_synthetic_state_and_restores_backup(
         uploaded_resume.write_text("synthetic uploaded resume", encoding="utf-8")
         database_path = root / "djm.db"
         runtime_url = f"sqlite+aiosqlite:///{database_path.as_posix()}"
-        runtime_engine = create_async_engine(runtime_url)
+        runtime_engine = create_async_engine(runtime_url, connect_args={"timeout": 30.0})
         assert Path(runtime_engine.url.database).resolve() == database_path.resolve()
         if os.name == "nt" and Path("H:/tmp").exists():
             assert Path(runtime_engine.url.database).drive.upper() == "H:"
@@ -398,7 +398,7 @@ def test_registry_confirmed_reset_clears_synthetic_state_and_restores_backup(
 
             # Dispose and recreate the DB engine to model a backend restart.
             await runtime_engine.dispose()
-            runtime_engine = create_async_engine(runtime_url)
+            runtime_engine = create_async_engine(runtime_url, connect_args={"timeout": 30.0})
             session_factory = bind_engine(runtime_engine)
             async with session_factory() as db:
                 assert len((await db.execute(select(Job))).scalars().all()) == 0
@@ -431,7 +431,7 @@ def test_registry_confirmed_reset_clears_synthetic_state_and_restores_backup(
                 backend_dir=root,
             )
             assert restored["applied"] is True
-            runtime_engine = create_async_engine(runtime_url)
+            runtime_engine = create_async_engine(runtime_url, connect_args={"timeout": 30.0})
             session_factory = bind_engine(runtime_engine)
             async with session_factory() as db:
                 assert len((await db.execute(select(Job))).scalars().all()) == 1
