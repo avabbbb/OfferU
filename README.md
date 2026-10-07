@@ -17,8 +17,8 @@
   <strong>English</strong> ·
   <a href="./README_ZH.md">简体中文</a> ·
   <a href="./QUICKSTART.md">Quickstart</a> ·
-  <a href="./INTERNAL_BETA.md">Demo</a> ·
-  <a href="./ARCHITECTURE.md">Architecture</a> ·
+  <a href="./docs/09-quality-and-release.md">Quality</a> ·
+  <a href="./docs/01-overall-design.md">Design</a> ·
   <a href="./docs/README.md">Docs</a>
 </p>
 
@@ -31,7 +31,7 @@
 </p>
 
 <p align="center">
-  <em>Internal Beta — source available, signed installer not yet released. See <a href="./STATUS.md">Status</a>.</em>
+  <em>Internal Beta — source available, signed installer not yet released. See <a href="./KNOWN_ISSUES.md">Known issues</a>.</em>
 </p>
 
 <table>
@@ -299,7 +299,7 @@ This is why the underlying agent harness can evolve without moving career truth 
 external runtime. Every surface — GUI, CLI, TUI, skills and agent integrations — goes through the same
 Operation Registry; none of them writes business state on its own.
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full boundaries and [CONTEXT.md](./CONTEXT.md) for
+See [Overall design](./docs/01-overall-design.md) for the full boundaries and [its glossary](./docs/01-overall-design.md#10-核心术语) for
 domain language and invariants.
 
 ---
@@ -342,7 +342,7 @@ OfferU is not yet published as a signed consumer installer. For source developme
 
 - [DEVELOPMENT.md](./DEVELOPMENT.md) — environment and dev setup
 - [QUICKSTART.md](./QUICKSTART.md) — fastest local path
-- [INTERNAL_BETA.md](./INTERNAL_BETA.md) — internal beta walkthrough and golden path
+- [Quality & release](./docs/09-quality-and-release.md) — acceptance goals and release gates
 
 The intended public user path is:
 
@@ -369,10 +369,9 @@ Download
 OfferU uses evidence-backed release gates rather than treating a successful build as production readiness.
 Current status, validation evidence, known issues and quality scores live in:
 
-- [STATUS.md](./STATUS.md)
 - [RELEASE_CHECKLIST.md](./RELEASE_CHECKLIST.md)
-- [QUALITY_SCORE.md](./QUALITY_SCORE.md)
 - [KNOWN_ISSUES.md](./KNOWN_ISSUES.md)
+- [Quality & release](./docs/09-quality-and-release.md)
 
 Suggested developer checks:
 
@@ -405,9 +404,9 @@ Current priorities are productization, not more top-level features:
 
 OfferU is moving quickly toward a public local-first release. Before contributing, read:
 
-- [CONTEXT.md](./CONTEXT.md) — domain language and invariants
-- [ARCHITECTURE.md](./ARCHITECTURE.md) — system boundaries
-- [docs/adr/README.md](./docs/adr/README.md) — accepted architecture decisions
+- [Overall design](./docs/01-overall-design.md) — product, authorities and glossary
+- [Interaction design](./docs/02-interaction-design.md) — navigation, interruption and anti-deadlock rules
+- [Agent runtime & security](./docs/08-module-agent-runtime.md) — Agent hosts, Registry, approval
 - [DEVELOPMENT.md](./DEVELOPMENT.md) — development setup
 
 Please do not bypass the Operation Registry for business mutations, and do not introduce a second source
