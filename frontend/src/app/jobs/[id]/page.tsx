@@ -38,6 +38,7 @@ import { DeliveryList } from "@/components/career/DeliveryList";
 import { ArtifactViewer } from "@/components/career/ArtifactViewer";
 import { readDeliveries } from "@/components/career/deliveries";
 import { RoleIntelligencePanel } from "@/components/jobs/RoleIntelligencePanel";
+import { JobWorkspaceOverview } from "@/components/jobs/JobWorkspaceOverview";
 import {
   jobResearchApi,
   dataModeLabel,
@@ -609,7 +610,7 @@ export default function JobDetailPage() {
       transition={{ type: "spring", stiffness: 380, damping: 28 }}
       className="mx-auto max-w-5xl space-y-8"
     >
-      <section className="bauhaus-panel overflow-hidden bg-white">
+      <section id="job-snapshot" className="bauhaus-panel scroll-mt-6 overflow-hidden bg-white">
         <div className="grid gap-6 p-6 md:p-8 xl:grid-cols-[1.05fr_0.95fr]">
           <div className="space-y-4">
             <div className="flex flex-wrap items-center gap-3">
@@ -661,6 +662,24 @@ export default function JobDetailPage() {
         </div>
       </section>
 
+      <JobWorkspaceOverview
+        jobId={job.id}
+        snapshotValue="岗位已保存"
+        snapshotDescription={[job.company, job.location].filter(Boolean).join(" · ")}
+        roleTaskStatus={preparationTask?.status}
+        materialStatus={resumeProposal?.status}
+        materialChangeCount={resumeProposal?.change_count ?? 0}
+        materialFactGateStatus={resumeProposal?.fact_gate_status}
+        interviewTaskCount={interviewLifecycleTasks.length}
+        interviewActive={interviewLifecycleTasks.some((task) => ["queued", "running"].includes(task.status))}
+        interviewNeedsReview={interviewLifecycleTasks.some((task) =>
+          task.result?.briefing?.interview_lifecycle?.mode === "learning_review"
+        )}
+        timelineStage={currentApplicationStage ? applicationStageLabel(currentApplicationStage) : undefined}
+        timelineEventCount={progressTimeline?.timeline?.length ?? 0}
+        timelineNextAction={currentNextAction || undefined}
+      />
+
       {job.summary && (
         <Card className="bauhaus-panel rounded-none bg-white shadow-none">
           <CardBody className="p-5">
@@ -687,15 +706,17 @@ export default function JobDetailPage() {
       <DeliveryList deliveries={jobDeliveries} heading="OfferU 已准备的内容" onOpenArtifact={setActiveArtifactId} />
       {jobArtifactsError && <p role="alert" className="text-sm text-[var(--primary-red)]">{safeClientErrorMessage(jobArtifactsError, "岗位材料暂时无法读取")}</p>}
 
-      {interviewLifecycleTasks.map((task) => (
-        <InterviewLifecycleCard
-          key={task.task_id}
-          task={task}
-          onSubmitted={() => void mutateCareerTasks()}
-        />
-      ))}
+      <section id="interview" className="scroll-mt-6 space-y-3">
+        {interviewLifecycleTasks.map((task) => (
+          <InterviewLifecycleCard
+            key={task.task_id}
+            task={task}
+            onSubmitted={() => void mutateCareerTasks()}
+          />
+        ))}
+      </section>
 
-      <Card className="bauhaus-panel rounded-none bg-white shadow-none" data-testid="job-application-context">
+      <Card id="timeline" className="bauhaus-panel scroll-mt-6 rounded-none bg-white shadow-none" data-testid="job-application-context">
         <CardBody className="space-y-5 p-5">
           <div>
             <p className="bauhaus-label text-[var(--foreground-muted)]">Application context</p>
@@ -907,9 +928,10 @@ export default function JobDetailPage() {
         </CardBody>
       </Card>
 
+      <div id="evidence-map" className="scroll-mt-6" aria-hidden="true" />
       <RoleIntelligencePanel jobId={job.id} />
 
-      <Card className="bauhaus-panel rounded-none bg-white shadow-none" data-testid="resume-proposal">
+      <Card id="materials" className="bauhaus-panel scroll-mt-6 rounded-none bg-white shadow-none" data-testid="resume-proposal">
         <CardBody className="space-y-5 p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
