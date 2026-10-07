@@ -1,3 +1,5 @@
+> **已归档（2026-10）**：本文不再是当前权威。当前文档：01-overall-design.md（位于 `docs/`）。
+
 # OfferU Skill-first Agent Entry, Job Workspace & Product Story
 
 Status: **DESIGN RATIONALE / DISTILLED REFERENCE**  

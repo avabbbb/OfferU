@@ -1,3 +1,5 @@
+> **已归档（2026-10）**：本文不再是当前权威。当前文档：README.md（位于 `docs/`）。
+
 # OfferU Development History / 发展历史
 
 Status: **HISTORICAL SYNTHESIS — NOT CURRENT PRODUCT AUTHORITY**

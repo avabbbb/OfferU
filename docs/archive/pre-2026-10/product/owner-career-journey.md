@@ -1,3 +1,5 @@
+> **已归档（2026-10）**：本文不再是当前权威。当前文档：01–07 各模块（位于 `docs/`）。
+
 # 真实求职用户的完整体验与验收契约
 
 状态：**CURRENT PRODUCT DETAIL / OWNER ACCEPTANCE TARGET**

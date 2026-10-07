@@ -1,3 +1,5 @@
+> **已归档（2026-10）**：本文不再是当前权威。当前文档：05-module-resume.md（位于 `docs/`）。
+
 # Resume Canvas — Document-first, AI-assisted Resume Experience
 
 Status: **CURRENT PRODUCT DESIGN / OWNER-DOGFOOD TARGET**  
