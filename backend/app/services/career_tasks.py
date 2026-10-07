@@ -331,7 +331,9 @@ async def _resolved_task_view(row: CareerTask) -> dict[str, Any]:
         from app.services.agent_run_state import list_agent_runs
 
         view["result"] = {**view["result"], "deliveries": await resolve_deliveries(view)}
-        if row.status in {"failed", "blocked"}:
+        # Blocked tasks carry the deliberate no-Agent recovery copy; only a
+        # genuine failure surfaces the agent run's raw failure reason.
+        if row.status == "failed":
             runs = await list_agent_runs(task_id=row.task_id, limit=1)
             if runs and runs[0].get("status") == "failed" and runs[0].get("failure_reason"):
                 view["error"] = _safe_error(runs[0]["failure_reason"])
