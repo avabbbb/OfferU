@@ -210,10 +210,6 @@ export function OptimizeChatPanel({
           task_id: tailorResumeTaskId(jobId),
         },
         (event, data) => {
-          const eventRunId = String(data?.run_id || "");
-          if (eventRunId && run?.id !== eventRunId) {
-            // The persisted run will be read back from the final response or refresh.
-          }
           if (event === "assistant.delta" || event === "message.delta") {
             const delta = String(data?.payload?.delta || "");
             if (delta) {
@@ -234,7 +230,6 @@ export function OptimizeChatPanel({
       );
       setRun(response.run);
       const finalMessage = String(response.assistant_message || "").trim();
-      if (streamingText.trim()) setMessages((current) => [...current, streamingText.trim()]);
       if (finalMessage) {
         setMessages((current) => current.includes(finalMessage) ? current : [...current, finalMessage]);
       }
@@ -247,7 +242,7 @@ export function OptimizeChatPanel({
       setProgressLabel("");
       if (abortRef.current === controller) abortRef.current = null;
     }
-  }, [jobId, disabled, loading, referenceResumeId, streamingText, run?.id]);
+  }, [jobId, disabled, loading, referenceResumeId]);
 
   const stopRun = useCallback(async () => {
     abortRef.current?.abort();
