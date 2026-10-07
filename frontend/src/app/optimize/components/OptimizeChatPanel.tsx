@@ -5,11 +5,10 @@ import Link from "next/link";
 import MarkdownIt from "markdown-it";
 import { Button, Spinner } from "@heroui/react";
 import { CheckCircle2, CircleAlert, FileText, MessageSquare, Play, RefreshCw, Square } from "lucide-react";
-import { AgentAskPanel } from "@/components/workbench/AgentAskPanel";
+import { RunReviewPanel } from "@/components/workbench/RunReviewPanel";
 import { agentRuntimeApi, type AgentRunRecord } from "@/lib/api";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import {
-  activePlanId,
   resumeIdFromRun,
   runStatusLabel,
   tailorResumeGoal,
@@ -281,14 +280,7 @@ export function OptimizeChatPanel({
     }
   }, [run?.id, loading]);
 
-  const openPlanReview = () => {
-    if (!run?.id) return;
-    window.dispatchEvent(new CustomEvent("offeru-open-plan-review", {
-      detail: { run_id: run.id, plan_id: activePlanId(run) },
-    }));
-  };
-
-  const handleAskAnswered = (result: { run?: { id?: string; status?: string } & Record<string, unknown>; continuation?: { assistant_message?: string } }) => {
+  const handleReviewChanged = (result: { run?: { id?: string; status?: string } & Record<string, unknown>; continuation?: { assistant_message?: string } | null }) => {
     const continuationMessage = String(result.continuation?.assistant_message || "").trim();
     if (continuationMessage) setMessages((current) => [...current, continuationMessage]);
     if (run?.id) {
@@ -381,19 +373,17 @@ export function OptimizeChatPanel({
               </div>
             )}
 
-            {run?.status === "waiting_input" && (
-              <div className="rounded-[10px] border border-[var(--border)] bg-white p-4" data-testid="optimize-runtime-ask">
-                <AgentAskPanel runId={run.id} onAnswered={handleAskAnswered} />
-              </div>
-            )}
-
-            {waitingForReview && (
-              <section className="rounded-[10px] border border-[var(--primary-yellow)] bg-amber-50 p-4" data-testid="optimize-runtime-plan-review">
-                <p className="text-sm font-semibold text-amber-950">section-level 修改已经分成语义决定组</p>
-                <p className="mt-1 text-xs leading-relaxed text-amber-900">审核会走现有 Proposal v2；Ask 的回答不等于批准，只有这里的决定会产生 receipt。</p>
-                <Button className="bauhaus-button bauhaus-button-red mt-3 !px-4 !py-2.5 !text-[12px]" onPress={openPlanReview}>
-                  审核改动组
-                </Button>
+            {run && (run.status === "waiting_input" || waitingForReview) && (
+              <section className="overflow-hidden rounded-[10px] border border-[var(--border)] bg-white" data-testid="optimize-runtime-review">
+                <div className="border-b border-[var(--border)] px-4 py-3">
+                  <p className="text-sm font-semibold text-[var(--foreground)]">
+                    {run.status === "waiting_input" ? "需要你做一个真实取舍" : "审核 section-level 改动组"}
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed text-[var(--foreground-muted)]">
+                    这里直接复用 Runtime 的 Ask / Proposal v2。Ask 只表达偏好，不批准修改；采用决定会生成持久 receipt，并让同一个 Run 继续。
+                  </p>
+                </div>
+                <RunReviewPanel runId={run.id} onChanged={handleReviewChanged} />
               </section>
             )}
 
