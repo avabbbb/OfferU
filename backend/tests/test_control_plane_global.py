@@ -67,6 +67,17 @@ NON_REGISTRY_MUTATION_ENDPOINTS = {
     ("email.py", "ack_notification"),
 }
 
+# These control existing durable Run/Plan state. Decisions delegate to the
+# v2 coordinator, whose effect executor calls the Registry; Ask only persists
+# an answer. Keep the expected delegation explicit rather than exempting all
+# decision endpoints or treating a human answer as a Career operation.
+RUNTIME_CONTROL_DELEGATES = {
+    ("bridge.py", "confirm_proposal_endpoint"): {"confirm_embedded_agent_action", "reject_embedded_agent_action"},
+    ("main_agent.py", "decide_decision_group"): {"decide_proposal_plan_group_endpoint"},
+    ("main_agent.py", "answer_input_request"): {"answer_agent_input"},
+    ("main_agent.py", "decide_proposal_plan_group_endpoint"): {"confirm_group", "reject_group"},
+}
+
 MUTATING_METHODS = {
     "add",
     "add_all",
@@ -180,6 +191,14 @@ def test_domain_mutation_routes_use_registry_or_explicit_runtime_boundary() -> N
         for name, node, methods in _route_functions(tree):
             key = (path.name, name)
             if key in NON_REGISTRY_MUTATION_ENDPOINTS:
+                continue
+            if key in RUNTIME_CONTROL_DELEGATES:
+                calls = {
+                    call.func.id if isinstance(call.func, ast.Name) else call.func.attr
+                    for call in ast.walk(node)
+                    if isinstance(call, ast.Call) and isinstance(call.func, (ast.Name, ast.Attribute))
+                }
+                assert RUNTIME_CONTROL_DELEGATES[key] <= calls, f"Runtime delegation changed: {key}"
                 continue
             if not _calls_registry(node, helpers):
                 violations.append(

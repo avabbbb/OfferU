@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Button, Checkbox, Input, Select, SelectItem } from "@nextui-org/react";
+import { Button, Checkbox, Input, Select, SelectItem } from "@heroui/react";
 import { imapConnect, type EmailAccountSummary } from "@/lib/hooks";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 

@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Card, Button, Spinner } from "@nextui-org/react";
+import { Card, Button, Spinner } from "@heroui/react";
 import { SHOWCASE, showcaseHandle } from "@/lib/showcase/router";
 import { resolveApiBase } from "@/lib/apiBase";
 

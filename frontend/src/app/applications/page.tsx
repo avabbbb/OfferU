@@ -21,7 +21,7 @@ import {
   Switch,
   Textarea,
   Tooltip,
-} from "@nextui-org/react";
+} from "@heroui/react";
 import {
   AlertTriangle,
   Check,

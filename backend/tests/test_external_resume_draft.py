@@ -4,13 +4,14 @@ import asyncio
 from contextlib import asynccontextmanager
 from copy import deepcopy
 from unittest.mock import AsyncMock, patch
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import Base
-from app.models.models import CareerTask, Job, Profile, ProfileSection, Resume, ResumeOptimizationProposal, ResumeVersion
+from app.models.models import CareerTask, Job, Profile, ProfileSection, Resume, ResumeSection, ResumeOptimizationProposal, ResumeVersion
 from app.services import pre_application_decisions, resume_optimization, resume_workspace
 
 
@@ -46,10 +47,12 @@ def test_external_draft_registry_prepares_without_self_approving(tmp_path):
                 )
                 assert not unaudited["ok"]
                 assert {name for name, op in OPERATIONS.items() if op.preparation_only} == {
-                    "persist_external_resume_proposal", "ensure_resume_workspace"
+                    "persist_external_resume_proposal", "ensure_resume_workspace",
+                    "prepare_proposal_plan", "propose_resume_decision_plan"
                 }
                 assert "persist_external_resume_proposal" in resolve_skill("tailor_resume").allowed_tools
-                assert "review_resume_proposal_items" not in resolve_skill("tailor_resume").allowed_tools
+                assert "review_resume_proposal_items" in resolve_skill("tailor_resume").allowed_tools
+                assert OPERATIONS["review_resume_proposal_items"].requires_confirmation
                 async with sessions() as db:
                     proposal = (await db.execute(select(ResumeOptimizationProposal))).scalar_one()
                     assert proposal.status != "accepted"
@@ -59,25 +62,71 @@ def test_external_draft_registry_prepares_without_self_approving(tmp_path):
 def test_omitted_profile_evidence_is_compared_and_stale_checked(tmp_path):
     async def run():
         async with _fixture(tmp_path) as (sessions, job_id, profile_id, section_id, preparation):
-            async with sessions() as db:
-                extra = ProfileSection(profile_id=profile_id, section_type="project", title="Game project",
-                    sort_order=1, tier="verified_fact", status="active", source="manual",
-                    content_json={"normalized": {"name": "Puzzle", "description": "Built a puzzle game."}})
-                db.add(extra)
-                await db.commit()
-                extra_id = extra.id
-            context = await resume_optimization.get_resume_preparation_context(job_id)
-            preparation["source_fingerprint"] = context["source_fingerprint"]
-            preparation["rationale"].append({"source_section_ids": [extra_id],
-                "requirement": "Build reliable Python services.", "why": "Omit the game project for this services role."})
-            saved = await resume_optimization.persist_external_resume_proposal(job_id, preparation, "omit-game")
-            assert any(change["change_type"] == "removed" and extra_id in change["source_section_ids"] for change in saved["diff"])
+            from app import ops
+            from app.services import agent_run_state, proposal_plan_execution, proposal_plan_sources, proposal_plan_store
+
+            with (
+                patch.object(agent_run_state, "async_session", sessions),
+                patch.object(ops, "async_session", sessions),
+                patch.object(proposal_plan_execution, "async_session", sessions),
+                patch.object(proposal_plan_sources, "async_session", sessions),
+                patch.object(proposal_plan_store, "async_session", sessions),
+            ):
+                async with sessions() as db:
+                    extra = ProfileSection(profile_id=profile_id, section_type="project", title="Game project",
+                        sort_order=1, tier="verified_fact", status="active", source="manual",
+                        content_json={"normalized": {"name": "Puzzle", "description": "Built a puzzle game."}})
+                    db.add(extra)
+                    await db.commit()
+                    extra_id = extra.id
+                context = await resume_optimization.get_resume_preparation_context(job_id)
+                preparation["source_fingerprint"] = context["source_fingerprint"]
+                preparation["rationale"].append({"source_section_ids": [extra_id],
+                    "requirement": "Build reliable Python services.", "why": "Omit the game project for this services role."})
+                saved = await resume_optimization.persist_external_resume_proposal(job_id, preparation, "omit-game")
+                omitted = next(change for change in saved["diff"]
+                               if change["change_type"] == "removed" and extra_id in change["source_section_ids"])
+                workspace = await resume_workspace.ensure_resume_workspace(job_id, saved["proposal_id"])
+                run, plan = await _prepare_resume_adoption(
+                    proposal_id=saved["proposal_id"],
+                    resume_id=workspace["resume"]["id"],
+                    change_ids=[omitted["change_id"]],
+                )
+                async with sessions() as db:
+                    resume_before = await db.get(Resume, workspace["resume"]["id"])
+                    sections = (await db.execute(select(ResumeSection).where(
+                        ResumeSection.resume_id == resume_before.id
+                    ))).scalars().all()
+                    section_ids = [section.id for section in sections]
+                    sections_before = {section.id: deepcopy(section.content_json) for section in sections}
+
             async with sessions() as db:
                 extra = await db.get(ProfileSection, extra_id)
                 extra.content_json = {"normalized": {"name": "Puzzle", "description": "Updated the game project."}}
                 await db.commit()
-            reviewed = await resume_optimization.review_resume_optimization(saved["proposal_id"], "accept")
-            assert reviewed["status"] == "stale"
+            group = plan["groups"][0]
+            reviewed = await _approve_resume_group(plan, group)
+            assert not reviewed["ok"], reviewed
+            # Source validation rejects before a decision/claim/domain write;
+            # no uncertain execution or fake receipt should be manufactured.
+            assert reviewed["group"]["status"] == "pending"
+            assert reviewed["errors"] and "changed" in " ".join(reviewed["errors"])
+            assert not reviewed["receipts"]
+            assert reviewed["group"]["nodes"][0]["attempt_count"] == 0
+            assert run["id"] == plan["run_id"]
+            async with sessions() as db:
+                proposal = await db.get(ResumeOptimizationProposal, saved["proposal_id"])
+                resume = await db.get(Resume, workspace["resume"]["id"])
+                sections = (await db.execute(select(ResumeSection).where(
+                    ResumeSection.resume_id == resume.id
+                ))).scalars().all()
+                assert proposal.status != "accepted"
+                assert resume.workspace_revision == 0
+                assert {section.id: section.content_json for section in sections} == sections_before
+                assert set(section_ids) == {section.id for section in sections}
+            replay = await _approve_resume_group(plan, group)
+            assert not replay["ok"]
+            assert not replay.get("tool_calls")
     asyncio.run(run())
 
 
@@ -104,6 +153,12 @@ async def _fixture(tmp_path):
         db.add_all([section, job])
         await db.commit()
     with patch.object(resume_optimization, "async_session", sessions), \
+         patch("app.services.resume_decision_plans.async_session", sessions), \
+         patch("app.services.agent_run_state.async_session", sessions), \
+         patch("app.services.proposal_plan_sources.async_session", sessions), \
+         patch("app.services.proposal_plan_store.async_session", sessions), \
+         patch("app.services.proposal_plan_execution.async_session", sessions), \
+         patch("app.ops.async_session", sessions), \
          patch.object(resume_workspace, "async_session", sessions), \
          patch.object(pre_application_decisions, "async_session", sessions), \
          patch.object(resume_optimization, "_generate_candidate", AsyncMock(
@@ -122,6 +177,57 @@ async def _fixture(tmp_path):
             yield sessions, job.id, profile.id, section.id, preparation
         finally:
             await engine.dispose()
+
+
+async def _prepare_resume_adoption(*, proposal_id, resume_id, change_ids):
+    from app.ops import set_operation_run_context
+    from app.services.agent_run_state import create_agent_run
+    from app.services.agent_skill_registry import resolve_skill
+    from app.services.resume_decision_plans import propose_resume_decision_plan
+
+    skill = resolve_skill("tailor_resume")
+    run = await create_agent_run(
+        conversation_id=f"external-resume-{uuid4().hex}",
+        goal="Review the evidence-backed job resume draft",
+        mode="resume_workflow",
+        skill_id=skill.id,
+        skill_version=skill.version,
+        skill_snapshot=skill.summary(),
+        actions=[],
+    )
+    with set_operation_run_context(run["id"]):
+        prepared = await propose_resume_decision_plan(
+            proposal_id=proposal_id,
+            resume_id=resume_id,
+            groups=[{
+                "title": "Relevant experience",
+                "summary": "Review the displayed evidence-backed experience change",
+                "change_ids": list(change_ids),
+                "display": {"rationale": "The user reviews this group before adoption."},
+            }],
+        )
+    return run, prepared["plan"]
+
+
+async def _approve_resume_group(plan, group, decision_id=None):
+    from app.services.proposal_plan_execution import confirm_group
+    from app.services import ui_approval_capability
+
+    token = "Bearer external-resume-test-ui"
+    with patch(
+        "app.services.ui_approval_capability.accepts_authorization",
+        side_effect=lambda value: value == token,
+    ):
+        assert ui_approval_capability.accepts_authorization(token)
+        return await confirm_group(
+            plan["id"],
+            group["id"],
+            plan_digest=plan["digest"],
+            group_digest=group["digest"],
+            decision_id=decision_id or f"decision_{uuid4().hex}",
+            authorization_source=token,
+            surface="agent_runtime_ui",
+        )
 
 
 def test_external_draft_replay_and_independent_adoption(tmp_path):

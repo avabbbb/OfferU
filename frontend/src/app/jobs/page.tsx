@@ -28,7 +28,7 @@ import {
   ModalFooter,
   ModalHeader,
   useDisclosure,
-} from "@nextui-org/react";
+} from "@heroui/react";
 import { Search, Sparkles, X, CheckSquare, FolderPlus, Trash2, PencilLine, Plus } from "lucide-react";
 import { AddJobModal } from "@/components/jobs/AddJobModal";
 import { JobCard } from "@/components/jobs/JobCard";

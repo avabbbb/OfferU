@@ -78,12 +78,19 @@ if (!existsSync(join(stage, "node_modules/@anthropic-ai/claude-agent-sdk"))) thr
 cpSync(node, join(dist, `offeru-node-${nativeTarget}${extension}`));
 
 // Ship the matching managed headless browser; installed users need no browser download.
-const browserInstall = spawnSync(python, ["-m", "playwright", "install", "--only-shell", "chromium"], {
-  cwd: root, stdio: "inherit", windowsHide: true,
-  env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: resumeBrowsers },
-});
-if (browserInstall.error) throw browserInstall.error;
-if (browserInstall.status !== 0) throw new Error("Resume export browser staging failed.");
+// macOS exception: PyInstaller's Mach-O processing cannot rewrite the prebuilt
+// chromium dylib rpaths (install_name_tool needs header padding the official
+// build lacks), so macOS keeps system Playwright-browser resolution and the
+// offline-export-on-macOS capability remains a documented separate release gate.
+const bundleResumeBrowsers = process.platform !== "darwin";
+if (bundleResumeBrowsers) {
+  const browserInstall = spawnSync(python, ["-m", "playwright", "install", "--only-shell", "chromium"], {
+    cwd: root, stdio: "inherit", windowsHide: true,
+    env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: resumeBrowsers },
+  });
+  if (browserInstall.error) throw browserInstall.error;
+  if (browserInstall.status !== 0) throw new Error("Resume export browser staging failed.");
+}
 
 const args = [
   "-m", "PyInstaller", "--clean", "--noconfirm", "--onefile", "--name", "offeru-backend",
@@ -91,12 +98,14 @@ const args = [
   "--paths", backend, "--collect-all", "app", "--collect-submodules", "aiosqlite",
   "--collect-all", "playwright",
   "--add-data", `${resumeFrontend}${windows ? ";" : ":"}resume-frontend`,
-  "--add-data", `${resumeBrowsers}${windows ? ";" : ":"}resume-browsers`,
   "--add-data", `${buildIdentityPath}${windows ? ";" : ":"}offeru-assets`,
   "--add-data", `${join(backend, "app/agents/skills")}${windows ? ";" : ":"}app/agents/skills`,
   "--add-data", `${join(backend, "tests/fixtures")}${windows ? ";" : ":"}tests/fixtures`,
   "--add-data", `${join(root, ".agents/skills/offeru")}${windows ? ";" : ":"}offeru-assets/skills/offeru`,
 ];
+if (bundleResumeBrowsers) {
+  args.push("--add-data", `${resumeBrowsers}${windows ? ";" : ":"}resume-browsers`);
+}
 if (process.platform === "darwin") {
   args.push("--osx-entitlements-file", join(root, "frontend/src-tauri/Entitlements.plist"));
   if (process.env.APPLE_SIGNING_IDENTITY) args.push("--codesign-identity", process.env.APPLE_SIGNING_IDENTITY);

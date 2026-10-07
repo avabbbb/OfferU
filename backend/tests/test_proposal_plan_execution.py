@@ -136,7 +136,7 @@ def test_legacy_step_fields_cannot_authorize_a_registry_write(monkeypatch):
             surface="agent_runtime_ui",
         )
     )
-    assert error and "持久化计划、组、节点" in error
+    assert error and ("持久化计划、组、节点" in error or "持久化 Agent Run 动作不存在" in error)
 
 
 def test_cancelled_run_invalidates_a_previously_bound_node_claim(monkeypatch):

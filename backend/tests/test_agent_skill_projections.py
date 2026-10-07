@@ -195,6 +195,19 @@ class AgentSkillProjectionTests(unittest.TestCase):
     def test_checked_in_projections_have_no_drift(self) -> None:
         self.assertEqual(projection_drift(PROJECT_ROOT), [])
 
+    def test_checked_in_skill_assets_use_lf_line_endings(self) -> None:
+        rendered = render_skill_projections()
+        paths = set(rendered)
+        for router in rendered:
+            if router.name == "SKILL.md":
+                assets = (PROJECT_ROOT / router.parent / "skills").rglob("*.md")
+                paths.update(path.relative_to(PROJECT_ROOT) for path in assets)
+
+        for path in sorted(paths, key=lambda value: value.as_posix()):
+            with self.subTest(path=path.as_posix()):
+                content = (PROJECT_ROOT / path).read_bytes()
+                self.assertNotIn(b"\r", content)
+
     def test_product_authorities_do_not_restore_copy_prompt_onboarding(self) -> None:
         for name in ("AGENTS.md", "docs/README.md", "docs/01-overall-design.md", "docs/08-module-agent-runtime.md"):
             with self.subTest(authority=name):

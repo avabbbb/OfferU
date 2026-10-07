@@ -3,9 +3,20 @@
 # OfferU Status
 
 Status: **CURRENT CHECKOUT REVIEW — NOT RELEASE ACCEPTANCE**
-Updated: 2026-10-05
+Updated: 2026-10-06
 
-## Verdict
+## Current checkpoint
+
+- Local `main` and `origin/main`: `c58c069edc393d9fb0ccef6050120d5c62c7f13b`.
+- Sole development branch: `fix/main-ci-green`; implementation checkpoint `8a28e54`.
+- Earlier uncommitted UX/review work is preserved in `stash@{0}` (`pre-sync-offeru-2026-10-06`) and the verified Git archive `archives/single-main-20261006`.
+- Frontend: 116/116 tests, typecheck and production build pass after compatible dependency updates. Backend full regression is being verified; focused contract/security checks pass.
+- Dependency audit remains blocked by the unpatched `braces` advisory and its Tailwind 3 dependency chain. The audit threshold is unchanged.
+- No new Desktop installer or owner acceptance is claimed. Release readiness remains `NOT_READY`.
+
+The sections below preserve the **2026-10-05 historical review**, not current branch identities or current implementation status. Use live Git and the CI repair PR for the latest evidence.
+
+## Historical verdict — 2026-10-05
 
 ```text
 OFFERU_PUBLIC_RELEASE_NOT_READY

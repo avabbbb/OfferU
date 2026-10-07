@@ -108,6 +108,8 @@ def _persistable_source_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
            if source.get("adapter") == "proposal-plan.ensure-resume-workspace.v1" and isinstance(source.get("workspace_effect"), dict) else {}),
         **({"adapter": source["adapter"], "reset_effect": source["reset_effect"]}
            if source.get("adapter") == "proposal-plan.clean-reset.v1" and isinstance(source.get("reset_effect"), dict) else {}),
+        **({"adapter": source["adapter"], "files": source["files"]}
+           if source.get("adapter") == "proposal-plan.resume-design.v1" and isinstance(source.get("files"), list) else {}),
     }
 
 
@@ -362,6 +364,9 @@ async def _execute_claimed_node(
                     source_effect = await guard.finish(
                         result if isinstance(result, dict) else {"ok": False}
                     )
+                    if current_node["operation"] == "update_resume_design" and isinstance(result, dict) and result.get("ok"):
+                        from app.services.proposal_plan_design_effects import verify_design_effect
+                        source_effect = verify_design_effect(current_node, source_effect, guard)
                     if current_node["operation"] == "reset_local_business_data" and isinstance(result, dict) and result.get("ok"):
                         from app.services.proposal_plan_reset_effects import verify_reset_effect
                         source_effect = await verify_reset_effect(current_node, result)

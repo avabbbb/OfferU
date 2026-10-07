@@ -82,7 +82,7 @@ describe("PlanReviewInbox", () => {
     await openInbox(user);
 
     expect(screen.getByText("简历提案采纳计划")).toBeInTheDocument();
-    expect(screen.getByText("更新项目经历措辞")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "决策分组：更新项目经历措辞" })).toBeInTheDocument();
     expect(screen.getByText("把评审通过的修改落到简历工作区")).toBeInTheDocument();
     // Before/After/Why/evidence from display_json
     expect(screen.getByText("负责内部工具开发")).toBeInTheDocument();
@@ -132,7 +132,8 @@ describe("PlanReviewInbox", () => {
       dependency_group_ids: ["group_0123456789abcdef0123456789abcdef"],
       group_digest: "c".repeat(64),
     });
-    api.decisionPlansPending.mockResolvedValue({ plans: [plan()] });
+    api.decisionPlansPending.mockResolvedValueOnce({ plans: [plan()] })
+      .mockResolvedValue({ plans: [plan({ groups: [group({ status: "rejected" }), dependent] })] });
     api.decideDecisionGroup.mockResolvedValue({
       ok: true,
       plan: plan({ groups: [group({ status: "rejected" }), dependent] }),
@@ -182,7 +183,7 @@ describe("PlanReviewInbox", () => {
     await user.click(screen.getByRole("button", { name: "批准：更新项目经历措辞" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("桌面应用");
-    expect(screen.getByText("更新项目经历措辞")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "决策分组：更新项目经历措辞" })).toBeInTheDocument();
   });
 
   it("keeps stale and needs-reconciliation states visible", async () => {

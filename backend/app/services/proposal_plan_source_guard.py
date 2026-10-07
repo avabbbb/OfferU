@@ -196,6 +196,20 @@ def _orm_execute(statement: Any) -> None:
         table = getattr(getattr(statement.statement, "table", None), "name", "")
         if table in _CONTROL_TABLES or table.startswith("proposal_"):
             return
+        if guard.node["operation"] == "update_resume_design" and statement.is_update:
+            # This adapter owns one exact revision CAS. Other bulk statements
+            # still invalidate its witness, even if they target the same table.
+            from sqlalchemy import update
+            from app.models.models import Resume
+            args = guard.node["args"]
+            expected = update(Resume).where(
+                Resume.id == args["resume_id"],
+                Resume.workspace_revision == args["expected_revision"],
+            ).values(workspace_revision=args["expected_revision"] + 1)
+            if statement.statement.compare(expected):
+                guard.design_cas_count = getattr(guard, "design_cas_count", 0) + 1
+                if guard.design_cas_count == 1:
+                    return
         guard.unobserved = True
         guard.bulk_dml = True
 

@@ -22,7 +22,7 @@ import {
   Switch,
   Textarea,
   useDisclosure,
-} from "@nextui-org/react";
+} from "@heroui/react";
 import {
   AlertCircle,
   Check,
@@ -1637,11 +1637,11 @@ export default function SettingsPage() {
             {editingConfigId ? "编辑模型配置" : "新增模型配置"}
           </ModalHeader>
           <ModalBody className="space-y-5 overflow-y-auto px-6 py-5">
-            <Input label="接口地址" variant="bordered" value={formBaseUrl} onValueChange={setFormBaseUrl} placeholder="https://你的服务地址/v1" type="url" autoComplete="off" spellCheck={false} isInvalid={Boolean(formErrors.base_url)} errorMessage={formErrors.base_url} classNames={modelFieldClassNames} />
+            <Input label="接口地址" variant="bordered" value={formBaseUrl} onValueChange={setFormBaseUrl} placeholder="https://你的服务地址/v1" type="url" autoComplete="off" spellCheck="false" isInvalid={Boolean(formErrors.base_url)} errorMessage={formErrors.base_url} classNames={modelFieldClassNames} />
             <Input
               label="API 密钥"
               autoComplete="off"
-              spellCheck={false}
+              spellCheck="false"
               variant="bordered"
               value={formApiKey}
               onValueChange={setFormApiKey}

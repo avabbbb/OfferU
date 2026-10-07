@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Button } from "@nextui-org/react";
+import { Button } from "@heroui/react";
 import { FACTOR_LABEL, scoreColor, type FactorKey, type ScoreVector } from "../postureMath";
 
 interface SessionSample {

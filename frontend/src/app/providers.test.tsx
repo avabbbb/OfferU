@@ -5,7 +5,7 @@ import { BackendReadyGate } from "./providers";
 const mocks = vi.hoisted(() => ({ isTauri: vi.fn(), invoke: vi.fn(), fetch: vi.fn() }));
 
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: mocks.isTauri, invoke: mocks.invoke }));
-vi.mock("@nextui-org/react", () => ({ NextUIProvider: ({ children }: { children: React.ReactNode }) => children }));
+vi.mock("@heroui/react", () => ({ HeroUIProvider: ({ children }: { children: React.ReactNode }) => children }));
 vi.mock("swr", () => ({ SWRConfig: ({ children }: { children: React.ReactNode }) => children }));
 vi.mock("@/lib/showcase/router", () => ({ SHOWCASE: false }));
 

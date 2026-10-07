@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button } from "@nextui-org/react";
+import { Button } from "@heroui/react";
 import { ArrowLeft, ArrowRight, Briefcase, Brain, FileText, PlugZap, X } from "lucide-react";
 import { AgentConnectionPanel } from "@/components/workbench/AgentConnectionPanel";
 import { MemorySetup } from "./MemorySetup";

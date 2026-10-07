@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Button, Spinner } from "@nextui-org/react";
+import { Button, Spinner } from "@heroui/react";
 import { FileText, MessageSquare, Trash2, X } from "lucide-react";
 import {
   OptimizeSessionSummary,

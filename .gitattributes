@@ -1,2 +1,10 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Skill fingerprints cover raw bytes, so canonical packs and generated host
+# projections must have the same line endings on Windows and Linux.
+/.agents/skills/offeru/** text eol=lf
+/.claude/skills/offeru/** text eol=lf
+/.claude/agents/offeru-operator.md text eol=lf
+/.codex/agents/offeru-operator.toml text eol=lf
+/.copilot/** text eol=lf
