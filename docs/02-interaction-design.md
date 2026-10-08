@@ -153,10 +153,10 @@ Ask 支持 `selection_mode: single | multiple`、推荐项、可跳过、自由�
 
 ## 11. 已知交互缺陷（待修复，按优先级）
 
+> 2026-10 已修复：D-1（等待中的 Run 不再禁用输入、能力选择和快捷动作）与 D-2（新建 / 切换对话不再 abort Run，运行中的流只分离到后台）。实现见 §11.1。
+
 | 优先级 | 位置 | 问题 | 违反 |
 | --- | --- | --- | --- |
-| P0 | `frontend/src/components/workbench/AgentPanel.tsx`，约 1161、1189 行 | 存在 pending action、plan review 或 interrupted run 时，能力选择器和全部快捷动作被 `disabled` | D-1 |
-| P0 | 同文件 `startNewConversation` / `loadConversation`，约 551–600 行 | 有待办时调用 `agentRuntimeApi.abort(activeRunId)`，新建对话会杀掉任务 | D-2 |
 | P1 | `AgentAskPanel.tsx` | 单选问题被渲染成复选框 | §4.2 |
 | P1 | `AgentPanel.tsx` 中的 `QUICK_ACTIONS` | 写死了校招动作 | H-1 |
 | P1 | `components/layout/Sidebar.tsx` | 11 个入口、中英混排、三个简历入口 | N-1、N-2 |
@@ -167,6 +167,19 @@ Ask 支持 `selection_mode: single | multiple`、推荐项、可跳过、自由�
 | P2 | 全部前端页面 | 没有 i18n | H-2 |
 
 修复顺序：先修两个 P0 死锁，再修 P1 的策略和导航问题，最后做 P2 的拆分。每修一项都要补上对应规则的测试。
+
+### 11.1 D-1 / D-2 的实现方式（参考 Codex steer/queue 与 Claude Code agent view）
+
+| 用户动作 | 当前 Run 状态 | 行为 |
+| --- | --- | --- |
+| 发消息 | 正在执行 | `POST /api/agent/runtime/runs/{id}/steer`：在下一个工具边界注入当前 Run，气泡标注「已交给正在进行的任务」；返回 `not_running` 时进入待发送队列 |
+| 发消息 | 等审核 / 等回答 / 已中断 | 立即开新一轮；原 Run 收进「停放」条（「之前的任务等你审核，状态已保存 · 回去处理」），不取消、不批准 |
+| 发消息 | 有审核提交在途 / 后台流未结束 | 进入待发送队列；队列可见、可改、可删，空闲后按顺序发送 |
+| 新建 / 切换对话 | 任意 | 只把当前流分离到后台，不调用 abort；等待中的 Run 在历史对话和统一审核入口继续可见 |
+
+后端配合：Run 进入 `waiting_confirmation / waiting_input / waiting_decision` 时释放（停放）唯一的内置 Worker，会话文件保留；审批和回答本来就经由 continuation 从会话文件恢复，所以停放不改变授权路径。测试：`backend/tests/test_agent_never_locks.py`、`frontend/src/components/workbench/AgentPanel.test.tsx`「Agent input never locks」。
+
+已知限制：整页刷新或关闭应用仍会断开 SSE，后端会把执行中的 Run 标记为 `interrupted`（可恢复，不会丢失）；彻底解决需要把 Run 执行与 SSE 连接解耦，留给 AG-UI interrupt 方向（§10）。
 
 ## 12. 验收指标（单个真实岗位的完整旅程）
 

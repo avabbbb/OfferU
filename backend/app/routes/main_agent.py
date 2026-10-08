@@ -945,12 +945,15 @@ async def stream_runtime_run(body: PiAgentRunRequest):
             assistant_message = str(result.get("assistant_message") or "").strip()
             completed_conversation = conversation
             if assistant_message:
+                # Re-read: steering messages and parked sibling Runs may have
+                # appended to this conversation while the Run was executing.
+                latest_conversation = get_conversation(conversation["id"]) or conversation
                 completed_conversation = await _ui_operation_outputs(
                     "save_harness_conversation",
                     {
                         "conversation_id": conversation["id"],
                         "messages": [
-                            *conversation["messages"],
+                            *(latest_conversation.get("messages") or []),
                             {"role": "assistant", "content": assistant_message},
                         ],
                     },
@@ -1243,6 +1246,42 @@ async def resume_runtime_run(run_id: str) -> dict[str, Any]:
         return result
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=safe_error_message(exc))
+
+
+class RuntimeSteerBody(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+
+
+@runtime_router.post("/runtime/runs/{run_id}/steer")
+async def steer_runtime_run(run_id: str, body: RuntimeSteerBody) -> dict[str, Any]:
+    """Deliver a mid-run user message to the live Run (D-1: input never locks).
+
+    ``not_running`` means the Run is not executing a prompt; the client then
+    sends the text as a normal follow-up turn. Nothing here approves anything.
+    """
+    try:
+        provider = await _provider_for_run(run_id)
+        steer = getattr(provider, "steer_run", None)
+        if steer is None:
+            return {"ok": True, "disposition": "not_running"}
+        result = await steer(run_id, message=body.message)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=safe_error_message(exc))
+    if result.get("disposition") == "steered":
+        conversation_id = str((result.get("run") or {}).get("conversation_id") or "")
+        conversation = get_conversation(conversation_id) if conversation_id else None
+        if conversation is not None:
+            await _ui_operation_outputs(
+                "save_harness_conversation",
+                {
+                    "conversation_id": conversation_id,
+                    "messages": [
+                        *(conversation.get("messages") or []),
+                        {"role": "user", "content": body.message},
+                    ],
+                },
+            )
+    return {"ok": True, "disposition": result.get("disposition") or "not_running"}
 
 
 @runtime_router.post("/runtime/runs/{run_id}/abort")
