@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 
 export type ResumeTemplateType =
+  | "paper"
   | "reference"
   | "reference-compact"
   | "swiss-single"
@@ -89,6 +90,11 @@ export const TEMPLATE_OPTIONS: Array<{
   name: string;
   description: string;
 }> = [
+  {
+    id: "paper",
+    name: "纸 · 可直接编辑",
+    description: "克制的衬线排版，点页面上的任意文字直接修改，所见即导出。",
+  },
   {
     id: "reference",
     name: "中文经典",
@@ -202,6 +208,7 @@ function asSpacingLevel(value: unknown, fallback: SpacingLevel): SpacingLevel {
 
 function asTemplate(value: unknown): ResumeTemplateType {
   if (
+    value === "paper" ||
     value === "reference" ||
     value === "reference-compact" ||
     value === "swiss-single" ||
@@ -275,20 +282,31 @@ function lineHeightToLevel(value: unknown, fallback: SpacingLevel): SpacingLevel
   return 5;
 }
 
+/** 「纸」模板的默认排版：参考 Kami 的简历密排参数（页边距 11/13mm、行高 1.45、墨蓝 #1B365D）。 */
+const PAPER_EXACT_DEFAULTS: ResumeTemplateSettings["exact"] = {
+  ...DEFAULT_TEMPLATE_SETTINGS.exact,
+  bodySize: 10, headingSize: 12, nameSize: 22,
+  lineHeight: 1.45, sectionGap: 12, itemGap: 6, paragraphGap: 1, headerGap: 9,
+  headingColor: "#1B365D", ruleColor: "#E8E6DC",
+};
+const PAPER_MARGINS = { top: 11, right: 13, bottom: 11, left: 13 };
+
 export function normalizeTemplateSettings(config: Record<string, any> = {}): ResumeTemplateSettings {
   const rawTemplate = config.template || config.templateType;
   const template = asTemplate(rawTemplate);
   const reference = template === "reference" || template === "reference-compact";
+  const paper = template === "paper";
   const accent = asAccent(config.accentColorName || config.accentColor);
-  const base = DEFAULT_TEMPLATE_SETTINGS.exact;
+  const base = paper ? PAPER_EXACT_DEFAULTS : DEFAULT_TEMPLATE_SETTINGS.exact;
+  const marginDefaults = paper ? PAPER_MARGINS : DEFAULT_TEMPLATE_SETTINGS.margins;
   return {
     template,
     pageSize: config.pageSize === "LETTER" ? "LETTER" : "A4",
     margins: {
-      top: parseMarginMm(config.marginTop ?? config.pageMargin, DEFAULT_TEMPLATE_SETTINGS.margins.top),
-      right: parseMarginMm(config.marginRight ?? config.pageMargin, DEFAULT_TEMPLATE_SETTINGS.margins.right),
-      bottom: parseMarginMm(config.marginBottom ?? config.pageMargin, DEFAULT_TEMPLATE_SETTINGS.margins.bottom),
-      left: parseMarginMm(config.marginLeft ?? config.pageMargin, DEFAULT_TEMPLATE_SETTINGS.margins.left),
+      top: parseMarginMm(config.marginTop ?? config.pageMargin, marginDefaults.top),
+      right: parseMarginMm(config.marginRight ?? config.pageMargin, marginDefaults.right),
+      bottom: parseMarginMm(config.marginBottom ?? config.pageMargin, marginDefaults.bottom),
+      left: parseMarginMm(config.marginLeft ?? config.pageMargin, marginDefaults.left),
     },
     spacing: {
       section: asSpacingLevel(
@@ -314,7 +332,7 @@ export function normalizeTemplateSettings(config: Record<string, any> = {}): Res
     showContactIcons: config.showContactIcons === true || config.showContactIcons === "true",
     accentColor: accent,
     exact: {
-      bodySize: numeric(config.bodySize, config.fontSize ? parseFloat(FONT_SIZE_MAP[asSpacingLevel(config.fontSize, 2)]) : reference ? base.bodySize : 12, 8, 20),
+      bodySize: numeric(config.bodySize, config.fontSize ? parseFloat(FONT_SIZE_MAP[asSpacingLevel(config.fontSize, 2)]) : reference || paper ? base.bodySize : 12, 8, 20),
       headingSize: numeric(config.headingSize, base.headingSize, 8, 28),
       nameSize: numeric(config.nameSize, base.nameSize, 10, 40),
       lineHeight: numeric(config.lineHeight, config.lineHeightLevel ? LINE_HEIGHT_MAP[asSpacingLevel(config.lineHeightLevel, 3)] : base.lineHeight, 1, 2),
@@ -322,7 +340,7 @@ export function normalizeTemplateSettings(config: Record<string, any> = {}): Res
       itemGap: numeric(config.itemGap, config.itemSpacing ? parseFloat(ITEM_SPACING_MAP[asSpacingLevel(config.itemSpacing, 2)]) * 12 : base.itemGap, 0, 20),
       paragraphGap: numeric(config.paragraphGap, base.paragraphGap, 0, 16),
       headerGap: numeric(config.headerGap, base.headerGap, 0, 30),
-      headingColor: color(config.accentColorHex, color(config.accentColor, ACCENT_COLOR_MAP[accent].primary)),
+      headingColor: color(config.accentColorHex, color(config.accentColor, paper ? base.headingColor : ACCENT_COLOR_MAP[accent].primary)),
       ruleColor: color(config.ruleColor, base.ruleColor),
       photoWidth: numeric(config.photoWidth, base.photoWidth, 10, 50),
       photoHeight: numeric(config.photoHeight, base.photoHeight, 10, 60),
