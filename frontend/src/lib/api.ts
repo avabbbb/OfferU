@@ -1445,6 +1445,12 @@ export const agentRuntimeApi = {
       `/api/agent/runtime/runs/${encodeURIComponent(runId)}/resume`,
       { method: "POST" }
     ),
+  /** D-1：运行中发来的消息在下一个工具边界注入当前 Run；not_running 表示应作为新一轮发送。 */
+  steer: (runId: string, message: string) =>
+    request<{ ok: boolean; disposition: "steered" | "not_running" }>(
+      `/api/agent/runtime/runs/${encodeURIComponent(runId)}/steer`,
+      { method: "POST", body: JSON.stringify({ message }) }
+    ),
   abort: (runId: string) =>
     request<{ ok: boolean; run: AgentRunRecord }>(
       `/api/agent/runtime/runs/${encodeURIComponent(runId)}/abort`,
