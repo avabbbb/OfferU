@@ -1,6 +1,6 @@
 // =============================================
 // SiteRulePack v1 — 类型契约
-// 事实源：docs/architecture/site-rule-pack-v1.md
+// 事实源：本文件；产品边界见 docs/04-module-job-workspace.md，原始规格见 docs/archive/pre-2026-10/architecture/site-rule-pack-v1.md
 // 规则是数据；复杂控件行为是扩展内置 ControlDriver 代码。
 // =============================================
 
