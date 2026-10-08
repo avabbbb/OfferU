@@ -45,6 +45,7 @@ from app.services.operation_projection import (
 from app.services.embedded_agent_worker import (
     PROTOCOL_VERSION,
     EmbeddedAgentWorker,
+    EmbeddedAgentWorkerError,
     get_embedded_agent_worker,
 )
 from app.services.security_redaction import safe_error_message
@@ -991,6 +992,16 @@ async def start_embedded_agent_run(
             await publish("run.completed", {"status": "completed"})
             await active_worker.dispose_run(run_id)
             current = await load_agent_run(run_id) or current
+        if current["status"] in _PARKED_WAITING_STATUSES and active_worker.active_run_id == run_id:
+            # D-1: a Run that waits on the user must not hold the single
+            # embedded worker. Its session file stays on disk; approvals and
+            # answers already resume through continuations, which restart the
+            # worker from that file. Parking lets the user keep chatting.
+            try:
+                await active_worker.dispose_run(run_id)
+            except Exception:
+                pass
+            current = await load_agent_run(run_id) or current
         await persist_and_publish(
             "guardian.reviewed",
             {
@@ -1337,6 +1348,43 @@ async def reject_embedded_agent_action(
     if int(delivery.get("failed") or 0):
         result.setdefault("warnings", []).append("拒绝决定已记录；Agent续跑失败状态已持久化。")
     return result
+
+
+_PARKED_WAITING_STATUSES = frozenset({"waiting_confirmation", "waiting_input", "waiting_decision"})
+
+
+async def steer_embedded_agent_run(
+    run_id: str,
+    message: str,
+    *,
+    worker: EmbeddedAgentWorker | None = None,
+) -> dict[str, Any]:
+    """Inject a user message into a live Run at its next tool boundary.
+
+    Steering is collaboration input, never authorization. When the Run is not
+    executing a prompt right now (finished, parked or waiting on the user) the
+    caller gets ``not_running`` and should start a follow-up turn instead.
+    """
+
+    text = str(message or "").strip()
+    if not text:
+        raise ValueError("引导消息不能为空。")
+    run = await load_agent_run(run_id)
+    if run is None:
+        raise ValueError(f"Agent Run {run_id} 不存在。")
+    active_worker = worker or get_embedded_agent_worker()
+    if active_worker.active_run_id != run_id or not active_worker.prompt_active:
+        return {"ok": True, "disposition": "not_running", "run": run}
+    try:
+        await active_worker.steer_run(run_id, text[:4000])
+    except EmbeddedAgentWorkerError:
+        return {"ok": True, "disposition": "not_running", "run": run}
+    await append_agent_run_event(
+        run_id,
+        event_type="input.steered",
+        payload={"characters": len(text)},
+    )
+    return {"ok": True, "disposition": "steered", "run": run}
 
 
 async def abort_embedded_agent_run(
