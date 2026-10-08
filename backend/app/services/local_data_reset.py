@@ -377,6 +377,13 @@ async def _cancel_task_objects(tasks: list[asyncio.Task[Any]]) -> int:
     current = asyncio.current_task()
     active = [task for task in tasks if task is not current and not task.done()]
     for task in active:
+        # A worker may already have been asked to stop (cancel_career_task
+        # cancels its live task). A second cancel() would land inside the
+        # worker's final awaited materialization -- e.g. mid-commit -- and
+        # orphan an open SQLite write transaction that holds the database
+        # lock for the rest of the reset. Cancel once, then await it.
+        if task.cancelling():
+            continue
         task.cancel()
     if active:
         await asyncio.gather(*active, return_exceptions=True)
