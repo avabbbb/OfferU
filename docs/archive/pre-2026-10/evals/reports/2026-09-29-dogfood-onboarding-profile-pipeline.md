@@ -1,3 +1,5 @@
+> **已归档（2026-10）**：本文不再是当前权威。当前文档：历史证据，见 09-quality-and-release.md（位于 `docs/`）。
+
 # Dogfooding 会话记录 — 接入 → 简历导入 → 岗位 → 简历优化/复刻 — 2026-09-29（终态）
 
 **性质声明**：本报告是一次 dogfooding 会话（OMP/SWE-2 作为外部 Agent Harness 驱动 OfferU）的执行记录与评估，不是 `offeru-core-v1` 正式 suite 报告，不构成 Public Release 证据。状态枚举沿用 `docs/evals/README.md`（PASS/FAIL/BLOCKED/NOT_RUN/INVALID），岗位任务用 `PARTIAL` 标注"链路跑通但数据为种子"。

@@ -1,3 +1,5 @@
+> **已归档（2026-10）**：本文不再是当前权威。当前文档：历史证据，见 09-quality-and-release.md（位于 `docs/`）。
+
 # 阿酥与其他 Skill 仓库：原始文件核对及 OfferU 验收映射
 
 日期：2026-10-02。状态：**PUBLIC SOURCE REVIEW / NOT INSTALLED / NOT RUNTIME ACCEPTED**。
