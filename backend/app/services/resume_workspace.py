@@ -167,8 +167,11 @@ async def _has_live_director_proposal(
     job_id: int,
     proposal_id: Optional[str] = None,
 ) -> bool:
-    from app.services.resume_optimization import DIRECTOR_SOURCE_MODE, EXTERNAL_SOURCE_MODE
-
+    # Any persisted, non-terminal proposal for this Job is itself the
+    # reviewable artifact, whichever path produced it (Director, external
+    # Agent, or the decision-gated generator). Restricting this to Director
+    # proposals stranded a proposal whose pre-application decision was later
+    # reopened: the proposal existed but the workspace could not be opened.
     query = select(ResumeOptimizationProposal).where(
         ResumeOptimizationProposal.job_id == job_id
     )
@@ -178,8 +181,7 @@ async def _has_live_director_proposal(
         )
     proposals = list((await db.execute(query)).scalars().all())
     return any(
-        (proposal.trace_json or {}).get("source_mode") in {DIRECTOR_SOURCE_MODE, EXTERNAL_SOURCE_MODE}
-        and proposal.status in {"ready", "blocked", "in_review", "accepted"}
+        proposal.status in {"ready", "blocked", "in_review", "accepted"}
         for proposal in proposals
     )
 
@@ -728,8 +730,10 @@ async def _review_resume_proposal_items(
                 proposal.reviewed_at = _now()
                 await db.commit()
                 raise ValueError(proposal.review_note)
+        fact_warnings: list[Any] = []
         for clean_change_id in pending_ids:
             diff = diffs[clean_change_id]
+            change_fact_warnings: list[Any] = []
             if clean_action == "accept":
                 before = diff.get("before") if isinstance(diff.get("before"), dict) else None
                 after = diff.get("after") if isinstance(diff.get("after"), dict) else None
@@ -746,54 +750,34 @@ async def _review_resume_proposal_items(
                     target.visible = False
                 elif after:
                     if clean_edited_text:
-                        # User-supplied text bypasses the generated content, so it
-                        # must re-run the fact gate against the proposal's verified
-                        # source evidence. Unsupported claims require an explicit
-                        # second submission (confirmation) instead of silent apply.
-                        # Runs BEFORE any section mutation: only the pending flag
-                        # is committed when confirmation is required.
-                        pending_key = f"{clean_change_id}:pending_edit"
-                        pending = reviews.get(pending_key)
-                        confirmed = (
-                            isinstance(pending, dict)
-                            and pending.get("edited_text") == clean_edited_text
-                        )
-                        if not confirmed:
-                            source_ids = _source_ids(proposal.source_section_ids_json)
-                            for diff_row in (before, after):
-                                if isinstance(diff_row, dict):
-                                    for sid in _source_ids(diff_row.get("source_section_ids")):
-                                        if sid not in source_ids:
-                                            source_ids.append(sid)
-                            source_sections = []
-                            if source_ids:
-                                source_sections = list(
-                                    (
-                                        await db.execute(
-                                            select(ProfileSection).where(
-                                                ProfileSection.id.in_(source_ids)
-                                            )
+                        # User-supplied text bypasses the generated content, so
+                        # it is re-checked against the proposal's verified
+                        # source evidence. The user is the author of this text:
+                        # unsupported claims are recorded as advisory warnings
+                        # on the review (and returned to the UI) instead of
+                        # demanding a second identical submission.
+                        source_ids = _source_ids(proposal.source_section_ids_json)
+                        for diff_row in (before, after):
+                            if isinstance(diff_row, dict):
+                                for sid in _source_ids(diff_row.get("source_section_ids")):
+                                    if sid not in source_ids:
+                                        source_ids.append(sid)
+                        source_sections = []
+                        if source_ids:
+                            source_sections = list(
+                                (
+                                    await db.execute(
+                                        select(ProfileSection).where(
+                                            ProfileSection.id.in_(source_ids)
                                         )
-                                    ).scalars().all()
-                                )
-                            gate = validate_edited_text(source_sections, clean_edited_text)
-                            if gate["requires_user_confirmation"]:
-                                reviews[pending_key] = {
-                                    "edited_text": clean_edited_text,
-                                    "warnings": gate["warnings"],
-                                    "flagged_at": _now().isoformat(),
-                                }
-                                proposal.item_reviews_json = reviews
-                                await db.commit()
-                                claims = "、".join(
-                                    gate["unsupported_metrics"]
-                                    + gate["unsupported_named_claims"]
-                                )
-                                raise ValueError(
-                                    "编辑文本包含来源中不存在的声明"
-                                    f"（{claims}）。如确认无误，请再次提交相同文本以确认。"
-                                )
-                            reviews.pop(pending_key, None)
+                                    )
+                                ).scalars().all()
+                            )
+                        gate = validate_edited_text(source_sections, clean_edited_text)
+                        reviews.pop(f"{clean_change_id}:pending_edit", None)
+                        if gate["requires_user_confirmation"]:
+                            change_fact_warnings = list(gate["warnings"])
+                            fact_warnings.extend(change_fact_warnings)
                     target.section_type = _row_section_type(str(after.get("section_type") or target.section_type))
                     target.title = str(after.get("title") or target.title)
                     target.sort_order = int(after.get("sort_order", target.sort_order))
@@ -816,6 +800,8 @@ async def _review_resume_proposal_items(
                 "edited_text": clean_edited_text,
                 "reviewed_at": _now().isoformat(),
             }
+            if change_fact_warnings:
+                reviews[clean_change_id]["fact_warnings"] = change_fact_warnings
         if clean_action == "accept":
             resume.workspace_revision = int(resume.workspace_revision or 0) + 1
         proposal.item_reviews_json = reviews
@@ -828,4 +814,5 @@ async def _review_resume_proposal_items(
         return {
             **await _workspace_payload(db, resume, job=job, proposal_id=proposal.proposal_id),
             "duplicate": False,
+            "fact_warnings": fact_warnings,
         }

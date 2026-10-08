@@ -759,8 +759,8 @@ async def submit_manual_pre_application_decision(
     input_hash = str(
         context["manual_input_hash"] if without_research else context["input_hash"]
     )
-    if without_research and not clean_rationale:
-        raise ValueError("没有可用调研时人工决定，必须写明理由")
+    # The user's own decision needs no written justification; the stored
+    # rationale falls back to "使用者人工决定" below.
 
     # 幂等：同 input_hash 已有人工/AI 决策时直接返回，不重复造。
     existing = decision_store.latest(job_id=clean_job_id, input_hash=input_hash)
@@ -810,8 +810,9 @@ async def review_pre_application_decision(
             "final_decision 只能是 go、conditional_go、no_go 或 insufficient_evidence"
         )
     clean_note = _clean_text(note, "note", 2000)
+    # Overriding the Agent is the user's call; a note is optional context.
     if clean_final != decision.get("agent_recommendation") and not clean_note:
-        raise ValueError("覆盖 Agent 建议时必须填写 note")
+        clean_note = "使用者覆盖 Agent 建议"
 
     context = await _load_current_context(_clean_job_id(decision.get("job_id")))
     if context.get("input_hash") != decision.get("input_hash"):

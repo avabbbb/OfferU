@@ -1614,8 +1614,8 @@ async def review_job_research(
     if not isinstance(note, str):
         raise ValueError("note 必须是字符串")
     clean_note = note.strip()[:2000]
-    if clean_action == "reject" and not clean_note:
-        raise ValueError("拒绝候选证据时必须填写 note")
+    # A reason helps later review but is not required: demanding one blocked
+    # a plain "this evidence is wrong" rejection.
 
     duplicate = False
     async with async_session() as db:

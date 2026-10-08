@@ -208,6 +208,27 @@ class PreApplicationDecisionContractTests(unittest.TestCase):
         self.assertEqual("no_go", reviewed_no_go["final_decision"])
         self.assertEqual("completed_no_go", no_go_state["stage"])
 
+    def test_overriding_agent_recommendation_needs_no_note(self) -> None:
+        async def run() -> dict:
+            with tempfile.TemporaryDirectory() as directory:
+                store = pre_application_decisions.PreApplicationDecisionStore(Path(directory))
+                prepared = store.create(_decision_payload())
+                with (
+                    patch.object(pre_application_decisions, "decision_store", store),
+                    patch.object(
+                        pre_application_decisions,
+                        "_load_current_context",
+                        AsyncMock(return_value=_context()),
+                    ),
+                ):
+                    return await pre_application_decisions.review_pre_application_decision(
+                        prepared["id"], "no_go", note=""
+                    )
+
+        reviewed = asyncio.run(run())
+        self.assertEqual("no_go", reviewed["final_decision"])
+        self.assertEqual("reviewed", reviewed["status"])
+
     def test_manual_decision_works_without_usable_research(self) -> None:
         research_missing = {
             "stage": "needs_research",
@@ -228,11 +249,8 @@ class PreApplicationDecisionContractTests(unittest.TestCase):
                         AsyncMock(return_value=research_missing),
                     ),
                 ):
-                    with self.assertRaises(ValueError):
-                        await pre_application_decisions.submit_manual_pre_application_decision(7, "go", "")
-                    decision = await pre_application_decisions.submit_manual_pre_application_decision(
-                        7, "go", "AI 调研不可用，我按 JD 和自己的经历判断可以投"
-                    )
+                    # A written rationale is optional for the user's own call.
+                    decision = await pre_application_decisions.submit_manual_pre_application_decision(7, "go", "")
                     state = await pre_application_decisions.get_pre_application_state(7)
                 # Once research is accepted, the research-free manual decision still counts.
                 later = {**_context(), "manual_input_hash": "manual-hash-7"}
@@ -249,6 +267,7 @@ class PreApplicationDecisionContractTests(unittest.TestCase):
 
         decision, state, later_state = asyncio.run(run())
         self.assertEqual("manual", decision["decision_source"])
+        self.assertEqual("使用者人工决定", decision["decision"]["rationale"])
         self.assertEqual("", decision["research_run_id"])
         self.assertEqual("manual-hash-7", decision["input_hash"])
         self.assertEqual("ready_for_resume_proposal", state["stage"])

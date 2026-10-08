@@ -180,7 +180,7 @@ class ResumeWorkspaceTests(unittest.TestCase):
 
         self.assertEqual(asyncio.run(run()), "用户确认后的描述")
 
-    def test_edited_text_with_fabricated_claim_requires_confirmation(self) -> None:
+    def test_edited_text_with_unsupported_claim_applies_with_advisory_warning(self) -> None:
         async def run() -> dict:
             engine = create_async_engine("sqlite+aiosqlite:///:memory:")
             sessions = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
@@ -200,15 +200,8 @@ class ResumeWorkspaceTests(unittest.TestCase):
                     job_id=fixture["job_id"], proposal_id=fixture["proposal_id"]
                 )
                 fabricated = "Scaled Kubernetes platform, improved throughput by 80%."
-                with self.assertRaisesRegex(ValueError, "确认"):
-                    await resume_workspace.review_resume_proposal_item(
-                        proposal_id=fixture["proposal_id"],
-                        resume_id=workspace["resume"]["id"],
-                        change_id=fixture["change_id"],
-                        action="accept",
-                        edited_text=fabricated,
-                    )
-                # Same text submitted again = explicit confirmation → applied.
+                # The user authored this text: one submission applies it and
+                # unsupported claims come back as advisory warnings.
                 reviewed = await resume_workspace.review_resume_proposal_item(
                     proposal_id=fixture["proposal_id"],
                     resume_id=workspace["resume"]["id"],
@@ -219,6 +212,7 @@ class ResumeWorkspaceTests(unittest.TestCase):
             await engine.dispose()
             return {
                 "description": reviewed["resume"]["sections"][0]["content_json"][0]["description"],
+                "warnings": reviewed["fact_warnings"],
             }
 
         result = asyncio.run(run())
@@ -226,6 +220,7 @@ class ResumeWorkspaceTests(unittest.TestCase):
             result["description"],
             "Scaled Kubernetes platform, improved throughput by 80%.",
         )
+        self.assertTrue(result["warnings"])
 
     def test_edited_text_grounded_in_source_applies_directly(self) -> None:
         async def run() -> dict:
