@@ -33,31 +33,51 @@ def test_complete_packet_is_user_review_and_external_effect_keeps_authorization_
     }))
 
     assert review["reviewability"] == {
-        "status": "ready", "reason_codes": [], "counts_as_user_decision": True,
+        "status": "ready", "reason_codes": [], "advisory_codes": [], "counts_as_user_decision": True,
     }
     assert review["interaction_state"] == "needs_user_review"
     assert authorize["interaction_state"] == "needs_user_authorization"
     assert authorize["reviewability"]["counts_as_user_decision"] is True
 
 
-def test_incomplete_packet_and_unknown_execution_are_system_work():
+def test_incomplete_packet_is_advisory_and_unknown_execution_is_system_work():
     incomplete = assess_group(_group(display={"before": "Old", "after": "New"}))
     uncertain = assess_group(_group(nodes=[{"operation": "update_resume_section", "status": "uncertain"}]))
 
-    assert incomplete["reviewability"]["status"] == "needs_preparation"
-    assert incomplete["reviewability"]["counts_as_user_decision"] is False
-    assert {"missing_why", "missing_evidence"}.issubset(incomplete["reviewability"]["reason_codes"])
-    assert incomplete["interaction_state"] == "system_recovering"
+    # Missing why/evidence is a hint on the card, never a lock on the decision.
+    assert incomplete["reviewability"]["status"] == "ready"
+    assert incomplete["reviewability"]["counts_as_user_decision"] is True
+    assert "missing_why" in incomplete["reviewability"]["advisory_codes"]
+    assert incomplete["interaction_state"] == "needs_user_review"
     assert uncertain["reviewability"]["status"] == "needs_reconciliation"
     assert uncertain["interaction_state"] == "system_recovering"
 
 
-def test_prepare_auto_and_unbound_ask_do_not_become_review_decisions():
+def test_ai_change_rows_flag_missing_evidence_but_direct_registry_edits_do_not():
+    unsourced_rewrite = assess_group(_group(display={
+        "changes": [{"before": "Old bullet", "after": "New bullet", "why": "Match the role"}],
+    }))
+    direct_edit = assess_group(_group(display={
+        "before": {"headline": "Before"}, "after": {"headline": "After"}, "rationale": "User asked to revise it",
+    }))
+    removed_row = assess_group(_group(display={
+        "changes": [{"before": "Old bullet", "after": None, "why": "Not true", "evidence_refs": ["resume:1/section:4"]}],
+    }))
+
+    assert unsourced_rewrite["reviewability"]["advisory_codes"] == ["missing_evidence"]
+    assert unsourced_rewrite["reviewability"]["status"] == "ready"
+    assert direct_edit["reviewability"]["advisory_codes"] == []
+    assert removed_row["reviewability"]["advisory_codes"] == []
+
+
+def test_prepare_is_one_tap_review_and_unbound_ask_is_not_a_decision():
     automatic = assess_group(_group(risk="prepare"))
     ask = assess_group(_group(display={**_group()["display"], "interaction_outcome": "ASK"}))
 
+    # Nothing auto-runs prepare groups yet, so they surface for one-tap confirm.
     assert automatic["reviewability"]["status"] == "ready"
-    assert automatic["reviewability"]["counts_as_user_decision"] is False
+    assert automatic["reviewability"]["counts_as_user_decision"] is True
+    assert automatic["interaction_state"] == "needs_user_review"
     assert ask["interaction_state"] == "system_recovering"
     assert ask["reviewability"]["reason_codes"] == ["input_request_not_bound_to_group"]
 
