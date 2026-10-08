@@ -6,6 +6,7 @@ import { ResumeSwissTwoColumn } from "./templates/ResumeSwissTwoColumn";
 import { ResumeModernSingle } from "./templates/ResumeModernSingle";
 import { ResumeModernTwoColumn } from "./templates/ResumeModernTwoColumn";
 import { ResumeReference } from "./templates/ResumeReference";
+import { ResumePaper, type PaperSection, type ResumePaperProps } from "./templates/ResumePaper";
 import {
   normalizeTemplateSettings,
   settingsToCssVars,
@@ -35,6 +36,12 @@ interface ResumePreviewProps {
   sections: Section[];
   styleConfig: Record<string, string>;
   highlightKeywords?: string[];
+  /** 仅「纸」模板：在画布上直接编辑成品。其他模板保持只读预览。 */
+  editable?: boolean;
+  onProfileChange?: ResumePaperProps["onProfileChange"];
+  onSectionChange?: (section: Section) => void;
+  renderSectionAside?: ResumePaperProps["renderSectionAside"];
+  canvasFooter?: ResumePaperProps["canvasFooter"];
 }
 
 function normalizeSkillEntry(item: any, index: number): NormalizedResumeItem {
@@ -208,6 +215,23 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(function Re
   const highlightKeywords = useMemo(() => props.highlightKeywords || [], [props.highlightKeywords]);
 
   const template = (() => {
+    if (settings.template === "paper") {
+      return (
+        <ResumePaper
+          userName={props.userName}
+          title={props.title || props.contactJson?.headline || ""}
+          summary={props.summary}
+          contactJson={props.contactJson || {}}
+          sections={props.sections as PaperSection[]}
+          styleConfig={props.styleConfig || {}}
+          editable={props.editable}
+          onProfileChange={props.onProfileChange}
+          onSectionChange={props.onSectionChange as ResumePaperProps["onSectionChange"]}
+          renderSectionAside={props.renderSectionAside}
+          canvasFooter={props.canvasFooter}
+        />
+      );
+    }
     if (
       settings.template === "reference" ||
       settings.template === "reference-compact"
@@ -230,7 +254,7 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(function Re
     <div className="inline-block swiss-resume">
       <div
         ref={ref}
-        className={`resume-body ${settings.template}`}
+        className={`resume-body ${settings.template}${settings.template === "paper" && props.styleConfig?.paperTone === "white" ? " paper-tone-white" : ""}`}
         data-template={settings.template}
         data-page-size={settings.pageSize}
         style={cssVars}

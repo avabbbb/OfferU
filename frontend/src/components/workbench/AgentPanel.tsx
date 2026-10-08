@@ -47,6 +47,7 @@ import {
   type HostedExecutorSessionDetail,
   type AgentRunResponse,
 } from "@/lib/api";
+import { AGENT_COMPOSE_EVENT, drainAgentCompose } from "@/lib/agentCompose";
 import { presentAgentToolCall } from "@/lib/agentToolPresentation";
 import { bauhausFieldClassNames } from "@/lib/bauhaus";
 import { safeClientErrorMessage } from "@/lib/safe-error";
@@ -61,6 +62,8 @@ interface PanelMessage {
   role: "user" | "assistant";
   content: string;
   response?: AgentResponse;
+  /** D-1：运行中发来、已在下一个工具边界注入当前任务的消息。 */
+  steered?: boolean;
 }
 
 interface ResumeCandidate {
@@ -69,6 +72,24 @@ interface ResumeCandidate {
   runId: string;
   status: string;
 }
+
+interface QueuedPanelMessage {
+  id: string;
+  content: string;
+  skillId?: string;
+}
+
+interface ParkedRun {
+  id: string;
+  status: string;
+}
+
+const PARKED_RUN_LABELS: Record<string, string> = {
+  waiting_confirmation: "等你审核",
+  waiting_decision: "等你决定",
+  waiting_input: "等你回答",
+  interrupted: "已中断，可恢复",
+};
 
 const QUICK_ACTIONS = [
   {
@@ -312,6 +333,11 @@ export function AgentPanel() {
   const sendRequestPendingRef = useRef(false);
   const suppressResumePromptRef = useRef(false);
   const currentConvRef = useRef<string | null>(null);
+  // D-2：导航只"分离"正在跑的流，不中断它；后台流结束前新消息先排队。
+  const [backgroundStreams, setBackgroundStreams] = useState(0);
+  const [queuedMessages, setQueuedMessages] = useState<QueuedPanelMessage[]>([]);
+  const [parkedRuns, setParkedRuns] = useState<ParkedRun[]>([]);
+  const detachedControllersRef = useRef<Set<AbortController>>(new Set());
   const hasPendingActions = pendingActions.length > 0;
   const [reviewPending, setReviewPending] = useState(0);
   const hasPlanReview = runHasProposalPlan(activeRun);
@@ -320,6 +346,13 @@ export function AgentPanel() {
   const hasPendingPlanReview = hasPlanReview && !["cancelled", "aborted"].includes(activeRun?.status || "") && (
     planPendingGroupCount > 0 || ["waiting_confirmation", "executing"].includes(activeRun?.status || "")
   );
+  // 当前 Run 在等用户（审核 / 回答 / 恢复）。这只决定"新消息开新一轮前先把它停放"，
+  // 从不禁用输入、技能选择或快捷动作（docs/02 D-1）。
+  const runNeedsUser = hasPendingActions || hasPendingPlanReview || Boolean(interruptedRunId)
+    || reviewPending > 0 || activeRun?.status === "waiting_input";
+  // 只有真正在跑的流才算"忙"。等用户回答的 Ask 不算忙：新消息直接开新一轮，
+  // 旧 Run 先停放（main 5092639 的约定：Ask 待答时仍可发新消息）。
+  const agentBusy = loading || backgroundStreams > 0;
 
   const latestResponse = useMemo(() => {
     return [...messages].reverse().find((message) => message.response)?.response;
@@ -451,9 +484,60 @@ export function AgentPanel() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, loading]);
 
+  /** 把等用户处理的 Run 收进"停放"条：状态已持久化，随时可回来处理，绝不隐式取消。 */
+  const parkActiveRun = () => {
+    if (!activeRunId || !runNeedsUser) return;
+    const status = interruptedRunId ? "interrupted" : activeRun?.status || "waiting_confirmation";
+    const parkedId = activeRunId;
+    setParkedRuns((current) => [
+      ...current.filter((item) => item.id !== parkedId),
+      { id: parkedId, status },
+    ]);
+    setActiveRunId(null);
+    setActiveRun(null);
+    setPendingActions([]);
+    setInterruptedRunId(null);
+    setPlanReviewNotice("");
+    setPlanReviewLoading(false);
+  };
+
+  const enqueueMessage = (content: string, skillId?: string) => {
+    setQueuedMessages((current) => [
+      ...current,
+      { id: `queued-${Date.now()}-${current.length}`, content, skillId },
+    ]);
+  };
+
   const sendMessage = async (text?: string, explicitSkillId?: string) => {
     const content = (text ?? input).trim();
+    if (!content) return;
+    if (text === undefined) setInput("");
+    if (agentBusy) {
+      // 正在跑：先尝试在下一个工具边界引导当前任务；跑不到就排队，绝不丢、绝不锁。
+      if (loading && activeRunId && reviewPending === 0 && !explicitSkillId) {
+        try {
+          const result = await agentRuntimeApi.steer(activeRunId, content);
+          if (result.disposition === "steered") {
+            setMessages((current) => [
+              ...current,
+              { id: `user-steer-${Date.now()}`, role: "user", content, steered: true },
+            ]);
+            return;
+          }
+        } catch {
+          // 引导失败时退回排队，消息不能丢。
+        }
+      }
+      enqueueMessage(content, explicitSkillId);
+      return;
+    }
+    await startTurn(content, explicitSkillId);
+  };
+
+  const startTurn = async (content: string, explicitSkillId?: string) => {
+    // 双击 / 连按回车的防重：上一轮请求还没真正发出去时不重复开轮（来自 main 5092639）。
     if (!content || loading || sendRequestPendingRef.current) return;
+    parkActiveRun();
     const requestSkillId = explicitSkillId || selectedSkillId;
     const currentConversationId = conversationId;
     suppressResumePromptRef.current = true;
@@ -468,9 +552,10 @@ export function AgentPanel() {
       content,
     };
     const nextMessages = [...messages, userMessage];
+    // 被导航分离到后台的流：结果只落在它自己的对话里，绝不写进当前界面。
+    const isDetached = () => detachedControllersRef.current.has(controller) || controller.signal.aborted;
 
     setMessages(nextMessages);
-    setInput("");
     setLoading(true);
     setProgressText("正在启动内置助手...");
     setStreamingText("");
@@ -487,7 +572,7 @@ export function AgentPanel() {
           conversation_id: currentConversationId,
         },
         (event, data) => {
-          if (currentConvRef.current !== currentConversationId) return;
+          if (isDetached() || currentConvRef.current !== currentConversationId) return;
           setToolStream((current) => applyRuntimeToolEvent(current, event, data || {}));
           const eventRunId = String(data?.run_id || "");
           if (eventRunId) setActiveRunId(eventRunId);
@@ -507,7 +592,7 @@ export function AgentPanel() {
               setPlanReviewLoading(true);
               void agentRuntimeApi.run(planRunId)
                 .then(({ run }) => {
-                  if (currentConvRef.current !== currentConversationId) return;
+                  if (isDetached() || currentConvRef.current !== currentConversationId) return;
                   setActiveRun(run);
                   setPendingActions(pendingActionsFromRun(run));
                   setPlanReviewNotice(planReviewSummary(run, false));
@@ -538,7 +623,7 @@ export function AgentPanel() {
         },
         controller.signal,
       );
-      if (currentConvRef.current !== currentConversationId) return;
+      if (isDetached() || currentConvRef.current !== currentConversationId) return;
       if (!runtimeResponse.ok) {
         setActiveRunId(runtimeResponse.run.id);
         setActiveRun(runtimeResponse.run);
@@ -571,6 +656,9 @@ export function AgentPanel() {
       setError(safeClientErrorMessage(err, "OfferU 请求失败"));
       setInput((current) => current || content);
     } finally {
+      if (detachedControllersRef.current.delete(controller)) {
+        setBackgroundStreams((count) => Math.max(0, count - 1));
+      }
       if (abortControllerRef.current === controller) {
         abortControllerRef.current = null;
         sendRequestPendingRef.current = false;
@@ -580,11 +668,83 @@ export function AgentPanel() {
     }
   };
 
+  // 排队的消息：Agent 空闲且当前没有等用户处理的 Run 时自动按顺序发送；
+  // 有待处理事项时不抢跑，由用户在队列条上点"现在发送"（会先停放待处理 Run）。
+  useEffect(() => {
+    if (agentBusy || runNeedsUser || queuedMessages.length === 0) return;
+    const [next, ...rest] = queuedMessages;
+    setQueuedMessages(rest);
+    void startTurn(next.content, next.skillId);
+    // startTurn 读取的是最新渲染闭包；依赖只需要驱动出队的状态。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentBusy, runNeedsUser, queuedMessages]);
+
+  // 其他页面（如简历画布）交来的意图：一律先进待发送队列，由出队逻辑按 D-1 规则发送，
+  // 避免一批消息在同一帧里并发开出多个 Run。
+  useEffect(() => {
+    const take = () => {
+      const requests = drainAgentCompose();
+      if (!requests.length) return;
+      setQueuedMessages((current) => [
+        ...current,
+        ...requests.map((request, index) => ({
+          id: `compose-${Date.now()}-${index}`,
+          content: request.message,
+          skillId: request.skillId,
+        })),
+      ]);
+    };
+    take();
+    window.addEventListener(AGENT_COMPOSE_EVENT, take);
+    return () => window.removeEventListener(AGENT_COMPOSE_EVENT, take);
+  }, []);
+
+  const sendQueuedNow = (id: string) => {
+    if (agentBusy) return;
+    const item = queuedMessages.find((entry) => entry.id === id);
+    if (!item) return;
+    setQueuedMessages((current) => current.filter((entry) => entry.id !== id));
+    void startTurn(item.content, item.skillId);
+  };
+
+  const editQueued = (id: string) => {
+    const item = queuedMessages.find((entry) => entry.id === id);
+    if (!item) return;
+    setQueuedMessages((current) => current.filter((entry) => entry.id !== id));
+    setInput((current) => (current ? `${current}\n${item.content}` : item.content));
+  };
+
+  const restoreParkedRun = async (id: string) => {
+    if (loading) return;
+    try {
+      const { run } = await agentRuntimeApi.run(id);
+      parkActiveRun();
+      setParkedRuns((current) => current.filter((item) => item.id !== id));
+      if (!["waiting_confirmation", "waiting_decision", "waiting_input", "interrupted"].includes(run.status)) return;
+      setActiveRunId(run.id);
+      setActiveRun(run);
+      setPendingActions(run.status === "waiting_confirmation" ? pendingActionsFromRun(run) : []);
+      setInterruptedRunId(run.status === "interrupted" ? run.id : null);
+      if (runHasProposalPlan(run)) setPlanReviewNotice(planReviewSummary(run, false));
+    } catch (err: any) {
+      setError(safeClientErrorMessage(err, "读取待处理任务失败"));
+    }
+  };
+
+  /**
+   * D-2：切换或新建对话只把当前流"分离"到后台，不中断 Run，也不取消等用户处理的 Run。
+   * 等待中的 Run 已持久化，可在历史对话、输入框上方的待处理条或统一审核入口继续处理。
+   * 合并说明：保留 main 的 sendRequestPendingRef 复位与 detachActiveStream 命名，
+   * 但不再 abort——abort 会断开 SSE 并让后端把 Run 标成 interrupted。
+   */
   const detachActiveStream = () => {
     const controller = abortControllerRef.current;
     abortControllerRef.current = null;
     sendRequestPendingRef.current = false;
-    controller?.abort();
+    if (controller && loading && !controller.signal.aborted) {
+      setBackgroundStreams((count) => count + 1);
+      detachedControllersRef.current.add(controller);
+    }
     setLoading(false);
   };
 
@@ -595,6 +755,7 @@ export function AgentPanel() {
     currentConvRef.current = null;
     setStreamingText("");
     setToolStream(createInitialAgentStreamState());
+    setParkedRuns([]);
     setConversationId(null);
     setConversationTitle("新对话");
     setActiveRunId(null);
@@ -623,6 +784,7 @@ export function AgentPanel() {
     setError("");
     setStreamingText("");
     setToolStream(createInitialAgentStreamState());
+    setParkedRuns([]);
     try {
       const conversation = await agentSupportApi.conversation(id);
       setConversationId(conversation.id);
@@ -1219,7 +1381,6 @@ export function AgentPanel() {
           aria-label="当前 Agent Skill"
           title="默认由助手按任务自动选择 Skill"
           value={selectedSkillId}
-          disabled={loading}
           onChange={(event) => setSelectedSkillId(event.target.value)}
           className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[11.5px] text-[var(--foreground)] outline-none disabled:opacity-50"
         >
@@ -1247,7 +1408,6 @@ export function AgentPanel() {
           <button
             key={action.label}
             type="button"
-            disabled={loading}
             onClick={() => sendMessage(action.prompt, action.skillId)}
             className="bauhaus-chip cursor-pointer transition-colors duration-[var(--dur-quick)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -1411,6 +1571,52 @@ export function AgentPanel() {
         </div>
       )}
 
+      {parkedRuns.length > 0 && (
+        <div data-testid="agent-parked-runs" className="space-y-1 border-t border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2">
+          {parkedRuns.map((item) => (
+            <div key={item.id} className="flex items-center gap-2 text-[11.5px]">
+              <ClipboardCheck size={12} className="shrink-0 text-[var(--primary-blue)]" />
+              <span className="min-w-0 flex-1 truncate text-[var(--foreground-soft)]">
+                之前的任务{PARKED_RUN_LABELS[item.status] || "等你处理"}，状态已保存
+              </span>
+              <button
+                type="button"
+                onClick={() => void restoreParkedRun(item.id)}
+                disabled={loading}
+                className="shrink-0 font-semibold text-[var(--foreground)] underline disabled:opacity-50"
+              >
+                回去处理
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {queuedMessages.length > 0 && (
+        <div data-testid="agent-message-queue" className="space-y-1 border-t border-[var(--border)] px-3 py-2">
+          <p className="text-[10.5px] text-[var(--foreground-muted)]">
+            {agentBusy ? "待发送：助手空闲后按顺序发送" : runNeedsUser ? "待发送：当前任务在等你，处理完会自动发送" : "待发送"}
+          </p>
+          {queuedMessages.map((item) => (
+            <div key={item.id} className="flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[11.5px]">
+              <span className="min-w-0 flex-1 truncate text-[var(--foreground)]">{item.content}</span>
+              {!agentBusy && runNeedsUser && (
+                <button type="button" onClick={() => sendQueuedNow(item.id)} className="shrink-0 font-semibold underline">现在发送</button>
+              )}
+              <button type="button" onClick={() => editQueued(item.id)} className="shrink-0 text-[var(--foreground-muted)] underline">改</button>
+              <button
+                type="button"
+                aria-label="删除待发送消息"
+                onClick={() => setQueuedMessages((current) => current.filter((entry) => entry.id !== item.id))}
+                className="shrink-0 text-[var(--foreground-muted)] underline"
+              >
+                删
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* 输入区 */}
       <footer className="border-t border-[var(--border)] p-2.5">
         <div className="flex items-end gap-1.5">
@@ -1420,13 +1626,13 @@ export function AgentPanel() {
             minRows={1}
             maxRows={4}
             placeholder={
-              hasPendingActions || hasPendingPlanReview || reviewPending > 0
-                ? "继续对话或说明如何调整；旧审核仍需单独决定"
-                : interruptedRunId
-                  ? "Run 已中断；可继续对话或开始其他任务"
-                  : loading
-                    ? "正在处理；可先写下下一步..."
-                : "问 OfferU，或说你要推进哪一步..."
+              loading
+                ? "补充或纠正，助手会在下一步读到..."
+                : agentBusy
+                  ? "可以继续输入，空闲后按顺序发送..."
+                  : runNeedsUser
+                    ? "继续对话或说明如何调整；当前待处理的任务会先保存，随时可回来"
+                    : "问 OfferU，或说你要推进哪一步..."
             }
             variant="bordered"
             className="flex-1"
@@ -1442,10 +1648,10 @@ export function AgentPanel() {
             isIconOnly
             aria-label="发送"
             onPress={() => sendMessage()}
-            isDisabled={!input.trim() || loading}
+            isDisabled={!input.trim()}
             className="bauhaus-button bauhaus-button-outline !min-h-9 !min-w-9 !px-0 !py-0"
           >
-            {loading ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+            <Send size={14} />
           </Button>
         </div>
       </footer>
@@ -1473,6 +1679,9 @@ function PanelMessageBubble({
         >
           {message.content}
         </div>
+        {message.steered && (
+          <p className="mt-0.5 text-[10px] text-[var(--foreground-muted)]">已交给正在进行的任务</p>
+        )}
         {response && (
           <div className="mt-2 space-y-2 text-left">
             {response.alerts && response.alerts.length > 0 && <AlertList alerts={response.alerts} />}

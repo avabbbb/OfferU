@@ -115,13 +115,14 @@ class ResumeWorkspaceTests(unittest.TestCase):
         self.assertEqual(len(result["automation_events"]), 1)
         self.assertEqual(result["automation_events"][0].payload_json["resume_version_id"], result["version"]["id"])
 
-    def test_manual_edit_makes_unreviewed_proposal_stale(self) -> None:
-        async def run() -> str:
+    def test_manual_edit_elsewhere_keeps_the_suggestion_acceptable(self) -> None:
+        """人工修改优先，冲突按段落：改了别处，这条建议仍可采用。"""
+        async def run() -> tuple[str, str, str]:
             engine = create_async_engine("sqlite+aiosqlite:///:memory:")
             sessions = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
             async with engine.begin() as connection:
                 await connection.run_sync(Base.metadata.create_all)
-            fixture = await _seed(sessions, "stale")
+            fixture = await _seed(sessions, "elsewhere")
             with patch.object(resume_workspace, "async_session", sessions), patch.object(
                 resume_route_operations, "async_session", sessions
             ), patch.object(
@@ -135,19 +136,68 @@ class ResumeWorkspaceTests(unittest.TestCase):
                 await resume_route_operations.update_resume_record(
                     workspace["resume"]["id"], {"summary": "用户自己的最新修改"}
                 )
-                with self.assertRaisesRegex(ValueError, "过期"):
+                reviewed = await resume_workspace.review_resume_proposal_item(
+                    proposal_id=fixture["proposal_id"],
+                    resume_id=workspace["resume"]["id"],
+                    change_id=fixture["change_id"],
+                    action="accept",
+                )
+            async with sessions() as db:
+                proposal = await db.get(ResumeOptimizationProposal, fixture["proposal_id"])
+            await engine.dispose()
+            return (
+                proposal.status if proposal else "missing",
+                reviewed["resume"]["summary"],
+                reviewed["resume"]["sections"][0]["content_json"][0]["description"],
+            )
+
+        status, summary, description = asyncio.run(run())
+        self.assertNotEqual(status, "stale")
+        self.assertEqual(summary, "用户自己的最新修改")
+        self.assertEqual(description, "new evidence")
+
+    def test_manual_edit_of_the_target_section_blocks_only_that_suggestion(self) -> None:
+        """建议要改的那一段被用户改过：不覆盖用户版本，提案整体也不失效。"""
+        async def run() -> tuple[str, str]:
+            engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+            sessions = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+            async with engine.begin() as connection:
+                await connection.run_sync(Base.metadata.create_all)
+            fixture = await _seed(sessions, "target-edit")
+            with patch.object(resume_workspace, "async_session", sessions), patch.object(
+                resume_route_operations, "async_session", sessions
+            ), patch.object(
+                resume_workspace,
+                "get_pre_application_state",
+                new=AsyncMock(return_value={"stage": "resume_proposal_ready"}),
+            ):
+                workspace = await resume_workspace.ensure_resume_workspace(
+                    job_id=fixture["job_id"], proposal_id=fixture["proposal_id"]
+                )
+                sections = [dict(item) for item in workspace["resume"]["sections"]]
+                sections[0]["content_json"] = [{"company": "Example", "description": "用户亲手写的版本"}]
+                await resume_route_operations.update_resume_record(
+                    workspace["resume"]["id"], {"sections": sections}
+                )
+                with self.assertRaisesRegex(ValueError, "改过"):
                     await resume_workspace.review_resume_proposal_item(
                         proposal_id=fixture["proposal_id"],
                         resume_id=workspace["resume"]["id"],
                         change_id=fixture["change_id"],
                         action="accept",
                     )
+                current = await resume_workspace.get_resume_workspace(workspace["resume"]["id"])
             async with sessions() as db:
                 proposal = await db.get(ResumeOptimizationProposal, fixture["proposal_id"])
             await engine.dispose()
-            return proposal.status if proposal else "missing"
+            return (
+                proposal.status if proposal else "missing",
+                current["resume"]["sections"][0]["content_json"][0]["description"],
+            )
 
-        self.assertEqual(asyncio.run(run()), "stale")
+        status, description = asyncio.run(run())
+        self.assertNotEqual(status, "stale")
+        self.assertEqual(description, "用户亲手写的版本")
 
     def test_edit_then_accept_replaces_only_suggested_text(self) -> None:
         async def run() -> str:
@@ -351,11 +401,13 @@ class ResumeWorkspaceTests(unittest.TestCase):
                 async with sessions() as db:
                     proposal = await db.get(ResumeOptimizationProposal, fixture["proposal_id"])
                     proposal.diff_json = [*proposal.diff_json, {**proposal.diff_json[0], "change_id": "other"}]
-                    resume = await db.get(Resume, workspace["resume"]["id"])
-                    resume.summary = "manual edit"
+                    from app.models.models import ResumeSection
+                    section = (await db.execute(select(ResumeSection).where(ResumeSection.resume_id == workspace["resume"]["id"]))).scalars().first()
+                    section.content_json = [{"company": "Example", "description": "manual edit"}]
                     await db.commit()
                 await resume_workspace.review_resume_proposal_items(fixture["proposal_id"], workspace["resume"]["id"], ["other"], "reject")
-                with self.assertRaisesRegex(ValueError, "过期"):
+                # A reject must not launder a manual edit of the target section.
+                with self.assertRaisesRegex(ValueError, "改过"):
                     await resume_workspace.review_resume_proposal_items(fixture["proposal_id"], workspace["resume"]["id"], [fixture["change_id"]], "accept")
             await engine.dispose()
         asyncio.run(run())

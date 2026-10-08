@@ -10,6 +10,7 @@ const api = vi.hoisted(() => ({
   events: vi.fn(),
   run: vi.fn(),
   abort: vi.fn(),
+  steer: vi.fn(),
   resume: vi.fn(),
   confirm: vi.fn(),
   reject: vi.fn(),
@@ -28,6 +29,7 @@ vi.mock("@/lib/api", () => ({
     events: api.events,
     run: api.run,
     abort: api.abort,
+    steer: api.steer,
     resume: api.resume,
     confirm: api.confirm,
     reject: api.reject,
@@ -340,7 +342,7 @@ describe("durable Run chat and navigation", () => {
     });
   });
 
-  it("keeps the composer editable during a request while preventing duplicate starts", async () => {
+  it("keeps the composer usable during a request: queues the next message instead of starting twice", async () => {
     let resolveFirst: ((value: ReturnType<typeof runResponse>) => void) | undefined;
     api.start.mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }));
     api.start.mockResolvedValueOnce(runResponse({ run: runRecord({ id: "run-next" }) }));
@@ -352,13 +354,14 @@ describe("durable Run chat and navigation", () => {
     const input = screen.getByRole("textbox");
     expect(input).toBeEnabled();
     await user.type(input, "下一条消息");
-    expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
+    // 合并 0001 后：运行中也能发送——消息进入队列，而不是禁用按钮让用户干等。
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(input).toHaveValue("");
+    expect(api.start).toHaveBeenCalledTimes(1);
     await act(async () => { resolveFirst?.(runResponse()); });
-    await screen.findByText("已处理");
-    expect(input).toHaveValue("下一条消息");
-    const sendBtn = screen.getByRole("button", { name: "发送" });
-    await user.click(sendBtn);
+    // 第一轮结束后，排队的消息自动按顺序发出，且只发一次。
     await waitFor(() => expect(api.start).toHaveBeenCalledTimes(2));
+    expect(api.start.mock.calls[1][0]).toMatchObject({ message: "下一条消息" });
   });
 
   it("detaches the stream when the panel closes without cancelling its durable Run", async () => {
@@ -595,5 +598,127 @@ describe("Proposal Plan review routing", () => {
     expect(api.confirm).not.toHaveBeenCalled();
     expect(api.reject).not.toHaveBeenCalled();
     window.removeEventListener("offeru-open-plan-review", openPlanReview);
+  });
+});
+
+
+/** docs/02 D-1 / D-2：等待中的 Run 不锁输入，导航不中断 Run。 */
+const waitingPlanRun = () => {
+  const runId = `run_${"4".repeat(32)}`;
+  const planId = `plan_${"5".repeat(32)}`;
+  const groupId = `group_${"6".repeat(32)}`;
+  const node = {
+    id: `node_${"7".repeat(32)}`,
+    group_id: groupId,
+    operation: "review_resume_proposal_items",
+    summary: "简历修改",
+    status: "pending",
+    display: { before: "旧", after: "新", evidence: "证据", rationale: "理由" },
+  };
+  return runRecord({
+    id: runId,
+    status: "waiting_confirmation",
+    proposal_authority: "proposal-plan-v2",
+    proposal_plans: [{
+      id: planId, run_id: runId, revision: 1, status: "sealed", digest: "a".repeat(64), title: "计划",
+      groups: [{ id: groupId, title: "组", summary: "一组", rationale: "", digest: "b".repeat(64), status: "pending", nodes: [node] }],
+      continuations: [],
+    }],
+    steps: [{
+      ...node, tool: node.operation, risk_level: "confirm", requires_confirmation: true, args: {},
+      idempotency_key: "idem", attempts: 0, plan_id: planId, group_id: groupId, projection_only: true,
+    }],
+  });
+};
+
+describe("Agent input never locks", () => {
+  it("keeps typing, skills and quick actions usable while a plan waits, and parks the waiting run", async () => {
+    const waiting = waitingPlanRun();
+    api.start.mockResolvedValueOnce(runResponse({ run: waiting, pending_actions: waiting.steps }));
+    api.start.mockResolvedValueOnce(runResponse());
+    api.run.mockResolvedValue({ run: waiting });
+    const user = userEvent.setup();
+    renderPanel();
+    await sendPrompt(user, "准备岗位化简历");
+    await screen.findByTestId("agent-plan-review");
+
+    expect(screen.getByRole("textbox")).toBeEnabled();
+    expect(screen.getByRole("combobox", { name: "当前 Agent Skill" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "校招体检" })).toBeEnabled();
+
+    await sendPrompt(user, "顺便看看今天的新岗位");
+    await waitFor(() => expect(api.start).toHaveBeenCalledTimes(2));
+    expect(api.start.mock.calls[1][0].message).toBe("顺便看看今天的新岗位");
+    expect(api.abort).not.toHaveBeenCalled();
+    const parked = await screen.findByTestId("agent-parked-runs");
+    expect(parked).toHaveTextContent("等你审核");
+
+    await user.click(screen.getByRole("button", { name: "回去处理" }));
+    expect(await screen.findByTestId("agent-plan-review")).toBeInTheDocument();
+    expect(api.run).toHaveBeenCalledWith(waiting.id);
+  });
+
+  it("steers a live run with a mid-run message instead of blocking it", async () => {
+    let finish: (value: unknown) => void = () => {};
+    api.start.mockImplementationOnce((_payload: unknown, onEvent?: (name: string, data: unknown) => void) => {
+      onEvent?.("run.started", { run_id: "run-1" });
+      return new Promise((resolve) => { finish = resolve; });
+    });
+    api.steer.mockResolvedValue({ ok: true, disposition: "steered" });
+    const user = userEvent.setup();
+    renderPanel();
+    await sendPrompt(user, "找后端岗位");
+    await waitFor(() => expect(api.start).toHaveBeenCalledTimes(1));
+
+    await sendPrompt(user, "只要上海的");
+    await waitFor(() => expect(api.steer).toHaveBeenCalledWith("run-1", "只要上海的"));
+    expect(await screen.findByText("已交给正在进行的任务")).toBeInTheDocument();
+    expect(api.start).toHaveBeenCalledTimes(1);
+    await act(async () => { finish(runResponse()); });
+  });
+
+  it("queues a message the live run cannot take and sends it once the run finishes", async () => {
+    let finish: (value: unknown) => void = () => {};
+    api.start.mockImplementationOnce((_payload: unknown, onEvent?: (name: string, data: unknown) => void) => {
+      onEvent?.("run.started", { run_id: "run-1" });
+      return new Promise((resolve) => { finish = resolve; });
+    });
+    api.start.mockResolvedValueOnce(runResponse());
+    api.steer.mockResolvedValue({ ok: true, disposition: "not_running" });
+    const user = userEvent.setup();
+    renderPanel();
+    await sendPrompt(user, "找后端岗位");
+    await sendPrompt(user, "再帮我写封求职信");
+    expect(await screen.findByTestId("agent-message-queue")).toHaveTextContent("再帮我写封求职信");
+
+    await act(async () => { finish(runResponse()); });
+    await waitFor(() => expect(api.start).toHaveBeenCalledTimes(2));
+    expect(api.start.mock.calls[1][0].message).toBe("再帮我写封求职信");
+    await waitFor(() => expect(screen.queryByTestId("agent-message-queue")).not.toBeInTheDocument());
+  });
+
+  it("starting a new conversation never aborts a run that waits on the user", async () => {
+    const waiting = waitingPlanRun();
+    api.start.mockResolvedValueOnce(runResponse({ run: waiting, pending_actions: waiting.steps }));
+    api.run.mockResolvedValue({ run: waiting });
+    const user = userEvent.setup();
+    renderPanel();
+    await sendPrompt(user, "准备岗位化简历");
+    await screen.findByTestId("agent-plan-review");
+    await user.click(screen.getByTitle("打开历史对话"));
+    await user.click(await screen.findByRole("button", { name: "新建" }));
+    await screen.findByText(/新对话已开始/);
+    expect(api.abort).not.toHaveBeenCalled();
+  });
+});
+
+describe("Agent compose mailbox", () => {
+  it("picks up intent composed before the panel mounted and sends it with the requested skill", async () => {
+    const { composeToAgent } = await import("@/lib/agentCompose");
+    api.start.mockResolvedValue(runResponse());
+    composeToAgent({ message: "请修改岗位简历 #7 中我圈出的内容", skillId: "tailor_resume" });
+    renderPanel();
+    await waitFor(() => expect(api.start).toHaveBeenCalledTimes(1));
+    expect(api.start.mock.calls[0][0]).toMatchObject({ message: "请修改岗位简历 #7 中我圈出的内容", skill_id: "tailor_resume" });
   });
 });
