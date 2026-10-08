@@ -129,7 +129,7 @@ jobs:
         run: npm run build
 
       - name: Audit production dependencies
-        if: ${{ github.event_name != 'pull_request' }}
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
         working-directory: frontend
         run: npm audit --omit=dev --audit-level=high
 
@@ -137,7 +137,6 @@ jobs:
     name: Agent runtime install and audit
     needs: changes
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.agent_runtime == 'true' || needs.changes.outputs.ci == 'true' }}
-    continue-on-error: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -155,6 +154,7 @@ jobs:
         run: npm ci
 
       - name: Audit agent runtime production dependencies
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
         working-directory: agent-runtime
         run: npm audit --omit=dev --audit-level=high
 
@@ -222,7 +222,7 @@ jobs:
         run: python ../backend/scripts/release/audit_architecture.py --generated-extension-artifacts --json
 
       - name: Audit extension production dependencies
-        if: ${{ github.event_name != 'pull_request' }}
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
         working-directory: extension
         run: npm audit --omit=dev --audit-level=high
 
