@@ -89,6 +89,7 @@ _RUN_EVENT_MAP = {
     "run.waiting_confirmation": "approval.requested",
     "input.required": "approval.requested",
     "input.answered": "approval.resolved",
+    "input.steered": "reasoning.status",
     "run.waiting_input": "approval.requested",
     "continuation.requested": "reasoning.status",
     "approval.requested": "approval.requested",
@@ -293,6 +294,11 @@ class EmbeddedAgentRuntimeProvider:
         from app.services.embedded_agent_host import abort_embedded_agent_run
 
         return await abort_embedded_agent_run(run_id)
+
+    async def steer_run(self, run_id: str, *, message: str) -> dict[str, Any]:
+        from app.services.embedded_agent_host import steer_embedded_agent_run
+
+        return await steer_embedded_agent_run(run_id, message)
 
 
 class ReplayAgentRunProvider:
