@@ -1,8 +1,10 @@
 """Project Plan execution facts into the user's interaction states.
 
-This module does not authorize or execute Operations. It keeps malformed or
-stale review packets out of the user Inbox and leaves execution authority with
-the existing Proposal Plan and Operation Registry.
+This module does not authorize or execute Operations. Review-card quality is
+advisory: missing Before/After/Why/evidence/source metadata is shown as a
+warning but does not deadlock an otherwise valid decision. Hard blocking is
+reserved for stale snapshots, unknown execution state, explicit policy blocks
+and the existing destructive/external authorization boundary.
 """
 from __future__ import annotations
 
@@ -92,7 +94,10 @@ def _requested_outcome(group: Mapping[str, Any]) -> str:
     outcome = str(display.get("interaction_outcome") or "").strip().upper()
     if outcome:
         return outcome
-    return "AUTO" if group.get("risk") == "prepare" else "REVIEW"
+    # L1/prepare used to default to AUTO, but there is no universal executor
+    # consuming those groups. Surface them as ordinary review decisions so the
+    # user always has an exit instead of leaving a durable Run parked forever.
+    return "REVIEW"
 
 
 def assess_group(group: Mapping[str, Any], *, source_current: bool | None = True) -> dict[str, Any]:
@@ -113,9 +118,7 @@ def assess_group(group: Mapping[str, Any], *, source_current: bool | None = True
         return {"reviewability": {"status": "needs_preparation", "reason_codes": ["group_not_pending"], "counts_as_user_decision": False},
                 "interaction_state": "system_recovering"}
 
-    reasons = _review_packet_reasons(group)
-    if source_current is False:
-        reasons.append("source_changed_or_unavailable")
+    warnings = _review_packet_reasons(group)
 
     operations = {str(node.get("operation") or "") for node in nodes}
     risk = str(group.get("risk") or "")
@@ -123,32 +126,48 @@ def assess_group(group: Mapping[str, Any], *, source_current: bool | None = True
     if outcome not in {"AUTO", "ASK", "REVIEW", "AUTHORIZE", "BLOCK"}:
         return {"reviewability": {"status": "needs_preparation", "reason_codes": ["invalid_interaction_outcome"], "counts_as_user_decision": False},
                 "interaction_state": "system_blocked"}
-    if risk == "external" or operations & _DESTRUCTIVE_OPERATIONS:
-        outcome = "AUTHORIZE"
-    if outcome == "AUTHORIZE" and reasons:
-        # Owner-authorized destructive actions show their own preview payload
-        # and intentionally clear sources; only the affected scope still
-        # gates them. Diff material and source freshness do not apply.
-        reasons = [code for code in reasons if code == "missing_scope"]
-    if reasons:
-        return {"reviewability": {"status": "needs_preparation", "reason_codes": sorted(set(reasons)), "counts_as_user_decision": False},
+
+    # Canonical source freshness is a real safety invariant. Metadata being
+    # absent is only a quality warning; a source that was captured and then
+    # changed is a stale-snapshot blocker and must be regenerated.
+    if source_current is False:
+        return {"reviewability": {"status": "needs_preparation", "reason_codes": ["source_changed_or_unavailable"], "counts_as_user_decision": False},
                 "interaction_state": "system_recovering"}
+
+    destructive = bool(operations & _DESTRUCTIVE_OPERATIONS)
+    if risk == "external" or destructive:
+        outcome = "AUTHORIZE"
+
+    # A destructive action must still identify its affected scope before the
+    # user can authorize it. Other review-card omissions are warnings only.
+    if destructive and "missing_scope" in warnings:
+        return {"reviewability": {"status": "needs_preparation", "reason_codes": ["missing_scope"], "counts_as_user_decision": False},
+                "interaction_state": "system_blocked"}
+
     if outcome == "BLOCK":
         return {"reviewability": {"status": "needs_preparation", "reason_codes": ["policy_blocked"], "counts_as_user_decision": False},
                 "interaction_state": "system_blocked"}
+
+    warning_codes = sorted(set(warnings))
     if outcome == "ASK":
-        # Ask is projected from the separately persisted AgentInputRequest;
-        # a Plan display hint cannot manufacture an actionable user question.
-        return {"reviewability": {"status": "needs_preparation", "reason_codes": ["input_request_not_bound_to_group"], "counts_as_user_decision": False},
-                "interaction_state": "system_recovering"}
+        # If the caller forgot to persist a dedicated AgentInputRequest, keep
+        # the group actionable instead of parking the Run forever. Approval is
+        # explicit and still binds the exact immutable Plan/Group digests.
+        warning_codes = sorted(set([*warning_codes, "input_request_not_bound_to_group"]))
+        outcome = "REVIEW"
+
     if outcome == "AUTHORIZE":
-        return {"reviewability": {"status": "ready", "reason_codes": [], "counts_as_user_decision": True},
+        return {"reviewability": {"status": "ready", "reason_codes": warning_codes, "counts_as_user_decision": True},
                 "interaction_state": "needs_user_authorization"}
-    if outcome == "REVIEW":
-        return {"reviewability": {"status": "ready", "reason_codes": [], "counts_as_user_decision": True},
+    if outcome in {"REVIEW", "AUTO"}:
+        # AUTO is also reviewable as a fallback. A missing autonomous executor
+        # must never make a durable operation unreachable from the UI.
+        if outcome == "AUTO":
+            warning_codes = sorted(set([*warning_codes, "auto_fallback_requires_confirmation"]))
+        return {"reviewability": {"status": "ready", "reason_codes": warning_codes, "counts_as_user_decision": True},
                 "interaction_state": "needs_user_review"}
-    return {"reviewability": {"status": "ready", "reason_codes": [], "counts_as_user_decision": False},
-            "interaction_state": "system_recovering"}
+    return {"reviewability": {"status": "ready", "reason_codes": warning_codes, "counts_as_user_decision": True},
+            "interaction_state": "needs_user_review"}
 
 
 def run_interaction_state(run: Mapping[str, Any]) -> str:

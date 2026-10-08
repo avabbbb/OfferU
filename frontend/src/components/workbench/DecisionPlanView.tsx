@@ -51,6 +51,17 @@ const TONE_CHIP: Record<StatusTone, string> = {
   muted: "border-[var(--border)] text-[var(--foreground-muted)]",
 };
 
+const REVIEW_WARNING_LABELS: Record<string, string> = {
+  missing_before: "缺少 Before",
+  missing_after: "缺少 After",
+  missing_why: "缺少修改理由",
+  missing_evidence: "缺少证据说明",
+  missing_current_source: "未绑定来源版本",
+  missing_scope: "未标注作用范围",
+  input_request_not_bound_to_group: "Ask 未绑定独立问题卡",
+  auto_fallback_requires_confirmation: "自动执行无人接管，已降级为手动确认",
+};
+
 function StatusChip({ status, labels }: { status: string; labels: Record<string, string> }) {
   const label = labels[status] ?? status;
   return (
@@ -303,6 +314,20 @@ function DecisionGroupCard({
 
       <NodeStrip nodes={group.nodes} />
       <NodeTechnicalDetails nodes={group.nodes} />
+
+      {group.reviewability?.status === "ready" && group.reviewability.reason_codes?.length > 0 && (
+        <div
+          role="note"
+          className="rounded-md border border-[var(--primary-amber,#B26A00)]/35 bg-[var(--primary-amber,#B26A00)]/5 px-2 py-1.5 text-[10.5px] leading-4 text-[var(--primary-amber,#B26A00)]"
+        >
+          <p className="font-semibold">信息提示，不影响确认</p>
+          <p className="mt-0.5">
+            {group.reviewability.reason_codes
+              .map((code) => REVIEW_WARNING_LABELS[code] ?? code)
+              .join(" · ")}
+          </p>
+        </div>
+      )}
 
       {!digestsReady && actionable && (
         <p role="alert" className="flex items-center gap-1 text-[10.5px] text-[var(--primary-red)]">

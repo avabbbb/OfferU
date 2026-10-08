@@ -96,6 +96,29 @@ describe("PlanReviewInbox", () => {
     expect(screen.getByRole("button", { name: "批准：更新项目经历措辞" })).toBeInTheDocument();
   });
 
+  it("keeps incomplete review material actionable and shows it as a warning", async () => {
+    api.decisionPlansPending.mockResolvedValue({
+      plans: [plan({
+        groups: [group({
+          reviewability: {
+            status: "ready",
+            reason_codes: ["missing_why", "missing_evidence", "missing_current_source"],
+            counts_as_user_decision: true,
+          },
+        })],
+      })],
+    });
+    render(<PlanReviewInbox />);
+    const user = userEvent.setup();
+    await openInbox(user);
+
+    expect(screen.getByRole("note")).toHaveTextContent("信息提示，不影响确认");
+    expect(screen.getByRole("note")).toHaveTextContent("缺少修改理由");
+    expect(screen.getByRole("note")).toHaveTextContent("缺少证据说明");
+    expect(screen.getByRole("note")).toHaveTextContent("未绑定来源版本");
+    expect(screen.getByRole("button", { name: "批准：更新项目经历措辞" })).toBeEnabled();
+  });
+
   it("sends plan and group digests with a client decision_id on approve", async () => {
     api.decisionPlansPending.mockResolvedValue({ plans: [plan()] });
     api.decideDecisionGroup.mockResolvedValue({

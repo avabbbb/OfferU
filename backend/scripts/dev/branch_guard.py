@@ -105,25 +105,29 @@ def evaluate(
     warnings: list[str] = []
 
     if state.behind > 0:
-        failures.append(
+        message = (
             f"HEAD is {state.behind} commit(s) behind {state.base_ref}; "
-            "refresh/rebase the test or integration baseline first"
+            "refresh/rebase before owner acceptance or release evidence"
         )
+        if state.mode == "owner-test":
+            failures.append(message)
+        else:
+            warnings.append(message)
 
-    if state.mode in {"owner-test", "integrate", "pr"} and state.dirty and not allow_dirty:
+    if state.mode == "owner-test" and state.dirty and not allow_dirty:
         failures.append(
-            "working tree is dirty; owner/integration evidence must name an exact committed source identity"
+            "working tree is dirty; owner acceptance evidence must name an exact committed source identity"
         )
     elif state.dirty:
         warnings.append(
-            "working tree is dirty; results must be reported as dirty_worktree "
-            "and cannot represent a clean build"
+            "working tree is dirty; development/integration may continue, but results must be reported as "
+            "dirty_worktree and cannot represent clean owner/release evidence"
         )
 
-    if state.mode != "pr" and state.named_local_branches > max_named_branches:
-        failures.append(
-            f"{state.named_local_branches} local named branches exceed the budget of "
-            f"{max_named_branches}; use detached worker worktrees or archive/consolidate first"
+    if state.named_local_branches > max_named_branches:
+        warnings.append(
+            f"{state.named_local_branches} local named branches exceed the advisory budget of "
+            f"{max_named_branches}; prefer detached worker worktrees, but do not block active development"
         )
 
     if state.branch == "main" and state.ahead > 0:

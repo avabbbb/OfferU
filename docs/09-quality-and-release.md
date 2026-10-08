@@ -71,6 +71,16 @@ Codex、Claude Code、OpenCode、WorkBuddy、Pi 等宿主共用同一组业务�
 - 依赖审计（含 RustSec）、下载产物审计、产物中的 PII 和符号链接防护、错误脱敏、canary 协议，详见根目录 `SECURITY.md`。
 - 发布前必须完成产品隐私披露。
 
+## 8.1 开发 / PR 与发布门禁分层
+
+日常开发和 PR 的目标是**尽快发现当前改动引入的确定性回归**，不是重复执行整套 Public Release Qualification。
+
+- PR 只对受影响路径运行核心 typecheck / unit test / build；release claims、readiness ledger、依赖审计、RustSec、浏览器重复性、迁移、安装包与 clean-machine smoke 不作为普通 PR 的合并阻塞。
+- 依赖审计或 RustSec 在相关 PR 上可以作为 advisory 运行，失败不得阻止其它 job 或 PR；合入 `main`、tag / release 与手动发布验收仍按本文件的安全门槛严格执行。
+- `.github/workflows/branch-freshness.yml` 只提醒 PR baseline 落后；真正的最新 main、clean worktree、运行物 identity 要求收敛到 `owner-test` / release evidence。
+- path-filter 使用 job 级 `if`，workflow 本身仍创建并返回明确状态；不要用会让 required workflow 长期 Pending 的整工作流 path skip。
+- 任何会导致数据覆盖、重复执行、外部发送/提交、破坏性删除或效果状态未知的检查仍是 hard gate，不能因为“快速开发”而降级。
+
 ## 9. 外部发布阻塞项
 
 代码签名证书（Windows / macOS）、升级路径（需要上一版安装包）、Tauri updater、干净系统上的陌生用户人工验收。实时状态以 `KNOWN_ISSUES.md` 为准。
