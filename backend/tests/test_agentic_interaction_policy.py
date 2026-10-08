@@ -40,26 +40,62 @@ def test_complete_packet_is_user_review_and_external_effect_keeps_authorization_
     assert authorize["reviewability"]["counts_as_user_decision"] is True
 
 
-def test_incomplete_packet_and_unknown_execution_are_system_work():
+def test_incomplete_packet_is_warning_but_unknown_execution_still_blocks():
     incomplete = assess_group(_group(display={"before": "Old", "after": "New"}))
     uncertain = assess_group(_group(nodes=[{"operation": "update_resume_section", "status": "uncertain"}]))
 
-    assert incomplete["reviewability"]["status"] == "needs_preparation"
-    assert incomplete["reviewability"]["counts_as_user_decision"] is False
+    assert incomplete["reviewability"]["status"] == "ready"
+    assert incomplete["reviewability"]["counts_as_user_decision"] is True
     assert {"missing_why", "missing_evidence"}.issubset(incomplete["reviewability"]["reason_codes"])
-    assert incomplete["interaction_state"] == "system_recovering"
+    assert incomplete["interaction_state"] == "needs_user_review"
     assert uncertain["reviewability"]["status"] == "needs_reconciliation"
     assert uncertain["interaction_state"] == "system_recovering"
 
 
-def test_prepare_auto_and_unbound_ask_do_not_become_review_decisions():
-    automatic = assess_group(_group(risk="prepare"))
+def test_prepare_and_unbound_ask_always_have_a_user_exit():
+    preparation = assess_group(_group(risk="prepare"))
     ask = assess_group(_group(display={**_group()["display"], "interaction_outcome": "ASK"}))
+    explicit_auto = assess_group(_group(display={**_group()["display"], "interaction_outcome": "AUTO"}))
 
-    assert automatic["reviewability"]["status"] == "ready"
-    assert automatic["reviewability"]["counts_as_user_decision"] is False
-    assert ask["interaction_state"] == "system_recovering"
-    assert ask["reviewability"]["reason_codes"] == ["input_request_not_bound_to_group"]
+    assert preparation["reviewability"]["status"] == "ready"
+    assert preparation["reviewability"]["counts_as_user_decision"] is True
+    assert preparation["interaction_state"] == "needs_user_review"
+    assert ask["interaction_state"] == "needs_user_review"
+    assert ask["reviewability"]["counts_as_user_decision"] is True
+    assert "input_request_not_bound_to_group" in ask["reviewability"]["reason_codes"]
+    assert explicit_auto["interaction_state"] == "needs_user_review"
+    assert "auto_fallback_requires_confirmation" in explicit_auto["reviewability"]["reason_codes"]
+
+
+
+def test_missing_source_metadata_warns_but_captured_stale_source_still_blocks():
+    missing = _group(source_versions={}, nodes=[{"operation": "update_resume_section", "status": "pending"}])
+    advisory = assess_group(missing)
+    stale = assess_group(_group(), source_current=False)
+
+    assert advisory["reviewability"]["status"] == "ready"
+    assert advisory["reviewability"]["counts_as_user_decision"] is True
+    assert "missing_current_source" in advisory["reviewability"]["reason_codes"]
+    assert stale["reviewability"]["status"] == "needs_preparation"
+    assert stale["reviewability"]["counts_as_user_decision"] is False
+    assert stale["reviewability"]["reason_codes"] == ["source_changed_or_unavailable"]
+
+
+def test_destructive_operation_keeps_explicit_authorization_and_scope_floor():
+    group = _group(
+        risk="prepare",
+        scope="",
+        display={"before": "all local data", "after": "empty workspace"},
+        nodes=[{"operation": "reset_local_business_data", "status": "pending"}],
+    )
+    blocked = assess_group(group)
+    group["scope"] = "local_business_data"
+    authorized = assess_group(group)
+
+    assert blocked["interaction_state"] == "system_blocked"
+    assert blocked["reviewability"]["reason_codes"] == ["missing_scope"]
+    assert authorized["interaction_state"] == "needs_user_authorization"
+    assert authorized["reviewability"]["counts_as_user_decision"] is True
 
 
 def test_verified_empty_resume_section_list_is_an_explicit_before_value():

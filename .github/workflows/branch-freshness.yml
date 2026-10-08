@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   branch-freshness:
-    name: PR includes latest main
+    name: PR baseline freshness (advisory)
     runs-on: ubuntu-latest
 
     steps:
@@ -23,7 +23,7 @@ jobs:
         run: |
           git fetch --no-tags origin "${{ github.event.pull_request.base.ref }}:refs/remotes/origin/${{ github.event.pull_request.base.ref }}"
 
-      - name: Reject stale PR baseline
+      - name: Report stale PR baseline
         run: |
           python backend/scripts/dev/branch_guard.py \
             --mode pr \

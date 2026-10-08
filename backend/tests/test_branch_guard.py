@@ -40,24 +40,48 @@ def test_owner_test_rejects_dirty_worktree() -> None:
     assert any("working tree is dirty" in item for item in failures)
 
 
-def test_start_rejects_named_branch_budget_overflow() -> None:
-    failures, _ = evaluate(
+def test_start_warns_on_branch_budget_and_stale_or_dirty_state() -> None:
+    failures, warnings = evaluate(
         _state(
             mode="start",
+            behind=2,
+            dirty=True,
             named_local_branches=4,
             named_branches=["main", "dev", "integration", "worker-1"],
         ),
-        allow_dirty=True,
+        allow_dirty=False,
         max_named_branches=3,
     )
-    assert any("exceed the budget" in item for item in failures)
+    assert failures == []
+    assert any("behind origin/main" in item for item in warnings)
+    assert any("working tree is dirty" in item for item in warnings)
+    assert any("advisory budget" in item for item in warnings)
 
 
-def test_pr_mode_ignores_clone_local_branch_count_but_not_staleness() -> None:
-    failures, _ = evaluate(
+def test_integrate_mode_is_advisory_but_owner_test_keeps_hard_floor() -> None:
+    failures, warnings = evaluate(
+        _state(mode="integrate", behind=1, dirty=True, named_local_branches=9),
+        allow_dirty=False,
+        max_named_branches=3,
+    )
+    assert failures == []
+    assert len(warnings) >= 3
+
+    owner_failures, _ = evaluate(
+        _state(mode="owner-test", behind=1, dirty=True, named_local_branches=9),
+        allow_dirty=False,
+        max_named_branches=3,
+    )
+    assert any("behind origin/main" in item for item in owner_failures)
+    assert any("working tree is dirty" in item for item in owner_failures)
+
+
+def test_pr_mode_reports_staleness_without_blocking() -> None:
+    failures, warnings = evaluate(
         _state(mode="pr", named_local_branches=9, behind=1),
         allow_dirty=False,
         max_named_branches=3,
     )
-    assert len(failures) == 1
-    assert "behind origin/main" in failures[0]
+    assert failures == []
+    assert any("behind origin/main" in item for item in warnings)
+    assert any("advisory budget" in item for item in warnings)

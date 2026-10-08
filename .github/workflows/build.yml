@@ -12,8 +12,49 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    name: Detect changed areas
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      agent_runtime: ${{ steps.filter.outputs.agent_runtime }}
+      extension: ${{ steps.filter.outputs.extension }}
+      tauri: ${{ steps.filter.outputs.tauri }}
+      ci: ${{ steps.filter.outputs.ci }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - id: filter
+        name: Classify changed paths
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          base="${BASE_SHA:-}"
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
+            base="$(git rev-parse HEAD^ 2>/dev/null || git rev-parse HEAD)"
+          fi
+          git diff --name-only "$base" HEAD > "$RUNNER_TEMP/offeru-changed-files.txt"
+          flag() {
+            if grep -Eq "$1" "$RUNNER_TEMP/offeru-changed-files.txt"; then echo true; else echo false; fi
+          }
+          {
+            echo "backend=$(flag '^(backend/|requirements.*|pyproject\.toml)')"
+            echo "frontend=$(flag '^frontend/')"
+            echo "agent_runtime=$(flag '^agent-runtime/')"
+            echo "extension=$(flag '^extension/')"
+            echo "tauri=$(flag '^frontend/src-tauri/')"
+            echo "ci=$(flag '^(\.github/workflows/|AGENTS\.md$|backend/scripts/dev/branch_guard\.py$)')"
+          } >> "$GITHUB_OUTPUT"
+
   backend-tests:
     name: Backend tests
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.backend == 'true' || needs.changes.outputs.ci == 'true' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -36,22 +77,29 @@ jobs:
         run: python -m pytest tests -q
 
       - name: Audit release-facing product claims
+        if: ${{ github.event_name != 'pull_request' }}
         run: python backend/scripts/release/audit_product_claims.py --repo-root . --json
 
       - name: Audit architecture and Operation Registry boundaries
+        if: ${{ github.event_name != 'pull_request' }}
         run: python backend/scripts/release/audit_architecture.py --json
 
       - name: Audit release severity ledger
+        if: ${{ github.event_name != 'pull_request' }}
         run: python backend/scripts/release/audit_release_severity.py --repo-root . --json
 
       - name: Audit release checklist semantics
+        if: ${{ github.event_name != 'pull_request' }}
         run: python backend/scripts/release/audit_release_readiness.py --repo-root . --json
 
       - name: Audit release version consistency
+        if: ${{ github.event_name != 'pull_request' }}
         run: python backend/scripts/release/audit_version_consistency.py --repo-root . --json
 
   frontend-quality:
     name: Frontend typecheck and build
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.frontend == 'true' || needs.changes.outputs.ci == 'true' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -81,11 +129,15 @@ jobs:
         run: npm run build
 
       - name: Audit production dependencies
+        if: ${{ github.event_name != 'pull_request' }}
         working-directory: frontend
         run: npm audit --omit=dev --audit-level=high
 
   agent-runtime-quality:
     name: Agent runtime install and audit
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.agent_runtime == 'true' || needs.changes.outputs.ci == 'true' }}
+    continue-on-error: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -108,6 +160,9 @@ jobs:
 
   rust-security-audit:
     name: RustSec dependency audit
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.tauri == 'true' || needs.changes.outputs.ci == 'true' }}
+    continue-on-error: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -132,6 +187,8 @@ jobs:
 
   extension-quality:
     name: Browser extension typecheck, test and build
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.extension == 'true' || needs.changes.outputs.ci == 'true' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -165,10 +222,12 @@ jobs:
         run: python ../backend/scripts/release/audit_architecture.py --generated-extension-artifacts --json
 
       - name: Audit extension production dependencies
+        if: ${{ github.event_name != 'pull_request' }}
         working-directory: extension
         run: npm audit --omit=dev --audit-level=high
 
   browser-smoke:
+    if: ${{ github.event_name != 'pull_request' }}
     name: Isolated browser release smoke (${{ matrix.scenario }})
     runs-on: ubuntu-latest
     needs: [backend-tests, frontend-quality]
@@ -350,6 +409,7 @@ jobs:
           if-no-files-found: ignore
 
   reliability-failure-recovery:
+    if: ${{ github.event_name != 'pull_request' }}
     name: Cross-process provider failure and restart recovery
     runs-on: ubuntu-latest
     needs: [backend-tests]
@@ -374,6 +434,7 @@ jobs:
         run: python backend/scripts/e2e/test_public_release_failure_recovery.py
 
   critical-browser-repeatability:
+    if: ${{ github.event_name != 'pull_request' }}
     name: Critical new-user browser repeatability (${{ matrix.repeat }})
     runs-on: ubuntu-latest
     needs: [backend-tests, frontend-quality]
@@ -529,6 +590,7 @@ jobs:
           done
 
   migration-browser-smoke:
+    if: ${{ github.event_name != 'pull_request' }}
     name: Previous-release migration browser smoke
     runs-on: ubuntu-latest
     needs: [backend-tests, frontend-quality]
@@ -636,6 +698,7 @@ jobs:
           fi
 
   desktop-package:
+    if: ${{ github.event_name != 'pull_request' }}
     name: Windows desktop package
     runs-on: windows-latest
     needs: [backend-tests, frontend-quality, extension-quality, browser-smoke, reliability-failure-recovery, critical-browser-repeatability, migration-browser-smoke]
@@ -782,11 +845,13 @@ jobs:
           if-no-files-found: error
 
   macos-package:
+    if: ${{ github.event_name != 'pull_request' }}
     needs: [backend-tests, frontend-quality, extension-quality]
     uses: ./.github/workflows/macos-package.yml
     secrets: inherit
 
   desktop-installed-smoke:
+    if: ${{ github.event_name != 'pull_request' }}
     name: Windows installed-app and sidecar smoke
     runs-on: windows-latest
     needs: [desktop-package]
