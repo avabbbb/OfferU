@@ -1,3 +1,5 @@
+> **已归档（2026-10）**：本文不再是当前权威。当前文档：04、06、07（位于 `docs/`）。
+
 # OfferU Career Operations Loop
 
 Status: CURRENT PRODUCT DETAIL / OWNER-DOGFOOD CONTRACT  

@@ -1,3 +1,5 @@
+> **已归档（2026-10）**：本文不再是当前权威。当前文档：03-module-profile.md（位于 `docs/`）。
+
 # Career Memory & Context Contract
 
 Status: **CURRENT PRODUCT DETAIL / IMPLEMENTATION CONTRACT**  
