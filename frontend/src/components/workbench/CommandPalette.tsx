@@ -24,6 +24,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { useWorkbench } from "@/lib/workbench";
+import { tailorResumeHref } from "@/app/resume/resumeModes";
 
 interface Command {
   id: string;
@@ -80,7 +81,7 @@ export function CommandPalette() {
         hint: "材料 · 从岗位生成",
         keywords: "optimize 优化 定制 简历 tailor",
         icon: Sparkles,
-        run: go("/optimize"),
+        run: go(tailorResumeHref()),
       },
     ];
   }, [router, close, setRailMode, setRailOpen]);

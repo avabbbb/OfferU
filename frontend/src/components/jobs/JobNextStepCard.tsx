@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Button, Spinner } from "@heroui/react";
 import { ArrowRight } from "lucide-react";
+import { tailorResumeHref } from "@/app/resume/resumeModes";
 
 /**
  * One "what now" for the Job Workspace, projected from the backend
@@ -57,7 +58,7 @@ function resolveStep(p: Props): Step {
       body: "你之前的人工决定仍然有效，不会被新调研静默覆盖。只有你主动重新评估，才会生成一份基于新证据的建议。",
       tone: "action",
       primary: { kind: "run", run: p.onPrepareDecision, label: "基于新情报重新评估", busy: p.preparing },
-      secondary: { kind: "link", href: `/optimize?job_ids=${p.jobId}`, label: "继续用当前决定" },
+      secondary: { kind: "link", href: tailorResumeHref([p.jobId]), label: "继续用当前决定" },
     };
   }
 
@@ -110,7 +111,7 @@ function resolveStep(p: Props): Step {
     case "completed_insufficient_evidence":
       return { title: "证据不足，暂不投", body: "补充档案后可以重新判断。", tone: "done", primary: { kind: "link", href: "/profile", label: "去补充档案" } };
     case "ready_for_resume_proposal":
-      return { title: "定制这份简历", body: "已决定投递。下一步按这个岗位生成简历修改提案。", tone: "action", primary: { kind: "link", href: `/optimize?job_ids=${p.jobId}`, label: "开始简历定制" } };
+      return { title: "定制这份简历", body: "已决定投递。下一步按这个岗位生成简历修改提案。", tone: "action", primary: { kind: "link", href: tailorResumeHref([p.jobId]), label: "开始简历定制" } };
     case "resume_proposal_ready":
       return p.hasResumeProposal
         ? { title: "审核简历提案", body: "逐条看修改和证据，接受后打开这个岗位专属的简历。", tone: "action", primary: { kind: "scroll", target: "resume-proposal", label: "去审核提案" }, secondary: { kind: "run", run: p.onOpenResumeWorkspace, label: "打开岗位简历" } }

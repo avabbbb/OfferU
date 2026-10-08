@@ -58,6 +58,7 @@ import {
 } from "@/lib/bauhaus";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { ExternalUrlLink, openExternalUrl } from "@/components/ExternalUrlLink";
+import { tailorResumeHref } from "@/app/resume/resumeModes";
 
 const MANUAL_DECISION_STAGES = new Set([
   "needs_research",
@@ -1209,7 +1210,7 @@ export default function JobDetailPage() {
                       </p>
                       <Button
                         as={Link}
-                        href={`/optimize?job_ids=${job.id}`}
+                        href={tailorResumeHref([job.id])}
                         className="bauhaus-button bauhaus-button-blue mt-4 !px-4 !py-3 !text-[11px]"
                       >
                         进入简历提案

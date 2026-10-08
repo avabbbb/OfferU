@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   ArrowLeft,
   Check,
@@ -325,6 +326,7 @@ function ProposalCard({
           <div><p className="text-xs font-black text-violet-950">AI 建议 · {groups.length} 组</p><p className="mt-1 text-[11px] text-violet-800">按结构与段落比较岗位版本；每组一次采用，仍可单独修改。</p></div>
           <Badge tone={proposal.fact_gate_status === "passed" ? "green" : "orange"}>事实门：{proposal.fact_gate_status === "passed" ? "通过" : proposal.fact_gate_status}</Badge>
         </div>
+        {factGateBlocked && <p className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-amber-900" data-testid="fact-gate-way-out">有改写缺少档案证据，暂时不能采用。<Link href="/profile" className="font-bold underline underline-offset-4">去档案补充证据</Link><span className="text-[var(--foreground-muted)]">或先「拒绝」这些条目，其它条目不受影响。</span></p>}
       </div>
       {changes.length === 0 && <div className="rounded-xl border border-dashed border-[var(--border-strong)]/20 p-4 text-xs text-[var(--foreground-muted)]">当前提案没有需要审核的变化。</div>}
       {groups.map(([key, group]) => {
@@ -332,7 +334,7 @@ function ProposalCard({
         return <section key={key} className="space-y-2" data-testid="resume-proposal-group">
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-violet-50 p-2">
             <p className="text-xs font-black">段落 · {EDITOR_SECTION_TYPES.find(([type]) => type === key)?.[1] || group[0].before?.title || group[0].after?.title || group[0].title || key}</p>
-            {ids.length > 0 && <div className="flex gap-2"><button type="button" disabled={!!pending || factGateBlocked || ids.some((id) => !!edited[id])} onClick={() => onGroupAction(ids, "accept")} className="rounded bg-black px-2 py-1 text-[11px] text-white disabled:opacity-50">采用本段</button><button type="button" disabled={!!pending} onClick={() => onGroupAction(ids, "reject")} className="rounded border px-2 py-1 text-[11px] disabled:opacity-50">保留本段原文</button></div>}
+            {ids.length > 0 && <div className="flex gap-2"><button type="button" disabled={!!pending || factGateBlocked || ids.some((id) => !!edited[id])} title={factGateBlocked ? "事实门未通过，请先补充证据" : ids.some((id) => !!edited[id]) ? "本段有你改过的条目，请逐条接受" : pending ? "上一条正在保存…" : undefined} onClick={() => onGroupAction(ids, "accept")} className="rounded bg-black px-2 py-1 text-[11px] text-white disabled:opacity-50">采用本段</button><button type="button" disabled={!!pending} onClick={() => onGroupAction(ids, "reject")} className="rounded border px-2 py-1 text-[11px] disabled:opacity-50">保留本段原文</button></div>}
           </div>
           {group.map((change) => {
         const id = String(change.change_id || "");

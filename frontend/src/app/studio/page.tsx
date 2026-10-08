@@ -22,7 +22,8 @@ interface Template {
 
 // 与 template_seeder 的 design_tokens 键名一致，后端把 overrides 合并进 design_tokens。
 const DESIGN_FONTS = ["Inter", "Poppins", "JetBrains Mono"];
-const DEFAULT_PRIMARY_COLOR = "#2563eb";
+// 默认用 Kami 的油墨蓝：整套简历只保留这一个强调色。
+const DEFAULT_PRIMARY_COLOR = "#1B365D";
 
 export default function StudioPage() {
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -109,37 +110,37 @@ export default function StudioPage() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-[1440px] min-w-0 p-4 sm:p-6 lg:p-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">HTML 简历工作室</h1>
-        <p className="text-gray-600">选择模板，AI 一键生成可视化简历</p>
-      </div>
+    <div className="mx-auto w-full max-w-[1440px] min-w-0">
+      <header className="mb-6 px-1">
+        <h1 className="text-[22px] font-semibold tracking-tight text-[var(--foreground)]">版式</h1>
+        <p className="mt-1 text-[13px] text-[var(--foreground-muted)]">选一个模板，调主题色和字体，生成可分享的 HTML 简历。只改样子，不改内容。</p>
+      </header>
 
       {/* 宽屏三栏；中小屏按模板 → 预览 → 设计控制顺序重排。 */}
       <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-[minmax(190px,0.8fr)_minmax(0,1.6fr)_minmax(190px,0.8fr)] lg:gap-6">
         {/* 左侧：模板列表 */}
         <div className="min-w-0 space-y-4">
-          <h2 className="font-semibold mb-4">选择模板</h2>
+          <h2 className="mb-2 text-[13px] font-semibold text-[var(--foreground)]">1 · 选择模板</h2>
           {templatesError && (
-            <p role="alert" className="rounded bg-red-50 px-3 py-2 text-xs text-red-700">
+            <p role="alert" className="rounded border border-[#e8d5cf] bg-[#faf3f0] px-3 py-2 text-xs text-[#8a3b2e]">
               模板加载失败：{templatesError}
             </p>
           )}
           {!templatesError && templates.length === 0 && (
-            <p className="text-xs text-gray-500">暂无可用模板</p>
+            <p className="text-xs text-[var(--foreground-muted)]">暂无可用模板。确认后端已启动后刷新本页。</p>
           )}
           {templates.map(tpl => (
             <Card
               key={tpl.id}
               isPressable
               isHoverable
-              className={selectedTemplate === tpl.id ? "border-2 border-blue-500" : ""}
+              className={`border shadow-none ${selectedTemplate === tpl.id ? "border-[#1B365D] ring-1 ring-[#1B365D]" : "border-[#e8e6dc]"}`}
               onPress={() => setSelectedTemplate(tpl.id)}
             >
               <div className="p-4">
                 {SHOWCASE || previewFailures[tpl.id] ? (
                   // 展示模式或资源不可用时保留可操作的品牌占位态
-                  <div className="flex h-32 w-full items-center justify-center rounded bg-[#f2e9e1] text-sm font-bold text-[#b3541a]">
+                  <div className="flex h-32 w-full items-center justify-center rounded bg-[#f5f4ed] text-sm font-semibold text-[#1B365D]">
                     <span className="text-center">
                       <span className="block">{tpl.display_name}</span>
                       {previewFailures[tpl.id] && <span className="mt-1 block text-[10px] font-medium opacity-70">预览图暂不可用</span>}
@@ -153,8 +154,8 @@ export default function StudioPage() {
                     onError={() => setPreviewFailures((current) => ({ ...current, [tpl.id]: true }))}
                   />
                 )}
-                <div className="font-medium">{tpl.display_name}</div>
-                <div className="text-xs text-gray-500">{tpl.category}</div>
+                <div className="font-medium text-[var(--foreground)]">{tpl.display_name}</div>
+                <div className="text-xs text-[var(--foreground-muted)]">{tpl.category}</div>
               </div>
             </Card>
           ))}
@@ -162,7 +163,7 @@ export default function StudioPage() {
 
         {/* 中间：预览区 */}
         <div className="min-w-0 space-y-2">
-          <div className="h-[min(70dvh,720px)] min-h-[320px] overflow-hidden rounded-lg bg-white p-4 shadow-lg sm:min-h-[400px]">
+          <div className="h-[min(70dvh,720px)] min-h-[320px] overflow-hidden rounded-lg border border-[#e8e6dc] bg-[#f5f4ed] p-4 sm:min-h-[400px]">
             {previewUrl ? (
               // Resume HTML is untrusted generated content served from the
               // backend origin.  An empty `sandbox` grants no capabilities:
@@ -176,13 +177,13 @@ export default function StudioPage() {
                 className="w-full h-full border-0"
               />
             ) : (
-              <div className="flex items-center justify-center h-full text-gray-400">
-                选择模板后点击生成预览
+              <div className="flex items-center justify-center h-full text-sm text-[var(--foreground-muted)]">
+                {selectedTemplate ? "点右侧「生成简历」查看预览" : "先在左边选一个模板"}
               </div>
             )}
           </div>
           {generateError && (
-            <p role="alert" className="rounded bg-red-50 px-3 py-2 text-xs text-red-700">
+            <p role="alert" className="rounded border border-[#e8d5cf] bg-[#faf3f0] px-3 py-2 text-xs text-[#8a3b2e]">
               生成失败：{generateError}
             </p>
           )}
@@ -190,8 +191,8 @@ export default function StudioPage() {
 
         {/* 右侧：设计系统 */}
         <div className="min-w-0 space-y-4">
-          <h2 className="font-semibold mb-4">设计系统</h2>
-          <Card>
+          <h2 className="mb-2 text-[13px] font-semibold text-[var(--foreground)]">2 · 调整样式</h2>
+          <Card className="border border-[#e8e6dc] shadow-none">
             <div className="p-4">
               <label className="block mb-2 text-sm" htmlFor="studio-primary-color">主题色</label>
               <input
@@ -204,7 +205,7 @@ export default function StudioPage() {
             </div>
           </Card>
 
-          <Card>
+          <Card className="border border-[#e8e6dc] shadow-none">
             <div className="p-4">
               <label className="block mb-2 text-sm" htmlFor="studio-font-family">字体</label>
               <select
@@ -219,20 +220,22 @@ export default function StudioPage() {
                 ))}
               </select>
               {!supportsFontFamily && (
-                <p className="mt-2 text-[11px] text-gray-500">当前模板不使用自定义字体</p>
+                <p className="mt-2 text-[11px] text-[var(--foreground-muted)]">当前模板不使用自定义字体</p>
               )}
             </div>
           </Card>
 
           <Button
-            color="primary"
-            className="w-full"
+            className="w-full rounded-lg bg-[#1B365D] text-white data-[disabled=true]:opacity-50"
             onPress={handleGenerate}
             isLoading={loading}
             isDisabled={!selectedTemplate}
           >
             {loading ? "生成中..." : "生成简历"}
           </Button>
+          {!selectedTemplate && (
+            <p className="text-[11px] text-[var(--foreground-muted)]">先在左边选一个模板，按钮就会亮起。</p>
+          )}
         </div>
       </div>
     </div>

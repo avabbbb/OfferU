@@ -46,6 +46,7 @@ import {
   type Pool,
 } from "@/lib/hooks";
 import { safeClientErrorMessage } from "@/lib/safe-error";
+import { tailorResumeHref } from "@/app/resume/resumeModes";
 
 const container = {
   hidden: { opacity: 0 },
@@ -408,7 +409,7 @@ export default function JobsPage() {
   const goOptimizeWithSelection = useCallback(() => {
     if (selectedIds.size === 0) return;
     const jobIds = Array.from(selectedIds).sort((a, b) => a - b);
-    router.push(`/optimize?job_ids=${jobIds.join(",")}`);
+    router.push(tailorResumeHref(jobIds));
   }, [router, selectedIds]);
 
   const refreshAfterMutation = useCallback(async () => {
