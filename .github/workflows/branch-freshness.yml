@@ -7,6 +7,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   branch-freshness:
     name: PR includes latest main
@@ -23,9 +27,14 @@ jobs:
         run: |
           git fetch --no-tags origin "${{ github.event.pull_request.base.ref }}:refs/remotes/origin/${{ github.event.pull_request.base.ref }}"
 
-      - name: Reject stale PR baseline
+      # Advisory only: a PR behind main is reported as a warning instead of
+      # failing. GitHub's merge ref already tests the PR merged onto main.
+      - name: Warn on stale PR baseline (advisory)
+        shell: bash
         run: |
-          python backend/scripts/dev/branch_guard.py \
+          if ! python backend/scripts/dev/branch_guard.py \
             --mode pr \
             --base-ref "origin/${{ github.event.pull_request.base.ref }}" \
-            --no-fetch
+            --no-fetch; then
+            echo "::warning title=PR baseline is behind main::This PR does not include the latest main. Consider rebasing/merging main before merge; this check is advisory and does not block."
+          fi

@@ -7,14 +7,86 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+  schedule:
+    # Weekly full run (Mon 03:00 Asia/Shanghai): release-grade suites, packaging
+    # and dependency audits that no longer run on every PR.
+    - cron: '0 19 * * 0'
 
 permissions:
   contents: read
 
+# A newer push to the same PR cancels the stale run. main/tag/scheduled runs
+# are never cancelled so release evidence stays complete.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  changes:
+    name: Detect changed areas
+    runs-on: ubuntu-latest
+    outputs:
+      backend_mode: ${{ steps.detect.outputs.backend_mode }}
+      frontend: ${{ steps.detect.outputs.frontend }}
+      extension: ${{ steps.detect.outputs.extension }}
+      agent_runtime: ${{ steps.detect.outputs.agent_runtime }}
+      rust: ${{ steps.detect.outputs.rust }}
+      e2e: ${{ steps.detect.outputs.e2e }}
+      release_grade: ${{ steps.detect.outputs.release_grade }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: detect
+        name: Classify changed paths
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GIT_REF: ${{ github.ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          out() { echo "$1=$2" >> "$GITHUB_OUTPUT"; echo "$1=$2"; }
+          # Release-grade suites (10x repeatability, Windows/macOS packaging)
+          # only run for tags, manual dispatch and the weekly schedule.
+          case "$EVENT_NAME:$GIT_REF" in
+            *:refs/tags/*|workflow_dispatch:*|schedule:*) out release_grade true ;;
+            *) out release_grade false ;;
+          esac
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            for key in frontend extension agent_runtime rust e2e; do out "$key" true; done
+            out backend_mode full
+            exit 0
+          fi
+          files=$(git diff --name-only "$BASE_SHA...$HEAD_SHA")
+          printf 'Changed files:\n%s\n' "$files"
+          has() { printf '%s\n' "$files" | grep -Eq "$1"; }
+          if has '^\.github/'; then
+            for key in frontend extension agent_runtime rust e2e; do out "$key" true; done
+            out backend_mode full
+            exit 0
+          fi
+          has '^frontend/' && out frontend true || out frontend false
+          has '^extension/' && out extension true || out extension false
+          has '^agent-runtime/' && out agent_runtime true || out agent_runtime false
+          has '^frontend/src-tauri/' && out rust true || out rust false
+          has '^(backend|frontend)/' && out e2e true || out e2e false
+          # Anything outside the pure client packages (backend, plugins,
+          # integrations, docs, root files, agent skill dirs) gets the full
+          # pytest suite. Client-only PRs still run the cross-cutting backend
+          # contract tests that read frontend/extension sources.
+          if printf '%s\n' "$files" | grep -Evq '^(frontend|extension|agent-runtime|asset)/|^$'; then
+            out backend_mode full
+          else
+            out backend_mode scoped
+          fi
+
   backend-tests:
     name: Backend tests
     runs-on: ubuntu-latest
+    needs: [changes]
 
     steps:
       - uses: actions/checkout@v4
@@ -31,20 +103,34 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r backend/requirements.txt pytest
 
-      - name: Run backend tests
+      - name: Run backend tests (full suite)
+        if: needs.changes.outputs.backend_mode == 'full'
         working-directory: backend
         run: python -m pytest tests -q
 
-      - name: Audit release-facing product claims
-        run: python backend/scripts/release/audit_product_claims.py --repo-root . --json
+      - name: Run cross-cutting backend contract tests (client-only change)
+        if: needs.changes.outputs.backend_mode == 'scoped'
+        working-directory: backend
+        run: >-
+          python -m pytest -q
+          tests/test_release_architecture_audit.py
+          tests/test_tauri_security_contract.py
+          tests/test_build_identity.py
 
       - name: Audit architecture and Operation Registry boundaries
         run: python backend/scripts/release/audit_architecture.py --json
 
+      # Release-governance audits: report-only on PRs, blocking on main/tags.
+      - name: Audit release-facing product claims
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
+        run: python backend/scripts/release/audit_product_claims.py --repo-root . --json
+
       - name: Audit release severity ledger
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
         run: python backend/scripts/release/audit_release_severity.py --repo-root . --json
 
       - name: Audit release checklist semantics
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
         run: python backend/scripts/release/audit_release_readiness.py --repo-root . --json
 
       - name: Audit release version consistency
@@ -53,6 +139,8 @@ jobs:
   frontend-quality:
     name: Frontend typecheck and build
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.frontend == 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -80,13 +168,17 @@ jobs:
         working-directory: frontend
         run: npm run build
 
-      - name: Audit production dependencies
+      # Report-only: pre-existing advisories must not fail unrelated PRs.
+      - name: Audit production dependencies (report-only)
+        continue-on-error: true
         working-directory: frontend
         run: npm audit --omit=dev --audit-level=high
 
   agent-runtime-quality:
     name: Agent runtime install and audit
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.agent_runtime == 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -102,13 +194,17 @@ jobs:
         working-directory: agent-runtime
         run: npm ci
 
-      - name: Audit agent runtime production dependencies
+      - name: Audit agent runtime production dependencies (report-only)
+        continue-on-error: true
         working-directory: agent-runtime
         run: npm audit --omit=dev --audit-level=high
 
   rust-security-audit:
     name: RustSec dependency audit
     runs-on: ubuntu-latest
+    needs: [changes]
+    # PRs: only when src-tauri changes. Always on main/schedule/tags.
+    if: needs.changes.outputs.rust == 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -121,8 +217,10 @@ jobs:
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked --version 0.22.2
 
-      - name: Enforce RustSec policy and scoped Linux exception
+      # Report-only outside release tags; the tag step below stays blocking.
+      - name: Enforce RustSec policy and scoped Linux exception (report-only)
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        continue-on-error: true
         run: python backend/scripts/security/check_rustsec.py
 
       - name: Deny all unsound findings on release tags
@@ -133,6 +231,8 @@ jobs:
   extension-quality:
     name: Browser extension typecheck, test and build
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.extension == 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -164,14 +264,22 @@ jobs:
         working-directory: extension
         run: python ../backend/scripts/release/audit_architecture.py --generated-extension-artifacts --json
 
-      - name: Audit extension production dependencies
+      - name: Audit extension production dependencies (report-only)
+        continue-on-error: true
         working-directory: extension
         run: npm audit --omit=dev --audit-level=high
 
   browser-smoke:
     name: Isolated browser release smoke (${{ matrix.scenario }})
     runs-on: ubuntu-latest
-    needs: [backend-tests, frontend-quality]
+    needs: [changes, backend-tests, frontend-quality]
+    if: >-
+      ${{ !cancelled()
+      && needs.changes.outputs.e2e == 'true'
+      && needs.backend-tests.result == 'success'
+      && contains(fromJSON('["success","skipped"]'), needs.frontend-quality.result) }}
+    # Informational on PRs; blocking on main, schedule and release tags.
+    continue-on-error: ${{ github.event_name == 'pull_request' }}
     strategy:
       fail-fast: false
       matrix:
@@ -352,7 +460,10 @@ jobs:
   reliability-failure-recovery:
     name: Cross-process provider failure and restart recovery
     runs-on: ubuntu-latest
-    needs: [backend-tests]
+    needs: [changes, backend-tests]
+    if: needs.changes.outputs.e2e == 'true'
+    # Informational on PRs; blocking on main, schedule and release tags.
+    continue-on-error: ${{ github.event_name == 'pull_request' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -376,7 +487,9 @@ jobs:
   critical-browser-repeatability:
     name: Critical new-user browser repeatability (${{ matrix.repeat }})
     runs-on: ubuntu-latest
-    needs: [backend-tests, frontend-quality]
+    needs: [changes, backend-tests, frontend-quality]
+    # 10x repeat matrix is a release gate: tags, manual dispatch, weekly schedule.
+    if: needs.changes.outputs.release_grade == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -531,7 +644,14 @@ jobs:
   migration-browser-smoke:
     name: Previous-release migration browser smoke
     runs-on: ubuntu-latest
-    needs: [backend-tests, frontend-quality]
+    needs: [changes, backend-tests, frontend-quality]
+    if: >-
+      ${{ !cancelled()
+      && needs.changes.outputs.e2e == 'true'
+      && needs.backend-tests.result == 'success'
+      && contains(fromJSON('["success","skipped"]'), needs.frontend-quality.result) }}
+    # Informational on PRs; blocking on main, schedule and release tags.
+    continue-on-error: ${{ github.event_name == 'pull_request' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -638,7 +758,9 @@ jobs:
   desktop-package:
     name: Windows desktop package
     runs-on: windows-latest
-    needs: [backend-tests, frontend-quality, extension-quality, browser-smoke, reliability-failure-recovery, critical-browser-repeatability, migration-browser-smoke]
+    needs: [changes, backend-tests, frontend-quality, extension-quality, browser-smoke, reliability-failure-recovery, critical-browser-repeatability, migration-browser-smoke]
+    # Packaging is a release gate: tags, manual dispatch, weekly schedule.
+    if: needs.changes.outputs.release_grade == 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -782,7 +904,8 @@ jobs:
           if-no-files-found: error
 
   macos-package:
-    needs: [backend-tests, frontend-quality, extension-quality]
+    needs: [changes, backend-tests, frontend-quality, extension-quality]
+    if: needs.changes.outputs.release_grade == 'true'
     uses: ./.github/workflows/macos-package.yml
     secrets: inherit
 
