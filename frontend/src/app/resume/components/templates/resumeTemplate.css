@@ -808,3 +808,58 @@
   [data-paper-chrome] { display: none !important; }
   .paper-editable { background: none !important; box-shadow: none !important; }
 }
+
+/* ---- 切片 ②：行内 AI 建议、选区浮条、修改意见（只在画布上出现） ---- */
+.paper-proposal {
+  background: rgba(27, 54, 93, 0.045);
+  border-left: 2pt solid var(--paper-ink);
+  border-radius: 0 3px 3px 0;
+  font-size: calc(var(--font-size-base) * 0.95);
+  letter-spacing: 0.2pt;
+  margin: 2pt 0 6pt;
+  padding: 5pt 7pt 6pt;
+}
+.paper-proposal-head { align-items: baseline; display: flex; gap: 6pt; }
+.paper-proposal-tag { align-items: center; color: var(--paper-ink); display: inline-flex; flex: 0 0 auto; font-weight: 500; gap: 3px; white-space: nowrap; }
+.paper-proposal-reason { color: var(--paper-text-4); font-size: 0.92em; }
+.paper-proposal-conflict { color: #8a4b2f; margin: 3pt 0 0; }
+.paper-proposal-structural { color: var(--paper-text-3); margin: 3pt 0 0; }
+.paper-proposal-change { margin-top: 4pt; }
+.paper-proposal-label { color: var(--paper-text-4); display: block; font-size: 0.85em; }
+.paper-diff-line { color: var(--paper-text-2); margin: 1pt 0 0; }
+.paper-diff-removed { color: #9a5b4a; text-decoration: line-through; text-decoration-color: rgba(154, 91, 74, 0.6); }
+.paper-diff-added { background: rgba(27, 54, 93, 0.1); color: var(--paper-ink); border-radius: 2px; }
+.paper-proposal-edit {
+  background: #fff; border: 1px solid rgba(27, 54, 93, 0.35); border-radius: 3px; display: block;
+  min-height: 1.6em; outline: none; padding: 2pt 4pt;
+}
+.paper-proposal-actions { display: flex; flex-wrap: wrap; gap: 4pt; margin-top: 5pt; }
+.paper-proposal-actions button,
+.paper-selection-bar button,
+.paper-comment-tray button {
+  align-items: center; background: transparent; border: 1px solid rgba(20, 20, 19, 0.16); border-radius: 3px;
+  color: var(--paper-text-2, #3d3d3a); cursor: pointer; display: inline-flex; font: inherit; font-size: 0.88em;
+  flex: 0 0 auto; gap: 3px; padding: 1pt 6pt; white-space: nowrap; width: auto;
+}
+.paper-proposal-actions button.is-primary,
+.paper-comment-tray button.is-primary { background: var(--paper-ink, #1b365d); border-color: var(--paper-ink, #1b365d); color: #fff; }
+.paper-proposal-actions button:disabled { cursor: not-allowed; opacity: 0.45; }
+
+.paper-selection-bar {
+  align-items: center; background: #faf9f5; border: 1px solid rgba(20, 20, 19, 0.14); border-radius: 4px;
+  box-shadow: 0 4px 14px rgba(20, 20, 19, 0.12); display: flex; font-family: var(--paper-serif, serif);
+  font-size: 12px; gap: 4px; padding: 3px; position: absolute; white-space: nowrap; z-index: 20;
+}
+.paper-selection-input { border: 1px solid rgba(20, 20, 19, 0.16); border-radius: 3px; font: inherit; padding: 1px 6px; width: 15em; }
+
+.paper-comment-tray {
+  background: #faf9f5; border: 1px solid rgba(20, 20, 19, 0.14); border-radius: 6px; bottom: 16px;
+  box-shadow: 0 8px 24px rgba(20, 20, 19, 0.14); color: #3d3d3a; font-family: var(--paper-serif, serif);
+  font-size: 12px; max-width: 360px; padding: 8px 10px; position: sticky; margin: 12px 0 0 auto; z-index: 15;
+}
+.paper-comment-tray-head { align-items: center; display: flex; justify-content: space-between; font-weight: 500; }
+.paper-comment-tray ol { list-style: decimal; margin: 6px 0 0; padding-left: 16px; }
+.paper-comment-tray li { margin-top: 4px; }
+.paper-comment-tray li button { border: 0; margin-left: 4px; padding: 0; vertical-align: middle; }
+.paper-comment-quote { color: #141413; }
+.paper-comment-instruction { color: #6b6a64; display: block; }

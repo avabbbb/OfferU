@@ -614,6 +614,18 @@ def _find_section(resume: Resume, row: Optional[dict[str, Any]]) -> Optional[Res
     )
 
 
+def _change_conflicts_with_manual_edit(resume: Resume, diff: dict[str, Any]) -> bool:
+    """True when the section this change targets no longer matches the proposal's ``before``."""
+    change_type = str(diff.get("change_type") or "modified")
+    before = diff.get("before") if isinstance(diff.get("before"), dict) else None
+    if change_type == "added" or before is None:
+        return False
+    target = _find_section(resume, before)
+    if target is None:
+        return True
+    return _json_hash(target.content_json or []) != _json_hash(before.get("content_json") or [])
+
+
 async def review_resume_proposal_item(
     proposal_id: str, resume_id: int, change_id: str, action: str, edited_text: str = "",
 ) -> dict[str, Any]:
@@ -723,11 +735,19 @@ async def _review_resume_proposal_items(
                     await db.commit()
                     raise ValueError(proposal.review_note)
             if expected_hash and workspace_content_hash(resume) != expected_hash:
-                proposal.status = "stale"
-                proposal.review_note = "用户手动修改后，原提案已过期，请重新生成或重新计算"
-                proposal.reviewed_at = _now()
-                await db.commit()
-                raise ValueError(proposal.review_note)
+                # 人工修改优先，冲突按段落判断（docs/05 §5）：用户改了别处，
+                # 这条建议仍可采用；只有建议要改的那一段在生成后被用户改过，
+                # 才拒绝采用这一条，且绝不覆盖用户的版本。整份提案不因此失效。
+                conflicted = [
+                    change_id
+                    for change_id in pending_ids
+                    if _change_conflicts_with_manual_edit(resume, diffs[change_id])
+                ]
+                if conflicted:
+                    raise ValueError(
+                        "这一段在 AI 建议生成后被你改过，建议基于旧内容，不能直接采用；"
+                        "可以跳过，或让 AI 基于你的新版本重新建议"
+                    )
         for clean_change_id in pending_ids:
             diff = diffs[clean_change_id]
             if clean_action == "accept":

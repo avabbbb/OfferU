@@ -472,3 +472,14 @@ describe("Agent input never locks", () => {
     expect(api.abort).not.toHaveBeenCalled();
   });
 });
+
+describe("Agent compose mailbox", () => {
+  it("picks up intent composed before the panel mounted and sends it with the requested skill", async () => {
+    const { composeToAgent } = await import("@/lib/agentCompose");
+    api.start.mockResolvedValue(runResponse());
+    composeToAgent({ message: "请修改岗位简历 #7 中我圈出的内容", skillId: "tailor_resume" });
+    renderPanel();
+    await waitFor(() => expect(api.start).toHaveBeenCalledTimes(1));
+    expect(api.start.mock.calls[0][0]).toMatchObject({ message: "请修改岗位简历 #7 中我圈出的内容", skill_id: "tailor_resume" });
+  });
+});

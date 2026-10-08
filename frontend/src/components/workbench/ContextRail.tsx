@@ -10,6 +10,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { lazy, Suspense, useEffect } from "react";
 import { PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useWorkbench } from "@/lib/workbench";
+import { AGENT_COMPOSE_EVENT } from "@/lib/agentCompose";
 
 const AgentPanel = lazy(() =>
   import("./AgentPanel").then((module) => ({ default: module.AgentPanel })),
@@ -22,6 +23,12 @@ const RAIL_WIDTH = 340;
 
 export function ContextRail() {
   const { railMode, setRailMode, railOpen, setRailOpen, selection } = useWorkbench();
+
+  useEffect(() => {
+    const openAgent = () => { setRailMode("agent"); setRailOpen(true); };
+    window.addEventListener(AGENT_COMPOSE_EVENT, openAgent);
+    return () => window.removeEventListener(AGENT_COMPOSE_EVENT, openAgent);
+  }, [setRailMode, setRailOpen]);
 
   useEffect(() => {
     if (!railOpen) return;
