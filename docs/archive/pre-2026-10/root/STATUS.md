@@ -1,3 +1,5 @@
+> **已归档（2026-10）**：本文不再是当前权威。当前文档：RELEASE_CHECKLIST.md、KNOWN_ISSUES.md（实时状态）（位于 `docs/`）。
+
 # OfferU Status
 
 Status: **CURRENT CHECKOUT REVIEW — NOT RELEASE ACCEPTANCE**

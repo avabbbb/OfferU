@@ -1,3 +1,5 @@
+> **已归档（2026-10）**：本文不再是当前权威。当前文档：09-quality-and-release.md（位于 `docs/`）。
+
 > [!NOTE]
 > **HISTORICAL INTERNAL-BETA WALKTHROUGH.** Keep this for regression/demo archaeology. It is not the current onboarding or product authority; use `docs/product/current-product.md`, `STATUS.md`, and `HANDOFF.md` for current direction.
 
