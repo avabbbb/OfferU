@@ -11,6 +11,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, Bot } from "lucide-react";
+import { AGENT_COMPOSE_EVENT } from "@/lib/agentCompose";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { OnboardingGate } from "@/components/onboarding/OnboardingGate";
 import { WorkbenchProvider, useWorkbench } from "@/lib/workbench";
@@ -49,6 +50,12 @@ const FOCUS_RULES: FocusRule[] = [
 
 function FocusTopBar({ rule }: { rule: FocusRule }) {
   const [agentOpen, setAgentOpen] = useState(false);
+  // 页面把意图交给 Agent 时自动打开面板，消息在面板挂载后从邮箱取走。
+  useEffect(() => {
+    const open = () => setAgentOpen(true);
+    window.addEventListener(AGENT_COMPOSE_EVENT, open);
+    return () => window.removeEventListener(AGENT_COMPOSE_EVENT, open);
+  }, []);
 
   return (
     <>
