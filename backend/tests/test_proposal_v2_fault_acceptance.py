@@ -1485,16 +1485,6 @@ def test_actual_resume_effect_backup_restore_restart_passes_three_consecutive_cy
     asyncio.run(run())
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Product gap, not a regression: this test landed failing in acceadb. "
-        "Confirming every resume decision group leaves the proposal 'in_review'; "
-        "nothing in the decision-plan path marks it 'accepted' or creates the "
-        "accepted ResumeVersion (only resume_optimization / resume_route_operations "
-        "do). Decide whether the last confirmed group should finalize the proposal."
-    ),
-)
 def test_tailor_resume_fixture_runs_ask_plan_receipts_and_workspace_on_one_run(
     proposal_v2_db, monkeypatch
 ):

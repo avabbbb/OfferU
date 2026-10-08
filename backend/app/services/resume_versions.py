@@ -75,3 +75,40 @@ async def create_version_snapshot(
             last_exc = exc
             continue
     raise RuntimeError("resume_version race: failed after 3 attempts") from last_exc
+
+
+_OPEN_WORKSPACE_PROPOSAL_STATES = ("ready", "in_review")
+
+
+def proposal_fully_reviewed(proposal) -> bool:
+    """Every diff row of a workspace-bound proposal has a recorded review.
+
+    A proposal without diff rows has nothing left to review.
+    """
+    change_ids = {
+        str(item.get("change_id"))
+        for item in (proposal.diff_json or [])
+        if isinstance(item, dict) and item.get("change_id")
+    }
+    reviews = proposal.item_reviews_json or {}
+    return all(
+        isinstance(reviews.get(change_id), dict) for change_id in change_ids
+    )
+
+
+def mark_workspace_proposal_accepted(proposal, *, resume: Resume, version: ResumeVersion) -> bool:
+    """Finalize a fully reviewed workspace proposal onto ``version``.
+
+    Shared by the explicit "save version" path and the per-item review path,
+    so both record the same terminal state. Idempotent: an already-finalized
+    (or stale/blocked/rejected) proposal is left untouched.
+    """
+    from datetime import datetime, timezone
+
+    if proposal.status not in _OPEN_WORKSPACE_PROPOSAL_STATES or not proposal_fully_reviewed(proposal):
+        return False
+    proposal.status = "accepted"
+    proposal.accepted_resume_id = resume.id
+    proposal.accepted_resume_version_id = version.id
+    proposal.reviewed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    return True
