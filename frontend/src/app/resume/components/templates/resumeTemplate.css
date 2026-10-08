@@ -640,3 +640,171 @@
     print-color-adjust: exact !important;
   }
 }
+
+/*
+ * 「纸」模板（paper）。排版约束参考 tw93/Kami design.md（MIT）：
+ * 一个强调色（墨蓝）、暖灰、单衬线两字重 400/500、字号落在阶梯上、
+ * 不用装饰线和阴影、4pt 间距网格、标题下方间距明显小于上方。
+ * 字体只用 OFL 许可的思源宋体 / Noto Serif SC 与 Charter / Georgia。
+ */
+.resume-body.paper {
+  --paper-ink: var(--resume-accent-primary, #1b365d);
+  --paper-text: #141413;
+  --paper-text-2: #3d3d3a;
+  --paper-text-3: #504e49;
+  --paper-text-4: #6b6a64;
+  --paper-rule: var(--rule-color, #e8e6dc);
+  --paper-bg: #f5f4ed;
+  --paper-serif: Charter, Georgia, "Source Han Serif SC", "Source Han Serif CN", "Noto Serif CJK SC",
+    "Noto Serif SC", "Songti SC", "STSong", serif;
+  background: var(--paper-bg);
+  box-shadow: 0 1px 2px rgba(20, 20, 19, 0.06);
+  box-sizing: border-box;
+  color: var(--paper-text);
+  font-family: var(--paper-serif);
+  font-size: var(--font-size-base);
+  font-synthesis: none;
+  font-weight: 400;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+  letter-spacing: 0.3pt;
+  line-height: var(--line-height);
+}
+
+.resume-body.paper.paper-tone-white { --paper-bg: #ffffff; }
+
+.paper-sheet { display: block; }
+
+.paper-header { margin-bottom: calc(var(--section-gap) * 1.2); }
+
+.paper-name {
+  color: var(--paper-text);
+  font-size: var(--name-size);
+  font-weight: 500;
+  letter-spacing: 0.6pt;
+  line-height: 1.15;
+  margin: 0;
+}
+
+.paper-headline {
+  color: var(--paper-text-3);
+  font-size: calc(var(--font-size-base) * 1.1);
+  line-height: 1.35;
+  margin: 3pt 0 0;
+}
+
+.paper-contact {
+  color: var(--paper-text-3);
+  font-size: calc(var(--font-size-base) * 0.92);
+  line-height: 1.4;
+  margin: 5pt 0 0;
+}
+
+.paper-sep { color: var(--paper-text-4); }
+
+.paper-section { margin-top: var(--section-gap); break-inside: auto; }
+
+.paper-section-title {
+  border-bottom: 0.5pt solid var(--paper-rule);
+  color: var(--paper-ink);
+  font-size: var(--heading-size);
+  font-weight: 500;
+  letter-spacing: 0.4pt;
+  line-height: 1.25;
+  margin: 0 0 5pt;
+  padding-bottom: 2pt;
+  break-after: avoid;
+}
+
+.paper-summary { color: var(--paper-text-2); margin: 0; }
+
+.paper-items > .paper-item + .paper-item { margin-top: var(--item-gap); }
+
+.paper-item { break-inside: avoid; position: relative; }
+
+.paper-item-head {
+  align-items: baseline;
+  display: flex;
+  gap: 8pt;
+  justify-content: space-between;
+}
+
+.paper-item-main { flex: 1 1 auto; min-width: 0; }
+
+.paper-item-title { color: var(--paper-text); font-weight: 500; }
+
+.paper-item-meta { color: var(--paper-text-3); margin-left: 8pt; }
+.paper-item-meta .paper-sep,
+.paper-contact .paper-sep { margin: 0 4pt; }
+
+.paper-date {
+  color: var(--paper-text-4);
+  flex-shrink: 0;
+  font-size: calc(var(--font-size-base) * 0.92);
+  font-variant-numeric: lining-nums tabular-nums;
+  white-space: nowrap;
+}
+
+.paper-bullets { list-style: disc; margin: 2pt 0 0; padding-left: 13pt; }
+.paper-bullets li { color: var(--paper-text-2); margin-top: var(--paragraph-gap); }
+.paper-bullets li::marker { color: var(--paper-ink); }
+
+.paper-skill-row { display: flex; align-items: baseline; }
+.paper-skill-category { color: var(--paper-text); flex: 0 0 5em; font-weight: 500; }
+.paper-skill-items { color: var(--paper-text-2); }
+
+/* ---- 画布交互：只在可编辑时出现，导出 PDF 里不存在 ---- */
+.paper-editable {
+  border-radius: 2px;
+  cursor: text;
+  min-width: 1ch;
+  outline: none;
+  transition: background-color 120ms ease, box-shadow 120ms ease;
+}
+.paper-editable:hover { background: rgba(27, 54, 93, 0.05); }
+.paper-editable:focus { background: rgba(27, 54, 93, 0.07); box-shadow: 0 0 0 1px rgba(27, 54, 93, 0.35); }
+.paper-editable:empty::before {
+  color: #a8a59c;
+  content: attr(data-placeholder);
+  pointer-events: none;
+}
+
+.paper-add {
+  background: none;
+  border: 0;
+  color: var(--paper-text-4);
+  cursor: pointer;
+  font: inherit;
+  font-size: calc(var(--font-size-base) * 0.9);
+  margin-top: 3pt;
+  opacity: 0;
+  padding: 0;
+  transition: opacity 120ms ease;
+}
+.paper-section:hover .paper-add,
+.paper-add:focus-visible,
+.paper-bullet-empty .paper-add { opacity: 1; }
+.paper-add:hover { color: var(--paper-ink); }
+.paper-bullet-empty { list-style: none; margin-left: -13pt; }
+
+.paper-remove {
+  background: none;
+  border: 0;
+  color: #9a5b4a;
+  cursor: pointer;
+  font: inherit;
+  font-size: calc(var(--font-size-base) * 0.85);
+  opacity: 0;
+  padding: 0;
+  position: absolute;
+  right: -11mm;
+  top: 0;
+}
+.paper-item:hover .paper-remove,
+.paper-remove:focus-visible { opacity: 1; }
+
+@media print {
+  .resume-body.paper { background: var(--paper-bg) !important; }
+  [data-paper-chrome] { display: none !important; }
+  .paper-editable { background: none !important; box-shadow: none !important; }
+}
