@@ -47,6 +47,7 @@ import {
   type HostedExecutorSessionDetail,
   type AgentRunResponse,
 } from "@/lib/api";
+import { AGENT_COMPOSE_EVENT, drainAgentCompose } from "@/lib/agentCompose";
 import { presentAgentToolCall } from "@/lib/agentToolPresentation";
 import { bauhausFieldClassNames } from "@/lib/bauhaus";
 import { safeClientErrorMessage } from "@/lib/safe-error";
@@ -668,6 +669,26 @@ export function AgentPanel() {
     void startTurn(next.content, next.skillId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentBusy, runNeedsUser, queuedMessages]);
+
+  // 其他页面（如简历画布）交来的意图：一律先进待发送队列，由出队逻辑按 D-1 规则发送，
+  // 避免一批消息在同一帧里并发开出多个 Run。
+  useEffect(() => {
+    const take = () => {
+      const requests = drainAgentCompose();
+      if (!requests.length) return;
+      setQueuedMessages((current) => [
+        ...current,
+        ...requests.map((request, index) => ({
+          id: `compose-${Date.now()}-${index}`,
+          content: request.message,
+          skillId: request.skillId,
+        })),
+      ]);
+    };
+    take();
+    window.addEventListener(AGENT_COMPOSE_EVENT, take);
+    return () => window.removeEventListener(AGENT_COMPOSE_EVENT, take);
+  }, []);
 
   const sendQueuedNow = (id: string) => {
     if (agentBusy) return;
