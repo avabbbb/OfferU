@@ -1,12 +1,12 @@
 import { lazy, Suspense } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { resumeModeHref, type ResumeMode } from "@/app/resume/resumeModes";
 
 const TodayPage = lazy(() => import("@/app/page"));
 const JobsPage = lazy(() => import("@/app/jobs/page"));
 const JobDetailPage = lazy(() => import("@/app/jobs/[id]/page"));
-const ResumePage = lazy(() => import("@/app/resume/page"));
+const ResumeHub = lazy(() => import("@/app/resume/ResumeHub"));
 const ResumeDetailPage = lazy(() => import("@/app/resume/[id]/page"));
-const OptimizePage = lazy(() => import("@/app/optimize/page"));
 const ApplicationsPage = lazy(() => import("@/app/applications/page"));
 const InterviewPage = lazy(() => import("@/app/interview/page"));
 const AIInterviewPage = lazy(() => import("@/app/interview/ai/page"));
@@ -15,7 +15,6 @@ const CalendarPage = lazy(() => import("@/app/calendar/page"));
 const EmailPage = lazy(() => import("@/app/email/page"));
 const ProfilePage = lazy(() => import("@/app/profile/page"));
 const SettingsPage = lazy(() => import("@/app/settings/page"));
-const StudioPage = lazy(() => import("@/app/studio/page"));
 
 function RouteFallback() {
   return (
@@ -25,6 +24,12 @@ function RouteFallback() {
   );
 }
 
+/** 旧入口 /optimize、/studio 合并进「简历」后的重定向，保留 job_ids 等参数。 */
+function LegacyResumeRedirect({ mode }: { mode: ResumeMode }) {
+  const { search } = useLocation();
+  return <Navigate replace to={resumeModeHref(mode, search)} />;
+}
+
 export function OfferURoutes() {
   return (
     <Suspense fallback={<RouteFallback />}>
@@ -32,9 +37,9 @@ export function OfferURoutes() {
         <Route path="/" element={<TodayPage />} />
         <Route path="/jobs" element={<JobsPage />} />
         <Route path="/jobs/:id" element={<JobDetailPage />} />
-        <Route path="/resume" element={<ResumePage />} />
+        <Route path="/resume" element={<ResumeHub />} />
         <Route path="/resume/:id" element={<ResumeDetailPage />} />
-        <Route path="/optimize" element={<OptimizePage />} />
+        <Route path="/optimize" element={<LegacyResumeRedirect mode="tailor" />} />
         <Route path="/applications" element={<ApplicationsPage />} />
         <Route path="/interview" element={<InterviewPage />} />
         <Route path="/interview/ai" element={<AIInterviewPage />} />
@@ -43,7 +48,7 @@ export function OfferURoutes() {
         <Route path="/email" element={<EmailPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/settings" element={<SettingsPage />} />
-        <Route path="/studio" element={<StudioPage />} />
+        <Route path="/studio" element={<LegacyResumeRedirect mode="layout" />} />
         <Route path="/agent" element={<Navigate replace to="/" />} />
         <Route path="/analytics" element={<Navigate replace to="/" />} />
         <Route path="/scraper" element={<Navigate replace to="/jobs" />} />

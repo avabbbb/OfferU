@@ -275,7 +275,7 @@ export default function ResumesListPage() {
         <div>
           <h1 className="text-[22px] font-semibold tracking-tight text-[var(--foreground)]">简历</h1>
           <p className="mt-1 text-[13px] text-[var(--foreground-muted)]">
-            {resumes?.length ? `${resumes.length} 份简历。` : ""}通用版本在这里维护；针对某个岗位的版本从岗位详情或「简历定制」生成。
+            {resumes?.length ? `${resumes.length} 份简历。` : ""}通用版本在这里维护；针对某个岗位的版本在「岗位定制」里生成。
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

@@ -55,6 +55,7 @@ import { readDeliveries, matchDeliveryForAction } from "@/components/career/deli
 import { ResumeReengagementCard } from "@/components/career/ResumeReengagementCard";
 
 import { request } from "@/lib/api";
+import { tailorResumeHref } from "@/app/resume/resumeModes";
 
 type SignalNotification = Notification & { acknowledged_at?: string | null };
 
@@ -210,7 +211,8 @@ function AutomationTaskControls({
   taskId: string;
   status: string;
   retryable: boolean;
-  busy: string | null;
+  /** 正在进行中的操作键（taskId:action）。只锁对应那一个任务，其它任务照常可点。 */
+  busy: ReadonlyArray<string>;
   onAction: (taskId: string, action: "cancel" | "retry") => void;
   error?: string;
 }) {
@@ -221,7 +223,7 @@ function AutomationTaskControls({
   if ((status === "failed" || status === "blocked") && agentRecovery(error).configure) {
     return <div className="flex flex-wrap items-center gap-2">
       <Link href={MODEL_SETTINGS_ROUTE} className="text-[11px] font-medium text-[var(--primary-red)] underline underline-offset-4">检查模型连接</Link>
-      {retryable && <button type="button" disabled={busy !== null} onClick={() => onAction(taskId, "retry")} className="rounded border border-[var(--border)] px-2 py-1 text-[11px] disabled:opacity-50">配置后重试</button>}
+      {retryable && <button type="button" disabled={busy.some((key) => key.startsWith(`${taskId}:`))} onClick={() => onAction(taskId, "retry")} className="rounded border border-[var(--border)] px-2 py-1 text-[11px] disabled:opacity-50">配置后重试</button>}
     </div>;
   }
   if (!cancelable && !retryableStatus && !terminalFailure) return null;
@@ -245,7 +247,7 @@ function AutomationTaskControls({
         type="button"
         aria-label={action === "cancel" ? "取消后台任务" : "重试后台任务"}
         title={action === "cancel" ? "取消任务" : "重试任务"}
-        disabled={busy !== null}
+        disabled={busy.some((key) => key.startsWith(`${taskId}:`))}
         onClick={() => onAction(taskId, action)}
         className={`inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[11px] font-medium transition-colors duration-[var(--dur-quick)] disabled:cursor-wait disabled:opacity-60 ${
           action === "cancel"
@@ -253,7 +255,7 @@ function AutomationTaskControls({
             : "border-[var(--primary-red)]/35 text-[var(--primary-red)] hover:bg-[var(--primary-red)]/8"
         }`}
       >
-        {busy === actionKey ? (
+        {busy.includes(actionKey) ? (
           <LoaderCircle size={12} className="animate-spin" />
         ) : action === "cancel" ? (
           <X size={12} />
@@ -455,12 +457,14 @@ export default function TodayPage() {
     [careerTasks, taskIdsInInbox],
   );
   const visibleAutomationCount = pendingAutomation.length + standaloneCareerTasks.length;
-  const [taskAction, setTaskAction] = useState<string | null>(null);
+  // 每个任务各自的进行中状态：取消 A 时不应锁住 B 的按钮。
+  const [taskAction, setTaskAction] = useState<string[]>([]);
   const [taskActionError, setTaskActionError] = useState<string | null>(null);
 
   const handleCareerTaskAction = async (taskId: string, action: "cancel" | "retry") => {
     const actionKey = `${taskId}:${action}`;
-    setTaskAction(actionKey);
+    if (taskAction.some((key) => key.startsWith(`${taskId}:`))) return;
+    setTaskAction((current) => [...current, actionKey]);
     setTaskActionError(null);
     try {
       await controlCareerTask(taskId, action);
@@ -468,7 +472,7 @@ export default function TodayPage() {
     } catch (error) {
       setTaskActionError(safeClientErrorMessage(error, "任务操作失败，请稍后重试"));
     } finally {
-      setTaskAction(null);
+      setTaskAction((current) => current.filter((key) => key !== actionKey));
     }
   };
   const pipelineRecords = useMemo(
@@ -1373,7 +1377,7 @@ export default function TodayPage() {
         </div>
         {recentJobs.length > 0 && (
           <div className="mt-2 flex gap-2 px-1">
-            <Link href="/optimize" className="bauhaus-button bauhaus-button-sm bauhaus-button-outline">
+            <Link href={tailorResumeHref()} className="bauhaus-button bauhaus-button-sm bauhaus-button-outline">
               <Sparkles size={12} />
               为选中岗位定制简历
             </Link>

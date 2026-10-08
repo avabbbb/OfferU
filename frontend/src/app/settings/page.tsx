@@ -55,6 +55,7 @@ import { SHOWCASE } from "@/lib/showcase/router";
 import { useConfig, updateConfig } from "@/lib/hooks";
 import { AgentConnectionPanel } from "@/components/workbench/AgentConnectionPanel";
 import { JobSourceConnectionsCard } from "@/components/settings/JobSourceConnectionsCard";
+import { HintsToggle } from "@/components/hints";
 
 interface ProviderPreset {
   id: string;
@@ -1348,6 +1349,7 @@ export default function SettingsPage() {
 
       <AgentConnectionPanel />
       <JobSourceConnectionsCard />
+      <HintsToggle />
 
 
       <section id="model-settings" ref={modelSectionRef} className="scroll-mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)]" data-testid="embedded-model-settings">

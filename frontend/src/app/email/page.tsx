@@ -365,8 +365,8 @@ export default function EmailPage() {
         </motion.section>
       ) : null}
 
-      <Modal isOpen={isOpen} onOpenChange={onOpenChange} placement="center"
-        isDismissable={!emailConnectionBusy} isKeyboardDismissDisabled={emailConnectionBusy} hideCloseButton={emailConnectionBusy}>
+      {/* 弹窗任何时候都能关：连接过程中关闭只是收起窗口，不会让用户被困在这里。 */}
+      <Modal isOpen={isOpen} onOpenChange={onOpenChange} placement="center">
         <ModalContent className={bauhausModalContentClassName}>
           {(onClose) => <>
             <ModalHeader>连接求职邮箱</ModalHeader>
@@ -376,6 +376,9 @@ export default function EmailPage() {
           </>}
         </ModalContent>
       </Modal>
+      {emailConnectionBusy && !isOpen && (
+        <p role="status" className="text-xs text-[var(--foreground-muted)]">邮箱正在后台连接，完成后状态会自动更新。</p>
+      )}
       {isConnected && <Link href="/applications" className="inline-block text-sm font-semibold underline">查看并确认求职进展</Link>}
 
       {notifications && notifications.length > 0 ? (

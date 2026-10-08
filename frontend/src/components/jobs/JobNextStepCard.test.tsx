@@ -41,13 +41,13 @@ describe("JobNextStepCard", () => {
 
   it("决定投递后直达这个岗位的简历定制", () => {
     renderCard({ stage: "ready_for_resume_proposal" });
-    expect(screen.getByText("开始简历定制").closest("a")).toHaveAttribute("href", expect.stringContaining("/optimize?job_ids=9"));
+    expect(screen.getByText("开始简历定制").closest("a")).toHaveAttribute("href", expect.stringContaining("/resume?mode=tailor&job_ids=9"));
   });
 
   it("人工决定后新调研到达时只提示重新评估，不覆盖当前决定", async () => {
     const props = renderCard({ stage: "ready_for_resume_proposal", researchRefreshAvailable: true });
     expect(screen.getByText("有新的岗位情报，要重新评估吗？")).toBeInTheDocument();
-    expect(screen.getByText("继续用当前决定").closest("a")).toHaveAttribute("href", expect.stringContaining("/optimize?job_ids=9"));
+    expect(screen.getByText("继续用当前决定").closest("a")).toHaveAttribute("href", expect.stringContaining("/resume?mode=tailor&job_ids=9"));
     await userEvent.click(screen.getByRole("button", { name: "基于新情报重新评估" }));
     expect(props.onPrepareDecision).toHaveBeenCalledTimes(1);
   });

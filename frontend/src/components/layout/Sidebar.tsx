@@ -14,11 +14,9 @@ import {
   FileText,
   Mail,
   MessagesSquare,
-  Palette,
   Search,
   Settings,
   Send,
-  Sparkles,
   Sun,
   UserRound,
 } from "lucide-react";
@@ -44,12 +42,10 @@ const stageItems: NavItem[] = [
 ];
 
 const workspaceItems: NavItem[] = [
-  { href: "/resume", label: "简历", hint: "版本与编辑", icon: FileText, match: ["/resume"] },
+  { href: "/resume", label: "简历", hint: "编辑 · 岗位定制 · 版式", icon: FileText, match: ["/resume", "/optimize", "/studio"] },
   { href: "/interview", label: "面试", hint: "题库与面经", icon: MessagesSquare, match: ["/interview"] },
-  { href: "/optimize", label: "简历定制", hint: "按岗位改写", icon: Sparkles, match: ["/optimize"] },
   { href: "/email", label: "邮件", hint: "进展与提醒", icon: Mail, match: ["/email"] },
   { href: "/calendar", label: "日历", hint: "面试日程", icon: CalendarDays, match: ["/calendar"] },
-  { href: "/studio", label: "工作室", hint: "HTML 简历", icon: Palette, match: ["/studio"] },
 ];
 
 const supportItems: NavItem[] = [
