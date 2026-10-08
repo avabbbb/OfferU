@@ -40,6 +40,8 @@ interface ResumePreviewProps {
   editable?: boolean;
   onProfileChange?: ResumePaperProps["onProfileChange"];
   onSectionChange?: (section: Section) => void;
+  renderSectionAside?: ResumePaperProps["renderSectionAside"];
+  canvasFooter?: ResumePaperProps["canvasFooter"];
 }
 
 function normalizeSkillEntry(item: any, index: number): NormalizedResumeItem {
@@ -225,6 +227,8 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(function Re
           editable={props.editable}
           onProfileChange={props.onProfileChange}
           onSectionChange={props.onSectionChange as ResumePaperProps["onSectionChange"]}
+          renderSectionAside={props.renderSectionAside}
+          canvasFooter={props.canvasFooter}
         />
       );
     }
