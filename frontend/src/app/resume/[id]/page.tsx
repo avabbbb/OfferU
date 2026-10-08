@@ -48,6 +48,9 @@ import SectionEditor from "../components/SectionEditor";
 import ResumePreview from "../components/ResumePreview";
 import ResumeDesignPanel from "../components/ResumeDesignPanel";
 import { normalizeTemplateSettings } from "../components/templates/templateSettings";
+import { buildCommentPrompt, CanvasSelectionBar, CommentTray, InlineProposal, type CanvasComment, type InlineChange } from "../components/canvas/CanvasAssist";
+import { conflictsWithManualEdit, findTargetSection } from "../components/canvas/proposalDiff";
+import { composeToAgent } from "@/lib/agentCompose";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 
 type DraftResume = ResumeDetail & { sections: ResumeSectionBlock[] };
@@ -382,7 +385,11 @@ export default function ResumeEditorPage() {
   // 「纸」画布：量出成品高度，超过一页时在第一页底部画出分页线，让用户自己决定删哪条。
   const [canvasEl, setCanvasEl] = useState<HTMLDivElement | null>(null);
   const [pageOverflowMm, setPageOverflowMm] = useState(0);
-  const canvasRef = useCallback((node: HTMLDivElement | null) => setCanvasEl(node), []);
+  const canvasNodeRef = useRef<HTMLDivElement | null>(null);
+  const canvasRef = useCallback((node: HTMLDivElement | null) => { canvasNodeRef.current = node; setCanvasEl(node); }, []);
+  // 切片 ②：画布上堆积的修改意见，以及「对比 / 当前」视图。
+  const [comments, setComments] = useState<CanvasComment[]>([]);
+  const [showProposals, setShowProposals] = useState(true);
   const pageSizeKey = draft?.style_config?.pageSize === "LETTER" ? "LETTER" : "A4";
   const pageHeightPx = ((pageSizeKey === "LETTER" ? 279.4 : 297) * 96) / 25.4;
   useEffect(() => {
@@ -617,6 +624,44 @@ export default function ResumeEditorPage() {
   const packetSubmissionStatus = externalSubmissionStatus(workspace.application_packet.external_submission);
   const activeProposal = workspace.proposals.find((item) => ["ready", "in_review", "blocked"].includes(item.status));
   const staleProposal = workspace.proposals.find((item) => item.status === "stale");
+  // AI 建议落到它要改的那一段里。冲突（建议生成后用户改过这段）以用户版本为准，不能直接采用。
+  const pendingChanges: InlineChange[] = activeProposal
+    ? (activeProposal.diff || []).filter((change) => !activeProposal.item_reviews?.[String(change.change_id || "")]) as InlineChange[]
+    : [];
+  const changeTargets = pendingChanges.map((change) => ({
+    change,
+    target: change.change_type === "added" ? undefined : findTargetSection(draft.sections, change),
+  }));
+  const isConflicted = (change: InlineChange, target?: ResumeSectionBlock) => conflictsWithManualEdit(target, change);
+  const safeChangeIds = changeTargets.filter(({ change, target }) => !isConflicted(change, target)).map(({ change }) => String(change.change_id));
+  const factGateBlocked = activeProposal?.fact_gate_status === "blocked";
+  const askRewrite = (target: ResumeSectionBlock | undefined) => composeToAgent({
+    skillId: "tailor_resume",
+    message: buildCommentPrompt(draft.id, targetLabel, [{
+      id: "rewrite", quote: target?.title || "这一段", section: target?.title || "这一段",
+      instruction: "我在你的建议生成后手动改过这一段。请基于我现在的版本重新给出建议，保留我改过的措辞。",
+    }]),
+  });
+  const renderInline = (change: InlineChange, target?: ResumeSectionBlock) => (
+    <InlineProposal key={change.change_id} change={change} conflict={isConflicted(change, target)} factGateBlocked={factGateBlocked}
+      busy={!!pendingAction} onAccept={(edited) => void handleProposalAction(String(change.change_id), "accept", edited || "")}
+      onSkip={() => void handleProposalAction(String(change.change_id), "reject")} onAskRewrite={() => askRewrite(target)} />
+  );
+  const renderSectionAside = showProposals && paperMode
+    ? (section: { id: number }) => {
+      const items = changeTargets.filter(({ target }) => target?.id === section.id);
+      return items.length ? <>{items.map(({ change, target }) => renderInline(change, target))}</> : null;
+    }
+    : undefined;
+  const orphanChanges = changeTargets.filter(({ target }) => !target);
+  const canvasFooter = showProposals && paperMode && orphanChanges.length
+    ? <div className="paper-section">{orphanChanges.map(({ change }) => renderInline(change))}</div>
+    : undefined;
+  const submitComments = () => {
+    if (!comments.length) return;
+    composeToAgent({ skillId: "tailor_resume", message: buildCommentPrompt(draft.id, targetLabel, comments) });
+    setComments([]);
+  };
 
   return (
     <div className="offeru-viewport-min-height bg-[var(--background)] px-4 pb-8 pt-4 text-[var(--foreground)]" data-testid="resume-workspace">
@@ -634,7 +679,7 @@ export default function ResumeEditorPage() {
           <div className="rounded-xl border border-dashed border-[var(--border-strong)]/25 bg-[var(--surface)] p-3"><div className="flex items-center gap-2 text-xs font-bold"><Plus size={14} />添加内容段落</div><div className="mt-2 grid grid-cols-2 gap-2">{EDITOR_SECTION_TYPES.map(([type, label]) => <button key={type} type="button" onClick={() => updateDraft({ sections: [...draft.sections, { id: -(Date.now() * 1000 + Math.floor(Math.random() * 1000)), resume_id: draft.id, section_type: type, sort_order: draft.sections.length, title: label, visible: true, content_json: [], source_section_ids: [] }] })} className="rounded-lg border border-[var(--border-strong)]/15 px-2 py-2 text-left text-[11px] hover:bg-black/5">{label}</button>)}</div></div>
         </section>
 
-        <section className={`min-w-0 rounded-xl border border-[var(--border-strong)]/15 p-3 ${paperMode ? "bg-[#ebe9e1]" : "bg-[#e9e9e7]"}`} aria-label={paperMode ? "简历成品（可直接编辑）" : "简历实时预览"}><div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs"><div className="flex items-center gap-2 font-black"><Eye size={14} />{paperMode ? "成品" : "预览"} <Badge>{style.pageSize === "LETTER" ? "Letter" : "A4"}</Badge></div>{paperMode ? <div className="flex items-center gap-2 text-[10px] text-[var(--foreground-muted)]"><span>点任意文字直接修改 · 回车新增要点 · Esc 撤回本次输入</span><button type="button" onClick={() => updateDraft({ style_config: { ...style, paperTone: style.paperTone === "white" ? "parchment" : "white" } })} className="rounded border border-[var(--border-strong)]/20 px-2 py-0.5 font-bold" data-testid="resume-paper-tone">{style.paperTone === "white" ? "白纸" : "暖纸"}</button></div> : <button type="button" onClick={() => updateDraft({ style_config: { ...style, template: "paper" } })} className="text-[10px] font-bold underline" data-testid="resume-switch-paper">换成「纸」模板，直接在页面上改</button>}</div><div className={`min-h-[900px] overflow-auto rounded-lg p-4 ${paperMode ? "bg-[#e3e0d6]" : "bg-[#d7d7d4]"}`}><div className={paperMode ? "relative mx-auto w-fit" : "mx-auto w-fit origin-top scale-[0.78] pb-[-180px] shadow-2xl"} data-testid="resume-live-preview" ref={paperMode ? canvasRef : undefined}><ResumePreview userName={draft.user_name} title={draft.title} photoUrl={draft.photo_url} summary={draft.summary} contactJson={draft.contact_json || {}} sections={draft.sections} styleConfig={style} highlightKeywords={paperMode ? [] : workspace.job?.keywords || []} editable={paperMode} onProfileChange={(patch) => updateDraft(patch)} onSectionChange={(section) => updateSection(section as ResumeSectionBlock)} />{paperMode && pageOverflowMm > 0 && <div className="pointer-events-none absolute left-0 right-0 border-t border-dashed border-[#9a5b4a]" style={{ top: `${pageHeightPx}px` }} data-testid="resume-page-break"><span className="absolute right-0 -translate-y-full rounded-t bg-[#9a5b4a] px-2 py-0.5 text-[10px] text-white">第一页到此 · 超出约 {Math.round(pageOverflowMm)} mm</span></div>}</div></div></section>
+        <section className={`min-w-0 rounded-xl border border-[var(--border-strong)]/15 p-3 ${paperMode ? "bg-[#ebe9e1]" : "bg-[#e9e9e7]"}`} aria-label={paperMode ? "简历成品（可直接编辑）" : "简历实时预览"}><div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs"><div className="flex items-center gap-2 font-black"><Eye size={14} />{paperMode ? "成品" : "预览"} <Badge>{style.pageSize === "LETTER" ? "Letter" : "A4"}</Badge></div>{paperMode ? <div className="flex flex-wrap items-center gap-2 text-[10px] text-[var(--foreground-muted)]">{pendingChanges.length > 0 && <span className="flex items-center gap-1.5 rounded border border-[#1b365d]/25 px-2 py-0.5 text-[#1b365d]" data-testid="resume-canvas-proposals"><Wand2 size={11} />AI 建议 {pendingChanges.length} 条<button type="button" onClick={() => void handleProposalGroupAction(safeChangeIds, "accept")} disabled={!!pendingAction || !safeChangeIds.length || factGateBlocked} className="font-bold underline disabled:opacity-40">全部采用{safeChangeIds.length < pendingChanges.length ? `（${safeChangeIds.length} 条无冲突）` : ""}</button><button type="button" onClick={() => setShowProposals((value) => !value)} className="font-bold underline" aria-pressed={showProposals}>{showProposals ? "只看当前" : "显示对比"}</button></span>}<span>选中文字可留言给 AI · 点任意文字直接修改 · 回车新增要点 · Esc 撤回</span><button type="button" onClick={() => updateDraft({ style_config: { ...style, paperTone: style.paperTone === "white" ? "parchment" : "white" } })} className="rounded border border-[var(--border-strong)]/20 px-2 py-0.5 font-bold" data-testid="resume-paper-tone">{style.paperTone === "white" ? "白纸" : "暖纸"}</button></div> : <button type="button" onClick={() => updateDraft({ style_config: { ...style, template: "paper" } })} className="text-[10px] font-bold underline" data-testid="resume-switch-paper">换成「纸」模板，直接在页面上改</button>}</div><div className={`min-h-[900px] overflow-auto rounded-lg p-4 ${paperMode ? "bg-[#e3e0d6]" : "bg-[#d7d7d4]"}`}><div className={paperMode ? "relative mx-auto w-fit" : "mx-auto w-fit origin-top scale-[0.78] pb-[-180px] shadow-2xl"} data-testid="resume-live-preview" ref={paperMode ? canvasRef : undefined}><ResumePreview userName={draft.user_name} title={draft.title} photoUrl={draft.photo_url} summary={draft.summary} contactJson={draft.contact_json || {}} sections={draft.sections} styleConfig={style} highlightKeywords={paperMode ? [] : workspace.job?.keywords || []} editable={paperMode} onProfileChange={(patch) => updateDraft(patch)} onSectionChange={(section) => updateSection(section as ResumeSectionBlock)} renderSectionAside={renderSectionAside} canvasFooter={canvasFooter} />{paperMode && <CanvasSelectionBar containerRef={canvasNodeRef} onAddComment={(comment) => setComments((current) => [...current, { ...comment, id: `comment-${Date.now()}-${current.length}` }])} />}{paperMode && pageOverflowMm > 0 && <div className="pointer-events-none absolute left-0 right-0 border-t border-dashed border-[#9a5b4a]" style={{ top: `${pageHeightPx}px` }} data-testid="resume-page-break"><span className="absolute right-0 -translate-y-full rounded-t bg-[#9a5b4a] px-2 py-0.5 text-[10px] text-white">第一页到此 · 超出约 {Math.round(pageOverflowMm)} mm</span></div>}</div>{paperMode && <CommentTray comments={comments} onRemove={(id) => setComments((current) => current.filter((item) => item.id !== id))} onSubmit={submitComments} />}</div></section>
 
         <aside className="min-w-0 space-y-3" aria-label="简历工作区控制"><div className="flex rounded-xl border border-[var(--border-strong)]/15 bg-[var(--surface)] p-1" role="tablist">{([ ["ai", "AI 建议", Wand2], ["design", "排版", Sparkles], ["versions", "历史", History] ] as const).map(([key, label, Icon]) => <button key={key} type="button" role="tab" aria-selected={rightPanel === key} onClick={() => setRightPanel(key)} className={`flex flex-1 items-center justify-center gap-1 rounded-lg px-2 py-2 text-[10px] font-bold ${rightPanel === key ? "bg-black text-white" : "text-[var(--foreground-muted)] hover:bg-black/5"}`} data-testid={`resume-panel-${key}`}><Icon size={12} />{label}</button>)}</div>
           {rightPanel === "ai" && <div className="space-y-3"><div className="rounded-xl border border-[var(--border-strong)]/15 bg-[var(--surface)] p-3"><p className="text-xs font-black">目标岗位上下文</p><p className="mt-1 text-[11px] text-[var(--foreground-muted)]">{targetLabel}</p>{activeProposal?.strategy?.missing_capabilities?.length ? <p className="mt-2 text-[10px] text-amber-800">Evidence Gap：{activeProposal.strategy.missing_capabilities.join("、")}</p> : null}</div>{activeProposal ? <><div className="flex gap-2"><button type="button" onClick={() => void handleAllProposalActions("accept")} disabled={!!pendingAction || hasEditedProposal || activeProposal.fact_gate_status === "blocked"} title={activeProposal.fact_gate_status === "blocked" ? "事实门未通过，请先补充 Evidence" : undefined} className="flex-1 rounded-lg bg-black px-2 py-2 text-[10px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">全部接受</button><button type="button" onClick={() => void handleAllProposalActions("reject")} disabled={!!pendingAction} className="flex-1 rounded-lg border border-[var(--border-strong)]/20 px-2 py-2 text-[10px] font-bold disabled:opacity-50">全部拒绝</button></div><ProposalCard proposal={activeProposal} onAction={(id, action, text) => void handleProposalAction(id, action, text)} onHasEdits={setHasEditedProposal} onGroupAction={(ids, action) => void handleProposalGroupAction(ids, action)} pending={pendingAction} /></> : <div className="rounded-xl border border-dashed border-[var(--border-strong)]/20 bg-[var(--surface)] p-4 text-xs text-[var(--foreground-muted)]">当前没有待审核的 AI Proposal。你可以继续手动编辑这份岗位简历。</div>}</div>}
