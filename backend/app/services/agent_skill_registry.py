@@ -266,6 +266,26 @@ def resolve_skill(value: str | None) -> AgentSkill | None:
     return None
 
 
+def run_allowed_tools(run: dict[str, Any] | None) -> frozenset[str]:
+    """The Run's tool scope: its frozen Skill snapshot, else the Registry Skill.
+
+    A Run normally freezes ``skill_snapshot.allowed_tools`` when it starts.
+    Older or externally created Runs can carry only ``skill_id`` with an empty
+    snapshot; refusing every Plan for them left the user with no way forward.
+    The Registry is the authority for a Skill's scope, so the persisted
+    ``skill_id`` resolves the same allowlist the Run would have frozen. A Run
+    with neither stays empty (callers still deny it).
+    """
+    if not isinstance(run, dict):
+        return frozenset()
+    snapshot = run.get("skill_snapshot") if isinstance(run.get("skill_snapshot"), dict) else {}
+    frozen = frozenset(str(name) for name in (snapshot.get("allowed_tools") or []) if str(name))
+    if frozen:
+        return frozen
+    skill = resolve_skill(str(run.get("skill_id") or snapshot.get("id") or ""))
+    return frozenset(skill.allowed_tools) if skill is not None else frozenset()
+
+
 def resolve_slash_skill(user_message: str | None) -> AgentSkill | None:
     command = str(user_message or "").strip().split(maxsplit=1)[0]
     return resolve_skill(command) if command.startswith("/") else None

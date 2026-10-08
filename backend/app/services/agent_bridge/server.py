@@ -436,7 +436,9 @@ class BridgeSession:
         run = await load_agent_run(str(self.run_id or ""))
         if run is None:
             raise BridgeProtocolError("run_not_found", "Agent Run does not exist", request_id=request_id)
-        allowed = set((run.get("skill_snapshot") or {}).get("allowed_tools") or [])
+        from app.services.agent_skill_registry import run_allowed_tools
+
+        allowed = set(run_allowed_tools(run))
         return run, allowed
 
     async def _granted_operations(self, request_id: str) -> list[dict[str, Any]]:

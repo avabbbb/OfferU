@@ -759,7 +759,11 @@ async def _decide_group(
         # the reviewability gate below applies to NEW decisions only, because
         # a decided group legitimately no longer looks pending.
         replayed_decision = await _existing_decision(group)
-        if replayed_decision is None:
+        # Rejecting is always a way out of a pending group: it runs nothing,
+        # so readiness (stale source, unbound Ask, missing scope...) only
+        # gates approval. Otherwise a group that cannot be prepared would
+        # sit in the Run forever with no exit.
+        if replayed_decision is None and decision == "approve":
             from app.services.agentic_interaction_policy import assess_group
             readiness = assess_group(group)
             if readiness["reviewability"]["status"] != "ready":
@@ -786,7 +790,7 @@ async def _decide_group(
         "surface": surface,
     }
     try:
-        if await _existing_decision(group) is None:
+        if decision == "approve" and await _existing_decision(group) is None:
             from app.services.proposal_plan_sources import validate_source_versions
 
             await validate_source_versions(_group_source_versions(group))
@@ -812,7 +816,13 @@ async def _decide_group(
     if current_plan is None or current_group is None:
         return {**empty, "errors": ["持久化决定已记录，但无法读取其确认组。"], "duplicate": duplicate}
     if decision == "reject":
-        continuation = await _continuation_for_group(current_plan, current_group)
+        from app.services.agent_run_state import load_agent_run
+
+        run = await load_agent_run(str(current_plan.get("run_id") or ""))
+        run_live = bool(run) and str(run.get("status") or "") not in {"cancelled", "failed", "completed"}
+        # A rejection after the Run ended only clears the Inbox; there is no
+        # Agent left to continue, so no continuation is queued for it.
+        continuation = await _continuation_for_group(current_plan, current_group) if run_live else None
         return {
             "ok": str(current_group.get("status") or "") == "rejected",
             "plan": current_plan,

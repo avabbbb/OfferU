@@ -7,6 +7,33 @@ from typing import Any
 
 from app.services.proposal_plan_builder import PlanValidationError, build_plan, canonical_digest, _normalize
 
+OUTSIDE_SKILL_SCOPE = "outside_skill_scope"
+_NO_SCOPE_FALLBACK_EFFECTS = frozenset({"external", "external_read", "llm"})
+_NO_SCOPE_FALLBACK_PREFIXES = ("delete_", "reset_", "purge_", "revoke_", "remove_", "cancel_")
+
+
+def outside_scope_allowed(operation: str) -> bool:
+    """Whether an Operation outside the Skill allowlist may still be staged.
+
+    The Skill allowlist was a hard refusal, which stopped the Agent from
+    proposing an obvious adjacent local edit (and the user from getting it).
+    Plans never execute without an explicit user decision, so plain local
+    read/write Operations are staged with an advisory marker. Anything
+    external, model-backed or destructive keeps the hard Skill boundary.
+    """
+    from app.ops import OPERATIONS
+    from app.services.agentic_interaction_policy import _DESTRUCTIVE_OPERATIONS
+
+    op = OPERATIONS.get(operation)
+    if op is None:
+        return False
+    if set(op.side_effects) & _NO_SCOPE_FALLBACK_EFFECTS:
+        return False
+    if operation in _DESTRUCTIVE_OPERATIONS or operation.startswith(_NO_SCOPE_FALLBACK_PREFIXES):
+        return False
+    return True
+
+
 _RUN_CONTEXT: ContextVar[tuple[str, frozenset[str]] | None] = ContextVar("offeru_plan_preparation", default=None)
 
 
@@ -36,15 +63,26 @@ async def prepare_proposal_plan(*, title: str, intents: list[dict[str, Any]],
         run = await load_agent_run(run_id)
         if run is None:
             raise PlanValidationError("Agent Run does not exist")
-        allowed = frozenset((run.get("skill_snapshot") or {}).get("allowed_tools") or [])
+        from app.services.agent_skill_registry import run_allowed_tools
+        allowed = run_allowed_tools(run)
         if not allowed:
-            raise PlanValidationError("Run has no verified Skill tool scope")
-    if any(intent.get("operation") not in allowed for intent in intents):
-        raise PlanValidationError("Plan intent is outside the active Skill allowlist")
+            raise PlanValidationError("Run has no Skill tool scope (no snapshot and no resolvable skill_id)")
     if any(intent.get("operation") in {"prepare_proposal_plan", "confirm_group", "reject_group", "confirm_operation_proposal"} for intent in intents):
         raise PlanValidationError("Plans cannot stage approval or recursive planning")
+    outside = {str(intent.get("operation") or "") for intent in intents if intent.get("operation") not in allowed}
+    if any(not outside_scope_allowed(name) for name in outside):
+        raise PlanValidationError("Plan intent is outside the active Skill allowlist")
     # Dedupe the same prepared request before assigning new immutable IDs.
     prepared = await capture_sources(intents)
+    for intent in prepared:
+        if intent.get("operation") in outside:
+            # Plain local read/write outside the Skill's list is staged for the
+            # user's review instead of refused: every group still needs an
+            # explicit UI decision before it runs. The marker is part of the
+            # sealed display so the card can show it as a quiet hint.
+            display = dict(intent.get("display") or {})
+            display["scope_advisory"] = OUTSIDE_SKILL_SCOPE
+            intent["display"] = display
     signatures = [canonical_digest({"operation": intent["operation"], "args": intent["args"], "source_versions": intent["source_versions"]}) for intent in prepared]
     if len(set(signatures)) != len(signatures):
         raise PlanValidationError("Duplicate operation intents must use one node; do not prepare the same write twice")

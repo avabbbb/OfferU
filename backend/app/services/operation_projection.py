@@ -20,11 +20,9 @@ async def _run_scope(
     run = await load_agent_run(run_id)
     if run is None:
         return None, frozenset()
-    saved = frozenset(
-        str(name)
-        for name in ((run.get("skill_snapshot") or {}).get("allowed_tools") or [])
-        if str(name)
-    )
+    from app.services.agent_skill_registry import run_allowed_tools
+
+    saved = run_allowed_tools(run)
     if allowed_operations is None:
         return run, saved
     requested = frozenset(str(name) for name in allowed_operations if str(name))

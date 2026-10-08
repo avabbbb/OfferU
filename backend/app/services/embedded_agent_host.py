@@ -441,7 +441,10 @@ async def start_embedded_agent_run(
         frozen_tools = set(
             (run.get("skill_snapshot") or {}).get("allowed_tools") or []
         )
-        if frozen_tools != set(skill.allowed_tools):
+        # A Run that never froze a tool list (older/external Runs) resumes on
+        # the same-version Registry Skill instead of being stranded; a frozen
+        # list that disagrees is still refused (no implicit scope change).
+        if frozen_tools and frozen_tools != set(skill.allowed_tools):
             raise ValueError("Run 的冻结工具授权与当前 Skill 不一致，拒绝恢复。")
         resume_session_file = str(
             (run.get("llm_runtime") or {}).get("session_file") or ""

@@ -106,7 +106,9 @@ async def invoke_operation(
     run = await load_agent_run(run_id)
     if run is None:
         raise _deny("run_not_found", "Attached Agent Run does not exist", {"runId": run_id})
-    allowed_tools = set((run.get("skill_snapshot") or {}).get("allowed_tools") or [])
+    from app.services.agent_skill_registry import run_allowed_tools
+
+    allowed_tools = set(run_allowed_tools(run))
     if operation not in allowed_tools:
         raise _deny("grant_denied", "Operation is outside the attached Run Skill scope", {"operation": operation})
     if operation == "get_proposal_plan":

@@ -131,6 +131,13 @@ def assess_group(group: Mapping[str, Any], *, source_current: bool | None = True
     # stale sources, unknown execution state (above), invalid/BLOCK outcomes,
     # unbound Ask, and an AUTHORIZE group without an affected scope.
     advisory = _review_packet_reasons(group)
+    # Staged outside the Skill allowlist (see proposal_plan_preparation):
+    # shown as a hint, the user's decision is still the gate.
+    for node in nodes:
+        node_display = node.get("display") if isinstance(node.get("display"), Mapping) else {}
+        code = node_display.get("scope_advisory")
+        if isinstance(code, str) and code:
+            advisory.append(code)
     blocking: list[str] = []
     if source_current is False:
         blocking.append("source_changed_or_unavailable")
