@@ -342,7 +342,7 @@ describe("durable Run chat and navigation", () => {
     });
   });
 
-  it("keeps the composer editable during a request while preventing duplicate starts", async () => {
+  it("keeps the composer usable during a request: queues the next message instead of starting twice", async () => {
     let resolveFirst: ((value: ReturnType<typeof runResponse>) => void) | undefined;
     api.start.mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }));
     api.start.mockResolvedValueOnce(runResponse({ run: runRecord({ id: "run-next" }) }));
@@ -354,13 +354,14 @@ describe("durable Run chat and navigation", () => {
     const input = screen.getByRole("textbox");
     expect(input).toBeEnabled();
     await user.type(input, "下一条消息");
-    expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
+    // 合并 0001 后：运行中也能发送——消息进入队列，而不是禁用按钮让用户干等。
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(input).toHaveValue("");
+    expect(api.start).toHaveBeenCalledTimes(1);
     await act(async () => { resolveFirst?.(runResponse()); });
-    await screen.findByText("已处理");
-    expect(input).toHaveValue("下一条消息");
-    const sendBtn = screen.getByRole("button", { name: "发送" });
-    await user.click(sendBtn);
+    // 第一轮结束后，排队的消息自动按顺序发出，且只发一次。
     await waitFor(() => expect(api.start).toHaveBeenCalledTimes(2));
+    expect(api.start.mock.calls[1][0]).toMatchObject({ message: "下一条消息" });
   });
 
   it("detaches the stream when the panel closes without cancelling its durable Run", async () => {
@@ -710,7 +711,6 @@ describe("Agent input never locks", () => {
     expect(api.abort).not.toHaveBeenCalled();
   });
 });
-
 
 describe("Agent compose mailbox", () => {
   it("picks up intent composed before the panel mounted and sends it with the requested skill", async () => {

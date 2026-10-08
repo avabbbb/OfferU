@@ -66,6 +66,13 @@ interface PanelMessage {
   steered?: boolean;
 }
 
+interface ResumeCandidate {
+  conversationId: string;
+  conversationTitle: string;
+  runId: string;
+  status: string;
+}
+
 interface QueuedPanelMessage {
   id: string;
   content: string;
@@ -83,13 +90,6 @@ const PARKED_RUN_LABELS: Record<string, string> = {
   waiting_input: "等你回答",
   interrupted: "已中断，可恢复",
 };
-
-interface ResumeCandidate {
-  conversationId: string;
-  conversationTitle: string;
-  runId: string;
-  status: string;
-}
 
 const QUICK_ACTIONS = [
   {
@@ -333,7 +333,7 @@ export function AgentPanel() {
   const sendRequestPendingRef = useRef(false);
   const suppressResumePromptRef = useRef(false);
   const currentConvRef = useRef<string | null>(null);
-  // D-2：导航只分离正在跑的流，不中断它；后台流结束前新消息先排队。
+  // D-2：导航只"分离"正在跑的流，不中断它；后台流结束前新消息先排队。
   const [backgroundStreams, setBackgroundStreams] = useState(0);
   const [queuedMessages, setQueuedMessages] = useState<QueuedPanelMessage[]>([]);
   const [parkedRuns, setParkedRuns] = useState<ParkedRun[]>([]);
@@ -346,9 +346,13 @@ export function AgentPanel() {
   const hasPendingPlanReview = hasPlanReview && !["cancelled", "aborted"].includes(activeRun?.status || "") && (
     planPendingGroupCount > 0 || ["waiting_confirmation", "executing"].includes(activeRun?.status || "")
   );
+  // 当前 Run 在等用户（审核 / 回答 / 恢复）。这只决定"新消息开新一轮前先把它停放"，
+  // 从不禁用输入、技能选择或快捷动作（docs/02 D-1）。
   const runNeedsUser = hasPendingActions || hasPendingPlanReview || Boolean(interruptedRunId)
-    || activeRun?.status === "waiting_input";
-  const agentBusy = loading || backgroundStreams > 0 || reviewPending > 0;
+    || reviewPending > 0 || activeRun?.status === "waiting_input";
+  // 只有真正在跑的流才算"忙"。等用户回答的 Ask 不算忙：新消息直接开新一轮，
+  // 旧 Run 先停放（main 5092639 的约定：Ask 待答时仍可发新消息）。
+  const agentBusy = loading || backgroundStreams > 0;
 
   const latestResponse = useMemo(() => {
     return [...messages].reverse().find((message) => message.response)?.response;
@@ -480,7 +484,7 @@ export function AgentPanel() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, loading]);
 
-  /** 把等用户处理的 Run 收进停放条；状态已持久化，随时可回来处理。 */
+  /** 把等用户处理的 Run 收进"停放"条：状态已持久化，随时可回来处理，绝不隐式取消。 */
   const parkActiveRun = () => {
     if (!activeRunId || !runNeedsUser) return;
     const status = interruptedRunId ? "interrupted" : activeRun?.status || "waiting_confirmation";
@@ -508,7 +512,8 @@ export function AgentPanel() {
     const content = (text ?? input).trim();
     if (!content) return;
     if (text === undefined) setInput("");
-    if (agentBusy || sendRequestPendingRef.current) {
+    if (agentBusy) {
+      // 正在跑：先尝试在下一个工具边界引导当前任务；跑不到就排队，绝不丢、绝不锁。
       if (loading && activeRunId && reviewPending === 0 && !explicitSkillId) {
         try {
           const result = await agentRuntimeApi.steer(activeRunId, content);
@@ -530,6 +535,7 @@ export function AgentPanel() {
   };
 
   const startTurn = async (content: string, explicitSkillId?: string) => {
+    // 双击 / 连按回车的防重：上一轮请求还没真正发出去时不重复开轮（来自 main 5092639）。
     if (!content || loading || sendRequestPendingRef.current) return;
     parkActiveRun();
     const requestSkillId = explicitSkillId || selectedSkillId;
@@ -546,6 +552,7 @@ export function AgentPanel() {
       content,
     };
     const nextMessages = [...messages, userMessage];
+    // 被导航分离到后台的流：结果只落在它自己的对话里，绝不写进当前界面。
     const isDetached = () => detachedControllersRef.current.has(controller) || controller.signal.aborted;
 
     setMessages(nextMessages);
@@ -661,12 +668,14 @@ export function AgentPanel() {
     }
   };
 
-  // 排队消息在 Agent 真正空闲且当前没有待用户处理的 Run 时自动发送。
+  // 排队的消息：Agent 空闲且当前没有等用户处理的 Run 时自动按顺序发送；
+  // 有待处理事项时不抢跑，由用户在队列条上点"现在发送"（会先停放待处理 Run）。
   useEffect(() => {
     if (agentBusy || runNeedsUser || queuedMessages.length === 0) return;
     const [next, ...rest] = queuedMessages;
     setQueuedMessages(rest);
     void startTurn(next.content, next.skillId);
+    // startTurn 读取的是最新渲染闭包；依赖只需要驱动出队的状态。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentBusy, runNeedsUser, queuedMessages]);
 
@@ -722,6 +731,12 @@ export function AgentPanel() {
     }
   };
 
+  /**
+   * D-2：切换或新建对话只把当前流"分离"到后台，不中断 Run，也不取消等用户处理的 Run。
+   * 等待中的 Run 已持久化，可在历史对话、输入框上方的待处理条或统一审核入口继续处理。
+   * 合并说明：保留 main 的 sendRequestPendingRef 复位与 detachActiveStream 命名，
+   * 但不再 abort——abort 会断开 SSE 并让后端把 Run 标成 interrupted。
+   */
   const detachActiveStream = () => {
     const controller = abortControllerRef.current;
     abortControllerRef.current = null;
@@ -1547,6 +1562,15 @@ export function AgentPanel() {
       )}
 
 
+      {error && (
+        <div role="alert" className="space-y-2 border-t border-[var(--border)] bg-[var(--status-blush)] px-3 py-3 text-[12px]">
+          <p className="font-semibold text-[var(--foreground)]">{agentRecovery(error).title}</p>
+          <p className="break-words text-[var(--primary-red)]">{error}</p>
+          <p className="text-[var(--foreground-muted)]">{agentRecovery(error).hint}</p>
+          {agentRecovery(error).configure && <Link href={MODEL_SETTINGS_ROUTE} className="inline-flex rounded-md bg-[var(--foreground)] px-3 py-2 font-medium text-[var(--surface)] focus-visible:ring-2">配置内置 Agent</Link>}
+        </div>
+      )}
+
       {parkedRuns.length > 0 && (
         <div data-testid="agent-parked-runs" className="space-y-1 border-t border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2">
           {parkedRuns.map((item) => (
@@ -1555,8 +1579,12 @@ export function AgentPanel() {
               <span className="min-w-0 flex-1 truncate text-[var(--foreground-soft)]">
                 之前的任务{PARKED_RUN_LABELS[item.status] || "等你处理"}，状态已保存
               </span>
-              <button type="button" onClick={() => void restoreParkedRun(item.id)} disabled={loading}
-                className="shrink-0 font-semibold text-[var(--foreground)] underline disabled:opacity-50">
+              <button
+                type="button"
+                onClick={() => void restoreParkedRun(item.id)}
+                disabled={loading}
+                className="shrink-0 font-semibold text-[var(--foreground)] underline disabled:opacity-50"
+              >
                 回去处理
               </button>
             </div>
@@ -1576,20 +1604,16 @@ export function AgentPanel() {
                 <button type="button" onClick={() => sendQueuedNow(item.id)} className="shrink-0 font-semibold underline">现在发送</button>
               )}
               <button type="button" onClick={() => editQueued(item.id)} className="shrink-0 text-[var(--foreground-muted)] underline">改</button>
-              <button type="button" aria-label="删除待发送消息"
+              <button
+                type="button"
+                aria-label="删除待发送消息"
                 onClick={() => setQueuedMessages((current) => current.filter((entry) => entry.id !== item.id))}
-                className="shrink-0 text-[var(--foreground-muted)] underline">删</button>
+                className="shrink-0 text-[var(--foreground-muted)] underline"
+              >
+                删
+              </button>
             </div>
           ))}
-        </div>
-      )}
-
-      {error && (
-        <div role="alert" className="space-y-2 border-t border-[var(--border)] bg-[var(--status-blush)] px-3 py-3 text-[12px]">
-          <p className="font-semibold text-[var(--foreground)]">{agentRecovery(error).title}</p>
-          <p className="break-words text-[var(--primary-red)]">{error}</p>
-          <p className="text-[var(--foreground-muted)]">{agentRecovery(error).hint}</p>
-          {agentRecovery(error).configure && <Link href={MODEL_SETTINGS_ROUTE} className="inline-flex rounded-md bg-[var(--foreground)] px-3 py-2 font-medium text-[var(--surface)] focus-visible:ring-2">配置内置 Agent</Link>}
         </div>
       )}
 
@@ -1606,7 +1630,9 @@ export function AgentPanel() {
                 ? "补充或纠正，助手会在下一步读到..."
                 : agentBusy
                   ? "可以继续输入，空闲后按顺序发送..."
-                  : "问 OfferU，或说你要推进哪一步..."
+                  : runNeedsUser
+                    ? "继续对话或说明如何调整；当前待处理的任务会先保存，随时可回来"
+                    : "问 OfferU，或说你要推进哪一步..."
             }
             variant="bordered"
             className="flex-1"
