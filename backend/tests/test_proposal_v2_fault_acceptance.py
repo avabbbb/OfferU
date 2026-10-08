@@ -1503,6 +1503,7 @@ def test_tailor_resume_fixture_runs_ask_plan_receipts_and_workspace_on_one_run(
             resume_decision_plans,
             resume_workspace,
         )
+        from app.services.agent_skill_registry import resolve_skill
         from proposal_v2_fixtures import seed_reviewable_resume_proposal
 
         _permit_test_ui_capability(monkeypatch)
@@ -1563,11 +1564,15 @@ def test_tailor_resume_fixture_runs_ask_plan_receipts_and_workspace_on_one_run(
         resume_id = workspace["resume"]["id"]
 
         run_id = f"run_{uuid4().hex[:16]}"
+        skill = resolve_skill("tailor_resume")
+        assert skill is not None
         await agent_run_state.create_agent_run(
             conversation_id=f"tailor-runtime-{run_id}",
             goal=f"Tailor resume for Job #{seed['job_id']}",
             mode="resume_workflow",
-            skill_id="tailor_resume",
+            skill_id=skill.id,
+            skill_version=skill.version,
+            skill_snapshot=skill.summary(),
             actions=[],
             run_id=run_id,
         )
