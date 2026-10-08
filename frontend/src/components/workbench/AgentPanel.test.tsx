@@ -10,6 +10,7 @@ const api = vi.hoisted(() => ({
   events: vi.fn(),
   run: vi.fn(),
   abort: vi.fn(),
+  steer: vi.fn(),
   resume: vi.fn(),
   confirm: vi.fn(),
   reject: vi.fn(),
@@ -28,6 +29,7 @@ vi.mock("@/lib/api", () => ({
     events: api.events,
     run: api.run,
     abort: api.abort,
+    steer: api.steer,
     resume: api.resume,
     confirm: api.confirm,
     reject: api.reject,
@@ -595,5 +597,116 @@ describe("Proposal Plan review routing", () => {
     expect(api.confirm).not.toHaveBeenCalled();
     expect(api.reject).not.toHaveBeenCalled();
     window.removeEventListener("offeru-open-plan-review", openPlanReview);
+  });
+});
+
+
+/** docs/02 D-1 / D-2：等待中的 Run 不锁输入，导航不中断 Run。 */
+const waitingPlanRun = () => {
+  const runId = `run_${"4".repeat(32)}`;
+  const planId = `plan_${"5".repeat(32)}`;
+  const groupId = `group_${"6".repeat(32)}`;
+  const node = {
+    id: `node_${"7".repeat(32)}`,
+    group_id: groupId,
+    operation: "review_resume_proposal_items",
+    summary: "简历修改",
+    status: "pending",
+    display: { before: "旧", after: "新", evidence: "证据", rationale: "理由" },
+  };
+  return runRecord({
+    id: runId,
+    status: "waiting_confirmation",
+    proposal_authority: "proposal-plan-v2",
+    proposal_plans: [{
+      id: planId, run_id: runId, revision: 1, status: "sealed", digest: "a".repeat(64), title: "计划",
+      groups: [{ id: groupId, title: "组", summary: "一组", rationale: "", digest: "b".repeat(64), status: "pending", nodes: [node] }],
+      continuations: [],
+    }],
+    steps: [{
+      ...node, tool: node.operation, risk_level: "confirm", requires_confirmation: true, args: {},
+      idempotency_key: "idem", attempts: 0, plan_id: planId, group_id: groupId, projection_only: true,
+    }],
+  });
+};
+
+describe("Agent input never locks", () => {
+  it("keeps typing, skills and quick actions usable while a plan waits, and parks the waiting run", async () => {
+    const waiting = waitingPlanRun();
+    api.start.mockResolvedValueOnce(runResponse({ run: waiting, pending_actions: waiting.steps }));
+    api.start.mockResolvedValueOnce(runResponse());
+    api.run.mockResolvedValue({ run: waiting });
+    const user = userEvent.setup();
+    renderPanel();
+    await sendPrompt(user, "准备岗位化简历");
+    await screen.findByTestId("agent-plan-review");
+
+    expect(screen.getByRole("textbox")).toBeEnabled();
+    expect(screen.getByRole("combobox", { name: "当前 Agent Skill" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "校招体检" })).toBeEnabled();
+
+    await sendPrompt(user, "顺便看看今天的新岗位");
+    await waitFor(() => expect(api.start).toHaveBeenCalledTimes(2));
+    expect(api.start.mock.calls[1][0].message).toBe("顺便看看今天的新岗位");
+    expect(api.abort).not.toHaveBeenCalled();
+    const parked = await screen.findByTestId("agent-parked-runs");
+    expect(parked).toHaveTextContent("等你审核");
+
+    await user.click(screen.getByRole("button", { name: "回去处理" }));
+    expect(await screen.findByTestId("agent-plan-review")).toBeInTheDocument();
+    expect(api.run).toHaveBeenCalledWith(waiting.id);
+  });
+
+  it("steers a live run with a mid-run message instead of blocking it", async () => {
+    let finish: (value: unknown) => void = () => {};
+    api.start.mockImplementationOnce((_payload: unknown, onEvent?: (name: string, data: unknown) => void) => {
+      onEvent?.("run.started", { run_id: "run-1" });
+      return new Promise((resolve) => { finish = resolve; });
+    });
+    api.steer.mockResolvedValue({ ok: true, disposition: "steered" });
+    const user = userEvent.setup();
+    renderPanel();
+    await sendPrompt(user, "找后端岗位");
+    await waitFor(() => expect(api.start).toHaveBeenCalledTimes(1));
+
+    await sendPrompt(user, "只要上海的");
+    await waitFor(() => expect(api.steer).toHaveBeenCalledWith("run-1", "只要上海的"));
+    expect(await screen.findByText("已交给正在进行的任务")).toBeInTheDocument();
+    expect(api.start).toHaveBeenCalledTimes(1);
+    await act(async () => { finish(runResponse()); });
+  });
+
+  it("queues a message the live run cannot take and sends it once the run finishes", async () => {
+    let finish: (value: unknown) => void = () => {};
+    api.start.mockImplementationOnce((_payload: unknown, onEvent?: (name: string, data: unknown) => void) => {
+      onEvent?.("run.started", { run_id: "run-1" });
+      return new Promise((resolve) => { finish = resolve; });
+    });
+    api.start.mockResolvedValueOnce(runResponse());
+    api.steer.mockResolvedValue({ ok: true, disposition: "not_running" });
+    const user = userEvent.setup();
+    renderPanel();
+    await sendPrompt(user, "找后端岗位");
+    await sendPrompt(user, "再帮我写封求职信");
+    expect(await screen.findByTestId("agent-message-queue")).toHaveTextContent("再帮我写封求职信");
+
+    await act(async () => { finish(runResponse()); });
+    await waitFor(() => expect(api.start).toHaveBeenCalledTimes(2));
+    expect(api.start.mock.calls[1][0].message).toBe("再帮我写封求职信");
+    await waitFor(() => expect(screen.queryByTestId("agent-message-queue")).not.toBeInTheDocument());
+  });
+
+  it("starting a new conversation never aborts a run that waits on the user", async () => {
+    const waiting = waitingPlanRun();
+    api.start.mockResolvedValueOnce(runResponse({ run: waiting, pending_actions: waiting.steps }));
+    api.run.mockResolvedValue({ run: waiting });
+    const user = userEvent.setup();
+    renderPanel();
+    await sendPrompt(user, "准备岗位化简历");
+    await screen.findByTestId("agent-plan-review");
+    await user.click(screen.getByTitle("打开历史对话"));
+    await user.click(await screen.findByRole("button", { name: "新建" }));
+    await screen.findByText(/新对话已开始/);
+    expect(api.abort).not.toHaveBeenCalled();
   });
 });
