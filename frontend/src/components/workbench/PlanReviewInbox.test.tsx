@@ -96,6 +96,35 @@ describe("PlanReviewInbox", () => {
     expect(screen.getByRole("button", { name: "批准：更新项目经历措辞" })).toBeInTheDocument();
   });
 
+  it("shows advisory codes as a quiet hint and keeps approval available", async () => {
+    api.decisionPlansPending.mockResolvedValue({
+      plans: [plan({ groups: [group({ reviewability: { status: "ready", reason_codes: [], advisory_codes: ["missing_evidence"], counts_as_user_decision: true } })] })],
+    });
+    render(<PlanReviewInbox />);
+    const user = userEvent.setup();
+    await openInbox(user);
+
+    expect(screen.getByTestId("group-advisory-hint")).toHaveTextContent("未附来源证据");
+    expect(screen.getByRole("button", { name: "批准：更新项目经历措辞" })).toBeEnabled();
+  });
+
+  it("offers reject (not approve) for a pending group that is not ready", async () => {
+    const blocked = group({
+      group_id: "group_fedcba9876543210fedcba9876543210",
+      sequence: 2,
+      title: "来源已变化的分组",
+      reviewability: { status: "needs_preparation", reason_codes: ["source_changed_or_unavailable"], counts_as_user_decision: false },
+      interaction_state: "system_recovering",
+    });
+    api.decisionPlansPending.mockResolvedValue({ plans: [plan({ groups: [group(), blocked] })] });
+    render(<PlanReviewInbox />);
+    const user = userEvent.setup();
+    await openInbox(user);
+
+    expect(screen.getByRole("button", { name: "拒绝：来源已变化的分组" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "批准：来源已变化的分组" })).not.toBeInTheDocument();
+  });
+
   it("sends plan and group digests with a client decision_id on approve", async () => {
     api.decisionPlansPending.mockResolvedValue({ plans: [plan()] });
     api.decideDecisionGroup.mockResolvedValue({

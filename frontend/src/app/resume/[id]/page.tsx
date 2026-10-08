@@ -372,6 +372,7 @@ export default function ResumeEditorPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  const [factHint, setFactHint] = useState<string | null>(null);
   const [rightPanel, setRightPanel] = useState<"ai" | "design" | "versions">("ai");
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [hasEditedProposal, setHasEditedProposal] = useState(false);
@@ -552,8 +553,15 @@ export default function ResumeEditorPage() {
   const handleProposalAction = async (changeId: string, action: "accept" | "reject", editedText = "") => {
     if (!workspace || !draft) return;
     const proposal = workspace.proposals.find((item) => ["ready", "in_review", "blocked"].includes(item.status)); if (!proposal) return;
-    setPendingAction(changeId); setWorkspaceError(null);
-    try { const next = await resumeApi.reviewProposalItem(proposal.proposal_id, { resume_id: draft.id, change_id: changeId, action, edited_text: editedText }); if (action === "accept") recordUndo(draft); setFromWorkspace(next); }
+    setPendingAction(changeId); setWorkspaceError(null); setFactHint(null);
+    try {
+      const next = await resumeApi.reviewProposalItem(proposal.proposal_id, { resume_id: draft.id, change_id: changeId, action, edited_text: editedText });
+      if (action === "accept") recordUndo(draft);
+      setFromWorkspace(next);
+      // Applied already; unsupported claims are a quiet hint, not a second submit.
+      const warnings = (next.fact_warnings || []).map((item) => (typeof item === "string" ? item : item.detail || "")).filter(Boolean);
+      if (warnings.length) setFactHint(`已应用。提示：${warnings.join("；")}`);
+    }
     catch (error) { setWorkspaceError(safeClientErrorMessage(error, "Proposal 审核失败")); await loadWorkspace(); }
     finally { setPendingAction(null); }
   };
@@ -606,6 +614,7 @@ export default function ResumeEditorPage() {
         <div className="flex flex-wrap items-center gap-2"><span className={`text-[11px] ${saveState === "failed" ? "text-red-600" : "text-[var(--foreground-muted)]"}`} data-testid="resume-save-status">{saveState === "saving" && "正在保存…"}{saveState === "saved" && "已保存"}{saveState === "failed" && "保存失败"}</span><button type="button" onClick={handleUndo} disabled={!canUndo} aria-label="撤销最近一次编辑" className="inline-flex items-center gap-1 rounded-lg border border-[var(--border-strong)]/20 px-3 py-2 text-xs font-bold hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40" data-testid="resume-undo"><Undo2 size={13} />撤销</button><button type="button" onClick={() => void handleSaveVersion()} disabled={pendingAction === "version"} className="inline-flex items-center gap-1 rounded-lg border border-[var(--border-strong)]/20 px-3 py-2 text-xs font-bold hover:bg-black/5 disabled:opacity-50" data-testid="resume-save-version">{pendingAction === "version" ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}保存版本</button><button type="button" onClick={() => void handleExport()} disabled={exporting} className="inline-flex items-center gap-1 rounded-lg bg-black px-3 py-2 text-xs font-bold text-white disabled:opacity-50" data-testid="resume-export-pdf">{exporting ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}导出 PDF</button></div>
       </header>
 
+      {factHint && !workspaceError && <p className="mx-auto mt-2 max-w-[1800px] px-3 text-[11px] text-[var(--foreground-muted)]" data-testid="resume-fact-hint">{factHint}</p>}
       {(workspaceError || staleProposal) && <div className="mx-auto mt-3 flex max-w-[1800px] items-center justify-between rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900" data-testid="resume-workspace-error"><span>{workspaceError || "这条 AI Proposal 已过期，因为简历内容发生了变化。请重新生成建议或继续手动编辑。"}</span>{saveState === "failed" ? <button type="button" onClick={() => void retryAutosave()} className="font-bold underline" data-testid="resume-retry-save">重试保存</button> : <button type="button" onClick={() => void loadWorkspace()} className="font-bold underline">刷新</button>}</div>}
 
       <div className="mx-auto mt-4 grid max-w-[1800px] gap-4 xl:grid-cols-[minmax(300px,0.9fr)_minmax(480px,1.35fr)_minmax(300px,0.8fr)]">

@@ -523,6 +523,8 @@ export interface ResumeWorkspace {
   application_packet: ResumeApplicationPacket;
   proposals: ResumeOptimizationProposalDetail[];
   versions: ResumeVersionSummary[];
+  /** Advisory only: claims in user-edited text not found in the sources (already applied). */
+  fact_warnings?: Array<{ issue?: string; detail?: string } | string>;
 }
 
 // ---- Calendar API ----

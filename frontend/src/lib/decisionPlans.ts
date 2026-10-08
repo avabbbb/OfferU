@@ -60,7 +60,10 @@ export type ReviewabilityStatus =
 
 export interface Reviewability {
   status: ReviewabilityStatus;
+  /** Blocking reasons (only when status is not "ready"). */
   reason_codes: string[];
+  /** Non-blocking hints on a ready group (e.g. missing_evidence, outside_skill_scope). */
+  advisory_codes?: string[];
   counts_as_user_decision: boolean;
 }
 
@@ -259,6 +262,7 @@ export function normalizeDecisionGroup(raw: unknown, index: number): DecisionGro
       return {
         status: asString(value.status, "needs_preparation") as ReviewabilityStatus,
         reason_codes: asArray(value.reason_codes).map((item) => asString(item)),
+        advisory_codes: asArray(value.advisory_codes).map((item) => asString(item)).filter(Boolean),
         counts_as_user_decision: Boolean(value.counts_as_user_decision),
       };
     })(),
@@ -315,10 +319,34 @@ export function normalizeInputRequest(raw: unknown): AgentInputRequestView {
 // ---------- status / digest helpers ----------
 
 /** A group is actionable only while it awaits a fresh human decision. */
+/**
+ * A pending group the backend marked ready can be approved. Advisory codes
+ * never block; interaction_state and counts_as_user_decision are projections
+ * of the same readiness and are not re-checked here (a ready group with an
+ * odd projection used to vanish with no way to decide it).
+ */
 export function isGroupActionable(group: DecisionGroupView): boolean {
-  return group.status === "pending" && group.reviewability?.status === "ready"
-    && group.reviewability.counts_as_user_decision
-    && ["needs_user_review", "needs_user_authorization"].includes(group.interaction_state);
+  return group.status === "pending" && group.reviewability?.status === "ready";
+}
+
+/** Any pending group can be rejected: rejecting runs nothing. */
+export function isGroupRejectable(group: DecisionGroupView): boolean {
+  return group.status === "pending";
+}
+
+const ADVISORY_LABELS: Record<string, string> = {
+  missing_before: "未提供修改前内容",
+  missing_after: "未提供修改后内容",
+  missing_why: "未说明原因",
+  missing_evidence: "未附来源证据",
+  missing_current_source: "未固定当前来源版本",
+  missing_scope: "未列出影响范围",
+  outside_skill_scope: "超出当前技能的常规范围",
+};
+
+/** Human-readable advisory hints for a group; empty when there are none. */
+export function groupAdvisoryHints(group: DecisionGroupView): string[] {
+  return (group.reviewability?.advisory_codes ?? []).map((code) => ADVISORY_LABELS[code] ?? code);
 }
 
 export function hasPendingGroups(plan: DecisionPlanView): boolean {

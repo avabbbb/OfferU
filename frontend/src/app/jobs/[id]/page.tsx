@@ -235,7 +235,10 @@ export default function JobDetailPage() {
   const hasConfirmedStageEvent = Boolean(progressTimeline?.timeline?.length);
   const selectedRecordIsOpportunity = selectedProgressRecord?.application_attempt_id == null;
   const interviewPreparationPriority = INTERVIEW_STAGES.has(currentApplicationStage);
-  const canOpenResumeWorkspace = preApplication?.stage === "resume_proposal_ready";
+  // A live proposal is itself the reviewable artifact (backend unlocks the
+  // workspace for it too), so the decision stage is not the only way in.
+  const canOpenResumeWorkspace = preApplication?.stage === "resume_proposal_ready"
+    || ["ready", "in_review", "blocked", "accepted"].includes(resumeProposal?.status || "");
 
   useEffect(() => {
     if (!progressRecords.some((record) => record.application_attempt_id === selectedAttemptId)) {
@@ -430,10 +433,6 @@ export default function JobDetailPage() {
   const handleResearchReview = async (action: "accept" | "reject") => {
     if (!research || reviewAction) return;
     const note = reviewNote.trim();
-    if (action === "reject" && !note) {
-      setResearchError("拒绝候选证据时必须填写原因。");
-      return;
-    }
     setReviewAction(action);
     setResearchError("");
     try {
@@ -468,10 +467,6 @@ export default function JobDetailPage() {
     const decision = preApplication?.decision;
     if (!decision || !decisionChoice || preApplicationAction) return;
     const note = decisionNote.trim();
-    if (decisionChoice !== decision.agent_recommendation && !note) {
-      setPreApplicationError("覆盖 Agent 建议时必须填写理由。");
-      return;
-    }
     setPreApplicationAction("review");
     setPreApplicationError("");
     try {
@@ -614,7 +609,7 @@ export default function JobDetailPage() {
                           ))}
                         </Select>
                         <label htmlFor="manual-decision-rationale" className="bauhaus-label text-[var(--foreground-muted)]">
-                          {manualNeedsRationale ? "决定依据（必填）" : "决定依据（可选）"}
+                          决定依据（可选）
                         </label>
                         <textarea
                           id="manual-decision-rationale"
@@ -628,7 +623,7 @@ export default function JobDetailPage() {
                         <Button
                           onPress={() => void handleManualPreApplication()}
                           isLoading={preApplicationAction === "manual"}
-                          isDisabled={!manualChoice || (manualNeedsRationale && !manualRationale.trim())}
+                          isDisabled={!manualChoice}
                           className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
                         >
                           提交人工投前决策
@@ -959,7 +954,7 @@ export default function JobDetailPage() {
                   {research.review_status === "candidate" ? (
                     <div className="space-y-3">
                       <label htmlFor="research-review-note" className="bauhaus-label text-[var(--foreground-muted)]">
-                        审核备注（拒绝时必填）
+                        审核备注（可选）
                       </label>
                       <textarea
                         id="research-review-note"
@@ -1180,7 +1175,7 @@ export default function JobDetailPage() {
                         ))}
                       </Select>
                       <label htmlFor="pre-application-decision-note" className="bauhaus-label text-[var(--foreground-muted)]">
-                        覆盖建议时的理由（覆盖 Agent 建议必填）
+                        决定理由（可选）
                       </label>
                       <textarea
                         id="pre-application-decision-note"

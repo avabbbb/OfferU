@@ -26,7 +26,9 @@ import {
   PLAN_STATUS_LABELS,
   RISK_LABELS,
   groupStatusTone,
+  groupAdvisoryHints,
   isGroupActionable,
+  isGroupRejectable,
   nodeStatusTone,
   type DecisionGroupView,
   type DecisionNodeView,
@@ -218,6 +220,8 @@ function DecisionGroupCard({
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [feedback, setFeedback] = useState("");
   const actionable = isGroupActionable(group);
+  const rejectOnly = !actionable && isGroupRejectable(group);
+  const advisoryHints = actionable ? groupAdvisoryHints(group) : [];
   const digestsReady = Boolean(plan.plan_digest && group.group_digest);
   const display = group.display || {};
   const knownKeys: Record<string, true> = { before: true, after: true, why: true, evidence: true };
@@ -325,6 +329,31 @@ function DecisionGroupCard({
         </p>
       )}
 
+      {advisoryHints.length > 0 && (
+        <p
+          data-testid="group-advisory-hint"
+          className="text-[10px] leading-4 text-[var(--foreground-muted)]"
+        >
+          提示：{advisoryHints.join("、")}（不影响批准）
+        </p>
+      )}
+      {rejectOnly && (
+        <div className="flex items-center justify-between gap-1.5">
+          <p className="text-[10px] leading-4 text-[var(--foreground-muted)]">
+            该分组暂不能批准{group.reviewability.reason_codes.length ? `（${group.reviewability.reason_codes.join("、")}）` : ""}，可以先拒绝让 Agent 重新准备。
+          </p>
+          <button
+            type="button"
+            aria-label={`拒绝：${group.title}`}
+            disabled={deciding || !digestsReady}
+            onClick={() => onDecide?.(group, "reject")}
+            className="bauhaus-button bauhaus-button-outline !min-h-8 !justify-center !px-3 !py-1 !text-[11px] disabled:opacity-50"
+          >
+            {deciding ? <Loader2 size={12} className="animate-spin" /> : null}
+            拒绝
+          </button>
+        </div>
+      )}
       {actionable && (
         <div className="space-y-1.5">
           <div className="flex items-center justify-end gap-1.5">

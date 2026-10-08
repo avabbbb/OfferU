@@ -111,6 +111,8 @@ function requestRunReviewRefresh(runId: string) {
   window.dispatchEvent(new CustomEvent("offeru-run-review-refresh", { detail: { run_id: runId } }));
 }
 
+// Advisory only: a missing before/after preview is shown as a quiet hint and
+// never disables approval (Registry direct edits carry no diff material).
 function groupHasReviewableDiff(group: AgentConfirmationGroup) {
   return group.nodes.length > 0 && group.nodes.every((node) => {
     const display = node.display;
@@ -726,7 +728,7 @@ export function PendingProposalReview() {
                     const terminalGroup = ["completed", "rejected", "replaced"].includes(groupStatus);
                     const canDecideGroup = ["sealed", "executing"].includes(selectedPlan.status);
                     const canApprove = planListReady && !planError && !planLoading && canDecideGroup
-                      && group.status === "pending" && targetValid && reviewable
+                      && group.status === "pending" && targetValid
                       && ["sealed", "executing"].includes(selectedPlan.status);
                     const canReject = planListReady && !planError && !planLoading && canDecideGroup
                       && group.status === "pending" && targetValid;
@@ -856,7 +858,7 @@ export function PendingProposalReview() {
                         {group.status === "pending" && canDecideGroup && (
                           <div className="flex flex-wrap items-center justify-end gap-1.5 border-t border-[var(--border)] pt-2">
                             {!targetValid && <p className="mr-auto text-[9.5px] text-[var(--primary-red)]">摘要或标识格式无效，决定入口已关闭。</p>}
-                            {targetValid && !reviewable && <p className="mr-auto text-[9.5px] text-[var(--primary-red)]">请先补全每个节点的修改前后内容。</p>}
+                            {targetValid && !reviewable && <p className="mr-auto text-[9.5px] text-[var(--foreground-muted)]">提示：部分节点未提供修改前后对照（不影响批准）。</p>}
                             <button
                               type="button"
                               aria-label={`拒绝整组：${group.title || group.summary}`}
