@@ -2076,7 +2076,13 @@ async def _persist_external_resume_proposal(**kwargs: Any) -> dict[str, Any]:
 async def _review_resume_proposal_items(**kwargs: Any) -> dict[str, Any]:
     from app.services.resume_workspace import review_resume_proposal_items
 
-    return await review_resume_proposal_items(**kwargs)
+    # A confirmed decision-plan node is the user's adoption decision: once
+    # its review leaves no pending change, the proposal is finalized there.
+    # A direct workspace review keeps the proposal open until the user saves
+    # a version (create_resume_version_record finalizes it then).
+    authorization = _OPERATION_AUTHORIZATION.get()
+    finalize = bool(authorization is not None and getattr(authorization, "plan_id", ""))
+    return await review_resume_proposal_items(**kwargs, finalize_when_complete=finalize)
 
 
 async def _propose_resume_decision_plan(**kwargs: Any) -> dict[str, Any]:

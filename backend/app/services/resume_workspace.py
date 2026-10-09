@@ -33,7 +33,11 @@ from app.services.pre_application_decisions import get_pre_application_state
 from app.services.resume_fact_gates import validate_edited_text
 from app.services.resume_builder import _profile_to_contact_json
 from app.services.resume_optimization import _proposal_detail
-from app.services.resume_versions import create_version_snapshot
+from app.services.resume_versions import (
+    create_version_snapshot,
+    mark_workspace_proposal_accepted,
+    proposal_fully_reviewed,
+)
 from app.services.packet_readiness import project_packet_state
 
 
@@ -632,11 +636,54 @@ async def review_resume_proposal_item(
     return await _review_resume_proposal_items(proposal_id, resume_id, [change_id], action, edited_text)
 
 
+async def _finalize_fully_reviewed_proposal(db, proposal, resume: Resume) -> bool:
+    """Close a workspace proposal once its last change has been reviewed.
+
+    With at least one accepted change the workspace now holds the adopted
+    resume: snapshot it as a ResumeVersion and mark the proposal accepted
+    through the same helper the "save version" path uses. When every change
+    was rejected nothing was adopted, so the proposal is closed as rejected.
+    Runs inside the caller's transaction; a no-op once finalized.
+    """
+    if proposal.status not in {"ready", "in_review"} or not proposal_fully_reviewed(proposal):
+        return False
+    reviews = proposal.item_reviews_json or {}
+    change_ids = [
+        str(item.get("change_id"))
+        for item in (proposal.diff_json or [])
+        if isinstance(item, dict) and item.get("change_id")
+    ]
+    if not any(reviews[change_id].get("action") == "accept" for change_id in change_ids):
+        proposal.status = "rejected"
+        proposal.reviewed_at = _now()
+        return True
+    # Sections added by this review were flushed by resume_id only; reload the
+    # collection so the version snapshot holds the adopted content.
+    await db.flush()
+    await db.refresh(resume, attribute_names=["sections"])
+    version = await create_version_snapshot(
+        db,
+        resume,
+        change_summary=f"采纳简历优化提案 {proposal.proposal_id} 的全部审核结果",
+        created_by="resume_workspace_review",
+    )
+    resume.current_version_id = version.id
+    return mark_workspace_proposal_accepted(proposal, resume=resume, version=version)
+
+
 async def review_resume_proposal_items(
     proposal_id: str, resume_id: int, change_ids: list[str], action: str,
+    *, finalize_when_complete: bool = False,
 ) -> dict[str, Any]:
-    """Apply one explicitly reviewed set atomically; never approve unrelated operations."""
-    return await _review_resume_proposal_items(proposal_id, resume_id, change_ids, action)
+    """Apply one explicitly reviewed set atomically; never approve unrelated operations.
+
+    ``finalize_when_complete`` (set for confirmed decision-plan nodes) closes
+    the proposal in the same transaction once no change is left pending.
+    """
+    return await _review_resume_proposal_items(
+        proposal_id, resume_id, change_ids, action,
+        finalize_when_complete=finalize_when_complete,
+    )
 
 
 async def _review_resume_proposal_items(
@@ -645,6 +692,8 @@ async def _review_resume_proposal_items(
     change_ids: list[str],
     action: str,
     edited_text: str = "",
+    *,
+    finalize_when_complete: bool = False,
 ) -> dict[str, Any]:
     clean_proposal_id = _text(proposal_id, "proposal_id", 80)
     clean_resume_id = _positive_id(resume_id, "resume_id")
@@ -683,6 +732,11 @@ async def _review_resume_proposal_items(
             raise ValueError("该条目已有不同审核结果，请重新查看提案")
         pending_ids = [change_id for change_id in clean_change_ids if not isinstance(reviews.get(change_id), dict)]
         if not pending_ids:
+            # A replayed last review still finalizes a proposal whose earlier
+            # attempt recorded every review but was never finalized.
+            if finalize_when_complete and await _finalize_fully_reviewed_proposal(db, proposal, resume):
+                await db.commit()
+                resume = await _load_resume(db, resume.id)
             return {
                 **await _workspace_payload(db, resume, job=job, proposal_id=proposal.proposal_id),
                 "duplicate": True,
@@ -843,6 +897,8 @@ async def _review_resume_proposal_items(
             proposal.status = "in_review"
         if clean_action == "accept":
             proposal.workspace_snapshot_hash = workspace_content_hash(resume)
+        if finalize_when_complete:
+            await _finalize_fully_reviewed_proposal(db, proposal, resume)
         await db.commit()
         resume = await _load_resume(db, resume.id)
         return {
