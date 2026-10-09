@@ -38,7 +38,11 @@ from app.models.models import (
 from app.services.application_workspace import auto_write_job_to_total
 from app.services.resume_drafts import save_resume_draft
 from app.services.resume_fact_gates import validate_generated_content
-from app.services.resume_versions import create_version_snapshot, snapshot_resume
+from app.services.resume_versions import (
+    create_version_snapshot,
+    mark_workspace_proposal_accepted,
+    snapshot_resume,
+)
 from app.services.security_redaction import safe_error_message
 from app.runtime_paths import runtime_uploads_dir
 
@@ -796,17 +800,7 @@ async def create_resume_version_record(
             ).scalars().all()
         )
         for proposal in pending_proposals:
-            change_ids = {
-                item.get("change_id")
-                for item in (proposal.diff_json or [])
-                if isinstance(item, dict) and item.get("change_id")
-            }
-            reviewed_ids = set((proposal.item_reviews_json or {}).keys())
-            if change_ids.issubset(reviewed_ids):
-                proposal.status = "accepted"
-                proposal.accepted_resume_id = resume.id
-                proposal.accepted_resume_version_id = version.id
-                proposal.reviewed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            mark_workspace_proposal_accepted(proposal, resume=resume, version=version)
         from app.services.career_resume import added_resume_evidence
 
         added_evidence = added_resume_evidence(
