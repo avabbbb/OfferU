@@ -280,7 +280,9 @@ class CareerQuestionAnswerTests(unittest.TestCase):
                 events = (
                     await db.execute(
                         select(AutomationEvent).where(
-                            AutomationEvent.dedupe_key.like("career-answer-reprepare:%")
+                            AutomationEvent.dedupe_key.like("career-answer-reprepare:%"),
+                            # The suite shares one database; pin to this test's job.
+                            AutomationEvent.target_id == str(outcome["job_id"]),
                         )
                     )
                 ).scalars().all()
@@ -421,7 +423,9 @@ class CareerQuestionAnswerTests(unittest.TestCase):
                 rows = (
                     await db.execute(
                         select(AutomationEvent).where(
-                            AutomationEvent.dedupe_key.like("career-answer-rediscovery:%")
+                            AutomationEvent.dedupe_key.like("career-answer-rediscovery:%"),
+                            # The suite shares one database; pin to this test's profile.
+                            AutomationEvent.target_id == str(outcome["profile_id"]),
                         )
                     )
                 ).scalars().all()
