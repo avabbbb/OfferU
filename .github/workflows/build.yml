@@ -860,7 +860,7 @@ jobs:
     secrets: inherit
 
   desktop-installed-smoke:
-    if: ${{ github.event_name != 'pull_request' }}
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.desktop-package.result == 'success' }}
     name: Windows installed-app and sidecar smoke
     runs-on: windows-latest
     needs: [desktop-package]
