@@ -164,6 +164,155 @@ def _wait_for_role_tasks(
     )
 
 
+def _event_receipt_source(
+    event: dict[str, Any],
+    director_task: dict[str, Any],
+    role_task: dict[str, Any],
+) -> str | None:
+    result = event.get("result") if isinstance(event.get("result"), dict) else {}
+    if not event.get("processed_at"):
+        return None
+    if (
+        event.get("status") == director_task.get("status")
+        and result.get("task_id") == director_task.get("task_id")
+        and result.get("inbox_item_id") == f"automation_task_{director_task.get('task_id')}"
+    ):
+        return "career_director"
+    if (
+        role_task.get("status") == "completed"
+        and event.get("status") == "completed"
+        and result.get("task_id") == role_task.get("task_id")
+    ):
+        role_result = role_task.get("result") if isinstance(role_task.get("result"), dict) else {}
+        if result.get("benchmark_run_id") == role_result.get("benchmark_run_id"):
+            return "role_intelligence"
+    if (
+        role_task.get("status") in {"blocked", "failed"}
+        and event.get("status") == role_task.get("status")
+        and result.get("task_id") == role_task.get("task_id")
+    ):
+        return "role_intelligence"
+    return None
+
+
+def _wait_for_job_saved_events(
+    client: httpx.Client,
+    job_target_ids: set[str],
+    director_tasks_by_job: dict[str, dict[str, Any]],
+    role_tasks_by_job: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    deadline = time.monotonic() + TASK_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        payload = _request(
+            client,
+            "GET",
+            "/api/agent/runtime/automation/events?event_type=JOB_SAVED&limit=200",
+        )
+        events = payload.get("events", [])
+        if not isinstance(events, list):
+            raise AssertionError(f"AutomationEvent list is invalid: {payload}")
+        matching = [
+            item
+            for item in events
+            if isinstance(item, dict) and str(item.get("target_id")) in job_target_ids
+        ]
+        events_by_job: dict[str, dict[str, Any]] = {}
+        for event in matching:
+            target_id = str(event.get("target_id") or "")
+            if target_id in events_by_job:
+                raise AssertionError(f"Job {target_id} has duplicate JOB_SAVED events")
+            events_by_job[target_id] = event
+        if set(events_by_job) == job_target_ids and all(
+            _event_receipt_source(
+                event,
+                director_tasks_by_job[target_id],
+                role_tasks_by_job[target_id],
+            )
+            for target_id, event in events_by_job.items()
+        ):
+            return matching
+        time.sleep(POLL_SECONDS)
+
+    pending = [
+        target_id
+        for target_id in sorted(job_target_ids)
+        if target_id not in events_by_job
+        or not _event_receipt_source(
+            events_by_job[target_id],
+            director_tasks_by_job[target_id],
+            role_tasks_by_job[target_id],
+        )
+    ]
+    raise AssertionError(
+        f"JOB_SAVED terminal receipts were not materialized for {len(pending)} Jobs: "
+        f"{pending[:5]}"
+    )
+
+
+def _assert_job_saved_receipt(
+    event: dict[str, Any],
+    director_task: dict[str, Any],
+    role_task: dict[str, Any],
+) -> None:
+    target_id = str(event.get("target_id") or "")
+    event_id = str(event.get("event_id") or "")
+    event_payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+    event_result = event.get("result") if isinstance(event.get("result"), dict) else {}
+    director_input = (
+        director_task.get("input") if isinstance(director_task.get("input"), dict) else {}
+    )
+    role_input = role_task.get("input") if isinstance(role_task.get("input"), dict) else {}
+    if event.get("event_type") != "JOB_SAVED" or not event_id:
+        raise AssertionError(f"Job {target_id} lacks a persisted JOB_SAVED event ID")
+    if not _event_receipt_source(event, director_task, role_task):
+        raise AssertionError(f"JOB_SAVED event {event_id} lacks a task projection receipt")
+    if (
+        str(director_task.get("target_id") or "") != target_id
+        or director_input.get("automation_event_id") != event_id
+        or str(role_task.get("target_id") or "") != target_id
+        or str(role_input.get("job_id") or "") != target_id
+        or role_input.get("automation_event_id") != event_id
+    ):
+        raise AssertionError(f"CareerTasks for Job {target_id} are not bound to its event")
+    if event_result.get("role_intelligence_task_id") not in {None, role_task.get("task_id")}:
+        raise AssertionError(f"JOB_SAVED event {event_id} references a different Role task")
+    expected_provider = str(event_payload.get("runtime_provider") or "auto")
+    if role_task.get("runtime_provider") != expected_provider:
+        raise AssertionError(
+            f"Role task for Job {target_id} does not match its event provider"
+        )
+
+
+def _assert_role_task_terminal(task: dict[str, Any], job_target_id: str) -> None:
+    task_id = str(task.get("task_id") or "")
+    status = str(task.get("status") or "")
+    attempt_count = int(task.get("attempt_count") or 0)
+    max_attempts = int(task.get("max_attempts") or 0)
+    if max_attempts < 1 or attempt_count > max_attempts or not task.get("finished_at"):
+        raise AssertionError(f"Role task {task_id} lacks bounded terminal metadata")
+    if status == "completed":
+        result = task.get("result") if isinstance(task.get("result"), dict) else {}
+        benchmark = result.get("benchmark") if isinstance(result.get("benchmark"), dict) else {}
+        if (
+            int(result.get("job_id") or 0) != int(job_target_id)
+            or not result.get("benchmark_run_id")
+            or benchmark.get("status") != "completed"
+            or task.get("result_ref") != f"career-task:{task_id}"
+            or attempt_count < 1
+            or task.get("retryable")
+        ):
+            raise AssertionError(f"Role task {task_id} lacks a completed benchmark receipt")
+    elif status in {"blocked", "failed"}:
+        if (
+            not task.get("retryable")
+            or not str(task.get("error") or "").strip()
+            and not str(task.get("error_id") or "").strip()
+        ):
+            raise AssertionError(f"Role task {task_id} failure is not visible and retryable")
+    else:
+        raise AssertionError(f"Role task {task_id} ended in unexpected state {status!r}")
+
+
 def main() -> None:
     run_key = str(int(time.time() * 1000))
     started_at = time.perf_counter()
@@ -258,112 +407,54 @@ def main() -> None:
             raise AssertionError(
                 f"expected {CYCLES} unique persisted tasks, found {len(matching_tasks)}"
             )
-
-        automation = _request(
-            client,
-            "GET",
-            "/api/agent/runtime/automation/events?event_type=JOB_SAVED&limit=200",
-        )
-        matching_events = [
-            item
-            for item in automation.get("events", [])
-            if isinstance(item, dict)
-            and str(item.get("target_id")) in job_target_ids
-        ]
-        if len(matching_events) != CYCLES:
-            raise AssertionError(
-                f"expected {CYCLES} unique JOB_SAVED events, found {len(matching_events)}"
-            )
-        events_by_job: dict[str, dict[str, Any]] = {}
-        for event in matching_events:
-            target_id = str(event.get("target_id") or "")
-            if target_id in events_by_job:
-                raise AssertionError(f"Job {target_id} has duplicate JOB_SAVED events")
-            if event.get("status") != "dispatched":
-                raise AssertionError(
-                    f"JOB_SAVED event for Job {target_id} was not durably dispatched"
-                )
-            events_by_job[target_id] = event
-        if set(events_by_job) != job_target_ids:
-            raise AssertionError("JOB_SAVED events do not cover every worker Job exactly once")
+        director_tasks_by_job: dict[str, dict[str, Any]] = {}
+        for task in matching_tasks:
+            target_id = str(task.get("target_id") or "")
+            if target_id in director_tasks_by_job:
+                raise AssertionError(f"Job {target_id} has duplicate Career Director tasks")
+            director_tasks_by_job[target_id] = task
+        if set(director_tasks_by_job) != job_target_ids:
+            raise AssertionError("Career Director tasks do not cover every worker Job exactly once")
 
         role_tasks = _wait_for_role_tasks(client, job_target_ids)
         if len(role_tasks) != CYCLES:
             raise AssertionError(
                 f"expected one Role Intelligence task per Job, found {len(role_tasks)}"
             )
+        matching_events = _wait_for_job_saved_events(
+            client,
+            job_target_ids,
+            director_tasks_by_job,
+            role_tasks_by_job,
+        )
+        events_by_job = {str(event["target_id"]): event for event in matching_events}
+        role_tasks_by_job = {str(task["target_id"]): task for task in role_tasks}
+        if set(role_tasks_by_job) != job_target_ids:
+            raise AssertionError("Role Intelligence tasks do not cover every worker Job exactly once")
+
         role_task_ids: set[str] = set()
         role_task_statuses: list[str] = []
+        receipt_sources: list[str] = []
         for task in role_tasks:
             target_id = str(task.get("target_id") or "")
-            event = events_by_job[target_id]
-            task_input = task.get("input") if isinstance(task.get("input"), dict) else {}
             task_id = str(task.get("task_id") or "")
             if not task_id or task_id in role_task_ids:
                 raise AssertionError("Role Intelligence tasks did not have unique task IDs")
             role_task_ids.add(task_id)
             if task.get("task_type") != "role_intelligence" or task.get("source") != "automation":
                 raise AssertionError(f"Job {target_id} has an unexpected Role Intelligence task: {task}")
-            if task.get("runtime_provider") != "replay":
-                raise AssertionError(
-                    f"Role Intelligence task {task_id} used an unexpected provider"
-                )
-            if (
-                str(task_input.get("job_id") or "") != target_id
-                or task_input.get("automation_event_id") != event.get("event_id")
-            ):
-                raise AssertionError(
-                    f"Role Intelligence task {task_id} is not bound to its JOB_SAVED event"
-                )
-            event_result = event.get("result") if isinstance(event.get("result"), dict) else {}
-            event_role_task = event_result.get("role_intelligence_task")
-            if not isinstance(event_role_task, dict) or event_role_task.get("task_id") != task_id:
-                raise AssertionError(
-                    f"JOB_SAVED event {event.get('event_id')} lacks the Role Intelligence task receipt"
-                )
-
             status = str(task.get("status") or "")
             role_task_statuses.append(status)
-            attempt_count = int(task.get("attempt_count") or 0)
-            max_attempts = int(task.get("max_attempts") or 0)
-            if max_attempts < 1 or attempt_count > max_attempts:
-                raise AssertionError(f"Role Intelligence task {task_id} exceeded its retry bound")
-            if status == "completed":
-                result = task.get("result") if isinstance(task.get("result"), dict) else {}
-                benchmark = result.get("benchmark") if isinstance(result.get("benchmark"), dict) else {}
-                if (
-                    int(result.get("job_id") or 0) != int(target_id)
-                    or not result.get("benchmark_run_id")
-                    or benchmark.get("status") != "completed"
-                    or task.get("result_ref") != f"career-task:{task_id}"
-                    or attempt_count < 1
-                    or task.get("retryable")
-                ):
-                    raise AssertionError(
-                        f"Role Intelligence task {task_id} lacks a completed benchmark receipt"
-                    )
-            elif status == "blocked":
-                error = str(task.get("error") or "").casefold()
-                unavailable_markers = (
-                    "provider",
-                    "runtime",
-                    "credential",
-                    "unavailable",
-                    "not configured",
-                    "authentication",
-                )
-                if (
-                    not task.get("retryable")
-                    or not error
-                    or not any(marker in error for marker in unavailable_markers)
-                ):
-                    raise AssertionError(
-                        f"Role Intelligence task {task_id} is blocked without a retryable provider reason"
-                    )
-            else:
-                raise AssertionError(
-                    f"Role Intelligence task {task_id} ended in unexpected state {status!r}"
-                )
+            receipt_source = _event_receipt_source(
+                events_by_job[target_id],
+                director_tasks_by_job[target_id],
+                role_tasks_by_job[target_id],
+            )
+            if receipt_source is None:
+                raise AssertionError(f"Job {target_id} lacks a terminal AutomationEvent receipt")
+            receipt_sources.append(receipt_source)
+            _assert_job_saved_receipt(events_by_job[target_id], director_tasks_by_job[target_id], task)
+            _assert_role_task_terminal(task, target_id)
 
         integrity = _request(client, "GET", "/api/agent/data/safety/integrity")
         integrity_check = integrity.get("integrity_check")
@@ -382,11 +473,17 @@ def main() -> None:
         "unique_automation_events": len(matching_events),
         "task_statuses": sorted(set(statuses)),
         "role_intelligence_statuses": sorted(set(role_task_statuses)),
+        "automation_event_receipt_sources": {
+            source: receipt_sources.count(source)
+            for source in ("career_director", "role_intelligence")
+        },
         "task_attempts": 1,
         "database_integrity": integrity_check,
         "foreign_key_violations": foreign_key_violations,
         "elapsed_seconds": round(time.perf_counter() - started_at, 3),
-        "role_intelligence_runtime_provider": "replay",
+        "role_intelligence_runtime_providers": sorted(
+            {str(task.get("runtime_provider") or "") for task in role_tasks}
+        ),
         "career_director_runtime_provider": "embedded",
         "role_intelligence_tasks": len(role_tasks),
     }

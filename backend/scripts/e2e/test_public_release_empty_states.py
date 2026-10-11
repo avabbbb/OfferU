@@ -88,9 +88,10 @@ def main() -> None:
             new_resume_button = page.get_by_role("button", name="新建简历", exact=True).last
             expect(new_resume_button).to_be_visible()
             new_resume_button.click()
-            create_dialog = page.get_by_role("dialog")
+            create_dialog = page.get_by_role("dialog", name="新建简历", exact=True)
             expect(create_dialog).to_be_visible()
-            expect(create_dialog.get_by_role("heading", name="新建简历", exact=True)).to_be_visible()
+            expect(create_dialog.get_by_text("新建简历", exact=True)).to_be_visible()
+            expect(create_dialog.get_by_label("简历命名")).to_be_visible()
             create_dialog.get_by_role("button", name="创建并编辑", exact=True).click()
             page.wait_for_function(
                 "() => /^#\\/resume\\/\\d+/.test(window.location.hash)",
