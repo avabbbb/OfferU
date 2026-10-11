@@ -164,23 +164,42 @@ def _wait_for_role_tasks(
     )
 
 
-def _has_director_event_receipt(
+def _event_receipt_source(
     event: dict[str, Any],
     director_task: dict[str, Any],
-) -> bool:
+    role_task: dict[str, Any],
+) -> str | None:
     result = event.get("result") if isinstance(event.get("result"), dict) else {}
-    return (
-        bool(event.get("processed_at"))
-        and event.get("status") == director_task.get("status")
+    if not event.get("processed_at"):
+        return None
+    if (
+        event.get("status") == director_task.get("status")
         and result.get("task_id") == director_task.get("task_id")
-        and bool(result.get("inbox_item_id"))
-    )
+        and result.get("inbox_item_id") == f"automation_task_{director_task.get('task_id')}"
+    ):
+        return "career_director"
+    if (
+        role_task.get("status") == "completed"
+        and event.get("status") == "completed"
+        and result.get("task_id") == role_task.get("task_id")
+    ):
+        role_result = role_task.get("result") if isinstance(role_task.get("result"), dict) else {}
+        if result.get("benchmark_run_id") == role_result.get("benchmark_run_id"):
+            return "role_intelligence"
+    if (
+        role_task.get("status") in {"blocked", "failed"}
+        and event.get("status") == role_task.get("status")
+        and result.get("task_id") == role_task.get("task_id")
+    ):
+        return "role_intelligence"
+    return None
 
 
 def _wait_for_job_saved_events(
     client: httpx.Client,
     job_target_ids: set[str],
     director_tasks_by_job: dict[str, dict[str, Any]],
+    role_tasks_by_job: dict[str, dict[str, Any]],
 ) -> list[dict[str, Any]]:
     deadline = time.monotonic() + TASK_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
@@ -204,7 +223,11 @@ def _wait_for_job_saved_events(
                 raise AssertionError(f"Job {target_id} has duplicate JOB_SAVED events")
             events_by_job[target_id] = event
         if set(events_by_job) == job_target_ids and all(
-            _has_director_event_receipt(event, director_tasks_by_job[target_id])
+            _event_receipt_source(
+                event,
+                director_tasks_by_job[target_id],
+                role_tasks_by_job[target_id],
+            )
             for target_id, event in events_by_job.items()
         ):
             return matching
@@ -214,8 +237,10 @@ def _wait_for_job_saved_events(
         target_id
         for target_id in sorted(job_target_ids)
         if target_id not in events_by_job
-        or not _has_director_event_receipt(
-            events_by_job[target_id], director_tasks_by_job[target_id]
+        or not _event_receipt_source(
+            events_by_job[target_id],
+            director_tasks_by_job[target_id],
+            role_tasks_by_job[target_id],
         )
     ]
     raise AssertionError(
@@ -239,8 +264,8 @@ def _assert_job_saved_receipt(
     role_input = role_task.get("input") if isinstance(role_task.get("input"), dict) else {}
     if event.get("event_type") != "JOB_SAVED" or not event_id:
         raise AssertionError(f"Job {target_id} lacks a persisted JOB_SAVED event ID")
-    if not _has_director_event_receipt(event, director_task):
-        raise AssertionError(f"JOB_SAVED event {event_id} lacks its Career Director receipt")
+    if not _event_receipt_source(event, director_task, role_task):
+        raise AssertionError(f"JOB_SAVED event {event_id} lacks a task projection receipt")
     if (
         str(director_task.get("target_id") or "") != target_id
         or director_input.get("automation_event_id") != event_id
@@ -400,6 +425,7 @@ def main() -> None:
             client,
             job_target_ids,
             director_tasks_by_job,
+            role_tasks_by_job,
         )
         events_by_job = {str(event["target_id"]): event for event in matching_events}
         role_tasks_by_job = {str(task["target_id"]): task for task in role_tasks}
@@ -408,6 +434,7 @@ def main() -> None:
 
         role_task_ids: set[str] = set()
         role_task_statuses: list[str] = []
+        receipt_sources: list[str] = []
         for task in role_tasks:
             target_id = str(task.get("target_id") or "")
             task_id = str(task.get("task_id") or "")
@@ -418,11 +445,15 @@ def main() -> None:
                 raise AssertionError(f"Job {target_id} has an unexpected Role Intelligence task: {task}")
             status = str(task.get("status") or "")
             role_task_statuses.append(status)
-            _assert_job_saved_receipt(
+            receipt_source = _event_receipt_source(
                 events_by_job[target_id],
                 director_tasks_by_job[target_id],
                 role_tasks_by_job[target_id],
             )
+            if receipt_source is None:
+                raise AssertionError(f"Job {target_id} lacks a terminal AutomationEvent receipt")
+            receipt_sources.append(receipt_source)
+            _assert_job_saved_receipt(events_by_job[target_id], director_tasks_by_job[target_id], task)
             _assert_role_task_terminal(task, target_id)
 
         integrity = _request(client, "GET", "/api/agent/data/safety/integrity")
@@ -442,6 +473,10 @@ def main() -> None:
         "unique_automation_events": len(matching_events),
         "task_statuses": sorted(set(statuses)),
         "role_intelligence_statuses": sorted(set(role_task_statuses)),
+        "automation_event_receipt_sources": {
+            source: receipt_sources.count(source)
+            for source in ("career_director", "role_intelligence")
+        },
         "task_attempts": 1,
         "database_integrity": integrity_check,
         "foreign_key_violations": foreign_key_violations,

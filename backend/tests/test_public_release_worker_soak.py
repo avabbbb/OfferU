@@ -54,26 +54,25 @@ def test_job_saved_event_serializer_exposes_terminal_task_receipt(
     director_task_id = "career_task_release_director"
     role_task_id = "career_task_release_role"
     finished_at = datetime.now(timezone.utc).replace(tzinfo=None)
-    event = _event_view(
-        AutomationEvent(
-            event_id=event_id,
-            event_type="JOB_SAVED",
-            source="manual",
-            target_type="job",
-            target_id="101",
-            payload_json={"job_id": 101, "runtime_provider": "auto"},
-            dedupe_key="job-saved:job:101",
-            status="blocked",
-            result_json={
-                "task_id": director_task_id,
-                "inbox_item_id": f"automation_task_{director_task_id}",
-                "role_intelligence_task_id": None,
-            },
-            error="",
-            created_at=finished_at,
-            processed_at=finished_at,
-        )
+    event_row = AutomationEvent(
+        event_id=event_id,
+        event_type="JOB_SAVED",
+        source="manual",
+        target_type="job",
+        target_id="101",
+        payload_json={"job_id": 101, "runtime_provider": "auto"},
+        dedupe_key="job-saved:job:101",
+        status="blocked",
+        result_json={
+            "task_id": director_task_id,
+            "inbox_item_id": f"automation_task_{director_task_id}",
+            "role_intelligence_task_id": None,
+        },
+        error="",
+        created_at=finished_at,
+        processed_at=finished_at,
     )
+    event = _event_view(event_row)
     director_task = _task_view(
         CareerTask(
             task_id=director_task_id,
@@ -100,28 +99,56 @@ def test_job_saved_event_serializer_exposes_terminal_task_receipt(
             finished_at=finished_at,
         )
     )
-    role_task = _task_view(
-        CareerTask(
-            task_id=role_task_id,
-            task_type="role_intelligence",
-            source="automation",
-            target_type="job",
-            target_id="101",
-            runtime_provider="auto",
-            input_json={"automation_event_id": event_id, "job_id": 101},
-            output_contract_json={},
-            status="blocked",
-            progress_json={"stage": "blocked", "error_id": "err_role"},
-            result_json={},
-            checkpoint_json={},
-            error="岗位情报 Provider 暂不可用，请配置后重试。",
-            retryable=True,
-            attempt_count=1,
-            max_attempts=3,
-            created_at=finished_at,
-            finished_at=finished_at,
-        )
+    role_row = CareerTask(
+        task_id=role_task_id,
+        task_type="role_intelligence",
+        source="automation",
+        target_type="job",
+        target_id="101",
+        runtime_provider="auto",
+        input_json={"automation_event_id": event_id, "job_id": 101},
+        output_contract_json={},
+        status="blocked",
+        progress_json={"stage": "blocked", "error_id": "err_role"},
+        result_json={},
+        checkpoint_json={},
+        error="岗位情报 Provider 暂不可用，请配置后重试。",
+        retryable=True,
+        attempt_count=1,
+        max_attempts=3,
+        created_at=finished_at,
+        finished_at=finished_at,
     )
+    role_task = _task_view(role_row)
 
+    assert worker_soak._event_receipt_source(event, director_task, role_task) == "career_director"
     worker_soak._assert_job_saved_receipt(event, director_task, role_task)
     worker_soak._assert_role_task_terminal(role_task, "101")
+
+    benchmark_run_id = "benchmark_release_role"
+    role_row.status = "completed"
+    role_row.progress_json = {"stage": "completed", "percent": 100}
+    role_row.result_json = {
+        "job_id": 101,
+        "benchmark_run_id": benchmark_run_id,
+        "benchmark": {"status": "completed"},
+    }
+    role_row.result_ref = f"career-task:{role_task_id}"
+    role_row.error = ""
+    role_row.retryable = False
+    completed_role_task = _task_view(role_row)
+    event_row.status = "completed"
+    event_row.result_json = {
+        "task_id": role_task_id,
+        "benchmark_run_id": benchmark_run_id,
+        "resume_candidate_status": None,
+        "application_packet_status": "partial",
+    }
+    role_first_event = _event_view(event_row)
+
+    assert (
+        worker_soak._event_receipt_source(role_first_event, director_task, completed_role_task)
+        == "role_intelligence"
+    )
+    worker_soak._assert_job_saved_receipt(role_first_event, director_task, completed_role_task)
+    worker_soak._assert_role_task_terminal(completed_role_task, "101")
