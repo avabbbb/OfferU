@@ -33,67 +33,82 @@ def test_complete_packet_is_user_review_and_external_effect_keeps_authorization_
     }))
 
     assert review["reviewability"] == {
-        "status": "ready", "reason_codes": [], "counts_as_user_decision": True,
+        "status": "ready", "reason_codes": [], "advisory_codes": [], "counts_as_user_decision": True,
     }
     assert review["interaction_state"] == "needs_user_review"
     assert authorize["interaction_state"] == "needs_user_authorization"
     assert authorize["reviewability"]["counts_as_user_decision"] is True
 
 
-def test_incomplete_packet_is_warning_but_unknown_execution_still_blocks():
+def test_incomplete_packet_is_advisory_and_unknown_execution_is_system_work():
     incomplete = assess_group(_group(display={"before": "Old", "after": "New"}))
     uncertain = assess_group(_group(nodes=[{"operation": "update_resume_section", "status": "uncertain"}]))
 
+    # Missing why/evidence is a hint on the card, never a lock on the decision.
     assert incomplete["reviewability"]["status"] == "ready"
     assert incomplete["reviewability"]["counts_as_user_decision"] is True
-    assert {"missing_why", "missing_evidence"}.issubset(incomplete["reviewability"]["reason_codes"])
+    assert "missing_why" in incomplete["reviewability"]["advisory_codes"]
     assert incomplete["interaction_state"] == "needs_user_review"
     assert uncertain["reviewability"]["status"] == "needs_reconciliation"
     assert uncertain["interaction_state"] == "system_recovering"
 
 
-def test_prepare_and_unbound_ask_always_have_a_user_exit():
-    preparation = assess_group(_group(risk="prepare"))
-    ask = assess_group(_group(display={**_group()["display"], "interaction_outcome": "ASK"}))
-    explicit_auto = assess_group(_group(display={**_group()["display"], "interaction_outcome": "AUTO"}))
+def test_ai_change_rows_flag_missing_evidence_but_direct_registry_edits_do_not():
+    unsourced_rewrite = assess_group(_group(display={
+        "changes": [{"before": "Old bullet", "after": "New bullet", "why": "Match the role"}],
+    }))
+    direct_edit = assess_group(_group(display={
+        "before": {"headline": "Before"}, "after": {"headline": "After"}, "rationale": "User asked to revise it",
+    }))
+    removed_row = assess_group(_group(display={
+        "changes": [{"before": "Old bullet", "after": None, "why": "Not true", "evidence_refs": ["resume:1/section:4"]}],
+    }))
 
-    assert preparation["reviewability"]["status"] == "ready"
-    assert preparation["reviewability"]["counts_as_user_decision"] is True
-    assert preparation["interaction_state"] == "needs_user_review"
-    assert ask["interaction_state"] == "needs_user_review"
-    assert ask["reviewability"]["counts_as_user_decision"] is True
-    assert "input_request_not_bound_to_group" in ask["reviewability"]["reason_codes"]
-    assert explicit_auto["interaction_state"] == "needs_user_review"
-    assert "auto_fallback_requires_confirmation" in explicit_auto["reviewability"]["reason_codes"]
+    assert unsourced_rewrite["reviewability"]["advisory_codes"] == ["missing_evidence"]
+    assert unsourced_rewrite["reviewability"]["status"] == "ready"
+    assert direct_edit["reviewability"]["advisory_codes"] == []
+    assert removed_row["reviewability"]["advisory_codes"] == []
 
 
-
-def test_missing_source_metadata_warns_but_captured_stale_source_still_blocks():
-    missing = _group(source_versions={}, nodes=[{"operation": "update_resume_section", "status": "pending"}])
-    advisory = assess_group(missing)
+def test_missing_source_metadata_is_advisory_but_a_captured_source_conflict_blocks():
+    missing = assess_group(_group(
+        source_versions={},
+        nodes=[{"operation": "update_resume_section", "status": "pending"}],
+    ))
     stale = assess_group(_group(), source_current=False)
 
-    assert advisory["reviewability"]["status"] == "ready"
-    assert advisory["reviewability"]["counts_as_user_decision"] is True
-    assert "missing_current_source" in advisory["reviewability"]["reason_codes"]
+    assert missing["reviewability"]["status"] == "ready"
+    assert missing["reviewability"]["advisory_codes"] == ["missing_current_source"]
     assert stale["reviewability"]["status"] == "needs_preparation"
     assert stale["reviewability"]["counts_as_user_decision"] is False
     assert stale["reviewability"]["reason_codes"] == ["source_changed_or_unavailable"]
 
 
-def test_destructive_operation_keeps_explicit_authorization_and_scope_floor():
-    group = _group(
+def test_prepare_is_one_tap_review_and_unbound_ask_is_not_a_decision():
+    automatic = assess_group(_group(risk="prepare"))
+    ask = assess_group(_group(display={**_group()["display"], "interaction_outcome": "ASK"}))
+
+    # Nothing auto-runs prepare groups yet, so they surface for one-tap confirm.
+    assert automatic["reviewability"]["status"] == "ready"
+    assert automatic["reviewability"]["counts_as_user_decision"] is True
+    assert automatic["interaction_state"] == "needs_user_review"
+    assert ask["interaction_state"] == "system_recovering"
+    assert ask["reviewability"]["reason_codes"] == ["input_request_not_bound_to_group"]
+
+
+def test_destructive_operations_keep_authorization_and_affected_scope_floor():
+    reset = _group(
         risk="prepare",
         scope="",
         display={"before": "all local data", "after": "empty workspace"},
         nodes=[{"operation": "reset_local_business_data", "status": "pending"}],
     )
-    blocked = assess_group(group)
-    group["scope"] = "local_business_data"
-    authorized = assess_group(group)
+    missing_scope = assess_group(reset)
+    reset["scope"] = "local_business_data"
+    authorized = assess_group(reset)
 
-    assert blocked["interaction_state"] == "system_blocked"
-    assert blocked["reviewability"]["reason_codes"] == ["missing_scope"]
+    assert missing_scope["reviewability"]["status"] == "needs_preparation"
+    assert missing_scope["reviewability"]["reason_codes"] == ["missing_scope"]
     assert authorized["interaction_state"] == "needs_user_authorization"
     assert authorized["reviewability"]["counts_as_user_decision"] is True
 

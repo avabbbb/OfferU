@@ -245,6 +245,91 @@ describe("PendingProposalReview", () => {
     expect(screen.queryByText(/同一 Run 已收到回执/)).not.toBeInTheDocument();
   });
 
+  it("keeps approval available when the review packet omits a before/after preview", async () => {
+    const incompletePlan = {
+      ...resumePlan,
+      groups: resumePlan.groups.map((group) => ({
+        ...group,
+        reviewability: {
+          status: "ready",
+          reason_codes: [],
+          advisory_codes: ["missing_before", "missing_after", "missing_why", "missing_evidence", "missing_current_source"],
+          counts_as_user_decision: true,
+        },
+        nodes: group.nodes.map((node) => ({ ...node, display: { summary: "差异预览缺失" } })),
+      })),
+    };
+    listPlans.mockResolvedValue({ total: 1, items: [incompletePlan] });
+    getPlan.mockResolvedValue(incompletePlan);
+    decideGroup.mockResolvedValue(completedDecision);
+
+    render(<PendingProposalReview />);
+    const user = userEvent.setup();
+
+    const advisory = await screen.findByTestId("pending-review-advisory");
+    expect(advisory).toHaveTextContent("未提供修改前内容");
+    expect(advisory).toHaveTextContent("未提供修改后内容");
+    expect(advisory).toHaveTextContent("未说明原因");
+    expect(advisory).toHaveTextContent("未附来源证据");
+    expect(advisory).toHaveTextContent("未固定当前来源版本");
+    expect(advisory).toHaveTextContent("不影响批准");
+    const approve = screen.getByRole("button", { name: "批准整组：产品经历调整" });
+    expect(approve).toBeEnabled();
+    await user.click(approve);
+    await waitFor(() => expect(decideGroup).toHaveBeenCalledOnce());
+  });
+
+  it("blocks approval on a stale source but leaves the rejection action available", async () => {
+    const stalePlan = {
+      ...resumePlan,
+      groups: resumePlan.groups.map((group) => ({
+        ...group,
+        reviewability: {
+          status: "needs_preparation",
+          reason_codes: ["source_changed_or_unavailable"],
+          advisory_codes: [],
+          counts_as_user_decision: false,
+        },
+      })),
+    };
+    listPlans.mockResolvedValue({ total: 1, items: [stalePlan] });
+    getPlan.mockResolvedValue(stalePlan);
+    decideGroup.mockResolvedValue({ ok: true, group: { status: "rejected" }, receipts: [] });
+
+    render(<PendingProposalReview />);
+    const user = userEvent.setup();
+
+    expect(await screen.findByText(/来源内容已变化，需要重新准备/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "批准整组：产品经历调整" })).toBeDisabled();
+    const reject = screen.getByRole("button", { name: "拒绝整组：产品经历调整" });
+    expect(reject).toBeEnabled();
+    await user.click(reject);
+    await waitFor(() => expect(decideGroup).toHaveBeenCalledWith(
+      stalePlan.id,
+      stalePlan.groups[0].id,
+      expect.objectContaining({ approve: false, plan_digest: stalePlan.digest, group_digest: stalePlan.groups[0].digest }),
+    ));
+  });
+
+  it("keeps approve and reject unavailable while an Operation effect is unknown", async () => {
+    const unknownPlan = {
+      ...resumePlan,
+      groups: resumePlan.groups.map((group) => ({
+        ...group,
+        nodes: group.nodes.map((node) => ({ ...node, status: "uncertain" })),
+      })),
+    };
+    listPlans.mockResolvedValue({ total: 1, items: [unknownPlan] });
+    getPlan.mockResolvedValue(unknownPlan);
+
+    render(<PendingProposalReview />);
+
+    expect(await screen.findByText("执行结果尚未核对，暂不能批准或拒绝。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "批准整组：产品经历调整" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "拒绝整组：产品经历调整" })).toBeDisabled();
+    expect(decideGroup).not.toHaveBeenCalled();
+  });
+
   it("folds completed, rejected and replaced groups to their result summary", async () => {
     const terminalGroups: typeof resumePlan.groups = ["completed", "rejected", "replaced"].map((status, index) => ({
       ...resumePlan.groups[0],

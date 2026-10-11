@@ -14,6 +14,7 @@ import {
   type AgentProposalPlan,
 } from "@/lib/api";
 import { safeClientErrorMessage } from "@/lib/safe-error";
+import { reviewabilityCodeLabels } from "@/lib/decisionPlans";
 import { resetOnboardingForFreshStart } from "@/lib/useOnboarding";
 import { resolveApiBase } from "@/lib/apiBase";
 import { useSWRConfig } from "swr";
@@ -111,6 +112,8 @@ function requestRunReviewRefresh(runId: string) {
   window.dispatchEvent(new CustomEvent("offeru-run-review-refresh", { detail: { run_id: runId } }));
 }
 
+// Advisory only: a missing before/after preview is shown as a quiet hint and
+// never disables approval (Registry direct edits carry no diff material).
 function groupHasReviewableDiff(group: AgentConfirmationGroup) {
   return group.nodes.length > 0 && group.nodes.every((node) => {
     const display = node.display;
@@ -120,6 +123,10 @@ function groupHasReviewableDiff(group: AgentConfirmationGroup) {
         && Object.prototype.hasOwnProperty.call(display, "after"))
     ));
   });
+}
+
+function groupHasUnknownExecution(group: AgentConfirmationGroup) {
+  return group.nodes.some((node) => ["executing", "uncertain", "failed"].includes(node.status));
 }
 
 function validDecisionTarget(plan: AgentProposalPlan, group: AgentConfirmationGroup) {
@@ -722,14 +729,26 @@ export function PendingProposalReview() {
                     const busy = busyDecisionId === group.id;
                     const targetValid = validDecisionTarget(selectedPlan, group);
                     const reviewable = groupHasReviewableDiff(group);
+                    const reviewabilityStatus = group.reviewability?.status;
+                    const unknownExecution = groupHasUnknownExecution(group)
+                      || group.status === "needs_reconciliation"
+                      || reviewabilityStatus === "needs_reconciliation";
+                    const advisoryCodes = group.reviewability?.advisory_codes || [];
+                    const advisoryHints = reviewabilityCodeLabels(advisoryCodes);
+                    if (!reviewable && !advisoryCodes.some((code) => ["missing_before", "missing_after"].includes(code))) {
+                      advisoryHints.push("未提供修改前后对照");
+                    }
+                    const blockerCodes = group.reviewability?.reason_codes || [];
+                    const blockerHints = reviewabilityCodeLabels(blockerCodes);
                     const groupStatus = displayedGroupStatus(selectedPlan, group);
                     const terminalGroup = ["completed", "rejected", "replaced"].includes(groupStatus);
                     const canDecideGroup = ["sealed", "executing"].includes(selectedPlan.status);
                     const canApprove = planListReady && !planError && !planLoading && canDecideGroup
-                      && group.status === "pending" && targetValid && reviewable
+                      && group.status === "pending" && targetValid && !unknownExecution
+                      && (!reviewabilityStatus || reviewabilityStatus === "ready")
                       && ["sealed", "executing"].includes(selectedPlan.status);
                     const canReject = planListReady && !planError && !planLoading && canDecideGroup
-                      && group.status === "pending" && targetValid;
+                      && group.status === "pending" && targetValid && !unknownExecution;
                     const feedback = decisionResults[group.id];
                     const responseReceipts = feedback?.receipts || [];
                     const continuations = [
@@ -817,8 +836,8 @@ export function PendingProposalReview() {
                                     rationale={node.display.rationale}
                                   />
                                 ) : (
-                                  <p className="rounded border border-dashed border-[var(--status-blush)] px-2.5 py-2 text-[10px] text-[var(--primary-red)]">
-                                    缺少可审核的修改前后内容，当前组不能批准。
+                                  <p className="rounded border border-dashed border-[var(--border)] px-2.5 py-2 text-[10px] text-[var(--foreground-muted)]">
+                                    修改前后内容未完整提供。
                                   </p>
                                 )}
 
@@ -856,7 +875,17 @@ export function PendingProposalReview() {
                         {group.status === "pending" && canDecideGroup && (
                           <div className="flex flex-wrap items-center justify-end gap-1.5 border-t border-[var(--border)] pt-2">
                             {!targetValid && <p className="mr-auto text-[9.5px] text-[var(--primary-red)]">摘要或标识格式无效，决定入口已关闭。</p>}
-                            {targetValid && !reviewable && <p className="mr-auto text-[9.5px] text-[var(--primary-red)]">请先补全每个节点的修改前后内容。</p>}
+                            {targetValid && unknownExecution && <p className="mr-auto text-[9.5px] text-[var(--primary-red)]">执行结果尚未核对，暂不能批准或拒绝。</p>}
+                            {targetValid && !unknownExecution && reviewabilityStatus && reviewabilityStatus !== "ready" && (
+                              <p className="mr-auto text-[9.5px] text-[var(--primary-red)]">
+                                当前不能批准：{blockerHints.join("、") || "需要先修复审核内容"}。你仍可拒绝此组。
+                              </p>
+                            )}
+                            {targetValid && advisoryHints.length > 0 && (
+                              <p role="note" data-testid="pending-review-advisory" className="mr-auto text-[9.5px] text-[var(--foreground-muted)]">
+                                提示：{advisoryHints.join("、")}（不影响批准）
+                              </p>
+                            )}
                             <button
                               type="button"
                               aria-label={`拒绝整组：${group.title || group.summary}`}
