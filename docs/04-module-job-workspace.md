@@ -51,13 +51,13 @@
 
 ```text
 JOB_SAVED
-  → Career Director 做一次有边界的评估（读取当前职业状态）
-  → 计划写入 CareerTask / 收件箱，显示在工作区
-  → 如果建议做 Role Intelligence → 用户一键开始（L1，在范围内自动执行）
+  → 创建一次有界的 Role Intelligence 后台任务（L1 Prepare）
+  → Career Director 同时做一次有边界的职业评估
+  → 调研结果与行动计划写入同一岗位工作区 / CareerTask / 收件箱
 ```
 
 - 没有可用 Agent 或模型时：岗位照常保存，工作区照常可用，记录一个可重试的 blocked CareerTask，并说明需要配置什么。**不能**用脚本伪造一份评估。
-- Role Intelligence **不会**因为 `JOB_SAVED` 自动启动。
+- 保存岗位默认启动一次 Role Intelligence 准备任务；每个事件按幂等键去重。没有可用 Provider 时保留明确、可重试的失败或阻塞状态，不能伪造研究结果。后续 Career Director 不得为同一事件重复启动相同调研；新事实采用和外部发送仍走独立审核与授权。
 
 ## 6. Role Intelligence
 
