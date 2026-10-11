@@ -7,6 +7,11 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      publish_candidate:
+        description: Publish the verified installers as an unsigned Owner Dogfood prerelease
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -1030,8 +1035,8 @@ jobs:
           if-no-files-found: ignore
 
   release:
-    name: Draft GitHub release
-    if: startsWith(github.ref, 'refs/tags/v')
+    name: Publish verified installer assets
+    if: ${{ startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_candidate) }}
     needs: [backend-tests, frontend-quality, rust-security-audit, browser-smoke, reliability-failure-recovery, critical-browser-repeatability, migration-browser-smoke, desktop-package, desktop-installed-smoke, macos-package]
     runs-on: ubuntu-latest
     permissions:
@@ -1040,7 +1045,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Read artifact version
+        id: artifact_version
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          version = json.loads(Path("frontend/package.json").read_text())["version"]
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"version={version}\n")
+          PY
+
       - name: Enforce Public Release readiness before publishing
+        if: startsWith(github.ref, 'refs/tags/v')
         run: python backend/scripts/release/audit_release_readiness.py --repo-root . --require-ready
 
       - name: Download Windows release artifact
@@ -1059,9 +1077,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          expected_version="${GITHUB_REF_NAME#v}"
+          expected_version="${{ steps.artifact_version.outputs.version }}"
+          signed_arguments=()
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            expected_version="${GITHUB_REF_NAME#v}"
+            signed_arguments=(--require-signed)
+          fi
           for artifact in release-assets/windows-x64 release-assets/offeru-macos-arm64 release-assets/offeru-macos-x64; do
-            python backend/scripts/release/verify_release_artifacts.py "$artifact" --expected-version "$expected_version" --require-signed
+            python backend/scripts/release/verify_release_artifacts.py "$artifact" --expected-version "$expected_version" "${signed_arguments[@]}"
             platform=$(basename "$artifact")
             cp "$artifact/artifacts.json" "release-assets/artifacts-$platform.json"
             cp "$artifact/version.json" "release-assets/version-$platform.json"
@@ -1074,11 +1097,16 @@ jobs:
           set -euo pipefail
           python backend/scripts/release/audit_artifacts.py release-assets --json
 
-      - name: Create draft release
+      - name: Publish installer assets
         uses: softprops/action-gh-release@v2
         with:
-          name: OfferU ${{ github.ref_name }}
-          draft: true
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && format('dogfood-{0}-{1}', steps.artifact_version.outputs.version, github.run_number) || github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ github.event_name == 'workflow_dispatch' && format('OfferU {0} Owner Dogfood', steps.artifact_version.outputs.version) || format('OfferU {0}', github.ref_name) }}
+          draft: ${{ github.event_name != 'workflow_dispatch' }}
+          prerelease: ${{ github.event_name == 'workflow_dispatch' }}
+          make_latest: false
+          body: ${{ github.event_name == 'workflow_dispatch' && 'Owner Dogfood prerelease. Installers are built and tested by GitHub Actions from the target commit. Windows installers are unsigned; full Public Release readiness and human product acceptance remain outstanding. This is not a stable public release.' || '' }}
           generate_release_notes: true
           files: |
             release-assets/windows-x64/*.exe

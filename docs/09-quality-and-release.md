@@ -85,6 +85,8 @@ Codex、Claude Code、OpenCode、WorkBuddy、Pi 等宿主共用同一组业务�
 
 代码签名证书（Windows / macOS）、升级路径（需要上一版安装包）、Tauri updater、干净系统上的陌生用户人工验收。实时状态以 `KNOWN_ISSUES.md` 为准。
 
+Owner Dogfood 安装包可以通过 `Build & Release` 的手动输入 `publish_candidate=true` 在 GitHub runner 构建并发布为 `dogfood-<产品版本>-<run number>` 预发行版。它仍依赖完整 CI、产物校验、秘密审计和 installed-app smoke；产物明确标注未签名、尚未通过全部 Public Release / 真人验收。默认不发布，正式 `v*` tag 的签名和 readiness 门槛保持不变。
+
 ## 10. 证据与报告规则
 
 - 新报告放在 `docs/evidence/reports/YYYY-MM-DD-<slug>.md`，格式遵循 `docs/evidence/report-schema.json`（EvolveBench 的格式见 `docs/evidence/evolve-bench-schema.json`）。
