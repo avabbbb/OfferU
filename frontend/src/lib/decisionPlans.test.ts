@@ -16,7 +16,7 @@ const raw = (updates: Record<string, unknown> = {}) => ({
   reviewability: {
     status: "ready",
     reason_codes: [],
-    advisory_codes: ["missing_evidence", "outside_skill_scope"],
+    advisory_codes: ["missing_evidence", "missing_why"],
     counts_as_user_decision: true,
   },
   nodes: [],
@@ -27,8 +27,8 @@ describe("decision group gating", () => {
   it("treats a pending ready group as actionable and keeps advisories as hints", () => {
     const group = normalizeDecisionGroup(raw(), 0);
     expect(isGroupActionable(group)).toBe(true);
-    expect(group.reviewability.advisory_codes).toEqual(["missing_evidence", "outside_skill_scope"]);
-    expect(groupAdvisoryHints(group)).toEqual(["未附来源证据", "超出当前技能的常规范围"]);
+    expect(group.reviewability.advisory_codes).toEqual(["missing_evidence", "missing_why"]);
+    expect(groupAdvisoryHints(group)).toEqual(["未附来源证据", "未说明原因"]);
   });
 
   it("does not hide a ready group because of its interaction projection", () => {

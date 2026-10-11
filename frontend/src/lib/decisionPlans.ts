@@ -62,7 +62,7 @@ export interface Reviewability {
   status: ReviewabilityStatus;
   /** Blocking reasons (only when status is not "ready"). */
   reason_codes: string[];
-  /** Non-blocking hints on a ready group (e.g. missing_evidence, outside_skill_scope). */
+  /** Non-blocking hints on a ready group (for example, missing_why or missing_evidence). */
   advisory_codes?: string[];
   counts_as_user_decision: boolean;
 }
