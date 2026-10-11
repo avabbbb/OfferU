@@ -845,6 +845,12 @@ export interface AgentConfirmationGroup {
   dependency_group_ids?: string[];
   digest: string;
   status: string;
+  reviewability?: {
+    status: string;
+    reason_codes?: string[];
+    advisory_codes?: string[];
+    counts_as_user_decision?: boolean;
+  };
   nodes: AgentPlanNode[];
 }
 

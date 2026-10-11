@@ -29,7 +29,7 @@ import sqlite3
 from contextlib import closing
 from dataclasses import replace
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
@@ -129,6 +129,12 @@ async def _confirm(plan: dict, group: dict, *, decision_id: str | None = None) -
     return await confirm_group(plan["id"], group["id"], **_confirm_args(plan, group, decision_id))
 
 
+async def _reject(plan: dict, group: dict, *, decision_id: str | None = None) -> dict:
+    from app.services.proposal_plan_execution import reject_group
+
+    return await reject_group(plan["id"], group["id"], **_confirm_args(plan, group, decision_id))
+
+
 async def _audit_rows(database, nodes: list[dict]) -> list[OperationAuditLog]:
     keys = [node["idempotency_key"] for node in nodes]
     async with database.sessions() as db:
@@ -170,6 +176,100 @@ async def _record_test_approval(plan: dict, group: dict, decision_id: str) -> di
             "surface": "agent_runtime_ui",
         }
     )
+
+
+def test_rejecting_an_ended_run_clears_the_group_without_freshness_or_continuation(
+    proposal_v2_db, monkeypatch
+):
+    async def run():
+        from app.models.models import AgentRunRecord
+        from app.services import proposal_plan_sources, proposal_plan_store
+
+        _permit_test_ui_capability(monkeypatch)
+        _seed, _intents, _groups, run_id, plan = await _scenario(proposal_v2_db)
+        group = _five_create_group(plan)
+        async with proposal_v2_db.sessions() as db:
+            run_row = await db.get(AgentRunRecord, run_id)
+            assert run_row is not None
+            run_row.status = "completed"
+            await db.commit()
+
+        validate_sources = AsyncMock(side_effect=ValueError("source changed"))
+        with patch.object(proposal_plan_sources, "validate_source_versions", validate_sources):
+            result = await _reject(plan, group)
+
+        validate_sources.assert_not_awaited()
+        assert result["ok"] is True, result
+        assert result["continuation"] is None
+        assert result["receipts"] == []
+        assert await proposal_plan_store.list_continuations(run_id=run_id) == []
+        assert await _audit_rows(proposal_v2_db, group["nodes"]) == []
+        latest = await proposal_plan_store.get_plan(plan["id"])
+        rejected = next(item for item in latest["groups"] if item["id"] == group["id"])
+        assert rejected["status"] == "rejected"
+
+    asyncio.run(run())
+
+
+def test_rejection_is_not_gated_by_the_user_decision_count(proposal_v2_db, monkeypatch):
+    async def run():
+        from app.services import proposal_plan_store
+
+        _permit_test_ui_capability(monkeypatch)
+        _seed, _intents, _groups, run_id, plan = await _scenario(proposal_v2_db)
+        group = _five_create_group(plan)
+        unprepared = {
+            "reviewability": {
+                "status": "needs_preparation",
+                "reason_codes": ["missing_scope"],
+                "counts_as_user_decision": False,
+            },
+            "interaction_state": "system_blocked",
+        }
+        with patch("app.services.agentic_interaction_policy.assess_group", return_value=unprepared):
+            result = await _reject(plan, group)
+
+        assert result["ok"] is True, result
+        assert result["group"]["status"] == "rejected"
+        assert await proposal_plan_store.list_continuations(run_id=run_id)
+        assert await _audit_rows(proposal_v2_db, group["nodes"]) == []
+
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("unknown_at", ["run", "operation"])
+def test_reject_does_not_clear_unknown_execution_state(
+    proposal_v2_db, monkeypatch, unknown_at
+):
+    async def run():
+        from app.models.models import AgentRunRecord, ProposalOperationNode
+        from app.services import proposal_plan_store
+
+        _permit_test_ui_capability(monkeypatch)
+        _seed, _intents, _groups, run_id, plan = await _scenario(proposal_v2_db)
+        group = _five_create_group(plan)
+        async with proposal_v2_db.sessions() as db:
+            run_row = await db.get(AgentRunRecord, run_id)
+            assert run_row is not None
+            if unknown_at == "run":
+                run_row.status = "needs_reconciliation"
+            else:
+                node = await db.get(ProposalOperationNode, group["nodes"][0]["id"])
+                assert node is not None
+                node.status = "uncertain"
+            await db.commit()
+
+        result = await _reject(plan, group)
+        assert result["ok"] is False
+        assert result["errors"]
+        assert await proposal_plan_store.list_continuations(run_id=run_id) == []
+        latest = await proposal_plan_store.get_plan(plan["id"])
+        still_pending = next(item for item in latest["groups"] if item["id"] == group["id"])
+        assert still_pending["status"] == "pending"
+        assert await _audit_rows(proposal_v2_db, group["nodes"]) == []
+
+    asyncio.run(run())
 
 
 @pytest.mark.parametrize("field", ["args", "schema", "source", "display", "digest"])

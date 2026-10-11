@@ -26,7 +26,9 @@ import {
   PLAN_STATUS_LABELS,
   RISK_LABELS,
   groupStatusTone,
+  groupAdvisoryHints,
   isGroupActionable,
+  isGroupRejectable,
   nodeStatusTone,
   type DecisionGroupView,
   type DecisionNodeView,
@@ -49,17 +51,6 @@ const TONE_CHIP: Record<StatusTone, string> = {
   warn: "border-[var(--primary-amber,#B26A00)]/50 text-[var(--primary-amber,#B26A00)]",
   error: "border-[var(--status-blush)] text-[var(--primary-red)]",
   muted: "border-[var(--border)] text-[var(--foreground-muted)]",
-};
-
-const REVIEW_WARNING_LABELS: Record<string, string> = {
-  missing_before: "缺少 Before",
-  missing_after: "缺少 After",
-  missing_why: "缺少修改理由",
-  missing_evidence: "缺少证据说明",
-  missing_current_source: "未绑定来源版本",
-  missing_scope: "未标注作用范围",
-  input_request_not_bound_to_group: "Ask 未绑定独立问题卡",
-  auto_fallback_requires_confirmation: "自动执行无人接管，已降级为手动确认",
 };
 
 function StatusChip({ status, labels }: { status: string; labels: Record<string, string> }) {
@@ -229,6 +220,8 @@ function DecisionGroupCard({
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [feedback, setFeedback] = useState("");
   const actionable = isGroupActionable(group);
+  const rejectOnly = !actionable && isGroupRejectable(group);
+  const advisoryHints = actionable ? groupAdvisoryHints(group) : [];
   const digestsReady = Boolean(plan.plan_digest && group.group_digest);
   const display = group.display || {};
   const knownKeys: Record<string, true> = { before: true, after: true, why: true, evidence: true };
@@ -315,20 +308,6 @@ function DecisionGroupCard({
       <NodeStrip nodes={group.nodes} />
       <NodeTechnicalDetails nodes={group.nodes} />
 
-      {group.reviewability?.status === "ready" && group.reviewability.reason_codes?.length > 0 && (
-        <div
-          role="note"
-          className="rounded-md border border-[var(--primary-amber,#B26A00)]/35 bg-[var(--primary-amber,#B26A00)]/5 px-2 py-1.5 text-[10.5px] leading-4 text-[var(--primary-amber,#B26A00)]"
-        >
-          <p className="font-semibold">信息提示，不影响确认</p>
-          <p className="mt-0.5">
-            {group.reviewability.reason_codes
-              .map((code) => REVIEW_WARNING_LABELS[code] ?? code)
-              .join(" · ")}
-          </p>
-        </div>
-      )}
-
       {!digestsReady && actionable && (
         <p role="alert" className="flex items-center gap-1 text-[10.5px] text-[var(--primary-red)]">
           <ShieldAlert size={12} /> 摘要缺失，无法安全批准此分组。
@@ -350,6 +329,31 @@ function DecisionGroupCard({
         </p>
       )}
 
+      {advisoryHints.length > 0 && (
+        <p
+          data-testid="group-advisory-hint"
+          className="text-[10px] leading-4 text-[var(--foreground-muted)]"
+        >
+          提示：{advisoryHints.join("、")}（不影响批准）
+        </p>
+      )}
+      {rejectOnly && (
+        <div className="flex items-center justify-between gap-1.5">
+          <p className="text-[10px] leading-4 text-[var(--foreground-muted)]">
+            该分组暂不能批准{group.reviewability.reason_codes.length ? `（${group.reviewability.reason_codes.join("、")}）` : ""}，可以先拒绝让 Agent 重新准备。
+          </p>
+          <button
+            type="button"
+            aria-label={`拒绝：${group.title}`}
+            disabled={deciding || !digestsReady}
+            onClick={() => onDecide?.(group, "reject")}
+            className="bauhaus-button bauhaus-button-outline !min-h-8 !justify-center !px-3 !py-1 !text-[11px] disabled:opacity-50"
+          >
+            {deciding ? <Loader2 size={12} className="animate-spin" /> : null}
+            拒绝
+          </button>
+        </div>
+      )}
       {actionable && (
         <div className="space-y-1.5">
           <div className="flex items-center justify-end gap-1.5">

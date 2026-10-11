@@ -1,10 +1,8 @@
 """Project Plan execution facts into the user's interaction states.
 
-This module does not authorize or execute Operations. Review-card quality is
-advisory: missing Before/After/Why/evidence/source metadata is shown as a
-warning but does not deadlock an otherwise valid decision. Hard blocking is
-reserved for stale snapshots, unknown execution state, explicit policy blocks
-and the existing destructive/external authorization boundary.
+This module does not authorize or execute Operations. It projects review
+quality as advisory and retains hard consistency and execution-state blockers;
+the Proposal Plan and Operation Registry still enforce execution authority.
 """
 from __future__ import annotations
 
@@ -71,8 +69,11 @@ def _review_packet_reasons(group: Mapping[str, Any]) -> list[str]:
     has_before = any("before" in item and _present(item.get("before")) for item in displays)
     has_after = any("after" in item and _present(item.get("after")) for item in displays)
     if changes:
-        has_before = has_before or all("before" in item and _present(item.get("before")) for item in changes if isinstance(item, Mapping))
-        has_after = has_after or all("after" in item and _present(item.get("after")) for item in changes if isinstance(item, Mapping))
+        # A change row states its own before/after. An explicit empty value is
+        # a real state (an added row has no before, a removed row no after),
+        # so the key being present is what makes the row reviewable.
+        has_before = has_before or all("before" in item for item in changes)
+        has_after = has_after or all("after" in item for item in changes)
     if not has_before:
         reasons.append("missing_before")
     if not has_after:
@@ -80,7 +81,15 @@ def _review_packet_reasons(group: Mapping[str, Any]) -> list[str]:
     if not any(_present(item.get(key)) for item in displays for key in ("why", "rationale")):
         if not any(isinstance(change, Mapping) and any(_present(change.get(key)) for key in ("why", "rationale")) for change in changes):
             reasons.append("missing_why")
-    if not any(_display_sources(item) for item in displays):
+    # Evidence is required where the packet asserts content the user did not
+    # write: AI rewrites shown as change rows, which the plan source builder
+    # backs with per-change evidence. Direct Registry edits (triage a job,
+    # set a headline, add a target role, create a workspace) are reviewed
+    # against the pinned current source instead. The builder never attaches
+    # evidence to them, so demanding it left those groups permanently
+    # "needs_preparation": the user could neither confirm nor fix them.
+    needs_evidence = bool(changes)
+    if needs_evidence and not any(_display_sources(item) for item in displays):
         reasons.append("missing_evidence")
     if not _source_versions(group):
         reasons.append("missing_current_source")
@@ -94,10 +103,7 @@ def _requested_outcome(group: Mapping[str, Any]) -> str:
     outcome = str(display.get("interaction_outcome") or "").strip().upper()
     if outcome:
         return outcome
-    # L1/prepare used to default to AUTO, but there is no universal executor
-    # consuming those groups. Surface them as ordinary review decisions so the
-    # user always has an exit instead of leaving a durable Run parked forever.
-    return "REVIEW"
+    return "AUTO" if group.get("risk") == "prepare" else "REVIEW"
 
 
 def assess_group(group: Mapping[str, Any], *, source_current: bool | None = True) -> dict[str, Any]:
@@ -118,7 +124,16 @@ def assess_group(group: Mapping[str, Any], *, source_current: bool | None = True
         return {"reviewability": {"status": "needs_preparation", "reason_codes": ["group_not_pending"], "counts_as_user_decision": False},
                 "interaction_state": "system_recovering"}
 
-    warnings = _review_packet_reasons(group)
+    # Packet completeness (before/after/why/evidence/pinned source) is
+    # advisory: it is shown on the card as a hint and never blocks a decision.
+    # Blocking on it left Registry groups permanently "needs_preparation" with
+    # no way for the user to confirm or fix them. Hard safety still blocks:
+    # stale sources, unknown execution state (above), invalid/BLOCK outcomes,
+    # unbound Ask, and an AUTHORIZE group without an affected scope.
+    advisory = _review_packet_reasons(group)
+    blocking: list[str] = []
+    if source_current is False:
+        blocking.append("source_changed_or_unavailable")
 
     operations = {str(node.get("operation") or "") for node in nodes}
     risk = str(group.get("risk") or "")
@@ -126,48 +141,27 @@ def assess_group(group: Mapping[str, Any], *, source_current: bool | None = True
     if outcome not in {"AUTO", "ASK", "REVIEW", "AUTHORIZE", "BLOCK"}:
         return {"reviewability": {"status": "needs_preparation", "reason_codes": ["invalid_interaction_outcome"], "counts_as_user_decision": False},
                 "interaction_state": "system_blocked"}
-
-    # Canonical source freshness is a real safety invariant. Metadata being
-    # absent is only a quality warning; a source that was captured and then
-    # changed is a stale-snapshot blocker and must be regenerated.
-    if source_current is False:
-        return {"reviewability": {"status": "needs_preparation", "reason_codes": ["source_changed_or_unavailable"], "counts_as_user_decision": False},
-                "interaction_state": "system_recovering"}
-
-    destructive = bool(operations & _DESTRUCTIVE_OPERATIONS)
-    if risk == "external" or destructive:
+    if risk == "external" or operations & _DESTRUCTIVE_OPERATIONS:
         outcome = "AUTHORIZE"
-
-    # A destructive action must still identify its affected scope before the
-    # user can authorize it. Other review-card omissions are warnings only.
-    if destructive and "missing_scope" in warnings:
-        return {"reviewability": {"status": "needs_preparation", "reason_codes": ["missing_scope"], "counts_as_user_decision": False},
-                "interaction_state": "system_blocked"}
-
+    if outcome == "AUTHORIZE" and "missing_scope" in advisory:
+        blocking.append("missing_scope")
+    if blocking:
+        return {"reviewability": {"status": "needs_preparation", "reason_codes": sorted(set(blocking)), "counts_as_user_decision": False},
+                "interaction_state": "system_recovering"}
     if outcome == "BLOCK":
         return {"reviewability": {"status": "needs_preparation", "reason_codes": ["policy_blocked"], "counts_as_user_decision": False},
                 "interaction_state": "system_blocked"}
-
-    warning_codes = sorted(set(warnings))
     if outcome == "ASK":
-        # If the caller forgot to persist a dedicated AgentInputRequest, keep
-        # the group actionable instead of parking the Run forever. Approval is
-        # explicit and still binds the exact immutable Plan/Group digests.
-        warning_codes = sorted(set([*warning_codes, "input_request_not_bound_to_group"]))
-        outcome = "REVIEW"
-
+        # Ask is projected from the separately persisted AgentInputRequest;
+        # a Plan display hint cannot manufacture an actionable user question.
+        return {"reviewability": {"status": "needs_preparation", "reason_codes": ["input_request_not_bound_to_group"], "counts_as_user_decision": False},
+                "interaction_state": "system_recovering"}
+    ready = {"status": "ready", "reason_codes": [], "advisory_codes": sorted(set(advisory)), "counts_as_user_decision": True}
     if outcome == "AUTHORIZE":
-        return {"reviewability": {"status": "ready", "reason_codes": warning_codes, "counts_as_user_decision": True},
-                "interaction_state": "needs_user_authorization"}
-    if outcome in {"REVIEW", "AUTO"}:
-        # AUTO is also reviewable as a fallback. A missing autonomous executor
-        # must never make a durable operation unreachable from the UI.
-        if outcome == "AUTO":
-            warning_codes = sorted(set([*warning_codes, "auto_fallback_requires_confirmation"]))
-        return {"reviewability": {"status": "ready", "reason_codes": warning_codes, "counts_as_user_decision": True},
-                "interaction_state": "needs_user_review"}
-    return {"reviewability": {"status": "ready", "reason_codes": warning_codes, "counts_as_user_decision": True},
-            "interaction_state": "needs_user_review"}
+        return {"reviewability": ready, "interaction_state": "needs_user_authorization"}
+    # REVIEW, and AUTO: nothing runs AUTO groups on its own yet, so a pending
+    # prepare group is shown for a one-tap confirm instead of stalling unseen.
+    return {"reviewability": ready, "interaction_state": "needs_user_review"}
 
 
 def run_interaction_state(run: Mapping[str, Any]) -> str:

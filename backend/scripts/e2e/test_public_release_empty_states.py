@@ -78,9 +78,32 @@ def main() -> None:
                     raise AssertionError(f"Profile empty fact guidance missing: {required!r}")
 
             _open(page, "/resume")
-            expect(page.get_by_text("暂无简历草稿", exact=True)).to_be_visible(timeout=20000)
-            expect(page.get_by_role("button", name="新建简历", exact=True)).to_be_visible()
-            expect(page.get_by_text("随时创建新版本", exact=True)).to_be_visible()
+            expect(page.get_by_text("还没有简历", exact=True)).to_be_visible(timeout=20000)
+            expect(
+                page.get_by_text(
+                    "上传一份现有简历最快，OfferU 会把内容拆进档案，由你确认后再使用；也可以从空白开始。",
+                    exact=True,
+                )
+            ).to_be_visible()
+            new_resume_button = page.get_by_role("button", name="新建简历", exact=True).last
+            expect(new_resume_button).to_be_visible()
+            new_resume_button.click()
+            create_dialog = page.get_by_role("dialog")
+            expect(create_dialog).to_be_visible()
+            expect(create_dialog.get_by_role("heading", name="新建简历", exact=True)).to_be_visible()
+            create_dialog.get_by_role("button", name="创建并编辑", exact=True).click()
+            page.wait_for_function(
+                "() => /^#\\/resume\\/\\d+/.test(window.location.hash)",
+                timeout=20000,
+            )
+            expect(page.get_by_test_id("resume-name-input")).to_be_visible(timeout=20000)
+            expect(page.get_by_test_id("resume-save-version")).to_be_visible()
+            expect(page.get_by_test_id("resume-workspace-error")).to_have_count(0)
+            expect(page.get_by_role("alert")).to_have_count(0)
+            resume_text = page.locator("body").inner_text().lower()
+            raw_json_markers = ('"raw_json"', '"rawjson"', '{"id":', '"resume_id":')
+            if any(marker in resume_text for marker in raw_json_markers):
+                raise AssertionError("Resume workspace rendered raw API JSON")
 
             unexpected_responses = [
                 response
@@ -103,7 +126,8 @@ def main() -> None:
                             "Opportunity offers first-job action",
                             "Pipeline explains how to create the first application",
                             "Profile exposes first-facts onboarding",
-                            "Resume exposes first-version action",
+                            "Resume empty state opens the editor through its create action",
+                            "Resume workspace exposes no raw API JSON or error state",
                         ],
                         "bad_responses": unexpected_responses,
                         "console_errors": console_errors,

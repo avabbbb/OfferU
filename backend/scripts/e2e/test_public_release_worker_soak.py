@@ -26,6 +26,8 @@ TASK_TIMEOUT_SECONDS = max(
     5.0,
     float(os.getenv("OFFERU_WORKER_SOAK_TASK_TIMEOUT_SECONDS", "60")),
 )
+JOB_PAGE_SIZE = 100
+TERMINAL_TASK_STATUSES = {"completed", "failed", "blocked", "cancelled"}
 
 
 def _request(client: httpx.Client, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
@@ -82,6 +84,84 @@ def _job_payload(run_key: str, index: int) -> dict[str, Any]:
         "summary": description,
         "hash_key": f"worker-soak:{run_key}:{digest}",
     }
+
+
+def _list_jobs_for_run(client: httpx.Client, run_key: str) -> list[dict[str, Any]]:
+    """Read this run's Jobs through the public list view, independent of unrelated rows."""
+
+    keyword = f"Worker Orbit {run_key}-"
+    jobs: list[dict[str, Any]] = []
+    total: int | None = None
+    page = 1
+
+    while total is None or len(jobs) < total:
+        payload = _request(
+            client,
+            "GET",
+            "/api/jobs/",
+            params={"keyword": keyword, "page": page, "page_size": JOB_PAGE_SIZE},
+        )
+        page_total = payload.get("total")
+        page_items = payload.get("items")
+        if not isinstance(page_total, int) or not isinstance(page_items, list):
+            raise AssertionError(f"Job list returned an invalid page: {payload}")
+        if total is not None and page_total != total:
+            raise AssertionError(
+                f"Job list total changed during pagination: {total} -> {page_total}"
+            )
+        if any(not isinstance(item, dict) for item in page_items):
+            raise AssertionError(f"Job list returned a non-object item: {page_items}")
+        total = page_total
+        if not page_items and len(jobs) < total:
+            raise AssertionError(
+                f"Job list page {page} was empty before reaching total {total}"
+            )
+        jobs.extend(page_items)
+        page += 1
+
+    return jobs
+
+
+def _wait_for_role_tasks(
+    client: httpx.Client,
+    job_target_ids: set[str],
+) -> list[dict[str, Any]]:
+    deadline = time.monotonic() + TASK_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        payload = _request(
+            client,
+            "GET",
+            "/api/agent/runtime/career-tasks?task_type=role_intelligence&limit=200",
+        )
+        tasks = payload.get("tasks", [])
+        if not isinstance(tasks, list):
+            raise AssertionError(f"Role Intelligence task list is invalid: {payload}")
+        matching = [
+            item
+            for item in tasks
+            if isinstance(item, dict) and str(item.get("target_id")) in job_target_ids
+        ]
+        target_counts: dict[str, int] = {}
+        for item in matching:
+            target_id = str(item.get("target_id"))
+            target_counts[target_id] = target_counts.get(target_id, 0) + 1
+        duplicate_targets = sorted(
+            target_id for target_id, count in target_counts.items() if count > 1
+        )
+        if duplicate_targets:
+            raise AssertionError(
+                f"duplicate Role Intelligence tasks for Jobs: {duplicate_targets}"
+            )
+        if (
+            set(target_counts) == job_target_ids
+            and all(item.get("status") in TERMINAL_TASK_STATUSES for item in matching)
+        ):
+            return matching
+        time.sleep(POLL_SECONDS)
+    raise AssertionError(
+        f"Role Intelligence tasks did not reach terminal states for "
+        f"{len(job_target_ids)} Jobs; found {len(target_counts)} targets"
+    )
 
 
 def main() -> None:
@@ -146,17 +226,23 @@ def main() -> None:
             if index % 10 == 0 or index == CYCLES:
                 print(f"worker cycles: {index}/{CYCLES}", flush=True)
 
-        jobs = _request(client, "GET", "/api/jobs/?page_size=100")
-        matching_jobs = [
-            item
-            for item in jobs.get("items", [])
-            if isinstance(item, dict)
-            and str(item.get("company") or "").startswith(f"Worker Orbit {run_key}-")
-        ]
+        matching_jobs = _list_jobs_for_run(client, run_key)
         if len(matching_jobs) != CYCLES:
             raise AssertionError(
                 f"expected {CYCLES} worker Jobs, found {len(matching_jobs)}"
             )
+        expected_job_ids = {str(job_id) for job_id in job_ids}
+        listed_job_ids = [str(item.get("id")) for item in matching_jobs]
+        if len(set(listed_job_ids)) != CYCLES or set(listed_job_ids) != expected_job_ids:
+            raise AssertionError(
+                "worker Job listing did not return each created Job exactly once: "
+                f"expected={len(expected_job_ids)}, actual={len(set(listed_job_ids))}"
+            )
+        if any(
+            not str(item.get("company") or "").startswith(f"Worker Orbit {run_key}-")
+            for item in matching_jobs
+        ):
+            raise AssertionError("worker Job listing included a Job outside this run")
 
         tasks = _request(
             client,
@@ -171,22 +257,6 @@ def main() -> None:
         if len(matching_tasks) != CYCLES:
             raise AssertionError(
                 f"expected {CYCLES} unique persisted tasks, found {len(matching_tasks)}"
-            )
-
-        role_tasks = _request(
-            client,
-            "GET",
-            "/api/agent/runtime/career-tasks?task_type=role_intelligence&limit=200",
-        )
-        unexpected_role_tasks = [
-            item
-            for item in role_tasks.get("tasks", [])
-            if isinstance(item, dict)
-            and str(item.get("target_id")) in job_target_ids
-        ]
-        if unexpected_role_tasks:
-            raise AssertionError(
-                f"JOB_SAVED must not auto-start Role Intelligence: {unexpected_role_tasks}"
             )
 
         automation = _request(
@@ -204,6 +274,96 @@ def main() -> None:
             raise AssertionError(
                 f"expected {CYCLES} unique JOB_SAVED events, found {len(matching_events)}"
             )
+        events_by_job: dict[str, dict[str, Any]] = {}
+        for event in matching_events:
+            target_id = str(event.get("target_id") or "")
+            if target_id in events_by_job:
+                raise AssertionError(f"Job {target_id} has duplicate JOB_SAVED events")
+            if event.get("status") != "dispatched":
+                raise AssertionError(
+                    f"JOB_SAVED event for Job {target_id} was not durably dispatched"
+                )
+            events_by_job[target_id] = event
+        if set(events_by_job) != job_target_ids:
+            raise AssertionError("JOB_SAVED events do not cover every worker Job exactly once")
+
+        role_tasks = _wait_for_role_tasks(client, job_target_ids)
+        if len(role_tasks) != CYCLES:
+            raise AssertionError(
+                f"expected one Role Intelligence task per Job, found {len(role_tasks)}"
+            )
+        role_task_ids: set[str] = set()
+        role_task_statuses: list[str] = []
+        for task in role_tasks:
+            target_id = str(task.get("target_id") or "")
+            event = events_by_job[target_id]
+            task_input = task.get("input") if isinstance(task.get("input"), dict) else {}
+            task_id = str(task.get("task_id") or "")
+            if not task_id or task_id in role_task_ids:
+                raise AssertionError("Role Intelligence tasks did not have unique task IDs")
+            role_task_ids.add(task_id)
+            if task.get("task_type") != "role_intelligence" or task.get("source") != "automation":
+                raise AssertionError(f"Job {target_id} has an unexpected Role Intelligence task: {task}")
+            if task.get("runtime_provider") != "replay":
+                raise AssertionError(
+                    f"Role Intelligence task {task_id} used an unexpected provider"
+                )
+            if (
+                str(task_input.get("job_id") or "") != target_id
+                or task_input.get("automation_event_id") != event.get("event_id")
+            ):
+                raise AssertionError(
+                    f"Role Intelligence task {task_id} is not bound to its JOB_SAVED event"
+                )
+            event_result = event.get("result") if isinstance(event.get("result"), dict) else {}
+            event_role_task = event_result.get("role_intelligence_task")
+            if not isinstance(event_role_task, dict) or event_role_task.get("task_id") != task_id:
+                raise AssertionError(
+                    f"JOB_SAVED event {event.get('event_id')} lacks the Role Intelligence task receipt"
+                )
+
+            status = str(task.get("status") or "")
+            role_task_statuses.append(status)
+            attempt_count = int(task.get("attempt_count") or 0)
+            max_attempts = int(task.get("max_attempts") or 0)
+            if max_attempts < 1 or attempt_count > max_attempts:
+                raise AssertionError(f"Role Intelligence task {task_id} exceeded its retry bound")
+            if status == "completed":
+                result = task.get("result") if isinstance(task.get("result"), dict) else {}
+                benchmark = result.get("benchmark") if isinstance(result.get("benchmark"), dict) else {}
+                if (
+                    int(result.get("job_id") or 0) != int(target_id)
+                    or not result.get("benchmark_run_id")
+                    or benchmark.get("status") != "completed"
+                    or task.get("result_ref") != f"career-task:{task_id}"
+                    or attempt_count < 1
+                    or task.get("retryable")
+                ):
+                    raise AssertionError(
+                        f"Role Intelligence task {task_id} lacks a completed benchmark receipt"
+                    )
+            elif status == "blocked":
+                error = str(task.get("error") or "").casefold()
+                unavailable_markers = (
+                    "provider",
+                    "runtime",
+                    "credential",
+                    "unavailable",
+                    "not configured",
+                    "authentication",
+                )
+                if (
+                    not task.get("retryable")
+                    or not error
+                    or not any(marker in error for marker in unavailable_markers)
+                ):
+                    raise AssertionError(
+                        f"Role Intelligence task {task_id} is blocked without a retryable provider reason"
+                    )
+            else:
+                raise AssertionError(
+                    f"Role Intelligence task {task_id} ended in unexpected state {status!r}"
+                )
 
         integrity = _request(client, "GET", "/api/agent/data/safety/integrity")
         integrity_check = integrity.get("integrity_check")
@@ -221,12 +381,14 @@ def main() -> None:
         "unique_tasks": len(set(task_ids)),
         "unique_automation_events": len(matching_events),
         "task_statuses": sorted(set(statuses)),
+        "role_intelligence_statuses": sorted(set(role_task_statuses)),
         "task_attempts": 1,
         "database_integrity": integrity_check,
         "foreign_key_violations": foreign_key_violations,
         "elapsed_seconds": round(time.perf_counter() - started_at, 3),
-        "runtime_provider": "pi",
-        "role_intelligence_tasks": len(unexpected_role_tasks),
+        "role_intelligence_runtime_provider": "replay",
+        "career_director_runtime_provider": "embedded",
+        "role_intelligence_tasks": len(role_tasks),
     }
     print(json.dumps(result, ensure_ascii=True, indent=2), flush=True)
 

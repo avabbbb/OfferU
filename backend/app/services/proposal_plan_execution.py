@@ -759,16 +759,20 @@ async def _decide_group(
         # the reviewability gate below applies to NEW decisions only, because
         # a decided group legitimately no longer looks pending.
         replayed_decision = await _existing_decision(group)
-        if replayed_decision is None:
+        # Rejecting is always a way out of a pending group: it runs nothing,
+        # so readiness (stale source, unbound Ask, missing scope...) only
+        # gates approval. Otherwise a group that cannot be prepared would
+        # sit in the Run forever with no exit.
+        if replayed_decision is None and decision in {"approve", "reject"}:
             from app.services.agentic_interaction_policy import assess_group
             readiness = assess_group(group)
-            if readiness["reviewability"]["status"] != "ready":
+            if decision == "reject" and readiness["reviewability"]["status"] == "needs_reconciliation":
+                raise PlanValidationError("Cannot reject while an Operation effect is unknown; reconcile it first")
+            if decision == "approve" and readiness["reviewability"]["status"] != "ready":
                 raise PlanValidationError(
                     "Review packet needs preparation: "
                     + ", ".join(readiness["reviewability"]["reason_codes"])
                 )
-            if not readiness["reviewability"]["counts_as_user_decision"]:
-                raise PlanValidationError("This Operation is not waiting for a user decision")
     except PlanValidationError as exc:
         return {**empty, "errors": [str(exc)]}
 
@@ -786,7 +790,7 @@ async def _decide_group(
         "surface": surface,
     }
     try:
-        if await _existing_decision(group) is None:
+        if decision == "approve" and await _existing_decision(group) is None:
             from app.services.proposal_plan_sources import validate_source_versions
 
             await validate_source_versions(_group_source_versions(group))
@@ -812,7 +816,16 @@ async def _decide_group(
     if current_plan is None or current_group is None:
         return {**empty, "errors": ["持久化决定已记录，但无法读取其确认组。"], "duplicate": duplicate}
     if decision == "reject":
-        continuation = await _continuation_for_group(current_plan, current_group)
+        # record_decision creates a continuation only for a live Run. Read
+        # that persisted row without calling _continuation_for_group, which
+        # creates one when absent and could revive a terminal Run.
+        run_id = str(current_plan.get("run_id") or "")
+        group_id = str(current_group.get("id") or "")
+        continuation = next(
+            (item for item in await list_continuations(run_id=run_id)
+             if isinstance(item, dict) and str(item.get("group_id") or "") == group_id),
+            None,
+        )
         return {
             "ok": str(current_group.get("status") or "") == "rejected",
             "plan": current_plan,

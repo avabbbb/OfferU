@@ -941,7 +941,12 @@ async def record_decision(decision: Mapping[str, Any]) -> dict[str, Any]:
                 raise ProposalDecisionConflictError("Decision event_id was reused")
             plan, group, ps, gs = await _plan_group(db, value["plan_id"], value["group_id"])
             run = await db.get(AgentRunRecord, plan.run_id)
-            if run is None or run.status in {"cancelled", "failed", "completed", "needs_reconciliation"}:
+            # Approval needs a live Run. Rejection runs nothing, so it stays
+            # available after the Run ended: otherwise its leftover pending
+            # groups could never leave the user's Inbox. A Run whose effects
+            # are unknown (needs_reconciliation) is still refused.
+            ended = {"cancelled", "failed", "completed"} if value["decision"] == "approve" else set()
+            if run is None or run.status in ended | {"needs_reconciliation"}:
                 raise ProposalDecisionConflictError("The originating Run is no longer active")
             if plan.status not in {"sealed", "executing"}:
                 raise ProposalDecisionConflictError(f"Plan is not reviewable while {plan.status}")
@@ -975,7 +980,8 @@ async def record_decision(decision: Mapping[str, Any]) -> dict[str, Any]:
                     if node.status == "pending":
                         node.status = "rejected"
                 await _block_descendants(db, plan.id, group.id)
-                await _ensure_continuation(db, plan.run_id, group.id)
+                if run.status not in {"cancelled", "failed", "completed", "needs_reconciliation"}:
+                    await _ensure_continuation(db, plan.run_id, group.id)
             await _update_plan_status(db, plan.id)
             return {"decision": _decision_dto(row), "duplicate": False}
     except IntegrityError as exc:
