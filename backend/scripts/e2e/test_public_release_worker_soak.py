@@ -421,6 +421,7 @@ def main() -> None:
             raise AssertionError(
                 f"expected one Role Intelligence task per Job, found {len(role_tasks)}"
             )
+        role_tasks_by_job = {str(task["target_id"]): task for task in role_tasks}
         matching_events = _wait_for_job_saved_events(
             client,
             job_target_ids,
@@ -428,7 +429,6 @@ def main() -> None:
             role_tasks_by_job,
         )
         events_by_job = {str(event["target_id"]): event for event in matching_events}
-        role_tasks_by_job = {str(task["target_id"]): task for task in role_tasks}
         if set(role_tasks_by_job) != job_target_ids:
             raise AssertionError("Role Intelligence tasks do not cover every worker Job exactly once")
 

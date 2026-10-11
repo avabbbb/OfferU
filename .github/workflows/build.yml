@@ -12,6 +12,10 @@ on:
         description: Publish the verified installers as an unsigned Owner Dogfood prerelease
         type: boolean
         default: false
+      owner_trial:
+        description: Build a manual owner trial; browser acceptance may be failed and is explicitly disclosed
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -703,10 +707,10 @@ jobs:
           fi
 
   desktop-package:
-    if: ${{ github.event_name != 'pull_request' }}
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.backend-tests.result == 'success' && needs.frontend-quality.result == 'success' && needs.extension-quality.result == 'success' && needs.agent-runtime-quality.result == 'success' && needs.rust-security-audit.result == 'success' && needs.reliability-failure-recovery.result == 'success' && needs.migration-browser-smoke.result == 'success' && ((github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish_candidate && inputs.owner_trial) || (needs.browser-smoke.result == 'success' && needs.critical-browser-repeatability.result == 'success')) }}
     name: Windows desktop package
     runs-on: windows-latest
-    needs: [backend-tests, frontend-quality, extension-quality, browser-smoke, reliability-failure-recovery, critical-browser-repeatability, migration-browser-smoke]
+    needs: [backend-tests, frontend-quality, extension-quality, agent-runtime-quality, rust-security-audit, browser-smoke, reliability-failure-recovery, critical-browser-repeatability, migration-browser-smoke]
 
     steps:
       - uses: actions/checkout@v4
@@ -1036,8 +1040,8 @@ jobs:
 
   release:
     name: Publish verified installer assets
-    if: ${{ startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_candidate) }}
-    needs: [backend-tests, frontend-quality, rust-security-audit, browser-smoke, reliability-failure-recovery, critical-browser-repeatability, migration-browser-smoke, desktop-package, desktop-installed-smoke, macos-package]
+    if: ${{ !cancelled() && (startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_candidate)) && needs.backend-tests.result == 'success' && needs.frontend-quality.result == 'success' && needs.extension-quality.result == 'success' && needs.agent-runtime-quality.result == 'success' && needs.rust-security-audit.result == 'success' && needs.reliability-failure-recovery.result == 'success' && needs.migration-browser-smoke.result == 'success' && needs.desktop-package.result == 'success' && needs.desktop-installed-smoke.result == 'success' && needs.macos-package.result == 'success' && ((github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish_candidate && inputs.owner_trial) || (needs.browser-smoke.result == 'success' && needs.critical-browser-repeatability.result == 'success')) }}
+    needs: [backend-tests, frontend-quality, extension-quality, agent-runtime-quality, rust-security-audit, browser-smoke, reliability-failure-recovery, critical-browser-repeatability, migration-browser-smoke, desktop-package, desktop-installed-smoke, macos-package]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -1102,11 +1106,11 @@ jobs:
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && format('dogfood-{0}-{1}', steps.artifact_version.outputs.version, github.run_number) || github.ref_name }}
           target_commitish: ${{ github.sha }}
-          name: ${{ github.event_name == 'workflow_dispatch' && format('OfferU {0} Owner Dogfood', steps.artifact_version.outputs.version) || format('OfferU {0}', github.ref_name) }}
+          name: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish_candidate && inputs.owner_trial) && format('OfferU {0} Manual Owner Trial', steps.artifact_version.outputs.version) || (github.event_name == 'workflow_dispatch' && format('OfferU {0} Owner Dogfood', steps.artifact_version.outputs.version) || format('OfferU {0}', github.ref_name)) }}
           draft: ${{ github.event_name != 'workflow_dispatch' }}
           prerelease: ${{ github.event_name == 'workflow_dispatch' }}
           make_latest: false
-          body: ${{ github.event_name == 'workflow_dispatch' && 'Owner Dogfood prerelease. Installers are built and tested by GitHub Actions from the target commit. Windows installers are unsigned; full Public Release readiness and human product acceptance remain outstanding. This is not a stable public release.' || '' }}
+          body: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish_candidate && inputs.owner_trial) && 'MANUAL OWNER TRIAL - full browser acceptance has not passed; the known Role Intelligence panel visibility flake is unresolved. Core, security, migration, recovery, artifact and installed-app checks remain required. Unsigned Windows installer; not a stable public release.' || (github.event_name == 'workflow_dispatch' && 'Owner Dogfood prerelease. Installers are built and tested by GitHub Actions from the target commit. Windows installers are unsigned; full Public Release readiness and human product acceptance remain outstanding. This is not a stable public release.' || '') }}
           generate_release_notes: true
           files: |
             release-assets/windows-x64/*.exe
