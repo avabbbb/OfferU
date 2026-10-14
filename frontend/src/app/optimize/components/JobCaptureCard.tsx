@@ -120,6 +120,9 @@ export function JobCaptureCard({ onCreated, onClose }: JobCaptureCardProps) {
       ) : (
         <>
           {draft?.message && <p role="status" className="text-xs leading-relaxed text-[var(--foreground)]">{draft.message}</p>}
+          {draft?.extractor === "rules" && (
+            <p className="text-[11px] leading-relaxed text-[var(--foreground-muted)]">没连上模型，用规则识别的，请核对岗位名称和公司。</p>
+          )}
           <Input size="sm" label="岗位名称" value={fields.title} onValueChange={set("title")} isInvalid={!fields.title.trim()} errorMessage={!fields.title.trim() ? "没识别出来，请填写" : undefined} classNames={bauhausFieldClassNames} />
           <Input size="sm" label="公司" value={fields.company} onValueChange={set("company")} isInvalid={!fields.company.trim()} errorMessage={!fields.company.trim() ? "没识别出来，请填写" : undefined} classNames={bauhausFieldClassNames} />
           <Input size="sm" label="地点（可选）" value={fields.location} onValueChange={set("location")} classNames={bauhausFieldClassNames} />
