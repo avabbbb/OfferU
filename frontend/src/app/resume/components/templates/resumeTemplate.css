@@ -701,6 +701,70 @@
 
 .paper-sep { color: var(--paper-text-4); }
 
+/* 照片与校徽：右侧并排，顶部对齐；成品里只有图片，不加边框或阴影。 */
+.paper-header-with-media { align-items: flex-start; display: flex; gap: 12pt; }
+.paper-header-text { flex: 1 1 auto; min-width: 0; }
+.paper-media { align-items: flex-start; display: flex; flex: 0 0 auto; gap: 8pt; }
+.paper-asset { position: relative; }
+.paper-photo {
+  border-radius: 2pt;
+  display: block;
+  height: var(--photo-height);
+  object-fit: cover;
+  object-position: center top;
+  width: var(--photo-width);
+}
+.paper-logo {
+  display: block;
+  max-height: var(--logo-height);
+  max-width: var(--logo-width);
+  object-fit: contain;
+}
+.paper-asset-empty.paper-asset-photo { height: var(--photo-height); width: var(--photo-width); }
+.paper-asset-empty.paper-asset-logo { height: 12mm; width: 24mm; }
+.paper-asset-add {
+  background: none;
+  border: 1px dashed #c9c6ba;
+  border-radius: 2pt;
+  color: var(--paper-text-4);
+  cursor: pointer;
+  font: inherit;
+  font-size: calc(var(--font-size-base) * 0.85);
+  height: 100%;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  width: 100%;
+}
+.paper-header:hover .paper-asset-add,
+.paper-asset-add:focus-visible { opacity: 1; }
+.paper-asset-add:hover { border-color: var(--paper-ink); color: var(--paper-ink); }
+.paper-asset-actions {
+  background: var(--paper-bg);
+  border-radius: 2pt;
+  bottom: 2pt;
+  display: flex;
+  gap: 6pt;
+  left: 50%;
+  opacity: 0;
+  padding: 1pt 4pt;
+  position: absolute;
+  transform: translateX(-50%);
+  transition: opacity 120ms ease;
+  white-space: nowrap;
+}
+.paper-asset:hover .paper-asset-actions,
+.paper-asset-actions:focus-within { opacity: 1; }
+.paper-asset-actions button {
+  background: none;
+  border: 0;
+  color: var(--paper-text-3);
+  cursor: pointer;
+  font: inherit;
+  font-size: calc(var(--font-size-base) * 0.8);
+  padding: 0;
+}
+.paper-asset-actions button:hover { color: var(--paper-ink); }
+
 .paper-section { margin-top: var(--section-gap); break-inside: auto; }
 
 .paper-section-title {
@@ -804,6 +868,7 @@
 @media print {
   .resume-body.paper { background: var(--paper-bg) !important; }
   [data-paper-chrome] { display: none !important; }
+  .paper-asset-empty { display: none !important; }
   .paper-editable { background: none !important; box-shadow: none !important; }
 }
 

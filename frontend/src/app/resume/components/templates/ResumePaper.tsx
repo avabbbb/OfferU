@@ -38,6 +38,63 @@ export interface ResumePaperProps {
   renderSectionAside?: (section: PaperSection) => ReactNode;
   /** 仅画布：页尾交互层，例如「建议新增的段落」。 */
   canvasFooter?: ReactNode;
+  /** 已解析为可加载地址的证件照 / 校徽；为空时成品上不占位。 */
+  photoUrl?: string;
+  logoUrl?: string;
+  /** 仅画布：在页面上直接添加、更换或移除照片和校徽（file 为 null 表示移除）。 */
+  onUploadAsset?: (kind: "photo" | "logo", file: File | null) => void | Promise<void>;
+}
+
+const ASSET_ACCEPT = "image/jpeg,image/png,image/webp";
+
+/**
+ * 照片与校徽：成品里只有图片本身（无边框、无阴影，圆角 2pt）；
+ * 画布上空位显示为虚线占位，悬停出现「更换 / 移除」，这些控件不进入导出。
+ */
+function PaperAsset({ kind, url, editable, onUpload }: {
+  kind: "photo" | "logo";
+  url?: string;
+  editable: boolean;
+  onUpload?: ResumePaperProps["onUploadAsset"];
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const label = kind === "photo" ? "照片" : "校徽";
+  if (!url && !(editable && onUpload)) return null;
+  const pick = () => inputRef.current?.click();
+  return (
+    <div className={`paper-asset paper-asset-${kind}${url ? "" : " paper-asset-empty"}`} data-testid={`paper-asset-${kind}`}>
+      {url ? (
+        <img className={`paper-${kind}`} src={url} alt={label} />
+      ) : (
+        <button type="button" className="paper-asset-add" data-paper-chrome="" onClick={pick} aria-label={`添加${label}`}>
+          ＋ {label}
+        </button>
+      )}
+      {editable && onUpload && (
+        <>
+          {url && (
+            <span className="paper-asset-actions" data-paper-chrome="">
+              <button type="button" onClick={pick} aria-label={`更换${label}`}>更换</button>
+              <button type="button" onClick={() => void onUpload(kind, null)} aria-label={`移除${label}`}>移除</button>
+            </span>
+          )}
+          <input
+            ref={inputRef}
+            type="file"
+            accept={ASSET_ACCEPT}
+            hidden
+            data-paper-chrome=""
+            data-testid={`paper-asset-input-${kind}`}
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0] || null;
+              event.currentTarget.value = "";
+              if (file) void onUpload(kind, file);
+            }}
+          />
+        </>
+      )}
+    </div>
+  );
 }
 
 type FieldKey = string;
@@ -258,7 +315,9 @@ export function ResumePaper(props: ResumePaperProps) {
   const {
     userName, title = "", summary, contactJson, sections, styleConfig,
     editable = false, onProfileChange, onSectionChange, renderSectionAside, canvasFooter,
+    photoUrl, logoUrl, onUploadAsset,
   } = props;
+  const hasMedia = Boolean(photoUrl || logoUrl || (editable && onUploadAsset));
   const focusRef = useRef<string | null>(null);
   const tone = styleConfig.paperTone === "white" ? "white" : "parchment";
 
@@ -278,7 +337,8 @@ export function ResumePaper(props: ResumePaperProps) {
 
   return (
     <article className={`paper-sheet paper-${tone}${editable ? " paper-is-editable" : ""}`} data-paper-tone={tone}>
-      <header className="paper-header">
+      <header className={`paper-header${hasMedia ? " paper-header-with-media" : ""}`}>
+        <div className="paper-header-text">
         <h1 className="paper-name">
           <Editable value={userName || ""} editable={editable} placeholder="你的名字" label="姓名"
             onCommit={(value) => onProfileChange?.({ user_name: value })} />
@@ -299,6 +359,13 @@ export function ResumePaper(props: ResumePaperProps) {
               </Fragment>
             ))}
           </p>
+        )}
+        </div>
+        {hasMedia && (
+          <div className="paper-media">
+            <PaperAsset kind="logo" url={logoUrl} editable={editable} onUpload={onUploadAsset} />
+            <PaperAsset kind="photo" url={photoUrl} editable={editable} onUpload={onUploadAsset} />
+          </div>
         )}
       </header>
 
