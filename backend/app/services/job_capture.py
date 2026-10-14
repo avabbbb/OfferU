@@ -369,14 +369,35 @@ async def draft_job_posting(text: str) -> dict[str, Any]:
 
     structured = extract_job_posting_from_html(html)
     if structured and len(structured.get("jd_text") or "") >= MIN_JD_CHARS:
+        # 结构化数据是招聘方声明的，作为主值；LLM 同时读一遍做对照，
+        # 两边不一致时把模型读到的值交给用户裁决，而不是静默覆盖。
+        llm = await _llm_extract(
+            structured["jd_text"],
+            hints={
+                "结构化岗位名称": structured.get("title", ""),
+                "结构化公司": structured.get("company", ""),
+                "结构化地点": structured.get("location", ""),
+            },
+        )
+        conflicts: list[dict[str, str]] = []
         draft = {**structured, "url": final_url}
+        if llm is not None:
+            for key in ("title", "company", "location"):
+                declared = draft.get(key) or ""
+                read = llm.get(key) or ""
+                if not declared and read:
+                    draft[key] = read
+                elif declared and read and _normalize_ws(declared) != _normalize_ws(read):
+                    conflicts.append({"field": key, "structured": declared, "llm": read})
         missing = _missing(draft)
         return {
             "status": "ready" if not missing else "incomplete",
             "source_kind": "structured",
-            # 招聘方自己声明的结构化数据比任何模型猜测都准，不再交给 LLM。
-            "extractor": "structured",
-            "message": "",
+            "extractor": "structured+llm" if llm is not None else "structured",
+            "conflicts": conflicts,
+            "message": (
+                "页面声明的信息和模型读到的不一致，请确认用哪个。" if conflicts else ""
+            ),
             "draft": draft,
             "missing": missing,
         }

@@ -120,6 +120,24 @@ export function JobCaptureCard({ onCreated, onClose }: JobCaptureCardProps) {
       ) : (
         <>
           {draft?.message && <p role="status" className="text-xs leading-relaxed text-[var(--foreground)]">{draft.message}</p>}
+          {(draft?.conflicts || []).map((conflict) => {
+            const label = conflict.field === "title" ? "岗位名称" : conflict.field === "company" ? "公司" : "地点";
+            return (
+              <div key={conflict.field} className="flex flex-wrap items-center gap-1.5 text-[11px] text-[var(--foreground-muted)]">
+                <span>{label}：</span>
+                {[conflict.structured, conflict.llm].map((value, index) => (
+                  <button
+                    key={`${conflict.field}-${index}`}
+                    type="button"
+                    onClick={() => set(conflict.field)(value)}
+                    className={`rounded-full border px-2 py-0.5 ${fields[conflict.field] === value ? "border-[var(--foreground)] text-[var(--foreground)]" : "border-[var(--border)]"}`}
+                  >
+                    {index === 0 ? "页面声明" : "模型读到"}：{value}
+                  </button>
+                ))}
+              </div>
+            );
+          })}
           {draft?.extractor === "rules" && (
             <p className="text-[11px] leading-relaxed text-[var(--foreground-muted)]">没连上模型，用规则识别的，请核对岗位名称和公司。</p>
           )}

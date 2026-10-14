@@ -275,12 +275,33 @@ def test_model_failure_falls_back_to_rules(monkeypatch):
     assert result["draft"]["company"] == "示例科技"
 
 
-def test_structured_posting_skips_the_model(monkeypatch):
+def test_structured_posting_is_cross_checked_by_the_model(monkeypatch):
     async def fake_fetch(url, **_kwargs):
         return url, _job_posting_html()
 
     monkeypatch.setattr(web_search, "fetch_public_html", fake_fetch)
-    seen = _model_returns(monkeypatch, {"title": "x", "company": "y"})
+    seen = _model_returns(
+        monkeypatch,
+        {"title": "Frontend Engineer", "company": "", "location": "", "description_start": "", "description_end": ""},
+    )
     result = asyncio.run(job_capture.draft_job_posting("https://careers.example.com/j/7"))
-    assert result["extractor"] == "structured"
-    assert seen == []
+    assert len(seen) == 1
+    assert result["extractor"] == "structured+llm"
+    assert result["conflicts"] == []
+    assert result["draft"]["company"] == "Example Inc"
+
+
+def test_structured_and_model_disagreement_is_surfaced(monkeypatch):
+    async def fake_fetch(url, **_kwargs):
+        return url, _job_posting_html()
+
+    monkeypatch.setattr(web_search, "fetch_public_html", fake_fetch)
+    # 模型给出的标题必须出现在原文或提示里才会被采纳；这里用原文里存在的词。
+    _model_returns(
+        monkeypatch,
+        {"title": "hiring teams", "company": "", "location": "", "description_start": "", "description_end": ""},
+    )
+    result = asyncio.run(job_capture.draft_job_posting("https://careers.example.com/j/7"))
+    assert result["draft"]["title"] == "Frontend Engineer"
+    assert result["conflicts"] == [{"field": "title", "structured": "Frontend Engineer", "llm": "hiring teams"}]
+    assert "不一致" in result["message"]
