@@ -129,7 +129,7 @@ function groupHasUnknownExecution(group: AgentConfirmationGroup) {
   return group.nodes.some((node) => ["executing", "uncertain", "failed"].includes(node.status));
 }
 
-const RECONCILE_TIMEOUT_MS = 20000;
+const RECONCILE_TIMEOUT_MS = 10000;
 const BULK_MAX_STEPS = 50;
 const DESTRUCTIVE_OPERATION_PREFIXES = ["delete_", "reset_", "purge_", "revoke_", "uninstall_"];
 

@@ -631,7 +631,7 @@ describe("PendingProposalReview", () => {
     render(<PendingProposalReview />);
 
     expect(await screen.findByText("正在自动核对执行结果…")).toBeInTheDocument();
-    await act(async () => { vi.advanceTimersByTime(21000); });
+    await act(async () => { vi.advanceTimersByTime(11000); });
     expect(await screen.findByRole("button", { name: "重试核对：产品经历调整" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "放弃并保留现状：产品经历调整" })).toBeInTheDocument();
   });
