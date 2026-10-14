@@ -76,6 +76,10 @@ RUNTIME_CONTROL_DELEGATES = {
     ("main_agent.py", "decide_decision_group"): {"decide_proposal_plan_group_endpoint"},
     ("main_agent.py", "answer_input_request"): {"answer_agent_input"},
     ("main_agent.py", "decide_proposal_plan_group_endpoint"): {"confirm_group", "reject_group"},
+    # Exit for an unknown outcome: re-check durable Audit evidence (and
+    # continue only proven no-effect steps via the same v2 executor) or
+    # close the group as is. Neither path replays an Operation.
+    ("main_agent.py", "resolve_proposal_plan_group_endpoint"): {"resolve_unresolved_group"},
 }
 
 MUTATING_METHODS = {

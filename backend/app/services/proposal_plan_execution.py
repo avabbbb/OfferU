@@ -882,3 +882,67 @@ async def reject_group(
         authorization_source=authorization_source,
         surface=surface,
     )
+
+
+async def resolve_unresolved_group(
+    plan_id: str,
+    group_id: str,
+    *,
+    action: str,
+    group_digest: str,
+    surface: str,
+) -> dict[str, Any]:
+    """The two user exits for a group whose execution outcome is unknown.
+
+    ``retry`` runs the system's own reconciliation (durable Audit evidence
+    only) and, when every outcome is proven, continues the remaining nodes
+    under the original approval. ``abandon`` closes the group, keeps current
+    data as is and replays nothing.
+    """
+    from app.services.proposal_plan_store import (
+        ProposalPlanConflictError,
+        ProposalPlanNotFoundError,
+        ProposalStaleSnapshotError,
+        abandon_unresolved_group,
+        auto_reconcile_group,
+    )
+
+    empty = {"ok": False, "resolved": False, "plan": None, "group": None, "receipts": [], "errors": []}
+    plan = await get_plan(plan_id)
+    group = _group(plan or {}, group_id)
+    if not isinstance(plan, dict) or group is None:
+        return {**empty, "errors": ["Proposal Plan 或 Confirmation Group 不存在。"]}
+    if action not in {"retry", "abandon"}:
+        return {**empty, "errors": ["未知的处理方式。"]}
+    try:
+        if action == "abandon":
+            outcome = await abandon_unresolved_group(group_id, group_digest=group_digest)
+        else:
+            outcome = await auto_reconcile_group(group_id, group_digest=group_digest)
+    except (ProposalPlanConflictError, ProposalPlanNotFoundError, ProposalStaleSnapshotError) as exc:
+        latest = await get_plan(plan_id)
+        return {**empty, "plan": latest, "group": _group(latest or {}, group_id), "errors": [str(exc)]}
+
+    dispatched: dict[str, Any] = {}
+    if action == "retry" and outcome["group"]["status"] == "approved":
+        dispatched = await dispatch_approved_group(plan_id, group_id, surface=surface)
+    latest = await get_plan(plan_id)
+    latest_group = _group(latest or {}, group_id)
+    status = str((latest_group or {}).get("status") or "")
+    resolved = status not in {"needs_reconciliation"} and not (
+        status == "paused" and any(str(node.get("status") or "") in {"uncertain", "failed"}
+                                   for node in (latest_group or {}).get("nodes") or [])
+    )
+    return {
+        "ok": True,
+        "action": action,
+        "resolved": resolved,
+        "plan": latest,
+        "group": latest_group,
+        "receipts": await _group_receipts(latest_group or {}),
+        "errors": list(dispatched.get("errors") or []),
+        "resolved_node_ids": outcome.get("resolved_node_ids", []),
+        "unresolved_node_ids": outcome.get("unresolved_node_ids", []),
+        "abandoned_node_ids": outcome.get("abandoned_node_ids", []),
+        "continuation": dispatched.get("continuation"),
+    }

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Path, Query
 from fastapi.responses import PlainTextResponse
@@ -95,6 +95,11 @@ class ProposalPlanDecisionRequest(BaseModel):
     plan_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
     group_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
     decision_id: str = Field(pattern=r"^decision_[a-f0-9]{32}$")
+
+
+class ProposalPlanReconciliationRequest(BaseModel):
+    action: Literal["retry", "abandon"]
+    group_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
 class DecisionGroupDecisionRequest(BaseModel):
@@ -1104,6 +1109,48 @@ async def get_proposal_plan_endpoint(
         raise HTTPException(status_code=409, detail=safe_error_message(exc)) from exc
     continuations = await list_continuations(run_id=str(plan.get("run_id") or ""))
     return {"plan": await reviewed_plan_view(plan, continuations=continuations)}
+
+
+@runtime_router.post("/plans/{plan_id}/groups/{group_id}/reconciliation")
+async def resolve_proposal_plan_group_endpoint(
+    plan_id: str,
+    group_id: str,
+    body: ProposalPlanReconciliationRequest,
+    authorization: str = Header(...),
+) -> dict[str, Any]:
+    """Exit an unresolved execution outcome: system re-check (retry) or abandon as is."""
+
+    if not accepts_authorization(authorization):
+        raise HTTPException(status_code=403, detail="该操作只能由 OfferU 桌面工作区提交")
+    from app.services.proposal_plan_continuation import reviewed_plan_view
+    from app.services.proposal_plan_execution import resolve_unresolved_group
+    from app.services.proposal_plan_store import list_continuations
+
+    result = await resolve_unresolved_group(
+        plan_id, group_id, action=body.action, group_digest=body.group_digest,
+        surface="agent_runtime_ui",
+    )
+    plan = result.get("plan") if isinstance(result.get("plan"), dict) else None
+    run_id = str((plan or {}).get("run_id") or "")
+    if result.get("ok") and run_id:
+        try:
+            from app.services.proposal_plan_continuation import deliver_continuations
+
+            await deliver_continuations(run_id)
+        except Exception:
+            pass  # the durable group outcome stands even if reasoning startup fails
+    continuations = await list_continuations(run_id=run_id) if run_id else []
+    return {
+        "ok": bool(result.get("ok")),
+        "action": body.action,
+        "resolved": bool(result.get("resolved")),
+        "errors": list(result.get("errors") or []),
+        "plan": await reviewed_plan_view(plan, continuations=continuations) if plan else None,
+        "receipts": list(result.get("receipts") or []),
+        "resolved_node_ids": result.get("resolved_node_ids") or [],
+        "unresolved_node_ids": result.get("unresolved_node_ids") or [],
+        "abandoned_node_ids": result.get("abandoned_node_ids") or [],
+    }
 
 
 @runtime_router.post("/plans/{plan_id}/groups/{group_id}/decision")
