@@ -31,7 +31,7 @@ from app.models.models import (
 )
 from app.services.pre_application_decisions import get_pre_application_state
 from app.services.resume_fact_gates import validate_edited_text
-from app.services.resume_builder import _profile_to_contact_json
+from app.services.resume_builder import _profile_to_contact_json, with_new_resume_template
 from app.services.resume_optimization import _proposal_detail
 from app.services.resume_versions import (
     create_version_snapshot,
@@ -467,7 +467,10 @@ async def ensure_resume_workspace(
                 style_config=(
                     copy.deepcopy(source_resume.style_config or {})
                     if source_resume
-                    else copy.deepcopy((presentation or {}).get("style_config") or {})
+                    else with_new_resume_template(
+                        copy.deepcopy((presentation or {}).get("style_config") or {}),
+                        derived_from_existing=(presentation or {}).get("template_id") is not None,
+                    )
                 ),
                 is_primary=False,
                 language=source_resume.language if source_resume else str((presentation or {}).get("language") or "zh"),

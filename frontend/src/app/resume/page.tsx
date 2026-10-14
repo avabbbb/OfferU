@@ -441,6 +441,20 @@ export default function ResumesListPage() {
               placeholder="如：前端工程师-中文版"
               classNames={bauhausFieldClassNames}
             />
+            <p className="text-[11px] leading-5 text-[var(--foreground-muted)]">
+              新简历默认使用「纸」模板：页面上看到的就是导出的样子，点任意文字直接改。
+            </p>
+            <button
+              type="button"
+              data-testid="resume-create-from-job"
+              onClick={() => { onClose(); router.push("/optimize"); }}
+              className="w-full rounded-md border border-[var(--border)] px-3 py-2.5 text-left transition-colors hover:border-[var(--border-strong)]"
+            >
+              <span className="block text-[12px] font-semibold text-[var(--foreground)]">按岗位生成</span>
+              <span className="mt-0.5 block text-[11px] leading-4 text-[var(--foreground-muted)]">
+                选一个岗位，AI 只用你档案里已确认的经历起草，你逐条决定后才生成正式简历。
+              </span>
+            </button>
           </ModalBody>
           <ModalFooter className="border-t border-[var(--border)] px-6 py-5">
             <Button
