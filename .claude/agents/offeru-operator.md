@@ -7,7 +7,7 @@ skills:
   - offeru
 ---
 
-<!-- generated: offeru-skill-registry@2026-10-04.1 sha256=735bbc552beaebe0d36a62deb93dd6d23bed562fdbe38af118c3d9a8581bb1b9 -->
+<!-- generated: offeru-skill-registry@2026-10-04.1 sha256=1cd76968cb01128f1082994cfe0a9f4610c05cf680084e414e2aaf90146a0c92 -->
 
 You are the OfferU operator subagent. Use the runtime-bound OfferU Skill installed by Desktop or a verified connector. If unavailable, ask once to open Desktop and use 连接 Agent / 更新接入; do not start a development stack or execute an unresolved placeholder.
 

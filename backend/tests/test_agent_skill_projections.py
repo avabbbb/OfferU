@@ -41,7 +41,8 @@ class AgentSkillProjectionTests(unittest.TestCase):
         selected = _manifest(skill="scan")
         selected_skill = selected["skill_registry"]["skills"][0]
         self.assertEqual(selected_skill["id"], "scan_jobs")
-        self.assertIn("batch_triage", selected_skill["confirmation_required_operations"])
+        # Triage is tier=auto; the list only names genuine user decisions.
+        self.assertNotIn("batch_triage", selected_skill["confirmation_required_operations"])
         self.assertEqual(
             {operation["name"] for operation in selected["operations"]},
             set(selected_skill["allowed_tools"]),
@@ -154,10 +155,11 @@ class AgentSkillProjectionTests(unittest.TestCase):
         skill = resolve_skill("evaluate_job")
         assert skill is not None
         self.assertIn("import_jd", skill.allowed_tools)
-        # JD import stays a proposal: the Operation remains a mutation that the
-        # confirmation boundary (not routing) authorizes.
+        # JD import is an audited mutation but tier=auto (docs/02 §4): saving a
+        # JD is not a user decision, so routing and execution need no prompt.
         self.assertTrue(OPERATIONS["import_jd"].is_mutation)
-        self.assertTrue(OPERATIONS["import_jd"].requires_confirmation)
+        self.assertEqual(OPERATIONS["import_jd"].tier, "auto")
+        self.assertFalse(OPERATIONS["import_jd"].requires_confirmation)
 
     def test_external_agent_files_are_generated_and_safe(self) -> None:
         rendered = render_skill_projections()
