@@ -133,7 +133,11 @@ export interface AgentInputOption {
   option_id: string;
   label: string;
   description?: string;
+  /** 推荐项会被预选（docs/02 §4.1） */
+  recommended?: boolean;
 }
+
+export type AgentInputSelectionMode = "single" | "multiple";
 
 export interface AgentInputRequestView {
   request_id: string;
@@ -143,6 +147,13 @@ export interface AgentInputRequestView {
   reason?: string;
   options: AgentInputOption[];
   allow_free_text: boolean;
+  /** 互斥选项为 single（默认），可同时成立的选项为 multiple */
+  selection_mode: AgentInputSelectionMode;
+  min_selections: number;
+  /** 0 表示不限；single 恒为 1 */
+  max_selections: number;
+  /** D-3：等待状态必须有“放弃”出口 */
+  allow_skip: boolean;
   created_at?: string;
 }
 
@@ -185,6 +196,7 @@ export interface AgentInputAnswerBody {
   answer_id: string;
   selected_option_ids: string[];
   free_text: string;
+  skipped?: boolean;
 }
 
 export interface DecisionGroupDecisionResult {
@@ -309,9 +321,15 @@ export function normalizeInputRequest(raw: unknown): AgentInputRequestView {
         option_id: asString(item.option_id ?? item.id, `option_${index + 1}`),
         label: asString(item.label ?? item.title ?? item.option_id ?? item.id, `选项 ${index + 1}`),
         description: asString(item.description) || undefined,
+        recommended: item.recommended === true || undefined,
       };
     }),
     allow_free_text: Boolean(record.allow_free_text),
+    selection_mode: record.selection_mode === "multiple" ? "multiple" : "single",
+    min_selections: Math.max(0, Number(record.min_selections) || 0),
+    max_selections:
+      record.selection_mode === "multiple" ? Math.max(0, Number(record.max_selections) || 0) : 1,
+    allow_skip: record.allow_skip !== false,
     created_at: asString(record.created_at) || undefined,
   };
 }

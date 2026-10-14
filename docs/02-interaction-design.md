@@ -155,12 +155,12 @@ Ask 支持 `selection_mode: single | multiple`、推荐项、可跳过、自由�
 
 ## 11. 已知交互缺陷（待修复，按优先级）
 
+> 2026-10 已修复：Ask 支持 `selection_mode` single/multiple、推荐项预选、最少/最多选择数与「跳过」出口，后端校验非法回答且不消耗问题（§4.2、D-3；`backend/tests/test_agent_ask_selection_mode.py`、`AgentAskPanel.test.tsx`）；快捷动作按职业阶段生成（H-1；`lib/quickActions.ts`）；导航一级入口文案统一为中文（N-2，入口数量 N-1 仍待收敛）。
+>
 > 2026-10 已修复：D-1（等待中的 Run 不再禁用输入、能力选择和快捷动作）与 D-2（新建 / 切换对话不再 abort Run，运行中的流只分离到后台）。实现见 §11.1。
 
 | 优先级 | 位置 | 问题 | 违反 |
 | --- | --- | --- | --- |
-| P1 | `AgentAskPanel.tsx` | 单选问题被渲染成复选框 | §4.2 |
-| P1 | `AgentPanel.tsx` 中的 `QUICK_ACTIONS` | 写死了校招动作 | H-1 |
 | P1 | `components/layout/Sidebar.tsx` | 11 个入口、中英混排、三个简历入口 | N-1、N-2 |
 | P1 | `backend/app/ops.py` | 确认要求由变更类型机械推导 | §4 |
 | P1 | `career_director.py` / `career_policy.py` | 所有 L2/L3 动作都机械地要求用户介入 | §4 |
