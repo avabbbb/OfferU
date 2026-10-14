@@ -2,14 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Input, Select, SelectItem, Spinner } from "@heroui/react";
-import { Check, History, Search } from "lucide-react";
+import { Check, ClipboardPaste, History, Search } from "lucide-react";
 import { jobsApi } from "@/lib/api";
 import { bauhausFieldClassNames, bauhausSelectClassNames } from "@/lib/bauhaus";
 import { Job, ResumeBrief, useProfile, usePools, useResumes } from "@/lib/hooks";
-import { normalizePersonalArchiveFromProfile } from "@/lib/personalArchive";
 import { OptimizeChatPanel } from "./OptimizeChatPanel";
 import { ConversationList } from "./ConversationList";
+import { JobCaptureCard } from "./JobCaptureCard";
+import { ProfileColdStart } from "./ProfileColdStart";
 
 type PoolFilter = "all" | "ungrouped" | number;
 
@@ -41,18 +43,31 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
   const [loadingJobs, setLoadingJobs] = useState(false);
   const [jobsError, setJobsError] = useState("");
 
-  const { data: profileData, isLoading: loadingProfile } = useProfile();
+  const router = useRouter();
+  const [showCapture, setShowCapture] = useState(false);
+  const [coldStartActive, setColdStartActive] = useState(false);
+  const { data: profileData, isLoading: loadingProfile, mutate: mutateProfile } = useProfile();
   const { data: pools } = usePools("picked");
   const { data: resumeListData } = useResumes();
   const referenceResumes: ResumeBrief[] = Array.isArray(resumeListData) ? resumeListData : [];
 
-  const profileSectionCount = useMemo(() => {
-    const r = normalizePersonalArchiveFromProfile(profileData).resumeArchive;
-    return (
-      r.education.length + r.workExperiences.length + r.internshipExperiences.length + r.projects.length +
-      r.skills.length + r.certificates.length + r.awards.length + r.personalExperiences.length
-    );
-  }, [profileData]);
+  // 定制只用 tier=verified_fact 的事实；待确认/偏好/假设都不算数。
+  const verifiedCount = useMemo(
+    () => (profileData?.sections || []).filter((section) => section.tier === "verified_fact").length,
+    [profileData]
+  );
+
+  // 档案为空时进入冷启动；用户确认过几条之后由用户自己决定何时回到定制。
+  useEffect(() => {
+    if (!loadingProfile && profileData && verifiedCount === 0) setColdStartActive(true);
+  }, [loadingProfile, profileData, verifiedCount]);
+  const showColdStart = !loadingProfile && (verifiedCount === 0 || coldStartActive);
+
+  const handleJobCaptured = (jobId: number) => {
+    setShowCapture(false);
+    setSelectedJobId(jobId);
+    router.replace(`/optimize?job_ids=${jobId}`);
+  };
 
   // A job opened from its own workspace must stay selectable even when it has
   // not been moved into the picked list; otherwise the page has nothing to start.
@@ -104,7 +119,7 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
 
   const blockedReason = loadingProfile
     ? "正在读取档案…"
-    : profileSectionCount === 0
+    : verifiedCount === 0
       ? "profile"
       : !selectedJobId
         ? "job"
@@ -116,8 +131,17 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
         <div className="space-y-3 border-b border-[var(--border)] p-4">
           <div className="flex items-baseline justify-between">
             <h2 className="text-[15px] font-semibold text-[var(--foreground)]">目标岗位</h2>
-            <span className="text-xs text-[var(--foreground-muted)]">一次一个</span>
+            {!showCapture && (
+              <button
+                type="button"
+                onClick={() => setShowCapture(true)}
+                className="flex items-center gap-1 text-xs font-semibold text-[var(--foreground-muted)] hover:text-[var(--foreground)]"
+              >
+                <ClipboardPaste size={12} /> 粘贴岗位
+              </button>
+            )}
           </div>
+          {showCapture && <JobCaptureCard onCreated={handleJobCaptured} onClose={() => setShowCapture(false)} />}
           <Input
             size="sm"
             aria-label="搜索岗位"
@@ -148,9 +172,10 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
           ) : jobsError ? (
             <p role="alert" className="p-4 text-sm text-[var(--primary-red)]">{jobsError}</p>
           ) : visibleJobs.length === 0 ? (
-            <div className="space-y-2 p-4 text-sm text-[var(--foreground-muted)]">
-              <p>{keyword.trim() ? "没有匹配的岗位。" : "已筛选列表里还没有岗位。"}</p>
-              <Link href="/jobs" className="font-semibold text-[var(--foreground)] underline">去机会列表挑一个</Link>
+            <div className="space-y-3 p-2 text-sm text-[var(--foreground-muted)]">
+              <p className="px-2">{keyword.trim() ? "没有匹配的岗位。" : "已筛选列表里还没有岗位。"}</p>
+              {!showCapture && !keyword.trim() && <JobCaptureCard onCreated={handleJobCaptured} />}
+              <Link href="/jobs" className="block px-2 text-xs font-semibold text-[var(--foreground)] underline">或去机会列表挑一个</Link>
             </div>
           ) : (
             visibleJobs.map((job) => {
@@ -228,7 +253,13 @@ export function OptimizeWorkspace({ seedJobIds = [] }: OptimizeWorkspaceProps) {
           </button>
         </div>
         <div className="min-h-0 flex-1">
-          {showConversationList ? (
+          {showColdStart ? (
+            <ProfileColdStart
+              verifiedCount={verifiedCount}
+              onProfileChanged={() => mutateProfile()}
+              onDone={() => setColdStartActive(false)}
+            />
+          ) : showConversationList ? (
             <ConversationList
               jobId={selectedJobId}
               onSelect={(runId) => {

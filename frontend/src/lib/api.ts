@@ -242,7 +242,31 @@ export const jobsApi = {
     request("/api/jobs/batch-update", { method: "PATCH", body: JSON.stringify(data) }),
   
   stats: (period = "week") => request(`/api/jobs/stats?period=${period}`),
+
+  /** 粘贴原文或链接 → 待确认岗位草稿；不写库。 */
+  captureDraft: (text: string) =>
+    request<JobCaptureDraft>("/api/jobs/capture/draft", { method: "POST", body: JSON.stringify({ text }) }),
+
+  /** 用户确认草稿后建岗位；同一份正文重复确认返回已有岗位。 */
+  capture: (data: JobCaptureFields) =>
+    request<{ job_id: number; duplicate: boolean }>("/api/jobs/capture", { method: "POST", body: JSON.stringify(data) }),
 };
+
+export interface JobCaptureFields {
+  title: string;
+  company: string;
+  location: string;
+  url: string;
+  jd_text: string;
+}
+
+export interface JobCaptureDraft {
+  status: "ready" | "incomplete" | "needs_text";
+  source_kind: "text" | "structured" | "page" | "url";
+  message: string;
+  draft: JobCaptureFields;
+  missing: Array<"title" | "company" | "jd_text">;
+}
 
 // ---- Pools API ----
 export const poolsApi = {

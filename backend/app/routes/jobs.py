@@ -540,6 +540,52 @@ async def ingest_jobs(req: IngestRequest):
     output = _operation_output_or_error(result)
     return output
 
+class JobCaptureDraftRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=60_000)
+
+
+class JobCaptureCreateRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=500)
+    company: str = Field(..., min_length=1, max_length=300)
+    jd_text: str = Field(..., min_length=1, max_length=50_000)
+    location: str = Field(default="", max_length=200)
+    url: str = Field(default="", max_length=2048)
+
+
+@router.post("/capture/draft")
+async def draft_job_capture(req: JobCaptureDraftRequest):
+    """粘贴原文或链接 → 待确认的岗位草稿；不写库。"""
+    result = await execute_operation(
+        "draft_job_posting",
+        {"text": req.text},
+        surface="ui",
+    )
+    return _operation_output_or_error(result)
+
+
+@router.post("/capture")
+async def create_job_capture(req: JobCaptureCreateRequest):
+    """用户确认草稿后建岗位；同一份正文重复确认不会重复建。"""
+    payload = req.model_dump()
+    result = await execute_operation(
+        "import_jd",
+        {
+            "title": payload["title"],
+            "company": payload["company"],
+            "jd_text": payload["jd_text"],
+            "location": payload["location"],
+            "url": payload["url"],
+            "source": "user_paste",
+        },
+        surface="ui",
+    )
+    output = _operation_output_or_error(result)
+    return {
+        "job_id": output.get("id"),
+        "duplicate": bool(output.get("duplicate")),
+    }
+
+
 def _job_to_dict(job: Job) -> dict:
     """将 ORM 对象序列化为字典"""
     return {
