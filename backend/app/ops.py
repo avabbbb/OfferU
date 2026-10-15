@@ -1459,6 +1459,12 @@ class CreateApplicationAttemptInput(_StrictOperationInput):
     notes: str = Field(default="", max_length=60_000)
 
 
+class DraftJobPostingInput(_StrictOperationInput):
+    """粘贴的岗位描述原文或单个岗位链接；只产草稿，不写库。"""
+
+    text: str = Field(min_length=1, max_length=60_000)
+
+
 class ImportJobBatchInput(_StrictOperationInput):
     """批量岗位导入（EXT-JOB-002）：逐条 hash_key 幂等，batch_id 为批次幂等键。"""
 
@@ -1507,6 +1513,12 @@ def _ingest_runtime_provider(source: str, runtime_provider: str | None) -> str:
     if clean_source in {"fixture", "replay", "boss-fixture"} or clean_source.startswith("plugin:"):
         return clean_source
     return "auto"
+
+
+async def _draft_job_posting(*, text: str) -> dict[str, Any]:
+    from app.services.job_capture import draft_job_posting
+
+    return await draft_job_posting(text)
 
 
 async def _import_job_batch_and_dispatch(
@@ -2804,6 +2816,16 @@ OPERATIONS: dict[str, Operation] = {
         },
         group="jobs",
         side_effects=("write",),
+    ),
+    "draft_job_posting": Operation(
+        name="draft_job_posting",
+        fn=lambda text: _draft_job_posting(text=text),
+        description="把用户粘贴的岗位描述原文或单个岗位链接整理成待确认的岗位草稿（标题/公司/地点/正文/链接）；不写库。识别先交给 LLM，但字段必须是原文子串、正文按原文锚点切片，模型不可用时退回规则。链接只做一次匿名公开 GET，需登录或有风控的招聘站直接返回 needs_text，请用户自己粘贴原文。确认后用 import_jd 建岗位。",
+        parameters={"text": "str"},
+        group="jobs",
+        side_effects=("read", "external", "llm"),
+        input_model=DraftJobPostingInput,
+        version="2026-09-01",
     ),
     "import_job_batch": Operation(
         name="import_job_batch",

@@ -242,7 +242,35 @@ export const jobsApi = {
     request("/api/jobs/batch-update", { method: "PATCH", body: JSON.stringify(data) }),
   
   stats: (period = "week") => request(`/api/jobs/stats?period=${period}`),
+
+  /** 粘贴原文或链接 → 待确认岗位草稿；不写库。 */
+  captureDraft: (text: string) =>
+    request<JobCaptureDraft>("/api/jobs/capture/draft", { method: "POST", body: JSON.stringify({ text }) }),
+
+  /** 用户确认草稿后建岗位；同一份正文重复确认返回已有岗位。 */
+  capture: (data: JobCaptureFields) =>
+    request<{ job_id: number; duplicate: boolean }>("/api/jobs/capture", { method: "POST", body: JSON.stringify(data) }),
 };
+
+export interface JobCaptureFields {
+  title: string;
+  company: string;
+  location: string;
+  url: string;
+  jd_text: string;
+}
+
+export interface JobCaptureDraft {
+  status: "ready" | "incomplete" | "needs_text";
+  source_kind: "text" | "structured" | "page" | "url";
+  /** llm：模型指认（只取原文子串）；rules：模型不可用时的规则兜底；structured：页面自带 JobPosting。 */
+  extractor?: "llm" | "rules" | "structured" | "structured+llm" | "none";
+  /** 页面结构化数据与模型读到的值不一致的字段，交给用户裁决。 */
+  conflicts?: Array<{ field: "title" | "company" | "location"; structured: string; llm: string }>;
+  message: string;
+  draft: JobCaptureFields;
+  missing: Array<"title" | "company" | "jd_text">;
+}
 
 // ---- Pools API ----
 export const poolsApi = {
