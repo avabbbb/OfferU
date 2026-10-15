@@ -293,7 +293,20 @@ async def _load_research_context(
     if run is None:
         if research_run_id:
             raise ValueError("指定的岗位调研不存在、未完成、未通过审核或不属于该岗位")
-        raise ValueError("该岗位尚无已完成并通过审核的调研")
+        # 没做调研也能定制：只按 JD 和档案改写，调研是加分项不是前置条件。
+        research = {
+            "run_id": None,
+            "job_id": job_id,
+            "runtime_id": "",
+            "data_mode": "none",
+            "trace": {},
+            "sources": [],
+            "findings": [],
+            "gaps": [],
+            "skill_context": {},
+        }
+        research["snapshot_hash"] = _research_snapshot_hash(research)
+        return research
 
     sources = (
         await db.execute(
@@ -730,7 +743,8 @@ async def prepare_resume_optimization(
             for name, value in pipeline.items()
             if isinstance(value, dict) and value.get("error")
         }
-        if pipeline_errors:
+        # 只有「改写」本身失败才算没产出；JD 分析、匹配、排序失败不影响已生成的改写。
+        if "content_rewrite" in pipeline_errors:
             details = "；".join(
                 f"{name}: {message}"
                 for name, message in pipeline_errors.items()

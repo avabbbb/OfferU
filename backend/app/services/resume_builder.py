@@ -64,7 +64,8 @@ async def stage_generated_resume(
 ) -> Resume:
     """Stage a generated resume inside the caller's transaction."""
     resume = Resume(
-        user_name=profile.name or "默认候选人",
+        # profile.name 是档案名（如「默认档案」），人名在 base_info_json.name
+        user_name=str((profile.base_info_json or {}).get("name") or "").strip() or "你的姓名",
         title=title,
         summary=summary,
         contact_json=contact_json,

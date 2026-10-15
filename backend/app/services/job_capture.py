@@ -87,10 +87,15 @@ def extract_job_fields_from_text(text: str) -> dict[str, str]:
     if not title and lines and _looks_like_heading(lines[0]):
         head = lines[0]
         # 「字节跳动 - 后端开发工程师」/「后端开发工程师 | 字节跳动」
+        role_hint = re.compile(r"(工程师|经理|实习|专员|设计师|分析师|开发|运营|产品|engineer|manager|intern|analyst|designer|developer)", re.IGNORECASE)
         parts = [part.strip() for part in re.split(r"\s+[-–—|｜]\s+", head) if part.strip()]
+        if len(parts) == 1 and not company:
+            # 「字节跳动 后端开发实习生（抖音电商）」：首个空格前是公司，后面是岗位
+            words = head.split(None, 1)
+            if len(words) == 2 and role_hint.search(words[1]) and not role_hint.search(words[0]):
+                parts = words
         if len(parts) == 2 and not company:
             first, second = parts
-            role_hint = re.compile(r"(工程师|经理|实习|专员|设计师|分析师|开发|运营|产品|engineer|manager|intern|analyst|designer|developer)", re.IGNORECASE)
             if role_hint.search(second) and not role_hint.search(first):
                 company, title = first, second
             else:

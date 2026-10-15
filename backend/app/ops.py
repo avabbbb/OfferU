@@ -2155,19 +2155,7 @@ async def _prepare_resume_optimization_after_pre_application(
         proposal_id = proposal.get("proposal_id")
         if proposal_id:
             return await get_resume_optimization(proposal_id=proposal_id)
-    research_run_id = str(kwargs.get("research_run_id") or "").strip()
-    if stage != "ready_for_resume_proposal" and research_run_id:
-        fixture_research = await get_job_research(run_id=research_run_id)
-        trace = fixture_research.get("trace")
-        if (
-            fixture_research.get("data_mode") == "fixture"
-            and isinstance(trace, dict)
-            and trace.get("synthetic") is True
-            and trace.get("pre_reviewed") is True
-        ):
-            return await prepare_resume_optimization(**kwargs)
-    if stage != "ready_for_resume_proposal":
-        raise ValueError("只有审核通过投或有条件投的岗位才能生成简历提案")
+    # 投递决定只是参考，不再拦住「粘贴 JD → 直接定制」。
     return await prepare_resume_optimization(**kwargs)
 
 

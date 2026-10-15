@@ -8,6 +8,8 @@ for all callers and keeps the web layer at the edge of the dependency graph.
 
 from __future__ import annotations
 
+from copy import deepcopy
+
 import json
 import logging
 import re
@@ -288,18 +290,24 @@ def _build_resume_sections(selected: list[ProfileSection]) -> list[dict]:
                 "school": normalized.get("school") or section.title or "教育经历",
                 "degree": normalized.get("degree", ""),
                 "major": normalized.get("major", ""),
+                "startDate": normalized.get("start_date", ""),
+                "endDate": normalized.get("end_date", ""),
                 "description": normalized.get("description") or bullet,
             })
         elif mapped == "experience":
             grouped[mapped].append({
                 "company": normalized.get("company") or section.title or "实践经历",
                 "position": normalized.get("position", ""),
+                "startDate": normalized.get("start_date", ""),
+                "endDate": normalized.get("end_date", ""),
                 "description": normalized.get("description") or bullet,
             })
         elif mapped == "project":
             grouped[mapped].append({
                 "name": normalized.get("name") or section.title or "项目经历",
                 "role": normalized.get("role", ""),
+                "startDate": normalized.get("start_date", ""),
+                "endDate": normalized.get("end_date", ""),
                 "description": normalized.get("description") or bullet,
             })
         elif mapped == "skill":
@@ -481,9 +489,10 @@ def _apply_suggestions_to_rows(rows: list[dict], suggestions: list[dict]) -> lis
             return item
 
         matched = False
-        for row in result:
-            if row.get("title") != section_title:
-                continue
+        # 整份改写时模型只在顶层给 section_title，单条建议里常常没有；
+        # 标题对不上就按 original 原文在所有段落里找。
+        titled = [row for row in result if section_title and row.get("title") == section_title]
+        for row in titled or result:
             content_json = row.get("content_json", [])
             if not isinstance(content_json, list):
                 continue
@@ -643,8 +652,17 @@ async def _skills_pipeline_rewrite(
     if isinstance(content_rewrite, dict) and "suggestions" in content_rewrite:
         suggestions = content_rewrite.get("suggestions", [])
         if suggestions:
+            top_title = str(content_rewrite.get("section_title") or "")
+            suggestions = [
+                {"section_title": top_title, **item} if isinstance(item, dict) and not item.get("section_title") else item
+                for item in suggestions
+            ]
+            before = deepcopy(rows)
             rows = _apply_suggestions_to_rows(rows, suggestions)
-            rewrite_applied = True
+            # 只有真的改到了原文才算「已改写」，否则走下面的兜底改写。
+            rewrite_applied = rows != before
+            if not rewrite_applied:
+                pipeline_result["unmatched_suggestions"] = len(suggestions)
 
     section_reorder = pipeline_result.get("section_reorder", {})
     if isinstance(section_reorder, dict) and "suggested_order" in section_reorder:

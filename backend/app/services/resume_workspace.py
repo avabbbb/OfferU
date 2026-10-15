@@ -407,7 +407,12 @@ async def ensure_resume_workspace(
             else:
                 content_sections = []
             resume = Resume(
-                user_name=source_resume.user_name if source_resume else (profile.name or "默认候选人"),
+                user_name=(
+                    source_resume.user_name
+                    if source_resume
+                    # profile.name 是档案名（如「默认档案」），不是人名
+                    else str((profile.base_info_json or {}).get("name") or "").strip() or "你的姓名"
+                ),
                 title=f"{job.company} - {job.title} 定制简历",
                 summary=source_resume.summary if source_resume else "",
                 contact_json=(

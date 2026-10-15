@@ -36,6 +36,12 @@ def test_heading_line_splits_company_and_role():
     assert fields["title"] == "后端开发工程师"
 
 
+def test_heading_line_splits_space_separated_company_and_role():
+    fields = job_capture.extract_job_fields_from_text(f"字节跳动 后端开发实习生（抖音电商）\n{JD_BODY}")
+    assert fields["company"] == "字节跳动"
+    assert fields["title"] == "后端开发实习生（抖音电商）"
+
+
 def test_unlabelled_paste_is_incomplete_not_guessed():
     result = asyncio.run(job_capture.draft_job_posting(JD_BODY))
     assert result["status"] == "incomplete"
