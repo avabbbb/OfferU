@@ -54,7 +54,13 @@ function Inbox() {
     setBusyId(item.id);
     setError("");
     try {
-      const result = await agentActionsApi.decide(item.id, decision);
+      if (decision === "undo") {
+        const preview = await agentActionsApi.undoPreview(item.id);
+        if (preview.changed_after && !window.confirm(preview.message)) return;
+      }
+      const result = decision === "undo"
+        ? await agentActionsApi.undo(item.id)
+        : await agentActionsApi.decide(item.id, decision);
       if (!result.ok) throw new Error(result.errors?.join("；") || result.result?.errors?.join("；") || "没能完成");
       if (decision === "confirm" && item.operation === "reset_local_business_data") resetOnboardingForFreshStart();
       await mutate((key) => typeof key === "string" && key.startsWith(resolveApiBase()));

@@ -72,10 +72,12 @@ check("投递状态没变", app_status() == status0, str(app_status()))
 pending = call("GET", "/api/agent/runtime/actions?status=pending")[1]["items"]
 check("待确认列表有 1 条", len(pending) == 1 and pending[0]["operation"] == "update_application_status")
 
-print("[3] 用户操作：没 token 确认应被拒；撤销颜色；带 token 确认投递")
+print("[3] 用户操作：没 token 确认应被拒；撤销颜色（网页版也能撤销）；带 token 确认投递")
 code, _ = call("POST", f"/api/agent/runtime/actions/{pending[0]['id']}/confirm")
 check("没 token 确认被拒", code in (403, 422), str(code))
-code, u = call("POST", f"/api/agent/runtime/actions/{done[0]['id']}/undo", auth=True)
+code, preview = call("GET", f"/api/agent/runtime/actions/{done[0]['id']}/undo-preview")
+check("之后没人改过，撤销不用提醒", code == 200 and preview.get("changed_after") is False, json.dumps(preview, ensure_ascii=False))
+code, u = call("POST", f"/api/agent/runtime/actions/{done[0]['id']}/undo")  # no token: web may undo
 check("撤销成功", code == 200 and u.get("ok"), json.dumps(u, ensure_ascii=False)[:200])
 check("颜色回到原样", accent() == color0, str(accent()))
 code, c = call("POST", f"/api/agent/runtime/actions/{pending[0]['id']}/confirm", auth=True)

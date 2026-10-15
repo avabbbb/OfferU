@@ -10,7 +10,7 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
-from app.ops import execute_operation, list_operations
+from app.ops import list_operations
 from app.services.harness_history import (
     get_conversation,
     list_conversations,
@@ -384,11 +384,21 @@ async def reject_agent_action(action_id: str, authorization: str = Header(...)) 
         raise HTTPException(status_code=409, detail=safe_error_message(exc)) from exc
 
 
+@runtime_router.get("/runtime/actions/{action_id}/undo-preview")
+async def agent_action_undo_preview(action_id: str) -> dict[str, Any]:
+    from app.services.action_gate import undo_preview
+
+    try:
+        return await undo_preview(action_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=safe_error_message(exc)) from exc
+
+
 @runtime_router.post("/runtime/actions/{action_id}/undo")
-async def undo_agent_action(action_id: str, authorization: str = Header(...)) -> dict[str, Any]:
+async def undo_agent_action(action_id: str) -> dict[str, Any]:
+    """Undo only puts back what the Agent changed, so the web version may do it too."""
     from app.services.action_gate import undo_action
 
-    _desktop_only(authorization)
     try:
         return await undo_action(action_id)
     except ValueError as exc:

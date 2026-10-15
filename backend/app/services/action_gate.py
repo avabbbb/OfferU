@@ -105,6 +105,29 @@ def _undo_after(name: str, result: dict[str, Any]) -> dict[str, Any]:
     return {}
 
 
+def _watch_for(name: str, group: str, inputs: dict[str, Any], outputs: dict[str, Any]) -> dict[str, Any]:
+    """What to re-read later to tell whether the target changed after the Agent's write."""
+    resume_id = inputs.get("resume_id")
+    if group == "resume" and isinstance(resume_id, int) and resume_id > 0:
+        return {"operation": "get_resume", "args": {"resume_id": resume_id}, "fields": ["workspace_revision", "updated_at"]}
+    if name == "update_profile":
+        return {"operation": "get_legacy_profile", "args": {}, "fields": ["updated_at"]}
+    section_id = inputs.get("section_id") if name == "update_profile_section" else (
+        outputs.get("id") if name == "create_profile_section" else None)
+    if section_id:
+        return {"operation": "get_legacy_profile", "args": {}, "section_id": int(section_id), "fields": ["updated_at"]}
+    if name in {"triage_job", "update_job"}:
+        return {"operation": "get_job", "args": {"job_id": inputs.get("job_id")}, "fields": ["triage_status", "pool_id"]}
+    return {}
+
+
+async def _current(watch: dict[str, Any]) -> dict[str, Any]:
+    outputs = (await execute_operation(watch["operation"], watch["args"], surface="ui")).get("outputs") or {}
+    if watch.get("section_id"):
+        outputs = next((item for item in outputs.get("sections") or [] if item.get("id") == watch["section_id"]), {})
+    return {key: outputs.get(key) for key in watch["fields"]}
+
+
 async def _record(**fields: Any) -> AgentAction:
     async with async_session() as db:
         row = AgentAction(id="act_" + uuid.uuid4().hex[:24], **fields)
@@ -151,6 +174,10 @@ async def run_gated_operation(
     result = await execute_operation(name, inputs, surface=surface)
     if result.get("ok"):
         undo = _undo_after(name, result) or undo
+        outputs = result.get("outputs") if isinstance(result.get("outputs"), dict) else {}
+        watch = _watch_for(name, op.group, inputs, outputs) if undo else {}
+        if watch:
+            undo["watch"] = {**watch, "value": await _current(watch)}
         await _record(run_id=run_id, operation=name, args_json=inputs, summary=summary,
                       status="done", result_json=_brief(result), undo_json=undo)
     return result
@@ -207,6 +234,20 @@ async def reject_action(action_id: str) -> dict[str, Any]:
         if row.status != "pending":
             raise ValueError("这条操作已经处理过了。")
     return {"ok": True, "action": await _finish(action_id, status="rejected")}
+
+
+async def undo_preview(action_id: str) -> dict[str, Any]:
+    """Was the target changed after the Agent's write? Then undo also overwrites those edits."""
+    async with async_session() as db:
+        row = await _load(db, action_id)
+        if row.status != "done" or not row.undo_json:
+            raise ValueError("这条操作不能撤销。")
+        watch = dict((row.undo_json or {}).get("watch") or {})
+    changed = bool(watch) and await _current(watch) != watch.get("value")
+    return {
+        "changed_after": changed,
+        "message": "Agent 改完之后这里又被改过。撤销会恢复到 Agent 改之前，之后的修改也会一起被盖掉。" if changed else "",
+    }
 
 
 async def undo_action(action_id: str) -> dict[str, Any]:

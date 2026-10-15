@@ -1379,9 +1379,19 @@ export const agentActionsApi = {
       `/api/agent/runtime/actions?${buildQuery(params)}`,
       { signal: AbortSignal.timeout(15000) }
     ),
-  /** confirm / reject / undo need the desktop approval token → native command. */
-  decide: (actionId: string, decision: "confirm" | "reject" | "undo") =>
+  /** confirm / reject need the desktop approval token → native command. */
+  decide: (actionId: string, decision: "confirm" | "reject") =>
     decideAgentActionInDesktop(actionId, decision) as Promise<AgentActionDecisionResponse>,
+  /** Undo only puts back what the Agent changed, so the web version may do it too. */
+  undoPreview: (actionId: string) =>
+    request<{ changed_after: boolean; message: string }>(
+      `/api/agent/runtime/actions/${encodeURIComponent(actionId)}/undo-preview`
+    ),
+  undo: (actionId: string) =>
+    request<AgentActionDecisionResponse>(
+      `/api/agent/runtime/actions/${encodeURIComponent(actionId)}/undo`,
+      { method: "POST" }
+    ),
 };
 
 export const hostedExecutorApi = {
