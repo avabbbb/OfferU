@@ -1,10 +1,11 @@
 """Exercise the JOB_SAVED automation claim across independent processes.
 
 The test uses one isolated SQLite database and two backend worker processes.
-It verifies that a duplicate signal creates one CareerTask and one inbox
-projection, even when both processes receive the same external event. In clean
-CI without a configured Agent, the bounded Career Director task must be
-durably blocked once rather than completing through a scripted fallback.
+It verifies that a duplicate signal is dispatched once, even when both processes
+receive the same external event: one role-intelligence task and one Career
+Director task, each started once with its own inbox item. In clean CI without a
+configured Agent, the Career Director must be durably blocked rather than
+completing through a scripted fallback.
 """
 
 from __future__ import annotations
@@ -78,15 +79,14 @@ async def main():
         dedupe_key=sys.argv[2],
     )
     event_result = result.get("result") if isinstance(result.get("result"), dict) else {}
-    task = event_result.get("task") if isinstance(event_result.get("task"), dict) else {}
-    task_id = str(task.get("task_id") or "")
-    if task_id:
+    task_ids = [str(item) for item in event_result.get("task_ids") or [] if item]
+    for task_id in task_ids:
         worker = career_tasks._LIVE_TASKS.get(task_id)
         if worker is not None:
             await worker
         else:
             await wait_for_task(task_id)
-    print(json.dumps({"event": result, "task_id": task_id}, ensure_ascii=True), flush=True)
+    print(json.dumps({"event": result, "task_ids": task_ids}, ensure_ascii=True), flush=True)
 
 
 asyncio.run(main())
@@ -184,7 +184,7 @@ async def main():
         task_events = (await db.execute(select(CareerTaskEvent))).scalars().all()
     print(json.dumps({
         "events": [{"event_id": item.event_id, "status": item.status, "result": item.result_json} for item in events],
-        "tasks": [{"task_id": item.task_id, "status": item.status, "attempt_count": item.attempt_count} for item in tasks],
+        "tasks": [{"task_id": item.task_id, "task_type": item.task_type, "status": item.status, "attempt_count": item.attempt_count} for item in tasks],
         "inbox": [{"item_id": item.item_id, "task_id": item.task_id} for item in inbox],
         "task_events": [{"task_id": item.task_id, "event_type": item.event_type} for item in task_events],
     }, ensure_ascii=True))
@@ -222,13 +222,22 @@ def main() -> None:
     inbox = state["inbox"]
     task_events = state["task_events"]
     event_types = [str(item["event_type"]) for item in task_events]
-    if len(events) != 1 or events[0]["status"] != "blocked":
+    by_type = {str(item["task_type"]): item for item in tasks}
+    if len(events) != 1 or events[0]["status"] != "completed":
         raise AssertionError(f"automation event was not committed exactly once: {state}")
-    if len(tasks) != 1 or tasks[0]["status"] != "blocked" or tasks[0]["attempt_count"] != 1:
-        raise AssertionError(f"automation task was not executed exactly once: {state}")
-    if len(inbox) != 1 or inbox[0]["task_id"] != tasks[0]["task_id"]:
+    # JOB_SAVED fans out to exactly two tasks by design: deterministic role
+    # intelligence (replay completes) and the Career Director (blocked without an Agent).
+    if (
+        len(tasks) != 2
+        or set(by_type) != {"role_intelligence", "career_director"}
+        or by_type["role_intelligence"]["status"] != "completed"
+        or by_type["career_director"]["status"] != "blocked"
+        or any(item["attempt_count"] != 1 for item in tasks)
+    ):
+        raise AssertionError(f"automation tasks were not executed exactly once: {state}")
+    if sorted(item["task_id"] for item in inbox) != sorted(item["task_id"] for item in tasks):
         raise AssertionError(f"automation inbox was duplicated or detached: {state}")
-    if event_types.count("task.started") != 1 or event_types.count("task.blocked") != 1:
+    if event_types.count("task.started") != 2 or event_types.count("task.completed") != 1 or event_types.count("task.blocked") != 1:
         raise AssertionError(f"task lifecycle was duplicated: {event_types}")
     event_ids = {
         str((result.get("event") or {}).get("event_id") or "")
@@ -244,12 +253,8 @@ def main() -> None:
                 "workers": 2,
                 "automation_event_id": events[0]["event_id"],
                 "event_status": events[0]["status"],
-                "task_id": tasks[0]["task_id"],
-                "task_status": tasks[0]["status"],
-                "attempt_count": tasks[0]["attempt_count"],
+                "tasks": {name: item["status"] for name, item in by_type.items()},
                 "inbox_items": len(inbox),
-                "task_started_events": event_types.count("task.started"),
-                "task_blocked_events": event_types.count("task.blocked"),
                 "elapsed_seconds": round(time.perf_counter() - started_at, 3),
             },
             ensure_ascii=True,
