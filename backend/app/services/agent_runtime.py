@@ -81,17 +81,11 @@ _RUN_EVENT_MAP = {
     "operation.started": "tool.started",
     "operation.completed": "tool.completed",
     "operation.failed": "tool.failed",
-    "operation.rejected": "approval.resolved",
-    "operation.proposed": "approval.requested",
-    "decision.plan_proposed": "approval.requested",
-    "decision.group_decided": "approval.resolved",
-    "run.waiting_decision": "approval.requested",
-    "run.waiting_confirmation": "approval.requested",
+    "action.pending": "approval.requested",
     "input.required": "approval.requested",
     "input.answered": "approval.resolved",
     "input.steered": "reasoning.status",
     "run.waiting_input": "approval.requested",
-    "continuation.requested": "reasoning.status",
     "approval.requested": "approval.requested",
     "approval.resolved": "approval.resolved",
     "task.progress": "task.progress",
@@ -193,10 +187,6 @@ class AgentRunProvider(Protocol):
 
     async def resume_run(self, run_id: str) -> dict[str, Any]: ...
 
-    async def confirm_run(self, run_id: str, *, action_id: str) -> dict[str, Any]: ...
-
-    async def reject_run(self, run_id: str, *, action_id: str) -> dict[str, Any]: ...
-
     async def abort_run(self, run_id: str) -> dict[str, Any]: ...
 
 
@@ -280,16 +270,6 @@ class EmbeddedAgentRuntimeProvider:
 
         return await resume_embedded_agent_run(run_id)
 
-    async def confirm_run(self, run_id: str, *, action_id: str) -> dict[str, Any]:
-        from app.services.embedded_agent_host import confirm_embedded_agent_action
-
-        return await confirm_embedded_agent_action(run_id, action_id=action_id)
-
-    async def reject_run(self, run_id: str, *, action_id: str) -> dict[str, Any]:
-        from app.services.embedded_agent_host import reject_embedded_agent_action
-
-        return await reject_embedded_agent_action(run_id, action_id=action_id)
-
     async def abort_run(self, run_id: str) -> dict[str, Any]:
         from app.services.embedded_agent_host import abort_embedded_agent_run
 
@@ -342,7 +322,6 @@ class ReplayAgentRunProvider:
             append_agent_run_event,
             create_agent_run,
             list_agent_run_events,
-            pending_actions_for_run,
             save_agent_run,
         )
         from app.services.agent_skill_registry import (
@@ -423,7 +402,6 @@ class ReplayAgentRunProvider:
         run["final_result"] = {
             "assistant_message": response_text,
             "turn_finished": True,
-            "requires_confirmation": False,
             "active_skill": {**skill.summary(), "routing": routing.provenance()},
         }
         saved = await save_agent_run(run)
@@ -433,7 +411,7 @@ class ReplayAgentRunProvider:
             "ok": True,
             "run": saved,
             "assistant_message": response_text,
-            "pending_actions": pending_actions_for_run(saved),
+            "pending_actions": [],
             "active_skill": saved["final_result"]["active_skill"],
             "conversation_id": conversation_id,
         }
@@ -442,7 +420,6 @@ class ReplayAgentRunProvider:
         from app.services.agent_run_state import (
             append_agent_run_event,
             load_agent_run,
-            pending_actions_for_run,
             save_agent_run,
         )
         from app.services.agent_skill_registry import resolve_skill
@@ -484,7 +461,6 @@ class ReplayAgentRunProvider:
         run["final_result"] = {
             "assistant_message": response_text,
             "turn_finished": True,
-            "requires_confirmation": False,
             "active_skill": skill.summary() if skill is not None else {},
         }
         saved = await save_agent_run(run)
@@ -492,47 +468,9 @@ class ReplayAgentRunProvider:
             "ok": True,
             "run": saved,
             "assistant_message": response_text,
-            "pending_actions": pending_actions_for_run(saved),
+            "pending_actions": [],
             "active_skill": saved["final_result"].get("active_skill", {}),
             "conversation_id": saved.get("conversation_id", ""),
-            "tool_calls": [],
-        }
-
-    async def confirm_run(self, run_id: str, *, action_id: str) -> dict[str, Any]:
-        from app.services.agent_run_state import load_agent_run, pending_actions_for_run
-
-        run = await load_agent_run(run_id)
-        if run is None:
-            raise ValueError(f"Agent Run {run_id} 不存在。")
-        return {
-            "ok": False,
-            "run": run,
-            "tool_calls": [],
-            "errors": [f"Replay provider 没有可确认的动作: {action_id}"],
-            "pending_actions": pending_actions_for_run(run),
-        }
-
-    async def reject_run(self, run_id: str, *, action_id: str) -> dict[str, Any]:
-        from app.ops import execute_operation
-        from app.services.agent_run_state import pending_actions_for_run
-
-        result = await execute_operation(
-            "reject_agent_run",
-            {"run_id": run_id, "action_id": action_id},
-            surface="agent_runtime_ui",
-        )
-        if not result.get("ok"):
-            return {
-                "ok": False,
-                "errors": list(result.get("errors") or []),
-                "tool_calls": [],
-            }
-        outputs = result.get("outputs") if isinstance(result.get("outputs"), dict) else {}
-        run = outputs.get("run") if isinstance(outputs.get("run"), dict) else {}
-        return {
-            "ok": bool(run),
-            "run": run,
-            "pending_actions": pending_actions_for_run(run),
             "tool_calls": [],
         }
 
@@ -542,7 +480,7 @@ class ReplayAgentRunProvider:
         run = await load_agent_run(run_id)
         if run is None:
             raise ValueError(f"Agent Run {run_id} 不存在。")
-        if run.get("status") in {"completed", "failed", "cancelled", "needs_reconciliation"}:
+        if run.get("status") in {"completed", "failed", "cancelled"}:
             return {"ok": True, "run": run, "warnings": ["Run 已经结束。"]}
         run["status"] = "cancelled"
         run["failure_reason"] = "cancelled_by_user"

@@ -124,7 +124,6 @@ from app.services.agent_operations import (
     validate_fact_gate,
     job_stats,
     list_agent_runs_summary,
-    reject_agent_run,
     list_applications,
     list_ai_interviews,
     list_authorized_research_sessions,
@@ -636,11 +635,6 @@ class ListAgentRunsInput(_StrictOperationInput):
     conversation_id: str | None = Field(default=None, min_length=1, max_length=120)
     task_id: str | None = Field(default=None, min_length=1, max_length=120)
     limit: int = Field(default=20, ge=1, le=100)
-
-
-class RejectAgentRunInput(_StrictOperationInput):
-    run_id: str = Field(min_length=1, max_length=120)
-    action_id: str | None = Field(default=None, min_length=1, max_length=200)
 
 
 class AgentPlaybookInput(_StrictOperationInput):
@@ -1224,22 +1218,6 @@ class ResumeProposalItemsReviewInput(_StrictOperationInput):
     action: str = Field(pattern="^(accept|reject)$")
 
 
-class ResumeDecisionPlanGroupInput(_StrictOperationInput):
-    title: str = Field(min_length=1, max_length=120)
-    summary: str = Field(min_length=1, max_length=400)
-    change_ids: list[str] = Field(min_length=1, max_length=200)
-    dependency_indices: list[int] = Field(default_factory=list)
-    display: dict[str, Any] = Field(default_factory=dict)
-
-
-class ProposeResumeDecisionPlanInput(_StrictOperationInput):
-    proposal_id: str = Field(min_length=1, max_length=80)
-    resume_id: int = Field(gt=0)
-    # run_id is never a model argument: the service resolves it from the
-    # authoritative host execution context (set_operation_run_context).
-    groups: list[ResumeDecisionPlanGroupInput] = Field(min_length=1, max_length=32)
-
-
 class ResumeShareCreateInput(_StrictOperationInput):
     resume_id: int = Field(gt=0)
     password: str | None = Field(default=None, max_length=200)
@@ -1740,176 +1718,28 @@ class RecordFollowUpInput(_StrictOperationInput):
     )
 
 
-@dataclass(frozen=True)
-class OperationAuthorization:
-    operation: str
-    run_id: str
-    action_id: str
-    idempotency_key: str
-    plan_id: str = ""
-    group_id: str = ""
-    node_id: str = ""
-    claim_id: str = ""
-    plan_digest: str = ""
-    group_digest: str = ""
-    decision_id: str = ""
-    operation_version: str = ""
-    schema_digest: str = ""
-    scope: str = ""
-    surface: str = ""
-    authorization_source: str = ""
-    source_versions: dict[str, str] | None = None
-    audit_attempt_key: str = ""
-
-    @property
-    def confirmation_ref(self) -> str:
-        if self.plan_id and self.group_id and self.node_id and self.claim_id:
-            # Keep the business effect key stable while tying every audit
-            # attempt to the specific decision and fenced node claim.
-            return f"proposal-v2:{self.decision_id}:{self.node_id}:{self.claim_id}"
-        return f"agent-run:{self.run_id}:{self.action_id}"
-
-    @property
-    def audit_key(self) -> str:
-        return self.audit_attempt_key or self.idempotency_key
-
-
-@dataclass(frozen=True)
-class DecisionNodeAuthorization:
-    """Authorization context for one OperationNode inside an approved DecisionGroup.
-
-    Only the decision execution engine may construct this context; it binds
-    the persisted node identity, its plan/group lineage, the canonical digest
-    of the exact Registry arguments, and the node's unique idempotency key.
-    """
-
-    operation: str
-    run_id: str
-    node_id: str
-    group_id: str
-    plan_id: str
-    args_digest: str
-    idempotency_key: str
-
-    @property
-    def confirmation_ref(self) -> str:
-        return f"decision-node:{self.plan_id}:{self.group_id}:{self.node_id}"
-
-    @property
-    def audit_key(self) -> str:
-        # The sealed node key is the stable business-effect identity; every
-        # audit attempt for this node reuses it so a replay cannot slip
-        # through as a fresh idempotent execution.
-        return self.idempotency_key
-
-
-_OPERATION_AUTHORIZATION: ContextVar[
-    OperationAuthorization | DecisionNodeAuthorization | None
-] = ContextVar(
-    "offeru_operation_authorization",
-    default=None,
-)
+# Name of the irreversible operation the user just confirmed in the UI
+# (services/action_gate.confirm_action). Nothing else may set it.
+_CONFIRMED_ACTION: ContextVar[str] = ContextVar("offeru_confirmed_action", default="")
 _PROTECTED_AGENT_SURFACES = {
     "agent",
     "bridge",
     "cli",
     "mcp",
     "pi",
-    "agent_runtime_ui",
     "web_agent",
     "optimize_agent",
     "decision_node",
 }
 
 
-
 @contextmanager
-def confirmed_operation(
-    *,
-    operation: str,
-    run_id: str,
-    action_id: str,
-    idempotency_key: str,
-    plan_id: str = "",
-    group_id: str = "",
-    node_id: str = "",
-    claim_id: str = "",
-    plan_digest: str = "",
-    group_digest: str = "",
-    decision_id: str = "",
-    operation_version: str = "",
-    schema_digest: str = "",
-    scope: str = "",
-    surface: str = "",
-    authorization_source: str = "",
-    source_versions: dict[str, str] | None = None,
-    audit_attempt_key: str = "",
-):
-    """Bind one Registry call to a claimed, reviewed plan node."""
-
-    authorization = OperationAuthorization(
-        operation=str(operation or "").strip(),
-        run_id=str(run_id or "").strip(),
-        action_id=str(action_id or "").strip(),
-        idempotency_key=str(idempotency_key or "").strip(),
-        plan_id=str(plan_id or "").strip(),
-        group_id=str(group_id or "").strip(),
-        node_id=str(node_id or "").strip(),
-        claim_id=str(claim_id or "").strip(),
-        plan_digest=str(plan_digest or "").strip(),
-        group_digest=str(group_digest or "").strip(),
-        decision_id=str(decision_id or "").strip(),
-        operation_version=str(operation_version or "").strip(),
-        schema_digest=str(schema_digest or "").strip(),
-        scope=str(scope or "").strip(),
-        surface=str(surface or "").strip(),
-        authorization_source=str(authorization_source or "").strip(),
-        source_versions=(
-            {str(key): str(value) for key, value in source_versions.items()}
-            if isinstance(source_versions, dict)
-            else None
-        ),
-        audit_attempt_key=str(audit_attempt_key or "").strip(),
-    )
-    token = _OPERATION_AUTHORIZATION.set(authorization)
+def confirmed_action(operation: str):
+    token = _CONFIRMED_ACTION.set(str(operation or ""))
     try:
         yield
     finally:
-        _OPERATION_AUTHORIZATION.reset(token)
-
-
-@contextmanager
-def confirmed_decision_node(
-    *,
-    operation: str,
-    run_id: str,
-    node_id: str,
-    group_id: str,
-    plan_id: str,
-    args_digest: str,
-    idempotency_key: str,
-):
-    """Authorize exactly one executing OperationNode for Registry execution.
-
-    Internal to the decision execution engine; Agent/CLI/MCP/Bridge callers
-    cannot reach a persisted ``executing`` node, so this context is the only
-    way a protected mutation runs under the ``decision_node`` surface.
-    """
-
-    authorization = DecisionNodeAuthorization(
-        operation=str(operation or "").strip(),
-        run_id=str(run_id or "").strip(),
-        node_id=str(node_id or "").strip(),
-        group_id=str(group_id or "").strip(),
-        plan_id=str(plan_id or "").strip(),
-        args_digest=str(args_digest or "").strip(),
-        idempotency_key=str(idempotency_key or "").strip(),
-    )
-    token = _OPERATION_AUTHORIZATION.set(authorization)
-    try:
-        yield
-    finally:
-        _OPERATION_AUTHORIZATION.reset(token)
+        _CONFIRMED_ACTION.reset(token)
 
 
 _OPERATION_RUN_CONTEXT: ContextVar[str | None] = ContextVar(
@@ -1978,20 +1808,14 @@ class Operation:
 
     @property
     def requires_confirmation(self) -> bool:
-        """Only review/authorize tiers interrupt the user (docs/02 §4)."""
+        """Only irreversible writes ask the user once (services/operation_tiers)."""
 
         return self.tier != "auto"
 
     def _autonomy_level(self) -> str:
-        from app.services.operation_tiers import AUTONOMY_LEVELS
-
-        if self.tier == "authorize":
-            return AUTONOMY_LEVELS["authorize"]
-        if not self.is_mutation:
-            return "L0_observe"
-        if self.preparation_only:
-            return "L1_prepare"
-        return AUTONOMY_LEVELS.get(self.tier, "L2_review")  # type: ignore[arg-type]
+        if self.tier == "confirm":
+            return "confirm_once"
+        return "observe" if not self.is_mutation else "auto_undoable"
 
     def _signature_input_schema(self) -> dict[str, Any]:
         """Expose a closed JSON schema for legacy signature-validated operations.
@@ -2122,19 +1946,10 @@ async def _persist_external_resume_proposal(**kwargs: Any) -> dict[str, Any]:
 async def _review_resume_proposal_items(**kwargs: Any) -> dict[str, Any]:
     from app.services.resume_workspace import review_resume_proposal_items
 
-    # A confirmed decision-plan node is the user's adoption decision: once
-    # its review leaves no pending change, the proposal is finalized there.
-    # A direct workspace review keeps the proposal open until the user saves
-    # a version (create_resume_version_record finalizes it then).
-    authorization = _OPERATION_AUTHORIZATION.get()
-    finalize = bool(authorization is not None and getattr(authorization, "plan_id", ""))
+    # An Agent adopting inside a Run finalizes the proposal once nothing is
+    # pending; a direct workspace review keeps it open until a version is saved.
+    finalize = bool(_OPERATION_RUN_CONTEXT.get())
     return await review_resume_proposal_items(**kwargs, finalize_when_complete=finalize)
-
-
-async def _propose_resume_decision_plan(**kwargs: Any) -> dict[str, Any]:
-    from app.services.resume_decision_plans import propose_resume_decision_plan
-
-    return await propose_resume_decision_plan(**kwargs)
 
 
 async def _get_career_questions(**kwargs: Any) -> dict[str, Any]:
@@ -2216,54 +2031,7 @@ class ProposalSemanticGroupInput(_StrictOperationInput):
     display: dict[str, Any] = Field(default_factory=dict)
 
 
-class PrepareProposalPlanInput(_StrictOperationInput):
-    title: str = Field(min_length=1, max_length=500)
-    intents: list[ProposalOperationIntentInput] = Field(min_length=1, max_length=200)
-    groups: list[ProposalSemanticGroupInput] | None = Field(default=None, max_length=50)
-    run_id: str | None = Field(default=None, pattern=r"^(?:run_[a-f0-9]{16,32}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$")
-
-
-class ProposalPlanReadInput(_StrictOperationInput):
-    plan_id: str = Field(pattern=r"^plan_[a-f0-9]{32}$")
-
-
-class ProposalPlanListInput(_StrictOperationInput):
-    run_id: str | None = Field(default=None, pattern=r"^(?:run_[a-f0-9]{16,32}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$")
-
-
-async def _prepare_proposal_plan(**kwargs: Any) -> dict[str, Any]:
-    from app.services.proposal_plan_preparation import prepare_proposal_plan
-    return await prepare_proposal_plan(**kwargs)
-
-
-async def _get_proposal_plan(**kwargs: Any) -> dict[str, Any]:
-    from app.services.proposal_plan_preparation import get_proposal_plan
-    return await get_proposal_plan(**kwargs)
-
-
-async def _list_proposal_plans(**kwargs: Any) -> dict[str, Any]:
-    from app.services.proposal_plan_preparation import list_proposal_plans
-    return await list_proposal_plans(**kwargs)
-
-
 OPERATIONS: dict[str, Operation] = {
-    "prepare_proposal_plan": Operation(
-        name="prepare_proposal_plan", fn=_prepare_proposal_plan,
-        description="将当前任务中已准备的具体改动按语义封存为计划；用户审核组后才能采用，不执行节点。",
-        group="agent_control", side_effects=("write",), preparation_only=True,
-        input_model=PrepareProposalPlanInput, version="2026-10-03",
-        audit_redacted_parameters=("intents",), audit_redacted_output_parameters=("plan",),
-    ),
-    "get_proposal_plan": Operation(
-        name="get_proposal_plan", fn=_get_proposal_plan,
-        description="读取原任务的计划、用户审核状态和真实执行回执。",
-        group="agent_control", input_model=ProposalPlanReadInput, version="2026-10-03",
-    ),
-    "list_proposal_plans": Operation(
-        name="list_proposal_plans", fn=_list_proposal_plans,
-        description="读取任务关联的计划；读取结果不构成批准。",
-        group="agent_control", input_model=ProposalPlanListInput, version="2026-10-03",
-    ),
     "persist_external_resume_proposal": Operation(
         name="persist_external_resume_proposal",
         fn=_persist_external_resume_proposal,
@@ -3627,17 +3395,6 @@ OPERATIONS: dict[str, Operation] = {
         input_model=ResumeProposalItemsReviewInput,
         version="2026-10-01",
     ),
-    "propose_resume_decision_plan": Operation(
-        name="propose_resume_decision_plan",
-        fn=_propose_resume_decision_plan,
-        description="把已绑定工作区的简历提案按语义分组生成决策计划；每个分组对应一次批量采用审核，不执行任何改动。",
-        group="resume",
-        side_effects=("write",),
-        permissions=("resume_write",),
-        input_model=ProposeResumeDecisionPlanInput,
-        preparation_only=True,
-        version="2026-10-05",
-    ),
     "review_resume_optimization": Operation(
         name="review_resume_optimization",
         fn=review_resume_optimization,
@@ -4415,17 +4172,6 @@ OPERATIONS.update(
             input_model=ProfileAgentApplyInput,
         ),
     }
-)
-
-
-OPERATIONS["reject_agent_run"] = Operation(
-    name="reject_agent_run",
-    fn=reject_agent_run,
-    description="记录用户拒绝 Agent Run 中一个待确认动作；必须指定 action_id，单动作 Run 可省略。",
-    group="agent_runtime",
-    side_effects=("write",),
-    input_model=RejectAgentRunInput,
-    version="2026-09-24",
 )
 
 
@@ -5574,96 +5320,23 @@ async def _execute_operation_unlocked(
             envelope, dry_run=dry_run, surface=surface, audit=audit, op=op
         )
 
-    authorization = _OPERATION_AUTHORIZATION.get()
-    audit_id: int | None = None
-    if op.is_mutation and surface in _PROTECTED_AGENT_SURFACES and not audit:
-        return _envelope(ok=False, operation=name, inputs=audit_inputs, started=started,
-                         errors=["Agent 副作用操作不能关闭审计。"], op=op,
-                         effect_state="no_effect")
-    is_explicit_ui_rejection = (
-        surface == "agent_runtime_ui" and name == "reject_agent_run"
-    )
-    if (
-        (op.requires_confirmation and surface in _PROTECTED_AGENT_SURFACES
-         or authorization is not None and op.is_mutation)
-        and not is_explicit_ui_rejection
-    ):
-        if isinstance(authorization, DecisionNodeAuthorization):
-            # The decision engine submits exactly the sealed ``args_json``, so
-            # the digest contract covers the Registry-normalized *submitted*
-            # args (``raw_args``); the input model's deterministic defaults
-            # are already bound by the sealed operation + operation_version.
-            authorization_error = await _validate_decision_node_authorization(
-                op, authorization, raw_args
-            )
-        else:
-            authorization_error = await _validate_authorization(
-                op, authorization, clean_args, surface=surface
-            )
-        if authorization_error:
+    if surface in _PROTECTED_AGENT_SURFACES and _CONFIRMED_ACTION.get() != name:
+        from app.services.operation_tiers import needs_confirmation
+
+        if needs_confirmation(name, op.tier, clean_args):
             envelope = _envelope(
                 ok=False,
                 operation=name,
                 inputs=audit_inputs,
                 started=started,
-                outputs={
-                    "executed": False,
-                    "requires_confirmation": True,
-                },
-                errors=[authorization_error],
+                outputs={"executed": False, "requires_confirmation": True},
+                errors=["这一步不可撤销，需要用户在 OfferU 里确认后才会执行。"],
                 op=op,
                 effect_state="no_effect",
             )
             return await _audit_or_expose_failure(
                 envelope, dry_run=dry_run, surface=surface, audit=audit, op=op
             )
-        assert authorization is not None
-        if not audit:
-            return _envelope(
-                ok=False,
-                operation=name,
-                inputs=audit_inputs,
-                started=started,
-                errors=["Agent 副作用操作不能关闭审计。"],
-                op=op,
-                effect_state="no_effect",
-            )
-        try:
-            audit_id, replay = await _claim_authorized_execution(
-                op=op,
-                inputs=audit_inputs,
-                surface=surface,
-                authorization=authorization,
-                started=started,
-            )
-        except OperationAuditError as exc:
-            failure = _audit_failure_envelope(
-                _envelope(
-                    ok=False,
-                    operation=name,
-                    inputs=audit_inputs,
-                    started=started,
-                    op=op,
-                    effect_state="no_effect",
-                ),
-                exc,
-                side_effect_may_have_completed=False,
-            )
-            # This evidence is emitted only when the Registry failed to claim
-            # its audit attempt, before invoking the business operation. A
-            # coordinator may retry only if the source observer independently
-            # proves no effect and no audit row exists for the stable key.
-            from sqlalchemy.exc import OperationalError
-
-            failure["execution_evidence"] = {
-                "stage": "audit_claim",
-                "effect_state": "no_effect",
-                "transient": isinstance(exc.__cause__, OperationalError),
-                "business_operation_started": False,
-            }
-            return failure
-        if replay is not None:
-            return replay
 
     try:
         result = op.fn(**clean_args)
@@ -5704,17 +5377,6 @@ async def _execute_operation_unlocked(
             "transient": isinstance(exc, OperationalError),
             "business_operation_started": True,
         }
-
-    if audit_id is not None:
-        try:
-            await _complete_authorized_audit(audit_id, envelope=envelope, op=op)
-        except OperationAuditError as exc:
-            return _audit_failure_envelope(
-                envelope,
-                exc,
-                side_effect_may_have_completed=True,
-            )
-        return envelope
 
     return await _audit_or_expose_failure(
         envelope, dry_run=dry_run, surface=surface, audit=audit, op=op
@@ -5768,415 +5430,8 @@ def _validated_args(
     return args, None
 
 
-async def _validate_authorization(
-    op: Operation,
-    authorization: OperationAuthorization | None,
-    inputs: dict[str, Any],
-    *,
-    surface: str,
-) -> Optional[str]:
-    if isinstance(authorization, DecisionNodeAuthorization):
-        # Defensive fail-closed: decision-node authorizations are dispatched
-        # to their own validator before this point, so landing here means
-        # the caller surface and the authorization context disagree.
-        return "旧原型授权不能执行；请重新展示 Proposal v2 决策组并独立授权。"
-    if authorization is None:
-        return "该副作用操作需要先写入 Agent Run 提案并由用户确认。"
-    if authorization.operation != op.name:
-        return "确认授权与待执行 Operation 不匹配。"
-    if not (
-        authorization.plan_id
-        and authorization.group_id
-        and authorization.node_id
-        and authorization.claim_id
-    ):
-        # Legacy agent-run binding: the confirmed AgentRun step itself is the
-        # authorization contract (durable step claim -> Registry boundary).
-        return await _validate_legacy_step_authorization(op, authorization)
-    if not all(
-        (
-            authorization.run_id,
-            authorization.plan_id,
-            authorization.group_id,
-            authorization.node_id,
-            authorization.claim_id,
-            authorization.plan_digest,
-            authorization.group_digest,
-            authorization.decision_id,
-            authorization.idempotency_key,
-            authorization.operation_version,
-            authorization.schema_digest,
-            authorization.scope,
-            authorization.surface,
-            authorization.authorization_source,
-        )
-    ):
-        return "确认授权缺少持久化计划、组、节点或租约绑定。"
-    if authorization.surface != surface or surface not in _PROTECTED_AGENT_SURFACES:
-        return "确认授权与受保护的执行入口不匹配。"
-    if authorization.authorization_source != "desktop-ui":
-        return "确认授权没有来自 OfferU 桌面审核界面的有效来源。"
-
-    try:
-        from app.services.proposal_plan_builder import canonical_digest, operation_scope, verify_plan_snapshot
-        from app.services.proposal_plan_source_guard import verified_group_source_overlay
-        from app.services.agent_run_state import load_agent_run
-        from app.services.proposal_plan_store import get_node_authorization
-
-        run = await load_agent_run(authorization.run_id)
-        if run is None or str(run.get("status") or "") == "cancelled":
-            return "Agent Run 已取消或不存在，不能执行计划节点。"
-        binding = await get_node_authorization(authorization.node_id)
-        if not isinstance(binding, dict):
-            return "确认授权对应的持久化计划节点不存在。"
-        plan = binding.get("plan") if isinstance(binding.get("plan"), dict) else {}
-        group = binding.get("group") if isinstance(binding.get("group"), dict) else {}
-        node = binding.get("node") if isinstance(binding.get("node"), dict) else {}
-        decision = binding.get("decision") if isinstance(binding.get("decision"), dict) else {}
-        verify_plan_snapshot(plan)
-    except Exception:
-        return "持久化计划快照无法验证，Registry 没有执行该操作。"
-
-    if (
-        str(plan.get("id") or "") != authorization.plan_id
-        or str(plan.get("run_id") or "") != authorization.run_id
-        or str(plan.get("digest") or "") != authorization.plan_digest
-        or str(plan.get("status") or "") not in {"sealed", "executing"}
-    ):
-        return "持久化计划、Run 或版本摘要与执行授权不匹配。"
-    if (
-        str(group.get("id") or "") != authorization.group_id
-        or str(group.get("plan_id") or "") != authorization.plan_id
-        or str(group.get("digest") or "") != authorization.group_digest
-        or str(group.get("status") or "") not in {"approved", "executing"}
-    ):
-        return "持久化确认组已暂停、过期或与授权摘要不匹配。"
-    if (
-        str(node.get("id") or "") != authorization.node_id
-        or str(node.get("group_id") or "") != authorization.group_id
-        or str(node.get("operation") or "") != op.name
-        or str(node.get("operation_version") or "") != op.version
-        or authorization.operation_version != op.version
-        or str(node.get("idempotency_key") or "") != authorization.idempotency_key
-        or str(node.get("claim_id") or "") != authorization.claim_id
-        or str(node.get("status") or "") != "executing"
-    ):
-        return "持久化节点、Operation、幂等键或 fenced claim 与授权不匹配。"
-    if (
-        str(decision.get("decision") or "") != "approve"
-        or str(decision.get("id") or decision.get("event_id") or "")
-        != authorization.decision_id
-        or str(decision.get("plan_digest") or "") != authorization.plan_digest
-        or str(decision.get("group_digest") or "") != authorization.group_digest
-        or str(decision.get("authorization_source") or "") != "desktop-ui"
-    ):
-        return "持久化用户决策没有批准该计划组的当前快照。"
-    expected_audit_attempt = (
-        authorization.idempotency_key
-        if int(node.get("attempt_count") or 0) <= 1
-        else f"{authorization.idempotency_key}:attempt:{authorization.claim_id}"
-    )
-    if authorization.audit_attempt_key != expected_audit_attempt:
-        return "审计 attempt 身份与当前持久化 claim 不匹配。"
-
-    try:
-        lease_until = datetime.fromisoformat(str(node.get("lease_until") or "").replace("Z", "+00:00"))
-        if lease_until.tzinfo is None:
-            lease_until = lease_until.replace(tzinfo=timezone.utc)
-    except (TypeError, ValueError):
-        return "节点执行租约缺失或无效。"
-    if lease_until <= datetime.now(timezone.utc):
-        return "节点执行租约已过期，必须先协调副作用状态。"
-
-    schema = op.schema()["input_schema"]
-    try:
-        expected_sources = await verified_group_source_overlay(plan, group, node)
-    except Exception:
-        return "节点的来源版本链无法由已审计的组内回执验证。"
-    if (
-        str(node.get("schema_digest") or "") != authorization.schema_digest
-        or canonical_digest(schema) != authorization.schema_digest
-        or node.get("input_schema") != schema
-        or str(node.get("scope") or "") != authorization.scope
-        or operation_scope(op) != authorization.scope
-        or node.get("args") != inputs
-        or expected_sources != authorization.source_versions
-    ):
-        return "Registry schema、授权范围或实际清洗参数与已审核节点不一致。"
-    return None
-
-
-async def _validate_legacy_step_authorization(
-    op: Operation,
-    authorization: OperationAuthorization,
-) -> Optional[str]:
-    """Authorize the legacy single-step confirm path.
-
-    The persisted AgentRun step is the source of truth: the coordinator's
-    atomic claim (``waiting_confirmation`` -> ``executing``) is the lease,
-    so validation only needs the run, the exact step, its tool and the
-    sealed idempotency key to match.
-    """
-    if not all(
-        (
-            authorization.run_id,
-            authorization.action_id,
-            authorization.idempotency_key,
-        )
-    ):
-        return "确认授权缺少 Agent Run、动作或幂等键。"
-
-    from app.services.agent_run_state import load_agent_run
-
-    run = await load_agent_run(authorization.run_id)
-    if run is None:
-        return "确认授权对应的持久化 Agent Run 不存在。"
-    step = next(
-        (
-            item
-            for item in (run.get("steps") or [])
-            if isinstance(item, dict)
-            and str(item.get("id") or "") == authorization.action_id
-        ),
-        None,
-    )
-    if step is None:
-        return "确认授权对应的持久化 Agent Run 动作不存在。"
-    if str(step.get("tool") or "") != op.name:
-        return "持久化 Agent Run 动作与待执行 Operation 不匹配。"
-    if str(step.get("idempotency_key") or "") != authorization.idempotency_key:
-        return "持久化 Agent Run 动作的幂等键不匹配。"
-    if str(step.get("status") or "") != "executing":
-        return "持久化 Agent Run 动作尚未进入已确认执行状态。"
-    return None
-
-
-async def _validate_decision_node_authorization(
-    op: Operation,
-    authorization: DecisionNodeAuthorization,
-    inputs: dict[str, Any],
-) -> Optional[str]:
-    """Authorize Registry execution of one persisted executing OperationNode.
-
-    The persisted node is the source of truth: the caller's operation name,
-    idempotency key, and the canonical digest of the *actual* submitted args
-    (after the Registry's None-value normalization, before the input model
-    fills its defaults — those are bound by the sealed operation version)
-    must all match the sealed node exactly. Anything else fails closed.
-    """
-    if authorization.operation != op.name:
-        return "决策节点授权与待执行 Operation 不匹配。"
-    if not all(
-        (
-            authorization.node_id,
-            authorization.group_id,
-            authorization.plan_id,
-            authorization.args_digest,
-            authorization.idempotency_key,
-        )
-    ):
-        return "决策节点授权缺少节点、组、计划、参数摘要或幂等键。"
-
-    from app.models.models import (
-        DecisionGroup,
-        OperationNode,
-        ProposalPlan,
-    )
-    from app.services.decision_plans import canonical_digest
-
-    async with async_session() as db:
-        node = (
-            await db.execute(
-                select(OperationNode).where(
-                    OperationNode.node_id == authorization.node_id
-                )
-            )
-        ).scalar_one_or_none()
-        if node is None:
-            return "决策节点授权对应的持久化 OperationNode 不存在。"
-        group = (
-            await db.execute(
-                select(DecisionGroup).where(
-                    DecisionGroup.group_id == authorization.group_id
-                )
-            )
-        ).scalar_one_or_none()
-        plan = (
-            await db.execute(
-                select(ProposalPlan).where(
-                    ProposalPlan.plan_id == authorization.plan_id
-                )
-            )
-        ).scalar_one_or_none()
-
-    if group is None or plan is None:
-        return "决策节点授权对应的持久化决策组或计划不存在。"
-    if str(node.group_id) != str(authorization.group_id) or str(
-        node.plan_id
-    ) != str(authorization.plan_id):
-        return "决策节点不属于授权上下文中的组或计划。"
-    if str(group.plan_id) != str(authorization.plan_id):
-        return "决策组不属于授权上下文中的计划。"
-    if str(plan.run_id) != str(authorization.run_id):
-        return "决策节点授权对应的 Agent Run 不匹配。"
-    if str(group.status) not in ("approved", "executing"):
-        return "决策组尚未获得批准，不能执行其中的节点。"
-    if str(plan.status) not in ("pending", "executing"):
-        return "决策计划不在可执行状态，不能执行其中的节点。"
-    if str(node.status) != "executing":
-        return "决策节点未处于已授权执行状态。"
-    if str(node.operation) != op.name:
-        return "持久化决策节点与待执行 Operation 不匹配。"
-    if str(node.idempotency_key) != authorization.idempotency_key:
-        return "持久化决策节点的幂等键不匹配。"
-    if canonical_digest(inputs) != authorization.args_digest:
-        return "实际执行参数与决策节点封存的参数摘要不匹配。"
-    if canonical_digest(node.args_json) != authorization.args_digest:
-        return "持久化决策节点的参数摘要与封存参数不一致。"
-    return None
-
-
 class OperationAuditError(RuntimeError):
     pass
-
-
-async def _claim_authorized_execution(
-    *,
-    op: Operation,
-    inputs: dict[str, Any],
-    surface: str,
-    authorization: OperationAuthorization | DecisionNodeAuthorization,
-    started: float,
-) -> tuple[int | None, dict[str, Any] | None]:
-    safe_inputs = redact_sensitive_value(inputs)
-    row = OperationAuditLog(
-        operation=op.name,
-        operation_version=op.version,
-        surface=(surface or "unknown")[:40],
-        status="executing",
-        confirmation_ref=authorization.confirmation_ref[:160],
-        idempotency_key=authorization.audit_key[:180],
-        ok=False,
-        dry_run=False,
-        side_effects=list(op.side_effects),
-        inputs_json=_json_object(safe_inputs),
-        outputs_json={},
-        warnings_json=[],
-        errors_json=[],
-        elapsed_ms=round((time.perf_counter() - started) * 1000, 2),
-    )
-    try:
-        async with async_session() as db:
-            db.add(row)
-            await db.commit()
-            await db.refresh(row)
-            return row.id, None
-    except IntegrityError as exc:
-        # Only swallow unique constraint violations on the idempotent key
-        if "unique" in str(exc).lower() or "idempotent" in str(exc).lower():
-            pass  # expected race — another process claimed this idempotent key
-        else:
-            raise  # unexpected integrity error (NOT NULL, FK, etc.)
-    except Exception as exc:
-        raise OperationAuditError(f"无法在执行前写入审计记录: {exc}") from exc
-
-    try:
-        async with async_session() as db:
-            existing = (
-                await db.execute(
-                    select(OperationAuditLog).where(
-                        OperationAuditLog.idempotency_key
-                        == authorization.audit_key[:180]
-                    )
-                )
-            ).scalar_one_or_none()
-    except Exception as exc:
-        raise OperationAuditError(f"无法核对幂等执行记录: {exc}") from exc
-    if existing is None:
-        raise OperationAuditError("幂等键已被占用，但找不到对应审计记录。")
-    if (
-        existing.operation != op.name
-        or existing.confirmation_ref != authorization.confirmation_ref[:160]
-        or existing.inputs_json != _json_object(safe_inputs)
-    ):
-        return None, _envelope(
-            ok=False,
-            operation=op.name,
-            inputs=inputs,
-            started=started,
-            errors=["幂等键已被另一项 Operation 或不同输入占用。"],
-            op=op,
-            effect_state="no_effect",
-        )
-    if existing.status == "completed":
-        return None, _envelope(
-            ok=bool(existing.ok),
-            operation=op.name,
-            inputs=inputs,
-            started=started,
-            outputs=existing.outputs_json,
-            warnings=[
-                *list(existing.warnings_json or []),
-                "相同确认动作已执行；本次返回持久化结果，没有重放副作用。",
-            ],
-            errors=list(existing.errors_json or []),
-            op=op,
-            effect_state="committed" if existing.ok else "unknown",
-        )
-    if existing.status == "failed":
-        return None, _envelope(
-            ok=False,
-            operation=op.name,
-            inputs=inputs,
-            started=started,
-            outputs=existing.outputs_json,
-            warnings=list(existing.warnings_json or []),
-            errors=list(existing.errors_json or []) or ["该确认动作此前执行失败，没有自动重放。"],
-            op=op,
-            effect_state="unknown",
-        )
-    return None, _envelope(
-        ok=False,
-        operation=op.name,
-        inputs=inputs,
-        started=started,
-        errors=[
-            "相同确认动作已有执行中或结果不确定的审计记录；为避免重复副作用，系统没有自动重放。"
-        ],
-        op=op,
-        effect_state="unknown",
-    )
-
-
-async def _complete_authorized_audit(
-    audit_id: int,
-    *,
-    envelope: dict[str, Any],
-    op: Operation,
-) -> None:
-    try:
-        async with async_session() as db:
-            await db.execute(
-                update(OperationAuditLog)
-                .where(OperationAuditLog.id == audit_id)
-                .values(
-                    status="completed" if envelope.get("ok") else "failed",
-                    ok=bool(envelope.get("ok")),
-                    outputs_json=_json_object(
-                        _audit_outputs(op, envelope.get("outputs"))
-                    ),
-                    warnings_json=redact_sensitive_value(
-                        envelope.get("warnings") or []
-                    ),
-                    errors_json=redact_sensitive_value(
-                        envelope.get("errors") or []
-                    ),
-                    elapsed_ms=float(envelope.get("elapsed_ms") or 0),
-                )
-            )
-            await db.commit()
-    except Exception as exc:
-        raise OperationAuditError(f"Operation 已返回，但最终审计记录写入失败: {exc}") from exc
 
 
 async def _audit_or_expose_failure(

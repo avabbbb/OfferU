@@ -39,9 +39,7 @@ async def scenario(tmp_path, callback):
         async with AsyncExitStack() as stack:
             for module in (
                 "app.services.resume_design", "app.services.resume_route_operations", "app.ops",
-                "app.services.agent_run_state", "app.services.agent_run_coordinator",
-                "app.services.proposal_plan_store", "app.services.proposal_plan_sources",
-                "app.services.proposal_plan_execution",
+                "app.services.agent_run_state", "app.services.action_gate",
             ):
                 stack.enter_context(patch(f"{module}.async_session", sessions))
             stack.enter_context(patch.object(design, "runtime_uploads_dir", lambda folder: tmp_path / "uploads" / folder))
@@ -123,82 +121,48 @@ def test_concurrent_designs_cannot_overwrite_each_other(tmp_path):
     asyncio.run(scenario(tmp_path, check))
 
 
-def test_proposal_is_pending_then_confirmed_once_with_redacted_audit(tmp_path):
-    """Fixture v2 confirmation boundary test; this is not a human/Agent-native E2E."""
-    from app.cli import _manifest
-    from app.models.models import AgentRunRecord
-    from app.services.agent_run_state import create_agent_run
-    from app.services.agent_skill_registry import resolve_skill
-    from app.services.proposal_plan_execution import confirm_group
-    from app.services.proposal_plan_preparation import prepare_proposal_plan
-    from app.services import ui_approval_capability
-
-    assert "update_resume_design" in {op["name"] for op in _manifest(skill="resume_export")["operations"]}
+def test_agent_design_change_runs_directly_and_can_be_undone(tmp_path):
+    """ActionGate: an Agent resume write runs at once and is undone from the timeline."""
+    from app.services.action_gate import list_actions, run_gated_operation, undo_action
 
     async def check(sessions, resume_id):
-        skill = resolve_skill("resume_export")
-        run = await create_agent_run(
-            conversation_id=f"resume-design-{uuid4().hex}",
-            goal="Review the resume design update",
-            mode="resume_export",
-            skill_id=skill.id,
-            skill_version=skill.version,
-            skill_snapshot=skill.summary(),
-            actions=[],
+        result = await run_gated_operation(
+            "update_resume_design",
+            {"resume_id": resume_id, "expected_revision": 0,
+             "style_config": {"accentColorHex": "#7c3aed"}, "photo": image_payload()},
+            surface="embedded", run_id="run_" + uuid4().hex[:16],
         )
-        prepared = await prepare_proposal_plan(
-            run_id=run["id"],
-            title="Reviewed resume design",
-            intents=[{
-                "id": "design-update",
-                "operation": "update_resume_design",
-                "args": {
-                    "resume_id": resume_id,
-                    "expected_revision": 0,
-                    "style_config": {"accentColorHex": "#7c3aed"},
-                    "photo": image_payload(),
-                },
-                "summary": "Update the reviewed resume design and photo",
-            }],
-            groups=[{
-                "id": "design-review",
-                "title": "Resume design",
-                "summary": "Apply the displayed style and photo change",
-                "rationale": "The user reviews the exact design effect before it is applied.",
-                "node_ids": ["design-update"],
-            }],
-        )
-        plan = prepared["plan"]
-        group = plan["groups"][0]
-        node = group["nodes"][0]
+        assert result["ok"], result
         async with sessions() as db:
-            assert (await db.get(Resume, resume_id)).workspace_revision == 0
-            stored_run = await db.get(AgentRunRecord, run["id"])
-            assert stored_run is not None
-        assert not list((tmp_path / "uploads").rglob("*.png"))
-        token = "Bearer resume-design-test-ui"
-        with patch.object(ui_approval_capability, "accepts_authorization", side_effect=lambda value: value == token):
-            first = await confirm_group(
-                plan["id"], group["id"], plan_digest=plan["digest"], group_digest=group["digest"],
-                decision_id=f"decision_{uuid4().hex}", authorization_source=token, surface="agent_runtime_ui",
-            )
-            assert first["ok"], first
-            assert first["group"]["status"] == "completed"
-            assert len(first["receipts"]) == 1
-            assert first["receipts"][0]["effect_state"] == "committed"
-            second = await confirm_group(
-                plan["id"], group["id"], plan_digest=plan["digest"], group_digest=group["digest"],
-                decision_id=first["group"]["decision_id"], authorization_source=token, surface="agent_runtime_ui",
-            )
-            assert second["ok"] and second["duplicate"]
-        async with sessions() as db:
-            assert (await db.get(Resume, resume_id)).workspace_revision == 1
+            assert (await db.get(Resume, resume_id)).style_config.get("accentColorHex") == "#7c3aed"
             audits = (await db.execute(select(OperationAuditLog))).scalars().all()
-            assert audits
             assert image_payload()["content_b64"] not in repr([a.__dict__ for a in audits])
-            receipt_audit = await db.get(OperationAuditLog, int(first["receipts"][0]["audit_ref"]))
-            assert receipt_audit is not None and receipt_audit.ok and receipt_audit.status == "completed"
-            assert receipt_audit.idempotency_key == node["idempotency_key"]
-            assert len([a for a in audits if a.idempotency_key == node["idempotency_key"]]) == 1
-        assert len(list((tmp_path / "uploads").rglob("*.png"))) == 1
+        [action] = await list_actions()
+        assert action["status"] == "done" and action["undoable"]
+        undone = await undo_action(action["id"])
+        assert undone["ok"], undone
+        async with sessions() as db:
+            assert "accentColorHex" not in ((await db.get(Resume, resume_id)).style_config or {})
+        assert (await list_actions())[0]["status"] == "undone"
+
+    asyncio.run(scenario(tmp_path, check))
+
+
+def test_agent_delete_is_queued_not_run_until_user_confirms(tmp_path):
+    """Irreversible writes wait in the confirm list; the Agent gets executed=false."""
+    from app.services.action_gate import confirm_action, run_gated_operation
+
+    async def check(sessions, resume_id):
+        result = await run_gated_operation(
+            "delete_resume_record", {"resume_id": resume_id},
+            surface="embedded", run_id="run_" + uuid4().hex[:16],
+        )
+        assert result["ok"] and result["outputs"]["executed"] is False
+        async with sessions() as db:
+            assert await db.get(Resume, resume_id) is not None
+        confirmed = await confirm_action(result["outputs"]["pending_action"]["id"])
+        assert confirmed["ok"], confirmed
+        async with sessions() as db:
+            assert await db.get(Resume, resume_id) is None
+
     asyncio.run(scenario(tmp_path, check))

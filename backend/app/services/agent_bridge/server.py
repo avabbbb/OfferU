@@ -508,15 +508,7 @@ class BridgeSession:
         self, request_id: str, payload: dict[str, Any]
     ) -> dict[str, Any]:
         proposal_ref = str(payload.get("proposalId") or self.run_id or "")
-        if proposal_ref.startswith("plan_"):
-            from app.services.proposal_plan_store import get_plan
-
-            plan = await get_plan(proposal_ref)
-            if plan is None:
-                raise BridgeProtocolError("run_not_found", "Proposal Plan does not exist", request_id=request_id)
-            if str(plan.get("run_id") or "") != str(self.run_id or ""):
-                raise BridgeProtocolError("grant_denied", "Plan is outside the attached Run", request_id=request_id)
-        elif proposal_ref != str(self.run_id or ""):
+        if proposal_ref != str(self.run_id or ""):
             raise BridgeProtocolError("grant_denied", "Proposal readback is limited to the attached Run", request_id=request_id)
         state = await load_proposal_state(run_id=proposal_ref)
         return success_response(request_id, state)

@@ -56,8 +56,9 @@ EXPLICIT_ROUTE_BOUNDARIES = {
     ("config.py", "fetch_models"),
     ("main_agent.py", "start_runtime_run"),
     ("main_agent.py", "stream_runtime_run"),
-    ("main_agent.py", "confirm_runtime_action"),
-    ("main_agent.py", "reject_runtime_action"),
+    ("main_agent.py", "confirm_agent_action"),
+    ("main_agent.py", "reject_agent_action"),
+    ("main_agent.py", "undo_agent_action"),
     ("main_agent.py", "resume_runtime_run"),
     ("main_agent.py", "abort_runtime_run"),
     # Structured Ask answers control the same Agent Run; they confer no
@@ -90,14 +91,10 @@ REGISTRY_HELPERS = {
     "_ui_operation_projection",
     "_execute_agent_operation",
     "_operation_outputs",
-    "execute_or_propose_operation",
-    # Proposal v2 adapters validate independent UI authorization, then dispatch
-    # every business node through confirmed_operation -> execute_operation.
-    "confirm_group",
-    "reject_group",
-    # Unknown-outcome exit: Audit-evidence reconciliation or close-as-is; any
-    # continuation runs through the same v2 dispatcher -> execute_operation.
-    "resolve_unresolved_group",
+    "run_gated_operation",
+    "confirm_action",
+    "reject_action",
+    "undo_action",
     "confirm_operation_proposal",
     "reject_operation_proposal",
     "confirm_embedded_agent_action",
@@ -496,11 +493,11 @@ def _control_surface_bypasses() -> list[dict[str, Any]]:
 
         required: dict[str, set[str]] = {}
         if surface == "cli":
-            required = {"_run_operation": {"execute_or_propose_operation"}}
+            required = {"_run_operation": {"run_gated_operation"}}
         elif surface == "mcp":
             required = {
-                "offeru_operation": {"execute_or_propose_operation"},
-                "resource_profile": {"execute_or_propose_operation"},
+                "offeru_operation": {"run_gated_operation"},
+                "resource_profile": {"execute_operation"},
             }
         for function_name, expected_calls in required.items():
             function = next(

@@ -9,20 +9,8 @@ import { SHOWCASE, showcaseHandle } from "./showcase/router";
 import { showcaseChatResponse } from "./showcase/llm";
 import { resolveApiBase } from "./apiBase";
 import { safeClientErrorMessage } from "./safe-error";
-import {
-  decideAgentDecisionGroupInDesktop,
-  decideAgentRuntimeActionInDesktop,
-  decidePlanGroupInDesktop,
-  decideProposalInDesktop,
-  resolvePlanGroupInDesktop,
-} from "./desktop-proposal-decision";
-import type {
-  AgentInputAnswerBody,
-  AgentInputAnswerResult,
-  DecisionGroupDecisionBody,
-  DecisionGroupDecisionResult,
-  InteractionState,
-} from "./decisionPlans";
+import { decideAgentActionInDesktop } from "./desktop-proposal-decision";
+import type { AgentInputAnswerBody, AgentInputAnswerResult } from "./agentAsk";
 import type { components, operations } from "./api-types.generated";
 type Schemas = components["schemas"];
 type Ops = operations;
@@ -31,22 +19,7 @@ export type {
   AgentInputAnswerResult,
   AgentInputOption,
   AgentInputRequestView,
-  DecisionGroupDecisionBody,
-  DecisionGroupDecisionResult,
-  DecisionGroupRevisionBody,
-  DecisionGroupRevisionResult,
-  DecisionGroupStatus,
-  DecisionGroupView,
-  DecisionNodeStatus,
-  DecisionNodeView,
-  DecisionPlanStatus,
-  DecisionPlanView,
-  DecisionPlanReviewReconcileResult,
-  ExecutionReceiptView,
-  InteractionState,
-  Reviewability,
-  ReviewabilityStatus,
-} from "./decisionPlans";
+} from "./agentAsk";
 
 const API_BASE = resolveApiBase();
 
@@ -730,10 +703,7 @@ export interface AgentRunRecord {
   skill_version: string;
   skill_snapshot: Record<string, any>;
   status: string;
-  interaction_state?: InteractionState;
   steps: AgentRunStep[];
-  proposal_authority?: string;
-  proposal_plans?: AgentProposalPlan[];
   llm_runtime: Record<string, any>;
   final_result: Record<string, any>;
   failure_reason: string;
@@ -752,7 +722,7 @@ export interface AgentRunResponse {
   ok: boolean;
   run: AgentRunRecord;
   assistant_message: string;
-  pending_actions: AgentProposedAction[];
+  pending_action_count?: number;
   active_skill: AgentSkill;
   guardian?: {
     user_stage?: string;
@@ -766,165 +736,28 @@ export interface AgentRunResponse {
   conversation_title?: string;
 }
 
-export interface AgentConfirmationResponse {
-  continuation?: AgentRunResponse;
-  ok: boolean;
-  run: AgentRunRecord;
-  tool_calls: AgentToolCall[];
-  errors?: string[];
-  warnings?: string[];
-}
+export type AgentActionStatus = "done" | "undone" | "pending" | "rejected" | "failed";
 
-export interface AgentPendingProposalAction {
-  actionId: string;
+/** One entry in the agent action timeline (ActionGate). */
+export interface AgentActionRecord {
+  id: string;
+  run_id: string;
   operation: string;
   args: Record<string, unknown>;
   summary: string;
-}
-
-export interface AgentPendingProposal {
-  runId: string;
-  goal: string;
-  steps: AgentPendingProposalAction[];
-  createdAt: string;
-}
-
-export interface AgentPendingProposalsResponse {
-  total: number;
-  items: AgentPendingProposal[];
-  unavailable?: Array<AgentPendingProposal & { reason: string }>;
-  unavailable_total?: number;
-}
-
-export interface AgentProposalDecisionResponse {
-  approved: boolean;
-  completed?: boolean;
-  runStatus?: string;
-  errors?: string[];
-  warnings?: string[];
-}
-
-export interface AgentPlanChangeDisplay {
-  before?: unknown;
-  after?: unknown;
-  evidence?: unknown;
-  rationale?: string;
-  summary?: string;
-  target?: string;
-}
-
-export interface AgentPlanNodeDisplay extends AgentPlanChangeDisplay {
-  changes?: AgentPlanChangeDisplay[];
-}
-
-export interface AgentPlanReceipt {
-  id: string;
-  node_id?: string;
-  status: string;
-  effect_state?: "no_effect" | "committed" | "partial" | "unknown" | string;
-  result?: unknown;
-  audit_ref?: string | null;
+  status: AgentActionStatus;
+  result?: Record<string, any>;
+  undoable?: boolean;
+  delivered?: boolean;
   created_at?: string;
-  updated_at?: string;
+  decided_at?: string | null;
 }
 
-export interface AgentPlanNode {
-  id: string;
-  group_id?: string;
-  operation: string;
-  summary: string;
-  status: string;
-  display?: AgentPlanNodeDisplay | null;
-  /** Safe operation details only; raw operation args are never returned to the review UI. */
-  redacted_args?: Record<string, unknown>;
-  redactedArgs?: Record<string, unknown>;
-  receipt?: AgentPlanReceipt | null;
-  receipts?: AgentPlanReceipt[];
-  receipt_ids?: string[];
-  dependency_node_ids?: string[];
-}
-
-export interface AgentPlanContinuation {
-  id: string;
-  group_id?: string;
-  run_id?: string;
-  status: string;
-  receiver?: string | null;
-  receipt_ids?: string[];
-  error?: string | null;
-}
-
-export interface AgentConfirmationGroup {
-  id: string;
-  plan_id?: string;
-  title: string;
-  rationale?: string;
-  summary: string;
-  affected_entities?: Array<string | {
-    kind?: string;
-    id?: string | number;
-    title?: string;
-    name?: string;
-  }>;
-  risk?: string;
-  dependency_group_ids?: string[];
-  digest: string;
-  status: string;
-  /** Durable reason for a paused/closed group (e.g. "Abandoned by user…"). */
-  pause_reason?: string;
-  /** Server projection: needs_user_review | needs_user_authorization | system_* | none. */
-  interaction_state?: string;
-  reviewability?: {
-    status: string;
-    reason_codes?: string[];
-    advisory_codes?: string[];
-    counts_as_user_decision?: boolean;
-  };
-  nodes: AgentPlanNode[];
-}
-
-export interface AgentProposalPlan {
-  id: string;
-  run_id: string;
-  revision: number;
-  status: string;
-  digest: string;
-  title: string;
-  groups: AgentConfirmationGroup[];
-  continuations?: AgentPlanContinuation[];
-  refresh_from?: { plan_id: string; group_ids: string[]; completed_receipt_ids: string[] };
-}
-
-export interface AgentPlansResponse {
-  items: AgentProposalPlan[];
-  total: number;
-}
-
-export interface AgentPlanDecisionResponse {
+export interface AgentActionDecisionResponse {
   ok: boolean;
-  plan?: AgentProposalPlan;
-  group?: AgentConfirmationGroup;
-  receipts?: AgentPlanReceipt[];
+  action: AgentActionRecord;
+  result?: Record<string, any>;
   errors?: string[];
-  duplicate?: boolean;
-  continuation?: AgentPlanContinuation | null;
-  run_status?: string;
-  successor_plan_id?: string;
-  successor_plan?: AgentProposalPlan;
-  refresh_error?: string | null;
-}
-
-export interface AgentPlanReconciliationResponse {
-  ok: boolean;
-  action?: "retry" | "abandon";
-  /** True once the group no longer has an unknown execution outcome. */
-  resolved?: boolean;
-  plan?: AgentProposalPlan | null;
-  receipts?: AgentPlanReceipt[];
-  errors?: string[];
-  resolved_node_ids?: string[];
-  unresolved_node_ids?: string[];
-  abandoned_node_ids?: string[];
 }
 
 export interface HostedExecutorEvent {
@@ -1484,10 +1317,6 @@ export const agentRuntimeApi = {
       }
     }
   },
-  confirm: (runId: string, actionId: string) =>
-    decideAgentRuntimeActionInDesktop(runId, actionId, true),
-  reject: (runId: string, actionId: string) =>
-    decideAgentRuntimeActionInDesktop(runId, actionId, false),
   resume: (runId: string) =>
     request<AgentRunResponse>(
       `/api/agent/runtime/runs/${encodeURIComponent(runId)}/resume`,
@@ -1527,26 +1356,6 @@ export const agentRuntimeApi = {
         after_sequence: afterSequence,
       })}`, { signal }
     ),
-  /** Proposal v2 Plan Review: pending decision plans across runs. */
-  decisionPlansPending: () =>
-    request<{ plans: unknown[] }>("/api/agent/runtime/decision-plans/pending", {
-      signal: AbortSignal.timeout(15000),
-    }),
-  /** Active decision plan for one run (`null` when the run has none). */
-  decisionPlan: (runId: string) =>
-    request<{ run_id: string; plan: unknown }>(
-      `/api/agent/runtime/runs/${encodeURIComponent(runId)}/decision-plan`
-    ),
-  /**
-   * Approving or rejecting a DecisionGroup requires the desktop approval
-   * capability, so this always goes through the native Tauri command.
-   */
-  decideDecisionGroup: (
-    runId: string,
-    groupId: string,
-    body: DecisionGroupDecisionBody,
-  ): Promise<DecisionGroupDecisionResult> =>
-    decideAgentDecisionGroupInDesktop(runId, groupId, body),
   /** Built-in Ask: pending input requests for one run (read-only, no token). */
   inputRequestsPending: (runId: string) =>
     request<{ requests: unknown[] }>(
@@ -1564,42 +1373,15 @@ export const agentRuntimeApi = {
     ),
 };
 
-export const bridgeProposalApi = {
-  listPending: () =>
-    request<AgentPendingProposalsResponse>("/api/bridge/proposals/pending", {
-      signal: AbortSignal.timeout(15000),
-    }),
-  decide: (runId: string, actionId: string, approve: boolean) =>
-    decideProposalInDesktop(runId, actionId, approve),
-};
-
-export const agentPlansApi = {
-  list: (params?: { run_id?: string }) =>
-    request<AgentPlansResponse>(`/api/agent/plans?${buildQuery(params)}`, {
-      signal: AbortSignal.timeout(15000),
-    }),
-  get: (planId: string) =>
-    request<AgentProposalPlan>(`/api/agent/plans/${encodeURIComponent(planId)}`, {
-      signal: AbortSignal.timeout(15000),
-    }),
-  decideGroup: (
-    planId: string,
-    groupId: string,
-    decision: { approve: boolean; plan_digest: string; group_digest: string; decision_id: string },
-  ) => decidePlanGroupInDesktop(planId, groupId, {
-    approve: decision.approve,
-    planDigest: decision.plan_digest,
-    groupDigest: decision.group_digest,
-    decisionId: decision.decision_id,
-  }),
-  resolveGroup: (
-    planId: string,
-    groupId: string,
-    body: { action: "retry" | "abandon"; group_digest: string },
-  ) => resolvePlanGroupInDesktop(planId, groupId, {
-    action: body.action,
-    groupDigest: body.group_digest,
-  }),
+export const agentActionsApi = {
+  list: (params?: { run_id?: string; status?: AgentActionStatus }) =>
+    request<{ items: AgentActionRecord[] }>(
+      `/api/agent/runtime/actions?${buildQuery(params)}`,
+      { signal: AbortSignal.timeout(15000) }
+    ),
+  /** confirm / reject / undo need the desktop approval token → native command. */
+  decide: (actionId: string, decision: "confirm" | "reject" | "undo") =>
+    decideAgentActionInDesktop(actionId, decision) as Promise<AgentActionDecisionResponse>,
 };
 
 export const hostedExecutorApi = {

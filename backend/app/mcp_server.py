@@ -4,11 +4,8 @@ import json
 from contextlib import asynccontextmanager
 from typing import Any
 
-from app.ops import get_operation_schema, list_operations
+from app.ops import execute_operation, get_operation_schema, list_operations
 from app.services.agent_skill_registry import agent_operation_names, skill_tool_catalog
-from app.services.operation_projection import (
-    execute_or_propose_operation,
-)
 
 try:
     from mcp.server.fastmcp import FastMCP
@@ -109,11 +106,13 @@ async def offeru_operation(
     dry_run: bool = False,
     run_id: str = "",
 ) -> dict[str, Any]:
-    """Execute a read or create a persisted proposal for a side-effect Operation."""
+    """Run an Operation; irreversible writes are queued for the user to confirm."""
 
     if operation not in agent_operation_names():
         return {"ok": False, "errors": ["该操作不属于 Agent Tool Surface"]}
-    return await execute_or_propose_operation(
+    from app.services.action_gate import run_gated_operation
+
+    return await run_gated_operation(
         operation,
         args or {},
         surface="mcp",
@@ -126,7 +125,7 @@ async def offeru_operation(
 async def resource_profile() -> str:
     """Read the current profile through the Operation Registry."""
 
-    result = await execute_or_propose_operation(
+    result = await execute_operation(
         "get_profile",
         {},
         surface="mcp",

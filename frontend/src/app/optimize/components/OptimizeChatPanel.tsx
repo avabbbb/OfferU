@@ -5,7 +5,7 @@ import Link from "next/link";
 import MarkdownIt from "markdown-it";
 import { Button, Spinner } from "@heroui/react";
 import { CheckCircle2, CircleAlert, FileText, MessageSquare, Play, RefreshCw, Square } from "lucide-react";
-import { RunReviewPanel } from "@/components/workbench/RunReviewPanel";
+import { AgentAskPanel } from "@/components/workbench/AgentAskPanel";
 import { agentRuntimeApi, type AgentRunRecord } from "@/lib/api";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import {
@@ -67,8 +67,6 @@ function finalAssistantMessage(run: AgentRunRecord | null) {
 
 function statusHint(run: AgentRunRecord | null) {
   if (!run) return "";
-  if (run.status === "waiting_input") return "需要一个真实取舍后才能继续；回答不会批准任何简历修改。";
-  if (run.status === "waiting_decision" || run.status === "waiting_confirmation") return "修改已经进入独立审核；只有你的审核会产生采用回执。";
   if (run.status === "interrupted") return "Run 已持久化，可以从同一个 Run 恢复。";
   if (run.status === "failed") return run.failure_reason || "这次 Run 失败了；你可以查看原因后重新开始。";
   if (run.status === "blocked") return run.failure_reason || "当前能力或配置阻止了继续执行。";
@@ -218,8 +216,8 @@ export function OptimizeChatPanel({
             }
           } else if (event === "input.required") {
             setProgressLabel("需要你的一个取舍后继续…");
-          } else if (event === "proposal.plan_ready" || event === "decision.plan_proposed" || event === "approval.requested") {
-            setProgressLabel("改动组已生成，等待你审核…");
+          } else if (event === "approval.requested") {
+            setProgressLabel("有一步不可撤销，已放进待确认；Agent 继续做别的…");
           } else if (event === "tool.started" || event === "operation.started") {
             setProgressLabel("正在读取或准备 OfferU 数据…");
           } else if (event === "stream.reconnecting") {
@@ -275,9 +273,7 @@ export function OptimizeChatPanel({
     }
   }, [run?.id, loading]);
 
-  const handleReviewChanged = (result: any) => {
-    const continuationMessage = String(result.continuation?.assistant_message || "").trim();
-    if (continuationMessage) setMessages((current) => [...current, continuationMessage]);
+  const handleAnswered = () => {
     if (run?.id) {
       window.setTimeout(() => void loadRun(run.id), 300);
       window.setTimeout(() => void loadRun(run.id), 1500);
@@ -285,7 +281,7 @@ export function OptimizeChatPanel({
   };
 
   const resumeId = resumeIdFromRun(run);
-  const waitingForReview = Boolean(run && ["waiting_decision", "waiting_confirmation"].includes(run.status));
+  const pendingActionCount = Number(run?.final_result?.pending_action_count || 0);
   const terminalFailure = Boolean(run && ["failed", "blocked", "cancelled"].includes(run.status));
 
   return (
@@ -368,18 +364,12 @@ export function OptimizeChatPanel({
               </div>
             )}
 
-            {run && (run.status === "waiting_input" || waitingForReview) && (
-              <section className="overflow-hidden rounded-[10px] border border-[var(--border)] bg-white" data-testid="optimize-runtime-review">
-                <div className="border-b border-[var(--border)] px-4 py-3">
-                  <p className="text-sm font-semibold text-[var(--foreground)]">
-                    {run.status === "waiting_input" ? "需要你做一个真实取舍" : "审核 section-level 改动组"}
-                  </p>
-                  <p className="mt-1 text-xs leading-relaxed text-[var(--foreground-muted)]">
-                    这里直接复用 Runtime 的 Ask / Proposal v2。Ask 只表达偏好，不批准修改；采用决定会生成持久 receipt，并让同一个 Run 继续。
-                  </p>
-                </div>
-                <RunReviewPanel runId={run.id} onChanged={handleReviewChanged} />
-              </section>
+            {run && !loading && <AgentAskPanel runId={run.id} onAnswered={handleAnswered} />}
+
+            {pendingActionCount > 0 && (
+              <p className="rounded-[10px] border border-[var(--border)] bg-[var(--status-blush)] px-4 py-3 text-xs text-[var(--foreground-soft)]">
+                有 {pendingActionCount} 步不可撤销的操作等你在「待确认」里确认；确认前不会执行。
+              </p>
             )}
 
             {run?.status === "completed" && jobId && (
@@ -388,7 +378,7 @@ export function OptimizeChatPanel({
                   <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-emerald-700" />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-emerald-950">定制 Run 已完成</p>
-                    <p className="mt-1 text-xs leading-relaxed text-emerald-900">结果、Proposal receipt 和岗位专用简历都保留在 canonical Job Workspace；关闭 Desktop 后重新打开仍从 Runtime / Workspace 回读。</p>
+                    <p className="mt-1 text-xs leading-relaxed text-emerald-900">岗位专用简历保留在这个岗位的工作区；改动在简历页逐条采用，Agent 的每一步都在时间线里，可以撤销。</p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <Link href={`/jobs/${jobId}?focus=materials`} className="bauhaus-button bauhaus-button-sm bauhaus-button-red">回到 Job Workspace</Link>
                       {resumeId && (

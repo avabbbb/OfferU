@@ -133,7 +133,7 @@ HARNESS_ALLOWED_TOOLS = (
     "Bash(uv run python -m app.cli:*)"
 )
 # 业务确认/拒绝必须由人类做出，Agent 不得自行 confirm 或 reject。
-HARNESS_DISALLOWED_TOOLS = "Bash(*app.cli confirm*) Bash(*app.cli run reject_agent_run*)"
+HARNESS_DISALLOWED_TOOLS = "Bash(*app.cli confirm*)"
 
 # ---------------------------------------------------------------- helpers
 
@@ -455,33 +455,22 @@ def _pending_actions(eval_db: Path, *, exclude_run_ids: set[str]) -> list[dict[s
     connection.row_factory = sqlite3.Row
     try:
         rows = connection.execute(
-            "SELECT run_id, steps_json, goal FROM agent_runs WHERE status = 'waiting_confirmation'"
+            "SELECT id, run_id, operation, summary FROM agent_actions WHERE status = 'pending'"
         ).fetchall()
     except sqlite3.Error:
         return []
     finally:
         connection.close()
-
-    pending: list[dict[str, str]] = []
-    for row in rows:
-        run_id = str(row["run_id"])
-        if run_id in exclude_run_ids:
-            continue
-        try:
-            steps = json.loads(row["steps_json"] or "[]")
-        except json.JSONDecodeError:
-            continue
-        for step in steps:
-            if isinstance(step, dict) and step.get("status") == "waiting_confirmation":
-                pending.append(
-                    {
-                        "run_id": run_id,
-                        "action_id": str(step.get("id") or ""),
-                        "tool": str(step.get("tool") or ""),
-                        "goal": str(row["goal"] or ""),
-                    }
-                )
-    return pending
+    return [
+        {
+            "run_id": str(row["run_id"]),
+            "action_id": str(row["id"]),
+            "tool": str(row["operation"]),
+            "goal": str(row["summary"] or ""),
+        }
+        for row in rows
+        if str(row["run_id"]) not in exclude_run_ids
+    ]
 
 
 def _new_proposed_actions(
@@ -553,13 +542,6 @@ def _agent_run_action_state(eval_db: Path, run_id: str, action_id: str) -> dict[
         decision = "rejected"
     elif step_status == "executing" or str(run_status) == "executing":
         decision = "in_progress"
-    elif (
-        str(failure_reason or "") == "rejected_by_user"
-        and str(run_status or "") == "needs_reconciliation"
-    ):
-        # Legacy reject_agent_run records rejected the whole run without marking
-        # individual steps. New action-level rejections are read from step.status.
-        decision = "rejected"
     elif step_status == "failed" or str(run_status) == "failed":
         decision = "failed"
     else:
@@ -948,7 +930,7 @@ async def run_case_once(
         "disallowed_tools": (
             HARNESS_DISALLOWED_TOOLS
             if runtime == "codebuddy"
-            else "app.cli confirm and app.cli run reject_agent_run (denied by OMP eval config)"
+            else "app.cli confirm (denied by OMP eval config)"
         ),
         "model_requested": model if runtime == "omp" else None,
         "thinking_requested": thinking if runtime == "omp" else None,

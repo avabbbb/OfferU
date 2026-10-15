@@ -14,7 +14,7 @@ import {
   normalizeInputRequest,
   type AgentInputAnswerResult,
   type AgentInputRequestView,
-} from "@/lib/decisionPlans";
+} from "@/lib/agentAsk";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 
 const REFRESH_INTERVAL_MS = 4000;

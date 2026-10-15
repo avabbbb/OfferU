@@ -18,7 +18,7 @@ import { OnboardingGate } from "@/components/onboarding/OnboardingGate";
 import { WorkbenchProvider, useWorkbench } from "@/lib/workbench";
 import { AgentConnectionProvider } from "@/lib/agentConnection";
 import { AgentConnectionDialog, AgentConnectionStatus } from "./AgentConnectionPanel";
-import { PendingProposalReview } from "./PendingProposalReview";
+import { AgentActionsInbox } from "./AgentActionsInbox";
 import { resolveApiBase } from "@/lib/apiBase";
 
 const API_BASE = resolveApiBase();
@@ -105,13 +105,13 @@ function FocusTopBar({ rule }: { rule: FocusRule }) {
 }
 
 /**
- * 右下角审阅坞：Proposal v2 计划审阅 + 旧版逐步动作确认（仅遗留提案存在时渲染）。
+ * 右下角：Agent 的待确认操作和最近可撤销的改动。
  */
 function ReviewDock() {
   return (
     <div className="pointer-events-none fixed bottom-4 right-4 z-[60] max-w-[calc(100vw-2rem)]">
       <div className="pointer-events-auto flex flex-col items-end gap-2">
-        <PendingProposalReview />
+        <AgentActionsInbox />
       </div>
     </div>
   );

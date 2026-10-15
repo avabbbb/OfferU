@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import uuid
@@ -18,35 +19,15 @@ from app.models.models import (
 )
 from app.services.security_redaction import redact_sensitive_value
 
-# Eagerly import proposal_plan_store so its module-level ``async_session``
-# binding is captured at app import time (the real ``app.database.async_session``).
-# Lazy import would otherwise first run inside a test that has patched
-# ``app.database.async_session`` to an isolated (later disposed) session, leaving
-# proposal_plan_store pinned to a dead engine and breaking recovery/confirmation
-# for every subsequent Run in the same process (cross-test pollution).
-import app.services.proposal_plan_store as _proposal_plan_store  # noqa: F401
-
 RUN_SCHEMA_VERSION = "offeru.agent_runs.v2"
-ACTIVE_STATUSES = {
-    "created",
-    "planning",
-    "waiting_confirmation",
-    "waiting_decision",
-    "waiting_input",
-    "executing",
-    "interrupted",
-}
-TERMINAL_STATUSES = {"completed", "cancelled", "failed", "needs_reconciliation"}
-# Recoverable pauses that keep the persisted session resumable; restart
-# recovery must never classify them as terminal work.
-WAITING_STATUSES = {"waiting_confirmation", "waiting_decision", "waiting_input"}
+# A Run never waits on the user: queued confirmations and Ask answers start a
+# new turn on the same session (services/action_gate).
+ACTIVE_STATUSES = {"created", "planning", "executing", "interrupted"}
+TERMINAL_STATUSES = {"completed", "cancelled", "failed"}
 MAX_RUNS = 200
 
 
 def proposal_execution_blocker(run: dict[str, Any]) -> str:
-    legacy = (run.get("recovery_cursor") or {}).get("proposal_v2_legacy") or {}
-    if run.get("legacy_review_required") or any(isinstance(item, dict) and item.get("classification") == "needs_review" for item in legacy.values()):
-        return "旧提案原始参数无法验证；请在当前工作区重新准备并审核具体改动。"
     runtime = run.get("llm_runtime") or {}
     if runtime.get("runtime") == "pi_sdk_worker":
         return "旧 Pi 会话仅供历史查阅，不能通过当前 Python Agent 重放操作；请重新发起任务。"
@@ -82,7 +63,7 @@ def _clean_action(action: dict[str, Any], index: int) -> dict[str, Any]:
         "summary": redact_sensitive_value(str(action.get("summary") or tool)),
         "risk_level": str(action.get("risk_level") or "confirm"),
         "requires_confirmation": requires_confirmation,
-        "status": "waiting_confirmation" if requires_confirmation else "pending",
+        "status": "pending",
         "attempts": 0,
         "started_at": None,
         "completed_at": None,
@@ -256,59 +237,6 @@ def _append_event_row(
     )
 
 
-def _run_status_from_steps(
-    steps: list[Any], *, fallback: str = "executing"
-) -> str:
-    statuses = {
-        str(step.get("status") or "")
-        for step in steps
-        if isinstance(step, dict)
-    }
-    if "uncertain" in statuses:
-        return "needs_reconciliation"
-    if "failed" in statuses:
-        return "failed"
-    if "waiting_confirmation" in statuses:
-        return "waiting_confirmation"
-    if statuses.intersection({"pending", "executing"}):
-        return "executing"
-    if statuses and statuses.issubset({"completed", "rejected"}):
-        return "completed"
-    return fallback
-
-
-def _preserve_rejected_steps(
-    current_steps: list[Any], incoming_steps: list[Any]
-) -> tuple[list[Any], bool]:
-    """Keep persisted user rejections immutable across stale whole-run saves."""
-    rejected = [
-        (index, step)
-        for index, step in enumerate(current_steps)
-        if isinstance(step, dict) and step.get("status") == "rejected"
-    ]
-    if not rejected:
-        return incoming_steps, False
-
-    merged = [dict(step) if isinstance(step, dict) else step for step in incoming_steps]
-    found_ids: set[str] = set()
-    for index, current in rejected:
-        action_id = str(current.get("id") or "")
-        match = next(
-            (
-                position
-                for position, step in enumerate(merged)
-                if isinstance(step, dict) and str(step.get("id") or "") == action_id
-            ),
-            None,
-        )
-        if match is None:
-            merged.insert(min(index, len(merged)), dict(current))
-        else:
-            merged[match] = dict(current)
-        found_ids.add(action_id)
-    return merged, bool(found_ids)
-
-
 async def create_agent_run(
     *,
     conversation_id: str,
@@ -331,15 +259,7 @@ async def create_agent_run(
         raise ValueError("Invalid Agent Run id")
     for step in steps:
         step["idempotency_key"] = f"{run_id}:{step['id']}"
-    status = (
-        "planning"
-        if not steps
-        else (
-            "waiting_confirmation"
-            if any(step["requires_confirmation"] for step in steps)
-            else "executing"
-        )
-    )
+    status = "planning" if not steps else "executing"
 
     async with async_session() as db:
         task = await _resolve_task(
@@ -414,23 +334,9 @@ async def save_agent_run(
     event_type: str = "",
     event_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    from app.services.proposal_plan_store import list_plans
-    try:
-        # Cross-store read for status projection only: an unreachable plan
-        # store must never block persisting the run itself. Fail safe to
-        # "no plans bound to this run" and let the run's own step statuses
-        # decide the next status.
-        plans = await list_plans(run_id=str(run.get("id") or ""))
-    except Exception:
-        plans = []
     cleaned = _clean_run({**run, "updated_at": _now_iso()})
     if cleaned is None:
         raise ValueError("Invalid agent run")
-    protected_terminal_statuses = {
-        "failed",
-        "needs_reconciliation",
-        "cancelled",
-    }
     for _ in range(3):
         async with async_session() as db:
             row = (
@@ -443,29 +349,10 @@ async def save_agent_run(
             if row is None:
                 raise ValueError(f"Agent Run {cleaned['id']} does not exist")
             previous_status = row.status
-            previous_failure_reason = row.failure_reason
             previous_event_sequence = int(row.event_sequence or 0)
             previous_steps = row.steps_json if isinstance(row.steps_json, list) else []
-            merged_steps, has_rejected_steps = _preserve_rejected_steps(
-                previous_steps, cleaned["steps"]
-            )
-            if not has_rejected_steps:
-                next_status = cleaned["status"]
-            elif previous_status in protected_terminal_statuses:
-                next_status = previous_status
-            elif cleaned["status"] in protected_terminal_statuses:
-                next_status = cleaned["status"]
-            else:
-                next_status = _run_status_from_steps(
-                    merged_steps, fallback=cleaned["status"]
-                )
-            failure_reason = (
-                previous_failure_reason
-                if has_rejected_steps
-                and previous_status in protected_terminal_statuses
-                and not cleaned["failure_reason"]
-                else cleaned["failure_reason"]
-            )
+            next_status = cleaned["status"]
+            failure_reason = cleaned["failure_reason"]
             # Lifecycle rows and the Run snapshot commit together. The full
             # steps/status predicate makes a save retry if a concurrent action
             # decision changed the Run after this snapshot was read.
@@ -477,7 +364,6 @@ async def save_agent_run(
                     "completed": "run.completed",
                     "failed": "run.failed",
                     "cancelled": "run.cancelled",
-                    "needs_reconciliation": "run.failed",
                 }[next_status]
                 pending_events.append(
                     (
@@ -487,7 +373,7 @@ async def save_agent_run(
                 )
             values = {
                 "status": next_status,
-                "steps_json": merged_steps,
+                "steps_json": cleaned["steps"],
                 "exit_criteria_json": cleaned["exit_criteria"],
                 "llm_runtime_json": cleaned["llm_runtime"],
                 "recovery_cursor_json": cleaned["recovery_cursor"],
@@ -496,11 +382,6 @@ async def save_agent_run(
                 "event_sequence": AgentRunRecord.event_sequence
                 + len(pending_events),
             }
-            if plans:
-                # Run steps are historical evidence only. New node authorization
-                # and execution state never get written back through this save.
-                values["steps_json"] = previous_steps
-                values["status"] = _plan_run_status(plans, cleaned["status"])
             new_sequence = (
                 await db.execute(
                     sql_update(AgentRunRecord)
@@ -546,77 +427,6 @@ async def load_agent_run(run_id: str | None) -> dict[str, Any] | None:
             )
         ).scalar_one_or_none()
         result = _row_to_run(row) if row is not None else None
-    return await _attach_plan_projection(result) if result is not None else None
-
-
-def _plan_run_status(plans: list[dict[str, Any]], fallback: str) -> str:
-    if fallback in {"waiting_input", "waiting_user_input"}:
-        return fallback
-    if fallback == "cancelled":
-        return "cancelled"
-    groups = [group for plan in plans if plan.get("status") != "replaced" for group in plan.get("groups") or []]
-    if any(group.get("status") == "needs_reconciliation" for group in groups):
-        return "needs_reconciliation"
-    if any(group.get("status") == "executing" for group in groups):
-        return "executing"
-    if any(group.get("status") in {"pending", "approved", "paused", "stale"} for group in groups):
-        return "waiting_confirmation"
-    # Committed plan does not prove the reasoning task completed.
-    return fallback
-
-
-async def _attach_plan_projection(run: dict[str, Any]) -> dict[str, Any]:
-    from app.services.proposal_plan_store import list_plans
-    try:
-        # Cross-store projection read: an unreachable plan store must never
-        # break loading the run itself; fall back to the unprojected run.
-        plans = await list_plans(run_id=run["id"])
-    except Exception:
-        plans = []
-    if not plans:
-        from app.services.agentic_interaction_policy import run_interaction_state
-        legacy = (run.get("recovery_cursor") or {}).get("proposal_v2_legacy") or {}
-        if any(isinstance(item, dict) and item.get("classification") == "needs_review" for item in legacy.values()):
-            run["legacy_review_required"] = True
-            run["proposal_authority"] = "proposal-plan-v2"
-            run["steps"] = [{**step, "status": "blocked", "projection_only": True} for step in run.get("steps") or []]
-            run["failure_reason"] = proposal_execution_blocker(run)
-        run["interaction_state"] = run_interaction_state(run)
-        return run
-    from app.services.agentic_interaction_policy import project_current_sources, run_interaction_state
-    for plan in plans:
-        await project_current_sources(plan)
-    steps = []
-    for plan in plans:
-        if plan.get("status") == "replaced":
-            continue
-        for group in plan.get("groups") or []:
-            for node in group.get("nodes") or []:
-                status = node["status"]
-                if status == "pending":
-                    status = "waiting_confirmation" if group["status"] == "pending" else "blocked"
-                steps.append({"id": node["id"], "tool": node["operation"], "args": node["args"],
-                              "summary": node["summary"], "status": status, "idempotency_key": node["idempotency_key"],
-                              "requires_confirmation": group["status"] == "pending", "plan_id": plan["id"],
-                              "group_id": group["id"], "group_digest": group["digest"], "projection_only": True,
-                              "result": node.get("result"), "error": node.get("error")})
-    run.update(steps=steps, proposal_plans=plans, proposal_authority="proposal-plan-v2", status=_plan_run_status(plans, run["status"]))
-    run["interaction_state"] = run_interaction_state(run)
-    if run.get("mode") == "ui_operation_request" and run["status"] not in {"cancelled", "needs_reconciliation"}:
-        groups = [group for plan in plans if plan.get("status") != "replaced" for group in plan.get("groups") or []]
-        if groups and all(group["status"] in {"completed", "rejected", "blocked"} for group in groups):
-            run["status"] = "completed" if any(group["status"] == "completed" for group in groups) else "failed"
-    return run
-
-
-async def sync_proposal_plan_state(run_id: str, *, event_type: str = "proposal.plan_ready",
-                                   payload: dict[str, Any] | None = None) -> dict[str, Any]:
-    run = await load_agent_run(run_id)
-    if run is None:
-        raise ValueError("Agent Run does not exist")
-    await save_agent_run(run, event_type=event_type, event_payload=payload or {})
-    result = await load_agent_run(run_id)
-    assert result is not None
     return result
 
 
@@ -697,19 +507,7 @@ async def list_agent_run_events(
 async def recover_interrupted_agent_runs() -> dict[str, int]:
     """Classify non-terminal Runs after process restart without replaying work."""
 
-    from app.services.proposal_plan_store import (
-        migrate_legacy_proposals,
-        recover_executing_nodes,
-        list_plans,
-    )
-    # These only classify/control proposal state. They never invoke business
-    # Operations or a reasoning engine during migration/startup.
-    await migrate_legacy_proposals()
-    await recover_executing_nodes()
-    plan_run_ids = {plan["run_id"] for plan in await list_plans()}
-
     recovered = 0
-    reconciliation_required = 0
     async with async_session() as db:
         rows = (
             await db.execute(
@@ -719,20 +517,6 @@ async def recover_interrupted_agent_runs() -> dict[str, int]:
             )
         ).scalars().all()
         for row in rows:
-            if row.run_id in plan_run_ids:
-                plans = await list_plans(run_id=row.run_id)
-                previous_status = row.status
-                row.status = _plan_run_status(plans, "interrupted")
-                if row.status == "needs_reconciliation":
-                    row.failure_reason = "Run has an interrupted Operation with unknown effects; automatic replay is forbidden until reconciliation."
-                    db.add(_append_event_row(row, event_type="recovery.reconciliation_required",
-                        payload={"previous_status": previous_status, "reason": row.failure_reason, "authority": "proposal-plan-v2"}))
-                    db.add(_append_event_row(row, event_type="run.failed",
-                        payload={"status": row.status, "failure_reason": row.failure_reason}))
-                    reconciliation_required += 1
-                else:
-                    recovered += 1
-                continue
             runtime = (
                 row.llm_runtime_json
                 if isinstance(row.llm_runtime_json, dict)
@@ -740,14 +524,6 @@ async def recover_interrupted_agent_runs() -> dict[str, int]:
             )
             if runtime.get("runtime") not in {"pi_sdk_worker", "python_agent"}:
                 continue
-            steps = [
-                dict(item)
-                for item in (row.steps_json or [])
-                if isinstance(item, dict)
-            ]
-            uncertain = any(
-                step.get("status") == "executing" for step in steps
-            )
             previous_status = row.status
             row.recovery_cursor_json = {
                 **(
@@ -760,56 +536,25 @@ async def recover_interrupted_agent_runs() -> dict[str, int]:
                 "last_event_sequence": int(row.event_sequence or 0),
                 "recovered_at": _now_iso(),
             }
-            if uncertain:
-                row.status = "needs_reconciliation"
-                row.failure_reason = (
-                    "Run was interrupted while a confirmed Operation was executing; "
-                    "automatic replay is forbidden."
+            row.status = "interrupted"
+            row.failure_reason = ""
+            recovered += 1
+            db.add(
+                _append_event_row(
+                    row,
+                    event_type="recovery.interrupted",
+                    payload={
+                        "previous_status": previous_status,
+                        "resume_available": runtime.get("runtime") == "python_agent" and bool(runtime.get("session_file")),
+                        "legacy_session_preserved": runtime.get("runtime") == "pi_sdk_worker",
+                    },
                 )
-                reconciliation_required += 1
-                db.add(
-                    _append_event_row(
-                        row,
-                        event_type="recovery.reconciliation_required",
-                        payload={
-                            "previous_status": previous_status,
-                            "reason": row.failure_reason,
-                        },
-                    )
-                )
-                db.add(
-                    _append_event_row(
-                        row,
-                        event_type="run.failed",
-                        payload={
-                            "status": row.status,
-                            "failure_reason": row.failure_reason,
-                        },
-                    )
-                )
-            else:
-                row.status = "interrupted"
-                row.failure_reason = ""
-                recovered += 1
-                db.add(
-                    _append_event_row(
-                        row,
-                        event_type="recovery.interrupted",
-                        payload={
-                            "previous_status": previous_status,
-                            "resume_available": runtime.get("runtime") == "python_agent" and bool(runtime.get("session_file")),
-                            "legacy_session_preserved": runtime.get("runtime") == "pi_sdk_worker",
-                        },
-                    )
-                )
+            )
             # Keep the transport descriptor aligned with the recovered Run
             # lifecycle while preserving provider/model/session metadata.
             row.llm_runtime_json = {**runtime, "status": row.status}
         await db.commit()
-    return {
-        "interrupted": recovered,
-        "needs_reconciliation": reconciliation_required,
-    }
+    return {"interrupted": recovered}
 
 
 async def append_agent_run_event(
@@ -846,74 +591,6 @@ async def append_agent_run_event(
         }
 
 
-async def propose_agent_run_action(run_id: str, *, operation: str, args: dict[str, Any], summary: str) -> dict[str, Any]:
-    """Legacy write interface retired; steps are read-only history/projections."""
-    raise ValueError("Operation-level proposal writes are retired; prepare and review a Proposal Plan")
-
-
-async def reject_agent_run_action(run_id: str, *, action_id: str | None = None) -> dict[str, Any]:
-    """Legacy step-backed rejection cannot mint a ConfirmationDecision."""
-    return {"error": "Legacy action decisions are retired; reject the displayed ConfirmationGroup in Desktop"}
-
-
-def pending_actions_for_run(run: dict[str, Any]) -> list[dict[str, Any]]:
-    actions: list[dict[str, Any]] = []
-    for step in run.get("steps") or []:
-        if not isinstance(step, dict) or step.get("status") != "waiting_confirmation":
-            continue
-        actions.append(
-            {
-                "id": str(step.get("id") or ""),
-                "tool": str(step.get("tool") or ""),
-                "args": (
-                    step.get("args")
-                    if isinstance(step.get("args"), dict)
-                    else {}
-                ),
-                "summary": str(step.get("summary") or step.get("tool") or ""),
-                "risk_level": str(step.get("risk_level") or "confirm"),
-                "plan_id": step.get("plan_id"),
-                "group_id": step.get("group_id"),
-                "group_digest": step.get("group_digest"),
-                "projection_only": bool(step.get("projection_only")),
-                "requires_confirmation": bool(
-                    step.get("requires_confirmation", True)
-                ),
-            }
-        )
-    return [action for action in actions if action["id"] and action["tool"]]
-
-
-def mark_run_actions_executed(
-    run: dict[str, Any],
-    tool_calls: list[dict[str, Any]],
-) -> dict[str, Any]:
-    calls_by_id = {
-        str(call.get("action_id") or ""): call
-        for call in tool_calls
-        if isinstance(call, dict) and str(call.get("action_id") or "")
-    }
-    for step in run.get("steps") or []:
-        if not isinstance(step, dict):
-            continue
-        call = calls_by_id.get(str(step.get("id") or ""))
-        if call is None:
-            continue
-        result = call.get("result")
-        has_error = isinstance(result, dict) and bool(result.get("error"))
-        step["status"] = "failed" if has_error else "completed"
-        step["result"] = safe_result_preview(result)
-        step["error"] = (
-            str(result.get("error"))
-            if has_error and isinstance(result, dict)
-            else None
-        )
-    run["status"] = _run_status_from_steps(
-        run.get("steps") or [], fallback="executing"
-    )
-    return run
-
-
 # ---------------------------------------------------------------------------
 # Structured Ask (AgentInputRequest) persistence.
 #
@@ -935,9 +612,8 @@ def _input_request_signature(question: str, options: list[Any]) -> str:
 def canonical_json_digest(value: Any) -> str:
     """Contract canonical JSON digest — delegated to the Domain implementation."""
 
-    from app.services.proposal_plan_builder import canonical_digest
-
-    return canonical_digest(value)
+    payload = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _input_request_view(row: AgentInputRequest) -> dict[str, Any]:
@@ -1154,9 +830,6 @@ async def create_agent_input_request(
                 answer_digest="",
             )
             db.add(request)
-            # Persist the wait with the question so a restart between the
-            # tool result and host projection cannot hide the unanswered Ask.
-            row.status = "waiting_input"
             try:
                 await db.commit()
             except Exception:

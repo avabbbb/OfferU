@@ -1,8 +1,8 @@
 """Project the Operation Registry into a run-scoped Bridge grant.
 
-Reads execute inline. Protected operations stage an exact singleton Plan, and
-the active Agent may read receipts but never approve its own Plan. Native UI
-approval remains the only decision source.
+Reads execute inline. Writes go through the ActionGate: ordinary writes run
+and land on the timeline, irreversible ones are queued for the user to confirm
+in the OfferU UI. The Agent can never confirm its own queued action.
 """
 
 from __future__ import annotations
@@ -11,9 +11,7 @@ from typing import Any
 
 from app.ops import OPERATIONS, execute_operation, get_operation_schema
 from app.services.agent_bridge.errors import BridgeProtocolError
-from app.services.operation_projection import (
-    execute_or_propose_operation,
-)
+from app.services.action_gate import list_actions, run_gated_operation
 
 # Read-only career context grant. Plan readback is scoped by the attached Run.
 GRANTED_READ_OPERATIONS: frozenset[str] = frozenset(
@@ -30,16 +28,12 @@ GRANTED_READ_OPERATIONS: frozenset[str] = frozenset(
         "list_memory_inbox",
         "get_profile_evolution_report",
         "get_current_view",
-        "get_proposal_plan",
-        "list_proposal_plans",
         "list_email_accounts",
         "list_email_sync_runs",
     }
 )
 
-# The Bridge may stage only the Plan tool and the legacy approval tracer.
-# Every protected effect remains blocked until the native UI decides its group.
-GRANTED_MUTATION_OPERATIONS: frozenset[str] = frozenset({"triage_job", "prepare_proposal_plan"})
+GRANTED_MUTATION_OPERATIONS: frozenset[str] = frozenset({"triage_job"})
 
 BRIDGE_SURFACE = "bridge"
 
@@ -49,7 +43,7 @@ def _deny(code: str, message: str, details: dict[str, Any] | None = None) -> Bri
 
 
 def granted_operations() -> list[dict[str, Any]]:
-    """Registry schemas for read grants and L1 Plan preparation."""
+    """Registry schemas for read grants and preparation-only writes."""
     schemas = []
     names = set(GRANTED_READ_OPERATIONS) | {
         name for name in GRANTED_MUTATION_OPERATIONS
@@ -67,6 +61,33 @@ def granted_operations() -> list[dict[str, Any]]:
     return schemas
 
 
+def _gated_reply(result: dict[str, Any], operation: str) -> dict[str, Any]:
+    if not result.get("ok"):
+        errors = [str(item) for item in result.get("errors") or []]
+        raise _deny(
+            "schema_invalid"
+            if any("缺少必填参数" in e or "未知参数" in e for e in errors)
+            else "internal_error",
+            "; ".join(errors) or f"{operation} failed",
+            {"operation": operation},
+        )
+    outputs = result.get("outputs") if isinstance(result.get("outputs"), dict) else {}
+    if outputs.get("executed") is False and outputs.get("pending_action"):
+        return {
+            "completed": False,
+            "requiresConfirmation": True,
+            "pendingAction": outputs["pending_action"],
+            "message": outputs.get("message") or "",
+            "warnings": list(result.get("warnings") or []),
+        }
+    return {
+        "completed": True,
+        "value": outputs,
+        "operationVersion": result.get("operation_version"),
+        "warnings": list(result.get("warnings") or []),
+    }
+
+
 async def invoke_operation(
     *,
     operation: str,
@@ -75,9 +96,7 @@ async def invoke_operation(
 ) -> dict[str, Any]:
     """Execute one granted Operation through the Registry.
 
-    Reads execute inline; granted mutations persist a proposal
-    (`requires_confirmation`) and return its identity — the side effect has
-    NOT run yet. The final result arrives only after an independent approval.
+    Reads execute inline; writes go through the ActionGate.
     """
     op = OPERATIONS.get(operation)
     if operation not in GRANTED_READ_OPERATIONS | GRANTED_MUTATION_OPERATIONS or op is None:
@@ -109,44 +128,11 @@ async def invoke_operation(
     allowed_tools = set((run.get("skill_snapshot") or {}).get("allowed_tools") or [])
     if operation not in allowed_tools:
         raise _deny("grant_denied", "Operation is outside the attached Run Skill scope", {"operation": operation})
-    if operation == "get_proposal_plan":
-        from app.services.proposal_plan_store import get_plan
-
-        plan = await get_plan(str(arguments.get("plan_id") or ""))
-        if plan is None or str(plan.get("run_id") or "") != run_id:
-            raise _deny("grant_denied", "Plan readback is limited to the attached Run", {"operation": operation})
-    elif operation == "list_proposal_plans":
-        requested_run_id = str(arguments.get("run_id") or "")
-        if requested_run_id and requested_run_id != run_id:
-            raise _deny("grant_denied", "Plan readback is limited to the attached Run", {"operation": operation})
-        arguments = {**arguments, "run_id": run_id}
     if operation in GRANTED_MUTATION_OPERATIONS:
-        projection = await execute_or_propose_operation(
+        return _gated_reply(
+            await run_gated_operation(operation, arguments, surface=BRIDGE_SURFACE, run_id=run_id),
             operation,
-            arguments,
-            surface=BRIDGE_SURFACE,
-            run_id=run_id,
         )
-        if not projection.get("ok"):
-            errors = [str(item) for item in projection.get("errors") or []]
-            raise _deny(
-                "schema_invalid"
-                if any("缺少必填参数" in e or "未知参数" in e for e in errors)
-                else "internal_error",
-                "; ".join(errors) or f"{operation} failed",
-                {"operation": operation},
-            )
-        outputs = projection.get("outputs") if isinstance(projection.get("outputs"), dict) else {}
-        proposal = outputs.get("proposal") if isinstance(outputs.get("proposal"), dict) else {}
-        plan = outputs.get("plan") if isinstance(outputs.get("plan"), dict) else {}
-        return {
-            "completed": False,
-            "requiresConfirmation": True,
-            "plan": plan,
-            "planId": str(outputs.get("plan_id") or plan.get("id") or proposal.get("plan_id") or ""),
-            "proposal": proposal or None,
-            "warnings": list(projection.get("warnings") or []),
-        }
     envelope = await execute_operation(
         operation,
         arguments,
@@ -182,78 +168,26 @@ async def invoke_workspace_delegate(
     operation = "delegate_career_task"
     if OPERATIONS.get(operation) is None:
         raise _deny("internal_error", "delegate_career_task is not registered")
-    projection = await execute_or_propose_operation(
+    return _gated_reply(
+        await run_gated_operation(operation, arguments, surface=BRIDGE_SURFACE, run_id=run_id),
         operation,
-        arguments,
-        surface=BRIDGE_SURFACE,
-        run_id=run_id,
     )
-    if not projection.get("ok"):
-        errors = [str(item) for item in projection.get("errors") or []]
-        raise _deny(
-            "schema_invalid"
-            if any("缺少必填参数" in error or "未知参数" in error for error in errors)
-            else "internal_error",
-            "; ".join(errors) or "workspace delegation failed",
-            {"operation": operation},
-        )
-    outputs = projection.get("outputs") if isinstance(projection.get("outputs"), dict) else {}
-    proposal = outputs.get("proposal") if isinstance(outputs.get("proposal"), dict) else {}
-    plan = outputs.get("plan") if isinstance(outputs.get("plan"), dict) else {}
-    if proposal or plan:
-        return {
-            "completed": False,
-            "requiresConfirmation": True,
-            "plan": plan,
-            "planId": str(outputs.get("plan_id") or plan.get("id") or proposal.get("plan_id") or ""),
-            "proposal": proposal or None,
-            "warnings": list(projection.get("warnings") or []),
-        }
-    return {
-        "completed": True,
-        "value": outputs,
-        "operationVersion": projection.get("operation_version"),
-        "warnings": list(projection.get("warnings") or []),
-    }
 
 
 async def load_proposal_state(*, run_id: str) -> dict[str, Any]:
-    """Read Plan receipts for an attached Run or one of its Plan IDs."""
+    """The attached Run's status and its timeline / pending actions."""
     from app.services.agent_run_state import load_agent_run
-    from app.services.proposal_plan_continuation import continuation_view, plan_review_view
-    from app.services.agentic_interaction_policy import project_current_sources
-    from app.services.proposal_plan_store import get_plan, list_continuations, list_plans
 
-    selected_plan = await get_plan(run_id) if str(run_id).startswith("plan_") else None
-    canonical_run_id = str(selected_plan.get("run_id") or "") if selected_plan else run_id
-    run = await load_agent_run(canonical_run_id)
+    run = await load_agent_run(run_id)
     if run is None:
         raise _deny("run_not_found", f"Agent Run {run_id} does not exist", {"runId": run_id})
-    plans = [selected_plan] if selected_plan else await list_plans(run_id=canonical_run_id)
-    continuations = await list_continuations(run_id=canonical_run_id)
-    steps = [
-        {
-            "actionId": str(step.get("id") or ""),
-            "operation": str(step.get("tool") or ""),
-            "args": step.get("args") or {},
-            "status": str(step.get("status") or ""),
-            "summary": str(step.get("summary") or ""),
-        }
-        for step in (run.get("steps") or [])
-        if isinstance(step, dict)
-    ]
-    pending = [s for s in steps if s["status"] == "waiting_confirmation"]
+    actions = await list_actions(run_id=run_id)
     return {
         "runId": str(run.get("id") or run_id),
         "status": str(run.get("status") or ""),
         "goal": str(run.get("goal") or ""),
-        "pending": pending,
-        "steps": steps,
-        "proposalAuthority": str(run.get("proposal_authority") or ""),
-        "legacyReviewRequired": bool(run.get("legacy_review_required")),
-        "plans": [await project_current_sources(plan_review_view(plan, continuations=continuations))
-                  for plan in plans],
-        "continuations": [continuation_view(item) for item in continuations],
+        "pending": [item for item in actions if item["status"] == "pending"],
+        "actions": actions,
     }
 
 

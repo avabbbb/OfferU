@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import re
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
@@ -19,9 +18,7 @@ from app.services.agent_run_state import (
     expire_pending_agent_input_requests,
     list_agent_run_events,
     list_pending_agent_input_requests,
-    load_agent_input_request,
     load_agent_run,
-    pending_actions_for_run,
     safe_result_preview,
     save_agent_run,
 )
@@ -37,11 +34,7 @@ from app.services.main_agent_guardian import (
     evaluate_main_agent_guardian,
     guardian_prompt_advice,
 )
-from app.services.operation_projection import (
-    confirm_operation_proposal,
-    execute_or_propose_operation,
-    reject_operation_proposal,
-)
+from app.services.action_gate import list_actions, run_gated_operation, take_decisions_for_agent
 from app.services.embedded_agent_worker import (
     PROTOCOL_VERSION,
     EmbeddedAgentWorker,
@@ -71,6 +64,7 @@ _EVENT_TYPES = {
 }
 _SESSION_DIRECTORY = runtime_data_path("python_agent_sessions")
 StreamListener = Callable[[dict[str, Any]], Awaitable[None]]
+_CONTINUATION_LOCKS: dict[str, asyncio.Lock] = {}
 
 def resolve_embedded_provider_config(
     settings: Settings | None = None,
@@ -233,14 +227,12 @@ def _system_prompt(skill: AgentSkill, snapshot: dict[str, Any] | None = None) ->
         "You are OfferU's built-in task Agent. "
         "OfferU Runtime owns career truth, Registry validation, execution, independent approval and audit. "
         "Treat Operation results and receipts as the only source of truth; state unknowns plainly. "
-        "Use prepare_proposal_plan to seal multiple already-prepared protected changes into explicit semantic groups; "
-        "the Plan stages review only and never executes its nodes. Use one group for one coherent user decision, "
-        "without forcing an arbitrary group count. For resume adoption, prefer one review_resume_proposal_items "
-        "intent containing the complete displayed change_ids; do not create one operation per bullet. "
-        "A direct protected operation is only a compatibility singleton Plan. Never confirm a Plan yourself. "
-        "After staging, stop and wait for independent UI approval and durable execution receipts before continuing. "
+        "Writes run immediately and show up on the user's timeline, where resume changes can be undone. "
+        "For resume adoption, prefer one review_resume_proposal_items call with all displayed change_ids. "
+        "Irreversible actions (sending, wiping data, marking applied / changing application status, deleting) "
+        "are queued for the user to confirm: the result says executed=false. Do not wait or retry; tell the user "
+        "it is waiting for their confirmation and carry on with the rest. You will be told their decision next turn. "
         "Use request_user_input when a preference or trade-off only the user can decide is missing. "
-        "Ask answers are user intent only; they never approve a Plan, authorize a protected mutation, or change Career Truth. "
         f"Active Skill: {skill.name} ({skill.id}, version {skill.version}). "
         f"Skill purpose: {skill.description}"
     )
@@ -405,8 +397,6 @@ async def start_embedded_agent_run(
     requested_run_id: str = "",
     stream_listener: StreamListener | None = None,
     continuation: bool = False,
-    continuation_id: str = "",
-    delivery_id: str = "",
 ) -> dict[str, Any]:
     goal = str(message or "").strip()
     if not goal and not resume_run_id:
@@ -419,17 +409,7 @@ async def start_embedded_agent_run(
             raise ValueError(f"Agent Run {resume_run_id} 不存在。")
         if (run.get("llm_runtime") or {}).get("runtime") != "python_agent":
             raise ValueError("旧 Pi 会话已保留为历史，不能由新内核自动重放；请开启新的任务。")
-        continuation_statuses = {"completed", "interrupted", "waiting_confirmation", "waiting_input"}
-        if continuation and run.get("status") == "failed":
-            from app.services.proposal_plan_store import list_continuations
-
-            retryable = any(
-                str(item.get("id") or "") == continuation_id
-                and str(item.get("status") or "") == "delivering"
-                for item in await list_continuations(run_id=resume_run_id)
-            )
-            if retryable:
-                continuation_statuses.add("failed")
+        continuation_statuses = {"completed", "interrupted", "failed"}
         allowed_resume_statuses = continuation_statuses if continuation else {"interrupted"}
         if run.get("status") not in allowed_resume_statuses:
             raise ValueError(
@@ -467,7 +447,7 @@ async def start_embedded_agent_run(
             actions=[],
             exit_criteria=[
                 "the user goal is answered from Operation evidence",
-                "every mutation is either confirmed exactly once or remains visibly proposed",
+                "every irreversible write is either confirmed by the user or visibly waiting",
             ],
             llm_runtime={
                 "runtime": "python_agent",
@@ -713,8 +693,7 @@ async def start_embedded_agent_run(
                 },
             )
 
-        # Ask is a durable interaction record, separate from Proposal Plan
-        # approval. The post-turn resolver reloads both sources of truth.
+        # Ask is a durable interaction record; the post-turn resolver reloads it.
         turn_state: dict[str, Any] = {"input_request": None}
 
         async def run_operation(
@@ -750,39 +729,15 @@ async def start_embedded_agent_run(
             started_payload = {"operation": operation_name, "args": inputs}
             await persist_and_publish("operation.started", started_payload)
             with set_operation_run_context(run_id):
-                result = await execute_or_propose_operation(
+                result = await run_gated_operation(
                     operation_name,
                     inputs,
                     surface="embedded",
                     run_id=run_id,
-                    allowed_operations=skill.allowed_tools,
                 )
             outputs = result.get("outputs") if isinstance(result.get("outputs"), dict) else {}
-            plan = outputs.get("plan") if isinstance(outputs.get("plan"), dict) else None
-            plan_id = str(outputs.get("plan_id") or (plan or {}).get("id") or "")
-            if (
-                result.get("ok")
-                and outputs.get("executed") is False
-                and outputs.get("requires_confirmation") is True
-                and plan_id
-            ):
-                group_summaries = [
-                    {"id": group.get("id"), "title": group.get("title"), "summary": group.get("summary")}
-                    for group in (plan or {}).get("groups") or []
-                ]
-                payload = {
-                    "plan_id": plan_id,
-                    "plan_digest": (plan or {}).get("digest") or outputs.get("plan_digest"),
-                    "group_summaries": group_summaries,
-                }
-                await publish("proposal.plan_ready", payload)
-                latest = await load_agent_run(run_id)
-                if latest is not None:
-                    await publish(
-                        "stream.cursor",
-                        {"cursor_for": "proposal.plan_ready"},
-                        sequence=int(latest.get("event_sequence") or 0),
-                    )
+            if outputs.get("executed") is False and outputs.get("pending_action"):
+                await persist_and_publish("action.pending", {"action": outputs["pending_action"]})
             completed_type = (
                 "operation.completed"
                 if result.get("ok")
@@ -801,7 +756,7 @@ async def start_embedded_agent_run(
 
             Ask is collaboration about preferences/strategy — it writes no
             Career data and authorizes no mutation. Persisting the request
-            first means a crash still leaves a resumable waiting_input run.
+            first means a crash still leaves the question visible.
             """
 
             arguments = args if isinstance(args, dict) else {}
@@ -839,7 +794,7 @@ async def start_embedded_agent_run(
                 "ok": True,
                 "terminate": True,
                 "input_request": request,
-                "message": "提问已持久化，Run 暂停为 waiting_input，等待用户回答后自动续跑。",
+                "message": "提问已持久化；本轮结束，用户回答后会作为新一轮继续。",
             }
 
         host_tools = [
@@ -897,7 +852,6 @@ async def start_embedded_agent_run(
             session_directory=str(_SESSION_DIRECTORY),
             session_file=resume_session_file,
             host_tools=host_tools,
-            pending_proposals=list(run.get("proposal_plans") or []),
         )
         current = await load_agent_run(run_id)
         assert current is not None
@@ -920,58 +874,36 @@ async def start_embedded_agent_run(
             if resume_run_id and not continuation
             else _prompt_with_context(goal, context_messages)
         )
-        prompt_message = (
-            f"{prompt_message}\n\n{guardian_prompt_advice(guardian_result)}"
+        decisions = await take_decisions_for_agent(
+            run_id, str(run.get("conversation_id") or "")
+        )
+        prompt_message = "\n\n".join(
+            part for part in (decisions, prompt_message, guardian_prompt_advice(guardian_result)) if part
         )
         response = await active_worker.prompt(
             run_id=run_id,
             message=prompt_message,
-            delivery_id=delivery_id,
         )
         await flush_delta_buffer()
         assistant_message = str(response.get("assistant_message") or "").strip()
         current = await load_agent_run(run_id)
         assert current is not None
-        pending_actions = pending_actions_for_run(current)
-        proposal_plans = list(current.get("proposal_plans") or [])
-        plan_groups = [
-            group
-            for plan in proposal_plans
-            if isinstance(plan, dict) and plan.get("status") != "replaced"
-            for group in plan.get("groups") or []
-            if isinstance(group, dict)
-        ]
-        pending_plan = any(
-            group.get("status") in {"pending", "approved", "executing", "paused", "stale"}
-            for group in plan_groups
-        )
-        needs_reconciliation = any(
-            group.get("status") == "needs_reconciliation" for group in plan_groups
-        )
-        # Reload durable Ask state rather than trusting the in-memory turn flag;
-        # a crash after persistence must still leave the question visible.
+        pending_actions = await list_actions(run_id=run_id, status="pending")
+        # Reload durable Ask state rather than trusting the in-memory turn flag.
         input_request = turn_state.get("input_request")
         if input_request is None:
             pending_requests = await list_pending_agent_input_requests(run_id)
             input_request = pending_requests[0] if pending_requests else None
-        # 反静默降级：LLM 未返回任何回复且没有待用户处理的事项时，不能当作成功完成。
-        # 否则用户看到空白回复无法区分「正常但无输出」与「LLM 故障」。
-        if (
-            not assistant_message
-            and not pending_actions
-            and not pending_plan
-            and not needs_reconciliation
-            and input_request is None
-        ):
+        if not assistant_message and not pending_actions and input_request is None:
             raise RuntimeError(
-                "主 Agent 未返回任何回复，也没有待确认动作；"
-                "请检查 LLM API Key / 模型 / Base URL 配置是否有效。"
+                "主 Agent 未返回任何回复；请检查 LLM API Key / 模型 / Base URL 配置是否有效。"
             )
-        final_result = dict(current.get("final_result") or {})
+        # The Run never parks: queued confirmations and open questions are
+        # answered later as a new turn on the same session.
         current["final_result"] = {
-            **final_result,
+            **dict(current.get("final_result") or {}),
             "assistant_message": assistant_message,
-            "requires_confirmation": bool(pending_actions or pending_plan),
+            "pending_action_count": len(pending_actions),
             "requires_input": input_request is not None,
             "input_request": input_request,
             "active_skill": _active_skill_summary(skill, current, routing),
@@ -979,43 +911,13 @@ async def start_embedded_agent_run(
             "learning_observation": learning_observation,
             "turn_finished": False,
         }
+        current["status"] = "completed"
+        current = await save_agent_run(current)
         if input_request is not None:
-            current["status"] = "waiting_input"
-            current = await save_agent_run(current)
-            await publish(
-                "run.waiting_input",
-                {"input_request": input_request},
-            )
-        elif needs_reconciliation:
-            current["status"] = "needs_reconciliation"
-            current = await save_agent_run(current)
-            await publish(
-                "run.blocked",
-                {"status": "needs_reconciliation", "proposal_plans": proposal_plans},
-            )
-        elif pending_plan or pending_actions:
-            current["status"] = "waiting_confirmation"
-            current = await save_agent_run(current)
-            await publish(
-                "run.waiting_confirmation",
-                {"pending_actions": pending_actions, "proposal_plans": proposal_plans},
-            )
-        else:
-            current["status"] = "completed"
-            current = await save_agent_run(current)
-            await publish("run.completed", {"status": "completed"})
-            await active_worker.dispose_run(run_id)
-            current = await load_agent_run(run_id) or current
-        if current["status"] in _PARKED_WAITING_STATUSES and active_worker.active_run_id == run_id:
-            # D-1: a Run that waits on the user must not hold the single
-            # embedded worker. Its session file stays on disk; approvals and
-            # answers already resume through continuations, which restart the
-            # worker from that file. Parking lets the user keep chatting.
-            try:
-                await active_worker.dispose_run(run_id)
-            except Exception:
-                pass
-            current = await load_agent_run(run_id) or current
+            await publish("run.waiting_input", {"input_request": input_request})
+        await publish("run.completed", {"status": "completed"})
+        await active_worker.dispose_run(run_id)
+        current = await load_agent_run(run_id) or current
         await persist_and_publish(
             "guardian.reviewed",
             {
@@ -1027,13 +929,7 @@ async def start_embedded_agent_run(
                 ),
             },
         )
-        await persist_and_publish(
-            "run.turn_finished",
-            {
-                "status": current["status"],
-                "requires_confirmation": bool(pending_actions or pending_plan),
-            },
-        )
+        await persist_and_publish("run.turn_finished", {"status": current["status"]})
         current = await load_agent_run(run_id) or current
         current["final_result"] = {
             **(current.get("final_result") or {}),
@@ -1046,7 +942,6 @@ async def start_embedded_agent_run(
             "run": current,
             "assistant_message": assistant_message,
             "pending_actions": pending_actions,
-            "proposal_plans": proposal_plans,
             "input_request": input_request,
             "active_skill": _active_skill_summary(skill, current, routing),
             "guardian": guardian_result,
@@ -1063,7 +958,7 @@ async def start_embedded_agent_run(
             if (cancelled.get("final_result") or {}).get("turn_finished") is not True:
                 await persist_and_publish(
                     "run.turn_finished",
-                    {"status": "cancelled", "requires_confirmation": False},
+                    {"status": "cancelled"},
                 )
                 cancelled = await load_agent_run(run_id) or cancelled
                 cancelled["final_result"] = {
@@ -1109,7 +1004,7 @@ async def start_embedded_agent_run(
         )
         await persist_and_publish(
             "run.turn_finished",
-            {"status": "failed", "requires_confirmation": False},
+            {"status": "failed"},
         )
         failed = await load_agent_run(run_id) or failed
         failed["final_result"] = {
@@ -1285,98 +1180,9 @@ async def answer_agent_input(
     result["continuation"] = continued
     if not continued.get("ok"):
         result["warnings"] = ["回答已持久化；Agent 续跑失败，请查看 Run 的失败原因。"]
-    else:
-        from app.services.proposal_plan_continuation import deliver_continuations
-
-        delivery = await deliver_continuations(run_id)
-        result["run"] = delivery.get("run") or result["run"]
-        result["proposal_continuation"] = delivery
     return result
 
 
-
-
-async def confirm_embedded_agent_action(
-    run_id: str,
-    *,
-    action_id: str,
-    worker: EmbeddedAgentWorker | None = None,
-    authorization_source: str | None = None,
-    plan_digest: str = "",
-    group_digest: str = "",
-    decision_id: str = "",
-) -> dict[str, Any]:
-    del worker  # Kept for provider-call compatibility; only the shared worker resumes Runs.
-    result = await confirm_operation_proposal(
-        run_id,
-        action_id=action_id,
-        surface="agent_runtime_ui",
-        authorization_source=authorization_source,
-        plan_digest=plan_digest,
-        group_digest=group_digest,
-        decision_id=decision_id,
-    )
-    if not result.get("ok"):
-        return result
-    from app.services.proposal_plan_continuation import deliver_continuations
-
-    delivery = await deliver_continuations(run_id)
-    if delivery.get("run") is not None:
-        result["run"] = delivery["run"]
-    result["continuation"] = next(
-        (
-            item
-            for item in delivery.get("continuations") or []
-            if str(item.get("group_id") or "") == str(result.get("group", {}).get("id") or "")
-        ),
-        None,
-    )
-    if int(delivery.get("failed") or 0):
-        result.setdefault("warnings", []).append("用户决定和已提交操作保持成功；Agent续跑失败状态已持久化。")
-    return result
-
-
-async def reject_embedded_agent_action(
-    run_id: str,
-    *,
-    action_id: str,
-    worker: EmbeddedAgentWorker | None = None,
-    authorization_source: str | None = None,
-    plan_digest: str = "",
-    group_digest: str = "",
-    decision_id: str = "",
-) -> dict[str, Any]:
-    del worker
-    result = await reject_operation_proposal(
-        run_id,
-        action_id=action_id,
-        surface="agent_runtime_ui",
-        authorization_source=authorization_source,
-        plan_digest=plan_digest,
-        group_digest=group_digest,
-        decision_id=decision_id,
-    )
-    if not result.get("ok"):
-        return result
-    from app.services.proposal_plan_continuation import deliver_continuations
-
-    delivery = await deliver_continuations(run_id)
-    if delivery.get("run") is not None:
-        result["run"] = delivery["run"]
-    result["continuation"] = next(
-        (
-            item
-            for item in delivery.get("continuations") or []
-            if str(item.get("group_id") or "") == str(result.get("group", {}).get("id") or "")
-        ),
-        None,
-    )
-    if int(delivery.get("failed") or 0):
-        result.setdefault("warnings", []).append("拒绝决定已记录；Agent续跑失败状态已持久化。")
-    return result
-
-
-_PARKED_WAITING_STATUSES = frozenset({"waiting_confirmation", "waiting_input", "waiting_decision"})
 
 
 async def steer_embedded_agent_run(
@@ -1421,7 +1227,7 @@ async def abort_embedded_agent_run(
     run = await load_agent_run(run_id)
     if run is None:
         raise ValueError(f"Agent Run {run_id} 不存在。")
-    if run.get("status") in {"completed", "failed", "cancelled", "needs_reconciliation"}:
+    if run.get("status") in {"completed", "failed", "cancelled"}:
         return {"ok": True, "run": run, "warnings": ["Run 已经结束。"]}
 
     active_worker = worker or get_embedded_agent_worker()
@@ -1443,7 +1249,7 @@ async def abort_embedded_agent_run(
     await append_agent_run_event(
         run_id,
         event_type="run.turn_finished",
-        payload={"status": "cancelled", "requires_confirmation": False},
+        payload={"status": "cancelled"},
     )
     run = await load_agent_run(run_id) or run
     run["final_result"] = {

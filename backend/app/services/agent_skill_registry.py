@@ -36,7 +36,7 @@ def tool_contract_snapshot() -> dict[str, Any]:
         "schema_authority": "operation_registry",
         "truth_authority": "career_runtime",
         "approval_authority": "independent_user",
-        "mutation_path": "execute_or_propose_operation",
+        "mutation_path": "action_gate.run_gated_operation",
         "bootstrap_skill": "connection_bootstrap",
         "bootstrap_operations": ["get_current_view"],
         "default_skill_id": AUTO_SKILL_ID,
@@ -101,10 +101,8 @@ def _skill(
         description=description,
         mode=mode,
         allowed_tools=frozenset(tools) | (
-            frozenset({"prepare_proposal_plan", "get_proposal_plan", "list_proposal_plans"})
-            if status == "native" and id not in {"connection_bootstrap", "connection_probe", "discovery"}
-            else frozenset()
-        ) | (frozenset({"review_resume_proposal_items"}) if id == "tailor_resume" else frozenset()),
+            frozenset({"review_resume_proposal_items"}) if id == "tailor_resume" else frozenset()
+        ),
         featured=featured,
         order=order,
         missing_capabilities=missing,
@@ -122,7 +120,7 @@ _SKILLS = (
     _skill("compare_jobs", "岗位对比", "jobs", "native", "用统一维度比较多个岗位并给出有门槛的优先级。", "skill_assistant", ("get_profile", "list_jobs", "get_job", "batch_triage"), featured=True, order=40, aliases=("jobs", "岗位对比")),
     _skill("scan_jobs", "岗位发现", "jobs", "partial", "检查本地岗位库并形成可审核的筛选建议。", "job_workflow", ("get_profile", "list_pools", "list_jobs", "job_stats", "batch_triage"), featured=True, order=50, missing=("岗位抓取 Operation", "浏览器岗位存活检查"), aliases=("scan", "岗位扫描")),
     _skill("batch_evaluate", "批量评估", "jobs", "native", "用隔离的本地 coding-agent workers 并行评估岗位，并持久化断点与报告。", "skill_assistant", ("get_profile", "list_profile_evidence", "list_jobs", "get_job", "list_coding_agents", "list_batch_job_evaluations", "get_batch_job_evaluation", "start_batch_job_evaluation", "resume_batch_job_evaluation", "batch_triage"), featured=False, order=60, aliases=("batch", "批量")),
-    _skill("tailor_resume", "定制简历", "documents", "native", "由当前 Agent 联网、询问定位与结构，再从已验证档案提交岗位化草稿；按语义分组提交决策计划，独立审核后采用。", "resume_workflow", ("get_profile", "inspect_resume_document", "list_jobs", "get_job", "list_resumes", "get_resume", "list_job_research_runs", "get_job_research", "start_job_research", "resume_job_research", "cancel_job_research", "review_job_research", "list_resume_optimizations", "get_resume_optimization", "prepare_resume_optimization", "review_resume_optimization", "get_resume_preparation_context", "persist_external_resume_proposal", "get_resume_workspace", "ensure_resume_workspace", "propose_resume_decision_plan"), featured=True, order=70, aliases=("resume", "简历", "定制简历")),
+    _skill("tailor_resume", "定制简历", "documents", "native", "由当前 Agent 联网、询问定位与结构，再从已验证档案提交岗位化草稿；在简历画布上逐条对比后采用，可从时间线撤销。", "resume_workflow", ("get_profile", "inspect_resume_document", "list_jobs", "get_job", "list_resumes", "get_resume", "list_job_research_runs", "get_job_research", "start_job_research", "resume_job_research", "cancel_job_research", "review_job_research", "list_resume_optimizations", "get_resume_optimization", "prepare_resume_optimization", "review_resume_optimization", "get_resume_preparation_context", "persist_external_resume_proposal", "get_resume_workspace", "ensure_resume_workspace"), featured=True, order=70, aliases=("resume", "简历", "定制简历")),
     _skill("resume_export", "简历排版与导出", "documents", "native", "读取简历和当前版本，提交版式、照片与校徽修改提案，确认后按编辑器同一排版导出 PDF；不改写正文。", "skill_assistant", ("list_resumes", "get_resume", "update_resume_design", "export_resume_pdf"), featured=False, order=80, aliases=("pdf", "export", "排版", "简历排版")),
     _skill("cover_letter", "求职信", "documents", "native", "基于真实岗位和简历生成并持久化可审阅求职信。", "skill_assistant", ("get_profile", "list_jobs", "get_job", "list_resumes", "get_resume", "list_career_artifacts", "get_career_artifact", "generate_cover_letter", "save_career_artifact"), featured=False, order=90, aliases=("cover", "求职信")),
     _skill("application_email", "申请邮件", "documents", "native", "生成并持久化正式申请邮件草稿，永不发送。", "skill_assistant", ("get_profile", "list_jobs", "get_job", "list_resumes", "get_resume", "get_application_workspace", "list_career_artifacts", "get_career_artifact", "save_career_artifact"), featured=False, order=100, aliases=("email", "申请邮件")),

@@ -11,7 +11,7 @@ import { SHOWCASE, showcaseHandle } from "@/lib/showcase/router";
 import { showcaseChatResponse } from "@/lib/showcase/llm";
 import { resolveApiBase } from "@/lib/apiBase";
 import { safeClientErrorMessage } from "@/lib/safe-error";
-import { decideAgentRuntimeActionInDesktop } from "@/lib/desktop-proposal-decision";
+import { decideAgentActionInDesktop } from "@/lib/desktop-proposal-decision";
 import type { CareerArtifact, CareerDelivery } from "@/lib/api";
 
 export function useJobCareerArtifacts(jobId: number) {
@@ -299,34 +299,18 @@ export async function dismissAutomationInboxItem(itemId: string): Promise<Record
   const projection = payload.outputs && typeof payload.outputs === "object"
     ? payload.outputs
     : payload;
-  const proposal = projection.proposal;
-  if (!projection.requires_confirmation || !proposal?.run_id || !proposal?.action_id) {
-    return projection;
+  return confirmPendingFromClick(projection, "稍后处理未能保存");
+}
+
+/** A button click on an irreversible operation lands in the confirm list; the click itself is the confirmation. */
+async function confirmPendingFromClick(projection: Record<string, any>, fallback: string): Promise<Record<string, any>> {
+  const pending = projection.pending_action;
+  if (projection.executed !== false || !pending?.id || SHOWCASE) return projection;
+  const confirmed = await decideAgentActionInDesktop<Record<string, any>>(String(pending.id), "confirm");
+  if (!confirmed?.ok) {
+    throw new Error(safeClientErrorMessage(confirmed?.errors?.join("；") || confirmed?.result?.errors?.join("；"), fallback));
   }
-  if (!SHOWCASE) {
-    const confirmed = await decideAgentRuntimeActionInDesktop(
-      String(proposal.run_id),
-      String(proposal.action_id),
-      true,
-    );
-    if (!confirmed.ok || confirmed.errors?.length) {
-      throw new Error(confirmed.errors?.join("；") || "稍后处理未能保存");
-    }
-    return confirmed;
-  }
-  const confirmation = await showcaseFetch(
-    `/api/agent/runtime/runs/${encodeURIComponent(String(proposal.run_id))}/confirm`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action_id: String(proposal.action_id) }),
-    },
-  );
-  const confirmed = (await confirmation.json().catch(() => ({}))) as Record<string, any>;
-  if (!confirmation.ok || confirmed.ok === false || confirmed.error || confirmed.detail) {
-    throw new Error(safeClientErrorMessage(confirmed.detail || confirmed.error, `稍后处理失败 (${confirmation.status})`));
-  }
-  return confirmed;
+  return confirmed.result?.outputs || confirmed;
 }
 
 // ---- Hooks ----
@@ -477,40 +461,8 @@ export async function controlCareerTask(
   const projection = payload.outputs && typeof payload.outputs === "object"
     ? payload.outputs
     : payload;
-  const proposal = projection.proposal;
-  if (!projection.requires_confirmation || !proposal?.run_id || !proposal?.action_id) {
-    return payload;
-  }
-
-  if (!SHOWCASE) {
-    try {
-      const confirmed = await decideAgentRuntimeActionInDesktop(
-        String(proposal.run_id),
-        String(proposal.action_id),
-        true,
-      );
-      if (!confirmed.ok || confirmed.errors?.length) {
-        throw new Error(confirmed.errors?.join("；") || `确认任务${action}失败`);
-      }
-      return confirmed;
-    } catch (error) {
-      throw new Error(safeClientErrorMessage(error, `确认任务${action}失败`));
-    }
-  }
-
-  const confirmation = await showcaseFetch(
-    `/api/agent/runtime/runs/${encodeURIComponent(String(proposal.run_id))}/confirm`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action_id: String(proposal.action_id) }),
-    },
-  );
-  const confirmed = (await confirmation.json().catch(() => ({}))) as Record<string, any>;
-  if (!confirmation.ok || confirmed.ok === false || confirmed.error || confirmed.detail) {
-    throw new Error(safeClientErrorMessage(confirmed.detail || confirmed.error, `确认任务${action}失败 (${confirmation.status})`));
-  }
-  return confirmed;
+  if (projection.executed !== false) return payload;
+  return confirmPendingFromClick(projection, `确认任务${action}失败`);
 }
 
 /** 获取系统配置 */

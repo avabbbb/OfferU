@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import copy
-import json
 import os
 import shutil
 from pathlib import Path
@@ -15,15 +14,12 @@ from sqlalchemy.engine import make_url
 
 from app.database import async_session
 from app.models.models import (
-    AgentRunEvent,
-    AgentRunRecord,
     ApplicationTable,
     ApplicationTemplate,
     ApplicationWorkspaceSettings,
     Batch,
     CareerTask,
     InterviewScoringSkill,
-    JobSearchTask,
     Profile,
     ResumeTemplate,
 )
@@ -118,7 +114,6 @@ async def _delete_business_rows(
     *,
     current_run_id: str = "",
     current_task_id: str = "",
-    current_plan_id: str = "",
 ) -> dict[str, int]:
     names, parents = await _managed_table_names(db)
     deletable = [name for name in names if name not in PRESERVED_TABLES]
@@ -136,22 +131,6 @@ async def _delete_business_rows(
         elif name == "job_search_tasks" and current_task_id:
             where = " WHERE \"task_id\" <> :current_task_id"
             params["current_task_id"] = current_task_id
-        elif current_plan_id and name in {
-            "proposal_plans", "proposal_confirmation_groups", "proposal_operation_nodes",
-            "proposal_confirmation_decisions", "proposal_execution_receipts", "proposal_continuations",
-        }:
-            group_ids = "SELECT id FROM proposal_confirmation_groups WHERE plan_id = :current_plan_id"
-            node_ids = f"SELECT id FROM proposal_operation_nodes WHERE group_id IN ({group_ids})"
-            binding = {
-                "proposal_plans": "id = :current_plan_id",
-                "proposal_confirmation_groups": "plan_id = :current_plan_id",
-                "proposal_confirmation_decisions": "plan_id = :current_plan_id",
-                "proposal_operation_nodes": f"group_id IN ({group_ids})",
-                "proposal_execution_receipts": f"node_id IN ({node_ids})",
-                "proposal_continuations": f"group_id IN ({group_ids})",
-            }[name]
-            where = f" WHERE NOT ({binding})"
-            params["current_plan_id"] = current_plan_id
         result = await db.execute(text(f"DELETE FROM {quoted}{where}"), params)
         counts[name] = int(result.rowcount or 0)
     return counts
@@ -285,94 +264,6 @@ def _reset_runtime_files() -> dict[str, Any]:
     }
 
 
-async def _authorized_reset_context() -> tuple[str, str, str, str]:
-    from app.ops import _OPERATION_AUTHORIZATION
-    from app.services.agent_run_state import load_agent_run
-
-    authorization = _OPERATION_AUTHORIZATION.get()
-    if authorization is None or authorization.operation != "reset_local_business_data":
-        raise DataSafetyError("全清只能通过已确认的 Operation Registry 提案执行。")
-    if not all((authorization.run_id, authorization.action_id, authorization.idempotency_key)):
-        raise DataSafetyError("全清授权缺少持久化 Run、动作或幂等键。")
-    from app.services.proposal_plan_store import get_plan
-    from app.services.proposal_plan_builder import verify_plan_snapshot
-
-    plan = await get_plan(authorization.plan_id)
-    if plan is None:
-        raise DataSafetyError("全清授权没有持久化 v2 Plan。")
-    verify_plan_snapshot(plan)
-    nodes = [node for group in plan["groups"] for node in group["nodes"]]
-    if len(nodes) != 1 or nodes[0]["operation"] != "reset_local_business_data" or nodes[0]["id"] != authorization.node_id:
-        raise DataSafetyError("全清只能在独立的单操作 Plan 中执行。")
-
-    run = await load_agent_run(authorization.run_id)
-    step = next(
-        (
-            item
-            for item in (run or {}).get("steps") or []
-            if isinstance(item, dict)
-            and str(item.get("id") or "") == authorization.action_id
-        ),
-        None,
-    )
-    if (
-        step is None
-        or str(step.get("tool") or "") != "reset_local_business_data"
-        or str(step.get("idempotency_key") or "") != authorization.idempotency_key
-        or str(step.get("status") or "") != "executing"
-    ):
-        raise DataSafetyError("全清授权未对应到已确认且正在执行的持久化提案。")
-    task_id = str((run or {}).get("task_id") or "")
-    return str(authorization.run_id), task_id, str(authorization.action_id), str(authorization.plan_id)
-
-
-async def _scrub_current_reset_run(db: Any, *, run_id: str, action_id: str) -> None:
-    run = await db.get(AgentRunRecord, run_id)
-    if run is None:
-        raise DataSafetyError("全清确认 Run 已不存在，拒绝删除职业数据。")
-    from app.models.models import ProposalOperationNode
-    node = await db.get(ProposalOperationNode, action_id)
-    reset_step = json.loads(node.snapshot_json) if node is not None else None
-    if (
-        reset_step is None
-        or reset_step.get("operation") != "reset_local_business_data"
-        or node.status != "executing"
-    ):
-        raise DataSafetyError("全清确认步骤已变化，拒绝删除职业数据。")
-
-    run.conversation_id = ""
-    run.goal = "Owner Fresh Reset"
-    run.mode = "ui_operation_request"
-    run.skill_snapshot_json = {}
-    run.steps_json = []
-    run.exit_criteria_json = ["reset receipt checkpointed"]
-    run.llm_runtime_json = {"runtime": "none", "reason": "fresh_reset_context_closed"}
-    run.recovery_cursor_json = {}
-    run.final_result_json = {
-        "assistant_message": "OfferU was reset. Start a fresh session.",
-        "requires_confirmation": False,
-        "turn_finished": True,
-    }
-    run.failure_reason = ""
-    run.harness_name = ""
-    run.harness_version = ""
-    run.adapter_name = ""
-    run.adapter_version = ""
-    run.harness_session_id = ""
-    run.lease_id = ""
-    run.lease_expires_at = None
-
-    task = await db.get(JobSearchTask, run.task_id)
-    if task is not None:
-        task.conversation_id = ""
-        task.title = "Fresh reset receipt"
-        task.goal = "OfferU local career data reset"
-        task.status = "completed"
-        task.primary_job_id = None
-        task.domain_refs_json = {"operation": "reset_local_business_data"}
-    await db.execute(delete(AgentRunEvent).where(AgentRunEvent.run_id == run_id))
-
-
 async def _cancel_task_objects(tasks: list[asyncio.Task[Any]]) -> int:
     current = asyncio.current_task()
     active = [task for task in tasks if task is not current and not task.done()]
@@ -487,7 +378,9 @@ async def _reset_semantic_indexes() -> dict[str, Any]:
 async def reset_local_business_data() -> dict[str, Any]:
     """Clear the active local workspace while retaining safety/configuration state."""
 
-    current_run_id, current_task_id, current_action_id, current_plan_id = await _authorized_reset_context()
+    # Only a desktop click or a user-confirmed Agent action reaches here
+    # (services/action_gate). Nothing is kept: the Run that asked is wiped too.
+    current_run_id = current_task_id = ""
     active_root = _preflight_reset_paths()
     _assert_reset_database_root(active_root)
 
@@ -511,14 +404,9 @@ async def reset_local_business_data() -> dict[str, Any]:
 
         # Backup is part of this approved reset, not a second Career Truth
         # change. Do not reuse the reset node's authorization for another op.
-        from app.ops import _OPERATION_AUTHORIZATION
-        token = _OPERATION_AUTHORIZATION.set(None)
-        try:
-            backup_result = await execute_operation(
-                "create_data_backup", {"reason": "pre_reset"}, surface="local_data_reset"
-            )
-        finally:
-            _OPERATION_AUTHORIZATION.reset(token)
+        backup_result = await execute_operation(
+            "create_data_backup", {"reason": "pre_reset"}, surface="local_data_reset"
+        )
         if not backup_result.get("ok"):
             raise DataSafetyError(
                 "; ".join(str(item) for item in backup_result.get("errors") or [])
@@ -543,33 +431,11 @@ async def reset_local_business_data() -> dict[str, Any]:
             if sqlite_version.scalar_one_or_none() is None:
                 raise DataSafetyError("当前数据库不是受支持的本地 SQLite 数据库。")
 
-            if current_run_id:
-                persisted_task_id = str(
-                    (
-                        await db.execute(
-                            text(
-                                "SELECT task_id FROM agent_runs "
-                                "WHERE run_id = :run_id"
-                            ),
-                            {"run_id": current_run_id},
-                        )
-                    ).scalar_one_or_none()
-                    or ""
-                )
-                if persisted_task_id != current_task_id:
-                    raise DataSafetyError("重置确认 Run 的任务关联在执行前发生变化。")
-                await _scrub_current_reset_run(
-                    db,
-                    run_id=current_run_id,
-                    action_id=current_action_id,
-                )
-
             await db.execute(text("PRAGMA defer_foreign_keys = ON"))
             counts = await _delete_business_rows(
                 db,
                 current_run_id=current_run_id,
                 current_task_id=current_task_id,
-                current_plan_id=current_plan_id,
             )
 
             # Preserve built-in presentation/rubric configuration, but discard

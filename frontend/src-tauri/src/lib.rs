@@ -123,304 +123,64 @@ async fn post_approval_request(
     .map_err(|_| "OfferU 提案决定任务中断".to_string())?
 }
 
-fn validate_approval_input(run_id: String, action_id: String) -> Result<(String, String), String> {
-    if run_id.starts_with("run_") {
-        return validate_runtime_approval_input(run_id, action_id);
-    }
-    let run_id = Uuid::parse_str(&run_id)
-        .map_err(|_| "提案标识无效".to_string())?
-        .to_string();
-    if action_id.trim().is_empty() || action_id.len() > 200 {
-        return Err("提案动作标识无效".to_string());
-    }
-    Ok((run_id, action_id))
-}
-
-#[tauri::command]
-async fn decide_agent_proposal(
-    app: AppHandle,
-    run_id: String,
-    action_id: String,
-    approve: bool,
-) -> Result<serde_json::Value, String> {
-    let (run_id, action_id) = validate_approval_input(run_id, action_id)?;
-    post_approval_request(
-        app,
-        format!("/api/bridge/proposals/{run_id}/confirm"),
-        serde_json::json!({"approve": approve, "action_id": action_id}),
-        Duration::from_secs(if approve { 240 } else { 15 }),
-    )
-    .await
-}
-
-#[tauri::command]
-async fn decide_agent_runtime_action(
-    app: AppHandle,
-    run_id: String,
-    action_id: String,
-    approve: bool,
-) -> Result<serde_json::Value, String> {
-    let (run_id, action_id) = validate_runtime_approval_input(run_id, action_id)?;
-    let decision = if approve { "confirm" } else { "reject" };
-    post_approval_request(
-        app,
-        format!("/api/agent/runtime/runs/{run_id}/{decision}"),
-        serde_json::json!({"action_id": action_id}),
-        Duration::from_secs(if approve { 240 } else { 15 }),
-    )
-    .await
-}
-
-fn validate_runtime_approval_input(run_id: String, action_id: String) -> Result<(String, String), String> {
-    let run_id = validate_runtime_run_id(run_id)?;
-    if action_id.trim().is_empty() || action_id.len() > 200 {
-        return Err("任务或动作标识无效".to_string());
-    }
-    Ok((run_id, action_id))
-}
-
-fn has_fixed_hex_id(value: &str, prefix: &str) -> bool {
-    value.strip_prefix(prefix).is_some_and(|suffix| {
-        suffix.len() == 32
+/// Agent writes waiting on the user (services/action_gate.py) and timeline
+/// undo. Only this desktop command holds the approval capability.
+fn validate_action_input(action_id: String, decision: String) -> Result<(String, String), String> {
+    let valid_id = action_id.strip_prefix("act_").is_some_and(|suffix| {
+        suffix.len() == 24
             && suffix
                 .bytes()
                 .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-    })
-}
-
-fn has_fixed_digest(value: &str) -> bool {
-    value.len() == 64
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-}
-
-fn validate_plan_group_decision_input(
-    plan_id: String,
-    group_id: String,
-    plan_digest: String,
-    group_digest: String,
-    decision_id: String,
-) -> Result<(String, String, String, String, String), String> {
-    if !has_fixed_hex_id(&plan_id, "plan_")
-        || !has_fixed_hex_id(&group_id, "group_")
-        || !has_fixed_hex_id(&decision_id, "decision_")
-        || !has_fixed_digest(&plan_digest)
-        || !has_fixed_digest(&group_digest)
-    {
-        return Err("计划审核标识或摘要无效".to_string());
+    });
+    if !valid_id || !matches!(decision.as_str(), "confirm" | "reject" | "undo") {
+        return Err("操作标识或处理方式无效".to_string());
     }
-    Ok((plan_id, group_id, plan_digest, group_digest, decision_id))
+    Ok((action_id, decision))
 }
 
 #[tauri::command]
-async fn decide_agent_plan_group(
+async fn decide_agent_action(
     app: AppHandle,
-    plan_id: String,
-    group_id: String,
-    approve: bool,
-    plan_digest: String,
-    group_digest: String,
-    decision_id: String,
+    action_id: String,
+    decision: String,
 ) -> Result<serde_json::Value, String> {
-    let (plan_id, group_id, plan_digest, group_digest, decision_id) =
-        validate_plan_group_decision_input(
-            plan_id,
-            group_id,
-            plan_digest,
-            group_digest,
-            decision_id,
-        )?;
+    let (action_id, decision) = validate_action_input(action_id, decision)?;
+    let timeout = if decision == "reject" { 15 } else { 240 };
     post_approval_request(
         app,
-        format!("/api/agent/plans/{plan_id}/groups/{group_id}/decision"),
-        serde_json::json!({
-            "approve": approve,
-            "plan_digest": plan_digest,
-            "group_digest": group_digest,
-            "decision_id": decision_id,
-        }),
-        Duration::from_secs(if approve { 240 } else { 15 }),
-    )
-    .await
-}
-
-fn validate_plan_group_reconciliation_input(
-    plan_id: String,
-    group_id: String,
-    action: String,
-    group_digest: String,
-) -> Result<(String, String, String, String), String> {
-    if !has_fixed_hex_id(&plan_id, "plan_")
-        || !has_fixed_hex_id(&group_id, "group_")
-        || !has_fixed_digest(&group_digest)
-        || !matches!(action.as_str(), "retry" | "abandon")
-    {
-        return Err("计划核对标识、摘要或处理方式无效".to_string());
-    }
-    Ok((plan_id, group_id, action, group_digest))
-}
-
-/// Exit for a group whose execution outcome is unknown: the system re-checks
-/// durable evidence ("retry") or the user closes it as is ("abandon"). Both
-/// stay behind the desktop approval capability like group decisions.
-#[tauri::command]
-async fn resolve_agent_plan_group(
-    app: AppHandle,
-    plan_id: String,
-    group_id: String,
-    action: String,
-    group_digest: String,
-) -> Result<serde_json::Value, String> {
-    let (plan_id, group_id, action, group_digest) =
-        validate_plan_group_reconciliation_input(plan_id, group_id, action, group_digest)?;
-    let timeout = if action == "retry" { 240 } else { 15 };
-    post_approval_request(
-        app,
-        format!("/api/agent/plans/{plan_id}/groups/{group_id}/reconciliation"),
-        serde_json::json!({"action": action, "group_digest": group_digest}),
+        format!("/api/agent/runtime/actions/{action_id}/{decision}"),
+        serde_json::json!({}),
         Duration::from_secs(timeout),
-    )
-    .await
-}
-
-fn validate_runtime_run_id(run_id: String) -> Result<String, String> {
-    let suffix = run_id.strip_prefix("run_").ok_or("任务标识无效")?;
-    if !(16..=32).contains(&suffix.len())
-        || !suffix.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-    {
-        return Err("任务标识无效".to_string());
-    }
-    Ok(run_id)
-}
-
-fn validate_prefixed_hex_id(value: &str, prefix: &str, label: &str) -> Result<String, String> {
-    let suffix = value
-        .strip_prefix(prefix)
-        .ok_or_else(|| format!("{label}无效"))?;
-    if suffix.len() != 32
-        || !suffix.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-    {
-        return Err(format!("{label}无效"));
-    }
-    Ok(value.to_string())
-}
-
-fn validate_sha256_digest(label: &str, value: Option<&serde_json::Value>) -> Result<String, String> {
-    let digest = value
-        .and_then(|item| item.as_str())
-        .ok_or_else(|| format!("{label}无效"))?;
-    if digest.len() != 64
-        || !digest.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-    {
-        return Err(format!("{label}无效"));
-    }
-    Ok(digest.to_string())
-}
-
-fn validate_decision_group_body(
-    body: &serde_json::Value,
-) -> Result<(String, String, String, String, String), String> {
-    let object = body.as_object().ok_or("分组决定内容无效")?;
-    let plan_id = validate_prefixed_hex_id(
-        object
-            .get("plan_id")
-            .and_then(|value| value.as_str())
-            .ok_or("计划标识缺失")?,
-        "plan_",
-        "计划标识",
-    )?;
-    let plan_digest = validate_sha256_digest("计划摘要", object.get("plan_digest"))?;
-    let group_digest = validate_sha256_digest("分组摘要", object.get("group_digest"))?;
-    let decision_id = object
-        .get("decision_id")
-        .and_then(|value| value.as_str())
-        .ok_or("决定标识缺失")?;
-    let decision_id = Uuid::parse_str(decision_id)
-        .map_err(|_| "决定标识无效".to_string())?
-        .to_string();
-    let decision = object
-        .get("decision")
-        .and_then(|value| value.as_str())
-        .ok_or("决定类型缺失")?;
-    if decision != "approve" && decision != "reject" {
-        return Err("决定类型无效".to_string());
-    }
-    Ok((
-        plan_id,
-        plan_digest,
-        group_digest,
-        decision_id,
-        decision.to_string(),
-    ))
-}
-
-#[tauri::command]
-async fn decide_agent_decision_group(
-    app: AppHandle,
-    run_id: String,
-    group_id: String,
-    body: serde_json::Value,
-) -> Result<serde_json::Value, String> {
-    let run_id = validate_runtime_run_id(run_id)?;
-    let group_id = validate_prefixed_hex_id(&group_id, "group_", "分组标识")?;
-    let (plan_id, plan_digest, group_digest, decision_id, decision) =
-        validate_decision_group_body(&body)?;
-    post_approval_request(
-        app,
-        format!("/api/agent/runtime/runs/{run_id}/decision-groups/{group_id}/decision"),
-        serde_json::json!({
-            "plan_id": plan_id,
-            "plan_digest": plan_digest,
-            "group_digest": group_digest,
-            "decision_id": decision_id,
-            "decision": decision,
-        }),
-        Duration::from_secs(if decision == "approve" { 240 } else { 15 }),
     )
     .await
 }
 
 #[cfg(test)]
 mod approval_tests {
-    use super::validate_runtime_approval_input;
+    use super::validate_action_input;
 
     #[test]
-    fn accepts_runtime_ids_and_rejects_path_injection() {
-        assert!(
-            validate_runtime_approval_input("run_0123456789abcdef".into(), "update:1".into())
-                .is_ok()
-        );
-        for id in [
-            "run_0123456789abcdef/confirm",
-            "../run_0123456789abcdef",
-            "run_short",
-            "run_0123456789abcdeg",
-        ] {
-            assert!(validate_runtime_approval_input(id.into(), "update:1".into()).is_err());
+    fn accepts_action_ids_and_rejects_path_injection() {
+        let id = "act_0123456789abcdef01234567";
+        for decision in ["confirm", "reject", "undo"] {
+            assert!(validate_action_input(id.into(), decision.into()).is_ok());
         }
-        assert!(
-            validate_runtime_approval_input("run_0123456789abcdef".into(), " ".into()).is_err()
-        );
+        assert!(validate_action_input(id.into(), "approve".into()).is_err());
+        for bad in [
+            "act_0123456789abcdef01234567/confirm",
+            "../act_0123456789abcdef01234567",
+            "act_0123456789ABCDEF01234567",
+            "act_short",
+            "run_0123456789abcdef01234567",
+        ] {
+            assert!(validate_action_input(bad.into(), "confirm".into()).is_err(), "{bad}");
+        }
     }
 }
 
 #[cfg(test)]
 mod desktop_runtime_tests {
-    fn valid_body() -> serde_json::Value {
-        serde_json::json!({
-            "plan_id": "plan_0123456789abcdef0123456789abcdef",
-            "plan_digest": digest('a'),
-            "group_digest": digest('b'),
-            "decision_id": "01234567-89ab-cdef-0123-456789abcdef",
-            "decision": "approve",
-        })
-    }
-    fn digest(byte: char) -> String {
-        byte.to_string().repeat(64)
-    }
-
-    use super::{validate_approval_input, validate_plan_group_decision_input, validate_runtime_run_id, validate_prefixed_hex_id, validate_decision_group_body,
+    use super::{
         build_commit, build_dirty, build_source_fingerprint, build_timestamp,
         database_url_for_data_root, expected_build_mode, health_response_matches, runtime_mode,
         validate_data_root_override,
@@ -582,132 +342,6 @@ mod desktop_runtime_tests {
         if build_source_fingerprint().is_none() {
             assert!(serialized["source_fingerprint"].is_null());
         }
-    }
-    #[test]
-    fn global_proposal_accepts_canonical_run_ids() {
-        assert!(validate_approval_input("run_0123456789abcdef0123456789abcdef".into(), "save_career_artifact:1".into()).is_ok());
-        assert!(validate_approval_input("01234567-89ab-cdef-0123-456789abcdef".into(), "update:1".into()).is_ok());
-        assert!(validate_approval_input("run_0123456789abcdef/confirm".into(), "update:1".into()).is_err());
-        assert!(validate_approval_input("run_0123456789abcdef".into(), " ".into()).is_err());
-    }
-
-    #[test]
-    fn decision_group_ids_follow_prefixed_hex_contract() {
-        assert!(validate_prefixed_hex_id("plan_0123456789abcdef0123456789abcdef", "plan_", "计划标识").is_ok());
-        assert!(validate_prefixed_hex_id("group_0123456789abcdef0123456789abcdef", "group_", "分组标识").is_ok());
-        for id in [
-            "plan_0123456789abcdef0123456789abcde",   // 31 hex
-            "plan_0123456789abcdef0123456789abcdef0", // 33 hex
-            "plan_0123456789ABCDEF0123456789abcdef",  // uppercase hex
-            "plan_0123456789abcdef0123456789abcdeg",  // non-hex
-            "grp_0123456789abcdef0123456789abcdef",   // wrong prefix
-            "plan_0123456789abcdef0123456789abcde/../etc",
-        ] {
-            assert!(validate_prefixed_hex_id(id, "plan_", "计划标识").is_err(), "{id}");
-        }
-    }
-
-    #[test]
-    fn decision_group_body_rejects_malformed_or_extra_fields() {
-        let (plan_id, plan_digest, group_digest, decision_id, decision) =
-            validate_decision_group_body(&valid_body()).expect("valid body");
-        assert_eq!(plan_id, "plan_0123456789abcdef0123456789abcdef");
-        assert_eq!(plan_digest.len(), 64);
-        assert_eq!(group_digest, digest('b'));
-        assert_eq!(decision_id, "01234567-89ab-cdef-0123-456789abcdef");
-        assert_eq!(decision, "approve");
-
-        let mut rejected = valid_body();
-        rejected["decision"] = serde_json::json!("reject");
-        assert!(validate_decision_group_body(&rejected).is_ok());
-
-        for (key, value) in [
-            ("plan_id", serde_json::json!("group_0123456789abcdef0123456789abcdef")),
-            ("plan_id", serde_json::json!("plan_x/../../etc")),
-            ("plan_digest", serde_json::json!("abc")),
-            ("plan_digest", serde_json::json!("A".repeat(64))),
-            ("group_digest", serde_json::json!(123)),
-            ("decision_id", serde_json::json!("not-a-uuid")),
-            ("decision_id", serde_json::json!("run_0123456789abcdef")),
-            ("decision", serde_json::json!("confirm")),
-            ("decision", serde_json::json!("adjust")),
-        ] {
-            let mut body = valid_body();
-            body[key] = value;
-            assert!(validate_decision_group_body(&body).is_err(), "{key}={}", body[key]);
-        }
-
-        for key in ["plan_id", "plan_digest", "group_digest", "decision_id", "decision"] {
-            let mut body = valid_body();
-            body.as_object_mut().unwrap().remove(key);
-            assert!(validate_decision_group_body(&body).is_err(), "missing {key}");
-        }
-
-        assert!(validate_decision_group_body(&serde_json::json!("approve")).is_err());
-        assert!(validate_decision_group_body(&serde_json::json!([])).is_err());
-    }
-
-    #[test]
-    fn decision_group_run_id_rejects_path_injection() {
-        assert!(validate_runtime_run_id("run_0123456789abcdef".into()).is_ok());
-        for id in [
-            "run_0123456789abcdef/decision",
-            "../run_0123456789abcdef",
-            "run_0123456789abcdef?x=1",
-            "plan_0123456789abcdef0123456789abcdef",
-        ] {
-            assert!(validate_runtime_run_id(id.into()).is_err(), "{id}");
-        }
-    }
-
-    #[test]
-    fn validates_plan_group_decision_identifiers_and_digests() {
-        let plan = "plan_0123456789abcdef0123456789abcdef";
-        let group = "group_0123456789abcdef0123456789abcdef";
-        let decision = "decision_0123456789abcdef0123456789abcdef";
-        let digest = "0123456789abcdef".repeat(4);
-        assert!(validate_plan_group_decision_input(
-            plan.into(), group.into(), digest.clone(), digest.clone(), decision.into()
-        ).is_ok());
-        for invalid in [
-            "../plan_0123456789abcdef0123456789abcdef",
-            "PLAN_0123456789abcdef0123456789abcdef",
-            "plan_0123456789abcdef0123456789abcdeG",
-            "plan_0123456789abcdef0123456789abcde",
-        ] {
-            assert!(validate_plan_group_decision_input(
-                invalid.into(), group.into(), digest.clone(), digest.clone(), decision.into()
-            ).is_err());
-        }
-        assert!(validate_plan_group_decision_input(
-            plan.into(), group.into(), "A".repeat(64), digest.clone(), decision.into()
-        ).is_err());
-        assert!(validate_plan_group_decision_input(
-            plan.into(), group.into(), digest.clone(), digest, "decision_short".into()
-        ).is_err());
-    }
-
-    #[test]
-    fn validates_plan_group_reconciliation_action_and_digest() {
-        let plan = "plan_0123456789abcdef0123456789abcdef";
-        let group = "group_0123456789abcdef0123456789abcdef";
-        let digest = "0123456789abcdef".repeat(4);
-        for action in ["retry", "abandon"] {
-            assert!(validate_plan_group_reconciliation_input(
-                plan.into(), group.into(), action.into(), digest.clone()
-            ).is_ok());
-        }
-        for action in ["approve", "", "Retry", "abandon;"] {
-            assert!(validate_plan_group_reconciliation_input(
-                plan.into(), group.into(), action.into(), digest.clone()
-            ).is_err());
-        }
-        assert!(validate_plan_group_reconciliation_input(
-            "../x".into(), group.into(), "retry".into(), digest.clone()
-        ).is_err());
-        assert!(validate_plan_group_reconciliation_input(
-            plan.into(), group.into(), "retry".into(), "A".repeat(64)
-        ).is_err());
     }
 
 }
@@ -1245,10 +879,7 @@ pub fn run() {
         .manage(DesktopBackendStatusState::default())
         .manage(UiApprovalCapability(Uuid::new_v4().to_string()))
         .invoke_handler(tauri::generate_handler![
-            decide_agent_proposal,
-            decide_agent_runtime_action,
-            decide_agent_plan_group,
-            resolve_agent_plan_group,
+            decide_agent_action,
             get_desktop_runtime_identity,
             get_desktop_backend_status,
             open_external_url

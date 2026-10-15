@@ -410,29 +410,9 @@ def _migrate_schema_v5(connection) -> None:  # noqa: ANN001
 
 
 def _migrate_schema_v6(connection) -> None:  # noqa: ANN001
-    """Create durable Proposal v2 records without inventing legacy grants."""
+    """Proposal v2 was removed; old tables, if present, are left untouched."""
 
-    from app.models.models import (
-        ProposalConfirmationDecision,
-        ProposalConfirmationGroup,
-        ProposalContinuation,
-        ProposalExecutionPlan,
-        ProposalExecutionReceipt,
-        ProposalOperationNode,
-    )
-
-    Base.metadata.create_all(
-        connection,
-        tables=[
-            ProposalExecutionPlan.__table__,
-            ProposalConfirmationGroup.__table__,
-            ProposalOperationNode.__table__,
-            ProposalConfirmationDecision.__table__,
-            ProposalExecutionReceipt.__table__,
-            ProposalContinuation.__table__,
-        ],
-        checkfirst=True,
-    )
+    del connection
 
 
 def _preserve_prototype_decision_history(connection) -> None:

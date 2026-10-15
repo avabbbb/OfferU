@@ -3,14 +3,14 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any
 
-from fastapi import APIRouter, Header, HTTPException, Path, Query
+from fastapi import APIRouter, Header, HTTPException, Query
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
-from app.ops import list_operations
+from app.ops import execute_operation, list_operations
 from app.services.harness_history import (
     get_conversation,
     list_conversations,
@@ -68,40 +68,6 @@ class PiAgentRunRequest(BaseModel):
         max_length=40,
         pattern=r"^[a-z0-9][a-z0-9_-]*$",
     )
-
-
-class PiAgentConfirmationRequest(BaseModel):
-    action_id: str = Field(min_length=1, max_length=200)
-    plan_digest: str = Field(default="", pattern=r"^(?:[a-f0-9]{64})?$")
-    group_digest: str = Field(default="", pattern=r"^(?:[a-f0-9]{64})?$")
-    decision_id: str = Field(default="", pattern=r"^(?:decision_[a-f0-9]{32})?$")
-
-
-class PiAgentRejectionRequest(BaseModel):
-    action_id: str = Field(min_length=1, max_length=200)
-    plan_digest: str = Field(default="", pattern=r"^(?:[a-f0-9]{64})?$")
-    group_digest: str = Field(default="", pattern=r"^(?:[a-f0-9]{64})?$")
-    decision_id: str = Field(default="", pattern=r"^(?:decision_[a-f0-9]{32})?$")
-
-
-class ProposalPlanDecisionRequest(BaseModel):
-    approve: bool
-    plan_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
-    group_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
-    decision_id: str = Field(pattern=r"^decision_[a-f0-9]{32}$")
-
-
-class ProposalPlanReconciliationRequest(BaseModel):
-    action: Literal["retry", "abandon"]
-    group_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
-
-
-class DecisionGroupDecisionRequest(BaseModel):
-    plan_id: str = Field(min_length=1, max_length=80)
-    plan_digest: str = Field(min_length=1, max_length=80)
-    group_digest: str = Field(min_length=1, max_length=80)
-    decision_id: str = Field(min_length=1, max_length=80)
-    decision: str = Field(pattern="^(approve|reject)$")
 
 
 class AgentInputAnswerRequest(BaseModel):
@@ -173,10 +139,11 @@ async def _ui_operation_projection(
     operation: str,
     args: dict[str, Any],
 ) -> dict[str, Any]:
-    """Use the same proposal boundary for UI-triggered runtime mutations."""
-    from app.services.operation_projection import execute_or_propose_operation
+    """A button click. Irreversible operations still land in the confirm list
+    (desktop-only confirmation), so a stray local request cannot wipe data."""
+    from app.services.action_gate import run_gated_operation
 
-    result = await execute_or_propose_operation(
+    result = await run_gated_operation(
         operation,
         args,
         surface="agent_runtime_ui",
@@ -302,7 +269,6 @@ async def agent_run_events(
 
 
 def _runtime_response_from_run(run: dict[str, Any]) -> dict[str, Any]:
-    from app.services.agent_run_state import pending_actions_for_run
     from app.services.agent_skill_registry import resolve_skill
 
     final_result = (
@@ -340,11 +306,10 @@ def _runtime_response_from_run(run: dict[str, Any]) -> dict[str, Any]:
             "failed",
             "cancelled",
             "interrupted",
-            "needs_reconciliation",
         },
         "run": run,
         "assistant_message": str(final_result.get("assistant_message") or ""),
-        "pending_actions": pending_actions_for_run(run),
+        "pending_action_count": int(final_result.get("pending_action_count") or 0),
         "active_skill": active_skill,
         "guardian": (
             final_result.get("guardian")
@@ -365,11 +330,7 @@ def _runtime_turn_is_finished(run: dict[str, Any]) -> bool:
         "completed",
         "failed",
         "cancelled",
-        "waiting_confirmation",
-        "waiting_decision",
-        "waiting_input",
         "interrupted",
-        "needs_reconciliation",
     }:
         return False
     final_result = (
@@ -388,89 +349,50 @@ def _runtime_turn_is_finished(run: dict[str, Any]) -> bool:
 
 
 
-@runtime_router.get("/runtime/decision-plans/pending")
-async def pending_decision_plans(limit: int = 50) -> dict[str, Any]:
-    from app.services.proposal_plan_store import list_plans
-    from app.services.proposal_plan_continuation import reviewed_plan_view
-    plans = await list_plans(pending_only=True)
-    visible = []
-    for plan in plans:
-        view = await reviewed_plan_view(plan)
-        user_groups = [group for group in view["groups"]
-                       if group.get("reviewability", {}).get("counts_as_user_decision")
-                       and group.get("interaction_state") in {"needs_user_review", "needs_user_authorization"}]
-        if not user_groups:
-            continue
-        view["groups"] = user_groups
-        view["interaction_state"] = next(
-            (group["interaction_state"] for group in user_groups
-             if group["interaction_state"] in {"needs_user_input", "needs_user_review", "needs_user_authorization"}),
-            "none",
-        )
-        visible.append(view)
-    return {"plans": visible[:max(1, min(limit, 100))], "proposal_authority": "proposal-plan-v2"}
+@runtime_router.get("/runtime/actions")
+async def agent_actions(run_id: str = "", status: str = "", limit: int = 100) -> dict[str, Any]:
+    """Timeline of Agent writes; ``status=pending`` is the confirm queue."""
+    from app.services.action_gate import list_actions
+
+    return {"items": await list_actions(run_id=run_id, status=status, limit=limit)}
 
 
-@runtime_router.get("/runtime/runs/{run_id}/decision-plan")
-async def run_decision_plan(run_id: str) -> dict[str, Any]:
-    from app.services.proposal_plan_store import list_plans
-    from app.services.proposal_plan_continuation import reviewed_plan_view
-    plans = await list_plans(run_id=run_id, pending_only=True)
-    return {"run_id": run_id, "plan": await reviewed_plan_view(plans[-1]) if plans else None,
-            "proposal_authority": "proposal-plan-v2"}
-
-
-@runtime_router.post("/runtime/runs/{run_id}/decision-groups/{group_id}/decision")
-async def decide_decision_group(
-    run_id: str, group_id: str, body: DecisionGroupDecisionRequest,
-    authorization: str = Header(...),
-) -> dict[str, Any]:
+def _desktop_only(authorization: str) -> None:
     if not accepts_authorization(authorization):
-        raise HTTPException(status_code=403, detail="该决定只能由 OfferU 桌面工作区提交")
-    from uuid import UUID
-    from app.services.proposal_plan_store import get_plan
-    plan = await get_plan(body.plan_id)
-    if plan is None or plan.get("run_id") != run_id:
-        raise HTTPException(status_code=409, detail="旧计划没有可验证的 v2 Run 绑定，请重新准备并展示")
+        raise HTTPException(status_code=403, detail="只能在 OfferU 桌面工作区里确认")
+
+
+@runtime_router.post("/runtime/actions/{action_id}/confirm")
+async def confirm_agent_action(action_id: str, authorization: str = Header(...)) -> dict[str, Any]:
+    from app.services.action_gate import confirm_action
+
+    _desktop_only(authorization)
     try:
-        decision_id = body.decision_id if body.decision_id.startswith("decision_") else f"decision_{UUID(body.decision_id).hex}"
-        translated = ProposalPlanDecisionRequest(
-            approve=body.decision == "approve", plan_digest=body.plan_digest,
-            group_digest=body.group_digest, decision_id=decision_id,
-        )
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail="决定标识无效") from error
-    return await decide_proposal_plan_group_endpoint(body.plan_id, group_id, translated, authorization)
+        return await confirm_action(action_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=safe_error_message(exc)) from exc
 
 
-async def append_decision_group_event(
-    *,
-    run_id: str,
-    group_id: str,
-    result: dict[str, Any],
-) -> None:
-    """Persist one group decision outcome on the run event log."""
+@runtime_router.post("/runtime/actions/{action_id}/reject")
+async def reject_agent_action(action_id: str, authorization: str = Header(...)) -> dict[str, Any]:
+    from app.services.action_gate import reject_action
 
-    from app.services.agent_run_state import append_agent_run_event, load_agent_run
-
-    if await load_agent_run(run_id) is None:
-        return
+    _desktop_only(authorization)
     try:
-        await append_agent_run_event(
-            run_id,
-            event_type="decision.group_decided",
-            payload={
-                "group_id": group_id,
-                "plan_id": str(result.get("plan_id") or ""),
-                "decision": str(result.get("decision") or ""),
-                "group_status": str(result.get("group_status") or ""),
-                "plan_status": str(result.get("plan_status") or ""),
-                "receipt_count": len(result.get("receipts") or []),
-                "replayed": bool(result.get("replayed")),
-            },
-        )
-    except Exception:
-        pass
+        return await reject_action(action_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=safe_error_message(exc)) from exc
+
+
+@runtime_router.post("/runtime/actions/{action_id}/undo")
+async def undo_agent_action(action_id: str, authorization: str = Header(...)) -> dict[str, Any]:
+    from app.services.action_gate import undo_action
+
+    _desktop_only(authorization)
+    try:
+        return await undo_action(action_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=safe_error_message(exc)) from exc
 
 
 @runtime_router.get("/runtime/runs/{run_id}/input-requests/pending")
@@ -1055,10 +977,6 @@ async def stream_runtime_run(body: PiAgentRunRequest):
                             "failed",
                             "cancelled",
                             "interrupted",
-                            "needs_reconciliation",
-                            "waiting_confirmation",
-                            "waiting_decision",
-                            "waiting_input",
                         }:
                             run["status"] = "interrupted"
                             run["recovery_cursor"] = {
@@ -1071,222 +989,6 @@ async def stream_runtime_run(body: PiAgentRunRequest):
             _background_runtime_tasks.discard(task)
 
     return EventSourceResponse(events())
-
-
-@runtime_router.get("/plans")
-async def list_proposal_plans_endpoint(
-    run_id: str | None = Query(default=None, pattern=r"^run_[a-f0-9]{16,32}$"),
-) -> dict[str, Any]:
-    """Read the local Plan queue through the same run-scoped API boundary."""
-
-    from app.services.proposal_plan_builder import PlanValidationError, verify_plan_snapshot
-    from app.services.proposal_plan_continuation import reviewed_plan_view
-    from app.services.proposal_plan_store import list_continuations, list_plans
-
-    plans = await list_plans(run_id=run_id)
-    continuations = await list_continuations(run_id=run_id)
-    try:
-        for plan in plans:
-            verify_plan_snapshot(plan)
-    except PlanValidationError as exc:
-        raise HTTPException(status_code=409, detail=safe_error_message(exc)) from exc
-    items = [await reviewed_plan_view(plan, continuations=continuations) for plan in plans]
-    return {"items": items, "total": len(items)}
-
-
-@runtime_router.get("/plans/{plan_id}")
-async def get_proposal_plan_endpoint(
-    plan_id: str = Path(pattern=r"^plan_[a-f0-9]{32}$"),
-) -> dict[str, Any]:
-    """Return the exact stored review display without raw args or snapshots."""
-
-    from app.services.proposal_plan_builder import PlanValidationError, verify_plan_snapshot
-    from app.services.proposal_plan_continuation import reviewed_plan_view
-    from app.services.proposal_plan_store import get_plan, list_continuations
-
-    plan = await get_plan(plan_id)
-    if plan is None:
-        raise HTTPException(status_code=404, detail="Proposal Plan not found")
-    try:
-        verify_plan_snapshot(plan)
-    except PlanValidationError as exc:
-        raise HTTPException(status_code=409, detail=safe_error_message(exc)) from exc
-    continuations = await list_continuations(run_id=str(plan.get("run_id") or ""))
-    return {"plan": await reviewed_plan_view(plan, continuations=continuations)}
-
-
-@runtime_router.post("/plans/{plan_id}/groups/{group_id}/reconciliation")
-async def resolve_proposal_plan_group_endpoint(
-    plan_id: str,
-    group_id: str,
-    body: ProposalPlanReconciliationRequest,
-    authorization: str = Header(...),
-) -> dict[str, Any]:
-    """Exit an unresolved execution outcome: system re-check (retry) or abandon as is."""
-
-    if not accepts_authorization(authorization):
-        raise HTTPException(status_code=403, detail="该操作只能由 OfferU 桌面工作区提交")
-    from app.services.proposal_plan_continuation import reviewed_plan_view
-    from app.services.proposal_plan_execution import resolve_unresolved_group
-    from app.services.proposal_plan_store import list_continuations
-
-    result = await resolve_unresolved_group(
-        plan_id, group_id, action=body.action, group_digest=body.group_digest,
-        surface="agent_runtime_ui",
-    )
-    plan = result.get("plan") if isinstance(result.get("plan"), dict) else None
-    run_id = str((plan or {}).get("run_id") or "")
-    if result.get("ok") and run_id:
-        try:
-            from app.services.proposal_plan_continuation import deliver_continuations
-
-            await deliver_continuations(run_id)
-        except Exception:
-            pass  # the durable group outcome stands even if reasoning startup fails
-    continuations = await list_continuations(run_id=run_id) if run_id else []
-    return {
-        "ok": bool(result.get("ok")),
-        "action": body.action,
-        "resolved": bool(result.get("resolved")),
-        "errors": list(result.get("errors") or []),
-        "plan": await reviewed_plan_view(plan, continuations=continuations) if plan else None,
-        "receipts": list(result.get("receipts") or []),
-        "resolved_node_ids": result.get("resolved_node_ids") or [],
-        "unresolved_node_ids": result.get("unresolved_node_ids") or [],
-        "abandoned_node_ids": result.get("abandoned_node_ids") or [],
-    }
-
-
-@runtime_router.post("/plans/{plan_id}/groups/{group_id}/decision")
-async def decide_proposal_plan_group_endpoint(
-    plan_id: str,
-    group_id: str,
-    body: ProposalPlanDecisionRequest,
-    authorization: str = Header(...),
-) -> dict[str, Any]:
-    """Accept or reject the displayed immutable group from the native UI."""
-
-    if not accepts_authorization(authorization):
-        raise HTTPException(status_code=403, detail="该决定只能由 OfferU 桌面工作区提交")
-    from app.services.agent_run_coordinator import AgentRunCoordinator
-    from app.services.proposal_plan_store import get_plan, list_continuations
-
-    coordinator = AgentRunCoordinator()
-    try:
-        decision_args = {"plan_digest": body.plan_digest, "group_digest": body.group_digest,
-                         "decision_id": body.decision_id, "authorization_source": authorization,
-                         "surface": "agent_runtime_ui"}
-        if body.approve:
-            result = await coordinator.confirm_group(plan_id, group_id, **decision_args)
-        else:
-            result = await coordinator.reject_group(plan_id, group_id, **decision_args)
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=safe_error_message(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=safe_error_message(exc)) from exc
-    if not result.get("ok"):
-        return {
-            "ok": False,
-            "approved": False,
-            "duplicate": bool(result.get("duplicate")),
-            "errors": list(result.get("errors") or []),
-        }
-
-    plan = await get_plan(plan_id)
-    run_id = str((plan or result.get("plan") or {}).get("run_id") or "")
-    delivery: dict[str, Any] = {"continuations": [], "run": None}
-    try:
-        from app.services.proposal_plan_continuation import deliver_continuations
-
-        if run_id:
-            delivery = await deliver_continuations(run_id)
-    except Exception as exc:
-        # A successful group receipt remains successful if reasoning startup fails.
-        delivery = {"continuations": [], "run": None, "error": safe_error_message(exc)}
-
-    try:
-        continuations = await list_continuations(run_id=run_id) if run_id else []
-    except Exception as exc:
-        continuations = []
-        delivery["error"] = safe_error_message(exc)
-    continuation = next(
-        (
-            item
-            for item in continuations
-            if str(item.get("group_id") or "") == group_id
-        ),
-        None,
-    )
-    from app.services.proposal_plan_continuation import continuation_view, reviewed_plan_view
-
-    try:
-        current_plan = await get_plan(plan_id)
-    except Exception as exc:
-        current_plan = result.get("plan") if isinstance(result.get("plan"), dict) else None
-        delivery["error"] = delivery.get("error") or safe_error_message(exc)
-    if current_plan is None and isinstance(result.get("plan"), dict):
-        current_plan = result["plan"]
-    return {
-        "ok": True,
-        "approved": bool(body.approve),
-        "duplicate": bool(result.get("duplicate")),
-        "plan": await reviewed_plan_view(current_plan, continuations=continuations) if current_plan else None,
-        "receipts": list(result.get("receipts") or []),
-        "successor_plan_id": result.get("successor_plan_id"),
-        "refresh_error": result.get("refresh_error"),
-        "successor_plan": await reviewed_plan_view(result["successor_plan"]) if result.get("successor_plan") else None,
-        "continuation": continuation_view(continuation) if continuation else None,
-        "run_status": (delivery.get("run") or {}).get("status"),
-        "continuation_error": delivery.get("error"),
-        "errors": list(result.get("errors") or []),
-    }
-
-
-@runtime_router.post("/runtime/runs/{run_id}/confirm")
-async def confirm_runtime_action(
-    run_id: str,
-    body: PiAgentConfirmationRequest,
-    authorization: str = Header(...),
-) -> dict[str, Any]:
-    """Confirm one persisted action through the selected Agent provider."""
-
-    if not accepts_authorization(authorization):
-        raise HTTPException(status_code=403, detail="该决定只能由 OfferU 桌面工作区提交")
-    from app.services.embedded_agent_host import confirm_embedded_agent_action
-
-    return await confirm_embedded_agent_action(
-        run_id,
-        action_id=body.action_id,
-        authorization_source=authorization,
-        plan_digest=body.plan_digest,
-        group_digest=body.group_digest,
-        decision_id=body.decision_id,
-    )
-
-
-@runtime_router.post("/runtime/runs/{run_id}/reject")
-async def reject_runtime_action(
-    run_id: str,
-    body: PiAgentRejectionRequest,
-    authorization: str = Header(...),
-) -> dict[str, Any]:
-    """Reject exactly one persisted action through the Operation Registry."""
-
-    if not accepts_authorization(authorization):
-        raise HTTPException(status_code=403, detail="该决定只能由 OfferU 桌面工作区提交")
-    try:
-        from app.services.embedded_agent_host import reject_embedded_agent_action
-
-        return await reject_embedded_agent_action(
-            run_id,
-            action_id=body.action_id,
-            authorization_source=authorization,
-            plan_digest=body.plan_digest,
-            group_digest=body.group_digest,
-            decision_id=body.decision_id,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=safe_error_message(exc)) from exc
 
 
 @runtime_router.post("/runtime/runs/{run_id}/resume")
@@ -1527,7 +1229,7 @@ async def reset_demo_data() -> dict[str, Any]:
 
 @router.post("/data/fresh-reset/proposal")
 async def propose_fresh_local_reset() -> dict[str, Any]:
-    """Persist the protected reset proposal; execution awaits Desktop approval."""
+    """Queue the wipe; it runs only after the desktop confirms the action."""
     return await _ui_operation_projection("reset_local_business_data", {})
 
 

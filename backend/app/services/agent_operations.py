@@ -197,10 +197,8 @@ async def list_agent_runs_summary(
                 "skill_id": run["skill_id"],
                 "skill_version": run["skill_version"],
                 "status": run["status"],
-                "pending_action_count": sum(
-                    1
-                    for step in run.get("steps") or []
-                    if step.get("status") in {"waiting_confirmation", "executing"}
+                "pending_action_count": int(
+                    (run.get("final_result") or {}).get("pending_action_count") or 0
                 ),
                 "failure_reason": run.get("failure_reason") or "",
                 "event_sequence": run.get("event_sequence") or 0,
@@ -210,17 +208,6 @@ async def list_agent_runs_summary(
             for run in runs
         ],
     }
-
-
-async def reject_agent_run(
-    run_id: str, action_id: Optional[str] = None
-) -> dict:
-    """Persist the user's rejection of exactly one Agent Run proposal action."""
-    from app.services.agent_run_state import reject_agent_run_action
-
-    return await reject_agent_run_action(
-        str(run_id), action_id=action_id
-    )
 
 
 async def list_profile_evidence(

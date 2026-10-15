@@ -239,8 +239,6 @@ bash:
   patterns:
     - match: "*app.cli confirm*"
       approval: deny
-    - match: "*app.cli run reject_agent_run*"
-      approval: deny
     - match: "python* -m app.cli *"
       approval: allow
     - match: "python* -m app.cli"
@@ -265,7 +263,7 @@ Acceptance constraints:
 - The process environment already points OfferU CLI at the isolated eval database.
 - Run OfferU CLI from the repository root as: python -m app.cli <subcommand> ...
 - Do not edit project files or use raw database writes/HTTP as a shortcut.
-- Do not call app.cli confirm or reject_agent_run. Side-effect Operations must remain pending for the human to review in OfferU.
+- Do not call app.cli confirm. Irreversible Operations stay in the OfferU confirm list for the human.
 - Do not claim success unless the CLI result actually supports it.
 - If information is missing, say so rather than inventing it.
 

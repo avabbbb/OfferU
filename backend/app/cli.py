@@ -23,9 +23,6 @@ from app.services.agent_skill_registry import (
     resolve_skill,
 )
 from app.services.agent_host_registry import host_capability_matrix
-from app.services.operation_projection import (
-    execute_or_propose_operation,
-)
 from app.services.resume_parser import get_resume_ocr_capabilities
 from app.services.security_redaction import safe_error_message
 
@@ -799,7 +796,7 @@ def _manifest(*, skill: str = "", group: str = "", all_operations: bool = False)
         "service": "OfferU CLI",
         "tool_contract": tool_contract_snapshot(),
         "version": APP_VERSION,
-        "purpose": "Agent-native control surface for OfferU. External agents discover scoped schemas, read context and prepare reviewable drafts; protected changes persist a DecisionPlan for user review inside OfferU.",
+        "purpose": "Agent-native control surface for OfferU. External agents discover scoped schemas, read context and prepare reviewable drafts; writes run and can be undone from the OfferU timeline; irreversible ones wait for the user to confirm in OfferU.",
         "commands": {
             "health": f"{command} doctor --pretty",
             "release_health": f"{command} doctor --require-ready --pretty",
@@ -822,8 +819,8 @@ def _manifest(*, skill: str = "", group: str = "", all_operations: bool = False)
         "safety": {
             "auto_submit_applications": False,
             "machine_mode_interactive_prompts": False,
-            "side_effect_operations_create_persisted_decision_plan": True,
-            "confirmation_policy": "requires_confirmation from the live Operation schema",
+            "irreversible_operations_wait_in_confirm_list": True,
+            "confirmation_policy": "send/publish, data reset, application status and deletes wait for one desktop confirmation",
             "preparation_does_not_adopt_content": True,
             "user_approval_happens_in_offeru": True,
             "explicit_user_confirmation_required": True,
@@ -855,7 +852,9 @@ def _manifest(*, skill: str = "", group: str = "", all_operations: bool = False)
 
 async def _run_operation(name: str, args: dict[str, Any], *, dry_run: bool, run_id: str = "") -> dict[str, Any]:
     await init_db()
-    return await execute_or_propose_operation(
+    from app.services.action_gate import run_gated_operation
+
+    return await run_gated_operation(
         name,
         args,
         dry_run=dry_run,

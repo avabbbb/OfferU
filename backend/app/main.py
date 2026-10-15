@@ -80,9 +80,6 @@ async def lifespan(app: FastAPI):
     from app.services.agent_run_state import recover_interrupted_agent_runs
 
     await run_startup_recovery("agent_runs", recover_interrupted_agent_runs)
-    from app.services.decision_execution import recover_decision_execution
-
-    await run_startup_recovery("decision_execution", recover_decision_execution)
     from app.services.career_tasks import recover_career_tasks
 
     await run_startup_recovery("career_tasks", recover_career_tasks)

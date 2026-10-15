@@ -17,23 +17,10 @@ function asRecord(value: unknown): Record<string, any> | null {
   return value && typeof value === "object" ? value as Record<string, any> : null;
 }
 
-function backupIdFrom(value: unknown, actionId: string): string {
-  const payload = asRecord(value);
-  const group = asRecord(payload?.group);
-  const step = (Array.isArray(group?.nodes) ? group.nodes : []).find(
-    (item: Record<string, any>) => item.id === actionId,
-  );
-  const stepResult = asRecord(step?.result);
-  const operationResult = asRecord(stepResult?.operation_result);
-  const direct = asRecord(operationResult?.outputs)?.backup;
-  if (typeof direct?.backup_id === "string") return direct.backup_id;
-  const toolCalls = Array.isArray(payload?.tool_calls) ? payload.tool_calls : [];
-  for (const call of toolCalls) {
-    const operation = asRecord(call?.result);
-    const backup = asRecord(operation?.outputs)?.backup;
-    if (typeof backup?.backup_id === "string") return backup.backup_id;
-  }
-  return "";
+function backupIdFrom(value: unknown): string {
+  const outputs = asRecord(asRecord(asRecord(value)?.result)?.outputs);
+  const backup = asRecord(outputs?.backup);
+  return typeof backup?.backup_id === "string" ? backup.backup_id : "";
 }
 
 export function FreshResetPanel() {
@@ -95,11 +82,9 @@ function FreshResetPanelContent() {
       const decision = approve
         ? await freshResetApi.approve(proposal)
         : await freshResetApi.reject(proposal);
-      const step = decision.group?.nodes.find((item) => item.id === proposal.actionId);
-      const committed = decision.receipts?.some((receipt) => receipt.node_id === proposal.actionId
-        && receipt.status === "completed" && receipt.effect_state === "committed");
-      if (!decision.ok || (approve && (step?.status !== "completed" || !committed)) || (!approve && decision.group?.status !== "rejected")) {
-        throw new Error(decision.errors?.join("；") || "OfferU 未保存该提案决定。");
+      const expected = approve ? "done" : "rejected";
+      if (!decision.ok || decision.action?.status !== expected) {
+        throw new Error(decision.errors?.join("；") || "OfferU 没能保存这个决定。");
       }
       if (!approve) {
         setProposal(null);
@@ -107,7 +92,7 @@ function FreshResetPanelContent() {
         return;
       }
 
-      const nextBackupId = backupIdFrom(decision, proposal.actionId);
+      const nextBackupId = backupIdFrom(decision);
       resetOnboardingForFreshStart();
       setProposal(null);
       setConfirmationText("");
