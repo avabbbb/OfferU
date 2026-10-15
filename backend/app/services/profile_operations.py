@@ -17,6 +17,7 @@ from sqlalchemy import func, select
 
 from app.agents.llm import chat_completion, extract_json
 from app.database import async_session
+from app.services.security_redaction import safe_error_message
 from app.models.models import (
     Profile,
     ProfileChatSession,
@@ -891,6 +892,18 @@ async def save_profile_resume_import(
 ) -> dict[str, Any]:
     async with async_session() as db:
         profile = await _get_or_create_default_profile(db)
+        # 姓名、电话、邮箱：档案里空着的才用简历里解析出的补上，不覆盖你填过的。
+        current = normalize_base_info_payload(profile.base_info_json or {})
+        filled = {
+            key: str(value).strip()
+            for key, value in (base_info or {}).items()
+            if key in {"name", "phone", "email", "linkedin", "github", "website"}
+            and str(value or "").strip()
+            and not current.get(key)
+        }
+        if filled:
+            merged = {key: value for key, value in current.items() if key != "field_values"}
+            profile.base_info_json = normalize_base_info_payload({**merged, **filled})
         session = ProfileChatSession(
             profile_id=profile.id,
             topic="general",
@@ -971,13 +984,40 @@ async def save_profile_resume_import(
             if linked:
                 bullet["observation_id"] = linked.get("id")
             bullet["candidate_state"] = _resume_candidate_state(proposal)
+    # 上传的简历就是你自己写的经历：直接入档当事实用，不再逐条确认。
+    # 只把没解析清楚的条目标出来（needs_look），整次导入可一键撤销。
+    from app.services.career_memory import review_memory_proposal
+
+    imported_section_ids: list[int] = []
+    for bullet in result["bullets"]:
+        proposal_id = bullet.get("memory_proposal_id")
+        if not proposal_id or bullet.get("candidate_state") == "accepted":
+            continue
+        try:
+            accepted = await review_memory_proposal(
+                proposal_id=int(proposal_id),
+                action="accept",
+                note="上传简历自动入档",
+            )
+        except ValueError as exc:
+            bullet["import_error"] = safe_error_message(exc)
+            continue
+        bullet["candidate_state"] = "accepted"
+        section_id = accepted.get("applied_profile_section_id")
+        if section_id:
+            bullet["profile_section_id"] = section_id
+            imported_section_ids.append(int(section_id))
+        bullet["needs_look"] = _import_needs_look(bullet)
+    result["imported_count"] = len(imported_section_ids)
+    result["imported_section_ids"] = imported_section_ids
+    result["needs_look_count"] = sum(1 for bullet in result["bullets"] if bullet.get("needs_look"))
     enriched_candidates = [
         {
             **candidate,
             **(
                 {
                     key: result["bullets"][index][key]
-                    for key in ("memory_proposal_id", "observation_id", "candidate_state")
+                    for key in ("memory_proposal_id", "observation_id", "candidate_state", "profile_section_id", "needs_look")
                     if key in result["bullets"][index]
                 }
             ),
@@ -1005,6 +1045,49 @@ async def save_profile_resume_import(
         "proposal_count": evidence.get("proposal_count", 0),
     }
     return result
+
+
+def _import_needs_look(bullet: dict[str, Any]) -> bool:
+    """解析得不够有把握的条目：置信度低，或缺机构名 / 正文。"""
+    try:
+        confidence = float(bullet.get("confidence") if bullet.get("confidence") is not None else 1)
+    except (TypeError, ValueError):
+        confidence = 0.0
+    content = bullet.get("content_json") if isinstance(bullet.get("content_json"), dict) else {}
+    normalized = content.get("normalized") if isinstance(content.get("normalized"), dict) else content
+    org = str(bullet.get("title") or normalized.get("company") or normalized.get("school") or normalized.get("name") or "").strip()
+    body = str(normalized.get("description") or normalized.get("bullet") or bullet.get("bullet") or "").strip()
+    return confidence < 0.6 or not org or not body
+
+
+async def undo_profile_resume_import(session_id: int) -> dict[str, Any]:
+    """撤销一次简历导入：撤回这次自动入档的所有条目（可再次导入）。"""
+    from app.services.career_memory import review_memory_proposal
+
+    async with async_session() as db:
+        profile = await _get_or_create_default_profile(db)
+        session = (
+            await db.execute(
+                select(ProfileChatSession).where(
+                    ProfileChatSession.id == session_id,
+                    ProfileChatSession.profile_id == profile.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if session is None:
+            raise ValueError("这次导入不存在")
+        candidates = _extract_last_candidates(session.messages_json or [])
+    revoked = 0
+    for candidate in candidates:
+        proposal_id = candidate.get("memory_proposal_id")
+        if not proposal_id:
+            continue
+        outcome = await review_memory_proposal(
+            proposal_id=int(proposal_id), action="revoke", note="撤销这次简历导入",
+        )
+        if not outcome.get("duplicate"):
+            revoked += 1
+    return {"session_id": session_id, "revoked_count": revoked}
 
 
 async def generate_profile_narrative() -> dict[str, Any]:

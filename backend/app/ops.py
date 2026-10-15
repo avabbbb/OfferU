@@ -249,6 +249,7 @@ from app.services.profile_operations import (
     complete_smart_fill_run,
     save_profile_chat_turn,
     save_profile_resume_import,
+    undo_profile_resume_import,
     save_smart_fill_cache,
     save_smart_fill_run_logs,
     update_profile,
@@ -1007,6 +1008,10 @@ class ConfirmProfileBulletInput(_StrictOperationInput):
     session_id: int = Field(gt=0)
     bullet_index: int = Field(ge=0, le=20)
     edits: dict[str, Any] | None = None
+
+
+class UndoProfileResumeImportInput(_StrictOperationInput):
+    session_id: int = Field(gt=0)
 
 
 class ProfileResumeImportInput(_StrictOperationInput):
@@ -4325,10 +4330,18 @@ OPERATIONS.update(
         "save_profile_resume_import": Operation(
             name="save_profile_resume_import",
             fn=save_profile_resume_import,
-            description="保存简历导入产生的候选会话与证据，不直接确认候选事实。",
+            description="保存简历导入：解析出的经历直接写入档案，可整次撤销。",
             group="profile",
             side_effects=("write",),
             input_model=ProfileResumeImportInput,
+        ),
+        "undo_profile_resume_import": Operation(
+            name="undo_profile_resume_import",
+            fn=undo_profile_resume_import,
+            description="撤销一次简历导入，撤回这次自动写入档案的所有条目。",
+            group="profile",
+            side_effects=("write",),
+            input_model=UndoProfileResumeImportInput,
         ),
         "generate_profile_narrative": Operation(
             name="generate_profile_narrative",

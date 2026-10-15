@@ -1048,7 +1048,19 @@ export interface ProfileImportResult {
     summary?: string;
     personal_summary?: string;
   };
-  bullets: ProfileBulletCandidate[];
+  bullets: (ProfileBulletCandidate & { needs_look?: boolean; profile_section_id?: number; import_error?: string })[];
+  imported_count?: number;
+  needs_look_count?: number;
+}
+
+/** 撤销一次简历导入：撤回这次自动写入档案的全部条目。 */
+export async function undoProfileResumeImport(sessionId: number) {
+  const res = await showcaseFetch(`/api/profile/import-resume/${sessionId}/undo`, { method: "POST" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(safeClientErrorMessage(err.detail, `撤销导入失败 (${res.status})`));
+  }
+  return res.json() as Promise<{ session_id: number; revoked_count: number }>;
 }
 
 export function useProfile() {

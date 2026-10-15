@@ -85,6 +85,7 @@ REVIEW_OPERATIONS = frozenset({
     "confirm_profile_bullet",
     "apply_profile_agent_patch",
     "save_profile_resume_import",
+    "undo_profile_resume_import",
     "generate_profile_narrative",
     "create_target_role",
     "correct_career_stage",

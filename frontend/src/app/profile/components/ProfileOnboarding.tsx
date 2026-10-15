@@ -715,14 +715,14 @@ export function ProfileOnboarding({ currentArchive, profile, onComplete, onClose
               )}
 
               {step === 3 && (
-                <StepFrame key="review" direction={direction} icon={Sparkles} title="审核证据，生成可投递档案" subtitle="Resume 候选先进入证据收件箱；逐条确认后，才会进入 Profile T0 和后续岗位分析。">
+                <StepFrame key="review" direction={direction} icon={Sparkles} title="看一眼导入结果" subtitle="简历里的经历已直接写进档案，定制时就用这些；不对的可以删掉或之后在档案里改。">
                   {imported?.bullets.length ? (
                     <div className="mb-4 rounded-md border border-[var(--border-strong)]/10 bg-white p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="text-sm font-semibold">Resume 证据审核</p>
                           <p className="mt-1 text-xs leading-relaxed text-[var(--foreground-muted)]">
-                            已识别 {imported.bullets.length} 条候选 · {trackedCandidates.length} 条可追溯提案 · 已确认 {acceptedCandidateCount} 条
+                            已从简历导入 {acceptedCandidateCount} 条经历
                           </p>
                         </div>
                         <Chip size="sm" color={pendingCandidateCount || missingEvidenceCandidateCount ? "warning" : "success"} variant="flat">

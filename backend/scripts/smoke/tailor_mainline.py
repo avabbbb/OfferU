@@ -2,10 +2,11 @@
 
 用法（先在应用「设置」里配好模型，或用环境变量启动后端）：
     cd backend && uvicorn app.main:app --host 127.0.0.1 --port 8766
+    python scripts/smoke/tailor_mainline.py --resume-file 我的简历.pdf   # 上传简历 → 定制 → 导出
     python scripts/smoke/tailor_mainline.py --seed-profile     # 空库：内置样例 JD + 样例经历
     python scripts/smoke/tailor_mainline.py --jd jd.txt --resume-id 3
 
-定制只用档案里你确认过的经历；空库请加 --seed-profile（会录入 1 条样例经历）。
+定制用档案里的经历；空库请加 --resume-file 或 --seed-profile。
 会在本地库里新建 1 个岗位和 1 份定制简历。
 任何一步失败立刻退出并打印后端返回原文，不做重试、不兜底。
 """
@@ -95,6 +96,8 @@ def main() -> None:
     parser.add_argument("--jd", type=Path, help="JD 文本文件；默认用内置样例")
     parser.add_argument("--resume-id", type=int, help="可选：参考简历 id（沿用它的模板和结构）")
     parser.add_argument("--seed-profile", action="store_true", help="空库时先往档案里录 1 条样例经历")
+    parser.add_argument("--resume-file", type=Path, help="先上传这份 PDF/DOCX 简历（直接入档，和界面「导入旧简历」同一接口）")
+    parser.add_argument("--parse-mode", default="ai", choices=["ai", "mechanical"], help="上传简历的解析方式")
     parser.add_argument("--out", type=Path, default=Path("smoke-tailored.pdf"))
     args = parser.parse_args()
     jd_text = args.jd.read_text(encoding="utf-8") if args.jd else SAMPLE_JD
@@ -118,12 +121,21 @@ def main() -> None:
         done(t, f"job_id={job_id} duplicate={job.get('duplicate')}")
 
         resume_id = args.resume_id
+        if args.resume_file:
+            t = step(3, f"上传简历 {args.resume_file.name} → 直接入档")
+            with args.resume_file.open("rb") as handle:
+                imported = call(client, "POST", f"/profile/import-resume?parse_mode={args.parse_mode}",
+                                files={"file": (args.resume_file.name, handle)}, timeout=300)
+            for bullet in imported.get("bullets") or []:
+                flag = "  ← 没解析清楚" if bullet.get("needs_look") else ""
+                print(f"    - {bullet.get('section_type')}: {bullet.get('title')}{flag}")
+            done(t, f"入档 {imported.get('imported_count')} 条，撤销：POST /api/profile/import-resume/{imported.get('session_id')}/undo")
         if args.seed_profile:
             t = step(3, "冷启动：手动录入 1 条经历到档案（与「岗位定制」页手动录入同一接口）")
             call(client, "POST", "/profile/sections", json=SAMPLE_PROFILE_FACT)
             done(t)
-        else:
-            print("\n[3] 用你档案里已有的已确认经历" + (f"，参考简历 #{resume_id}" if resume_id else ""))
+        elif not args.resume_file:
+            print("\n[3] 用你档案里已有的经历" + (f"，参考简历 #{resume_id}" if resume_id else ""))
 
         t = step(4, "定制（调用真模型）")
         events = read_sse(client, "/optimize/generate", {"job_ids": [job_id], "reference_resume_id": resume_id})

@@ -1619,6 +1619,11 @@ async def import_profile_resume(
     )
 
 
+@router.post("/import-resume/{session_id}/undo")
+async def undo_profile_resume_import(session_id: int):
+    return await _execute_operation("undo_profile_resume_import", {"session_id": session_id})
+
+
 @router.post("/generate-narrative")
 async def generate_narrative():
     return await _execute_operation("generate_profile_narrative", {})

@@ -11,18 +11,18 @@ import { useRef, useState } from "react";
 import { Button, Input, Textarea } from "@heroui/react";
 import { Check, FileUp, PenLine, X } from "lucide-react";
 import {
-  confirmProfileCandidate,
   createProfileSection,
   importProfileResume,
   type ProfileBulletCandidate,
   type ProfileImportResult,
+  undoProfileResumeImport,
 } from "@/lib/hooks";
 import { memoryApi } from "@/lib/api";
 import { bauhausFieldClassNames } from "@/lib/bauhaus";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 
 type Mode = "import" | "manual";
-type CandidateState = "pending" | "accepted" | "rejected";
+type CandidateState = "kept" | "removed";
 type ManualKind = "experience" | "internship" | "project";
 
 interface ProfileColdStartProps {
@@ -104,22 +104,20 @@ export function ProfileColdStart({ verifiedCount, onProfileChanged, onDone }: Pr
   const [role, setRole] = useState("");
   const [period, setPeriod] = useState("");
   const [description, setDescription] = useState("");
-  const [truthful, setTruthful] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedTitles, setSavedTitles] = useState<string[]>([]);
+
+  const [undone, setUndone] = useState(false);
 
   const upload = async (file: File) => {
     setImporting(true);
     setError("");
+    setUndone(false);
     try {
       const result = await importProfileResume(file, "ai");
       setImported(result);
-      const initial: Record<number, CandidateState> = {};
-      result.bullets.forEach((candidate, index) => {
-        if (candidate.candidate_state === "accepted") initial[index] = "accepted";
-        else if (candidate.candidate_state === "rejected") initial[index] = "rejected";
-      });
-      setStates(initial);
+      setStates({});
+      await onProfileChanged();
     } catch (err) {
       setError(safeClientErrorMessage(err, "简历解析失败，换一份 PDF/DOCX 试试，或改用「直接写几条经历」。"));
     } finally {
@@ -127,26 +125,35 @@ export function ProfileColdStart({ verifiedCount, onProfileChanged, onDone }: Pr
     }
   };
 
-  const review = async (index: number, action: "accepted" | "rejected") => {
+  // 单条「不是我的」：撤回这条已入档的经历
+  const removeOne = async (index: number) => {
     if (!imported || reviewing !== null) return;
-    const candidate = imported.bullets[index];
-    const proposalId = Number(candidate?.memory_proposal_id || 0);
-    if (!candidate || !proposalId) {
-      setError("这条候选没有可追溯的原文来源，不能写入档案。请重新上传简历。");
-      return;
-    }
+    const proposalId = Number(imported.bullets[index]?.memory_proposal_id || 0);
+    if (!proposalId) return;
     setReviewing(index);
     setError("");
     try {
-      if (action === "accepted") {
-        await confirmProfileCandidate({ session_id: imported.session_id, bullet_index: index });
-        await onProfileChanged();
-      } else {
-        await memoryApi.reviewProposal(proposalId, "reject", "用户在岗位定制冷启动中拒绝");
-      }
-      setStates((prev) => ({ ...prev, [index]: action }));
+      await memoryApi.reviewProposal(proposalId, "revoke", "用户在导入结果里删掉");
+      setStates((prev) => ({ ...prev, [index]: "removed" }));
+      await onProfileChanged();
     } catch (err) {
-      setError(safeClientErrorMessage(err, "确认失败，请重试。"));
+      setError(safeClientErrorMessage(err, "删除失败，请重试。"));
+    } finally {
+      setReviewing(null);
+    }
+  };
+
+  const undoImport = async () => {
+    if (!imported) return;
+    setReviewing(-1);
+    setError("");
+    try {
+      await undoProfileResumeImport(imported.session_id);
+      setUndone(true);
+      setImported(null);
+      await onProfileChanged();
+    } catch (err) {
+      setError(safeClientErrorMessage(err, "撤销失败，请重试。"));
     } finally {
       setReviewing(null);
     }
@@ -162,7 +169,6 @@ export function ProfileColdStart({ verifiedCount, onProfileChanged, onDone }: Pr
       setRole("");
       setPeriod("");
       setDescription("");
-      setTruthful(false);
       await onProfileChanged();
     } catch (err) {
       setError(safeClientErrorMessage(err, "保存失败，请重试。"));
@@ -171,16 +177,14 @@ export function ProfileColdStart({ verifiedCount, onProfileChanged, onDone }: Pr
     }
   };
 
-  const pendingCount = imported
-    ? imported.bullets.filter((_, index) => !states[index]).length
-    : 0;
-  const canSaveManual = Boolean(org.trim() && description.trim().length >= 10 && truthful) && !saving;
+  const importedCount = imported ? imported.imported_count ?? imported.bullets.length : 0;
+  const canSaveManual = Boolean(org.trim() && description.trim().length >= 10) && !saving;
 
   return (
     <div className="flex h-full flex-col overflow-y-auto p-5 custom-scrollbar" data-testid="profile-cold-start">
-      <h3 className="text-[15px] font-semibold text-[var(--foreground)]">先给 AI 几条你确认过的经历</h3>
+      <h3 className="text-[15px] font-semibold text-[var(--foreground)]">先给 AI 你的经历</h3>
       <p className="mt-1 text-[13px] leading-relaxed text-[var(--foreground-muted)]">
-        定制只会用你亲手确认过的事实，不会编。选一种方式开始，确认 1 条就能定制，越多越准。
+        导入旧简历或直接写几条，定制只在这些经历上改措辞，不会编新事实。
       </p>
 
       <div className="mt-4 flex flex-wrap gap-2" role="tablist" aria-label="冷启动方式">
@@ -210,46 +214,52 @@ export function ProfileColdStart({ verifiedCount, onProfileChanged, onDone }: Pr
             <Button size="sm" className="bauhaus-button" isLoading={importing} startContent={!importing ? <FileUp size={14} /> : undefined} onPress={() => fileRef.current?.click()}>
               {importing ? "正在读取简历…" : "选择 PDF / DOCX"}
             </Button>
-          ) : (
+          ) : null}
+          {!imported && undone ? (
+            <p className="text-xs text-[var(--foreground-muted)]">已撤销上次导入，档案里那批经历已移除。</p>
+          ) : null}
+          {imported ? (
             <>
-              <p className="text-xs text-[var(--foreground-muted)]">
-                从 {imported.filename} 读出 {imported.bullets.length} 条候选，逐条确认后才写入档案。
-                {pendingCount > 0 ? ` 还有 ${pendingCount} 条没看。` : ""}
-              </p>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--foreground-muted)]">
+                <span>已从 {imported.filename} 导入 {importedCount} 条经历，定制时直接用；之后可以在档案里改。</span>
+                <Button size="sm" variant="light" isLoading={reviewing === -1} isDisabled={reviewing !== null} onPress={() => void undoImport()}>
+                  撤销这次导入
+                </Button>
+              </div>
               {imported.bullets.length === 0 && (
                 <p className="text-sm text-[var(--foreground)]">没读出经历，改用「直接写几条经历」更快。</p>
               )}
               <ul className="space-y-2">
                 {imported.bullets.map((candidate, index) => {
-                  const state = states[index] || "pending";
+                  const removed = states[index] === "removed";
                   return (
-                    <li key={`${candidate.index}-${candidate.title}`} className="rounded-[10px] border border-[var(--border)] p-3">
+                    <li
+                      key={`${candidate.index}-${candidate.title}`}
+                      className={`rounded-[10px] border p-3 ${candidate.needs_look && !removed ? "border-amber-300 bg-amber-50" : "border-[var(--border)]"} ${removed ? "opacity-50" : ""}`}
+                    >
                       <div className="flex items-start gap-2">
                         <div className="min-w-0 flex-1">
-                          <p className="text-[13px] font-semibold text-[var(--foreground)]">{candidate.title || `候选 ${index + 1}`}</p>
+                          <p className="text-[13px] font-semibold text-[var(--foreground)]">{candidate.title || `经历 ${index + 1}`}</p>
                           <p className="mt-0.5 break-words text-xs leading-relaxed text-[var(--foreground-muted)]">{candidateSummary(candidate)}</p>
-                          {candidate.source_ref && <p className="mt-0.5 text-[11px] text-[var(--foreground-muted)]">原文：{candidate.source_ref}</p>}
+                          {candidate.needs_look && !removed && (
+                            <p className="mt-0.5 text-[11px] font-semibold text-amber-700">这条没解析清楚，去档案里看一眼</p>
+                          )}
+                          {candidate.import_error && <p className="mt-0.5 text-[11px] text-[var(--foreground-muted)]">没能入档：{candidate.import_error}</p>}
                         </div>
-                        {state !== "pending" && (
-                          <span className="shrink-0 text-[11px] font-semibold text-[var(--foreground-muted)]">{state === "accepted" ? "已确认" : "不是我的"}</span>
-                        )}
+                        {removed ? (
+                          <span className="shrink-0 text-[11px] font-semibold text-[var(--foreground-muted)]">已删掉</span>
+                        ) : candidate.candidate_state === "accepted" ? (
+                          <Button size="sm" variant="light" startContent={<X size={13} />} isLoading={reviewing === index} isDisabled={reviewing !== null} onPress={() => void removeOne(index)}>
+                            不是我的
+                          </Button>
+                        ) : null}
                       </div>
-                      {state === "pending" && (
-                        <div className="mt-2 flex gap-2">
-                          <Button size="sm" variant="flat" startContent={<Check size={13} />} isLoading={reviewing === index} isDisabled={reviewing !== null} onPress={() => void review(index, "accepted")}>
-                            确认属实
-                          </Button>
-                          <Button size="sm" variant="light" startContent={<X size={13} />} isDisabled={reviewing !== null} onPress={() => void review(index, "rejected")}>
-                            不对，丢掉
-                          </Button>
-                        </div>
-                      )}
                     </li>
                   );
                 })}
               </ul>
             </>
-          )}
+          ) : null}
         </div>
       )}
 
@@ -271,10 +281,6 @@ export function ProfileColdStart({ verifiedCount, onProfileChanged, onDone }: Pr
             onValueChange={setDescription}
             classNames={bauhausFieldClassNames}
           />
-          <label className="flex items-start gap-2 text-xs text-[var(--foreground)]">
-            <input type="checkbox" className="mt-0.5" checked={truthful} onChange={(event) => setTruthful(event.target.checked)} />
-            这是我真实的经历，可以作为定制依据
-          </label>
           <Button size="sm" className="bauhaus-button" isLoading={saving} isDisabled={!canSaveManual} onPress={() => void saveManual()}>
             保存这条
           </Button>

@@ -7,7 +7,7 @@ const api = vi.hoisted(() => ({
   capture: vi.fn(),
   reviewProposal: vi.fn(),
   importProfileResume: vi.fn(),
-  confirmProfileCandidate: vi.fn(),
+  undoProfileResumeImport: vi.fn(),
   createProfileSection: vi.fn(),
 }));
 
@@ -18,7 +18,7 @@ vi.mock("@/lib/api", () => ({
 
 vi.mock("@/lib/hooks", () => ({
   importProfileResume: api.importProfileResume,
-  confirmProfileCandidate: api.confirmProfileCandidate,
+  undoProfileResumeImport: api.undoProfileResumeImport,
   createProfileSection: api.createProfileSection,
 }));
 
@@ -101,7 +101,7 @@ describe("ProfileColdStart", () => {
     expect(payload.content_json).toMatchObject({ company: "示例科技", position: "后端实习生", start_date: "2024.07", end_date: "2024.10" });
   });
 
-  it("does not save a hand-written experience until the user attests it is real", async () => {
+  it("saves a hand-written experience without an extra attestation step", async () => {
     api.createProfileSection.mockResolvedValue({ id: 1 });
     const onChanged = vi.fn();
     render(<ProfileColdStart verifiedCount={0} onProfileChanged={onChanged} onDone={vi.fn()} />);
@@ -109,37 +109,36 @@ describe("ProfileColdStart", () => {
     await userEvent.click(screen.getByRole("tab", { name: /直接写几条经历/ }));
     await userEvent.type(screen.getByLabelText("公司"), "示例科技");
     await userEvent.type(screen.getByLabelText("你做了什么、结果如何"), "负责订单服务重构，接口耗时下降一半");
-    const save = screen.getByRole("button", { name: "保存这条" }) as HTMLButtonElement;
-    expect(save.disabled).toBe(true);
-
-    await userEvent.click(screen.getByLabelText("这是我真实的经历，可以作为定制依据"));
-    await userEvent.click(save);
+    await userEvent.click(screen.getByRole("button", { name: "保存这条" }));
     await waitFor(() => expect(api.createProfileSection).toHaveBeenCalledTimes(1));
     expect(onChanged).toHaveBeenCalled();
     expect(await screen.findByText(/已保存：示例科技/)).toBeTruthy();
   });
 
-  it("writes an imported candidate only after the user confirms it", async () => {
+  it("imports a resume straight into the profile, flags unclear items, and can undo the whole import", async () => {
     api.importProfileResume.mockResolvedValue({
       session_id: 3,
       filename: "old.pdf",
       text_length: 100,
+      imported_count: 2,
       bullets: [
-        { index: 0, session_id: 3, section_type: "experience", title: "示例科技", content_json: { bullet: "后端实习" }, confidence: 0.9, memory_proposal_id: 11 },
+        { index: 0, session_id: 3, section_type: "experience", title: "示例科技", content_json: { bullet: "后端实习" }, confidence: 0.9, memory_proposal_id: 11, candidate_state: "accepted" },
+        { index: 1, session_id: 3, section_type: "skill", title: "技能清单", content_json: { bullet: "Python" }, confidence: 0.5, memory_proposal_id: 12, candidate_state: "accepted", needs_look: true },
       ],
     });
-    api.confirmProfileCandidate.mockResolvedValue({});
-    render(<ProfileColdStart verifiedCount={0} onProfileChanged={vi.fn()} onDone={vi.fn()} />);
+    api.undoProfileResumeImport.mockResolvedValue({ session_id: 3, revoked_count: 2 });
+    const onChanged = vi.fn();
+    render(<ProfileColdStart verifiedCount={0} onProfileChanged={onChanged} onDone={vi.fn()} />);
 
     await userEvent.click(screen.getByRole("tab", { name: /导入旧简历/ }));
-    const file = new File(["%PDF"], "old.pdf", { type: "application/pdf" });
-    await userEvent.upload(screen.getByLabelText("选择简历文件"), file);
+    await userEvent.upload(screen.getByLabelText("选择简历文件"), new File(["%PDF"], "old.pdf", { type: "application/pdf" }));
 
-    expect(await screen.findByText("后端实习")).toBeTruthy();
-    expect(api.confirmProfileCandidate).not.toHaveBeenCalled();
-    await userEvent.click(screen.getByRole("button", { name: /确认属实/ }));
-    await waitFor(() => expect(api.confirmProfileCandidate).toHaveBeenCalledWith({ session_id: 3, bullet_index: 0 }));
-    expect(await screen.findByText("已确认")).toBeTruthy();
+    expect(await screen.findByText(/导入 2 条经历/)).toBeTruthy();
+    expect(onChanged).toHaveBeenCalled();
+    expect(screen.getAllByText("这条没解析清楚，去档案里看一眼")).toHaveLength(1);
+    await userEvent.click(screen.getByRole("button", { name: "撤销这次导入" }));
+    await waitFor(() => expect(api.undoProfileResumeImport).toHaveBeenCalledWith(3));
+    expect(await screen.findByText(/已撤销上次导入/)).toBeTruthy();
   });
 
   it("cannot leave the cold start before at least one fact is confirmed", () => {
