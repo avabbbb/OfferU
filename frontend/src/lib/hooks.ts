@@ -11,7 +11,6 @@ import { SHOWCASE, showcaseHandle } from "@/lib/showcase/router";
 import { showcaseChatResponse } from "@/lib/showcase/llm";
 import { resolveApiBase } from "@/lib/apiBase";
 import { safeClientErrorMessage } from "@/lib/safe-error";
-import { decideAgentActionInDesktop } from "@/lib/desktop-proposal-decision";
 import type { CareerArtifact, CareerDelivery } from "@/lib/api";
 
 export function useJobCareerArtifacts(jobId: number) {
@@ -299,18 +298,7 @@ export async function dismissAutomationInboxItem(itemId: string): Promise<Record
   const projection = payload.outputs && typeof payload.outputs === "object"
     ? payload.outputs
     : payload;
-  return confirmPendingFromClick(projection, "稍后处理未能保存");
-}
-
-/** A button click on an irreversible operation lands in the confirm list; the click itself is the confirmation. */
-async function confirmPendingFromClick(projection: Record<string, any>, fallback: string): Promise<Record<string, any>> {
-  const pending = projection.pending_action;
-  if (projection.executed !== false || !pending?.id || SHOWCASE) return projection;
-  const confirmed = await decideAgentActionInDesktop<Record<string, any>>(String(pending.id), "confirm");
-  if (!confirmed?.ok) {
-    throw new Error(safeClientErrorMessage(confirmed?.errors?.join("；") || confirmed?.result?.errors?.join("；"), fallback));
-  }
-  return confirmed.result?.outputs || confirmed;
+  return projection;
 }
 
 // ---- Hooks ----
@@ -457,12 +445,7 @@ export async function controlCareerTask(
   if (!response.ok || payload.ok === false || payload.error || payload.detail) {
     throw new Error(safeClientErrorMessage(payload.detail || payload.error, `任务${action}失败 (${response.status})`));
   }
-
-  const projection = payload.outputs && typeof payload.outputs === "object"
-    ? payload.outputs
-    : payload;
-  if (projection.executed !== false) return payload;
-  return confirmPendingFromClick(projection, `确认任务${action}失败`);
+  return payload;
 }
 
 /** 获取系统配置 */

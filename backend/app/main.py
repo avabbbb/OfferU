@@ -6,6 +6,7 @@
 # =============================================
 
 import os
+import re
 import logging
 from contextlib import asynccontextmanager
 from urllib.parse import urlsplit
@@ -182,6 +183,7 @@ def _is_allowed_cors_origin(origin: str) -> bool:
     return host in _CORS_ALLOWED_HOSTS
 
 
+_EXTENSION_ORIGIN = r"^(chrome-extension|ms-browser-extension)://[a-z0-9]{16,64}$"
 cors_origins = []
 _dropped_cors_origins: list[str] = []
 for _origin in (o.strip() for o in settings.cors_origins.split(",")):
@@ -205,7 +207,7 @@ for _offeru_frontend_origin in ("http://localhost:7410", "http://127.0.0.1:7410"
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    allow_origin_regex=r"^(chrome-extension|ms-browser-extension)://[a-z0-9]{16,64}$",
+    allow_origin_regex=_EXTENSION_ORIGIN,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Accept", "Content-Type"],
@@ -223,6 +225,12 @@ STUDIO_PREVIEW_EMBED_ORIGINS = tuple(
             "tauri://localhost",
         ]
     )
+)
+
+
+# The OfferU UI itself: the dev/web frontend and the desktop WebView.
+_TRUSTED_WRITE_ORIGINS = frozenset(
+    {*cors_origins, "tauri://localhost", "http://tauri.localhost", "https://tauri.localhost"}
 )
 
 
@@ -366,6 +374,22 @@ async def add_security_headers(request, call_next):
             status_code=403,
             detail="请求被拒绝：仅允许本机回环来源",
             kind="forbidden_host",
+        )
+    # CSRF boundary: a button click runs directly (no second confirmation), so
+    # a state-changing request must come from the OfferU UI itself. Browsers
+    # always send Origin on cross-site writes; CLI/MCP/sidecar calls send none.
+    origin = request.headers.get("origin")
+    if (
+        request.method not in ("GET", "HEAD", "OPTIONS")
+        and origin
+        and origin not in _TRUSTED_WRITE_ORIGINS
+        and not re.match(_EXTENSION_ORIGIN, origin)
+    ):
+        return _error_response(
+            request,
+            status_code=403,
+            detail="请求被拒绝：只接受 OfferU 自己页面发起的修改",
+            kind="forbidden_origin",
         )
     try:
         response = await call_next(request)

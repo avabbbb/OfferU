@@ -10,7 +10,7 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
-from app.ops import list_operations
+from app.ops import execute_operation, list_operations
 from app.services.harness_history import (
     get_conversation,
     list_conversations,
@@ -117,7 +117,6 @@ async def _ui_operation_outputs(
     operation: str,
     args: dict[str, Any],
 ) -> dict[str, Any]:
-    from app.ops import execute_operation
 
     result = await execute_operation(
         operation,
@@ -139,15 +138,11 @@ async def _ui_operation_projection(
     operation: str,
     args: dict[str, Any],
 ) -> dict[str, Any]:
-    """A button click. Irreversible operations still land in the confirm list
-    (desktop-only confirmation), so a stray local request cannot wipe data."""
-    from app.services.action_gate import run_gated_operation
+    """A button click: the click is the decision, so it runs directly.
 
-    result = await run_gated_operation(
-        operation,
-        args,
-        surface="agent_runtime_ui",
-    )
+    Cross-site requests cannot reach here: unsafe methods from a foreign
+    Origin are rejected in main.py before routing."""
+    result = await execute_operation(operation, args, surface="agent_runtime_ui")
     if not result.get("ok"):
         detail = "；".join(
             safe_error_message(ValueError(item)) for item in result.get("errors") or []
@@ -1237,9 +1232,10 @@ async def reset_demo_data() -> dict[str, Any]:
     return await _ui_operation_outputs("reset_demo_data", {})
 
 
-@router.post("/data/fresh-reset/proposal")
-async def propose_fresh_local_reset() -> dict[str, Any]:
-    """Queue the wipe; it runs only after the desktop confirms the action."""
+@router.post("/data/fresh-reset")
+async def fresh_local_reset() -> dict[str, Any]:
+    """Back up, then wipe. The panel only enables the button after the user
+    typed 「全清并重新开始」."""
     return await _ui_operation_projection("reset_local_business_data", {})
 
 

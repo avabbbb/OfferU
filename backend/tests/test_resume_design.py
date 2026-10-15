@@ -39,7 +39,7 @@ async def scenario(tmp_path, callback):
         async with AsyncExitStack() as stack:
             for module in (
                 "app.services.resume_design", "app.services.resume_route_operations", "app.ops",
-                "app.services.agent_run_state", "app.services.action_gate",
+                "app.services.agent_run_state", "app.services.action_gate", "app.services.change_capture",
             ):
                 stack.enter_context(patch(f"{module}.async_session", sessions))
             stack.enter_context(patch.object(design, "runtime_uploads_dir", lambda folder: tmp_path / "uploads" / folder))

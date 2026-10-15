@@ -6,22 +6,12 @@ import { useSWRConfig } from "swr";
 import { dataSafetyApi } from "@/lib/api";
 import { resolveApiBase } from "@/lib/apiBase";
 import { safeClientErrorMessage } from "@/lib/safe-error";
-import { freshResetApi, type FreshResetProposal } from "@/lib/freshResetApi";
-import { getRuntimeIdentity, isDesktopRuntime, type RuntimeIdentity } from "@/lib/runtimeIdentityApi";
+import { freshResetApi } from "@/lib/freshResetApi";
+import { getRuntimeIdentity, type RuntimeIdentity } from "@/lib/runtimeIdentityApi";
 import { resetOnboardingForFreshStart } from "@/lib/useOnboarding";
 import { SHOWCASE } from "@/lib/showcase/router";
 
 const CONFIRMATION_TEXT = "全清并重新开始";
-
-function asRecord(value: unknown): Record<string, any> | null {
-  return value && typeof value === "object" ? value as Record<string, any> : null;
-}
-
-function backupIdFrom(value: unknown): string {
-  const outputs = asRecord(asRecord(asRecord(value)?.result)?.outputs);
-  const backup = asRecord(outputs?.backup);
-  return typeof backup?.backup_id === "string" ? backup.backup_id : "";
-}
 
 export function FreshResetPanel() {
   return SHOWCASE ? null : <FreshResetPanelContent />;
@@ -31,7 +21,6 @@ function FreshResetPanelContent() {
   const { mutate } = useSWRConfig();
   const [identity, setIdentity] = useState<RuntimeIdentity | null>(null);
   const [status, setStatus] = useState<Awaited<ReturnType<typeof dataSafetyApi.status>> | null>(null);
-  const [proposal, setProposal] = useState<FreshResetProposal | null>(null);
   const [confirmationText, setConfirmationText] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -41,14 +30,9 @@ function FreshResetPanelContent() {
   const load = async () => {
     setLoading(true);
     try {
-      const [nextIdentity, nextStatus, pending] = await Promise.all([
-        getRuntimeIdentity(),
-        dataSafetyApi.status(),
-        freshResetApi.pendingProposal(),
-      ]);
+      const [nextIdentity, nextStatus] = await Promise.all([getRuntimeIdentity(), dataSafetyApi.status()]);
       setIdentity(nextIdentity);
       setStatus(nextStatus);
-      setProposal(pending);
     } catch (cause) {
       setFeedback({ type: "error", message: safeClientErrorMessage(cause, "全清状态读取失败") });
     } finally {
@@ -60,41 +44,14 @@ function FreshResetPanelContent() {
     void load();
   }, []);
 
-  const propose = async () => {
-    if (!isDesktopRuntime() || confirmationText !== CONFIRMATION_TEXT || !identity?.data_root) return;
+  const reset = async () => {
+    if (confirmationText !== CONFIRMATION_TEXT || !identity?.data_root) return;
     setBusy(true);
     setFeedback(null);
     try {
-      setProposal(await freshResetApi.createProposal());
-      setFeedback({ type: "success", message: "已准备好全清；数据尚未删除。请确认清空或取消。" });
-    } catch (cause) {
-      setFeedback({ type: "error", message: safeClientErrorMessage(cause, "准备清理失败") });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const decide = async (approve: boolean) => {
-    if (!proposal || !isDesktopRuntime() || (approve && confirmationText !== CONFIRMATION_TEXT)) return;
-    setBusy(true);
-    setFeedback(null);
-    try {
-      const decision = approve
-        ? await freshResetApi.approve(proposal)
-        : await freshResetApi.reject(proposal);
-      const expected = approve ? "done" : "rejected";
-      if (!decision.ok || decision.action?.status !== expected) {
-        throw new Error(decision.errors?.join("；") || "OfferU 没能保存这个决定。");
-      }
-      if (!approve) {
-        setProposal(null);
-        setFeedback({ type: "success", message: "提案已拒绝；职业数据保持不变。" });
-        return;
-      }
-
-      const nextBackupId = backupIdFrom(decision);
+      const result = await freshResetApi.reset();
+      const nextBackupId = typeof result.backup?.backup_id === "string" ? result.backup.backup_id : "";
       resetOnboardingForFreshStart();
-      setProposal(null);
       setConfirmationText("");
       setBackupId(nextBackupId);
       let cacheWarning = "";
@@ -122,15 +79,14 @@ function FreshResetPanelContent() {
           : `清理已完成，但无法核实重置前备份${nextBackupId ? ` ${nextBackupId}` : ""}；请检查数据安全区。${cacheWarning}`,
       });
     } catch (cause) {
-      setFeedback({ type: "error", message: safeClientErrorMessage(cause, approve ? "执行清理失败" : "拒绝提案失败") });
-      if (approve) await load();
+      setFeedback({ type: "error", message: safeClientErrorMessage(cause, "执行清理失败") });
+      await load();
     } finally {
       setBusy(false);
     }
   };
 
-  const canPropose = isDesktopRuntime() && !!identity?.data_root && !status?.pending_restore;
-  const canApprove = canPropose && confirmationText === CONFIRMATION_TEXT;
+  const canReset = !!identity?.data_root && !status?.pending_restore && confirmationText === CONFIRMATION_TEXT;
 
   return (
     <section className="bauhaus-panel space-y-4 p-5" data-testid="fresh-reset-panel">
@@ -177,11 +133,6 @@ function FreshResetPanelContent() {
           有一份备份正在等待重启恢复。请先取消恢复，再重新开始。
         </p>
       )}
-      {!isDesktopRuntime() && (
-        <p className="text-sm text-[var(--foreground-muted)]" role="status">
-          请在 OfferU Desktop 中确认此操作；当前网页不会执行清理。
-        </p>
-      )}
       {feedback && (
         <p className={`text-sm ${feedback.type === "error" ? "text-[var(--primary-red)]" : "text-[var(--primary-blue)]"}`} role="status">
           {feedback.message}
@@ -202,16 +153,7 @@ function FreshResetPanelContent() {
         data-testid="fresh-reset-confirmation"
       />
 
-      {proposal ? (
-        <div className="flex flex-wrap gap-2" data-testid="fresh-reset-pending-proposal">
-          <Button color="danger" isDisabled={!canApprove || busy} isLoading={busy} onPress={() => void decide(true)}>
-            确认清空并重新开始
-          </Button>
-          <Button variant="bordered" isDisabled={!isDesktopRuntime() || busy} onPress={() => void decide(false)}>
-            取消并保留数据
-          </Button>
-        </div>
-      ) : backupId ? (
+      {backupId ? (
         <Button color="primary" onPress={() => {
           window.location.hash = "#/";
           window.location.reload();
@@ -221,16 +163,16 @@ function FreshResetPanelContent() {
       ) : (
         <Button
           color="danger"
-          isDisabled={!canPropose || busy || confirmationText !== CONFIRMATION_TEXT}
+          isDisabled={!canReset || busy}
           isLoading={busy}
-          onPress={() => void propose()}
+          onPress={() => void reset()}
         >
-          继续，进入确认
+          清空并重新开始
         </Button>
       )}
 
       <p className="text-xs leading-relaxed text-[var(--foreground-muted)]">
-        {proposal ? "尚未清理数据。请确认清空，或取消并保留当前数据。" : "继续后仍会先让你检查并确认；未确认前不会清理数据。"}
+        点击后会先自动备份，再清空；之后可以在数据安全区用这份备份恢复。
       </p>
     </section>
   );
