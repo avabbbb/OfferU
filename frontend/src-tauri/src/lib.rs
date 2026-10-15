@@ -245,6 +245,45 @@ async fn decide_agent_plan_group(
     .await
 }
 
+fn validate_plan_group_reconciliation_input(
+    plan_id: String,
+    group_id: String,
+    action: String,
+    group_digest: String,
+) -> Result<(String, String, String, String), String> {
+    if !has_fixed_hex_id(&plan_id, "plan_")
+        || !has_fixed_hex_id(&group_id, "group_")
+        || !has_fixed_digest(&group_digest)
+        || !matches!(action.as_str(), "retry" | "abandon")
+    {
+        return Err("计划核对标识、摘要或处理方式无效".to_string());
+    }
+    Ok((plan_id, group_id, action, group_digest))
+}
+
+/// Exit for a group whose execution outcome is unknown: the system re-checks
+/// durable evidence ("retry") or the user closes it as is ("abandon"). Both
+/// stay behind the desktop approval capability like group decisions.
+#[tauri::command]
+async fn resolve_agent_plan_group(
+    app: AppHandle,
+    plan_id: String,
+    group_id: String,
+    action: String,
+    group_digest: String,
+) -> Result<serde_json::Value, String> {
+    let (plan_id, group_id, action, group_digest) =
+        validate_plan_group_reconciliation_input(plan_id, group_id, action, group_digest)?;
+    let timeout = if action == "retry" { 240 } else { 15 };
+    post_approval_request(
+        app,
+        format!("/api/agent/plans/{plan_id}/groups/{group_id}/reconciliation"),
+        serde_json::json!({"action": action, "group_digest": group_digest}),
+        Duration::from_secs(timeout),
+    )
+    .await
+}
+
 fn validate_runtime_run_id(run_id: String) -> Result<String, String> {
     let suffix = run_id.strip_prefix("run_").ok_or("任务标识无效")?;
     if !(16..=32).contains(&suffix.len())
@@ -645,6 +684,29 @@ mod desktop_runtime_tests {
         ).is_err());
         assert!(validate_plan_group_decision_input(
             plan.into(), group.into(), digest.clone(), digest, "decision_short".into()
+        ).is_err());
+    }
+
+    #[test]
+    fn validates_plan_group_reconciliation_action_and_digest() {
+        let plan = "plan_0123456789abcdef0123456789abcdef";
+        let group = "group_0123456789abcdef0123456789abcdef";
+        let digest = "0123456789abcdef".repeat(4);
+        for action in ["retry", "abandon"] {
+            assert!(validate_plan_group_reconciliation_input(
+                plan.into(), group.into(), action.into(), digest.clone()
+            ).is_ok());
+        }
+        for action in ["approve", "", "Retry", "abandon;"] {
+            assert!(validate_plan_group_reconciliation_input(
+                plan.into(), group.into(), action.into(), digest.clone()
+            ).is_err());
+        }
+        assert!(validate_plan_group_reconciliation_input(
+            "../x".into(), group.into(), "retry".into(), digest.clone()
+        ).is_err());
+        assert!(validate_plan_group_reconciliation_input(
+            plan.into(), group.into(), "retry".into(), "A".repeat(64)
         ).is_err());
     }
 
@@ -1186,6 +1248,7 @@ pub fn run() {
             decide_agent_proposal,
             decide_agent_runtime_action,
             decide_agent_plan_group,
+            resolve_agent_plan_group,
             get_desktop_runtime_identity,
             get_desktop_backend_status,
             open_external_url

@@ -2,6 +2,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import type {
   AgentConfirmationResponse,
   AgentPlanDecisionResponse,
+  AgentPlanReconciliationResponse,
   AgentProposalDecisionResponse,
 } from "./api";
 import type {
@@ -42,6 +43,24 @@ export function decidePlanGroupInDesktop(
     planId,
     groupId,
     ...decision,
+  });
+}
+
+/**
+ * Exit for a group whose execution outcome is unknown: "retry" asks the
+ * system to re-check durable evidence, "abandon" closes the group and keeps
+ * current data as is. Neither replays an Operation.
+ */
+export function resolvePlanGroupInDesktop(
+  planId: string,
+  groupId: string,
+  body: { action: "retry" | "abandon"; groupDigest: string },
+): Promise<AgentPlanReconciliationResponse> {
+  return invokeFromDesktop<AgentPlanReconciliationResponse>("resolve_agent_plan_group", {
+    planId,
+    groupId,
+    action: body.action,
+    groupDigest: body.groupDigest,
   });
 }
 

@@ -14,6 +14,7 @@ import {
   decideAgentRuntimeActionInDesktop,
   decidePlanGroupInDesktop,
   decideProposalInDesktop,
+  resolvePlanGroupInDesktop,
 } from "./desktop-proposal-decision";
 import type {
   AgentInputAnswerBody,
@@ -873,6 +874,10 @@ export interface AgentConfirmationGroup {
   dependency_group_ids?: string[];
   digest: string;
   status: string;
+  /** Durable reason for a paused/closed group (e.g. "Abandoned by user…"). */
+  pause_reason?: string;
+  /** Server projection: needs_user_review | needs_user_authorization | system_* | none. */
+  interaction_state?: string;
   reviewability?: {
     status: string;
     reason_codes?: string[];
@@ -911,6 +916,19 @@ export interface AgentPlanDecisionResponse {
   successor_plan_id?: string;
   successor_plan?: AgentProposalPlan;
   refresh_error?: string | null;
+}
+
+export interface AgentPlanReconciliationResponse {
+  ok: boolean;
+  action?: "retry" | "abandon";
+  /** True once the group no longer has an unknown execution outcome. */
+  resolved?: boolean;
+  plan?: AgentProposalPlan | null;
+  receipts?: AgentPlanReceipt[];
+  errors?: string[];
+  resolved_node_ids?: string[];
+  unresolved_node_ids?: string[];
+  abandoned_node_ids?: string[];
 }
 
 export interface HostedExecutorEvent {
@@ -1577,6 +1595,14 @@ export const agentPlansApi = {
     planDigest: decision.plan_digest,
     groupDigest: decision.group_digest,
     decisionId: decision.decision_id,
+  }),
+  resolveGroup: (
+    planId: string,
+    groupId: string,
+    body: { action: "retry" | "abandon"; group_digest: string },
+  ) => resolvePlanGroupInDesktop(planId, groupId, {
+    action: body.action,
+    groupDigest: body.group_digest,
   }),
 };
 
