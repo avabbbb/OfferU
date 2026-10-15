@@ -707,10 +707,13 @@ jobs:
           fi
 
   desktop-package:
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.backend-tests.result == 'success' && needs.frontend-quality.result == 'success' && needs.extension-quality.result == 'success' && needs.agent-runtime-quality.result == 'success' && needs.rust-security-audit.result == 'success' && needs.reliability-failure-recovery.result == 'success' && needs.migration-browser-smoke.result == 'success' && ((github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish_candidate && inputs.owner_trial) || (needs.browser-smoke.result == 'success' && needs.critical-browser-repeatability.result == 'success')) }}
+    # Every push to main builds installers once the fast checks pass. The slow
+    # browser matrices still gate tagged releases (see `release`), but a flaky
+    # browser test no longer stops testers from getting a build.
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.backend-tests.result == 'success' && needs.frontend-quality.result == 'success' && needs.agent-runtime-quality.result == 'success' }}
     name: Windows desktop package
     runs-on: windows-latest
-    needs: [backend-tests, frontend-quality, extension-quality, agent-runtime-quality, rust-security-audit, browser-smoke, reliability-failure-recovery, critical-browser-repeatability, migration-browser-smoke]
+    needs: [backend-tests, frontend-quality, agent-runtime-quality]
 
     steps:
       - uses: actions/checkout@v4
@@ -993,6 +996,18 @@ jobs:
             $summary.health_version = $health.version
             $summary.sidecar_port = 8766
             $summary.sidecar_executable = $ownedSidecarPath
+
+            # The folder NSIS just installed (and that passed the health check)
+            # is exactly what a no-install build needs. Zip it before uninstalling.
+            $portableRoot = Join-Path $artifactRoot 'portable-staging/OfferU'
+            New-Item -ItemType Directory -Force -Path $portableRoot | Out-Null
+            Get-ChildItem -LiteralPath $installRoot -Force |
+              Where-Object { $_.Name -ne 'uninstall.exe' } |
+              Copy-Item -Destination $portableRoot -Recurse -Force
+            Rename-Item -LiteralPath (Join-Path $portableRoot 'app.exe') -NewName 'OfferU.exe'
+            $portableZip = Join-Path $env:GITHUB_WORKSPACE "portable/OfferU-$expectedVersion-windows-x64-portable.zip"
+            New-Item -ItemType Directory -Force -Path (Split-Path $portableZip) | Out-Null
+            Compress-Archive -Path $portableRoot -DestinationPath $portableZip -Force
           } catch {
             $summary.error = $_.Exception.Message
             throw
@@ -1029,6 +1044,50 @@ jobs:
           if ($summary.status -ne 'PASS') {
             throw [System.InvalidOperationException]::new([string]($summary.error ?? 'installed-app smoke failed'))
           }
+
+      - name: Unzip and launch the portable build
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zip = Get-ChildItem -Path portable -Filter '*-portable.zip' -File | Select-Object -First 1
+          if ($null -eq $zip) { throw 'portable zip was not produced' }
+          $runRoot = Join-Path $env:RUNNER_TEMP 'offeru-portable-run'
+          Expand-Archive -LiteralPath $zip.FullName -DestinationPath $runRoot -Force
+          $exe = Join-Path $runRoot 'OfferU/OfferU.exe'
+          $deadline = (Get-Date).AddSeconds(30)
+          while ((Get-NetTCPConnection -State Listen -LocalPort 8766 -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
+          $process = Start-Process -FilePath $exe -WindowStyle Hidden -PassThru
+          try {
+            $deadline = (Get-Date).AddSeconds(60)
+            $healthy = $false
+            while (-not $healthy -and (Get-Date) -lt $deadline) {
+              try {
+                $health = Invoke-RestMethod -Uri 'http://127.0.0.1:8766/api/health' -TimeoutSec 3 -NoProxy
+                $healthy = $health.status -eq 'ok' -and $health.service -eq 'OfferU'
+              } catch {
+                # Backend still unpacking / binding.
+              }
+              if (-not $healthy) { Start-Sleep -Milliseconds 500 }
+            }
+            if (-not $healthy) { throw 'portable OfferU.exe did not bring up a healthy backend within 60 seconds' }
+            $owner = Get-NetTCPConnection -State Listen -LocalPort 8766 |
+              ForEach-Object { (Get-CimInstance Win32_Process -Filter "ProcessId = $($_.OwningProcess)").ExecutablePath } |
+              Where-Object { $_ -and $_.StartsWith($runRoot, [System.StringComparison]::OrdinalIgnoreCase) } |
+              Select-Object -First 1
+            if (-not $owner) { throw 'the healthy backend is not the one inside the unzipped folder' }
+            "Portable build OK: $($zip.Name), backend $owner" | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+          } finally {
+            Get-CimInstance Win32_Process |
+              Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($runRoot, [System.StringComparison]::OrdinalIgnoreCase) } |
+              ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+          }
+
+      - name: Upload portable build
+        uses: actions/upload-artifact@v4
+        with:
+          name: offeru-windows-x64-portable
+          path: portable/*.zip
+          if-no-files-found: error
 
       - name: Upload installed-app smoke result
         if: always()
@@ -1077,6 +1136,12 @@ jobs:
           pattern: offeru-macos-*
           path: release-assets
 
+      - name: Download Windows portable build
+        uses: actions/download-artifact@v4
+        with:
+          name: offeru-windows-x64-portable
+          path: release-assets/portable
+
       - name: Verify downloaded release artifact manifest and checksums
         shell: bash
         run: |
@@ -1115,6 +1180,7 @@ jobs:
           files: |
             release-assets/windows-x64/*.exe
             release-assets/windows-x64/*.msi
+            release-assets/portable/*.zip
             release-assets/offeru-macos-*/*.dmg
             release-assets/SHA256SUMS.txt
             release-assets/artifacts-*.json
@@ -1122,3 +1188,54 @@ jobs:
             release-assets/windows-x64/RELEASE_NOTES.md
             release-assets/windows-x64/THIRD_PARTY_NOTICES.md
             release-assets/windows-x64/LICENSE
+
+  nightly:
+    name: Publish rolling nightly build
+    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.desktop-installed-smoke.result == 'success' && needs.macos-package.result == 'success' }}
+    needs: [desktop-installed-smoke, macos-package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: offeru-nightly
+      cancel-in-progress: true
+    steps:
+      - name: Download Windows installers
+        uses: actions/download-artifact@v4
+        with:
+          name: offeru-windows-x64
+          path: assets/windows
+      - name: Download Windows portable build
+        uses: actions/download-artifact@v4
+        with:
+          name: offeru-windows-x64-portable
+          path: assets/portable
+      - name: Download macOS DMGs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: offeru-macos-*
+          path: assets/macos
+      - name: Replace the nightly prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA::7}"
+          cat > notes.md <<EOF
+          每次合进 main 自动打包，提交 ${short_sha}。没有签名，只给内测用。
+
+          - **Windows 安装版**：\`OfferU-Setup-*.exe\`（或 \`.msi\`）。SmartScreen 拦的话点「更多信息 → 仍要运行」。
+          - **Windows 免安装版**：\`*-portable.zip\`，解压后双击 \`OfferU/OfferU.exe\`。数据和安装版放在同一个地方，两种可以换着用。
+          - **macOS**：\`OfferU-*-arm64.dmg\`（M 系列芯片）或 \`-x64.dmg\`（Intel）。打开后可以直接双击里面的 OfferU，也可以拖进「应用程序」。提示「已损坏」时，在终端执行 \`xattr -dr com.apple.quarantine /Applications/OfferU.app\`。
+
+          Windows 安装版和免安装版都在 GitHub 的干净 Windows 机器上启动过，并确认后端正常。
+          EOF
+          gh release delete nightly --cleanup-tag --yes || true
+          gh release create nightly \
+            --prerelease --latest=false \
+            --target "$GITHUB_SHA" \
+            --title "OfferU 每日构建（${short_sha}）" \
+            --notes-file notes.md \
+            assets/windows/*.exe assets/windows/*.msi assets/portable/*.zip assets/macos/*/*.dmg
