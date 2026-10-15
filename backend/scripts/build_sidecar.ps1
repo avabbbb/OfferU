@@ -155,6 +155,7 @@ try {
     --add-data "$resumeBrowsersDir;resume-browsers" `
     --add-data "$buildIdentityPath;offeru-assets" `
     --add-data "$(Join-Path $backendDir 'app\agents\skills');app\agents\skills" `
+    --add-data "$(Join-Path $backendDir 'app\assets\school_logos');app\assets\school_logos" `
     --add-data "$(Join-Path $backendDir 'tests\fixtures');tests\fixtures" `
     $entryPath
 

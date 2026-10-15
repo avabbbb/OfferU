@@ -43,8 +43,9 @@ Python Agent primitives and React tool-stream reducer/view were migrated from
 The complete original license is preserved in `backend/app/agent/LICENSE`.
 Adaptation details are recorded in `backend/app/agent/UPSTREAM.md`.
 
-## 简历「纸」模板相关（运行时按需下载，不随安装包分发）
+## 简历「纸」模板相关
 
 - **tw93/Kami**（MIT）：「纸」模板的版式参数参考其 `design.md` 与简历模板。https://github.com/tw93/Kami
-- **仓耳今楷 TsangerJinKai02 W04/W05**：Kami 使用的中文字体。**仅限个人非商业使用**，商用需向仓耳字库购买授权。默认不使用；只有用户在「排版 → 字体」里主动选择今楷后，才从 jsDelivr / GitHub 下载到本机数据目录。默认字体是系统自带的宋体系（思源宋体 / Noto Serif CJK / 宋体）。
-- **xioajiumi/Chinese_Universities**（MIT）：校徽图片数据集。首次自动配校徽时从 GitHub 下载约 35 MB 到本地数据目录。校徽本身的权利归各高校所有，仅用于用户自己的简历。
+- **仓耳今楷 TsangerJinKai02 W04/W05**：Kami 使用的中文字体。**仅限个人非商业使用**，商用需向仓耳字库购买授权。默认不使用；只有用户在「排版 → 字体」里主动选择今楷后，才从 jsDelivr / GitHub 下载到本机数据目录。默认字体是随应用附带的思源宋体（见下）。
+- **Noto Serif SC / 思源宋体**（SIL Open Font License 1.1）：随应用附带，`frontend/src/assets/fonts/`，从 Noto Serif CJK 裁剪到 GB2312 字符集并转为 woff2，Regular / Medium 各约 3.4 MB。https://github.com/notofonts/noto-cjk
+- **xioajiumi/Chinese_Universities**（MIT）：校徽来源。约 800 所学校的校徽缩到 160px、64 色 PNG 后随应用附带（`backend/app/assets/school_logos/`，约 5.7 MB），匹配时不联网。校徽本身的权利归各高校所有，仅用于用户自己的简历。

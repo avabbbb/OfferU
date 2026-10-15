@@ -100,6 +100,7 @@ const args = [
   "--add-data", `${resumeFrontend}${windows ? ";" : ":"}resume-frontend`,
   "--add-data", `${buildIdentityPath}${windows ? ";" : ":"}offeru-assets`,
   "--add-data", `${join(backend, "app/agents/skills")}${windows ? ";" : ":"}app/agents/skills`,
+  "--add-data", `${join(backend, "app/assets/school_logos")}${windows ? ";" : ":"}app/assets/school_logos`,
   "--add-data", `${join(backend, "tests/fixtures")}${windows ? ";" : ":"}tests/fixtures`,
   "--add-data", `${join(root, ".agents/skills/offeru")}${windows ? ";" : ":"}offeru-assets/skills/offeru`,
 ];

@@ -76,7 +76,6 @@ def main() -> None:
             "headless=True",
             '@router.post("/{resume_id}/logo")',
             '@router.post("/{resume_id}/logo/resolve")',
-            "_resolve_university_logo_url",
             "schoolLogoUrl",
         ],
         "playwright pdf export",

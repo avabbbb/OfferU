@@ -1,9 +1,9 @@
 """Assets OfferU fetches on first use and then keeps locally.
 
-* School emblems: the MIT-licensed dataset github.com/xioajiumi/Chinese_Universities
-  (``logo.zip``, ~800 emblems named by school) is downloaded once and unpacked
-  into ``uploads/school-logos``. A school name is matched against that index.
-  The emblems themselves belong to the schools; OfferU does not ship them.
+* School emblems ship with the app (``app/assets/school_logos``, ~800 schools,
+  160px palette PNGs, ~6 MB) so matching never needs the network. They come from
+  the MIT-licensed dataset github.com/xioajiumi/Chinese_Universities; the emblems
+  themselves belong to the schools.
 * Kami's typeface (TsangerJinKai02, free for personal non-commercial use) is
   downloaded once into ``uploads/fonts`` and served from there, so the canvas
   and the PDF export use the same font and keep working offline afterwards.
@@ -12,20 +12,16 @@
 from __future__ import annotations
 
 import asyncio
-import io
 import json
 import re
-import zipfile
 from pathlib import Path
 
 import httpx
 
 from app.runtime_paths import runtime_uploads_dir
 
-LOGO_DATASET_URLS = (
-    "https://github.com/xioajiumi/Chinese_Universities/raw/main/logo.zip",
-    "https://raw.githubusercontent.com/xioajiumi/Chinese_Universities/main/logo.zip",
-)
+LOGO_DIR = Path(__file__).resolve().parents[1] / "assets" / "school_logos"
+LOGO_URL_PREFIX = "/api/resume/assets/school-logos/"
 FONT_URLS = {
     name: (
         f"https://cdn.jsdelivr.net/gh/tw93/Kami@main/assets/fonts/{name}",
@@ -50,17 +46,8 @@ ALIASES = {
 _lock = asyncio.Lock()
 
 
-def _logo_dir() -> Path:
-    return runtime_uploads_dir("school-logos")
-
-
 def _font_dir() -> Path:
     return runtime_uploads_dir("fonts")
-
-
-def _decode_name(raw: str) -> str:
-    """Zip entries are named like ``#U5317#U4eac#U5927#U5b66.png``."""
-    return re.sub(r"#U([0-9a-fA-F]{4})", lambda m: chr(int(m.group(1), 16)), Path(raw).stem)
 
 
 def _normalize(name: str) -> str:
@@ -82,45 +69,38 @@ async def _download(urls: tuple[str, ...], *, timeout: float) -> bytes:
     raise ValueError("下载失败：" + "；".join(errors))
 
 
-async def _logo_index() -> dict[str, str]:
-    folder = _logo_dir()
-    index_file = folder / "index.json"
-    if index_file.exists():
-        return json.loads(index_file.read_text("utf-8"))
-    async with _lock:
-        if index_file.exists():
-            return json.loads(index_file.read_text("utf-8"))
-        payload = await _download(LOGO_DATASET_URLS, timeout=180)
-        folder.mkdir(parents=True, exist_ok=True)
-        index: dict[str, str] = {}
-        with zipfile.ZipFile(io.BytesIO(payload)) as archive:
-            for number, entry in enumerate(archive.infolist()):
-                if entry.is_dir() or not entry.filename.lower().endswith((".png", ".jpg", ".jpeg", ".svg")):
-                    continue
-                school = _decode_name(entry.filename)
-                target = f"{number:04d}{Path(entry.filename).suffix.lower()}"
-                (folder / target).write_bytes(archive.read(entry))
-                index.setdefault(school, target)
-        index_file.write_text(json.dumps(index, ensure_ascii=False), "utf-8")
-        return index
+_logo_index_cache: dict[str, str] | None = None
+
+
+def _logo_index() -> dict[str, str]:
+    global _logo_index_cache
+    if _logo_index_cache is None:
+        _logo_index_cache = json.loads((LOGO_DIR / "index.json").read_text("utf-8"))
+    return _logo_index_cache
+
+
+def school_logo_path(file_name: str) -> Path:
+    if not re.fullmatch(r"\d{4}\.png", file_name or ""):
+        raise ValueError("未知的校徽文件")
+    return LOGO_DIR / file_name
 
 
 async def find_school_logo(school_name: str) -> dict[str, str] | None:
     """``{"school_name", "logo_url"}`` for the best match, or None."""
     wanted = ALIASES.get(school_name.strip(), school_name.strip())
-    index = await _logo_index()
+    index = _logo_index()
     candidates = [wanted, _normalize(wanted)]
     for name in candidates:
         if name in index:
-            return {"school_name": name, "logo_url": f"/uploads/school-logos/{index[name]}"}
+            return {"school_name": name, "logo_url": f"{LOGO_URL_PREFIX}{index[name]}"}
     normalized = {(_normalize(key)): key for key in index}
     if _normalize(wanted) in normalized:
         key = normalized[_normalize(wanted)]
-        return {"school_name": key, "logo_url": f"/uploads/school-logos/{index[key]}"}
+        return {"school_name": key, "logo_url": f"{LOGO_URL_PREFIX}{index[key]}"}
     # "北京大学软件与微电子学院" -> 北京大学 : longest school name contained in the input
     contained = sorted((key for key in index if len(key) >= 4 and key in wanted), key=len, reverse=True)
     if contained:
-        return {"school_name": contained[0], "logo_url": f"/uploads/school-logos/{index[contained[0]]}"}
+        return {"school_name": contained[0], "logo_url": f"{LOGO_URL_PREFIX}{index[contained[0]]}"}
     return None
 
 

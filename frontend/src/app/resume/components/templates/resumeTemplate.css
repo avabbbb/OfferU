@@ -650,6 +650,11 @@
  */
 /* Kami's typeface (TsangerJinKai02) is registered at runtime by ResumePreview:
  * the backend downloads it once and serves it locally. */
+/* 随应用附带的思源宋体（Noto Serif SC，OFL），裁到 GB2312 常用字，每个字重约 3.4 MB。
+   保证 Windows / macOS / 导出的 PDF 看起来一样；生僻字自动落到系统宋体。 */
+@font-face { font-family: "OfferU Serif SC"; font-style: normal; font-weight: 400; font-display: block; src: url("../../../../assets/fonts/NotoSerifSC-Regular.gb2312.woff2") format("woff2"); }
+@font-face { font-family: "OfferU Serif SC"; font-style: normal; font-weight: 500 700; font-display: block; src: url("../../../../assets/fonts/NotoSerifSC-Medium.gb2312.woff2") format("woff2"); }
+
 .resume-body.paper {
   --paper-ink: var(--resume-accent-primary, #1b365d);
   --paper-text: #141413;
@@ -658,8 +663,8 @@
   --paper-text-4: #6b6a64;
   --paper-rule: var(--rule-color, #e8e6dc);
   --paper-bg: #f5f4ed;
-  /* 默认用系统里的宋体系（可免费商用）；今楷需在排版里手动开启并下载。 */
-  --paper-serif: "Source Han Serif SC", "Source Han Serif CN", "Noto Serif CJK SC", "Noto Serif SC", "Songti SC",
+  /* 默认用随包的思源宋体（可免费商用）；今楷需在排版里手动开启并下载。 */
+  --paper-serif: "OfferU Serif SC", "Source Han Serif SC", "Source Han Serif CN", "Noto Serif CJK SC", "Noto Serif SC", "Songti SC",
     "STSong", "SimSun", Charter, Georgia, serif;
   background: var(--paper-bg);
   box-shadow: 0 1px 2px rgba(20, 20, 19, 0.06);
@@ -677,7 +682,7 @@
 
 .resume-body.paper.paper-tone-white { --paper-bg: #ffffff; }
 .resume-body.paper.paper-font-kai {
-  --paper-serif: "TsangerJinKai02", "Source Han Serif SC", "Noto Serif CJK SC", "Noto Serif SC", "Songti SC",
+  --paper-serif: "TsangerJinKai02", "OfferU Serif SC", "Source Han Serif SC", "Noto Serif CJK SC", "Noto Serif SC", "Songti SC",
     "STSong", "SimSun", Georgia, serif;
 }
 

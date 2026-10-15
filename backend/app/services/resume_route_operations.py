@@ -17,9 +17,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
 
-import httpx
 from sqlalchemy import desc, func, select, update
 from sqlalchemy.orm import selectinload
 
@@ -424,49 +422,16 @@ async def upload_resume_logo(
         return {"logo_url": logo_url, "schoolLogoUrl": logo_url}
 
 
-def _commons_file_url(filename: str) -> str:
-    return f"https://commons.wikimedia.org/wiki/Special:FilePath/{quote(filename)}"
-
-
 async def _resolve_university_logo(school_name: str) -> dict[str, str]:
+    from app.services.web_assets import find_school_logo
+
     name = school_name.strip()
     if not name:
         raise ValueError("School name is required")
-    from app.services.web_assets import find_school_logo
-
-    try:
-        found = await find_school_logo(name)
-    except ValueError:
-        found = None  # dataset unreachable: fall back to Wikipedia below
-    if found:
-        return {**found, "source": "school-logo-dataset", "matched_title": found["school_name"]}
-    headers = {"User-Agent": "OfferU/0.1 university-logo-resolver"}
-    async with httpx.AsyncClient(timeout=15, follow_redirects=True, headers=headers) as client:
-        response = await client.get(
-            "https://zh.wikipedia.org/w/api.php",
-            params={
-                "action": "query",
-                "generator": "search",
-                "gsrsearch": name,
-                "gsrlimit": 5,
-                "prop": "pageimages|pageprops",
-                "piprop": "original",
-                "format": "json",
-            },
-        )
-        response.raise_for_status()
-        pages = (response.json().get("query") or {}).get("pages") or {}
-        for page in sorted(pages.values(), key=lambda value: value.get("index", 999)):
-            title = str(page.get("title") or "")
-            if "大学" not in title and "学院" not in title and name not in title:
-                continue
-            page_image = (page.get("pageprops") or {}).get("page_image")
-            if page_image:
-                return {"logo_url": _commons_file_url(page_image), "school_name": name, "source": "zh.wikipedia.page_image", "matched_title": title}
-            original = page.get("original") or {}
-            if original.get("source"):
-                return {"logo_url": original["source"], "school_name": name, "source": "zh.wikipedia.original", "matched_title": title}
-    raise ValueError(f"没找到「{name}」的校徽，可以自己上传一张")
+    found = await find_school_logo(name)
+    if not found:
+        raise ValueError(f"没找到「{name}」的校徽，可以自己上传一张")
+    return {**found, "source": "school-logo-dataset", "matched_title": found["school_name"]}
 
 
 async def resolve_resume_logo(resume_id: int, school_name: str) -> dict[str, Any]:

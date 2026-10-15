@@ -27,6 +27,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import os
 import time
 import threading
@@ -36,7 +37,6 @@ import re
 import uuid
 from io import BytesIO
 from typing import Optional, Any
-from urllib.parse import quote
 from xml.sax.saxutils import escape as xml_escape
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
@@ -45,7 +45,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 import anyio
-import httpx
 from pydantic import BaseModel, Field
 from jinja2 import Template
 from markupsafe import Markup
@@ -586,90 +585,6 @@ def _sanitize_upload_filename(raw_filename: str | None) -> str:
     return name
 
 
-def _commons_file_url(filename: str) -> str:
-    return f"https://commons.wikimedia.org/wiki/Special:FilePath/{quote(filename)}"
-
-
-async def _resolve_university_logo_url(school_name: str) -> dict[str, str]:
-    name = school_name.strip()
-    if not name:
-        raise HTTPException(status_code=400, detail="School name is required")
-
-    headers = {"User-Agent": "OfferU/0.1 university-logo-resolver"}
-    async with httpx.AsyncClient(timeout=15, follow_redirects=True, headers=headers) as client:
-        wiki_response = await client.get(
-            "https://zh.wikipedia.org/w/api.php",
-            params={
-                "action": "query",
-                "generator": "search",
-                "gsrsearch": name,
-                "gsrlimit": 5,
-                "prop": "pageimages|pageprops",
-                "piprop": "original",
-                "format": "json",
-            },
-        )
-        wiki_response.raise_for_status()
-        pages = (wiki_response.json().get("query") or {}).get("pages") or {}
-        sorted_pages = sorted(pages.values(), key=lambda page: page.get("index", 999))
-        for page in sorted_pages:
-            title = str(page.get("title") or "")
-            if "大学" not in title and "学院" not in title and name not in title:
-                continue
-            page_image = (page.get("pageprops") or {}).get("page_image")
-            if page_image:
-                return {
-                    "logo_url": _commons_file_url(page_image),
-                    "school_name": name,
-                    "source": "zh.wikipedia.page_image",
-                    "matched_title": title,
-                }
-            original = page.get("original") or {}
-            if original.get("source"):
-                return {
-                    "logo_url": original["source"],
-                    "school_name": name,
-                    "source": "zh.wikipedia.original",
-                    "matched_title": title,
-                }
-
-        wikidata_response = await client.get(
-            "https://www.wikidata.org/w/api.php",
-            params={
-                "action": "wbsearchentities",
-                "search": name,
-                "language": "zh",
-                "format": "json",
-                "limit": 5,
-            },
-        )
-        wikidata_response.raise_for_status()
-        for item in wikidata_response.json().get("search", []):
-            description = str(item.get("description") or "").lower()
-            label = str(item.get("label") or "")
-            if "university" not in description and "大学" not in label and "学院" not in label:
-                continue
-            entity_id = item.get("id")
-            if not entity_id:
-                continue
-            entity_response = await client.get(f"https://www.wikidata.org/wiki/Special:EntityData/{entity_id}.json")
-            entity_response.raise_for_status()
-            entity = entity_response.json().get("entities", {}).get(entity_id, {})
-            claims = entity.get("claims", {})
-            for prop in ("P154", "P18"):
-                for claim in claims.get(prop, []):
-                    value = (((claim or {}).get("mainsnak") or {}).get("datavalue") or {}).get("value")
-                    if isinstance(value, str) and value:
-                        return {
-                            "logo_url": _commons_file_url(value),
-                            "school_name": name,
-                            "source": f"wikidata.{prop}",
-                            "matched_title": label,
-                        }
-
-    raise HTTPException(status_code=404, detail=f"Logo not found for school: {name}")
-
-
 @router.post("/{resume_id}/photo")
 async def upload_photo(
     resume_id: int,
@@ -730,6 +645,22 @@ async def upload_logo(
             "content_type": file.content_type,
         },
     )
+
+
+@router.get("/assets/school-logos/{name}")
+async def school_logo_file(name: str):
+    """Emblems bundled with the app (see app/services/web_assets.py)."""
+    from fastapi.responses import FileResponse
+
+    from app.services.web_assets import school_logo_path
+
+    try:
+        path = school_logo_path(name)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=safe_error_message(exc)) from exc
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="未知的校徽文件")
+    return FileResponse(path, media_type="image/png", headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
 
 @router.get("/assets/fonts/{name}")
