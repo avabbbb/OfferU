@@ -56,6 +56,7 @@ import { ExternalUrlLink } from "@/components/ExternalUrlLink";
 import { SHOWCASE } from "@/lib/showcase/router";
 import Link from "next/link";
 import { agentRecovery, MODEL_SETTINGS_ROUTE } from "@/lib/agentRecovery";
+import { quickActionsForStage } from "@/lib/quickActions";
 
 interface PanelMessage {
   id: string;
@@ -90,29 +91,6 @@ const PARKED_RUN_LABELS: Record<string, string> = {
   waiting_input: "等你回答",
   interrupted: "已中断，可恢复",
 };
-
-const QUICK_ACTIONS = [
-  {
-    label: "确认身份",
-    skillId: "profile_onboarding",
-    prompt: "先问我几个问题，判断我是校招/应届/实习，还是社招/跳槽",
-  },
-  {
-    label: "校招体检",
-    skillId: "market_calibration",
-    prompt: "按校招标准检查我的档案、简历、岗位和投递流程缺口",
-  },
-  {
-    label: "每日岗位",
-    skillId: "evaluate_job",
-    prompt: "今天给我推荐一个最值得投的校招/实习岗位，并说明为什么",
-  },
-  {
-    label: "异常检测",
-    skillId: "tracker",
-    prompt: "检查我的档案、岗位库、投递管理和面试日程有没有异常",
-  },
-];
 
 const STAGE_LABELS: Record<string, string> = {
   campus: "校招",
@@ -1404,7 +1382,7 @@ export function AgentPanel() {
           </span>
         )}
         <div className="basis-full" />
-        {QUICK_ACTIONS.map((action) => (
+        {quickActionsForStage(latestStage).map((action) => (
           <button
             key={action.label}
             type="button"

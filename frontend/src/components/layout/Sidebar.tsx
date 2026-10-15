@@ -35,10 +35,10 @@ interface NavItem {
 // 核心求职流程 + 可独立打开的工作台入口。
 // 材料、岗位情报仍由 Job Detail / Today 承接；这里保证每个路由都能从导航找到。
 const stageItems: NavItem[] = [
-  { href: "/", label: "Today", hint: "下一步", icon: Sun, match: ["/"] },
-  { href: "/applications?view=board", label: "Pipeline", hint: "投递进展", icon: Send, match: ["/applications", "/email", "/calendar"] },
-  { href: "/jobs", label: "Opportunity", hint: "目标岗位", icon: Briefcase, match: ["/jobs"] },
-  { href: "/profile", label: "Profile", hint: "职业档案", icon: UserRound, match: ["/profile"] },
+  { href: "/", label: "今天", hint: "下一步", icon: Sun, match: ["/"] },
+  { href: "/applications?view=board", label: "投递进展", hint: "阶段与时间线", icon: Send, match: ["/applications", "/email", "/calendar"] },
+  { href: "/jobs", label: "岗位", hint: "目标岗位", icon: Briefcase, match: ["/jobs"] },
+  { href: "/profile", label: "档案", hint: "职业档案", icon: UserRound, match: ["/profile"] },
 ];
 
 const workspaceItems: NavItem[] = [
