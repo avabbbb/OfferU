@@ -1109,7 +1109,10 @@ class AgentAction(Base):
     result_json: Mapped[dict] = mapped_column(JSON, default=dict)
     undo_json: Mapped[dict] = mapped_column(JSON, default=dict)
     delivered: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+    # Python-side default keeps sub-second order, so "newest first" is exact.
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, server_default=func.now(), index=True
+    )
     decided_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
 

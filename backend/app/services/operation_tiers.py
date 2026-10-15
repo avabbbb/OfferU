@@ -20,10 +20,9 @@ from typing import Any, Literal, Mapping
 InteractionTier = Literal["auto", "confirm"]
 INTERACTION_TIERS: tuple[InteractionTier, ...] = ("auto", "confirm")
 
-# Reading private material or touching credentials/platform accounts.
+# Touching credentials / platform accounts. Reading local files never needs a
+# confirmation: a read cannot change anything.
 SENSITIVE_PERMISSIONS = frozenset({
-    "local_file:read",
-    "local_memory:read",
     "work_source_content:model",
     "credential:keychain",
     "privacy:maintenance",

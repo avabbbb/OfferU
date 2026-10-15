@@ -61,10 +61,47 @@ async def _snapshot_resume(resume_id: int, summary: str) -> dict[str, Any]:
         }
 
 
+_PROFILE_FIELDS = ("name", "headline", "exit_story", "cross_cutting_advantage", "base_info_json")
+_SECTION_FIELDS = ("section_type", "category_label", "title", "sort_order", "content_json", "source", "confidence")
+
+
+async def _undo_before(name: str, inputs: dict[str, Any]) -> dict[str, Any]:
+    """For in-place edits (profile, job triage), the undo writes the old values back."""
+    if name in {"triage_job", "update_job"}:
+        job = (await execute_operation("get_job", {"job_id": inputs.get("job_id")}, surface="ui")).get("outputs") or {}
+        if not job.get("id"):
+            return {}
+        pool_id = job.get("pool_id")
+        return {"operation": "update_job", "args": {
+            "job_id": job["id"], "triage_status": job.get("triage_status") or "inbox",
+            **({"pool_id": pool_id} if pool_id else {"clear_pool": True}),
+        }}
+    if name not in {"update_profile", "update_profile_section"}:
+        return {}
+    profile = (await execute_operation("get_legacy_profile", {}, surface="ui")).get("outputs") or {}
+    if name == "update_profile":
+        old = {key: profile.get(key) for key in _PROFILE_FIELDS if key in inputs}
+        if not old.get("name"):
+            old.pop("name", None)  # an empty name cannot be written back
+        return {"operation": "update_profile", "args": old} if old else {}
+    section = next((item for item in profile.get("sections") or [] if item.get("id") == inputs.get("section_id")), None)
+    if section is None:
+        return {}
+    old = {key: section.get(key) for key in _SECTION_FIELDS if key in inputs}
+    return {"operation": "update_profile_section", "args": {"section_id": section["id"], **old}}
+
+
 def _undo_after(name: str, result: dict[str, Any]) -> dict[str, Any]:
+    """For writes that create something, the undo removes what was created."""
     outputs = result.get("outputs") if isinstance(result.get("outputs"), dict) else {}
     if name == "save_profile_resume_import" and outputs.get("session_id"):
         return {"operation": "undo_profile_resume_import", "args": {"session_id": int(outputs["session_id"])}}
+    if name == "create_profile_section" and outputs.get("id"):
+        return {"operation": "delete_profile_section", "args": {"section_id": int(outputs["id"])}}
+    if name == "create_pool" and outputs.get("id"):
+        return {"operation": "delete_pool", "args": {"pool_id": int(outputs["id"])}}
+    if name == "create_target_role" and outputs.get("id"):
+        return {"operation": "delete_target_role", "args": {"role_id": int(outputs["id"])}}
     return {}
 
 
@@ -107,7 +144,7 @@ async def run_gated_operation(
 
     if not run_id:  # a UI click or an unattached CLI call: no Agent timeline
         return await execute_operation(name, inputs, surface=surface)
-    undo: dict[str, Any] = {}
+    undo = await _undo_before(name, inputs)
     resume_id = inputs.get("resume_id")
     if op.group == "resume" and isinstance(resume_id, int) and resume_id > 0:
         undo = await _snapshot_resume(resume_id, summary)
