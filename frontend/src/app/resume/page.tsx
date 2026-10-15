@@ -24,6 +24,7 @@ import {
 } from "@/lib/hooks";
 import { resumeApi } from "@/lib/api";
 import ResumeThumbnail from "./components/ResumeThumbnail";
+import { NOTION_CARD, NotionTag } from "@/components/ui/NotionTag";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import {
   getProfileBulletText,
@@ -318,7 +319,7 @@ export default function ResumesListPage() {
       )}
 
       {/* 简历卡片网格 */}
-      <div className="grid [grid-template-columns:repeat(1,minmax(0,1fr))] md:[grid-template-columns:repeat(3,minmax(0,1fr))] lg:[grid-template-columns:repeat(4,minmax(0,1fr))] xl:[grid-template-columns:repeat(5,minmax(0,1fr))] gap-5 items-stretch">
+      <div className="grid [grid-template-columns:repeat(1,minmax(0,1fr))] md:[grid-template-columns:repeat(3,minmax(0,1fr))] lg:[grid-template-columns:repeat(4,minmax(0,1fr))] xl:[grid-template-columns:repeat(5,minmax(0,1fr))] gap-4 items-stretch">
         <AnimatePresence>
           {(resumes || []).map((resume: ResumeBrief, i: number) => (
             <motion.div
@@ -329,73 +330,36 @@ export default function ResumesListPage() {
               transition={{ delay: i * 0.05 }}
               className="min-w-0"
             >
-<Card
-                className="bauhaus-panel bauhaus-lift group h-full w-full bg-[var(--surface)]"
+<div
+                role="button"
+                tabIndex={0}
+                aria-label={`编辑 ${resume.title || "未命名简历"}`}
+                onClick={() => openResume(resume.id)}
+                onKeyDown={(event) => handleResumeCardKeyDown(event, resume.id)}
+                className={`group relative flex h-full cursor-pointer flex-col overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] ${NOTION_CARD}`}
               >
-                <CardBody className="flex h-full flex-col gap-4 p-4 md:p-5">
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`编辑 ${resume.title || "未命名简历"}`}
-                    onClick={() => openResume(resume.id)}
-                    onKeyDown={(event) => handleResumeCardKeyDown(event, resume.id)}
-                    className="flex min-h-0 flex-1 cursor-pointer flex-col gap-4 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--primary-blue)]"
-                  >
-                    <ResumeThumbnail resumeId={resume.id} />
-
-                    {/* 简历信息 */}
-                    <div className="space-y-1.5">
-                      <h3 className="truncate text-base font-semibold text-[var(--foreground)]">
-                        {resume.title || "未命名简历"}
-                      </h3>
-                      <div className="flex items-center gap-2 text-xs font-medium text-[var(--foreground-muted)]">
-                        <span>{resume.user_name}</span>
-                        {resume.language && (
-                          <span className="flex items-center gap-0.5">
-                            <Globe size={10} />
-                            {resume.language === "zh" ? "中文" : resume.language === "en" ? "English" : resume.language}
-                          </span>
-                        )}
-                      </div>
-                      <div>
-                        <Chip
-                          size="sm"
-                          variant="flat"
-                          color={getResumeSourceLabel(resume).color}
-                          className={`border border-[var(--border)] text-[10px] bg-[var(--surface-muted)] text-[var(--foreground-soft)]`}
-                        >
-                          {getResumeSourceLabel(resume).text}
-                        </Chip>
-                      </div>
-                      <p className="text-xs font-medium text-[var(--foreground-muted)]">
-                        更新于 {new Date(resume.updated_at).toLocaleDateString("zh-CN")}
-                      </p>
-                    </div>
+                <ResumeThumbnail resumeId={resume.id} variant="cover" />
+                <div className="flex flex-1 flex-col gap-1.5 border-t border-[rgba(55,53,47,0.09)] px-3 pb-3 pt-2.5">
+                  <h3 className="truncate text-[14px] font-semibold text-[#37352f]">{resume.title || "未命名简历"}</h3>
+                  <p className="truncate text-[12px] text-[#787774]">
+                    {[resume.user_name, `${new Date(resume.updated_at).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })} 更新`].filter(Boolean).join(" · ")}
+                  </p>
+                  <div className="flex flex-wrap gap-1 pt-0.5">
+                    {resume.language && <NotionTag color={resume.language === "en" ? "blue" : "default"}>{resume.language === "zh" ? "中文" : resume.language === "en" ? "English" : resume.language}</NotionTag>}
+                    <NotionTag color={getResumeSourceLabel(resume).color === "default" ? "gray" : "purple"}>{getResumeSourceLabel(resume).text}</NotionTag>
                   </div>
-
-                  {/* 操作按钮 */}
-                  <div className="mt-auto flex gap-2 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
-                    <Button
-                      size="sm"
-                      startContent={<Edit3 size={12} />}
-                      className="bauhaus-button bauhaus-button-outline !flex-1 !px-4 !py-3 !text-[11px]"
-                      onPress={() => openResume(resume.id)}
-                    >
-                      编辑
-                    </Button>
-                    <Button
-                      size="sm"
-                      isIconOnly
-                      aria-label="删除简历"
-                      className="bauhaus-button bauhaus-button-red !px-0 !py-0 !text-[11px]"
-                      isLoading={deletingId === resume.id}
-                      onClick={(e) => handleDelete(resume.id, e)}
-                    >
-                      <Trash2 size={14} />
-                    </Button>
-                  </div>
-                </CardBody>
-              </Card>
+                </div>
+                <button
+                  type="button"
+                  aria-label="删除简历"
+                  title="删除"
+                  disabled={deletingId === resume.id}
+                  onClick={(e) => { e.stopPropagation(); handleDelete(resume.id, e); }}
+                  className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-[6px] bg-white/90 text-[#787774] opacity-0 shadow-[0_0_0_1px_rgba(15,15,15,0.08),0_1px_2px_rgba(15,15,15,0.08)] transition-opacity hover:text-[#9f2f2d] group-hover:opacity-100 focus-visible:opacity-100"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
             </motion.div>
           ))}
         </AnimatePresence>

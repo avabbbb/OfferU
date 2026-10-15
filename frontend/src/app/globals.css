@@ -924,69 +924,7 @@ select {
   }
 }
 
-/* 岗位卡：信息优先，装饰只做状态提示。 */
-.job-card {
-  border-color: var(--border) !important;
-  border-radius: 14px;
-  background: var(--surface) !important;
-  box-shadow: 0 1px 2px var(--shadow-soft), 0 8px 20px rgba(24, 40, 48, 0.025) !important;
-  transition:
-    transform var(--dur-quick) var(--ease-precise),
-    border-color var(--dur-quick) var(--ease-snap),
-    box-shadow var(--dur-quick) var(--ease-snap),
-    background-color var(--dur-quick) var(--ease-snap);
-}
 
-.job-card:hover {
-  transform: translateY(-2px);
-  border-color: var(--border-strong) !important;
-  box-shadow: 0 5px 12px var(--shadow-soft), 0 14px 28px rgba(24, 40, 48, 0.05) !important;
-}
-
-.job-card img {
-  width: 56px;
-  height: 56px;
-  border-radius: 10px;
-  object-fit: cover;
-}
-
-.job-card .bauhaus-chip {
-  border-color: var(--border);
-  background: var(--surface-muted);
-  color: var(--foreground-soft);
-}
-
-.job-card .bauhaus-button {
-  min-height: 32px;
-  border-radius: 8px;
-  font-size: 0.72rem;
-}
-
-.job-card > button[aria-pressed="true"],
-.job-card > button[aria-pressed="false"] {
-  border-radius: 10px;
-  border-color: var(--border-strong);
-  background: var(--surface);
-}
-
-.job-card > button[aria-pressed="true"] {
-  background: var(--status-sage);
-  color: var(--foreground);
-}
-
-@media (max-width: 640px) {
-  .job-card {
-    min-height: 0;
-  }
-
-  .job-card > div.relative {
-    padding: 1rem;
-  }
-
-  .job-card h3 {
-    font-size: 1.05rem;
-  }
-}
 
 /* Profile 的织物感只作为局部材料提示，不进入正文阅读面。 */
 .profile-woven-accent {
@@ -1150,22 +1088,14 @@ body {
 .bauhaus-panel-sm,
 .stage-toolbar,
 .data-toolbar,
-.data-workspace,
-.job-card {
+.data-workspace {
   border-color: var(--border) !important;
   border-radius: var(--radius-card) !important;
   background: var(--surface) !important;
   box-shadow: var(--shadow-paper) !important;
 }
 
-.job-card {
-  transition: border-color var(--dur-quick), box-shadow var(--dur-quick);
-}
 
-.job-card:hover {
-  border-color: var(--border-strong) !important;
-  box-shadow: 0 4px 14px rgba(31, 31, 29, 0.07) !important;
-}
 
 .bauhaus-button {
   border-color: var(--border-strong) !important;

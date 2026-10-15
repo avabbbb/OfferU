@@ -1,52 +1,21 @@
 "use client";
 
-import Link from "next/link";
+// 岗位卡片：照 Notion 画廊视图的写法——公司一行、岗位名一行、属性用彩色小标签，
+// 整张卡可点开详情；勾选框和投递链接只在悬停或已选中时出现。
+
 import { useRouter } from "next/navigation";
-import {
-  Briefcase,
-  Building2,
-  Check,
-  DollarSign,
-  GraduationCap,
-  MapPin,
-} from "lucide-react";
+import { ArrowUpRight, Check } from "lucide-react";
 import type { Job } from "@/lib/hooks";
 import { ExternalUrlLink } from "@/components/ExternalUrlLink";
+import { LetterAvatar, NOTION_CARD, NotionTag } from "@/components/ui/NotionTag";
 
-const sourceAccentMap: Record<
-  string,
-  { badge: string; marker: string; meta: string }
-> = {
-  boss: {
-    badge: "bg-[#f7ece9] text-black",
-    marker: "rounded-full bg-[#e8d2cd]",
-    meta: "BOSS直聘",
-  },
-  zhilian: {
-    badge: "bg-[#eaf0eb] text-black",
-    marker: "bg-[#d8e2da]",
-    meta: "智联招聘",
-  },
-  linkedin: {
-    badge: "bg-[#f3ead2] text-black",
-    marker: "bauhaus-triangle bg-[#d8e2da]",
-    meta: "领英",
-  },
-  shixiseng: {
-    badge: "bg-[var(--surface-muted)] text-black",
-    marker: "rounded-full bg-[#e8d2cd]",
-    meta: "实习僧",
-  },
-  maimai: {
-    badge: "bg-[#f7ece9] text-black",
-    marker: "bg-[#d8e2da]",
-    meta: "脉脉",
-  },
-  corporate: {
-    badge: "bg-[#eaf0eb] text-black",
-    marker: "bauhaus-triangle bg-[#f3ead2]",
-    meta: "大厂官网",
-  },
+const SOURCE_LABELS: Record<string, string> = {
+  boss: "BOSS直聘",
+  zhilian: "智联招聘",
+  linkedin: "领英",
+  shixiseng: "实习僧",
+  maimai: "脉脉",
+  corporate: "官网",
 };
 
 interface JobCardProps {
@@ -58,190 +27,77 @@ interface JobCardProps {
   onSelectPointerEnter?: (id: number) => void;
 }
 
-export function JobCard({
-  job,
-  showCheckbox,
-  selected,
-  onToggle,
-  onSelectPointerDown,
-  onSelectPointerEnter,
-}: JobCardProps) {
-  const router = useRouter();
-  const accent = sourceAccentMap[job.source] || {
-    badge: "bg-[var(--surface-muted)] text-black",
-    marker: "rounded-full bg-[#e8d2cd]",
-    meta: "其他来源",
-  };
-  const rawApplyUrl = job.apply_url || job.url;
-  // 数据源可能返回占位域名（example.invalid 等），这类链接打开即死链。
-  const isExampleUrl = (url: string) =>
-    /https?:\/\/[^/]*example\.(invalid|test|example|localhost)/i.test(url);
-  const isSafeUrl = (url: string) => {
-    if (!url) return false;
-    try {
-      const parsed = new URL(url);
-      return parsed.protocol === "http:" || parsed.protocol === "https:";
-    } catch {
-      return false;
-    }
-  };
-  const applyUrl =
-    rawApplyUrl && !isExampleUrl(rawApplyUrl) && isSafeUrl(rawApplyUrl)
-      ? rawApplyUrl
-      : "";
+function usableApplyUrl(job: Job): string {
+  const url = job.apply_url || job.url || "";
+  if (!url || /https?:\/\/[^/]*example\.(invalid|test|example|localhost)/i.test(url)) return "";
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? url : "";
+  } catch {
+    return "";
+  }
+}
 
-  const openDetail = () => {
-    router.push(`/jobs/${job.id}`);
-  };
+export function JobCard({ job, showCheckbox, selected, onToggle, onSelectPointerDown, onSelectPointerEnter }: JobCardProps) {
+  const router = useRouter();
+  const applyUrl = usableApplyUrl(job);
+  const source = SOURCE_LABELS[job.source];
+  const openDetail = () => router.push(`/jobs/${job.id}`);
 
   return (
     <article
       role="article"
       aria-label={`${job.title} · ${job.company}`}
-      className={`job-card group relative flex h-full min-h-[220px] max-w-full flex-col overflow-hidden border bg-[var(--surface)] transition-all duration-[var(--dur-quick)] ease-[var(--ease-snap)] ${
-        selected
-          ? "bg-[var(--surface-muted)] shadow-[1px_1px_0_0_rgba(18,18,18,0.16)]"
-          : "shadow-[1px_1px_0_0_rgba(18,18,18,0.08)] hover:-translate-y-0.5 hover:shadow-[2px_2px_0_0_rgba(18,18,18,0.14)]"
-      }`}
+      tabIndex={0}
+      onClick={openDetail}
+      onKeyDown={(event) => { if (event.key === "Enter") openDetail(); }}
       onMouseEnter={() => onSelectPointerEnter?.(job.id)}
+      className={`job-card group relative flex h-full cursor-pointer flex-col gap-2.5 p-3.5 outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] ${NOTION_CARD} ${
+        selected ? "!bg-[#f3f8fb] !shadow-[0_0_0_1.5px_rgba(35,131,226,0.55)]" : ""
+      }`}
     >
-      <div className="relative z-[1] flex h-full flex-col gap-4 p-5">
-        <div className="flex items-start gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-muted)]">
-            {job.company_logo ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={job.company_logo}
-                alt={`${job.company} logo`}
-                width={44}
-                height={44}
-                className="h-full w-full object-cover"
-                loading="lazy"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <span className="text-lg font-bold text-black/70">
-                {(job.company || "?").slice(0, 1)}
-              </span>
-            )}
-          </div>
-
-          <div className="min-w-0 flex-1">
-            <h3 className="line-clamp-2 text-[17px] font-semibold leading-snug text-black">
-              <Link
-                href={`/jobs/${job.id}`}
-                className="outline-none transition-colors hover:text-[var(--primary-blue)] focus-visible:underline"
-              >
-                {job.title}
-              </Link>
-            </h3>
-            <p className="mt-2 line-clamp-1 text-sm font-medium text-black/62">
-              {job.company}
-            </p>
-          </div>
-
-          {sourceAccentMap[job.source] && <span className={`bauhaus-chip ${accent.badge}`}>{accent.meta}</span>}
-        </div>
-
-        <div className="flex flex-wrap gap-1.5 text-xs font-medium text-black/65">
-          {job.salary_text && (
-            <span className="bauhaus-chip bg-[#f3ead2]">
-              <DollarSign size={12} strokeWidth={2} />
-              {job.salary_text}
-            </span>
-          )}
-          {job.location && (
-            <span className="bauhaus-chip">
-              <MapPin size={12} strokeWidth={2} />
-              {job.location}
-            </span>
-          )}
-          {job.education && (
-            <span className="bauhaus-chip">
-              <GraduationCap size={12} strokeWidth={2} />
-              {job.education}
-            </span>
-          )}
-          {job.experience && (
-            <span className="bauhaus-chip">
-              <Briefcase size={12} strokeWidth={2} />
-              {job.experience}
-            </span>
-          )}
-          {job.company_size && (
-            <span className="bauhaus-chip">
-              <Building2 size={12} strokeWidth={2} />
-              {job.company_size}
-            </span>
-          )}
-        </div>
-
-        <p className="line-clamp-3 flex-1 text-[13px] leading-relaxed text-black/62">
-          {job.summary || ""}
-        </p>
-
-        <div className="flex flex-wrap gap-2">
-          {job.is_campus && (
-            <span className="bauhaus-chip bg-[#eaf0eb] text-black">校招</span>
-          )}
-          {job.job_type && (
-            <span className="bauhaus-chip bg-[#f7ece9] text-black">
-              {job.job_type}
-            </span>
-          )}
-          {job.keywords?.slice(0, 2).map((keyword, index) => (
-            <span
-              key={`${keyword}-${index}`}
-              className={`bauhaus-chip ${
-                index % 2 === 0
-                  ? "bg-[var(--surface)] text-black"
-                  : "bg-[var(--surface-muted)] text-black/75"
-              }`}
-            >
-              {keyword}
-            </span>
-          ))}
-        </div>
-
-        <div className="flex flex-wrap gap-2 pt-1">
-          <button
-            type="button"
-            className="bauhaus-button bauhaus-button-outline z-20 !min-h-8 !px-3 !py-2 !text-[11px]"
-            onClick={(event) => {
-              event.stopPropagation();
-              openDetail();
-            }}
-          >
-            查看详情
-          </button>
-          {applyUrl ? (
-            <ExternalUrlLink
-              href={applyUrl}
-              className="bauhaus-button bauhaus-button-blue z-20 !min-h-8 !px-3 !py-2 !text-[11px]"
-              onClick={(event) => event.stopPropagation()}
-            >
-              投递入口
-            </ExternalUrlLink>
-          ) : rawApplyUrl ? (
-            <span
-              className="bauhaus-button z-20 !min-h-8 !px-3 !py-2 !text-[11px] cursor-not-allowed border border-black/15 text-black/45"
-              title="该岗位来源未提供有效投递链接"
-            >
-              暂无投递链接
-            </span>
-          ) : null}
-        </div>
+      <div className="flex items-center gap-2 pr-7">
+        {job.company_logo ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={job.company_logo} alt="" width={22} height={22} className="h-[22px] w-[22px] shrink-0 rounded-[5px] object-cover" loading="lazy" referrerPolicy="no-referrer" />
+        ) : (
+          <LetterAvatar name={job.company} />
+        )}
+        <span className="min-w-0 truncate text-[13px] text-[#787774]">{job.company}</span>
       </div>
+
+      <h3 className="line-clamp-2 text-[15px] font-semibold leading-snug text-[#37352f]">{job.title}</h3>
+
+      {job.summary && <p className="line-clamp-2 text-[13px] leading-relaxed text-[#787774]">{job.summary}</p>}
+
+      <div className="mt-auto flex flex-wrap gap-1 pt-1">
+        {job.location && <NotionTag>{job.location}</NotionTag>}
+        {job.is_campus && <NotionTag color="green">校招</NotionTag>}
+        {job.job_type && <NotionTag color="blue">{job.job_type}</NotionTag>}
+        {job.salary_text && <NotionTag color="orange">{job.salary_text}</NotionTag>}
+        {job.education && <NotionTag color="purple">{job.education}</NotionTag>}
+        {source && <NotionTag color="gray">{source}</NotionTag>}
+      </div>
+
+      {applyUrl && (
+        <ExternalUrlLink
+          href={applyUrl}
+          onClick={(event) => event.stopPropagation()}
+          className="absolute bottom-3 right-3 inline-flex items-center gap-0.5 rounded-[5px] px-1.5 py-0.5 text-[12px] text-[#787774] opacity-0 transition-opacity hover:bg-[rgba(55,53,47,0.08)] group-hover:opacity-100"
+        >
+          投递 <ArrowUpRight size={12} />
+        </ExternalUrlLink>
+      )}
 
       {showCheckbox && (
         <button
           type="button"
           aria-label={selected ? "取消选择岗位" : "选择岗位"}
           aria-pressed={selected}
-          className={`absolute bottom-4 right-4 z-20 flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border-strong)] transition-all duration-[var(--dur-quick)] ease-[var(--ease-snap)] ${
+          className={`absolute right-3 top-3 flex h-[18px] w-[18px] items-center justify-center rounded-[4px] transition-opacity ${
             selected
-              ? "bg-[#e4ece6] text-black shadow-[1px_1px_0_0_rgba(18,18,18,0.14)]"
-              : "bg-[var(--surface)] text-black shadow-[1px_1px_0_0_rgba(18,18,18,0.1)] hover:bg-[var(--surface-muted)]"
+              ? "bg-[#2383e2] text-white opacity-100"
+              : "bg-white text-transparent opacity-0 shadow-[inset_0_0_0_1.5px_rgba(55,53,47,0.35)] group-hover:opacity-100 focus-visible:opacity-100"
           }`}
           onClick={(event) => {
             event.stopPropagation();
@@ -253,11 +109,7 @@ export function JobCard({
             onSelectPointerDown?.(job.id, { shiftKey: event.shiftKey });
           }}
         >
-          <Check
-            size={18}
-            strokeWidth={2.6}
-            className={selected ? "opacity-100" : "opacity-0"}
-          />
+          <Check size={13} strokeWidth={3} />
         </button>
       )}
     </article>

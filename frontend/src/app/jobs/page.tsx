@@ -807,40 +807,16 @@ export default function JobsPage() {
         </div>
       ) : jobs.length > 0 ? (
         <>
-          {/* 批量模式：全选栏 */}
-          {selectedIds.size > 0 && (
-            <div className="bauhaus-panel-sm flex items-center gap-3 bg-[var(--surface-muted)] p-4 text-[var(--foreground)]">
-              <Checkbox
-                isSelected={totalMatchingJobs > 0 && selectedIds.size === totalMatchingJobs}
-                isIndeterminate={selectedIds.size > 0 && totalMatchingJobs > 0 && selectedIds.size < totalMatchingJobs}
-                isDisabled={selectAllLoading || totalMatchingJobs === 0}
-                onValueChange={() => {
-                  void toggleSelectAll();
-                }}
-                size="sm"
-                color="primary"
-              />
-              <span className="text-sm font-medium text-[var(--foreground-soft)]">
-                {selectAllLoading
-                  ? "正在汇总当前筛选下全部岗位..."
-                  : selectedIds.size > 0
-                    ? `已选 ${selectedIds.size} / 总 ${totalMatchingJobs} 个岗位`
-                    : `点击卡片或勾选框选择岗位（当前筛选共 ${totalMatchingJobs} 个）`}
-              </span>
-            </div>
-          )}
-
           <motion.div
             variants={container}
             initial="hidden"
             animate="show"
-            className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3 items-stretch"
+            className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"
           >
             {jobs.map((job) => (
               <motion.div
                 key={job.id}
                 variants={item}
-                whileHover={{ y: -3, transition: { type: "spring", stiffness: 400, damping: 28 } }}
                 className="h-full min-w-0"
               >
                 <JobCard
@@ -878,9 +854,9 @@ export default function JobsPage() {
                 transition={{ type: "spring", damping: 20 }}
                 className="fixed bottom-6 left-0 right-0 z-50 flex justify-center px-4 pointer-events-none md:left-64 md:right-auto md:w-[calc(100vw-16rem)]"
               >
-                <div className="pointer-events-auto flex max-w-full flex-wrap items-center gap-3 border border-[var(--border)] bg-[var(--surface)] px-4 py-4 ">
+                <div className="pointer-events-auto flex max-w-full flex-wrap items-center gap-2 rounded-xl bg-white px-3 py-2 shadow-[0_0_0_1px_rgba(15,15,15,0.06),0_8px_24px_rgba(15,15,15,0.12)]">
                   <span className="text-sm font-semibold text-[var(--foreground-soft)]">
-                    已选 <span className="font-bold text-[var(--primary-red)]">{selectedIds.size}</span> 个岗位
+                    已选 <span className="font-semibold text-[#2383e2]">{selectedIds.size}</span> 个
                   </span>
 
                   {actionError && (
