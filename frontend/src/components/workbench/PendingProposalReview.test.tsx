@@ -2,12 +2,13 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { listPending, decide, listPlans, getPlan, decideGroup } = vi.hoisted(() => ({
+const { listPending, decide, listPlans, getPlan, decideGroup, resolveGroup } = vi.hoisted(() => ({
   listPending: vi.fn(),
   decide: vi.fn(),
   listPlans: vi.fn(),
   getPlan: vi.fn(),
   decideGroup: vi.fn(),
+  resolveGroup: vi.fn(),
 }));
 
 vi.mock("@/lib/api", () => ({
@@ -19,6 +20,7 @@ vi.mock("@/lib/api", () => ({
     list: listPlans,
     get: getPlan,
     decideGroup,
+    resolveGroup,
   },
 }));
 
@@ -111,6 +113,7 @@ describe("PendingProposalReview", () => {
     listPlans.mockReset().mockResolvedValue({ total: 0, items: [] });
     getPlan.mockReset();
     decideGroup.mockReset();
+    resolveGroup.mockReset().mockResolvedValue({ ok: true, resolved: false, errors: [] });
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -324,7 +327,7 @@ describe("PendingProposalReview", () => {
 
     render(<PendingProposalReview />);
 
-    expect(await screen.findByText("执行结果尚未核对，暂不能批准或拒绝。")).toBeInTheDocument();
+    expect(await screen.findByText("系统正在核对上一次执行的结果，完成后即可决定。")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "批准整组：产品经历调整" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "拒绝整组：产品经历调整" })).toBeDisabled();
     expect(decideGroup).not.toHaveBeenCalled();
@@ -573,5 +576,102 @@ describe("PendingProposalReview", () => {
     expect(getPlan).toHaveBeenCalledWith(resumePlan.id);
     expect(screen.getByRole("button", { name: "关闭计划审核" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "批准整组：产品经历调整" })).toBeEnabled();
+  });
+
+  it("auto-checks an unknown outcome, then offers only retry and abandon-as-is", async () => {
+    const stuckPlan = {
+      ...resumePlan,
+      status: "needs_reconciliation",
+      groups: [{
+        ...resumePlan.groups[0],
+        status: "needs_reconciliation",
+        nodes: [{ ...resumePlan.groups[0].nodes[0], status: "uncertain" }],
+      }],
+    };
+    const abandonedPlan = {
+      ...stuckPlan,
+      status: "rejected",
+      groups: [{ ...stuckPlan.groups[0], status: "rejected", pause_reason: "Abandoned by user: unresolved outcome kept as is, nothing replayed" }],
+    };
+    listPlans.mockResolvedValue({ total: 1, items: [stuckPlan] });
+    getPlan.mockResolvedValue(stuckPlan);
+    resolveGroup
+      .mockResolvedValueOnce({ ok: true, resolved: false, errors: [] })
+      .mockResolvedValueOnce({ ok: true, resolved: true, plan: abandonedPlan, errors: [] });
+
+    render(<PendingProposalReview />);
+    const user = userEvent.setup();
+
+    await waitFor(() => expect(resolveGroup).toHaveBeenCalledWith(
+      stuckPlan.id, stuckPlan.groups[0].id, { action: "retry", group_digest: stuckPlan.groups[0].digest },
+    ));
+    const abandon = await screen.findByRole("button", { name: "放弃并保留现状：产品经历调整" });
+    expect(screen.getByRole("button", { name: "重试核对：产品经历调整" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /^批准整组：/ })).not.toBeInTheDocument();
+    await user.click(abandon);
+    await waitFor(() => expect(resolveGroup).toHaveBeenLastCalledWith(
+      stuckPlan.id, stuckPlan.groups[0].id, { action: "abandon", group_digest: stuckPlan.groups[0].digest },
+    ));
+    expect(await screen.findByText(/现有数据保持不变，没有重复执行任何操作/)).toBeInTheDocument();
+    expect((await screen.findAllByText(/已放弃，保留现状/)).length).toBeGreaterThan(0);
+    expect(decideGroup).not.toHaveBeenCalled();
+  });
+
+  it("shows the two exits when the automatic check times out", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const stuckPlan = {
+      ...resumePlan,
+      status: "needs_reconciliation",
+      groups: [{ ...resumePlan.groups[0], status: "needs_reconciliation", nodes: [{ ...resumePlan.groups[0].nodes[0], status: "uncertain" }] }],
+    };
+    listPlans.mockResolvedValue({ total: 1, items: [stuckPlan] });
+    getPlan.mockResolvedValue(stuckPlan);
+    resolveGroup.mockImplementation(() => new Promise(() => {}));
+
+    render(<PendingProposalReview />);
+
+    expect(await screen.findByText("正在自动核对执行结果…")).toBeInTheDocument();
+    await act(async () => { vi.advanceTimersByTime(11000); });
+    expect(await screen.findByRole("button", { name: "重试核对：产品经历调整" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "放弃并保留现状：产品经历调整" })).toBeInTheDocument();
+  });
+
+  it("ignores every pending group in one action and adopts only low-risk groups", async () => {
+    const base = resumePlan.groups[0];
+    const ready = { status: "ready", reason_codes: [], advisory_codes: [], counts_as_user_decision: true };
+    const lowA = { ...base, id: `group_${"a".repeat(32)}`, digest: "c".repeat(64), title: "低风险 A", interaction_state: "needs_user_review", reviewability: ready };
+    const lowB = { ...base, id: `group_${"b".repeat(32)}`, digest: "d".repeat(64), title: "低风险 B", interaction_state: "needs_user_review", reviewability: ready };
+    const authorize = { ...base, id: `group_${"c".repeat(32)}`, digest: "e".repeat(64), title: "需要授权", interaction_state: "needs_user_authorization", reviewability: ready };
+    const external = { ...base, id: `group_${"d".repeat(32)}`, digest: "f".repeat(64), title: "外部投递", risk: "external", interaction_state: "needs_user_review", reviewability: ready };
+    const multiPlan = { ...resumePlan, groups: [lowA, authorize, lowB, external] };
+    const decided = new Map<string, string>();
+    const current = () => ({
+      ...multiPlan,
+      groups: multiPlan.groups.map((group) => decided.has(group.id) ? { ...group, status: decided.get(group.id) as string } : group),
+    });
+    listPlans.mockImplementation(async () => ({ total: 1, items: [current()] }));
+    getPlan.mockImplementation(async () => current());
+    decideGroup.mockImplementation(async (_planId: string, groupId: string, body: { approve: boolean }) => {
+      decided.set(groupId, body.approve ? "completed" : "rejected");
+      return { ok: true, receipts: [] };
+    });
+
+    render(<PendingProposalReview />);
+    const user = userEvent.setup();
+
+    const adopt = await screen.findByRole("button", { name: "采用全部低风险项（2）" });
+    await user.click(adopt);
+    await waitFor(() => expect(decideGroup).toHaveBeenCalledTimes(2));
+    expect(decideGroup.mock.calls.map((call) => call[1])).toEqual([lowA.id, lowB.id]);
+    expect(decideGroup.mock.calls.every((call) => call[2].approve === true)).toBe(true);
+    expect(await screen.findByText(/已采用 2 组低风险改动/)).toBeInTheDocument();
+
+    await user.click(await screen.findByRole("button", { name: "全部忽略" }));
+    await waitFor(() => expect(decideGroup).toHaveBeenCalledTimes(4));
+    expect(decideGroup.mock.calls.slice(2).map((call) => [call[1], call[2].approve])).toEqual([
+      [authorize.id, false],
+      [external.id, false],
+    ]);
+    expect(await screen.findByText(/已忽略 2 组改动，组内操作不会执行/)).toBeInTheDocument();
   });
 });

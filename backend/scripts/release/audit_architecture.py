@@ -95,6 +95,9 @@ REGISTRY_HELPERS = {
     # every business node through confirmed_operation -> execute_operation.
     "confirm_group",
     "reject_group",
+    # Unknown-outcome exit: Audit-evidence reconciliation or close-as-is; any
+    # continuation runs through the same v2 dispatcher -> execute_operation.
+    "resolve_unresolved_group",
     "confirm_operation_proposal",
     "reject_operation_proposal",
     "confirm_embedded_agent_action",

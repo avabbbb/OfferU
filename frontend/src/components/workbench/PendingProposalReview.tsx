@@ -129,6 +129,63 @@ function groupHasUnknownExecution(group: AgentConfirmationGroup) {
   return group.nodes.some((node) => ["executing", "uncertain", "failed"].includes(node.status));
 }
 
+const RECONCILE_TIMEOUT_MS = 10000;
+const BULK_MAX_STEPS = 50;
+const DESTRUCTIVE_OPERATION_PREFIXES = ["delete_", "reset_", "purge_", "revoke_", "uninstall_"];
+
+/**
+ * A group whose execution outcome is unknown. It must never sit without an
+ * exit: the system re-checks automatically, then the user gets exactly two
+ * choices — retry the check, or abandon the rest and keep current data.
+ */
+export function groupNeedsExecutionExit(group: AgentConfirmationGroup) {
+  if (group.status === "needs_reconciliation") return true;
+  return group.status === "paused" && group.nodes.some((node) => ["uncertain", "failed"].includes(node.status));
+}
+
+function canBulkIgnore(plan: AgentProposalPlan, group: AgentConfirmationGroup) {
+  return ["sealed", "executing"].includes(plan.status)
+    && group.status === "pending"
+    && validDecisionTarget(plan, group)
+    && !groupHasUnknownExecution(group)
+    && group.reviewability?.status !== "needs_reconciliation";
+}
+
+/**
+ * "Low risk" for one-tap bulk adoption: ready to review, server says plain
+ * review (not authorization), no external effect, nothing destructive.
+ */
+export function isLowRiskGroup(plan: AgentProposalPlan, group: AgentConfirmationGroup) {
+  if (!canBulkIgnore(plan, group) || group.reviewability?.status !== "ready") return false;
+  const reviewOnly = group.interaction_state
+    ? group.interaction_state === "needs_user_review"
+    : group.risk === "prepare";
+  return reviewOnly
+    && group.risk !== "external"
+    && !group.nodes.some((node) => DESTRUCTIVE_OPERATION_PREFIXES.some((prefix) => node.operation.startsWith(prefix)));
+}
+
+function closedGroupLabel(group: AgentConfirmationGroup) {
+  if (group.status !== "rejected") return null;
+  if (group.pause_reason?.startsWith("Abandoned")) return "已放弃，保留现状";
+  if (group.pause_reason?.startsWith("Reconciled")) return "已核对，其余步骤待重新准备";
+  return null;
+}
+
+function newDecisionId() {
+  return `decision_${crypto.randomUUID().replaceAll("-", "")}`;
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("自动核对超时")), ms);
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (err) => { clearTimeout(timer); reject(err); },
+    );
+  });
+}
+
 function validDecisionTarget(plan: AgentProposalPlan, group: AgentConfirmationGroup) {
   return /^plan_[0-9a-f]{32}$/.test(plan.id)
     && /^group_[0-9a-f]{32}$/.test(group.id)
@@ -283,6 +340,9 @@ export function PendingProposalReview() {
   const [legacyLoading, setLegacyLoading] = useState(true);
   const [legacyError, setLegacyError] = useState("");
   const [busyDecisionId, setBusyDecisionId] = useState<string | null>(null);
+  const [busyBulk, setBusyBulk] = useState<"ignore" | "adopt" | null>(null);
+  const [reconcileState, setReconcileState] = useState<Record<string, "checking" | "unresolved">>({});
+  const autoReconciled = useRef(new Set<string>());
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [busyActionId, setBusyActionId] = useState<string | null>(null);
   const [decisionResults, setDecisionResults] = useState<Record<string, {
@@ -493,7 +553,7 @@ export function PendingProposalReview() {
     approve: boolean,
   ) => {
     if (busyDecisionId || group.status !== "pending" || !["sealed", "executing"].includes(plan.status) || !validDecisionTarget(plan, group)) return;
-    const decisionId = `decision_${crypto.randomUUID().replaceAll("-", "")}`;
+    const decisionId = newDecisionId();
     setBusyDecisionId(group.id);
     setError("");
     setNotice("");
@@ -562,6 +622,129 @@ export function PendingProposalReview() {
     } finally {
       setBusyDecisionId(null);
       requestRunReviewRefresh(plan.run_id);
+    }
+  };
+
+  const adoptPlanSnapshot = (plan: AgentProposalPlan) => {
+    planSelectionVersion.current += 1;
+    selectedPlanId.current = plan.id;
+    autoOpenedPlanId.current = plan.id;
+    setSelectedPlan(plan);
+    setPlans((current) => [plan, ...current.filter((item) => item.id !== plan.id)]);
+    setPlanListReady(true);
+    setPlanLoading(false);
+  };
+
+  const resolveUnresolvedGroup = async (
+    plan: AgentProposalPlan,
+    group: AgentConfirmationGroup,
+    action: "retry" | "abandon",
+    automatic = false,
+  ) => {
+    const title = group.title || group.summary;
+    setReconcileState((current) => ({ ...current, [group.id]: "checking" }));
+    if (!automatic) {
+      setError("");
+      setNotice("");
+    }
+    try {
+      const result = await withTimeout(
+        agentPlansApi.resolveGroup(plan.id, group.id, { action, group_digest: group.digest }),
+        RECONCILE_TIMEOUT_MS,
+      );
+      if (!result.ok) throw new Error(result.errors?.join("；") || "未能处理这组的执行结果");
+      if (!result.resolved) {
+        setReconcileState((current) => ({ ...current, [group.id]: "unresolved" }));
+        if (!automatic) setNotice(`仍无法确认“${title}”是否已生效。可以稍后重试，或放弃并保留现状。`);
+        return;
+      }
+      setReconcileState((current) => {
+        const next = { ...current };
+        delete next[group.id];
+        return next;
+      });
+      setNotice(action === "abandon"
+        ? `已放弃“${title}”剩余步骤；现有数据保持不变，没有重复执行任何操作。`
+        : `已核对“${title}”的执行结果，已生效的改动保留。`);
+      if (result.plan && result.plan.id === plan.id) adoptPlanSnapshot(result.plan);
+      else await loadPlans(true);
+    } catch (err) {
+      setReconcileState((current) => ({ ...current, [group.id]: "unresolved" }));
+      if (!automatic) setError(safeClientErrorMessage(err, action === "abandon" ? "放弃失败，请重试" : "重试核对失败"));
+    } finally {
+      requestRunReviewRefresh(plan.run_id);
+    }
+  };
+  const resolveRef = useRef(resolveUnresolvedGroup);
+  resolveRef.current = resolveUnresolvedGroup;
+
+  // System-first: an unknown outcome is checked automatically once per
+  // displayed group snapshot; only an unresolved/timed-out check asks the user.
+  useEffect(() => {
+    if (!selectedPlan || !planListReady) return;
+    for (const group of selectedPlan.groups || []) {
+      if (!groupNeedsExecutionExit(group) || !validDecisionTarget(selectedPlan, group)) continue;
+      const key = `${group.id}:${group.digest}:${group.status}`;
+      if (autoReconciled.current.has(key)) continue;
+      autoReconciled.current.add(key);
+      void resolveRef.current(selectedPlan, group, "retry", true);
+    }
+  }, [selectedPlan, planListReady]);
+
+  const runBulk = async (mode: "ignore" | "adopt") => {
+    const start = selectedPlan;
+    if (!start || busyBulk || busyDecisionId) return;
+    const approve = mode === "adopt";
+    const eligible = (plan: AgentProposalPlan, group: AgentConfirmationGroup) =>
+      approve ? isLowRiskGroup(plan, group) : canBulkIgnore(plan, group);
+    setBusyBulk(mode);
+    setError("");
+    setNotice("");
+    const attempted = new Set<string>();
+    const failed: string[] = [];
+    let done = 0;
+    let plan = start;
+    try {
+      // One group at a time against the latest snapshot: an adopted group can
+      // refresh the remaining groups into a successor plan with new digests.
+      for (let step = 0; step < BULK_MAX_STEPS; step += 1) {
+        const target = (plan.groups || []).find((group) => eligible(plan, group) && !attempted.has(group.digest));
+        if (!target) break;
+        attempted.add(target.digest);
+        setBusyDecisionId(target.id);
+        let nextId = plan.id;
+        try {
+          const result = await agentPlansApi.decideGroup(plan.id, target.id, {
+            approve,
+            plan_digest: plan.digest,
+            group_digest: target.digest,
+            decision_id: newDecisionId(),
+          });
+          if (!result.ok || result.errors?.length) failed.push(target.title || target.summary);
+          else done += 1;
+          nextId = result.successor_plan_id || plan.id;
+          if (result.successor_plan && result.successor_plan.id === nextId) {
+            plan = result.successor_plan;
+            continue;
+          }
+        } catch {
+          failed.push(target.title || target.summary);
+        }
+        plan = await agentPlansApi.get(nextId);
+      }
+      adoptPlanSnapshot(plan);
+      const summary = approve
+        ? `已采用 ${done} 组低风险改动，执行结果会逐项记录。`
+        : `已忽略 ${done} 组改动，组内操作不会执行。`;
+      setNotice(failed.length ? `${summary}${failed.length} 组未能处理：${failed.join("、")}。` : summary);
+    } catch (err) {
+      setError(safeClientErrorMessage(err, approve ? "批量采用失败" : "批量忽略失败"));
+    } finally {
+      setBusyDecisionId(null);
+      setBusyBulk(null);
+      await loadPlans(true);
+      await loadPending(true);
+      requestRunReviewRefresh(start.run_id);
     }
   };
 
@@ -719,6 +902,36 @@ export function PendingProposalReview() {
                     </span>
                   </header>
 
+                  {(() => {
+                    const ignorable = (selectedPlan.groups || []).filter((group) => canBulkIgnore(selectedPlan, group));
+                    if (ignorable.length < 2 || !planListReady || planLoading) return null;
+                    const lowRisk = ignorable.filter((group) => isLowRiskGroup(selectedPlan, group));
+                    const bulkDisabled = Boolean(busyBulk || busyDecisionId);
+                    return (
+                      <div data-testid="pending-review-bulk" className="flex flex-wrap items-center justify-end gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-2.5 py-2">
+                        <p className="mr-auto text-[10px] text-[var(--foreground-soft)]">
+                          {ignorable.length} 组待审核{lowRisk.length ? `，其中 ${lowRisk.length} 组低风险` : ""}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => void runBulk("ignore")}
+                          disabled={bulkDisabled}
+                          className="bauhaus-button bauhaus-button-outline !min-h-8 !justify-center !px-3 !py-1 !text-[10.5px] disabled:opacity-50"
+                        >
+                          {busyBulk === "ignore" ? <Loader2 size={12} className="animate-spin" /> : null}全部忽略
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void runBulk("adopt")}
+                          disabled={bulkDisabled || lowRisk.length === 0}
+                          className="bauhaus-button bauhaus-button-red !min-h-8 !justify-center !px-3 !py-1 !text-[10.5px] disabled:opacity-50"
+                        >
+                          {busyBulk === "adopt" ? <Loader2 size={12} className="animate-spin" /> : null}采用全部低风险项{lowRisk.length ? `（${lowRisk.length}）` : ""}
+                        </button>
+                      </div>
+                    );
+                  })()}
+
                   {(selectedPlan.groups || []).length === 0 && (
                     <p className="rounded-md border border-dashed border-[var(--border)] px-3 py-3 text-center text-[11px] text-[var(--foreground-muted)]">
                       {planLoading ? "正在读取计划详情…" : "此计划没有可展示的改动组。"}
@@ -741,6 +954,9 @@ export function PendingProposalReview() {
                     const blockerCodes = group.reviewability?.reason_codes || [];
                     const blockerHints = reviewabilityCodeLabels(blockerCodes);
                     const groupStatus = displayedGroupStatus(selectedPlan, group);
+                    const groupStatusText = closedGroupLabel(group) || statusLabel(groupStatus, GROUP_STATUS_LABELS);
+                    const needsExit = groupNeedsExecutionExit(group) && targetValid;
+                    const exitState = reconcileState[group.id] || "checking";
                     const terminalGroup = ["completed", "rejected", "replaced"].includes(groupStatus);
                     const canDecideGroup = ["sealed", "executing"].includes(selectedPlan.status);
                     const canApprove = planListReady && !planError && !planLoading && canDecideGroup
@@ -788,12 +1004,12 @@ export function PendingProposalReview() {
                             <p className="mt-0.5 text-[10.5px] leading-4 text-[var(--foreground-soft)]">{group.summary}</p>
                             <p className="mt-0.5 text-[9.5px] text-[var(--foreground-muted)]">
                               {changeCount} 项改动
-                              {terminalGroup && ` · 结果：${groupReceipts.length ? groupReceipts.map(receiptLabel).join("、") : statusLabel(groupStatus, GROUP_STATUS_LABELS)}`}
+                              {terminalGroup && ` · 结果：${closedGroupLabel(group) || (groupReceipts.length ? groupReceipts.map(receiptLabel).join("、") : groupStatusText)}`}
                             </p>
                           </div>
                           <div className="flex shrink-0 flex-wrap items-center gap-1.5">
                             <span className="rounded-full border border-[var(--border)] px-2 py-1 text-[9.5px] text-[var(--foreground-muted)]">
-                              {statusLabel(groupStatus, GROUP_STATUS_LABELS)}
+                              {groupStatusText}
                             </span>
                             {group.risk && <span className="rounded bg-[var(--surface-muted)] px-2 py-1 text-[9px] text-[var(--foreground-muted)]">{groupRiskLabel(group.risk)}</span>}
                           </div>
@@ -837,7 +1053,7 @@ export function PendingProposalReview() {
                                   />
                                 ) : (
                                   <p className="rounded border border-dashed border-[var(--border)] px-2.5 py-2 text-[10px] text-[var(--foreground-muted)]">
-                                    修改前后内容未完整提供。
+                                    这一步没有前后对照；可展开“查看操作详情”核对具体内容。
                                   </p>
                                 )}
 
@@ -863,6 +1079,40 @@ export function PendingProposalReview() {
                           })}
                         </div>
 
+                        {needsExit && (
+                          <div data-testid="reconciliation-exits" className="flex flex-wrap items-center justify-end gap-1.5 border-t border-[var(--border)] pt-2">
+                            {exitState === "checking" ? (
+                              <p role="status" className="mr-auto inline-flex items-center gap-1 text-[9.5px] text-[var(--foreground-muted)]">
+                                <Loader2 size={11} className="animate-spin" />正在自动核对执行结果…
+                              </p>
+                            ) : (
+                              <>
+                                <p className="mr-auto text-[9.5px] leading-4 text-[var(--foreground-soft)]">
+                                  系统没能确认这一步是否已经生效。可以重试核对，或放弃剩余步骤并保留现在的数据；两种方式都不会重复执行任何操作。
+                                </p>
+                                <button
+                                  type="button"
+                                  aria-label={`放弃并保留现状：${group.title || group.summary}`}
+                                  onClick={() => void resolveUnresolvedGroup(selectedPlan, group, "abandon")}
+                                  disabled={Boolean(busyBulk || busyDecisionId)}
+                                  className="bauhaus-button bauhaus-button-outline !min-h-8 !justify-center !px-3 !py-1 !text-[10.5px] disabled:opacity-50"
+                                >
+                                  放弃并保留现状
+                                </button>
+                                <button
+                                  type="button"
+                                  aria-label={`重试核对：${group.title || group.summary}`}
+                                  onClick={() => void resolveUnresolvedGroup(selectedPlan, group, "retry")}
+                                  disabled={Boolean(busyBulk || busyDecisionId)}
+                                  className="bauhaus-button bauhaus-button-red !min-h-8 !justify-center !px-3 !py-1 !text-[10.5px] disabled:opacity-50"
+                                >
+                                  重试
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        )}
+
                         {(continuations.length > 0 || runStatus || group.status === "approved" || group.status === "executing") && (
                           <div className="rounded-md bg-[var(--surface-muted)] px-2.5 py-2 text-[10px] leading-4 text-[var(--foreground-soft)]">
                             <p className="font-semibold text-[var(--foreground)]">原任务回执</p>
@@ -875,10 +1125,10 @@ export function PendingProposalReview() {
                         {group.status === "pending" && canDecideGroup && (
                           <div className="flex flex-wrap items-center justify-end gap-1.5 border-t border-[var(--border)] pt-2">
                             {!targetValid && <p className="mr-auto text-[9.5px] text-[var(--primary-red)]">摘要或标识格式无效，决定入口已关闭。</p>}
-                            {targetValid && unknownExecution && <p className="mr-auto text-[9.5px] text-[var(--primary-red)]">执行结果尚未核对，暂不能批准或拒绝。</p>}
+                            {targetValid && unknownExecution && <p className="mr-auto text-[9.5px] text-[var(--foreground-muted)]">系统正在核对上一次执行的结果，完成后即可决定。</p>}
                             {targetValid && !unknownExecution && reviewabilityStatus && reviewabilityStatus !== "ready" && (
-                              <p className="mr-auto text-[9.5px] text-[var(--primary-red)]">
-                                当前不能批准：{blockerHints.join("、") || "需要先修复审核内容"}。你仍可拒绝此组。
+                              <p className="mr-auto text-[9.5px] text-[var(--foreground-soft)]">
+                                {blockerHints.length ? `${blockerHints.join("、")}；Agent 会重新准备这组内容，你也可以直接拒绝。` : "Agent 正在重新准备这组内容；你也可以直接拒绝。"}
                               </p>
                             )}
                             {targetValid && advisoryHints.length > 0 && (
@@ -890,7 +1140,7 @@ export function PendingProposalReview() {
                               type="button"
                               aria-label={`拒绝整组：${group.title || group.summary}`}
                               onClick={() => void decideGroup(selectedPlan, group, false)}
-                              disabled={!canReject || Boolean(busyDecisionId)}
+                              disabled={!canReject || Boolean(busyDecisionId || busyBulk)}
                               className="bauhaus-button bauhaus-button-outline !min-h-8 !justify-center !px-3 !py-1 !text-[10.5px] disabled:opacity-50"
                             >
                               {busy ? <Loader2 size={12} className="animate-spin" /> : null}拒绝整组
@@ -899,7 +1149,7 @@ export function PendingProposalReview() {
                               type="button"
                               aria-label={`批准整组：${group.title || group.summary}`}
                               onClick={() => void decideGroup(selectedPlan, group, true)}
-                              disabled={!canApprove || Boolean(busyDecisionId)}
+                              disabled={!canApprove || Boolean(busyDecisionId || busyBulk)}
                               className="bauhaus-button bauhaus-button-red !min-h-8 !justify-center !px-3 !py-1 !text-[10.5px] disabled:opacity-50"
                             >
                               {busy ? <Loader2 size={12} className="animate-spin" /> : null}批准这组改动

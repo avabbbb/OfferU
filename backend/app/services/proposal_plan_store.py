@@ -1763,3 +1763,179 @@ async def migrate_legacy_proposals(run_id: str | None = None) -> dict[str, int]:
             except IntegrityError:
                 continue
     return counts
+
+
+# ---------------------------------------------------------------------------
+# User-facing exits for a group whose execution outcome is unresolved.
+#
+# A group in ``needs_reconciliation`` (or ``paused`` with a failed/uncertain
+# node) used to have no exit at all: approve and reject were both disabled and
+# the only resolver required evidence the UI could never supply. The review
+# panel now drives two exits:
+#
+# * ``auto_reconcile_group`` — the system checks durable Audit rows itself.
+#   A node is marked committed only when the Audit row bound to that exact
+#   attempt says it succeeded; a failed node whose own receipt already proves
+#   ``no_effect`` is re-armed under the original approval. Nothing that might
+#   have taken effect is ever replayed.
+# * ``abandon_unresolved_group`` — "放弃并保留现状": the group becomes
+#   terminal, remaining pending nodes never run, current data is left as is,
+#   and every unresolved node keeps an ``abandoned`` receipt for the audit
+#   trail.
+# ---------------------------------------------------------------------------
+
+_UNRESOLVED_NODE_STATES = {"uncertain", "failed"}
+_EXIT_GROUP_STATES = {"needs_reconciliation", "paused"}
+
+
+async def _load_exit_target(db: AsyncSession, group_id: str, group_digest: str):
+    group = await db.get(ProposalConfirmationGroup, group_id)
+    if group is None:
+        raise ProposalPlanNotFoundError("Group does not exist")
+    plan = await db.get(ProposalExecutionPlan, group.plan_id)
+    if plan is None:
+        raise ProposalPlanNotFoundError("Group has no originating Plan")
+    snapshot = _json_object(group.snapshot_json, "group")
+    if group_digest and snapshot.get("digest") != group_digest:
+        raise ProposalStaleSnapshotError("Group digest changed; reload the review panel")
+    nodes = (await db.execute(select(ProposalOperationNode).where(
+        ProposalOperationNode.group_id == group.id).order_by(ProposalOperationNode.ordinal))).scalars().all()
+    return plan, group, list(nodes)
+
+
+def _group_has_unresolved(group: ProposalConfirmationGroup, nodes: Sequence[ProposalOperationNode]) -> bool:
+    if group.status == "needs_reconciliation":
+        return True
+    return group.status == "paused" and any(node.status in _UNRESOLVED_NODE_STATES for node in nodes)
+
+
+def _attempt_audit_keys(node: ProposalOperationNode, attempt_id: str) -> set[str]:
+    base = str(_json_object(node.snapshot_json, "node").get("idempotency_key") or node.idempotency_key or "")
+    keys = {f"{base}:attempt:{attempt_id}"[:180]} if attempt_id else set()
+    if int(node.attempt_count or 0) <= 1 and base:
+        keys.add(base[:180])
+    return keys
+
+
+async def auto_reconcile_group(group_id: str, *, group_digest: str = "") -> dict[str, Any]:
+    """Resolve unknown outcomes from durable evidence only; never replay an effect."""
+    async with _write() as db:
+        plan, group, nodes = await _load_exit_target(db, group_id, group_digest)
+        if not _group_has_unresolved(group, nodes):
+            return {"group": {"id": group.id, "status": group.status}, "resolved": group.status != "needs_reconciliation",
+                    "resolved_node_ids": [], "unresolved_node_ids": [], "duplicate": True}
+        operation_names = {node.id: str(_json_object(node.snapshot_json, "node").get("operation") or "") for node in nodes}
+        resolved: list[str] = []
+        unresolved: list[str] = []
+        audit_proven = False
+        for node in nodes:
+            if node.status not in _UNRESOLVED_NODE_STATES:
+                continue
+            prior = await db.get(ProposalExecutionReceipt, node.receipt_id) if node.receipt_id else None
+            if node.status == "failed" and prior is not None and prior.effect_state == "no_effect":
+                # The node's own receipt already proves nothing happened.
+                node.status, node.error_json, node.lease_until = "pending", {}, None
+                node.claim_id = None
+                resolved.append(node.id)
+                continue
+            attempt_id = str(prior.attempt_id if prior is not None else node.claim_id or "")
+            keys = _attempt_audit_keys(node, attempt_id)
+            audit = None
+            if keys:
+                audit = (await db.execute(select(OperationAuditLog).where(
+                    OperationAuditLog.idempotency_key.in_(sorted(keys)),
+                    OperationAuditLog.operation == operation_names[node.id],
+                ).order_by(OperationAuditLog.id.desc()))).scalars().first()
+            if audit is None or audit.ok is not True or audit.dry_run or audit.status not in {"completed", "succeeded", "ok"}:
+                unresolved.append(node.id)
+                continue
+            key = f"auto-reconcile:{node.id}:{prior.id if prior else attempt_id}:{audit.id}"
+            receipt = (await db.execute(select(ProposalExecutionReceipt).where(
+                ProposalExecutionReceipt.idempotency_key == key))).scalar_one_or_none()
+            if receipt is None:
+                receipt = ProposalExecutionReceipt(
+                    id=f"receipt_{uuid.uuid5(uuid.NAMESPACE_URL, key).hex}", node_id=node.id,
+                    attempt_id=f"auto-reconcile:{attempt_id}"[:120], effect_identity=node.effect_identity,
+                    idempotency_key=key, status="reconciled", effect_state="committed",
+                    result_json={"source": "operation_audit_log", "audit_id": audit.id,
+                                 "prior_receipt_id": prior.id if prior else None},
+                    audit_ref=str(audit.id), error_json={}, completed_at=_now())
+                db.add(receipt)
+            node.status, node.receipt_id, node.lease_until, node.error_json = "completed", receipt.id, None, {}
+            resolved.append(node.id)
+            audit_proven = True
+        states = [node.status for node in nodes]
+        if unresolved or any(state in {"blocked", "rejected", "executing"} for state in states):
+            group.status = "needs_reconciliation"
+            group.pause_reason = "Automatic reconciliation found no trustworthy outcome evidence"
+        elif all(state == "completed" for state in states):
+            group.status, group.pause_reason = "completed", ""
+        elif audit_proven:
+            # An Audit row proves the effect but carries no source witness, so
+            # later nodes cannot be chained onto it under the old approval.
+            # Keep the proven effects, release the rest for a fresh proposal.
+            for node in nodes:
+                if node.status == "pending":
+                    node.status = "rejected"
+            group.status = "rejected"
+            group.pause_reason = "Reconciled: proven effects kept; remaining nodes not run, re-propose on current data"
+            await db.flush()
+            await _block_descendants(db, plan.id, group.id)
+        else:
+            # Only proven no-effect failures were re-armed: continue under the
+            # original approval (dispatch re-checks sources and the decision).
+            group.status, group.pause_reason = "approved", ""
+        group.active_node_id = group.active_claim_id = None
+        group.lease_until = None
+        group.updated_at = _now()
+        await db.flush()
+        await _update_plan_status(db, plan.id)
+        await _ensure_continuation(db, plan.run_id, group.id)
+        return {"group": {"id": group.id, "status": group.status, "pause_reason": group.pause_reason},
+                "resolved": not unresolved and group.status != "needs_reconciliation",
+                "resolved_node_ids": resolved, "unresolved_node_ids": unresolved, "duplicate": False}
+
+
+async def abandon_unresolved_group(group_id: str, *, group_digest: str = "") -> dict[str, Any]:
+    """Close a group with unknown outcomes without replaying anything; keep data as is."""
+    async with _write() as db:
+        plan, group, nodes = await _load_exit_target(db, group_id, group_digest)
+        if group.status == "rejected" and str(group.pause_reason or "").startswith("Abandoned"):
+            return {"group": {"id": group.id, "status": group.status, "pause_reason": group.pause_reason},
+                    "abandoned_node_ids": [], "duplicate": True}
+        if not _group_has_unresolved(group, nodes):
+            raise ProposalPlanConflictError("Only a group with an unresolved execution outcome can be abandoned")
+        abandoned: list[str] = []
+        for node in nodes:
+            if node.status == "pending":
+                node.status = "rejected"
+                continue
+            if node.status not in _UNRESOLVED_NODE_STATES | {"executing"}:
+                continue
+            key = f"abandon:{node.id}:{node.receipt_id or node.claim_id or 'none'}"
+            receipt = (await db.execute(select(ProposalExecutionReceipt).where(
+                ProposalExecutionReceipt.idempotency_key == key))).scalar_one_or_none()
+            if receipt is None:
+                receipt = ProposalExecutionReceipt(
+                    id=f"receipt_{uuid.uuid5(uuid.NAMESPACE_URL, key).hex}", node_id=node.id,
+                    attempt_id=f"abandon:{node.claim_id or 'none'}"[:120], effect_identity=node.effect_identity,
+                    idempotency_key=key, status="abandoned", effect_state="unknown",
+                    result_json={"prior_receipt_id": node.receipt_id, "kept_current_state": True},
+                    audit_ref="", error_json={"reason": "user_abandoned_unresolved_outcome"},
+                    completed_at=_now())
+                db.add(receipt)
+            # The node keeps its honest outcome label; only the group closes.
+            node.status = "uncertain" if node.status == "executing" else node.status
+            node.receipt_id, node.lease_until = receipt.id, None
+            abandoned.append(node.id)
+        group.status = "rejected"
+        group.pause_reason = "Abandoned by user: unresolved outcome kept as is, nothing replayed"
+        group.active_node_id = group.active_claim_id = None
+        group.lease_until = None
+        group.updated_at = _now()
+        await db.flush()
+        await _block_descendants(db, plan.id, group.id)
+        await _update_plan_status(db, plan.id)
+        await _ensure_continuation(db, plan.run_id, group.id)
+        return {"group": {"id": group.id, "status": group.status, "pause_reason": group.pause_reason},
+                "abandoned_node_ids": abandoned, "duplicate": False}
