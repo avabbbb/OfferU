@@ -21,6 +21,8 @@ export interface InlineChange {
   after?: any;
   rationale?: string;
   reason?: string;
+  /** 模型根据档案推断出的技能：可以采用，但必须逐条确认属实。 */
+  inferred_skills?: Array<{ skill: string; basis?: string }>;
 }
 
 export function DiffLine({ change }: { change: ProposalTextChange }) {
@@ -64,6 +66,8 @@ export function InlineProposal({
         ? `建议新增段落「${change.after?.title || change.title || ""}」`
         : "";
   const acceptBlocked = conflict || factGateBlocked;
+  const inferred = (change.inferred_skills || []).filter((item) => item && item.skill);
+  const acceptLabel = inferred.length ? "属实，采用" : "采用";
 
   useEffect(() => {
     if (editing && editRef.current) {
@@ -76,8 +80,22 @@ export function InlineProposal({
     <div className="paper-proposal" data-paper-chrome="" data-testid={`inline-proposal-${change.change_id}`}>
       <div className="paper-proposal-head">
         <span className="paper-proposal-tag"><Sparkles size={11} aria-hidden /> AI 建议</span>
+        {inferred.length > 0 && <span className="paper-proposal-inferred-tag">推断 · 待你确认</span>}
         {reason && <span className="paper-proposal-reason">{reason}</span>}
       </div>
+      {inferred.length > 0 && (
+        <ul className="paper-proposal-inferred" role="note" aria-label="模型推断的技能">
+          {inferred.map((item) => (
+            <li key={item.skill} title={item.basis ? `推断依据（档案原文）：${item.basis}` : undefined}>
+              <mark className="paper-inferred">{item.skill}</mark>
+              <span className="paper-proposal-inferred-basis">
+                {item.basis ? <>依据：「{item.basis}」</> : "依据缺失"}
+              </span>
+            </li>
+          ))}
+          <li className="paper-proposal-inferred-hint">档案里没有直接写这些说法，是模型推断的。面试会被追问，确认你答得上来再采用。</li>
+        </ul>
+      )}
       {conflict && (
         <p className="paper-proposal-conflict" role="note">
           你在建议生成后改过这段，以你的版本为准。这条建议基于旧内容，不能直接采用。
@@ -108,7 +126,7 @@ export function InlineProposal({
           <>
             <button type="button" disabled={busy || acceptBlocked} className="is-primary"
               onClick={() => { onAccept((editRef.current?.textContent || "").trim()); setEditing(false); }}>
-              <Check size={11} aria-hidden /> 按我的改法采用
+              <Check size={11} aria-hidden /> {inferred.length ? "属实，按我的改法采用" : "按我的改法采用"}
             </button>
             <button type="button" onClick={() => setEditing(false)}>取消</button>
           </>
@@ -116,7 +134,7 @@ export function InlineProposal({
           <>
             <button type="button" disabled={busy || acceptBlocked} className="is-primary" onClick={() => onAccept()}
               title={factGateBlocked ? "事实门未通过，请先补充证据" : conflict ? "这段你改过，先跳过或让 AI 重写" : undefined}>
-              <Check size={11} aria-hidden /> 采用
+              <Check size={11} aria-hidden /> {acceptLabel}
             </button>
             <button type="button" disabled={busy || acceptBlocked || !editableLine} onClick={() => setEditing(true)}
               title={!editableLine ? "这条建议改了多处：先采用，再直接在页面上改" : undefined}>

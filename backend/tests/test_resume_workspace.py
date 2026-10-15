@@ -429,6 +429,42 @@ class ResumeWorkspaceTests(unittest.TestCase):
         asyncio.run(run())
 
 
+class InferredSkillReviewTests(unittest.TestCase):
+    def test_inferred_change_must_be_confirmed_one_by_one(self) -> None:
+        async def run() -> dict:
+            engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+            sessions = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+            async with engine.begin() as connection:
+                await connection.run_sync(Base.metadata.create_all)
+            fixture = await _seed(sessions, "inferred")
+            with patch.object(resume_workspace, "async_session", sessions), patch.object(
+                resume_workspace, "get_pre_application_state",
+                new=AsyncMock(return_value={"stage": "resume_proposal_ready"}),
+            ):
+                workspace = await resume_workspace.ensure_resume_workspace(
+                    job_id=fixture["job_id"], proposal_id=fixture["proposal_id"]
+                )
+                async with sessions() as db:
+                    proposal = await db.get(ResumeOptimizationProposal, fixture["proposal_id"])
+                    first = {**proposal.diff_json[0], "inferred_skills": [{"skill": "组件化开发", "basis": "old evidence"}]}
+                    second = {**proposal.diff_json[0], "change_id": "second", "change_type": "added",
+                              "after": {**proposal.diff_json[0]["after"], "title": "新增项目", "source_section_ids": []}}
+                    proposal.diff_json = [first, second]
+                    await db.commit()
+                args = dict(proposal_id=fixture["proposal_id"], resume_id=workspace["resume"]["id"],
+                            change_ids=[fixture["change_id"], "second"], action="accept")
+                with self.assertRaisesRegex(ValueError, "逐条确认"):
+                    await resume_workspace.review_resume_proposal_items(**args)
+                single = await resume_workspace.review_resume_proposal_items(
+                    **{**args, "change_ids": [fixture["change_id"]]}
+                )
+            await engine.dispose()
+            return single
+
+        result = asyncio.run(run())
+        self.assertFalse(result["duplicate"])
+
+
 async def _seed(sessions, suffix: str) -> dict[str, int | str]:
     async with sessions() as db:
         profile = Profile(name=f"测试候选人-{suffix}", is_default=True)

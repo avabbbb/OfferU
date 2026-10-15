@@ -81,6 +81,33 @@ describe("InlineProposal：采用 / 修改 / 跳过", () => {
   });
 });
 
+describe("InlineProposal：推断技能要逐条确认", () => {
+  it("marks inferred skills in amber with their verbatim basis and asks to confirm truth", () => {
+    const onAccept = vi.fn();
+    render(
+      <InlineProposal
+        change={{ ...change, inferred_skills: [{ skill: "高并发", basis: "负责对账服务" }] }}
+        conflict={false} factGateBlocked={false} busy={false}
+        onAccept={onAccept} onSkip={vi.fn()} onAskRewrite={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("推断 · 待你确认")).toBeInTheDocument();
+    expect(screen.getByText("高并发")).toHaveClass("paper-inferred");
+    expect(screen.getByText(/依据：「负责对账服务」/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /属实，采用/ }));
+    expect(onAccept).toHaveBeenCalledWith();
+  });
+
+  it("keeps the plain accept label when nothing is inferred", () => {
+    render(
+      <InlineProposal change={change} conflict={false} factGateBlocked={false} busy={false}
+        onAccept={vi.fn()} onSkip={vi.fn()} onAskRewrite={vi.fn()} />,
+    );
+    expect(screen.queryByText("推断 · 待你确认")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /属实/ })).not.toBeInTheDocument();
+  });
+});
+
 describe("修改意见：先堆积，再一次交给 AI", () => {
   const comments = [
     { id: "a", quote: "负责对账服务", section: "工作经历", instruction: "更精炼" },

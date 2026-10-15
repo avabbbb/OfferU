@@ -94,7 +94,7 @@ SECTION_TYPE_GUIDANCE = """
 
 **skill（技能清单）**:
 - 将 JD 匹配的技能排前面
-- JD 要求但简历缺失的技能只能列为能力缺口，禁止写入 suggested
+- JD 要求但简历缺失的技能：能从原文合理推断的（见「可推断技能规则」），可以写入 suggested 并在 inferred_skills 声明；推断不出的只能列为能力缺口
 - 合并同类技能分类
 - 不要删除候选人已有的技能
 
@@ -192,9 +192,17 @@ SYSTEM_PROMPT = f"""你是一名专业的校招简历内容优化师。你的任
 ### 关键词映射规则（替代"注入"）
 1. 先列出 JD 关键词，逐个映射到简历中的证据
 2. 有证据的关键词：自然融入经历描述句子中，不是单独列出
-3. 无证据的关键词：只能作为能力缺口保留在分析结果中，不得出现在 suggested 或 injected_keywords
+3. 无证据的关键词：先看能否「合理推断」（见下方规则）；推断不出的只能作为能力缺口保留在分析结果中，不得出现在 suggested 或 injected_keywords
 4. 每条经历最多映射 1-2 个关键词，不要过度堆砌
 5. 如果没有合适的映射位置，不要强行映射
+
+### 可推断技能规则（用户已同意，必须显式声明）
+1. 允许根据原文经历合理推断出**技能或职责说法**，例如原文「用 Vue 3 做了学院管理后台」可推断「组件化开发」「前端工程化」
+2. 每一个推断都必须写进 inferred_skills：{{"skill": "推断出的技能/说法", "basis": "支撑它的原文片段（必须逐字来自 original）"}}
+3. 推断只限技能和职责说法；**数字、百分比、公司/学校/项目名、奖项、时间、职级永远不能推断**
+4. 不能借推断升级责任边界：参与、协助仍不能写成负责、主导
+5. 推断必须让懂行的面试官追问时，候选人能用原文经历答上来；做不到就不要推断
+6. 推断的技能可以出现在技能清单里，同样要在 inferred_skills 声明
 
 {THREE_STAGE_WORKFLOW}
 
@@ -224,6 +232,7 @@ SYSTEM_PROMPT = f"""你是一名专业的校招简历内容优化师。你的任
   - 不要使用 <p> 标签，直接用 <ul><li> 结构
 - reason: 为什么这样改（1句话中文，需说明匹配了 JD 的什么要求）
 - injected_keywords: 映射的关键词列表（仅 inject 类型有内容，rewrite 类型为空数组）
+- inferred_skills: 本条建议中从原文推断出的技能列表 [{{"skill": "...", "basis": "原文片段"}}]，没有推断就给空数组
 - matched_jd_requirements: 本次改写匹配了 JD 的哪些要求（字符串列表）
 - interview_reference: 参考的面经考察点（如有，否则为空字符串）
 - diff: 差异信息
@@ -242,6 +251,7 @@ SYSTEM_PROMPT = f"""你是一名专业的校招简历内容优化师。你的任
       "suggested": "<ul><li>参与系统设计并完成原文已证实的工作</li></ul>",
       "reason": "理由（需说明匹配了JD的什么要求）",
       "injected_keywords": [],
+      "inferred_skills": [],
       "matched_jd_requirements": ["匹配的JD要求"],
       "interview_reference": "",
       "diff": {{
@@ -329,7 +339,7 @@ class ContentRewriterSkill(BaseSkill):
             return {"error": "LLM 返回格式异常", "raw": raw[:500]}
 
         # Apply quality guardrail
-        result = _apply_quality_guardrail(result, missing_skills)
+        result = _apply_quality_guardrail(result, missing_skills, resume_text)
 
         # Clean HTML in suggestions
         for sug in result.get("suggestions", []):
@@ -413,7 +423,7 @@ class ContentRewriterSkill(BaseSkill):
             result["section_type"] = section_type
 
         # Apply quality guardrail
-        result = _apply_quality_guardrail(result, missing_skills)
+        result = _apply_quality_guardrail(result, missing_skills, section_content)
 
         # Clean HTML and ensure diff information in each suggestion
         for sug in result.get("suggestions", []):
@@ -532,7 +542,7 @@ class ContentRewriterSkill(BaseSkill):
 
 # ---- Quality Guardrail ----
 
-def _apply_quality_guardrail(result: dict, missing_skills: list[str]) -> dict:
+def _apply_quality_guardrail(result: dict, missing_skills: list[str], resume_text: str = "") -> dict:
     """后置事实与质量检查：不让 LLM 输出越过候选人证据边界。"""
     if not isinstance(result, dict):
         return result
@@ -553,6 +563,9 @@ def _apply_quality_guardrail(result: dict, missing_skills: list[str]) -> dict:
         original = str(sug.get("original") or "")
         injected = sug.get("injected_keywords", [])
         block_reasons: list[str] = []
+        inferred = _clean_inferred_skills(sug.get("inferred_skills"), original, suggested, resume_text)
+        sug["inferred_skills"] = inferred
+        inferred_keys = {item["skill"].casefold() for item in inferred}
 
         # 1. 责任边界不能从参与/协助升级为负责/主导。
         source_is_supporting = re.search(
@@ -587,6 +600,7 @@ def _apply_quality_guardrail(result: dict, missing_skills: list[str]) -> dict:
                 )
             )
             and not _mentions_skill(original, skill)
+            and str(skill).strip().casefold() not in inferred_keys
         ]
         if unsupported_skills:
             block_reasons.append(
@@ -636,6 +650,50 @@ def _apply_quality_guardrail(result: dict, missing_skills: list[str]) -> dict:
         result["_guardrail_blocked"] = blocked
 
     return result
+
+
+_INFERENCE_FORBIDDEN = re.compile(
+    r"\d|%|％|(?:公司|集团|大学|学院|奖|杯|大赛|总监|经理|主管|负责人)$"
+)
+
+
+def _plain_text(value: str) -> str:
+    return re.sub(r"\s+", "", re.sub(r"<[^>]+>", "", value or ""))
+
+
+def _clean_inferred_skills(
+    value: Any, original: str, suggested: str, resume_text: str = "",
+) -> list[dict[str, str]]:
+    """Keep only declared inferences whose basis is quoted verbatim from the original.
+
+    Numbers, organizations, awards and titles are never inferable; an inference
+    without a verbatim basis is dropped, so the claim falls back to the ordinary
+    unsupported-skill block.
+    """
+    if not isinstance(value, list):
+        return []
+    # A basis must be quoted verbatim from the candidate's own text: the item
+    # being rewritten, or (for the skills list) anywhere in the resume.
+    original_plain = _plain_text(original) + "\n" + _plain_text(resume_text)
+    suggested_plain = _plain_text(suggested).casefold()
+    cleaned: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for entry in value[:8]:
+        if not isinstance(entry, dict):
+            continue
+        skill = str(entry.get("skill") or "").strip()[:40]
+        basis = str(entry.get("basis") or "").strip()[:200]
+        if not skill or not basis or skill.casefold() in seen:
+            continue
+        if _INFERENCE_FORBIDDEN.search(skill):
+            continue
+        if not _plain_text(basis) or _plain_text(basis) not in original_plain:
+            continue
+        if _plain_text(skill).casefold() not in suggested_plain:
+            continue
+        seen.add(skill.casefold())
+        cleaned.append({"skill": skill, "basis": basis})
+    return cleaned
 
 
 def _mentions_skill(text: str, skill: Any) -> bool:

@@ -467,6 +467,19 @@ def _apply_suggestions_to_rows(rows: list[dict], suggestions: list[dict]) -> lis
         suggested = suggestion.get("suggested", "")
         if not suggested or not original:
             continue
+        inferred = [
+            {"skill": str(entry.get("skill")), "basis": str(entry.get("basis") or "")}
+            for entry in (suggestion.get("inferred_skills") or [])
+            if isinstance(entry, dict) and entry.get("skill")
+        ]
+
+        def _mark(item: dict) -> dict:
+            # Temporary marker; prepare_resume_optimization moves it into the
+            # proposal strategy/diff and strips it before rows are stored.
+            if inferred:
+                item["_inferred_skills"] = [*(item.get("_inferred_skills") or []), *inferred]
+            return item
+
         matched = False
         for row in result:
             if row.get("title") != section_title:
@@ -483,7 +496,7 @@ def _apply_suggestions_to_rows(rows: list[dict], suggestions: list[dict]) -> lis
                 if section_type == "skill":
                     new_item = _apply_skill_suggestion(item, original, suggested)
                     if new_item is not None:
-                        new_content.append(new_item)
+                        new_content.append(_mark(new_item))
                         matched = True
                         continue
                     new_content.append(item)
@@ -496,7 +509,7 @@ def _apply_suggestions_to_rows(rows: list[dict], suggestions: list[dict]) -> lis
                 if desc_key and isinstance(item.get(desc_key), str) and original in item[desc_key]:
                     new_item = dict(item)
                     new_item[desc_key] = item[desc_key].replace(original, suggested, 1)
-                    new_content.append(new_item)
+                    new_content.append(_mark(new_item))
                     matched = True
                     continue
                 new_content.append(item)

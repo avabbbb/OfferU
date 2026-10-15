@@ -744,6 +744,12 @@ async def _review_resume_proposal_items(
         if clean_action == "accept":
             if proposal.status == "blocked" or (proposal.fact_gates_json or {}).get("status") == "blocked":
                 raise ValueError("事实门处于 blocked，不能接受该建议")
+            inferred_ids = [
+                change_id for change_id in pending_ids
+                if diffs[change_id].get("inferred_skills")
+            ]
+            if inferred_ids and len(clean_change_ids) > 1:
+                raise ValueError("含模型推断技能的建议需要逐条确认属实，不能批量采用")
             expected_hash = proposal.workspace_snapshot_hash
             if proposal.status in {"stale", "accepted", "rejected"}:
                 raise ValueError(f"提案已处于终态 {proposal.status}，不能逐条接受")

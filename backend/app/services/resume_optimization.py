@@ -168,9 +168,36 @@ def _row_key(row: dict[str, Any]) -> str:
     return f"{row.get('section_type') or ''}:{row.get('title') or ''}"
 
 
+def _pop_inferred_skills(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, str]]]:
+    """Strip rewriter inference markers from rows, returning them by section key."""
+    by_row: dict[str, list[dict[str, str]]] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        for item in row.get("content_json") or []:
+            if not isinstance(item, dict):
+                continue
+            for entry in item.pop("_inferred_skills", None) or []:
+                if isinstance(entry, dict) and entry.get("skill"):
+                    bucket = by_row.setdefault(_row_key(row), [])
+                    if all(existing["skill"] != entry["skill"] for existing in bucket):
+                        bucket.append({"skill": str(entry["skill"]), "basis": str(entry.get("basis") or "")})
+    return by_row
+
+
+def _strategy_inferred_skills(strategy: Any) -> list[dict[str, str]]:
+    if not isinstance(strategy, dict):
+        return []
+    return [
+        entry for entry in strategy.get("inferred_skills") or []
+        if isinstance(entry, dict) and entry.get("skill")
+    ]
+
+
 def _build_diff(
     before_rows: list[dict[str, Any]],
     after_rows: list[dict[str, Any]],
+    inferred_by_row: Optional[dict[str, list[dict[str, str]]]] = None,
 ) -> list[dict[str, Any]]:
     before_map = {_row_key(row): row for row in before_rows if isinstance(row, dict)}
     after_map = {_row_key(row): row for row in after_rows if isinstance(row, dict)}
@@ -213,6 +240,9 @@ def _build_diff(
             "source_section_ids": source_ids or [],
             "before": before,
             "after": after,
+            # Model-inferred skills in this change: soft, but each one must be
+            # confirmed individually (never via batch / whole-proposal accept).
+            "inferred_skills": list((inferred_by_row or {}).get(key) or []),
         })
     return changes
 
@@ -631,16 +661,23 @@ async def prepare_resume_optimization(
             )
         selected = candidate["selected"]
         proposed_rows = candidate["proposed_rows"]
+        inferred_by_row = _pop_inferred_skills(proposed_rows)
+        inferred_skills = [
+            {**entry, "section_key": key}
+            for key, entries in inferred_by_row.items()
+            for entry in entries
+        ]
         fact_gates = validate_resume_fact_gates(
             deepcopy(proposed_rows),
             selected,
             strict_structured_facts=True,
+            inferred_claims=inferred_skills,
         )
         for row in proposed_rows:
             for item in row.get("content_json") or []:
                 if isinstance(item, dict):
                     item.pop("_gate_warnings", None)
-        diff = _build_diff(candidate["original_rows"], proposed_rows)
+        diff = _build_diff(candidate["original_rows"], proposed_rows, inferred_by_row)
 
         contact_json = (
             reference_resume.contact_json
@@ -696,6 +733,7 @@ async def prepare_resume_optimization(
                 },
                 "selected_source_section_ids": [section.id for section in selected],
                 "missing_capabilities": candidate["missing_capabilities"],
+                "inferred_skills": inferred_skills,
                 "research_gaps": research["gaps"],
                 "scoring_policy": "no_unvalidated_ats_score",
             }),
@@ -1710,6 +1748,11 @@ async def review_resume_optimization(
 
         if proposal.status == "blocked":
             raise ValueError("事实门处于 blocked，必须重新生成合规提案后才能接受")
+        inferred = _strategy_inferred_skills(proposal.strategy_json)
+        if inferred:
+            raise ValueError(
+                f"这份提案含 {len(inferred)} 处模型推断的技能，需要在简历画布上逐条确认属实后才能采用"
+            )
         if proposal.status != "ready":
             raise ValueError(f"提案状态 {proposal.status} 不能接受")
 

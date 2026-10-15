@@ -165,15 +165,56 @@ def _structured_claims(value: Any, *, parent_key: str = "") -> set[str]:
     return claims
 
 
-def validate_generated_content(source_facts: Any, generated: Any) -> dict[str, Any]:
+def _skill_item_claims(value: Any, *, parent_key: str = "") -> set[str]:
+    claims: set[str] = set()
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key in _EVIDENCE_FIELD_KEYS:
+                continue
+            claims.update(_skill_item_claims(item, parent_key=key))
+    elif isinstance(value, list):
+        if parent_key == "items":
+            claims.update(str(item).strip() for item in value if isinstance(item, str) and item.strip())
+        else:
+            for item in value:
+                claims.update(_skill_item_claims(item, parent_key=parent_key))
+    return claims
+
+
+def normalized_inferred_claims(inferred_claims: Any) -> set[str]:
+    """Normalize user-reviewable inferred skills declared by the rewriter.
+
+    Inferred skills are a *soft* category: the model derived them from a cited
+    verified fact (e.g. "Vue 管理后台" → "组件化开发"). They never cover numbers,
+    organizations, projects, awards or dates — those stay hard-gated.
+    """
+    claims: set[str] = set()
+    for value in inferred_claims or ():
+        text = value.get("skill") if isinstance(value, dict) else value
+        if isinstance(text, str) and text.strip() and not metric_claims(text):
+            claims.add(_normalized_claim(text.strip()))
+    return claims
+
+
+def validate_generated_content(
+    source_facts: Any,
+    generated: Any,
+    *,
+    inferred_claims: Any = (),
+) -> dict[str, Any]:
     allowed = metric_claims(source_facts)
     checked = metric_claims(generated)
     unsupported = sorted(checked - allowed)
     normalized_source = _normalized_claim(_plain(source_facts))
+    inferred = normalized_inferred_claims(inferred_claims)
     structured = sorted(_structured_claims(generated))
+    # Only skill-list entries may be covered by a declared inference; company,
+    # school, project, award and date fields always need a verified source.
+    skill_entries = {_normalized_claim(claim) for claim in _skill_item_claims(generated)}
     unsupported_facts = [
         claim for claim in structured
         if _normalized_claim(claim) not in normalized_source
+        and not (_normalized_claim(claim) in inferred and _normalized_claim(claim) in skill_entries)
     ]
     warnings = [
         {"issue": "unverified_metric", "detail": f"生成内容出现来源中不存在的量化信息: {claim}"}
@@ -215,7 +256,9 @@ def validate_resume_fact_gates(
     source_sections: list[Any],
     *,
     strict_structured_facts: bool = False,
+    inferred_claims: Any = (),
 ) -> dict[str, Any]:
+    inferred = normalized_inferred_claims(inferred_claims)
     source_payload = []
     source_orgs: set[str] = set()
     source_ids: set[int] = set()
@@ -241,7 +284,7 @@ def validate_resume_fact_gates(
                 if normalized.get(key)
             )
 
-    result = validate_generated_content(source_payload, rows)
+    result = validate_generated_content(source_payload, rows, inferred_claims=inferred_claims)
     # This row-level validator keeps its established contract: metrics plus
     # organization names. Draft validation uses the broader structured checks.
     warnings = [
@@ -329,7 +372,7 @@ def validate_resume_fact_gates(
             if not isinstance(description, str) or not description.strip():
                 continue
             for claim in sorted(named_entity_claims(description)):
-                if claim.lower() in source_text:
+                if claim.lower() in source_text or _normalized_claim(claim) in inferred:
                     continue
                 unsupported_named_claims.append(claim)
                 warnings.append({
@@ -351,13 +394,31 @@ def validate_resume_fact_gates(
             for item in row.get("content_json") or []:
                 if isinstance(item, dict):
                     item.setdefault("_gate_warnings", []).append(warning["detail"])
+    # Declared inferences are surfaced as soft, per-item confirmations.
+    seen_inferred: set[str] = set()
+    for value in inferred_claims or ():
+        skill = value.get("skill") if isinstance(value, dict) else value
+        if not isinstance(skill, str) or not skill.strip():
+            continue
+        key = _normalized_claim(skill.strip())
+        if key not in inferred or key in seen_inferred:
+            continue
+        seen_inferred.add(key)
+        basis = value.get("basis", "") if isinstance(value, dict) else ""
+        warnings.append({
+            "issue": "inferred_skill",
+            "claim": skill.strip(),
+            "basis": basis,
+            "detail": f"模型根据档案推断出「{skill.strip()}」，需要你逐条确认属实",
+        })
     blocking_warnings = [
         warning
         for warning in warnings
-        if warning.get("issue") != "unverified_named_claim"
+        if warning.get("issue") not in {"unverified_named_claim", "inferred_skill"}
     ]
     result.update({
         "unsupported_named_claims": sorted(set(unsupported_named_claims)),
+        "inferred_skills": sorted(seen_inferred),
         # Fuzzy named-claim matches warn and require explicit confirmation but
         # do not hard-block: a false positive must not freeze the proposal.
         "status": "blocked" if blocking_warnings else "passed",
