@@ -1951,14 +1951,42 @@ class Operation:
     input_model: type[BaseModel] | None = None
     version: str = "2026-05-23"
     preparation_only: bool = False
+    # Explicit override; ``None`` uses app.services.operation_tiers.
+    interaction_tier: str | None = None
 
     @property
     def is_mutation(self) -> bool:
         return any(effect in self.side_effects for effect in ("write", "llm", "external"))
 
     @property
+    def tier(self) -> str:
+        from app.services.operation_tiers import INTERACTION_TIERS, classify_operation
+
+        if self.interaction_tier in INTERACTION_TIERS:
+            return str(self.interaction_tier)
+        return classify_operation(
+            self.name,
+            is_mutation=self.is_mutation,
+            preparation_only=self.preparation_only,
+            permissions=self.permissions,
+        )
+
+    @property
     def requires_confirmation(self) -> bool:
-        return self.is_mutation and not self.preparation_only
+        """Only review/authorize tiers interrupt the user (docs/02 §4)."""
+
+        return self.tier != "auto"
+
+    def _autonomy_level(self) -> str:
+        from app.services.operation_tiers import AUTONOMY_LEVELS
+
+        if self.tier == "authorize":
+            return AUTONOMY_LEVELS["authorize"]
+        if not self.is_mutation:
+            return "L0_observe"
+        if self.preparation_only:
+            return "L1_prepare"
+        return AUTONOMY_LEVELS.get(self.tier, "L2_review")  # type: ignore[arg-type]
 
     def _signature_input_schema(self) -> dict[str, Any]:
         """Expose a closed JSON schema for legacy signature-validated operations.
@@ -2021,7 +2049,8 @@ class Operation:
             "side_effects": list(self.side_effects),
             "supports_dry_run": self.is_mutation,
             "requires_confirmation": self.requires_confirmation,
-            "autonomy_level": "L1_prepare" if self.preparation_only else "L2_review" if self.is_mutation else "L0_observe",
+            "interaction_tier": self.tier,
+            "autonomy_level": self._autonomy_level(),
             "permissions": list(self.permissions),
             "audit_redacted_parameters": list(self.audit_redacted_parameters),
             "audit_redacted_output_parameters": list(

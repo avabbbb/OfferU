@@ -76,6 +76,18 @@
 - **内部分组不等于用户决定。** 事务、回滚、依赖、审计都可以拆分，但一次「按产品型定位改写简历」只算用户的一个决定。
 - **单个岗位的简历定制**：只问真正没决定的事，给出一个完整可审阅的版本，最终采用决定 ≤ 1 次（除非确实存在独立的高风险选择）。一次定制让用户审 50–80 个独立 Proposal，直接判定为 **UX 不合格**。
 
+### 4.1.1 Operation 交互档位（2026-10 实现）
+
+Agent 发起的 Operation 按档位决定是否打扰用户，不再由「是否写入」机械推导（旧规则让 283 个 Operation 中的 179 个都需要确认）。实现见 `backend/app/services/operation_tiers.py`，测试见 `backend/tests/test_operation_tiers.py`。
+
+| 档位 | 范围 | 用户动作 |
+| --- | --- | --- |
+| `auto` | 读取、研究、草稿、岗位采集与筛选、投递进展、学习观察进入「待确认」、内部记账 | 不打扰；全部审计、在时间线可见 |
+| `review` | 简历内容修改、长期档案（Career Truth）写入、记忆提升 | 一次 Before/After，像 Git PR |
+| `authorize` | 删除/重置/清除、凭据与新连接、读取本地文件或本地 AI 记忆、工作资料同步、平台账号访问、公开分享、外部执行器委派 | 显式确认，写清后果 |
+
+规则：声明了敏感权限（`SENSITIVE_PERMISSIONS`）或名字以 `delete_ / reset_ / purge_ / revoke_ / uninstall_` 开头的 Operation 永远不能是 `auto`；需要确认的 Operation 占比必须低于 25%。UI 上的人工点击不受档位影响。
+
 ### 4.2 Ask 的格式
 
 Ask 支持 `selection_mode: single | multiple`、推荐项、可跳过、自由输入、最少和最多选择数。旧实现把所有选项都渲染成复选框（`AgentAskPanel.tsx`），逻辑上单选的问题必须用单选。只有在答案会显著改变当前决定、且无法从已授权的上下文读出时才提问；一次只问一个有效问题。
@@ -162,7 +174,6 @@ Ask 支持 `selection_mode: single | multiple`、推荐项、可跳过、自由�
 | 优先级 | 位置 | 问题 | 违反 |
 | --- | --- | --- | --- |
 | P1 | `components/layout/Sidebar.tsx` | 11 个入口、中英混排、三个简历入口 | N-1、N-2 |
-| P1 | `backend/app/ops.py` | 确认要求由变更类型机械推导 | §4 |
 | P1 | `career_director.py` / `career_policy.py` | 所有 L2/L3 动作都机械地要求用户介入 | §4 |
 | P2 | `app/applications/page.tsx`（约 2092 行）、`app/settings/page.tsx`（约 1740 行）、`AgentPanel.tsx`（约 1571 行）、`app/jobs/page.tsx`（约 1345 行） | 巨石页面，一个页面承载多种心智模型 | §7 |
 | P2 | `lib/apiBase.ts`、`app/providers.tsx` | 端口写死 | H-3 |
