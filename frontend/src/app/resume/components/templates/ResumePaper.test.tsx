@@ -142,7 +142,9 @@ describe("纸模板默认排版", () => {
     const paper = normalizeTemplateSettings({ template: "paper" });
     expect(paper.margins).toEqual({ top: 11, right: 13, bottom: 11, left: 13 });
     expect(paper.exact.headingColor).toBe("#1B365D");
-    expect(paper.exact.lineHeight).toBe(1.45);
+    expect(paper.exact.lineHeight).toBe(1.42);
+    expect(paper.exact.bodySize).toBe(9.2);
+    expect(paper.exact.nameSize).toBe(26.5);
     const reference = normalizeTemplateSettings({ template: "reference" });
     expect(reference.margins.top).toBe(8);
   });

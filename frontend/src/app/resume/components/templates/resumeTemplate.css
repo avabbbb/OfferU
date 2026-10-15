@@ -645,6 +645,8 @@
  * 一个强调色（墨蓝）、暖灰、单衬线两字重 400/500、字号落在阶梯上、
  * 不用装饰线和阴影、4pt 间距网格、标题下方间距明显小于上方。
  * 字体只用 OFL 许可的思源宋体 / Noto Serif SC 与 Charter / Georgia。
+ * 2026-10 对齐 Kami resume.html：分区标题用近黑（墨蓝只做点缀，≤5% 版面），
+ * 页眉下方一条细线，正文近黑、说明文字橄榄灰、元信息石灰，交互底色用实色而不是 rgba。
  */
 .resume-body.paper {
   --paper-ink: var(--resume-accent-primary, #1b365d);
@@ -674,32 +676,37 @@
 
 .paper-sheet { display: block; }
 
-.paper-header { margin-bottom: calc(var(--section-gap) * 1.2); }
+.paper-header {
+  border-bottom: 0.6pt solid var(--paper-rule);
+  margin-bottom: var(--header-gap);
+  padding-bottom: 2.3mm;
+}
 
 .paper-name {
   color: var(--paper-text);
   font-size: var(--name-size);
   font-weight: 500;
-  letter-spacing: 0.6pt;
-  line-height: 1.15;
+  letter-spacing: 0.5pt;
+  line-height: 1.05;
   margin: 0;
 }
 
 .paper-headline {
   color: var(--paper-text-3);
-  font-size: calc(var(--font-size-base) * 1.1);
-  line-height: 1.35;
+  font-size: calc(var(--font-size-base) * 1.03);
+  line-height: 1.3;
   margin: 3pt 0 0;
 }
 
 .paper-contact {
-  color: var(--paper-text-3);
-  font-size: calc(var(--font-size-base) * 0.92);
-  line-height: 1.4;
+  color: var(--paper-text-4);
+  font-size: calc(var(--font-size-base) * 0.98);
+  line-height: 1.5;
   margin: 5pt 0 0;
 }
 
 .paper-sep { color: var(--paper-text-4); }
+.paper-contact .paper-sep { color: #c9c6ba; }
 
 /* 照片与校徽：右侧并排，顶部对齐；成品里只有图片，不加边框或阴影。 */
 .paper-header-with-media { align-items: flex-start; display: flex; gap: 12pt; }
@@ -766,20 +773,21 @@
 .paper-asset-actions button:hover { color: var(--paper-ink); }
 
 .paper-section { margin-top: var(--section-gap); break-inside: auto; }
+.paper-header + .paper-section { margin-top: 0; }
 
 .paper-section-title {
   border-bottom: 0.5pt solid var(--paper-rule);
-  color: var(--paper-ink);
+  color: var(--paper-text);
   font-size: var(--heading-size);
   font-weight: 500;
-  letter-spacing: 0.4pt;
+  letter-spacing: 0.3pt;
   line-height: 1.25;
-  margin: 0 0 5pt;
-  padding-bottom: 2pt;
+  margin: 0 0 1.7mm;
+  padding-bottom: 1mm;
   break-after: avoid;
 }
 
-.paper-summary { color: var(--paper-text-2); margin: 0; }
+.paper-summary { color: var(--paper-text); margin: 0; }
 
 .paper-items > .paper-item + .paper-item { margin-top: var(--item-gap); }
 
@@ -794,7 +802,7 @@
 
 .paper-item-main { flex: 1 1 auto; min-width: 0; }
 
-.paper-item-title { color: var(--paper-text); font-weight: 500; }
+.paper-item-title { color: var(--paper-text); font-size: calc(var(--font-size-base) * 1.1); font-weight: 500; }
 
 .paper-item-meta { color: var(--paper-text-3); margin-left: 8pt; }
 .paper-item-meta .paper-sep,
@@ -803,13 +811,13 @@
 .paper-date {
   color: var(--paper-text-4);
   flex-shrink: 0;
-  font-size: calc(var(--font-size-base) * 0.92);
+  font-size: calc(var(--font-size-base) * 0.98);
   font-variant-numeric: lining-nums tabular-nums;
   white-space: nowrap;
 }
 
 .paper-bullets { list-style: disc; margin: 2pt 0 0; padding-left: 13pt; }
-.paper-bullets li { color: var(--paper-text-2); margin-top: var(--paragraph-gap); }
+.paper-bullets li { color: var(--paper-text); margin-top: var(--paragraph-gap); }
 .paper-bullets li::marker { color: var(--paper-ink); }
 
 .paper-skill-row { display: flex; align-items: baseline; }
@@ -823,8 +831,8 @@
   outline: none;
   transition: background-color 120ms ease, box-shadow 120ms ease;
 }
-.paper-editable:hover { background: rgba(27, 54, 93, 0.05); }
-.paper-editable:focus { background: rgba(27, 54, 93, 0.07); box-shadow: 0 0 0 1px rgba(27, 54, 93, 0.35); }
+.paper-editable:hover { background: #eef2f7; }
+.paper-editable:focus { background: #e4ecf5; box-shadow: 0 0 0 1px #8fa3bd; }
 .paper-editable:empty::before {
   color: #a8a59c;
   content: attr(data-placeholder);
