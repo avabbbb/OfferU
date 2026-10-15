@@ -237,6 +237,10 @@ export interface JobCaptureFields {
 export interface JobCaptureDraft {
   status: "ready" | "incomplete" | "needs_text";
   source_kind: "text" | "structured" | "page" | "url";
+  /** llm：模型指认（只取原文子串）；rules：模型不可用时的规则兜底；structured：页面自带 JobPosting。 */
+  extractor?: "llm" | "rules" | "structured" | "structured+llm" | "none";
+  /** 页面结构化数据与模型读到的值不一致的字段，交给用户裁决。 */
+  conflicts?: Array<{ field: "title" | "company" | "location"; structured: string; llm: string }>;
   message: string;
   draft: JobCaptureFields;
   missing: Array<"title" | "company" | "jd_text">;
