@@ -1,5 +1,6 @@
 "use client";
 
+import { PageHeader, ViewSwitch } from "@/components/layout/PageHeader";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
@@ -986,69 +987,22 @@ const [emailSyncing, setEmailSyncing] = useState(false);
 
   return (
     <div className="stage-page stage-page--applications space-y-5">
-      <section className="stage-hero bauhaus-panel overflow-hidden bg-[var(--surface)]">
-        <div className="grid gap-4 p-6 md:grid-cols-3">
-          <div className="md:col-span-2">
-            <span className="bauhaus-chip bg-[var(--surface-muted)] text-[var(--foreground)]">
-              {viewMode === "board" ? "求职状态主面板" : "投递管理工作台"}
-            </span>
-            <h1 className="mt-4 text-4xl font-semibold tracking-tight text-[var(--foreground)]">
-              {viewMode === "board" ? "Pipeline" : "投递"}
-            </h1>
-            <p className="mt-3 text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
-              {viewMode === "board"
-                ? "岗位准备与实际投递共享同一份状态投影；只有确认过的事件才会改变正式阶段。"
-                : "总表承接全量记录，子表用于分类管理。你可以在任意表编辑记录值，系统会同步到同一业务记录的其他视图。"}
-            </p>
-            <div className="mt-4 flex items-center gap-1">
-              <Button
-                size="sm"
-                className={`bauhaus-button !min-h-9 !px-4 ${
-                  viewMode === "table" ? "bauhaus-button-blue" : "bauhaus-button-outline"
-                }`}
-                onPress={() => setViewMode("table")}
-                startContent={<Table2 size={13} />}
-              >
-                数据表
-              </Button>
-              <Button
-                size="sm"
-                className={`bauhaus-button !min-h-9 !px-4 ${
-                  viewMode === "board" ? "bauhaus-button-blue" : "bauhaus-button-outline"
-                }`}
-                onPress={() => setViewMode("board")}
-                startContent={<KanbanSquare size={13} />}
-              >
-                进度看板
-              </Button>
-            </div>
-          </div>
-          {viewMode === "board" ? (
-            <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-3">
-              <p className="bauhaus-label text-[var(--foreground-muted)]">状态来源</p>
-              <p className="mt-2 text-base font-semibold">Job · Application · Event</p>
-              <p className="mt-1 text-xs font-medium leading-relaxed text-[var(--foreground-muted)]">
-                Today、Pipeline 和岗位详情读取同一份事实。
-              </p>
-            </div>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-3 md:grid-cols-1">
-              <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-3">
-                <p className="bauhaus-label text-[var(--foreground-muted)]">总记录</p>
-                <p className="mt-2 text-2xl font-semibold">{workspace?.stats.total_records ?? 0}</p>
-              </div>
-              <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-3">
-                <p className="bauhaus-label text-[var(--foreground-muted)]">重复记录</p>
-                <p className="mt-2 text-2xl font-semibold">{workspace?.stats.duplicate_records ?? 0}</p>
-              </div>
-              <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-3">
-                <p className="bauhaus-label text-[var(--foreground-muted)]">当前表</p>
-                <p className="mt-2 text-base font-semibold">{currentTable?.name ?? "-"}</p>
-              </div>
-            </div>
-          )}
-        </div>
-      </section>
+      <PageHeader
+        title="投递"
+        description={viewMode === "board"
+          ? "每个岗位从准备到 offer 的进展。阶段只在你确认后才会变化。"
+          : "所有投递记录。直接在表格里改，看板会同步更新。"}
+        actions={
+          <ViewSwitch
+            value={viewMode}
+            onChange={setViewMode}
+            options={[
+              { id: "board", label: "看板", icon: <KanbanSquare size={13} /> },
+              { id: "table", label: "表格", icon: <Table2 size={13} /> },
+            ]}
+          />
+        }
+      />
 
       {viewMode === "table" && (
       <section className="data-toolbar bauhaus-panel-sm bg-[var(--surface-muted)] p-4">

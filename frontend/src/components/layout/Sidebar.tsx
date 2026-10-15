@@ -1,7 +1,7 @@
 "use client";
 
 // =============================================
-// 一级导航：今天 / 投递 / 岗位 / 档案（定义见 navModel.ts）。
+// 一级导航：今天 / 投递 / 岗位 / 简历 / 档案（定义见 navModel.ts）。
 // 子页面以二级标签出现在页面顶部；设置放在侧栏底部，不占导航位。
 // =============================================
 
@@ -52,26 +52,7 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
         />
       )}
       <Icon size={17} strokeWidth={1.75} />
-      <div className="min-w-0 flex-1">
-        <p
-          className={`truncate text-[13.5px] font-medium leading-none ${
-            active
-              ? "text-[var(--foreground)]"
-              : "text-[var(--foreground-muted)] group-hover:text-[var(--foreground)]"
-          }`}
-        >
-          {item.label}
-        </p>
-      </div>
-      <span
-        className={`truncate text-[11px] font-medium ${
-          active
-            ? "text-[var(--foreground-soft)]"
-            : "text-[var(--foreground-faint)] group-hover:text-[var(--foreground-muted)]"
-        }`}
-      >
-        {item.hint}
-      </span>
+      <span className={`truncate text-[13.5px] ${active ? "font-semibold" : "font-medium"}`}>{item.label}</span>
     </Link>
   );
 }
@@ -83,29 +64,26 @@ export function Sidebar() {
 
   return (
     <>
-      <aside className="offeru-sidebar relative hidden h-full w-[15rem] shrink-0 overflow-hidden border-r border-[var(--border)] bg-[var(--background)] md:flex md:flex-col">
-        <div className="offeru-sidebar-brand relative z-10 border-b border-[var(--border)] px-5 py-5">
-          <Link href="/" className="flex items-center gap-3">
-            <div className="offeru-sidebar-mark flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[var(--foreground)] text-[var(--surface)]">
+      <aside className="offeru-sidebar relative hidden h-full w-[15rem] shrink-0 overflow-hidden border-r border-[var(--border)] bg-[var(--sidebar-bg,var(--background))] md:flex md:flex-col">
+        <div className="offeru-sidebar-brand relative z-10 px-4 pb-2 pt-5">
+          <Link href="/" className="flex items-center gap-2.5 rounded-md px-1.5 py-1">
+            <div className="offeru-sidebar-mark flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] bg-[var(--foreground)] text-[var(--surface)]">
               <span className="text-[13px] font-bold tracking-tight">O</span>
             </div>
-            <div className="space-y-0.5">
-              <p className="text-[11px] font-medium text-[var(--foreground-muted)]">求职工作台</p>
-              <p className="text-[15px] font-semibold tracking-tight text-[var(--foreground)]">OfferU</p>
-            </div>
+            <p className="text-[15px] font-semibold tracking-tight text-[var(--foreground)]">OfferU</p>
           </Link>
         </div>
 
         {/* Ctrl+K 搜索入口 — 与命令面板联动 */}
-        <div className="offeru-sidebar-search px-3 pt-3">
+        <div className="offeru-sidebar-search px-3 pt-1">
           <button
             type="button"
             onClick={() => workbench?.setPaletteOpen(true)}
-            className="flex w-full items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[12.5px] text-[var(--foreground-muted)] transition-colors duration-[var(--dur-quick)] hover:border-[var(--border-strong)] hover:text-[var(--foreground)]"
+            className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] text-[var(--foreground-muted)] transition-colors duration-[var(--dur-quick)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
           >
             <Search size={14} strokeWidth={1.75} />
-            <span className="flex-1 text-left">搜索与跳转</span>
-            <kbd className="rounded border border-[var(--border)] bg-[var(--surface-muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--foreground-muted)]">
+            <span className="flex-1 text-left">搜索</span>
+            <kbd className="font-sans text-[11px] text-[var(--foreground-faint)]">
               Ctrl K
             </kbd>
           </button>
@@ -123,7 +101,7 @@ export function Sidebar() {
             </motion.div>
           ))}
         </motion.nav>
-        <div className="flex items-center gap-2 border-t border-[var(--border)] p-3">
+        <div className="flex items-center gap-2 p-3">
           <div className="min-w-0 flex-1">
             <AgentConnectionStatus />
           </div>
@@ -132,7 +110,7 @@ export function Sidebar() {
             aria-label="设置"
             title="设置"
             aria-current={pathname === SETTINGS_HREF ? "page" : undefined}
-            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--border)] transition-colors ${
+            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-[var(--surface-muted)] ${
               pathname === SETTINGS_HREF ? "text-[var(--foreground)]" : "text-[var(--foreground-muted)] hover:text-[var(--foreground)]"
             }`}
           >
@@ -142,7 +120,7 @@ export function Sidebar() {
       </aside>
 
       <nav className="offeru-mobile-nav fixed inset-x-0 bottom-0 z-50 border-t border-[var(--border)] bg-[var(--surface)] md:hidden">
-        <div className="grid grid-cols-4 gap-0">
+        <div className="grid grid-cols-5 gap-0">
           {PRIMARY_NAV.map((item) => {
             const Icon = item.icon;
             const active = current?.href === item.href;

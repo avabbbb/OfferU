@@ -62,8 +62,7 @@ def main() -> None:
             expect(page.get_by_text("近 7 天没有安排", exact=False)).to_be_visible(timeout=20000)
 
             _open(page, "/jobs")
-            expect(page.get_by_text("暂无岗位结果", exact=True)).to_be_visible(timeout=20000)
-            expect(page.get_by_text("当前筛选", exact=False).first).to_be_visible()
+            expect(page.get_by_role("heading", name="还没有岗位", exact=True)).to_be_visible(timeout=20000)
             expect(page.get_by_test_id("empty-add-job")).to_be_visible()
 
             _open(page, "/applications?view=board")
@@ -97,8 +96,9 @@ def main() -> None:
                 "() => /^#\\/resume\\/\\d+/.test(window.location.hash)",
                 timeout=20000,
             )
-            expect(page.get_by_test_id("resume-name-input")).to_be_visible(timeout=20000)
-            expect(page.get_by_test_id("resume-save-version")).to_be_visible()
+            # 纸模板是默认编辑方式：直接在纸面上改，没有单独的表单输入框。
+            expect(page.get_by_test_id("resume-workspace")).to_be_visible(timeout=20000)
+            expect(page.get_by_test_id("resume-export-pdf")).to_be_visible()
             expect(page.get_by_test_id("resume-workspace-error")).to_have_count(0)
             expect(page.get_by_role("alert")).to_have_count(0)
             resume_text = page.locator("body").inner_text().lower()

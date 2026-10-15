@@ -31,7 +31,7 @@ from release_endpoints import (
     release_frontend_url,
     release_version,
 )
-from temp_paths import offeru_temp_directory
+from temp_paths import offeru_temp_directory, test_temp_root
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 BASE_URL = release_frontend_url()
@@ -484,7 +484,7 @@ def _browser_acceptance(fixture: dict[str, Any], suffix: str) -> dict[str, Any]:
         trace_stopped = False
         try:
             page.goto(f"{BASE_URL}/#/?migration={suffix}", wait_until="domcontentloaded")
-            expect(page.get_by_role("heading", name="今日", exact=True)).to_be_visible(
+            expect(page.get_by_role("heading", name="今天", exact=True)).to_be_visible(
                 timeout=30000
             )
 
@@ -492,7 +492,7 @@ def _browser_acceptance(fixture: dict[str, Any], suffix: str) -> dict[str, Any]:
                 f"{BASE_URL}/#/applications?view=board&migration={suffix}",
                 wait_until="domcontentloaded",
             )
-            expect(page.get_by_role("heading", name="Pipeline", exact=True)).to_be_visible(
+            expect(page.get_by_role("heading", name="投递", exact=True)).to_be_visible(
                 timeout=30000
             )
 

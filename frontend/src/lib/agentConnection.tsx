@@ -150,6 +150,11 @@ export function useAgentConnection() {
   return context;
 }
 
+/** 页面级组件用：在没有工作台外壳的测试或独立渲染里返回 null。 */
+export function useAgentConnectionOptional() {
+  return useContext(ConnectionContext);
+}
+
 export function connectionTime(value?: string | null) {
   if (!value || Number.isNaN(Date.parse(value))) return "尚未检查";
   return new Date(value).toLocaleTimeString("zh-CN", { hour12: false });

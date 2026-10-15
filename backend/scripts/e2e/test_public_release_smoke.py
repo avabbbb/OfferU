@@ -145,14 +145,10 @@ def _complete_new_user_onboarding(page, suffix: str) -> None:
             "buffer": _synthetic_resume_docx(),
         }
     )
-    expect(page.get_by_text("识别出 1 条内容", exact=False)).to_be_visible(timeout=30000)
+    # 上传即入档（可整次撤销），不再逐条勾选确认。
+    expect(page.get_by_text("导入 1 条经历", exact=False)).to_be_visible(timeout=30000)
     expect(page.get_by_text("负责 AI 产品需求分析", exact=False)).to_be_visible()
-    expect(page.get_by_text("Word 文档正文", exact=True)).to_be_visible()
-    experience = page.get_by_role(
-        "checkbox", name="OfferU 测试科技有限公司", exact=False
-    )
-    experience.check()
-    page.get_by_role("button", name="确认所选内容，建立档案", exact=True).click()
+    page.get_by_role("button", name="继续", exact=True).click()
 
     expect(page.get_by_text("整理 AI 记忆", exact=True)).to_be_visible(timeout=30000)
     page.get_by_role("button", name="跳过记忆", exact=True).click()

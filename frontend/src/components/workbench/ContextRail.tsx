@@ -2,13 +2,13 @@
 
 // =============================================
 // 右侧上下文栏 (ADR 0031)
-// 对象详情与主 Agent 共用一栏,"详情 / OfferU" 两种模式切换,
-// 共享当前选中对象;同一时间只显示一种模式。
+// 默认只有 OfferU 助手；页面里选中了某个对象（岗位、投递…）时才出现「详情」标签，
+// 没选中东西时不展示一个空的「详情」。
 // =============================================
 
 import { AnimatePresence, motion } from "framer-motion";
 import { lazy, Suspense, useEffect } from "react";
-import { PanelRightClose, PanelRightOpen } from "lucide-react";
+import { Bot, PanelRightClose } from "lucide-react";
 import { useWorkbench } from "@/lib/workbench";
 import { AGENT_COMPOSE_EVENT } from "@/lib/agentCompose";
 
@@ -22,7 +22,8 @@ const InspectorPanel = lazy(() =>
 const RAIL_WIDTH = 340;
 
 export function ContextRail() {
-  const { railMode, setRailMode, railOpen, setRailOpen, selection } = useWorkbench();
+  const { railMode: chosenMode, setRailMode, railOpen, setRailOpen, selection } = useWorkbench();
+  const railMode = selection ? chosenMode : "agent";
 
   useEffect(() => {
     const openAgent = () => { setRailMode("agent"); setRailOpen(true); };
@@ -45,11 +46,12 @@ export function ContextRail() {
       {!railOpen && (
         <button
           type="button"
-          aria-label="打开上下文栏"
+          aria-label="打开 OfferU 助手"
+          title="OfferU 助手"
           onClick={() => setRailOpen(true)}
           className="fixed right-3 top-3 z-40 hidden h-8 w-8 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground-muted)] transition-colors duration-[var(--dur-quick)] hover:border-[var(--border-strong)] hover:text-[var(--foreground)] md:flex"
         >
-          <PanelRightOpen size={15} strokeWidth={1.75} />
+          <Bot size={15} strokeWidth={1.75} />
         </button>
       )}
 
@@ -80,10 +82,11 @@ export function ContextRail() {
             <div className="flex h-full flex-col" style={{ width: RAIL_WIDTH }}>
               {/* 模式切换头 */}
               <div className="context-rail-header flex items-center gap-1 border-b border-[var(--border)] px-3 py-2.5">
+                {selection ? (
                 <div className="offeru-rail-tabs relative flex flex-1 rounded-md bg-[var(--surface-muted)] p-0.5">
                   {(
                     [
-                      { key: "inspector", label: selection ? "详情" : "详情 · 空" },
+                      { key: "inspector", label: "详情" },
                       { key: "agent", label: "OfferU" },
                     ] as const
                   ).map((mode) => {
@@ -112,6 +115,11 @@ export function ContextRail() {
                     );
                   })}
                 </div>
+                ) : (
+                  <p className="flex flex-1 items-center gap-1.5 px-1 text-[13px] font-semibold text-[var(--foreground)]">
+                    <Bot size={14} strokeWidth={1.75} /> OfferU
+                  </p>
+                )}
                 <button
                   type="button"
                   aria-label="收起上下文栏"

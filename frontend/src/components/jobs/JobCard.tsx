@@ -98,27 +98,23 @@ export function JobCard({
     <article
       role="article"
       aria-label={`${job.title} · ${job.company}`}
-      className={`job-card group relative flex h-full min-h-[280px] max-w-full flex-col overflow-hidden border border-black/15 bg-[var(--surface)] transition-all duration-[var(--dur-quick)] ease-[var(--ease-snap)] ${
+      className={`job-card group relative flex h-full min-h-[220px] max-w-full flex-col overflow-hidden border bg-[var(--surface)] transition-all duration-[var(--dur-quick)] ease-[var(--ease-snap)] ${
         selected
           ? "bg-[var(--surface-muted)] shadow-[1px_1px_0_0_rgba(18,18,18,0.16)]"
           : "shadow-[1px_1px_0_0_rgba(18,18,18,0.08)] hover:-translate-y-0.5 hover:shadow-[2px_2px_0_0_rgba(18,18,18,0.14)]"
       }`}
       onMouseEnter={() => onSelectPointerEnter?.(job.id)}
     >
-      <span
-        className={`absolute right-4 top-4 z-[1] h-3 w-3 border border-black/20 ${accent.marker}`}
-      />
-
       <div className="relative z-[1] flex h-full flex-col gap-4 p-5">
         <div className="flex items-start gap-3">
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden border border-black/15 bg-[var(--surface-muted)]">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-muted)]">
             {job.company_logo ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={job.company_logo}
                 alt={`${job.company} logo`}
-                width={56}
-                height={56}
+                width={44}
+                height={44}
                 className="h-full w-full object-cover"
                 loading="lazy"
                 referrerPolicy="no-referrer"
@@ -131,8 +127,7 @@ export function JobCard({
           </div>
 
           <div className="min-w-0 flex-1">
-            <p className="bauhaus-label text-black/50">{accent.meta}</p>
-            <h3 className="mt-1 line-clamp-2 text-xl font-semibold leading-tight text-black">
+            <h3 className="line-clamp-2 text-[17px] font-semibold leading-snug text-black">
               <Link
                 href={`/jobs/${job.id}`}
                 className="outline-none transition-colors hover:text-[var(--primary-blue)] focus-visible:underline"
@@ -145,7 +140,7 @@ export function JobCard({
             </p>
           </div>
 
-          <span className={`bauhaus-chip ${accent.badge}`}>{accent.meta}</span>
+          {sourceAccentMap[job.source] && <span className={`bauhaus-chip ${accent.badge}`}>{accent.meta}</span>}
         </div>
 
         <div className="flex flex-wrap gap-1.5 text-xs font-medium text-black/65">
@@ -181,8 +176,8 @@ export function JobCard({
           )}
         </div>
 
-        <p className="line-clamp-3 flex-1 text-sm font-medium leading-relaxed text-black/68">
-          {job.summary || "该岗位暂时没有摘要，点击卡片查看完整详情。"}
+        <p className="line-clamp-3 flex-1 text-[13px] leading-relaxed text-black/62">
+          {job.summary || ""}
         </p>
 
         <div className="flex flex-wrap gap-2">
@@ -243,7 +238,7 @@ export function JobCard({
           type="button"
           aria-label={selected ? "取消选择岗位" : "选择岗位"}
           aria-pressed={selected}
-          className={`absolute bottom-4 right-4 z-20 flex h-11 w-11 items-center justify-center border border-black/20 transition-all duration-[var(--dur-quick)] ease-[var(--ease-snap)] ${
+          className={`absolute bottom-4 right-4 z-20 flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border-strong)] transition-all duration-[var(--dur-quick)] ease-[var(--ease-snap)] ${
             selected
               ? "bg-[#e4ece6] text-black shadow-[1px_1px_0_0_rgba(18,18,18,0.14)]"
               : "bg-[var(--surface)] text-black shadow-[1px_1px_0_0_rgba(18,18,18,0.1)] hover:bg-[var(--surface-muted)]"

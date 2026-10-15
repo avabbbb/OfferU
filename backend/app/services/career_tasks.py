@@ -102,8 +102,8 @@ def _is_provider_unconfigured(value: Any) -> bool:
 
 def _provider_unconfigured_message(task: dict[str, Any]) -> str:
     if task.get("task_type") == "career_director" and task.get("target_type") == "job":
-        return "岗位已保存；当前内置 Agent 不可用（模型服务未配置）。配置或恢复内置 Agent 后可以重试评估。"
-    return "当前内置 Agent 不可用（模型服务未配置）；配置或恢复后可以重试。"
+        return "岗位已保存。还没有连接 AI，所以暂时没法评估这个岗位；连接后可以重试。"
+    return "还没有连接 AI，这一步暂时做不了；连接后可以重试。"
 
 
 
@@ -1040,8 +1040,7 @@ async def _run_career_director(task: dict[str, Any]) -> dict[str, Any]:
     missing_reads = sorted(required_model_reads.difference(tool_calls))
     if missing_reads:
         raise ValueError(
-            "Career Director 必须通过 OfferU Operation 读取本轮证据；缺少: "
-            + ", ".join(missing_reads)
+            "AI 这次没有先读你的档案就给了结论，OfferU 没有采用。可以重试；反复出现时换一个更强的模型。"
         )
 
     final_message = str(result.get("assistant_message") or "").strip()

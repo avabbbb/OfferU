@@ -8,6 +8,7 @@
 
 "use client";
 
+import { PageHeader } from "@/components/layout/PageHeader";
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -29,7 +30,7 @@ import {
   ModalHeader,
   useDisclosure,
 } from "@heroui/react";
-import { Search, Sparkles, X, CheckSquare, FolderPlus, Trash2, PencilLine, Plus } from "lucide-react";
+import { Search, Sparkles, X, CheckSquare, FolderPlus, Trash2, PencilLine, Plus, SlidersHorizontal } from "lucide-react";
 import { AddJobModal } from "@/components/jobs/AddJobModal";
 import { JobCard } from "@/components/jobs/JobCard";
 import { jobsApi } from "@/lib/api";
@@ -139,6 +140,7 @@ export default function JobsPage() {
     onOpen: openMoveToTrashModal,
     onClose: closeMoveToTrashModal,
   } = useDisclosure();
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [trashActionSource, setTrashActionSource] = useState<"inbox" | "picked">("inbox");
   const {
     isOpen: confirmDeleteOpen,
@@ -574,7 +576,7 @@ export default function JobsPage() {
     ? "正在汇总当前筛选下的全部岗位..."
     : selectedIds.size > 0
       ? `已选 ${selectedIds.size} / 共 ${totalMatchingJobs} 个岗位`
-      : `点击卡片或勾选框选择岗位，当前筛选共 ${totalMatchingJobs} 个`;
+      : `共 ${totalMatchingJobs} 个岗位`;
 
   return (
     <motion.div
@@ -583,59 +585,28 @@ export default function JobsPage() {
       transition={{ type: "spring", stiffness: 380, damping: 28 }}
       className="stage-page stage-page--jobs space-y-6"
     >
-      <section className="stage-hero bauhaus-panel overflow-hidden bg-[var(--surface)]">
-        <div className="grid gap-6 border-b border-[var(--border)] p-6 md:p-8 xl:grid-cols-[1.05fr_0.95fr]">
-          <div className="space-y-4">
-            <span className={`bauhaus-chip ${triageMeta.tone}`}>{triageMeta.label}</span>
-            <div>
-              <p className="bauhaus-label text-[var(--foreground-muted)]">岗位操作台</p>
-              <h1 className="mt-2 text-4xl font-bold leading-tight md:text-5xl">岗位</h1>
-              <p className="mt-3 max-w-2xl text-sm font-medium leading-relaxed text-[var(--foreground-soft)] md:text-base">
-                {triageMeta.description}
-              </p>
-            </div>
-          </div>
+      <PageHeader
+        title="岗位"
+        description={triageMeta.description}
+        actions={
+          <Button
+            size="sm"
+            startContent={<Plus size={14} />}
+            onPress={() => setAddJobOpen(true)}
+            className="bauhaus-button bauhaus-button-red !min-h-9 !px-4"
+            data-testid="open-add-job"
+          >
+            保存岗位
+          </Button>
+        }
+      />
 
-          <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-1">
-            <div className={`bauhaus-panel-sm p-4 ${triageMeta.tone}`}>
-              <p className="bauhaus-label opacity-70">当前池</p>
-              <p className="mt-2 text-4xl font-bold">
-                {data?.total ?? 0}
-              </p>
-              <p className="mt-2 text-sm font-medium opacity-80">当前视图下的岗位总数。</p>
-            </div>
-            <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4 text-[var(--foreground)]">
-              <p className="bauhaus-label text-[var(--foreground-muted)]">已选岗位</p>
-              <p className="mt-2 text-4xl font-bold">
-                {selectedIds.size}
-              </p>
-              <p className="mt-2 text-sm font-medium text-[var(--foreground-soft)]">批量操作始终作用于已选岗位。</p>
-            </div>
-            <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4 text-[var(--foreground)]">
-              <p className="bauhaus-label text-[var(--foreground-soft)]">筛选条件</p>
-              <p className="mt-2 text-4xl font-bold">
-                {activeFilterCount}
-              </p>
-              <p className="mt-2 text-sm font-medium text-[var(--foreground-soft)]">当前启用的筛选条件数量。</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <div className="space-y-4">
+      <div className="space-y-3">
         {isScraperSyncing && (
-          <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4 text-[var(--foreground)]">
-            <p className="bauhaus-label text-[var(--foreground-muted)]">同步进行中</p>
-            <p className="mt-2 text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
-              正在同步最新抓取结果，岗位列表会自动刷新，无需重复操作。
-            </p>
-          </div>
+          <p className="text-[13px] text-[var(--foreground-muted)]">正在同步最新抓取结果，列表会自动刷新。</p>
         )}
 
-        <div className="bauhaus-panel overflow-hidden bg-[var(--surface-muted)]">
-          <div className="space-y-4 p-4 md:p-6">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-              <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
                 <Tabs
                   selectedKey={triageStatus}
                   onSelectionChange={(key) => {
@@ -657,11 +628,11 @@ export default function JobsPage() {
                   color="primary"
                   variant="solid"
                   classNames={{
-                    base: "w-full",
-                    tabList: "gap-2 rounded-none border-0 bg-transparent p-0",
-                    cursor: "rounded-none border border-[var(--border-strong)] bg-[var(--surface-muted)] ",
-                    tab: "h-auto rounded-none border border-[var(--border)] bg-[var(--surface)] px-4 py-3",
-                    tabContent: "font-semibold text-[11px] text-[var(--foreground-soft)] group-data-[selected=true]:text-[var(--foreground)]",
+                    base: "",
+                    tabList: "gap-0.5 rounded-lg border-0 bg-[var(--surface-muted)] p-0.5",
+                    cursor: "rounded-md bg-[var(--surface)] shadow-[0_1px_2px_rgba(31,31,29,0.08)]",
+                    tab: "h-8 rounded-md px-3",
+                    tabContent: "text-[12.5px] font-medium text-[var(--foreground-muted)] group-data-[selected=true]:text-[var(--foreground)]",
                   }}
                 >
                   <Tab key="inbox" title="未筛选" />
@@ -669,56 +640,42 @@ export default function JobsPage() {
                   <Tab key="ignored" title="回收站" />
                   <Tab key="all" title="全部" />
                 </Tabs>
-              </div>
 
-          <div className="flex flex-wrap gap-3">
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <div className="w-[220px]">
+              <Input
+                placeholder="搜索岗位或公司"
+                value={keyword}
+                onValueChange={setKeyword}
+                startContent={<Search size={15} className="text-[var(--foreground-muted)]" />}
+                classNames={bauhausInputClassNames}
+                size="sm"
+              />
+            </div>
             <Button
               size="sm"
-              startContent={<Plus size={14} />}
-              onPress={() => setAddJobOpen(true)}
-              className="bauhaus-button bauhaus-button-red !px-4 !py-3 !text-[11px]"
-              data-testid="open-add-job"
+              startContent={<SlidersHorizontal size={14} />}
+              onPress={() => setFiltersOpen((open) => !open)}
+              aria-expanded={filtersOpen}
+              className={`bauhaus-button !min-h-9 !px-3 ${filtersOpen || activeFilterCount > 0 ? "bauhaus-button-blue" : "bauhaus-button-outline"}`}
             >
-              保存岗位
+              筛选{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ""}
             </Button>
-            <Button
-                  size="sm"
-                  startContent={<CheckSquare size={14} />}
-                  onPress={() => {
-                    void toggleSelectAll();
-                  }}
-                  isLoading={selectAllLoading}
-                  isDisabled={totalMatchingJobs === 0}
-                  className={`bauhaus-button !px-4 !py-3 !text-[11px] ${
-                    isAllSelected ? "bauhaus-button-red" : "bauhaus-button-outline"
-                  }`}
-                >
-                  {isAllSelected ? "取消全选" : "全选岗位"}
-                </Button>
+            {triageStatus !== "ignored" && (
+              <Button
+                size="sm"
+                startContent={<FolderPlus size={14} />}
+                onPress={openPoolModal}
+                className="bauhaus-button bauhaus-button-outline !min-h-9 !px-3"
+              >
+                岗位池
+              </Button>
+            )}
+          </div>
+        </div>
 
-                {triageStatus !== "ignored" && (
-                  <Button
-                    size="sm"
-                    startContent={<FolderPlus size={14} />}
-                    onPress={openPoolModal}
-                    className="bauhaus-button bauhaus-button-yellow !px-4 !py-3 !text-[11px]"
-                  >
-                    管理池
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                <Input
-                  placeholder="搜索岗位或公司"
-                  value={keyword}
-                  onValueChange={setKeyword}
-                  startContent={<Search size={16} className="text-[var(--foreground-muted)]" />}
-                  classNames={bauhausInputClassNames}
-                  size="sm"
-                />
+        {filtersOpen && (
+          <div className="bauhaus-panel-sm grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
                 <Select
                   aria-label="时间范围"
                   size="sm"
@@ -759,9 +716,6 @@ export default function JobsPage() {
                     {(item) => <SelectItem key={item.key}>{item.label}</SelectItem>}
                   </Select>
                 )}
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 <Select
                   aria-label="数据来源"
                   size="sm"
@@ -809,43 +763,40 @@ export default function JobsPage() {
                     <SelectItem key={option.value}>{option.label}</SelectItem>
                   ))}
                 </Select>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="bauhaus-panel-sm flex items-center gap-3 bg-white px-4 py-3 text-[var(--foreground)]">
-                <Switch
-                  size="sm"
-                  isSelected={isCampus}
-                  onValueChange={(val) => {
-                    setIsCampus(val);
-                    setPage(1);
-                  }}
-                  classNames={{ wrapper: "bg-black/10" }}
-                />
-                <div>
-                  <p className="bauhaus-label text-[var(--foreground-muted)]">校招筛选</p>
-                  <p className="text-sm font-medium text-[var(--foreground-soft)]">仅看校招岗位</p>
-                </div>
-              </div>
-
+            <div className="flex items-center gap-3 sm:col-span-2 lg:col-span-3 xl:col-span-6">
+              <Switch
+                size="sm"
+                isSelected={isCampus}
+                onValueChange={(val) => {
+                  setIsCampus(val);
+                  setPage(1);
+                }}
+                classNames={{ wrapper: "bg-black/10" }}
+              >
+                <span className="text-[13px] text-[var(--foreground-soft)]">只看校招</span>
+              </Switch>
               {hasFilters && (
-                <button
-                  type="button"
-                  onClick={resetFilters}
-                  className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
-                >
+                <button type="button" onClick={resetFilters} className="ml-auto text-[12.5px] text-[var(--foreground-muted)] underline-offset-2 hover:text-[var(--foreground)] hover:underline">
                   清空筛选
                 </button>
               )}
-
-              <div className="bauhaus-panel-sm ml-auto bg-white px-4 py-3 text-[var(--foreground)]">
-                <p className="bauhaus-label text-[var(--foreground-muted)]">选择状态</p>
-                <p className="mt-1 text-sm font-medium text-[var(--foreground-soft)]">{selectionStatusText}</p>
-              </div>
             </div>
           </div>
-        </div>
+        )}
+
+        {totalMatchingJobs > 0 && (
+          <div className="flex items-center justify-between text-[12.5px] text-[var(--foreground-muted)]">
+            <span>{selectionStatusText}</span>
+            <button
+              type="button"
+              onClick={() => { void toggleSelectAll(); }}
+              disabled={selectAllLoading}
+              className="hover:text-[var(--foreground)]"
+            >
+              {isAllSelected ? "取消全选" : "全选"}
+            </button>
+          </div>
+        )}
       </div>
       {isLoading || (isValidating && jobs.length === 0) ? (
         <div className="bauhaus-panel flex justify-center bg-white py-20">
@@ -1049,44 +1000,27 @@ export default function JobsPage() {
           </AnimatePresence>
         </>
       ) : (
-        <section className="bauhaus-panel overflow-hidden bg-[var(--surface)]">
-          <div className="grid gap-6 p-6 md:grid-cols-[1.1fr_0.9fr] md:p-8">
-            <div className="space-y-3">
-              <span className="bauhaus-chip bg-[var(--surface-muted)] text-[var(--foreground)]">暂无岗位结果</span>
-              <h2 className="text-3xl font-bold md:text-5xl">
-                当前筛选
-                <br />
-                没有命中
-              </h2>
-              <p className="max-w-xl text-sm font-medium leading-relaxed text-[var(--foreground-soft)] md:text-base">
-                还没有符合当前筛选条件的岗位。你可以直接保存一个目标岗位，OfferU 会从这里开始准备；也可以调整筛选条件。
-              </p>
-              <Button
-                startContent={<Plus size={16} />}
-                onPress={() => setAddJobOpen(true)}
-                className="bauhaus-button bauhaus-button-red !px-5 !py-3 !text-[11px]"
-                data-testid="empty-add-job"
-              >
-                保存第一个岗位
-              </Button>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-5 text-[var(--foreground)]">
-                <p className="bauhaus-label text-[var(--foreground-muted)]">可先尝试</p>
-                <p className="mt-2 text-lg font-semibold">放宽筛选</p>
-                <p className="mt-2 text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
-                  清空关键词、来源与岗位类型，先看更大的岗位池。
-                </p>
-              </div>
-              <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-5 text-[var(--foreground)]">
-                <p className="bauhaus-label text-[var(--foreground-muted)]">下一步</p>
-                  <p className="mt-2 text-lg font-semibold">继续添加</p>
-                  <p className="mt-2 text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
-                  也可以从岗位链接或职位描述开始，不需要先配置抓取器。
-                  </p>
-              </div>
-            </div>
+        <section className="flex flex-col items-center rounded-[10px] border border-dashed border-[var(--border-strong)] px-6 py-16 text-center">
+          <h2 className="text-[17px] font-semibold text-[var(--foreground)]">{hasFilters ? "没有符合筛选的岗位" : "还没有岗位"}</h2>
+          <p className="mt-2 max-w-md text-[13.5px] leading-relaxed text-[var(--foreground-muted)]">
+            {hasFilters
+              ? "放宽关键词或来源试试。"
+              : "粘贴一个岗位链接或职位描述就能开始，OfferU 会围绕它准备简历和面试。"}
+          </p>
+          <div className="mt-5 flex items-center gap-3">
+            <Button
+              startContent={<Plus size={15} />}
+              onPress={() => setAddJobOpen(true)}
+              className="bauhaus-button bauhaus-button-red !min-h-9 !px-4"
+              data-testid="empty-add-job"
+            >
+              保存第一个岗位
+            </Button>
+            {hasFilters && (
+              <button type="button" onClick={resetFilters} className="text-[13px] text-[var(--foreground-muted)] hover:text-[var(--foreground)]">
+                清空筛选
+              </button>
+            )}
           </div>
         </section>
       )}

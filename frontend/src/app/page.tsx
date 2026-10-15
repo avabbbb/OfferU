@@ -47,6 +47,7 @@ import {
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { agentRecovery, MODEL_SETTINGS_ROUTE } from "@/lib/agentRecovery";
 import { useWorkbench } from "@/lib/workbench";
+import { useAgentConnectionOptional } from "@/lib/agentConnection";
 import { InterviewLifecycleCard } from "@/components/career/InterviewLifecycleCard";
 import { ArtifactViewer } from "@/components/career/ArtifactViewer";
 import { CareerQuestionsPanel } from "@/components/career/CareerQuestionsPanel";
@@ -362,6 +363,7 @@ export default function TodayPage() {
   const dailyReviewTriggered = useRef(false);
   const [dailyReviewTriggerError, setDailyReviewTriggerError] = useState<string | null>(null);
   const [dailyBriefDismissing, setDailyBriefDismissing] = useState(false);
+  const agentConnection = useAgentConnectionOptional();
   const [dailyBriefDismissError, setDailyBriefDismissError] = useState<string | null>(null);
   useEffect(() => {
     if (dailyReviewTriggered.current) return;
@@ -598,7 +600,7 @@ export default function TodayPage() {
       <motion.header variants={item} className="flex items-end justify-between px-1">
         <div>
           <p className="text-[12px] font-medium text-[var(--foreground-muted)]">{dateLabel}</p>
-          <h1 className="mt-1 text-[22px] font-semibold tracking-tight text-[var(--foreground)]">今日</h1>
+          <h1 className="mt-1 text-[28px] font-semibold tracking-tight text-[var(--foreground)]">今天</h1>
         </div>
         <OnboardingTriggerButton />
       </motion.header>
@@ -621,7 +623,7 @@ export default function TodayPage() {
               </div>
               <p className="mt-2 text-[13px] leading-5 text-[var(--foreground)]">
                 {dailyBriefInboxItem.task_status === "failed" || dailyBriefInboxItem.task_status === "blocked"
-                  ? "今天的简报尚未生成。需要先处理下面的问题。"
+                  ? "今天的简报还没生成。"
                   : String(dailyBrief?.situation_summary || dailyBriefInboxItem.body || "OfferU 正在综合你的岗位进展和近期安排。")}
               </p>
             </div>
@@ -637,11 +639,22 @@ export default function TodayPage() {
             )}
           </div>
           {dailyBriefInboxItem.task_status !== "completed" ? (
-            <p className="mt-3 text-[12px] text-[var(--foreground-muted)]">
-              {dailyBriefInboxItem.task_error || (dailyBriefInboxItem.task_status === "failed" || dailyBriefInboxItem.task_status === "blocked"
-                ? "职业简报暂时无法生成。"
-                : "正在读取面试、跟进、Pipeline 和待确认事项…")}
-            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <p className="text-[12.5px] text-[var(--foreground-muted)]">
+                {dailyBriefInboxItem.task_error || (dailyBriefInboxItem.task_status === "failed" || dailyBriefInboxItem.task_status === "blocked"
+                  ? "职业简报暂时无法生成。"
+                  : "正在读取面试、跟进、投递进展和待确认事项…")}
+              </p>
+              {dailyBriefInboxItem.task_status === "blocked" && (
+                <button
+                  type="button"
+                  onClick={() => agentConnection?.setOpen(true)}
+                  className="rounded-md bg-[var(--foreground)] px-2.5 py-1 text-[12px] font-medium text-white hover:opacity-90"
+                >
+                  连接 AI
+                </button>
+              )}
+            </div>
           ) : (
             <div className="mt-4 grid gap-2">
               {dailyBriefActions.map((action, index) => {
@@ -695,7 +708,7 @@ export default function TodayPage() {
               )}
             </div>
           )}
-          {(dailyBriefDismissError || dailyReviewTriggerError) && (
+          {(dailyBriefDismissError || (dailyReviewTriggerError && dailyReviewTriggerError !== dailyBriefInboxItem.task_error)) && (
             <p role="status" className="mt-2 text-[11px] text-[var(--primary-red)]">{dailyBriefDismissError || dailyReviewTriggerError}</p>
           )}
         </motion.section>
@@ -966,19 +979,14 @@ export default function TodayPage() {
                   >
                     <span className="block truncate text-[13px] font-medium text-[var(--foreground)]">{title}</span>
                     <span className="mt-0.5 block truncate text-[12px] text-[var(--foreground-muted)]">
-                      {[careerTaskStatusLabel(task.status), careerTaskStageLabel(task.status, task.progress), percent === null ? "" : `${percent}%`, task.runtime_provider]
+                      {[careerTaskStatusLabel(task.status), task.status === "blocked" ? "" : careerTaskStageLabel(task.status, task.progress), percent === null || task.status === "blocked" ? "" : `${percent}%`, task.runtime_provider]
                         .filter(Boolean)
                         .join(" · ")}
                     </span>
                     {task.error && (
-                      <span className="mt-1 block truncate text-[12px] text-[var(--primary-red)]">{task.error}</span>
+                      <span className={`mt-1 block truncate text-[12px] ${task.status === "blocked" ? "text-[var(--foreground-soft)]" : "text-[var(--primary-red)]"}`}>{task.error}</span>
                     )}
-                    {task.error_id && (
-                      <span className="mt-1 block truncate text-[11px] text-[var(--foreground-muted)]">
-                        错误 ID：{task.error_id}
-                      </span>
-                    )}
-                    {percent !== null && (
+                    {percent !== null && task.status !== "blocked" && task.status !== "failed" && (
                       <span className="mt-2 block h-1 overflow-hidden rounded-full bg-[var(--surface-hover)]">
                         <span
                           className="block h-full rounded-full bg-[var(--primary-blue)] transition-[width] duration-300"
