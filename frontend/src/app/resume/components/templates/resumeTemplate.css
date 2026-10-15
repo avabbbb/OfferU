@@ -658,8 +658,9 @@
   --paper-text-4: #6b6a64;
   --paper-rule: var(--rule-color, #e8e6dc);
   --paper-bg: #f5f4ed;
-  --paper-serif: "TsangerJinKai02", "Source Han Serif SC", "Source Han Serif CN", "Noto Serif CJK SC",
-    "Noto Serif SC", "Songti SC", "STSong", Georgia, serif;
+  /* 默认用系统里的宋体系（可免费商用）；今楷需在排版里手动开启并下载。 */
+  --paper-serif: "Source Han Serif SC", "Source Han Serif CN", "Noto Serif CJK SC", "Noto Serif SC", "Songti SC",
+    "STSong", "SimSun", Charter, Georgia, serif;
   background: var(--paper-bg);
   box-shadow: 0 1px 2px rgba(20, 20, 19, 0.06);
   box-sizing: border-box;
@@ -675,9 +676,9 @@
 }
 
 .resume-body.paper.paper-tone-white { --paper-bg: #ffffff; }
-.resume-body.paper.paper-font-song {
-  --paper-serif: "Source Han Serif SC", "Source Han Serif CN", "Noto Serif CJK SC", "Noto Serif SC", "Songti SC",
-    "STSong", Charter, Georgia, serif;
+.resume-body.paper.paper-font-kai {
+  --paper-serif: "TsangerJinKai02", "Source Han Serif SC", "Noto Serif CJK SC", "Noto Serif SC", "Songti SC",
+    "STSong", "SimSun", Georgia, serif;
 }
 
 .paper-sheet { display: block; }

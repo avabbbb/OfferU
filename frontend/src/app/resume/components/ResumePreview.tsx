@@ -235,7 +235,7 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(function Re
 
   const template = (() => {
     if (settings.template === "paper") {
-      if (props.styleConfig?.paperFont !== "song") ensureKamiFont();
+      if (props.styleConfig?.paperFont === "kai") ensureKamiFont();
       return (
         <ResumePaper
           userName={props.userName}
@@ -277,7 +277,7 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(function Re
     <div className="inline-block swiss-resume">
       <div
         ref={ref}
-        className={`resume-body ${settings.template}${settings.template === "paper" && props.styleConfig?.paperTone === "white" ? " paper-tone-white" : ""}${settings.template === "paper" && props.styleConfig?.paperFont === "song" ? " paper-font-song" : ""}`}
+        className={`resume-body ${settings.template}${settings.template === "paper" && props.styleConfig?.paperTone === "white" ? " paper-tone-white" : ""}${settings.template === "paper" && props.styleConfig?.paperFont === "kai" ? " paper-font-kai" : ""}`}
         data-template={settings.template}
         data-page-size={settings.pageSize}
         style={cssVars}
