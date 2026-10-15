@@ -42,6 +42,10 @@ RESTRICTED_DOMAINS = (
 )
 
 
+class RestrictedSiteError(ValueError):
+    """目标是反爬/需登录站点：只能由用户自己复制原文，绝不自动抓取。"""
+
+
 class SearchResult(TypedDict):
     title: str
     url: str
@@ -265,15 +269,36 @@ async def web_search(
     return []
 
 
-async def fetch_readable(url: str, *, max_chars: int = 20_000) -> str:
-    """抓取公开网页并抽取正文文本；反爬域名与非公开 URL 直接拒绝。"""
+async def fetch_public_html(
+    url: str,
+    *,
+    extra_restricted_domains: tuple[str, ...] = (),
+    max_bytes: int = 2_000_000,
+) -> tuple[str, str]:
+    """抓取一张公开网页的原始 HTML，返回 (最终 URL, HTML)。
+
+    只发一次匿名 GET（不带 Cookie、不跟随到非公网地址、不重试），
+    反爬/需登录域名与非公开 URL 直接拒绝。调用方负责正文抽取。
+    """
     clean_url = str(url or "").strip()
     if not _is_public_http_url(clean_url):
         raise ValueError("仅支持公开 HTTP(S) URL")
-    if _is_restricted(clean_url):
-        raise ValueError(
-            "该站点（小红书/脉脉/牛客/BOSS）需登录且受访问控制保护，"
-            "请使用授权浏览切片（authorized_research）由用户登录后逐页确认采集"
+
+    def restricted(target: str) -> bool:
+        if _is_restricted(target):
+            return True
+        try:
+            host = (urlparse(target).hostname or "").lower()
+        except ValueError:
+            return True
+        return any(
+            host == domain or host.endswith("." + domain)
+            for domain in extra_restricted_domains
+        )
+
+    if restricted(clean_url):
+        raise RestrictedSiteError(
+            "该站点需登录且受访问控制保护，OfferU 不会自动抓取"
         )
     current_url = clean_url
     async with _http_client(
@@ -281,8 +306,8 @@ async def fetch_readable(url: str, *, max_chars: int = 20_000) -> str:
     ) as client:
         for redirect_count in range(_MAX_REDIRECTS + 1):
             await _assert_public_destination(current_url)
-            if _is_restricted(current_url):
-                raise ValueError("目标经重定向指向受限站点，已拒绝抓取")
+            if restricted(current_url):
+                raise RestrictedSiteError("目标经重定向指向受限站点，已拒绝抓取")
             response = await client.get(current_url)
             if response.status_code not in _REDIRECT_STATUSES:
                 break
@@ -302,10 +327,15 @@ async def fetch_readable(url: str, *, max_chars: int = 20_000) -> str:
         response.raise_for_status()
         final_url = str(response.url)
         await _assert_public_destination(final_url)
-        if _is_restricted(final_url):
-            raise ValueError("目标经重定向指向受限站点，已拒绝抓取")
-        html = response.text
+        if restricted(final_url):
+            raise RestrictedSiteError("目标经重定向指向受限站点，已拒绝抓取")
+        if len(response.content) > max_bytes:
+            raise ValueError("网页过大，已停止读取")
+        return final_url, response.text
 
+
+def html_to_readable_text(html: str, *, max_chars: int = 20_000) -> str:
+    """把 HTML 压成可读正文；脚本/样式/导航/页脚一律丢弃。"""
     try:
         from bs4 import BeautifulSoup
 
@@ -317,6 +347,20 @@ async def fetch_readable(url: str, *, max_chars: int = 20_000) -> str:
         text = re.sub(r"<[^>]+>", " ", html)
     text = re.sub(r"\n{3,}", "\n\n", re.sub(r"[ \t]{2,}", " ", text)).strip()
     return text[:max_chars]
+
+
+async def fetch_readable(url: str, *, max_chars: int = 20_000) -> str:
+    """抓取公开网页并抽取正文文本；反爬域名与非公开 URL 直接拒绝。"""
+    try:
+        _final_url, html = await fetch_public_html(url)
+    except RestrictedSiteError as exc:
+        if str(exc).startswith("目标经重定向"):
+            raise ValueError(str(exc)) from exc
+        raise ValueError(
+            "该站点（小红书/脉脉/牛客/BOSS）需登录且受访问控制保护，"
+            "请使用授权浏览切片（authorized_research）由用户登录后逐页确认采集"
+        ) from exc
+    return html_to_readable_text(html, max_chars=max_chars)
 
 
 async def web_search_preview(*, query: str, limit: int = 8) -> dict[str, Any]:
