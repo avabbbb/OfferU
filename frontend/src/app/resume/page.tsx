@@ -24,7 +24,6 @@ import {
 } from "@/lib/hooks";
 import { resumeApi } from "@/lib/api";
 import ResumeThumbnail from "./components/ResumeThumbnail";
-import { NOTION_CARD, NotionTag } from "@/components/ui/NotionTag";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import {
   getProfileBulletText,
@@ -319,7 +318,7 @@ export default function ResumesListPage() {
       )}
 
       {/* 简历卡片网格 */}
-      <div className="grid [grid-template-columns:repeat(1,minmax(0,1fr))] md:[grid-template-columns:repeat(3,minmax(0,1fr))] lg:[grid-template-columns:repeat(4,minmax(0,1fr))] xl:[grid-template-columns:repeat(5,minmax(0,1fr))] gap-4 items-stretch">
+      <div className="grid [grid-template-columns:repeat(2,minmax(0,1fr))] md:[grid-template-columns:repeat(3,minmax(0,1fr))] lg:[grid-template-columns:repeat(3,minmax(0,1fr))] xl:[grid-template-columns:repeat(4,minmax(0,1fr))] 2xl:[grid-template-columns:repeat(5,minmax(0,1fr))] gap-5 items-start">
         <AnimatePresence>
           {(resumes || []).map((resume: ResumeBrief, i: number) => (
             <motion.div
@@ -336,18 +335,21 @@ export default function ResumesListPage() {
                 aria-label={`编辑 ${resume.title || "未命名简历"}`}
                 onClick={() => openResume(resume.id)}
                 onKeyDown={(event) => handleResumeCardKeyDown(event, resume.id)}
-                className={`group relative flex h-full cursor-pointer flex-col overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] ${NOTION_CARD}`}
+                className="resume-glass-card group relative cursor-pointer overflow-hidden rounded-[16px] bg-white outline-none shadow-[0_0_0_0.5px_rgba(0,0,0,0.08),0_2px_8px_rgba(0,0,0,0.06),0_12px_32px_rgba(0,0,0,0.06)] transition-[transform,box-shadow] duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] hover:-translate-y-1 hover:shadow-[0_0_0_0.5px_rgba(0,0,0,0.08),0_6px_16px_rgba(0,0,0,0.08),0_24px_48px_rgba(0,0,0,0.10)] focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
               >
-                <ResumeThumbnail resumeId={resume.id} variant="cover" />
-                <div className="flex flex-1 flex-col gap-1.5 border-t border-[rgba(55,53,47,0.09)] px-3 pb-3 pt-2.5">
-                  <h3 className="truncate text-[14px] font-semibold text-[#37352f]">{resume.title || "未命名简历"}</h3>
-                  <p className="truncate text-[12px] text-[#787774]">
+                <ResumeThumbnail resumeId={resume.id} variant="page" />
+                {/* 毛玻璃信息层：透出下面的简历，不挡住页眉 */}
+                <div className="resume-glass absolute inset-x-2 bottom-2 rounded-[12px] px-3 py-2.5">
+                  <div className="flex items-baseline gap-2">
+                    <h3 className="min-w-0 flex-1 truncate text-[14px] font-semibold tracking-[-0.01em] text-[#1d1d1f]">{resume.title || "未命名简历"}</h3>
+                    {resume.language && <span className="shrink-0 text-[11px] font-medium text-[#1d1d1f]/45">{resume.language === "en" ? "EN" : resume.language === "zh" ? "中文" : resume.language}</span>}
+                  </div>
+                  <p className="mt-0.5 truncate text-[12px] text-[#1d1d1f]/60">
                     {[resume.user_name, `${new Date(resume.updated_at).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })} 更新`].filter(Boolean).join(" · ")}
                   </p>
-                  <div className="flex flex-wrap gap-1 pt-0.5">
-                    {resume.language && <NotionTag color={resume.language === "en" ? "blue" : "default"}>{resume.language === "zh" ? "中文" : resume.language === "en" ? "English" : resume.language}</NotionTag>}
-                    <NotionTag color={getResumeSourceLabel(resume).color === "default" ? "gray" : "purple"}>{getResumeSourceLabel(resume).text}</NotionTag>
-                  </div>
+                  {getResumeSourceLabel(resume).color !== "default" && (
+                    <p className="mt-1 truncate text-[11.5px] font-medium text-[#6940a5]">{getResumeSourceLabel(resume).text}</p>
+                  )}
                 </div>
                 <button
                   type="button"
@@ -355,7 +357,7 @@ export default function ResumesListPage() {
                   title="删除"
                   disabled={deletingId === resume.id}
                   onClick={(e) => { e.stopPropagation(); handleDelete(resume.id, e); }}
-                  className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-[6px] bg-white/90 text-[#787774] opacity-0 shadow-[0_0_0_1px_rgba(15,15,15,0.08),0_1px_2px_rgba(15,15,15,0.08)] transition-opacity hover:text-[#9f2f2d] group-hover:opacity-100 focus-visible:opacity-100"
+                  className="resume-glass absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full text-[#1d1d1f]/70 opacity-0 transition-opacity hover:text-[#d70015] group-hover:opacity-100 focus-visible:opacity-100"
                 >
                   <Trash2 size={14} />
                 </button>

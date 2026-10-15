@@ -11,7 +11,7 @@ const PAGE_WIDTH_PX = 794; // A4 at 96dpi
 /**
  * variant="cover"：Notion 画廊封面——浅灰底上露出一张纸的上半截，纸本身没有边框只有一点投影。
  */
-export default function ResumeThumbnail({ resumeId, variant = "framed" }: { resumeId: number; variant?: "framed" | "cover" }) {
+export default function ResumeThumbnail({ resumeId, variant = "framed" }: { resumeId: number; variant?: "framed" | "cover" | "page" }) {
   const { data } = useResume(resumeId);
   const boxRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0);
@@ -27,6 +27,14 @@ export default function ResumeThumbnail({ resumeId, variant = "framed" }: { resu
       <ResumePreview userName={data.user_name} title={data.title} photoUrl={data.photo_url} summary={data.summary} contactJson={data.contact_json || {}} sections={data.sections} styleConfig={data.style_config || {}} />
     </div>
   ) : null;
+  if (variant === "page") {
+    // 整页：A4 比例铺满卡片，信息层由调用方叠在上面。
+    return (
+      <div ref={boxRef} className="relative aspect-[210/297] overflow-hidden bg-white" aria-hidden="true" data-testid="resume-thumbnail">
+        {preview ?? <div className="grid h-full place-items-center bg-[#f5f5f7]"><FileText size={32} className="text-[#c7c7cc]" /></div>}
+      </div>
+    );
+  }
   if (variant === "cover") {
     return (
       <div className="relative aspect-[16/11] overflow-hidden bg-[#efeeea]" aria-hidden="true" data-testid="resume-thumbnail">
