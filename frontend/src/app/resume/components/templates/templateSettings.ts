@@ -285,8 +285,10 @@ function lineHeightToLevel(value: unknown, fallback: SpacingLevel): SpacingLevel
 /** 「纸」模板的默认排版：参考 Kami 的简历密排参数（页边距 11/13mm、行高 1.45、墨蓝 #1B365D）。 */
 const PAPER_EXACT_DEFAULTS: ResumeTemplateSettings["exact"] = {
   ...DEFAULT_TEMPLATE_SETTINGS.exact,
-  bodySize: 10, headingSize: 12, nameSize: 22,
-  lineHeight: 1.45, sectionGap: 12, itemGap: 6, paragraphGap: 1, headerGap: 9,
+  // 对齐 Kami resume.html：正文 9.2pt / 行高 1.42，姓名 26.5pt，分区标题 12.5pt，
+  // 分区上间距 5.8mm≈16pt，页眉下间距 4.2mm≈12pt。
+  bodySize: 9.2, headingSize: 12.5, nameSize: 26.5,
+  lineHeight: 1.42, sectionGap: 16, itemGap: 7, paragraphGap: 1, headerGap: 12,
   headingColor: "#1B365D", ruleColor: "#E8E6DC",
 };
 const PAPER_MARGINS = { top: 11, right: 13, bottom: 11, left: 13 };
