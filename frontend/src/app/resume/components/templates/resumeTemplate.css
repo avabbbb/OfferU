@@ -648,6 +648,8 @@
  * 2026-10 对齐 Kami resume.html：分区标题用近黑（墨蓝只做点缀，≤5% 版面），
  * 页眉下方一条细线，正文近黑、说明文字橄榄灰、元信息石灰，交互底色用实色而不是 rgba。
  */
+/* Kami's typeface (TsangerJinKai02) is registered at runtime by ResumePreview:
+ * the backend downloads it once and serves it locally. */
 .resume-body.paper {
   --paper-ink: var(--resume-accent-primary, #1b365d);
   --paper-text: #141413;
@@ -656,8 +658,8 @@
   --paper-text-4: #6b6a64;
   --paper-rule: var(--rule-color, #e8e6dc);
   --paper-bg: #f5f4ed;
-  --paper-serif: Charter, Georgia, "Source Han Serif SC", "Source Han Serif CN", "Noto Serif CJK SC",
-    "Noto Serif SC", "Songti SC", "STSong", serif;
+  --paper-serif: "TsangerJinKai02", "Source Han Serif SC", "Source Han Serif CN", "Noto Serif CJK SC",
+    "Noto Serif SC", "Songti SC", "STSong", Georgia, serif;
   background: var(--paper-bg);
   box-shadow: 0 1px 2px rgba(20, 20, 19, 0.06);
   box-sizing: border-box;
@@ -673,45 +675,49 @@
 }
 
 .resume-body.paper.paper-tone-white { --paper-bg: #ffffff; }
+.resume-body.paper.paper-font-song {
+  --paper-serif: "Source Han Serif SC", "Source Han Serif CN", "Noto Serif CJK SC", "Noto Serif SC", "Songti SC",
+    "STSong", Charter, Georgia, serif;
+}
 
 .paper-sheet { display: block; }
 
+/* Header, as in Kami resume.html: name left, role / contact / city right-aligned. */
 .paper-header {
+  align-items: flex-end;
   border-bottom: 0.6pt solid var(--paper-rule);
+  display: flex;
+  gap: 10pt;
+  justify-content: space-between;
   margin-bottom: var(--header-gap);
   padding-bottom: 2.3mm;
 }
+.paper-header-name { flex-shrink: 0; }
 
 .paper-name {
+  align-items: baseline;
   color: var(--paper-text);
+  display: flex;
   font-size: var(--name-size);
   font-weight: 500;
+  gap: 2.2mm;
   letter-spacing: 0.5pt;
-  line-height: 1.05;
+  line-height: 1;
   margin: 0;
+  white-space: nowrap;
 }
+.paper-alias { color: var(--paper-text-4); font-size: calc(var(--font-size-base) * 1.36); font-weight: 400; letter-spacing: 0.2pt; }
 
-.paper-headline {
-  color: var(--paper-text-3);
-  font-size: calc(var(--font-size-base) * 1.03);
-  line-height: 1.3;
-  margin: 3pt 0 0;
-}
-
-.paper-contact {
-  color: var(--paper-text-4);
-  font-size: calc(var(--font-size-base) * 0.98);
-  line-height: 1.5;
-  margin: 5pt 0 0;
-}
+.paper-header-right { flex: 1 1 auto; line-height: 1.5; min-width: 0; text-align: right; }
+.paper-role { color: var(--paper-ink); font-size: calc(var(--font-size-base) * 1.14); font-weight: 500; margin: 0; }
+.paper-contact { color: var(--paper-text-4); font-size: calc(var(--font-size-base) * 0.98); margin: 0; }
+.paper-location { color: var(--paper-text-3); font-size: calc(var(--font-size-base) * 0.98); font-weight: 500; margin: 0; }
 
 .paper-sep { color: var(--paper-text-4); }
-.paper-contact .paper-sep { color: #c9c6ba; }
+.paper-contact .paper-sep { color: var(--paper-rule); }
 
-/* 照片与校徽：右侧并排，顶部对齐；成品里只有图片，不加边框或阴影。 */
-.paper-header-with-media { align-items: flex-start; display: flex; gap: 12pt; }
-.paper-header-text { flex: 1 1 auto; min-width: 0; }
-.paper-media { align-items: flex-start; display: flex; flex: 0 0 auto; gap: 8pt; }
+/* 校徽与照片：页眉最右侧并排，底部与联系方式对齐；成品里只有图片，不加边框或阴影。 */
+.paper-media { align-items: flex-end; display: flex; flex: 0 0 auto; gap: 8pt; }
 .paper-asset { position: relative; }
 .paper-photo {
   border-radius: 2pt;
@@ -802,9 +808,22 @@
 
 .paper-item-main { flex: 1 1 auto; min-width: 0; }
 
-.paper-item-title { color: var(--paper-text); font-size: calc(var(--font-size-base) * 1.1); font-weight: 500; }
+.paper-item-title { color: var(--paper-text); font-size: calc(var(--font-size-base) * 1.2); font-weight: 500; }
+[data-section-type="education"] .paper-item-title { font-size: calc(var(--font-size-base) * 1.16); }
 
-.paper-item-meta { color: var(--paper-text-3); margin-left: 8pt; }
+.paper-item-meta { color: var(--paper-text-3); margin-left: 1.5mm; }
+.paper-item-meta::before { content: "· "; }
+.paper-chip {
+  background: #eef2f7;
+  border-radius: 2pt;
+  color: var(--paper-ink);
+  font-size: calc(var(--font-size-base) * 0.98);
+  font-weight: 500;
+  letter-spacing: 0.05pt;
+  margin-left: 2mm;
+  padding: 0.4mm 1.2mm;
+  white-space: nowrap;
+}
 .paper-item-meta .paper-sep,
 .paper-contact .paper-sep { margin: 0 4pt; }
 
@@ -820,9 +839,11 @@
 .paper-bullets li { color: var(--paper-text); margin-top: var(--paragraph-gap); }
 .paper-bullets li::marker { color: var(--paper-ink); }
 
-.paper-skill-row { display: flex; align-items: baseline; }
-.paper-skill-category { color: var(--paper-text); flex: 0 0 5em; font-weight: 500; }
-.paper-skill-items { color: var(--paper-text-2); }
+.paper-items > .paper-skill-row + .paper-skill-row { margin-top: 0; }
+.paper-skill-row { align-items: baseline; border-bottom: 0.3pt dotted var(--paper-rule); display: flex; gap: 2.5mm; padding: 1.7mm 0; }
+.paper-skill-row:last-child { border-bottom: none; }
+.paper-skill-category { color: var(--paper-ink); flex: 0 0 22mm; font-weight: 500; letter-spacing: 0.3pt; }
+.paper-skill-items { color: var(--paper-text); flex: 1; }
 
 .paper-editable {
   border-radius: 2px;
@@ -941,3 +962,31 @@
 .paper-comment-tray li button { border: 0; margin-left: 4px; padding: 0; vertical-align: middle; }
 .paper-comment-quote { color: #141413; }
 .paper-comment-instruction { color: #6b6a64; display: block; }
+
+/* 画布底部「添加段落」：编辑态才显示，导出时随 data-paper-chrome 一起剔除。 */
+.paper-add-sections {
+  align-items: center;
+  border-top: 0.6pt dashed var(--paper-rule);
+  color: var(--paper-text-4);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: calc(var(--font-size-base) * 0.95);
+  gap: 4pt 10pt;
+  margin-top: var(--section-gap);
+  opacity: 0.55;
+  padding-top: 6pt;
+  transition: opacity 120ms ease;
+}
+.paper-add-sections:hover,
+.paper-add-sections:focus-within { opacity: 1; }
+.paper-add-sections > span { font-weight: 500; }
+.paper-add-sections button {
+  background: none;
+  border: 0;
+  color: var(--paper-ink);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+.paper-add-sections button:hover { text-decoration: underline; }
+@media print { .paper-add-sections { display: none; } }

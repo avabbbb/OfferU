@@ -172,6 +172,16 @@ function resolveAssetUrl(url?: string) {
     : url;
 }
 
+/** Kami's typeface, fetched once by the backend and then served from the local data folder. */
+function ensureKamiFont() {
+  if (typeof document === "undefined" || document.getElementById("offeru-kami-font")) return;
+  const base = `${resolveApiBase()}/api/resume/assets/fonts`;
+  const style = document.createElement("style");
+  style.id = "offeru-kami-font";
+  style.textContent = [["W04", 400], ["W05", 500]].map(([file, weight]) => `@font-face { font-family: "TsangerJinKai02"; font-style: normal; font-weight: ${weight}; font-display: swap; src: url("${base}/TsangerJinKai02-${file}.ttf") format("truetype"); }`).join("\n");
+  document.head.appendChild(style);
+}
+
 function paperLogoUrl(contact: Record<string, string>) {
   for (const key of ["schoolLogoUrl", "universityLogoUrl", "logoUrl", "school_logo_url"]) {
     if (contact[key]) return contact[key];
@@ -225,6 +235,7 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(function Re
 
   const template = (() => {
     if (settings.template === "paper") {
+      if (props.styleConfig?.paperFont !== "song") ensureKamiFont();
       return (
         <ResumePaper
           userName={props.userName}
@@ -266,7 +277,7 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(function Re
     <div className="inline-block swiss-resume">
       <div
         ref={ref}
-        className={`resume-body ${settings.template}${settings.template === "paper" && props.styleConfig?.paperTone === "white" ? " paper-tone-white" : ""}`}
+        className={`resume-body ${settings.template}${settings.template === "paper" && props.styleConfig?.paperTone === "white" ? " paper-tone-white" : ""}${settings.template === "paper" && props.styleConfig?.paperFont === "song" ? " paper-font-song" : ""}`}
         data-template={settings.template}
         data-page-size={settings.pageSize}
         style={cssVars}

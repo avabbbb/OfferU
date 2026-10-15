@@ -20,7 +20,7 @@ from app.services.resume_versions import create_version_snapshot
 
 class DesignPatch(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
-    template: Literal["reference", "reference-compact", "modern", "modern-two-column", "swiss-single", "swiss-two-column"] | None = None
+    template: Literal["paper", "reference", "reference-compact", "modern", "modern-two-column", "swiss-single", "swiss-two-column"] | None = None
     pageSize: Literal["A4", "LETTER"] | None = None
     bodySize: float | None = Field(default=None, ge=8, le=20)
     headingSize: float | None = Field(default=None, ge=8, le=28)
@@ -40,6 +40,8 @@ class DesignPatch(BaseModel):
     photoHeight: float | None = Field(default=None, ge=10, le=60)
     logoWidth: float | None = Field(default=None, ge=10, le=65)
     logoHeight: float | None = Field(default=None, ge=5, le=40)
+    paperTone: Literal["parchment", "white"] | None = None
+    paperFont: Literal["kai", "song"] | None = None
 
 
 class DesignImage(BaseModel):

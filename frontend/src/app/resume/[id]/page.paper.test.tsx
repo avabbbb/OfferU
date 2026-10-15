@@ -82,7 +82,7 @@ describe("纸画布上的 AI 建议", () => {
 
     const inline = await screen.findByTestId("inline-proposal-c1");
     expect(within(inline).getByText("日均千万笔的")).toBeInTheDocument();
-    expect(screen.getByTestId("resume-canvas-proposals")).toHaveTextContent("AI 建议 1 条");
+    expect(screen.getByTestId("resume-canvas-proposals")).toHaveTextContent("1 条 AI 改动");
     await user.click(within(inline).getByRole("button", { name: /^采用/ }));
     await waitFor(() => expect(api.reviewProposalItem).toHaveBeenCalledWith("prop-1", {
       resume_id: 7, change_id: "c1", action: "accept", edited_text: "",
@@ -111,7 +111,7 @@ describe("纸画布上的 AI 建议", () => {
     const user = userEvent.setup();
     render(<ResumeEditorPage />);
     await screen.findByTestId("inline-proposal-c1");
-    await user.click(screen.getByRole("button", { name: "只看当前" }));
+    await user.click(screen.getByRole("button", { name: "隐藏 1 条 AI 改动" }));
     expect(screen.queryByTestId("inline-proposal-c1")).not.toBeInTheDocument();
     expect(screen.getAllByText("负责对账服务").length).toBeGreaterThan(0);
   });

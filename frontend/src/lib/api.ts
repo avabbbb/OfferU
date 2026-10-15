@@ -294,6 +294,9 @@ export const resumeApi = {
     return res.json();
   },
 
+  resolveLogo: (resumeId: number, schoolName: string) =>
+    request<{ school_name: string; schoolLogoUrl: string; source: string }>(`/api/resume/${resumeId}/logo/resolve`, { method: "POST", body: JSON.stringify({ school_name: schoolName }) }),
+
   uploadLogo: async (resumeId: number, file: File) => {
     const formData = new FormData();
     formData.append("file", file);

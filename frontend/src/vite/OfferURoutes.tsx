@@ -48,7 +48,7 @@ export function OfferURoutes() {
         <Route path="/email" element={<EmailPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/settings" element={<SettingsPage />} />
-        <Route path="/studio" element={<LegacyResumeRedirect mode="layout" />} />
+        <Route path="/studio" element={<LegacyResumeRedirect mode="list" />} />
         <Route path="/agent" element={<Navigate replace to="/" />} />
         <Route path="/analytics" element={<Navigate replace to="/" />} />
         <Route path="/scraper" element={<Navigate replace to="/jobs" />} />

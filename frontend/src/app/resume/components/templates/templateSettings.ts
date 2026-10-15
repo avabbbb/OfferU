@@ -123,7 +123,7 @@ export const TEMPLATE_OPTIONS: Array<{
 ];
 
 export const DEFAULT_TEMPLATE_SETTINGS: ResumeTemplateSettings = {
-  template: "reference",
+  template: "paper",
   pageSize: "A4",
   margins: { top: 8, right: 8, bottom: 8, left: 8 },
   spacing: { section: 3, item: 2, lineHeight: 3 },

@@ -42,3 +42,9 @@ Python Agent primitives and React tool-stream reducer/view were migrated from
 `3a446ff941da66000ba2cc24e5d2e5d19cd3a2e5`, under MIT. Copyright (c) 2025 Chunxu Han.
 The complete original license is preserved in `backend/app/agent/LICENSE`.
 Adaptation details are recorded in `backend/app/agent/UPSTREAM.md`.
+
+## 简历「纸」模板相关（运行时按需下载，不随安装包分发）
+
+- **tw93/Kami**（MIT）：「纸」模板的版式参数参考其 `design.md` 与简历模板。https://github.com/tw93/Kami
+- **仓耳今楷 TsangerJinKai02 W04/W05**：Kami 使用的中文字体。**仅限个人非商业使用**，商用需向仓耳字库购买授权。OfferU 只在用户本机首次渲染「纸」模板时从 jsDelivr / GitHub 下载到本地数据目录；不想用可在「排版 → 字体」切换为思源宋体。
+- **xioajiumi/Chinese_Universities**（MIT）：校徽图片数据集。首次自动配校徽时从 GitHub 下载约 35 MB 到本地数据目录。校徽本身的权利归各高校所有，仅用于用户自己的简历。

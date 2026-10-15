@@ -106,6 +106,8 @@ interface ItemShape {
   date?: FieldKey;
   description?: boolean;
   tags?: { category: FieldKey; items: FieldKey };
+  /** Shown as Kami's ink-blue role chip right after the title (e.g. a project role). */
+  chip?: FieldKey;
   titlePlaceholder: string;
   metaPlaceholders: string[];
 }
@@ -124,8 +126,8 @@ const SHAPES: Record<string, ItemShape> = {
   experience: EXPERIENCE,
   internshipExperiences: EXPERIENCE,
   projects: {
-    title: "name", meta: ["role", "url"], start: "startDate", end: "endDate", description: true,
-    titlePlaceholder: "项目名称", metaPlaceholders: ["角色", "链接"],
+    title: "name", meta: ["url"], chip: "role", start: "startDate", end: "endDate", description: true,
+    titlePlaceholder: "项目名称", metaPlaceholders: ["链接"],
   },
   awards: {
     title: "awardName", meta: ["issuer"], date: "awardedAt", description: true,
@@ -161,10 +163,9 @@ export function shapeFor(sectionType: string): ItemShape {
 const CONTACT_FIELDS: Array<[string, string]> = [
   ["phone", "电话"],
   ["email", "邮箱"],
-  ["location", "城市"],
-  ["website", "个人网站"],
+  ["wechat", "微信"],
   ["github", "GitHub"],
-  ["linkedin", "LinkedIn"],
+  ["website", "个人网站"],
 ];
 
 function escapeHtml(value: string) {
@@ -303,17 +304,18 @@ function emptyItem(shape: ItemShape) {
   for (const key of shape.meta) item[key] = "";
   if (shape.description) item.description = "";
   if (shape.tags) item[shape.tags.items] = "";
+  if (shape.chip) item[shape.chip] = "";
   return item;
 }
 
 function hasContent(item: Record<string, any>, shape: ItemShape) {
-  const keys = [shape.title, ...shape.meta, shape.start, shape.end, shape.date, shape.tags?.items, "description"];
+  const keys = [shape.title, ...shape.meta, shape.start, shape.end, shape.date, shape.tags?.items, shape.chip, "description"];
   return keys.some((key) => key && textOf(item[key]).replace(/<[^>]+>/g, "").trim());
 }
 
 export function ResumePaper(props: ResumePaperProps) {
   const {
-    userName, title = "", summary, contactJson, sections, styleConfig,
+    userName, summary, contactJson, sections, styleConfig,
     editable = false, onProfileChange, onSectionChange, renderSectionAside, canvasFooter,
     photoUrl, logoUrl, onUploadAsset,
   } = props;
@@ -337,29 +339,43 @@ export function ResumePaper(props: ResumePaperProps) {
 
   return (
     <article className={`paper-sheet paper-${tone}${editable ? " paper-is-editable" : ""}`} data-paper-tone={tone}>
-      <header className={`paper-header${hasMedia ? " paper-header-with-media" : ""}`}>
-        <div className="paper-header-text">
-        <h1 className="paper-name">
-          <Editable value={userName || ""} editable={editable} placeholder="你的名字" label="姓名"
-            onCommit={(value) => onProfileChange?.({ user_name: value })} />
-        </h1>
-        {(editable || title) && (
-          <p className="paper-headline">
-            <Editable value={title} editable={editable} placeholder="一句话定位，比如：后端工程师 · 3 年支付系统"
-              label="求职定位" onCommit={(value) => onProfileChange?.({ title: value })} />
-          </p>
-        )}
-        {contactEntries.length > 0 && (
-          <p className="paper-contact">
-            {contactEntries.map(([key, label], index) => (
-              <Fragment key={key}>
-                {index > 0 && (editable || contact[key]) && <span className="paper-sep" aria-hidden>·</span>}
-                <Editable value={contact[key] || ""} editable={editable} placeholder={label} label={label}
-                  onCommit={(value) => onProfileChange?.({ contact_json: { ...contact, [key]: value } })} />
-              </Fragment>
-            ))}
-          </p>
-        )}
+      <header className="paper-header">
+        <div className="paper-header-name">
+          <h1 className="paper-name">
+            <Editable value={userName || ""} editable={editable} placeholder="你的名字" label="姓名"
+              onCommit={(value) => onProfileChange?.({ user_name: value })} />
+            {(editable || contact.nameEn) && (
+              <span className="paper-alias">
+                <Editable value={contact.nameEn || ""} editable={editable} placeholder="英文名" label="英文名"
+                  onCommit={(value) => onProfileChange?.({ contact_json: { ...contact, nameEn: value } })} />
+              </span>
+            )}
+          </h1>
+        </div>
+        <div className="paper-header-right">
+          {(editable || contact.role) && (
+            <p className="paper-role">
+              <Editable value={contact.role || ""} editable={editable} placeholder="求职意向，如：后端开发实习生"
+                label="求职意向" onCommit={(value) => onProfileChange?.({ contact_json: { ...contact, role: value } })} />
+            </p>
+          )}
+          {contactEntries.length > 0 && (
+            <p className="paper-contact">
+              {contactEntries.map(([key, label], index) => (
+                <Fragment key={key}>
+                  {index > 0 && (editable || contact[key]) && <span className="paper-sep" aria-hidden>·</span>}
+                  <Editable value={contact[key] || ""} editable={editable} placeholder={label} label={label}
+                    onCommit={(value) => onProfileChange?.({ contact_json: { ...contact, [key]: value } })} />
+                </Fragment>
+              ))}
+            </p>
+          )}
+          {(editable || contact.location) && (
+            <p className="paper-location">
+              <Editable value={contact.location || ""} editable={editable} placeholder="城市" label="城市"
+                onCommit={(value) => onProfileChange?.({ contact_json: { ...contact, location: value } })} />
+            </p>
+          )}
         </div>
         {hasMedia && (
           <div className="paper-media">
@@ -479,6 +495,12 @@ function PaperItem({
             <Editable value={textOf(item[shape.title])} editable={editable} placeholder={shape.titlePlaceholder}
               label={shape.titlePlaceholder} onCommit={(value) => set(shape.title, value)} />
           </span>
+          {shape.chip && (editable || textOf(item[shape.chip])) && (
+            <span className="paper-chip">
+              <Editable value={textOf(item[shape.chip])} editable={editable} placeholder="你的角色" label="角色"
+                onCommit={(value) => set(shape.chip!, value)} />
+            </span>
+          )}
           {metaParts.length > 0 && <span className="paper-item-meta">{renderMeta()}</span>}
         </div>
         {hasDate && (

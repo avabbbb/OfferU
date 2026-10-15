@@ -1,15 +1,14 @@
-// 简历子功能的三种模式。/optimize 与 /studio 旧入口都重定向到这里，
+// 简历的两种模式。/optimize 与 /studio 旧入口都重定向到这里（版式已并进每份简历的「排版」面板），
 // 这样外部书签、岗位页里的旧链接都不会坏。
-export type ResumeMode = "list" | "tailor" | "layout";
+export type ResumeMode = "list" | "tailor";
 
 export const RESUME_MODES: Array<{ id: ResumeMode; label: string; hint: string }> = [
-  { id: "list", label: "我的简历", hint: "所有简历版本都在这里。点开任意一份，直接在纸面上修改。" },
+  { id: "list", label: "我的简历", hint: "所有简历版本都在这里。点开任意一份，直接在纸面上修改；换模板、字体、主题色在右侧「排版」里。" },
   { id: "tailor", label: "岗位定制", hint: "选一个岗位，AI 只用你档案里已确认的事实提出修改，你逐条决定，原稿不会被覆盖。" },
-  { id: "layout", label: "版式", hint: "换模板、字体和主题色，生成可分享的 HTML 简历。不改内容。" },
 ];
 
 export function parseResumeMode(value: string | null | undefined): ResumeMode {
-  return value === "tailor" || value === "layout" ? value : "list";
+  return value === "tailor" ? value : "list";
 }
 
 /** 生成某个模式的地址，保留其它查询参数（如 job_ids）。 */

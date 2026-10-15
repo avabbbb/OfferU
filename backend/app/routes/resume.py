@@ -732,6 +732,20 @@ async def upload_logo(
     )
 
 
+@router.get("/assets/fonts/{name}")
+async def kami_font_file(name: str):
+    """Kami's typeface, downloaded on first use and then served locally."""
+    from fastapi.responses import FileResponse
+
+    from app.services.web_assets import kami_font
+
+    try:
+        path = await kami_font(name)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=safe_error_message(exc)) from exc
+    return FileResponse(path, media_type="font/ttf", headers={"Cache-Control": "public, max-age=31536000, immutable"})
+
+
 @router.post("/{resume_id}/logo/resolve")
 async def resolve_logo(
     resume_id: int,

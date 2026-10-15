@@ -23,6 +23,7 @@ import {
   type ResumeParseDiagnostics,
 } from "@/lib/hooks";
 import { resumeApi } from "@/lib/api";
+import ResumeThumbnail from "./components/ResumeThumbnail";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import {
   getProfileBulletText,
@@ -340,10 +341,7 @@ export default function ResumesListPage() {
                     onKeyDown={(event) => handleResumeCardKeyDown(event, resume.id)}
                     className="flex min-h-0 flex-1 cursor-pointer flex-col gap-4 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--primary-blue)]"
                   >
-                    {/* 缩略图占位 —— 柔和灰底 */}
-                    <div className="relative flex min-h-[150px] items-center justify-center overflow-hidden rounded-md border border-[var(--border)] bg-[var(--surface-muted)]">
-                      <FileText size={36} className="relative z-10 text-[var(--foreground-faint)]" />
-                    </div>
+                    <ResumeThumbnail resumeId={resume.id} />
 
                     {/* 简历信息 */}
                     <div className="space-y-1.5">

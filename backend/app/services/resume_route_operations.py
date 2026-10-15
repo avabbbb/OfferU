@@ -432,6 +432,14 @@ async def _resolve_university_logo(school_name: str) -> dict[str, str]:
     name = school_name.strip()
     if not name:
         raise ValueError("School name is required")
+    from app.services.web_assets import find_school_logo
+
+    try:
+        found = await find_school_logo(name)
+    except ValueError:
+        found = None  # dataset unreachable: fall back to Wikipedia below
+    if found:
+        return {**found, "source": "school-logo-dataset", "matched_title": found["school_name"]}
     headers = {"User-Agent": "OfferU/0.1 university-logo-resolver"}
     async with httpx.AsyncClient(timeout=15, follow_redirects=True, headers=headers) as client:
         response = await client.get(
@@ -458,7 +466,7 @@ async def _resolve_university_logo(school_name: str) -> dict[str, str]:
             original = page.get("original") or {}
             if original.get("source"):
                 return {"logo_url": original["source"], "school_name": name, "source": "zh.wikipedia.original", "matched_title": title}
-    raise ValueError(f"Logo not found for school: {name}")
+    raise ValueError(f"没找到「{name}」的校徽，可以自己上传一张")
 
 
 async def resolve_resume_logo(resume_id: int, school_name: str) -> dict[str, Any]:

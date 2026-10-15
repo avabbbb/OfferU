@@ -15,7 +15,6 @@ import { RESUME_MODES, parseResumeMode, resumeModeHref } from "./resumeModes";
 
 const ResumesListPage = lazy(() => import("./page"));
 const OptimizePage = lazy(() => import("@/app/optimize/page"));
-const StudioPage = lazy(() => import("@/app/studio/page"));
 
 function ModeFallback() {
   return (
@@ -58,7 +57,7 @@ export default function ResumeHub() {
       </nav>
 
       <Suspense fallback={<ModeFallback />}>
-        {mode === "tailor" ? <OptimizePage /> : mode === "layout" ? <StudioPage /> : <ResumesListPage />}
+        {mode === "tailor" ? <OptimizePage /> : <ResumesListPage />}
       </Suspense>
     </div>
   );
