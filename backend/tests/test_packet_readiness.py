@@ -1,4 +1,5 @@
 from __future__ import annotations
+from contextlib import nullcontext
 
 import asyncio
 import hashlib
@@ -86,11 +87,7 @@ class ApplicationPacketReadinessTests(unittest.TestCase):
                 job_id = job.id
             with patch.object(resume_optimization, "async_session", sessions), patch.object(
                 resume_workspace, "async_session", sessions
-            ), patch.object(
-                resume_workspace,
-                "get_pre_application_state",
-                new=AsyncMock(return_value={"stage": "needs_decision"}),
-            ):
+            ), nullcontext():
                 preparation = await resume_optimization.get_resume_preparation_context(job_id)
                 proposal = await resume_optimization.persist_director_resume_proposal(
                     job_id,

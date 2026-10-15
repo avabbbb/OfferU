@@ -91,11 +91,6 @@ async def _review_plan_for_run(database, monkeypatch, suffix: str, *, action: st
     from app.services import proposal_plan_store, resume_workspace
 
     seed = await seed_reviewable_resume_proposal(database, suffix)
-    monkeypatch.setattr(
-        resume_workspace,
-        "get_pre_application_state",
-        AsyncMock(return_value={"stage": "resume_proposal_ready"}),
-    )
     workspace = await resume_workspace.ensure_resume_workspace(
         job_id=seed["job_id"], proposal_id=seed["proposal_id"]
     )

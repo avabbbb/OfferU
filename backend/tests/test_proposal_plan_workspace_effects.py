@@ -54,11 +54,6 @@ def workspace_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(proposal_plan_sources, "async_session", database.sessions)
     monkeypatch.setattr(resume_workspace, "async_session", database.sessions)
     monkeypatch.setattr(proposal_plan_source_guard.sources, "async_session", database.sessions)
-    monkeypatch.setattr(
-        resume_workspace,
-        "_require_resume_proposal_gate",
-        _allow_workspace_for_isolated_test,
-    )
     yield database
     asyncio.run(engine.dispose())
 

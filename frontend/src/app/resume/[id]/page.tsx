@@ -638,7 +638,7 @@ export default function ResumeEditorPage() {
   // 含模型推断技能的建议必须逐条确认，不进入「全部采用」。
   const isInferred = (change: InlineChange) => Array.isArray(change.inferred_skills) && change.inferred_skills.length > 0;
   const inferredCount = changeTargets.filter(({ change }) => isInferred(change)).length;
-  const safeChangeIds = changeTargets.filter(({ change, target }) => !isConflicted(change, target) && !isInferred(change)).map(({ change }) => String(change.change_id));
+  const safeChangeIds = changeTargets.filter(({ change, target }) => !isConflicted(change, target) && !isInferred(change) && change.fact_gate?.status !== "blocked").map(({ change }) => String(change.change_id));
   const factGateBlocked = activeProposal?.fact_gate_status === "blocked";
   const askRewrite = (target: ResumeSectionBlock | undefined) => composeToAgent({
     skillId: "tailor_resume",

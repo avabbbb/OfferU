@@ -23,6 +23,8 @@ export interface InlineChange {
   reason?: string;
   /** 模型根据档案推断出的技能：可以采用，但必须逐条确认属实。 */
   inferred_skills?: Array<{ skill: string; basis?: string }>;
+  /** 逐条事实检查：只拦这一条，不影响其他建议。 */
+  fact_gate?: { status: "passed" | "blocked"; warnings?: string[] };
 }
 
 export function DiffLine({ change }: { change: ProposalTextChange }) {
@@ -65,7 +67,8 @@ export function InlineProposal({
       : change.change_type === "added"
         ? `建议新增段落「${change.after?.title || change.title || ""}」`
         : "";
-  const acceptBlocked = conflict || factGateBlocked;
+  const gateBlocked = change.fact_gate ? change.fact_gate.status === "blocked" : factGateBlocked;
+  const acceptBlocked = conflict || gateBlocked;
   const inferred = (change.inferred_skills || []).filter((item) => item && item.skill);
   const acceptLabel = inferred.length ? "属实，采用" : "采用";
 
@@ -101,6 +104,11 @@ export function InlineProposal({
           你在建议生成后改过这段，以你的版本为准。这条建议基于旧内容，不能直接采用。
         </p>
       )}
+      {change.fact_gate?.status === "blocked" && (
+        <p className="paper-proposal-conflict" role="note">
+          这一条没有通过事实检查：{(change.fact_gate.warnings || []).join("；") || "含档案里没有的数字或名称"}。可以跳过，其他建议不受影响。
+        </p>
+      )}
       {structural && <p className="paper-proposal-structural">{structural}</p>}
       {!editing && lines.map((line, index) => (
         <div key={index} className="paper-proposal-change">
@@ -133,7 +141,7 @@ export function InlineProposal({
         ) : (
           <>
             <button type="button" disabled={busy || acceptBlocked} className="is-primary" onClick={() => onAccept()}
-              title={factGateBlocked ? "事实门未通过，请先补充证据" : conflict ? "这段你改过，先跳过或让 AI 重写" : undefined}>
+              title={gateBlocked ? "这一条没有通过事实检查" : conflict ? "这段你改过，先跳过或让 AI 重写" : undefined}>
               <Check size={11} aria-hidden /> {acceptLabel}
             </button>
             <button type="button" disabled={busy || acceptBlocked || !editableLine} onClick={() => setEditing(true)}

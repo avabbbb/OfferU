@@ -94,7 +94,6 @@ def test_workspace_creation_and_batch_adoption_use_same_run_registry_receipts(tm
         from app.models.models import ResumeOptimizationProposal, ResumeSection
         database = make_db(tmp_path, monkeypatch)
         await database.start(create_schema=True)
-        monkeypatch.setattr(resume_workspace, 'get_pre_application_state', AsyncMock(return_value={'stage': 'resume_proposal_ready'}))
         monkeypatch.setattr('app.services.ui_approval_capability.accepts_authorization', lambda value: value == 'Bearer synthetic-workspace-native')
         seed = await seed_reviewable_resume_proposal(database, uuid4().hex)
         run_id = f'run_{uuid4().hex[:16]}'

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from contextlib import nullcontext
 
 import asyncio
 import hashlib
@@ -34,11 +35,7 @@ class ResumeWorkspaceTests(unittest.TestCase):
             fixture = await _seed(sessions, "accept")
             with patch.object(resume_workspace, "async_session", sessions), patch.object(
                 resume_route_operations, "async_session", sessions
-            ), patch.object(
-                resume_workspace,
-                "get_pre_application_state",
-                new=AsyncMock(return_value={"stage": "resume_proposal_ready"}),
-            ), patch.object(
+            ), nullcontext(), patch.object(
                 automation, "async_session", sessions
             ), patch.object(
                 automation,
@@ -125,11 +122,7 @@ class ResumeWorkspaceTests(unittest.TestCase):
             fixture = await _seed(sessions, "elsewhere")
             with patch.object(resume_workspace, "async_session", sessions), patch.object(
                 resume_route_operations, "async_session", sessions
-            ), patch.object(
-                resume_workspace,
-                "get_pre_application_state",
-                new=AsyncMock(return_value={"stage": "resume_proposal_ready"}),
-            ):
+            ), nullcontext():
                 workspace = await resume_workspace.ensure_resume_workspace(
                     job_id=fixture["job_id"], proposal_id=fixture["proposal_id"]
                 )
@@ -166,11 +159,7 @@ class ResumeWorkspaceTests(unittest.TestCase):
             fixture = await _seed(sessions, "target-edit")
             with patch.object(resume_workspace, "async_session", sessions), patch.object(
                 resume_route_operations, "async_session", sessions
-            ), patch.object(
-                resume_workspace,
-                "get_pre_application_state",
-                new=AsyncMock(return_value={"stage": "resume_proposal_ready"}),
-            ):
+            ), nullcontext():
                 workspace = await resume_workspace.ensure_resume_workspace(
                     job_id=fixture["job_id"], proposal_id=fixture["proposal_id"]
                 )
@@ -210,11 +199,7 @@ class ResumeWorkspaceTests(unittest.TestCase):
                 resume_workspace,
                 "async_session",
                 sessions,
-            ), patch.object(
-                resume_workspace,
-                "get_pre_application_state",
-                new=AsyncMock(return_value={"stage": "resume_proposal_ready"}),
-            ):
+            ), nullcontext():
                 workspace = await resume_workspace.ensure_resume_workspace(
                     job_id=fixture["job_id"], proposal_id=fixture["proposal_id"]
                 )
@@ -241,11 +226,7 @@ class ResumeWorkspaceTests(unittest.TestCase):
                 resume_workspace,
                 "async_session",
                 sessions,
-            ), patch.object(
-                resume_workspace,
-                "get_pre_application_state",
-                new=AsyncMock(return_value={"stage": "resume_proposal_ready"}),
-            ):
+            ), nullcontext():
                 workspace = await resume_workspace.ensure_resume_workspace(
                     job_id=fixture["job_id"], proposal_id=fixture["proposal_id"]
                 )
@@ -288,11 +269,7 @@ class ResumeWorkspaceTests(unittest.TestCase):
                 resume_workspace,
                 "async_session",
                 sessions,
-            ), patch.object(
-                resume_workspace,
-                "get_pre_application_state",
-                new=AsyncMock(return_value={"stage": "resume_proposal_ready"}),
-            ):
+            ), nullcontext():
                 workspace = await resume_workspace.ensure_resume_workspace(
                     job_id=fixture["job_id"], proposal_id=fixture["proposal_id"]
                 )
@@ -320,10 +297,7 @@ class ResumeWorkspaceTests(unittest.TestCase):
             async with engine.begin() as connection:
                 await connection.run_sync(Base.metadata.create_all)
             fixture = await _seed(sessions, "batch")
-            with patch.object(resume_workspace, "async_session", sessions), patch.object(
-                resume_workspace, "get_pre_application_state",
-                new=AsyncMock(return_value={"stage": "resume_proposal_ready"}),
-            ):
+            with patch.object(resume_workspace, "async_session", sessions), nullcontext():
                 workspace = await resume_workspace.ensure_resume_workspace(
                     job_id=fixture["job_id"], proposal_id=fixture["proposal_id"]
                 )
@@ -372,9 +346,7 @@ class ResumeWorkspaceTests(unittest.TestCase):
             async with engine.begin() as connection:
                 await connection.run_sync(Base.metadata.create_all)
             fixture = await _seed(sessions, "concurrent-batch")
-            with patch.object(resume_workspace, "async_session", sessions), patch.object(
-                resume_workspace, "get_pre_application_state", new=AsyncMock(return_value={"stage": "resume_proposal_ready"}),
-            ):
+            with patch.object(resume_workspace, "async_session", sessions), nullcontext():
                 workspace = await resume_workspace.ensure_resume_workspace(job_id=fixture["job_id"], proposal_id=fixture["proposal_id"])
                 args = dict(proposal_id=fixture["proposal_id"], resume_id=workspace["resume"]["id"], change_ids=[fixture["change_id"]], action="accept")
                 results = await asyncio.gather(*[resume_workspace.review_resume_proposal_items(**args) for _ in range(2)])
@@ -394,9 +366,7 @@ class ResumeWorkspaceTests(unittest.TestCase):
             async with engine.begin() as connection:
                 await connection.run_sync(Base.metadata.create_all)
             fixture = await _seed(sessions, "reject-stale")
-            with patch.object(resume_workspace, "async_session", sessions), patch.object(
-                resume_workspace, "get_pre_application_state", new=AsyncMock(return_value={"stage": "resume_proposal_ready"}),
-            ):
+            with patch.object(resume_workspace, "async_session", sessions), nullcontext():
                 workspace = await resume_workspace.ensure_resume_workspace(job_id=fixture["job_id"], proposal_id=fixture["proposal_id"])
                 async with sessions() as db:
                     proposal = await db.get(ResumeOptimizationProposal, fixture["proposal_id"])
@@ -412,23 +382,6 @@ class ResumeWorkspaceTests(unittest.TestCase):
             await engine.dispose()
         asyncio.run(run())
 
-    def test_workspace_requires_confirmed_pre_application_decision(self) -> None:
-        async def run() -> None:
-            with patch.object(
-                resume_workspace,
-                "get_pre_application_state",
-                new=AsyncMock(return_value={"stage": "needs_decision"}),
-            ), patch.object(
-                resume_workspace,
-                "_has_live_director_proposal",
-                new=AsyncMock(return_value=False),
-            ):
-                with self.assertRaisesRegex(ValueError, "确认投或有条件投"):
-                    await resume_workspace.ensure_resume_workspace(job_id=7)
-
-        asyncio.run(run())
-
-
 class InferredSkillReviewTests(unittest.TestCase):
     def test_inferred_change_must_be_confirmed_one_by_one(self) -> None:
         async def run() -> dict:
@@ -437,10 +390,7 @@ class InferredSkillReviewTests(unittest.TestCase):
             async with engine.begin() as connection:
                 await connection.run_sync(Base.metadata.create_all)
             fixture = await _seed(sessions, "inferred")
-            with patch.object(resume_workspace, "async_session", sessions), patch.object(
-                resume_workspace, "get_pre_application_state",
-                new=AsyncMock(return_value={"stage": "resume_proposal_ready"}),
-            ):
+            with patch.object(resume_workspace, "async_session", sessions), nullcontext():
                 workspace = await resume_workspace.ensure_resume_workspace(
                     job_id=fixture["job_id"], proposal_id=fixture["proposal_id"]
                 )

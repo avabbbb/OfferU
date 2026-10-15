@@ -699,11 +699,6 @@ def test_batch_resume_review_is_one_registry_node_for_all_displayed_diffs(
 
         _permit_test_ui_capability(monkeypatch)
         seed = await seed_reviewable_resume_proposal(proposal_v2_db, "batch-first-slice")
-        monkeypatch.setattr(
-            resume_workspace,
-            "get_pre_application_state",
-            AsyncMock(return_value={"stage": "resume_proposal_ready"}),
-        )
         workspace = await resume_workspace.ensure_resume_workspace(
             job_id=seed["job_id"], proposal_id=seed["proposal_id"]
         )
@@ -1652,12 +1647,6 @@ def test_tailor_resume_fixture_runs_ask_plan_receipts_and_workspace_on_one_run(
             proposal.proposed_rows_json = after_rows
             proposal.diff_json = changes
             await db.commit()
-
-        monkeypatch.setattr(
-            resume_workspace,
-            "get_pre_application_state",
-            AsyncMock(return_value={"stage": "resume_proposal_ready"}),
-        )
         workspace = await resume_workspace.ensure_resume_workspace(
             job_id=seed["job_id"], proposal_id=seed["proposal_id"]
         )

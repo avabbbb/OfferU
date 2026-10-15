@@ -194,6 +194,30 @@ def _strategy_inferred_skills(strategy: Any) -> list[dict[str, str]]:
     ]
 
 
+def _attach_change_fact_gates(diff: list[dict[str, Any]], sources: list[Any]) -> None:
+    """Fact-check each change on its own so one bad bullet never blocks the rest."""
+    for change in diff:
+        after = change.get("after")
+        if not isinstance(after, dict):
+            change["fact_gate"] = {"status": "passed", "warnings": []}
+            continue
+        gate = validate_resume_fact_gates(
+            [deepcopy(after)],
+            sources,
+            strict_structured_facts=True,
+            inferred_claims=change.get("inferred_skills") or [],
+        )
+        blocking = [
+            str(warning.get("detail") or "")
+            for warning in gate["warnings"]
+            if warning.get("issue") not in {"unverified_named_claim", "inferred_skill"}
+        ]
+        change["fact_gate"] = {
+            "status": "blocked" if blocking else "passed",
+            "warnings": blocking[:5],
+        }
+
+
 def _build_diff(
     before_rows: list[dict[str, Any]],
     after_rows: list[dict[str, Any]],
@@ -679,6 +703,10 @@ async def prepare_resume_optimization(
                     item.pop("_gate_warnings", None)
         diff = _build_diff(candidate["original_rows"], proposed_rows, inferred_by_row)
 
+        _attach_change_fact_gates(diff, selected)
+        # 整份提案只有在每一条都没过事实检查时才算 blocked。
+        any_change_ok = any((change.get("fact_gate") or {}).get("status") != "blocked" for change in diff)
+
         contact_json = (
             reference_resume.contact_json
             if reference_resume and isinstance(reference_resume.contact_json, dict)
@@ -715,7 +743,7 @@ async def prepare_resume_optimization(
             profile_id=profile.id,
             research_run_id=research["run_id"],
             reference_resume_id=clean_reference_id,
-            status="blocked" if fact_gates["status"] == "blocked" else "ready",
+            status="blocked" if fact_gates["status"] == "blocked" and not any_change_ok else "ready",
             source_section_ids_json=[section.id for section in selected],
             source_snapshot_hash=source_hash,
             research_snapshot_hash=research["snapshot_hash"],
@@ -1747,7 +1775,7 @@ async def review_resume_optimization(
             }
 
         if proposal.status == "blocked":
-            raise ValueError("事实门处于 blocked，必须重新生成合规提案后才能接受")
+            raise ValueError("所有改动都没有通过事实检查，请补充档案证据后重新生成")
         inferred = _strategy_inferred_skills(proposal.strategy_json)
         if inferred:
             raise ValueError(
@@ -1756,17 +1784,14 @@ async def review_resume_optimization(
         if proposal.status != "ready":
             raise ValueError(f"提案状态 {proposal.status} 不能接受")
 
+        # 生成后 JD / 档案 / 工作区 / 调研有变化：只提示，不再判过期。
+        notices: list[str] = []
         current_jd = (job.raw_description or "").strip()
         expected_jd_hash = str(
             (proposal.strategy_json or {}).get("job_description_sha256") or ""
         )
         if not current_jd or _sha256(current_jd) != expected_jd_hash:
-            return await _mark_stale(
-                db,
-                proposal=proposal,
-                job=job,
-                reason="提案生成后岗位 JD 已变化或缺失，请重新生成",
-            )
+            notices.append("提案生成后岗位描述有变化")
 
         source_ids = list(proposal.source_section_ids_json or [])
         sections = list((
@@ -1787,12 +1812,7 @@ async def review_resume_optimization(
                 reason="提案引用的已验证档案事实已缺失或降级，请重新生成",
             )
         if _profile_snapshot_hash(sections) != proposal.source_snapshot_hash:
-            return await _mark_stale(
-                db,
-                proposal=proposal,
-                job=job,
-                reason="提案生成后档案事实已变化，请重新生成以避免使用过期内容",
-            )
+            notices.append("提案生成后档案有变化")
         # The editable workspace is part of the proposal's freshness envelope:
         # if the user changed the bound resume after the proposal last synced,
         # accepting whole would silently overwrite those edits.
@@ -1814,12 +1834,8 @@ async def review_resume_optimization(
             from app.services.resume_workspace import workspace_content_hash
 
             if workspace_content_hash(workspace_resume) != proposal.workspace_snapshot_hash:
-                return await _mark_stale(
-                    db,
-                    proposal=proposal,
-                    job=job,
-                    reason="提案绑定的工作区已被手动修改，请重新生成或逐条审核",
-                )
+                # 整份采用会另存一份新简历，不会覆盖你在工作区的手改。
+                notices.append("工作区在提案生成后被你改过，你的版本保留在原工作区")
 
         if proposal.research_run_id:
             try:
@@ -1829,19 +1845,10 @@ async def review_resume_optimization(
                     research_run_id=proposal.research_run_id,
                 )
             except ValueError as exc:
-                return await _mark_stale(
-                    db,
-                    proposal=proposal,
-                    job=job,
-                    reason=f"岗位调研已不可用：{exc}",
-                )
-            if research["snapshot_hash"] != proposal.research_snapshot_hash:
-                return await _mark_stale(
-                    db,
-                    proposal=proposal,
-                    job=job,
-                    reason="岗位调研证据快照已变化，请重新生成提案",
-                )
+                research = None
+                notices.append(f"岗位调研已不可用：{exc}")
+            if research is not None and research["snapshot_hash"] != proposal.research_snapshot_hash:
+                notices.append("提案生成后岗位调研有变化")
         # career_director proposals carry no research run; JD + verified
         # Profile freshness above is their complete staleness envelope.
         proposed_rows = deepcopy(proposal.proposed_rows_json or [])
@@ -1851,12 +1858,7 @@ async def review_resume_optimization(
             strict_structured_facts=True,
         )
         if fact_gates["status"] != "passed":
-            proposal.status = "blocked"
-            proposal.fact_gates_json = _json_safe(fact_gates)
-            proposal.review_note = "接受前重新校验未通过"
-            proposal.reviewed_at = _now()
-            await db.commit()
-            raise ValueError("接受前事实门重新校验失败，提案已转为 blocked")
+            raise ValueError("有几条没有通过事实检查，请在简历画布上逐条采用，跳过有问题的那几条")
 
         presentation = proposal.presentation_json or {}
         trace = proposal.trace_json or {}
@@ -1951,4 +1953,5 @@ async def review_resume_optimization(
             **_proposal_detail(proposal, job),
             "learning_observation": observation,
             "duplicate": False,
+            "notices": notices,
         }

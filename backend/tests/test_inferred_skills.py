@@ -149,3 +149,15 @@ def test_inference_markers_travel_to_diff_not_to_rows():
     diff = _build_diff(rows, applied, inferred)
     assert diff[0]["inferred_skills"] == [{"skill": "组件化开发", "basis": ORIGINAL}]
     assert _strategy_inferred_skills({"inferred_skills": [{"skill": "组件化开发"}, {"x": 1}]}) == [{"skill": "组件化开发"}]
+
+
+def test_fact_gate_is_per_change_so_one_bad_bullet_does_not_block_the_rest():
+    from app.services.resume_optimization import _attach_change_fact_gates
+
+    good = {"section_type": "project", "title": "项目经历", "source_section_ids": [1],
+            "content_json": [{"name": "项目经历", "description": ORIGINAL}]}
+    bad = {**good, "title": "实习经历", "content_json": [{"name": "项目经历", "description": "效率提升 30%"}]}
+    diff = [{"after": good}, {"after": bad}, {"after": None}]
+    _attach_change_fact_gates(diff, SOURCE)
+    assert [change["fact_gate"]["status"] for change in diff] == ["passed", "blocked", "passed"]
+    assert "30%" in diff[1]["fact_gate"]["warnings"][0]
