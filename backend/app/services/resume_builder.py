@@ -30,6 +30,20 @@ def _build_source_profile_snapshot(profile: Profile, selected: list[ProfileSecti
     }
 
 
+# Brand-new resumes open on the "paper" canvas (what you see is the export).
+# Anything derived from an existing resume keeps that resume's look, and an
+# existing resume without an explicit template keeps rendering as before.
+NEW_RESUME_DEFAULT_TEMPLATE = "paper"
+
+
+def with_new_resume_template(style_config: dict | None, *, derived_from_existing: bool) -> dict:
+    style = dict(style_config or {})
+    if derived_from_existing or style.get("template") or style.get("templateType"):
+        return style
+    style["template"] = NEW_RESUME_DEFAULT_TEMPLATE
+    return style
+
+
 async def stage_generated_resume(
     *,
     db,
@@ -54,7 +68,9 @@ async def stage_generated_resume(
         title=title,
         summary=summary,
         contact_json=contact_json,
-        style_config=style_config,
+        style_config=with_new_resume_template(
+            style_config, derived_from_existing=source_resume_id is not None or template_id is not None
+        ),
         template_id=template_id,
         is_primary=False,
         language=language or "zh",
