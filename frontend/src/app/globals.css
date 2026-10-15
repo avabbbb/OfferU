@@ -1289,3 +1289,24 @@ body {
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .resume-glass { background: rgba(255, 255, 255, 0.94); }
 }
+
+.resume-glass-info {
+  opacity: 0;
+  transform: translateY(8px) scale(0.98);
+  transition: opacity 220ms cubic-bezier(0.2, 0.8, 0.2, 1), transform 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  pointer-events: none;
+}
+
+.resume-glass-card:hover .resume-glass-info,
+.resume-glass-card:focus-visible .resume-glass-info {
+  opacity: 1;
+  transform: none;
+}
+
+@media (hover: none) {
+  .resume-glass-info { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .resume-glass-info { transition: opacity 120ms linear; transform: none; }
+}

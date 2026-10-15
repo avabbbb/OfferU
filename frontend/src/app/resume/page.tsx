@@ -338,8 +338,8 @@ export default function ResumesListPage() {
                 className="resume-glass-card group relative cursor-pointer overflow-hidden rounded-[16px] bg-white outline-none shadow-[0_0_0_0.5px_rgba(0,0,0,0.08),0_2px_8px_rgba(0,0,0,0.06),0_12px_32px_rgba(0,0,0,0.06)] transition-[transform,box-shadow] duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] hover:-translate-y-1 hover:shadow-[0_0_0_0.5px_rgba(0,0,0,0.08),0_6px_16px_rgba(0,0,0,0.08),0_24px_48px_rgba(0,0,0,0.10)] focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
               >
                 <ResumeThumbnail resumeId={resume.id} variant="page" />
-                {/* 毛玻璃信息层：透出下面的简历，不挡住页眉 */}
-                <div className="resume-glass absolute inset-x-2 bottom-2 rounded-[12px] px-3 py-2.5">
+                {/* 毛玻璃信息层：平时藏起来只看简历本身，悬停/键盘聚焦时浮出；触屏设备没有悬停，常显 */}
+                <div className="resume-glass resume-glass-info absolute inset-x-2 bottom-2 rounded-[12px] px-3 py-2.5">
                   <div className="flex items-baseline gap-2">
                     <h3 className="min-w-0 flex-1 truncate text-[14px] font-semibold tracking-[-0.01em] text-[#1d1d1f]">{resume.title || "未命名简历"}</h3>
                     {resume.language && <span className="shrink-0 text-[11px] font-medium text-[#1d1d1f]/45">{resume.language === "en" ? "EN" : resume.language === "zh" ? "中文" : resume.language}</span>}
