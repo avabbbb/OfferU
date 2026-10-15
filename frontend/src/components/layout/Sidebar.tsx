@@ -1,64 +1,19 @@
 "use client";
 
 // =============================================
-// Internal Beta 核心导航：Today / Pipeline / Opportunity / Profile。
-// 材料、岗位情报和面试训练属于 Job 上下文；设置保留为支持入口。
+// 一级导航：今天 / 投递 / 岗位 / 档案（定义见 navModel.ts）。
+// 子页面以二级标签出现在页面顶部；设置放在侧栏底部，不占导航位。
 // =============================================
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
-import {
-  Briefcase,
-  CalendarDays,
-  FileText,
-  Mail,
-  MessagesSquare,
-  Search,
-  Settings,
-  Send,
-  Sun,
-  UserRound,
-} from "lucide-react";
+import { Search, Settings } from "lucide-react";
 import { useWorkbenchOptional } from "@/lib/workbench";
 import { AgentConnectionStatus } from "@/components/workbench/AgentConnectionPanel";
+import { PRIMARY_NAV, SETTINGS_HREF, activePrimary, type PrimaryNavItem } from "./navModel";
 
-interface NavItem {
-  href: string;
-  label: string;
-  hint: string;
-  icon: typeof Sun;
-  /** 命中这些前缀时视为处于该阶段 */
-  match: string[];
-}
-
-// 核心求职流程 + 可独立打开的工作台入口。
-// 材料、岗位情报仍由 Job Detail / Today 承接；这里保证每个路由都能从导航找到。
-const stageItems: NavItem[] = [
-  { href: "/", label: "今天", hint: "下一步", icon: Sun, match: ["/"] },
-  { href: "/applications?view=board", label: "投递进展", hint: "阶段与时间线", icon: Send, match: ["/applications", "/email", "/calendar"] },
-  { href: "/jobs", label: "岗位", hint: "目标岗位", icon: Briefcase, match: ["/jobs"] },
-  { href: "/profile", label: "档案", hint: "职业档案", icon: UserRound, match: ["/profile"] },
-];
-
-const workspaceItems: NavItem[] = [
-  { href: "/resume", label: "简历", hint: "编辑 · 岗位定制 · 版式", icon: FileText, match: ["/resume", "/optimize", "/studio"] },
-  { href: "/interview", label: "面试", hint: "题库与面经", icon: MessagesSquare, match: ["/interview"] },
-  { href: "/email", label: "邮件", hint: "进展与提醒", icon: Mail, match: ["/email"] },
-  { href: "/calendar", label: "日历", hint: "面试日程", icon: CalendarDays, match: ["/calendar"] },
-];
-
-const supportItems: NavItem[] = [
-  { href: "/settings", label: "设置", hint: "来源与授权", icon: Settings, match: ["/settings"] },
-];
-
-const mobileItems = stageItems;
-
-function isStageActive(item: NavItem, pathname: string): boolean {
-  return item.match.some((prefix) =>
-    prefix === "/" ? pathname === "/" : pathname === prefix || pathname.startsWith(prefix + "/")
-  );
-}
+type NavItem = PrimaryNavItem;
 
 const navContainer = {
   hidden: { opacity: 0 },
@@ -122,7 +77,8 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
 }
 
 export function Sidebar() {
-  const pathname = usePathname();
+  const pathname = usePathname() || "/";
+  const current = activePrimary(pathname);
   const workbench = useWorkbenchOptional();
 
   return (
@@ -161,35 +117,35 @@ export function Sidebar() {
           animate="show"
           className="offeru-sidebar-nav relative z-10 flex-1 space-y-0.5 overflow-y-auto px-3 py-3"
         >
-          {stageItems.map((item) => (
+          {PRIMARY_NAV.map((item) => (
             <motion.div key={item.href} variants={navItemVariant}>
-              <NavLink item={item} active={isStageActive(item, pathname)} />
+              <NavLink item={item} active={current?.href === item.href} />
             </motion.div>
           ))}
-
-          <motion.div variants={navItemVariant} className="!mt-4 space-y-0.5 border-t border-[var(--border)] pt-3">
-            <p className="px-2.5 pb-1 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--foreground-faint)]">工作台</p>
-            {workspaceItems.map((item) => (
-              <NavLink key={item.href} item={item} active={isStageActive(item, pathname)} />
-            ))}
-          </motion.div>
-
-          <motion.div variants={navItemVariant} className="!mt-4 border-t border-[var(--border)] pt-3">
-            {supportItems.map((item) => (
-              <NavLink key={item.href} item={item} active={isStageActive(item, pathname)} />
-            ))}
-          </motion.div>
         </motion.nav>
-        <div className="border-t border-[var(--border)] p-3">
-          <AgentConnectionStatus />
+        <div className="flex items-center gap-2 border-t border-[var(--border)] p-3">
+          <div className="min-w-0 flex-1">
+            <AgentConnectionStatus />
+          </div>
+          <Link
+            href={SETTINGS_HREF}
+            aria-label="设置"
+            title="设置"
+            aria-current={pathname === SETTINGS_HREF ? "page" : undefined}
+            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--border)] transition-colors ${
+              pathname === SETTINGS_HREF ? "text-[var(--foreground)]" : "text-[var(--foreground-muted)] hover:text-[var(--foreground)]"
+            }`}
+          >
+            <Settings size={15} strokeWidth={1.75} />
+          </Link>
         </div>
       </aside>
 
       <nav className="offeru-mobile-nav fixed inset-x-0 bottom-0 z-50 border-t border-[var(--border)] bg-[var(--surface)] md:hidden">
         <div className="grid grid-cols-4 gap-0">
-          {mobileItems.map((item) => {
+          {PRIMARY_NAV.map((item) => {
             const Icon = item.icon;
-            const active = isStageActive(item, pathname);
+            const active = current?.href === item.href;
 
             return (
               <Link

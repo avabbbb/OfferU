@@ -13,6 +13,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, Bot } from "lucide-react";
 import { AGENT_COMPOSE_EVENT } from "@/lib/agentCompose";
 import { Sidebar } from "@/components/layout/Sidebar";
+import { SectionTabs } from "@/components/layout/SectionTabs";
 import { OnboardingGate } from "@/components/onboarding/OnboardingGate";
 import { WorkbenchProvider, useWorkbench } from "@/lib/workbench";
 import { AgentConnectionProvider } from "@/lib/agentConnection";
@@ -157,7 +158,10 @@ function WorkbenchFrame({ children }: { children: React.ReactNode }) {
       <div className="offeru-workbench-shell offeru-viewport-shell relative flex w-full overflow-hidden">
         <Sidebar />
         <main className="workbench-main relative h-full min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-5 pb-36 md:px-6 md:py-6 md:pb-8">
-          <div className="mx-auto max-w-[1600px]">{children}</div>
+          <div className="mx-auto max-w-[1600px]">
+            <SectionTabs />
+            {children}
+          </div>
         </main>
         {pathname !== "/settings" && <div className="fixed bottom-[72px] left-4 z-40 max-w-[calc(100vw-2rem)] md:hidden">
           <AgentConnectionStatus compact />

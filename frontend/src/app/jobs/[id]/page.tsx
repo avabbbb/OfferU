@@ -68,15 +68,6 @@ const MANUAL_DECISION_STAGES = new Set([
   "research_rejected",
 ]);
 
-const WORKSPACE_SECTIONS = [
-  { id: "role-intelligence-panel", label: "岗位情报" },
-  { id: "job-research-handback", label: "调研证据" },
-  { id: "pre-application-decision", label: "投前决定" },
-  { id: "resume-proposal", label: "简历材料" },
-  { id: "job-application-context", label: "投递进展" },
-  { id: "job-description", label: "职位描述" },
-];
-
 const PRE_APPLICATION_STAGE_LABELS: Record<string, string> = {
   needs_job_description: "缺少职位描述",
   needs_profile_evidence: "缺少档案证据",
@@ -690,24 +681,17 @@ export default function JobDetailPage() {
             )}
           </div>
         </div>
-        <nav aria-label="岗位工作区" className="mt-5 flex flex-wrap gap-1.5 border-t border-[var(--border)] pt-4">
-          {WORKSPACE_SECTIONS.map((section) => (
-            <button
-              key={section.id}
-              type="button"
-              onClick={() => scrollToWorkspaceSection(section.id)}
-              className="rounded-full border border-[var(--border)] px-3 py-1 text-xs font-semibold text-[var(--foreground-muted)] transition-colors hover:border-[var(--foreground)] hover:text-[var(--foreground)]"
-            >
-              {section.label}
-            </button>
-          ))}
-        </nav>
       </section>
 
       <JobWorkspaceOverview
         jobId={job.id}
-        snapshotValue="岗位已保存"
-        snapshotDescription={[job.company, job.location].filter(Boolean).join(" · ")}
+        snapshotValue={job.salary_text || "薪资未写明"}
+        snapshotDescription={[
+          job.location,
+          job.is_campus ? "校招" : "",
+          job.education,
+          job.experience,
+        ].filter(Boolean).join(" · ") || job.company}
         roleTaskStatus={preparationTask?.status}
         materialStatus={resumeProposal?.status}
         materialChangeCount={resumeProposal?.change_count ?? 0}

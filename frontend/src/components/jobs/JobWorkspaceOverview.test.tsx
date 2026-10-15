@@ -55,16 +55,16 @@ describe("JobWorkspaceOverview", () => {
       />,
     );
 
-    expect(screen.getByText("Snapshot")).toBeInTheDocument();
-    expect(screen.getByText("Role Intelligence")).toBeInTheDocument();
-    expect(screen.getByText("Evidence Map")).toBeInTheDocument();
-    expect(screen.getByText("Materials")).toBeInTheDocument();
-    expect(screen.getByText("Interview")).toBeInTheDocument();
-    expect(screen.getByText("Timeline")).toBeInTheDocument();
+    expect(screen.getByText("快照")).toBeInTheDocument();
+    expect(screen.getByText("岗位情报")).toBeInTheDocument();
+    expect(screen.getByText("证据对照")).toBeInTheDocument();
+    expect(screen.getByText("材料")).toBeInTheDocument();
+    expect(screen.getByText("面试")).toBeInTheDocument();
+    expect(screen.getByText("时间线")).toBeInTheDocument();
 
     await waitFor(() => expect(screen.getByText("42 个参考岗位")).toBeInTheDocument());
-    expect(screen.getByText("2 proven")).toBeInTheDocument();
-    expect(screen.getByText("1 gaps")).toBeInTheDocument();
+    expect(screen.getByText("能证明 2 项")).toBeInTheDocument();
+    expect(screen.getByText("待准备 1 项")).toBeInTheDocument();
     expect(screen.getByText("4 条候选修改")).toBeInTheDocument();
   });
 
@@ -87,7 +87,7 @@ describe("JobWorkspaceOverview", () => {
       />,
     );
 
-    await userEvent.setup().click(screen.getByRole("button", { name: "打开 Materials" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "打开 材料" }));
     expect(target.scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
 
     target.remove();

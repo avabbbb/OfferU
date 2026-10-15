@@ -23,7 +23,7 @@ type JobWorkspaceOverviewProps = {
 };
 
 type Panel = {
-  name: "Snapshot" | "Role Intelligence" | "Evidence Map" | "Materials" | "Interview" | "Timeline";
+  name: "快照" | "岗位情报" | "证据对照" | "材料" | "面试" | "时间线";
   targetId: string;
   value: ReactNode;
   description: string;
@@ -55,7 +55,7 @@ function materialProjection(
   if (status === "accepted") return { status: "已完成", description: "岗位版简历已接受并保存。" };
   if (status === "rejected") return { status: "已完成", description: "候选已拒绝，原始简历保持不变。" };
   if (factGateStatus === "blocked" || status === "blocked") {
-    return { status: "需要你审核", description: "证据门未通过；不能把未被证据支撑的修改写入简历。" };
+    return { status: "需要你审核", description: "有修改在档案里找不到证据，这些不会写进简历。" };
   }
   if (status === "ready" || status === "in_review") {
     return { status: "需要你审核", description: "AI 修改已准备好，等待你逐条接受或拒绝。" };
@@ -126,9 +126,9 @@ export function JobWorkspaceOverview({
 
     const roleDescription = benchmark?.status === "completed"
       ? benchmark.sample_sufficient === false
-        ? "基准已完成，但样本不足，暂不生成正式市场频率结论。"
-        : `${benchmark.company_count ?? 0} 家公司 · 来自现有 benchmark snapshot。`
-      : "等待现有 Role Intelligence 任务产出可用 snapshot。";
+        ? "相似岗位样本不够，先不下「大家都要 / 这家特别看重」的结论。"
+        : `来自 ${benchmark.company_count ?? 0} 家公司：哪些是共性要求，哪些是这家特别看重的。`
+      : "收集相似岗位后，会分出共性要求和这家特别看重的能力。";
 
     const evidenceStatus: JobWorkspaceOverviewStatus = benchmark?.status === "completed"
       ? gapCount > 0
@@ -151,12 +151,12 @@ export function JobWorkspaceOverview({
           : "未开始";
 
     const interviewDescription = interviewNeedsReview
-      ? "最近一次复盘已经形成 learning candidate，等待你审核。"
+      ? "复盘里总结出的经验等你确认，确认后才会写进档案。"
       : interviewActive
-        ? "面试准备或复盘任务正在进行。"
+        ? "正在准备或复盘。"
         : interviewTaskCount > 0
-          ? "最近的面试 lifecycle 已有持久结果。"
-          : "尚未有与这个岗位关联的面试任务。";
+          ? "已有面试准备或复盘记录。"
+          : "收到面试邀请后，会针对缺口出题练习。";
 
     const timelineStatus: JobWorkspaceOverviewStatus = timelineCompleted
       ? "已完成"
@@ -166,59 +166,59 @@ export function JobWorkspaceOverview({
 
     return [
       {
-        name: "Snapshot",
+        name: "快照",
         targetId: "job-snapshot",
         value: snapshotValue,
         description: snapshotDescription,
         status: "已完成",
       },
       {
-        name: "Role Intelligence",
+        name: "岗位情报",
         targetId: "role-intelligence-panel",
         value: roleValue,
         description: roleDescription,
         status: roleStatus,
       },
       {
-        name: "Evidence Map",
+        name: "证据对照",
         targetId: "evidence-map",
         value: benchmark?.status === "completed" ? (
           <>
-            <span className="text-[var(--primary-green)]">{supportedCount} proven</span>
+            <span className="text-[var(--primary-green)]">能证明 {supportedCount} 项</span>
             <span className="text-[var(--foreground-muted)]"> · </span>
-            <span className="text-amber-800">{gapCount} gaps</span>
+            <span className="text-amber-800">待准备 {gapCount} 项</span>
           </>
         ) : "等待岗位情报",
         description: benchmark?.status === "completed"
           ? gapCount > 0
-            ? "缺口来自现有 Career Evidence Gap；这里只投影，不新增判断。"
-            : "当前可见 signal 都已有证据覆盖。"
-          : "岗位基准完成后，这里会投影 supported / partial / missing。",
+            ? "绿色是档案里有证据的要求，琥珀色是下一步要准备的。"
+            : "这个岗位看重的能力，你的档案里都有证据。"
+          : "岗位情报出来后，会和你的档案逐条对照。",
         status: evidenceStatus,
       },
       {
-        name: "Materials",
+        name: "材料",
         targetId: "materials",
         value: materialChangeCount > 0 ? `${materialChangeCount} 条候选修改` : "尚无候选版本",
         description: material.description,
         status: material.status,
       },
       {
-        name: "Interview",
+        name: "面试",
         targetId: "interview",
-        value: interviewTaskCount > 0 ? `${interviewTaskCount} 个 lifecycle` : "尚无面试任务",
+        value: interviewTaskCount > 0 ? `${interviewTaskCount} 场面试` : "还没有面试",
         description: interviewDescription,
         status: interviewStatus,
       },
       {
-        name: "Timeline",
+        name: "时间线",
         targetId: "timeline",
-        value: timelineStage || "暂无正式阶段",
+        value: timelineStage || "还没投递",
         description: timelineNextAction
           ? `下一步：${timelineNextAction}`
           : timelineEventCount > 0
-            ? `${timelineEventCount} 条已确认 progress event。`
-            : "只显示 canonical progress event，不推断未确认状态。",
+            ? `${timelineEventCount} 条已确认的进展。`
+            : "只记录确认过的进展，不靠猜。",
         status: timelineStatus,
       },
     ];
@@ -244,7 +244,6 @@ export function JobWorkspaceOverview({
     <section aria-labelledby="job-workspace-overview-heading" data-testid="job-workspace-overview">
       <div className="mb-3 flex items-end justify-between gap-3">
         <div>
-          <p className="bauhaus-label text-[var(--foreground-muted)]">Job Workspace</p>
           <h2 id="job-workspace-overview-heading" className="mt-1 text-xl font-black tracking-[-0.04em] text-[var(--foreground)]">
             这个岗位的工作区
           </h2>
