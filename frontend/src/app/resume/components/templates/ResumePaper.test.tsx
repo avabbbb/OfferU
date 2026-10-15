@@ -91,6 +91,39 @@ describe("纸模板：成品即编辑器", () => {
   });
 });
 
+describe("纸模板：照片与校徽", () => {
+  it("shows uploaded photo and school logo in the finished resume without editing chrome", () => {
+    renderPaper({ photoUrl: "https://example.test/photo.jpg", logoUrl: "https://example.test/logo.png" });
+    expect(screen.getByRole("img", { name: "照片" })).toHaveAttribute("src", "https://example.test/photo.jpg");
+    expect(screen.getByRole("img", { name: "校徽" })).toHaveAttribute("src", "https://example.test/logo.png");
+    expect(screen.queryByRole("button", { name: /更换|移除|添加/ })).not.toBeInTheDocument();
+  });
+
+  it("takes no header space for media in a read-only resume without images", () => {
+    renderPaper();
+    expect(screen.queryByTestId("paper-asset-photo")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("paper-asset-logo")).not.toBeInTheDocument();
+  });
+
+  it("adds, replaces and removes images directly on the canvas", () => {
+    const onUploadAsset = vi.fn();
+    const { rerender } = renderPaper({ editable: true, onUploadAsset });
+    const photo = new File(["x"], "me.png", { type: "image/png" });
+    expect(screen.getByRole("button", { name: "添加照片" })).toHaveAttribute("data-paper-chrome");
+    fireEvent.change(screen.getByTestId("paper-asset-input-photo"), { target: { files: [photo] } });
+    expect(onUploadAsset).toHaveBeenCalledWith("photo", photo);
+
+    rerender(
+      <ResumePaper userName="林一" title="后端工程师" summary="" contactJson={{}} sections={[section()]}
+        styleConfig={{ template: "paper" }} editable onUploadAsset={onUploadAsset}
+        photoUrl="https://example.test/photo.jpg" logoUrl="https://example.test/logo.png" />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "移除校徽" }));
+    expect(onUploadAsset).toHaveBeenLastCalledWith("logo", null);
+    expect(screen.getByRole("button", { name: "更换照片" })).toBeInTheDocument();
+  });
+});
+
 describe("要点与 description 互转", () => {
   it("escapes user text and drops empty bullets", () => {
     expect(bulletsToDescription(["A <b>", " ", "\u200b"])).toBe("<ul><li><p>A &lt;b&gt;</p></li></ul>");
@@ -109,7 +142,9 @@ describe("纸模板默认排版", () => {
     const paper = normalizeTemplateSettings({ template: "paper" });
     expect(paper.margins).toEqual({ top: 11, right: 13, bottom: 11, left: 13 });
     expect(paper.exact.headingColor).toBe("#1B365D");
-    expect(paper.exact.lineHeight).toBe(1.45);
+    expect(paper.exact.lineHeight).toBe(1.42);
+    expect(paper.exact.bodySize).toBe(9.2);
+    expect(paper.exact.nameSize).toBe(26.5);
     const reference = normalizeTemplateSettings({ template: "reference" });
     expect(reference.margins.top).toBe(8);
   });

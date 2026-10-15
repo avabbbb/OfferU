@@ -42,6 +42,8 @@ interface ResumePreviewProps {
   onSectionChange?: (section: Section) => void;
   renderSectionAside?: ResumePaperProps["renderSectionAside"];
   canvasFooter?: ResumePaperProps["canvasFooter"];
+  /** 仅「纸」画布：直接在页面上添加 / 更换 / 移除照片与校徽。 */
+  onUploadAsset?: ResumePaperProps["onUploadAsset"];
 }
 
 function normalizeSkillEntry(item: any, index: number): NormalizedResumeItem {
@@ -170,6 +172,13 @@ function resolveAssetUrl(url?: string) {
     : url;
 }
 
+function paperLogoUrl(contact: Record<string, string>) {
+  for (const key of ["schoolLogoUrl", "universityLogoUrl", "logoUrl", "school_logo_url"]) {
+    if (contact[key]) return contact[key];
+  }
+  return "";
+}
+
 function normalizeContactJson(contactJson: Record<string, string> = {}) {
   const contact = { ...contactJson };
   for (const key of ["schoolLogoUrl", "universityLogoUrl", "logoUrl", "school_logo_url"]) {
@@ -229,6 +238,9 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(function Re
           onSectionChange={props.onSectionChange as ResumePaperProps["onSectionChange"]}
           renderSectionAside={props.renderSectionAside}
           canvasFooter={props.canvasFooter}
+          photoUrl={data.photoUrl}
+          logoUrl={paperLogoUrl(data.contact)}
+          onUploadAsset={props.editable ? props.onUploadAsset : undefined}
         />
       );
     }
