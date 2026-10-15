@@ -135,16 +135,19 @@ async def _review_plan_for_run(database, monkeypatch, suffix: str, *, action: st
 def test_agent_runtime_ui_cannot_execute_mutation_without_proposal_authorization() -> None:
     async def run() -> tuple[dict, AgentWorkspaceState | None]:
         await init_db()
-        scope = f"proposal-ui-unguarded-{uuid.uuid4().hex}"
+        # tier=review (Profile truth); set_current_view is auto bookkeeping now.
+        from app.models.models import ProfileTargetRole
+
+        role_name = f"proposal-ui-unguarded-{uuid.uuid4().hex}"
         result = await execute_operation(
-            "set_current_view",
-            {"scope": scope, "route": "/jobs/42"},
+            "create_target_role",
+            {"role_name": role_name},
             surface="agent_runtime_ui",
         )
         async with async_session() as db:
             view = (
                 await db.execute(
-                    select(AgentWorkspaceState).where(AgentWorkspaceState.scope == scope)
+                    select(ProfileTargetRole).where(ProfileTargetRole.role_name == role_name)
                 )
             ).scalar_one_or_none()
         return result, view

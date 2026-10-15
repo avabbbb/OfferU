@@ -123,7 +123,10 @@ class OperationRegistryTests(unittest.TestCase):
         self.assertEqual(schema["group"], "jobs")
         self.assertEqual(schema["side_effects"], ["write"])
         self.assertTrue(schema["supports_dry_run"])
-        self.assertTrue(schema["requires_confirmation"])
+        # Triage is reversible bookkeeping: tier=auto, no interruption.
+        self.assertFalse(schema["requires_confirmation"])
+        self.assertEqual(schema["interaction_tier"], "auto")
+        self.assertEqual(schema["autonomy_level"], "L1_auto")
         self.assertEqual(schema["parameters"]["job_id"]["type"], "integer")
         self.assertEqual(schema["parameters"]["job_id"]["exclusiveMinimum"], 0)
         self.assertIn("output_contract", schema)
@@ -754,17 +757,15 @@ class CliBlackBoxTests(unittest.TestCase):
             await init_db()
             return await create_agent_run(conversation_id="cli-confirm-denial", goal="Review the current view request",
                 mode="external_cli", skill_id="fixture", actions=[],
-                skill_snapshot={"allowed_tools": ["set_current_view", "prepare_proposal_plan"]},
+                skill_snapshot={"allowed_tools": ["create_target_role", "prepare_proposal_plan"]},
                 llm_runtime={"runtime": "external_cli", "host": "synthetic-test"})
         run = asyncio.run(attached_run())
         proposal = self.run_cli(
             "run",
-            "set_current_view",
+            "create_target_role",
             "--run-id", run["id"],
             "--arg",
-            "scope=cli-control-plane-test",
-            "--arg",
-            "route=/jobs/42",
+            "role_name=cli-control-plane-test",
         )
 
         self.assertEqual(proposal["_exit_code"], 0)
@@ -894,8 +895,8 @@ class OperationProjectionSafetyTests(unittest.TestCase):
         async def run() -> dict:
             await init_db()
             return await execute_operation(
-                "set_current_view",
-                {"scope": "blocked-direct-mcp", "route": "/unsafe"},
+                "create_target_role",
+                {"role_name": "blocked-direct-mcp"},
                 surface="mcp",
             )
 
@@ -914,10 +915,11 @@ class OperationProjectionSafetyTests(unittest.TestCase):
                 await db.commit()
             attached = await create_agent_run(conversation_id="projection-external", goal="Review this job",
                 mode="external_cli", skill_id="fixture", actions=[],
-                skill_snapshot={"allowed_tools": ["triage_job", "prepare_proposal_plan"]},
+                skill_snapshot={"allowed_tools": ["create_target_role", "prepare_proposal_plan"]},
                 llm_runtime={"runtime": "external_cli", "host": "synthetic-test"})
+            role_name = f"Projection role {uuid.uuid4().hex[:8]}"
             proposal = await execute_or_propose_operation(
-                "triage_job", {"job_id": job.id, "status": "picked"},
+                "create_target_role", {"role_name": role_name},
                 surface="mcp", run_id=attached["id"],
             )
             self.assertTrue(proposal["ok"], proposal)
@@ -932,7 +934,10 @@ class OperationProjectionSafetyTests(unittest.TestCase):
             from app.models.models import OperationAuditLog
             from sqlalchemy import select
             async with async_session() as db:
-                self.assertEqual((await db.get(Job, job.id)).triage_status, "picked")
+                from app.models.models import ProfileTargetRole
+                roles = (await db.execute(select(ProfileTargetRole).where(
+                    ProfileTargetRole.role_name == role_name))).scalars().all()
+                self.assertEqual(len(roles), 1)
                 audits = (await db.execute(select(OperationAuditLog).where(
                     OperationAuditLog.idempotency_key == group["nodes"][0]["idempotency_key"]))).scalars().all()
                 self.assertEqual(len(audits), 1)

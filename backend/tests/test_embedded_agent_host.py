@@ -49,8 +49,14 @@ class FakeEmbeddedWorker:
         self.resume_session_file = ""
         self._operation_runner = None
         self._event_listener = None
-        self.mutation_name = "start_job_research"
-        self.mutation_args = {"job_id": 74291}
+        # A tier=authorize Operation the company_research Skill may call:
+        # research itself is auto now, a logged-in browser session is not.
+        self.mutation_name = "start_authorized_research_session"
+        self.mutation_args = {
+            "job_id": 74291,
+            "platform": "generic",
+            "initial_url": "https://jobs.example.com/74291",
+        }
         self.prompt_active = False
 
     async def start_run(
@@ -621,13 +627,12 @@ class EmbeddedAgentHostTests(unittest.TestCase):
         self.assertTrue(worker.calls[0][1]["ok"])
         self.assertEqual(worker.calls[1][0], "import_jd")
         self.assertTrue(worker.calls[1][1]["ok"])
-        plan = worker.calls[1][1]["outputs"]["plan"]
-        self.assertFalse(worker.calls[1][1]["outputs"]["executed"])
-        self.assertEqual(plan["status"], "sealed")
-        self.assertEqual(plan["groups"][0]["status"], "pending")
-        self.assertEqual(started["run"]["status"], "waiting_confirmation")
-        self.assertEqual(len(started["pending_actions"]), 1)
-        self.assertEqual(job_count, 0)
+        # import_jd is tier=auto (docs/02 §4): saving a JD the user pasted is
+        # not a decision, so it executes, is audited, and nothing waits.
+        self.assertNotIn("plan", worker.calls[1][1]["outputs"])
+        self.assertNotEqual(started["run"]["status"], "waiting_confirmation")
+        self.assertEqual(len(started["pending_actions"]), 0)
+        self.assertEqual(job_count, 1)
         self.assertEqual(run_count, 1)
 
     def test_auto_router_failure_creates_no_phantom_run(self) -> None:
