@@ -33,12 +33,6 @@ runtime_router = APIRouter()
 from app.services.agent_runtime_tasks import BACKGROUND_RUNTIME_TASKS as _background_runtime_tasks
 
 
-@router.post("/data/fresh-reset/proposal")
-async def propose_fresh_reset() -> dict[str, Any]:
-    """Prepare one visible v2 reset Plan; this endpoint never clears data."""
-    return await _ui_operation_outputs("reset_local_business_data", {})
-
-
 class AgentMemoryImportRequest(BaseModel):
     content: dict[str, Any] | str
 
