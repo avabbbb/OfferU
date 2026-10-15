@@ -644,7 +644,7 @@ describe("Agent input never locks", () => {
 
     expect(screen.getByRole("textbox")).toBeEnabled();
     expect(screen.getByRole("combobox", { name: "当前 Agent Skill" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "校招体检" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "异常检测" })).toBeEnabled();
 
     await sendPrompt(user, "顺便看看今天的新岗位");
     await waitFor(() => expect(api.start).toHaveBeenCalledTimes(2));

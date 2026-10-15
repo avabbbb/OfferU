@@ -103,6 +103,7 @@ class AgentInputAnswerRequest(BaseModel):
     answer_id: str = Field(min_length=1, max_length=80)
     selected_option_ids: list[str] = Field(default_factory=list, max_length=50)
     free_text: str = Field(default="", max_length=4000)
+    skipped: bool = False
 
 
 
@@ -492,9 +493,18 @@ async def answer_input_request(
         answer_id=body.answer_id,
         selected_option_ids=list(body.selected_option_ids or []),
         free_text=body.free_text,
+        skipped=bool(body.skipped),
     )
     if not result.get("ok"):
-        status = 404 if any("不存在" in str(e) for e in result.get("errors") or []) else 409
+        code = result.get("error_code")
+        if code == "invalid":
+            status = 422
+        elif code == "not_found" or any(
+            "不存在" in str(e) for e in result.get("errors") or []
+        ):
+            status = 404
+        else:
+            status = 409
         raise HTTPException(
             status_code=status,
             detail="; ".join(str(item) for item in result.get("errors") or [])

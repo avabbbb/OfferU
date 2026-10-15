@@ -19,6 +19,15 @@ import { safeClientErrorMessage } from "@/lib/safe-error";
 
 const REFRESH_INTERVAL_MS = 4000;
 
+/** 推荐项预选；单选只取第一个推荐项，多选不超过上限。 */
+export function initialSelection(request: AgentInputRequestView): string[] {
+  const recommended = (request.options || [])
+    .filter((option) => option.recommended)
+    .map((option) => option.option_id);
+  if (request.selection_mode !== "multiple") return recommended.slice(0, 1);
+  return request.max_selections > 0 ? recommended.slice(0, request.max_selections) : recommended;
+}
+
 export function AgentAskCard({
   request,
   runId,
@@ -29,7 +38,7 @@ export function AgentAskCard({
   /** 提交成功后调用；参数为后端回答响应（可能含 continuation）。 */
   onAnswered?: (result: AgentInputAnswerResult) => void;
 }) {
-  const [selected, setSelected] = useState<string[]>([]);
+  const [selected, setSelected] = useState<string[]>(() => initialSelection(request));
   const [freeText, setFreeText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [answered, setAnswered] = useState(false);
@@ -38,28 +47,35 @@ export function AgentAskCard({
   const answerId = useMemo(() => crypto.randomUUID(), [request.request_id]);
 
   const options = request.options || [];
+  const isSingle = request.selection_mode !== "multiple";
+  const maxSelections = isSingle ? 1 : request.max_selections || 0;
+  const minSelections = Math.max(request.min_selections || 0, 1);
+  const hasFreeText = request.allow_free_text && freeText.trim().length > 0;
   const canSubmit =
     !submitting
     && !answered
-    && (selected.length > 0 || (request.allow_free_text && freeText.trim().length > 0));
+    && (selected.length >= minSelections || hasFreeText);
+  const atMax = !isSingle && maxSelections > 0 && selected.length >= maxSelections;
 
-  const toggleOption = (optionId: string) => {
-    setSelected((current) =>
-      current.includes(optionId)
-        ? current.filter((id) => id !== optionId)
-        : [...current, optionId],
-    );
+  const chooseOption = (optionId: string) => {
+    setSelected((current) => {
+      if (isSingle) return [optionId];
+      if (current.includes(optionId)) return current.filter((id) => id !== optionId);
+      if (maxSelections > 0 && current.length >= maxSelections) return current;
+      return [...current, optionId];
+    });
   };
 
-  const submit = async () => {
-    if (!canSubmit) return;
+  const submit = async (skip = false) => {
+    if (skip ? submitting || answered || !request.allow_skip : !canSubmit) return;
     setSubmitting(true);
     setError("");
     try {
       const result = await agentRuntimeApi.answerInputRequest(runId, request.request_id, {
         answer_id: answerId,
-        selected_option_ids: selected,
-        free_text: freeText.trim(),
+        selected_option_ids: skip ? [] : selected,
+        free_text: skip ? "" : freeText.trim(),
+        ...(skip ? { skipped: true } : {}),
       });
       if (result.ok === false || result.errors?.length) {
         throw new Error(result.errors?.join("；") || "回答未能保存");
@@ -105,9 +121,22 @@ export function AgentAskCard({
 
       {options.length > 0 && (
         <fieldset className="space-y-1">
-          <legend className="sr-only">可选回答</legend>
+          <legend className="sr-only">
+            {isSingle
+              ? "单选"
+              : maxSelections > 0
+                ? `多选，最多 ${maxSelections} 项`
+                : "多选"}
+          </legend>
+          {!isSingle && (
+            <p className="text-[10.5px] leading-4 text-[var(--foreground-muted)]">
+              可多选{maxSelections > 0 ? `，最多 ${maxSelections} 项` : ""}
+              {request.min_selections > 1 ? `，至少 ${request.min_selections} 项` : ""}
+            </p>
+          )}
           {options.map((option) => {
             const checked = selected.includes(option.option_id);
+            const disabled = !checked && atMax;
             return (
               <label
                 key={option.option_id}
@@ -118,13 +147,20 @@ export function AgentAskCard({
                 }`}
               >
                 <input
-                  type="checkbox"
+                  type={isSingle ? "radio" : "checkbox"}
+                  name={isSingle ? `ask-${request.request_id}` : undefined}
                   className="mt-1"
                   checked={checked}
-                  onChange={() => toggleOption(option.option_id)}
+                  disabled={disabled}
+                  onChange={() => chooseOption(option.option_id)}
                 />
                 <span>
                   <span className="font-medium">{option.label}</span>
+                  {option.recommended && (
+                    <span className="ml-1.5 rounded-sm border border-[var(--border)] px-1 text-[10px] text-[var(--foreground-muted)]">
+                      推荐
+                    </span>
+                  )}
                   {option.description && (
                     <span className="block text-[10.5px] text-[var(--foreground-muted)]">
                       {option.description}
@@ -143,7 +179,7 @@ export function AgentAskCard({
           value={freeText}
           onChange={(event) => setFreeText(event.target.value)}
           rows={2}
-          placeholder={options.length > 0 ? "补充说明（可选）" : "输入你的回答…"}
+          placeholder={options.length > 0 ? "其他 / 补充说明（可选）" : "输入你的回答…"}
           className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-[12px] leading-5 text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--foreground)]"
         />
       )}
@@ -154,7 +190,18 @@ export function AgentAskCard({
         </p>
       )}
 
-      <div className="flex justify-end">
+      <div className="flex items-center justify-end gap-2">
+        {request.allow_skip && (
+          <button
+            type="button"
+            aria-label={`跳过：${request.question}`}
+            disabled={submitting}
+            onClick={() => void submit(true)}
+            className="text-[11px] text-[var(--foreground-muted)] underline-offset-2 hover:text-[var(--foreground)] hover:underline disabled:opacity-50"
+          >
+            跳过，让 OfferU 按推荐继续
+          </button>
+        )}
         <button
           type="button"
           aria-label={`提交回答：${request.question}`}

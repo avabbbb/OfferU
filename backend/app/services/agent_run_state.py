@@ -950,12 +950,96 @@ def _input_request_view(row: AgentInputRequest) -> dict[str, Any]:
         "reason": row.reason or "",
         "options": list(row.options_json or []),
         "allow_free_text": bool(row.allow_free_text),
+        "selection_mode": _selection_mode(getattr(row, "selection_mode", None)),
+        "min_selections": int(getattr(row, "min_selections", 0) or 0),
+        "max_selections": int(getattr(row, "max_selections", 0) or 0),
+        "allow_skip": bool(
+            True if getattr(row, "allow_skip", None) is None else row.allow_skip
+        ),
         "answer": answer,
         "answer_digest": row.answer_digest or "",
         "created_at": str(row.created_at or ""),
         "answered_at": str(row.answered_at or ""),
         "consumed_at": str(row.consumed_at or ""),
     }
+
+
+ASK_SELECTION_MODES = ("single", "multiple")
+
+
+def _selection_mode(value: Any) -> str:
+    mode = str(value or "").strip().lower()
+    return mode if mode in ASK_SELECTION_MODES else "single"
+
+
+def _normalize_selection_bounds(
+    mode: str, min_selections: Any, max_selections: Any, option_count: int
+) -> tuple[int, int]:
+    """Clamp min/max so the question is always answerable (anti-deadlock)."""
+
+    def _int(value: Any) -> int:
+        try:
+            return max(0, int(value or 0))
+        except (TypeError, ValueError):
+            return 0
+
+    if mode == "single":
+        return (min(_int(min_selections), 1, option_count), 1)
+    upper = _int(max_selections)
+    if option_count and upper:
+        upper = min(upper, option_count)
+    lower = min(_int(min_selections), option_count)
+    if upper:
+        lower = min(lower, upper)
+    return (lower, upper)
+
+
+def validate_agent_input_answer(
+    request: dict[str, Any], answer: dict[str, Any]
+) -> list[str]:
+    """Return human-readable violations; an empty list means acceptable.
+
+    Free text counts as the「其他」answer, so min_selections only applies when
+    the user neither typed anything nor skipped.
+    """
+
+    selected = [str(item) for item in (answer.get("selected_option_ids") or [])]
+    free_text = str(answer.get("free_text") or "").strip()
+    skipped = bool(answer.get("skipped"))
+    option_ids = {
+        str(item.get("option_id"))
+        for item in (request.get("options") or [])
+        if isinstance(item, dict)
+    }
+    errors: list[str] = []
+    if len(set(selected)) != len(selected):
+        errors.append("选项重复。")
+    unknown = [item for item in selected if item not in option_ids]
+    if unknown:
+        errors.append("包含不属于该问题的选项。")
+    if skipped:
+        if not request.get("allow_skip", True):
+            errors.append("该问题不能跳过。")
+        if selected or free_text:
+            errors.append("跳过时不能同时提交选项或补充说明。")
+        return errors
+    if free_text and not request.get("allow_free_text", True):
+        errors.append("该问题不接受自由输入。")
+    mode = _selection_mode(request.get("selection_mode"))
+    if mode == "single" and len(selected) > 1:
+        errors.append("这是单选问题，只能选择一个选项。")
+    maximum = int(request.get("max_selections") or 0)
+    if mode == "multiple" and maximum and len(selected) > maximum:
+        errors.append(f"最多选择 {maximum} 项。")
+    if not free_text:
+        minimum = max(int(request.get("min_selections") or 0), 1)
+        if len(selected) < minimum:
+            errors.append(
+                "请选择一个选项、填写补充说明，或跳过。"
+                if minimum == 1
+                else f"至少选择 {minimum} 项，或填写补充说明。"
+            )
+    return errors
 
 
 async def create_agent_input_request(
@@ -965,6 +1049,10 @@ async def create_agent_input_request(
     reason: str = "",
     options: list[dict[str, Any]] | None = None,
     allow_free_text: bool = True,
+    selection_mode: str = "single",
+    min_selections: int = 0,
+    max_selections: int = 0,
+    allow_skip: bool = True,
 ) -> dict[str, Any]:
     """Persist one pending Ask for a run, or return the identical pending one.
 
@@ -976,15 +1064,35 @@ async def create_agent_input_request(
     clean_question = str(question or "").strip()
     if not clean_question:
         raise ValueError("request_user_input 需要非空 question。")
-    clean_options = [
-        {
+    clean_options = []
+    seen_option_ids: set[str] = set()
+    for item in options or []:
+        if not isinstance(item, dict):
+            continue
+        option_id = str(item.get("option_id") or "").strip()
+        if not option_id or option_id in seen_option_ids:
+            continue
+        seen_option_ids.add(option_id)
+        clean = {
             key: value
             for key, value in dict(item).items()
             if key in {"option_id", "label", "description"}
         }
-        for item in (options or [])
-        if isinstance(item, dict) and str(item.get("option_id") or "").strip()
-    ]
+        if item.get("recommended") is True:
+            clean["recommended"] = True
+        clean_options.append(clean)
+    clean_mode = _selection_mode(selection_mode)
+    if clean_mode == "single":
+        # 单选最多一个推荐项，否则「推荐项预选」会产生非法的初始状态。
+        first = True
+        for option in clean_options:
+            if option.get("recommended"):
+                if not first:
+                    option.pop("recommended", None)
+                first = False
+    clean_min, clean_max = _normalize_selection_bounds(
+        clean_mode, min_selections, max_selections, len(clean_options)
+    )
     signature = _input_request_signature(clean_question, clean_options)
     for _ in range(3):
         async with async_session() as db:
@@ -1038,6 +1146,10 @@ async def create_agent_input_request(
                 reason=str(reason or "")[:2000],
                 options_json=redact_sensitive_value(clean_options),
                 allow_free_text=bool(allow_free_text),
+                selection_mode=clean_mode,
+                min_selections=clean_min,
+                max_selections=clean_max,
+                allow_skip=bool(allow_skip),
                 answer_json=None,
                 answer_digest="",
             )
@@ -1140,6 +1252,16 @@ async def answer_agent_input_request(
                 return {
                     "ok": False,
                     "error": "conflict",
+                    "request": _input_request_view(row),
+                }
+            violations = validate_agent_input_answer(
+                _input_request_view(row), clean_answer
+            )
+            if violations:
+                return {
+                    "ok": False,
+                    "error": "invalid",
+                    "errors": violations,
                     "request": _input_request_view(row),
                 }
             claimed = (

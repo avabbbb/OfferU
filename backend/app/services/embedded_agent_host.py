@@ -816,6 +816,10 @@ async def start_embedded_agent_run(
                         if isinstance(item, dict)
                     ],
                     allow_free_text=bool(arguments.get("allow_free_text", True)),
+                    selection_mode=str(arguments.get("selection_mode") or "single"),
+                    min_selections=arguments.get("min_selections") or 0,
+                    max_selections=arguments.get("max_selections") or 0,
+                    allow_skip=bool(arguments.get("allow_skip", True)),
                 )
             except Exception as exc:
                 return {"ok": False, "errors": [safe_error_message(exc)]}
@@ -845,6 +849,8 @@ async def start_embedded_agent_run(
                     "向用户提出一个结构化问题（Ask）。仅当缺少的用户偏好或取舍"
                     "决定无法从现有数据推断时使用；绝不能用来请求批准受保护"
                     "变更或代替用户做决定。调用后本轮立即结束。"
+                    "互斥选项用 selection_mode=single（默认）；只有可同时成立的"
+                    "选项才用 multiple。最可能的选项标 recommended=true。"
                 ),
                 "input_schema": {
                     "type": "object",
@@ -859,12 +865,20 @@ async def start_embedded_agent_run(
                                     "option_id": {"type": "string"},
                                     "label": {"type": "string"},
                                     "description": {"type": "string"},
+                                    "recommended": {"type": "boolean"},
                                 },
                                 "required": ["option_id", "label"],
                                 "additionalProperties": False,
                             },
                         },
                         "allow_free_text": {"type": "boolean"},
+                        "selection_mode": {
+                            "type": "string",
+                            "enum": ["single", "multiple"],
+                        },
+                        "min_selections": {"type": "integer", "minimum": 0},
+                        "max_selections": {"type": "integer", "minimum": 0},
+                        "allow_skip": {"type": "boolean"},
                     },
                     "required": ["question"],
                     "additionalProperties": False,
@@ -1143,6 +1157,7 @@ async def answer_agent_input(
     answer_id: str,
     selected_option_ids: list[str] | None = None,
     free_text: str = "",
+    skipped: bool = False,
     worker: EmbeddedAgentWorker | None = None,
 ) -> dict[str, Any]:
     """Persist one Ask answer, then continue the same run exactly once.
@@ -1163,18 +1178,23 @@ async def answer_agent_input(
         ],
         "free_text": str(free_text or "")[:4000],
     }
+    if skipped:
+        answer["skipped"] = True
     stored = await answer_agent_input_request(
         run_id, request_id, answer=answer
     )
     if not stored.get("ok"):
         reason = stored.get("error")
+        if reason == "invalid":
+            errors = [str(item) for item in stored.get("errors") or []]
+        elif reason == "not_found":
+            errors = ["input request 不存在于该 Run。"]
+        else:
+            errors = ["input request 已有不同的回答；拒绝覆盖。"]
         result: dict[str, Any] = {
             "ok": False,
-            "errors": [
-                "input request 不存在于该 Run。"
-                if reason == "not_found"
-                else "input request 已有不同的回答；拒绝覆盖。"
-            ],
+            "error_code": str(reason or "conflict"),
+            "errors": errors,
         }
         if isinstance(stored.get("request"), dict):
             result["request"] = stored["request"]
@@ -1212,6 +1232,12 @@ async def answer_agent_input(
         "The user answered your earlier question (persisted answer, the only "
         "authoritative content). Continue the original goal; do not ask the "
         "same question again.\n"
+        + (
+            "The user skipped this question: proceed with the most reasonable "
+            "default and state that assumption briefly.\n"
+            if (request.get("answer") or answer).get("skipped")
+            else ""
+        )
         + json.dumps(
             {
                 "question": request.get("question"),

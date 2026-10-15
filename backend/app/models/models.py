@@ -2312,6 +2312,13 @@ class AgentInputRequest(Base):
     reason: Mapped[str] = mapped_column(Text, default="")
     options_json: Mapped[list] = mapped_column(JSON, default=list)
     allow_free_text: Mapped[bool] = mapped_column(Boolean, default=True)
+    # docs/02 §4.2：逻辑上的单选必须渲染成单选；multiple 才允许多选。
+    selection_mode: Mapped[str] = mapped_column(String(16), default="single")
+    min_selections: Mapped[int] = mapped_column(Integer, default=0)
+    # 0 表示不限（仅 multiple 有意义；single 恒为 1）。
+    max_selections: Mapped[int] = mapped_column(Integer, default=0)
+    # D-3：每个等待状态都要有“放弃”出口；跳过让 Agent 按合理默认继续。
+    allow_skip: Mapped[bool] = mapped_column(Boolean, default=True)
     answer_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     answer_digest: Mapped[str] = mapped_column(String(64), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
