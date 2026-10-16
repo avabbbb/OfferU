@@ -996,3 +996,50 @@
 }
 .paper-add-sections button:hover { text-decoration: underline; }
 @media print { .paper-add-sections { display: none; } }
+
+/* 要点里的加粗（手动 ⌘/Ctrl+B 或 AI 改写给出的 <strong>）。 */
+.paper-bullets strong { color: var(--paper-ink); font-weight: 600; }
+.paper-bold-bubble {
+  align-items: center; background: #141413; border: 0; border-radius: 6px; box-shadow: 0 4px 14px rgba(20, 20, 19, 0.18);
+  color: #fff; cursor: pointer; display: inline-flex; font: 700 13px/1 -apple-system, "PingFang SC", sans-serif;
+  height: 26px; justify-content: center; position: fixed; transform: translate(-50%, calc(-100% - 6px)); width: 28px; z-index: 60;
+}
+.paper-bold-bubble.is-active { background: #1b365d; }
+
+/* 「清晰」样式（默认）：对标超级简历——黑体、照片在左、联系方式带标签、校徽在右、紧凑到一页。 */
+.resume-body.paper.paper-style-cv {
+  --paper-serif: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC", "Helvetica Neue", Arial, sans-serif;
+  --paper-text-4: #3d3d3a;
+  letter-spacing: 0;
+  line-height: 1.45;
+}
+.paper-style-cv .paper-header { border-bottom: none; column-gap: 5mm; display: grid; grid-template-columns: auto 1fr auto; grid-template-rows: auto auto; margin-bottom: 2mm; padding-bottom: 0; }
+.paper-style-cv .paper-header > .paper-asset-photo { grid-column: 1; grid-row: 1 / span 2; }
+.paper-style-cv .paper-header-name { align-self: end; grid-column: 2; grid-row: 1; }
+.paper-style-cv .paper-header-right { align-self: start; display: flex; flex-direction: column; grid-column: 2; grid-row: 2; line-height: 1.6; text-align: left; }
+.paper-style-cv .paper-media { align-self: start; grid-column: 3; grid-row: 1 / span 2; }
+.paper-style-cv .paper-name { font-size: calc(var(--font-size-base) * 1.75); font-weight: 700; letter-spacing: 1pt; }
+.paper-style-cv .paper-alias { display: none; }
+.paper-style-cv .paper-role { color: var(--paper-text); font-size: var(--font-size-base); font-weight: 400; order: 3; }
+.paper-style-cv .paper-contact, .paper-style-cv .paper-location { color: var(--paper-text); font-size: var(--font-size-base); }
+.paper-style-cv .paper-contact .paper-sep { color: var(--paper-text-4); margin: 0 5pt; }
+.paper-style-cv .paper-contact-item { white-space: nowrap; }
+.paper-style-cv .paper-contact-label { color: var(--paper-text-3); }
+.paper-style-cv .paper-photo { height: 30mm; object-fit: cover; width: 22mm; }
+.paper-style-cv .paper-logo { height: auto; max-height: 16mm; max-width: 52mm; width: auto; }
+.paper-style-cv .paper-section { margin-top: 3.2mm; }
+.paper-style-cv .paper-section-title { border-bottom: 0.8pt solid var(--paper-text); font-size: calc(var(--font-size-base) * 1.15); font-weight: 700; letter-spacing: 0.5pt; margin-bottom: 1.4mm; padding-bottom: 0.8mm; }
+.paper-style-cv .paper-items > .paper-item + .paper-item { margin-top: 1.6mm; }
+.paper-style-cv .paper-item-title, .paper-style-cv [data-section-type="education"] .paper-item-title { font-size: var(--font-size-base); font-weight: 700; }
+.paper-style-cv .paper-item-meta { color: var(--paper-text); margin-left: 0; }
+.paper-style-cv .paper-item-meta::before { content: " – "; }
+.paper-style-cv .paper-chip { background: none; color: var(--paper-text); font-weight: 700; margin-left: 0; padding: 0; }
+.paper-style-cv .paper-chip::before { content: "｜"; font-weight: 400; }
+.paper-style-cv .paper-date { color: var(--paper-text); font-size: var(--font-size-base); }
+.paper-style-cv .paper-bullets { margin-top: 0.6mm; padding-left: 11pt; }
+.paper-style-cv .paper-bullets li { margin-top: 0.4mm; }
+.paper-style-cv .paper-bullets li::marker { color: var(--paper-text); }
+.paper-style-cv .paper-bullets strong { color: var(--paper-text); font-weight: 700; }
+.paper-style-cv .paper-skill-row { border-bottom: none; padding: 0.5mm 0; }
+.paper-style-cv .paper-skill-category { color: var(--paper-text); flex-basis: auto; font-weight: 700; }
+.paper-style-cv .paper-skill-category::after { content: "："; }

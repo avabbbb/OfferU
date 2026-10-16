@@ -11,8 +11,9 @@
  * 不使用仅限个人免费的仓耳今楷。
  */
 
-import { Fragment, useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
-import { splitBullets } from "@/lib/resumeText";
+import { Fragment, useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { BOLD_CLOSE, BOLD_OPEN, normalizeBold, plainBullet, richBulletToHtml, splitRichBullets } from "@/lib/resumeText";
 
 export interface PaperSection {
   id: number;
@@ -168,14 +169,10 @@ const CONTACT_FIELDS: Array<[string, string]> = [
   ["website", "个人网站"],
 ];
 
-function escapeHtml(value: string) {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
 export function bulletsToDescription(bullets: string[]) {
-  const kept = bullets.map((item) => item.replace(/\u200b/g, "").trim()).filter(Boolean);
+  const kept = bullets.map((item) => item.replace(/\u200b/g, "").trim()).filter((item) => plainBullet(item).trim());
   if (!kept.length) return "";
-  return `<ul>${kept.map((item) => `<li><p>${escapeHtml(item)}</p></li>`).join("")}</ul>`;
+  return `<ul>${kept.map((item) => `<li><p>${richBulletToHtml(item)}</p></li>`).join("")}</ul>`;
 }
 
 export function editBullet(
@@ -183,7 +180,7 @@ export function editBullet(
   index: number,
   change: { text?: string; remove?: boolean; insertAfter?: boolean },
 ): Record<string, any> {
-  const bullets = splitBullets(String(item.description || ""));
+  const bullets = splitRichBullets(String(item.description || ""));
   const hidden = new Set<number>(
     Array.isArray(item.hidden_bullet_indexes) ? item.hidden_bullet_indexes.map(Number) : [],
   );
@@ -200,7 +197,7 @@ export function editBullet(
   }
   const next: Record<string, any> = { ...item, description: bulletsToDescription(bullets.length ? bullets : []) };
   if (change.insertAfter) {
-    next.description = `<ul>${bullets.map((value) => `<li><p>${escapeHtml(value) || "\u200b"}</p></li>`).join("")}</ul>`;
+    next.description = `<ul>${bullets.map((value) => `<li><p>${richBulletToHtml(value) || "\u200b"}</p></li>`).join("")}</ul>`;
   }
   if (Array.isArray(item.hidden_bullet_indexes) || nextHidden.length) next.hidden_bullet_indexes = nextHidden;
   return next;
@@ -210,14 +207,14 @@ function visibleBulletEntries(item: Record<string, any>) {
   const hidden = new Set<number>(
     Array.isArray(item.hidden_bullet_indexes) ? item.hidden_bullet_indexes.map(Number) : [],
   );
-  return splitBullets(String(item.description || ""))
+  return splitRichBullets(String(item.description || ""))
     .map((text, index) => ({ text: text.replace(/\u200b/g, ""), index }))
     .filter((entry) => !hidden.has(entry.index));
 }
 
 function printableBullets(item: Record<string, any>, editable: boolean) {
   const entries = visibleBulletEntries(item);
-  return editable ? entries : entries.filter((entry) => entry.text.trim());
+  return editable ? entries : entries.filter((entry) => plainBullet(entry.text).trim());
 }
 
 interface EditableProps {
@@ -227,37 +224,91 @@ interface EditableProps {
   className?: string;
   label: string;
   multiline?: boolean;
+  /** 允许加粗（⌘/Ctrl+B 或选中后的「B」按钮）；value 里用 BOLD_OPEN/BOLD_CLOSE 标记。 */
+  rich?: boolean;
   onCommit: (value: string) => void;
   onEnter?: () => void;
   onBackspaceEmpty?: () => void;
   autoFocus?: boolean;
 }
 
-function Editable({ value, editable, placeholder, className = "", label, multiline = false, onCommit, onEnter, onBackspaceEmpty, autoFocus }: EditableProps) {
+/** 把可编辑区域的 DOM 读回带加粗标记的纯文本；除加粗外的格式一律丢掉。 */
+function serializeRich(root: Node): string {
+  let out = "";
+  const walk = (node: Node, bold: boolean) => {
+    node.childNodes.forEach((child) => {
+      if (child.nodeType === Node.TEXT_NODE) {
+        const text = child.textContent || "";
+        out += bold ? BOLD_OPEN + text + BOLD_CLOSE : text;
+        return;
+      }
+      if (!(child instanceof HTMLElement)) return;
+      if (child.tagName === "BR") { out += " "; return; }
+      const weight = Number.parseInt(child.style.fontWeight || "0", 10);
+      const isBold = child.tagName === "B" || child.tagName === "STRONG" || weight >= 600 || child.style.fontWeight === "bold";
+      walk(child, bold || isBold);
+    });
+  };
+  walk(root, false);
+  return normalizeBold(out.split(BOLD_CLOSE + BOLD_OPEN).join(""));
+}
+
+function RichText({ text }: { text: string }) {
+  const parts = normalizeBold(text).split(new RegExp(`(${BOLD_OPEN}[^${BOLD_CLOSE}]*${BOLD_CLOSE})`));
+  return (
+    <>
+      {parts.map((part, index) => part.startsWith(BOLD_OPEN)
+        ? <strong key={index}>{part.slice(1, -1)}</strong>
+        : <Fragment key={index}>{part}</Fragment>)}
+    </>
+  );
+}
+
+function Editable({ value, editable, placeholder, className = "", label, multiline = false, rich = false, onCommit, onEnter, onBackspaceEmpty, autoFocus }: EditableProps) {
   const ref = useRef<HTMLSpanElement | null>(null);
   useEffect(() => {
     const node = ref.current;
     if (!node || document.activeElement === node) return;
-    if (node.textContent !== value) node.textContent = value;
-  }, [value]);
+    if (rich) {
+      if (serializeRich(node) !== normalizeBold(value)) node.innerHTML = richBulletToHtml(value);
+    } else if (node.textContent !== value) node.textContent = value;
+  }, [value, rich]);
   useEffect(() => {
     if (autoFocus && ref.current) ref.current.focus();
   }, [autoFocus]);
 
   if (!editable) {
-    return value ? <span className={className}>{value}</span> : null;
+    if (!plainBullet(value)) return null;
+    return <span className={className}>{rich ? <RichText text={value} /> : value}</span>;
   }
 
+  const read = () => {
+    const node = ref.current;
+    if (!node) return "";
+    return rich ? serializeRich(node) : node.textContent || "";
+  };
+
   const commit = () => {
-    const text = (ref.current?.textContent || "").replace(/\u00a0/g, " ").replace(/\u200b/g, "");
+    const text = read().replace(/\u00a0/g, " ").replace(/\u200b/g, "");
     const normalized = multiline ? text.trim() : text.replace(/\s*\n\s*/g, " ").trim();
     if (normalized !== value) onCommit(normalized);
   };
 
+  const revert = () => {
+    if (!ref.current) return;
+    if (rich) ref.current.innerHTML = richBulletToHtml(value);
+    else ref.current.textContent = value;
+  };
+
   const onKeyDown = (event: KeyboardEvent<HTMLSpanElement>) => {
+    if (rich && (event.metaKey || event.ctrlKey) && ["b", "i", "u"].includes(event.key.toLowerCase())) {
+      event.preventDefault();
+      if (event.key.toLowerCase() === "b") document.execCommand("bold");
+      return;
+    }
     if (event.key === "Escape") {
       event.preventDefault();
-      if (ref.current) ref.current.textContent = value;
+      revert();
       ref.current?.blur();
       return;
     }
@@ -268,29 +319,78 @@ function Editable({ value, editable, placeholder, className = "", label, multili
       else ref.current?.blur();
       return;
     }
-    if (event.key === "Backspace" && onBackspaceEmpty && !(ref.current?.textContent || "").trim()) {
+    if (event.key === "Backspace" && onBackspaceEmpty && !plainBullet(read()).trim()) {
       event.preventDefault();
       onBackspaceEmpty();
     }
   };
 
-  return (
-    <span
-      ref={ref}
-      role="textbox"
-      aria-label={label}
-      aria-multiline={multiline || undefined}
-      contentEditable="plaintext-only"
-      suppressContentEditableWarning
-      spellCheck={false}
-      data-placeholder={placeholder}
-      data-paper-editable=""
-      className={`paper-editable ${className}`}
-      onBlur={commit}
-      onKeyDown={onKeyDown}
+  // 粘贴一律按纯文本，避免把网页/Word 的格式带进简历。
+  const onPaste = (event: ClipboardEvent<HTMLSpanElement>) => {
+    if (!rich) return;
+    event.preventDefault();
+    document.execCommand("insertText", false, event.clipboardData.getData("text/plain"));
+  };
+
+  const shared = {
+    ref,
+    role: "textbox",
+    "aria-label": label,
+    "aria-multiline": multiline || undefined,
+    suppressContentEditableWarning: true,
+    spellCheck: false,
+    "data-placeholder": placeholder,
+    "data-paper-editable": "",
+    className: `paper-editable ${className}`,
+    onBlur: commit,
+    onKeyDown,
+  } as const;
+
+  if (rich) {
+    return <span {...shared} data-paper-rich="" contentEditable onPaste={onPaste} dangerouslySetInnerHTML={{ __html: richBulletToHtml(value) }} />;
+  }
+  return <span {...shared} contentEditable="plaintext-only">{value}</span>;
+}
+
+/** 在要点里选中文字时浮出的「B」按钮；不进入导出。 */
+function BoldBubble() {
+  const [state, setState] = useState<{ x: number; y: number; active: boolean } | null>(null);
+  useEffect(() => {
+    const update = () => {
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed || !selection.rangeCount) { setState(null); return; }
+      const anchor = selection.anchorNode;
+      const host = (anchor instanceof Element ? anchor : anchor?.parentElement)?.closest("[data-paper-rich]");
+      if (!host) { setState(null); return; }
+      const rect = selection.getRangeAt(0).getBoundingClientRect();
+      setState({ x: rect.left + rect.width / 2, y: rect.top, active: document.queryCommandState("bold") });
+    };
+    document.addEventListener("selectionchange", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      document.removeEventListener("selectionchange", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, []);
+  if (!state || typeof document === "undefined") return null;
+  return createPortal(
+    <button
+      type="button"
+      className={`paper-bold-bubble${state.active ? " is-active" : ""}`}
+      data-paper-chrome=""
+      aria-label="加粗"
+      aria-pressed={state.active}
+      title="加粗（⌘/Ctrl + B）"
+      style={{ left: state.x, top: state.y }}
+      onMouseDown={(event) => {
+        event.preventDefault();
+        document.execCommand("bold");
+        setState((prev) => (prev ? { ...prev, active: document.queryCommandState("bold") } : prev));
+      }}
     >
-      {value}
-    </span>
+      B
+    </button>,
+    document.body,
   );
 }
 
@@ -313,6 +413,12 @@ function hasContent(item: Record<string, any>, shape: ItemShape) {
   return keys.some((key) => key && textOf(item[key]).replace(/<[^>]+>/g, "").trim());
 }
 
+/** 纸色：用户选过就按选的；没选时「清晰」默认白纸、「留白」默认暖纸。 */
+export function resolvePaperTone(styleConfig: Record<string, string> | undefined): "white" | "parchment" {
+  if (styleConfig?.paperTone === "white" || styleConfig?.paperTone === "parchment") return styleConfig.paperTone;
+  return styleConfig?.paperStyle === "kami" ? "parchment" : "white";
+}
+
 export function ResumePaper(props: ResumePaperProps) {
   const {
     userName, summary, contactJson, sections, styleConfig,
@@ -321,7 +427,9 @@ export function ResumePaper(props: ResumePaperProps) {
   } = props;
   const hasMedia = Boolean(photoUrl || logoUrl || (editable && onUploadAsset));
   const focusRef = useRef<string | null>(null);
-  const tone = styleConfig.paperTone === "white" ? "white" : "parchment";
+  // 默认「清晰」样式（对标超级简历）：照片在左、联系方式带标签、校徽在右；「留白」是 Kami 风格。
+  const cv = styleConfig.paperStyle !== "kami";
+  const tone = resolvePaperTone(styleConfig);
 
   const contact = contactJson || {};
   const contactEntries = CONTACT_FIELDS.filter(([key]) => editable || contact[key]);
@@ -340,6 +448,7 @@ export function ResumePaper(props: ResumePaperProps) {
   return (
     <article className={`paper-sheet paper-${tone}${editable ? " paper-is-editable" : ""}`} data-paper-tone={tone}>
       <header className="paper-header">
+        {cv && hasMedia && <PaperAsset kind="photo" url={photoUrl} editable={editable} onUpload={onUploadAsset} />}
         <div className="paper-header-name">
           <h1 className="paper-name">
             <Editable value={userName || ""} editable={editable} placeholder="你的名字" label="姓名"
@@ -363,9 +472,12 @@ export function ResumePaper(props: ResumePaperProps) {
             <p className="paper-contact">
               {contactEntries.map(([key, label], index) => (
                 <Fragment key={key}>
-                  {index > 0 && (editable || contact[key]) && <span className="paper-sep" aria-hidden>·</span>}
-                  <Editable value={contact[key] || ""} editable={editable} placeholder={label} label={label}
-                    onCommit={(value) => onProfileChange?.({ contact_json: { ...contact, [key]: value } })} />
+                  {index > 0 && (editable || contact[key]) && <span className="paper-sep" aria-hidden>{cv ? "|" : "·"}</span>}
+                  <span className="paper-contact-item">
+                    {cv && <span className="paper-contact-label">{label}：</span>}
+                    <Editable value={contact[key] || ""} editable={editable} placeholder={label} label={label}
+                      onCommit={(value) => onProfileChange?.({ contact_json: { ...contact, [key]: value } })} />
+                  </span>
                 </Fragment>
               ))}
             </p>
@@ -380,7 +492,7 @@ export function ResumePaper(props: ResumePaperProps) {
         {hasMedia && (
           <div className="paper-media">
             <PaperAsset kind="logo" url={logoUrl} editable={editable} onUpload={onUploadAsset} />
-            <PaperAsset kind="photo" url={photoUrl} editable={editable} onUpload={onUploadAsset} />
+            {!cv && <PaperAsset kind="photo" url={photoUrl} editable={editable} onUpload={onUploadAsset} />}
           </div>
         )}
       </header>
@@ -439,6 +551,7 @@ export function ResumePaper(props: ResumePaperProps) {
         );
       })}
       {editable && canvasFooter}
+      {editable && <BoldBubble />}
     </article>
   );
 }
@@ -531,6 +644,7 @@ function PaperItem({
                   value={entry.text}
                   editable={editable}
                   multiline
+                  rich
                   placeholder="动词开头，写清做了什么、结果是多少"
                   label="经历要点"
                   autoFocus={focusKey.current === key}

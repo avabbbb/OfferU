@@ -149,3 +149,15 @@ describe("纸模板默认排版", () => {
     expect(reference.margins.top).toBe(8);
   });
 });
+
+describe("要点加粗", () => {
+  it("AI 给的 <strong> 能在纸上显示，改别的要点时也不会丢", async () => {
+    const { splitRichBullets, plainBullet } = await import("@/lib/resumeText");
+    const { editBullet } = await import("./ResumePaper");
+    const item = { description: "<ul><li>大促峰值 <strong>P99 从 180ms 降到 65ms</strong></li><li>补偿延迟降到 40 秒</li></ul>" };
+    const next = editBullet(item, 1, { text: "补偿延迟从 15 分钟降到 40 秒" });
+    expect(next.description).toContain("<strong>P99 从 180ms 降到 65ms</strong>");
+    expect(next.description).not.toMatch(/<(?!\/?(ul|li|p|strong)>)/);
+    expect(splitRichBullets(next.description).map(plainBullet)).toEqual(["大促峰值 P99 从 180ms 降到 65ms", "补偿延迟从 15 分钟降到 40 秒"]);
+  });
+});

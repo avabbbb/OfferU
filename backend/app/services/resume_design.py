@@ -42,6 +42,7 @@ class DesignPatch(BaseModel):
     logoHeight: float | None = Field(default=None, ge=5, le=40)
     paperTone: Literal["parchment", "white"] | None = None
     paperFont: Literal["kai", "song"] | None = None
+    paperStyle: Literal["kami", "cv"] | None = None
 
 
 class DesignImage(BaseModel):

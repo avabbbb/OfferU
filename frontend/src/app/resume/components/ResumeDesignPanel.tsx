@@ -1,4 +1,5 @@
 "use client";
+import { resolvePaperTone } from "./templates/ResumePaper";
 
 import { useEffect, useState, type ReactNode } from "react";
 import { normalizeTemplateSettings, TEMPLATE_OPTIONS, type ResumeTemplateType } from "./templates/templateSettings";
@@ -105,8 +106,9 @@ export default function ResumeDesignPanel({ config, onChange, onPatch, onUpload,
       </div>
 
       {paper && <div className="grid grid-cols-2 gap-3">
-        <div><p className={label}>字体</p><div className="grid grid-cols-2 gap-1.5">{([["song", "宋体", "系统自带的宋体系，可免费商用"], ["kai", "今楷", "Kami 用的仓耳今楷：第一次使用要下载约 38 MB，仅限个人非商业使用"]] as const).map(([id, text, hint]) => { const active = (config.paperFont === "kai" ? "kai" : "song") === id; return <button key={id} type="button" title={hint} aria-pressed={active} onClick={() => onChange("paperFont", id)} className={chip(active)} data-testid={`resume-font-${id}`}>{text}</button>; })}</div>{config.paperFont === "kai" && <p className="mt-1 text-[10px] leading-snug text-[var(--foreground-muted)]">今楷仅限个人非商业使用，首次需下载约 38 MB。</p>}</div>
-        <div><p className={label}>纸色</p><div className="grid grid-cols-2 gap-1.5">{([["parchment", "暖纸"], ["white", "白纸"]] as const).map(([id, text]) => { const active = (config.paperTone === "white" ? "white" : "parchment") === id; return <button key={id} type="button" aria-pressed={active} onClick={() => onChange("paperTone", id)} className={chip(active)} data-testid={`resume-paper-tone-${id}`}>{text}</button>; })}</div></div>
+        <div><p className={label}>样式</p><div className="grid grid-cols-2 gap-1.5">{([["cv", "清晰", "参考超级简历：黑体、照片在左、紧凑，一页放下"], ["kami", "留白", "参考 Kami：宋体、留白多、信息右对齐"]] as const).map(([id, text, hint]) => { const active = (config.paperStyle === "kami" ? "kami" : "cv") === id; return <button key={id} type="button" title={hint} aria-pressed={active} onClick={() => onChange("paperStyle", id)} className={chip(active)} data-testid={`resume-paper-style-${id}`}>{text}</button>; })}</div></div>
+        {config.paperStyle === "kami" && <div><p className={label}>字体</p><div className="grid grid-cols-2 gap-1.5">{([["song", "宋体", "系统自带的宋体系，可免费商用"], ["kai", "今楷", "Kami 用的仓耳今楷：第一次使用要下载约 38 MB，仅限个人非商业使用"]] as const).map(([id, text, hint]) => { const active = (config.paperFont === "kai" ? "kai" : "song") === id; return <button key={id} type="button" title={hint} aria-pressed={active} onClick={() => onChange("paperFont", id)} className={chip(active)} data-testid={`resume-font-${id}`}>{text}</button>; })}</div>{config.paperFont === "kai" && <p className="mt-1 text-[10px] leading-snug text-[var(--foreground-muted)]">今楷仅限个人非商业使用，首次需下载约 38 MB。</p>}</div>}
+        <div><p className={label}>纸色</p><div className="grid grid-cols-2 gap-1.5">{([["parchment", "暖纸"], ["white", "白纸"]] as const).map(([id, text]) => { const active = resolvePaperTone(config) === id; return <button key={id} type="button" aria-pressed={active} onClick={() => onChange("paperTone", id)} className={chip(active)} data-testid={`resume-paper-tone-${id}`}>{text}</button>; })}</div></div>
       </div>}
 
       <div>
