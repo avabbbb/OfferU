@@ -20,6 +20,8 @@ export interface ResumeSheetProps {
   onProfileChange?: ResumePaperProps["onProfileChange"];
   onSectionChange?: ResumePaperProps["onSectionChange"];
   onUploadAsset?: ResumePaperProps["onUploadAsset"];
+  onStyleChange?: ResumePaperProps["onStyleChange"];
+  onAskAgent?: ResumePaperProps["onAskAgent"];
 }
 
 const LOGO_KEYS = ["schoolLogoUrl", "universityLogoUrl", "logoUrl", "school_logo_url"];
@@ -41,13 +43,13 @@ function ensureKamiFont() {
 
 const ResumeSheet = forwardRef<HTMLDivElement, ResumeSheetProps>(function ResumeSheet(props, ref) {
   const style = props.styleConfig || {};
-  const cssVars = useMemo(() => settingsToCssVars(normalizeTemplateSettings(style)), [style]);
+  const settings = useMemo(() => normalizeTemplateSettings(style), [style]);
+  const cssVars = useMemo(() => settingsToCssVars(settings), [settings]);
   const kami = style.paperStyle === "kami";
-  const kai = kami && style.paperFont === "kai";
-  if (kai) ensureKamiFont();
+  if (settings.font === "kai") ensureKamiFont();
   const contact = props.contactJson || {};
   const logo = LOGO_KEYS.map((key) => contact[key]).find(Boolean);
-  const classes = ["resume-body", "paper", resolvePaperTone(style) === "white" ? "paper-tone-white" : "", kai ? "paper-font-kai" : "", kami ? "" : "paper-style-cv"].filter(Boolean).join(" ");
+  const classes = ["resume-body", "paper", resolvePaperTone(style) === "white" ? "paper-tone-white" : "", `paper-font-${settings.font}`, kami ? "" : "paper-style-cv"].filter(Boolean).join(" ");
   return (
     <div className="resume-sheet inline-block">
       <div ref={ref} className={classes} data-page-size={style.pageSize === "LETTER" ? "LETTER" : "A4"} style={cssVars}>
@@ -64,6 +66,8 @@ const ResumeSheet = forwardRef<HTMLDivElement, ResumeSheetProps>(function Resume
           photoUrl={assetUrl(props.photoUrl)}
           logoUrl={assetUrl(logo)}
           onUploadAsset={props.editable ? props.onUploadAsset : undefined}
+          onStyleChange={props.editable ? props.onStyleChange : undefined}
+          onAskAgent={props.editable ? props.onAskAgent : undefined}
         />
       </div>
     </div>

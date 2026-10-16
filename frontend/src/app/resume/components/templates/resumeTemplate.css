@@ -106,7 +106,7 @@
 /* 随应用附带的思源宋体（Noto Serif SC，OFL），裁到 GB2312 常用字，每个字重约 3.4 MB。
    保证 Windows / macOS / 导出的 PDF 看起来一样；生僻字自动落到系统宋体。 */
 @font-face { font-family: "OfferU Serif SC"; font-style: normal; font-weight: 400; font-display: block; src: url("../../../../assets/fonts/NotoSerifSC-Regular.gb2312.woff2") format("woff2"); }
-@font-face { font-family: "OfferU Serif SC"; font-style: normal; font-weight: 500 700; font-display: block; src: url("../../../../assets/fonts/NotoSerifSC-Medium.gb2312.woff2") format("woff2"); }
+@font-face { font-family: "OfferU Serif SC"; font-style: normal; font-weight: 500; font-display: block; src: url("../../../../assets/fonts/NotoSerifSC-Medium.gb2312.woff2") format("woff2"); }
 
 .resume-body.paper {
   --paper-ink: var(--resume-accent-primary, #1b365d);
@@ -125,7 +125,7 @@
   color: var(--paper-text);
   font-family: var(--paper-serif);
   font-size: var(--font-size-base);
-  font-synthesis: none;
+  font-synthesis: style; /* 中文没有斜体字形，允许合成斜体 */
   font-weight: 400;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
@@ -394,11 +394,14 @@
 
 /* ---- 画布上的选区浮条与修改意见（只在编辑器里出现） ---- */
 .paper-selection-bar {
-  align-items: center; background: #faf9f5; border: 1px solid rgba(20, 20, 19, 0.14); border-radius: 4px;
-  box-shadow: 0 4px 14px rgba(20, 20, 19, 0.12); display: flex; font-family: var(--paper-serif, serif);
-  font-size: 12px; gap: 4px; padding: 3px; position: absolute; white-space: nowrap; z-index: 20;
+  align-items: center; background: #fff; border: 1px solid rgba(15, 15, 15, 0.08); border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(15, 15, 15, 0.14); display: flex; font-family: -apple-system, "PingFang SC", "Noto Sans SC", sans-serif;
+  font-size: 13px; gap: 2px; padding: 4px; position: fixed; transform: translate(-50%, calc(-100% - 8px)); white-space: nowrap; z-index: 70;
 }
-.paper-selection-input { border: 1px solid rgba(20, 20, 19, 0.16); border-radius: 3px; font: inherit; padding: 1px 6px; width: 15em; }
+.paper-selection-bar button { align-items: center; background: none; border: 0; border-radius: 6px; color: #37352f; cursor: pointer; display: inline-flex; font: inherit; gap: 4px; height: 28px; padding: 0 8px; }
+.paper-selection-bar button:hover:not(:disabled) { background: rgba(15, 15, 15, 0.05); }
+.paper-selection-bar button:disabled { opacity: 0.4; }
+.paper-selection-input { border: 1px solid #e3e2de; border-radius: 6px; font: inherit; height: 28px; outline: none; padding: 0 8px; width: 16em; }
 
 .paper-comment-tray {
   background: #faf9f5; border: 1px solid rgba(20, 20, 19, 0.14); border-radius: 6px; bottom: 16px;
@@ -416,12 +419,7 @@
 
 /* 要点里的加粗（手动 ⌘/Ctrl+B 或 AI 改写给出的 <strong>）。 */
 .paper-bullets strong { color: var(--paper-ink); font-weight: 600; }
-.paper-bold-bubble {
-  align-items: center; background: #141413; border: 0; border-radius: 6px; box-shadow: 0 4px 14px rgba(20, 20, 19, 0.18);
-  color: #fff; cursor: pointer; display: inline-flex; font: 700 13px/1 -apple-system, "PingFang SC", sans-serif;
-  height: 26px; justify-content: center; position: fixed; transform: translate(-50%, calc(-100% - 6px)); width: 28px; z-index: 60;
-}
-.paper-bold-bubble.is-active { background: #1b365d; }
+
 
 /* 「清晰」样式（默认）：对标超级简历——黑体、照片在左、联系方式带标签、校徽在右、紧凑到一页。 */
 .resume-body.paper.paper-style-cv {
@@ -463,3 +461,57 @@
 /* 点右侧建议卡时，纸上对应的一段闪一下。 */
 .paper-section { transition: background-color 0.4s ease; }
 .paper-section.is-located { background-color: rgba(35, 131, 226, 0.08); border-radius: 2px; }
+
+/* 序号列表、二级要点、链接（成品里也生效）。 */
+/* 序号用自己的计数器：二级要点不占号，切换序号也不重建 DOM（正在编辑的格式不会丢）。 */
+.paper-bullets.paper-bullets-numbered { counter-reset: paper-bullet; }
+.paper-bullets.paper-bullets-numbered > li:not(.paper-bullet-sub) { counter-increment: paper-bullet; }
+.paper-bullets.paper-bullets-numbered > li:not(.paper-bullet-sub)::marker { content: counter(paper-bullet) ". "; }
+.paper-bullets li.paper-bullet-sub { list-style-type: circle; margin-left: 12pt; }
+.resume-body.paper a { color: inherit; text-decoration: underline; text-decoration-thickness: 0.5pt; text-underline-offset: 1.5pt; }
+
+/* 主题色：姓名、模块标题和标题下的分隔线。 */
+.paper-style-cv .paper-name { color: var(--paper-theme, var(--paper-text)); }
+.paper-style-cv .paper-section-title { border-bottom-color: var(--paper-theme, var(--paper-text)); color: var(--paper-theme, var(--paper-text)); }
+
+/* 字体：黑体 / 宋体 / 楷体，和「清晰 / 留白」样式独立。 */
+.resume-body.paper.paper-style-cv { font-synthesis: weight style; }
+.resume-body.paper.paper-font-sans { --paper-serif: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC", "Helvetica Neue", Arial, sans-serif; }
+.resume-body.paper.paper-font-serif { --paper-serif: "OfferU Serif SC", "Source Han Serif SC", "Noto Serif CJK SC", "Noto Serif SC", "Songti SC", "STSong", "SimSun", Georgia, serif; }
+.resume-body.paper.paper-font-kai { --paper-serif: "TsangerJinKai02", "OfferU Serif SC", "Noto Serif CJK SC", "Noto Serif SC", "Songti SC", "STSong", Georgia, serif; }
+
+/* 选中文字的格式工具栏（只在画布上）。 */
+.paper-format-bar {
+  font-family: -apple-system, "PingFang SC", "Noto Sans SC", sans-serif;
+  left: 0; position: fixed; top: 0; transform: translate(-50%, calc(-100% - 8px)); z-index: 70;
+}
+.paper-format-row {
+  align-items: center; background: #fff; border: 1px solid rgba(15, 15, 15, 0.08); border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(15, 15, 15, 0.14); display: flex; gap: 2px; padding: 4px; white-space: nowrap;
+}
+.paper-format-row button, .paper-format-menu button, .paper-format-pop-foot button, .paper-format-link button {
+  align-items: center; background: none; border: 0; border-radius: 6px; color: #37352f; cursor: pointer;
+  display: inline-flex; font: inherit; font-size: 13px; height: 28px; justify-content: center; min-width: 28px; padding: 0 7px;
+}
+.paper-format-row button:hover, .paper-format-menu button:hover, .paper-format-pop-foot button:hover { background: rgba(15, 15, 15, 0.05); }
+.paper-format-row button[aria-pressed="true"], .paper-format-row button[aria-expanded="true"] { background: rgba(15, 15, 15, 0.08); color: #191919; }
+.paper-format-color { border-bottom: 2.5px solid currentColor; line-height: 14px; }
+.paper-format-sep { background: #e9e9e7; height: 18px; margin: 0 3px; width: 1px; }
+.paper-format-pop {
+  background: #fff; border: 1px solid rgba(15, 15, 15, 0.08); border-radius: 10px; box-shadow: 0 8px 28px rgba(15, 15, 15, 0.14);
+  left: 50%; margin-top: 6px; padding: 10px 12px; position: absolute; top: 100%; transform: translateX(-50%);
+}
+.paper-format-pop p { color: #9b9a97; font-size: 12px; margin: 0 0 6px; }
+.paper-format-pop p + .paper-format-swatches + p { margin-top: 10px; }
+.paper-format-swatches { display: grid; gap: 6px; grid-template-columns: repeat(6, 20px); }
+.paper-format-swatches button { border: 0; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08); cursor: pointer; height: 20px; padding: 0; width: 20px; }
+.paper-format-swatches button:hover { box-shadow: 0 0 0 2px #fff, 0 0 0 3px #191919; }
+.paper-format-pop-foot { align-items: center; border-top: 1px solid #f1f1ef; display: flex; justify-content: space-between; margin-top: 10px; padding-top: 6px; }
+.paper-format-pop-foot label { align-items: center; color: #37352f; cursor: pointer; display: inline-flex; font-size: 13px; gap: 6px; }
+.paper-format-pop-foot input[type="color"] { border: 0; height: 22px; padding: 0; width: 26px; }
+.paper-format-menu { display: flex; flex-direction: column; min-width: 150px; padding: 4px; }
+.paper-format-menu button { justify-content: flex-start; }
+.paper-format-link { align-items: center; display: flex; gap: 6px; padding: 6px; }
+.paper-format-link input { border: 1px solid #e3e2de; border-radius: 6px; font: inherit; font-size: 13px; height: 28px; outline: none; padding: 0 8px; width: 240px; }
+.paper-format-link input:focus { border-color: #8fa3bd; }
+@media print { .paper-format-bar { display: none !important; } }

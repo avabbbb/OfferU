@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * 纸面上方的排版工具栏：智能一页 · 字号 · 行距 · 模块 · 清晰/留白 · 更多（页边距），右侧显示页数。
+ * 纸面上方的排版工具栏：智能一页 · 字号 · 行距 · 模块 · 清晰/留白 · 排版（全部数值），右侧显示页数。
+ * 「排版」参考超级简历：一处调全局，不需要选文字。
  */
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -16,7 +17,17 @@ export interface ToolbarSection {
   sort_order: number;
 }
 
-export interface ToolbarMargins { vertical: number; horizontal: number }
+export interface ToolbarLayout {
+  font: "sans" | "serif" | "kai";
+  sectionGap: number;
+  itemGap: number;
+  marginVertical: number;
+  marginHorizontal: number;
+  themeColor: string | null;
+}
+
+const FONTS = [["sans", "黑体"], ["serif", "宋体"], ["kai", "楷体"]] as const;
+const THEMES = ["#1f3a5f", "#2f5d50", "#8a2c2c", "#4b3f72", "#595959"];
 
 const LINE_HEIGHTS = [1.25, 1.35, 1.45, 1.6, 1.8];
 const btn = "inline-flex h-8 items-center gap-1 rounded-md px-2.5 text-[13px] text-[#37352f] hover:bg-black/[0.04] disabled:opacity-40";
@@ -55,8 +66,8 @@ function Stepper({ label, value, unit, min, max, step, onChange, testId }: {
 }
 
 export function PaperToolbar({
-  bodySize, lineHeight, paperStyle, pages, fitting, sections, margins, pageSize,
-  onBodySize, onLineHeight, onPaperStyle, onFit, onSections, onAddModule, onMargins, trailing,
+  bodySize, lineHeight, paperStyle, pages, fitting, sections, layout, pageSize,
+  onBodySize, onLineHeight, onPaperStyle, onFit, onSections, onAddModule, onStyle, onReset, trailing,
 }: {
   bodySize: number;
   lineHeight: number;
@@ -64,7 +75,7 @@ export function PaperToolbar({
   pages: number;
   fitting: boolean;
   sections: ToolbarSection[];
-  margins: ToolbarMargins;
+  layout: ToolbarLayout;
   pageSize: "A4" | "LETTER";
   onBodySize: (value: number) => void;
   onLineHeight: (value: number) => void;
@@ -72,7 +83,8 @@ export function PaperToolbar({
   onFit: () => void;
   onSections: (sections: ToolbarSection[]) => void;
   onAddModule: (type: string, label: string) => void;
-  onMargins: (value: ToolbarMargins) => void;
+  onStyle: (patch: Record<string, string>) => void;
+  onReset: () => void;
   trailing?: ReactNode;
 }) {
   const modules = usePopover();
@@ -149,12 +161,45 @@ export function PaperToolbar({
         </div>
         <Divider />
         <div className="relative" ref={more.ref}>
-          <button type="button" className={btn} aria-expanded={more.open} aria-haspopup="dialog" onClick={() => more.setOpen((value) => !value)} data-testid="paper-more">更多</button>
+          <button type="button" className={btn} aria-expanded={more.open} aria-haspopup="dialog" onClick={() => more.setOpen((value) => !value)} data-testid="paper-more">排版</button>
           {more.open && (
-            <div role="dialog" aria-label="更多排版" className={`${popoverClass} right-0 w-[240px]`} data-testid="paper-more-panel">
-              <p className="px-2 pb-1 pt-0.5 text-[12px] text-[#9b9a97]">页边距</p>
-              <Stepper label="上下" unit="mm" value={margins.vertical} min={5} max={25} step={1} onChange={(vertical) => onMargins({ ...margins, vertical })} testId="paper-margin-vertical" />
-              <Stepper label="左右" unit="mm" value={margins.horizontal} min={5} max={25} step={1} onChange={(horizontal) => onMargins({ ...margins, horizontal })} testId="paper-margin-horizontal" />
+            <div role="dialog" aria-label="排版" className={`${popoverClass} right-0 w-[290px] p-3`} data-testid="paper-more-panel">
+              <p className="px-2 pb-1.5 text-[12px] text-[#9b9a97]">字体</p>
+              <div className="mx-2 flex rounded-lg bg-[#f1f1ef] p-0.5" role="group" aria-label="字体">
+                {FONTS.map(([id, text]) => (
+                  <button key={id} type="button" aria-pressed={layout.font === id} onClick={() => onStyle({ font: id })} data-testid={`paper-font-${id}`}
+                    className={`h-7 flex-1 rounded-md text-[13px] ${layout.font === id ? "bg-white text-[#191919] shadow-[0_1px_2px_rgba(15,15,15,0.08)]" : "text-[#787774] hover:text-[#37352f]"}`}>{text}</button>
+                ))}
+              </div>
+              <p className="px-2 pb-0.5 pt-3 text-[12px] text-[#9b9a97]">文字</p>
+              <Stepper label="正文字号" unit="pt" value={Math.round(bodySize * 2) / 2} min={8} max={14} step={0.5} onChange={(value) => onBodySize(value)} />
+              <Stepper label="行距" unit="" value={Math.round(lineHeight * 100) / 100} min={1} max={2} step={0.05} onChange={(value) => onLineHeight(Math.round(value * 100) / 100)} testId="paper-line-height-step" />
+              <p className="px-2 pb-0.5 pt-3 text-[12px] text-[#9b9a97]">间距</p>
+              <Stepper label="模块间距" unit="pt" value={layout.sectionGap} min={0} max={24} step={1} onChange={(value) => onStyle({ sectionGap: String(value) })} testId="paper-section-gap" />
+              <Stepper label="条目间距" unit="pt" value={layout.itemGap} min={0} max={14} step={0.5} onChange={(value) => onStyle({ itemGap: String(value) })} testId="paper-item-gap" />
+              <Stepper label="页边距 上下" unit="mm" value={layout.marginVertical} min={5} max={25} step={1} onChange={(value) => onStyle({ marginTop: String(value), marginBottom: String(value) })} testId="paper-margin-vertical" />
+              <Stepper label="页边距 左右" unit="mm" value={layout.marginHorizontal} min={5} max={25} step={1} onChange={(value) => onStyle({ marginLeft: String(value), marginRight: String(value) })} testId="paper-margin-horizontal" />
+              <p className="px-2 pb-1.5 pt-3 text-[12px] text-[#9b9a97]">主题色 · 姓名、模块标题和分隔线</p>
+              <div className="flex items-center gap-2.5 px-2">
+                <button type="button" aria-label="默认主题色" aria-pressed={!layout.themeColor} onClick={() => onStyle({ accentColorHex: "" })}
+                  className={`h-5 w-5 rounded-full bg-[#141413] ${!layout.themeColor ? "shadow-[0_0_0_2px_#fff,0_0_0_3.5px_#191919]" : ""}`} />
+                {THEMES.map((value) => (
+                  <button key={value} type="button" aria-label={`主题色 ${value}`} aria-pressed={layout.themeColor === value} onClick={() => onStyle({ accentColorHex: value })}
+                    className={`h-5 w-5 rounded-full ${layout.themeColor === value ? "shadow-[0_0_0_2px_#fff,0_0_0_3.5px_#191919]" : ""}`} style={{ background: value }} />
+                ))}
+                <label className="relative h-5 w-5 cursor-pointer overflow-hidden rounded-full bg-[conic-gradient(#e11d48,#f59e0b,#16a34a,#2563eb,#7c3aed,#e11d48)]" title="自定义主题色">
+                  <input type="color" aria-label="自定义主题色" className="absolute inset-0 cursor-pointer opacity-0" value={layout.themeColor || "#141413"} onChange={(event) => onStyle({ accentColorHex: event.currentTarget.value })} />
+                </label>
+              </div>
+              <div className="mt-3 flex items-center justify-between border-t border-black/[0.06] px-2 pt-2 text-[12.5px]">
+                <button type="button" className="text-[#787774] hover:text-[#37352f]" onClick={onReset} data-testid="paper-reset-layout">恢复默认</button>
+                <span className="flex rounded-md bg-[#f1f1ef] p-0.5" role="group" aria-label="纸张">
+                  {(["A4", "LETTER"] as const).map((id) => (
+                    <button key={id} type="button" aria-pressed={pageSize === id} onClick={() => onStyle({ pageSize: id })}
+                      className={`h-6 rounded px-2 ${pageSize === id ? "bg-white text-[#191919] shadow-[0_1px_2px_rgba(15,15,15,0.08)]" : "text-[#787774]"}`}>{id === "A4" ? "A4" : "Letter"}</button>
+                  ))}
+                </span>
+              </div>
             </div>
           )}
         </div>

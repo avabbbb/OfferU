@@ -12,8 +12,9 @@ import { resumeApi, type ResumeWorkspace } from "@/lib/api";
 import type { ResumeDetail, ResumeSectionBlock } from "@/lib/hooks";
 import ResumeSheet from "../components/ResumeSheet";
 import { normalizeTemplateSettings } from "../components/templates/templateSettings";
+import type { AskAgentRequest } from "../components/templates/FormatBar";
 import PaperToolbar, { type ToolbarSection } from "../components/canvas/PaperToolbar";
-import { buildCommentPrompt, CanvasSelectionBar, CommentTray, SuggestionCard, type CanvasComment, type InlineChange } from "../components/canvas/CanvasAssist";
+import { buildCommentPrompt, CanvasAgentMenu, CommentTray, SuggestionCard, type CanvasComment, type InlineChange } from "../components/canvas/CanvasAssist";
 import { conflictsWithManualEdit, findTargetSection } from "../components/canvas/proposalDiff";
 import { composeToAgent, toggleAgentDrawer } from "@/lib/agentCompose";
 import { safeClientErrorMessage } from "@/lib/safe-error";
@@ -36,6 +37,7 @@ export default function ResumeEditorPage() {
   const router = useRouter();
   const resumeId = Number(params?.id);
   const [workspace, setWorkspace] = useState<ResumeWorkspace | null>(null);
+  const [agentRequest, setAgentRequest] = useState<AskAgentRequest | null>(null);
   const [draft, setDraft] = useState<DraftResume | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -296,6 +298,8 @@ export default function ResumeEditorPage() {
   const style = draft.style_config || {};
   const settings = normalizeTemplateSettings(style);
   const setStyle = (patch: Record<string, string>) => updateDraft({ style_config: { ...style, ...patch } });
+  const LAYOUT_KEYS = ["font", "bodySize", "lineHeight", "sectionGap", "itemGap", "marginTop", "marginBottom", "marginLeft", "marginRight", "accentColorHex"];
+  const resetLayout = () => updateDraft({ style_config: Object.fromEntries(Object.entries(style).filter(([key]) => !LAYOUT_KEYS.includes(key))) });
 
   // 智能一页：只动字号、行距、间距和页边距，直接量真实排版。
   // 超出一页：从当前值一步步压向下限，第一个放得进一页的就用它；压到下限还放不下就按多页排。
@@ -440,11 +444,15 @@ export default function ResumeEditorPage() {
             pageSize={letter ? "LETTER" : "A4"}
             fitting={fitting}
             sections={draft.sections as ToolbarSection[]}
-            margins={{ vertical: settings.margins.top, horizontal: settings.margins.left }}
+            layout={{
+              font: settings.font, sectionGap: settings.exact.sectionGap, itemGap: settings.exact.itemGap,
+              marginVertical: settings.margins.top, marginHorizontal: settings.margins.left, themeColor: settings.themeColor,
+            }}
             onBodySize={(value) => setStyle({ bodySize: String(value) })}
             onLineHeight={(value) => setStyle({ lineHeight: String(value) })}
             onPaperStyle={(value) => setStyle({ paperStyle: value })}
-            onMargins={({ vertical, horizontal }) => setStyle({ marginTop: String(vertical), marginBottom: String(vertical), marginLeft: String(horizontal), marginRight: String(horizontal) })}
+            onStyle={setStyle}
+            onReset={resetLayout}
             onFit={fitOnePage}
             onSections={(next) => {
               const byId = new Map(next.map((section) => [section.id, section]));
@@ -463,8 +471,13 @@ export default function ResumeEditorPage() {
               onProfileChange={(patch) => updateDraft(patch)}
               onSectionChange={(section) => updateSection(section as unknown as ResumeSectionBlock)}
               onUploadAsset={handleAssetUpload}
+              onStyleChange={setStyle}
+              onAskAgent={setAgentRequest}
             />
-            <CanvasSelectionBar containerRef={canvasNodeRef} onAddComment={(comment) => setComments((current) => [...current, { ...comment, id: `comment-${Date.now()}-${current.length}` }])} />
+            {agentRequest && (
+              <CanvasAgentMenu request={agentRequest} onClose={() => setAgentRequest(null)}
+                onAddComment={(comment) => setComments((current) => [...current, { ...comment, id: `comment-${Date.now()}-${current.length}` }])} />
+            )}
             {Array.from({ length: pageCount - 1 }, (_, index) => (
               <div key={index} className="pointer-events-none absolute left-0 right-0 border-t border-dashed border-[#c9c7c1]" style={{ top: `${pageHeightPx * (index + 1)}px` }} data-testid="resume-page-break">
                 <span className="absolute -right-2 -translate-y-1/2 translate-x-full text-[11px] text-[#9b9a97]">第 {index + 2} 页</span>

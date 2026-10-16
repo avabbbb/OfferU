@@ -25,7 +25,12 @@ export interface ResumeTemplateSettings {
     logoWidth: number;
     logoHeight: number;
   };
+  /** 用户选的主题色；没选时为 null，沿用样式默认（清晰为黑、留白为墨蓝）。 */
+  themeColor: string | null;
+  font: ResumeFont;
 }
+
+export type ResumeFont = "sans" | "serif" | "kai";
 
 /** 「留白」：对齐 Kami resume.html（正文 9.2pt / 行高 1.42，姓名 26.5pt，墨蓝 #1B365D）。 */
 const KAMI_EXACT: ResumeTemplateSettings["exact"] = {
@@ -53,7 +58,12 @@ function color(value: unknown, fallback: string) {
 export function normalizeTemplateSettings(config: Record<string, any> = {}): ResumeTemplateSettings {
   const base = config.paperStyle === "kami" ? KAMI_EXACT : CV_EXACT;
   const margin = (value: unknown, fallback: number) => numeric(value, fallback, 3, 30);
+  const kami = config.paperStyle === "kami";
+  const font: ResumeFont = config.font === "sans" || config.font === "serif" || config.font === "kai"
+    ? config.font : kami ? "serif" : "sans";
   return {
+    font,
+    themeColor: typeof config.accentColorHex === "string" && /^#[0-9a-f]{6}$/i.test(config.accentColorHex) ? config.accentColorHex : null,
     pageSize: config.pageSize === "LETTER" ? "LETTER" : "A4",
     margins: {
       top: margin(config.marginTop, PAPER_MARGINS.top),
@@ -104,5 +114,6 @@ export function settingsToCssVars(settings: ResumeTemplateSettings): CSSProperti
     "--margin-bottom": `${margins.bottom}mm`,
     "--margin-left": `${margins.left}mm`,
     "--resume-accent-primary": exact.headingColor,
+    ...(settings.themeColor ? { "--paper-theme": settings.themeColor } : {}),
   } as CSSProperties;
 }

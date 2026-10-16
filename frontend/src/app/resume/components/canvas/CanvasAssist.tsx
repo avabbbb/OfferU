@@ -9,7 +9,8 @@
  * 纸上的控件带 data-paper-chrome，打印 / 导出时不存在。
  */
 
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { MessageSquarePlus, X } from "lucide-react";
 import { diffText, proposalTextChanges, type ProposalTextChange } from "./proposalDiff";
 
@@ -154,65 +155,40 @@ const QUICK_INSTRUCTIONS: Array<[string, string]> = [
   ["换个说法", "换个说法：意思不变，用更有力的动词开头"],
 ];
 
-export function CanvasSelectionBar({
-  containerRef,
+/** 格式工具栏里点「让 Agent 改」后出现：常用改法一键加入意见，或写一句留言。 */
+export function CanvasAgentMenu({
+  request,
   onAddComment,
+  onClose,
 }: {
-  containerRef: RefObject<HTMLElement | null>;
+  request: { quote: string; section: string; top: number; left: number };
   onAddComment: (comment: Omit<CanvasComment, "id">) => void;
+  onClose: () => void;
 }) {
-  const [anchor, setAnchor] = useState<{ top: number; left: number; quote: string; section: string } | null>(null);
   const [writing, setWriting] = useState(false);
   const [note, setNote] = useState("");
-
+  const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const update = () => {
-      const selection = window.getSelection();
-      const quote = selection?.toString().trim() || "";
-      if (!selection || selection.isCollapsed || quote.length < 2 || !selection.rangeCount) {
-        if (!writing) setAnchor(null);
-        return;
-      }
-      const range = selection.getRangeAt(0);
-      if (!container.contains(range.commonAncestorContainer)) return;
-      const rect = range.getBoundingClientRect();
-      const host = container.getBoundingClientRect();
-      const sectionNode = (range.startContainer.parentElement || null)?.closest("[data-section-type]");
-      const section = sectionNode?.querySelector(".paper-section-title")?.textContent?.trim()
-        || ((range.startContainer.parentElement || null)?.closest(".paper-header") ? "抬头" : "简介");
-      setAnchor({
-        top: rect.top - host.top - 34,
-        left: Math.max(0, rect.left - host.left),
-        quote: quote.slice(0, 400),
-        section,
-      });
-    };
-    container.addEventListener("mouseup", update);
-    container.addEventListener("keyup", update);
-    return () => {
-      container.removeEventListener("mouseup", update);
-      container.removeEventListener("keyup", update);
-    };
-  }, [containerRef, writing]);
-
-  if (!anchor) return null;
+    const away = (event: MouseEvent) => { if (!ref.current?.contains(event.target as Node)) onClose(); };
+    const esc = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    document.addEventListener("mousedown", away);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", esc); };
+  }, [onClose]);
   const add = (instruction: string) => {
-    onAddComment({ quote: anchor.quote, section: anchor.section, instruction });
-    setAnchor(null); setWriting(false); setNote("");
+    onAddComment({ quote: request.quote, section: request.section, instruction });
+    onClose();
     window.getSelection()?.removeAllRanges();
   };
-
-  return (
-    <div className="paper-selection-bar" data-paper-chrome="" role="toolbar" aria-label="选中文字的修改意见"
-      style={{ top: anchor.top, left: anchor.left }} onMouseDown={(event) => { if (!writing) event.preventDefault(); }}>
+  return createPortal(
+    <div ref={ref} className="paper-selection-bar" data-paper-chrome="" role="toolbar" aria-label="让 Agent 改这段"
+      style={{ top: request.top, left: request.left }}>
       {writing ? (
         <form onSubmit={(event) => { event.preventDefault(); if (note.trim()) add(note.trim()); }} className="flex items-center gap-1">
           <input autoFocus value={note} onChange={(event) => setNote(event.target.value)} aria-label="给 AI 的留言"
             placeholder="想怎么改？例如：突出我带的 3 人小组" className="paper-selection-input" />
           <button type="submit" disabled={!note.trim()}>加入</button>
-          <button type="button" onClick={() => { setWriting(false); setAnchor(null); }}>取消</button>
+          <button type="button" onClick={onClose}>取消</button>
         </form>
       ) : (
         <>
@@ -222,7 +198,8 @@ export function CanvasSelectionBar({
           <button type="button" onClick={() => setWriting(true)}><MessageSquarePlus size={11} aria-hidden /> 留言给 AI</button>
         </>
       )}
-    </div>
+    </div>,
+    document.body,
   );
 }
 
