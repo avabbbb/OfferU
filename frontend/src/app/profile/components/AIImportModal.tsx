@@ -592,7 +592,7 @@ export default function AIImportModal({ open, onClose, onImport }: AIImportModal
               <Sparkles size={18} />
             </div>
             <div>
-              <h2 className="text-lg font-black tracking-[-0.04em]">AI 导入简历</h2>
+              <h2 className="text-lg font-semibold tracking-[-0.04em]">AI 导入简历</h2>
               <p className="text-xs text-[var(--foreground-muted)]">借助 AI 工具快速解析简历</p>
             </div>
           </div>

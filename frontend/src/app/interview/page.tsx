@@ -1,5 +1,6 @@
 "use client";
 
+import { PageHeader } from "@/components/layout/PageHeader";
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
@@ -154,36 +155,7 @@ export default function InterviewPage() {
 
   return (
     <motion.div variants={container} initial="hidden" animate="show" className="stage-page stage-page--interview space-y-6">
-      <motion.section variants={item} className="stage-hero bauhaus-panel overflow-hidden bg-white">
-        <div className="grid gap-6 p-6 md:p-8 xl:grid-cols-[1.05fr_0.95fr]">
-          <div className="space-y-4">
-            <span className="bauhaus-chip bg-[var(--surface-muted)] text-[var(--foreground)]">面试题库</span>
-            <div>
-              <p className="bauhaus-label text-[var(--foreground-muted)]">题目面板</p>
-              <h1 className="mt-3 text-5xl font-black uppercase leading-[0.88] tracking-[-0.08em] sm:text-6xl">面试</h1>
-              <p className="mt-4 max-w-2xl text-base font-medium leading-relaxed text-[var(--foreground-muted)]">
-                把散落在社群、帖子和个人记录里的面经重新组织成可搜索题库，再基于档案生成回答思路，
-                让准备面试的节奏更稳定，也更容易复盘高频题。
-              </p>
-            </div>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-1">
-            <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4 text-[var(--foreground)]">
-              <p className="bauhaus-label text-[var(--foreground-muted)]">题目</p>
-              <p className="mt-3 text-4xl font-black uppercase tracking-[-0.08em]">{questions?.length ?? 0}</p>
-            </div>
-            <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4 text-[var(--foreground)]">
-              <p className="bauhaus-label text-[var(--foreground-muted)]">经验</p>
-              <p className="mt-3 text-4xl font-black uppercase tracking-[-0.08em]">{experiences?.length ?? 0}</p>
-            </div>
-            <div className="bauhaus-panel-sm bg-[var(--status-blush)] p-4 text-[var(--foreground)]">
-              <p className="bauhaus-label text-[var(--foreground-muted)]">行动</p>
-              <p className="mt-3 text-lg font-black uppercase tracking-[-0.05em]">AI 提炼 / AI 回答</p>
-            </div>
-          </div>
-        </div>
-      </motion.section>
+      <PageHeader title="面试" description={`题库 ${questions?.length ?? 0} 道题，面经 ${experiences?.length ?? 0} 篇。`} />
 
       <motion.section variants={item} className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-3">
@@ -222,7 +194,7 @@ export default function InterviewPage() {
       {interviewError && (
         <motion.div variants={item} role="alert" className="bauhaus-panel-sm flex items-center justify-between bg-[var(--status-blush)] px-5 py-3 text-sm font-bold text-[#b7483c]">
           <span>{interviewError}</span>
-          <button onClick={() => setInterviewError("")} className="ml-4 font-black" aria-label="关闭错误提示">✕</button>
+          <button onClick={() => setInterviewError("")} className="ml-4 font-semibold" aria-label="关闭错误提示">✕</button>
         </motion.div>
       )}
 
@@ -262,7 +234,7 @@ export default function InterviewPage() {
                     <CardBody className="space-y-4 p-5">
                       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <div>
-                          <p className="text-xl font-black tracking-[-0.04em] text-[var(--foreground)]">{question.question_text}</p>
+                          <p className="text-xl font-semibold tracking-[-0.04em] text-[var(--foreground)]">{question.question_text}</p>
                           <div className="mt-3 flex flex-wrap items-center gap-2">
                             <Chip size="sm" variant="flat" className={cfg.chipClass}>{cfg.label}</Chip>
                             <Chip size="sm" variant="flat" className="border border-[var(--border-strong)] bg-white font-semibold text-[var(--foreground)]">
@@ -308,7 +280,7 @@ export default function InterviewPage() {
               <Card className="bauhaus-panel rounded-none bg-[var(--surface-muted)] text-[var(--foreground)] shadow-none">
                 <CardBody className="p-10 text-center">
                   <GraduationCap size={54} className="mx-auto text-[var(--foreground-muted)]" aria-hidden="true" />
-                  <p className="mt-4 text-2xl font-black uppercase tracking-[-0.05em]">题库为空</p>
+                  <p className="mt-4 text-lg font-semibold">题库为空</p>
                   <p className="mt-3 text-sm font-medium text-[var(--foreground-muted)]">
                     点击右上角「粘贴面经」添加第一条原始记录，AI 会自动提炼问题。
                   </p>
@@ -330,7 +302,7 @@ export default function InterviewPage() {
                       <div>
                         <div className="flex flex-wrap items-center gap-2 text-[var(--foreground)]">
                           <Building2 size={14} className="text-[var(--foreground-muted)]" />
-                          <span className="text-lg font-black tracking-[-0.04em]">{experience.company}</span>
+                          <span className="text-lg font-semibold tracking-[-0.04em]">{experience.company}</span>
                           <span className="text-[var(--foreground-muted)]">·</span>
                           <Briefcase size={14} className="text-[var(--foreground-muted)]" />
                           <span className="text-sm font-bold">{experience.role}</span>
@@ -362,7 +334,7 @@ export default function InterviewPage() {
               <Card className="bauhaus-panel rounded-none bg-[var(--surface-muted)] text-[var(--foreground)] shadow-none">
                 <CardBody className="p-10 text-center">
                   <GraduationCap size={54} className="mx-auto text-[var(--foreground-muted)]" aria-hidden="true" />
-                  <p className="mt-4 text-2xl font-black uppercase tracking-[-0.05em]">暂无经验</p>
+                  <p className="mt-4 text-lg font-semibold">暂无经验</p>
                   <p className="mt-3 text-sm font-medium text-[var(--foreground-muted)]">点击右上角「粘贴面经」开始收集。</p>
                 </CardBody>
               </Card>
@@ -373,7 +345,7 @@ export default function InterviewPage() {
 
       <Modal isOpen={isCollectOpen} onClose={onCollectClose} size="2xl" placement="center">
         <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="flex items-center gap-2 border-b border-[var(--border-strong)]/12 bg-[var(--surface-muted)] px-6 py-5 text-xl font-black tracking-[-0.06em]">
+          <ModalHeader className="flex items-center gap-2 border-b border-[var(--border-strong)]/12 bg-[var(--surface-muted)] px-6 py-5 text-xl font-semibold tracking-[-0.06em]">
             <GraduationCap size={20} aria-hidden="true" />
             粘贴面经原文
           </ModalHeader>

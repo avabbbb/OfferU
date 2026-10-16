@@ -99,7 +99,7 @@ export function JobAssessmentPlanCard({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="bauhaus-label text-[var(--foreground-muted)]">OfferU 注意到这个岗位</p>
-          <h2 id="job-assessment-plan-title" className="mt-2 text-2xl font-black tracking-[-0.05em] text-[var(--foreground)]">
+          <h2 id="job-assessment-plan-title" className="mt-2 text-2xl font-semibold tracking-[-0.05em] text-[var(--foreground)]">
             岗位匹配与准备计划
           </h2>
         </div>
@@ -146,7 +146,7 @@ export function JobAssessmentPlanCard({
                 <ul className="mt-2 space-y-2">
                   {assessment.evidence_alignment.map((item, index) => (
                     <li key={`${item.requirement || "alignment"}-${index}`} className="bauhaus-panel-sm bg-[var(--surface-muted)] p-3 text-sm">
-                      <p className="font-black text-[var(--foreground)]">{item.requirement || "岗位要求"}</p>
+                      <p className="font-semibold text-[var(--foreground)]">{item.requirement || "岗位要求"}</p>
                       <p className="mt-1 font-medium leading-relaxed text-[var(--foreground-muted)]">
                         {item.evidence_ref ? `${item.evidence_ref} · ` : ""}{item.rationale || "需要进一步核对"}
                       </p>
@@ -164,7 +164,7 @@ export function JobAssessmentPlanCard({
                 <ul className="mt-2 space-y-2">
                   {assessment.evidence_gaps.map((gap, index) => (
                     <li key={`${gap.requirement || "gap"}-${index}`} className="bauhaus-panel-sm border-amber-500 bg-amber-50 p-3 text-sm">
-                      <p className="font-black text-amber-950">{gap.requirement || "待核对的岗位要求"}</p>
+                      <p className="font-semibold text-amber-950">{gap.requirement || "待核对的岗位要求"}</p>
                       <p className="mt-1 font-medium leading-relaxed text-amber-900">{gap.why_missing || "目前资料里还没有足够证据。"}</p>
                       {gap.evidence_to_seek && <p className="mt-1 font-semibold leading-relaxed text-amber-950">下一步：{gap.evidence_to_seek}</p>}
                     </li>
@@ -185,7 +185,7 @@ export function JobAssessmentPlanCard({
                 ["面试准备", assessment.interview_prep],
               ] as Array<[string, CapabilityNeed | undefined]>).map(([label, need]) => (
                 <div key={label} className="bauhaus-panel-sm bg-[var(--surface-muted)] p-3">
-                  <p className="text-xs font-black text-[var(--foreground)]">{label} · {need?.relevance ? RELEVANCE_LABELS[need.relevance] : "待评估"}</p>
+                  <p className="text-xs font-semibold text-[var(--foreground)]">{label} · {need?.relevance ? RELEVANCE_LABELS[need.relevance] : "待评估"}</p>
                   <p className="mt-1 text-xs font-medium leading-relaxed text-[var(--foreground-muted)]">{need?.rationale || "尚无准备说明。"}</p>
                 </div>
               ))}

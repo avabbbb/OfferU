@@ -32,7 +32,7 @@ export default function TemplateSelector({
       >
         <div className="w-full">
           <div className="border-b border-[var(--border-strong)] pb-2">
-            <p className="text-[12px] font-black">选择简历模板</p>
+            <p className="text-[12px] font-semibold">选择简历模板</p>
             <p className="mt-0.5 text-[11px] text-[var(--foreground)]">默认使用你给的 PDF 同款样式。</p>
           </div>
           <div className="mt-2 space-y-1">

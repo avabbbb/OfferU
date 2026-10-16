@@ -313,7 +313,7 @@ export default function ResumesListPage() {
       {actionError && (
         <div role="alert" className="bauhaus-panel-sm flex items-center justify-between bg-[var(--status-blush)] px-4 py-3 text-sm font-semibold text-[var(--primary-red)]">
           <span>{actionError}</span>
-          <button onClick={() => setActionError("")} className="ml-4 font-black" aria-label="关闭错误提示">✕</button>
+          <button onClick={() => setActionError("")} className="ml-4 font-semibold" aria-label="关闭错误提示">✕</button>
         </div>
       )}
 

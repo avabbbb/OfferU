@@ -57,7 +57,7 @@ export function JobSourceConnectionsCard() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="bauhaus-label text-[var(--foreground-muted)]">Connections</p>
-            <h2 className="mt-1 text-xl font-black tracking-[-0.03em] text-[var(--foreground)]">
+            <h2 className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[var(--foreground)]">
               岗位数据来源
             </h2>
             <p className="mt-1 max-w-xl text-sm font-medium text-[var(--foreground-soft)]">
@@ -95,12 +95,12 @@ export function JobSourceConnectionsCard() {
           connections.map((conn) => (
             <div key={conn.source_id} className="flex flex-wrap items-center justify-between gap-4 px-6 py-5 md:px-8">
               <div className="flex items-center gap-4">
-                <div className={`bauhaus-panel-sm flex h-11 w-11 items-center justify-center ${conn.connected ? "bg-[var(--primary-blue)] text-white" : "bg-[var(--surface-muted)] text-[var(--foreground-muted)]"}`}>
+                <div className={`bauhaus-panel-sm flex h-11 w-11 items-center justify-center ${conn.connected ? "bg-[var(--surface-hover)] text-[var(--foreground)]" : "bg-[var(--surface-muted)] text-[var(--foreground-muted)]"}`}>
                   <Plug size={18} />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <p className="text-sm font-black text-[var(--foreground)]">{conn.label}</p>
+                    <p className="text-sm font-semibold text-[var(--foreground)]">{conn.label}</p>
                     {conn.experimental && (
                       <Chip size="sm" variant="flat" color="primary" className="!h-5 !text-[10px] font-bold">
                         Experimental
@@ -122,7 +122,7 @@ export function JobSourceConnectionsCard() {
               <div className="flex items-center gap-3">
                 <div className="text-right">
                   <div className="flex items-center gap-1.5">
-                    <span className={`inline-block h-1.5 w-1.5 rounded-full ${conn.connected ? "bg-[var(--primary-blue)]" : "bg-[var(--border)]"}`} />
+                    <span className={`inline-block h-1.5 w-1.5 rounded-full ${conn.connected ? "bg-[var(--primary-green)]" : "bg-[var(--border)]"}`} />
                     <span className="text-xs font-bold text-[var(--foreground)]">{STATUS_LABEL[conn.status] || conn.status}</span>
                   </div>
                   {conn.last_sync && (

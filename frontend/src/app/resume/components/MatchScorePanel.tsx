@@ -31,7 +31,7 @@ export default function MatchScorePanel({
           <Target size={14} />
           JD Match
         </div>
-        <span className="font-mono text-lg font-black">{safeScore}%</span>
+        <span className="font-mono text-lg font-semibold">{safeScore}%</span>
       </div>
       <div className="mt-2 h-2 border border-[var(--border)] bg-[var(--surface-muted)]">
         <div className="h-full bg-[var(--primary-blue)]" style={{ width: `${safeScore}%` }} />

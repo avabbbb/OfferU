@@ -1,5 +1,6 @@
 "use client";
 
+import { PageHeader } from "@/components/layout/PageHeader";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { EmailConnectionForm } from "@/components/onboarding/EmailConnectionForm";
@@ -175,36 +176,7 @@ export default function EmailPage() {
 
   return (
     <motion.div variants={container} initial="hidden" animate="show" className="space-y-8">
-      <motion.section variants={item} className="bauhaus-panel overflow-hidden bg-white">
-        <div className="grid gap-6 p-6 md:p-8 xl:grid-cols-[1.05fr_0.95fr]">
-          <div className="space-y-4">
-            <span className="bauhaus-chip bg-[var(--surface-muted)] text-[var(--foreground)]">邮件接入</span>
-            <div>
-              <p className="bauhaus-label text-[var(--foreground-muted)]">收件箱解析</p>
-              <h1 className="mt-3 text-5xl font-black uppercase leading-[0.88] tracking-[-0.08em] sm:text-6xl">进展</h1>
-              <p className="mt-4 max-w-2xl text-base font-medium leading-relaxed text-[var(--foreground-muted)]">
-                把邮箱授权、通知分类和日历同步集中到一块面板里，避免面试邮件遗漏，
-                也方便我们把下一步动作自动推进到日程与投递流程。
-              </p>
-            </div>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-1">
-            <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4 text-[var(--foreground)]">
-              <p className="bauhaus-label text-[var(--foreground-muted)]">Gmail</p>
-              <p className="mt-3 text-2xl font-black uppercase tracking-[-0.05em]">{isGmail ? "已连接" : "待连接"}</p>
-            </div>
-            <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4 text-[var(--foreground)]">
-              <p className="bauhaus-label text-[var(--foreground-muted)]">IMAP</p>
-              <p className="mt-3 text-2xl font-black uppercase tracking-[-0.05em]">{isImap ? "已连接" : "待连接"}</p>
-            </div>
-            <div className="bauhaus-panel-sm bg-[var(--status-blush)] p-4 text-[var(--foreground)]">
-              <p className="bauhaus-label text-[var(--foreground-muted)]">已解析</p>
-              <p className="mt-3 text-4xl font-black uppercase tracking-[-0.08em]">{notifications?.length ?? 0}</p>
-            </div>
-          </div>
-        </div>
-      </motion.section>
+      <PageHeader title="邮件" description={isGmail || isImap ? `已连接 ${isGmail ? "Gmail" : "IMAP 邮箱"}，解析出 ${notifications?.length ?? 0} 条求职通知。` : "连接邮箱后，面试、笔试和结果通知会自动整理到投递和日程里。"} />
 
       <motion.section variants={item} className="bauhaus-panel-sm flex items-start gap-3 bg-[var(--surface-muted)] p-4 text-[var(--foreground)]">
         <Info size={16} className="mt-0.5 shrink-0" />
@@ -266,7 +238,7 @@ export default function EmailPage() {
             <CardBody className="space-y-4 p-5">
               <div>
                 <p className="bauhaus-label text-[var(--foreground-muted)]">权限管理</p>
-                <h2 className="mt-2 text-2xl font-black tracking-[-0.05em] text-[var(--foreground)]">已授权邮箱</h2>
+                <h2 className="mt-2 text-2xl font-semibold tracking-[-0.05em] text-[var(--foreground)]">已授权邮箱</h2>
                 <p className="mt-2 text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">撤销后会停止后续同步、删除本地钥匙串凭据，并使尚未确认的邮件候选失效。</p>
               </div>
               {activeAccounts.map((account) => (
@@ -299,7 +271,7 @@ export default function EmailPage() {
               <Mail size={22} />
             </div>
             <div className="flex-1">
-              <p className="text-lg font-black uppercase tracking-[-0.04em] text-[var(--foreground)]">邮箱状态</p>
+              <p className="text-lg font-semibold text-[var(--foreground)]">邮箱状态</p>
               <p className="mt-2 text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
                 {isConnected
                   ? `${isImap ? `IMAP: ${emailStatus?.imap_user}` : ""}${isImap && isGmail ? " + " : ""}${isGmail ? "Gmail OAuth" : ""} · 已解析 ${notifications?.length ?? 0} 条通知`
@@ -327,7 +299,7 @@ export default function EmailPage() {
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
                   <p className="bauhaus-label text-[var(--foreground-muted)]">可追溯状态</p>
-                  <h2 className="mt-2 text-2xl font-black tracking-[-0.05em] text-[var(--foreground)]">同步运行记录</h2>
+                  <h2 className="mt-2 text-2xl font-semibold tracking-[-0.05em] text-[var(--foreground)]">同步运行记录</h2>
                   <p className="mt-2 text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">每次同步都会留下状态、尝试次数和候选计数；失败不会被显示成完成。</p>
                 </div>
                 <Chip size="sm" variant="flat" className="border border-[var(--border-strong)] bg-[var(--surface-muted)] font-semibold text-[var(--foreground)]">
@@ -397,7 +369,7 @@ export default function EmailPage() {
                         >
                           {notification.category_display || notification.category}
                         </Chip>
-                        <h3 className="text-xl font-black tracking-[-0.04em] text-[var(--foreground)]">
+                        <h3 className="text-xl font-semibold tracking-[-0.04em] text-[var(--foreground)]">
                           {notification.position || notification.email_subject}
                         </h3>
                       </div>
@@ -444,7 +416,7 @@ export default function EmailPage() {
           <Card className="bauhaus-panel rounded-none bg-[var(--surface-muted)] text-[var(--foreground)] shadow-none">
             <CardBody className="p-10 text-center">
               <Mail size={54} className="mx-auto text-[var(--foreground-muted)]" />
-              <p className="mt-4 text-2xl font-black uppercase tracking-[-0.05em]">暂无通知</p>
+              <p className="mt-4 text-lg font-semibold">暂无通知</p>
               <p className="mt-3 text-sm font-medium text-[var(--foreground-muted)]">
                 先完成邮箱连接，然后同步邮件，这里会出现面试、笔试和 Offer 通知。
               </p>
