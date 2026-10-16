@@ -147,6 +147,19 @@ const SHAPES: Record<string, ItemShape> = {
     titlePlaceholder: "经历", metaPlaceholders: [],
   },
 };
+SHAPES.campusExperiences = { ...EXPERIENCE, titlePlaceholder: "学生组织 / 社团", metaPlaceholders: ["职务", "城市"] };
+SHAPES.languages = {
+  title: "category", meta: [], tags: { category: "category", items: "items" },
+  titlePlaceholder: "语言", metaPlaceholders: [],
+};
+SHAPES.interests = {
+  title: "category", meta: [], tags: { category: "category", items: "items" },
+  titlePlaceholder: "类别", metaPlaceholders: [],
+};
+SHAPES.portfolio = {
+  title: "name", meta: ["url"], start: "startDate", end: "endDate", description: true,
+  titlePlaceholder: "作品名称", metaPlaceholders: ["链接"],
+};
 SHAPES.project = SHAPES.projects;
 SHAPES.skill = SHAPES.skills;
 SHAPES.certificate = SHAPES.certificates;

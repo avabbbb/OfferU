@@ -235,7 +235,13 @@ async def update_resume_record(resume_id: int, update_data: dict[str, Any]) -> d
                     section = existing[section_id]
                     seen.add(section.id)
                 else:
-                    section = ResumeSection(resume_id=resume.id)
+                    # 新段落要带着类型和标题一起建，否则 flush 时 section_type 为空会撞 NOT NULL，新加的模块存不下来。
+                    section = ResumeSection(
+                        resume_id=resume.id,
+                        section_type=row["section_type"],
+                        title=row.get("title", ""),
+                        sort_order=row.get("sort_order", index),
+                    )
                     db.add(section)
                     await db.flush()
                     seen.add(section.id)

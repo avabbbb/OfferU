@@ -292,6 +292,11 @@ const PAPER_EXACT_DEFAULTS: ResumeTemplateSettings["exact"] = {
   headingColor: "#1B365D", ruleColor: "#E8E6DC",
 };
 const PAPER_MARGINS = { top: 11, right: 13, bottom: 11, left: 13 };
+/** 「清晰」样式（默认，对标超级简历）：黑体略大一号，间距更紧，一页放得下更多内容。 */
+const PAPER_CV_EXACT_DEFAULTS: ResumeTemplateSettings["exact"] = {
+  ...PAPER_EXACT_DEFAULTS,
+  bodySize: 9.5, lineHeight: 1.45, sectionGap: 9, itemGap: 4.5, paragraphGap: 1, headerGap: 6,
+};
 
 export function normalizeTemplateSettings(config: Record<string, any> = {}): ResumeTemplateSettings {
   const rawTemplate = config.template || config.templateType;
@@ -299,7 +304,7 @@ export function normalizeTemplateSettings(config: Record<string, any> = {}): Res
   const reference = template === "reference" || template === "reference-compact";
   const paper = template === "paper";
   const accent = asAccent(config.accentColorName || config.accentColor);
-  const base = paper ? PAPER_EXACT_DEFAULTS : DEFAULT_TEMPLATE_SETTINGS.exact;
+  const base = paper ? (config.paperStyle === "kami" ? PAPER_EXACT_DEFAULTS : PAPER_CV_EXACT_DEFAULTS) : DEFAULT_TEMPLATE_SETTINGS.exact;
   const marginDefaults = paper ? PAPER_MARGINS : DEFAULT_TEMPLATE_SETTINGS.margins;
   return {
     template,

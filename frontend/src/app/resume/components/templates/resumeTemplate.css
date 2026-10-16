@@ -616,6 +616,9 @@
     box-shadow: none !important;
     break-inside: auto !important;
     page-break-inside: auto !important;
+    /* 超过一页时，每一页都重复上下页边距（否则第 2 页的内容会顶着纸边）。 */
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
   }
 
   .resume-item {
@@ -901,6 +904,10 @@
 .paper-remove:focus-visible { opacity: 1; }
 
 @media print {
+  /* 跨页时按要点断开：条目可以拆到下一页，但标题行跟着第一条要点走，单条要点不拆。 */
+  .paper-item { break-inside: auto; }
+  .paper-item-head { break-after: avoid; }
+  .paper-bullets li, .paper-skill-row { break-inside: avoid; }
   .resume-body.paper { background: var(--paper-bg) !important; }
   [data-paper-chrome] { display: none !important; }
   .paper-asset-empty { display: none !important; }
@@ -1011,9 +1018,8 @@
   --paper-serif: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC", "Helvetica Neue", Arial, sans-serif;
   --paper-text-4: #3d3d3a;
   letter-spacing: 0;
-  line-height: 1.45;
 }
-.paper-style-cv .paper-header { border-bottom: none; column-gap: 5mm; display: grid; grid-template-columns: auto 1fr auto; grid-template-rows: auto auto; margin-bottom: 2mm; padding-bottom: 0; }
+.paper-style-cv .paper-header { border-bottom: none; column-gap: 5mm; display: grid; grid-template-columns: auto 1fr auto; grid-template-rows: auto auto; padding-bottom: 0; }
 .paper-style-cv .paper-header > .paper-asset-photo { grid-column: 1; grid-row: 1 / span 2; }
 .paper-style-cv .paper-header-name { align-self: end; grid-column: 2; grid-row: 1; }
 .paper-style-cv .paper-header-right { align-self: start; display: flex; flex-direction: column; grid-column: 2; grid-row: 2; line-height: 1.6; text-align: left; }
@@ -1027,9 +1033,7 @@
 .paper-style-cv .paper-contact-label { color: var(--paper-text-3); }
 .paper-style-cv .paper-photo { height: 30mm; object-fit: cover; width: 22mm; }
 .paper-style-cv .paper-logo { height: auto; max-height: 16mm; max-width: 52mm; width: auto; }
-.paper-style-cv .paper-section { margin-top: 3.2mm; }
 .paper-style-cv .paper-section-title { border-bottom: 0.8pt solid var(--paper-text); font-size: calc(var(--font-size-base) * 1.15); font-weight: 700; letter-spacing: 0.5pt; margin-bottom: 1.4mm; padding-bottom: 0.8mm; }
-.paper-style-cv .paper-items > .paper-item + .paper-item { margin-top: 1.6mm; }
 .paper-style-cv .paper-item-title, .paper-style-cv [data-section-type="education"] .paper-item-title { font-size: var(--font-size-base); font-weight: 700; }
 .paper-style-cv .paper-item-meta { color: var(--paper-text); margin-left: 0; }
 .paper-style-cv .paper-item-meta::before { content: " – "; }
@@ -1037,9 +1041,11 @@
 .paper-style-cv .paper-chip::before { content: "｜"; font-weight: 400; }
 .paper-style-cv .paper-date { color: var(--paper-text); font-size: var(--font-size-base); }
 .paper-style-cv .paper-bullets { margin-top: 0.6mm; padding-left: 11pt; }
-.paper-style-cv .paper-bullets li { margin-top: 0.4mm; }
 .paper-style-cv .paper-bullets li::marker { color: var(--paper-text); }
 .paper-style-cv .paper-bullets strong { color: var(--paper-text); font-weight: 700; }
 .paper-style-cv .paper-skill-row { border-bottom: none; padding: 0.5mm 0; }
 .paper-style-cv .paper-skill-category { color: var(--paper-text); flex-basis: auto; font-weight: 700; }
 .paper-style-cv .paper-skill-category::after { content: "："; }
+
+/* 「智能一页」测量时只量成品：画布上的编辑控件不计入高度。 */
+.paper-measuring [data-paper-chrome] { display: none !important; }

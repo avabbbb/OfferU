@@ -39,8 +39,8 @@ const THEME_COLORS = [
 const round = (value: number, digits = 1) => String(Math.round(value * 10 ** digits) / 10 ** digits);
 
 /** 以模板自身默认值为“标准”，紧凑/宽松按比例推算，避免每个模板各维护一套数字。 */
-function densityPreset(template: ResumeTemplateType, density: "compact" | "standard" | "loose"): Record<string, string> {
-  const base = normalizeTemplateSettings({ template });
+function densityPreset(template: ResumeTemplateType, density: "compact" | "standard" | "loose", paperStyle?: string): Record<string, string> {
+  const base = normalizeTemplateSettings({ template, paperStyle });
   const k = density === "compact" ? { font: 0.95, line: -0.1, gap: 0.65, margin: -2 } : density === "loose" ? { font: 1.05, line: 0.1, gap: 1.3, margin: 2 } : { font: 1, line: 0, gap: 1, margin: 0 };
   const { exact, margins } = base;
   return {
@@ -70,7 +70,7 @@ export default function ResumeDesignPanel({ config, onChange, onPatch, onUpload,
   const numberInput = (key: string, label: string, value: number, min: number, max: number, step = 0.5) => (
     <NumberSetting key={key} label={label} value={value} min={min} max={max} step={step} className={control} onChange={(next) => onChange(key, next)} />
   );
-  const densities = (["compact", "standard", "loose"] as const).map((id) => ({ id, label: { compact: "紧凑", standard: "标准", loose: "宽松" }[id], patch: densityPreset(settings.template, id) }));
+  const densities = (["compact", "standard", "loose"] as const).map((id) => ({ id, label: { compact: "紧凑", standard: "标准", loose: "宽松" }[id], patch: densityPreset(settings.template, id, config.paperStyle) }));
   const current = { bodySize: String(exact.bodySize), lineHeight: String(exact.lineHeight), sectionGap: String(exact.sectionGap), itemGap: String(exact.itemGap), marginTop: String(settings.margins.top), marginBottom: String(settings.margins.bottom), marginLeft: String(settings.margins.left), marginRight: String(settings.margins.right) } as Record<string, string>;
   const activeDensity = densities.find(({ patch }) => Object.entries(patch).every(([key, value]) => Number(current[key]) === Number(value)))?.id;
   const chip = (active: boolean) => `rounded-md border px-2 py-1.5 text-[11px] ${active ? "border-black bg-black text-white" : "border-[var(--border-strong)]/15 hover:bg-black/5"}`;
@@ -106,7 +106,6 @@ export default function ResumeDesignPanel({ config, onChange, onPatch, onUpload,
       </div>
 
       {paper && <div className="grid grid-cols-2 gap-3">
-        <div><p className={label}>样式</p><div className="grid grid-cols-2 gap-1.5">{([["cv", "清晰", "参考超级简历：黑体、照片在左、紧凑，一页放下"], ["kami", "留白", "参考 Kami：宋体、留白多、信息右对齐"]] as const).map(([id, text, hint]) => { const active = (config.paperStyle === "kami" ? "kami" : "cv") === id; return <button key={id} type="button" title={hint} aria-pressed={active} onClick={() => onChange("paperStyle", id)} className={chip(active)} data-testid={`resume-paper-style-${id}`}>{text}</button>; })}</div></div>
         {config.paperStyle === "kami" && <div><p className={label}>字体</p><div className="grid grid-cols-2 gap-1.5">{([["song", "宋体", "系统自带的宋体系，可免费商用"], ["kai", "今楷", "Kami 用的仓耳今楷：第一次使用要下载约 38 MB，仅限个人非商业使用"]] as const).map(([id, text, hint]) => { const active = (config.paperFont === "kai" ? "kai" : "song") === id; return <button key={id} type="button" title={hint} aria-pressed={active} onClick={() => onChange("paperFont", id)} className={chip(active)} data-testid={`resume-font-${id}`}>{text}</button>; })}</div>{config.paperFont === "kai" && <p className="mt-1 text-[10px] leading-snug text-[var(--foreground-muted)]">今楷仅限个人非商业使用，首次需下载约 38 MB。</p>}</div>}
         <div><p className={label}>纸色</p><div className="grid grid-cols-2 gap-1.5">{([["parchment", "暖纸"], ["white", "白纸"]] as const).map(([id, text]) => { const active = resolvePaperTone(config) === id; return <button key={id} type="button" aria-pressed={active} onClick={() => onChange("paperTone", id)} className={chip(active)} data-testid={`resume-paper-tone-${id}`}>{text}</button>; })}</div></div>
       </div>}
