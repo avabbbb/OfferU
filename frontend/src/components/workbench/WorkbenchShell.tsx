@@ -11,7 +11,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, Bot } from "lucide-react";
-import { AGENT_COMPOSE_EVENT } from "@/lib/agentCompose";
+import { AGENT_COMPOSE_EVENT, AGENT_TOGGLE_EVENT, toggleAgentDrawer } from "@/lib/agentCompose";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { SectionTabs } from "@/components/layout/SectionTabs";
 import { OnboardingGate } from "@/components/onboarding/OnboardingGate";
@@ -40,67 +40,79 @@ interface FocusRule {
   backLabel: string;
   /** 完全裸渲染(打印页):连最小控制条也不要 */
   bare?: boolean;
+  /** 页面自带顶栏(简历编辑器):不渲染控制条,只保留 Agent 抽屉 */
+  ownChrome?: boolean;
 }
 
 const FOCUS_RULES: FocusRule[] = [
   { pattern: /^\/resume\/print\//, backHref: "/resume", backLabel: "返回材料", bare: true },
-  { pattern: /^\/resume\/\d+/, backHref: "/resume", backLabel: "返回材料" },
+  { pattern: /^\/resume\/\d+/, backHref: "/resume", backLabel: "返回材料", ownChrome: true },
   { pattern: /^\/interview\/ai(\/|$)/, backHref: "/interview", backLabel: "返回面试" },
   { pattern: /^\/interview\/pose(\/|$)/, backHref: "/interview", backLabel: "返回面试" },
 ];
 
-function FocusTopBar({ rule }: { rule: FocusRule }) {
+function FocusTopBar({ rule, agentOpen }: { rule: FocusRule; agentOpen: boolean }) {
+  return (
+    <div className="offeru-focus-topbar sticky top-0 z-40 flex items-center justify-between border-b border-[var(--border)] bg-[var(--background)]/95 px-4 py-2 backdrop-blur">
+      <Link
+        href={rule.backHref}
+        className="flex items-center gap-1.5 rounded-md px-2 py-1 text-[13px] font-medium text-[var(--foreground-soft)] transition-colors duration-[var(--dur-quick)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+      >
+        <ArrowLeft size={14} strokeWidth={1.75} />
+        {rule.backLabel}
+      </Link>
+      <AgentConnectionStatus compact />
+      <button
+        type="button"
+        onClick={toggleAgentDrawer}
+        aria-pressed={agentOpen}
+        className={`flex items-center gap-1.5 rounded-md px-2 py-1 text-[13px] font-medium transition-colors duration-[var(--dur-quick)] ${
+          agentOpen
+            ? "bg-[var(--surface-muted)] text-[var(--foreground)]"
+            : "text-[var(--foreground-soft)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+        }`}
+      >
+        <Bot size={14} strokeWidth={1.75} />
+        OfferU
+      </button>
+    </div>
+  );
+}
+
+/** 专注模式下按需召回主 Agent — 浮层形式,默认收起,关闭后完全退出。 */
+function useFocusAgentOpen() {
   const [agentOpen, setAgentOpen] = useState(false);
   // 页面把意图交给 Agent 时自动打开面板，消息在面板挂载后从邮箱取走。
   useEffect(() => {
     const open = () => setAgentOpen(true);
+    const toggle = () => setAgentOpen((value) => !value);
     window.addEventListener(AGENT_COMPOSE_EVENT, open);
-    return () => window.removeEventListener(AGENT_COMPOSE_EVENT, open);
+    window.addEventListener(AGENT_TOGGLE_EVENT, toggle);
+    return () => {
+      window.removeEventListener(AGENT_COMPOSE_EVENT, open);
+      window.removeEventListener(AGENT_TOGGLE_EVENT, toggle);
+    };
   }, []);
+  return agentOpen;
+}
 
+function FocusAgentDrawer({ open }: { open: boolean }) {
   return (
-    <>
-      <div className="offeru-focus-topbar sticky top-0 z-40 flex items-center justify-between border-b border-[var(--border)] bg-[var(--background)]/95 px-4 py-2 backdrop-blur">
-        <Link
-          href={rule.backHref}
-          className="flex items-center gap-1.5 rounded-md px-2 py-1 text-[13px] font-medium text-[var(--foreground-soft)] transition-colors duration-[var(--dur-quick)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          initial={{ opacity: 0, x: 24 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: 24 }}
+          transition={{ type: "spring", stiffness: 400, damping: 34 }}
+          className="offeru-focus-agent fixed bottom-4 right-4 top-14 z-50 w-[min(92vw,340px)] overflow-hidden rounded-lg border border-[var(--border-strong)] bg-[var(--background)] shadow-[0_12px_36px_var(--shadow-medium)]"
         >
-          <ArrowLeft size={14} strokeWidth={1.75} />
-          {rule.backLabel}
-        </Link>
-        <AgentConnectionStatus compact />
-        <button
-          type="button"
-          onClick={() => setAgentOpen((value) => !value)}
-          aria-pressed={agentOpen}
-          className={`flex items-center gap-1.5 rounded-md px-2 py-1 text-[13px] font-medium transition-colors duration-[var(--dur-quick)] ${
-            agentOpen
-              ? "bg-[var(--surface-muted)] text-[var(--foreground)]"
-              : "text-[var(--foreground-soft)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
-          }`}
-        >
-          <Bot size={14} strokeWidth={1.75} />
-          OfferU
-        </button>
-      </div>
-
-      {/* 专注模式下按需召回主 Agent — 浮层形式,关闭后完全退出 */}
-      <AnimatePresence>
-        {agentOpen && (
-          <motion.div
-            initial={{ opacity: 0, x: 24 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 24 }}
-            transition={{ type: "spring", stiffness: 400, damping: 34 }}
-            className="offeru-focus-agent fixed bottom-4 right-4 top-14 z-50 w-[min(92vw,340px)] overflow-hidden rounded-lg border border-[var(--border-strong)] bg-[var(--background)] shadow-[0_12px_36px_var(--shadow-medium)]"
-          >
-            <Suspense fallback={null}>
-              <AgentPanel />
-            </Suspense>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </>
+          <Suspense fallback={null}>
+            <AgentPanel />
+          </Suspense>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -121,6 +133,7 @@ function WorkbenchFrame({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { clearSelection, selection } = useWorkbench();
 
+  const agentOpen = useFocusAgentOpen();
   const focusRule = useMemo(
     () => FOCUS_RULES.find((rule) => rule.pattern.test(pathname)) ?? null,
     [pathname]
@@ -139,15 +152,26 @@ function WorkbenchFrame({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
+  if (focusRule?.ownChrome) {
+    return (
+      <>
+        <div className="offeru-focus-shell offeru-viewport-shell flex w-full flex-col overflow-hidden">{children}</div>
+        <FocusAgentDrawer open={agentOpen} />
+        <ReviewDock />
+      </>
+    );
+  }
+
   if (focusRule) {
     return (
       <>
         <div className="offeru-focus-shell offeru-viewport-shell flex w-full flex-col overflow-hidden">
-          <FocusTopBar rule={focusRule} />
+          <FocusTopBar rule={focusRule} agentOpen={agentOpen} />
           <main className="workbench-main relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 md:px-6">
             {children}
           </main>
         </div>
+        <FocusAgentDrawer open={agentOpen} />
         <ReviewDock />
       </>
     );

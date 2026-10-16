@@ -27,3 +27,9 @@ export function composeToAgent(request: AgentComposeRequest) {
 export function drainAgentCompose(): AgentComposeRequest[] {
   return mailbox.splice(0, mailbox.length);
 }
+
+/** 专注页自带顶栏时，用这个事件开关 Agent 抽屉。 */
+export const AGENT_TOGGLE_EVENT = "offeru-agent-toggle";
+export function toggleAgentDrawer() {
+  window.dispatchEvent(new Event(AGENT_TOGGLE_EVENT));
+}

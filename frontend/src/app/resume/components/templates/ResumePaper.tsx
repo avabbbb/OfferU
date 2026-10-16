@@ -22,7 +22,6 @@ export interface PaperSection {
   visible: boolean;
   content_json: any[];
   sort_order: number;
-  [key: string]: unknown;
 }
 
 export interface ResumePaperProps {
@@ -35,10 +34,6 @@ export interface ResumePaperProps {
   editable?: boolean;
   onProfileChange?: (patch: { user_name?: string; title?: string; summary?: string; contact_json?: Record<string, string> }) => void;
   onSectionChange?: (section: PaperSection) => void;
-  /** 仅画布：在某一段标题下方插入行内 AI 建议等交互层（不进入导出）。 */
-  renderSectionAside?: (section: PaperSection) => ReactNode;
-  /** 仅画布：页尾交互层，例如「建议新增的段落」。 */
-  canvasFooter?: ReactNode;
   /** 已解析为可加载地址的证件照 / 校徽；为空时成品上不占位。 */
   photoUrl?: string;
   logoUrl?: string;
@@ -435,7 +430,7 @@ export function resolvePaperTone(styleConfig: Record<string, string> | undefined
 export function ResumePaper(props: ResumePaperProps) {
   const {
     userName, summary, contactJson, sections, styleConfig,
-    editable = false, onProfileChange, onSectionChange, renderSectionAside, canvasFooter,
+    editable = false, onProfileChange, onSectionChange,
     photoUrl, logoUrl, onUploadAsset,
   } = props;
   const hasMedia = Boolean(photoUrl || logoUrl || (editable && onUploadAsset));
@@ -526,12 +521,11 @@ export function ResumePaper(props: ResumePaperProps) {
           .filter(({ item }) => editable || hasContent(item, shape));
         if (!editable && items.length === 0) return null;
         return (
-          <section key={section.id} className="paper-section" data-section-type={section.section_type}>
+          <section key={section.id} className="paper-section" data-section-type={section.section_type} data-section-id={section.id}>
             <h2 className="paper-section-title">
               <Editable value={section.title || ""} editable={editable} placeholder="段落标题" label="段落标题"
                 onCommit={(value) => onSectionChange?.({ ...section, title: value })} />
             </h2>
-            {editable && renderSectionAside?.(section)}
             <div className="paper-items">
               {items.map(({ item, index }) => (
                 <PaperItem
@@ -563,7 +557,6 @@ export function ResumePaper(props: ResumePaperProps) {
           </section>
         );
       })}
-      {editable && canvasFooter}
       {editable && <BoldBubble />}
     </article>
   );

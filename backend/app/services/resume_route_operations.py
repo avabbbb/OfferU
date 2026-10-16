@@ -34,7 +34,6 @@ from app.models.models import (
     ResumeVersion,
 )
 from app.services.application_workspace import auto_write_job_to_total
-from app.services.resume_builder import with_new_resume_template
 from app.services.resume_drafts import save_resume_draft
 from app.services.resume_fact_gates import validate_generated_content
 from app.services.resume_versions import (
@@ -168,10 +167,7 @@ async def create_resume_record(
             summary=summary,
             contact_json=contact,
             template_id=template_id,
-            style_config=with_new_resume_template(
-                style_config,
-                derived_from_existing=source_resume_id is not None or template_id is not None,
-            ),
+            style_config=dict(style_config or {}),
             language=language,
             source_mode=source_mode,
             source_job_ids=source_job_ids or [],

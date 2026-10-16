@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { FileText } from "lucide-react";
 import { useResume } from "@/lib/hooks";
-import ResumePreview from "./ResumePreview";
+import ResumeSheet from "./ResumeSheet";
 
 const PAGE_WIDTH_PX = 794; // A4 at 96dpi
 
@@ -24,7 +24,7 @@ export default function ResumeThumbnail({ resumeId, variant = "framed" }: { resu
   }, []);
   const preview = data && scale > 0 ? (
     <div className="pointer-events-none absolute left-0 top-0 origin-top-left" style={{ transform: `scale(${scale})` }}>
-      <ResumePreview userName={data.user_name} title={data.title} photoUrl={data.photo_url} summary={data.summary} contactJson={data.contact_json || {}} sections={data.sections} styleConfig={data.style_config || {}} />
+      <ResumeSheet userName={data.user_name} title={data.title} photoUrl={data.photo_url} summary={data.summary} contactJson={data.contact_json || {}} sections={data.sections} styleConfig={data.style_config || {}} />
     </div>
   ) : null;
   if (variant === "page") {
@@ -48,7 +48,7 @@ export default function ResumeThumbnail({ resumeId, variant = "framed" }: { resu
     <div ref={boxRef} className="relative aspect-[210/170] overflow-hidden rounded-md border border-[var(--border)] bg-[var(--surface-muted)]" aria-hidden="true" data-testid="resume-thumbnail">
       {data && scale > 0 ? (
         <div className="pointer-events-none absolute left-0 top-0 origin-top-left" style={{ transform: `scale(${scale})` }}>
-          <ResumePreview userName={data.user_name} title={data.title} photoUrl={data.photo_url} summary={data.summary} contactJson={data.contact_json || {}} sections={data.sections} styleConfig={data.style_config || {}} />
+          <ResumeSheet userName={data.user_name} title={data.title} photoUrl={data.photo_url} summary={data.summary} contactJson={data.contact_json || {}} sections={data.sections} styleConfig={data.style_config || {}} />
         </div>
       ) : <div className="grid h-full place-items-center"><FileText size={32} className="text-[var(--foreground-faint)]" /></div>}
     </div>

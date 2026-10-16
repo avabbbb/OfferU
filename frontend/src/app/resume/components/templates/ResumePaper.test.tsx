@@ -148,8 +148,6 @@ describe("纸模板默认排版", () => {
     expect(kami.exact.lineHeight).toBe(1.42);
     expect(kami.exact.bodySize).toBe(9.2);
     expect(kami.exact.nameSize).toBe(26.5);
-    const reference = normalizeTemplateSettings({ template: "reference" });
-    expect(reference.margins.top).toBe(8);
   });
 });
 
