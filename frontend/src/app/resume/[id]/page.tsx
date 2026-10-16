@@ -640,8 +640,9 @@ export default function ResumeEditorPage() {
   const style = draft.style_config || {};
   const paperMode = normalizeTemplateSettings(style).template === "paper";
   const setStyle = (key: string, value: string) => updateDraft({ style_config: { ...style, [key]: value } });
-  // 智能一页：只动字号、行距、间距和页边距，从当前值一步步压向下限，直接量真实排版；
-  // 第一个能放进一页的就用它。压到下限还放不下就保持原样，按两页排（和超级简历一样加页）。
+  // 智能一页：只动字号、行距、间距和页边距，直接量真实排版。
+  // 超出一页：从当前值一步步压向下限，第一个能放进一页的就用它；压到下限还放不下就保持原样，按多页排（和超级简历一样加页）。
+  // 不到一页且下方空得多：字号、行距、间距一步步放大（页边距不动），取最后一个还放得下的，让内容铺满一页。
   const fitOnePage = () => {
     const body = canvasNodeRef.current?.querySelector<HTMLElement>(".resume-body");
     if (!body) return;
@@ -654,8 +655,9 @@ export default function ResumeEditorPage() {
       marginLeft: settings.margins.left, marginRight: settings.margins.right,
     };
     const floor: Record<string, number> = { bodySize: 8.5, lineHeight: 1.25, sectionGap: 5, itemGap: 2, marginTop: 7, marginBottom: 7, marginLeft: 9, marginRight: 9 };
-    const at = (t: number) => Object.fromEntries(Object.entries(current).map(([key, value]) => {
-      const target = Math.min(value, floor[key]);
+    const ceiling: Record<string, number> = { bodySize: 11, lineHeight: 1.65, sectionGap: 16, itemGap: 8 };
+    const at = (t: number, grow = false) => Object.fromEntries(Object.entries(current).map(([key, value]) => {
+      const target = grow ? Math.max(value, ceiling[key] ?? value) : Math.min(value, floor[key]);
       const digits = key === "lineHeight" ? 100 : 10;
       return [key, Math.round((value + (target - value) * t) * digits) / digits];
     })) as Record<string, number>;
@@ -669,27 +671,37 @@ export default function ResumeEditorPage() {
     const savedMinHeight = body.style.minHeight;
     body.classList.add("paper-measuring");
     body.style.minHeight = "0px";
-    const fits = (v: Record<string, number>) => {
+    const heightAt = (v: Record<string, number>) => {
       Object.entries(vars(v)).forEach(([key, value]) => body.style.setProperty(key, value));
-      return body.getBoundingClientRect().height <= pageHeightPx + 0.5;
+      return body.getBoundingClientRect().height;
     };
+    const fits = (v: Record<string, number>, room = 1) => heightAt(v) <= pageHeightPx * room + 0.5;
     let chosen: Record<string, number> | null = null;
-    const already = fits(current);
+    let grown = false;
+    const currentHeight = heightAt(current);
+    const already = currentHeight <= pageHeightPx + 0.5;
     if (!already) {
       for (let step = 1; step <= 12; step += 1) {
         const candidate = at(step / 12);
         if (fits(candidate)) { chosen = candidate; break; }
       }
+    } else if (currentHeight < pageHeightPx * 0.9) {
+      // 放大时给打印留 3% 余量，免得屏幕上刚好一页、导出变两页。
+      for (let step = 1; step <= 12; step += 1) {
+        const candidate = at(step / 12, true);
+        if (!fits(candidate, 0.97)) break;
+        chosen = candidate; grown = true;
+      }
+      if (chosen && Object.keys(chosen).every((key) => chosen?.[key] === current[key])) chosen = null;
     }
     saved.forEach(([key, value]) => body.style.setProperty(key, value));
     body.style.minHeight = savedMinHeight;
     body.classList.remove("paper-measuring");
     setFitting(false);
-    if (already) { setFitNotice("已经在一页内"); return; }
-    if (!chosen) { setFitNotice(`内容超过一页，已按 ${pageCount} 页排版`); return; }
+    if (!chosen) { setFitNotice(already ? "已经占满一页" : `内容超过一页，已按 ${pageCount} 页排版`); return; }
     const picked = chosen;
     updateDraft({ style_config: { ...style, ...Object.fromEntries(Object.entries(picked).map(([key, value]) => [key, String(value)])) } });
-    setFitNotice(`已放进一页：字号 ${picked.bodySize} pt · 行距 ${picked.lineHeight}`);
+    setFitNotice(`${grown ? "已铺满一页" : "已放进一页"}：字号 ${picked.bodySize} pt · 行距 ${picked.lineHeight}`);
   };
   const targetLabel = workspace.job ? `${workspace.job.company} · ${workspace.job.title}` : "未绑定目标岗位";
   const packetArtifactState = workspace.application_packet.artifact_state;
