@@ -8,7 +8,7 @@ import { connectionTime, useAgentConnection } from "@/lib/agentConnection";
 import { OFFERU_MATERIAL_COLLABORATION_PROMPT } from "@/lib/agentConnectionPrompt";
 import { agentRuntimeApi, type AgentConnectionsSnapshot } from "@/lib/api";
 import { safeClientErrorMessage } from "@/lib/safe-error";
-import { SHOWCASE } from "@/lib/showcase/router";
+import { SHOWCASE } from "@/lib/showcase";
 
 export function AgentConnectionStatus({ compact = false }: { compact?: boolean }) {
   const state = useAgentConnection();

@@ -8,7 +8,7 @@ import { HeroUIProvider } from "@heroui/react";
 import { SWRConfig } from "swr";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { SHOWCASE } from "@/lib/showcase/router";
+import { SHOWCASE } from "@/lib/showcase";
 import { resolveApiBase } from "@/lib/apiBase";
 import {
   getDesktopRuntimeIdentity,

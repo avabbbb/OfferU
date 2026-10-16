@@ -9,7 +9,7 @@ import { safeClientErrorMessage } from "@/lib/safe-error";
 import { freshResetApi } from "@/lib/freshResetApi";
 import { getRuntimeIdentity, type RuntimeIdentity } from "@/lib/runtimeIdentityApi";
 import { resetOnboardingForFreshStart } from "@/lib/useOnboarding";
-import { SHOWCASE } from "@/lib/showcase/router";
+import { SHOWCASE } from "@/lib/showcase";
 
 const CONFIRMATION_TEXT = "全清并重新开始";
 

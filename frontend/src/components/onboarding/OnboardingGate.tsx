@@ -1,7 +1,7 @@
 import { lazy, Suspense, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { useOnboarding } from "@/lib/useOnboarding";
-import { SHOWCASE } from "@/lib/showcase/router";
+import { SHOWCASE } from "@/lib/showcase";
 
 const OnboardingWizard = lazy(() => import("./OnboardingWizard").then((module) => ({ default: module.OnboardingWizard })));
 

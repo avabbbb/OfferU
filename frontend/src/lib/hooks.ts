@@ -7,8 +7,7 @@
 // =============================================
 
 import useSWR from "swr";
-import { SHOWCASE, showcaseHandle } from "@/lib/showcase/router";
-import { showcaseChatResponse } from "@/lib/showcase/llm";
+import { SHOWCASE, showcaseHandle } from "@/lib/showcase";
 import { resolveApiBase } from "@/lib/apiBase";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import type { CareerArtifact, CareerDelivery } from "@/lib/api";
@@ -31,14 +30,10 @@ function formatBackendNetworkError(_error?: unknown) {
  * 通用 fetcher：SWR 默认请求函数
  * 自动处理 JSON 解析和错误码
  */
-const fetcher = async (url: string) => {  if (SHOWCASE) {
-    // 展示模式：SWR 请求也由本地数据层承载（URL 为完整地址，提取 path）
-    try {
-      const parsed = new URL(url);
-      return await showcaseHandle(parsed.pathname + parsed.search);
-    } catch {
-      return {};
-    }
+const fetcher = async (url: string) => {
+  if (SHOWCASE) {
+    const parsed = new URL(url, window.location.href);
+    return showcaseHandle(parsed.pathname + parsed.search);
   }
   let res: Response;
   try {
@@ -55,8 +50,8 @@ const fetcher = async (url: string) => {  if (SHOWCASE) {
 
 /**
  * 统一后端请求：非展示模式等价 fetch(API_BASE + path)；
- * 展示模式（VITE_SHOWCASE）下由本地 IndexedDB 数据层承载，
- * 合成标准 Response，调用方无需感知后端是否存在。
+ * 展示站（VITE_SHOWCASE）下回放录好的真实响应（见 lib/showcase），
+ * 合成标准 Response；不支持的操作直接抛错。
  */
 async function showcaseFetch(url: string, init?: RequestInit): Promise<Response> {
   if (!SHOWCASE) {
@@ -64,15 +59,6 @@ async function showcaseFetch(url: string, init?: RequestInit): Promise<Response>
       ? url
       : `${API_BASE}${url.startsWith("/") ? url : `/${url}`}`;
     return fetch(target, { ...init, redirect: "error" });
-  }
-  const method = String(init?.method || "GET").toUpperCase();
-  if (method === "POST" && url.includes("/api/profile/chat") && !url.includes("confirm")) {
-    // 对话式 Agent：本地模板或浏览器直连 LLM 的合成 SSE 流
-    const body = JSON.parse(String(init?.body || "{}")) as {
-      topic?: string;
-      message?: string;
-    };
-    return showcaseChatResponse(body.topic || "general", body.message || "");
   }
   const data = await showcaseHandle(url, init);
   return new Response(JSON.stringify(data), {

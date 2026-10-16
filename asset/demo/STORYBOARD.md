@@ -10,7 +10,7 @@ user data, credentials, or production backend required.
 ## Capture Environment
 
 - Frontend: `vite dev` on `http://127.0.0.1:7412` (separate port from dev 7410)
-- Mode: `VITE_SHOWCASE=true` — all API calls route to `src/lib/showcase/router.ts`
+- Mode: `VITE_SHOWCASE=true` — reads replay `src/lib/showcase/snapshot.json` (recorded from the real backend by `frontend/scripts/showcase/refresh.sh`); edits are kept in IndexedDB
 - Browser: managed Chromium, `headless: true`, viewport 1280×720
 - Frames: Playwright `page.screenshot()` → ffmpeg palette → GIF
 
