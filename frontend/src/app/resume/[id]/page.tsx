@@ -311,7 +311,8 @@ export default function ResumeEditorPage() {
       marginLeft: settings.margins.left, marginRight: settings.margins.right,
     };
     const floor: Record<string, number> = { bodySize: 8.5, lineHeight: 1.25, sectionGap: 5, itemGap: 2, marginTop: 7, marginBottom: 7, marginLeft: 9, marginRight: 9 };
-    const ceiling: Record<string, number> = { bodySize: 11, lineHeight: 1.65, sectionGap: 16, itemGap: 8 };
+    // 放大有上限：内容少就留白，不靠拉大段距凑满一页。
+    const ceiling: Record<string, number> = { bodySize: 10.5, lineHeight: 1.55, sectionGap: 10, itemGap: 5 };
     const at = (t: number, grow = false) => Object.fromEntries(Object.entries(current).map(([key, value]) => {
       const target = grow ? Math.max(value, ceiling[key] ?? value) : Math.min(value, floor[key]);
       const digits = key === "lineHeight" ? 100 : 10;
@@ -345,7 +346,7 @@ export default function ResumeEditorPage() {
       // 放大时给打印留 3% 余量，免得屏幕上刚好一页、导出变两页。
       for (let step = 1; step <= 12; step += 1) {
         const candidate = at(step / 12, true);
-        if (!fits(candidate, 0.97)) break;
+        if (!fits(candidate, 0.94)) break;
         chosen = candidate; grown = true;
       }
       if (chosen && Object.keys(chosen).every((key) => chosen?.[key] === current[key])) chosen = null;
@@ -357,7 +358,7 @@ export default function ResumeEditorPage() {
     if (!chosen) { setFitNotice(already ? "已经占满一页" : `内容超过一页，已按 ${pageCount} 页排版`); return; }
     const picked = chosen;
     setStyle(Object.fromEntries(Object.entries(picked).map(([key, value]) => [key, String(value)])));
-    setFitNotice(`${grown ? "已铺满一页" : "已放进一页"}：字号 ${picked.bodySize} pt · 行距 ${picked.lineHeight}`);
+    setFitNotice(`${grown ? "已放大到合适大小" : "已放进一页"}：字号 ${picked.bodySize} pt · 行距 ${picked.lineHeight}`);
   };
 
   const targetLabel = workspace.job ? `${workspace.job.company} · ${workspace.job.title}` : "";
@@ -430,7 +431,7 @@ export default function ResumeEditorPage() {
       )}
 
       <div className="flex min-h-0 flex-1">
-        <main className="min-w-0 flex-1 overflow-auto bg-[#f7f7f5] px-6 pb-16" aria-label="简历（可直接编辑）">
+        <main className="min-w-0 flex-1 overflow-auto bg-[#f1f1ef] px-6 pb-16" aria-label="简历（可直接编辑）">
           <PaperToolbar
             bodySize={settings.exact.bodySize}
             lineHeight={settings.exact.lineHeight}

@@ -349,6 +349,7 @@ function Editable({ value, editable, placeholder, className = "", label, multili
     spellCheck: false,
     "data-placeholder": placeholder,
     "data-paper-editable": "",
+    "data-empty": value ? undefined : "",
     className: `paper-editable ${className}`,
     onBlur: commit,
     onKeyDown,
@@ -479,14 +480,14 @@ export function ResumePaper(props: ResumePaperProps) {
           {contactEntries.length > 0 && (
             <p className="paper-contact">
               {contactEntries.map(([key, label], index) => (
-                <Fragment key={key}>
-                  {index > 0 && (editable || contact[key]) && <span className="paper-sep" aria-hidden>{cv ? "|" : "·"}</span>}
+                <span key={key} className="paper-optional" data-empty={contact[key] ? undefined : ""}>
+                  {index > 0 && <span className="paper-sep" aria-hidden>{cv ? "|" : "·"}</span>}
                   <span className="paper-contact-item">
                     {cv && <span className="paper-contact-label">{label}：</span>}
                     <Editable value={contact[key] || ""} editable={editable} placeholder={label} label={label}
                       onCommit={(value) => onProfileChange?.({ contact_json: { ...contact, [key]: value } })} />
                   </span>
-                </Fragment>
+                </span>
               ))}
             </p>
           )}
@@ -541,6 +542,15 @@ export function ResumePaper(props: ResumePaperProps) {
                     content.splice(index, 1);
                     onSectionChange?.({ ...section, content_json: content });
                   }}
+                  onMove={(delta) => {
+                    const content = [...(section.content_json || [])];
+                    const target = index + delta;
+                    if (target < 0 || target >= content.length) return;
+                    [content[index], content[target]] = [content[target], content[index]];
+                    onSectionChange?.({ ...section, content_json: content });
+                  }}
+                  isFirst={index === 0}
+                  isLast={index === (section.content_json || []).length - 1}
                 />
               ))}
             </div>
@@ -563,13 +573,16 @@ export function ResumePaper(props: ResumePaperProps) {
 }
 
 function PaperItem({
-  item, shape, editable, onChange, onRemove, focusKey, itemKey,
+  item, shape, editable, onChange, onRemove, onMove, isFirst, isLast, focusKey, itemKey,
 }: {
   item: Record<string, any>;
   shape: ItemShape;
   editable: boolean;
   onChange: (next: Record<string, any>) => void;
   onRemove: () => void;
+  onMove: (delta: number) => void;
+  isFirst: boolean;
+  isLast: boolean;
   focusKey: { current: string | null };
   itemKey: string;
 }) {
@@ -590,7 +603,7 @@ function PaperItem({
           <Editable value={tags} editable={editable} placeholder="用顿号分隔，例如：Go、Kafka、MySQL" label="技能列表"
             onCommit={(value) => set(shape.tags!.items, value)} />
         </span>
-        {editable && <RemoveItem onRemove={onRemove} />}
+        {editable && <ItemActions onRemove={onRemove} onMove={onMove} isFirst={isFirst} isLast={isLast} />}
       </div>
     );
   }
@@ -598,11 +611,11 @@ function PaperItem({
   const renderMeta = (): ReactNode => metaParts.map((key, position) => {
     const placeholder = shape.metaPlaceholders[shape.meta.indexOf(key)] || "";
     return (
-      <Fragment key={key}>
-        {position > 0 && (editable || textOf(item[key])) && <span className="paper-sep" aria-hidden>·</span>}
+      <span key={key} className="paper-optional" data-empty={textOf(item[key]) ? undefined : ""}>
+        {position > 0 && <span className="paper-sep" aria-hidden>·</span>}
         <Editable value={key === "gpa" && !editable && item[key] ? `GPA ${item[key]}` : textOf(item[key])}
           editable={editable} placeholder={placeholder} label={placeholder} onCommit={(value) => set(key, value)} />
-      </Fragment>
+      </span>
     );
   });
 
@@ -615,7 +628,7 @@ function PaperItem({
               label={shape.titlePlaceholder} onCommit={(value) => set(shape.title, value)} />
           </span>
           {shape.chip && (editable || textOf(item[shape.chip])) && (
-            <span className="paper-chip">
+            <span className="paper-chip paper-optional" data-empty={textOf(item[shape.chip]) ? undefined : ""}>
               <Editable value={textOf(item[shape.chip])} editable={editable} placeholder="你的角色" label="角色"
                 onCommit={(value) => set(shape.chip!, value)} />
             </span>
@@ -638,8 +651,8 @@ function PaperItem({
             )}
           </span>
         )}
-        {editable && <RemoveItem onRemove={onRemove} />}
       </div>
+      {editable && <ItemActions onRemove={onRemove} onMove={onMove} isFirst={isFirst} isLast={isLast} />}
       {(bullets.length > 0 || (editable && shape.description)) && (
         <ul className="paper-bullets">
           {bullets.map((entry, position) => {
@@ -684,11 +697,17 @@ function PaperItem({
   );
 }
 
-function RemoveItem({ onRemove }: { onRemove: () => void }) {
+/** 条目操作：悬停时淡淡露出，点进条目后才完整显示；不进入导出。 */
+function ItemActions({ onRemove, onMove, isFirst, isLast }: {
+  onRemove: () => void; onMove: (delta: number) => void; isFirst: boolean; isLast: boolean;
+}) {
+  const keep = (event: { preventDefault: () => void }) => event.preventDefault();
   return (
-    <button type="button" className="paper-remove" data-paper-chrome="" aria-label="删除这一条" onClick={onRemove}>
-      删除
-    </button>
+    <span className="paper-item-actions" data-paper-chrome="">
+      <button type="button" onMouseDown={keep} onClick={() => onMove(-1)} disabled={isFirst} aria-label="上移这一条" title="上移">↑</button>
+      <button type="button" onMouseDown={keep} onClick={() => onMove(1)} disabled={isLast} aria-label="下移这一条" title="下移">↓</button>
+      <button type="button" onMouseDown={keep} onClick={onRemove} aria-label="删除这一条" title="删除">×</button>
+    </span>
   );
 }
 

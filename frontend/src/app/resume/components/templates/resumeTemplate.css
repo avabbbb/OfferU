@@ -7,7 +7,7 @@
   font-size: var(--font-size-base);
   line-height: var(--line-height);
   padding: var(--margin-top) var(--margin-right) var(--margin-bottom) var(--margin-left);
-  box-shadow: 0 0 0 1px rgba(15, 15, 15, 0.04), 0 2px 12px rgba(15, 15, 15, 0.06);
+  box-shadow: 0 0 0 1px rgba(15, 15, 15, 0.05), 0 1px 3px rgba(15, 15, 15, 0.06), 0 10px 32px rgba(15, 15, 15, 0.10);
 }
 
 .resume-print .resume-body {
@@ -337,21 +337,49 @@
 .paper-add:hover { color: var(--paper-ink); }
 .paper-bullet-empty { list-style: none; margin-left: -13pt; }
 
-.paper-remove {
+/* 渐进式披露：平时纸面和成品一样；点进某一条（或页眉）才露出它的空字段和操作。 */
+.paper-is-editable .paper-header:not(:focus-within) .paper-optional[data-empty],
+.paper-is-editable .paper-item:not(:focus-within) .paper-optional[data-empty],
+.paper-is-editable .paper-header:not(:focus-within) .paper-alias:has(> [data-empty]),
+.paper-is-editable .paper-header:not(:focus-within) .paper-role:has(> [data-empty]),
+.paper-is-editable .paper-header:not(:focus-within) .paper-location:has(> [data-empty]) { display: none; }
+.paper-is-editable .paper-item:not(:focus-within) .paper-date:not(:has(> [data-paper-editable]:not([data-empty]))) { visibility: hidden; }
+.paper-is-editable .paper-item:not(:focus-within) .paper-item-meta:not(:has(.paper-optional:not([data-empty]))) { display: none; }
+.paper-contact .paper-optional { display: inline-block; white-space: nowrap; }
+.paper-is-editable .paper-item:not(:focus-within) .paper-bullet-empty { display: none; }
+.paper-is-editable .paper-section { position: relative; }
+.paper-is-editable .paper-section > .paper-add { left: 0; margin-top: 0; position: absolute; top: calc(100% + 1pt); z-index: 1; }
+.paper-is-editable .paper-item { border-radius: 3px; position: relative; transition: box-shadow 120ms ease; }
+.paper-is-editable .paper-item:focus-within { box-shadow: 0 0 0 2mm #fff, 0 0 0 calc(2mm + 1px) #e3e2de; }
+
+.paper-item-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  opacity: 0;
+  position: absolute;
+  right: -10mm;
+  top: 0;
+  transition: opacity 120ms ease;
+}
+.paper-item:hover > .paper-item-actions { opacity: 0.45; }
+.paper-item:focus-within > .paper-item-actions,
+.paper-item-actions:focus-within { opacity: 1; }
+.paper-item-actions button {
   background: none;
   border: 0;
-  color: #9a5b4a;
+  border-radius: 4px;
+  color: #787774;
   cursor: pointer;
-  font: inherit;
-  font-size: calc(var(--font-size-base) * 0.85);
-  opacity: 0;
+  font-family: -apple-system, "PingFang SC", sans-serif;
+  font-size: 12px;
+  height: 20px;
+  line-height: 20px;
   padding: 0;
-  position: absolute;
-  right: -11mm;
-  top: 0;
+  width: 20px;
 }
-.paper-item:hover .paper-remove,
-.paper-remove:focus-visible { opacity: 1; }
+.paper-item-actions button:hover:not(:disabled) { background: rgba(15, 15, 15, 0.06); color: #191919; }
+.paper-item-actions button:disabled { cursor: default; opacity: 0.3; }
 
 @media print {
   /* 跨页时按要点断开：条目可以拆到下一页，但标题行跟着第一条要点走，单条要点不拆。 */
