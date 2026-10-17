@@ -55,6 +55,13 @@ export function transcribeAudio(file: Blob, name: string) {
   form.append("file", file, name);
   return request<{ transcript: string }>(`${BASE}/transcribe`, { method: "POST", body: form, headers: {} }).then((r) => r.transcript);
 }
+export interface WeakTopic {
+  title: string;
+  advice: string;
+  /** "复盘id:题序" */
+  refs: string[];
+}
+export const groupWeakSpots = () => request<{ topics: WeakTopic[] }>(`${BASE}/weak-spots`, { method: "POST" }).then((r) => r.topics);
 export const markApplicationRejected = (id: number) => request<{ workspace_status: string }>(`${BASE}/${id}/mark-rejected`, { method: "POST" });
 
 /** 看板阶段 → 复盘轮次名。 */

@@ -56,6 +56,7 @@ from app.services.interview_reviews import (
     delete_interview_review,
     extract_interview_review_questions,
     get_interview_review,
+    group_interview_weak_spots,
     list_interview_reviews,
     mark_application_rejected_from_review,
     save_interview_review,
@@ -2238,6 +2239,15 @@ OPERATIONS: dict[str, Operation] = {
         side_effects=("write",),
         input_model=ReviewIdInput,
         version="2026-10-02",
+    ),
+    "group_interview_weak_spots": Operation(
+        name="group_interview_weak_spots",
+        fn=group_interview_weak_spots,
+        description="把所有复盘里写了卡在哪的题按考察点归类，找出跨场次反复出问题的地方；不落库。",
+        group="interview",
+        side_effects=("llm",),
+        audit_redacted_output_parameters=("topics",),
+        version="2026-10-03",
     ),
     "extract_interview_review_questions": Operation(
         name="extract_interview_review_questions",
