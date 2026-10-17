@@ -153,6 +153,11 @@ async def extract_review_questions(data: ExtractReviewQuestionsInput):
     return await _execute("extract_interview_review_questions", data.model_dump())
 
 
+@router.get("/reviews/weak-spots")
+async def get_review_weak_spots():
+    return await _execute("get_interview_weak_spots", {})
+
+
 @router.post("/reviews/weak-spots")
 async def group_review_weak_spots():
     return await _execute("group_interview_weak_spots", {})

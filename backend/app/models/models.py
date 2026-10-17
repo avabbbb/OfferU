@@ -1982,3 +1982,14 @@ class InterviewReviewQuestion(Base):
     reaction: Mapped[str] = mapped_column(Text, default="")  # 面试官的反应、追问
 
     review: Mapped["InterviewReview"] = relationship(back_populates="questions")
+
+
+class InterviewWeakSpots(Base):
+    """跨场归类「卡住的题」的最近一次结果，只有一行。fingerprint 对不上说明复盘改过了。"""
+
+    __tablename__ = "interview_weak_spots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), default="")
+    topics: Mapped[list] = mapped_column(JSON, default=list)
+    grouped_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())

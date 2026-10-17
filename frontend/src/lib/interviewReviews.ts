@@ -61,7 +61,14 @@ export interface WeakTopic {
   /** "复盘id:题序" */
   refs: string[];
 }
-export const groupWeakSpots = () => request<{ topics: WeakTopic[] }>(`${BASE}/weak-spots`, { method: "POST" }).then((r) => r.topics);
+export interface WeakSpots {
+  topics: WeakTopic[];
+  grouped_at: string | null;
+  /** 归类之后复盘里卡住的题改过了 */
+  stale: boolean;
+}
+export const getWeakSpots = () => request<WeakSpots>(`${BASE}/weak-spots`);
+export const groupWeakSpots = () => request<WeakSpots>(`${BASE}/weak-spots`, { method: "POST" });
 export const markApplicationRejected = (id: number) => request<{ workspace_status: string }>(`${BASE}/${id}/mark-rejected`, { method: "POST" });
 
 /** 看板阶段 → 复盘轮次名。 */

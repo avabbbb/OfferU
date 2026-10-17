@@ -18,6 +18,7 @@ import {
   deleteReview,
   emptyQuestion,
   extractQuestions,
+  getWeakSpots,
   groupWeakSpots,
   listReviews,
   markApplicationRejected,
@@ -26,7 +27,7 @@ import {
   type InterviewReview,
   type ReviewOutcome,
   type ReviewQuestion,
-  type WeakTopic,
+  type WeakSpots as WeakSpotsResult,
 } from "@/lib/interviewReviews";
 
 const OUTCOMES: Array<{ id: ReviewOutcome; label: string }> = [
@@ -313,16 +314,20 @@ function StuckItem({ stuck }: { stuck: Stuck }) {
 function WeakSpots({ reviews }: { reviews: InterviewReview[] }) {
   const stuck = stuckQuestions(reviews);
   const byRef = new Map(stuck.map((s) => [s.ref, s]));
-  const [topics, setTopics] = useState<WeakTopic[] | null>(null);
+  const [result, setResult] = useState<WeakSpotsResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  useEffect(() => {
+    getWeakSpots().then(setResult).catch((cause) => setError(safeClientErrorMessage(cause, "读取归类失败")));
+  }, []);
+  const topics = result?.grouped_at ? result.topics : null;
   const sessions = new Set(stuck.map((s) => s.review.id)).size;
 
   const group = async () => {
     setBusy(true);
     setError("");
     try {
-      setTopics(await groupWeakSpots());
+      setResult(await groupWeakSpots());
     } catch (cause) {
       setError(safeClientErrorMessage(cause, "归类失败"));
     } finally {
@@ -346,6 +351,7 @@ function WeakSpots({ reviews }: { reviews: InterviewReview[] }) {
         )}
       </div>
       {error && <p className="mt-3 text-[12.5px] text-[var(--danger,#b42318)]">{error}</p>}
+      {topics && result?.stale && stuck.length > 0 && <p className="mt-3 text-[13px] text-[var(--foreground)]" data-testid="weak-stale">归类之后复盘有改动，可以重新归类。</p>}
 
       {topics ? (
         <div className="mt-6 space-y-8">

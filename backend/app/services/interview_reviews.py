@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
@@ -12,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.database import async_session
-from app.models.models import InterviewReview, InterviewReviewQuestion, Job
+from app.models.models import InterviewReview, InterviewReviewQuestion, InterviewWeakSpots, Job
 
 OUTCOMES = ("pending", "passed", "failed")
 AUDIO_SUFFIXES = (".m4a", ".mp3", ".wav", ".webm", ".ogg", ".mp4", ".aac", ".flac")
@@ -217,14 +219,40 @@ async def _stuck_questions() -> list[dict[str, Any]]:
     return stuck
 
 
-async def group_interview_weak_spots() -> dict[str, Any]:
-    """把所有复盘里卡住的题按考察点归类，看哪些地方在不同场次反复出问题。不落库。"""
+def _fingerprint(stuck: list[dict[str, Any]]) -> str:
+    raw = json.dumps([[s["ref"], s["question"], s["reflection"]] for s in stuck], ensure_ascii=False)
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+async def get_interview_weak_spots() -> dict[str, Any]:
+    """读上次的归类结果；stale 表示之后复盘里卡住的题有改动，可以重新归类。"""
 
     stuck = await _stuck_questions()
-    if not stuck:
-        return {"topics": []}
+    async with async_session() as db:
+        row = await db.get(InterviewWeakSpots, 1)
+    if row is None:
+        return {"topics": [], "grouped_at": None, "stale": False}
+    return {"topics": row.topics or [], "grouped_at": row.grouped_at.isoformat() if row.grouped_at else None, "stale": row.fingerprint != _fingerprint(stuck)}
+
+
+async def group_interview_weak_spots() -> dict[str, Any]:
+    """把所有复盘里卡住的题按考察点归类，看哪些地方在不同场次反复出问题，结果保存下来。"""
+
+    stuck = await _stuck_questions()
+    topics = await _group(stuck) if stuck else []
+    async with async_session() as db:
+        row = await db.get(InterviewWeakSpots, 1) or InterviewWeakSpots(id=1)
+        row.fingerprint = _fingerprint(stuck)
+        row.topics = topics
+        row.grouped_at = datetime.now()
+        db.add(row)
+        await db.commit()
+    return await get_interview_weak_spots()
+
+
+async def _group(stuck: list[dict[str, Any]]) -> list[dict[str, Any]]:
     if _replay_enabled():
-        return {"topics": [{"title": item["question"][:24], "advice": item["reflection"][:80], "refs": [item["ref"]]} for item in stuck]}
+        return [{"title": item["question"][:24], "advice": item["reflection"][:80], "refs": [item["ref"]]} for item in stuck]
 
     from app.agents.llm import chat_completion, extract_json
 
@@ -261,7 +289,7 @@ async def group_interview_weak_spots() -> dict[str, Any]:
         used.update(refs)
         topics.append({"title": str(item.get("title") or "").strip()[:40] or "未命名", "advice": str(item.get("advice") or "").strip()[:300], "refs": refs})
     topics.sort(key=lambda t: -len(t["refs"]))
-    return {"topics": topics}
+    return topics
 
 
 def _asr_model(base_url: str) -> str:

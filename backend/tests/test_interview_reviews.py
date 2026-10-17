@@ -38,7 +38,7 @@ def test_review_round_trip(tmp_path):
 
 
 def test_weak_spots_only_keep_known_refs_once(tmp_path):
-    """只收写了「卡在哪」的题；模型乱给的 ref 和重复归类都丢掉，题多的考察点排前面。"""
+    """只收写了「卡在哪」的题；模型乱给的 ref 和重复归类都丢掉，题多的考察点排前面；结果保存，复盘改了标成可重新归类。"""
 
     async def run():
         engine = create_async_engine(f"sqlite+aiosqlite:///{(tmp_path / 'w.db').as_posix()}")
@@ -60,6 +60,10 @@ def test_weak_spots_only_keep_known_refs_once(tmp_path):
 
                 with patch("app.agents.llm.chat_completion", fake_chat):
                     topics = (await reviews.group_interview_weak_spots())["topics"]
+                assert (await reviews.get_interview_weak_spots())["stale"] is False
+                await reviews.save_interview_review(review_id=b["id"], company="美团", questions=[{"question": "RDB 和 AOF", "reflection": "重写和混合持久化都没讲"}])
+                again = await reviews.get_interview_weak_spots()
+                assert again["stale"] is True and again["topics"] == topics
             assert [(t["title"], t["refs"]) for t in topics] == [
                 ("Redis", [f"{a['id']}:0", f"{b['id']}:0"]),
                 ("项目表达", [f"{b['id']}:1"]),
