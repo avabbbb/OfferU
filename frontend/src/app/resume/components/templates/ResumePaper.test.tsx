@@ -125,8 +125,9 @@ describe("纸模板：照片与校徽", () => {
 });
 
 describe("要点与 description 互转", () => {
-  it("escapes user text and drops empty bullets", () => {
-    expect(bulletsToDescription(["A <b>", " ", "\u200b"])).toBe("<ul><li><p>A &lt;b&gt;</p></li></ul>");
+  it("keeps typed angle brackets as text, strips unsafe tags and drops empty bullets", () => {
+    expect(bulletsToDescription(["A &lt;b&gt;", " ", "\u200b"])).toBe("<ul><li><p>A &lt;b&gt;</p></li></ul>");
+    expect(bulletsToDescription(['<img src=x onerror="alert(1)">做了<script>x</script><a href="javascript:alert(1)">链接</a>'])).toBe("<ul><li><p>做了x链接</p></li></ul>");
   });
 
   it("keeps hidden bullet indexes aligned when a bullet is removed", () => {
@@ -148,8 +149,6 @@ describe("纸模板默认排版", () => {
     expect(kami.exact.lineHeight).toBe(1.42);
     expect(kami.exact.bodySize).toBe(9.2);
     expect(kami.exact.nameSize).toBe(26.5);
-    const reference = normalizeTemplateSettings({ template: "reference" });
-    expect(reference.margins.top).toBe(8);
   });
 });
 
@@ -162,5 +161,35 @@ describe("要点加粗", () => {
     expect(next.description).toContain("<strong>P99 从 180ms 降到 65ms</strong>");
     expect(next.description).not.toMatch(/<(?!\/?(ul|li|p|strong)>)/);
     expect(splitRichBullets(next.description).map(plainBullet)).toEqual(["大促峰值 P99 从 180ms 降到 65ms", "补偿延迟从 15 分钟降到 40 秒"]);
+  });
+});
+
+describe("要点格式", () => {
+  it("斜体、下划线、删除线、颜色、链接都能保存；Chrome 的 <b>/<i>/<font> 统一成标准标签", async () => {
+    const { sanitizeInline } = await import("@/lib/resumeText");
+    expect(sanitizeInline('<b>P99</b> <i>降到</i> <u>65ms</u> <strike>旧</strike> <font color="#2463eb">蓝</font> <a href="https://github.com/x">仓库</a>'))
+      .toBe('<strong>P99</strong> <em>降到</em> <u>65ms</u> <s>旧</s> <span style="color: #2463eb">蓝</span> <a href="https://github.com/x">仓库</a>');
+  });
+
+  it("Tab 把要点缩进成二级要点，同时保留刚输入的文字", () => {
+    const onSectionChange = vi.fn();
+    renderPaper({ editable: true, onSectionChange });
+    const [, second] = screen.getAllByRole("textbox", { name: "经历要点" });
+    second.focus();
+    second.innerHTML = "把对账耗时降到 <b>4 分钟</b>";
+    fireEvent.keyDown(second, { key: "Tab" });
+    const next = onSectionChange.mock.calls[0][0] as PaperSection;
+    expect(next.content_json[0].description).toBe(
+      '<ul><li><p>负责支付对账服务</p></li><li data-indent="1"><p>把对账耗时降到 <strong>4 分钟</strong></p></li></ul>',
+    );
+  });
+
+  it("模块切换成序号后成品用有序列表，二级要点带缩进样式", () => {
+    const { container } = renderPaper({
+      styleConfig: { numberedSections: "7" },
+      sections: [section({ content_json: [{ company: "示例科技", description: '<ul><li><p>一</p></li><li data-indent="1"><p>二</p></li></ul>' }] })],
+    });
+    expect(container.querySelector("ul.paper-bullets.paper-bullets-numbered")).not.toBeNull();
+    expect(container.querySelector("li.paper-bullet-sub")?.textContent).toBe("二");
   });
 });

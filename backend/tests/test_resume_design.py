@@ -30,7 +30,7 @@ async def scenario(tmp_path, callback):
             await connection.run_sync(Base.metadata.create_all)
         async with sessions() as db:
             resume = Resume(user_name="测试", title="原始简历", summary="未经修改的正文", workspace_revision=0,
-                            style_config={"template": "reference", "bodySize": "10.5"}, contact_json={"email": "fixture@example.test"})
+                            style_config={"bodySize": "10.5"}, contact_json={"email": "fixture@example.test"})
             db.add(resume)
             await db.flush()
             db.add(ResumeSection(resume_id=resume.id, section_type="custom", title="经历", content_json=[{"description": "<p>原始证据</p>"}]))

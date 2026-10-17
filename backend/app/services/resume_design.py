@@ -20,7 +20,6 @@ from app.services.resume_versions import create_version_snapshot
 
 class DesignPatch(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
-    template: Literal["paper", "reference", "reference-compact", "modern", "modern-two-column", "swiss-single", "swiss-two-column"] | None = None
     pageSize: Literal["A4", "LETTER"] | None = None
     bodySize: float | None = Field(default=None, ge=8, le=20)
     headingSize: float | None = Field(default=None, ge=8, le=28)
@@ -41,7 +40,8 @@ class DesignPatch(BaseModel):
     logoWidth: float | None = Field(default=None, ge=10, le=65)
     logoHeight: float | None = Field(default=None, ge=5, le=40)
     paperTone: Literal["parchment", "white"] | None = None
-    paperFont: Literal["kai", "song"] | None = None
+    font: Literal["sans", "serif", "kai"] | None = None
+    numberedSections: str | None = Field(default=None, pattern=r"^(\d+(,\d+)*)?$", description="要点用 1. 2. 3. 的模块 id，逗号分隔；空字符串表示都用圆点")
     paperStyle: Literal["kami", "cv"] | None = None
 
 

@@ -1,33 +1,13 @@
-/*
- * Resume template styles adapted for OfferU from Paker-kk/Resume-Matcher
- * (Apache-2.0). The API/data model remains OfferU-native; only the visual
- * grammar, template taxonomy, and print rules are mirrored.
- */
-
-.swiss-resume {
-  --resume-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  --resume-text-primary: #000000;
-  --resume-text-secondary: #374151;
-  --resume-text-tertiary: #4b5563;
-  --resume-text-body: #1f2937;
-  --resume-border-primary: #9ca3af;
-  --resume-border-secondary: #d1d5db;
-  --resume-border-tertiary: #e5e7eb;
-  --resume-accent-bg: #f3f4f6;
-  --resume-accent-primary: #1d4ed8;
-  --resume-accent-light: #dbeafe;
-}
+/* 简历纸（.resume-body）的页面尺寸、页边距与打印规则。纸模板本身的排版在下方「纸」一节。 */
 
 .resume-body {
   width: var(--page-width, 210mm);
   min-height: var(--page-height, 297mm);
   background: #ffffff;
-  color: var(--resume-text-body);
-  font-family: var(--body-font);
   font-size: var(--font-size-base);
   line-height: var(--line-height);
   padding: var(--margin-top) var(--margin-right) var(--margin-bottom) var(--margin-left);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 0 0 1px rgba(15, 15, 15, 0.05), 0 1px 3px rgba(15, 15, 15, 0.06), 0 10px 32px rgba(15, 15, 15, 0.10);
 }
 
 .resume-print .resume-body {
@@ -41,7 +21,7 @@
   width: var(--page-width, 210mm);
 }
 
-.resume-print .swiss-resume {
+.resume-print .resume-sheet {
   display: block;
 }
 
@@ -54,516 +34,6 @@
   padding: 24px;
   position: fixed;
   z-index: 9999;
-}
-
-.resume-header {
-  margin-bottom: var(--section-gap);
-  padding-bottom: calc(var(--item-gap) * 1.25);
-}
-
-.resume-name {
-  color: var(--resume-text-primary);
-  font-family: var(--header-font);
-  font-size: calc(var(--font-size-base) * var(--header-scale));
-  font-weight: 700;
-  line-height: 1.05;
-}
-
-.resume-title {
-  color: var(--resume-text-body);
-  font-size: calc(var(--font-size-base) * 1.15);
-  margin-top: 0.25rem;
-}
-
-.resume-meta {
-  color: var(--resume-text-tertiary);
-  display: flex;
-  flex-wrap: wrap;
-  font-family: var(--resume-font-mono);
-  font-size: calc(var(--font-size-base) * 0.82);
-  gap: 0.25rem 0.625rem;
-  margin-top: 0.5rem;
-}
-
-.resume-section {
-  break-inside: auto;
-  margin-bottom: var(--section-gap);
-  page-break-inside: auto;
-}
-
-.resume-section:last-child {
-  margin-bottom: 0;
-}
-
-.resume-section-title,
-.resume-section-title-sm,
-.resume-section-title-accent,
-.resume-section-title-accent-sm {
-  break-after: avoid;
-  color: var(--resume-text-primary);
-  font-family: var(--header-font);
-  font-size: calc(var(--font-size-base) * var(--section-header-scale));
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  margin-bottom: var(--item-gap);
-  orphans: 3;
-  padding-bottom: 0.125rem;
-  page-break-after: avoid;
-  text-transform: uppercase;
-  widows: 3;
-}
-
-.resume-section-title,
-.resume-section-title-sm {
-  border-bottom: 1px solid var(--resume-border-primary);
-}
-
-.resume-section-title-sm,
-.resume-section-title-accent-sm {
-  font-size: calc(var(--font-size-base) * var(--section-header-scale) * 0.88);
-}
-
-.resume-section-title-accent,
-.resume-section-title-accent-sm {
-  border-bottom: 2px solid var(--resume-accent-primary);
-  color: var(--resume-accent-primary);
-}
-
-.resume-items {
-  display: flex;
-  flex-direction: column;
-  gap: var(--item-gap);
-}
-
-.resume-item {
-  break-inside: avoid;
-  margin-bottom: var(--item-gap);
-  page-break-inside: avoid;
-}
-
-.resume-row-tight {
-  align-items: baseline;
-  display: flex;
-  gap: 0.75rem;
-  justify-content: space-between;
-  margin-bottom: calc(var(--item-gap) * 0.6);
-}
-
-.resume-row {
-  align-items: center;
-  display: flex;
-  gap: 0.75rem;
-  justify-content: space-between;
-  margin-bottom: var(--item-gap);
-}
-
-.resume-item-title {
-  color: var(--resume-text-primary);
-  font-size: var(--font-size-base);
-  font-weight: 700;
-}
-
-.resume-item-subtitle {
-  color: var(--resume-text-secondary);
-  font-size: calc(var(--font-size-base) * 0.95);
-  font-weight: 600;
-}
-
-.resume-date {
-  color: var(--resume-text-tertiary);
-  flex-shrink: 0;
-  font-family: var(--resume-font-mono);
-  font-size: calc(var(--font-size-base) * 0.75);
-  text-align: right;
-  white-space: nowrap;
-}
-
-.resume-list {
-  display: flex;
-  flex-direction: column;
-  gap: calc(var(--item-gap) * 0.75);
-  margin-left: 1rem;
-}
-
-.resume-list li {
-  display: flex;
-  gap: 0.375rem;
-}
-
-.resume-link,
-.resume-body a {
-  color: var(--resume-text-primary);
-  text-decoration: none;
-}
-
-.resume-link:hover,
-.resume-body a:hover {
-  text-decoration: underline;
-}
-
-.resume-skill-pill {
-  display: inline-flex;
-  font-size: calc(var(--font-size-base) * 0.85);
-  margin: 0 0.35rem 0.15rem 0;
-  padding: 0.125rem 0.375rem;
-  white-space: nowrap;
-}
-
-.resume-body strong,
-.resume-body b {
-  font-weight: 700;
-}
-
-.resume-body em,
-.resume-body i {
-  font-style: italic;
-}
-
-.resume-body u {
-  text-decoration: underline;
-}
-
-.resume-body s,
-.resume-body strike {
-  text-decoration: line-through;
-}
-
-.resume-rich-description {
-  line-height: var(--line-height);
-  margin-left: 1rem;
-}
-
-.resume-rich-description ul,
-.resume-rich-summary ul {
-  list-style-type: disc;
-  margin: 0;
-  padding-left: 1.2em;
-}
-
-.resume-rich-description ol,
-.resume-rich-summary ol {
-  list-style-type: decimal;
-  margin: 0;
-  padding-left: 1.2em;
-}
-
-.resume-rich-description li {
-  margin-bottom: calc(var(--item-gap) * 0.5);
-  padding-left: 0.2em;
-}
-
-.resume-rich-description li::marker {
-  font-size: 0.85em;
-}
-
-.resume-rich-description p {
-  margin: 0 0 calc(var(--item-gap) * 0.5);
-}
-
-.resume-rich-summary {
-  line-height: var(--line-height);
-}
-
-.resume-rich-summary p {
-  margin: 0 0 calc(var(--item-gap) * 0.5);
-}
-
-.resume-summary-text {
-  margin: 0;
-}
-
-.swiss-two-column,
-.modern-two-column {
-  align-items: start;
-  display: grid;
-  gap: var(--section-gap);
-  grid-template-columns: 65% 35%;
-  margin-top: var(--section-gap);
-}
-
-.swiss-two-column-main,
-.modern-two-column-main {
-  border-right: 1px solid var(--resume-border-tertiary);
-  display: flex;
-  flex-direction: column;
-  gap: var(--section-gap);
-  overflow: hidden;
-  padding-right: 0.875rem;
-}
-
-.swiss-two-column-sidebar,
-.modern-two-column-sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: var(--section-gap);
-  min-width: 0;
-  overflow: hidden;
-  padding-left: 0.75rem;
-}
-
-.modern-name-underline {
-  background-color: var(--resume-accent-primary);
-  height: 3px;
-  margin: 0.5rem auto 0;
-  width: 60px;
-}
-
-.modern-two-column-main {
-  border-right: 2px solid var(--resume-accent-primary);
-}
-
-.modern-name-accent {
-  display: inline-block;
-  padding-bottom: 0.25rem;
-  position: relative;
-}
-
-.modern-name-accent::after {
-  background: linear-gradient(to right, var(--resume-accent-primary) 0%, var(--resume-accent-primary) 60%, transparent 100%);
-  bottom: 0;
-  content: "";
-  height: 3px;
-  left: 0;
-  position: absolute;
-  width: 100%;
-}
-
-.keyword-hit {
-  background: #fef08a;
-  color: #000000;
-  padding: 0 0.125rem;
-}
-
-.resume-template-shell {
-  background: #d5d5d0;
-  border: 2px solid #000000;
-  color: #000000;
-}
-
-.resume-body.reference,
-.resume-body.reference-compact {
-  --resume-font-mono: "Microsoft YaHei", "SimHei", Arial, sans-serif;
-  --resume-text-primary: #000000;
-  --resume-text-secondary: #000000;
-  --resume-text-tertiary: #000000;
-  --resume-text-body: #000000;
-  --resume-border-primary: #000000;
-  --resume-border-secondary: #000000;
-  --resume-border-tertiary: #000000;
-  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.16);
-  color: #000000;
-  font-family: "Microsoft YaHei", "SimHei", "Noto Sans CJK SC", Arial, sans-serif;
-  font-size: var(--font-size-base);
-  line-height: var(--line-height);
-  min-height: var(--page-height, 297mm);
-  padding: var(--margin-top) var(--margin-right) var(--margin-bottom) var(--margin-left);
-  width: var(--page-width, 210mm);
-}
-
-.resume-body.reference-compact {
-  font-size: var(--font-size-base);
-  line-height: var(--line-height);
-}
-
-.reference-resume {
-  color: #000000;
-}
-
-.reference-header {
-  align-items: start;
-  display: grid;
-  grid-template-columns: calc(var(--photo-width) + 8mm) minmax(0, 1fr) var(--logo-width);
-  min-height: var(--photo-height);
-  margin-bottom: var(--header-gap);
-}
-
-.reference-photo-slot {
-  min-height: var(--photo-height);
-}
-
-.reference-photo {
-  display: block;
-  height: var(--photo-height);
-  object-fit: cover;
-  object-position: center top;
-  width: var(--photo-width);
-}
-
-.reference-identity {
-  padding-top: 4.5pt;
-}
-
-.reference-name {
-  color: #000000;
-  font-size: var(--name-size);
-  font-weight: 800;
-  letter-spacing: 0;
-  line-height: 1.05;
-  margin: 0 0 2.5mm;
-}
-
-.reference-contact-lines {
-  font-size: var(--font-size-base);
-  font-weight: 400;
-  line-height: var(--line-height);
-}
-
-.reference-contact-lines p {
-  margin: 0;
-}
-
-.reference-logo-slot {
-  align-items: start;
-  display: flex;
-  justify-content: flex-end;
-  min-height: 22mm;
-}
-
-.reference-logo {
-  display: block;
-  max-height: var(--logo-height);
-  max-width: var(--logo-width);
-  object-fit: contain;
-}
-
-.reference-section {
-  margin-top: var(--section-gap);
-}
-
-.reference-section-title {
-  border-bottom: 0.6pt solid var(--rule-color);
-  color: var(--resume-accent-primary, #000000);
-  font-size: var(--heading-size);
-  font-weight: 800;
-  line-height: 1.15;
-  margin: 0 0 6.75pt;
-  padding-bottom: 1pt;
-}
-
-.reference-section-body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--item-gap);
-}
-
-.reference-item {
-  break-inside: avoid;
-  page-break-inside: avoid;
-}
-
-.reference-item-row {
-  align-items: baseline;
-  display: grid;
-  gap: 4mm;
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-
-.reference-item-main {
-  font-size: var(--font-size-base);
-  line-height: var(--line-height);
-  min-width: 0;
-}
-
-.reference-item-main strong {
-  font-weight: 800;
-}
-
-.reference-date {
-  font-size: var(--font-size-base);
-  line-height: var(--line-height);
-  text-align: right;
-  white-space: nowrap;
-}
-
-.reference-line,
-.reference-summary,
-.reference-rich,
-.reference-bullets,
-.reference-tags {
-  font-size: var(--font-size-base);
-}
-
-.reference-rich {
-  line-height: var(--line-height);
-  margin-top: 0;
-}
-
-.reference-rich p {
-  margin: 0 0 var(--paragraph-gap);
-}
-
-.reference-rich ul {
-  list-style-type: disc;
-  margin: 0;
-  padding-left: 1.3em;
-}
-
-.reference-rich ol {
-  list-style-type: decimal;
-  margin: 0;
-  padding-left: 1.3em;
-}
-
-.reference-bullets {
-  list-style-type: disc;
-  margin: 0;
-  padding-left: 1.3em;
-}
-
-.reference-rich li,
-.reference-bullets li {
-  margin: 0 0 var(--paragraph-gap);
-  padding-left: 0.5mm;
-}
-
-.reference-rich strong,
-.reference-rich b,
-.reference-summary strong,
-.reference-summary b {
-  font-weight: 800;
-}
-
-.reference-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1.5mm;
-  margin-top: 1.4mm;
-}
-
-.reference-tags span {
-  border-radius: 2px;
-  padding: 0 1.5mm;
-}
-
-.reference-compact .reference-section {
-  margin-top: var(--section-gap);
-}
-
-.reference-compact .reference-section-body {
-  gap: var(--item-gap);
-}
-
-/* No photo only: remove left column, keep logo column */
-.reference-header-no-logo:not(.reference-header-no-photo) {
-  grid-template-columns: calc(var(--photo-width) + 8mm) minmax(0, 1fr);
-}
-
-/* No logo only: remove right column, keep photo column */
-.reference-header-no-photo:not(.reference-header-no-logo) {
-  grid-template-columns: minmax(0, 1fr) var(--logo-width);
-}
-
-/* No photo AND no logo: single column, identity takes full width */
-.reference-header-text-only {
-  grid-template-columns: 1fr;
-}
-
-.reference-header-text-only .reference-identity {
-  padding-left: 0;
-}
-
-.reference-header-no-photo .reference-identity {
-  padding-left: 0;
 }
 
 @page {
@@ -621,28 +91,8 @@
     box-decoration-break: clone;
   }
 
-  .resume-item {
-    break-inside: avoid !important;
-    page-break-inside: avoid !important;
-  }
-
-  .resume-section-title,
-  .resume-section-title-sm,
-  .resume-section-title-accent,
-  .resume-section-title-accent-sm {
-    break-after: avoid !important;
-    page-break-after: avoid !important;
-  }
-
-  .modern-name-underline,
-  .modern-two-column-main,
-  .modern-name-accent::after,
-  .resume-section-title-accent,
-  .resume-section-title-accent-sm {
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
 }
+
 /*
  * 「纸」模板（paper）。排版约束参考 tw93/Kami design.md（MIT）：
  * 一个强调色（墨蓝）、暖灰、单衬线两字重 400/500、字号落在阶梯上、
@@ -656,7 +106,7 @@
 /* 随应用附带的思源宋体（Noto Serif SC，OFL），裁到 GB2312 常用字，每个字重约 3.4 MB。
    保证 Windows / macOS / 导出的 PDF 看起来一样；生僻字自动落到系统宋体。 */
 @font-face { font-family: "OfferU Serif SC"; font-style: normal; font-weight: 400; font-display: block; src: url("../../../../assets/fonts/NotoSerifSC-Regular.gb2312.woff2") format("woff2"); }
-@font-face { font-family: "OfferU Serif SC"; font-style: normal; font-weight: 500 700; font-display: block; src: url("../../../../assets/fonts/NotoSerifSC-Medium.gb2312.woff2") format("woff2"); }
+@font-face { font-family: "OfferU Serif SC"; font-style: normal; font-weight: 500; font-display: block; src: url("../../../../assets/fonts/NotoSerifSC-Medium.gb2312.woff2") format("woff2"); }
 
 .resume-body.paper {
   --paper-ink: var(--resume-accent-primary, #1b365d);
@@ -675,7 +125,7 @@
   color: var(--paper-text);
   font-family: var(--paper-serif);
   font-size: var(--font-size-base);
-  font-synthesis: none;
+  font-synthesis: style; /* 中文没有斜体字形，允许合成斜体 */
   font-weight: 400;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
@@ -753,7 +203,7 @@
   font: inherit;
   font-size: calc(var(--font-size-base) * 0.85);
   height: 100%;
-  opacity: 0;
+  opacity: 0.55;
   transition: opacity 120ms ease;
   width: 100%;
 }
@@ -887,21 +337,49 @@
 .paper-add:hover { color: var(--paper-ink); }
 .paper-bullet-empty { list-style: none; margin-left: -13pt; }
 
-.paper-remove {
+/* 渐进式披露：平时纸面和成品一样；点进某一条（或页眉）才露出它的空字段和操作。 */
+.paper-is-editable .paper-header:not(:focus-within) .paper-optional[data-empty],
+.paper-is-editable .paper-item:not(:focus-within) .paper-optional[data-empty],
+.paper-is-editable .paper-header:not(:focus-within) .paper-alias:has(> [data-empty]),
+.paper-is-editable .paper-header:not(:focus-within) .paper-role:has(> [data-empty]),
+.paper-is-editable .paper-header:not(:focus-within) .paper-location:has(> [data-empty]) { display: none; }
+.paper-is-editable .paper-item:not(:focus-within) .paper-date:not(:has(> [data-paper-editable]:not([data-empty]))) { visibility: hidden; }
+.paper-is-editable .paper-item:not(:focus-within) .paper-item-meta:not(:has(.paper-optional:not([data-empty]))) { display: none; }
+.paper-contact .paper-optional { display: inline-block; white-space: nowrap; }
+.paper-is-editable .paper-item:not(:focus-within) .paper-bullet-empty { display: none; }
+.paper-is-editable .paper-section { position: relative; }
+.paper-is-editable .paper-section > .paper-add { left: 0; margin-top: 0; position: absolute; top: calc(100% + 1pt); z-index: 1; }
+.paper-is-editable .paper-item { border-radius: 3px; position: relative; transition: box-shadow 120ms ease; }
+.paper-is-editable .paper-item:focus-within { box-shadow: 0 0 0 2mm #fff, 0 0 0 calc(2mm + 1px) #e3e2de; }
+
+.paper-item-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  opacity: 0;
+  position: absolute;
+  right: -10mm;
+  top: 0;
+  transition: opacity 120ms ease;
+}
+.paper-item:hover > .paper-item-actions { opacity: 0.45; }
+.paper-item:focus-within > .paper-item-actions,
+.paper-item-actions:focus-within { opacity: 1; }
+.paper-item-actions button {
   background: none;
   border: 0;
-  color: #9a5b4a;
+  border-radius: 4px;
+  color: #787774;
   cursor: pointer;
-  font: inherit;
-  font-size: calc(var(--font-size-base) * 0.85);
-  opacity: 0;
+  font-family: -apple-system, "PingFang SC", sans-serif;
+  font-size: 12px;
+  height: 20px;
+  line-height: 20px;
   padding: 0;
-  position: absolute;
-  right: -11mm;
-  top: 0;
+  width: 20px;
 }
-.paper-item:hover .paper-remove,
-.paper-remove:focus-visible { opacity: 1; }
+.paper-item-actions button:hover:not(:disabled) { background: rgba(15, 15, 15, 0.06); color: #191919; }
+.paper-item-actions button:disabled { cursor: default; opacity: 0.3; }
 
 @media print {
   /* 跨页时按要点断开：条目可以拆到下一页，但标题行跟着第一条要点走，单条要点不拆。 */
@@ -914,55 +392,16 @@
   .paper-editable { background: none !important; box-shadow: none !important; }
 }
 
-/* ---- 切片 ②：行内 AI 建议、选区浮条、修改意见（只在画布上出现） ---- */
-.paper-proposal {
-  background: rgba(27, 54, 93, 0.045);
-  border-left: 2pt solid var(--paper-ink);
-  border-radius: 0 3px 3px 0;
-  font-size: calc(var(--font-size-base) * 0.95);
-  letter-spacing: 0.2pt;
-  margin: 2pt 0 6pt;
-  padding: 5pt 7pt 6pt;
-}
-.paper-proposal-head { align-items: baseline; display: flex; gap: 6pt; }
-.paper-proposal-tag { align-items: center; color: var(--paper-ink); display: inline-flex; flex: 0 0 auto; font-weight: 500; gap: 3px; white-space: nowrap; }
-.paper-proposal-reason { color: var(--paper-text-4); font-size: 0.92em; }
-/* 推断技能：琥珀色，只在画布建议里出现（data-paper-chrome），导出时不存在。 */
-.paper-proposal-inferred-tag { background: #fbe7b5; border-radius: 2pt; color: #7a5200; font-size: 0.85em; padding: 0 4pt; }
-.paper-proposal-inferred { list-style: none; margin: 4pt 0; padding: 0; }
-.paper-proposal-inferred li { align-items: baseline; display: flex; flex-wrap: wrap; gap: 6pt; margin-top: 2pt; }
-.paper-inferred { background: #fbe7b5; border-bottom: 1px dotted #c08a00; color: inherit; padding: 0 2pt; }
-.paper-proposal-inferred-basis { color: var(--paper-text-3); font-size: 0.9em; }
-.paper-proposal-inferred-hint { color: var(--paper-text-4); font-size: 0.85em; }
-.paper-proposal-conflict { color: #8a4b2f; margin: 3pt 0 0; }
-.paper-proposal-structural { color: var(--paper-text-3); margin: 3pt 0 0; }
-.paper-proposal-change { margin-top: 4pt; }
-.paper-proposal-label { color: var(--paper-text-4); display: block; font-size: 0.85em; }
-.paper-diff-line { color: var(--paper-text-2); margin: 1pt 0 0; }
-.paper-diff-removed { color: #9a5b4a; text-decoration: line-through; text-decoration-color: rgba(154, 91, 74, 0.6); }
-.paper-diff-added { background: rgba(27, 54, 93, 0.1); color: var(--paper-ink); border-radius: 2px; }
-.paper-proposal-edit {
-  background: #fff; border: 1px solid rgba(27, 54, 93, 0.35); border-radius: 3px; display: block;
-  min-height: 1.6em; outline: none; padding: 2pt 4pt;
-}
-.paper-proposal-actions { display: flex; flex-wrap: wrap; gap: 4pt; margin-top: 5pt; }
-.paper-proposal-actions button,
-.paper-selection-bar button,
-.paper-comment-tray button {
-  align-items: center; background: transparent; border: 1px solid rgba(20, 20, 19, 0.16); border-radius: 3px;
-  color: var(--paper-text-2, #3d3d3a); cursor: pointer; display: inline-flex; font: inherit; font-size: 0.88em;
-  flex: 0 0 auto; gap: 3px; padding: 1pt 6pt; white-space: nowrap; width: auto;
-}
-.paper-proposal-actions button.is-primary,
-.paper-comment-tray button.is-primary { background: var(--paper-ink, #1b365d); border-color: var(--paper-ink, #1b365d); color: #fff; }
-.paper-proposal-actions button:disabled { cursor: not-allowed; opacity: 0.45; }
-
+/* ---- 画布上的选区浮条与修改意见（只在编辑器里出现） ---- */
 .paper-selection-bar {
-  align-items: center; background: #faf9f5; border: 1px solid rgba(20, 20, 19, 0.14); border-radius: 4px;
-  box-shadow: 0 4px 14px rgba(20, 20, 19, 0.12); display: flex; font-family: var(--paper-serif, serif);
-  font-size: 12px; gap: 4px; padding: 3px; position: absolute; white-space: nowrap; z-index: 20;
+  align-items: center; background: #fff; border: 1px solid rgba(15, 15, 15, 0.08); border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(15, 15, 15, 0.14); display: flex; font-family: -apple-system, "PingFang SC", "Noto Sans SC", sans-serif;
+  font-size: 13px; gap: 2px; padding: 4px; position: fixed; transform: translate(-50%, calc(-100% - 8px)); white-space: nowrap; z-index: 70;
 }
-.paper-selection-input { border: 1px solid rgba(20, 20, 19, 0.16); border-radius: 3px; font: inherit; padding: 1px 6px; width: 15em; }
+.paper-selection-bar button { align-items: center; background: none; border: 0; border-radius: 6px; color: #37352f; cursor: pointer; display: inline-flex; font: inherit; gap: 4px; height: 28px; padding: 0 8px; }
+.paper-selection-bar button:hover:not(:disabled) { background: rgba(15, 15, 15, 0.05); }
+.paper-selection-bar button:disabled { opacity: 0.4; }
+.paper-selection-input { border: 1px solid #e3e2de; border-radius: 6px; font: inherit; height: 28px; outline: none; padding: 0 8px; width: 16em; }
 
 .paper-comment-tray {
   background: #faf9f5; border: 1px solid rgba(20, 20, 19, 0.14); border-radius: 6px; bottom: 16px;
@@ -977,41 +416,10 @@
 .paper-comment-instruction { color: #6b6a64; display: block; }
 
 /* 画布底部「添加段落」：编辑态才显示，导出时随 data-paper-chrome 一起剔除。 */
-.paper-add-sections {
-  align-items: center;
-  border-top: 0.6pt dashed var(--paper-rule);
-  color: var(--paper-text-4);
-  display: flex;
-  flex-wrap: wrap;
-  font-size: calc(var(--font-size-base) * 0.95);
-  gap: 4pt 10pt;
-  margin-top: var(--section-gap);
-  opacity: 0.55;
-  padding-top: 6pt;
-  transition: opacity 120ms ease;
-}
-.paper-add-sections:hover,
-.paper-add-sections:focus-within { opacity: 1; }
-.paper-add-sections > span { font-weight: 500; }
-.paper-add-sections button {
-  background: none;
-  border: 0;
-  color: var(--paper-ink);
-  cursor: pointer;
-  font: inherit;
-  padding: 0;
-}
-.paper-add-sections button:hover { text-decoration: underline; }
-@media print { .paper-add-sections { display: none; } }
 
 /* 要点里的加粗（手动 ⌘/Ctrl+B 或 AI 改写给出的 <strong>）。 */
 .paper-bullets strong { color: var(--paper-ink); font-weight: 600; }
-.paper-bold-bubble {
-  align-items: center; background: #141413; border: 0; border-radius: 6px; box-shadow: 0 4px 14px rgba(20, 20, 19, 0.18);
-  color: #fff; cursor: pointer; display: inline-flex; font: 700 13px/1 -apple-system, "PingFang SC", sans-serif;
-  height: 26px; justify-content: center; position: fixed; transform: translate(-50%, calc(-100% - 6px)); width: 28px; z-index: 60;
-}
-.paper-bold-bubble.is-active { background: #1b365d; }
+
 
 /* 「清晰」样式（默认）：对标超级简历——黑体、照片在左、联系方式带标签、校徽在右、紧凑到一页。 */
 .resume-body.paper.paper-style-cv {
@@ -1049,3 +457,61 @@
 
 /* 「智能一页」测量时只量成品：画布上的编辑控件不计入高度。 */
 .paper-measuring [data-paper-chrome] { display: none !important; }
+
+/* 点右侧建议卡时，纸上对应的一段闪一下。 */
+.paper-section { transition: background-color 0.4s ease; }
+.paper-section.is-located { background-color: rgba(35, 131, 226, 0.08); border-radius: 2px; }
+
+/* 序号列表、二级要点、链接（成品里也生效）。 */
+/* 序号用自己的计数器：二级要点不占号，切换序号也不重建 DOM（正在编辑的格式不会丢）。 */
+.paper-bullets.paper-bullets-numbered { counter-reset: paper-bullet; }
+.paper-bullets.paper-bullets-numbered > li:not(.paper-bullet-sub) { counter-increment: paper-bullet; }
+.paper-bullets.paper-bullets-numbered > li:not(.paper-bullet-sub)::marker { content: counter(paper-bullet) ". "; }
+.paper-bullets li.paper-bullet-sub { list-style-type: circle; margin-left: 12pt; }
+.resume-body.paper a { color: inherit; text-decoration: underline; text-decoration-thickness: 0.5pt; text-underline-offset: 1.5pt; }
+
+/* 主题色：姓名、模块标题和标题下的分隔线。 */
+.paper-style-cv .paper-name { color: var(--paper-theme, var(--paper-text)); }
+.paper-style-cv .paper-section-title { border-bottom-color: var(--paper-theme, var(--paper-text)); color: var(--paper-theme, var(--paper-text)); }
+
+/* 字体：黑体 / 宋体 / 楷体，和「清晰 / 留白」样式独立。 */
+.resume-body.paper.paper-style-cv { font-synthesis: weight style; }
+.resume-body.paper.paper-font-sans { --paper-serif: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC", "Helvetica Neue", Arial, sans-serif; }
+.resume-body.paper.paper-font-serif { --paper-serif: "OfferU Serif SC", "Source Han Serif SC", "Noto Serif CJK SC", "Noto Serif SC", "Songti SC", "STSong", "SimSun", Georgia, serif; }
+.resume-body.paper.paper-font-kai { --paper-serif: "TsangerJinKai02", "OfferU Serif SC", "Noto Serif CJK SC", "Noto Serif SC", "Songti SC", "STSong", Georgia, serif; }
+
+/* 选中文字的格式工具栏（只在画布上）。 */
+.paper-format-bar {
+  font-family: -apple-system, "PingFang SC", "Noto Sans SC", sans-serif;
+  left: 0; position: fixed; top: 0; transform: translate(-50%, calc(-100% - 8px)); z-index: 70;
+}
+.paper-format-row {
+  align-items: center; background: #fff; border: 1px solid rgba(15, 15, 15, 0.08); border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(15, 15, 15, 0.14); display: flex; gap: 2px; padding: 4px; white-space: nowrap;
+}
+.paper-format-row button, .paper-format-menu button, .paper-format-pop-foot button, .paper-format-link button {
+  align-items: center; background: none; border: 0; border-radius: 6px; color: #37352f; cursor: pointer;
+  display: inline-flex; font: inherit; font-size: 13px; height: 28px; justify-content: center; min-width: 28px; padding: 0 7px;
+}
+.paper-format-row button:hover, .paper-format-menu button:hover, .paper-format-pop-foot button:hover { background: rgba(15, 15, 15, 0.05); }
+.paper-format-row button[aria-pressed="true"], .paper-format-row button[aria-expanded="true"] { background: rgba(15, 15, 15, 0.08); color: #191919; }
+.paper-format-color { border-bottom: 2.5px solid currentColor; line-height: 14px; }
+.paper-format-sep { background: #e9e9e7; height: 18px; margin: 0 3px; width: 1px; }
+.paper-format-pop {
+  background: #fff; border: 1px solid rgba(15, 15, 15, 0.08); border-radius: 10px; box-shadow: 0 8px 28px rgba(15, 15, 15, 0.14);
+  left: 50%; margin-top: 6px; padding: 10px 12px; position: absolute; top: 100%; transform: translateX(-50%);
+}
+.paper-format-pop p { color: #9b9a97; font-size: 12px; margin: 0 0 6px; }
+.paper-format-pop p + .paper-format-swatches + p { margin-top: 10px; }
+.paper-format-swatches { display: grid; gap: 6px; grid-template-columns: repeat(6, 20px); }
+.paper-format-swatches button { border: 0; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08); cursor: pointer; height: 20px; padding: 0; width: 20px; }
+.paper-format-swatches button:hover { box-shadow: 0 0 0 2px #fff, 0 0 0 3px #191919; }
+.paper-format-pop-foot { align-items: center; border-top: 1px solid #f1f1ef; display: flex; justify-content: space-between; margin-top: 10px; padding-top: 6px; }
+.paper-format-pop-foot label { align-items: center; color: #37352f; cursor: pointer; display: inline-flex; font-size: 13px; gap: 6px; }
+.paper-format-pop-foot input[type="color"] { border: 0; height: 22px; padding: 0; width: 26px; }
+.paper-format-menu { display: flex; flex-direction: column; min-width: 150px; padding: 4px; }
+.paper-format-menu button { justify-content: flex-start; }
+.paper-format-link { align-items: center; display: flex; gap: 6px; padding: 6px; }
+.paper-format-link input { border: 1px solid #e3e2de; border-radius: 6px; font: inherit; font-size: 13px; height: 28px; outline: none; padding: 0 8px; width: 240px; }
+.paper-format-link input:focus { border-color: #8fa3bd; }
+@media print { .paper-format-bar { display: none !important; } }

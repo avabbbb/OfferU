@@ -2,7 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { useResume } from "@/lib/hooks";
-import ResumePreview from "../../components/ResumePreview";
+import ResumeSheet from "../../components/ResumeSheet";
 
 export default function ResumePrintPage() {
   const params = useParams();
@@ -19,7 +19,7 @@ export default function ResumePrintPage() {
   return (
     <div className="resume-print-page-shell" data-offeru-print-ready="true">
       <div className="resume-print" style={{ background: "#ffffff" }}>
-        <ResumePreview
+        <ResumeSheet
           userName={resume.user_name}
           title={resume.title}
           photoUrl={resume.photo_url}

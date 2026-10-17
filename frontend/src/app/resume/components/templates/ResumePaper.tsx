@@ -13,7 +13,9 @@
 
 import { Fragment, useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { BOLD_CLOSE, BOLD_OPEN, normalizeBold, plainBullet, richBulletToHtml, splitRichBullets } from "@/lib/resumeText";
+import { bulletLi, INDENT_MARK, isIndented, plainBullet, richBulletToHtml, sanitizeInline, splitRichBullets } from "@/lib/resumeText";
+import { FormatBar, type AskAgentRequest } from "./FormatBar";
+import { insertPlainText, selectionOffsets, toggleMark } from "@/lib/richFormat";
 
 export interface PaperSection {
   id: number;
@@ -22,7 +24,6 @@ export interface PaperSection {
   visible: boolean;
   content_json: any[];
   sort_order: number;
-  [key: string]: unknown;
 }
 
 export interface ResumePaperProps {
@@ -35,15 +36,20 @@ export interface ResumePaperProps {
   editable?: boolean;
   onProfileChange?: (patch: { user_name?: string; title?: string; summary?: string; contact_json?: Record<string, string> }) => void;
   onSectionChange?: (section: PaperSection) => void;
-  /** 仅画布：在某一段标题下方插入行内 AI 建议等交互层（不进入导出）。 */
-  renderSectionAside?: (section: PaperSection) => ReactNode;
-  /** 仅画布：页尾交互层，例如「建议新增的段落」。 */
-  canvasFooter?: ReactNode;
   /** 已解析为可加载地址的证件照 / 校徽；为空时成品上不占位。 */
   photoUrl?: string;
   logoUrl?: string;
   /** 仅画布：在页面上直接添加、更换或移除照片和校徽（file 为 null 表示移除）。 */
   onUploadAsset?: (kind: "photo" | "logo", file: File | null) => void | Promise<void>;
+  /** 仅画布：改排版（如某个模块切换成序号列表）。 */
+  onStyleChange?: (patch: Record<string, string>) => void;
+  /** 仅画布：选中文字后点「让 Agent 改」。 */
+  onAskAgent?: (request: AskAgentRequest) => void;
+}
+
+/** style_config.numberedSections：用逗号分隔的模块 id，这些模块的要点用 1. 2. 3. */
+export function numberedSectionIds(styleConfig: Record<string, string> | undefined) {
+  return new Set(String(styleConfig?.numberedSections || "").split(",").filter(Boolean));
 }
 
 const ASSET_ACCEPT = "image/jpeg,image/png,image/webp";
@@ -185,13 +191,13 @@ const CONTACT_FIELDS: Array<[string, string]> = [
 export function bulletsToDescription(bullets: string[]) {
   const kept = bullets.map((item) => item.replace(/\u200b/g, "").trim()).filter((item) => plainBullet(item).trim());
   if (!kept.length) return "";
-  return `<ul>${kept.map((item) => `<li><p>${richBulletToHtml(item)}</p></li>`).join("")}</ul>`;
+  return `<ul>${kept.map((item) => bulletLi(item)).join("")}</ul>`;
 }
 
 export function editBullet(
   item: Record<string, any>,
   index: number,
-  change: { text?: string; remove?: boolean; insertAfter?: boolean },
+  change: { text?: string; remove?: boolean; insertAfter?: boolean; indent?: boolean },
 ): Record<string, any> {
   const bullets = splitRichBullets(String(item.description || ""));
   const hidden = new Set<number>(
@@ -204,13 +210,17 @@ export function editBullet(
   } else if (change.insertAfter) {
     bullets.splice(index + 1, 0, "");
     nextHidden = nextHidden.map((value) => (value > index ? value + 1 : value));
+  } else if (typeof change.indent === "boolean") {
+    const body = typeof change.text === "string" ? change.text : bullets[index].replace(INDENT_MARK, "");
+    bullets[index] = (change.indent ? INDENT_MARK : "") + body;
   } else if (typeof change.text === "string") {
-    if (bullets[index] === change.text) return item;
-    bullets[index] = change.text;
+    const next = (isIndented(bullets[index]) ? INDENT_MARK : "") + change.text;
+    if (bullets[index] === next) return item;
+    bullets[index] = next;
   }
   const next: Record<string, any> = { ...item, description: bulletsToDescription(bullets.length ? bullets : []) };
   if (change.insertAfter) {
-    next.description = `<ul>${bullets.map((value) => `<li><p>${richBulletToHtml(value) || "\u200b"}</p></li>`).join("")}</ul>`;
+    next.description = `<ul>${bullets.map((value) => bulletLi(value, true)).join("")}</ul>`;
   }
   if (Array.isArray(item.hidden_bullet_indexes) || nextHidden.length) next.hidden_bullet_indexes = nextHidden;
   return next;
@@ -237,75 +247,72 @@ interface EditableProps {
   className?: string;
   label: string;
   multiline?: boolean;
-  /** 允许加粗（⌘/Ctrl+B 或选中后的「B」按钮）；value 里用 BOLD_OPEN/BOLD_CLOSE 标记。 */
+  /** 允许行内格式（加粗、斜体、下划线、删除线、颜色、链接）；value 是清洗过的行内 HTML。 */
   rich?: boolean;
   onCommit: (value: string) => void;
   onEnter?: () => void;
   onBackspaceEmpty?: () => void;
+  onIndent?: (indent: boolean, text: string) => void;
   autoFocus?: boolean;
 }
 
-/** 把可编辑区域的 DOM 读回带加粗标记的纯文本；除加粗外的格式一律丢掉。 */
-function serializeRich(root: Node): string {
-  let out = "";
-  const walk = (node: Node, bold: boolean) => {
-    node.childNodes.forEach((child) => {
-      if (child.nodeType === Node.TEXT_NODE) {
-        const text = child.textContent || "";
-        out += bold ? BOLD_OPEN + text + BOLD_CLOSE : text;
-        return;
-      }
-      if (!(child instanceof HTMLElement)) return;
-      if (child.tagName === "BR") { out += " "; return; }
-      const weight = Number.parseInt(child.style.fontWeight || "0", 10);
-      const isBold = child.tagName === "B" || child.tagName === "STRONG" || weight >= 600 || child.style.fontWeight === "bold";
-      walk(child, bold || isBold);
-    });
-  };
-  walk(root, false);
-  return normalizeBold(out.split(BOLD_CLOSE + BOLD_OPEN).join(""));
+function RichText({ html }: { html: string }) {
+  return <span dangerouslySetInnerHTML={{ __html: richBulletToHtml(html) }} />;
 }
 
-function RichText({ text }: { text: string }) {
-  const parts = normalizeBold(text).split(new RegExp(`(${BOLD_OPEN}[^${BOLD_CLOSE}]*${BOLD_CLOSE})`));
-  return (
-    <>
-      {parts.map((part, index) => part.startsWith(BOLD_OPEN)
-        ? <strong key={index}>{part.slice(1, -1)}</strong>
-        : <Fragment key={index}>{part}</Fragment>)}
-    </>
-  );
-}
-
-function Editable({ value, editable, placeholder, className = "", label, multiline = false, rich = false, onCommit, onEnter, onBackspaceEmpty, autoFocus }: EditableProps) {
+function Editable({ value, editable, placeholder, className = "", label, multiline = false, rich = false, onCommit, onEnter, onBackspaceEmpty, onIndent, autoFocus }: EditableProps) {
   const ref = useRef<HTMLSpanElement | null>(null);
+  // 只用第一次的内容渲染；之后由下面的 effect 在没聚焦时同步，避免 React 重写 innerHTML 打断选区。
+  const [initialHtml] = useState(() => ({ __html: richBulletToHtml(value) }));
+  const read = () => {
+    const node = ref.current;
+    if (!node) return "";
+    return rich ? sanitizeInline(node.innerHTML) : node.textContent || "";
+  };
+  const current = () => {
+    const text = read().replace(/\u00a0/g, " ").replace(/\u200b/g, "");
+    return multiline ? text.trim() : text.replace(/\s*\n\s*/g, " ").trim();
+  };
+  const commit = () => {
+    const normalized = current();
+    if (normalized !== value) onCommit(normalized);
+  };
+  const currentRef = useRef(current);
+  const commitRef = useRef(commit);
+  currentRef.current = current;
+  commitRef.current = commit;
   useEffect(() => {
     const node = ref.current;
     if (!node || document.activeElement === node) return;
     if (rich) {
-      if (serializeRich(node) !== normalizeBold(value)) node.innerHTML = richBulletToHtml(value);
+      if (sanitizeInline(node.innerHTML) !== richBulletToHtml(value)) node.innerHTML = richBulletToHtml(value);
     } else if (node.textContent !== value) node.textContent = value;
   }, [value, rich]);
   useEffect(() => {
     if (autoFocus && ref.current) ref.current.focus();
   }, [autoFocus]);
+  // 工具栏改完格式立刻提交，每次格式修改都是一步可撤销的修改。
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const handle = () => commitRef.current();
+    node.addEventListener("paper-commit", handle);
+    return () => node.removeEventListener("paper-commit", handle);
+  }, [editable]);
+  // 工具栏里的「缩进」通过事件交给这条要点处理，和 Tab / Shift+Tab 走同一条路。
+  useEffect(() => {
+    const node = ref.current;
+    if (!node || !onIndent) return;
+    const handle = (event: Event) => onIndent((event as CustomEvent<boolean>).detail, currentRef.current());
+    node.addEventListener("paper-indent", handle);
+    return () => node.removeEventListener("paper-indent", handle);
+  }, [onIndent]);
 
   if (!editable) {
     if (!plainBullet(value)) return null;
-    return <span className={className}>{rich ? <RichText text={value} /> : value}</span>;
+    return <span className={className}>{rich ? <RichText html={value} /> : value}</span>;
   }
 
-  const read = () => {
-    const node = ref.current;
-    if (!node) return "";
-    return rich ? serializeRich(node) : node.textContent || "";
-  };
-
-  const commit = () => {
-    const text = read().replace(/\u00a0/g, " ").replace(/\u200b/g, "");
-    const normalized = multiline ? text.trim() : text.replace(/\s*\n\s*/g, " ").trim();
-    if (normalized !== value) onCommit(normalized);
-  };
 
   const revert = () => {
     if (!ref.current) return;
@@ -316,7 +323,14 @@ function Editable({ value, editable, placeholder, className = "", label, multili
   const onKeyDown = (event: KeyboardEvent<HTMLSpanElement>) => {
     if (rich && (event.metaKey || event.ctrlKey) && ["b", "i", "u"].includes(event.key.toLowerCase())) {
       event.preventDefault();
-      if (event.key.toLowerCase() === "b") document.execCommand("bold");
+      const node = ref.current;
+      const offsets = node && selectionOffsets(node);
+      if (node && offsets) toggleMark(node, offsets.start, offsets.end, ({ b: "strong", i: "em", u: "u" } as const)[event.key.toLowerCase() as "b" | "i" | "u"]);
+      return;
+    }
+    if (event.key === "Tab" && onIndent) {
+      event.preventDefault();
+      onIndent(!event.shiftKey, currentRef.current());
       return;
     }
     if (event.key === "Escape") {
@@ -342,7 +356,7 @@ function Editable({ value, editable, placeholder, className = "", label, multili
   const onPaste = (event: ClipboardEvent<HTMLSpanElement>) => {
     if (!rich) return;
     event.preventDefault();
-    document.execCommand("insertText", false, event.clipboardData.getData("text/plain"));
+    if (ref.current) insertPlainText(ref.current, event.clipboardData.getData("text/plain").replace(/\s*\n\s*/g, " "));
   };
 
   const shared = {
@@ -354,57 +368,16 @@ function Editable({ value, editable, placeholder, className = "", label, multili
     spellCheck: false,
     "data-placeholder": placeholder,
     "data-paper-editable": "",
+    "data-empty": value ? undefined : "",
     className: `paper-editable ${className}`,
     onBlur: commit,
     onKeyDown,
   } as const;
 
   if (rich) {
-    return <span {...shared} data-paper-rich="" contentEditable onPaste={onPaste} dangerouslySetInnerHTML={{ __html: richBulletToHtml(value) }} />;
+    return <span {...shared} data-paper-rich="" contentEditable onPaste={onPaste} dangerouslySetInnerHTML={initialHtml} />;
   }
   return <span {...shared} contentEditable="plaintext-only">{value}</span>;
-}
-
-/** 在要点里选中文字时浮出的「B」按钮；不进入导出。 */
-function BoldBubble() {
-  const [state, setState] = useState<{ x: number; y: number; active: boolean } | null>(null);
-  useEffect(() => {
-    const update = () => {
-      const selection = window.getSelection();
-      if (!selection || selection.isCollapsed || !selection.rangeCount) { setState(null); return; }
-      const anchor = selection.anchorNode;
-      const host = (anchor instanceof Element ? anchor : anchor?.parentElement)?.closest("[data-paper-rich]");
-      if (!host) { setState(null); return; }
-      const rect = selection.getRangeAt(0).getBoundingClientRect();
-      setState({ x: rect.left + rect.width / 2, y: rect.top, active: document.queryCommandState("bold") });
-    };
-    document.addEventListener("selectionchange", update);
-    window.addEventListener("scroll", update, true);
-    return () => {
-      document.removeEventListener("selectionchange", update);
-      window.removeEventListener("scroll", update, true);
-    };
-  }, []);
-  if (!state || typeof document === "undefined") return null;
-  return createPortal(
-    <button
-      type="button"
-      className={`paper-bold-bubble${state.active ? " is-active" : ""}`}
-      data-paper-chrome=""
-      aria-label="加粗"
-      aria-pressed={state.active}
-      title="加粗（⌘/Ctrl + B）"
-      style={{ left: state.x, top: state.y }}
-      onMouseDown={(event) => {
-        event.preventDefault();
-        document.execCommand("bold");
-        setState((prev) => (prev ? { ...prev, active: document.queryCommandState("bold") } : prev));
-      }}
-    >
-      B
-    </button>,
-    document.body,
-  );
 }
 
 function textOf(value: unknown) {
@@ -435,9 +408,10 @@ export function resolvePaperTone(styleConfig: Record<string, string> | undefined
 export function ResumePaper(props: ResumePaperProps) {
   const {
     userName, summary, contactJson, sections, styleConfig,
-    editable = false, onProfileChange, onSectionChange, renderSectionAside, canvasFooter,
-    photoUrl, logoUrl, onUploadAsset,
+    editable = false, onProfileChange, onSectionChange,
+    photoUrl, logoUrl, onUploadAsset, onStyleChange, onAskAgent,
   } = props;
+  const numbered = numberedSectionIds(styleConfig);
   const hasMedia = Boolean(photoUrl || logoUrl || (editable && onUploadAsset));
   const focusRef = useRef<string | null>(null);
   // 默认「清晰」样式（对标超级简历）：照片在左、联系方式带标签、校徽在右；「留白」是 Kami 风格。
@@ -446,7 +420,8 @@ export function ResumePaper(props: ResumePaperProps) {
 
   const contact = contactJson || {};
   const contactEntries = CONTACT_FIELDS.filter(([key]) => editable || contact[key]);
-  const summaryText = summary ? summary.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "";
+  const summaryHtml = summary ? sanitizeInline(summary.replace(/<\/p>\s*<p[^>]*>/gi, " ")).replace(/\s+/g, " ").trim() : "";
+  const summaryText = plainBullet(summaryHtml).trim();
 
   const updateItem = (section: PaperSection, index: number, next: Record<string, any>) => {
     const content = [...(section.content_json || [])];
@@ -484,14 +459,14 @@ export function ResumePaper(props: ResumePaperProps) {
           {contactEntries.length > 0 && (
             <p className="paper-contact">
               {contactEntries.map(([key, label], index) => (
-                <Fragment key={key}>
-                  {index > 0 && (editable || contact[key]) && <span className="paper-sep" aria-hidden>{cv ? "|" : "·"}</span>}
+                <span key={key} className="paper-optional" data-empty={contact[key] ? undefined : ""}>
+                  {index > 0 && <span className="paper-sep" aria-hidden>{cv ? "|" : "·"}</span>}
                   <span className="paper-contact-item">
                     {cv && <span className="paper-contact-label">{label}：</span>}
                     <Editable value={contact[key] || ""} editable={editable} placeholder={label} label={label}
                       onCommit={(value) => onProfileChange?.({ contact_json: { ...contact, [key]: value } })} />
                   </span>
-                </Fragment>
+                </span>
               ))}
             </p>
           )}
@@ -513,7 +488,7 @@ export function ResumePaper(props: ResumePaperProps) {
       {(editable || summaryText) && (
         <section className="paper-section">
           <p className="paper-summary">
-            <Editable value={summaryText} editable={editable} multiline placeholder="个人简介：两三句话说清你能为这个岗位带来什么"
+            <Editable value={summaryHtml} editable={editable} multiline rich placeholder="个人简介：两三句话说清你能为这个岗位带来什么"
               label="个人简介" onCommit={(value) => onProfileChange?.({ summary: value })} />
           </p>
         </section>
@@ -526,12 +501,11 @@ export function ResumePaper(props: ResumePaperProps) {
           .filter(({ item }) => editable || hasContent(item, shape));
         if (!editable && items.length === 0) return null;
         return (
-          <section key={section.id} className="paper-section" data-section-type={section.section_type}>
+          <section key={section.id} className="paper-section" data-section-type={section.section_type} data-section-id={section.id}>
             <h2 className="paper-section-title">
               <Editable value={section.title || ""} editable={editable} placeholder="段落标题" label="段落标题"
                 onCommit={(value) => onSectionChange?.({ ...section, title: value })} />
             </h2>
-            {editable && renderSectionAside?.(section)}
             <div className="paper-items">
               {items.map(({ item, index }) => (
                 <PaperItem
@@ -547,6 +521,16 @@ export function ResumePaper(props: ResumePaperProps) {
                     content.splice(index, 1);
                     onSectionChange?.({ ...section, content_json: content });
                   }}
+                  onMove={(delta) => {
+                    const content = [...(section.content_json || [])];
+                    const target = index + delta;
+                    if (target < 0 || target >= content.length) return;
+                    [content[index], content[target]] = [content[target], content[index]];
+                    onSectionChange?.({ ...section, content_json: content });
+                  }}
+                  numbered={numbered.has(String(section.id))}
+                  isFirst={index === 0}
+                  isLast={index === (section.content_json || []).length - 1}
                 />
               ))}
             </div>
@@ -563,20 +547,33 @@ export function ResumePaper(props: ResumePaperProps) {
           </section>
         );
       })}
-      {editable && canvasFooter}
-      {editable && <BoldBubble />}
+      {editable && (
+        <FormatBar
+          numberedSections={numbered}
+          onToggleNumbered={(sectionId) => {
+            const next = new Set(numbered);
+            if (next.has(sectionId)) next.delete(sectionId); else next.add(sectionId);
+            onStyleChange?.({ numberedSections: [...next].join(",") });
+          }}
+          onAskAgent={onAskAgent}
+        />
+      )}
     </article>
   );
 }
 
 function PaperItem({
-  item, shape, editable, onChange, onRemove, focusKey, itemKey,
+  item, shape, editable, onChange, onRemove, onMove, numbered, isFirst, isLast, focusKey, itemKey,
 }: {
+  numbered: boolean;
   item: Record<string, any>;
   shape: ItemShape;
   editable: boolean;
   onChange: (next: Record<string, any>) => void;
   onRemove: () => void;
+  onMove: (delta: number) => void;
+  isFirst: boolean;
+  isLast: boolean;
   focusKey: { current: string | null };
   itemKey: string;
 }) {
@@ -597,7 +594,7 @@ function PaperItem({
           <Editable value={tags} editable={editable} placeholder="用顿号分隔，例如：Go、Kafka、MySQL" label="技能列表"
             onCommit={(value) => set(shape.tags!.items, value)} />
         </span>
-        {editable && <RemoveItem onRemove={onRemove} />}
+        {editable && <ItemActions onRemove={onRemove} onMove={onMove} isFirst={isFirst} isLast={isLast} />}
       </div>
     );
   }
@@ -605,11 +602,11 @@ function PaperItem({
   const renderMeta = (): ReactNode => metaParts.map((key, position) => {
     const placeholder = shape.metaPlaceholders[shape.meta.indexOf(key)] || "";
     return (
-      <Fragment key={key}>
-        {position > 0 && (editable || textOf(item[key])) && <span className="paper-sep" aria-hidden>·</span>}
+      <span key={key} className="paper-optional" data-empty={textOf(item[key]) ? undefined : ""}>
+        {position > 0 && <span className="paper-sep" aria-hidden>·</span>}
         <Editable value={key === "gpa" && !editable && item[key] ? `GPA ${item[key]}` : textOf(item[key])}
           editable={editable} placeholder={placeholder} label={placeholder} onCommit={(value) => set(key, value)} />
-      </Fragment>
+      </span>
     );
   });
 
@@ -622,7 +619,7 @@ function PaperItem({
               label={shape.titlePlaceholder} onCommit={(value) => set(shape.title, value)} />
           </span>
           {shape.chip && (editable || textOf(item[shape.chip])) && (
-            <span className="paper-chip">
+            <span className="paper-chip paper-optional" data-empty={textOf(item[shape.chip]) ? undefined : ""}>
               <Editable value={textOf(item[shape.chip])} editable={editable} placeholder="你的角色" label="角色"
                 onCommit={(value) => set(shape.chip!, value)} />
             </span>
@@ -645,16 +642,17 @@ function PaperItem({
             )}
           </span>
         )}
-        {editable && <RemoveItem onRemove={onRemove} />}
       </div>
+      {editable && <ItemActions onRemove={onRemove} onMove={onMove} isFirst={isFirst} isLast={isLast} />}
       {(bullets.length > 0 || (editable && shape.description)) && (
-        <ul className="paper-bullets">
+        <ul className={`paper-bullets${numbered ? " paper-bullets-numbered" : ""}`}>
           {bullets.map((entry, position) => {
             const key = `${itemKey}-b${entry.index}`;
+            const sub = isIndented(entry.text);
             return (
-              <li key={key}>
+              <li key={key} className={sub ? "paper-bullet-sub" : undefined}>
                 <Editable
-                  value={entry.text}
+                  value={entry.text.replace(INDENT_MARK, "")}
                   editable={editable}
                   multiline
                   rich
@@ -665,6 +663,10 @@ function PaperItem({
                   onEnter={() => {
                     focusKey.current = `${itemKey}-b${entry.index + 1}`;
                     onChange(editBullet(item, entry.index, { insertAfter: true }));
+                  }}
+                  onIndent={(indent, text) => {
+                    focusKey.current = key;
+                    onChange(editBullet(item, entry.index, { indent, text }));
                   }}
                   onBackspaceEmpty={() => {
                     const previous = bullets[position - 1];
@@ -691,11 +693,17 @@ function PaperItem({
   );
 }
 
-function RemoveItem({ onRemove }: { onRemove: () => void }) {
+/** 条目操作：悬停时淡淡露出，点进条目后才完整显示；不进入导出。 */
+function ItemActions({ onRemove, onMove, isFirst, isLast }: {
+  onRemove: () => void; onMove: (delta: number) => void; isFirst: boolean; isLast: boolean;
+}) {
+  const keep = (event: { preventDefault: () => void }) => event.preventDefault();
   return (
-    <button type="button" className="paper-remove" data-paper-chrome="" aria-label="删除这一条" onClick={onRemove}>
-      删除
-    </button>
+    <span className="paper-item-actions" data-paper-chrome="">
+      <button type="button" onMouseDown={keep} onClick={() => onMove(-1)} disabled={isFirst} aria-label="上移这一条" title="上移">↑</button>
+      <button type="button" onMouseDown={keep} onClick={() => onMove(1)} disabled={isLast} aria-label="下移这一条" title="下移">↓</button>
+      <button type="button" onMouseDown={keep} onClick={onRemove} aria-label="删除这一条" title="删除">×</button>
+    </span>
   );
 }
 

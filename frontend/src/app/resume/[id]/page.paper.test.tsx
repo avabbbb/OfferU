@@ -29,7 +29,6 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(""),
 }));
 vi.mock("@/lib/showcase/router", () => ({ SHOWCASE: false }));
-vi.mock("../components/SectionEditor", () => ({ default: () => <div data-testid="section-editor" /> }));
 
 import ResumeEditorPage from "./page";
 
@@ -65,14 +64,14 @@ function workspace(sectionContent = before.content_json): ResumeWorkspace {
   } as unknown as ResumeWorkspace;
 }
 
-describe("纸画布上的 AI 建议", () => {
+describe("编辑器右侧的 AI 建议", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     HTMLElement.prototype.scrollTo = vi.fn();
     api.update.mockImplementation(async (_id: number, data: Record<string, unknown>) => ({ id: 7, ...data }));
   });
 
-  it("shows the suggestion inside the section it changes and accepts it from there", async () => {
+  it("lists the suggestion on the right and accepts it from there", async () => {
     api.workspace.mockResolvedValue(workspace());
     const reviewed = workspace();
     reviewed.proposals[0].item_reviews = { c1: { action: "accept" } };
@@ -80,14 +79,14 @@ describe("纸画布上的 AI 建议", () => {
     const user = userEvent.setup();
     render(<ResumeEditorPage />);
 
-    const inline = await screen.findByTestId("inline-proposal-c1");
+    const inline = await screen.findByTestId("suggestion-c1");
     expect(within(inline).getByText("日均千万笔的")).toBeInTheDocument();
-    expect(screen.getByTestId("resume-canvas-proposals")).toHaveTextContent("1 条 AI 改动");
+    expect(screen.getByTestId("resume-panel-suggestions")).toHaveTextContent("建议 1");
     await user.click(within(inline).getByRole("button", { name: /^采用/ }));
     await waitFor(() => expect(api.reviewProposalItem).toHaveBeenCalledWith("prop-1", {
       resume_id: 7, change_id: "c1", action: "accept", edited_text: "",
     }));
-    await waitFor(() => expect(screen.queryByTestId("inline-proposal-c1")).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByTestId("suggestion-c1")).not.toBeInTheDocument());
   });
 
   it("keeps the user's own edit and refuses to apply a suggestion built on the old text", async () => {
@@ -95,24 +94,15 @@ describe("纸画布上的 AI 建议", () => {
     const user = userEvent.setup();
     render(<ResumeEditorPage />);
 
-    const inline = await screen.findByTestId("inline-proposal-c1");
+    const inline = await screen.findByTestId("suggestion-c1");
     expect(within(inline).getByRole("note")).toHaveTextContent("以你的版本为准");
     expect(within(inline).getByRole("button", { name: /^采用/ })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /全部采用/ })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /全部采用/ })).not.toBeInTheDocument();
 
-    await user.click(within(inline).getByRole("button", { name: /跳过/ }));
+    await user.click(within(inline).getByRole("button", { name: "不用" }));
     await waitFor(() => expect(api.reviewProposalItem).toHaveBeenCalledWith("prop-1", {
       resume_id: 7, change_id: "c1", action: "reject", edited_text: "",
     }));
   });
 
-  it("hides the comparison on demand without touching the content", async () => {
-    api.workspace.mockResolvedValue(workspace());
-    const user = userEvent.setup();
-    render(<ResumeEditorPage />);
-    await screen.findByTestId("inline-proposal-c1");
-    await user.click(screen.getByRole("button", { name: "隐藏 1 条 AI 改动" }));
-    expect(screen.queryByTestId("inline-proposal-c1")).not.toBeInTheDocument();
-    expect(screen.getAllByText("负责对账服务").length).toBeGreaterThan(0);
-  });
 });

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { buildCommentPrompt, CommentTray, InlineProposal } from "./CanvasAssist";
+import { buildCommentPrompt, CommentTray, SuggestionCard } from "./CanvasAssist";
 import { conflictsWithManualEdit, diffText, findTargetSection, proposalTextChanges } from "./proposalDiff";
 
 const before = {
@@ -41,24 +41,28 @@ describe("行内 diff 的计算", () => {
   });
 });
 
-describe("InlineProposal：采用 / 修改 / 跳过", () => {
-  const renderProposal = (overrides: Partial<Parameters<typeof InlineProposal>[0]> = {}) => {
+describe("建议卡：采用 / 修改 / 不用", () => {
+  const renderProposal = (overrides: Partial<Parameters<typeof SuggestionCard>[0]> = {}) => {
     const props = {
-      change, conflict: false, factGateBlocked: false, busy: false,
-      onAccept: vi.fn(), onSkip: vi.fn(), onAskRewrite: vi.fn(), ...overrides,
+      change, sectionLabel: "工作经历", conflict: false, factGateBlocked: false, busy: false,
+      onAccept: vi.fn(), onSkip: vi.fn(), onAskRewrite: vi.fn(), onLocate: vi.fn(), ...overrides,
     };
-    render(<InlineProposal {...props} />);
+    render(<SuggestionCard {...props} />);
     return props;
   };
 
-  it("shows the change in place and accepts or skips it in one click", () => {
+  it("shows where, what changed and why, and accepts or drops it in one click", () => {
     const props = renderProposal();
-    expect(screen.getByText("日均千万笔的")).toHaveClass("paper-diff-added");
+    expect(screen.getByText("工作经历 · 示例科技")).toBeInTheDocument();
+    expect(screen.getByText("负责对账服务")).toHaveClass("line-through");
+    expect(screen.getByText("日均千万笔的")).toHaveAttribute("data-diff", "added");
     expect(screen.getByText("JD 强调高并发")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /采用/ }));
     expect(props.onAccept).toHaveBeenCalledWith();
-    fireEvent.click(screen.getByRole("button", { name: /跳过/ }));
+    fireEvent.click(screen.getByRole("button", { name: "不用" }));
     expect(props.onSkip).toHaveBeenCalled();
+    fireEvent.click(screen.getByText("JD 强调高并发"));
+    expect(props.onLocate).toHaveBeenCalled();
   });
 
   it("lets the user rewrite the suggestion before accepting", () => {
@@ -75,35 +79,30 @@ describe("InlineProposal：采用 / 修改 / 跳过", () => {
     const props = renderProposal({ conflict: true });
     expect(screen.getByRole("note")).toHaveTextContent("以你的版本为准");
     expect(screen.getByRole("button", { name: /^采用/ })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /修改/ })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /^修改$/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "让 AI 按我的版本重写" }));
     expect(props.onAskRewrite).toHaveBeenCalled();
   });
 });
 
-describe("InlineProposal：推断技能要逐条确认", () => {
-  it("marks inferred skills in amber with their verbatim basis and asks to confirm truth", () => {
+describe("建议卡：推断技能要逐条确认", () => {
+  const card = (extra: Record<string, unknown> = {}, onAccept = vi.fn()) => render(
+    <SuggestionCard change={{ ...change, ...extra }} sectionLabel="工作经历" conflict={false} factGateBlocked={false} busy={false}
+      onAccept={onAccept} onSkip={vi.fn()} onAskRewrite={vi.fn()} />,
+  );
+
+  it("lists inferred skills with their verbatim basis and asks to confirm truth", () => {
     const onAccept = vi.fn();
-    render(
-      <InlineProposal
-        change={{ ...change, inferred_skills: [{ skill: "高并发", basis: "负责对账服务" }] }}
-        conflict={false} factGateBlocked={false} busy={false}
-        onAccept={onAccept} onSkip={vi.fn()} onAskRewrite={vi.fn()}
-      />,
-    );
-    expect(screen.getByText("推断 · 待你确认")).toBeInTheDocument();
-    expect(screen.getByText("高并发")).toHaveClass("paper-inferred");
+    card({ inferred_skills: [{ skill: "高并发", basis: "负责对账服务" }] }, onAccept);
+    expect(screen.getByRole("note", { name: "模型推断的技能" })).toHaveTextContent("高并发");
     expect(screen.getByText(/依据：「负责对账服务」/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /属实，采用/ }));
     expect(onAccept).toHaveBeenCalledWith();
   });
 
   it("keeps the plain accept label when nothing is inferred", () => {
-    render(
-      <InlineProposal change={change} conflict={false} factGateBlocked={false} busy={false}
-        onAccept={vi.fn()} onSkip={vi.fn()} onAskRewrite={vi.fn()} />,
-    );
-    expect(screen.queryByText("推断 · 待你确认")).not.toBeInTheDocument();
+    card();
+    expect(screen.queryByRole("note", { name: "模型推断的技能" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /属实/ })).not.toBeInTheDocument();
   });
 });

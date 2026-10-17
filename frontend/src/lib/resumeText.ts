@@ -110,42 +110,85 @@ export function descriptionLinesToPlainText(lines: string[]) {
 }
 
 /*
- * 要点里的加粗：存储仍是标准 HTML（<strong>），纸模板内部用两个私有区字符标记加粗区间，
- * 这样按纯文本拆要点、比对、编辑都不受影响，导出时再还原成 <strong>。
+ * 要点富文本：存储是标准 HTML。每条要点内部只允许
+ * <strong> <em> <u> <s> <a href> <span style="color">，其余标签一律拆掉只留文字。
+ * 二级要点（缩进）在要点字符串最前面用一个私有区字符标记，写回时变成 <li data-indent="1">。
  */
-export const BOLD_OPEN = "\uE000";
-export const BOLD_CLOSE = "\uE001";
-
-/** 去掉多余/不配对的标记和空的加粗区间。 */
-export function normalizeBold(text: string): string {
-  let out = "";
-  let open = false;
-  for (const ch of text) {
-    if (ch === BOLD_OPEN) { if (!open) { out += ch; open = true; } continue; }
-    if (ch === BOLD_CLOSE) { if (open) { out += ch; open = false; } continue; }
-    out += ch;
-  }
-  if (open) out += BOLD_CLOSE;
-  return out.split(BOLD_OPEN + BOLD_CLOSE).join("");
-}
-
-export function plainBullet(text: string): string {
-  return text.replace(/[\uE000\uE001]/g, "");
-}
-
-/** 与 splitBullets 相同的拆分，但保留 <strong>/<b> 加粗。 */
-export function splitRichBullets(value: string): string[] {
-  const marked = (value || "")
-    .replace(/<\s*(?:strong|b)(?:\s[^>]*)?>/gi, BOLD_OPEN)
-    .replace(/<\s*\/\s*(?:strong|b)\s*>/gi, BOLD_CLOSE);
-  return splitBullets(marked).map(normalizeBold);
-}
+export const INDENT_MARK = "\uE002";
+const COLOR_RE = /^(#[0-9a-f]{3,8}|rgba?\([\d\s.,%]+\))$/i;
 
 function escapeText(value: string) {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
+function escapeAttr(value: string) {
+  return escapeText(value).replace(/"/g, "&quot;");
+}
 
-/** 带加粗标记的要点 → 安全 HTML（只会出现 <strong>）。 */
+function inlineFromNode(node: Node): string {
+  let out = "";
+  node.childNodes.forEach((child) => {
+    if (child.nodeType === 3) { out += escapeText(child.textContent || ""); return; }
+    if (child.nodeType !== 1) return;
+    const el = child as HTMLElement;
+    const tag = el.tagName.toLowerCase();
+    if (tag === "br") { out += " "; return; }
+    let inner = inlineFromNode(el);
+    if (!inner) return;
+    const style = el.style;
+    const deco = `${style?.textDecoration || ""} ${style?.textDecorationLine || ""}`;
+    const color = tag === "font" ? el.getAttribute("color") || "" : style?.color || "";
+    if (color && COLOR_RE.test(color.trim())) inner = `<span style="color: ${escapeAttr(color.trim())}">${inner}</span>`;
+    if (/line-through/.test(deco) || ["s", "strike", "del"].includes(tag)) inner = `<s>${inner}</s>`;
+    if (/underline/.test(deco) || (tag === "u" || tag === "ins")) inner = `<u>${inner}</u>`;
+    if (style?.fontStyle === "italic" || tag === "em" || tag === "i") inner = `<em>${inner}</em>`;
+    const weight = style?.fontWeight || "";
+    if (tag === "strong" || tag === "b" || weight === "bold" || Number.parseInt(weight, 10) >= 600) inner = `<strong>${inner}</strong>`;
+    if (tag === "a") {
+      const href = (el.getAttribute("href") || "").trim();
+      if (/^(https?:|mailto:)/i.test(href)) inner = `<a href="${escapeAttr(href)}">${inner}</a>`;
+    }
+    out += inner;
+  });
+  return out;
+}
+
+function parseHtml(html: string): HTMLElement {
+  const doc = new DOMParser().parseFromString(`<div>${html}</div>`, "text/html");
+  return doc.body.firstElementChild as HTMLElement;
+}
+
+/** 任意 HTML（含 contenteditable 的产物）→ 一条要点允许的安全行内 HTML。 */
+export function sanitizeInline(html: string): string {
+  if (!html) return "";
+  if (!/[<&]/.test(html)) return escapeText(html);
+  return inlineFromNode(parseHtml(html)).replace(/<\/(strong|em|u|s)><\1>/g, "");
+}
+
+/** 去掉标签和缩进标记后的纯文字。 */
+export function plainBullet(text: string): string {
+  return textFromHtml((text || "").replace(INDENT_MARK, "")).replace(/\s+/g, " ").replace(/\u200b/g, "");
+}
+
+/** 和 splitBullets 一样拆要点，但保留行内格式和缩进。 */
+export function splitRichBullets(value: string): string[] {
+  if (!/<\s*li\b/i.test(value || "")) return splitBullets(value).map(escapeText);
+  const root = parseHtml(value);
+  return Array.from(root.querySelectorAll("li")).map((li) => {
+    const html = sanitizeInline(li.innerHTML.replace(/<\/p>\s*<p[^>]*>/gi, " "));
+    return (li.getAttribute("data-indent") === "1" ? INDENT_MARK : "") + html.trim();
+  }).filter((item) => plainBullet(item).trim() || item.includes("\u200b"));
+}
+
+/** 一条要点 → <li> 的内部 HTML（已清洗）。 */
 export function richBulletToHtml(text: string): string {
-  return escapeText(normalizeBold(text)).split(BOLD_OPEN).join("<strong>").split(BOLD_CLOSE).join("</strong>");
+  return sanitizeInline((text || "").replace(INDENT_MARK, ""));
+}
+
+export function isIndented(text: string) {
+  return (text || "").startsWith(INDENT_MARK);
+}
+
+export function bulletLi(text: string, keepEmpty = false) {
+  const body = richBulletToHtml(text) || (keepEmpty ? "\u200b" : "");
+  return `<li${isIndented(text) ? ' data-indent="1"' : ""}><p>${body}</p></li>`;
 }
