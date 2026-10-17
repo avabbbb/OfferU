@@ -1,3 +1,4 @@
+import { SHOWCASE, showcaseHandle } from "./showcase";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { resolveApiBase } from "@/lib/apiBase";
 
@@ -92,6 +93,7 @@ export async function getDesktopRuntimeIdentity(timeoutMs = 1_000): Promise<Desk
 }
 
 export async function getRuntimeIdentity(): Promise<RuntimeIdentity> {
+  if (SHOWCASE) return (await showcaseHandle("/api/diagnostics/runtime-identity")) as RuntimeIdentity;
   const response = await fetch(`${API_BASE}/api/diagnostics/runtime-identity`, {
     cache: "no-store",
     redirect: "error",

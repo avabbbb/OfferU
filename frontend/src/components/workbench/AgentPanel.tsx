@@ -52,7 +52,7 @@ import { bauhausFieldClassNames } from "@/lib/bauhaus";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { AgentConnectionStatus } from "./AgentConnectionPanel";
 import { ExternalUrlLink } from "@/components/ExternalUrlLink";
-import { SHOWCASE } from "@/lib/showcase/router";
+import { SHOWCASE } from "@/lib/showcase";
 import Link from "next/link";
 import { agentRecovery, MODEL_SETTINGS_ROUTE } from "@/lib/agentRecovery";
 import { quickActionsForStage } from "@/lib/quickActions";

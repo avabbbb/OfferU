@@ -28,7 +28,7 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/resume/7",
   useSearchParams: () => new URLSearchParams(""),
 }));
-vi.mock("@/lib/showcase/router", () => ({ SHOWCASE: false }));
+vi.mock("@/lib/showcase", () => ({ SHOWCASE: false }));
 
 import ResumeEditorPage from "./page";
 

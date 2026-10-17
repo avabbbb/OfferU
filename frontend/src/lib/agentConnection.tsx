@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { agentRuntimeApi } from "./api";
-import { SHOWCASE } from "./showcase/router";
+import { SHOWCASE } from "./showcase";
 import { safeClientErrorMessage } from "./safe-error";
 import type { AgentConnection } from "./api";
 import { useWorkbench } from "./workbench";

@@ -51,7 +51,7 @@ import {
 } from "@/lib/api";
 import { resolveApiBase } from "@/lib/apiBase";
 import { safeClientErrorMessage } from "@/lib/safe-error";
-import { SHOWCASE } from "@/lib/showcase/router";
+import { SHOWCASE } from "@/lib/showcase";
 import { useConfig, updateConfig } from "@/lib/hooks";
 import { AgentConnectionPanel } from "@/components/workbench/AgentConnectionPanel";
 import { JobSourceConnectionsCard } from "@/components/settings/JobSourceConnectionsCard";

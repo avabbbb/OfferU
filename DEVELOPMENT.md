@@ -95,3 +95,15 @@ npm run build
 - 发布终点与验收：[`docs/09-quality-and-release.md`](./docs/09-quality-and-release.md)
 - 当前 Gate：[`RELEASE_CHECKLIST.md`](./RELEASE_CHECKLIST.md)、[`KNOWN_ISSUES.md`](./KNOWN_ISSUES.md)
 - Release matrix：[`RELEASE_CHECKLIST.md`](./RELEASE_CHECKLIST.md)
+
+## 展示站（GitHub Pages）
+
+`VITE_SHOWCASE=true npm run build` 构建的是没有 Python 后端的展示站：页面的读请求回放 `frontend/src/lib/showcase/snapshot.json`（真实后端录下来的响应），用户的修改存在浏览器 IndexedDB（localforage），新增、删除和 AI 功能会提示下载桌面版。
+
+接口或页面改了以后重录快照（会用一个临时空数据目录起后端，不碰你的数据；需要先关掉占用 7410/8766 的服务）：
+
+```sh
+PYTHON=backend/.venv/bin/python sh frontend/scripts/showcase/refresh.sh
+```
+
+演示数据在 `frontend/scripts/showcase/seed.py`，只通过公开接口写入。

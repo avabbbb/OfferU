@@ -9,7 +9,7 @@ import { agentActionsApi, type AgentActionRecord } from "@/lib/api";
 import { resolveApiBase } from "@/lib/apiBase";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { resetOnboardingForFreshStart } from "@/lib/useOnboarding";
-import { SHOWCASE } from "@/lib/showcase/router";
+import { SHOWCASE } from "@/lib/showcase";
 
 const REFRESH_INTERVAL_MS = 5000;
 const RECENT_LIMIT = 8;
