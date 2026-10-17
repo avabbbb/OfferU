@@ -16,6 +16,7 @@
 <p align="center">
   <a href="./README.md">English</a> ·
   <strong>简体中文</strong> ·
+  <a href="#宣传视频">宣传视频</a> ·
   <a href="./QUICKSTART.md">快速开始</a> ·
   <a href="./docs/09-quality-and-release.md">质量与发布</a> ·
   <a href="./docs/01-overall-design.md">总体设计</a> ·
@@ -29,6 +30,21 @@
 <p align="center">
   <img src="./asset/demo/offeru-demo.gif" alt="OfferU 演示：Today → 岗位 → 岗位情报 → 简历 → Pipeline" width="960" />
 </p>
+
+<h3 align="center" id="宣传视频">宣传视频</h3>
+
+<table>
+  <tr>
+    <td width="50%"><a href="./asset/video/offeru-launch-60s.mp4"><img src="./asset/video/offeru-launch-60s-poster.jpg" alt="播放 OfferU 60 秒宣传片" /></a></td>
+    <td width="50%"><a href="./asset/video/offeru-walkthrough-en.mp4"><img src="./asset/video/offeru-walkthrough-en-poster.jpg" alt="播放 OfferU 产品演示" /></a></td>
+  </tr>
+  <tr>
+    <td align="center"><a href="./asset/video/offeru-launch-60s.mp4"><strong>宣传片 · 1 分钟</strong></a><br/>每一次投递，都从证据出发，而不是从零开始</td>
+    <td align="center"><a href="./asset/video/offeru-walkthrough-en.mp4"><strong>产品演示 · 2 分 40 秒（英文）</strong></a><br/>保存岗位 → 岗位情报 → 定制简历 → Pipeline</td>
+  </tr>
+</table>
+
+<p align="center"><sub>点击封面播放 1080p 视频。</sub></p>
 
 <p align="center">
   <em>Internal Beta —— 源码可用，签名安装包尚未发布。详见 <a href="./KNOWN_ISSUES.md">已知问题</a>。</em>
