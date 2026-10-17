@@ -1,7 +1,7 @@
 # =============================================
 # OfferU - 数据库模型定义
 # =============================================
-# 核心表：jobs, resumes, resume_sections, resume_templates,
+# 核心表：jobs, resumes, resume_sections,
 #         interview_notifications, calendar_events, applications
 # 使用 SQLAlchemy 2.0 Mapped 声明式语法
 # =============================================
@@ -601,28 +601,6 @@ class ProfileChatSession(Base):
     profile: Mapped["Profile"] = relationship(back_populates="chat_sessions")
 
 
-class ResumeTemplate(Base):
-    """
-    简历模板表：存储内置和用户自定义的简历模板
-    ─────────────────────────────────────────────
-    模板通过 CSS 变量控制样式（主色调/字号/边距等），
-    html_layout 使用 Jinja2 语法定义 A4 页面的 HTML 结构。
-    前端预览时通过 css_variables 注入 CSS 自定义属性，
-    后端 PDF 导出时同样将 css_variables 渲染进 HTML。
-    """
-    __tablename__ = "resume_templates"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(100))
-    thumbnail_url: Mapped[str] = mapped_column(String(500), default="")
-    # CSS 变量集合：{ primaryColor, accentColor, bodySize, headingSize, lineHeight, pageMargin, sectionGap, fontFamily }
-    css_variables: Mapped[dict] = mapped_column(JSON, default=dict)
-    # Jinja2 HTML 模板，渲染简历为 A4 页面
-    html_layout: Mapped[str] = mapped_column(Text, default="")
-    is_builtin: Mapped[bool] = mapped_column(default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-
 class Resume(Base):
     """
     简历主表：存储简历元信息和全局设置
@@ -643,10 +621,6 @@ class Resume(Base):
     summary: Mapped[str] = mapped_column(Text, default="")
     # 联系方式结构化数据：{ phone, email, linkedin, website, github, ... }
     contact_json: Mapped[dict] = mapped_column(JSON, default=dict)
-    # 关联模板（可为空，使用系统默认）
-    template_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("resume_templates.id", ondelete="RESTRICT"), nullable=True
-    )
     # 用户对模板样式的覆盖：{ primaryColor, bodySize, lineHeight, ... }
     style_config: Mapped[dict] = mapped_column(JSON, default=dict)
     is_primary: Mapped[bool] = mapped_column(default=True)
@@ -680,7 +654,6 @@ class Resume(Base):
         back_populates="resume", cascade="all, delete-orphan",
         order_by="ResumeSection.sort_order"
     )
-    template: Mapped[Optional["ResumeTemplate"]] = relationship()
 
 
 class ResumeSection(Base):

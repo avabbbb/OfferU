@@ -1973,7 +1973,6 @@ async def get_resume(resume_id: int) -> dict:
             "photo_url": resume.photo_url or "",
             "workspace_revision": int(resume.workspace_revision or 0),
             "style_config": resume.style_config or {},
-            "template_id": resume.template_id,
             "contact_json": resume.contact_json or {},
             "sections": [
                 {
@@ -1999,7 +1998,7 @@ async def _export_resume_pdf_unlocked(resume_id: int) -> dict:
     async with async_session() as db:
         result = await db.execute(
             select(Resume)
-            .options(selectinload(Resume.sections), selectinload(Resume.template))
+            .options(selectinload(Resume.sections))
             .where(Resume.id == int(resume_id))
         )
         resume = result.scalar_one_or_none()

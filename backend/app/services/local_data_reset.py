@@ -21,7 +21,6 @@ from app.models.models import (
     CareerTask,
     InterviewScoringSkill,
     Profile,
-    ResumeTemplate,
 )
 from app.runtime_paths import runtime_data_dir
 from app.services.agent_files import atomic_write_json
@@ -45,10 +44,8 @@ PRESERVED_TABLES = frozenset(
         "application_workspace_settings",
         "automation_rules",
         "email_accounts",
-        "html_resume_templates",
         "interview_scoring_skills",
         "operation_audit_logs",
-        "resume_templates",
     }
 )
 
@@ -441,7 +438,6 @@ async def reset_local_business_data() -> dict[str, Any]:
             # Preserve built-in presentation/rubric configuration, but discard
             # user-created variants so the next test starts from a clean catalog.
             for model, label in (
-                (ResumeTemplate, "custom_resume_templates"),
                 (InterviewScoringSkill, "custom_interview_scoring_skills"),
             ):
                 result = await db.execute(

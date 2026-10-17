@@ -198,7 +198,6 @@ def _section_specs(gold: dict[str, Any]) -> list[dict[str, Any]]:
 
 async def _create_schema(engine) -> None:  # noqa: ANN001
     from app.database import Base
-    from app.models import html_resume as _html_resume  # noqa: F401
     from app.models import models as _models  # noqa: F401
 
     async with engine.begin() as connection:

@@ -75,7 +75,6 @@ def workspace_content_hash(resume: Resume) -> str:
             "photo_url": resume.photo_url,
             "summary": resume.summary,
             "contact_json": resume.contact_json or {},
-            "template_id": resume.template_id,
             "style_config": resume.style_config or {},
             "language": resume.language,
             "sections": [
@@ -125,7 +124,6 @@ def _resume_dict(resume: Resume, jobs: dict[int, Job] | None = None) -> dict[str
         "photo_url": resume.photo_url,
         "summary": resume.summary,
         "contact_json": resume.contact_json or {},
-        "template_id": resume.template_id,
         "style_config": resume.style_config or {},
         "is_primary": resume.is_primary,
         "language": resume.language,
@@ -420,7 +418,6 @@ async def ensure_resume_workspace(
                     if source_resume
                     else _profile_to_contact_json(profile)
                 ),
-                template_id=source_resume.template_id if source_resume else (presentation or {}).get("template_id"),
                 style_config=(
                     copy.deepcopy(source_resume.style_config or {})
                     if source_resume

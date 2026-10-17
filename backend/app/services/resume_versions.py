@@ -15,7 +15,6 @@ def snapshot_resume(resume: Resume) -> dict:
             "photo_url": resume.photo_url,
             "summary": resume.summary,
             "contact_json": resume.contact_json,
-            "template_id": resume.template_id,
             "style_config": resume.style_config,
             "is_primary": resume.is_primary,
             "language": resume.language,

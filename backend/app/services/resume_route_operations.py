@@ -30,7 +30,6 @@ from app.models.models import (
     ResumeOptimizationProposal,
     ResumeSection,
     ResumeShare,
-    ResumeTemplate,
     ResumeVersion,
 )
 from app.services.application_workspace import auto_write_job_to_total
@@ -95,7 +94,6 @@ def _resume_dict(resume: Resume, source_jobs: dict[int, dict[str, Any]] | None =
         "photo_url": resume.photo_url,
         "summary": resume.summary,
         "contact_json": resume.contact_json,
-        "template_id": resume.template_id,
         "style_config": resume.style_config,
         "is_primary": resume.is_primary,
         "language": resume.language,
@@ -130,7 +128,6 @@ async def create_resume_record(
     title: str = "未命名简历",
     summary: str = "",
     contact_json: dict[str, Any] | None = None,
-    template_id: int | None = None,
     style_config: dict[str, Any] | None = None,
     language: str = "zh",
     source_mode: str = "manual",
@@ -166,7 +163,6 @@ async def create_resume_record(
             title=title,
             summary=summary,
             contact_json=contact,
-            template_id=template_id,
             style_config=dict(style_config or {}),
             language=language,
             source_mode=source_mode,
@@ -188,19 +184,6 @@ async def create_resume_record(
         await db.commit()
         fresh = await _get_resume(db, resume.id, load_sections=True)
         return _resume_dict(fresh, await _source_jobs(db, _source_job_ids(fresh.source_job_ids)))
-
-
-async def apply_resume_template_to_record(template_id: int, resume_id: int) -> dict[str, Any]:
-    async with async_session() as db:
-        template = await db.get(ResumeTemplate, template_id)
-        if template is None:
-            raise ValueError("模板不存在")
-        resume = await _get_resume(db, resume_id)
-        merged = {**(resume.style_config or {}), **(template.css_variables or {})}
-        resume.template_id = template_id
-        resume.style_config = merged
-        await db.commit()
-        return {"ok": True, "style_config": merged}
 
 
 async def update_resume_record(resume_id: int, update_data: dict[str, Any]) -> dict[str, Any]:
@@ -630,7 +613,6 @@ async def batch_optimize_resume_records(
                     photo_url=source_data.get("photo_url") or "",
                     summary=source_data.get("summary") or "",
                     contact_json=copy.deepcopy(source_data.get("contact_json") or {}),
-                    template_id=source_data.get("template_id"),
                     style_config=copy.deepcopy(source_data.get("style_config") or {}),
                     is_primary=False,
                     language=source_data.get("language") or "zh",
@@ -858,7 +840,7 @@ async def restore_resume_version_record(resume_id: int, version_id: int) -> dict
         )
         data = version.content_snapshot or {}
         resume_data = data.get("resume") or {}
-        for key in ("user_name", "title", "photo_url", "summary", "contact_json", "template_id", "style_config", "is_primary", "language", "source_mode", "source_job_ids", "source_profile_snapshot", "source_profile_id", "source_resume_id", "target_job_id", "application_id"):
+        for key in ("user_name", "title", "photo_url", "summary", "contact_json", "style_config", "is_primary", "language", "source_mode", "source_job_ids", "source_profile_snapshot", "source_profile_id", "source_resume_id", "target_job_id", "application_id"):
             if key in resume_data:
                 setattr(resume, key, resume_data[key])
         for section in list(resume.sections):
@@ -970,7 +952,6 @@ async def access_resume_share_record(share_token: str, password: str | None = No
                 "photo_url": resume.photo_url,
                 "summary": resume.summary,
                 "contact_json": resume.contact_json,
-                "template_id": resume.template_id,
                 "style_config": resume.style_config,
                 "language": resume.language,
             },

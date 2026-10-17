@@ -205,7 +205,7 @@ def _snapshot_without_presentation(snapshot: Any) -> dict[str, Any]:
     core = _snapshot_core(snapshot)
     resume = core.get("resume")
     if isinstance(resume, dict):
-        for field in ("photo_url", "style_config", "template_id"):
+        for field in ("photo_url", "style_config"):
             resume.pop(field, None)
         contact = resume.get("contact_json")
         if isinstance(contact, dict):

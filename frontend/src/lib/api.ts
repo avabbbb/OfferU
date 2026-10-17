@@ -370,7 +370,6 @@ export const resumeApi = {
     }),
 
   // 模板
-  templates: () => request("/api/resume/templates"),
 };
 
 export interface ResumeVersionSummary {

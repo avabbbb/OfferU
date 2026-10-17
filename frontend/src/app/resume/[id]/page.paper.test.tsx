@@ -42,7 +42,7 @@ function workspace(sectionContent = before.content_json): ResumeWorkspace {
   return {
     resume: {
       id: 7, workspace_revision: 3, user_name: "林一", title: "后端工程师", summary: "", contact_json: {},
-      template_id: "paper", style_config: { template: "paper" }, language: "zh",
+      style_config: { template: "paper" }, language: "zh",
       sections: [{ id: 5, resume_id: 7, section_type: "experience", title: "工作经历", sort_order: 0, visible: true,
         content_json: sectionContent, source_section_ids: [11] }],
     } as unknown as ResumeWorkspace["resume"],

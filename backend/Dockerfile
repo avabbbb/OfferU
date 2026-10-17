@@ -6,18 +6,9 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# WeasyPrint/PyMuPDF runtime dependencies
+# 运行时依赖：中文字体与 OCR（PDF 由 Playwright Chromium 渲染）
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends \
-		libcairo2 \
-		libpango-1.0-0 \
-		libpangocairo-1.0-0 \
-		libgdk-pixbuf-2.0-0 \
-		libglib2.0-0 \
-		libharfbuzz0b \
-		libfribidi0 \
-		libffi8 \
-		shared-mime-info \
 		fonts-noto-cjk \
 		tesseract-ocr \
 		tesseract-ocr-eng \

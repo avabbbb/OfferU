@@ -206,7 +206,6 @@ from app.services.agent_operations import (
 from app.services.job_sources.boss_progress import sync_boss_application_progress
 from app.services.legacy_operations import (
     apply_application_template_to_all,
-    apply_resume_template,
     auto_fill_calendar_events,
     auto_write_application_job,
     collect_interview_experience,
@@ -214,13 +213,9 @@ from app.services.legacy_operations import (
     create_application_table_record,
     create_calendar_event,
     create_legacy_application,
-    create_resume_template,
     delete_application_records,
     delete_application_table,
-    delete_resume_template,
-    duplicate_resume_template,
     extract_interview_questions,
-    generate_html_resume,
     generate_legacy_interview_answer,
     import_jobs_to_application_table,
     import_latest_extension_batch_to_application_table,
@@ -230,7 +225,6 @@ from app.services.legacy_operations import (
     update_application_table_record,
     update_application_table_schema,
     update_legacy_application,
-    update_resume_template,
     update_application_template,
 )
 from app.services.profile_operations import (
@@ -264,7 +258,6 @@ from app.services.resume_route_operations import (
     access_resume_share_record,
     apply_resume_suggestions_batch,
     apply_resume_suggestion,
-    apply_resume_template_to_record,
     batch_optimize_resume_records,
     create_resume_record,
     create_resume_section,
@@ -897,41 +890,10 @@ class GenerateLegacyInterviewAnswerInput(_StrictOperationInput):
     question_id: int = Field(gt=0)
 
 
-class ResumeTemplateCreateInput(_StrictOperationInput):
-    name: str = Field(min_length=1, max_length=300)
-    thumbnail_url: str = Field(default="", max_length=2048)
-    css_variables: dict[str, Any] = Field(default_factory=dict)
-    html_layout: str = Field(default="", max_length=200000)
-    is_builtin: bool = False
 
 
-class ResumeTemplateUpdateInput(_StrictOperationInput):
-    template_id: int = Field(gt=0)
-    name: str | None = Field(default=None, min_length=1, max_length=300)
-    thumbnail_url: str | None = Field(default=None, max_length=2048)
-    css_variables: dict[str, Any] | None = None
-    html_layout: str | None = Field(default=None, max_length=200000)
 
 
-class ResumeTemplateIdInput(_StrictOperationInput):
-    template_id: int = Field(gt=0)
-
-
-class ResumeTemplateApplyInput(_StrictOperationInput):
-    template_id: int = Field(gt=0)
-    resume_id: int = Field(gt=0)
-
-
-class ResumeTemplateDuplicateInput(_StrictOperationInput):
-    template_id: int = Field(gt=0)
-    new_name: str = Field(min_length=1, max_length=300)
-
-
-class GenerateHtmlResumeInput(_StrictOperationInput):
-    profile_id: int = Field(gt=0)
-    template_id: int = Field(gt=0)
-    design_overrides: dict[str, Any] = Field(default_factory=dict)
-    job_ids: list[PositiveInt] = Field(default_factory=list, max_length=500)
 
 
 class JobStatsInput(_StrictOperationInput):
@@ -1105,7 +1067,6 @@ class ResumeCreateRecordInput(_StrictOperationInput):
     title: str = Field(default="未命名简历", max_length=300)
     summary: str = Field(default="", max_length=50_000)
     contact_json: dict[str, Any] = Field(default_factory=dict)
-    template_id: int | None = Field(default=None, gt=0)
     style_config: dict[str, Any] = Field(default_factory=dict)
     language: str = Field(default="zh", max_length=10)
     source_mode: str = Field(default="manual", max_length=30)
@@ -1115,10 +1076,6 @@ class ResumeCreateRecordInput(_StrictOperationInput):
     target_job_id: int | None = Field(default=None, gt=0)
     application_id: int | None = Field(default=None, gt=0)
 
-
-class ResumeApplyTemplateInput(_StrictOperationInput):
-    template_id: int = Field(gt=0)
-    resume_id: int = Field(gt=0)
 
 
 class ResumeUpdateRecordInput(_StrictOperationInput):
@@ -3940,54 +3897,6 @@ OPERATIONS.update(
             side_effects=("llm", "write"),
             input_model=GenerateLegacyInterviewAnswerInput,
         ),
-        "create_resume_template": Operation(
-            name="create_resume_template",
-            fn=create_resume_template,
-            description="创建自定义简历模板。",
-            group="resume",
-            side_effects=("write",),
-            input_model=ResumeTemplateCreateInput,
-        ),
-        "update_resume_template": Operation(
-            name="update_resume_template",
-            fn=update_resume_template,
-            description="更新自定义简历模板。",
-            group="resume",
-            side_effects=("write",),
-            input_model=ResumeTemplateUpdateInput,
-        ),
-        "delete_resume_template": Operation(
-            name="delete_resume_template",
-            fn=delete_resume_template,
-            description="删除自定义简历模板。",
-            group="resume",
-            side_effects=("write",),
-            input_model=ResumeTemplateIdInput,
-        ),
-        "apply_resume_template": Operation(
-            name="apply_resume_template",
-            fn=apply_resume_template,
-            description="将简历模板应用到指定简历。",
-            group="resume",
-            side_effects=("write",),
-            input_model=ResumeTemplateApplyInput,
-        ),
-        "duplicate_resume_template": Operation(
-            name="duplicate_resume_template",
-            fn=duplicate_resume_template,
-            description="复制一份简历模板。",
-            group="resume",
-            side_effects=("write",),
-            input_model=ResumeTemplateDuplicateInput,
-        ),
-        "generate_html_resume": Operation(
-            name="generate_html_resume",
-            fn=generate_html_resume,
-            description="根据档案和 HTML 模板生成并保存 HTML 简历。",
-            group="resume",
-            side_effects=("llm", "write"),
-            input_model=GenerateHtmlResumeInput,
-        ),
         "get_legacy_profile": Operation(
             name="get_legacy_profile",
             fn=get_legacy_profile,
@@ -4227,14 +4136,6 @@ OPERATIONS.update(
             group="resume",
             side_effects=("write",),
             input_model=ResumeCreateRecordInput,
-        ),
-        "apply_resume_record_template": Operation(
-            name="apply_resume_record_template",
-            fn=apply_resume_template_to_record,
-            description="将模板样式应用到指定简历。",
-            group="resume",
-            side_effects=("write",),
-            input_model=ResumeApplyTemplateInput,
         ),
         "update_resume_design": Operation(
             name="update_resume_design",

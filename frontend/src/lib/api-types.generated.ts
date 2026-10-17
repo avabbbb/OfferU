@@ -255,6 +255,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/jobs/capture/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Draft Job Capture
+         * @description 粘贴原文或链接 → 待确认的岗位草稿；不写库。
+         */
+        post: operations["draft_job_capture_api_jobs_capture_draft_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/capture": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Job Capture
+         * @description 用户确认草稿后建岗位；同一份正文重复确认不会重复建。
+         */
+        post: operations["create_job_capture_api_jobs_capture_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/pools/": {
         parameters: {
             query?: never;
@@ -589,6 +629,23 @@ export interface paths {
         put?: never;
         /** Import Profile Resume */
         post: operations["import_profile_resume_api_profile_import_resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profile/import-resume/{session_id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Undo Profile Resume Import */
+        post: operations["undo_profile_resume_import_api_profile_import_resume__session_id__undo_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1082,6 +1139,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agent/data/fresh-reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fresh Local Reset
+         * @description Back up, then wipe. The panel only enables the button after the user
+         *     typed 「全清并重新开始」.
+         */
+        post: operations["fresh_local_reset_api_agent_data_fresh_reset_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/agent/data/safety/status": {
         parameters: {
             query?: never;
@@ -1290,6 +1368,137 @@ export interface paths {
         get: operations["agent_run_events_api_agent_runs__run_id__events_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/runtime/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Agent Actions
+         * @description Timeline of Agent writes; ``status=pending`` is the confirm queue.
+         */
+        get: operations["agent_actions_api_agent_runtime_actions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/runtime/actions/{action_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Agent Action */
+        post: operations["confirm_agent_action_api_agent_runtime_actions__action_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/runtime/actions/{action_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Agent Action */
+        post: operations["reject_agent_action_api_agent_runtime_actions__action_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/runtime/actions/{action_id}/undo-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Agent Action Undo Preview */
+        get: operations["agent_action_undo_preview_api_agent_runtime_actions__action_id__undo_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/runtime/actions/{action_id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo Agent Action
+         * @description Undo only puts back what the Agent changed, so the web version may do it too.
+         */
+        post: operations["undo_agent_action_api_agent_runtime_actions__action_id__undo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/runtime/runs/{run_id}/input-requests/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pending Input Requests
+         * @description Open structured Ask requests for the desktop answer UI (not approvals).
+         */
+        get: operations["pending_input_requests_api_agent_runtime_runs__run_id__input_requests_pending_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/runtime/runs/{run_id}/input-requests/{request_id}/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer Input Request
+         * @description Persist the answer and continue the same run once; no capability needed.
+         */
+        post: operations["answer_input_request_api_agent_runtime_runs__run_id__input_requests__request_id__answer_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1835,106 +2044,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/agent/plans": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Proposal Plans Endpoint
-         * @description Read the local Plan queue through the same run-scoped API boundary.
-         */
-        get: operations["list_proposal_plans_endpoint_api_agent_plans_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/agent/plans/{plan_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Proposal Plan Endpoint
-         * @description Return the exact stored review display without raw args or snapshots.
-         */
-        get: operations["get_proposal_plan_endpoint_api_agent_plans__plan_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/agent/plans/{plan_id}/groups/{group_id}/decision": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Decide Proposal Plan Group Endpoint
-         * @description Accept or reject the displayed immutable group from the native UI.
-         */
-        post: operations["decide_proposal_plan_group_endpoint_api_agent_plans__plan_id__groups__group_id__decision_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/agent/runtime/runs/{run_id}/confirm": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Confirm Runtime Action
-         * @description Confirm one persisted action through the selected Agent provider.
-         */
-        post: operations["confirm_runtime_action_api_agent_runtime_runs__run_id__confirm_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/agent/runtime/runs/{run_id}/reject": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Reject Runtime Action
-         * @description Reject exactly one persisted action through the Operation Registry.
-         */
-        post: operations["reject_runtime_action_api_agent_runtime_runs__run_id__reject_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/agent/runtime/runs/{run_id}/resume": {
         parameters: {
             query?: never;
@@ -1949,6 +2058,29 @@ export interface paths {
          * @description Explicitly restore the persisted Agent Session for an interrupted Run.
          */
         post: operations["resume_runtime_run_api_agent_runtime_runs__run_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/runtime/runs/{run_id}/steer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Steer Runtime Run
+         * @description Deliver a mid-run user message to the live Run (D-1: input never locks).
+         *
+         *     ``not_running`` means the Run is not executing a prompt; the client then
+         *     sends the text as a normal follow-up turn. Nothing here approves anything.
+         */
+        post: operations["steer_runtime_run_api_agent_runtime_runs__run_id__steer_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2229,26 +2361,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/resume/templates": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Templates
-         * @description 获取所有可用模板
-         */
-        get: operations["list_templates_api_resume_templates_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/resume/workspace/proposals/{proposal_id}/review-items": {
         parameters: {
             query?: never;
@@ -2311,27 +2423,6 @@ export interface paths {
         put?: never;
         /** Review Resume Proposal Item */
         post: operations["review_resume_proposal_item_api_resume_workspace_proposals__proposal_id__review_item_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/resume/{resume_id}/apply-template/{template_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Apply Template
-         * @description 应用模板到简历 — 将模板的 css_variables 合并到简历的 style_config
-         *     关联 template_id 到简历，并用模板的 CSS 变量覆盖当前样式
-         */
-        post: operations["apply_template_api_resume__resume_id__apply_template__template_id__post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2497,6 +2588,46 @@ export interface paths {
          * @description Upload a university logo and store its relative URL in contact_json.schoolLogoUrl.
          */
         post: operations["upload_logo_api_resume__resume_id__logo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/resume/assets/school-logos/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * School Logo File
+         * @description Emblems bundled with the app (see app/services/web_assets.py).
+         */
+        get: operations["school_logo_file_api_resume_assets_school_logos__name__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/resume/assets/fonts/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Kami Font File
+         * @description Kami's typeface, downloaded on first use and then served locally.
+         */
+        get: operations["kami_font_file_api_resume_assets_fonts__name__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2995,110 +3126,6 @@ export interface paths {
         put?: never;
         /** Ai Generate Draft */
         post: operations["ai_generate_draft_api_resume__resume_id__ai_generate_draft_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/templates/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Templates
-         * @description 获取所有模板列表
-         *     ────────────────────────────────────────────
-         *     返回内置模板和用户自定义模板。
-         */
-        get: operations["list_templates_api_templates__get"];
-        put?: never;
-        /**
-         * Create Template
-         * @description 创建自定义模板
-         *     ────────────────────────────────────────────
-         *     用户可以创建自己的简历模板，定义 CSS 变量和 HTML 布局。
-         */
-        post: operations["create_template_api_templates__post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/templates/{template_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Template
-         * @description 获取模板详情（包含完整 HTML 布局）
-         */
-        get: operations["get_template_api_templates__template_id__get"];
-        /**
-         * Update Template
-         * @description 更新模板
-         *     ────────────────────────────────────────────
-         *     只能更新非内置模板。
-         */
-        put: operations["update_template_api_templates__template_id__put"];
-        post?: never;
-        /**
-         * Delete Template
-         * @description 删除模板
-         *     ────────────────────────────────────────────
-         *     只能删除非内置模板。
-         */
-        delete: operations["delete_template_api_templates__template_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/templates/{template_id}/apply/{resume_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Apply Template
-         * @description 将模板应用到简历
-         *     ────────────────────────────────────────────
-         *     更新简历的 template_id，前端会根据模板的 CSS 变量重新渲染。
-         */
-        post: operations["apply_template_api_templates__template_id__apply__resume_id__post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/templates/{template_id}/duplicate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Duplicate Template
-         * @description 复制模板
-         *     ────────────────────────────────────────────
-         *     用户可以复制内置模板并修改为自己的版本。
-         */
-        post: operations["duplicate_template_api_templates__template_id__duplicate_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4670,66 +4697,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/studio/templates": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Templates
-         * @description 获取所有模板
-         */
-        get: operations["list_templates_api_studio_templates_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/studio/generate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Generate Html Resume
-         * @description AI 生成 HTML 简历（SSE 流式）
-         */
-        post: operations["generate_html_resume_api_studio_generate_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/studio/resumes/{resume_id}/preview": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Preview Html Resume
-         * @description 预览 HTML 简历
-         */
-        get: operations["preview_html_resume_api_studio_resumes__resume_id__preview_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/bridge/proposals/pending": {
         parameters: {
             query?: never;
@@ -4737,10 +4704,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * List Pending Proposals
-         * @description Legacy queue is read-only; Plan groups use the dedicated Plan endpoint.
-         */
+        /** List Pending Proposals */
         get: operations["list_pending_proposals_api_bridge_proposals_pending_get"];
         put?: never;
         post?: never;
@@ -4757,36 +4721,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Get Proposal
-         * @description Full confirmation state of one proposal Run.
-         */
+        /** Get Proposal */
         get: operations["get_proposal_api_bridge_proposals__run_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/bridge/proposals/{run_id}/confirm": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Confirm Proposal Endpoint
-         * @description Human decision from the workbench overlay.
-         *
-         *     approve=true executes only the selected action once; approve=false rejects
-         *     only the selected action, leaving sibling actions available for review.
-         */
-        post: operations["confirm_proposal_endpoint_api_bridge_proposals__run_id__confirm_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4822,6 +4760,23 @@ export interface paths {
         };
         /** Health Check */
         get: operations["health_check_api_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/diagnostics/runtime-identity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Diagnostics Runtime Identity */
+        get: operations["diagnostics_runtime_identity_api_diagnostics_runtime_identity_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4878,6 +4833,23 @@ export interface components {
              * @default ui
              */
             updated_by: string;
+        };
+        /** AgentInputAnswerRequest */
+        AgentInputAnswerRequest: {
+            /** Answer Id */
+            answer_id: string;
+            /** Selected Option Ids */
+            selected_option_ids?: string[];
+            /**
+             * Free Text
+             * @default
+             */
+            free_text: string;
+            /**
+             * Skipped
+             * @default false
+             */
+            skipped: boolean;
         };
         /** AgentIntegrationRequest */
         AgentIntegrationRequest: {
@@ -5374,8 +5346,6 @@ export interface components {
         };
         /** DesignPatch */
         DesignPatch: {
-            /** Template */
-            template?: ("reference" | "reference-compact" | "modern" | "modern-two-column" | "swiss-single" | "swiss-two-column") | null;
             /** Pagesize */
             pageSize?: ("A4" | "LETTER") | null;
             /** Bodysize */
@@ -5414,6 +5384,17 @@ export interface components {
             logoWidth?: number | null;
             /** Logoheight */
             logoHeight?: number | null;
+            /** Papertone */
+            paperTone?: ("parchment" | "white") | null;
+            /** Font */
+            font?: ("sans" | "serif" | "kai") | null;
+            /**
+             * Numberedsections
+             * @description 要点用 1. 2. 3. 的模块 id，逗号分隔；空字符串表示都用圆点
+             */
+            numberedSections?: string | null;
+            /** Paperstyle */
+            paperStyle?: ("kami" | "cv") | null;
         };
         /** EmailSyncRequest */
         EmailSyncRequest: {
@@ -5481,25 +5462,6 @@ export interface components {
         GenerateAnswerBody: {
             /** Question Id */
             question_id: number;
-        };
-        /** GenerateHtmlResumeRequest */
-        GenerateHtmlResumeRequest: {
-            /** Profile Id */
-            profile_id: number;
-            /** Template Id */
-            template_id: number;
-            /**
-             * Design Overrides
-             * @default {}
-             */
-            design_overrides: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Job Ids
-             * @default []
-             */
-            job_ids: number[] | null;
         };
         /** GenerateRequest */
         GenerateRequest: {
@@ -5684,6 +5646,30 @@ export interface components {
              * @default false
              */
             clear_pool: boolean;
+        };
+        /** JobCaptureCreateRequest */
+        JobCaptureCreateRequest: {
+            /** Title */
+            title: string;
+            /** Company */
+            company: string;
+            /** Jd Text */
+            jd_text: string;
+            /**
+             * Location
+             * @default
+             */
+            location: string;
+            /**
+             * Url
+             * @default
+             */
+            url: string;
+        };
+        /** JobCaptureDraftRequest */
+        JobCaptureDraftRequest: {
+            /** Text */
+            text: string;
         };
         /**
          * JobPatchRequest
@@ -6033,46 +6019,6 @@ export interface components {
             /** Reference Resume Id */
             reference_resume_id?: number | null;
         };
-        /** PiAgentConfirmationRequest */
-        PiAgentConfirmationRequest: {
-            /** Action Id */
-            action_id: string;
-            /**
-             * Plan Digest
-             * @default
-             */
-            plan_digest: string;
-            /**
-             * Group Digest
-             * @default
-             */
-            group_digest: string;
-            /**
-             * Decision Id
-             * @default
-             */
-            decision_id: string;
-        };
-        /** PiAgentRejectionRequest */
-        PiAgentRejectionRequest: {
-            /** Action Id */
-            action_id: string;
-            /**
-             * Plan Digest
-             * @default
-             */
-            plan_digest: string;
-            /**
-             * Group Digest
-             * @default
-             */
-            group_digest: string;
-            /**
-             * Decision Id
-             * @default
-             */
-            decision_id: string;
-        };
         /** PiAgentRunRequest */
         PiAgentRunRequest: {
             /** Message */
@@ -6324,45 +6270,6 @@ export interface components {
              */
             stage_hint: string;
         };
-        /** ProposalDecisionRequest */
-        ProposalDecisionRequest: {
-            /**
-             * Approve
-             * @description true=只批准目标动作执行一次；false=只拒绝目标动作（零执行）
-             */
-            approve: boolean;
-            /**
-             * Action Id
-             * @default
-             */
-            action_id: string;
-            /**
-             * Plan Digest
-             * @default
-             */
-            plan_digest: string;
-            /**
-             * Group Digest
-             * @default
-             */
-            group_digest: string;
-            /**
-             * Decision Id
-             * @default
-             */
-            decision_id: string;
-        };
-        /** ProposalPlanDecisionRequest */
-        ProposalPlanDecisionRequest: {
-            /** Approve */
-            approve: boolean;
-            /** Plan Digest */
-            plan_digest: string;
-            /** Group Digest */
-            group_digest: string;
-            /** Decision Id */
-            decision_id: string;
-        };
         /** RecordCreateRequest */
         RecordCreateRequest: {
             /** Table Id */
@@ -6417,8 +6324,6 @@ export interface components {
             contact_json?: {
                 [key: string]: unknown;
             };
-            /** Template Id */
-            template_id?: number | null;
             /** Style Config */
             style_config?: {
                 [key: string]: unknown;
@@ -6554,8 +6459,6 @@ export interface components {
             contact_json?: {
                 [key: string]: unknown;
             } | null;
-            /** Template Id */
-            template_id?: number | null;
             /** Style Config */
             style_config?: {
                 [key: string]: unknown;
@@ -6662,6 +6565,11 @@ export interface components {
              * @default 50
              */
             max_results: number;
+        };
+        /** RuntimeSteerBody */
+        RuntimeSteerBody: {
+            /** Message */
+            message: string;
         };
         /** ScoringSkillCreate */
         ScoringSkillCreate: {
@@ -6993,69 +6901,6 @@ export interface components {
              * @default false
              */
             purge_non_template_fields: boolean;
-        };
-        /**
-         * TemplateCreate
-         * @description 创建模板的请求体
-         */
-        TemplateCreate: {
-            /** Name */
-            name: string;
-            /**
-             * Thumbnail Url
-             * @default
-             */
-            thumbnail_url: string;
-            /** Css Variables */
-            css_variables?: {
-                [key: string]: unknown;
-            };
-            /**
-             * Html Layout
-             * @default
-             */
-            html_layout: string;
-            /**
-             * Is Builtin
-             * @default false
-             */
-            is_builtin: boolean;
-        };
-        /** TemplateListResponse */
-        TemplateListResponse: {
-            /** Id */
-            id: number;
-            /** Name */
-            name: string;
-            /** Display Name */
-            display_name: string;
-            /** Category */
-            category: string;
-            /** Preview Image */
-            preview_image: string;
-            /**
-             * Design Tokens
-             * @default {}
-             */
-            design_tokens: {
-                [key: string]: unknown;
-            };
-        };
-        /**
-         * TemplateUpdate
-         * @description 更新模板的请求体
-         */
-        TemplateUpdate: {
-            /** Name */
-            name?: string | null;
-            /** Thumbnail Url */
-            thumbnail_url?: string | null;
-            /** Css Variables */
-            css_variables?: {
-                [key: string]: unknown;
-            } | null;
-            /** Html Layout */
-            html_layout?: string | null;
         };
         /** TemplateUpdateRequest */
         TemplateUpdateRequest: {
@@ -7503,6 +7348,72 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["IngestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    draft_job_capture_api_jobs_capture_draft_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobCaptureDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_job_capture_api_jobs_capture_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobCaptureCreateRequest"];
             };
         };
         responses: {
@@ -8233,6 +8144,37 @@ export interface operations {
                 "multipart/form-data": components["schemas"]["Body_import_profile_resume_api_profile_import_resume_post"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    undo_profile_resume_import_api_profile_import_resume__session_id__undo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -9162,6 +9104,28 @@ export interface operations {
             };
         };
     };
+    fresh_local_reset_api_agent_data_fresh_reset_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
     data_safety_status_api_agent_data_safety_status_get: {
         parameters: {
             query?: never;
@@ -9489,6 +9453,248 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    agent_actions_api_agent_runtime_actions_get: {
+        parameters: {
+            query?: {
+                run_id?: string;
+                status?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_agent_action_api_agent_runtime_actions__action_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header: {
+                authorization: string;
+            };
+            path: {
+                action_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_agent_action_api_agent_runtime_actions__action_id__reject_post: {
+        parameters: {
+            query?: never;
+            header: {
+                authorization: string;
+            };
+            path: {
+                action_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    agent_action_undo_preview_api_agent_runtime_actions__action_id__undo_preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                action_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    undo_agent_action_api_agent_runtime_actions__action_id__undo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                action_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pending_input_requests_api_agent_runtime_runs__run_id__input_requests_pending_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    answer_input_request_api_agent_runtime_runs__run_id__input_requests__request_id__answer_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentInputAnswerRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -10521,190 +10727,6 @@ export interface operations {
             };
         };
     };
-    list_proposal_plans_endpoint_api_agent_plans_get: {
-        parameters: {
-            query?: {
-                run_id?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_proposal_plan_endpoint_api_agent_plans__plan_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                plan_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    decide_proposal_plan_group_endpoint_api_agent_plans__plan_id__groups__group_id__decision_post: {
-        parameters: {
-            query?: never;
-            header: {
-                authorization: string;
-            };
-            path: {
-                plan_id: string;
-                group_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProposalPlanDecisionRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    confirm_runtime_action_api_agent_runtime_runs__run_id__confirm_post: {
-        parameters: {
-            query?: never;
-            header: {
-                authorization: string;
-            };
-            path: {
-                run_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PiAgentConfirmationRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    reject_runtime_action_api_agent_runtime_runs__run_id__reject_post: {
-        parameters: {
-            query?: never;
-            header: {
-                authorization: string;
-            };
-            path: {
-                run_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PiAgentRejectionRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     resume_runtime_run_api_agent_runtime_runs__run_id__resume_post: {
         parameters: {
             query?: never;
@@ -10715,6 +10737,43 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    steer_runtime_run_api_agent_runtime_runs__run_id__steer_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuntimeSteerBody"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -11279,26 +11338,6 @@ export interface operations {
             };
         };
     };
-    list_templates_api_resume_templates_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-        };
-    };
     review_resume_proposal_items_api_resume_workspace_proposals__proposal_id__review_items_post: {
         parameters: {
             query?: never;
@@ -11412,38 +11451,6 @@ export interface operations {
                 "application/json": components["schemas"]["ResumeProposalItemReviewRequest"];
             };
         };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    apply_template_api_resume__resume_id__apply_template__template_id__post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                resume_id: number;
-                template_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -11784,6 +11791,68 @@ export interface operations {
                 "multipart/form-data": components["schemas"]["Body_upload_logo_api_resume__resume_id__logo_post"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    school_logo_file_api_resume_assets_school_logos__name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    kami_font_file_api_resume_assets_fonts__name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -12553,232 +12622,6 @@ export interface operations {
                 "application/json": components["schemas"]["AiGenerateDraftRequest"];
             };
         };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_templates_api_templates__get: {
-        parameters: {
-            query?: {
-                include_custom?: boolean;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_template_api_templates__post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TemplateCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_template_api_templates__template_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                template_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_template_api_templates__template_id__put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                template_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TemplateUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_template_api_templates__template_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                template_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    apply_template_api_templates__template_id__apply__resume_id__post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                template_id: number;
-                resume_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    duplicate_template_api_templates__template_id__duplicate_post: {
-        parameters: {
-            query: {
-                new_name: string;
-            };
-            header?: never;
-            path: {
-                template_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -15880,90 +15723,6 @@ export interface operations {
             };
         };
     };
-    list_templates_api_studio_templates_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TemplateListResponse"][];
-                };
-            };
-        };
-    };
-    generate_html_resume_api_studio_generate_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["GenerateHtmlResumeRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    preview_html_resume_api_studio_resumes__resume_id__preview_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                resume_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_pending_proposals_api_bridge_proposals_pending_get: {
         parameters: {
             query?: never;
@@ -15996,45 +15755,6 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    confirm_proposal_endpoint_api_bridge_proposals__run_id__confirm_post: {
-        parameters: {
-            query?: never;
-            header: {
-                authorization: string;
-            };
-            path: {
-                run_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProposalDecisionRequest"];
-            };
-        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -16096,6 +15816,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    diagnostics_runtime_identity_api_diagnostics_runtime_identity_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };

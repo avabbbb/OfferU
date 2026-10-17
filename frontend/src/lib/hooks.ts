@@ -719,7 +719,6 @@ export interface ResumeBrief {
   user_name: string;
   title: string;
   photo_url: string;
-  template_id: number | null;
   is_primary: boolean;
   language: string;
   source_mode: string;
@@ -1131,13 +1130,6 @@ export async function reorderSections(resumeId: number, items: { id: number; sor
 
 
 
-export interface ResumeTemplate {
-  id: number;
-  name: string;
-  thumbnail_url: string;
-  css_variables: Record<string, string>;
-  is_builtin: boolean;
-}
 
 
 // ---- AI Skill Pipeline 深度分析 ----

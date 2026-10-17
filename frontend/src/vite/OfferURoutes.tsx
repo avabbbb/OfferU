@@ -24,7 +24,7 @@ function RouteFallback() {
   );
 }
 
-/** 旧入口 /optimize、/studio 合并进「简历」后的重定向，保留 job_ids 等参数。 */
+/** 旧入口 /optimize 合并进「简历」后的重定向，保留 job_ids 等参数。 */
 function LegacyResumeRedirect({ mode }: { mode: ResumeMode }) {
   const { search } = useLocation();
   return <Navigate replace to={resumeModeHref(mode, search)} />;
@@ -48,7 +48,6 @@ export function OfferURoutes() {
         <Route path="/email" element={<EmailPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/settings" element={<SettingsPage />} />
-        <Route path="/studio" element={<LegacyResumeRedirect mode="list" />} />
         <Route path="/agent" element={<Navigate replace to="/" />} />
         <Route path="/analytics" element={<Navigate replace to="/" />} />
         <Route path="/scraper" element={<Navigate replace to="/jobs" />} />

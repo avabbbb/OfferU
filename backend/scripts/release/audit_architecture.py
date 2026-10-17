@@ -161,7 +161,6 @@ FORBIDDEN_AUTOMATED_BROWSER_SELECTORS = re.compile(
 def _automated_browser_files() -> list[Path]:
     files = [
         ROOT / "backend" / "app" / "routes" / "resume.py",
-        ROOT / "backend" / "app" / "services" / "pdf_exporter.py",
         *sorted((ROOT / "backend" / "scripts" / "e2e").glob("*.py")),
         *sorted((ROOT / "extension" / "scripts").glob("*.mjs")),
         # _tmp_online.cjs was deleted — it was a stale dev script, not a product entry.
@@ -170,9 +169,6 @@ def _automated_browser_files() -> list[Path]:
         # Explicit user-confirmed interactive login boundary, not automated
         # acceptance. Keep the exception visible and narrow.
         ROOT / "backend" / "app" / "services" / "authorized_research.py",
-        # This contract test contains forbidden tokens only as negative
-        # assertions; it never launches a browser.
-        ROOT / "backend" / "scripts" / "e2e" / "test_resume_template_contract.py",
     }
     return [path for path in files if path not in excluded]
 

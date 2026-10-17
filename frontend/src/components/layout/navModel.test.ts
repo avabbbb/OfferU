@@ -20,7 +20,6 @@ describe("primary navigation", () => {
     ["/profile", "档案"],
     ["/resume", "简历"],
     ["/resume/7", "简历"],
-    ["/studio", "简历"],
   ])("every former entry stays reachable: %s → %s", (path, label) => {
     expect(activePrimary(path)?.label).toBe(label);
   });

@@ -64,7 +64,6 @@ async def init_db(*, backend_dir: Path | None = None):
     # Keep schema creation independent from route import order.  The runtime
     # entrypoint normally imports these modules as a side effect of registering
     # routers, but recovery/doctor/e2e callers may invoke init_db directly.
-    from app.models import html_resume as _html_resume  # noqa: F401
     from app.models import models as _models  # noqa: F401
 
     migration = await prepare_schema_migration(
@@ -108,13 +107,6 @@ async def init_db(*, backend_dir: Path | None = None):
                 f"已从迁移前备份 {backup_id} 恢复，启动已停止。"
             ) from exc
         raise
-    await seed_templates()
-    # HTML 简历工作室（studio 路由）使用的 HtmlResumeTemplate 种子；
-    # 此前从未被调用，模板表恒空导致 studio 页面无模板可选。
-    from app.services.template_seeder import seed_templates as seed_html_templates
-
-    async with async_session() as session:
-        await seed_html_templates(session)
     await seed_system_batches()
 
 
@@ -475,96 +467,6 @@ def run_schema_migrations(connection) -> dict[str, int]:  # noqa: ANN001
         "from_version": current_version,
         "to_version": CURRENT_SCHEMA_VERSION,
     }
-
-
-# =============================================
-# 内置模板种子数据
-# =============================================
-# 首次启动时自动插入 4 套内置模板，
-# 每套模板包含主题配色、字号/间距 CSS 变量。
-# 通过检查 is_builtin + name 去重，避免重复插入。
-# =============================================
-
-BUILTIN_TEMPLATES = [
-    {
-        "name": "经典蓝",
-        "thumbnail_url": "",
-        "css_variables": {
-            "primaryColor": "#2563eb",
-            "accentColor": "#1e40af",
-            "bodySize": "13",
-            "headingSize": "16",
-            "lineHeight": "1.5",
-            "pageMargin": "2.2",
-            "sectionGap": "14",
-            "fontFamily": "Inter, 'Noto Sans SC', sans-serif",
-        },
-        "is_builtin": True,
-    },
-    {
-        "name": "现代灰",
-        "thumbnail_url": "",
-        "css_variables": {
-            "primaryColor": "#374151",
-            "accentColor": "#6b7280",
-            "bodySize": "12.5",
-            "headingSize": "15",
-            "lineHeight": "1.45",
-            "pageMargin": "2.0",
-            "sectionGap": "12",
-            "fontFamily": "'Source Sans Pro', 'Noto Sans SC', sans-serif",
-        },
-        "is_builtin": True,
-    },
-    {
-        "name": "优雅紫",
-        "thumbnail_url": "",
-        "css_variables": {
-            "primaryColor": "#7c3aed",
-            "accentColor": "#5b21b6",
-            "bodySize": "13",
-            "headingSize": "16",
-            "lineHeight": "1.55",
-            "pageMargin": "2.4",
-            "sectionGap": "16",
-            "fontFamily": "'Playfair Display', 'Noto Serif SC', serif",
-        },
-        "is_builtin": True,
-    },
-    {
-        "name": "清新绿",
-        "thumbnail_url": "",
-        "css_variables": {
-            "primaryColor": "#059669",
-            "accentColor": "#047857",
-            "bodySize": "13",
-            "headingSize": "15.5",
-            "lineHeight": "1.5",
-            "pageMargin": "2.0",
-            "sectionGap": "14",
-            "fontFamily": "'Nunito', 'Noto Sans SC', sans-serif",
-        },
-        "is_builtin": True,
-    },
-]
-
-
-async def seed_templates():
-    """如果内置模板不存在则插入"""
-    from app.models.models import ResumeTemplate
-    from sqlalchemy import select
-
-    async with async_session() as session:
-        result = await session.execute(
-            select(ResumeTemplate).where(ResumeTemplate.is_builtin == True)
-        )
-        existing = {t.name for t in result.scalars().all()}
-
-        for tpl in BUILTIN_TEMPLATES:
-            if tpl["name"] not in existing:
-                session.add(ResumeTemplate(**tpl))
-
-        await session.commit()
 
 
 async def seed_system_batches():
