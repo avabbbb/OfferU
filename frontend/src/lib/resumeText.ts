@@ -108,3 +108,44 @@ export function descriptionLinesToPlainText(lines: string[]) {
     .filter(Boolean)
     .join("\n");
 }
+
+/*
+ * 要点里的加粗：存储仍是标准 HTML（<strong>），纸模板内部用两个私有区字符标记加粗区间，
+ * 这样按纯文本拆要点、比对、编辑都不受影响，导出时再还原成 <strong>。
+ */
+export const BOLD_OPEN = "\uE000";
+export const BOLD_CLOSE = "\uE001";
+
+/** 去掉多余/不配对的标记和空的加粗区间。 */
+export function normalizeBold(text: string): string {
+  let out = "";
+  let open = false;
+  for (const ch of text) {
+    if (ch === BOLD_OPEN) { if (!open) { out += ch; open = true; } continue; }
+    if (ch === BOLD_CLOSE) { if (open) { out += ch; open = false; } continue; }
+    out += ch;
+  }
+  if (open) out += BOLD_CLOSE;
+  return out.split(BOLD_OPEN + BOLD_CLOSE).join("");
+}
+
+export function plainBullet(text: string): string {
+  return text.replace(/[\uE000\uE001]/g, "");
+}
+
+/** 与 splitBullets 相同的拆分，但保留 <strong>/<b> 加粗。 */
+export function splitRichBullets(value: string): string[] {
+  const marked = (value || "")
+    .replace(/<\s*(?:strong|b)(?:\s[^>]*)?>/gi, BOLD_OPEN)
+    .replace(/<\s*\/\s*(?:strong|b)\s*>/gi, BOLD_CLOSE);
+  return splitBullets(marked).map(normalizeBold);
+}
+
+function escapeText(value: string) {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/** 带加粗标记的要点 → 安全 HTML（只会出现 <strong>）。 */
+export function richBulletToHtml(text: string): string {
+  return escapeText(normalizeBold(text)).split(BOLD_OPEN).join("<strong>").split(BOLD_CLOSE).join("</strong>");
+}

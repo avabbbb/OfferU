@@ -41,6 +41,14 @@ def local_resume_image(url: str):
     if f"{parsed.scheme}://{parsed.netloc}" != API_BASE_URL:
         return None
     path = unquote(parsed.path)
+    # 随应用内置的校徽（/api/resume/assets/school-logos/xxxx.png），不放行的话带校徽的简历导不出 PDF。
+    from app.services.web_assets import LOGO_URL_PREFIX, school_logo_path
+    if path.startswith(LOGO_URL_PREFIX):
+        try:
+            logo = school_logo_path(path.removeprefix(LOGO_URL_PREFIX))
+        except ValueError:
+            return None
+        return logo if logo.is_file() else None
     if not path.startswith("/uploads/"):
         return None
     root = runtime_uploads_dir().resolve()

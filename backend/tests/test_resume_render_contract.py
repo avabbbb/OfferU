@@ -15,6 +15,15 @@ def test_upload_path_boundary(tmp_path):
             assert resume_export.local_resume_image(url) is None
 
 
+
+def test_bundled_school_logo_is_allowed_in_export():
+    # 带内置校徽的简历曾因校徽请求被拦截而导不出 PDF。
+    from app.services.web_assets import LOGO_DIR
+    name = sorted(p.name for p in LOGO_DIR.glob("*.png"))[0]
+    assert resume_export.local_resume_image(f"http://127.0.0.1:8766/api/resume/assets/school-logos/{name}") == LOGO_DIR / name
+    for url in ("http://127.0.0.1:8766/api/resume/assets/school-logos/../x.png", "http://127.0.0.1:8766/api/resume/assets/school-logos/9999.png"):
+        assert resume_export.local_resume_image(url) is None
+
 def test_renderer_failure_is_visible_without_degraded_pdf():
     fixture = SimpleNamespace(id=1, user_name="测试", title="简历", photo_url="/uploads/photo.png", summary="", contact_json={}, style_config={}, sections=[])
     with patch.object(resume_export, "render_resume_snapshot_pdf", AsyncMock(side_effect=RuntimeError("image unavailable"))):
