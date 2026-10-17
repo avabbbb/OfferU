@@ -8,7 +8,8 @@
 // 第三层：时间线（阶段事件 + 邮件 snippet + 内联 review）
 // =============================================
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useSWRConfig } from "swr";
 import Link from "next/link";
 import { Button, Chip, Spinner, Tooltip } from "@heroui/react";
@@ -31,6 +32,7 @@ import {
   useProgressTimeline,
 } from "@/lib/hooks";
 import { safeClientErrorMessage } from "@/lib/safe-error";
+import { createReview, emptyQuestion, listReviews, ROUND_FOR_STAGE, type InterviewReview } from "@/lib/interviewReviews";
 
 const STAGE_LABELS: Record<string, string> = {
   saved: "已保存",
@@ -464,11 +466,49 @@ function RecordTimeline({
   );
 }
 
+/** 面试阶段的投递：这一轮没记过就「记复盘」，记过了就「看复盘」。 */
+function ReviewAction({ record, reviews }: { record: ProgressBoardRecord; reviews: InterviewReview[] }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const stageRound = ROUND_FOR_STAGE[record.current_stage];
+  if (!stageRound) return null;
+  const mine = reviews.filter((review) => review.job_id === record.job_id);
+  const existing = mine.find((review) => review.round_label === stageRound);
+  const cls = "shrink-0 rounded-md px-2 py-1 text-[12.5px] font-medium text-[var(--foreground-muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)] disabled:opacity-40";
+  if (existing) {
+    return <Link href={`/interview/review?id=${existing.id}`} className={cls} data-testid="board-open-review">看{stageRound}复盘</Link>;
+  }
+  const create = async () => {
+    setBusy(true);
+    try {
+      const day = (record.upcoming_interview?.start_time || new Date().toISOString()).slice(0, 10);
+      const created = await createReview({
+        job_id: record.job_id,
+        company: record.company,
+        role: record.job_title,
+        round_label: mine.some((review) => review.round_label === stageRound) ? `第 ${mine.length + 1} 轮` : stageRound,
+        interviewed_on: day,
+        questions: [emptyQuestion()],
+      });
+      router.push(`/interview/review?id=${created.id}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <button type="button" onClick={create} disabled={busy} className={cls} data-testid="board-new-review">
+      {mine.length ? `记第 ${mine.length + 1} 轮复盘` : "记复盘"}
+    </button>
+  );
+}
+
 function RecordRow({
   record,
+  reviews,
   onReviewed,
 }: {
   record: ProgressBoardRecord;
+  reviews: InterviewReview[];
   onReviewed: () => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -521,13 +561,16 @@ function RecordRow({
   }
   return (
     <div className="border-t border-[var(--border)]">
-      <button
-        type="button"
-        className="press-feedback flex w-full items-center gap-3 px-6 py-2.5 text-left"
-        onClick={() => setExpanded((prev) => !prev)}
-      >
-        {rowContent}
-      </button>
+      <div className="flex items-center pr-4">
+        <button
+          type="button"
+          className="press-feedback flex min-w-0 flex-1 items-center gap-3 px-6 py-2.5 text-left"
+          onClick={() => setExpanded((prev) => !prev)}
+        >
+          {rowContent}
+        </button>
+        <ReviewAction record={record} reviews={reviews} />
+      </div>
       <AnimatePresence initial={false}>
         {expanded && (
           <motion.div
@@ -550,9 +593,11 @@ function RecordRow({
 
 function CompanyGroup({
   group,
+  reviews,
   onReviewed,
 }: {
   group: ProgressBoardCompany;
+  reviews: InterviewReview[];
   onReviewed: () => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(group.pending_candidates > 0);
@@ -595,6 +640,7 @@ function CompanyGroup({
               <RecordRow
                 key={record.application_attempt_id ?? `job-${record.job_id}`}
                 record={record}
+                reviews={reviews}
                 onReviewed={onReviewed}
               />
             ))}
@@ -609,6 +655,10 @@ export default function ProgressBoard() {
   const [status, setStatus] = useState<"active" | "closed" | "all">("active");
   const { data, isLoading } = useProgressBoard(status);
   const { mutate: mutateCache } = useSWRConfig();
+  const [reviews, setReviews] = useState<InterviewReview[]>([]);
+  useEffect(() => {
+    listReviews().then(setReviews).catch(() => setReviews([]));
+  }, []);
 
   const refreshProgressProjections = async () => {
     await mutateCache(
@@ -687,6 +737,7 @@ export default function ProgressBoard() {
           <CompanyGroup
             key={group.company}
             group={group}
+            reviews={reviews}
             onReviewed={refreshProgressProjections}
           />
         ))}

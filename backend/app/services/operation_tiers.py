@@ -57,6 +57,7 @@ CONFIRM_OPERATIONS = frozenset({
     # Application status: the user insists on being asked.
     "create_application_attempt",
     "update_application_status",
+    "mark_application_rejected_from_review",
     "sync_boss_application_status",
 })
 

@@ -184,6 +184,11 @@ async def update_review(review_id: int, data: SaveInterviewReviewInput):
     return await _execute("save_interview_review", {**data.model_dump(), "review_id": review_id})
 
 
+@router.post("/reviews/{review_id}/mark-rejected")
+async def mark_review_application_rejected(review_id: int):
+    return await _execute("mark_application_rejected_from_review", {"review_id": review_id})
+
+
 @router.delete("/reviews/{review_id}")
 async def delete_review(review_id: int):
     return await _execute("delete_interview_review", {"review_id": review_id})

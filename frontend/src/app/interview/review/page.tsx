@@ -19,6 +19,7 @@ import {
   emptyQuestion,
   extractQuestions,
   listReviews,
+  markApplicationRejected,
   saveReview,
   transcribeAudio,
   type InterviewReview,
@@ -201,8 +202,37 @@ function TranscriptPanel({ transcript, onTranscript, onQuestions }: { transcript
   );
 }
 
+/** 选了「没过」且关联了投递：问一句要不要把投递也标掉。改投递状态必须用户点了才做。 */
+function RejectPrompt({ review, onDone }: { review: InterviewReview; onDone: () => void }) {
+  const [state, setState] = useState<"" | "busy" | "done">("");
+  const [error, setError] = useState("");
+  const confirm = async () => {
+    setState("busy"); setError("");
+    try {
+      await saveReview(review);
+      await markApplicationRejected(review.id);
+      setState("done");
+    } catch (cause) {
+      setState(""); setError(safeClientErrorMessage(cause, "没能更新投递"));
+    }
+  };
+  if (state === "done") return <p className="mt-3 text-[13px] text-[var(--foreground-muted)]" data-testid="review-reject-done">投递已标成未通过。</p>;
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2 text-[13px]" data-testid="review-reject-prompt">
+      <span className="text-[var(--foreground)]">要把投递也标成未通过吗？</span>
+      <button type="button" onClick={confirm} disabled={state === "busy"} className="rounded-md border border-[var(--border-strong)] px-2.5 py-1 font-medium text-[var(--foreground)] hover:bg-[var(--surface-muted)] disabled:opacity-40">标成未通过</button>
+      <button type="button" onClick={onDone} className="rounded-md px-2.5 py-1 text-[var(--foreground-muted)] hover:bg-[var(--surface-muted)]">不用</button>
+      {error && <span className="text-[var(--danger,#b42318)]">{error}</span>}
+    </div>
+  );
+}
+
 function Editor({ review, onChange, onDelete }: { review: InterviewReview; onChange: (next: InterviewReview) => void; onDelete: () => void }) {
-  const set = <K extends keyof InterviewReview>(key: K, value: InterviewReview[K]) => onChange({ ...review, [key]: value });
+  const [askReject, setAskReject] = useState(false);
+  const set = <K extends keyof InterviewReview>(key: K, value: InterviewReview[K]) => {
+    if (key === "outcome") setAskReject(value === "failed" && review.job_id != null);
+    onChange({ ...review, [key]: value });
+  };
   const setQuestion = (index: number, next: ReviewQuestion) => set("questions", review.questions.map((q, i) => (i === index ? next : q)));
   const practice = (indexes?: number[]) => {
     const picked = (indexes ?? review.questions.map((_, i) => i)).filter((i) => review.questions[i]?.question.trim());
@@ -231,6 +261,8 @@ function Editor({ review, onChange, onDelete }: { review: InterviewReview; onCha
           ))}
         </div>
       </div>
+
+      {askReject && <RejectPrompt review={review} onDone={() => setAskReject(false)} />}
 
       <div className="mt-6">
         <TranscriptPanel

@@ -3290,6 +3290,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/interviews/reviews/{review_id}/mark-rejected": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark Review Application Rejected */
+        post: operations["mark_review_application_rejected_api_interviews_reviews__review_id__mark_rejected_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/interviews/focus-plan": {
         parameters: {
             query?: never;
@@ -13192,6 +13209,37 @@ export interface operations {
         };
     };
     delete_review_api_interviews_reviews__review_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                review_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_review_application_rejected_api_interviews_reviews__review_id__mark_rejected_post: {
         parameters: {
             query?: never;
             header?: never;

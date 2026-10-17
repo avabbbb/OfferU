@@ -57,6 +57,7 @@ from app.services.interview_reviews import (
     extract_interview_review_questions,
     get_interview_review,
     list_interview_reviews,
+    mark_application_rejected_from_review,
     save_interview_review,
     transcribe_interview_audio,
 )
@@ -2228,6 +2229,15 @@ OPERATIONS: dict[str, Operation] = {
         side_effects=("write",),
         input_model=ReviewIdInput,
         version="2026-10-01",
+    ),
+    "mark_application_rejected_from_review": Operation(
+        name="mark_application_rejected_from_review",
+        fn=mark_application_rejected_from_review,
+        description="复盘结果为没过时，经使用者确认把关联岗位的投递标成已拒绝。",
+        group="interview",
+        side_effects=("write",),
+        input_model=ReviewIdInput,
+        version="2026-10-02",
     ),
     "extract_interview_review_questions": Operation(
         name="extract_interview_review_questions",
