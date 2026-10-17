@@ -43,6 +43,7 @@ import {
   Table2,
   Trash2,
   X,
+  Upload,
 } from "lucide-react";
 import ProgressBoard from "@/components/progress-board";
 import { useWorkbench } from "@/lib/workbench";
@@ -55,6 +56,7 @@ import {
   deleteApplicationTable,
   importJobsToApplicationTable,
   importLatestExtensionBatchToApplicationTable,
+  importBossExport,
   moveApplicationRecords,
   renameApplicationTable,
   syncEmails,
@@ -785,6 +787,32 @@ const [emailSyncing, setEmailSyncing] = useState(false);
     }
   };
 
+  const bossFileRef = useRef<HTMLInputElement>(null);
+  const [bossImporting, setBossImporting] = useState(false);
+  const handleBossFile = async (file: File | undefined) => {
+    if (!file || !currentTableId) return;
+    setBossImporting(true);
+    try {
+      let payload: unknown;
+      try {
+        payload = JSON.parse(await file.text());
+      } catch {
+        throw new Error("不是 JSON 文件。导出时记得加 --json");
+      }
+      const result = await importBossExport(currentTableId, payload);
+      setOperationFeedback({
+        tone: "success",
+        message: `已读取 ${result.total} 条${result.kind_label}：新增 ${result.created} 条，${result.advanced} 条更新了状态。`,
+      });
+      await refreshAll();
+    } catch (error) {
+      setOperationFeedback({ tone: "error", message: safeClientErrorMessage(error, "导入失败") });
+    } finally {
+      setBossImporting(false);
+      if (bossFileRef.current) bossFileRef.current.value = "";
+    }
+  };
+
   const handleSyncEmails = async () => {
     setEmailSyncing(true);
     try {
@@ -1077,6 +1105,27 @@ const [emailSyncing, setEmailSyncing] = useState(false);
                   同步邮箱
                 </Button>
               </Tooltip>
+              <Tooltip
+                content={
+                  <div className="max-w-[300px] py-1 text-[12.5px] leading-relaxed">
+                    先在终端运行 <code>boss applied --json &gt; boss.json</code>，再选这个文件。也认 <code>boss interviews</code>、<code>boss chat</code> 的导出。OfferU 只读文件，不会访问 BOSS；已有的投递只会把状态往前推。
+                  </div>
+                }
+                placement="bottom"
+                closeDelay={120}
+              >
+                <Button
+                  className="bauhaus-button bauhaus-button-outline !min-h-11 !px-4"
+                  startContent={<Upload size={14} />}
+                  onPress={() => bossFileRef.current?.click()}
+                  isLoading={bossImporting}
+                  isDisabled={!currentTableId}
+                  data-testid="boss-import"
+                >
+                  导入 BOSS 记录
+                </Button>
+              </Tooltip>
+              <input ref={bossFileRef} type="file" accept=".json,application/json" className="hidden" data-testid="boss-import-file" onChange={(e) => handleBossFile(e.target.files?.[0])} />
               <Button
                 className="bauhaus-button bauhaus-button-blue !min-h-11 !px-4"
                 startContent={<CopyPlus size={14} />}
