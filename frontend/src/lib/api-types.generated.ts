@@ -3261,7 +3261,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Get Review Weak Spots */
+        get: operations["get_review_weak_spots_api_interviews_reviews_weak_spots_get"];
         put?: never;
         /** Group Review Weak Spots */
         post: operations["group_review_weak_spots_api_interviews_reviews_weak_spots_post"];
@@ -13122,6 +13123,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_review_weak_spots_api_interviews_reviews_weak_spots_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };
