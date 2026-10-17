@@ -15,6 +15,7 @@ import { Fragment, useEffect, useRef, useState, type ClipboardEvent, type Keyboa
 import { createPortal } from "react-dom";
 import { bulletLi, INDENT_MARK, isIndented, plainBullet, richBulletToHtml, sanitizeInline, splitRichBullets } from "@/lib/resumeText";
 import { FormatBar, type AskAgentRequest } from "./FormatBar";
+import { insertPlainText, selectionOffsets, toggleMark } from "@/lib/richFormat";
 
 export interface PaperSection {
   id: number;
@@ -261,6 +262,25 @@ function RichText({ html }: { html: string }) {
 
 function Editable({ value, editable, placeholder, className = "", label, multiline = false, rich = false, onCommit, onEnter, onBackspaceEmpty, onIndent, autoFocus }: EditableProps) {
   const ref = useRef<HTMLSpanElement | null>(null);
+  // 只用第一次的内容渲染；之后由下面的 effect 在没聚焦时同步，避免 React 重写 innerHTML 打断选区。
+  const [initialHtml] = useState(() => ({ __html: richBulletToHtml(value) }));
+  const read = () => {
+    const node = ref.current;
+    if (!node) return "";
+    return rich ? sanitizeInline(node.innerHTML) : node.textContent || "";
+  };
+  const current = () => {
+    const text = read().replace(/\u00a0/g, " ").replace(/\u200b/g, "");
+    return multiline ? text.trim() : text.replace(/\s*\n\s*/g, " ").trim();
+  };
+  const commit = () => {
+    const normalized = current();
+    if (normalized !== value) onCommit(normalized);
+  };
+  const currentRef = useRef(current);
+  const commitRef = useRef(commit);
+  currentRef.current = current;
+  commitRef.current = commit;
   useEffect(() => {
     const node = ref.current;
     if (!node || document.activeElement === node) return;
@@ -271,6 +291,14 @@ function Editable({ value, editable, placeholder, className = "", label, multili
   useEffect(() => {
     if (autoFocus && ref.current) ref.current.focus();
   }, [autoFocus]);
+  // 工具栏改完格式立刻提交，每次格式修改都是一步可撤销的修改。
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const handle = () => commitRef.current();
+    node.addEventListener("paper-commit", handle);
+    return () => node.removeEventListener("paper-commit", handle);
+  }, [editable]);
   // 工具栏里的「缩进」通过事件交给这条要点处理，和 Tab / Shift+Tab 走同一条路。
   useEffect(() => {
     const node = ref.current;
@@ -285,22 +313,6 @@ function Editable({ value, editable, placeholder, className = "", label, multili
     return <span className={className}>{rich ? <RichText html={value} /> : value}</span>;
   }
 
-  const read = () => {
-    const node = ref.current;
-    if (!node) return "";
-    return rich ? sanitizeInline(node.innerHTML) : node.textContent || "";
-  };
-
-  const currentRef = useRef<() => string>(() => value);
-  const commit = () => {
-    const text = read().replace(/\u00a0/g, " ").replace(/\u200b/g, "");
-    const normalized = multiline ? text.trim() : text.replace(/\s*\n\s*/g, " ").trim();
-    if (normalized !== value) onCommit(normalized);
-  };
-  currentRef.current = () => {
-    const text = read().replace(/\u00a0/g, " ").replace(/\u200b/g, "");
-    return multiline ? text.trim() : text.replace(/\s*\n\s*/g, " ").trim();
-  };
 
   const revert = () => {
     if (!ref.current) return;
@@ -311,7 +323,9 @@ function Editable({ value, editable, placeholder, className = "", label, multili
   const onKeyDown = (event: KeyboardEvent<HTMLSpanElement>) => {
     if (rich && (event.metaKey || event.ctrlKey) && ["b", "i", "u"].includes(event.key.toLowerCase())) {
       event.preventDefault();
-      document.execCommand({ b: "bold", i: "italic", u: "underline" }[event.key.toLowerCase()] as string);
+      const node = ref.current;
+      const offsets = node && selectionOffsets(node);
+      if (node && offsets) toggleMark(node, offsets.start, offsets.end, ({ b: "strong", i: "em", u: "u" } as const)[event.key.toLowerCase() as "b" | "i" | "u"]);
       return;
     }
     if (event.key === "Tab" && onIndent) {
@@ -342,7 +356,7 @@ function Editable({ value, editable, placeholder, className = "", label, multili
   const onPaste = (event: ClipboardEvent<HTMLSpanElement>) => {
     if (!rich) return;
     event.preventDefault();
-    document.execCommand("insertText", false, event.clipboardData.getData("text/plain"));
+    if (ref.current) insertPlainText(ref.current, event.clipboardData.getData("text/plain").replace(/\s*\n\s*/g, " "));
   };
 
   const shared = {
@@ -361,7 +375,7 @@ function Editable({ value, editable, placeholder, className = "", label, multili
   } as const;
 
   if (rich) {
-    return <span {...shared} data-paper-rich="" contentEditable onPaste={onPaste} dangerouslySetInnerHTML={{ __html: richBulletToHtml(value) }} />;
+    return <span {...shared} data-paper-rich="" contentEditable onPaste={onPaste} dangerouslySetInnerHTML={initialHtml} />;
   }
   return <span {...shared} contentEditable="plaintext-only">{value}</span>;
 }

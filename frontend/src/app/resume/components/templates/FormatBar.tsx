@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { formatHost, hasMark, parseRuns, textOffset, toggleMark, type Mark } from "@/lib/richFormat";
 
 /**
  * 选中纸上文字时浮出的格式工具栏（参考飞书划词工具栏）。
@@ -28,32 +29,9 @@ interface Anchor {
 
 const PALETTE = ["#141413", "#595959", "#8c8c8c", "#1f3a5f", "#2463eb", "#2f5d50", "#16a34a", "#8a2c2c", "#dc2626", "#b45309", "#7c3aed", "#db2777"];
 const RECENT_KEY = "offeru.recentTextColors";
-const CLEAR_SENTINEL = "#010203";
 
 function readRecent(): string[] {
   try { return JSON.parse(localStorage.getItem(RECENT_KEY) || "[]").filter((item: unknown) => typeof item === "string").slice(0, 6); } catch { return []; }
-}
-
-/** 选区按“宿主内的字符偏移”保存：失焦提交后 React 可能重写 innerHTML，DOM Range 会失效。 */
-function textOffset(host: HTMLElement, node: Node, offset: number) {
-  const range = document.createRange();
-  range.selectNodeContents(host);
-  range.setEnd(node, offset);
-  return range.toString().length;
-}
-
-function rangeFromOffsets(host: HTMLElement, start: number, end: number) {
-  const range = document.createRange();
-  const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
-  let seen = 0; let node: Node | null; let started = false;
-  range.selectNodeContents(host);
-  while ((node = walker.nextNode())) {
-    const length = node.textContent?.length || 0;
-    if (!started && start <= seen + length) { range.setStart(node, start - seen); started = true; }
-    if (started && end <= seen + length) { range.setEnd(node, end - seen); break; }
-    seen += length;
-  }
-  return range;
 }
 
 function editableHost(node: Node | null) {
@@ -113,43 +91,42 @@ export function FormatBar({ numberedSections, onToggleNumbered, onAskAgent }: {
 
   if (!anchor || typeof document === "undefined") return null;
 
-  const restore = () => {
+  // 失焦提交后 React 可能重写宿主的 innerHTML，所以只认宿主和字符偏移。
+  const target = () => {
     const host = hostRef.current;
     const saved = rangeRef.current;
-    if (!host?.isConnected || !saved) return false;
-    host.focus();
-    const selection = window.getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(rangeFromOffsets(host, saved.start, saved.end));
+    return host?.isConnected && saved ? { host, ...saved } : null;
+  };
+  const restore = () => {
+    const hit = target();
+    if (!hit) return false;
+    hit.host.focus();
     return true;
   };
-  const run = (command: string, value?: string) => {
-    if (!restore()) return;
-    document.execCommand(command, false, value);
-    const selection = window.getSelection();
-    const host = hostRef.current;
-    if (host && selection?.rangeCount) {
-      const range = selection.getRangeAt(0);
-      rangeRef.current = { start: textOffset(host, range.startContainer, range.startOffset), end: textOffset(host, range.endContainer, range.endOffset) };
-    }
+  const mark = (name: Mark) => {
+    const hit = target();
+    if (hit) toggleMark(hit.host, hit.start, hit.end, name);
     force((n) => n + 1);
   };
   const close = () => { setPanel(null); setLink(""); };
   const applyColor = (value: string | null) => {
-    if (value === null) {
-      run("foreColor", CLEAR_SENTINEL);
-      hostRef.current?.querySelectorAll<HTMLElement>("font[color], span[style]").forEach((node) => {
-        const color = (node.getAttribute("color") || node.style.color || "").toLowerCase();
-        if (color === CLEAR_SENTINEL || color === "rgb(1, 2, 3)") node.replaceWith(...Array.from(node.childNodes));
-      });
-    } else {
-      run("foreColor", value);
+    const hit = target();
+    if (hit) formatHost(hit.host, hit.start, hit.end, { color: value });
+    if (value) {
       const next = [value, ...readRecent().filter((item) => item !== value)].slice(0, 6);
       try { localStorage.setItem(RECENT_KEY, JSON.stringify(next)); } catch { /* 隐私模式下不记最近颜色 */ }
     }
     close();
   };
-  const active = (command: string) => { try { return document.queryCommandState(command); } catch { return false; } };
+  const applyLink = (href: string | null) => {
+    const hit = target();
+    if (hit) formatHost(hit.host, hit.start, hit.end, { href });
+    close();
+  };
+  const active = (name: Mark) => {
+    const hit = target();
+    return hit ? hasMark(parseRuns(hit.host.innerHTML), hit.start, hit.end, name) : false;
+  };
   const indent = (value: boolean) => {
     restore();
     hostRef.current?.dispatchEvent(new CustomEvent("paper-indent", { detail: value }));
@@ -165,9 +142,9 @@ export function FormatBar({ numberedSections, onToggleNumbered, onAskAgent }: {
       <div className="paper-format-row">
         {anchor.rich && (
           <>
-            <button type="button" aria-label="加粗" title="加粗（⌘/Ctrl + B）" aria-pressed={active("bold")} onClick={() => run("bold")}><b>B</b></button>
-            <button type="button" aria-label="斜体" title="斜体（⌘/Ctrl + I）" aria-pressed={active("italic")} onClick={() => run("italic")}><i style={{ fontFamily: "Georgia, serif" }}>I</i></button>
-            <button type="button" aria-label="下划线" title="下划线（⌘/Ctrl + U）" aria-pressed={active("underline")} onClick={() => run("underline")}><u>U</u></button>
+            <button type="button" aria-label="加粗" title="加粗（⌘/Ctrl + B）" aria-pressed={active("strong")} onClick={() => mark("strong")}><b>B</b></button>
+            <button type="button" aria-label="斜体" title="斜体（⌘/Ctrl + I）" aria-pressed={active("em")} onClick={() => mark("em")}><i style={{ fontFamily: "Georgia, serif" }}>I</i></button>
+            <button type="button" aria-label="下划线" title="下划线（⌘/Ctrl + U）" aria-pressed={active("u")} onClick={() => mark("u")}><u>U</u></button>
             <button type="button" aria-label="文字颜色" title="文字颜色" aria-expanded={panel === "color"}
               onClick={() => { setRecent(readRecent()); setPanel(panel === "color" ? null : "color"); }}>
               <span className="paper-format-color">A</span>
@@ -216,7 +193,7 @@ export function FormatBar({ numberedSections, onToggleNumbered, onAskAgent }: {
       )}
       {panel === "more" && (
         <div className="paper-format-pop paper-format-menu">
-          <button type="button" onClick={() => { run("strikeThrough"); close(); }}>删除线</button>
+          <button type="button" onClick={() => { mark("s"); close(); }}>删除线</button>
           {anchor.inBullet && <button type="button" onClick={() => indent(!anchor.indented)}>{anchor.indented ? "取消缩进" : "缩进为二级要点"}</button>}
           <button type="button" onClick={() => setPanel("link")}>链接</button>
         </div>
@@ -225,8 +202,7 @@ export function FormatBar({ numberedSections, onToggleNumbered, onAskAgent }: {
         <form className="paper-format-pop paper-format-link" onSubmit={(event) => {
           event.preventDefault();
           const url = link.trim();
-          if (url) run("createLink", /^(https?:|mailto:)/i.test(url) ? url : `https://${url}`);
-          close();
+          applyLink(url ? (/^(https?:|mailto:)/i.test(url) ? url : `https://${url}`) : null);
         }}>
           <input autoFocus value={link} onChange={(event) => setLink(event.target.value)} placeholder="粘贴链接，例如 github.com/you" aria-label="链接地址" />
           <button type="submit">确定</button>

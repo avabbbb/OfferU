@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { Loader2, Redo2, Undo2 } from "lucide-react";
 import { resumeApi, type ResumeWorkspace } from "@/lib/api";
 import type { ResumeDetail, ResumeSectionBlock } from "@/lib/hooks";
 import ResumeSheet from "../components/ResumeSheet";
@@ -47,7 +47,7 @@ export default function ResumeEditorPage() {
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [restoring, setRestoring] = useState<number | null>(null);
-  const [canUndo, setCanUndo] = useState(false);
+  const [history, setHistory] = useState({ undo: 0, redo: 0 });
   const [comments, setComments] = useState<CanvasComment[]>([]);
   const [fitting, setFitting] = useState(false);
   const [fitNotice, setFitNotice] = useState<string | null>(null);
@@ -81,6 +81,16 @@ export default function ResumeEditorPage() {
   }, [canvasEl, pageHeightPx]);
   const pageCount = pageOverflowMm > 0.5 ? 1 + Math.ceil((pageOverflowMm - 0.5) / pageMm) : 1;
 
+  // 颜色超过 2 种（不算黑灰和主题色）时轻提示一次，不拦操作。
+  const colorWarnedRef = useRef(false);
+  const extraColors = useMemo(() => countExtraColors(draft), [draft]);
+  useEffect(() => {
+    if (extraColors <= 2) { colorWarnedRef.current = false; return; }
+    if (colorWarnedRef.current) return;
+    colorWarnedRef.current = true;
+    setFitNotice(`简历里用了 ${extraColors} 种强调色，建议不超过 2 种，HR 更容易读`);
+  }, [extraColors]);
+
   useEffect(() => {
     if (!fitNotice) return;
     const timer = window.setTimeout(() => setFitNotice(null), 6000);
@@ -94,6 +104,7 @@ export default function ResumeEditorPage() {
   const revisionRef = useRef<number | undefined>(undefined);
   const saveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
   const undoStackRef = useRef<DraftResume[]>([]);
+  const redoStackRef = useRef<DraftResume[]>([]);
 
   const saveDraftRecord = useCallback((candidate: DraftResume) => {
     const pending = saveQueueRef.current.catch(() => undefined).then(async () => {
@@ -109,19 +120,46 @@ export default function ResumeEditorPage() {
     return pending;
   }, []);
 
+  // 整份简历的撤销 / 重做：每次提交（一个字段改完、一次格式、一次排版调整、接受 AI 建议）是一步。
+  const syncHistory = () => setHistory({ undo: undoStackRef.current.length, redo: redoStackRef.current.length });
+  const snapshot = (resume: DraftResume) => JSON.parse(JSON.stringify(resume)) as DraftResume;
   const recordUndo = useCallback((resume: DraftResume) => {
-    undoStackRef.current = [...undoStackRef.current, JSON.parse(JSON.stringify(resume))].slice(-40);
-    setCanUndo(true);
+    undoStackRef.current = [...undoStackRef.current, snapshot(resume)].slice(-100);
+    redoStackRef.current = [];
+    syncHistory();
   }, []);
-
-  const handleUndo = useCallback(() => {
-    const previous = undoStackRef.current.pop();
-    setCanUndo(undoStackRef.current.length > 0);
-    if (!previous) return;
+  const travel = useCallback((direction: "undo" | "redo") => {
+    const from = direction === "undo" ? undoStackRef : redoStackRef;
+    const to = direction === "undo" ? redoStackRef : undoStackRef;
+    const target = from.current.pop();
+    const current = draftRef.current;
+    if (!target || !current) { syncHistory(); return; }
+    to.current.push(snapshot(current));
+    // 保留服务器的最新版本号，否则下一次保存会被当成冲突。
+    const next = { ...target, workspace_revision: current.workspace_revision };
+    draftRef.current = next;
     skipAutosaveRef.current = false;
-    setDraft(previous);
+    setDraft(next);
     setSaveState("idle");
+    syncHistory();
   }, []);
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
+      const key = event.key.toLowerCase();
+      const redo = (key === "z" && event.shiftKey) || key === "y";
+      if (key !== "z" && key !== "y") return;
+      const active = document.activeElement as HTMLElement | null;
+      // 普通输入框（链接地址、对话框）保留浏览器自己的撤销。
+      if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) return;
+      event.preventDefault();
+      // 正在纸上打字：先把这个字段提交成一步，再撤销 / 重做。
+      if (active?.hasAttribute("data-paper-editable")) active.blur();
+      window.setTimeout(() => travel(redo ? "redo" : "undo"), 0);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [travel]);
 
   const loadWorkspace = useCallback(async () => {
     if (!Number.isFinite(resumeId)) return;
@@ -206,14 +244,17 @@ export default function ResumeEditorPage() {
     skipAutosaveRef.current = true; draftRef.current = next.resume as DraftResume;
     setWorkspace(next); setDraft(next.resume as DraftResume); setSaveState("saved"); setWorkspaceError(null);
   }, []);
-  const updateDraft = useCallback((patch: Partial<DraftResume>) => {
-    setDraft((current) => { if (!current) return current; recordUndo(current); return { ...current, ...patch }; });
+  const change = useCallback((edit: (current: DraftResume) => DraftResume) => {
+    const current = draftRef.current;
+    if (!current) return;
+    recordUndo(current);
+    const next = edit(current);
+    draftRef.current = next;
+    setDraft(next);
     setSaveState("idle");
   }, [recordUndo]);
-  const updateSection = useCallback((section: ResumeSectionBlock) => {
-    setDraft((current) => { if (!current) return current; recordUndo(current); return { ...current, sections: current.sections.map((item) => item.id === section.id ? section : item) }; });
-    setSaveState("idle");
-  }, [recordUndo]);
+  const updateDraft = useCallback((patch: Partial<DraftResume>) => change((current) => ({ ...current, ...patch })), [change]);
+  const updateSection = useCallback((section: ResumeSectionBlock) => change((current) => ({ ...current, sections: current.sections.map((item) => item.id === section.id ? section : item) })), [change]);
 
   const handleExport = async () => {
     if (!draft) return; setExporting(true); setWorkspaceError(null);
@@ -297,7 +338,7 @@ export default function ResumeEditorPage() {
 
   const style = draft.style_config || {};
   const settings = normalizeTemplateSettings(style);
-  const setStyle = (patch: Record<string, string>) => updateDraft({ style_config: { ...style, ...patch } });
+  const setStyle = (patch: Record<string, string>) => change((current) => ({ ...current, style_config: { ...(current.style_config || {}), ...patch } }));
   const LAYOUT_KEYS = ["font", "bodySize", "lineHeight", "sectionGap", "itemGap", "marginTop", "marginBottom", "marginLeft", "marginRight", "accentColorHex"];
   const resetLayout = () => updateDraft({ style_config: Object.fromEntries(Object.entries(style).filter(([key]) => !LAYOUT_KEYS.includes(key))) });
 
@@ -420,7 +461,10 @@ export default function ResumeEditorPage() {
         <div className="flex shrink-0 items-center gap-2">
           {targetLabel && <span className="hidden max-w-[320px] items-center gap-2 truncate rounded-lg bg-[#f7f7f5] px-3 py-1.5 text-[13px] text-[#37352f] md:inline-flex" title={targetLabel}><span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#d9730d]" />目标：{targetLabel}</span>}
           <button type="button" onClick={toggleAgentDrawer} className="h-9 rounded-lg px-3 text-[14px] text-[#37352f] hover:bg-black/[0.04]" data-testid="resume-open-agent">Agent</button>
-          <button type="button" onClick={handleUndo} disabled={!canUndo} aria-label="撤销最近一次编辑" className="h-9 rounded-lg px-3 text-[14px] text-[#37352f] hover:bg-black/[0.04] disabled:opacity-35" data-testid="resume-undo">撤销</button>
+          <div className="flex items-center">
+            <button type="button" onClick={() => travel("undo")} disabled={!history.undo} aria-label="撤销" title="撤销（⌘/Ctrl + Z）" className="grid h-9 w-9 place-items-center rounded-lg text-[#37352f] hover:bg-black/[0.04] disabled:opacity-30" data-testid="resume-undo"><Undo2 size={17} strokeWidth={1.8} /></button>
+            <button type="button" onClick={() => travel("redo")} disabled={!history.redo} aria-label="重做" title="重做（⌘/Ctrl + Shift + Z）" className="grid h-9 w-9 place-items-center rounded-lg text-[#37352f] hover:bg-black/[0.04] disabled:opacity-30" data-testid="resume-redo"><Redo2 size={17} strokeWidth={1.8} /></button>
+          </div>
           <button type="button" onClick={() => void handleExport()} disabled={exporting} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#191919] px-4 text-[14px] font-medium text-white hover:bg-black disabled:opacity-50" data-testid="resume-export-pdf">{exporting && <Loader2 size={14} className="animate-spin" />}导出 PDF</button>
         </div>
       </header>
@@ -543,4 +587,30 @@ export default function ResumeEditorPage() {
       </div>
     </div>
   );
+}
+
+function toRgb(value: string): [number, number, number] | null {
+  const hex = value.trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)?.[1];
+  if (hex) {
+    const full = hex.length === 3 ? hex.split("").map((c) => c + c).join("") : hex;
+    return [0, 2, 4].map((i) => Number.parseInt(full.slice(i, i + 2), 16)) as [number, number, number];
+  }
+  const rgb = value.match(/rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/i);
+  return rgb ? [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])] : null;
+}
+
+/** 数简历正文里用了几种「额外」文字颜色：黑、灰和主题色不算。 */
+function countExtraColors(draft: DraftResume | null) {
+  if (!draft) return 0;
+  const theme = toRgb(String(draft.style_config?.accentColorHex || ""))?.join(",");
+  const found = new Set<string>();
+  const text = JSON.stringify([draft.summary, draft.sections.map((section) => section.content_json)]);
+  for (const match of text.matchAll(/color:\s*([^;"\\<]+)/g)) {
+    const rgb = toRgb(match[1]);
+    if (!rgb) continue;
+    const grey = Math.max(...rgb) - Math.min(...rgb) < 12;
+    const key = rgb.join(",");
+    if (!grey && key !== theme) found.add(key);
+  }
+  return found.size;
 }
