@@ -38,7 +38,7 @@ export default function OptimizePage() {
           <h1 className="text-[22px] font-semibold tracking-tight text-[var(--foreground)]">岗位定制</h1>
           <p className="mt-1 text-[13px] text-[var(--foreground-muted)]">选一个岗位，AI 用你档案里已确认的事实提出修改，你逐条决定。</p>
         </div>
-        <Link href="/profile" className="text-[13px] font-medium text-[var(--foreground-muted)] underline-offset-4 hover:text-[var(--foreground)] hover:underline">
+        <Link href="/resume?mode=profile" className="text-[13px] font-medium text-[var(--foreground-muted)] underline-offset-4 hover:text-[var(--foreground)] hover:underline">
           编辑档案
         </Link>
       </header>

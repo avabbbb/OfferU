@@ -2275,6 +2275,7 @@ export async function createAIInterview(body: {
   resume_id?: number;
   profile_id?: number;
   role_benchmark_run_id?: string;
+  questions?: string[];
   interview_type: "behavioral" | "technical" | "case" | "mixed";
   difficulty: "easy" | "medium" | "hard";
   question_count: number;

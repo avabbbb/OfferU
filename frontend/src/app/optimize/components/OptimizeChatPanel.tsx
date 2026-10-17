@@ -43,7 +43,7 @@ function BlockedHint({ reason }: { reason: string }) {
     return (
       <p className="text-sm text-[var(--foreground-muted)]">
         档案里还没有已确认的经历，AI 没有可用的事实。
-        <Link href="/profile" className="ml-1 font-semibold text-[var(--foreground)] underline">去补充档案</Link>
+        <Link href="/resume?mode=profile" className="ml-1 font-semibold text-[var(--foreground)] underline">去补充档案</Link>
       </p>
     );
   }

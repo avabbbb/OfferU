@@ -1938,3 +1938,47 @@ class AgentInputRequest(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
     answered_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     consumed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class InterviewReview(Base):
+    """真实面试复盘：一场面试（某公司某一轮）一条，题目逐条存。"""
+
+    __tablename__ = "interview_reviews"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("jobs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    company: Mapped[str] = mapped_column(String(300), default="")
+    role: Mapped[str] = mapped_column(String(300), default="")
+    round_label: Mapped[str] = mapped_column(String(50), default="")  # 一面 / 二面 / HR 面
+    interviewed_on: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # YYYY-MM-DD
+    outcome: Mapped[str] = mapped_column(String(20), default="pending")  # pending / passed / failed
+    summary: Mapped[str] = mapped_column(Text, default="")  # 整体感受、下次要改的
+    transcript: Mapped[str] = mapped_column(Text, default="")  # 录音转写或粘贴的原文
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    questions: Mapped[list["InterviewReviewQuestion"]] = relationship(
+        back_populates="review",
+        cascade="all, delete-orphan",
+        order_by="InterviewReviewQuestion.sort_order",
+    )
+
+
+class InterviewReviewQuestion(Base):
+    """复盘里被问到的一道题；单独成行，才能拿去模拟面试单独练。"""
+
+    __tablename__ = "interview_review_questions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    review_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("interview_reviews.id", ondelete="CASCADE"), index=True
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    question: Mapped[str] = mapped_column(Text, default="")
+    answer: Mapped[str] = mapped_column(Text, default="")  # 当时怎么答的
+    reflection: Mapped[str] = mapped_column(Text, default="")  # 卡在哪 / 下次怎么答
+    reaction: Mapped[str] = mapped_column(Text, default="")  # 面试官的反应、追问
+
+    review: Mapped["InterviewReview"] = relationship(back_populates="questions")

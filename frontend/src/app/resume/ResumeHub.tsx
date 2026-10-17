@@ -3,7 +3,7 @@
 // =============================================
 // 简历 — 唯一入口
 // 原来的「简历」「简历定制」「工作室」三个侧边栏入口合并为一个子功能：
-//   我的简历（list） · 岗位定制（tailor） · 版式（layout）
+//   我的简历（list） · 岗位定制（tailor） · 档案（profile）
 // 模式写在 URL 上（?mode=），刷新、后退、分享链接都能回到同一处；
 // 切换模式从不打断别处正在跑的任务，也不需要确认。
 // =============================================
@@ -15,6 +15,7 @@ import { RESUME_MODES, parseResumeMode, resumeModeHref } from "./resumeModes";
 
 const ResumesListPage = lazy(() => import("./page"));
 const OptimizePage = lazy(() => import("@/app/optimize/page"));
+const ProfilePage = lazy(() => import("@/app/profile/page"));
 
 function ModeFallback() {
   return (
@@ -57,7 +58,7 @@ export default function ResumeHub() {
       </nav>
 
       <Suspense fallback={<ModeFallback />}>
-        {mode === "tailor" ? <OptimizePage /> : <ResumesListPage />}
+        {mode === "tailor" ? <OptimizePage /> : mode === "profile" ? <ProfilePage /> : <ResumesListPage />}
       </Suspense>
     </div>
   );

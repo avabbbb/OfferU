@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
@@ -155,7 +156,11 @@ export default function InterviewPage() {
 
   return (
     <motion.div variants={container} initial="hidden" animate="show" className="stage-page stage-page--interview space-y-6">
-      <PageHeader title="面试" description={`题库 ${questions?.length ?? 0} 道题，面经 ${experiences?.length ?? 0} 篇。`} />
+      <PageHeader
+        title="准备"
+        description={`题库 ${questions?.length ?? 0} 道题，面经 ${experiences?.length ?? 0} 篇。`}
+        actions={<Link href="/interview/ai" className="rounded-md border border-[var(--border-strong)] px-3 py-1.5 text-[13px] font-medium text-[var(--foreground)] hover:bg-[var(--surface-muted)]" data-testid="interview-start-mock">模拟面试</Link>}
+      />
 
       <motion.section variants={item} className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-3">
