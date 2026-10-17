@@ -662,7 +662,7 @@ export default function TodayPage() {
                 const href = target?.kind === "job" && target?.id
                   ? `/jobs/${encodeURIComponent(String(target.id))}`
                   : target?.kind === "profile"
-                    ? "/profile"
+                    ? "/resume?mode=profile"
                     : target?.kind === "application" || target?.kind === "follow_up"
                       ? "/applications?view=board"
                       : target?.kind === "interview"
@@ -870,7 +870,7 @@ export default function TodayPage() {
                             entry.target_type === "job" && entry.target_id
                               ? `/jobs/${entry.target_id}`
                               : entry.target_type === "profile"
-                                ? "/profile"
+                                ? "/resume?mode=profile"
                               : undefined,
                         },
                       })

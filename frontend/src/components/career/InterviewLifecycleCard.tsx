@@ -193,7 +193,7 @@ export function InterviewLifecycleCard({
             <p className="text-[12px] text-[var(--foreground-muted)]">这次复盘没有形成有直接回答证据的学习候选。</p>
           )}
           <p className="text-[11px] text-[var(--foreground-muted)]">候选仅作为职业假设；不会自动写入已验证档案。</p>
-          <Link href="/profile" className="inline-flex text-[12px] font-semibold text-[var(--foreground)] underline underline-offset-2">
+          <Link href="/resume?mode=profile" className="inline-flex text-[12px] font-semibold text-[var(--foreground)] underline underline-offset-2">
             在个人资料中查看并审核
           </Link>
         </div>

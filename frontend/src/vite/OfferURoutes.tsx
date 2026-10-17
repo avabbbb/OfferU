@@ -9,11 +9,11 @@ const ResumeHub = lazy(() => import("@/app/resume/ResumeHub"));
 const ResumeDetailPage = lazy(() => import("@/app/resume/[id]/page"));
 const ApplicationsPage = lazy(() => import("@/app/applications/page"));
 const InterviewPage = lazy(() => import("@/app/interview/page"));
+const InterviewReviewPage = lazy(() => import("@/app/interview/review/page"));
 const AIInterviewPage = lazy(() => import("@/app/interview/ai/page"));
 const PoseInterviewPage = lazy(() => import("@/app/interview/pose/page"));
 const CalendarPage = lazy(() => import("@/app/calendar/page"));
 const EmailPage = lazy(() => import("@/app/email/page"));
-const ProfilePage = lazy(() => import("@/app/profile/page"));
 const SettingsPage = lazy(() => import("@/app/settings/page"));
 
 function RouteFallback() {
@@ -42,11 +42,12 @@ export function OfferURoutes() {
         <Route path="/optimize" element={<LegacyResumeRedirect mode="tailor" />} />
         <Route path="/applications" element={<ApplicationsPage />} />
         <Route path="/interview" element={<InterviewPage />} />
+        <Route path="/interview/review" element={<InterviewReviewPage />} />
         <Route path="/interview/ai" element={<AIInterviewPage />} />
         <Route path="/interview/pose" element={<PoseInterviewPage />} />
         <Route path="/calendar" element={<CalendarPage />} />
         <Route path="/email" element={<EmailPage />} />
-        <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/profile" element={<LegacyResumeRedirect mode="profile" />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/agent" element={<Navigate replace to="/" />} />
         <Route path="/analytics" element={<Navigate replace to="/" />} />

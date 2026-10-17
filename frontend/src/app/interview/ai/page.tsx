@@ -32,6 +32,7 @@ import {
 } from "@/lib/hooks";
 import { bauhausFieldClassNames } from "@/lib/bauhaus";
 import { dataModeLabel } from "@/lib/api";
+import { getReview } from "@/lib/interviewReviews";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import InterviewStage from "./components/InterviewStage";
 
@@ -79,6 +80,10 @@ export default function AIInterviewPage() {
   const roleJobId = Number(searchParams.get("job_id") || 0);
   const roleBenchmarkRunId = searchParams.get("benchmark_run_id") || "";
   const roleIntelligenceRoute = Number.isInteger(roleJobId) && roleJobId > 0 && !!roleBenchmarkRunId;
+  // 从复盘过来：练真实被问到的那几道题，不让模型另出题。
+  const reviewId = Number(searchParams.get("review") || 0);
+  const reviewPicks = searchParams.get("q") || "";
+  const [fixedQuestions, setFixedQuestions] = useState<string[]>([]);
   const [company, setCompany] = useState("");
   const [position, setPosition] = useState("");
   const [interviewType, setInterviewType] = useState<InterviewType>("mixed");
@@ -143,6 +148,27 @@ export default function AIInterviewPage() {
     };
   }, [roleBenchmarkRunId, roleIntelligenceRoute, roleJobId]);
 
+  useEffect(() => {
+    if (!reviewId) return;
+    let active = true;
+    getReview(reviewId)
+      .then((review) => {
+        if (!active) return;
+        const picks = reviewPicks ? reviewPicks.split(",").map(Number) : review.questions.map((_, i) => i);
+        const picked = picks.map((i) => review.questions[i]?.question.trim()).filter((q): q is string => Boolean(q)).slice(0, 10);
+        setFixedQuestions(picked);
+        if (picked.length) setQuestionCount(picked.length);
+        setCompany(review.company);
+        setPosition(review.role || review.round_label || "复盘练习");
+      })
+      .catch((cause) => {
+        if (active) setError(safeClientErrorMessage(cause, "读取复盘失败"));
+      });
+    return () => {
+      active = false;
+    };
+  }, [reviewId, reviewPicks]);
+
   const currentQuestion = session?.questions[currentQuestionIndex];
   const progress = session ? ((currentQuestionIndex + (report ? 1 : 0)) / session.questions.length) * 100 : 0;
   const selectedType = TYPE_OPTIONS.find((option) => option.value === interviewType);
@@ -193,7 +219,8 @@ export default function AIInterviewPage() {
         target_position: position.trim(),
         interview_type: interviewType,
         difficulty,
-        question_count: questionCount,
+        question_count: fixedQuestions.length || questionCount,
+        questions: fixedQuestions.length ? fixedQuestions : undefined,
         target_job_id: roleIntelligenceRoute ? roleJobId : undefined,
         profile_id: roleIntelligenceRoute ? (focusPlan?.profile_id ?? undefined) : undefined,
         role_benchmark_run_id: roleIntelligenceRoute ? roleBenchmarkRunId : undefined,
@@ -388,6 +415,14 @@ export default function AIInterviewPage() {
           <section className="rounded-2xl border border-[var(--border-strong)] bg-white p-6 md:p-8">
           <div className="flex items-center gap-2"><Target size={17} /><h2 className="text-base font-semibold">{roleIntelligenceRoute ? "确认专项训练" : "设置本场面试"}</h2></div>
           {roleIntelligenceRoute && focusPlan && <FocusPlanPreview plan={focusPlan} />}
+          {fixedQuestions.length > 0 && (
+            <div className="mt-4 rounded-xl border border-[var(--border)] px-4 py-3" data-testid="review-practice-questions">
+              <p className="text-[13px] font-medium">练复盘里的 {fixedQuestions.length} 道题</p>
+              <ol className="mt-2 list-decimal space-y-1 pl-5 text-[13px] text-[var(--foreground-muted)]">
+                {fixedQuestions.map((q, i) => <li key={i}>{q}</li>)}
+              </ol>
+            </div>
+          )}
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
             <Input label="目标公司（可选）" placeholder="例如：字节跳动" value={company} onValueChange={setCompany} isReadOnly={roleIntelligenceRoute} startContent={<Building2 size={15} className="text-[var(--foreground-muted)]" />} classNames={bauhausFieldClassNames} />
             <Input label="目标岗位" placeholder="例如：前端开发工程师" value={position} onValueChange={setPosition} isRequired isReadOnly={roleIntelligenceRoute} classNames={bauhausFieldClassNames} />
@@ -413,14 +448,14 @@ export default function AIInterviewPage() {
                 ))}
               </div>
             </div>
-            <div>
+            {!fixedQuestions.length && <div>
               <p className="text-xs font-semibold text-[var(--foreground-soft)]">题目数量</p>
               <div className="mt-2 flex gap-2">
                 {[3, 5, 8].filter((count) => !roleIntelligenceRoute || count >= 5).map((count) => (
                   <button key={count} onClick={() => setQuestionCount(count)} className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium transition ${questionCount === count ? "border-[var(--foreground)] bg-[var(--foreground)] text-white" : "border-[var(--border-strong)] bg-white text-[var(--foreground-soft)]"}`}>{count} 题</button>
                 ))}
               </div>
-            </div>
+            </div>}
           </div>
 
           <div className="mt-6 rounded-xl border border-[var(--border-strong)] bg-[var(--surface-muted)] p-4">

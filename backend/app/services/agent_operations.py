@@ -540,6 +540,7 @@ async def create_ai_interview(
     scoring_skill_id: str = "evidence-interview-score",
     scoring_skill_version: Optional[int] = None,
     role_benchmark_run_id: Optional[str] = None,
+    questions: Optional[list[str]] = None,
 ) -> dict:
     from app.services.ai_interviews import create_ai_interview as _create
 
@@ -559,6 +560,7 @@ async def create_ai_interview(
         model_provider=model_provider,
         data_consent=data_consent,
         consented_data_categories=consented_data_categories,
+        questions=questions,
     )
 
 async def submit_ai_interview_answer(

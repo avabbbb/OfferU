@@ -3219,6 +3219,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/interviews/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Reviews */
+        get: operations["list_reviews_api_interviews_reviews_get"];
+        put?: never;
+        /** Create Review */
+        post: operations["create_review_api_interviews_reviews_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/interviews/reviews/extract": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Extract Review Questions */
+        post: operations["extract_review_questions_api_interviews_reviews_extract_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/interviews/reviews/transcribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Transcribe Review Audio */
+        post: operations["transcribe_review_audio_api_interviews_reviews_transcribe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/interviews/reviews/{review_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Review */
+        get: operations["get_review_api_interviews_reviews__review_id__get"];
+        /** Update Review */
+        put: operations["update_review_api_interviews_reviews__review_id__put"];
+        post?: never;
+        /** Delete Review */
+        delete: operations["delete_review_api_interviews_reviews__review_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/interviews/focus-plan": {
         parameters: {
             query?: never;
@@ -5067,6 +5138,11 @@ export interface components {
             /** File */
             file?: string | null;
         };
+        /** Body_transcribe_review_audio_api_interviews_reviews_transcribe_post */
+        Body_transcribe_review_audio_api_interviews_reviews_transcribe_post: {
+            /** File */
+            file: string;
+        };
         /** Body_upload_logo_api_resume__resume_id__logo_post */
         Body_upload_logo_api_resume__resume_id__logo_post: {
             /** File */
@@ -5437,6 +5513,11 @@ export interface components {
             /** Experience Id */
             experience_id: number;
         };
+        /** ExtractReviewQuestionsInput */
+        ExtractReviewQuestionsInput: {
+            /** Transcript */
+            transcript: string;
+        };
         /** FetchModelsRequest */
         FetchModelsRequest: {
             /** Base Url */
@@ -5606,6 +5687,8 @@ export interface components {
             scoring_skill_id: string;
             /** Scoring Skill Version */
             scoring_skill_version?: number | null;
+            /** Questions */
+            questions?: string[];
             /** Role Benchmark Run Id */
             role_benchmark_run_id?: string | null;
             /** Model Provider */
@@ -6503,6 +6586,29 @@ export interface components {
              */
             note: string;
         };
+        /** ReviewQuestionInput */
+        ReviewQuestionInput: {
+            /**
+             * Question
+             * @default
+             */
+            question: string;
+            /**
+             * Answer
+             * @default
+             */
+            answer: string;
+            /**
+             * Reflection
+             * @default
+             */
+            reflection: string;
+            /**
+             * Reaction
+             * @default
+             */
+            reaction: string;
+        };
         /** RevokeEmailAccountRequest */
         RevokeEmailAccountRequest: {
             /** Reason */
@@ -6570,6 +6676,47 @@ export interface components {
         RuntimeSteerBody: {
             /** Message */
             message: string;
+        };
+        /** SaveInterviewReviewInput */
+        SaveInterviewReviewInput: {
+            /** Review Id */
+            review_id?: number | null;
+            /** Job Id */
+            job_id?: number | null;
+            /**
+             * Company
+             * @default
+             */
+            company: string;
+            /**
+             * Role
+             * @default
+             */
+            role: string;
+            /**
+             * Round Label
+             * @default
+             */
+            round_label: string;
+            /** Interviewed On */
+            interviewed_on?: string | null;
+            /**
+             * Outcome
+             * @default pending
+             */
+            outcome: string;
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+            /**
+             * Transcript
+             * @default
+             */
+            transcript: string;
+            /** Questions */
+            questions?: components["schemas"]["ReviewQuestionInput"][];
         };
         /** ScoringSkillCreate */
         ScoringSkillCreate: {
@@ -12838,6 +12985,222 @@ export interface operations {
                 "application/json": components["schemas"]["InterviewDebriefSubmit"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_reviews_api_interviews_reviews_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    create_review_api_interviews_reviews_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveInterviewReviewInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    extract_review_questions_api_interviews_reviews_extract_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExtractReviewQuestionsInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    transcribe_review_audio_api_interviews_reviews_transcribe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_transcribe_review_audio_api_interviews_reviews_transcribe_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_review_api_interviews_reviews__review_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                review_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_review_api_interviews_reviews__review_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                review_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveInterviewReviewInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_review_api_interviews_reviews__review_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                review_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

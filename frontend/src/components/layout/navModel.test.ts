@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { PRIMARY_NAV, SETTINGS_HREF, activePrimary } from "./navModel";
+import { PRIMARY_NAV, activePrimary, activeTab } from "./navModel";
 
 describe("primary navigation", () => {
-  it("has exactly five entries and settings is not one of them", () => {
-    expect(PRIMARY_NAV.map((item) => item.label)).toEqual(["今天", "投递", "岗位", "简历", "档案"]);
-    expect(PRIMARY_NAV.some((item) => item.href === SETTINGS_HREF)).toBe(false);
+  it("has exactly six entries", () => {
+    expect(PRIMARY_NAV.map((item) => item.label)).toEqual(["今天", "岗位", "投递", "简历", "面试", "设置"]);
   });
 
   it.each([
@@ -15,16 +14,21 @@ describe("primary navigation", () => {
     ["/jobs", "岗位"],
     ["/jobs/42", "岗位"],
     ["/optimize", "简历"],
-    ["/interview", "岗位"],
-    ["/interview/ai", "岗位"],
-    ["/profile", "档案"],
+    ["/profile", "简历"],
     ["/resume", "简历"],
     ["/resume/7", "简历"],
+    ["/interview", "面试"],
+    ["/interview/ai", "面试"],
+    ["/interview/review", "面试"],
+    ["/settings", "设置"],
   ])("every former entry stays reachable: %s → %s", (path, label) => {
     expect(activePrimary(path)?.label).toBe(label);
   });
 
-  it("support pages do not highlight a primary entry", () => {
-    expect(activePrimary("/settings")).toBeNull();
+  it("review is its own tab, not 准备", () => {
+    const interview = PRIMARY_NAV.find((item) => item.label === "面试")!;
+    expect(activeTab(interview, "/interview/review")?.label).toBe("复盘");
+    expect(activeTab(interview, "/interview")?.label).toBe("准备");
+    expect(activeTab(interview, "/interview/ai")?.label).toBe("准备");
   });
 });

@@ -1,17 +1,17 @@
 "use client";
 
 // =============================================
-// 一级导航：今天 / 投递 / 岗位 / 简历 / 档案（定义见 navModel.ts）。
-// 子页面以二级标签出现在页面顶部；设置放在侧栏底部，不占导航位。
+// 一级导航：今天 / 岗位 / 投递 / 简历 / 面试 / 设置（定义见 navModel.ts）。
+// 子页面以二级标签出现在页面顶部。
 // =============================================
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
-import { Search, Settings } from "lucide-react";
+import { Search } from "lucide-react";
 import { useWorkbenchOptional } from "@/lib/workbench";
 import { AgentConnectionStatus } from "@/components/workbench/AgentConnectionPanel";
-import { PRIMARY_NAV, SETTINGS_HREF, activePrimary, type PrimaryNavItem } from "./navModel";
+import { PRIMARY_NAV, activePrimary, type PrimaryNavItem } from "./navModel";
 
 type NavItem = PrimaryNavItem;
 
@@ -105,22 +105,11 @@ export function Sidebar() {
           <div className="min-w-0 flex-1">
             <AgentConnectionStatus />
           </div>
-          <Link
-            href={SETTINGS_HREF}
-            aria-label="设置"
-            title="设置"
-            aria-current={pathname === SETTINGS_HREF ? "page" : undefined}
-            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-[var(--surface-muted)] ${
-              pathname === SETTINGS_HREF ? "text-[var(--foreground)]" : "text-[var(--foreground-muted)] hover:text-[var(--foreground)]"
-            }`}
-          >
-            <Settings size={15} strokeWidth={1.75} />
-          </Link>
         </div>
       </aside>
 
       <nav className="offeru-mobile-nav fixed inset-x-0 bottom-0 z-50 border-t border-[var(--border)] bg-[var(--surface)] md:hidden">
-        <div className="grid grid-cols-5 gap-0">
+        <div className="grid grid-cols-6 gap-0">
           {PRIMARY_NAV.map((item) => {
             const Icon = item.icon;
             const active = current?.href === item.href;

@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.services.interview_reviews import ExtractReviewQuestionsInput, SaveInterviewReviewInput
 from app.services.security_redaction import safe_error_message
 
 router = APIRouter()
@@ -22,6 +23,7 @@ class InterviewCreate(BaseModel):
     question_count: int = Field(5, ge=1, le=10)
     scoring_skill_id: str = "evidence-interview-score"
     scoring_skill_version: Optional[int] = None
+    questions: list[str] = Field(default_factory=list, max_length=10)
     role_benchmark_run_id: Optional[str] = Field(default=None, min_length=1, max_length=64)
     model_provider: str
     data_consent: bool
@@ -134,6 +136,57 @@ async def create_interview(data: InterviewCreate):
 @router.post("/debriefs")
 async def submit_interview_debrief(data: InterviewDebriefSubmit):
     return await _execute("submit_interview_debrief", data.model_dump())
+
+
+@router.get("/reviews")
+async def list_reviews():
+    return await _execute("list_interview_reviews", {})
+
+
+@router.post("/reviews")
+async def create_review(data: SaveInterviewReviewInput):
+    return await _execute("save_interview_review", data.model_dump(exclude={"review_id"}))
+
+
+@router.post("/reviews/extract")
+async def extract_review_questions(data: ExtractReviewQuestionsInput):
+    return await _execute("extract_interview_review_questions", data.model_dump())
+
+
+@router.post("/reviews/transcribe")
+async def transcribe_review_audio(file: UploadFile = File(...)):
+    import uuid
+    from pathlib import Path
+
+    from app.runtime_paths import runtime_data_dir
+    from app.services.interview_reviews import AUDIO_SUFFIXES, MAX_AUDIO_BYTES
+
+    suffix = Path(file.filename or "").suffix.lower() or ".webm"
+    if suffix not in AUDIO_SUFFIXES:
+        raise HTTPException(status_code=400, detail="只支持 m4a / mp3 / wav / webm 等常见录音格式")
+    content = await file.read(MAX_AUDIO_BYTES + 1)
+    if len(content) > MAX_AUDIO_BYTES:
+        raise HTTPException(status_code=400, detail="录音超过 25MB，可以先截取或压缩后再上传")
+    folder = runtime_data_dir() / "uploads" / "interview-audio"
+    folder.mkdir(parents=True, exist_ok=True)
+    target = folder / f"{uuid.uuid4().hex}{suffix}"
+    target.write_bytes(content)
+    return await _execute("transcribe_interview_audio", {"file_path": str(target)})
+
+
+@router.get("/reviews/{review_id}")
+async def get_review(review_id: int):
+    return await _execute("get_interview_review", {"review_id": review_id})
+
+
+@router.put("/reviews/{review_id}")
+async def update_review(review_id: int, data: SaveInterviewReviewInput):
+    return await _execute("save_interview_review", {**data.model_dump(), "review_id": review_id})
+
+
+@router.delete("/reviews/{review_id}")
+async def delete_review(review_id: int):
+    return await _execute("delete_interview_review", {"review_id": review_id})
 
 
 @router.get("/focus-plan")

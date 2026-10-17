@@ -535,6 +535,7 @@ async def create_ai_interview(
     data_consent: bool,
     consented_data_categories: list[str],
     role_benchmark_run_id: Optional[str] = None,
+    questions: Optional[list[str]] = None,
 ) -> dict[str, Any]:
     # 确认已由 _validate_authorization 服务端校验；到达此处即视为已确认
     user_confirmed = True
@@ -604,15 +605,28 @@ async def create_ai_interview(
         resume_id=resume_id,
         target_job_id=clean_target_job_id,
     )
-    questions = await _generate_questions(
-        interview_type=clean_type,
-        difficulty=clean_difficulty,
-        question_count=question_count,
-        target_company=clean_company,
-        target_position=clean_position,
-        context=context,
-        focus_plan=focus_plan,
-    )
+    # 复盘里真实被问到的题：原样拿来练，不再让模型出题。
+    fixed_questions = [
+        _clean_text(item, "questions", 2000) for item in (questions or [])
+    ]
+    fixed_questions = [item for item in fixed_questions if item][:10]
+    if questions and clean_run_id:
+        raise ValueError("指定题目的练习不能与 Role Intelligence 专项面试同时使用")
+    if fixed_questions:
+        questions = [
+            {"question": item, "type": clean_type if clean_type != "mixed" else "behavioral", "focus": "", "tips": ""}
+            for item in fixed_questions
+        ]
+    else:
+        questions = await _generate_questions(
+            interview_type=clean_type,
+            difficulty=clean_difficulty,
+            question_count=question_count,
+            target_company=clean_company,
+            target_position=clean_position,
+            context=context,
+            focus_plan=focus_plan,
+        )
     if focus_plan is not None:
         questions = _decorate_focus_questions(questions, focus_plan)
     async with async_session() as db:

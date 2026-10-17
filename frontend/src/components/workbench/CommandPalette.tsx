@@ -61,7 +61,7 @@ export function CommandPalette() {
       { id: "interview", label: "面试", hint: "训练与日程", keywords: "interview 面试 训练", icon: GraduationCap, run: go("/interview") },
       { id: "calendar", label: "日程", hint: "进展 · 日历", keywords: "calendar 日程 日历", icon: Calendar, run: go("/calendar") },
       { id: "email", label: "信号收件箱", hint: "进展 · 邮箱信号", keywords: "email 邮箱 邮件 信号", icon: Mail, run: go("/email") },
-      { id: "profile", label: "档案", hint: "职业模型", keywords: "profile 档案 个人", icon: UserRound, run: go("/profile") },
+      { id: "profile", label: "档案", hint: "职业模型", keywords: "profile 档案 个人", icon: UserRound, run: go("/resume?mode=profile") },
       { id: "settings", label: "设置", hint: "来源与授权", keywords: "settings 设置 配置", icon: Settings, run: go("/settings") },
       {
         id: "ask-offeru",

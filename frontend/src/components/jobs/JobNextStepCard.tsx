@@ -75,7 +75,7 @@ function resolveStep(p: Props): Step {
     case "needs_job_description":
       return { title: "缺少职位描述", body: "没有 JD 就无法分析岗位要求。重新保存这个岗位时粘贴完整职位描述。", tone: "blocked", primary: { kind: "link", href: "/jobs", label: "回到机会列表" } };
     case "needs_profile_evidence":
-      return { title: "先补充档案", body: "档案里还没有已确认的经历，OfferU 无法判断你能证明什么。", tone: "blocked", primary: { kind: "link", href: "/profile", label: "去补充档案" } };
+      return { title: "先补充档案", body: "档案里还没有已确认的经历，OfferU 无法判断你能证明什么。", tone: "blocked", primary: { kind: "link", href: "/resume?mode=profile", label: "去补充档案" } };
     case "needs_research":
     case "research_running":
       if (taskFailed) {
@@ -109,7 +109,7 @@ function resolveStep(p: Props): Step {
     case "completed_no_go":
       return { title: "已决定不投", body: "这个岗位的准备已结束。", tone: "done" };
     case "completed_insufficient_evidence":
-      return { title: "证据不足，暂不投", body: "补充档案后可以重新判断。", tone: "done", primary: { kind: "link", href: "/profile", label: "去补充档案" } };
+      return { title: "证据不足，暂不投", body: "补充档案后可以重新判断。", tone: "done", primary: { kind: "link", href: "/resume?mode=profile", label: "去补充档案" } };
     case "ready_for_resume_proposal":
       return { title: "定制这份简历", body: "已决定投递。下一步按这个岗位生成简历修改提案。", tone: "action", primary: { kind: "link", href: tailorResumeHref([p.jobId]), label: "开始简历定制" } };
     case "resume_proposal_ready":
