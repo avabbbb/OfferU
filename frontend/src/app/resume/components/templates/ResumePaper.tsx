@@ -11,7 +11,7 @@
  * 不使用仅限个人免费的仓耳今楷。
  */
 
-import { Fragment, useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { bulletLi, INDENT_MARK, isIndented, plainBullet, richBulletToHtml, sanitizeInline, splitRichBullets } from "@/lib/resumeText";
 import { FormatBar, type AskAgentRequest } from "./FormatBar";
@@ -264,6 +264,8 @@ function Editable({ value, editable, placeholder, className = "", label, multili
   const ref = useRef<HTMLSpanElement | null>(null);
   // 只用第一次的内容渲染；之后由下面的 effect 在没聚焦时同步，避免 React 重写 innerHTML 打断选区。
   const [initialHtml] = useState(() => ({ __html: richBulletToHtml(value) }));
+  const [initialText] = useState(value);
+  const pauseRef = useRef<number | undefined>(undefined);
   const read = () => {
     const node = ref.current;
     if (!node) return "";
@@ -287,10 +289,18 @@ function Editable({ value, editable, placeholder, className = "", label, multili
     if (rich) {
       if (sanitizeInline(node.innerHTML) !== richBulletToHtml(value)) node.innerHTML = richBulletToHtml(value);
     } else if (node.textContent !== value) node.textContent = value;
-  }, [value, rich]);
+  }, [value, rich, editable]);
   useEffect(() => {
     if (autoFocus && ref.current) ref.current.focus();
   }, [autoFocus]);
+  // 打字停顿半秒就提交一次，撤销按「一口气打的字」为一步，不必等离开这一栏。
+  const schedulePauseCommit = () => {
+    window.clearTimeout(pauseRef.current);
+    pauseRef.current = window.setTimeout(() => {
+      if (document.activeElement === ref.current) commitRef.current();
+    }, 500);
+  };
+  useEffect(() => () => window.clearTimeout(pauseRef.current), []);
   // 工具栏改完格式立刻提交，每次格式修改都是一步可撤销的修改。
   useEffect(() => {
     const node = ref.current;
@@ -372,12 +382,17 @@ function Editable({ value, editable, placeholder, className = "", label, multili
     className: `paper-editable ${className}`,
     onBlur: commit,
     onKeyDown,
+    // 输入法拼写中的拼音不算数，选完字再计时。
+    onInput: (event: FormEvent<HTMLSpanElement>) => {
+      if (!(event.nativeEvent as InputEvent).isComposing) schedulePauseCommit();
+    },
+    onCompositionEnd: schedulePauseCommit,
   } as const;
 
   if (rich) {
     return <span {...shared} data-paper-rich="" contentEditable onPaste={onPaste} dangerouslySetInnerHTML={initialHtml} />;
   }
-  return <span {...shared} contentEditable="plaintext-only">{value}</span>;
+  return <span {...shared} contentEditable="plaintext-only">{initialText}</span>;
 }
 
 function textOf(value: unknown) {

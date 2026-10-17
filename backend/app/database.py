@@ -20,7 +20,8 @@ from app.services.security_redaction import safe_error_message
 
 settings = get_settings()
 
-CURRENT_SCHEMA_VERSION = 7
+CURRENT_SCHEMA_VERSION = 8
+LEGACY_TEMPLATE_TABLES = ("html_resumes", "html_resume_templates", "resume_templates")
 
 
 class DatabaseMigrationError(RuntimeError):
@@ -71,6 +72,10 @@ async def init_db(*, backend_dir: Path | None = None):
         backend_dir=backend_dir,
     )
     try:
+        if migration.get("required") and migration["from_version"] < 8:
+            await asyncio.to_thread(
+                drop_legacy_template_schema, _sqlite_path_for_url(settings.database_url)
+            )
         async with engine.begin() as conn:
             if engine.dialect.name == "sqlite":
                 await conn.run_sync(_preserve_prototype_decision_history)
@@ -429,6 +434,64 @@ def _migrate_schema_v7(connection) -> None:
     _migrate_schema_v6(connection)
 
 
+def drop_legacy_template_schema(database_path: Path | None) -> None:
+    """v8: drop resumes.template_id and the removed template tables.
+
+    resumes is referenced by many ON DELETE CASCADE children, and SQLite's
+    DROP TABLE runs an implicit DELETE that would cascade into them.  The
+    rebuild therefore uses its own connection with foreign_keys=OFF (the
+    pragma is a no-op inside the ORM transaction), per SQLite's documented
+    12-step ALTER TABLE procedure.
+    """
+
+    if database_path is None or not database_path.is_file():
+        return
+    from sqlalchemy.dialects import sqlite as sqlite_dialect
+    from sqlalchemy.schema import CreateIndex, CreateTable
+
+    from app.models import models as _models  # noqa: F401
+
+    conn = sqlite3.connect(database_path, isolation_level=None)
+    try:
+        conn.execute("PRAGMA foreign_keys=OFF")
+        conn.execute("BEGIN IMMEDIATE")
+        columns = [row[1] for row in conn.execute('PRAGMA table_info("resumes")')]
+        if "template_id" in columns:
+            dialect = sqlite_dialect.dialect()
+            source = Base.metadata.tables["resumes"]
+            clone_metadata = MetaData()
+            for foreign_key in source.foreign_keys:
+                referred = foreign_key.column.table
+                if referred.key not in clone_metadata.tables:
+                    referred.to_metadata(clone_metadata)
+            rebuilt = source.to_metadata(clone_metadata, name="resumes_v8")
+            conn.execute(str(CreateTable(rebuilt).compile(dialect=dialect)))
+            shared = ", ".join(f'"{c.name}"' for c in source.columns if c.name in columns)
+            conn.execute(f'INSERT INTO "resumes_v8" ({shared}) SELECT {shared} FROM "resumes"')
+            conn.execute('DROP TABLE "resumes"')
+            conn.execute('ALTER TABLE "resumes_v8" RENAME TO "resumes"')
+            for index in source.indexes:
+                conn.execute(str(CreateIndex(index, if_not_exists=True).compile(dialect=dialect)))
+        for table in LEGACY_TEMPLATE_TABLES:
+            conn.execute(f'DROP TABLE IF EXISTS "{table}"')
+        broken = conn.execute("PRAGMA foreign_key_check").fetchall()
+        if broken:
+            raise DatabaseMigrationError(f"v8 迁移后外键检查未通过: {broken[:5]}")
+        conn.execute("COMMIT")
+    except BaseException:
+        if conn.in_transaction:
+            conn.execute("ROLLBACK")
+        raise
+    finally:
+        conn.close()
+
+
+def _migrate_schema_v8(connection) -> None:  # noqa: ANN001
+    """Done by drop_legacy_template_schema before the ORM transaction."""
+
+    del connection
+
+
 SCHEMA_MIGRATIONS: dict[int, Callable[[Any], None]] = {
     1: _migrate_schema_v1,
     2: _migrate_schema_v2,
@@ -437,6 +500,7 @@ SCHEMA_MIGRATIONS: dict[int, Callable[[Any], None]] = {
     5: _migrate_schema_v5,
     6: _migrate_schema_v6,
     7: _migrate_schema_v7,
+    8: _migrate_schema_v8,
 }
 
 

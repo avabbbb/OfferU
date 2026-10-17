@@ -258,6 +258,48 @@ class DatabaseMigrationTests(unittest.TestCase):
             finally:
                 engine.dispose()
 
+    def test_v8_drops_template_column_without_cascading_into_sections(self) -> None:
+        from app.database import drop_legacy_template_schema
+
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "v7.db"
+            engine = create_engine(f"sqlite:///{database_path.as_posix()}")
+            try:
+                with engine.begin() as connection:
+                    Base.metadata.create_all(connection)
+                    connection.exec_driver_sql("CREATE TABLE resume_templates (id INTEGER PRIMARY KEY)")
+                    connection.exec_driver_sql("CREATE TABLE html_resumes (id INTEGER PRIMARY KEY)")
+                    connection.exec_driver_sql(
+                        "ALTER TABLE resumes ADD COLUMN template_id INTEGER REFERENCES resume_templates(id)"
+                    )
+                    connection.exec_driver_sql("INSERT INTO resume_templates (id) VALUES (1)")
+                    connection.exec_driver_sql(
+                        "INSERT INTO resumes (id, user_name, title, photo_url, summary, contact_json, "
+                        "style_config, is_primary, language, source_mode, workspace_revision, template_id) "
+                        "VALUES (1, 'u', 't', '', '', '{}', '{}', 1, 'zh', 'manual', 1, 1)"
+                    )
+                    connection.exec_driver_sql(
+                        "INSERT INTO resume_sections (resume_id, section_type, sort_order, title, visible, content_json) "
+                        "VALUES (1, 'experience', 0, 'x', 1, '[]')"
+                    )
+            finally:
+                engine.dispose()
+
+            drop_legacy_template_schema(database_path)
+
+            connection = sqlite3.connect(database_path)
+            try:
+                columns = [row[1] for row in connection.execute('PRAGMA table_info("resumes")')]
+                self.assertNotIn("template_id", columns)
+                self.assertEqual(connection.execute("SELECT count(*) FROM resume_sections").fetchone()[0], 1)
+                tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+                self.assertFalse({"resume_templates", "html_resumes", "resumes_v8"} & tables)
+                connection.execute("PRAGMA foreign_keys=ON")
+                connection.execute("DELETE FROM resumes")
+                self.assertEqual(connection.execute("SELECT count(*) FROM resume_sections").fetchone()[0], 0)
+            finally:
+                connection.close()
+
     def test_v6_migration_is_idempotent_when_tables_already_exist(self) -> None:
         """If create_all already created v6 tables, migration must not fail."""
         with tempfile.TemporaryDirectory() as directory:
