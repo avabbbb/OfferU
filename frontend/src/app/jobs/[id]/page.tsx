@@ -39,7 +39,6 @@ import { ArtifactViewer } from "@/components/career/ArtifactViewer";
 import { readDeliveries } from "@/components/career/deliveries";
 import { RoleIntelligencePanel } from "@/components/jobs/RoleIntelligencePanel";
 import { JobNextStepCard, scrollToWorkspaceSection } from "@/components/jobs/JobNextStepCard";
-import { JobWorkspaceOverview } from "@/components/jobs/JobWorkspaceOverview";
 import {
   jobResearchApi,
   dataModeLabel,
@@ -569,7 +568,7 @@ export default function JobDetailPage() {
     return (
       <div className="flex min-h-[420px] items-center justify-center">
         <div className="bauhaus-panel bg-white p-8 text-center">
-          <p className="text-lg font-black uppercase tracking-[-0.05em] text-[var(--foreground)]">岗位不存在或加载失败</p>
+          <p className="text-lg font-semibold text-[var(--foreground)]">岗位不存在或加载失败</p>
           <Button onPress={() => router.push("/jobs")} className="bauhaus-button bauhaus-button-outline mt-5 !px-4 !py-3 !text-[11px]">
             返回列表
           </Button>
@@ -642,12 +641,10 @@ export default function JobDetailPage() {
               >
                 <ArrowLeft size={18} />
               </Button>
-              <span className="bauhaus-chip bg-[var(--surface-muted)] text-[var(--foreground)]">岗位档案</span>
             </div>
 
             <div>
-              <p className="bauhaus-label text-[var(--foreground-muted)]">详情表</p>
-              <h1 className="mt-3 text-4xl font-black leading-[0.92] tracking-[-0.06em] text-[var(--foreground)] sm:text-5xl">
+              <h1 className="text-2xl font-semibold tracking-[-0.01em] text-[var(--foreground)]">
                 {job.title}
               </h1>
               <div className="mt-4 flex flex-wrap items-center gap-3 text-sm font-medium text-[var(--foreground-muted)]">
@@ -670,7 +667,7 @@ export default function JobDetailPage() {
                 已筛选 · {(pickedPools || []).find((pool) => pool.id === job.pool_id)?.name || "未分组"}
               </span>
             ) : (
-              <Button onPress={() => setJoinModalOpen(true)} isLoading={actionLoading === "join"} className="bauhaus-button bauhaus-button-yellow !px-4 !py-2.5 !text-[12px]">
+              <Button onPress={() => setJoinModalOpen(true)} isLoading={actionLoading === "join"} className="bauhaus-button bauhaus-button-red !px-4 !py-2.5 !text-[12px]">
                 加入已筛选
               </Button>
             )}
@@ -683,29 +680,6 @@ export default function JobDetailPage() {
         </div>
       </section>
 
-      <JobWorkspaceOverview
-        jobId={job.id}
-        snapshotValue={job.salary_text || "薪资未写明"}
-        snapshotDescription={[
-          job.location,
-          job.is_campus ? "校招" : "",
-          job.education,
-          job.experience,
-        ].filter(Boolean).join(" · ") || job.company}
-        roleTaskStatus={preparationTask?.status}
-        materialStatus={resumeProposal?.status}
-        materialChangeCount={resumeProposal?.change_count ?? 0}
-        materialFactGateStatus={resumeProposal?.fact_gate_status}
-        interviewTaskCount={interviewLifecycleTasks.length}
-        interviewActive={interviewLifecycleTasks.some((task) => ["queued", "running"].includes(task.status))}
-        interviewNeedsReview={interviewLifecycleTasks.some((task) =>
-          task.result?.briefing?.interview_lifecycle?.mode === "learning_review"
-        )}
-        timelineStage={currentApplicationStage ? applicationStageLabel(currentApplicationStage) : undefined}
-        timelineCompleted={["offer", "rejected"].includes(currentApplicationStage)}
-        timelineEventCount={progressTimeline?.timeline?.length ?? 0}
-        timelineNextAction={currentNextAction || undefined}
-      />
 
       <JobNextStepCard
         stage={preApplication?.stage || ""}
@@ -735,9 +709,8 @@ export default function JobDetailPage() {
       {job.summary && (
         <Card className="bauhaus-panel rounded-none bg-white shadow-none">
           <CardBody className="p-5">
-            <p className="bauhaus-label text-[var(--foreground-muted)]">AI 摘要</p>
-            <h2 className="mt-2 text-2xl font-black uppercase tracking-[-0.05em] text-[var(--foreground)]">岗位摘要</h2>
-            <p className="mt-4 text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">{job.summary}</p>
+            <h2 className="text-base font-semibold text-[var(--foreground)]">岗位摘要</h2>
+            <p className="mt-2 text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">{job.summary}</p>
           </CardBody>
         </Card>
       )}
@@ -767,7 +740,7 @@ export default function JobDetailPage() {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="bauhaus-label text-[var(--foreground-muted)]">Evidence handback</p>
-              <h2 className="mt-2 text-2xl font-black uppercase tracking-[-0.05em] text-[var(--foreground)]">
+              <h2 className="mt-2 text-lg font-semibold text-[var(--foreground)]">
                 调研证据审核
               </h2>
               <p className="mt-2 max-w-2xl text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
@@ -799,7 +772,7 @@ export default function JobDetailPage() {
             </div>
           ) : !research ? (
             <div className="bauhaus-panel-sm bg-[var(--surface-muted)] px-4 py-4">
-              <p className="text-sm font-black text-[var(--foreground)]">还没有调研证据</p>
+              <p className="text-sm font-semibold text-[var(--foreground)]">还没有调研证据</p>
               <p className="mt-1 text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
                 在 OfferU Agent 中使用“公司与岗位调研”技能。运行完成后，候选证据会出现在这里等待你的审核。
               </p>
@@ -809,19 +782,19 @@ export default function JobDetailPage() {
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
                   <p className="bauhaus-label text-[var(--foreground-muted)]">运行</p>
-                  <p className="mt-2 truncate text-sm font-black text-[var(--foreground)]" title={research.run_id}>
+                  <p className="mt-2 truncate text-sm font-semibold text-[var(--foreground)]" title={research.run_id}>
                     {research.run_id}
                   </p>
                 </div>
                 <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
                   <p className="bauhaus-label text-[var(--foreground-muted)]">证据 / 结论</p>
-                  <p className="mt-2 text-2xl font-black text-[var(--foreground)]">
+                  <p className="mt-2 text-2xl font-semibold text-[var(--foreground)]">
                     {research.source_count} / {research.finding_count}
                   </p>
                 </div>
                 <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
                   <p className="bauhaus-label text-[var(--foreground-muted)]">审核状态</p>
-                  <p className="mt-2 text-sm font-black uppercase text-[var(--foreground)]">
+                  <p className="mt-2 text-sm font-semibold uppercase text-[var(--foreground)]">
                     {research.review_status === "candidate"
                       ? "等待审核"
                       : research.review_status === "accepted"
@@ -900,10 +873,10 @@ export default function JobDetailPage() {
                         <article key={source.id} className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
                           <div className="flex items-start justify-between gap-3">
                             <div>
-                              <p className="text-xs font-black uppercase tracking-[0.08em] text-[var(--primary-blue)]">
+                              <p className="text-xs font-semibold text-[var(--primary-blue)]">
                                 {source.source_ref} · {source.source_class}
                               </p>
-                              <p className="mt-2 text-sm font-black text-[var(--foreground)]">{source.title}</p>
+                              <p className="mt-2 text-sm font-semibold text-[var(--foreground)]">{source.title}</p>
                               <p className="mt-1 text-xs font-semibold text-[var(--foreground-muted)]">{source.publisher}</p>
                             </div>
                             <ExternalUrlLink
@@ -991,7 +964,7 @@ export default function JobDetailPage() {
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="bauhaus-label text-[var(--foreground-muted)]">Decision gate</p>
-              <h2 className="mt-2 text-2xl font-black uppercase tracking-[-0.05em] text-[var(--foreground)]">
+              <h2 className="mt-2 text-lg font-semibold text-[var(--foreground)]">
                 投前决策
               </h2>
               <p className="mt-2 max-w-2xl text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
@@ -1023,7 +996,7 @@ export default function JobDetailPage() {
             </div>
           ) : !preApplication ? (
             <div className="bauhaus-panel-sm bg-[var(--surface-muted)] px-4 py-4">
-              <p className="text-sm font-black text-[var(--foreground)]">投前决策暂不可用</p>
+              <p className="text-sm font-semibold text-[var(--foreground)]">投前决策暂不可用</p>
               <p className="mt-1 text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
                 请先完成岗位调研并接受候选证据。
               </p>
@@ -1071,7 +1044,7 @@ export default function JobDetailPage() {
                       type="button"
                       onClick={() => setManualOpen((open) => !open)}
                       aria-expanded={manualOpen}
-                      className="text-xs font-black uppercase tracking-[0.08em] text-amber-900 underline-offset-4 hover:underline"
+                      className="text-xs font-semibold text-amber-900 underline-offset-4 hover:underline"
                     >
                       {manualOpen ? "收起人工决策" : "AI 不可用？由你本人人工决定"}
                     </button>
@@ -1089,7 +1062,7 @@ export default function JobDetailPage() {
                         <p className="bauhaus-label text-[var(--foreground-muted)]">
                           {preApplication.decision.decision_source === "manual" ? "决策来源" : "Agent 建议"}
                         </p>
-                        <p className="mt-2 text-2xl font-black text-[var(--foreground)]">
+                        <p className="mt-2 text-2xl font-semibold text-[var(--foreground)]">
                           {preApplication.decision.decision_source === "manual"
                             ? "人工决定"
                             : preApplication.decision.agent_recommendation
@@ -1132,7 +1105,7 @@ export default function JobDetailPage() {
                             <Chip size="sm" variant="flat" className="border border-[var(--border)] bg-[var(--surface-muted)] font-bold text-[var(--foreground)]">
                               {item.kind}
                             </Chip>
-                            <span className="text-xs font-black uppercase tracking-[0.08em] text-[var(--primary-blue)]">
+                            <span className="text-xs font-semibold text-[var(--primary-blue)]">
                               {item.source_refs.join(" · ")}
                             </span>
                           </div>
@@ -1216,7 +1189,7 @@ export default function JobDetailPage() {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="bauhaus-label text-[var(--foreground-muted)]">Material candidate</p>
-              <h2 className="mt-2 text-2xl font-black uppercase tracking-[-0.05em] text-[var(--foreground)]">
+              <h2 className="mt-2 text-lg font-semibold text-[var(--foreground)]">
                 材料候选
               </h2>
               <p className="mt-2 max-w-2xl text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
@@ -1248,7 +1221,7 @@ export default function JobDetailPage() {
             </div>
           ) : !resumeProposal ? (
             <div className="bauhaus-panel-sm bg-[var(--surface-muted)] px-4 py-4">
-              <p className="text-sm font-black text-[var(--foreground)]">材料候选尚未生成</p>
+              <p className="text-sm font-semibold text-[var(--foreground)]">材料候选尚未生成</p>
               <p className="mt-1 text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
                 岗位情报和已验证职业事实准备好后，这里会出现一份带依据的候选简历。
               </p>
@@ -1267,7 +1240,7 @@ export default function JobDetailPage() {
                   <div className="grid gap-3 sm:grid-cols-3">
                     <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
                       <p className="bauhaus-label text-[var(--foreground-muted)]">状态</p>
-                      <p className="mt-2 text-sm font-black text-[var(--foreground)]">
+                      <p className="mt-2 text-sm font-semibold text-[var(--foreground)]">
                         {resumeProposal.status === "ready"
                           ? "等待审核"
                           : resumeProposal.status === "accepted"
@@ -1279,13 +1252,13 @@ export default function JobDetailPage() {
                     </div>
                     <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
                       <p className="bauhaus-label text-[var(--foreground-muted)]">事实门</p>
-                      <p className="mt-2 text-sm font-black text-[var(--foreground)]">
+                      <p className="mt-2 text-sm font-semibold text-[var(--foreground)]">
                         {resumeProposal.fact_gate_status === "passed" ? "已通过" : resumeProposal.fact_gate_status}
                       </p>
                     </div>
                     <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
                       <p className="bauhaus-label text-[var(--foreground-muted)]">候选变化</p>
-                      <p className="mt-2 text-sm font-black text-[var(--foreground)]">
+                      <p className="mt-2 text-sm font-semibold text-[var(--foreground)]">
                         {resumeProposal.change_count > 0
                           ? `${resumeProposal.change_count} 项可审核变化`
                           : "保留已验证事实"}
@@ -1355,7 +1328,7 @@ export default function JobDetailPage() {
                                   <Chip size="sm" variant="flat" className="border border-[var(--border)] bg-white font-bold text-[var(--foreground)]">
                                     {change.change_type === "added" ? "新增" : change.change_type === "removed" ? "移除" : "修改"}
                                   </Chip>
-                                  <span className="text-sm font-black text-[var(--foreground)]">{change.title || "简历条目"}</span>
+                                  <span className="text-sm font-semibold text-[var(--foreground)]">{change.title || "简历条目"}</span>
                                 </div>
                                 <p className="mt-3 text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
                                   原内容：{resumeProposalRowText(change.before)}
@@ -1369,7 +1342,7 @@ export default function JobDetailPage() {
                         </div>
                       ) : (
                         <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
-                          <p className="text-sm font-black text-[var(--foreground)]">当前没有安全的事实改写</p>
+                          <p className="text-sm font-semibold text-[var(--foreground)]">当前没有安全的事实改写</p>
                           <p className="mt-2 text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
                             OfferU 保留了你的已验证事实，没有为了匹配岗位而编造新经历。{missingCapabilities.length > 0 ? ` 当前仍缺少：${missingCapabilities.join("、")}` : ""}
                           </p>
@@ -1412,7 +1385,7 @@ export default function JobDetailPage() {
         <CardBody className="space-y-5 p-5">
           <div>
             <p className="bauhaus-label text-[var(--foreground-muted)]">Application context</p>
-            <h2 className="mt-2 text-2xl font-black uppercase tracking-[-0.05em] text-[var(--foreground)]">
+            <h2 className="mt-2 text-lg font-semibold text-[var(--foreground)]">
               投递进展
             </h2>
             <p className="mt-2 max-w-2xl text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
@@ -1433,7 +1406,7 @@ export default function JobDetailPage() {
             </div>
           ) : progressRecords.length === 0 ? (
             <div className="bauhaus-panel-sm bg-[var(--surface-muted)] px-4 py-4">
-              <p className="text-sm font-black text-[var(--foreground)]">
+              <p className="text-sm font-semibold text-[var(--foreground)]">
                 {progressError ? "暂时无法读取投递尝试" : "尚未创建投递尝试"}
               </p>
               <p className="mt-1 text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
@@ -1449,11 +1422,11 @@ export default function JobDetailPage() {
                   <p className="bauhaus-label text-[var(--foreground-muted)]">
                     {selectedRecordIsOpportunity ? "目标岗位" : "投递尝试"}
                   </p>
-                  <p className="mt-2 text-2xl font-black text-[var(--foreground)]">{progressRecords.length}</p>
+                  <p className="mt-2 text-2xl font-semibold text-[var(--foreground)]">{progressRecords.length}</p>
                 </div>
                 <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
                   <p className="bauhaus-label text-[var(--foreground-muted)]">当前阶段</p>
-                  <p className="mt-2 text-sm font-black text-[var(--foreground)]">
+                  <p className="mt-2 text-sm font-semibold text-[var(--foreground)]">
                     {progressTimeline?.current_stage
                       ? applicationStageLabel(progressTimeline.current_stage)
                       : selectedProgressRecord
@@ -1463,7 +1436,7 @@ export default function JobDetailPage() {
                 </div>
                 <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
                   <p className="bauhaus-label text-[var(--foreground-muted)]">下一动作</p>
-                  <p className="mt-2 text-sm font-black leading-relaxed text-[var(--foreground)]">
+                  <p className="mt-2 text-sm font-semibold leading-relaxed text-[var(--foreground)]">
                     {progressTimeline?.next_action || selectedProgressRecord?.next_action || "-"}
                   </p>
                 </div>
@@ -1489,7 +1462,7 @@ export default function JobDetailPage() {
                         }`}
                       >
                         <span>
-                          <span className="block text-sm font-black text-[var(--foreground)]">
+                          <span className="block text-sm font-semibold text-[var(--foreground)]">
                             {record.application_attempt_id == null
                               ? `目标岗位 · ${applicationStageLabel(record.current_stage)}`
                               : `#${record.application_attempt_id} · ${applicationStageLabel(record.current_stage)}`}
@@ -1529,7 +1502,7 @@ export default function JobDetailPage() {
                     {progressTimeline.timeline.map((event) => (
                       <article key={event.event_id} className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="text-sm font-black text-[var(--foreground)]">
+                          <p className="text-sm font-semibold text-[var(--foreground)]">
                             {applicationStageLabel(event.previous_stage)} → {applicationStageLabel(event.stage)}
                           </p>
                           <p className="text-xs font-bold text-[var(--foreground-muted)]">
@@ -1568,7 +1541,7 @@ export default function JobDetailPage() {
         <CardBody className="space-y-4 p-5">
           <div>
             <p className="bauhaus-label text-[var(--foreground-muted)]">原始描述</p>
-            <h2 className="mt-2 text-2xl font-black uppercase tracking-[-0.05em] text-[var(--foreground)]">职位描述</h2>
+            <h2 className="mt-2 text-lg font-semibold text-[var(--foreground)]">职位描述</h2>
           </div>
           {job.raw_description ? (
             <div className="bauhaus-panel-sm max-h-[460px] overflow-auto bg-[var(--surface-muted)] p-4">
@@ -1607,7 +1580,7 @@ export default function JobDetailPage() {
 
       <Modal isOpen={joinModalOpen} onClose={() => setJoinModalOpen(false)} size="md">
         <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b border-[var(--border)] bg-[var(--surface-muted)] px-6 py-5 text-xl font-black tracking-[-0.06em]">
+          <ModalHeader className="border-b border-[var(--border)] bg-[var(--surface-muted)] px-6 py-5 text-xl font-semibold tracking-[-0.06em]">
             加入已筛选
           </ModalHeader>
           <ModalBody className="space-y-3 px-6 py-6">
@@ -1635,7 +1608,7 @@ export default function JobDetailPage() {
 
       <Modal isOpen={trashConfirmOpen} onClose={() => setTrashConfirmOpen(false)} size="md">
         <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b border-[var(--border)] bg-[var(--surface-muted)] px-6 py-5 text-xl font-black tracking-[-0.06em] text-[var(--foreground)]">
+          <ModalHeader className="border-b border-[var(--border)] bg-[var(--surface-muted)] px-6 py-5 text-xl font-semibold tracking-[-0.06em] text-[var(--foreground)]">
             移入回收站
           </ModalHeader>
           <ModalBody className="px-6 py-6">

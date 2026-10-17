@@ -1,5 +1,6 @@
 "use client";
 
+import { PageHeader } from "@/components/layout/PageHeader";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ModelPicker } from "@/components/settings/ModelPicker";
@@ -507,15 +508,15 @@ function LocalDataSafetyCard() {
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
             <p className="bauhaus-label text-[var(--foreground-muted)]">数据库</p>
-            <p className="mt-2 flex items-center gap-2 text-sm font-black"><Database size={16} />{status?.database.filename || "读取中"}</p>
+            <p className="mt-2 flex items-center gap-2 text-sm font-semibold"><Database size={16} />{status?.database.filename || "读取中"}</p>
           </div>
           <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
             <p className="bauhaus-label text-[var(--foreground-muted)]">可恢复备份</p>
-            <p className="mt-2 text-3xl font-black">{status?.backup_count ?? "—"}</p>
+            <p className="mt-2 text-3xl font-semibold">{status?.backup_count ?? "—"}</p>
           </div>
           <div className={`bauhaus-panel-sm p-4 ${status?.pending_restore ? "bg-amber-50" : "bg-emerald-50"}`}>
             <p className="bauhaus-label text-[var(--foreground-muted)]">恢复状态</p>
-            <p className="mt-2 flex items-center gap-2 text-sm font-black">
+            <p className="mt-2 flex items-center gap-2 text-sm font-semibold">
               {status?.pending_restore ? <RotateCcw size={16} /> : <ShieldCheck size={16} />}
               {status?.pending_restore ? "等待重启" : "无待恢复任务"}
             </p>
@@ -548,7 +549,7 @@ function LocalDataSafetyCard() {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="max-w-3xl">
               <p className="bauhaus-label text-amber-800">Demo / Fixture 工作区</p>
-              <p className="mt-2 text-sm font-black text-amber-950">重置演示数据与删除真实数据是两件事</p>
+              <p className="mt-2 text-sm font-semibold text-amber-950">重置演示数据与删除真实数据是两件事</p>
               <p className="mt-2 text-sm font-medium leading-relaxed text-amber-900">
                 {SHOWCASE
                   ? "当前为独立 Showcase IndexedDB。重置会清除这个虚构展示工作区，下一次读取会回到内置演示数据。"
@@ -578,7 +579,7 @@ function LocalDataSafetyCard() {
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="max-w-3xl">
                 <p className="bauhaus-label text-[var(--foreground-muted)]">隐私卫生</p>
-                <p className="mt-2 text-sm font-black text-[var(--foreground)]">
+                <p className="mt-2 text-sm font-semibold text-[var(--foreground)]">
                   {legacyEmailBodyCount ? `有 ${legacyEmailBodyCount} 条历史邮件正文待处理` : "没有待清理的历史邮件正文"}
                 </p>
                 <p className="mt-2 text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">
@@ -629,14 +630,14 @@ function LocalDataSafetyCard() {
 
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-black text-[var(--foreground)]">最近备份</p>
+            <p className="text-sm font-semibold text-[var(--foreground)]">最近备份</p>
             {invalidBackups > 0 && <Chip color="danger" size="sm">{invalidBackups} 个无效归档</Chip>}
           </div>
           {!loading && backups.length === 0 && <p className="text-sm font-medium text-[var(--foreground-muted)]">还没有备份。创建第一份一致性备份后，可以从这里选择恢复。</p>}
           {backups.slice(0, 5).map((backup) => (
             <div key={backup.backup_id} className="bauhaus-panel-sm flex flex-wrap items-center justify-between gap-3 bg-[var(--surface-muted)] p-3" data-testid={`data-backup-${backup.backup_id}`}>
               <div>
-                <p className="text-sm font-black">
+                <p className="text-sm font-semibold">
                   {backup.reason === "pre_restore" ? "恢复前自动备份" : backup.reason === "pre_migration" ? "迁移前自动备份" : backup.reason === "pre_reset" ? "全清前自动备份" : "手动备份"} · {backup.backup_id.slice(0, 8)}
                 </p>
                 <p className="mt-1 text-xs font-medium text-[var(--foreground-muted)]">{new Date(backup.created_at).toLocaleString()} · {formatBytes(backup.size_bytes)} · v{backup.version}</p>
@@ -665,7 +666,7 @@ function LocalDataSafetyCard() {
 
       <Modal isOpen={isOpen} onClose={onClose} size="lg" placement="center">
         <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b-2 border-[var(--border-strong)] px-6 py-5 text-xl font-black">确认恢复本地数据</ModalHeader>
+          <ModalHeader className="border-b-2 border-[var(--border-strong)] px-6 py-5 text-xl font-semibold">确认恢复本地数据</ModalHeader>
           <ModalBody className="space-y-4 px-6 py-6">
             <div className="bauhaus-panel-sm border-amber-500 bg-amber-50 p-4 text-sm font-semibold leading-relaxed text-amber-950">
               当前运行中的数据不会立刻改变。OfferU 会校验并暂存备份；下次启动前先创建恢复前备份，再替换 SQLite 与受管资产。恢复失败会自动回滚并停止启动。
@@ -684,7 +685,7 @@ function LocalDataSafetyCard() {
 
       <Modal isOpen={demoResetOpen} onClose={() => setDemoResetOpen(false)} size="lg" placement="center">
         <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b-2 border-[var(--border-strong)] px-6 py-5 text-xl font-black">确认重置 Demo 工作区</ModalHeader>
+          <ModalHeader className="border-b-2 border-[var(--border-strong)] px-6 py-5 text-xl font-semibold">确认重置 Demo 工作区</ModalHeader>
           <ModalBody className="space-y-4 px-6 py-6">
             <div className="bauhaus-panel-sm border-amber-500 bg-amber-50 p-4 text-sm font-semibold leading-relaxed text-amber-950">
               只处理明确标记的合成数据。不会调用真实岗位删除接口，也不会删除你的 Profile、真实岗位、简历、备份或连接凭据。展示模式只清除独立的 Showcase IndexedDB。
@@ -702,7 +703,7 @@ function LocalDataSafetyCard() {
 
       <Modal isOpen={privacyScrubOpen} onClose={() => setPrivacyScrubOpen(false)} size="lg" placement="center">
         <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b-2 border-[var(--border-strong)] px-6 py-5 text-xl font-black">确认清理历史邮件正文</ModalHeader>
+          <ModalHeader className="border-b-2 border-[var(--border-strong)] px-6 py-5 text-xl font-semibold">确认清理历史邮件正文</ModalHeader>
           <ModalBody className="space-y-4 px-6 py-6">
             <div className="bauhaus-panel-sm border-amber-500 bg-amber-50 p-4 text-sm font-semibold leading-relaxed text-amber-950">
               这会清空已完成结构化解析的旧面试通知正文，但保留通知时间、岗位关联和结构化状态。正文不会进入备份恢复，也不能在清理后恢复。OfferU 不会展示待清理正文内容。
@@ -721,7 +722,7 @@ function LocalDataSafetyCard() {
 
       <Modal isOpen={syntheticPurgeOpen} onClose={() => setSyntheticPurgeOpen(false)} size="lg" placement="center">
         <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b-2 border-[var(--border-strong)] px-6 py-5 text-xl font-black">确认清理合成邮箱测试数据</ModalHeader>
+          <ModalHeader className="border-b-2 border-[var(--border-strong)] px-6 py-5 text-xl font-semibold">确认清理合成邮箱测试数据</ModalHeader>
           <ModalBody className="space-y-4 px-6 py-6">
             <div className="bauhaus-panel-sm border-amber-500 bg-amber-50 p-4 text-sm font-semibold leading-relaxed text-amber-950">
               只会处理 OfferU 保留的合成邮箱测试账号、同步运行、信号、候选和本机凭据引用。若它们已经关联正式时间线，系统会拒绝清理；真实邮箱、岗位和投递状态不会被处理。
@@ -1310,42 +1311,7 @@ export default function SettingsPage() {
       transition={{ type: "spring", damping: 15 }}
       className="space-y-6"
     >
-      <section className="bauhaus-panel overflow-hidden bg-[var(--surface)]">
-        <div className="grid gap-6 border-b border-[var(--border-strong)]/12 p-6 md:p-8 xl:grid-cols-[1.05fr_0.95fr]">
-          <div className="space-y-4">
-            <span className="bauhaus-chip bg-[var(--surface-muted)] text-[var(--foreground)]">系统配置</span>
-            <div>
-              <p className="bauhaus-label text-[var(--foreground-muted)]">{SHOWCASE ? "网页演示 Agent" : "AI 与本机连接"}</p>
-              <h1 className="mt-2 text-4xl font-bold leading-tight md:text-5xl">{SHOWCASE ? "直接体验内置 Agent" : "连接你的工作伙伴"}</h1>
-              <p className="mt-3 max-w-2xl text-sm font-medium leading-relaxed text-[var(--foreground-muted)] md:text-base">
-                {SHOWCASE
-                  ? "网页演示只使用浏览器内置 Agent 与虚构 IndexedDB 数据，不连接 localhost，也不会扫描你的本机 Coding Agent。真实数据与外置 Agent 接入请使用 OfferU Desktop。"
-                  : "连接已有 Agent，或为内置 Agent 配置模型服务。模型连接、搜索规则和数据安全在这里统一管理。"}
-              </p>
-            </div>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-1">
-            <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4 text-[var(--foreground)]">
-              <p className="bauhaus-label text-[var(--foreground-muted)]">{SHOWCASE ? "演示模式" : "本机连接"}</p>
-              <p className="mt-2 text-4xl font-bold">{SHOWCASE ? "内置" : "Agent"}</p>
-              <p className="mt-2 text-sm font-medium text-[var(--foreground-muted)]">{SHOWCASE ? "直接使用网页演示 Agent；不会连接本机环境。" : "在下方检查 Codex、Claude Code、OpenCode 等本机 Agent。"}</p>
-            </div>
-            <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4 text-[var(--foreground)]">
-              <p className="bauhaus-label text-[var(--foreground-muted)]">启用来源</p>
-              <p className="mt-2 text-4xl font-bold">{sourcesEnabled.length}</p>
-              <p className="mt-2 text-sm font-medium text-[var(--foreground-muted)]">当前启用的数据抓取来源数。</p>
-            </div>
-            <div className="bauhaus-panel-sm bg-[var(--status-blush)] p-4 text-[var(--foreground)]">
-              <p className="bauhaus-label text-[var(--foreground-muted)]">待保存</p>
-              <p className="mt-2 text-4xl font-bold">
-                {Number(apiDirty) + Number(settingsDirty)}
-              </p>
-              <p className="mt-2 text-sm font-medium text-[var(--foreground-muted)]">需要提交到本地配置文件的待保存模块数。</p>
-            </div>
-          </div>
-        </div>
-      </section>
+      <PageHeader title="设置" description={SHOWCASE ? "展示版不连接本机，真实数据和外置 Agent 请使用桌面版。" : "Agent 连接、模型服务和数据安全。"} />
 
       <AgentConnectionPanel />
       <JobSourceConnectionsCard />
@@ -1382,7 +1348,7 @@ export default function SettingsPage() {
           {config?.active_llm_summary && <div className="flex flex-wrap items-center gap-3 border-t border-[var(--border)] pt-4"><span className="text-sm text-[var(--foreground-muted)]">已保存：{config.active_llm_summary.service_name} · {config.active_llm_summary.model}</span><TestLlmButton /></div>}
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-[var(--foreground-muted)]">{apiDirty ? "配置有未保存的修改" : "密钥保存在系统钥匙串"}</p>
-            {apiDirty && <Button isLoading={apiSaving} onPress={() => void handleSaveApiSettings()} className="rounded-lg bg-[var(--primary-blue)] text-white">保存模型配置</Button>}
+            {apiDirty && <Button isLoading={apiSaving} onPress={() => void handleSaveApiSettings()} className="rounded-lg bg-[var(--foreground)] text-white">保存模型配置</Button>}
           </div>
           {listFeedback && <p role="status" className={`text-sm ${listFeedback.type === "error" ? "text-red-600" : "text-[var(--foreground-muted)]"}`}>{listFeedback.message}</p>}
           {apiSaveError && <p role="alert" className="text-sm text-red-600">{apiSaveError}</p>}
@@ -1712,7 +1678,7 @@ export default function SettingsPage() {
 
       <Modal isOpen={isDeleteOpen} onClose={onDeleteClose} size="sm" placement="center">
         <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b-2 border-[var(--border-strong)] bg-[#F0C020] px-6 py-5 text-xl font-black tracking-[-0.06em]">
+          <ModalHeader className="border-b-2 border-[var(--border-strong)] bg-[#F0C020] px-6 py-5 text-xl font-semibold tracking-[-0.06em]">
             确认删除
           </ModalHeader>
           <ModalBody className="px-6 py-6">

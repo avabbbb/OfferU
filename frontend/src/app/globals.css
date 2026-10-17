@@ -72,7 +72,6 @@ body {
   min-height: 100vh;
   min-height: 100dvh;
   background:
-    radial-gradient(circle at 100% 0, rgba(199, 120, 103, 0.08), transparent 28rem),
     var(--background);
   color: var(--foreground);
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
@@ -435,18 +434,18 @@ select {
 }
 
 .fullcalendar-dark .fc {
-  --fc-border-color: rgba(18, 18, 18, 0.2);
-  --fc-button-bg-color: #ead18a;
-  --fc-button-border-color: rgba(18, 18, 18, 0.24);
+  --fc-border-color: rgba(18, 18, 18, 0.09);
+  --fc-button-bg-color: #ffffff;
+  --fc-button-border-color: rgba(18, 18, 18, 0.12);
   --fc-button-text-color: #121212;
-  --fc-button-hover-bg-color: #d67b71;
+  --fc-button-hover-bg-color: rgba(18, 18, 18, 0.04);
   --fc-button-hover-border-color: rgba(18, 18, 18, 0.24);
-  --fc-button-hover-text-color: #ffffff;
-  --fc-button-active-bg-color: #6f8075;
+  --fc-button-hover-text-color: #121212;
+  --fc-button-active-bg-color: #121212;
   --fc-button-active-border-color: rgba(18, 18, 18, 0.24);
   --fc-page-bg-color: transparent;
   --fc-neutral-bg-color: rgba(18, 18, 18, 0.03);
-  --fc-today-bg-color: rgba(228, 196, 106, 0.22);
+  --fc-today-bg-color: rgba(18, 18, 18, 0.035);
   --fc-event-text-color: #121212;
   color: var(--foreground);
 }
@@ -621,7 +620,6 @@ select {
 /* ── OfferU flat workbench: Notion interaction base + local woven material ── */
 .workbench-main {
   background:
-    radial-gradient(circle at 88% 4%, rgba(199, 120, 103, 0.055), transparent 28rem),
     var(--background);
 }
 
@@ -635,16 +633,6 @@ select {
   scroll-margin-top: 1rem;
 }
 
-.stage-hero {
-  position: relative;
-  isolation: isolate;
-  overflow: hidden;
-  border-color: var(--border-strong);
-  border-radius: 16px;
-  box-shadow: 0 1px 2px var(--shadow-soft), 0 12px 28px rgba(24, 40, 48, 0.035);
-}
-
-.stage-hero::after,
 .surface-fabric::after {
   position: absolute;
   inset: 0 0 0 auto;
@@ -661,54 +649,9 @@ select {
   mask-image: linear-gradient(90deg, transparent, #000 28%, #000);
 }
 
-.stage-hero > *,
 .surface-fabric > * {
   position: relative;
   z-index: 1;
-}
-
-.stage-hero h1 {
-  max-width: 18ch;
-  font-size: clamp(1.9rem, 3.3vw, 2.65rem);
-  font-weight: 720;
-  line-height: 1.12;
-  letter-spacing: -0.035em;
-  text-transform: none;
-  text-wrap: balance;
-}
-
-.stage-hero .bauhaus-panel-sm {
-  background: rgba(255, 255, 255, 0.9);
-  border-color: rgba(36, 48, 57, 0.12);
-  backdrop-filter: blur(8px);
-}
-
-/* 页头只回答三件事：我在哪、现在有多少、下一步是什么。 */
-.stage-hero > div:first-child {
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(240px, 0.8fr);
-  align-items: center;
-  gap: 2rem;
-}
-
-.stage-hero > div:first-child > div:last-child {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.75rem;
-}
-
-.stage-hero > div:first-child > div:last-child > div {
-  min-width: 0;
-}
-
-.stage-hero .bauhaus-panel-sm {
-  min-height: 108px;
-}
-
-.stage-hero .bauhaus-panel-sm > p:not(.bauhaus-label) {
-  font-size: clamp(1.25rem, 2vw, 1.9rem);
-  line-height: 1.12;
-  letter-spacing: -0.025em;
 }
 
 .stage-page--today {
@@ -866,22 +809,6 @@ select {
   100% { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-@container (max-width: 760px) {
-  .stage-hero::after {
-    width: 68%;
-    opacity: 0.45;
-  }
-
-  .stage-hero > div:first-child {
-    display: block;
-  }
-
-  .stage-hero > div:first-child > div:last-child {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    margin-top: 1.25rem;
-  }
-}
-
 @container (min-width: 640px) {
   .data-toolbar-primary {
     flex-direction: row;
@@ -923,8 +850,6 @@ select {
     justify-content: flex-end;
   }
 }
-
-
 
 /* Profile 的织物感只作为局部材料提示，不进入正文阅读面。 */
 .profile-woven-accent {
@@ -1050,33 +975,14 @@ body {
   background: transparent;
 }
 
-/* 网格只留在工作区，淡到「感觉得到、看不清」。 */
 .workbench-main {
-  background-color: var(--background);
-  background-image:
-    linear-gradient(to right, rgba(31, 31, 29, 0.028) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(31, 31, 29, 0.028) 1px, transparent 1px);
-  background-size: var(--grid-size) var(--grid-size);
+  background: #ffffff;
 }
 
-.workbench-main h1:not(.resume-body *),
-.stage-hero h1 {
-  font-family: var(--font-serif);
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
-
-.workbench-main h1:not(.resume-body *)::after,
-.stage-hero h1::after {
-  display: block;
-  width: 2.2rem;
-  height: 2.5px;
-  margin-top: 0.5rem;
-  content: "";
-  border-radius: 2px;
-  background: var(--primary-red);
-  transform: rotate(-1.2deg);
-  transform-origin: left center;
+.workbench-main h1:not(.resume-body *){
+  font-family: var(--font-sans);
+  font-weight: 650;
+  letter-spacing: -0.015em;
 }
 
 .workbench-main h2:not(.resume-body *),
@@ -1094,8 +1000,6 @@ body {
   background: var(--surface) !important;
   box-shadow: var(--shadow-paper) !important;
 }
-
-
 
 .bauhaus-button {
   border-color: var(--border-strong) !important;
@@ -1124,20 +1028,18 @@ body {
   background: #33332f !important;
 }
 
-.bauhaus-button-blue {
-  border-color: rgba(46, 76, 109, 0.3) !important;
-  background: rgba(46, 76, 109, 0.06) !important;
-  color: var(--primary-blue) !important;
-}
-
-.bauhaus-button-green {
-  background: var(--status-sage) !important;
-  color: var(--primary-green) !important;
-}
-
+.bauhaus-button-blue,
+.bauhaus-button-green,
 .bauhaus-button-yellow {
-  background: rgba(128, 99, 43, 0.1) !important;
-  color: var(--primary-yellow) !important;
+  border: 1px solid var(--border) !important;
+  background: var(--surface) !important;
+  color: var(--foreground) !important;
+}
+
+.bauhaus-button-blue:hover,
+.bauhaus-button-green:hover,
+.bauhaus-button-yellow:hover {
+  background: var(--surface-hover) !important;
 }
 
 .bauhaus-chip {
@@ -1150,14 +1052,6 @@ body {
   letter-spacing: 0;
 }
 
-.stage-hero {
-  border-radius: var(--radius-card) !important;
-  border-color: var(--border) !important;
-  background: var(--surface);
-  box-shadow: var(--shadow-paper) !important;
-}
-
-.stage-hero::after,
 .surface-fabric::after {
   display: none;
 }
@@ -1188,7 +1082,7 @@ body {
 }
 
 .offeru-sidebar-brand p:last-child {
-  font-family: var(--font-serif);
+  font-family: var(--font-sans);
   font-size: 1.12rem;
   letter-spacing: -0.02em;
 }
@@ -1267,12 +1161,6 @@ body {
 
 .inspector-fields {
   background: transparent !important;
-}
-
-@media (max-width: 767px) {
-  .workbench-main {
-    background-size: 24px 24px;
-  }
 }
 
 /* 简历卡的毛玻璃信息层（Apple 式：高斯模糊 + 提饱和 + 顶部一道高光）。 */

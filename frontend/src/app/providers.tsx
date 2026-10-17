@@ -211,7 +211,7 @@ export function BackendReadyGate({ children }: { children: React.ReactNode }) {
             <span>
               部分后台恢复未完成：{failedChecks.map((name) => recoveryLabels[name] || name).join("、")}。核心数据仍可使用，请稍后重试。
             </span>
-            <Link className="font-black underline underline-offset-2" href="/settings">
+            <Link className="font-semibold underline underline-offset-2" href="/settings">
               查看设置与诊断
             </Link>
           </div>

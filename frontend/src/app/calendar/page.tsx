@@ -1,5 +1,6 @@
 "use client";
 
+import { PageHeader } from "@/components/layout/PageHeader";
 import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
@@ -111,36 +112,7 @@ export default function CalendarPage() {
       transition={{ duration: 0.28, ease: "easeOut" }}
       className="space-y-8"
     >
-      <section className="bauhaus-panel overflow-hidden bg-white">
-        <div className="grid gap-6 p-6 md:p-8 xl:grid-cols-[1.1fr_0.9fr]">
-          <div className="space-y-4">
-            <span className="bauhaus-chip bg-[var(--surface-muted)] text-[var(--foreground)]">日程日历</span>
-            <div>
-              <p className="bauhaus-label text-[var(--foreground-muted)]">日程面板</p>
-              <h1 className="mt-3 text-5xl font-black uppercase leading-[0.88] tracking-[-0.08em] sm:text-6xl">日程</h1>
-              <p className="mt-4 max-w-2xl text-base font-medium leading-relaxed text-[var(--foreground-muted)]">
-                把笔试、面试和截止日期收束到一块几何日历板上，避免信息散落在邮件和聊天记录里，
-                让后续准备和时间冲突一眼可见。
-              </p>
-            </div>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-1">
-            <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4 text-[var(--foreground)]">
-              <p className="bauhaus-label text-[var(--foreground-muted)]">事件</p>
-              <p className="mt-3 text-4xl font-black uppercase tracking-[-0.08em]">{events?.length ?? 0}</p>
-            </div>
-            <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4 text-[var(--foreground)]">
-              <p className="bauhaus-label text-[var(--foreground-muted)]">模式</p>
-              <p className="mt-3 text-4xl font-black uppercase tracking-[-0.08em]">2</p>
-            </div>
-            <div className="bauhaus-panel-sm bg-[var(--status-blush)] p-4 text-[var(--foreground)]">
-              <p className="bauhaus-label text-[var(--foreground-muted)]">收录</p>
-              <p className="mt-3 text-lg font-black uppercase tracking-[-0.05em]">面试 / 截止</p>
-            </div>
-          </div>
-        </div>
-      </section>
+      <PageHeader title="日程" description="笔试、面试和截止日期都在这里。" />
 
       <section className="flex flex-wrap items-center justify-between gap-4">
         <Tabs
@@ -201,7 +173,7 @@ export default function CalendarPage() {
                         <CalendarIcon size={18} />
                       </div>
                       <div>
-                        <p className="text-xl font-black tracking-[-0.04em] text-[var(--foreground)]">{event.title}</p>
+                        <p className="text-xl font-semibold tracking-[-0.04em] text-[var(--foreground)]">{event.title}</p>
                         <p className="mt-2 text-sm font-medium text-[var(--foreground-muted)]">
                           {new Date(event.start_time).toLocaleString("zh-CN")}
                           {event.location && ` · ${event.location}`}
@@ -222,7 +194,7 @@ export default function CalendarPage() {
           <Card className="bauhaus-panel rounded-none bg-[var(--surface-muted)] text-[var(--foreground)] shadow-none">
             <CardBody className="p-10 text-center">
               <CalendarIcon size={54} className="mx-auto text-[var(--foreground-muted)]" />
-              <p className="mt-4 text-2xl font-black uppercase tracking-[-0.05em]">暂无日程</p>
+              <p className="mt-4 text-lg font-semibold">暂无日程</p>
               <p className="mt-3 text-sm font-medium text-[var(--foreground-muted)]">
                 点击「添加日程」或使用 AI 自动填充，把面试和截止时间收拢进这块时间板。
               </p>
@@ -233,7 +205,7 @@ export default function CalendarPage() {
 
       <Modal isOpen={isOpen} onClose={onClose} placement="center">
         <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b border-[var(--border-strong)]/12 bg-[var(--surface-muted)] px-6 py-5 text-xl font-black tracking-[-0.06em]">
+          <ModalHeader className="border-b border-[var(--border-strong)]/12 bg-[var(--surface-muted)] px-6 py-5 text-xl font-semibold tracking-[-0.06em]">
             添加日程
           </ModalHeader>
           <ModalBody className="space-y-3 px-6 py-6">

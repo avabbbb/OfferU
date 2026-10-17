@@ -449,7 +449,7 @@ export default function AIInterviewPage() {
             <div className="mt-5 space-y-3">
               <p className="text-xs leading-5 text-[var(--foreground-muted)]">样本 {focusPlan.source.valid_sample_count} 个 · {focusPlan.source.company_count} 家公司 · {dataModeLabel(focusPlan.source.data_mode)}</p>
               <div className="space-y-2">
-                {focusPlan.focuses.map((focus) => <div key={focus.capability} className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2 text-xs"><span className="font-semibold">{focus.capability}</span><span className="font-black text-[var(--primary-red)]">{focus.priority_percent}%</span></div>)}
+                {focusPlan.focuses.map((focus) => <div key={focus.capability} className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2 text-xs"><span className="font-semibold">{focus.capability}</span><span className="font-semibold text-[var(--primary-red)]">{focus.priority_percent}%</span></div>)}
               </div>
               <p className="border-t border-[var(--border-strong)] pt-4 text-xs leading-6 text-[var(--foreground-muted)]">训练中只追问事实、指标、机制和权衡，不给答案或提前评分；新观察不会自动写入正式 Profile。</p>
             </div>
@@ -476,13 +476,13 @@ function FocusPlanPreview({ plan }: { plan: InterviewFocusPlan }) {
   return (
     <div className="mt-5 border border-[var(--primary-blue)] bg-blue-50 p-4" data-testid="interview-focus-plan">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs font-black uppercase tracking-[0.12em] text-[var(--primary-blue)]">Deterministic Focus Plan</p>
+        <p className="text-xs font-semibold text-[var(--primary-blue)]">Deterministic Focus Plan</p>
         <span className="text-[11px] font-semibold text-[var(--foreground-muted)]">{dataModeLabel(plan.source.data_mode)} · {plan.source.valid_sample_count} 个 comparator</span>
       </div>
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
         {plan.focuses.map((focus) => (
           <div key={focus.capability} className="rounded-lg border border-blue-200 bg-white px-3 py-2">
-            <div className="flex items-center justify-between gap-2"><span className="text-sm font-black text-[var(--foreground)]">{focus.capability}</span><span className="text-xs font-black text-[var(--primary-red)]">{focus.priority_percent}%</span></div>
+            <div className="flex items-center justify-between gap-2"><span className="text-sm font-semibold text-[var(--foreground)]">{focus.capability}</span><span className="text-xs font-semibold text-[var(--primary-red)]">{focus.priority_percent}%</span></div>
             <p className="mt-1 text-[11px] font-medium text-[var(--foreground-muted)]">岗位特殊度 {focus.role_distinctiveness} · 证据强度 {focus.evidence_strength} · 缺口 {focus.evidence_gap}</p>
           </div>
         ))}
@@ -496,8 +496,8 @@ function InterviewerStatus({ notice }: { notice: string }) {
   return (
     <aside className="flex min-h-72 flex-col justify-between rounded-2xl border border-[var(--primary-blue)] bg-blue-50 p-6" data-testid="interviewer-mode-status">
       <div>
-        <Chip size="sm" variant="flat" className="border border-[var(--primary-blue)] bg-white font-black text-[var(--primary-blue)]">INTERVIEWER MODE</Chip>
-        <h3 className="mt-4 text-lg font-black tracking-[-0.03em] text-[var(--foreground)]">只继续追问</h3>
+        <Chip size="sm" variant="flat" className="border border-[var(--primary-blue)] bg-white font-semibold text-[var(--primary-blue)]">INTERVIEWER MODE</Chip>
+        <h3 className="mt-4 text-lg font-semibold tracking-[-0.03em] text-[var(--foreground)]">只继续追问</h3>
         <p className="mt-3 text-sm leading-6 text-[var(--foreground-soft)]">本场不会即时夸奖、给答案或提前评分。模糊、缺事实/机制/指标的回答会触发下一条追问；与 Career Evidence 的表述差异会被中性澄清。</p>
       </div>
       <p className="mt-6 border-t border-blue-200 pt-4 text-xs font-semibold leading-5 text-[var(--primary-blue)]">{notice || "回答已记录。继续作答。"}</p>
@@ -571,8 +571,8 @@ function RoleInterviewDebrief({ debrief }: { debrief: NonNullable<AIInterviewRep
     <section className="rounded-2xl border-2 border-[var(--primary-blue)] bg-blue-50 p-6" data-testid="role-interview-debrief">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <Chip size="sm" variant="flat" className="border border-[var(--primary-blue)] bg-white font-black text-[var(--primary-blue)]">COACH MODE · DEBRIEF</Chip>
-          <h2 className="mt-3 text-2xl font-black tracking-[-0.04em] text-[var(--foreground)]">为什么问这些题</h2>
+          <Chip size="sm" variant="flat" className="border border-[var(--primary-blue)] bg-white font-semibold text-[var(--primary-blue)]">COACH MODE · DEBRIEF</Chip>
+          <h2 className="mt-3 text-2xl font-semibold tracking-[-0.04em] text-[var(--foreground)]">为什么问这些题</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--foreground-soft)]">以下复盘把实际回答与岗位 Delta、Career Evidence Gap 放在一起；它是本场学习观察，不会自动改写正式 Profile。</p>
         </div>
         <div className="text-right text-xs font-semibold text-[var(--foreground-muted)]">{dataModeLabel(debrief.source.data_mode)}<br />样本 {String(debrief.source.valid_sample_count ?? "—")}</div>
@@ -581,15 +581,15 @@ function RoleInterviewDebrief({ debrief }: { debrief: NonNullable<AIInterviewRep
         {debrief.focuses.map((focus) => (
           <details key={focus.capability} className="rounded-xl border border-blue-200 bg-white">
             <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 p-4">
-              <span className="flex items-center gap-3"><span className="text-sm font-black text-[var(--foreground)]">{focus.capability}</span><span className="text-xs font-semibold text-[var(--foreground-muted)]">岗位特殊度 {focus.role_distinctiveness} · 档案证据覆盖缺口 {focus.evidence_gap}</span></span>
-              <span className="text-xs font-black text-[var(--primary-red)]">训练权重 {focus.priority_percent}%</span>
+              <span className="flex items-center gap-3"><span className="text-sm font-semibold text-[var(--foreground)]">{focus.capability}</span><span className="text-xs font-semibold text-[var(--foreground-muted)]">岗位特殊度 {focus.role_distinctiveness} · 档案证据覆盖缺口 {focus.evidence_gap}</span></span>
+              <span className="text-xs font-semibold text-[var(--primary-red)]">训练权重 {focus.priority_percent}%</span>
             </summary>
             <div className="border-t border-blue-100 px-4 pb-4 pt-3">
               <p className="text-xs leading-5 text-[var(--foreground-soft)]">{focus.why_this_focus}</p>
               <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold text-[var(--foreground-muted)]"><span>市场频率 {Math.round(focus.market_frequency * 100)}%</span><span>表现 {focus.performance.average_content_score ?? "—"}</span><span>{focus.performance.status === "supported" ? "当前回答有可用证据" : "需要更多事实/机制"}</span></div>
               {focus.responses.map((response) => (
                 <div key={`${focus.capability}-${response.question_index}`} className="mt-3 border-l-2 border-[var(--primary-blue)] pl-3">
-                  <p className="text-[11px] font-black uppercase tracking-[0.08em] text-[var(--primary-blue)]">第 {response.question_index + 1} 题 · {QUESTION_MODE_LABEL[response.mode] || response.mode}</p>
+                  <p className="text-[11px] font-semibold text-[var(--primary-blue)]">第 {response.question_index + 1} 题 · {QUESTION_MODE_LABEL[response.mode] || response.mode}</p>
                   <p className="mt-1 text-xs font-semibold text-[var(--foreground)]">{response.question}</p>
                   <p className="mt-2 text-xs leading-5 text-[var(--foreground-soft)]">评价引用（实际回答）：“{response.transcript_excerpt || response.answer_excerpt}”</p>
                   {response.answer_evidence.length > 0 && <p className="mt-1 text-[11px] text-[var(--foreground-muted)]">回答中的可核对证据：{response.answer_evidence.join("；")}</p>}
@@ -598,7 +598,7 @@ function RoleInterviewDebrief({ debrief }: { debrief: NonNullable<AIInterviewRep
               ))}
               {focus.observed_answer_gaps.length > 0 && <p className="mt-3 text-xs font-semibold leading-5 text-[var(--primary-red)]">回答缺口：{focus.observed_answer_gaps.join("；")}</p>}
               {focus.candidate_evidence_not_utilized.length > 0 && <p className="mt-2 text-xs font-semibold leading-5 text-[var(--foreground-muted)]">已有 Evidence 尚未在回答中被有效利用：{focus.candidate_evidence_not_utilized.map((item) => item.title || item.profile_section_id).join("、")}</p>}
-              <p className="mt-3 border-t border-blue-100 pt-3 text-xs font-black text-[var(--primary-blue)]">下一轮：{focus.next_practice}</p>
+              <p className="mt-3 border-t border-blue-100 pt-3 text-xs font-semibold text-[var(--primary-blue)]">下一轮：{focus.next_practice}</p>
             </div>
           </details>
         ))}

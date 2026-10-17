@@ -84,12 +84,12 @@ function SignalEvidence({ signal, documents }: { signal: RoleBenchmarkSignal; do
     <details className="bauhaus-panel-sm bg-white">
       <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 p-4">
         <span className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-sm font-black text-[var(--foreground)]">{capabilityLabel(signal)}</span>
+          <span className="truncate text-sm font-semibold text-[var(--foreground)]">{capabilityLabel(signal)}</span>
           <Chip size="sm" variant="flat" className="border border-[var(--border)] bg-[var(--surface-muted)] font-bold text-[var(--foreground)]">
             {IMPORTANCE_LABELS[signal.target_importance] || signal.target_importance}
           </Chip>
         </span>
-        <span className="flex items-center gap-3 text-xs font-black text-[var(--foreground-muted)]">
+        <span className="flex items-center gap-3 text-xs font-semibold text-[var(--foreground-muted)]">
           <span>同类 {formatPercent(signal.market_frequency)}</span>
           <span>{DIRECTION_LABELS[signal.direction] || signal.direction}</span>
         </span>
@@ -127,7 +127,7 @@ function SignalEvidence({ signal, documents }: { signal: RoleBenchmarkSignal; do
               <div className="mt-3 space-y-2">
                 {gap.matched_evidence.map((evidence) => (
                   <div key={evidence.profile_section_id} className="border-l-2 border-[var(--primary-blue)] pl-3">
-                    <p className="text-xs font-black text-[var(--foreground)]">{evidence.title || evidence.section_type}</p>
+                    <p className="text-xs font-semibold text-[var(--foreground)]">{evidence.title || evidence.section_type}</p>
                     <p className="mt-1 text-xs font-medium leading-relaxed text-[var(--foreground-soft)]">{evidence.excerpt}</p>
                   </div>
                 ))}
@@ -149,7 +149,7 @@ function SignalEvidence({ signal, documents }: { signal: RoleBenchmarkSignal; do
                 return (
                   <div key={item.source_ref} className="border-l-2 border-[var(--border-strong)] pl-3">
                     <div className="flex items-start justify-between gap-2">
-                      <p className="text-xs font-black text-[var(--foreground)]">{item.company} · {item.title}</p>
+                      <p className="text-xs font-semibold text-[var(--foreground)]">{item.company} · {item.title}</p>
                       {document?.url && (
                         <ExternalUrlLink href={document.url} aria-label={`打开来源 ${item.source_ref}`} className="text-[var(--primary-blue)]">
                           <ExternalLink size={14} />
@@ -178,7 +178,7 @@ function EvidenceList({ title, items }: { title: string; items: RoleBenchmarkSig
       <div className="mt-2 space-y-2">
         {items.map((item) => (
           <div key={item.id} className="border-l-2 border-[var(--primary-red)] pl-3">
-            <p className="text-xs font-black text-[var(--foreground)]">{item.raw_capability} · {item.source_section}</p>
+            <p className="text-xs font-semibold text-[var(--foreground)]">{item.raw_capability} · {item.source_section}</p>
             <p className="mt-1 text-xs font-medium leading-relaxed text-[var(--foreground-soft)]">{item.evidence_text}</p>
           </div>
         ))}
@@ -192,7 +192,7 @@ function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="border border-[var(--border)] bg-[var(--surface-muted)] p-3">
       <p className="bauhaus-label text-[var(--foreground-muted)]">{label}</p>
-      <p className="mt-1 text-sm font-black text-[var(--foreground)]">{value}</p>
+      <p className="mt-1 text-sm font-semibold text-[var(--foreground)]">{value}</p>
     </div>
   );
 }
@@ -205,7 +205,7 @@ function SignalGroup({ title, description, signals, documents }: { title: string
           <p className="bauhaus-label text-[var(--foreground-muted)]">{title}</p>
           <p className="mt-1 text-xs font-medium text-[var(--foreground-muted)]">{description}</p>
         </div>
-        <span className="text-xs font-black text-[var(--foreground-muted)]">{signals.length} 项</span>
+        <span className="text-xs font-semibold text-[var(--foreground-muted)]">{signals.length} 项</span>
       </div>
       <div className="mt-3 space-y-2">
         {signals.map((signal) => <SignalEvidence key={signal.capability_id} signal={signal} documents={documents} />)}
@@ -282,7 +282,7 @@ export function RoleIntelligencePanel({ jobId }: { jobId: number }) {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="bauhaus-label text-[var(--foreground-muted)]">Role intelligence</p>
-            <h2 className="mt-2 text-2xl font-black tracking-[-0.05em] text-[var(--foreground)]">岗位情报</h2>
+            <h2 className="mt-2 text-2xl font-semibold tracking-[-0.05em] text-[var(--foreground)]">岗位情报</h2>
             <p className="mt-2 max-w-2xl text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">
               只展示由 OfferU Runtime 从 benchmark snapshot 统计出的岗位差异；市场百分比和准备缺口不由 LLM 生成。
             </p>
@@ -301,7 +301,7 @@ export function RoleIntelligencePanel({ jobId }: { jobId: number }) {
           </div>
         ) : !benchmark ? (
           <div className="bauhaus-panel-sm bg-[var(--surface-muted)] p-4">
-            <p className="text-sm font-black text-[var(--foreground)]">还没有岗位基准</p>
+            <p className="text-sm font-semibold text-[var(--foreground)]">还没有岗位基准</p>
             <p className="mt-1 text-sm font-medium leading-relaxed text-[var(--foreground-muted)]">{fixtureEnabled ? "开发环境：可以加载去标识化 fixture，验证数据呈现和 evidence gap。" : "岗位情报完成后，这里会显示这个岗位和同类岗位的差别，以及你还缺哪些证据。"}</p>
             {fixtureEnabled && (
               <Button onPress={() => setFixtureConfirmOpen(true)} className="bauhaus-button bauhaus-button-yellow mt-4 !px-4 !py-3 !text-[11px]">加载 fixture benchmark</Button>
@@ -312,7 +312,7 @@ export function RoleIntelligencePanel({ jobId }: { jobId: number }) {
             <div className="flex items-start gap-3">
               {benchmark.status === "failed" || benchmark.status === "blocked" ? <AlertTriangle className="mt-0.5 shrink-0 text-[var(--primary-red)]" size={18} /> : <Spinner className="mt-0.5 shrink-0" size="sm" color="warning" />}
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-black text-[var(--foreground)]">{statusLabel(benchmark.status)}</p>
+                <p className="text-sm font-semibold text-[var(--foreground)]">{statusLabel(benchmark.status)}</p>
                 <p className="mt-1 text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">{benchmark.last_error || `运行 ${benchmark.run_id || ""} 尚未产出可展示的 benchmark snapshot。`}</p>
                 {benchmark.error_id && <p className="mt-2 text-xs font-bold text-[var(--foreground-muted)]">错误 ID：{benchmark.error_id}</p>}
 
@@ -378,7 +378,7 @@ export function RoleIntelligencePanel({ jobId }: { jobId: number }) {
                   <CheckCircle2 className="mt-0.5 shrink-0 text-[var(--primary-blue)]" size={18} />
                   <div>
                     <p className="bauhaus-label text-[var(--foreground-muted)]">Preparation priority</p>
-                    <h3 className="mt-1 text-xl font-black tracking-[-0.04em] text-[var(--foreground)]">优先补证据 / 准备</h3>
+                    <h3 className="mt-1 text-xl font-semibold tracking-[-0.04em] text-[var(--foreground)]">优先补证据 / 准备</h3>
                     <p className="mt-1 text-sm font-medium text-[var(--foreground-muted)]">岗位特殊度 × 当前档案证据覆盖缺口；这里只读已授权 ProfileSection，不把“未检索到证据”解释成“你不会”。</p>
                   </div>
                 </div>
@@ -386,10 +386,10 @@ export function RoleIntelligencePanel({ jobId }: { jobId: number }) {
                   {training.map((signal) => (
                     <div key={signal.capability_id} className="bauhaus-panel-sm flex items-center justify-between gap-3 bg-[var(--surface-muted)] p-3">
                       <div>
-                        <p className="text-sm font-black text-[var(--foreground)]">{capabilityLabel(signal)}</p>
+                        <p className="text-sm font-semibold text-[var(--foreground)]">{capabilityLabel(signal)}</p>
                         <p className="mt-1 text-xs font-semibold text-[var(--foreground-muted)]">岗位特殊度 {signal.evidence_gap.role_distinctiveness} · 证据强度 {signal.evidence_gap.evidence_strength}</p>
                       </div>
-                      <Chip size="sm" variant="flat" className="border border-[var(--primary-red)] bg-red-50 font-black text-[var(--primary-red)]">{signal.evidence_gap.training_priority}</Chip>
+                      <Chip size="sm" variant="flat" className="border border-[var(--primary-red)] bg-red-50 font-semibold text-[var(--primary-red)]">{signal.evidence_gap.training_priority}</Chip>
                     </div>
                   ))}
                 </div>
@@ -415,7 +415,7 @@ export function RoleIntelligencePanel({ jobId }: { jobId: number }) {
 
       <Modal isOpen={fixtureConfirmOpen} onClose={() => setFixtureConfirmOpen(false)} size="md">
         <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b border-[var(--border)] bg-[var(--surface-muted)] px-6 py-5 text-xl font-black tracking-[-0.06em]">加载开发 fixture</ModalHeader>
+          <ModalHeader className="border-b border-[var(--border)] bg-[var(--surface-muted)] px-6 py-5 text-xl font-semibold tracking-[-0.06em]">加载开发 fixture</ModalHeader>
           <ModalBody className="px-6 py-6">
             <p className="text-sm font-medium leading-relaxed text-[var(--foreground-soft)]">这会通过现有 `build_role_benchmark` Operation 写入一份明确标记为 fixture 的本地 benchmark snapshot，不访问外部网页，也不会修改 Job、Profile 或 Interview。</p>
           </ModalBody>

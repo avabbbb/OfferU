@@ -898,7 +898,7 @@ export default function TodayPage() {
                     {percent !== null && task.status !== "completed" && (
                       <span className="mt-2 block h-1 overflow-hidden rounded-full bg-[var(--surface-hover)]">
                         <span
-                          className="block h-full rounded-full bg-[var(--primary-blue)] transition-[width] duration-300"
+                          className="block h-full rounded-full bg-[var(--foreground)] transition-[width] duration-300"
                           style={{ width: `${percent}%` }}
                         />
                       </span>
@@ -989,7 +989,7 @@ export default function TodayPage() {
                     {percent !== null && task.status !== "blocked" && task.status !== "failed" && (
                       <span className="mt-2 block h-1 overflow-hidden rounded-full bg-[var(--surface-hover)]">
                         <span
-                          className="block h-full rounded-full bg-[var(--primary-blue)] transition-[width] duration-300"
+                          className="block h-full rounded-full bg-[var(--foreground)] transition-[width] duration-300"
                           style={{ width: `${percent}%` }}
                         />
                       </span>
