@@ -1200,15 +1200,6 @@ export async function showcaseHandle(path: string, options?: RequestInit): Promi
         return reviewCandidate(url, body);
       }
       return {};
-    case "studio":
-      if (method === "GET" && sub === "templates") {
-        return [
-          { id: 1, name: "modern-minimal", display_name: "现代简约", category: "professional", preview_image: "" },
-          { id: 2, name: "creative-gradient", display_name: "创意渐变", category: "creative", preview_image: "" },
-          { id: 3, name: "tech-dark", display_name: "技术暗黑", category: "technical", preview_image: "" },
-        ];
-      }
-      return {};
     case "agent":
       if (method === "GET" && sub === "data" && segments[3] === "export") {
         return showcaseDataExport();

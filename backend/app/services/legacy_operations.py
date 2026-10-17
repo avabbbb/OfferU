@@ -11,12 +11,9 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
-from jinja2.sandbox import SandboxedEnvironment
 from sqlalchemy import desc, select
-from sqlalchemy.orm import selectinload
 
 from app.database import async_session
-from app.models.html_resume import HtmlResume, HtmlResumeTemplate
 from app.models.models import (
     Application,
     Batch,
@@ -26,9 +23,7 @@ from app.models.models import (
     InterviewQuestion,
     Job,
     Profile,
-    Resume,
-    ResumeSection,
-    ResumeTemplate,
+    ProfileSection,
 )
 from app.services.application_workspace import (
     apply_template_to_all_tables,
@@ -50,9 +45,6 @@ from app.services.security_redaction import safe_error_message
 
 _LEGACY_APPLICATION_CREATE_LOCKS: dict[int, asyncio.Lock] = {}
 
-# HtmlResumeTemplate.html_template 存在数据库里，属于不可信模板源：
-# 渲染必须走 Jinja2 沙箱环境，封死 SSTI → 沙箱逃逸 → RCE 的链路。
-_HTML_TEMPLATE_ENV = SandboxedEnvironment()
 
 
 async def create_application_table(name: str) -> dict[str, Any]:
@@ -567,241 +559,3 @@ async def generate_legacy_interview_answer(question_id: int) -> dict[str, Any]:
             "question_text": question.question_text,
             "suggested_answer": answer,
         }
-
-
-async def create_resume_template(
-    name: str,
-    thumbnail_url: str = "",
-    css_variables: Optional[dict[str, Any]] = None,
-    html_layout: str = "",
-    is_builtin: bool = False,
-) -> dict[str, Any]:
-    async with async_session() as db:
-        template = ResumeTemplate(
-            name=name,
-            thumbnail_url=thumbnail_url,
-            css_variables=css_variables or {},
-            html_layout=html_layout,
-            is_builtin=is_builtin,
-        )
-        db.add(template)
-        await db.commit()
-        await db.refresh(template)
-        return _serialize_resume_template(template)
-
-
-async def update_resume_template(
-    template_id: int,
-    name: Optional[str] = None,
-    thumbnail_url: Optional[str] = None,
-    css_variables: Optional[dict[str, Any]] = None,
-    html_layout: Optional[str] = None,
-) -> dict[str, Any]:
-    async with async_session() as db:
-        template = await db.get(ResumeTemplate, template_id)
-        if not template:
-            raise ValueError("模板不存在")
-        if template.is_builtin:
-            raise PermissionError("不能修改内置模板")
-        if name is not None:
-            template.name = name
-        if thumbnail_url is not None:
-            template.thumbnail_url = thumbnail_url
-        if css_variables is not None:
-            template.css_variables = css_variables
-        if html_layout is not None:
-            template.html_layout = html_layout
-        await db.commit()
-        await db.refresh(template)
-        return _serialize_resume_template(template)
-
-
-async def delete_resume_template(template_id: int) -> dict[str, Any]:
-    async with async_session() as db:
-        template = await db.get(ResumeTemplate, template_id)
-        if not template:
-            raise ValueError("模板不存在")
-        if template.is_builtin:
-            raise PermissionError("不能删除内置模板")
-        await db.delete(template)
-        await db.commit()
-        return {"success": True, "message": "模板已删除"}
-
-
-async def apply_resume_template(template_id: int, resume_id: int) -> dict[str, Any]:
-    async with async_session() as db:
-        template = await db.get(ResumeTemplate, template_id)
-        if not template:
-            raise ValueError("模板不存在")
-        resume = await db.get(Resume, resume_id)
-        if not resume:
-            raise ValueError("简历不存在")
-        resume.template_id = template_id
-        resume.style_config = {}
-        await db.commit()
-        return {
-            "success": True,
-            "message": f"已将模板 '{template.name}' 应用到简历",
-            "template_id": template_id,
-        }
-
-
-async def duplicate_resume_template(template_id: int, new_name: str) -> dict[str, Any]:
-    async with async_session() as db:
-        template = await db.get(ResumeTemplate, template_id)
-        if not template:
-            raise ValueError("模板不存在")
-        new_template = ResumeTemplate(
-            name=new_name,
-            thumbnail_url=template.thumbnail_url,
-            css_variables=dict(template.css_variables or {}),
-            html_layout=template.html_layout,
-            is_builtin=False,
-        )
-        db.add(new_template)
-        await db.commit()
-        await db.refresh(new_template)
-        return _serialize_resume_template(new_template)
-
-
-def _serialize_resume_template(template: ResumeTemplate) -> dict[str, Any]:
-    return {
-        "id": template.id,
-        "name": template.name,
-        "thumbnail_url": template.thumbnail_url,
-        "css_variables": template.css_variables,
-        "is_builtin": template.is_builtin,
-        "created_at": template.created_at.isoformat(),
-    }
-
-
-# HTML 模板契约（template_seeder 的 html_template）消费 section.theme 与
-# section.bullets[].content，而档案 section 存的是 title + content_json。
-# content_json 有两种形状：条目列表（workExperiences/projects/...）和
-# profile.section.v1 字典（正文在 normalized，顶层 title 是去重用的机器名）。
-_SECTION_MACHINE_KEYS = {
-    "schema_version",
-    "category_key",
-    "tier",
-    "field_values",
-    "_agent_provenance",
-}
-
-
-def _is_profile_section_payload(value: dict) -> bool:
-    return any(key in value for key in ("schema_version", "normalized", "field_values"))
-
-
-def _flatten_text(value: Any) -> list[str]:
-    if isinstance(value, str):
-        text = value.strip()
-        return [text] if text else []
-    if value is None or isinstance(value, bool):
-        return []
-    if isinstance(value, (int, float)):
-        return [str(value)]
-    if isinstance(value, list):
-        return [text for item in value for text in _flatten_text(item)]
-    if isinstance(value, dict):
-        # profile.section.v1 的顶层 title 是机器名，不能当作正文内容。
-        skip_title = _is_profile_section_payload(value)
-        return [
-            text
-            for key, item in value.items()
-            if key not in _SECTION_MACHINE_KEYS and not (skip_title and key == "title")
-            for text in _flatten_text(item)
-        ]
-    return []
-
-
-def _template_section_theme(section: Any) -> str:
-    content_json = section.content_json if isinstance(section.content_json, dict) else {}
-    return str(content_json.get("category_label") or section.title or section.section_type or "").strip()
-
-
-def _template_section_bullets(content_json: Any) -> list[dict[str, str]]:
-    if not isinstance(content_json, (dict, list)):
-        return []
-    seen: set[str] = set()
-    bullets: list[dict[str, str]] = []
-    for text in _flatten_text(content_json):
-        if text in seen:
-            continue
-        seen.add(text)
-        bullets.append({"content": text})
-    return bullets
-
-
-async def generate_html_resume(
-    profile_id: int,
-    template_id: int,
-    design_overrides: Optional[dict[str, Any]] = None,
-    job_ids: Optional[list[int]] = None,
-) -> dict[str, Any]:
-    async with async_session() as db:
-        profile = (
-            await db.execute(
-                select(Profile)
-                .options(
-                    selectinload(Profile.sections),
-                    selectinload(Profile.target_roles),
-                )
-                .where(Profile.id == profile_id)
-            )
-        ).scalar_one_or_none()
-        if not profile:
-            raise ValueError("Profile not found")
-        template = await db.get(HtmlResumeTemplate, template_id)
-        if not template:
-            raise ValueError("Template not found")
-
-        base_info = profile.base_info_json if isinstance(profile.base_info_json, dict) else {}
-
-        template_sections: list[dict[str, Any]] = []
-        for section in sorted(profile.sections, key=lambda item: item.sort_order or 0):
-            # 与 optimize/resume 等入口保持一致：撤回或作废的 section 不进成品简历。
-            if section.status != "active":
-                continue
-            theme = _template_section_theme(section)
-            bullets = _template_section_bullets(section.content_json)
-            # 没有标题或没有正文的段落只会渲染成空壳，直接跳过。
-            if not theme or not bullets:
-                continue
-            template_sections.append(
-                {
-                    "section_type": section.section_type,
-                    "theme": theme,
-                    "bullets": bullets,
-                    "sort_order": section.sort_order,
-                }
-            )
-
-        profile_data = {
-            "name": profile.name,
-            "email": profile.email,
-            "phone": profile.phone,
-            "location": base_info.get("current_city", ""),
-            "summary": base_info.get("personal_summary")
-            or base_info.get("summary")
-            or profile.headline
-            or "",
-            "sections": template_sections,
-            "target_roles": [role.role_name for role in profile.target_roles],
-        }
-        overrides = design_overrides or {}
-        html_content = _HTML_TEMPLATE_ENV.from_string(template.html_template).render(
-            profile=profile_data,
-            design_tokens={**(template.design_tokens or {}), **overrides},
-        )
-        html_resume = HtmlResume(
-            profile_id=profile_id,
-            template_id=template_id,
-            title=f"{profile.name} - {template.display_name}",
-            html_content=html_content,
-            design_overrides=overrides,
-            job_ids=job_ids or [],
-        )
-        db.add(html_resume)
-        await db.commit()
-        await db.refresh(html_resume)
-        return {"id": html_resume.id, "html": html_content}

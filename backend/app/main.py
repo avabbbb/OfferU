@@ -57,7 +57,7 @@ if settings.offeru_enable_mcp:
 else:
     mcp_server = None
     _HAS_MCP = False
-from app.routes import jobs, resume, calendar, email, config, applications, scraper, pools, profile, profile_agent, optimize, interview, main_agent, templates, interviews, research, memory, studio, bridge, connections
+from app.routes import jobs, resume, calendar, email, config, applications, scraper, pools, profile, profile_agent, optimize, interview, main_agent, interviews, research, memory, bridge, connections
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -213,29 +213,10 @@ app.add_middleware(
     allow_headers=["Accept", "Content-Type"],
 )
 
-# Studio 简历预览（/api/studio/resumes/{id}/preview）按设计由本地前端以 iframe 内嵌展示，
-# 因此不能沿用全局的 X-Frame-Options: DENY，否则浏览器会拒绝渲染，预览区永远是空白。
-# 这里只对该端点放开 frame-ancestors，并限定为前端自身来源。
-STUDIO_PREVIEW_EMBED_ORIGINS = tuple(
-    dict.fromkeys(
-        [
-            *cors_origins,
-            "http://tauri.localhost",
-            "https://tauri.localhost",
-            "tauri://localhost",
-        ]
-    )
-)
-
-
 # The OfferU UI itself: the dev/web frontend and the desktop WebView.
 _TRUSTED_WRITE_ORIGINS = frozenset(
     {*cors_origins, "tauri://localhost", "http://tauri.localhost", "https://tauri.localhost"}
 )
-
-
-def is_studio_preview_path(path: str) -> bool:
-    return path.startswith("/api/studio/resumes/") and path.endswith("/preview")
 
 
 def _safe_http_detail(detail: object) -> object:
@@ -425,13 +406,7 @@ async def add_security_headers(request, call_next):
         )
         response.headers["X-OfferU-Error-Id"] = error_id
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
-    if is_studio_preview_path(request.url.path):
-        response.headers.setdefault(
-            "Content-Security-Policy",
-            "frame-ancestors " + " ".join(STUDIO_PREVIEW_EMBED_ORIGINS),
-        )
-    else:
-        response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "no-referrer")
     response.headers.setdefault("Permissions-Policy", "camera=(self), microphone=(self), geolocation=()")
     if request.url.path.startswith("/api/"):
@@ -447,7 +422,6 @@ app.include_router(main_agent.router, prefix="/api/agent", tags=["Agent"])
 app.include_router(main_agent.runtime_router, prefix="/api/agent", tags=["Agent Runtime"])
 app.include_router(optimize.router, prefix="/api/optimize", tags=["Optimize"])
 app.include_router(resume.router, prefix="/api/resume", tags=["Resume"])
-app.include_router(templates.router, prefix="/api/templates", tags=["Templates"])
 app.include_router(interviews.router, prefix="/api/interviews", tags=["Interviews"])
 app.include_router(calendar.router, prefix="/api/calendar", tags=["Calendar"])
 app.include_router(email.router, prefix="/api/email", tags=["Email"])
@@ -457,8 +431,6 @@ app.include_router(applications.router, prefix="/api/applications", tags=["Appli
 app.include_router(scraper.router, prefix="/api/scraper", tags=["Scraper"])
 app.include_router(interview.router, prefix="/api/interview", tags=["Interview"])
 app.include_router(memory.router, prefix="/api/memory", tags=["Memory"])
-# studio.router 自带 prefix="/api/studio"，直接注册
-app.include_router(studio.router)
 app.include_router(bridge.router, prefix="/api/bridge", tags=["Bridge"])
 app.include_router(connections.router, prefix="/api/connections", tags=["Connections"])
 
@@ -466,12 +438,6 @@ app.include_router(connections.router, prefix="/api/connections", tags=["Connect
 UPLOAD_DIR = os.fspath(runtime_uploads_dir())
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
-
-# HTML 简历模板预览图（template_seeder preview_image=/templates/*.png）。
-# 图片资产由使用者提供，放在 backend/uploads/templates/ 下。
-TEMPLATE_ASSET_DIR = os.path.join(UPLOAD_DIR, "templates")
-os.makedirs(TEMPLATE_ASSET_DIR, exist_ok=True)
-app.mount("/templates", StaticFiles(directory=TEMPLATE_ASSET_DIR), name="templates")
 
 # ---- MCP Server (Streamable HTTP) ----
 if _HAS_MCP and mcp_server is not None:

@@ -29,12 +29,6 @@ describe("简历入口合一", () => {
     expect(screen.getByTestId("where")).toHaveTextContent("/resume?job_ids=9&mode=tailor");
   });
 
-  it("旧 /studio 链接回到简历列表（版式已并进编辑器）", async () => {
-    renderAt("/studio");
-    expect(await screen.findByText("简历列表")).toBeInTheDocument();
-    expect(screen.getByTestId("where")).toHaveTextContent(/^\/resume$/);
-  });
-
   it("两个模式都在同一排标签里，当前模式高亮", async () => {
     render(<MemoryRouter initialEntries={["/resume?mode=tailor"]}><ResumeHub /></MemoryRouter>);
     expect(await screen.findByText("岗位定制内容")).toBeInTheDocument();

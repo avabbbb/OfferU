@@ -110,7 +110,7 @@ export default function ResumeEditorPage() {
     const pending = saveQueueRef.current.catch(() => undefined).then(async () => {
       const saved = await resumeApi.update(candidate.id, {
         user_name: candidate.user_name, title: candidate.title, summary: candidate.summary, contact_json: candidate.contact_json,
-        template_id: candidate.template_id, style_config: candidate.style_config, language: candidate.language,
+        style_config: candidate.style_config, language: candidate.language,
         sections: candidate.sections, expected_revision: revisionRef.current,
       }) as DraftResume;
       revisionRef.current = saved.workspace_revision;

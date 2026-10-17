@@ -733,7 +733,6 @@ async def prepare_resume_optimization(
         presentation = {
             "contact_json": _json_safe(contact_json or {}),
             "style_config": _json_safe(style_config or {}),
-            "template_id": reference_resume.template_id if reference_resume else None,
             "language": (reference_resume.language or "zh") if reference_resume else "zh",
             "content_policy": "reference_resume_style_only",
         }
@@ -1481,7 +1480,6 @@ async def _persist_prepared_resume_proposal(
         presentation = {
             "contact_json": _json_safe(_profile_to_contact_json(profile)),
             "style_config": {},
-            "template_id": None,
             "language": "zh",
             "content_policy": "verified_profile_only",
         }
@@ -1895,7 +1893,6 @@ async def review_resume_optimization(
             source_job_ids=[job.id],
             contact_json=presentation.get("contact_json") or {},
             style_config=presentation.get("style_config") or {},
-            template_id=presentation.get("template_id"),
             source_profile_snapshot=source_snapshot,
             rows=proposed_rows,
             language=str(presentation.get("language") or "zh"),

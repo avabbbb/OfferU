@@ -1,4 +1,4 @@
-// 简历的两种模式。/optimize 与 /studio 旧入口都重定向到这里（版式已并进每份简历的「排版」面板），
+// 简历的两种模式。旧的 /optimize 入口重定向到这里，
 // 这样外部书签、岗位页里的旧链接都不会坏。
 export type ResumeMode = "list" | "tailor";
 

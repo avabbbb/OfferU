@@ -6,12 +6,10 @@
 # 数据模型：
 #   Resume         → 简历主表（元信息 + 样式配置）
 #   ResumeSection  → 段落通用块表（教育/经历/技能/项目/自定义）
-#   ResumeTemplate → 模板表（CSS 变量 + HTML 布局）
 # =============================================
 # API 端点概览：
 #   GET    /api/resume/                            获取简历列表
 #   POST   /api/resume/                            创建新简历
-#   GET    /api/resume/templates                   模板列表
 #   GET    /api/resume/{id}                        获取完整简历（含所有段落）
 #   PUT    /api/resume/{id}                        更新简历（可选 sections 全量同步）
 #   DELETE /api/resume/{id}                        删除简历（级联删段落）
@@ -31,13 +29,9 @@ import json
 import os
 import time
 import threading
-from pathlib import Path
 
-import re
-import uuid
 from io import BytesIO
 from typing import Optional, Any
-from xml.sax.saxutils import escape as xml_escape
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 from fastapi.responses import StreamingResponse
@@ -46,13 +40,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 import anyio
 from pydantic import BaseModel, Field
-from jinja2 import Template
-from markupsafe import Markup
 from sse_starlette import EventSourceResponse, ServerSentEvent
 
 from app.database import get_db
-from app.models.models import Resume, ResumeSection, ResumeTemplate, Job, Profile
-from app.services.application_workspace import auto_write_job_to_total
+from app.models.models import Resume, ResumeSection, Job, Profile
 from app.services.security_redaction import safe_error_message
 from app.services.resume_design import ResumeDesignInput
 from app.runtime_paths import runtime_backend_dir
@@ -104,7 +95,6 @@ class ResumeCreate(BaseModel):
     title: str = "未命名简历"
     summary: str = ""
     contact_json: dict = Field(default_factory=dict)
-    template_id: Optional[int] = None
     style_config: dict = Field(default_factory=dict)
     language: str = "zh"
     source_mode: str = "manual"
@@ -137,7 +127,6 @@ class ResumeUpdate(BaseModel):
     title: Optional[str] = None
     summary: Optional[str] = None
     contact_json: Optional[dict] = None
-    template_id: Optional[int] = None
     style_config: Optional[dict] = None
     is_primary: Optional[bool] = None
     language: Optional[str] = None
@@ -197,7 +186,6 @@ def _serialize_resume_brief(r: Resume, source_jobs_map: dict[int, dict] | None =
         "user_name": r.user_name,
         "title": r.title,
         "photo_url": r.photo_url,
-        "template_id": r.template_id,
         "is_primary": r.is_primary,
         "language": r.language,
         "source_mode": r.source_mode,
@@ -276,7 +264,6 @@ def _serialize_resume_full(r: Resume, source_jobs_map: dict[int, dict] | None = 
         "photo_url": r.photo_url,
         "summary": r.summary,
         "contact_json": r.contact_json,
-        "template_id": r.template_id,
         "style_config": r.style_config,
         "is_primary": r.is_primary,
         "language": r.language,
@@ -345,23 +332,6 @@ async def create_resume(data: ResumeCreate):
     return await _execute_operation("create_resume_record", data.model_dump())
 
 
-@router.get("/templates")
-async def list_templates(db: AsyncSession = Depends(get_db)):
-    """获取所有可用模板"""
-    result = await db.execute(select(ResumeTemplate).order_by(ResumeTemplate.id))
-    templates = result.scalars().all()
-    return [
-        {
-            "id": t.id,
-            "name": t.name,
-            "thumbnail_url": t.thumbnail_url,
-            "css_variables": t.css_variables,
-            "is_builtin": t.is_builtin,
-        }
-        for t in templates
-    ]
-
-
 class ResumeWorkspaceEnsureRequest(BaseModel):
     job_id: int = Field(..., gt=0)
     proposal_id: Optional[str] = Field(default=None, min_length=1, max_length=80)
@@ -410,18 +380,6 @@ async def review_resume_proposal_item(
     return await _execute_operation(
         "review_resume_proposal_item",
         {"proposal_id": proposal_id, **body.model_dump()},
-    )
-
-
-@router.post("/{resume_id}/apply-template/{template_id}")
-async def apply_template(resume_id: int, template_id: int):
-    """
-    应用模板到简历 — 将模板的 css_variables 合并到简历的 style_config
-    关联 template_id 到简历，并用模板的 CSS 变量覆盖当前样式
-    """
-    return await _execute_operation(
-        "apply_resume_record_template",
-        {"template_id": template_id, "resume_id": resume_id},
     )
 
 
@@ -691,517 +649,6 @@ async def resolve_logo(
     )
 
 
-# =============================================
-# PDF 导出
-# =============================================
-# 流程：
-#   1. 从 DB 读取简历 + 段落 + 模板
-#   2. 合并模板 css_variables 与用户 style_config
-#   3. 使用 Jinja2 渲染 HTML
-#   4. WeasyPrint 将 HTML → PDF
-#   5. StreamingResponse 返回二进制流
-# =============================================
-
-# 默认 HTML 模板：Reference 风格（照片+姓名+校徽三栏头部，黑色正文横线分区）
-# 与前端 ResumeReference 模板视觉一致，用于 WeasyPrint/ReportLab fallback
-# autoescape=True：姓名/简介/段落描述等用户数据全部 HTML 转义，封死注入；
-# <style> 内的 CSS 变量经 _css_token() 透传（autoescape 会破坏合法引号）。
-DEFAULT_HTML_TEMPLATE = Template("""<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<style>
-    :root {
-        --primary-color: {{ primary_color }};
-        --accent-color: {{ accent_color }};
-        --body-size: {{ body_size }};
-        --heading-size: {{ heading_size }};
-        --line-height: {{ line_height }};
-        --page-margin: {{ page_margin }};
-        --section-gap: {{ section_gap }};
-        --font-family: {{ font_family }};
-    }
-
-    @page {
-        size: A4;
-        margin: 0;
-    }
-
-    html, body {
-        margin: 0;
-        padding: 0;
-        width: 100%;
-        height: 100%;
-        background: #ffffff;
-    }
-
-    body {
-        font-family: var(--font-family);
-        font-size: var(--body-size);
-        line-height: var(--line-height);
-        color: #000000;
-        background: #ffffff;
-    }
-
-    .page {
-        width: 210mm;
-        min-height: 297mm;
-        padding: var(--page-margin);
-        box-sizing: border-box;
-    }
-
-    /* ── Header: photo + name/contact + logo ── */
-    .header {
-        display: flex;
-        align-items: flex-start;
-        min-height: 30mm;
-        margin-bottom: 6mm;
-    }
-
-    .photo-slot {
-        flex-shrink: 0;
-        width: 23mm;
-        min-height: 30mm;
-        margin-right: 2mm;
-    }
-
-    .photo-slot img {
-        display: block;
-        width: 23mm;
-        height: 30mm;
-        object-fit: cover;
-        object-position: center top;
-    }
-
-    .identity {
-        flex: 1;
-        min-width: 0;
-    }
-
-    .name {
-        font-size: 20pt;
-        font-weight: 800;
-        letter-spacing: 0;
-        line-height: 1.05;
-        margin: 0 0 4mm;
-        color: #000000;
-    }
-
-    .contact-lines {
-        font-size: 11.5pt;
-        font-weight: 400;
-        line-height: 1.38;
-        color: #000000;
-    }
-
-    .contact-lines p {
-        margin: 0;
-    }
-
-    .logo-slot {
-        flex-shrink: 0;
-        margin-left: 4mm;
-        max-width: 50mm;
-        display: flex;
-        align-items: flex-start;
-        justify-content: flex-end;
-        min-height: 22mm;
-    }
-
-    .logo-slot img {
-        display: block;
-        max-height: 18mm;
-        max-width: 50mm;
-        object-fit: contain;
-    }
-
-    /* ── Sections ── */
-    .section {
-        margin-top: 6mm;
-    }
-
-    .section-title {
-        border-bottom: 1.2pt solid #000000;
-        font-size: 15pt;
-        font-weight: 800;
-        line-height: 1.15;
-        margin: 0 0 3mm;
-        padding-bottom: 1mm;
-        color: #000000;
-    }
-
-    .section-body {
-        display: flex;
-        flex-direction: column;
-        gap: 2.4mm;
-    }
-
-    /* ── Entry items ── */
-    .entry {
-        break-inside: avoid;
-    }
-
-    .entry-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: baseline;
-        gap: 4mm;
-    }
-
-    .entry-main {
-        font-size: 11.5pt;
-        line-height: 1.35;
-        min-width: 0;
-    }
-
-    .entry-main strong {
-        font-weight: 800;
-    }
-
-    .entry-date {
-        font-size: 11.5pt;
-        line-height: 1.35;
-        text-align: right;
-        white-space: nowrap;
-        flex-shrink: 0;
-    }
-
-    .entry-sub {
-        font-size: 11pt;
-        margin-top: 1mm;
-    }
-
-    .entry-desc {
-        font-size: 11pt;
-        margin-top: 1mm;
-    }
-
-    .entry-desc ul {
-        list-style-type: disc;
-        margin: 1mm 0 0;
-        padding-left: 6mm;
-    }
-
-    .entry-desc li {
-        margin: 0 0 1mm;
-        padding-left: 0.5mm;
-    }
-
-    .tags {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 1.5mm;
-        margin-top: 1.4mm;
-        font-size: 11pt;
-    }
-
-    .tags span {
-        border-radius: 2px;
-        padding: 0 1.5mm;
-    }
-
-    .summary-text {
-        font-size: 11pt;
-        margin: 0;
-    }
-</style>
-</head>
-<body>
-    <div class="page">
-        <div class="header">
-            {% if photo_url %}
-            <div class="photo-slot">
-                <img src="{{ photo_url }}" />
-            </div>
-            {% endif %}
-            <div class="identity">
-                <div class="name">{{ name }}</div>
-                <div class="contact-lines">
-                    {% if contact_phone or contact_email %}
-                    <p>
-                        {% if contact_phone %}电话：{{ contact_phone }}{% endif %}
-                        {% if contact_phone and contact_email %} | {% endif %}
-                        {% if contact_email %}邮箱：{{ contact_email }}{% endif %}
-                    </p>
-                    {% endif %}
-                    {% if contact_website %}
-                    <p>个人网站：{{ contact_website }}</p>
-                    {% endif %}
-                    {% if contact_age or contact_gender or contact_native_place %}
-                    <p>
-                        {% if contact_age %}年龄：{{ contact_age }}{% endif %}
-                        {% if contact_age and (contact_gender or contact_native_place) %} | {% endif %}
-                        {% if contact_gender %}性别：{{ contact_gender }}{% endif %}
-                        {% if contact_gender and contact_native_place %} | {% endif %}
-                        {% if contact_native_place %}籍贯：{{ contact_native_place }}{% endif %}
-                    </p>
-                    {% endif %}
-                    {% if contact_status %}
-                    <p>当前状态：{{ contact_status }}</p>
-                    {% endif %}
-                </div>
-            </div>
-            {% if logo_url %}
-            <div class="logo-slot">
-                <img src="{{ logo_url }}" />
-            </div>
-            {% endif %}
-        </div>
-
-        {% if summary %}
-        <div class="section">
-            <div class="section-title">个人评价</div>
-            <div class="summary-text">{{ summary }}</div>
-        </div>
-        {% endif %}
-
-        {% for section in sections %}
-        {% if section.visible %}
-        <div class="section">
-            <div class="section-title">{{ section.title }}</div>
-            <div class="section-body">
-                {% if section.section_type == "education" %}
-                    {% for item in section.content_json %}
-                    <div class="entry">
-                        <div class="entry-row">
-                            <div class="entry-main"><strong>{{ item.school }}{% if item.degree %} — {{ item.degree }}{% endif %}{% if item.major %}, {{ item.major }}{% endif %}</strong></div>
-                            {% if item.startDate or item.endDate %}
-                            <div class="entry-date">{{ item.startDate }}{% if item.endDate %} - {{ item.endDate }}{% endif %}</div>
-                            {% endif %}
-                        </div>
-                        {% if item.gpa %}<div class="entry-sub">GPA: {{ item.gpa }}</div>{% endif %}
-                        {% if item.description %}<div class="entry-desc">{{ item.description }}</div>{% endif %}
-                    </div>
-                    {% endfor %}
-
-                {% elif section.section_type == "workExperiences" or section.section_type == "internshipExperiences" %}
-                    {% for item in section.content_json %}
-                    <div class="entry">
-                        <div class="entry-row">
-                            <div class="entry-main"><strong>{{ item.position }}{% if item.company %} @ {{ item.company }}{% endif %}</strong></div>
-                            {% if item.startDate or item.endDate %}
-                            <div class="entry-date">{{ item.startDate }}{% if item.endDate %} - {{ item.endDate }}{% endif %}</div>
-                            {% endif %}
-                        </div>
-                        {% if item.description %}<div class="entry-desc">{{ item.description }}</div>{% endif %}
-                    </div>
-                    {% endfor %}
-
-                {% elif section.section_type == "projects" %}
-                    {% for item in section.content_json %}
-                    <div class="entry">
-                        <div class="entry-row">
-                            <div class="entry-main"><strong>{{ item.name }}{% if item.role %} — {{ item.role }}{% endif %}</strong></div>
-                            {% if item.startDate or item.endDate %}
-                            <div class="entry-date">{{ item.startDate }}{% if item.endDate %} - {{ item.endDate }}{% endif %}</div>
-                            {% endif %}
-                        </div>
-                        {% if item.url %}<div class="entry-sub">{{ item.url }}</div>{% endif %}
-                        {% if item.description %}<div class="entry-desc">{{ item.description }}</div>{% endif %}
-                    </div>
-                    {% endfor %}
-
-                {% elif section.section_type == "skills" %}
-                    {% for item in section.content_json %}
-                    <div class="entry">
-                        {% if item.category %}
-                        <div class="entry-main"><strong>{{ item.category }}</strong></div>
-                        {% endif %}
-                        {% if item.items %}
-                        <div class="tags">
-                            {% for s in item.items %}
-                            <span>{{ s }}</span>
-                            {% endfor %}
-                        </div>
-                        {% endif %}
-                    </div>
-                    {% endfor %}
-
-                {% elif section.section_type == "certificates" %}
-                    {% for item in section.content_json %}
-                    <div class="entry">
-                        <div class="entry-row">
-                            <div class="entry-main"><strong>{{ item.name }}{% if item.issuer %} — {{ item.issuer }}{% endif %}</strong></div>
-                            {% if item.date %}<div class="entry-date">{{ item.date }}</div>{% endif %}
-                        </div>
-                        {% if item.url %}<div class="entry-sub">{{ item.url }}</div>{% endif %}
-                    </div>
-                    {% endfor %}
-
-                {% elif section.section_type == "awards" %}
-                    {% for item in section.content_json %}
-                    <div class="entry">
-                        <div class="entry-row">
-                            <div class="entry-main"><strong>{{ item.awardName }}{% if item.issuer %} — {{ item.issuer }}{% endif %}</strong></div>
-                            {% if item.awardedAt %}<div class="entry-date">{{ item.awardedAt }}</div>{% endif %}
-                        </div>
-                        {% if item.description %}<div class="entry-desc">{{ item.description }}</div>{% endif %}
-                    </div>
-                    {% endfor %}
-
-                {% elif section.section_type == "personalExperiences" %}
-                    {% for item in section.content_json %}
-                    <div class="entry">
-                        {% if item.experienceTitle %}<div class="entry-main"><strong>{{ item.experienceTitle }}</strong></div>{% endif %}
-                        {% if item.startDate or item.endDate %}
-                        <div class="entry-sub">{{ item.startDate }}{% if item.endDate %} - {{ item.endDate }}{% endif %}</div>
-                        {% endif %}
-                        {% if item.description %}<div class="entry-desc">{{ item.description }}</div>{% endif %}
-                    </div>
-                    {% endfor %}
-
-                {% else %}
-                    {% for item in section.content_json %}
-                    <div class="entry">
-                        {% if item.subtitle or item.title %}<div class="entry-main"><strong>{{ item.subtitle or item.title }}</strong></div>{% endif %}
-                        {% if item.description %}<div class="entry-desc">{{ item.description }}</div>{% endif %}
-                    </div>
-                    {% endfor %}
-                {% endif %}
-            </div>
-        </div>
-        {% endif %}
-        {% endfor %}
-    </div>
-</body>
-</html>
-""", autoescape=True)
-
-# 默认 CSS 变量值（用户未自定义时使用）
-DEFAULT_STYLE = {
-    "primaryColor": "#222222",
-    "accentColor": "#666666",
-    "bodySize": "10pt",
-    "headingSize": "12pt",
-    "lineHeight": "1.5",
-    "pageMargin": "2cm",
-    "sectionGap": "14pt",
-    "fontFamily": '"Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif',
-}
-
-
-def _css_token(value: Any) -> Markup:
-    """把样式变量安全地渲染进 <style> 原始文本块。
-
-    autoescape 会把 font-family 里的合法引号转成 &quot;（<style> 内不解码
-    实体），直接破坏 CSS；因此剥离可终止 <style> 块的字符（< >）后，
-    以 Markup 标记安全透传：CSS 保持可用，标记注入被封死。
-    """
-    raw = str(value or "").replace("<", "").replace(">", "")
-    # Reject values containing CSS rule delimiters to prevent CSS injection
-    if "}" in raw or ";" in raw:
-        return Markup("")
-    return Markup(raw)
-
-
-def _resolve_photo_url_for_render(photo_url: str) -> str:
-    """
-    将 /uploads/... 相对路径转换为本地 file:// URI，方便 WeasyPrint 读取头像。
-
-    realpath 归一化后校验路径必须仍落在 uploads 目录内，阻断
-    `/uploads/../../app/database.py` 之类的路径穿越（读取任意后端文件）。
-    _resolve_logo_url_for_render 复用本函数，校徽路径同样受此保护。
-    """
-    if not photo_url:
-        return ""
-
-    if photo_url.startswith("/uploads/"):
-        uploads_root = os.path.realpath(os.path.join(BACKEND_DIR, "uploads"))
-        local_path = os.path.realpath(os.path.join(BACKEND_DIR, photo_url.lstrip("/")))
-        if local_path != uploads_root and not local_path.startswith(uploads_root + os.sep):
-            # 路径穿越：解析后已逃出 uploads 目录，拒绝渲染
-            return ""
-        if os.path.exists(local_path):
-            return Path(local_path).as_uri()
-
-    return photo_url
-
-
-def _build_contact_line(contact_json: Optional[dict]) -> str:
-    c = contact_json or {}
-    contact_parts = [
-        c.get("phone", ""),
-        c.get("email", ""),
-        c.get("linkedin", ""),
-        c.get("website", ""),
-    ]
-    return " · ".join(str(p).strip() for p in contact_parts if str(p).strip())
-
-
-def _resolve_logo_url_for_render(contact_json: Optional[dict]) -> str:
-    """从 contact_json 中提取校徽 URL 并转换为本地 file:// URI。
-
-    委托 _resolve_photo_url_for_render 统一做 realpath 边界校验，
-    `/uploads/../` 之类穿越路径在此同样被拒绝。
-    """
-    c = contact_json or {}
-    for key in ("schoolLogoUrl", "universityLogoUrl", "logoUrl", "school_logo_url"):
-        url = c.get(key, "")
-        if url:
-            return _resolve_photo_url_for_render(url)
-    return ""
-
-
-def _serialize_export_sections(resume: Resume) -> list[dict]:
-    return [
-        {
-            "title": s.title,
-            "section_type": s.section_type,
-            "visible": s.visible,
-            "content_json": s.content_json or [],
-        }
-        for s in resume.sections
-    ]
-
-
-async def _resolve_export_style(resume: Resume, db: AsyncSession) -> dict:
-    """
-    合并样式优先级：默认 < 模板 < 用户覆盖。
-    """
-    style = {**DEFAULT_STYLE}
-
-    if resume.template_id:
-        tpl_result = await db.execute(
-            select(ResumeTemplate).where(ResumeTemplate.id == resume.template_id)
-        )
-        tpl = tpl_result.scalar_one_or_none()
-        if tpl and tpl.css_variables:
-            style.update(tpl.css_variables)
-
-    if resume.style_config:
-        style.update(resume.style_config)
-
-    return style
-
-
-async def _render_resume_html_for_export(resume: Resume, db: AsyncSession) -> str:
-    style = await _resolve_export_style(resume, db)
-    c = resume.contact_json or {}
-
-    return DEFAULT_HTML_TEMPLATE.render(
-        name=resume.user_name,
-        photo_url=_resolve_photo_url_for_render(resume.photo_url or ""),
-        logo_url=_resolve_logo_url_for_render(resume.contact_json),
-        contact_phone=c.get("phone", ""),
-        contact_email=c.get("email", ""),
-        contact_website=c.get("website", "") or c.get("personalWebsite", "") or c.get("homepage", "") or c.get("github", "") or c.get("linkedin", ""),
-        contact_age=c.get("age", ""),
-        contact_gender=c.get("gender", "") or c.get("sex", ""),
-        contact_native_place=c.get("nativePlace", "") or c.get("hometown", "") or c.get("籍贯", ""),
-        contact_status=c.get("status", "") or c.get("currentStatus", "") or c.get("当前状态", ""),
-        summary=resume.summary or "",
-        sections=_serialize_export_sections(resume),
-        primary_color=_css_token(style.get("primaryColor", "#222")),
-        accent_color=_css_token(style.get("accentColor", "#666")),
-        body_size=_css_token(style.get("bodySize", "10pt")),
-        heading_size=_css_token(style.get("headingSize", "12pt")),
-        line_height=_css_token(style.get("lineHeight", "1.5")),
-        page_margin=_css_token(style.get("pageMargin", "2cm")),
-        section_gap=_css_token(style.get("sectionGap", "14pt")),
-        font_family=_css_token(style.get("fontFamily", "sans-serif")),
-    )
-
-
 def _render_resume_png_from_pdf(pdf_bytes: bytes, scale: float) -> bytes:
     try:
         import pymupdf as fitz  # PyMuPDF
@@ -1245,206 +692,11 @@ def _normalize_export_image_scale(scale: float) -> float:
     return max(1.0, min(scale, 2.2))
 
 
-def _extract_pdf_fallback_lines(html_str: str) -> list[tuple[str, str]]:
-    try:
-        from bs4 import BeautifulSoup
-    except Exception:
-        text = re.sub(r"<[^>]+>", "\n", html_str or "")
-        lines = [re.sub(r"\s+", " ", line).strip() for line in text.splitlines()]
-        return [("body", line) for line in lines if line]
-
-    soup = BeautifulSoup(html_str or "", "html.parser")
-    for tag in soup(["style", "script", "template"]):
-        tag.decompose()
-
-    selectors = [
-        ".name",
-        ".contact-line",
-        ".sidebar-title",
-        ".skill-category",
-        ".skill-tag",
-        ".section-title",
-        ".entry-title",
-        ".entry-meta",
-        ".entry-sub",
-        ".entry-desc",
-        "h1",
-        "h2",
-        "h3",
-        "p",
-        "li",
-    ]
-
-    lines: list[tuple[str, str]] = []
-    seen: set[tuple[str, str]] = set()
-
-    for element in soup.select(",".join(selectors)):
-        text = re.sub(r"\s+", " ", element.get_text(" ", strip=True)).strip()
-        if not text:
-            continue
-
-        classes = set(element.get("class") or [])
-        if "name" in classes or element.name == "h1":
-            kind = "title"
-        elif classes.intersection({"sidebar-title", "section-title"}) or element.name in {"h2", "h3"}:
-            kind = "heading"
-        else:
-            kind = "body"
-
-        key = (kind, text)
-        if key not in seen:
-            lines.append(key)
-            seen.add(key)
-
-    if lines:
-        return lines
-
-    body = soup.body or soup
-    text = body.get_text("\n", strip=True)
-    normalized = [re.sub(r"\s+", " ", line).strip() for line in text.splitlines()]
-    return [("body", line) for line in normalized if line]
-
-
-def _register_reportlab_cjk_font() -> str:
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
-
-    font_name = "OfferUFallbackCJK"
-    if font_name in pdfmetrics.getRegisteredFontNames():
-        return font_name
-
-    font_candidates = [
-        os.environ.get("OFFERU_PDF_FONT", ""),
-        r"C:\Windows\Fonts\msyh.ttc",
-        r"C:\Windows\Fonts\simsun.ttc",
-        r"C:\Windows\Fonts\Deng.ttf",
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/opentype/noto/NotoSansCJKsc-Regular.otf",
-        "/System/Library/Fonts/PingFang.ttc",
-        "/Library/Fonts/Arial Unicode.ttf",
-    ]
-
-    for font_path in font_candidates:
-        if not font_path or not os.path.exists(font_path):
-            continue
-        try:
-            pdfmetrics.registerFont(TTFont(font_name, font_path, subfontIndex=0))
-            return font_name
-        except Exception:
-            continue
-
-    return "Helvetica"
-
-
-def _render_resume_pdf_with_reportlab(html_str: str) -> bytes:
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import ParagraphStyle
-    from reportlab.lib.units import mm
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-
-    font_name = _register_reportlab_cjk_font()
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=A4,
-        rightMargin=18 * mm,
-        leftMargin=18 * mm,
-        topMargin=16 * mm,
-        bottomMargin=16 * mm,
-        title="OfferU Resume",
-    )
-
-    base_style = {
-        "fontName": font_name,
-        "wordWrap": "CJK",
-    }
-    styles = {
-        "title": ParagraphStyle(
-            "OfferUTitle",
-            **base_style,
-            fontSize=16,
-            leading=22,
-            spaceAfter=8,
-        ),
-        "heading": ParagraphStyle(
-            "OfferUHeading",
-            **base_style,
-            fontSize=11,
-            leading=16,
-            spaceBefore=8,
-            spaceAfter=5,
-        ),
-        "body": ParagraphStyle(
-            "OfferUBody",
-            **base_style,
-            fontSize=9.5,
-            leading=14,
-            spaceAfter=4,
-        ),
-    }
-
-    lines = _extract_pdf_fallback_lines(html_str)
-    if not lines:
-        lines = [("title", "OfferU Resume"), ("body", "No resume content available.")]
-
-    story = []
-    for kind, text in lines:
-        style = styles.get(kind, styles["body"])
-        story.append(Paragraph(xml_escape(text), style))
-        if kind in {"title", "heading"}:
-            story.append(Spacer(1, 2))
-
-    doc.build(story)
-    return buffer.getvalue()
-
-
-def _can_try_weasyprint() -> bool:
-    if os.name != "nt":
-        return True
-
-    try:
-        import ctypes.util
-    except Exception:
-        return True
-
-    return bool(ctypes.util.find_library("libgobject-2.0-0"))
-
-
 async def _render_resume_pdf_with_playwright(resume_id: int, resume: Resume) -> bytes:
     from app.services.resume_export import render_resume_pdf
 
     pdf_bytes, _ = await render_resume_pdf(resume)
     return pdf_bytes
-
-
-def _render_resume_pdf_bytes(html_str: str) -> bytes:
-    weasy_error: Exception | None = None
-
-    if not _can_try_weasyprint():
-        weasy_error = RuntimeError("WeasyPrint native GTK/Pango libraries were not found")
-    else:
-        try:
-            from weasyprint import HTML
-        except Exception as exc:
-            weasy_error = exc
-        else:
-            try:
-                return HTML(string=html_str).write_pdf()
-            except Exception as exc:
-                weasy_error = exc
-
-    try:
-        return _render_resume_pdf_with_reportlab(html_str)
-    except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                "PDF 渲染失败。"
-                f"（WeasyPrint: {safe_error_message(weasy_error or RuntimeError('unavailable'))}; "
-                f"备用渲染器: {safe_error_message(exc)}）"
-            ),
-        )
 
 
 def _build_export_image_cache_key(resume: Resume, scale: float) -> tuple[int, str, str]:
@@ -2106,7 +1358,6 @@ async def restore_resume_version(
 # =============================================
 
 from app.models.models import ResumeShare
-import secrets
 
 
 class ShareCreate(BaseModel):
