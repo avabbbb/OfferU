@@ -55,3 +55,7 @@ export function transcribeAudio(file: Blob, name: string) {
   form.append("file", file, name);
   return request<{ transcript: string }>(`${BASE}/transcribe`, { method: "POST", body: form, headers: {} }).then((r) => r.transcript);
 }
+export const markApplicationRejected = (id: number) => request<{ workspace_status: string }>(`${BASE}/${id}/mark-rejected`, { method: "POST" });
+
+/** 看板阶段 → 复盘轮次名。 */
+export const ROUND_FOR_STAGE: Record<string, string> = { interview_1: "一面", interview_2: "二面", interview_hr: "HR 面" };

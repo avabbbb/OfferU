@@ -248,3 +248,29 @@ async def transcribe_interview_audio(file_path: str) -> dict[str, Any]:
         return {"transcript": text}
     finally:
         path.unlink(missing_ok=True)
+
+
+async def mark_application_rejected_from_review(review_id: int) -> dict[str, Any]:
+    """复盘结果是「没过」时，用户点了确认，才把对应投递标成已拒绝。"""
+
+    from app.models.models import ApplicationRecord
+    from app.services.agent_operations import update_application_status
+
+    async with async_session() as db:
+        review = await _load(db, review_id)
+        if review.job_id is None:
+            raise ValueError("这场复盘没有关联投递")
+        record = (
+            await db.execute(
+                select(ApplicationRecord)
+                .where(ApplicationRecord.job_ref_id == review.job_id)
+                .order_by(ApplicationRecord.updated_at_value.desc(), ApplicationRecord.id.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+    if record is None:
+        raise ValueError("这个岗位在投递表里还没有记录")
+    result = await update_application_status(application_id=record.id, status="rejected")
+    if result.get("error"):
+        raise ValueError(str(result["error"]))
+    return result
