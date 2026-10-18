@@ -40,6 +40,8 @@ class Job(Base):
     apply_url: Mapped[str] = mapped_column(Text, default="")
     source: Mapped[str] = mapped_column(String(50), index=True, default="linkedin")
     raw_description: Mapped[str] = mapped_column(Text, default="")
+    # BOSS 的 securityId：用来跑 boss detail 补职位描述。
+    boss_security_id: Mapped[str] = mapped_column(String(300), default="")
     posted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     # ---- 岗位详情（校招场景关键字段） ----
@@ -1938,6 +1940,34 @@ class AgentInputRequest(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
     answered_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     consumed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class BossSyncState(Base):
+    """boss-cli 每天同步的开关和最近一次结果，只有一行。"""
+
+    __tablename__ = "boss_sync_state"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    table_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    next_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_ok: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    last_message: Mapped[str] = mapped_column(String(300), default="")
+
+
+class BossGreetLog(Base):
+    """海投时每一次打招呼的结果，用来算每天的额度、避免同一岗位打两次。"""
+
+    __tablename__ = "boss_greet_log"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    encrypt_job_id: Mapped[str] = mapped_column(String(100), index=True)
+    title: Mapped[str] = mapped_column(String(300), default="")
+    company: Mapped[str] = mapped_column(String(300), default="")
+    ok: Mapped[bool] = mapped_column(Boolean, default=False)
+    message: Mapped[str] = mapped_column(String(300), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, index=True)
 
 
 class InterviewReview(Base):

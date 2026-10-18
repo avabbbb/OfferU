@@ -2,6 +2,7 @@
 
 import { PageHeader, ViewSwitch } from "@/components/layout/PageHeader";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BossSyncModal } from "@/components/boss-sync-modal";
 import { useSearchParams } from "next/navigation";
 import {
   Button,
@@ -27,22 +28,18 @@ import {
   AlertTriangle,
   Check,
   ChevronsUpDown,
-  CopyPlus,
   ExternalLink,
   KanbanSquare,
   Mail,
-  MailCheck,
-  MailWarning,
   MoreHorizontal,
   Pencil,
   Plus,
-  RefreshCw,
   Search,
   Settings,
-  ShoppingCart,
   Table2,
   Trash2,
   X,
+  ChevronDown,
 } from "lucide-react";
 import ProgressBoard from "@/components/progress-board";
 import { useWorkbench } from "@/lib/workbench";
@@ -55,6 +52,7 @@ import {
   deleteApplicationTable,
   importJobsToApplicationTable,
   importLatestExtensionBatchToApplicationTable,
+  importBossExport,
   moveApplicationRecords,
   renameApplicationTable,
   syncEmails,
@@ -785,6 +783,33 @@ const [emailSyncing, setEmailSyncing] = useState(false);
     }
   };
 
+  const bossFileRef = useRef<HTMLInputElement>(null);
+  const [bossImporting, setBossImporting] = useState(false);
+  const [bossSyncOpen, setBossSyncOpen] = useState(false);
+  const handleBossFile = async (file: File | undefined) => {
+    if (!file || !currentTableId) return;
+    setBossImporting(true);
+    try {
+      let payload: unknown;
+      try {
+        payload = JSON.parse(await file.text());
+      } catch {
+        throw new Error("不是 JSON 文件。导出时记得加 --json");
+      }
+      const result = await importBossExport(currentTableId, payload);
+      setOperationFeedback({
+        tone: "success",
+        message: `已读取 ${result.total} 条${result.kind_label}：新增 ${result.created} 条，${result.advanced} 条更新了状态。`,
+      });
+      await refreshAll();
+    } catch (error) {
+      setOperationFeedback({ tone: "error", message: safeClientErrorMessage(error, "导入失败") });
+    } finally {
+      setBossImporting(false);
+      if (bossFileRef.current) bossFileRef.current.value = "";
+    }
+  };
+
   const handleSyncEmails = async () => {
     setEmailSyncing(true);
     try {
@@ -1039,86 +1064,55 @@ const [emailSyncing, setEmailSyncing] = useState(false);
             </div>
           </div>
 
-          <div className="data-toolbar-actions flex flex-col items-stretch gap-2">
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              <Tooltip content="把最近一次插件购物车同步的岗位直接写入当前投递表" placement="bottom" closeDelay={120}>
+          <div className="data-toolbar-actions flex items-center justify-end gap-2">
+            <input ref={bossFileRef} type="file" accept=".json,application/json" className="hidden" data-testid="boss-import-file" onChange={(e) => handleBossFile(e.target.files?.[0])} />
+            <Dropdown placement="bottom-end">
+              <DropdownTrigger>
                 <Button
                   className="bauhaus-button bauhaus-button-outline !min-h-11 !px-4"
-                  startContent={<ShoppingCart size={14} />}
-                  onPress={handleImportLatestExtensionBatch}
-                  isLoading={latestExtensionImporting}
+                  endContent={<ChevronDown size={14} />}
+                  isLoading={latestExtensionImporting || emailSyncing || bossImporting}
                   isDisabled={!currentTableId}
+                  data-testid="import-menu"
                 >
-                  导入最近插件同步
+                  导入
                 </Button>
-              </Tooltip>
-              <Tooltip
-                content={
-                  emailStatus?.connected
-                    ? `已连接${emailStatus.imap_connected ? ` IMAP ${emailStatus.imap_user}` : " Gmail"}，点击拉取最近 7 天邮件并解析面试通知`
-                    : "未连接邮箱，点击后请在「邮箱」页配置 IMAP 或 Gmail 授权"
-                }
-                placement="bottom"
-                closeDelay={120}
+              </DropdownTrigger>
+              <DropdownMenu
+                aria-label="导入"
+                disabledKeys={emailStatus?.connected ? [] : ["email"]}
+                onAction={(key) => {
+                  if (key === "jobs") openImportModal();
+                  if (key === "extension") handleImportLatestExtensionBatch();
+                  if (key === "email") handleSyncEmails();
+                  if (key === "boss-file") bossFileRef.current?.click();
+                  if (key === "boss-sync") setBossSyncOpen(true);
+                }}
               >
-                <Button
-                  className="bauhaus-button bauhaus-button-outline !min-h-11 !px-4"
-                  startContent={
-                    emailStatus?.connected ? (
-                      emailSyncing ? <RefreshCw size={14} className="animate-spin" /> : <MailCheck size={14} />
-                    ) : (
-                      <MailWarning size={14} />
-                    )
-                  }
-                  onPress={handleSyncEmails}
-                  isLoading={emailSyncing}
-                  isDisabled={!emailStatus?.connected}
-                >
-                  同步邮箱
-                </Button>
-              </Tooltip>
+                <DropdownItem key="jobs" description="勾选已保存的岗位加进这张表">从岗位库选</DropdownItem>
+                <DropdownItem key="extension" description="插件购物车最近一次同步的岗位">插件最近同步</DropdownItem>
+                <DropdownItem key="email" description={emailStatus?.connected ? "拉取最近 7 天邮件里的面试通知" : "先在「邮件」页连接邮箱"}>同步邮箱面试通知</DropdownItem>
+                <DropdownItem key="boss-file" description="选 boss applied / interviews / chat --json 导出的文件" data-testid="import-boss-file">BOSS 导出文件</DropdownItem>
+                <DropdownItem key="boss-sync" description="用本机 boss-cli 每天读一次，默认关闭" data-testid="import-boss-sync">BOSS 每天同步…</DropdownItem>
+              </DropdownMenu>
+            </Dropdown>
+            <Tooltip content="设置" placement="bottom" closeDelay={120}>
               <Button
-                className="bauhaus-button bauhaus-button-blue !min-h-11 !px-4"
-                startContent={<CopyPlus size={14} />}
-                onPress={openImportModal}
+                isIconOnly
+                className="bauhaus-button bauhaus-button-outline !min-h-11 !w-11 !px-0"
+                onPress={() => setSettingsModalOpen(true)}
+                aria-label="投递设置"
               >
-                快捷导入
+                <Settings size={14} />
               </Button>
-              <Tooltip content="设置" placement="bottom" closeDelay={120}>
-                <Button
-                  isIconOnly
-                  className="bauhaus-button bauhaus-button-outline !min-h-11 !w-11 !px-0"
-                  onPress={() => setSettingsModalOpen(true)}
-                  aria-label="投递设置"
-                >
-                  <Settings size={14} />
-                </Button>
-              </Tooltip>
-            </div>
-            <p className="data-toolbar-help max-w-[520px] text-xs font-medium leading-5 text-[var(--foreground-muted)]">
-              插件购物车同步后可直接导入当前表；导入后检查投递状态和岗位链接。
-            </p>
-            <div className="data-toolbar-status flex flex-wrap items-center gap-2 text-xs font-medium leading-5">
-              {emailStatus?.connected ? (
-                <span className="inline-flex items-center gap-1 text-[var(--foreground-soft)]">
-                  <MailCheck size={12} />
-                  {emailStatus.imap_connected
-                    ? `IMAP · ${emailStatus.imap_user}`
-                    : "Gmail · 已授权"}
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 text-[var(--primary-red)]">
-                  <MailWarning size={12} />
-                  邮箱未连接 — 请在「邮箱」页配置 IMAP 或 Gmail 授权后再同步
-                </span>
-              )}
-            </div>
+            </Tooltip>
           </div>
         </div>
       </section>
       )}
 
       {viewMode === "board" && <ProgressBoard />}
+      <BossSyncModal open={bossSyncOpen} onClose={() => setBossSyncOpen(false)} tableId={currentTableId} onSynced={refreshAll} />
 
       {operationFeedback && (
         <div className="feedback-pop fixed right-4 top-4 z-50 max-w-md">
@@ -1289,7 +1283,7 @@ const [emailSyncing, setEmailSyncing] = useState(false);
               {records.length === 0 && (
                 <tr>
                   <td colSpan={visibleFields.length + 1} className="px-4 py-10 text-center text-[var(--foreground-muted)]">
-                    暂无记录。你可以手动新增，或者从快捷导入中批量添加岗位。
+                    还没有记录。点右上角「导入」，从岗位库或 BOSS 记录加进来。
                   </td>
                 </tr>
               )}
@@ -1558,7 +1552,7 @@ const [emailSyncing, setEmailSyncing] = useState(false);
 
       <Modal isOpen={importModalOpen} onClose={() => setImportModalOpen(false)} size="3xl">
         <ModalContent className="rounded-none border border-[var(--border-strong)] bg-[var(--surface)]">
-          <ModalHeader className="border-b border-[var(--border)]">快捷导入</ModalHeader>
+          <ModalHeader className="border-b border-[var(--border)]">从岗位库选</ModalHeader>
           <ModalBody className="space-y-4 py-5">
             <div className="grid gap-2 md:grid-cols-[1fr_220px]">
               <Input

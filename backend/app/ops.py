@@ -63,6 +63,9 @@ from app.services.interview_reviews import (
     save_interview_review,
     transcribe_interview_audio,
 )
+from app.services.boss_import import FillBossJobDetailInput, ImportBossExportInput, fill_boss_job_detail, import_boss_export
+from app.services.boss_blast import BossBlastSearchInput, BossBlastStartInput, get_boss_greet, search_boss_jobs, start_boss_greet
+from app.services.boss_sync import BossSyncSettingsInput, get_boss_sync, run_boss_sync, set_boss_sync
 from app.services.local_memory import LocalMemoryPreviewInput, list_local_memory_sources, preview_local_memory_source
 from app.services.optimize_agent_operations import (
     chat_optimize_agent_session,
@@ -218,7 +221,6 @@ from app.services.agent_operations import (
     email_connection_status,
     delete_ai_interview,
 )
-from app.services.job_sources.boss_progress import sync_boss_application_progress
 from app.services.legacy_operations import (
     apply_application_template_to_all,
     auto_fill_calendar_events,
@@ -1551,7 +1553,7 @@ class FinalizeScraperBatchInput(_StrictOperationInput):
 class ListApplicationsInput(_StrictOperationInput):
     status: str | None = Field(
         default=None,
-        pattern="^(pending|submitted|responded|interview|rejected|offer)$",
+        pattern="^(pending|submitted|responded|assessment|interview|rejected|offer)$",
     )
     page: int = Field(default=1, ge=1)
     page_size: int = Field(default=20, ge=1, le=100)
@@ -1565,7 +1567,7 @@ class CreateApplicationInput(_StrictOperationInput):
 class UpdateApplicationStatusInput(_StrictOperationInput):
     application_id: int = Field(gt=0)
     status: str = Field(
-        pattern="^(pending|submitted|responded|interview|rejected|offer)$",
+        pattern="^(pending|submitted|responded|assessment|interview|rejected|offer)$",
     )
     notes: str | None = Field(default=None, max_length=60_000)
 
@@ -1668,7 +1670,7 @@ class UpdateApplicationRecordInput(_StrictOperationInput):
 
     @model_validator(mode="after")
     def validate_value(self):
-        allowed_statuses = {"待投递", "已投递", "待处理", "面试中", "已拒绝", "已录用"}
+        allowed_statuses = {"待投递", "已投递", "HR 已回复", "笔试中", "面试中", "已拒绝", "已录用"}
         if self.field_key == "apply_status" and self.value.strip() not in allowed_statuses:
             raise ValueError("apply_status has an unsupported value")
         return self
@@ -2231,6 +2233,74 @@ OPERATIONS: dict[str, Operation] = {
         side_effects=("write",),
         input_model=ReviewIdInput,
         version="2026-10-01",
+    ),
+    "import_boss_export": Operation(
+        name="import_boss_export",
+        fn=import_boss_export,
+        description="读取使用者自己用 boss-cli 导出的投递 / 面试 / 沟通记录 JSON，合并进投递表；状态只往前推。不访问 BOSS。",
+        group="applications",
+        side_effects=("write",),
+        input_model=ImportBossExportInput,
+        audit_redacted_parameters=("payload",),
+        version="2026-10-04",
+    ),
+    "fill_boss_job_detail": Operation(
+        name="fill_boss_job_detail",
+        fn=fill_boss_job_detail,
+        description="用本机 boss-cli 读一次 BOSS 岗位详情，把职位描述补进这个岗位；已有描述不覆盖。",
+        group="jobs",
+        side_effects=("write", "external"),
+        input_model=FillBossJobDetailInput,
+        version="2026-10-07",
+    ),
+    "get_boss_sync": Operation(
+        name="get_boss_sync",
+        fn=get_boss_sync,
+        description="读取 boss-cli 每天同步的开关、下次时间和最近一次结果。",
+        group="applications",
+        version="2026-10-05",
+    ),
+    "set_boss_sync": Operation(
+        name="set_boss_sync",
+        fn=set_boss_sync,
+        description="打开或关闭每天用本机 boss-cli 同步投递和面试记录（只读命令）。",
+        group="applications",
+        side_effects=("write",),
+        input_model=BossSyncSettingsInput,
+        version="2026-10-05",
+    ),
+    "run_boss_sync": Operation(
+        name="run_boss_sync",
+        fn=run_boss_sync,
+        description="现在用本机 boss-cli 跑一次 applied / interviews 并合并进投递表；两次手动之间至少 10 分钟。",
+        group="applications",
+        side_effects=("write", "external"),
+        version="2026-10-05",
+    ),
+    "search_boss_jobs": Operation(
+        name="search_boss_jobs",
+        fn=search_boss_jobs,
+        description="海投第一步：用本机 boss-cli 搜一页岗位，按最近的简历给每个岗位打匹配分，高分默认勾选。不打招呼。",
+        group="applications",
+        side_effects=("external",),
+        input_model=BossBlastSearchInput,
+        version="2026-10-06",
+    ),
+    "start_boss_greet": Operation(
+        name="start_boss_greet",
+        fn=start_boss_greet,
+        description="海投第二步：给使用者勾选的岗位逐个打招呼（每天最多 50 个，间隔 20–60 秒），成功的记进投递表（默认总表）。",
+        group="applications",
+        side_effects=("write", "external"),
+        input_model=BossBlastStartInput,
+        version="2026-10-06",
+    ),
+    "get_boss_greet": Operation(
+        name="get_boss_greet",
+        fn=get_boss_greet,
+        description="读取海投这一批的进度和今天剩余的招呼额度。",
+        group="applications",
+        version="2026-10-06",
     ),
     "mark_application_rejected_from_review": Operation(
         name="mark_application_rejected_from_review",
@@ -3644,24 +3714,6 @@ OPERATIONS: dict[str, Operation] = {
         side_effects=("write",),
         audit_redacted_parameters=("body",),
         input_model=IngestApplicationSignalInput,
-    ),
-    "sync_boss_application_status": Operation(
-        name="sync_boss_application_status",
-        fn=sync_boss_application_progress,
-        description=(
-            "手动触发的 BOSS 直聘投递/面试进展只读同步（Sync now）："
-            "经 boss CLI 拉取投递记录与面试邀请，逐条生成待用户确认的候选进展；"
-            "不自动改写任何投递阶段，未匹配记录进入 review queue。"
-            "仅在用户手动调用时运行，无后台周期任务。"
-        ),
-        parameters={
-            "account_ref": "str=boss",
-            "max_pages": "int=1 (deliver 列表页数上限 1-10)",
-        },
-        group="applications",
-        side_effects=("external", "write"),
-        permissions=("job_source:boss:read",),
-        version="2026-09-17",
     ),
     "list_application_progress_candidates": Operation(
         name="list_application_progress_candidates",

@@ -63,14 +63,11 @@ from app.routes import jobs, resume, calendar, email, config, applications, scra
 async def lifespan(app: FastAPI):
     """应用启动时初始化数据库表与 MCP 会话管理器。"""
     await init_db()
-    # JobSource V1: register adapters into the shared router. BOSS is
-    # EXPERIMENTAL/READ_ONLY; local sources wrap the existing jobs table.
+    # JobSource V1: local sources wrap the existing jobs table.
     from app.services.job_sources.router import job_source_router
     from app.services.job_sources.adapters.local import ManualJobSource, WebJobSource
-    from app.services.job_sources.adapters.boss import BossJobSource
     job_source_router.register(ManualJobSource())
     job_source_router.register(WebJobSource())
-    job_source_router.register(BossJobSource())
     from app.services.startup_recovery import (
         finish_startup_recovery,
         reset_startup_recovery,
@@ -128,6 +125,9 @@ async def lifespan(app: FastAPI):
         start_work_source_auto_sync()
 
     await run_startup_recovery("email_sync", start_email_sync_service)
+    from app.services.boss_sync import start_boss_sync_service, stop_boss_sync_service
+
+    await run_startup_recovery("boss_sync", start_boss_sync_service)
     await run_startup_recovery("memory_distill", _start_memory_distill)
     await run_startup_recovery(
         "work_source_auto_sync",
@@ -148,6 +148,7 @@ async def lifespan(app: FastAPI):
         await close_embedded_agent_worker()
         await stop_authorized_research_service()
         await stop_email_sync_service()
+        await stop_boss_sync_service()
         await stop_memory_distill_service()
         await stop_work_source_auto_sync()
 

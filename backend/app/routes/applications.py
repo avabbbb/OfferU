@@ -221,6 +221,56 @@ async def import_latest_extension_batch(
     except ValueError as exc:
         raise _bad_request(exc) from exc
 
+@router.post("/tables/{table_id}/import-boss")
+async def import_boss_export_route(table_id: int, payload: dict):
+    try:
+        return await _execute_operation("import_boss_export", {"table_id": table_id, "payload": payload})
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
+
+
+@router.get("/boss-sync")
+async def get_boss_sync_route():
+    return await _execute_operation("get_boss_sync", {})
+
+
+@router.put("/boss-sync")
+async def set_boss_sync_route(payload: dict):
+    try:
+        return await _execute_operation("set_boss_sync", payload)
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
+
+
+@router.get("/boss-greet")
+async def get_boss_greet_route():
+    return await _execute_operation("get_boss_greet", {})
+
+
+@router.post("/boss-greet/search")
+async def search_boss_jobs_route(payload: dict):
+    try:
+        return await _execute_operation("search_boss_jobs", payload)
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
+
+
+@router.post("/boss-greet/start")
+async def start_boss_greet_route(payload: dict):
+    try:
+        return await _execute_operation("start_boss_greet", payload)
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
+
+
+@router.post("/boss-sync/run")
+async def run_boss_sync_route():
+    try:
+        return await _execute_operation("run_boss_sync", {})
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
+
+
 @router.post("/records")
 async def create_record_route(data: RecordCreateRequest):
     try:
