@@ -30,7 +30,6 @@ LEGACY_KEY_FIELDS: tuple[str, ...] = (
     "zhipu_api_key",
     "active_llm_api_key",
 )
-SCRAPER_SECRET_FIELDS: tuple[str, ...] = ("zhilian_cookie",)
 
 
 class VaultUnavailableError(RuntimeError):
@@ -159,13 +158,6 @@ def hydrate(payload: dict[str, Any]) -> None:
                 resolved = str(legacy_secret.get("api_key") or "")
             if resolved:
                 payload[field] = resolved
-        for field in SCRAPER_SECRET_FIELDS:
-            if str(payload.get(field) or "").strip():
-                continue
-            reference = str(refs.get(field) or "")
-            secret = _read_connection_secret(reference, record_error=bool(reference), missing_is_error=True)
-            if secret.get("value"):
-                payload[field] = str(secret["value"])
 
 
 def _new_config_ref() -> str:
@@ -260,22 +252,6 @@ def dehydrate(payload: dict[str, Any]) -> list[str]:
                 created_refs.append(reference)
             if not shared_ref:
                 write_key(reference, value)
-            payload["secret_refs"] = refs
-            refs[field] = reference
-            payload[field] = ""
-        for field in SCRAPER_SECRET_FIELDS:
-            value = str(payload.get(field) or "").strip()
-            existing_ref = str(refs.get(field) or "")
-            if not value or _is_masked(value):
-                continue
-            secret = {"value": value}
-            reference = existing_ref if _stored_secret_matches(existing_ref, secret) else f"scraper/{field}/{uuid4().hex}"
-            if reference != existing_ref:
-                created_refs.append(reference)
-            try:
-                credential_store.store_secret_sync(reference, secret)
-            except Exception as exc:
-                raise VaultUnavailableError(str(exc)) from exc
             payload["secret_refs"] = refs
             refs[field] = reference
             payload[field] = ""

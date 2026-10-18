@@ -24,7 +24,6 @@ from app.models.models import Job, Batch
 from app.ops import execute_operation
 from app.services.scrapers.base import get_all_scrapers, get_scraper
 from app.services.campus_detector import detect_campus
-from app.services.runtime_credentials import load_scraper_cookie
 from app.services.security_redaction import safe_error_message
 
 router = APIRouter()
@@ -124,7 +123,7 @@ async def _reap_orphaned_running_batches() -> None:
 
 class RunRequest(BaseModel):
     """爬取任务请求"""
-    source: str  # zhilian / linkedin / shixiseng / maimai / corporate
+    source: str  # linkedin / shixiseng / maimai / corporate
     keywords: list[str] = ["校招"]
     location: str = ""
     max_results: int = 50
@@ -133,7 +132,6 @@ class RunRequest(BaseModel):
 # ---- 数据源定义（含未实现的占位） ----
 AVAILABLE_SOURCES = [
     {"key": "shixiseng", "name": "实习僧", "status": "ready", "description": "实习/校招垂直平台，反爬友好，数据丰富"},
-    {"key": "zhilian", "name": "智联招聘", "status": "ready", "description": "老牌招聘平台，支持 Cookie 认证（可选）"},
     {"key": "jobspy", "name": "JobSpy 聚合", "status": "ready", "description": "一键聚合 LinkedIn / Indeed / Google 国际岗位"},
     {"key": "linkedin", "name": "领英 (Apify)", "status": "skeleton", "description": "通过 Apify API 抓取，需配置 API Key"},
     {"key": "bytedance", "name": "字节跳动", "status": "skeleton", "description": "字节跳动官网招聘 (jobs.bytedance.com)"},
@@ -250,11 +248,7 @@ async def _execute_scraper(task_info: dict, scraper, req: RunRequest):
 
         warning = ""
         if not items:
-            if req.source == "zhilian":
-                if not load_scraper_cookie("zhilian_cookie"):
-                    warning = "未获取到数据，可尝试在设置页配置智联招聘 Cookie"
-            if not warning:
-                warning = "本次任务没有抓到新岗位，可能是关键词/城市无结果，或平台反爬拦截。"
+            warning = "本次任务没有抓到新岗位，可能是关键词/城市无结果，或平台反爬拦截。"
 
         job_payloads = []
         for item in items:
@@ -387,7 +381,7 @@ async def list_tasks(db: AsyncSession = Depends(get_db)):
         warning = ""
         total_fetched = int(batch.total_fetched or created or 0)
         if batch.status == "completed" and total_fetched == 0:
-            warning = "本次任务没有抓到新岗位，可能是关键词/城市无结果、平台需要 Cookie，或平台反爬拦截。"
+            warning = "本次任务没有抓到新岗位，可能是关键词/城市无结果，或平台反爬拦截。"
         elif batch.status == "completed" and int(created) == 0 and total_fetched > 0:
             warning = f"本次抓到 {total_fetched} 个岗位，但都已存在，因此没有新增。"
         persisted_tasks.append(

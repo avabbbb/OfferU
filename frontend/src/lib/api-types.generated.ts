@@ -5352,11 +5352,6 @@ export interface components {
              * @default 60
              */
             llm_timeout: number;
-            /**
-             * Zhilian Cookie
-             * @default
-             */
-            zhilian_cookie: string;
         };
         /** CreateMemoryProposalRequest */
         CreateMemoryProposalRequest: {

@@ -27,7 +27,6 @@ import {
 import {
   AlertCircle,
   Check,
-  Cookie,
   Database,
   Download,
   Eye,
@@ -116,7 +115,6 @@ interface SettingsConfigPayload {
     source: "active_config" | "legacy_env" | "ollama";
   };
 
-  zhilian_cookie?: string;
 
   vault_status?: {
     available: boolean;
@@ -126,7 +124,6 @@ interface SettingsConfigPayload {
 
 const dataSources = [
   { name: "shixiseng", label: "实习僧", available: true },
-  { name: "zhilian", label: "智联招聘", available: true },
   { name: "linkedin", label: "LinkedIn", available: true },
   { name: "jobspy", label: "JobSpy 聚合", available: true },
   { name: "bytedance", label: "字节跳动", available: false },
@@ -883,8 +880,6 @@ export default function SettingsPage() {
   const [sourcesEnabled, setSourcesEnabled] = useState<string[]>(["linkedin"]);
   const [profileSourceSyncEnabled, setProfileSourceSyncEnabled] = useState(false);
 
-  const [zhilianCookie, setZhilianCookie] = useState("");
-  const [showZhilianCookie, setShowZhilianCookie] = useState(false);
 
   const [providerPresets, setProviderPresets] = useState<ProviderPreset[]>([]);
   const [providerPresetError, setProviderPresetError] = useState("");
@@ -994,7 +989,6 @@ export default function SettingsPage() {
     setEmailTo(config.email_to || "");
     setSourcesEnabled(config.sources_enabled || ["linkedin"]);
     setProfileSourceSyncEnabled(Boolean(config.profile_source_sync_enabled));
-    setZhilianCookie(config.zhilian_cookie || "");
 
     const presets = Array.isArray(config.provider_presets) ? config.provider_presets : [];
     setProviderPresets(presets);
@@ -1074,11 +1068,6 @@ export default function SettingsPage() {
 
   const handleEmailToChange = (value: string) => {
     setEmailTo(value);
-    markSettingsDirty();
-  };
-
-  const handleZhilianCookieChange = (value: string) => {
-    setZhilianCookie(value);
     markSettingsDirty();
   };
 
@@ -1279,7 +1268,6 @@ export default function SettingsPage() {
         email_to: emailTo.trim(),
         sources_enabled: sourcesEnabled,
         profile_source_sync_enabled: profileSourceSyncEnabled,
-        zhilian_cookie: zhilianCookie.trim(),
       });
 
       await mutate();
@@ -1461,45 +1449,6 @@ export default function SettingsPage() {
         </CardBody>
       </Card>
 
-      <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
-        <CardBody className="space-y-4 p-5 md:p-6">
-          <div className="flex items-center gap-3">
-            <div className="bauhaus-panel-sm flex h-11 w-11 items-center justify-center bg-[#F0C020] text-[var(--foreground)]">
-              <Cookie size={18} />
-            </div>
-            <div>
-              <p className="bauhaus-label text-[var(--foreground-muted)]">爬虫权限</p>
-              <h3 className="text-2xl font-bold text-[var(--foreground)]">爬虫认证配置</h3>
-            </div>
-          </div>
-          <Input
-            label="智联招聘 Cookie（可选）"
-            variant="bordered"
-            placeholder="登录 zhaopin.com 后复制 Cookie..."
-            description={
-              zhilianCookie === "***已配置***"
-                ? "已配置，输入新值将覆盖"
-                : "无 Cookie 时会尝试匿名访问"
-            }
-            value={zhilianCookie}
-            onValueChange={handleZhilianCookieChange}
-            type={showZhilianCookie ? "text" : "password"}
-            endContent={
-              <button
-                type="button"
-                onClick={() => setShowZhilianCookie((prev) => !prev)}
-                className="text-[var(--foreground-muted)] hover:text-[var(--foreground-muted)]"
-                aria-label={showZhilianCookie ? "隐藏 Cookie" : "显示 Cookie"}
-                aria-pressed={showZhilianCookie}
-              >
-                {showZhilianCookie ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            }
-            classNames={bauhausFieldClassNames}
-          />
-        </CardBody>
-      </Card>
-
       {settingsSaveError && (
         <div className="bauhaus-panel-sm flex items-center gap-2 bg-[var(--primary-red)] px-3 py-3 text-sm font-medium text-white">
           <AlertCircle size={16} />
@@ -1509,7 +1458,7 @@ export default function SettingsPage() {
 
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <p className="text-xs font-medium text-[var(--foreground-muted)]">
-          此按钮仅保存搜索配置、数据源、邮箱推送与爬虫认证配置。
+          此按钮仅保存搜索配置、数据源与邮箱推送。
         </p>
         <div className="flex items-center gap-2 self-start md:self-auto">
           <Chip

@@ -129,7 +129,6 @@ class ConfigUpdate(BaseModel):
     ssl_verify: bool = True       # False = 跳过 SSL 验证（Clash 代理场景）
     llm_timeout: int = 60         # LLM API 超时秒数
 
-    zhilian_cookie: str = ""
 
 
 def _normalize_provider_id(value: str) -> str:
@@ -646,8 +645,6 @@ def _restore_masked_keys(next_cfg: ConfigUpdate, payload_fields: set[str]) -> No
             }
 
     # cookie placeholder semantics
-    if "zhilian_cookie" in payload_fields and next_cfg.zhilian_cookie == "***已配置***":
-        next_cfg.zhilian_cookie = _current_config.zhilian_cookie
 
 
 def _apply_legacy_updates(next_cfg: ConfigUpdate, payload_fields: set[str]) -> None:
@@ -748,8 +745,6 @@ def _response_payload() -> dict[str, Any]:
         masked_configs.append(row)
     data["llm_api_configs"] = masked_configs
 
-    data["zhilian_cookie_set"] = bool(_current_config.zhilian_cookie)
-    data["zhilian_cookie"] = "***已配置***" if _current_config.zhilian_cookie else ""
 
     # ── active_llm_summary: 让前端明确知道当前生效的配置来源 ──
     active_cfg = next((item for item in _current_config.llm_api_configs if item.is_active), None)
