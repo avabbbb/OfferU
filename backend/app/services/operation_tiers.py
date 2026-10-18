@@ -57,6 +57,8 @@ CONFIRM_OPERATIONS = frozenset({
     "create_application_attempt",
     "update_application_status",
     "mark_application_rejected_from_review",
+    "import_boss_export",
+    "sync_boss_application_status",
 })
 
 # Generic record updates only need a confirmation when they change a status.

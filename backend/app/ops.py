@@ -61,6 +61,7 @@ from app.services.interview_reviews import (
     save_interview_review,
     transcribe_interview_audio,
 )
+from app.services.boss_import import ImportBossExportInput, import_boss_export
 from app.services.local_memory import LocalMemoryPreviewInput, list_local_memory_sources, preview_local_memory_source
 from app.services.optimize_agent_operations import (
     chat_optimize_agent_session,
@@ -2228,6 +2229,16 @@ OPERATIONS: dict[str, Operation] = {
         side_effects=("write",),
         input_model=ReviewIdInput,
         version="2026-10-01",
+    ),
+    "import_boss_export": Operation(
+        name="import_boss_export",
+        fn=import_boss_export,
+        description="读取使用者自己用 boss-cli 导出的投递 / 面试 / 沟通记录 JSON，合并进投递表；状态只往前推。不访问 BOSS。",
+        group="applications",
+        side_effects=("write",),
+        input_model=ImportBossExportInput,
+        audit_redacted_parameters=("payload",),
+        version="2026-10-04",
     ),
     "mark_application_rejected_from_review": Operation(
         name="mark_application_rejected_from_review",

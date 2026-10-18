@@ -221,6 +221,14 @@ async def import_latest_extension_batch(
     except ValueError as exc:
         raise _bad_request(exc) from exc
 
+@router.post("/tables/{table_id}/import-boss")
+async def import_boss_export_route(table_id: int, payload: dict):
+    try:
+        return await _execute_operation("import_boss_export", {"table_id": table_id, "payload": payload})
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
+
+
 @router.post("/records")
 async def create_record_route(data: RecordCreateRequest):
     try:
