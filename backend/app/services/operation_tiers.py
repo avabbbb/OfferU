@@ -61,6 +61,7 @@ CONFIRM_OPERATIONS = frozenset({
     "import_boss_export",
     "set_boss_sync",
     "run_boss_sync",
+    "start_boss_greet",
     "sync_boss_application_status",
 })
 
