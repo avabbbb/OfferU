@@ -2036,6 +2036,7 @@ _APPLICATION_STATUS_TO_WORKSPACE = {
     "pending": "待投递",
     "submitted": "已投递",
     "responded": "HR 已回复",
+    "assessment": "笔试中",
     "interview": "面试中",
     "rejected": "已拒绝",
     "offer": "已录用",
@@ -2051,6 +2052,8 @@ def _application_record_status(value: object) -> str:
         "已投递": "submitted",
         "applied": "submitted",
         "HR 已回复": "responded",
+        "笔试中": "assessment",
+        "笔试": "assessment",
         "已回复": "responded",
         "need_action": "responded",
         "面试": "interview",
@@ -2178,7 +2181,7 @@ async def update_application_status(
     notes: Optional[str] = None,
 ) -> dict:
     clean_status = str(status or "").strip().lower()
-    allowed = {"pending", "submitted", "responded", "interview", "rejected", "offer"}
+    allowed = {"pending", "submitted", "responded", "assessment", "interview", "rejected", "offer"}
     if clean_status not in allowed:
         raise ValueError(f"不支持的投递状态: {clean_status}")
     async with async_session() as db:
@@ -2351,9 +2354,9 @@ async def update_application_record(record_id: int, field_key: str, value: objec
     if clean_key not in {"apply_status", "follow_up_date", "notes"}:
         raise ValueError("Agent 只能更新 apply_status、follow_up_date 或 notes")
     if clean_key == "apply_status":
-        allowed_statuses = {"待投递", "已投递", "HR 已回复", "面试中", "已拒绝", "已录用"}
+        allowed_statuses = {"待投递", "已投递", "HR 已回复", "笔试中", "面试中", "已拒绝", "已录用"}
         if str(value or "").strip() not in allowed_statuses:
-            raise ValueError("投递表状态必须是待投递、已投递、HR 已回复、面试中、已拒绝或已录用")
+            raise ValueError("投递表状态必须是待投递、已投递、HR 已回复、笔试中、面试中、已拒绝或已录用")
     if clean_key == "follow_up_date" and value:
         try:
             datetime.fromisoformat(str(value).strip()[:10])

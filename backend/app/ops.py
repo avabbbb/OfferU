@@ -1552,7 +1552,7 @@ class FinalizeScraperBatchInput(_StrictOperationInput):
 class ListApplicationsInput(_StrictOperationInput):
     status: str | None = Field(
         default=None,
-        pattern="^(pending|submitted|responded|interview|rejected|offer)$",
+        pattern="^(pending|submitted|responded|assessment|interview|rejected|offer)$",
     )
     page: int = Field(default=1, ge=1)
     page_size: int = Field(default=20, ge=1, le=100)
@@ -1566,7 +1566,7 @@ class CreateApplicationInput(_StrictOperationInput):
 class UpdateApplicationStatusInput(_StrictOperationInput):
     application_id: int = Field(gt=0)
     status: str = Field(
-        pattern="^(pending|submitted|responded|interview|rejected|offer)$",
+        pattern="^(pending|submitted|responded|assessment|interview|rejected|offer)$",
     )
     notes: str | None = Field(default=None, max_length=60_000)
 
@@ -1669,7 +1669,7 @@ class UpdateApplicationRecordInput(_StrictOperationInput):
 
     @model_validator(mode="after")
     def validate_value(self):
-        allowed_statuses = {"待投递", "已投递", "HR 已回复", "面试中", "已拒绝", "已录用"}
+        allowed_statuses = {"待投递", "已投递", "HR 已回复", "笔试中", "面试中", "已拒绝", "已录用"}
         if self.field_key == "apply_status" and self.value.strip() not in allowed_statuses:
             raise ValueError("apply_status has an unsupported value")
         return self

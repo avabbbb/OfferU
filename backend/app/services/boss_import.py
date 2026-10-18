@@ -20,7 +20,7 @@ from app.models.models import ApplicationRecord, ApplicationTableRecord, Job
 KINDS = {"cardList": "applied", "interviewList": "interviews", "friendList": "chat", "result": "chat"}
 KIND_LABELS = {"applied": "投递记录", "interviews": "面试邀请", "chat": "沟通列表"}
 # 状态只往前推；已拒绝 / 已录用 是终点，导入不会改动。
-RANK = {"pending": 0, "submitted": 1, "responded": 2, "interview": 3}
+RANK = {"pending": 0, "submitted": 1, "responded": 2, "assessment": 3, "interview": 4}
 MAX_ITEMS = 1000
 
 

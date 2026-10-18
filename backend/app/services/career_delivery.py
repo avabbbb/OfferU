@@ -55,7 +55,7 @@ DELIVERY_ARTIFACT_TYPES: dict[str, str | None] = {
 }
 
 _APPLIED_STATUSES = {"submitted", "applied", "已投递"}
-_RESPONDED_STATUSES = {"responded", "need_action", "已回复", "HR 已回复"}
+_RESPONDED_STATUSES = {"responded", "need_action", "已回复", "HR 已回复", "assessment", "笔试中"}
 _INTERVIEW_STATUSES = {"interview", "interviewing", "面试", "面试中"}
 _TERMINAL_STATUSES = {"rejected", "offer", "withdrawn", "已拒绝", "已录取", "已撤回"}
 _TERMINAL_ATTEMPT_STAGES = {"rejected", "offer", "withdrawn"}
@@ -544,6 +544,7 @@ async def _attempt_stage(db: Any, attempt: ApplicationAttempt) -> str:
     return {
         "submitted": "applied",
         "responded": "applied",
+        "assessment": "written_test",
         "interview": "interview_1",
     }.get(normalized, normalized)
 
