@@ -4035,23 +4035,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/config/boss-status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Boss Cookie Status */
-        get: operations["boss_cookie_status_api_config_boss_status_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/config/test-llm": {
         parameters: {
             query?: never;
@@ -5472,16 +5455,6 @@ export interface components {
              * @default 60
              */
             llm_timeout: number;
-            /**
-             * Boss Cookie
-             * @default
-             */
-            boss_cookie: string;
-            /**
-             * Zhilian Cookie
-             * @default
-             */
-            zhilian_cookie: string;
         };
         /** CreateMemoryProposalRequest */
         CreateMemoryProposalRequest: {
@@ -14852,26 +14825,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    boss_cookie_status_api_config_boss_status_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
                 };
             };
         };
