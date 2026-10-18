@@ -128,6 +128,9 @@ async def lifespan(app: FastAPI):
         start_work_source_auto_sync()
 
     await run_startup_recovery("email_sync", start_email_sync_service)
+    from app.services.boss_sync import start_boss_sync_service, stop_boss_sync_service
+
+    await run_startup_recovery("boss_sync", start_boss_sync_service)
     await run_startup_recovery("memory_distill", _start_memory_distill)
     await run_startup_recovery(
         "work_source_auto_sync",
@@ -148,6 +151,7 @@ async def lifespan(app: FastAPI):
         await close_embedded_agent_worker()
         await stop_authorized_research_service()
         await stop_email_sync_service()
+        await stop_boss_sync_service()
         await stop_memory_distill_service()
         await stop_work_source_auto_sync()
 

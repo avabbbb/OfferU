@@ -1940,6 +1940,20 @@ class AgentInputRequest(Base):
     consumed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
 
+class BossSyncState(Base):
+    """boss-cli 每天同步的开关和最近一次结果，只有一行。"""
+
+    __tablename__ = "boss_sync_state"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    table_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    next_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_ok: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    last_message: Mapped[str] = mapped_column(String(300), default="")
+
+
 class InterviewReview(Base):
     """真实面试复盘：一场面试（某公司某一轮）一条，题目逐条存。"""
 
