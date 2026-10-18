@@ -62,6 +62,7 @@ from app.services.interview_reviews import (
     transcribe_interview_audio,
 )
 from app.services.boss_import import ImportBossExportInput, import_boss_export
+from app.services.boss_blast import BossBlastSearchInput, BossBlastStartInput, get_boss_greet, search_boss_jobs, start_boss_greet
 from app.services.boss_sync import BossSyncSettingsInput, get_boss_sync, run_boss_sync, set_boss_sync
 from app.services.local_memory import LocalMemoryPreviewInput, list_local_memory_sources, preview_local_memory_source
 from app.services.optimize_agent_operations import (
@@ -2264,6 +2265,31 @@ OPERATIONS: dict[str, Operation] = {
         group="applications",
         side_effects=("write", "external"),
         version="2026-10-05",
+    ),
+    "search_boss_jobs": Operation(
+        name="search_boss_jobs",
+        fn=search_boss_jobs,
+        description="海投第一步：用本机 boss-cli 搜一页岗位，按最近的简历给每个岗位打匹配分，高分默认勾选。不打招呼。",
+        group="applications",
+        side_effects=("external",),
+        input_model=BossBlastSearchInput,
+        version="2026-10-06",
+    ),
+    "start_boss_greet": Operation(
+        name="start_boss_greet",
+        fn=start_boss_greet,
+        description="海投第二步：给使用者勾选的岗位逐个打招呼（每天最多 50 个，间隔 20–60 秒），成功的记进投递表（默认总表）。",
+        group="applications",
+        side_effects=("write", "external"),
+        input_model=BossBlastStartInput,
+        version="2026-10-06",
+    ),
+    "get_boss_greet": Operation(
+        name="get_boss_greet",
+        fn=get_boss_greet,
+        description="读取海投这一批的进度和今天剩余的招呼额度。",
+        group="applications",
+        version="2026-10-06",
     ),
     "mark_application_rejected_from_review": Operation(
         name="mark_application_rejected_from_review",

@@ -9,6 +9,7 @@
 "use client";
 
 import { PageHeader } from "@/components/layout/PageHeader";
+import { BossGreetModal } from "@/components/boss-greet-modal";
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -185,6 +186,7 @@ export default function JobsPage() {
   const [isScraperSyncing, setIsScraperSyncing] = useState(fromScraper && !!scraperTaskId);
   const [actionError, setActionError] = useState("");
   const [addJobOpen, setAddJobOpen] = useState(false);
+  const [bossGreetOpen, setBossGreetOpen] = useState(false);
 
   useEffect(() => {
     if (guidedSetup) setAddJobOpen(true);
@@ -589,15 +591,20 @@ export default function JobsPage() {
         title="岗位"
         description={triageMeta.description}
         actions={
-          <Button
-            size="sm"
-            startContent={<Plus size={14} />}
-            onPress={() => setAddJobOpen(true)}
-            className="bauhaus-button bauhaus-button-red !min-h-9 !px-4"
-            data-testid="open-add-job"
-          >
-            保存岗位
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button size="sm" onPress={() => setBossGreetOpen(true)} className="bauhaus-button !min-h-9 !px-4" data-testid="open-boss-greet">
+              BOSS 海投
+            </Button>
+            <Button
+              size="sm"
+              startContent={<Plus size={14} />}
+              onPress={() => setAddJobOpen(true)}
+              className="bauhaus-button bauhaus-button-red !min-h-9 !px-4"
+              data-testid="open-add-job"
+            >
+              保存岗位
+            </Button>
+          </div>
         }
       />
 
@@ -1251,6 +1258,7 @@ export default function JobsPage() {
           </ModalFooter>
         </ModalContent>
       </Modal>
+      <BossGreetModal open={bossGreetOpen} onClose={() => setBossGreetOpen(false)} onGreeted={refreshAfterMutation} />
     </motion.div>
   );
 }

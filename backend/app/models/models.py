@@ -1954,6 +1954,20 @@ class BossSyncState(Base):
     last_message: Mapped[str] = mapped_column(String(300), default="")
 
 
+class BossGreetLog(Base):
+    """海投时每一次打招呼的结果，用来算每天的额度、避免同一岗位打两次。"""
+
+    __tablename__ = "boss_greet_log"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    encrypt_job_id: Mapped[str] = mapped_column(String(100), index=True)
+    title: Mapped[str] = mapped_column(String(300), default="")
+    company: Mapped[str] = mapped_column(String(300), default="")
+    ok: Mapped[bool] = mapped_column(Boolean, default=False)
+    message: Mapped[str] = mapped_column(String(300), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, index=True)
+
+
 class InterviewReview(Base):
     """真实面试复盘：一场面试（某公司某一轮）一条，题目逐条存。"""
 

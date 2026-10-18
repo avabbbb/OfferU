@@ -242,6 +242,27 @@ async def set_boss_sync_route(payload: dict):
         raise _bad_request(exc) from exc
 
 
+@router.get("/boss-greet")
+async def get_boss_greet_route():
+    return await _execute_operation("get_boss_greet", {})
+
+
+@router.post("/boss-greet/search")
+async def search_boss_jobs_route(payload: dict):
+    try:
+        return await _execute_operation("search_boss_jobs", payload)
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
+
+
+@router.post("/boss-greet/start")
+async def start_boss_greet_route(payload: dict):
+    try:
+        return await _execute_operation("start_boss_greet", payload)
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
+
+
 @router.post("/boss-sync/run")
 async def run_boss_sync_route():
     try:
