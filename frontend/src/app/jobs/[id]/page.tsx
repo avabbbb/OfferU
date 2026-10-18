@@ -59,6 +59,7 @@ import {
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { ExternalUrlLink, openExternalUrl } from "@/components/ExternalUrlLink";
 import { tailorResumeHref } from "@/app/resume/resumeModes";
+import { SOURCE_LABELS } from "@/components/jobs/JobCard";
 
 const MANUAL_DECISION_STAGES = new Set([
   "needs_research",
@@ -654,7 +655,7 @@ export default function JobDetailPage() {
                 {job.location && <span className="flex items-center gap-1"><MapPin size={14} /> {job.location}</span>}
                 {job.salary_text && <span>{job.salary_text}</span>}
                 {job.posted_at && <span className="flex items-center gap-1"><Calendar size={14} /> {job.posted_at}</span>}
-                <span>来源 {job.source}</span>
+                <span>来源 {SOURCE_LABELS[job.source] ?? job.source}</span>
                 {job.url && (
                   <button type="button" onClick={() => void openExternalUrl(job.url!)} className="flex items-center gap-1 font-medium text-[var(--foreground)] underline-offset-4 hover:underline">
                     原文 <ExternalLink size={13} />
@@ -664,7 +665,11 @@ export default function JobDetailPage() {
             </div>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            {job.triage_status === "picked" ? (
+            {job.triage_status === "applied" ? (
+              <span className="rounded-full border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-1.5 text-xs font-semibold text-[var(--foreground)]">
+                已投递
+              </span>
+            ) : job.triage_status === "picked" ? (
               <span className="rounded-full border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-1.5 text-xs font-semibold text-[var(--foreground)]">
                 已筛选 · {(pickedPools || []).find((pool) => pool.id === job.pool_id)?.name || "未分组"}
               </span>
@@ -673,7 +678,7 @@ export default function JobDetailPage() {
                 加入已筛选
               </Button>
             )}
-            {job.triage_status !== "ignored" && (
+            {job.triage_status !== "ignored" && job.triage_status !== "applied" && (
               <Button onPress={() => setTrashConfirmOpen(true)} isLoading={actionLoading === "trash"} isDisabled={actionLoading === "join"} variant="light" className="!px-3 !py-2.5 !text-[12px] text-[var(--foreground-muted)]">
                 移入回收站
               </Button>

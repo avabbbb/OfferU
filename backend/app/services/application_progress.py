@@ -112,6 +112,7 @@ _LEGACY_STAGE_ALIASES = {
     "pending": "prepared",
     "submitted": "applied",
     "responded": "applied",
+    "assessment": "written_test",
     "interview": "interview_1",
 }
 
@@ -290,7 +291,7 @@ def _workspace_status_for_stage(stage: str) -> str:
     if stage in {"interview_1", "interview_2", "interview_hr"}:
         return "面试中"
     if stage in {"written_test", "assessment"}:
-        return "待处理"
+        return "笔试中"
     if stage == "offer":
         return "已录用"
     if stage == "rejected":
@@ -304,7 +305,8 @@ _SAME_EVENT_WINDOW = timedelta(days=2)
 _WORKSPACE_STATUS_TO_STAGE = {
     "待投递": "prepared",
     "已投递": "applied",
-    "待处理": "assessment",
+    "HR 已回复": "applied",
+    "笔试中": "written_test",
     "面试中": "interview_1",
     "已拒绝": "rejected",
     "已录用": "offer",

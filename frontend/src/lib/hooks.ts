@@ -91,7 +91,7 @@ export interface Job {
   company_industry: string;
   company_logo: string;
   is_campus: boolean;
-  triage_status: "inbox" | "picked" | "ignored";
+  triage_status: "inbox" | "picked" | "ignored" | "applied";
   pool_id: number | null;
   batch_id: string;
   created_at: string;
