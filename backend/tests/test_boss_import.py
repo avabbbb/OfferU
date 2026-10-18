@@ -32,3 +32,14 @@ def test_parse_keeps_security_id_for_detail():
 
     _, rows = parse_boss_export({"cardList": [{"jobName": "数据分析实习生", "brandName": "美团", "encryptJobId": "g1", "securityId": "s1"}]})
     assert rows[0]["security_id"] == "s1"
+
+
+def test_parse_chat_marks_hr_reply():
+    kind, rows = parse_boss_export({"ok": True, "data": {"result": [
+        {"encryptJobId": "g1", "brandName": "美团", "uid": 9, "relationType": 2, "lastMessageInfo": {"fromId": 9, "toId": 1}},
+        {"encryptJobId": "g2", "brandName": "京东", "uid": 8, "relationType": 3, "lastMessageInfo": {"fromId": 1, "toId": 8}},
+        {"encryptJobId": "g3", "brandName": "快手", "uid": 7, "relationType": 2, "lastMessageInfo": {"fromId": 1, "toId": 7}},
+        {"brandName": "没有岗位编号", "uid": 6},
+    ]}})
+    assert kind == "chat"
+    assert [r["status"] for r in rows] == ["responded", "responded", "submitted"]

@@ -3,6 +3,7 @@
 OfferU 不调用 boss-cli、不碰 BOSS 的登录态：用户自己在终端运行
 `boss applied --json > boss.json`（或 `boss interviews` / `boss chat`），再把文件交给 OfferU。
 这里只读这份文件，按岗位合并进投递表，状态只往前推，不往回改。
+沟通列表没有岗位名，只用来把已有投递推到「已回复」。
 """
 
 from __future__ import annotations
@@ -42,6 +43,11 @@ def _pick(item: dict[str, Any], *keys: str) -> str:
 def _status(kind: str, item: dict[str, Any]) -> str:
     if kind == "interviews":
         return "interview"
+    if kind == "chat":
+        # 沟通列表里 uid 是对方。最后一条是对方发的，或者已经是双向聊天（relationType=3），就算 HR 回了。
+        last = item.get("lastMessageInfo") or {}
+        replied = item.get("relationType") == 3 or (last.get("fromId") and last.get("fromId") == item.get("uid"))
+        return "responded" if replied else "submitted"
     text = _pick(item, "deliverStatusDesc", "statusDesc")
     if "不合适" in text:
         return "rejected"
@@ -63,9 +69,10 @@ def parse_boss_export(payload: dict[str, Any]) -> tuple[str, list[dict[str, Any]
         if not isinstance(item, dict):
             continue
         title, company = _pick(item, "jobName"), _pick(item, "brandName")
-        if not title or not company:
-            continue
         job_id = _pick(item, "encryptJobId")
+        # 沟通列表没有岗位名，只能靠岗位编号去对已有的投递。
+        if not (job_id if kind == "chat" else title and company):
+            continue
         url = f"https://www.zhipin.com/job_detail/{job_id}.html" if job_id else ""
         identity = job_id or f"{company}|{title}"
         rows.append(
@@ -97,6 +104,8 @@ async def import_boss_export(table_id: int, payload: dict[str, Any]) -> dict[str
     kind, rows = parse_boss_export(payload)
     if not rows:
         raise ValueError("文件里没有可导入的岗位")
+    if kind == "chat":
+        return await _advance_from_chat(table_id, rows)
     # 同一个岗位在文件里出现多次时，取最靠后的状态。
     wanted_by_hash: dict[str, str] = {}
     jobs: dict[str, dict[str, Any]] = {}
@@ -136,6 +145,30 @@ async def import_boss_export(table_id: int, payload: dict[str, Any]) -> dict[str
             await update_application_status(application_id=record.id, status=target)
             advanced += 1
     return {"kind": kind, "kind_label": KIND_LABELS[kind], "total": len(wanted), "created": created, "advanced": advanced, "job_ids": list(wanted)}
+
+
+async def _advance_from_chat(table_id: int, rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """沟通列表只把已有投递推到「已回复」，不新建岗位。"""
+
+    from app.services.agent_operations import _application_record_status, update_application_status
+
+    replied = [row["job"]["hash_key"] for row in rows if row["status"] == "responded"]
+    async with async_session() as db:
+        records = (
+            await db.execute(
+                select(ApplicationRecord)
+                .join(ApplicationTableRecord, ApplicationTableRecord.record_id == ApplicationRecord.id)
+                .join(Job, Job.id == ApplicationRecord.job_ref_id)
+                .where(ApplicationTableRecord.table_id == table_id, Job.hash_key.in_(replied))
+            )
+        ).scalars().all()
+    advanced = 0
+    for record in records:
+        current = _application_record_status((record.custom_values or {}).get("apply_status"))
+        if current in RANK and RANK[current] < RANK["responded"]:
+            await update_application_status(application_id=record.id, status="responded")
+            advanced += 1
+    return {"kind": "chat", "kind_label": KIND_LABELS["chat"], "total": len(rows), "created": 0, "advanced": advanced, "job_ids": [r.job_ref_id for r in records]}
 
 
 class FillBossJobDetailInput(BaseModel):

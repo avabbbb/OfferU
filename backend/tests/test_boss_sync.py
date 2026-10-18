@@ -19,7 +19,7 @@ def test_run_boss_ok_and_args(tmp_path, monkeypatch):
     _fake_boss(tmp_path, monkeypatch, {"ok": True, "data": {"interviewList": []}})
     assert asyncio.run(boss_sync._run_boss(("interviews",)))["ok"] is True
     assert (tmp_path / "args").read_text().strip() == "interviews --json"
-    assert boss_sync.COMMANDS == (("applied",), ("interviews",))
+    assert boss_sync.COMMANDS == (("applied",), ("interviews",), ("chat",))
 
 
 def test_run_boss_expired_login(tmp_path, monkeypatch):

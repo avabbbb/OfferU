@@ -1,6 +1,6 @@
 """每天用本机的 boss-cli 同步一次投递和面试记录（默认关闭）。
 
-只跑两个只读命令：`boss applied --json`（最近一页投递）和 `boss interviews --json`。
+只跑三个只读命令：`boss applied --json`（最近一页投递）、`boss interviews --json`、`boss chat --json`（HR 回了就推到已回复）。
 不搜索、不打招呼、不投递。登录态留在 boss-cli 自己的目录里，OfferU 不读取。
 同步时间每天随机落在 10:00–21:00 之间，避免固定时间点。
 结果走 boss_import 的同一套合并逻辑：状态只往前推。
@@ -24,7 +24,7 @@ from app.models.models import BossSyncState
 
 logger = logging.getLogger(__name__)
 
-COMMANDS = (("applied",), ("interviews",))
+COMMANDS = (("applied",), ("interviews",), ("chat",))
 MANUAL_GAP = timedelta(minutes=10)
 CHECK_EVERY_SECONDS = 20 * 60
 _TASK: Optional[asyncio.Task] = None
@@ -112,7 +112,7 @@ async def _run_boss(args: tuple[str, ...]) -> dict[str, Any]:
 async def run_boss_sync(manual: bool = True) -> dict[str, Any]:
     """现在跑一次。手动触发两次之间至少隔 10 分钟。"""
 
-    from app.services.boss_import import import_boss_export
+    from app.services.boss_import import import_boss_export, parse_boss_export
 
     async with _LOCK:
         async with async_session() as db:
@@ -127,7 +127,10 @@ async def run_boss_sync(manual: bool = True) -> dict[str, Any]:
         ok, message = True, ""
         try:
             for args in COMMANDS:
-                result = await import_boss_export(table_id=table_id, payload=await _run_boss(args))
+                payload = await _run_boss(args)
+                if not parse_boss_export(payload)[1]:
+                    continue  # 没有面试邀请之类的空列表很正常
+                result = await import_boss_export(table_id=table_id, payload=payload)
                 created += result["created"]
                 advanced += result["advanced"]
             message = f"新增 {created} 条，{advanced} 条更新了状态"
