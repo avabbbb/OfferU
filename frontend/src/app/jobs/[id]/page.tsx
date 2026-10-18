@@ -50,6 +50,7 @@ import {
   type PreApplicationDecisionChoice,
   type PreApplicationState,
   type ResumeOptimizationProposalDetail,
+  request,
 } from "@/lib/api";
 import {
   bauhausModalContentClassName,
@@ -163,7 +164,8 @@ export default function JobDetailPage() {
   const params = useParams();
   const router = useRouter();
   const jobId = params.id ? Number(params.id) : null;
-  const { data: job, isLoading, error } = useJob(jobId);
+  const { data: job, isLoading, error, mutate: mutateJob } = useJob(jobId);
+  const [bossFill, setBossFill] = useState<{ busy: boolean; error: string }>({ busy: false, error: "" });
   const { data: pickedPools } = usePools("picked");
   const {
     data: progressBoard,
@@ -699,6 +701,19 @@ export default function JobDetailPage() {
             .catch((err) => setPreApplicationError(safeClientErrorMessage(err, "重试岗位情报失败")));
         }}
         onPrepareDecision={() => void handlePreparePreApplication()}
+        onFillFromBoss={job.source === "boss" ? async () => {
+          setBossFill({ busy: true, error: "" });
+          try {
+            await request(`/api/jobs/${job.id}/boss-detail`, { method: "POST" });
+            await mutateJob();
+            await loadPreApplication();
+            setBossFill({ busy: false, error: "" });
+          } catch (err) {
+            setBossFill({ busy: false, error: safeClientErrorMessage(err, "补全失败") });
+          }
+        } : undefined}
+        fillingFromBoss={bossFill.busy}
+        fillFromBossError={bossFill.error}
         onManualDecision={() => {
           setManualOpen(true);
           scrollToWorkspaceSection("pre-application-decision");

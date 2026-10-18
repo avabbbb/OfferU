@@ -3,7 +3,7 @@
 - 搜索结果按简历命中的技能 / 标签打分，默认只勾高分；
 - 每天最多打 50 个招呼，同一个岗位只打一次；
 - 两个招呼之间随机等 20–60 秒，一次只跑一批；
-- 打过招呼的岗位直接记进总表（已投递）。
+- 打过招呼的岗位直接记进总表（已投递），并顺手补上职位描述。
 """
 
 from __future__ import annotations
@@ -129,7 +129,7 @@ async def get_boss_greet() -> dict[str, Any]:
 
 
 async def _greet_all(table_id: int, jobs: list[dict[str, Any]]) -> None:
-    from app.services.boss_import import import_boss_export
+    from app.services.boss_import import fill_boss_job_detail, import_boss_export
 
     try:
         for index, (job, item) in enumerate(zip(jobs, _RUN["items"])):
@@ -147,8 +147,14 @@ async def _greet_all(table_id: int, jobs: list[dict[str, Any]]) -> None:
                 await db.commit()
             item.update(status="done" if ok else "failed", message=message)
             if ok:
-                card = {"jobName": job["title"], "brandName": job["company"], "encryptJobId": job["encrypt_job_id"], "salaryDesc": job["salary"], "cityName": job["city"]}
-                await import_boss_export(table_id=table_id, payload={"cardList": [card]})
+                card = {"jobName": job["title"], "brandName": job["company"], "encryptJobId": job["encrypt_job_id"], "securityId": job["security_id"], "salaryDesc": job["salary"], "cityName": job["city"]}
+                imported = await import_boss_export(table_id=table_id, payload={"cardList": [card]})
+                # 反正要等下一个间隔，顺手把职位描述补上；补不上不影响招呼。
+                for job_id in imported["job_ids"]:
+                    try:
+                        await fill_boss_job_detail(job_id)
+                    except ValueError:
+                        pass
             elif "登录" in message or "频繁" in message:
                 for rest in _RUN["items"][index + 1 :]:
                     rest.update(status="skipped", message="已停止：" + message)

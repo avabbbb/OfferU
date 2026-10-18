@@ -81,6 +81,7 @@ def parse_boss_export(payload: dict[str, Any]) -> tuple[str, list[dict[str, Any]
                     "hash_key": "boss:" + hashlib.sha256(identity.encode()).hexdigest()[:40],
                 },
                 "status": _status(kind, item),
+                "security_id": _pick(item, "securityId")[:300],
             }
         )
     return kind, rows
@@ -106,10 +107,13 @@ async def import_boss_export(table_id: int, payload: dict[str, Any]) -> dict[str
         if prev is None or row["status"] == "rejected" or RANK.get(row["status"], 0) > RANK.get(prev, 0):
             wanted_by_hash[key] = row["status"]
     await import_job_batch(list(jobs.values()), source="boss")
+    security_by_hash = {row["job"]["hash_key"]: row["security_id"] for row in rows if row["security_id"]}
     async with async_session() as db:
         id_by_hash = dict((await db.execute(select(Job.hash_key, Job.id).where(Job.hash_key.in_(list(jobs))))).all())
         # 已经投过的岗位不该再出现在「岗位」收件箱里。
         await db.execute(update(Job).where(Job.hash_key.in_(list(jobs)), Job.triage_status == "inbox").values(triage_status="applied"))
+        for key, security_id in security_by_hash.items():
+            await db.execute(update(Job).where(Job.hash_key == key).values(boss_security_id=security_id))
         await db.commit()
     wanted = {int(id_by_hash[key]): status for key, status in wanted_by_hash.items() if key in id_by_hash}
     created = (await import_jobs_to_application_table(table_id=table_id, job_ids=list(wanted), skip_existing_in_table=True)).get("created", 0)
@@ -131,4 +135,40 @@ async def import_boss_export(table_id: int, payload: dict[str, Any]) -> dict[str
         if target == "rejected" or RANK[target] > RANK[current]:
             await update_application_status(application_id=record.id, status=target)
             advanced += 1
-    return {"kind": kind, "kind_label": KIND_LABELS[kind], "total": len(wanted), "created": created, "advanced": advanced}
+    return {"kind": kind, "kind_label": KIND_LABELS[kind], "total": len(wanted), "created": created, "advanced": advanced, "job_ids": list(wanted)}
+
+
+class FillBossJobDetailInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    job_id: int = Field(gt=0)
+
+
+async def fill_boss_job_detail(job_id: int) -> dict[str, Any]:
+    """用本机 boss-cli 跑一次 boss detail，把职位描述补进岗位。已有描述的不覆盖。"""
+
+    from app.services.boss_sync import _run_boss
+
+    async with async_session() as db:
+        job = await db.get(Job, job_id)
+        if job is None:
+            raise ValueError("岗位不存在")
+        if job.raw_description.strip():
+            return {"job_id": job_id, "filled": False}
+        security_id = job.boss_security_id
+    if not security_id:
+        raise ValueError("这个岗位没有 BOSS 的岗位编号，打开原文把职位描述复制过来")
+    data = (await _run_boss(("detail", security_id))).get("data") or {}
+    info = data.get("jobInfo") or {}
+    description = str(info.get("postDescription") or data.get("jobDesc") or "").strip()
+    if not description:
+        raise ValueError("BOSS 没返回职位描述，可能岗位已关闭。打开原文看看")
+    async with async_session() as db:
+        job = await db.get(Job, job_id)
+        job.raw_description = description[:50_000]
+        if not job.education:
+            job.education = str(info.get("degreeName") or "")[:50]
+        if not job.experience:
+            job.experience = str(info.get("experienceName") or "")[:100]
+        await db.commit()
+    return {"job_id": job_id, "filled": True}
