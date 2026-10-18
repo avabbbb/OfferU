@@ -129,8 +129,6 @@ class ConfigUpdate(BaseModel):
     ssl_verify: bool = True       # False = 跳过 SSL 验证（Clash 代理场景）
     llm_timeout: int = 60         # LLM API 超时秒数
 
-    boss_cookie: str = ""
-    zhilian_cookie: str = ""
 
 
 def _normalize_provider_id(value: str) -> str:
@@ -647,10 +645,6 @@ def _restore_masked_keys(next_cfg: ConfigUpdate, payload_fields: set[str]) -> No
             }
 
     # cookie placeholder semantics
-    if "boss_cookie" in payload_fields and next_cfg.boss_cookie == "***已配置***":
-        next_cfg.boss_cookie = _current_config.boss_cookie
-    if "zhilian_cookie" in payload_fields and next_cfg.zhilian_cookie == "***已配置***":
-        next_cfg.zhilian_cookie = _current_config.zhilian_cookie
 
 
 def _apply_legacy_updates(next_cfg: ConfigUpdate, payload_fields: set[str]) -> None:
@@ -751,10 +745,6 @@ def _response_payload() -> dict[str, Any]:
         masked_configs.append(row)
     data["llm_api_configs"] = masked_configs
 
-    data["boss_cookie_set"] = bool(_current_config.boss_cookie)
-    data["boss_cookie"] = "***已配置***" if _current_config.boss_cookie else ""
-    data["zhilian_cookie_set"] = bool(_current_config.zhilian_cookie)
-    data["zhilian_cookie"] = "***已配置***" if _current_config.zhilian_cookie else ""
 
     # ── active_llm_summary: 让前端明确知道当前生效的配置来源 ──
     active_cfg = next((item for item in _current_config.llm_api_configs if item.is_active), None)
@@ -830,26 +820,6 @@ async def update_config(data: ConfigUpdate):
         response_config = _response_payload()
 
     return {"message": "Config updated", "config": response_config}
-
-
-@router.get("/boss-status")
-async def boss_cookie_status():
-    cookie = _current_config.boss_cookie
-    if not cookie:
-        return {
-            "configured": False,
-            "has_wt2": False,
-            "has_zp_token": False,
-            "message": "Cookie not configured yet",
-        }
-    return {
-        "configured": True,
-        "has_wt2": "wt2" in cookie,
-        "has_zp_token": "zp_token" in cookie,
-        "message": "Cookie configured" + (
-            ", key fields look good" if "wt2" in cookie else ", but wt2 is missing"
-        ),
-    }
 
 
 async def _probe_llm_endpoint(
