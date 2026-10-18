@@ -2,6 +2,7 @@
 
 import { PageHeader, ViewSwitch } from "@/components/layout/PageHeader";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BossGreetModal } from "@/components/boss-greet-modal";
 import { BossSyncModal } from "@/components/boss-sync-modal";
 import { useSearchParams } from "next/navigation";
 import {
@@ -786,6 +787,7 @@ const [emailSyncing, setEmailSyncing] = useState(false);
   const bossFileRef = useRef<HTMLInputElement>(null);
   const [bossImporting, setBossImporting] = useState(false);
   const [bossSyncOpen, setBossSyncOpen] = useState(false);
+  const [bossGreetOpen, setBossGreetOpen] = useState(false);
   const handleBossFile = async (file: File | undefined) => {
     if (!file || !currentTableId) return;
     setBossImporting(true);
@@ -1087,6 +1089,7 @@ const [emailSyncing, setEmailSyncing] = useState(false);
                   if (key === "email") handleSyncEmails();
                   if (key === "boss-file") bossFileRef.current?.click();
                   if (key === "boss-sync") setBossSyncOpen(true);
+                  if (key === "boss-greet") setBossGreetOpen(true);
                 }}
               >
                 <DropdownItem key="jobs" description="勾选已保存的岗位加进这张表">从岗位库选</DropdownItem>
@@ -1094,6 +1097,7 @@ const [emailSyncing, setEmailSyncing] = useState(false);
                 <DropdownItem key="email" description={emailStatus?.connected ? "拉取最近 7 天邮件里的面试通知" : "先在「邮件」页连接邮箱"}>同步邮箱面试通知</DropdownItem>
                 <DropdownItem key="boss-file" description="选 boss applied / interviews / chat --json 导出的文件" data-testid="import-boss-file">BOSS 导出文件</DropdownItem>
                 <DropdownItem key="boss-sync" description="用本机 boss-cli 每天读一次，默认关闭" data-testid="import-boss-sync">BOSS 每天同步…</DropdownItem>
+                <DropdownItem key="boss-greet" description="搜岗位、按简历打分，勾选后逐个打招呼" data-testid="import-boss-greet">BOSS 海投…</DropdownItem>
               </DropdownMenu>
             </Dropdown>
             <Tooltip content="设置" placement="bottom" closeDelay={120}>
@@ -1113,6 +1117,7 @@ const [emailSyncing, setEmailSyncing] = useState(false);
 
       {viewMode === "board" && <ProgressBoard />}
       <BossSyncModal open={bossSyncOpen} onClose={() => setBossSyncOpen(false)} tableId={currentTableId} onSynced={refreshAll} />
+      <BossGreetModal open={bossGreetOpen} onClose={() => setBossGreetOpen(false)} tableId={currentTableId} onGreeted={refreshAll} />
 
       {operationFeedback && (
         <div className="feedback-pop fixed right-4 top-4 z-50 max-w-md">
