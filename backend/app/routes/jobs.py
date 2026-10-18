@@ -514,6 +514,12 @@ async def triage_counts(db: AsyncSession = Depends(get_db)):
         "picked": screened,
     }
 
+@router.post("/{job_id}/boss-detail")
+async def fill_boss_job_detail_route(job_id: int):
+    result = await execute_operation("fill_boss_job_detail", {"job_id": job_id}, surface="ui")
+    return _operation_output_or_error(result)
+
+
 @router.get("/{job_id}")
 async def get_job(job_id: int, db: AsyncSession = Depends(get_db)):
     """获取单个岗位详情"""

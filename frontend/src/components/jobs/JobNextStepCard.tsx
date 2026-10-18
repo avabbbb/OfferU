@@ -31,6 +31,10 @@ type Props = {
   onPrepareDecision: () => void;
   onManualDecision: () => void;
   onOpenResumeWorkspace: () => void;
+  /** 从 BOSS 导入的岗位：用本机 boss-cli 补职位描述。 */
+  onFillFromBoss?: () => void;
+  fillingFromBoss?: boolean;
+  fillFromBossError?: string;
 };
 
 type Step = {
@@ -73,6 +77,9 @@ function resolveStep(p: Props): Step {
 
   switch (p.stage) {
     case "needs_job_description":
+      if (p.onFillFromBoss) {
+        return { title: "缺少职位描述", body: p.fillFromBossError || "这个岗位从 BOSS 导入，只有标题和薪资。用本机 boss-cli 读一次详情就能补上。", tone: "blocked", primary: { kind: "run", run: p.onFillFromBoss, label: "从 BOSS 补全", busy: p.fillingFromBoss } };
+      }
       return { title: "缺少职位描述", body: "没有 JD 就无法分析岗位要求。重新保存这个岗位时粘贴完整职位描述。", tone: "blocked", primary: { kind: "link", href: "/jobs", label: "回到机会列表" } };
     case "needs_profile_evidence":
       return { title: "先补充档案", body: "档案里还没有已确认的经历，OfferU 无法判断你能证明什么。", tone: "blocked", primary: { kind: "link", href: "/resume?mode=profile", label: "去补充档案" } };

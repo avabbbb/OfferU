@@ -61,7 +61,7 @@ from app.services.interview_reviews import (
     save_interview_review,
     transcribe_interview_audio,
 )
-from app.services.boss_import import ImportBossExportInput, import_boss_export
+from app.services.boss_import import FillBossJobDetailInput, ImportBossExportInput, fill_boss_job_detail, import_boss_export
 from app.services.boss_blast import BossBlastSearchInput, BossBlastStartInput, get_boss_greet, search_boss_jobs, start_boss_greet
 from app.services.boss_sync import BossSyncSettingsInput, get_boss_sync, run_boss_sync, set_boss_sync
 from app.services.local_memory import LocalMemoryPreviewInput, list_local_memory_sources, preview_local_memory_source
@@ -2241,6 +2241,15 @@ OPERATIONS: dict[str, Operation] = {
         input_model=ImportBossExportInput,
         audit_redacted_parameters=("payload",),
         version="2026-10-04",
+    ),
+    "fill_boss_job_detail": Operation(
+        name="fill_boss_job_detail",
+        fn=fill_boss_job_detail,
+        description="用本机 boss-cli 读一次 BOSS 岗位详情，把职位描述补进这个岗位；已有描述不覆盖。",
+        group="jobs",
+        side_effects=("write", "external"),
+        input_model=FillBossJobDetailInput,
+        version="2026-10-07",
     ),
     "get_boss_sync": Operation(
         name="get_boss_sync",

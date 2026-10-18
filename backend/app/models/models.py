@@ -40,6 +40,8 @@ class Job(Base):
     apply_url: Mapped[str] = mapped_column(Text, default="")
     source: Mapped[str] = mapped_column(String(50), index=True, default="linkedin")
     raw_description: Mapped[str] = mapped_column(Text, default="")
+    # BOSS 的 securityId：用来跑 boss detail 补职位描述。
+    boss_security_id: Mapped[str] = mapped_column(String(300), default="")
     posted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     # ---- 岗位详情（校招场景关键字段） ----
