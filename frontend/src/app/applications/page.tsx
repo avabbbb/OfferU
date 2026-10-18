@@ -1283,7 +1283,7 @@ const [emailSyncing, setEmailSyncing] = useState(false);
               {records.length === 0 && (
                 <tr>
                   <td colSpan={visibleFields.length + 1} className="px-4 py-10 text-center text-[var(--foreground-muted)]">
-                    暂无记录。你可以手动新增，或者从快捷导入中批量添加岗位。
+                    还没有记录。点右上角「导入」，从岗位库或 BOSS 记录加进来。
                   </td>
                 </tr>
               )}
@@ -1552,7 +1552,7 @@ const [emailSyncing, setEmailSyncing] = useState(false);
 
       <Modal isOpen={importModalOpen} onClose={() => setImportModalOpen(false)} size="3xl">
         <ModalContent className="rounded-none border border-[var(--border-strong)] bg-[var(--surface)]">
-          <ModalHeader className="border-b border-[var(--border)]">快捷导入</ModalHeader>
+          <ModalHeader className="border-b border-[var(--border)]">从岗位库选</ModalHeader>
           <ModalBody className="space-y-4 py-5">
             <div className="grid gap-2 md:grid-cols-[1fr_220px]">
               <Input
