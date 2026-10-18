@@ -58,6 +58,8 @@ CONFIRM_OPERATIONS = frozenset({
     "update_application_status",
     "mark_application_rejected_from_review",
     "import_boss_export",
+    "set_boss_sync",
+    "run_boss_sync",
     "sync_boss_application_status",
 })
 

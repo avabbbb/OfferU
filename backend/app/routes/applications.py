@@ -229,6 +229,27 @@ async def import_boss_export_route(table_id: int, payload: dict):
         raise _bad_request(exc) from exc
 
 
+@router.get("/boss-sync")
+async def get_boss_sync_route():
+    return await _execute_operation("get_boss_sync", {})
+
+
+@router.put("/boss-sync")
+async def set_boss_sync_route(payload: dict):
+    try:
+        return await _execute_operation("set_boss_sync", payload)
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
+
+
+@router.post("/boss-sync/run")
+async def run_boss_sync_route():
+    try:
+        return await _execute_operation("run_boss_sync", {})
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
+
+
 @router.post("/records")
 async def create_record_route(data: RecordCreateRequest):
     try:

@@ -62,6 +62,7 @@ from app.services.interview_reviews import (
     transcribe_interview_audio,
 )
 from app.services.boss_import import ImportBossExportInput, import_boss_export
+from app.services.boss_sync import BossSyncSettingsInput, get_boss_sync, run_boss_sync, set_boss_sync
 from app.services.local_memory import LocalMemoryPreviewInput, list_local_memory_sources, preview_local_memory_source
 from app.services.optimize_agent_operations import (
     chat_optimize_agent_session,
@@ -2239,6 +2240,30 @@ OPERATIONS: dict[str, Operation] = {
         input_model=ImportBossExportInput,
         audit_redacted_parameters=("payload",),
         version="2026-10-04",
+    ),
+    "get_boss_sync": Operation(
+        name="get_boss_sync",
+        fn=get_boss_sync,
+        description="读取 boss-cli 每天同步的开关、下次时间和最近一次结果。",
+        group="applications",
+        version="2026-10-05",
+    ),
+    "set_boss_sync": Operation(
+        name="set_boss_sync",
+        fn=set_boss_sync,
+        description="打开或关闭每天用本机 boss-cli 同步投递和面试记录（只读命令）。",
+        group="applications",
+        side_effects=("write",),
+        input_model=BossSyncSettingsInput,
+        version="2026-10-05",
+    ),
+    "run_boss_sync": Operation(
+        name="run_boss_sync",
+        fn=run_boss_sync,
+        description="现在用本机 boss-cli 跑一次 applied / interviews 并合并进投递表；两次手动之间至少 10 分钟。",
+        group="applications",
+        side_effects=("write", "external"),
+        version="2026-10-05",
     ),
     "mark_application_rejected_from_review": Operation(
         name="mark_application_rejected_from_review",
