@@ -25,3 +25,10 @@ def test_parse_bare_interviews_and_unknown():
     assert kind == "interviews" and rows[0]["status"] == "interview" and rows[0]["job"]["url"] == ""
     with pytest.raises(ValueError):
         parse_boss_export({"data": {"foo": []}})
+
+
+def test_parse_keeps_security_id_for_detail():
+    from app.services.boss_import import parse_boss_export
+
+    _, rows = parse_boss_export({"cardList": [{"jobName": "数据分析实习生", "brandName": "美团", "encryptJobId": "g1", "securityId": "s1"}]})
+    assert rows[0]["security_id"] == "s1"
