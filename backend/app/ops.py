@@ -64,6 +64,7 @@ from app.services.interview_reviews import (
 from app.services.boss_import import FillBossJobDetailInput, ImportBossExportInput, fill_boss_job_detail, import_boss_export
 from app.services.boss_blast import BossBlastSearchInput, BossBlastStartInput, get_boss_greet, search_boss_jobs, start_boss_greet
 from app.services.boss_sync import BossSyncSettingsInput, get_boss_sync, run_boss_sync, set_boss_sync
+from app.services.boss_login import cancel_boss_login, get_boss_login, logout_boss, start_boss_login
 from app.services.local_memory import LocalMemoryPreviewInput, list_local_memory_sources, preview_local_memory_source
 from app.services.optimize_agent_operations import (
     chat_optimize_agent_session,
@@ -2250,6 +2251,36 @@ OPERATIONS: dict[str, Operation] = {
         side_effects=("write", "external"),
         input_model=FillBossJobDetailInput,
         version="2026-10-07",
+    ),
+    "get_boss_login": Operation(
+        name="get_boss_login",
+        fn=get_boss_login,
+        description="读取 BOSS 直聘扫码登录的进度、二维码图片和是否已登录。",
+        group="applications",
+        version="2026-10-18",
+    ),
+    "start_boss_login": Operation(
+        name="start_boss_login",
+        fn=start_boss_login,
+        description="开始扫码登录 BOSS 直聘：生成二维码，过期自动换新，最多 5 张。",
+        group="applications",
+        side_effects=("external",),
+        version="2026-10-18",
+    ),
+    "cancel_boss_login": Operation(
+        name="cancel_boss_login",
+        fn=cancel_boss_login,
+        description="取消正在进行的 BOSS 扫码登录。",
+        group="applications",
+        version="2026-10-18",
+    ),
+    "logout_boss": Operation(
+        name="logout_boss",
+        fn=logout_boss,
+        description="退出 BOSS 直聘登录，删除 boss 命令保存的凭证。",
+        group="applications",
+        side_effects=("write",),
+        version="2026-10-18",
     ),
     "get_boss_sync": Operation(
         name="get_boss_sync",

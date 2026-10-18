@@ -30,7 +30,8 @@
     "active": true,
     "externalBin": [
       "binaries/offeru-backend",
-      "binaries/offeru-node"
+      "binaries/offeru-node",
+      "binaries/offeru-boss"
     ],
     "resources": {
       "../../.tmp/p/": "agent-runtime/"

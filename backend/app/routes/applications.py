@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
@@ -238,6 +238,20 @@ async def get_boss_sync_route():
 async def set_boss_sync_route(payload: dict):
     try:
         return await _execute_operation("set_boss_sync", payload)
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
+
+
+@router.get("/boss-login")
+async def get_boss_login_route():
+    return await _execute_operation("get_boss_login", {})
+
+
+@router.post("/boss-login/{action}")
+async def boss_login_action_route(action: Literal["start", "cancel", "logout"]):
+    name = {"start": "start_boss_login", "cancel": "cancel_boss_login", "logout": "logout_boss"}[action]
+    try:
+        return await _execute_operation(name, {})
     except ValueError as exc:
         raise _bad_request(exc) from exc
 

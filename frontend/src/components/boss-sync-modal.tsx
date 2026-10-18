@@ -3,6 +3,7 @@
 // boss-cli 每天同步：默认关闭，打开前必须确认账号风险。
 import { useEffect, useState } from "react";
 import { Modal, ModalBody, ModalContent, ModalHeader } from "@heroui/react";
+import { BossLoginPanel } from "@/components/boss-login";
 import { getBossSync, runBossSync, setBossSync, type BossSync } from "@/lib/bossSync";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 
@@ -41,21 +42,17 @@ export function BossSyncModal({ open, onClose, tableId, onSynced }: { open: bool
         <ModalHeader className="text-[16px] font-semibold">每天同步 BOSS 记录</ModalHeader>
         <ModalBody className="pb-6 text-[13.5px] leading-relaxed text-[var(--foreground)]" data-testid="boss-sync-modal">
           <p className="text-[var(--foreground-muted)]">
-            OfferU 每天调用一次你电脑上的 boss-cli，读最近一页投递记录和面试邀请，合并进当前投递表。只读，不搜索、不打招呼、不投递。
+            OfferU 每天用自带的 boss 命令（开源的 boss-cli）读一次最近的投递记录、面试邀请和沟通列表，合并进当前投递表；HR 回过话的会标成「HR 已回复」。只读，不搜索、不打招呼、不投递。
           </p>
-          {state && !state.installed && (
-            <div className="rounded-lg bg-[var(--surface-muted)] px-3 py-2.5">
-              <p className="font-medium">这台电脑上还没有 boss 命令</p>
-              <p className="mt-1 text-[var(--foreground-muted)]">在终端运行：</p>
-              <pre className="mt-1 whitespace-pre-wrap font-mono text-[12.5px]">uv tool install kabi-boss-cli{"\n"}boss login</pre>
-            </div>
-          )}
+          <div className="rounded-lg border border-[var(--border)] px-3 py-2.5">
+            <BossLoginPanel />
+          </div>
           {state?.installed && !state.enabled && (
             <>
               <div className="rounded-lg border border-[var(--border)] px-3 py-2.5">
                 <p className="font-medium">先了解风险</p>
                 <p className="mt-1 text-[var(--foreground-muted)]">
-                  boss-cli 用你的登录态调用 BOSS 的网页接口，这不是 BOSS 官方提供的方式。BOSS 的用户协议不允许未经许可的第三方工具接入，账号有可能被限制登录。为了尽量不像脚本，同步时间每天随机落在 10:00–21:00 之间。
+                  boss 命令用你的登录态调用 BOSS 的网页接口，这不是 BOSS 官方提供的方式。BOSS 的用户协议不允许未经许可的第三方工具接入，账号有可能被限制登录。为了尽量不像脚本，同步时间每天随机落在 10:00–21:00 之间。
                 </p>
                 <label className="mt-2 flex items-center gap-2">
                   <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} data-testid="boss-sync-agree" />

@@ -13,8 +13,10 @@ import json
 import logging
 import os
 import random
-import shutil
+import importlib.util
+import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -38,8 +40,16 @@ class BossSyncSettingsInput(BaseModel):
     table_id: Optional[int] = Field(default=None, gt=0)
 
 
-def _boss_bin() -> Optional[str]:
-    return os.getenv("OFFERU_BOSS_BIN") or shutil.which("boss")
+BOSS_ENTRY = Path(__file__).resolve().parents[2] / "boss_entry.py"
+
+
+def boss_command() -> Optional[list[str]]:
+    """OfferU 自带的 boss 命令。安装包里由桌面端通过 OFFERU_BOSS_BIN 指过来；源码运行时用 backend/boss_entry.py。"""
+    if os.getenv("OFFERU_BOSS_BIN"):
+        return [os.environ["OFFERU_BOSS_BIN"]]
+    if not getattr(sys, "frozen", False) and BOSS_ENTRY.exists() and importlib.util.find_spec("boss_cli"):
+        return [sys.executable, str(BOSS_ENTRY)]
+    return None
 
 
 def _next_run(after: datetime) -> datetime:
@@ -53,7 +63,7 @@ async def _state(db) -> BossSyncState:  # noqa: ANN001
 
 def _view(row: BossSyncState) -> dict[str, Any]:
     return {
-        "installed": _boss_bin() is not None,
+        "installed": boss_command() is not None,
         "enabled": bool(row.enabled),
         "table_id": row.table_id,
         "next_run_at": row.next_run_at.isoformat() if row.enabled and row.next_run_at else None,
@@ -85,27 +95,34 @@ async def set_boss_sync(enabled: bool, table_id: Optional[int] = None) -> dict[s
         return _view(row)
 
 
-async def _run_boss(args: tuple[str, ...]) -> dict[str, Any]:
-    exe = _boss_bin()
-    if not exe:
-        raise ValueError("没找到 boss 命令。先运行 uv tool install kabi-boss-cli，再 boss login")
-    proc = await asyncio.create_subprocess_exec(exe, *args, "--json", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+async def run_boss_json(args: tuple[str, ...], timeout: int = 90) -> dict[str, Any]:
+    cmd = boss_command()
+    if not cmd:
+        raise ValueError("这个版本没有带 boss 命令，请重新安装 OfferU")
+    proc = await asyncio.create_subprocess_exec(*cmd, *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
     try:
-        out, _ = await asyncio.wait_for(proc.communicate(), timeout=90)
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
     except asyncio.TimeoutError:
         proc.kill()
-        raise ValueError("boss 命令 90 秒没有返回")
+        raise ValueError(f"boss 命令 {timeout} 秒没有返回")
     try:
-        data = json.loads(out.decode("utf-8", "replace"))
+        return json.loads(out.decode("utf-8", "replace"))
     except ValueError:
-        raise ValueError("boss 命令没有输出 JSON，可能需要升级：uv tool upgrade kabi-boss-cli")
+        raise ValueError("boss 命令没有输出 JSON")
+
+
+async def _run_boss(args: tuple[str, ...]) -> dict[str, Any]:
+    data = await run_boss_json((*args, "--json"))
     if not data.get("ok"):
-        code = (data.get("error") or {}).get("code")
-        if code == "not_authenticated":
-            raise ValueError("BOSS 登录过期了。在终端运行 boss login 后再同步")
-        if code == "rate_limited":
+        error = data.get("error") or {}
+        message = str(error.get("message") or "")
+        if "__zp_stoken__" in message:
+            raise ValueError("扫码登录只能同步投递、面试和沟通记录；搜索、打招呼和补职位描述需要 BOSS 网页登录，暂时不支持")
+        if error.get("code") == "not_authenticated":
+            raise ValueError("BOSS 登录过期了。到设置里重新扫码登录")
+        if error.get("code") == "rate_limited":
             raise ValueError("BOSS 提示请求太频繁，今天先不同步")
-        raise ValueError(str((data.get("error") or {}).get("message") or "boss 命令出错"))
+        raise ValueError(message or "boss 命令出错")
     return data
 
 
