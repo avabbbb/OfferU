@@ -133,7 +133,7 @@ def build_follow_up_dashboard(
         status = str(application.get("status") or "").strip()
         normalized = status.lower()
         is_applied = normalized in {"submitted", "applied", "已投递"}
-        is_responded = normalized in {"responded", "need_action", "已回复", "待处理"}
+        is_responded = normalized in {"responded", "need_action", "已回复", "HR 已回复", "assessment", "笔试中"}
         is_interview = normalized in {"interview", "interviewing", "面试", "面试中"}
         if not (is_applied or is_responded or is_interview):
             continue
