@@ -75,7 +75,7 @@ def score_job(item: dict[str, Any], resume_text: str) -> dict[str, Any]:
     for key in ("skills", "jobLabels"):
         for term in item.get(key) or []:
             term = str(term).strip()
-            if term and term not in terms and not re.search(r"\d+[年天]|本科|硕士|博士|大专|学历|经验|在校|应届", term):
+            if term and term not in terms and not re.search(r"\d+个?[年天月周]|本科|硕士|博士|大专|学历|经验|在校|应届", term):
                 terms.append(term)
     hits = [t for t in terms if t.lower() in resume_text]
     score = round(100 * len(hits) / len(terms)) if terms else 0
