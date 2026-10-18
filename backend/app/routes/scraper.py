@@ -124,7 +124,7 @@ async def _reap_orphaned_running_batches() -> None:
 
 class RunRequest(BaseModel):
     """爬取任务请求"""
-    source: str  # boss / zhilian / linkedin / shixiseng / maimai / corporate
+    source: str  # zhilian / linkedin / shixiseng / maimai / corporate
     keywords: list[str] = ["校招"]
     location: str = ""
     max_results: int = 50
@@ -133,7 +133,6 @@ class RunRequest(BaseModel):
 # ---- 数据源定义（含未实现的占位） ----
 AVAILABLE_SOURCES = [
     {"key": "shixiseng", "name": "实习僧", "status": "ready", "description": "实习/校招垂直平台，反爬友好，数据丰富"},
-    {"key": "boss", "name": "BOSS直聘", "status": "ready", "description": "国内主流招聘平台，需在设置中配置 Cookie"},
     {"key": "zhilian", "name": "智联招聘", "status": "ready", "description": "老牌招聘平台，支持 Cookie 认证（可选）"},
     {"key": "jobspy", "name": "JobSpy 聚合", "status": "ready", "description": "一键聚合 LinkedIn / Indeed / Google 国际岗位"},
     {"key": "linkedin", "name": "领英 (Apify)", "status": "skeleton", "description": "通过 Apify API 抓取，需配置 API Key"},
@@ -249,15 +248,9 @@ async def _execute_scraper(task_info: dict, scraper, req: RunRequest):
         )
         logger.info("[scraper] search returned %s items for source=%s", len(items), req.source)
 
-        # Cookie 过期警告：BOSS/智联返回空结果 + Cookie 已配置 → 可能过期
         warning = ""
         if not items:
-            if req.source == "boss":
-                if load_scraper_cookie("boss_cookie"):
-                    warning = "Cookie 可能已过期，请重新登录 zhipin.com 并更新 Cookie"
-                else:
-                    warning = "未配置 Cookie，请在设置页粘贴 BOSS直聘 Cookie"
-            elif req.source == "zhilian":
+            if req.source == "zhilian":
                 if not load_scraper_cookie("zhilian_cookie"):
                     warning = "未获取到数据，可尝试在设置页配置智联招聘 Cookie"
             if not warning:

@@ -233,8 +233,7 @@ export type Message =
   | { type: "REMOVE_JOBS"; hashKeys: string[] }
   | { type: "CLEAR_JOBS" }
   | { type: "COLLECT_VIA_PAGE_AGENT" }
-  | { type: "PAGE_AGENT_COLLECT"; url: string }
-  | { type: "SYNC_BOSS_COOKIE" };
+  | { type: "PAGE_AGENT_COLLECT"; url: string };
 
 /** popup → background：规则包采集响应（fallback=true 表示可回退旧路径） */
 export interface PageAgentCollectViaResponse {
@@ -242,19 +241,6 @@ export interface PageAgentCollectViaResponse {
   message: string;
   status?: "collected" | "unsupported" | "ambiguous" | "diagnostic" | "error";
   fallback?: boolean;
-}
-
-/**
- * popup → background：把本机浏览器的 BOSS 登录态交给 OfferU。
- *
- * 只回传结果与脱敏后的状态，绝不回传 Cookie 本身；Cookie 只在 background
- * 内读取并直接发给本机后端，不写入扩展存储。
- */
-export interface BossCookieSyncResponse {
-  ok: boolean;
-  message: string;
-  hasWt2?: boolean;
-  hasZpToken?: boolean;
 }
 
 /** 后端 /api/jobs/ingest 单条岗位结构 */

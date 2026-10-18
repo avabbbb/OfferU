@@ -1,7 +1,6 @@
 """Connections API — 前端 Connections 页消费的数据源状态投影。
 
 只暴露用户可读的状态/能力/最近同步，绝不回传 CLI 细节、cookie、端口。
-BOSS 显示为 "Experimental"，符合 Goal §8/§20。
 """
 
 from __future__ import annotations
@@ -26,7 +25,6 @@ _CAP_LABELS = {
 _SOURCE_LABELS = {
     "manual": ("Manual", "Jobs you add by hand / URL"),
     "web": ("Web", "Existing captured & scraped jobs"),
-    "boss": ("BOSS Zhipin", "Experimental local connector"),
 }
 
 
@@ -49,7 +47,7 @@ async def list_connections() -> dict[str, Any]:
             caps = JobSourceCapabilities()
         status = statuses.get(src.source_id, "UNAVAILABLE")
         label, blurb = _SOURCE_LABELS.get(src.source_id, (src.source_id, ""))
-        experimental = src.source_id == "boss" or status == "EXPERIMENTAL"
+        experimental = status == "EXPERIMENTAL"
         connections.append(
             {
                 "source_id": src.source_id,

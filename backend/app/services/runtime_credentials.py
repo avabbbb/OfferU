@@ -13,7 +13,7 @@ from app.runtime_paths import runtime_config_file
 from app.services.llm_secret_vault import hydrate
 
 
-_COOKIE_KEYS = frozenset({"boss_cookie", "zhilian_cookie"})
+_COOKIE_KEYS = frozenset({"zhilian_cookie"})
 
 
 def load_scraper_cookie(key: str) -> str:

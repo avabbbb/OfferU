@@ -116,7 +116,6 @@ interface SettingsConfigPayload {
     source: "active_config" | "legacy_env" | "ollama";
   };
 
-  boss_cookie?: string;
   zhilian_cookie?: string;
 
   vault_status?: {
@@ -127,7 +126,6 @@ interface SettingsConfigPayload {
 
 const dataSources = [
   { name: "shixiseng", label: "实习僧", available: true },
-  { name: "boss", label: "BOSS直聘", available: true },
   { name: "zhilian", label: "智联招聘", available: true },
   { name: "linkedin", label: "LinkedIn", available: true },
   { name: "jobspy", label: "JobSpy 聚合", available: true },
@@ -885,9 +883,7 @@ export default function SettingsPage() {
   const [sourcesEnabled, setSourcesEnabled] = useState<string[]>(["linkedin"]);
   const [profileSourceSyncEnabled, setProfileSourceSyncEnabled] = useState(false);
 
-  const [bossCookie, setBossCookie] = useState("");
   const [zhilianCookie, setZhilianCookie] = useState("");
-  const [showBossCookie, setShowBossCookie] = useState(false);
   const [showZhilianCookie, setShowZhilianCookie] = useState(false);
 
   const [providerPresets, setProviderPresets] = useState<ProviderPreset[]>([]);
@@ -998,7 +994,6 @@ export default function SettingsPage() {
     setEmailTo(config.email_to || "");
     setSourcesEnabled(config.sources_enabled || ["linkedin"]);
     setProfileSourceSyncEnabled(Boolean(config.profile_source_sync_enabled));
-    setBossCookie(config.boss_cookie || "");
     setZhilianCookie(config.zhilian_cookie || "");
 
     const presets = Array.isArray(config.provider_presets) ? config.provider_presets : [];
@@ -1079,11 +1074,6 @@ export default function SettingsPage() {
 
   const handleEmailToChange = (value: string) => {
     setEmailTo(value);
-    markSettingsDirty();
-  };
-
-  const handleBossCookieChange = (value: string) => {
-    setBossCookie(value);
     markSettingsDirty();
   };
 
@@ -1289,7 +1279,6 @@ export default function SettingsPage() {
         email_to: emailTo.trim(),
         sources_enabled: sourcesEnabled,
         profile_source_sync_enabled: profileSourceSyncEnabled,
-        boss_cookie: bossCookie.trim(),
         zhilian_cookie: zhilianCookie.trim(),
       });
 
@@ -1483,58 +1472,6 @@ export default function SettingsPage() {
               <h3 className="text-2xl font-bold text-[var(--foreground)]">爬虫认证配置</h3>
             </div>
           </div>
-          <div className="bauhaus-panel-sm bg-[var(--surface-muted)] px-4 py-3">
-            <p className="text-xs font-semibold text-[var(--foreground)]">推荐：在浏览器扩展里连接</p>
-            <p className="mt-1 text-xs font-medium leading-relaxed text-[var(--foreground-muted)]">
-              先在浏览器登录 BOSS直聘，然后打开 OfferU 浏览器助手 → 设置 → 「连接 BOSS 登录态」。
-              登录态会直接发送到本机 OfferU，不需要手动复制 Cookie。
-            </p>
-          </div>
-          <p className="text-xs font-medium text-[var(--foreground-muted)]">
-            {bossCookie === "***已配置***"
-              ? "BOSS直聘：已连接"
-              : "BOSS直聘：未连接，采集会跳过该来源。"}
-          </p>
-
-          <details className="group" data-testid="boss-cookie-manual">
-            <summary className="cursor-pointer text-xs font-medium text-[var(--foreground-muted)]">
-              高级：手动粘贴 Cookie（扩展不可用时）
-            </summary>
-          <Input
-            label="BOSS直聘 Cookie"
-            variant="bordered"
-            placeholder="wt2=...; zp_token=...; ..."
-            description={
-              bossCookie && bossCookie !== "***已配置***" && !bossCookie.includes("wt2")
-                ? "Cookie 应包含 wt2 字段"
-                : bossCookie === "***已配置***"
-                ? "已配置，输入新值将覆盖"
-                : undefined
-            }
-            color={
-              bossCookie && bossCookie !== "***已配置***" && !bossCookie.includes("wt2")
-                ? "warning"
-                : undefined
-            }
-            value={bossCookie}
-            onValueChange={handleBossCookieChange}
-            type={showBossCookie ? "text" : "password"}
-            endContent={
-              <button
-                type="button"
-                onClick={() => setShowBossCookie((prev) => !prev)}
-                className="text-[var(--foreground-muted)] hover:text-[var(--foreground-muted)]"
-                aria-label={showBossCookie ? "隐藏 Cookie" : "显示 Cookie"}
-                aria-pressed={showBossCookie}
-              >
-                {showBossCookie ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            }
-            classNames={bauhausFieldClassNames}
-          />
-
-          </details>
-
           <Input
             label="智联招聘 Cookie（可选）"
             variant="bordered"

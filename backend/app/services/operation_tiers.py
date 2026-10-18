@@ -30,7 +30,6 @@ SENSITIVE_PERMISSIONS = frozenset({
     "privacy:maintenance",
     "agent:integration",
     "authenticated_browser:manual_login",
-    "job_source:boss:read",
 })
 
 _CONFIRM_PREFIXES = ("delete_", "reset_", "purge_", "revoke_", "uninstall_")
@@ -58,7 +57,6 @@ CONFIRM_OPERATIONS = frozenset({
     "create_application_attempt",
     "update_application_status",
     "mark_application_rejected_from_review",
-    "sync_boss_application_status",
 })
 
 # Generic record updates only need a confirmation when they change a status.

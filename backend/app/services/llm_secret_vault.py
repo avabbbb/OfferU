@@ -30,7 +30,7 @@ LEGACY_KEY_FIELDS: tuple[str, ...] = (
     "zhipu_api_key",
     "active_llm_api_key",
 )
-SCRAPER_SECRET_FIELDS: tuple[str, ...] = ("boss_cookie", "zhilian_cookie")
+SCRAPER_SECRET_FIELDS: tuple[str, ...] = ("zhilian_cookie",)
 
 
 class VaultUnavailableError(RuntimeError):

@@ -71,7 +71,7 @@ def _load_builtin_scrapers() -> None:
     if _loaded:
         return
     _loaded = True
-    from app.services.scrapers import boss, corporate, linkedin, shixiseng, zhilian  # noqa: F401
+    from app.services.scrapers import corporate, linkedin, shixiseng, zhilian  # noqa: F401
     try:
         from app.services.scrapers import jobspy  # noqa: F401
     except ImportError:
