@@ -601,6 +601,10 @@ function CompanyGroup({
   onReviewed: () => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(group.pending_candidates > 0);
+  const toReview = group.records.filter((record) => {
+    const round = ROUND_FOR_STAGE[record.current_stage];
+    return round && !reviews.some((review) => review.job_id === record.job_id && review.round_label === round);
+  }).length;
   return (
     <div className="bauhaus-panel-sm overflow-hidden bg-[var(--surface)]">
       <button
@@ -620,6 +624,11 @@ function CompanyGroup({
         <span className="shrink-0 text-xs text-[var(--foreground-muted)]">
           {group.records.length} 个岗位
         </span>
+        {toReview > 0 && (
+          <span className="shrink-0 text-xs font-medium text-[var(--foreground)]" data-testid="board-to-review">
+            {toReview} 待复盘
+          </span>
+        )}
         <StagePill stage={group.max_stage} />
         {group.pending_candidates > 0 && (
           <Chip size="sm" color="warning" variant="flat">

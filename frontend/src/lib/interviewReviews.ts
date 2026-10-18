@@ -55,6 +55,20 @@ export function transcribeAudio(file: Blob, name: string) {
   form.append("file", file, name);
   return request<{ transcript: string }>(`${BASE}/transcribe`, { method: "POST", body: form, headers: {} }).then((r) => r.transcript);
 }
+export interface WeakTopic {
+  title: string;
+  advice: string;
+  /** "复盘id:题序" */
+  refs: string[];
+}
+export interface WeakSpots {
+  topics: WeakTopic[];
+  grouped_at: string | null;
+  /** 归类之后复盘里卡住的题改过了 */
+  stale: boolean;
+}
+export const getWeakSpots = () => request<WeakSpots>(`${BASE}/weak-spots`);
+export const groupWeakSpots = () => request<WeakSpots>(`${BASE}/weak-spots`, { method: "POST" });
 export const markApplicationRejected = (id: number) => request<{ workspace_status: string }>(`${BASE}/${id}/mark-rejected`, { method: "POST" });
 
 /** 看板阶段 → 复盘轮次名。 */
