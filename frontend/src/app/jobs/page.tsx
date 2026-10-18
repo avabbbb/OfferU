@@ -592,7 +592,7 @@ export default function JobsPage() {
         description={triageMeta.description}
         actions={
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="bordered" onPress={() => setBossGreetOpen(true)} className="!min-h-9 !px-4" data-testid="open-boss-greet">
+            <Button size="sm" onPress={() => setBossGreetOpen(true)} className="bauhaus-button !min-h-9 !px-4" data-testid="open-boss-greet">
               BOSS 海投
             </Button>
             <Button
