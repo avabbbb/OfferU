@@ -1,34 +1,40 @@
 ---
 name: offeru-profile-onboarding-method
-description: Evidence-led method for discovering and initializing the canonical OfferU Profile.
-method_version: 1.0.0
+description: Four-step method for initializing the canonical OfferU Profile and handing off to resume tailoring.
+method_version: 1.1.0
 ---
 
 # Profile onboarding method
 
-Use this method while the active OfferU Skill is `profile_onboarding`. It is shared guidance for whichever single Agent is reasoning in this Run. It does not create another profile, memory store, or write path.
+Use this method while the active OfferU Skill is `profile_onboarding`. It guides whichever single Agent is reasoning; it adds no Operations, profile store or write path. Read the live Skill manifest and each Operation schema before use; if an Operation named here is not exposed, skip that step and say which capability is missing.
 
-## Inputs
+## Done when
 
-- The user's current goal and any explicit boundaries they gave.
-- The canonical Profile from `get_profile`, its evidence from `list_profile_evidence`, and pending learning from `list_learning_observations` / `list_memory_inbox` when those Operations are available in the live Skill.
-- A resume only after the user selects or supplies it; use `inspect_resume_document` to inspect that selected document. Preserve its identity and source reference.
-- Agent memory or local work material only when the user has explicitly selected and authorized that source and scope. A host memory excerpt is a lead, not verified Career Evidence.
+Onboarding is complete when OfferU holds at least one `verified_fact` Profile entry, one target role, and one saved Job. Then stop asking questions and hand off to `tailor_resume`. A narrower user goal (for example only fixing one gap) ends when that goal is met.
 
-Read the selected Skill's live manifest and each Operation schema first. Do not infer access from this method file. Do not scan folders, conversations, credentials, or neighboring job records to fill a missing input.
+## Step 1: read what exists
 
-## Method
+Call `get_current_view`, then `get_profile` (and `list_profile_evidence` when you need sources). Count only `verified_fact` entries as established. Never ask for anything OfferU already holds, and skip any step below whose outcome already exists.
 
-1. Decide whether this is first-time Profile discovery or a focused gap check. Read the existing canonical Profile and evidence first; do not repeat facts already available or run a full survey when the user has a narrower goal.
-2. Build a temporary evidence map across target roles, search stage, education, employment, projects, ownership, outcomes, skills-in-use, preferences, constraints, and unresolved conflicts. For each claim record its exact OfferU or user-selected source reference and classify it as `strong`, `weak`, `missing`, `unknown`, or `under-expressed`. This map is a Run working note, not a new persisted Profile schema.
-3. For a selected resume, distinguish what the document literally supports from what needs the user's account. Ask about a concrete gap: what the user did, their own contribution, the result, and where that result can be checked. Do not pressure the user to estimate a number; keep an unavailable result unknown or qualitative.
-4. Ask one focused question only when the answer would materially change Profile direction or resolve a consequential ambiguity. Do not ask for information already readable in authorized canonical context. An answer supplies context or a preference; it is not approval to write or adopt a fact.
-5. Compare new statements with existing Profile evidence. Keep contradictions visible with both source references. Do not strengthen responsibility, ownership, dates, metrics, technologies, or outcomes beyond the cited evidence. Treat imported memory and third-party Skill analysis as observations/candidates until the applicable evidence and review steps complete.
-6. Use only Operations exposed by the live `profile_onboarding` Skill. Submit a memory or fact change only through its current schema and permission route. Leave review/adoption Operations to the independent OfferU user surface; never treat an Ask answer as that review.
+## Step 2: ask the career stage
 
-## Result and visibility
+Ask one single-choice question with the host's native Ask tool: campus hire, internship, experienced hire, or career change. Mark a recommended option when the Profile suggests one, and allow skipping. If the user skips, pick the closest default, say which one you assumed, and continue. Later questions and suggestions follow this stage.
 
-Report a compact result with: discovery scope; confirmed evidence and its references; weak, missing, unknown, or under-expressed areas; conflicts; questions still open; and each created candidate/proposal with its actual status. A durable result must appear in the existing Profile, Learning Observation, or Memory Inbox surface through OfferU. If only a working note exists, say that no persistent result was created. Do not claim a Profile fact changed unless the Operation readback confirms the change and the applicable review is complete.
+## Step 3: build the Profile
 
-When a next step depends on current employer, role, hiring, compensation, or market reality, refresh that external information through an available authorized source and retain exact URLs and retrieval dates. Do not include private Profile or resume text in public searches. If the source is unavailable, mark the affected conclusion partial and name the missing evidence.
+Offer two paths and recommend the first:
 
+1. Upload an existing resume in OfferU. Parsed entries are written directly as `verified_fact`; entries parsed with low confidence (below 0.6, or missing an organization or body) are flagged for a second look. Read the Profile back after the upload, then ask only about flagged entries and missing fields. Tell the user the whole import can be undone in one step (`undo_profile_resume_import`).
+2. Write a few experiences by hand (work, internship, project). Save each through `add_profile_evidence` only after the user states it is their real experience.
+
+Ask one concrete question at a time: what the user did, their own part, the result, and where it can be checked. Never push for invented numbers; keep an unavailable result qualitative or unknown. Do not strengthen ownership, dates, metrics, technologies or outcomes beyond what the user or the document states. Host memory or third-party Skill output is a lead, not evidence; route it through `create_memory_proposal` instead of writing it as fact.
+
+## Step 4: target role and first Job
+
+Create the target role with `create_target_role`. Then ask the user to paste one job description or link and call `draft_job_posting`. If it returns `needs_text` (BOSS直聘 and other login-walled sites), ask the user to copy the posting text; never fetch it another way. Show the draft, let the user fill gaps, then save it with `import_jd`.
+
+## Reporting
+
+Report in plain words: what you set up, what is waiting for the user's confirmation, and the suggested next step (normally tailoring a resume for the saved Job). Do not claim a Profile change unless a readback shows it. Leave out internal terms such as Run, working note or candidate status.
+
+When a step depends on current employer, hiring or market reality, refresh it through an available authorized source and keep exact URLs and retrieval dates. Never put private Profile or resume text into public searches.
