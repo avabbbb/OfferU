@@ -30,7 +30,6 @@ SENSITIVE_PERMISSIONS = frozenset({
     "privacy:maintenance",
     "agent:integration",
     "authenticated_browser:manual_login",
-    "job_source:boss:read",
 })
 
 _CONFIRM_PREFIXES = ("delete_", "reset_", "purge_", "revoke_", "uninstall_")
