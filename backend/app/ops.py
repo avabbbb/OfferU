@@ -1669,7 +1669,7 @@ class UpdateApplicationRecordInput(_StrictOperationInput):
 
     @model_validator(mode="after")
     def validate_value(self):
-        allowed_statuses = {"待投递", "已投递", "待处理", "面试中", "已拒绝", "已录用"}
+        allowed_statuses = {"待投递", "已投递", "HR 已回复", "面试中", "已拒绝", "已录用"}
         if self.field_key == "apply_status" and self.value.strip() not in allowed_statuses:
             raise ValueError("apply_status has an unsupported value")
         return self

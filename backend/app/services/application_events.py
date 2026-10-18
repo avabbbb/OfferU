@@ -45,7 +45,7 @@ def normalize_application_status(value: Any) -> str:
         "responded": "responded",
         "need_action": "responded",
         "已回复": "responded",
-        "待处理": "responded",
+        "HR 已回复": "responded",
         "interview": "interview",
         "interviewing": "interview",
         "面试": "interview",

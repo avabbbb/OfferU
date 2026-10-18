@@ -96,7 +96,7 @@ def _default_custom_template_fields() -> list[dict[str, Any]]:
             "fixed": False,
             "visible": True,
             "width": 160,
-            "options": ["待投递", "已投递", "待处理", "面试中", "已拒绝", "已录用"],
+            "options": ["待投递", "已投递", "HR 已回复", "面试中", "已拒绝", "已录用"],
         },
         {
             "field_key": "follow_up_date",

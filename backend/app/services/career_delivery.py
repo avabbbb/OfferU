@@ -55,7 +55,7 @@ DELIVERY_ARTIFACT_TYPES: dict[str, str | None] = {
 }
 
 _APPLIED_STATUSES = {"submitted", "applied", "已投递"}
-_RESPONDED_STATUSES = {"responded", "need_action", "已回复", "待处理"}
+_RESPONDED_STATUSES = {"responded", "need_action", "已回复", "HR 已回复"}
 _INTERVIEW_STATUSES = {"interview", "interviewing", "面试", "面试中"}
 _TERMINAL_STATUSES = {"rejected", "offer", "withdrawn", "已拒绝", "已录取", "已撤回"}
 _TERMINAL_ATTEMPT_STAGES = {"rejected", "offer", "withdrawn"}

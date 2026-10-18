@@ -9,7 +9,7 @@ import type { Job } from "@/lib/hooks";
 import { ExternalUrlLink } from "@/components/ExternalUrlLink";
 import { LetterAvatar, NOTION_CARD, NotionTag } from "@/components/ui/NotionTag";
 
-const SOURCE_LABELS: Record<string, string> = {
+export const SOURCE_LABELS: Record<string, string> = {
   boss: "BOSS直聘",
   zhilian: "智联招聘",
   linkedin: "领英",

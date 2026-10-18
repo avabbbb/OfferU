@@ -2035,7 +2035,7 @@ async def export_resume_pdf(resume_id: int) -> dict:
 _APPLICATION_STATUS_TO_WORKSPACE = {
     "pending": "待投递",
     "submitted": "已投递",
-    "responded": "待处理",
+    "responded": "HR 已回复",
     "interview": "面试中",
     "rejected": "已拒绝",
     "offer": "已录用",
@@ -2050,7 +2050,7 @@ def _application_record_status(value: object) -> str:
         "draft": "pending",
         "已投递": "submitted",
         "applied": "submitted",
-        "待处理": "responded",
+        "HR 已回复": "responded",
         "已回复": "responded",
         "need_action": "responded",
         "面试": "interview",
@@ -2351,9 +2351,9 @@ async def update_application_record(record_id: int, field_key: str, value: objec
     if clean_key not in {"apply_status", "follow_up_date", "notes"}:
         raise ValueError("Agent 只能更新 apply_status、follow_up_date 或 notes")
     if clean_key == "apply_status":
-        allowed_statuses = {"待投递", "已投递", "待处理", "面试中", "已拒绝", "已录用"}
+        allowed_statuses = {"待投递", "已投递", "HR 已回复", "面试中", "已拒绝", "已录用"}
         if str(value or "").strip() not in allowed_statuses:
-            raise ValueError("投递表状态必须是待投递、已投递、待处理、面试中、已拒绝或已录用")
+            raise ValueError("投递表状态必须是待投递、已投递、HR 已回复、面试中、已拒绝或已录用")
     if clean_key == "follow_up_date" and value:
         try:
             datetime.fromisoformat(str(value).strip()[:10])
