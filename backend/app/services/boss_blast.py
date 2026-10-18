@@ -1,9 +1,9 @@
 """海投：用本机 boss-cli 搜岗位，按简历打分，使用者勾选后逐个打招呼。
 
 - 搜索结果按简历命中的技能 / 标签打分，默认只勾高分；
-- 每天最多打 20 个招呼，同一个岗位只打一次；
+- 每天最多打 50 个招呼，同一个岗位只打一次；
 - 两个招呼之间随机等 20–60 秒，一次只跑一批；
-- 打过招呼的岗位直接记进投递表（已投递）。
+- 打过招呼的岗位直接记进总表（已投递）。
 """
 
 from __future__ import annotations
@@ -19,10 +19,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 
 from app.database import async_session
-from app.models.models import BossGreetLog, Resume, ResumeSection
+from app.models.models import ApplicationTable, BossGreetLog, Resume, ResumeSection
 from app.services.boss_sync import _run_boss
 
-DAILY_CAP = 20
+DAILY_CAP = 50
 GAP_SECONDS = (20, 60)
 PICK_SCORE = 60
 _RUN: dict[str, Any] = {"running": False, "items": []}
@@ -52,7 +52,7 @@ class BossBlastJob(BaseModel):
 class BossBlastStartInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    table_id: int = Field(gt=0)
+    table_id: Optional[int] = Field(default=None, gt=0)
     jobs: list[BossBlastJob] = Field(min_length=1, max_length=DAILY_CAP)
 
 
@@ -157,8 +157,8 @@ async def _greet_all(table_id: int, jobs: list[dict[str, Any]]) -> None:
         _RUN["running"] = False
 
 
-async def start_boss_greet(table_id: int, jobs: list[dict[str, Any]]) -> dict[str, Any]:
-    """开始给勾选的岗位逐个打招呼。超过今天剩余额度、或已经打过的岗位不会发。"""
+async def start_boss_greet(jobs: list[dict[str, Any]], table_id: Optional[int] = None) -> dict[str, Any]:
+    """开始给勾选的岗位逐个打招呼。超过今天剩余额度、或已经打过的岗位不会发。不指定投递表时记进总表。"""
 
     global _TASK
     if _RUN["running"]:
@@ -166,8 +166,12 @@ async def start_boss_greet(table_id: int, jobs: list[dict[str, Any]]) -> dict[st
     jobs = [j.model_dump() if isinstance(j, BaseModel) else dict(j) for j in jobs]
     async with async_session() as db:
         left = DAILY_CAP - await _today_count(db)
+        if table_id is None:
+            table_id = await db.scalar(select(ApplicationTable.id).order_by(ApplicationTable.is_total.desc(), ApplicationTable.id).limit(1))
         done = set((await db.execute(select(BossGreetLog.encrypt_job_id).where(BossGreetLog.ok.is_(True), BossGreetLog.encrypt_job_id.in_([j["encrypt_job_id"] for j in jobs])))).scalars())
     jobs = [j for j in jobs if j["encrypt_job_id"] not in done]
+    if not table_id:
+        raise ValueError("还没有投递表")
     if not jobs:
         raise ValueError("勾选的岗位都已经打过招呼了")
     if len(jobs) > left:

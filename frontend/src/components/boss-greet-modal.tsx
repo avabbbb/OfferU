@@ -1,6 +1,6 @@
 "use client";
 
-// 海投：搜一页岗位 → 按简历打分、高分默认勾选 → 逐个打招呼，成功的记进投递表。
+// 海投：搜一页岗位 → 按简历打分、高分默认勾选 → 逐个打招呼，成功的记进总表。
 import { useEffect, useState } from "react";
 import { Modal, ModalBody, ModalContent, ModalHeader } from "@heroui/react";
 import { getBossGreet, searchBossJobs, startBossGreet, type BossGreet, type BossJob, type BossSearch } from "@/lib/bossGreet";
@@ -8,7 +8,7 @@ import { safeClientErrorMessage } from "@/lib/safe-error";
 
 const STATUS = { waiting: "等待", sending: "发送中…", done: "已打招呼", failed: "没发出去", skipped: "已停止" } as const;
 
-export function BossGreetModal({ open, onClose, tableId, onGreeted }: { open: boolean; onClose: () => void; tableId: number | null; onGreeted: () => void }) {
+export function BossGreetModal({ open, onClose, onGreeted }: { open: boolean; onClose: () => void; onGreeted: () => void }) {
   const [keyword, setKeyword] = useState("");
   const [city, setCity] = useState("全国");
   const [result, setResult] = useState<BossSearch | null>(null);
@@ -51,11 +51,11 @@ export function BossGreetModal({ open, onClose, tableId, onGreeted }: { open: bo
   };
 
   const start = async () => {
-    if (!result || !tableId) return;
+    if (!result) return;
     setBusy(true);
     setError("");
     try {
-      setRun(await startBossGreet(tableId, result.items.filter((i) => picked.has(i.encrypt_job_id))));
+      setRun(await startBossGreet(result.items.filter((i) => picked.has(i.encrypt_job_id))));
     } catch (cause) {
       setError(safeClientErrorMessage(cause, "没能开始"));
     } finally {
@@ -84,7 +84,7 @@ export function BossGreetModal({ open, onClose, tableId, onGreeted }: { open: bo
           {run ? (
             <>
               <p className="text-[var(--foreground-muted)]">
-                {run.running ? "每两个之间随机等 20–60 秒。可以关掉这个窗口，OfferU 会在后台发完。" : `这一批发完了。今天还能打 ${run.left} 个招呼。`}
+                {run.running ? "每两个之间随机等 20–60 秒。可以关掉这个窗口，OfferU 会在后台发完。" : `这一批发完了，打过招呼的已记进投递总表。今天还能打 ${run.left} 个招呼。`}
               </p>
               <ul className="divide-y divide-[var(--border)]" data-testid="boss-greet-progress">
                 {run.items.map((item) => (
@@ -157,7 +157,7 @@ export function BossGreetModal({ open, onClose, tableId, onGreeted }: { open: bo
                   </div>
                   <div className="flex items-center justify-end gap-3">
                     {over && <span className="text-[12.5px] text-[var(--danger,#b42318)]">超出今天剩余的 {left} 个</span>}
-                    <button type="button" disabled={!agreed || !tableId || busy || picked.size === 0 || over} onClick={start} className={`${btn} bg-[var(--foreground)] text-[var(--surface)]`} data-testid="boss-greet-start">
+                    <button type="button" disabled={!agreed || busy || picked.size === 0 || over} onClick={start} className={`${btn} bg-[var(--foreground)] text-[var(--surface)]`} data-testid="boss-greet-start">
                       给 {picked.size} 个岗位打招呼
                     </button>
                   </div>

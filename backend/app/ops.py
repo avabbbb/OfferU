@@ -2279,7 +2279,7 @@ OPERATIONS: dict[str, Operation] = {
     "start_boss_greet": Operation(
         name="start_boss_greet",
         fn=start_boss_greet,
-        description="海投第二步：给使用者勾选的岗位逐个打招呼（每天最多 20 个，间隔 20–60 秒），成功的记进投递表。",
+        description="海投第二步：给使用者勾选的岗位逐个打招呼（每天最多 50 个，间隔 20–60 秒），成功的记进投递表（默认总表）。",
         group="applications",
         side_effects=("write", "external"),
         input_model=BossBlastStartInput,
