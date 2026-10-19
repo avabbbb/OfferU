@@ -15,6 +15,7 @@
 
 <p align="center">
   <strong>English</strong> ·
+  <a href="#watch-the-videos">Videos</a> ·
   <a href="./README_ZH.md">简体中文</a> ·
   <a href="./QUICKSTART.md">Quickstart</a> ·
   <a href="./docs/09-quality-and-release.md">Quality</a> ·
@@ -29,6 +30,21 @@
 <p align="center">
   <img src="./asset/demo/offeru-demo.gif" alt="OfferU demo: Today → Job → Role Intelligence → Resume → Pipeline" width="960" />
 </p>
+
+<h3 align="center" id="watch-the-videos">Watch the videos</h3>
+
+<table>
+  <tr>
+    <td width="50%"><a href="./asset/video/offeru-launch-60s.mp4"><img src="./asset/video/offeru-launch-60s-poster.jpg" alt="Play the 60-second OfferU launch film" /></a></td>
+    <td width="50%"><a href="./asset/video/offeru-walkthrough-en.mp4"><img src="./asset/video/offeru-walkthrough-en-poster.jpg" alt="Play the OfferU product walkthrough" /></a></td>
+  </tr>
+  <tr>
+    <td align="center"><a href="./asset/video/offeru-launch-60s.mp4"><strong>Launch film · 1 min</strong></a><br/>Why every application should start from evidence, not from zero</td>
+    <td align="center"><a href="./asset/video/offeru-walkthrough-en.mp4"><strong>Product walkthrough · 2 min 40 s</strong></a><br/>Save a job → Role Intelligence → tailored resume → Pipeline</td>
+  </tr>
+</table>
+
+<p align="center"><sub>Click a cover to play the 1080p video.</sub></p>
 
 <p align="center">
   <em>Internal Beta — source available, signed installer not yet released. See <a href="./KNOWN_ISSUES.md">Known issues</a>.</em>
