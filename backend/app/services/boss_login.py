@@ -77,16 +77,22 @@ async def logout_boss() -> dict[str, Any]:
 
 
 async def get_boss_login() -> dict[str, Any]:
-    """登录进度；没在登录时顺便问一次 boss 命令有没有保存的凭证。"""
+    """登录进度；没在登录时顺便问一次 boss 命令有没有保存的凭证，以及凭证能做什么。
 
-    view: dict[str, Any] = {"installed": boss_command() is not None, **_STATE, "qr": None, "logged_in": None}
+    capabilities.search 只有 boss 校验搜索通过（凭证里有 __zp_stoken__）时才为 true；
+    扫码登录拿不到 __zp_stoken__，所以只能同步，不能搜索、打招呼、补职位描述。
+    """
+
+    view: dict[str, Any] = {"installed": boss_command() is not None, **_STATE, "qr": None, "logged_in": None, "capabilities": {"sync": False, "search": False}}
     if _STATE["status"] in {"waiting", "scanned"} and QR_PNG.exists():
         image = QR_PNG.read_bytes()
         kind = "jpeg" if image[:2] == b"\xff\xd8" else "png"
         view["qr"] = f"data:image/{kind};base64," + base64.b64encode(image).decode()
     if not _running() and view["installed"]:
         try:
-            view["logged_in"] = bool((await run_boss_json(("status", "--json"), timeout=20)).get("credential_present"))
+            status = await run_boss_json(("status", "--json"), timeout=20)
         except ValueError:
-            view["logged_in"] = False
+            status = {}
+        view["logged_in"] = bool(status.get("credential_present"))
+        view["capabilities"] = {"sync": view["logged_in"], "search": view["logged_in"] and bool(status.get("search_authenticated"))}
     return view

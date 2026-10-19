@@ -59,6 +59,24 @@ def test_boss_login_shows_qr_then_ok(tmp_path, monkeypatch):
     waiting, done = asyncio.run(flow())
     assert waiting["status"] == "waiting" and waiting["qr"].startswith("data:image/png;base64,")
     assert done["status"] == "ok" and done["logged_in"] is True and done["qr"] is None
+    assert done["capabilities"] == {"sync": True, "search": False}
+
+
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [
+        ({"credential_present": True, "search_authenticated": False, "cookies": ["wt2", "zp_at"]}, {"sync": True, "search": False}),
+        ({"credential_present": True, "search_authenticated": True, "cookies": ["__zp_stoken__", "wt2"]}, {"sync": True, "search": True}),
+        ({"authenticated": False, "credential_present": False}, {"sync": False, "search": False}),
+    ],
+)
+def test_boss_login_capabilities_follow_status(tmp_path, monkeypatch, status, expected):
+    from app.services import boss_login
+
+    _fake_boss(tmp_path, monkeypatch, status)
+    view = asyncio.run(boss_login.get_boss_login())
+    assert view["capabilities"] == expected
+    assert view["logged_in"] is status["credential_present"]
 
 
 def test_next_run_is_tomorrow_daytime():
