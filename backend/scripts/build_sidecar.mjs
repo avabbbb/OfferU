@@ -113,4 +113,17 @@ if (process.platform === "darwin") {
 }
 run(python, [...args, join(backend, "sidecar_entry.py")]);
 renameSync(join(dist, `offeru-backend${extension}`), join(dist, `offeru-backend-${nativeTarget}${extension}`));
-console.log(`Staged native ${nativeTarget} backend, Node ${nodeInfo.version}, AI runtime, and OfferU Skill.`);
+
+// BOSS 直聘：boss-cli 单独打成一个命令，后端通过 OFFERU_BOSS_BIN 调它，凭证留在 boss-cli 自己的目录。
+const bossArgs = [
+  "-m", "PyInstaller", "--clean", "--noconfirm", "--onefile", "--name", "offeru-boss",
+  "--distpath", dist, "--workpath", join(build, "boss-work"), "--specpath", join(build, "boss-spec"),
+  "--collect-all", "boss_cli",
+];
+if (process.platform === "darwin") {
+  bossArgs.push("--osx-entitlements-file", join(root, "frontend/src-tauri/Entitlements.plist"));
+  if (process.env.APPLE_SIGNING_IDENTITY) bossArgs.push("--codesign-identity", process.env.APPLE_SIGNING_IDENTITY);
+}
+run(python, [...bossArgs, join(backend, "boss_entry.py")]);
+renameSync(join(dist, `offeru-boss${extension}`), join(dist, `offeru-boss-${nativeTarget}${extension}`));
+console.log(`Staged native ${nativeTarget} backend, boss command, Node ${nodeInfo.version}, AI runtime, and OfferU Skill.`);

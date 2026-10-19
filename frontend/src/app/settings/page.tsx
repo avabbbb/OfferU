@@ -55,6 +55,7 @@ import { SHOWCASE } from "@/lib/showcase";
 import { useConfig, updateConfig } from "@/lib/hooks";
 import { AgentConnectionPanel } from "@/components/workbench/AgentConnectionPanel";
 import { JobSourceConnectionsCard } from "@/components/settings/JobSourceConnectionsCard";
+import { BossLoginCard } from "@/components/boss-login";
 import { HintsToggle } from "@/components/hints";
 
 interface ProviderPreset {
@@ -1291,6 +1292,7 @@ export default function SettingsPage() {
       <PageHeader title="设置" description={SHOWCASE ? "展示版不连接本机，真实数据和外置 Agent 请使用桌面版。" : "Agent 连接、模型服务和数据安全。"} />
 
       <AgentConnectionPanel />
+      {!SHOWCASE && <BossLoginCard />}
       <JobSourceConnectionsCard />
       <HintsToggle />
 
