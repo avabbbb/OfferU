@@ -39,6 +39,7 @@ import { ArtifactViewer } from "@/components/career/ArtifactViewer";
 import { readDeliveries } from "@/components/career/deliveries";
 import { RoleIntelligencePanel } from "@/components/jobs/RoleIntelligencePanel";
 import { JobNextStepCard, scrollToWorkspaceSection } from "@/components/jobs/JobNextStepCard";
+import { useBossSearchAvailable } from "@/components/boss-login";
 import {
   jobResearchApi,
   dataModeLabel,
@@ -167,6 +168,7 @@ export default function JobDetailPage() {
   const jobId = params.id ? Number(params.id) : null;
   const { data: job, isLoading, error, mutate: mutateJob } = useJob(jobId);
   const [bossFill, setBossFill] = useState<{ busy: boolean; error: string }>({ busy: false, error: "" });
+  const bossSearch = useBossSearchAvailable();
   const { data: pickedPools } = usePools("picked");
   const {
     data: progressBoard,
@@ -719,6 +721,7 @@ export default function JobDetailPage() {
         } : undefined}
         fillingFromBoss={bossFill.busy}
         fillFromBossError={bossFill.error}
+        bossSearchAvailable={bossSearch}
         onManualDecision={() => {
           setManualOpen(true);
           scrollToWorkspaceSection("pre-application-decision");

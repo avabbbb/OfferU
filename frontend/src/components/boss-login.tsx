@@ -94,3 +94,18 @@ export function BossLoginCard() {
     </section>
   );
 }
+
+/** 当前 BOSS 凭证能不能搜索、打招呼、补职位描述；读取中为 null，读不到按不能处理。 */
+export function useBossSearchAvailable(): boolean | null {
+  const [available, setAvailable] = useState<boolean | null>(null);
+  useEffect(() => {
+    let alive = true;
+    getBossLogin()
+      .then((state) => alive && setAvailable(state.capabilities.search))
+      .catch(() => alive && setAvailable(false));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return available;
+}
