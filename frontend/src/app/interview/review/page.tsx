@@ -18,6 +18,8 @@ import {
   deleteReview,
   emptyQuestion,
   extractQuestions,
+  getWeakSpots,
+  groupWeakSpots,
   listReviews,
   markApplicationRejected,
   saveReview,
@@ -25,6 +27,7 @@ import {
   type InterviewReview,
   type ReviewOutcome,
   type ReviewQuestion,
+  type WeakSpots as WeakSpotsResult,
 } from "@/lib/interviewReviews";
 
 const OUTCOMES: Array<{ id: ReviewOutcome; label: string }> = [
@@ -288,10 +291,102 @@ function Editor({ review, onChange, onDelete }: { review: InterviewReview; onCha
   );
 }
 
+type Stuck = { ref: string; review: InterviewReview; item: ReviewQuestion };
+
+function stuckQuestions(reviews: InterviewReview[]): Stuck[] {
+  return reviews.flatMap((review) =>
+    review.questions.map((item, i) => ({ ref: `${review.id}:${i}`, review, item })).filter(({ item }) => item.question.trim() && item.reflection.trim()),
+  );
+}
+
+function StuckItem({ stuck }: { stuck: Stuck }) {
+  return (
+    <li className="py-2.5">
+      <Link href={`/interview/review?id=${stuck.review.id}`} className="block rounded-md hover:bg-[var(--surface-muted)] -mx-2 px-2 py-1">
+        <span className="block text-[14px] text-[var(--foreground)]">{stuck.item.question}</span>
+        <span className="mt-1 block text-[13px] text-[var(--foreground-muted)]">{stuck.item.reflection}</span>
+        <span className="mt-1 block text-[12px] text-[var(--foreground-faint)]">{reviewTitle(stuck.review)}{stuck.review.interviewed_on ? ` · ${formatDay(stuck.review.interviewed_on)}` : ""}</span>
+      </Link>
+    </li>
+  );
+}
+
+function WeakSpots({ reviews }: { reviews: InterviewReview[] }) {
+  const stuck = stuckQuestions(reviews);
+  const byRef = new Map(stuck.map((s) => [s.ref, s]));
+  const [result, setResult] = useState<WeakSpotsResult | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    getWeakSpots().then(setResult).catch((cause) => setError(safeClientErrorMessage(cause, "读取归类失败")));
+  }, []);
+  const topics = result?.grouped_at ? result.topics : null;
+  const sessions = new Set(stuck.map((s) => s.review.id)).size;
+
+  const group = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      setResult(await groupWeakSpots());
+    } catch (cause) {
+      setError(safeClientErrorMessage(cause, "归类失败"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <article className="min-w-0 flex-1" data-testid="review-weak-spots">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-[22px] font-semibold tracking-tight text-[var(--foreground)]">反复卡住的题</h2>
+          <p className="mt-1.5 text-[13.5px] text-[var(--foreground-muted)]">
+            {stuck.length ? `${sessions} 场复盘里写了「卡在哪」的 ${stuck.length} 道题。按考察点归类后，能看出哪些地方不止一次出问题。` : "复盘里写了「卡在哪」的题会汇总到这里。"}
+          </p>
+        </div>
+        {stuck.length > 0 && (
+          <button type="button" onClick={group} disabled={busy} className="shrink-0 rounded-md border border-[var(--border-strong)] px-3 py-1.5 text-[13px] font-medium text-[var(--foreground)] hover:bg-[var(--surface-muted)] disabled:opacity-50" data-testid="weak-group">
+            {busy ? "正在归类…" : topics ? "重新归类" : "按考察点归类"}
+          </button>
+        )}
+      </div>
+      {error && <p className="mt-3 text-[12.5px] text-[var(--danger,#b42318)]">{error}</p>}
+      {topics && result?.stale && stuck.length > 0 && <p className="mt-3 text-[13px] text-[var(--foreground)]" data-testid="weak-stale">归类之后复盘有改动，可以重新归类。</p>}
+
+      {topics ? (
+        <div className="mt-6 space-y-8">
+          {topics.map((topic) => {
+            const items = topic.refs.map((ref) => byRef.get(ref)).filter((s): s is Stuck => Boolean(s));
+            if (!items.length) return null;
+            const times = new Set(items.map((s) => s.review.id)).size;
+            const refs = items.slice(0, 10).map((s) => s.ref).join(",");
+            return (
+              <section key={topic.title + refs} data-testid="weak-topic">
+                <div className="flex items-baseline justify-between gap-4">
+                  <h3 className="text-[15px] font-semibold text-[var(--foreground)]">
+                    {topic.title}
+                    <span className="ml-2 text-[12.5px] font-normal text-[var(--foreground-muted)]">{times > 1 ? `${times} 场都卡过` : "卡过 1 次"}</span>
+                  </h3>
+                  <Link href={`/interview/ai?from=${refs}&topic=${encodeURIComponent(topic.title)}`} className="shrink-0 text-[13px] font-medium text-[var(--foreground)] underline-offset-4 hover:underline" data-testid="weak-practice">专练这组</Link>
+                </div>
+                {topic.advice && <p className="mt-1 text-[13.5px] text-[var(--foreground)]">{topic.advice}</p>}
+                <ul className="mt-1 divide-y divide-[var(--border)]">{items.map((s) => <StuckItem key={s.ref} stuck={s} />)}</ul>
+              </section>
+            );
+          })}
+        </div>
+      ) : (
+        <ul className="mt-4 divide-y divide-[var(--border)]">{stuck.map((s) => <StuckItem key={s.ref} stuck={s} />)}</ul>
+      )}
+    </article>
+  );
+}
+
 export default function InterviewReviewPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const selectedId = Number(searchParams.get("id") || 0);
+  const weakView = searchParams.get("view") === "weak";
   const [reviews, setReviews] = useState<InterviewReview[] | null>(null);
   const [error, setError] = useState("");
   const [saveState, setSaveState] = useState<"" | "saving" | "saved">("");
@@ -358,9 +453,13 @@ export default function InterviewReviewPage() {
           <button type="button" onClick={create} className="mb-2 inline-flex w-full items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[13px] text-[var(--foreground-muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]" data-testid="review-new">
             <Plus size={14} /> 新建复盘
           </button>
-          <ul className="space-y-0.5">
+          <button type="button" onClick={() => router.push("/interview/review?view=weak")} aria-current={weakView ? "page" : undefined} className={`mb-2 flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left text-[13.5px] font-medium text-[var(--foreground)] ${weakView ? "bg-[var(--surface-muted)]" : "hover:bg-[var(--surface-muted)]"}`} data-testid="review-weak-link">
+            反复卡住的题
+            <span className="text-[12px] font-normal text-[var(--foreground-muted)]">{stuckQuestions(reviews).length || ""}</span>
+          </button>
+          <ul className="space-y-0.5 border-t border-[var(--border)] pt-2">
             {reviews.map((review) => {
-              const active = review.id === current.id;
+              const active = !weakView && review.id === current.id;
               const outcome = OUTCOMES.find((o) => o.id === review.outcome)?.label;
               return (
                 <li key={review.id}>
@@ -373,7 +472,7 @@ export default function InterviewReviewPage() {
             })}
           </ul>
         </aside>
-        <Editor key={current.id} review={current} onChange={update} onDelete={() => remove(current)} />
+        {weakView ? <WeakSpots reviews={reviews} /> : <Editor key={current.id} review={current} onChange={update} onDelete={() => remove(current)} />}
       </div>
     );
   }

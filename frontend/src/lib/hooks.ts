@@ -91,7 +91,7 @@ export interface Job {
   company_industry: string;
   company_logo: string;
   is_campus: boolean;
-  triage_status: "inbox" | "picked" | "ignored";
+  triage_status: "inbox" | "picked" | "ignored" | "applied";
   pool_id: number | null;
   batch_id: string;
   created_at: string;
@@ -1365,6 +1365,20 @@ export async function importLatestExtensionBatchToApplicationTable(
     throw new Error(safeClientErrorMessage(err.detail, `导入最近插件同步失败 (${res.status})`));
   }
   return res.json();
+}
+
+/** 导入使用者自己用 boss-cli 导出的 JSON（boss applied / interviews / chat --json）。 */
+export async function importBossExport(tableId: number, payload: unknown) {
+  const res = await showcaseFetch(`/api/applications/tables/${tableId}/import-boss`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(safeClientErrorMessage(err.detail, `导入失败 (${res.status})`));
+  }
+  return res.json() as Promise<{ kind_label: string; total: number; created: number; advanced: number }>;
 }
 
 export async function createApplicationRecord(tableId: number, values: Record<string, any>, jobRefId?: number) {

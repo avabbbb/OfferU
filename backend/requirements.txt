@@ -3,6 +3,8 @@ fastapi>=0.128.0
 uvicorn[standard]>=0.30.0
 sse-starlette>=3.3.0
 sqlalchemy[asyncio]==2.0.35
+# BOSS 直聘：OfferU 自带的 boss 命令（boss_entry.py），PyPI 版太旧，固定到上游提交
+kabi-boss-cli @ git+https://github.com/jackwener/boss-cli@9d38ed1a3a5f6c5c2f37b865b0748454234e7c70
 asyncpg==0.30.0
 aiosqlite==0.20.0
 pydantic-settings>=2.5.0
@@ -12,6 +14,7 @@ openai>=2.30.0
 anthropic>=0.69.0
 python-multipart==0.0.31
 PyMuPDF>=1.24.0
+Pillow>=10.0.0
 playwright>=1.51.0
 python-docx>=1.1.0
 pypdf>=4.0.0

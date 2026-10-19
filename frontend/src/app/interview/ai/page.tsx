@@ -32,7 +32,7 @@ import {
 } from "@/lib/hooks";
 import { bauhausFieldClassNames } from "@/lib/bauhaus";
 import { dataModeLabel } from "@/lib/api";
-import { getReview } from "@/lib/interviewReviews";
+import { listReviews } from "@/lib/interviewReviews";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import InterviewStage from "./components/InterviewStage";
 
@@ -83,6 +83,8 @@ export default function AIInterviewPage() {
   // 从复盘过来：练真实被问到的那几道题，不让模型另出题。
   const reviewId = Number(searchParams.get("review") || 0);
   const reviewPicks = searchParams.get("q") || "";
+  const weakPicks = searchParams.get("from") || "";
+  const weakTopic = searchParams.get("topic") || "";
   const [fixedQuestions, setFixedQuestions] = useState<string[]>([]);
   const [company, setCompany] = useState("");
   const [position, setPosition] = useState("");
@@ -148,18 +150,23 @@ export default function AIInterviewPage() {
     };
   }, [roleBenchmarkRunId, roleIntelligenceRoute, roleJobId]);
 
+  // 带入复盘里的题：?review=ID&q=0,2 是一场里挑题；?from=3:0,5:2 是跨场的薄弱点专练。
   useEffect(() => {
-    if (!reviewId) return;
+    if (!reviewId && !weakPicks) return;
     let active = true;
-    getReview(reviewId)
-      .then((review) => {
+    listReviews()
+      .then((reviews) => {
         if (!active) return;
-        const picks = reviewPicks ? reviewPicks.split(",").map(Number) : review.questions.map((_, i) => i);
-        const picked = picks.map((i) => review.questions[i]?.question.trim()).filter((q): q is string => Boolean(q)).slice(0, 10);
+        const byId = new Map(reviews.map((review) => [review.id, review]));
+        const refs = weakPicks
+          ? weakPicks.split(",").map((ref) => ref.split(":").map(Number))
+          : (reviewPicks ? reviewPicks.split(",").map(Number) : byId.get(reviewId)?.questions.map((_, i) => i) ?? []).map((i) => [reviewId, i]);
+        const picked = refs.map(([id, i]) => byId.get(id)?.questions[i]?.question.trim()).filter((q): q is string => Boolean(q)).slice(0, 10);
         setFixedQuestions(picked);
         if (picked.length) setQuestionCount(picked.length);
-        setCompany(review.company);
-        setPosition(review.role || review.round_label || "复盘练习");
+        const review = byId.get(reviewId);
+        setCompany(review?.company ?? "");
+        setPosition(review ? review.role || review.round_label || "复盘练习" : `${weakTopic || "薄弱点"}专练`);
       })
       .catch((cause) => {
         if (active) setError(safeClientErrorMessage(cause, "读取复盘失败"));
@@ -167,7 +174,7 @@ export default function AIInterviewPage() {
     return () => {
       active = false;
     };
-  }, [reviewId, reviewPicks]);
+  }, [reviewId, reviewPicks, weakPicks, weakTopic]);
 
   const currentQuestion = session?.questions[currentQuestionIndex];
   const progress = session ? ((currentQuestionIndex + (report ? 1 : 0)) / session.questions.length) * 100 : 0;

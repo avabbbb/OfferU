@@ -566,6 +566,13 @@ fn spawn_release_sidecar(
     #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
     let node_names = ["offeru-node"];
 
+    #[cfg(windows)]
+    let boss_names = ["offeru-boss.exe", "offeru-boss-x86_64-pc-windows-msvc.exe"];
+    #[cfg(target_os = "macos")]
+    let boss_names = ["offeru-boss", "offeru-boss-aarch64-apple-darwin", "offeru-boss-x86_64-apple-darwin"];
+    #[cfg(not(any(windows, target_os = "macos")))]
+    let boss_names = ["offeru-boss", "offeru-boss-x86_64-unknown-linux-gnu"];
+
     let sidecar = find_packaged_file(&resource_dir, &backend_names);
 
     let Some(sidecar) = sidecar else {
@@ -591,6 +598,9 @@ fn spawn_release_sidecar(
     configure_backend_command(&mut cmd, data_root, runtime_instance_id, approval_token);
     if let Some(node) = node {
         cmd.env("OFFERU_NODE_PATH", node);
+    }
+    if let Some(boss) = find_packaged_file(&resource_dir, &boss_names) {
+        cmd.env("OFFERU_BOSS_BIN", boss);
     }
 
     Ok(cmd)

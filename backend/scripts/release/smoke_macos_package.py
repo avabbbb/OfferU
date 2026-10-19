@@ -34,10 +34,11 @@ def smoke(app: Path, *, version: str) -> None:
         binary_dir = installed / "Contents/MacOS"
         data = root / "data"
         environment = {**os.environ, "PATH": "/usr/bin:/bin", "OFFERU_VERSION": version}
-        for key in ("DATABASE_URL", "OFFERU_DATA_DIR", "OFFERU_NODE_PATH", "OFFERU_AGENT_RUNTIME_DIR"):
+        for key in ("DATABASE_URL", "OFFERU_DATA_DIR", "OFFERU_NODE_PATH", "OFFERU_AGENT_RUNTIME_DIR", "OFFERU_BOSS_BIN"):
             environment.pop(key, None)
         # These calls must work without a system Python/Node on PATH.
         subprocess.run([str(binary_dir / "offeru-node"), "--version"], env=environment, check=True, timeout=30)
+        subprocess.run([str(binary_dir / "offeru-boss"), "--help"], env=environment, check=True, timeout=60, capture_output=True)
         command = [str(binary_dir / "offeru-backend"), "--data-dir", str(data)]
         manifest = subprocess.run(command + ["cli", "manifest"], env=environment, capture_output=True, text=True, check=True, timeout=120)
         if not json.loads(manifest.stdout).get("ok"):

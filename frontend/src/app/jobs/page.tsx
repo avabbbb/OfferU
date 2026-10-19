@@ -9,6 +9,8 @@
 "use client";
 
 import { PageHeader } from "@/components/layout/PageHeader";
+import { BossGreetModal } from "@/components/boss-greet-modal";
+import { useBossSearchAvailable } from "@/components/boss-login";
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -185,6 +187,8 @@ export default function JobsPage() {
   const [isScraperSyncing, setIsScraperSyncing] = useState(fromScraper && !!scraperTaskId);
   const [actionError, setActionError] = useState("");
   const [addJobOpen, setAddJobOpen] = useState(false);
+  const [bossGreetOpen, setBossGreetOpen] = useState(false);
+  const bossSearch = useBossSearchAvailable();
 
   useEffect(() => {
     if (guidedSetup) setAddJobOpen(true);
@@ -589,15 +593,31 @@ export default function JobsPage() {
         title="岗位"
         description={triageMeta.description}
         actions={
-          <Button
-            size="sm"
-            startContent={<Plus size={14} />}
-            onPress={() => setAddJobOpen(true)}
-            className="bauhaus-button bauhaus-button-red !min-h-9 !px-4"
-            data-testid="open-add-job"
-          >
-            保存岗位
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              onPress={() => setBossGreetOpen(true)}
+              className={`bauhaus-button !min-h-9 !px-4${bossSearch === false ? " opacity-70" : ""}`}
+              title={bossSearch === false ? "扫码登录只能同步投递、面试和 HR 回复；搜索和打招呼需要 BOSS 网页登录，暂时不支持" : undefined}
+              data-testid="open-boss-greet"
+            >
+              BOSS 海投
+              {bossSearch === false && (
+                <span className="ml-1.5 rounded bg-[var(--surface-muted)] px-1.5 py-0.5 text-[11px] font-normal text-[var(--foreground-muted)]" data-testid="boss-greet-needs-web-login">
+                  需网页登录
+                </span>
+              )}
+            </Button>
+            <Button
+              size="sm"
+              startContent={<Plus size={14} />}
+              onPress={() => setAddJobOpen(true)}
+              className="bauhaus-button bauhaus-button-red !min-h-9 !px-4"
+              data-testid="open-add-job"
+            >
+              保存岗位
+            </Button>
+          </div>
         }
       />
 
@@ -1251,6 +1271,7 @@ export default function JobsPage() {
           </ModalFooter>
         </ModalContent>
       </Modal>
+      <BossGreetModal open={bossGreetOpen} onClose={() => setBossGreetOpen(false)} onGreeted={refreshAfterMutation} />
     </motion.div>
   );
 }
