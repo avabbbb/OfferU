@@ -11,6 +11,7 @@ import { LetterAvatar, NOTION_CARD, NotionTag } from "@/components/ui/NotionTag"
 
 export const SOURCE_LABELS: Record<string, string> = {
   boss: "BOSS直聘",
+  xiaohongshu: "小红书",
   zhilian: "智联招聘",
   linkedin: "领英",
   shixiseng: "实习僧",

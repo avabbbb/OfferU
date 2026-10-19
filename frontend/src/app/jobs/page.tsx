@@ -64,6 +64,7 @@ const item = {
 const SOURCE_OPTIONS = [
   { value: "", label: "全部来源" },
   { value: "boss", label: "BOSS直聘" },
+  { value: "xiaohongshu", label: "小红书" },
   { value: "zhilian", label: "智联招聘" },
   { value: "linkedin", label: "领英" },
   { value: "shixiseng", label: "实习僧" },
