@@ -19,5 +19,12 @@
     "typescript": "^5.5.0",
     "vitest": "^5.0.2",
     "wxt": "^0.20.22"
+  },
+  "overrides": {
+    "adm-zip": "^0.6.1",
+    "shell-quote": "^1.9.0",
+    "tmp": "^0.2.6",
+    "uuid": "^11.1.1",
+    "esbuild": "^0.28.1"
   }
 }
