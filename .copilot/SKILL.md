@@ -5,7 +5,7 @@ user-invocable: true
 argument-hint: "[skill-id | goal | JD/URL]"
 ---
 
-<!-- generated: offeru-skill-registry@2026-10-04.1 sha256=1cd76968cb01128f1082994cfe0a9f4610c05cf680084e414e2aaf90146a0c92 -->
+<!-- generated: offeru-skill-registry@2026-10-16.1 sha256=8d0dc11e1055c5e29786f188f8ccd0a4a51a1ff670ae9cfb53b53fd53736b6c4 -->
 
 # OfferU — installed-product Agent router
 
@@ -60,13 +60,11 @@ If this execution context cannot interact (including a delegated or headless run
 
 Read the canonical Profile/evidence and target Job first. Ask about positioning and structure when unresolved: product/technical emphasis, section order, and which work, projects, games or open-source experiences to emphasize, compress or omit. Prepare section-level Before/After comparisons with the target requirement, original evidence references and rationale for every material rewrite. Keep the comprehensive Profile as the evidence source; tailoring a Job resume does not authorize changing Profile truth.
 
-Proposals are adopted through `propose_resume_decision_plan`: after the proposal is persisted and workspace-bound, call it once with the pending `change_ids` arranged into a small set of meaningful semantic groups (typically 3-7: e.g. positioning summary, core experience, skills/projects, education/certifications). Each group becomes one v2 ConfirmationGroup executing one atomic batch `review_resume_proposal_items` accept node — never one group per bullet and never a bundle you invent. Express ordering (e.g. summary before dependent sections) with `dependency_indices`, and put the shown rationale in each group's `display`. After the plan is created, stop: the run pauses for the user's independent group approvals; you never approve, execute or pre-resolve them yourself.
-
-When the live contract exposes `prepare_proposal_plan`, stage the current Run's prepared protected changes together: supply schema-valid Operation intents and explicit semantic groups whose `node_ids` reference those intent IDs. Bind the existing Run; do not start another reasoning session. For resume adoption, use `review_resume_proposal_items` with the exact displayed `change_ids` rather than one write per bullet. OfferU seals the actual changes and source versions, then the user approves a ConfirmationGroup through the independent Desktop review. An Ask answer is not that approval. Read `get_proposal_plan` / `list_proposal_plans` for persisted execution receipts; when a host cannot resume proactively, the original Agent reads them back and continues the same task. Do not call confirm/reject endpoints, the CLI confirm command, or fabricate a human decision. A paused or uncertain group requires safe recovery, not restaging the same unknown-effect mutation to obtain a new business key.
+Adopt a proposal with one `review_resume_proposal_items` call carrying the exact displayed `change_ids` (never one write per bullet). Writes run immediately and appear on the user's OfferU timeline; resume writes are snapshotted so the user can undo them with one click. Only irreversible actions — sending or publishing, wiping local data, marking applied or changing an application status, deleting records — are queued for the user to confirm: the result says `executed: false`. Do not wait, retry or call confirm endpoints; tell the user it is waiting for them and carry on. Their decision is reported back on your next turn.
 
 For external drafting, select `tailor_resume`, read `get_resume_preparation_context`, and keep its `source_fingerprint` unchanged. Submit your own draft once with `persist_external_resume_proposal`: use a stable `request_id`, `preparation.job_id`, `source_fingerprint`, `rows` shaped like `baseline_rows`, and `rationale` entries containing verified `source_section_ids`, a literal JD `requirement` excerpt and `why`. Store real Ask answers as `user_decisions` with `question` and `answer`; they remain strategy, not Profile facts. Changing a submitted payload requires a new request ID. Returned fact-gate errors or excluded rows go back to the same external Agent for repair; do not ask an embedded model to rewrite them. Bind the proposal with `ensure_resume_workspace` and read it with `get_resume_workspace`. These L1_prepare tools save reviewable drafts and do not adopt content. The user reviews section comparisons and adopts them in OfferU.
 
-Ask answers establish preferences; they are not permission to self-confirm pending proposals or approve unseen rewrites. When a tool result contains a v2 `plan`, the run pauses for user group approvals — continue only from real results after the user acts, never by approving on their behalf. Adoption remains an independent user review of the concrete comparison in OfferU, with fact gates, stale-version checks and audit preserved. New Profile facts and external submit/send/contact require their own applicable review/authorization. Report prepared, pending, adopted and failed results accurately.
+Ask answers establish preferences; they are not confirmation of a queued irreversible action. Adoption keeps fact gates and stale-version checks. New Profile facts and external submit/send/contact still follow their own rules. Report done, waiting-for-confirmation and failed results accurately.
 
 
 ## Shared business methods
@@ -74,7 +72,7 @@ Ask answers establish preferences; they are not permission to self-confirm pendi
 After selecting a live Skill, read its method relative to this installed `SKILL.md` directory. These are the same versioned assets used by the embedded Agent. A method does not add Operations or grant permissions. If the linked file is missing, report the missing method and update the OfferU connection; do not invent its workflow.
 
 - `company_research`: [skills/research/SKILL.md](skills/research/SKILL.md), version 1.0.0, sha256 `8f73dd713fc5956eeb917ea21ecb85bdbfa8ec27ea11ac2c9c9b534a49cb7091`
-- `profile_onboarding`: [skills/profile_onboarding/SKILL.md](skills/profile_onboarding/SKILL.md), version 1.0.0, sha256 `170c606c1314077d6ea3793318f2d7b491c1c2369f9090b252a97be236452256`
+- `profile_onboarding`: [skills/profile_onboarding/SKILL.md](skills/profile_onboarding/SKILL.md), version 1.1.0, sha256 `5fcd704c7bc18a09f36eca0ffb42dbbb0691e971c2afe01d93e6634bf0584f64`
 - `role_intelligence`: [skills/research/SKILL.md](skills/research/SKILL.md), version 1.0.0, sha256 `8f73dd713fc5956eeb917ea21ecb85bdbfa8ec27ea11ac2c9c9b534a49cb7091`
 - `tailor_resume`: [skills/tailor_resume/SKILL.md](skills/tailor_resume/SKILL.md), version 1.0.0, sha256 `d86c2d8f1b7cacc0dd82620a41cc1c0704de7feb3c3b1c66a1b186ceb0f7d9f0`
 
@@ -91,7 +89,7 @@ OfferU is the Career OS state/tool authority, not the exclusive career-methodolo
 - Use third-party Skills for procedural knowledge, drafting strategy, critique, coaching, or specialized workflows.
 - Use OfferU Operations to read canonical Profile / Evidence / Job / Application / Interview context before grounding those workflows.
 - Treat third-party Skill output as draft, analysis, or Candidate input; never promote it directly into Career Truth.
-- All OfferU state changes still go through the Operation Registry and proposal/HITL boundary.
+- All OfferU state changes still go through the Operation Registry and its ActionGate: undoable writes run and can be undone, irreversible ones wait for the user.
 - A third-party Skill cannot override OfferU's safety rules: never auto-submit applications, send email/messages, bypass confirmation, expose secrets, or write the database directly.
 - Do not assume another Skill is installed. Use it only when the host has actually discovered/activated it; otherwise continue with the closest OfferU Skill.
 
@@ -104,9 +102,10 @@ When OfferU asks for integration verification, select the live `connection_probe
 ## Control rules
 
 - Run one atomic Operation per CLI invocation with `<offeru-cli> run <operation>`.
-- Read Operations and schema-marked L1_prepare Operations execute directly. Operations with requires_confirmation persist a proposal and do not execute immediately.
+- Each Operation schema carries `interaction_tier`. `auto`: reads and undoable writes execute immediately, appear on the user's OfferU timeline and can be undone there. `confirm`: irreversible actions (sending, publishing or connecting accounts; wiping or restoring local data; marking applied or changing an application status; deleting records) and reading a local file outside the OfferU data directory return `executed: false` and wait in the user's OfferU action inbox.
+- On `executed: false`, tell the user what is waiting for them and continue with other work. Do not wait, retry or call confirm/reject endpoints; only the user confirms, in OfferU Desktop. Their decision is reported back on your next turn.
 - Use `--dry-run` when a preview is useful. Dry-run is not confirmation.
-- Leave adoption, truth-write and external-action proposals pending for the user to review and confirm in OfferU.
-- Never use raw HTTP, direct database writes, removed `api/routes` commands, or hidden shell business logic.
+- Never use raw HTTP, direct database writes, removed api/routes commands, or hidden shell business logic.
 - Never submit applications, send emails, or contact third parties automatically.
-- Report executed reads, persisted proposals, pending confirmations, visible failures, and the next user decision.
+- BOSS直聘 and other login-walled job sites: ask the user to paste the posting text (`draft_job_posting` returns `needs_text` for these links). Do not install or run third-party BOSS CLIs, scrapers or auto-greet/apply tools, and do not reuse the user's cookies.
+- Report in plain words: what you did, what is waiting for the user's confirmation, and the suggested next step. Leave out internal terms (Run, proposal state, schema or Operation names) unless the user asks.
