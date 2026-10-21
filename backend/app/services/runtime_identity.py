@@ -16,7 +16,7 @@ from app.runtime_paths import PACKAGE_BACKEND_DIR, packaged_resource_dir, runtim
 
 _BUILD_FINGERPRINT = re.compile(r"^sha256:[0-9a-f]{64}$")
 _BUILD_COMMIT = re.compile(r"^[0-9a-f]{40}$")
-_RUNTIME_TYPES = {"local", "desktop-sidecar"}
+_RUNTIME_TYPES = {"local", "desktop-sidecar", "lite"}
 
 
 def _packaged_metadata(app_version: str) -> dict[str, Any] | None:
