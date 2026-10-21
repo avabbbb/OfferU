@@ -2023,3 +2023,33 @@ class InterviewWeakSpots(Base):
     fingerprint: Mapped[str] = mapped_column(String(64), default="")
     topics: Mapped[list] = mapped_column(JSON, default=list)
     grouped_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class CareerCheckInState(Base):
+    """用户自述的求职情况与每日提问节奏，只有一行（id=1）。"""
+
+    __tablename__ = "career_check_in_state"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    self_stage: Mapped[str] = mapped_column(String(32), default="")
+    about: Mapped[str] = mapped_column(Text, default="")  # 届别、方向和城市（用户原话）
+    nearest_deadline: Mapped[str] = mapped_column(Text, default="")
+    still_searching: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    last_asked_on: Mapped[str] = mapped_column(String(10), default="")
+    last_answered_on: Mapped[str] = mapped_column(String(10), default="")
+    ignored_days: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class CareerCheckInAnswer(Base):
+    """一条每日问题的回答；同一个 key 回答过就不再问。"""
+
+    __tablename__ = "career_check_in_answers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    key: Mapped[str] = mapped_column(String(160), index=True)
+    question: Mapped[str] = mapped_column(Text, default="")
+    choice: Mapped[str] = mapped_column(String(40), default="")
+    text: Mapped[str] = mapped_column(Text, default="")
+    user_quote: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

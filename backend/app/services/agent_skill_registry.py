@@ -111,7 +111,7 @@ def _skill(
 
 
 _SKILLS = (
-    _skill("discovery", "技能中心", "system", "native", "解释 OfferU 能做什么，并选择下一条最短路径。", "general", ("get_profile",), featured=True, order=10, aliases=("help", "menu")),
+    _skill("discovery", "技能中心", "system", "native", "解释 OfferU 能做什么，读取用户所处阶段和唯一的下一步，并记录用户对每日问题的回答。", "general", ("get_profile", "get_career_next_step", "answer_check_in"), featured=True, order=10, aliases=("help", "menu")),
     _skill("connection_bootstrap", "连接 OfferU", "system", "native", "首次连接时只读当前 OfferU 页面，不读取职业档案或修改业务状态。", "skill_assistant", ("get_current_view",), featured=False, order=14, aliases=("current_view", "connect_offeru")),
     _skill("career_director", "职业总监", "system", "native", "在明确 AutomationEvent 下读取最小 Career State，生成有界、可审核的主动职业判断；只读，不直接修改 Career Truth。", "career_director", ("get_career_snapshot", "get_daily_career_context", "get_job_assessment_context", "get_interview_career_context"), featured=False, order=12, aliases=("director", "职业总监")),
     _skill("connection_probe", "连接验证", "system", "native", "仅用于 OfferU 发起的短时本机 Agent 集成验证；读取一次非敏感 nonce，不读取职业档案。", "skill_assistant", ("get_agent_connection_nonce",), featured=False, order=15, aliases=("verify_connection",)),
