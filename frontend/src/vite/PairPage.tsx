@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { resolveApiBase } from "@/lib/apiBase";
-import { saveLiteToken } from "@/lib/liteSession";
+import { liteToken, saveLiteToken } from "@/lib/liteSession";
 
 /** `offeru start` opens #/pair/<code>; trade the one-time code for the approval token. */
 export default function PairPage() {
@@ -21,7 +21,8 @@ export default function PairPage() {
         saveLiteToken((await res.json()).token);
         navigate("/", { replace: true });
       })
-      .catch(() => setFailed(true));
+      // An already-paired tab reopening an old link just continues.
+      .catch(() => (liteToken() ? navigate("/", { replace: true }) : setFailed(true)));
   }, [code, navigate]);
 
   return (

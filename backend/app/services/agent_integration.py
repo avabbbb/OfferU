@@ -38,7 +38,9 @@ def _shell_quote(value: str) -> str:
 
 
 def _command_prefix() -> str:
-    executable = str(Path(sys.executable).resolve())
+    # Keep a venv interpreter path as is: resolving its symlink lands on the base
+    # Python, which does not have OfferU installed (uv tool / lite install).
+    executable = str(Path(sys.executable).resolve() if getattr(sys, "frozen", False) else Path(sys.executable).absolute())
     return ("& " if os.name == "nt" else "") + _shell_quote(executable)
 
 
@@ -230,11 +232,16 @@ class ClaudeCodeIntegration(AgentIntegrationAdapter):
         super().__init__("claude", "Claude Code")
 
 
+class DeepSeekHarnessIntegration(AgentIntegrationAdapter):
+    def __init__(self) -> None:
+        super().__init__("dsh", "DeepSeek Harness")
+
+
 class AgentIntegrationManager:
     def __init__(self) -> None:
         self.adapters = {
             adapter.provider_id: adapter
-            for adapter in (CodexIntegration(), OpenCodeIntegration(), ClaudeCodeIntegration())
+            for adapter in (CodexIntegration(), OpenCodeIntegration(), ClaudeCodeIntegration(), DeepSeekHarnessIntegration())
         }
         self.adapters.update({
             provider_id: AgentIntegrationAdapter(provider_id, provider_id)

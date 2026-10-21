@@ -69,7 +69,8 @@ def start(*, open_browser: bool) -> int:
     url = f"{BASE_URL}/#/pair/{issue_pairing_code()}"
     if open_browser:
         threading.Thread(target=_open_when_ready, args=(url,), daemon=True).start()
-    print(f"OfferU 正在启动：{BASE_URL}（按 Ctrl+C 退出）", flush=True)
+    print(f"OfferU 正在启动（按 Ctrl+C 退出）。工作台：{url}", flush=True)
+    print("这个链接 5 分钟内有效、只能打开一次；之后直接访问 http://127.0.0.1:8766 即可。", flush=True)
     uvicorn.run(app, host="127.0.0.1", port=PORT, reload=False, access_log=False, log_level="warning")
     return 0
 
