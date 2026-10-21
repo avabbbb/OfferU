@@ -27,7 +27,7 @@ from app.services.resume_parser import get_resume_ocr_capabilities
 from app.services.security_redaction import safe_error_message
 
 
-APP_VERSION = "0.4.0"
+from app.services.agent_skill_projections import APP_VERSION
 FRONTEND_URL = "http://127.0.0.1:7410"
 BACKEND_HEALTH_URL = "http://127.0.0.1:8766/api/health"
 

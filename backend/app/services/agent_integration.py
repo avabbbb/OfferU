@@ -14,7 +14,7 @@ from typing import Any
 from uuid import uuid4
 from filelock import FileLock
 
-from app.runtime_paths import PACKAGE_BACKEND_DIR, runtime_data_dir, runtime_data_path
+from app.runtime_paths import packaged_resource_dir, runtime_data_dir, runtime_data_path
 from app.services.agent_files import atomic_write_bytes, atomic_write_json
 from app.services.security_redaction import redact_sensitive_text
 from app.services.agent_methodology import methodology_assets
@@ -26,7 +26,7 @@ _SOURCE_SKILL = _PROJECT_ROOT / ".agents" / "skills" / "offeru" / "SKILL.md"
 _CHALLENGE_TTL_SECONDS = 300
 _CHALLENGE_LOCK = threading.Lock()
 _MARKER = re.compile(r"generated: offeru-skill-registry@([^\s]+) sha256=([a-f0-9]{64})")
-_PROVIDER_IDS = ("external", "codex", "opencode", "claude", "omp", "pi", "gemini", "codebuddy")
+_PROVIDER_IDS = ("external", "codex", "opencode", "claude", "omp", "pi", "gemini", "codebuddy", "dsh")
 
 
 def _sha256(payload: bytes) -> str:
@@ -44,29 +44,30 @@ def _command_prefix() -> str:
 
 def runtime_cli_command() -> str:
     """The command of this installation, never a guessed source command."""
+    data_dir = f"--data-dir {_shell_quote(str(runtime_data_dir()))}"
     if getattr(sys, "frozen", False):
-        return f"{_command_prefix()} --data-dir {_shell_quote(str(runtime_data_dir()))} cli"
+        return f"{_command_prefix()} {data_dir} cli"
+    if packaged_resource_dir() is not None:
+        return f"{_command_prefix()} -m app.entry {data_dir} cli"
     return f"{_command_prefix()} -m app.cli"
 
 
 def _installed_content() -> str:
+    packaged = packaged_resource_dir()
     source = (
-        (PACKAGE_BACKEND_DIR / "offeru-assets/skills/offeru/SKILL.md").read_text(encoding="utf-8")
-        if getattr(sys, "frozen", False)
-        else _SOURCE_SKILL.read_text(encoding="utf-8")
-    )
+        (packaged / "offeru-assets/skills/offeru/SKILL.md") if packaged else _SOURCE_SKILL
+    ).read_text(encoding="utf-8")
     if "<!-- offeru-runtime-binding -->" not in source or "<offeru-cli>" not in source:
-        raise ValueError("OfferU Skill is missing its runtime binding; update OfferU Desktop.")
-    if getattr(sys, "frozen", False):
-        command = runtime_cli_command()
+        raise ValueError("OfferU Skill is missing its runtime binding; reinstall OfferU.")
+    if packaged:
         binding = (
-            "**Runtime binding:** installed OfferU Desktop. "
-            "Use the bundled command projected below from any directory; "
+            "**Runtime binding:** installed OfferU. "
+            "Use the command projected below from any directory; "
             "do not look for a source checkout."
         )
         return (
             source.replace("<!-- offeru-runtime-binding -->", binding, 1)
-            .replace("<offeru-cli>", command)
+            .replace("<offeru-cli>", runtime_cli_command())
             .replace("```powershell", "```powershell" if os.name == "nt" else "```sh")
         )
 
@@ -74,7 +75,7 @@ def _installed_content() -> str:
     binding = (
         f"**Runtime binding:** developer/source projection at `{backend}`. "
         "Use this source checkout only for explicit OfferU development/debugging; "
-        "normal career tasks should connect to the installed Desktop runtime instead."
+        "normal career tasks should connect to the installed OfferU instead."
     )
     return (
         source.replace("<!-- offeru-runtime-binding -->", binding, 1)
@@ -108,6 +109,8 @@ class AgentIntegrationAdapter:
             return home / f".{self.provider_id}" / "skills"
         if self.provider_id == "codex":
             return Path(os.environ.get("CODEX_HOME") or home / ".codex") / "skills"
+        if self.provider_id == "dsh":
+            return Path(os.environ.get("DSH_HOME") or home / ".dsh") / "skills"
         if self.provider_id == "claude":
             return Path(os.environ.get("CLAUDE_CONFIG_DIR") or home / ".claude") / "skills"
         config_home = Path(os.environ.get("XDG_CONFIG_HOME") or home / ".config")
