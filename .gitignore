@@ -143,3 +143,4 @@ launcher/__pycache__/
 !/frontend/src-tauri/resources/.gitkeep
 /package-lock.json
 .wrangler/
+dist-lite/

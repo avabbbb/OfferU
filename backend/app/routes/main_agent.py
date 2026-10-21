@@ -354,7 +354,7 @@ async def agent_actions(run_id: str = "", status: str = "", limit: int = 100) ->
 
 def _desktop_only(authorization: str) -> None:
     if not accepts_authorization(authorization):
-        raise HTTPException(status_code=403, detail="只能在 OfferU 桌面工作区里确认")
+        raise HTTPException(status_code=403, detail="只能在 OfferU 工作台里确认")
 
 
 @runtime_router.post("/runtime/actions/{action_id}/confirm")

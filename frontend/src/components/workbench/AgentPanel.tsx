@@ -207,7 +207,7 @@ export function AgentPanel() {
       id: "welcome",
       role: "assistant",
       content: SHOWCASE
-        ? "这是 OfferU 网页演示 Agent。它只使用演示数据，不连接你电脑里的 Coding Agent；真实本地数据与外置 Agent 请使用 OfferU Desktop。"
+        ? "这是 OfferU 网页演示 Agent。它只使用演示数据，不连接你电脑里的 Coding Agent；真实本地数据与外置 Agent 请在本机安装 OfferU。"
         : "在这里查看 OfferU 任务与确认请求。需要时可从「接入与同步」连接本机 Coding Agent，把当前工作交给它。",
     },
   ]);

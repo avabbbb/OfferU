@@ -81,7 +81,7 @@ export function OnboardingWizard({ wizardStep, onStepChange, onComplete, onSkip 
           {step === 0 && (
             <div className="space-y-4">
               <p className="text-sm leading-6 text-[var(--foreground-muted)]">
-                Desktop 可以发现并连接你已有的 Agent；你也可以先使用内置 Agent，继续建立职业档案和岗位工作区。
+                OfferU 可以发现并连接你已有的 Agent；你也可以先使用内置 Agent，继续建立职业档案和岗位工作区。
               </p>
               <AgentConnectionPanel />
               <p className="text-xs leading-5 text-[var(--foreground-muted)]">没有可用 Agent 时也可以继续设置。OfferU 不会替你改动 Agent 的账号、模型、凭据或代理。</p>

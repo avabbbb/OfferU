@@ -10,7 +10,11 @@ import sys
 import threading
 import time
 import urllib.request
+import warnings
 import webbrowser
+
+# Third-party regex literals (jieba) warn on every start; not actionable for users.
+warnings.filterwarnings("ignore", category=SyntaxWarning)
 
 PORT = 8766
 BASE_URL = f"http://127.0.0.1:{PORT}"

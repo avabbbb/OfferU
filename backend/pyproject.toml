@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling>=1.24", "hatch-requirements-txt>=0.4"]
+build-backend = "hatchling.build"
+
+[project]
+name = "offeru"
+version = "0.4.0"
+description = "Local-first AI job search workbench for your own Agent"
+readme = { text = "OfferU: local-first job search workbench. Run `offeru start`.", content-type = "text/markdown" }
+license = "MIT"
+requires-python = ">=3.11"
+dynamic = ["dependencies"]
+
+[project.scripts]
+offeru = "app.entry:main"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.metadata.hooks.requirements_txt]
+files = ["requirements.txt"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+exclude = ["**/__pycache__", "app/_bundle"]
+
+# Built by scripts/build_lite.mjs; only present inside the wheel.
+[tool.hatch.build.targets.wheel.force-include]
+"../.tmp/lite/resume-frontend" = "app/_bundle/resume-frontend"
+"../.tmp/lite/offeru-assets" = "app/_bundle/offeru-assets"
