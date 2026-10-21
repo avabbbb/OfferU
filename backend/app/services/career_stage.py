@@ -293,7 +293,7 @@ def _should_ask_today(state: CareerCheckInState, today: str, urgent: bool) -> bo
     return not state.last_asked_on or (date.fromisoformat(today) - date.fromisoformat(state.last_asked_on)).days >= 7
 
 
-async def get_career_next_step(now: Optional[datetime] = None) -> dict[str, Any]:
+async def get_career_next_step(now: Optional[datetime] = None, *, record_ask: bool = True) -> dict[str, Any]:
     """阶段、唯一的下一步（最多一个备选）和今天要问的问题。"""
     now = now or datetime.now()
     today = now.date().isoformat()
@@ -320,7 +320,7 @@ async def get_career_next_step(now: Optional[datetime] = None) -> dict[str, Any]
             questions, urgent = _daily_questions(stage, state, conflict, facts, now)
             if questions and not _should_ask_today(state, today, urgent):
                 questions = []
-        if questions and state.last_asked_on != today:
+        if record_ask and questions and state.last_asked_on != today:
             if state.last_asked_on and state.last_answered_on < state.last_asked_on:
                 state.ignored_days += 1
             state.last_asked_on = today

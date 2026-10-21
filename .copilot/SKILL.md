@@ -5,7 +5,7 @@ user-invocable: true
 argument-hint: "[skill-id | goal | JD/URL]"
 ---
 
-<!-- generated: offeru-skill-registry@2026-10-16.1 sha256=8d0dc11e1055c5e29786f188f8ccd0a4a51a1ff670ae9cfb53b53fd53736b6c4 -->
+<!-- generated: offeru-skill-registry@2026-10-16.1 sha256=5f30b4f49ae912c5e60ebca2f791b7668349cf24cdcc71d0008325e7cdb86d16 -->
 
 # OfferU — installed-product Agent router
 
@@ -26,7 +26,7 @@ If `<offeru-cli>` below is unresolved and no authenticated OfferU connector is a
    - `uv tool install https://github.com/avabbbb/OfferU/releases/download/v0.4.0-lite/offeru-0.4.0-py3-none-any.whl`
    - `offeru connect` installs this Skill, bound to the installed command, into every detected Agent (Codex, Claude Code, OpenCode, DeepSeek Harness and others) and `~/.agents/skills`.
    - `offeru start` opens the local workbench (`http://127.0.0.1:8766`) in the browser and keeps running; start it in the background or ask the user to keep that terminal open.
-4. Ask the user to start a fresh Agent session so the installed Skill is discovered, then save the answers from step 1 through OfferU.
+4. Ask the user to start a fresh Agent session so the installed Skill is discovered. There, save the step-1 answers with `answer_check_in` (keys `onboarding.stage`, `onboarding.about`, `onboarding.deadline`) instead of asking again.
 
 Source development is allowed only when explicitly requested for developing/debugging OfferU.
 
@@ -44,6 +44,15 @@ Do not change Agent account/login, model, credentials, proxy or unrelated settin
 Read `skill_registry.skills` from the compact manifest, choose one Skill, then run `<offeru-cli> manifest --skill <skill-id> --pretty`. Inspect each selected Operation with `<offeru-cli> schema <operation> --pretty` before calling it. MCP/Connector hosts use the corresponding authenticated catalog/schema/invoke tools; transport does not change permissions.
 
 If `tool_contract.connection_verification` contains a pending challenge for this connection, first select `connection_bootstrap` and read `get_current_view`, then select `connection_probe` and call `get_agent_connection_nonce` with the supplied `provider_id` and `challenge_id`. Return the readback and wait; this check does not authorize reading Profile or launching a career task. The host's brand is irrelevant to this contract.
+
+## Where the user is and what to do next
+
+After doctor and manifest, select `discovery` and call `get_career_next_step` once per session. It is the same judgment the OfferU workbench shows: one `next_step` and at most one `alternate`. Do not build a different priority list; if you disagree, say why and let the user decide.
+
+- `questions` are today's OfferU questions. Do the user's own task first and ask them at the end in one short message. Ask first only when a question is about something due today or an interview that just happened. Onboarding questions (`onboarding.*`) are the exception: ask them before advising.
+- When the user answers, call `answer_check_in` with the question `key`, the chosen option id as `choice` (or `text`), and the user's own words as `user_quote`. Send only answers the user actually gave; never answer for them or infer one. The answer takes effect immediately (it may change an application's status) and the user can undo it from the OfferU timeline.
+- A `conflict:` question means the user's own stage and OfferU's records disagree. Show both and let the user choose.
+- An empty `questions` list means OfferU has nothing to ask today; do not ask check-in questions of your own.
 
 ## Career context and results
 
