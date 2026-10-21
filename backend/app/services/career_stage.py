@@ -90,7 +90,7 @@ async def _facts(db: Any, now: datetime) -> dict[str, Any]:
             .order_by(CalendarEvent.start_time.asc())
         )
     ).scalars().all()
-    answered = set((await db.execute(select(CareerCheckInAnswer.key))).scalars().all())
+    answered = dict((await db.execute(select(CareerCheckInAnswer.key, CareerCheckInAnswer.choice))).all())
     return {
         "records": records,
         "pending_review": int(board["summary"]["pending_review"]),
@@ -202,9 +202,10 @@ def _steps(stage: str, state: CareerCheckInState, onboarded: bool, conflict: Opt
     applied = _applied_job_ids(facts)
     for event in facts["events"]:
         days = (event.start_time.date() - now.date()).days
-        if event.event_type == "deadline" and 0 <= days <= 3 and event.related_job_id not in applied:
+        skipped = facts["answered"].get(f"applied:{event.related_job_id}:{event.id}") == "skip"
+        if event.event_type == "deadline" and 0 <= days <= 3 and event.related_job_id not in applied and not skipped:
             add(f"deadline-{event.id}", f"完成网申：{_job_label(facts, event.related_job_id, event.title)}",
-                "今天截止" if days == 0 else f"还有 {days} 天截止。",
+                {0: "今天截止。", 1: "明天截止。"}.get(days, f"还有 {days} 天截止。"),
                 f"/jobs/{event.related_job_id}" if event.related_job_id else "/calendar", "去投递")
             break
 
@@ -303,7 +304,7 @@ async def get_career_next_step(now: Optional[datetime] = None, *, record_ask: bo
         inferred = _inferred_stage(facts)
         if state.self_stage == inferred:
             state.self_stage = ""  # records caught up; from here on they lead
-        onboarded = {"onboarding.stage", "onboarding.about"} <= facts["answered"]
+        onboarded = {"onboarding.stage", "onboarding.about"} <= facts["answered"].keys()
         if state.still_searching is False:
             stage = "done"
         elif state.self_stage and state.self_stage != inferred:
