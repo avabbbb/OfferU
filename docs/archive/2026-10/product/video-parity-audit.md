@@ -1,3 +1,5 @@
+> 已归档（2026-10-21）：本文不再是当前权威，只用于考古。当前文档：02-interaction-design.md、04-module-job-workspace.md（位于 docs/）。审计结论绑定 commit c58c069。
+
 # Launch Video Parity Audit
 
 > 基线：`main`（审计时仓库指向 `c58c069`）。本轮只允许 UI 投影与交互重组，不新增 schema、第二套状态或旁路写入。

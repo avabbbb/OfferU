@@ -1,6 +1,6 @@
 # OfferU 文档
 
-> 状态：**当前文档入口** · 重构于 2026-10（旧文档见 [archive/](./archive/README.md)）
+> 状态：**当前文档入口** · 重构于 2026-10（旧文档见 [archive/](./archive/README.md)，演进与 2026-10-21 Skill-first 方向见 [发展历史](./archive/development-history.md)）
 
 ## 一句话
 
