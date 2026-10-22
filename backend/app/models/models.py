@@ -2058,20 +2058,18 @@ class CareerCheckInAnswer(Base):
 
 
 class ApplyForm(Base):
-    """官网投递助手：用户粘贴的一页招聘官网表单文本，和按字段生成的可复制草稿。
+    """官网投递助手：围绕一个岗位的一段对话。用户贴官网页面、提要求；回复里每段可复制的内容单独成块。
 
-    草稿只属于这一次填写；用户改草稿不会写回职业档案。
+    对话里的改写只属于这次填写，不写回职业档案。
     """
 
-    __tablename__ = "apply_forms"
+    __tablename__ = "apply_chats"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     job_id: Mapped[int] = mapped_column(Integer, ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
-    page_text: Mapped[str] = mapped_column(Text, default="")
-    site: Mapped[str] = mapped_column(String(200), default="")
-    # waiting（等内置模型或 Agent 写草稿）| ready
+    # waiting：最后一条是用户消息，等内置模型或 Agent 回复 | ready
     status: Mapped[str] = mapped_column(String(20), default="waiting")
-    drafter: Mapped[str] = mapped_column(String(20), default="")  # builtin | agent
-    fields_json: Mapped[list] = mapped_column(JSON, default=list)
+    # [{role: user|assistant, text, blocks: [{title, text, sources, unsupported}], by: builtin|agent}]
+    messages_json: Mapped[list] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())

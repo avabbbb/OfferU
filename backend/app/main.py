@@ -9,7 +9,6 @@ import os
 import re
 import logging
 from contextlib import asynccontextmanager
-from typing import Optional
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request
@@ -495,13 +494,9 @@ async def career_check_in(req: _CheckInAnswer):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-class _ApplyFormPaste(BaseModel):
-    page_text: str
-
-
-class _ApplyFormFieldEdit(BaseModel):
-    value: Optional[str] = None
-    copied: Optional[bool] = None
+class _ApplyFormMessage(BaseModel):
+    text: str
+    new: bool = False
 
 
 @app.get("/api/jobs/{job_id}/apply-form")
@@ -512,33 +507,11 @@ async def latest_apply_form(job_id: int):
 
 
 @app.post("/api/jobs/{job_id}/apply-form")
-async def paste_apply_form(job_id: int, req: _ApplyFormPaste):
-    from app.services.apply_form import create_apply_form
+async def send_apply_form(job_id: int, req: _ApplyFormMessage):
+    from app.services.apply_form import send_apply_form_message
 
     try:
-        return {"form": await create_apply_form(job_id, req.page_text)}
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-@app.patch("/api/apply-forms/{form_id}/fields/{field_id}")
-async def edit_apply_form_field(form_id: int, field_id: str, req: _ApplyFormFieldEdit):
-    from app.services.apply_form import update_apply_form_field
-
-    try:
-        return {"form": await update_apply_form_field(form_id, field_id, req.value, req.copied)}
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-@app.post("/api/apply-forms/{form_id}/fields/{field_id}/regenerate")
-async def regenerate_apply_form_field_route(form_id: int, field_id: str):
-    from app.services.apply_form import regenerate_apply_form_field
-
-    try:
-        return {"form": await regenerate_apply_form_field(form_id, field_id)}
-    except LookupError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"form": await send_apply_form_message(job_id, req.text, new=req.new)}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
