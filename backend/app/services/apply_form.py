@@ -146,37 +146,16 @@ def _clean_field(raw: dict[str, Any], page_norm: str, facts: dict[str, dict[str,
     }, ""
 
 
-_PLACEHOLDER = re.compile(r"^(请输入|请选择|请填写|点击上传|上传|选择文件|\d+\s*/\s*\d+)")
-
-
-def _existing_state(field: dict, lines: list[str], seen: dict[str, int]) -> str:
-    """页面上这个字段原来有没有填：filled | empty（页面显示占位符）| unknown（复制的文本里看不出来）。
-
-    同名字段按出现顺序对应（项目经验 1、2 的「项目职责」不会串）。Ctrl+A 不一定带出输入框里的值，
-    看不出来就是 unknown，不当成空。
-    """
-    key = _norm(field["label"])
-    nth = seen[key] = seen.get(key, 0) + 1
-    if field["existing"]:
-        return "filled"
-    hits = [i for i, line in enumerate(lines) if _norm(line) == key]
-    if len(hits) < nth or hits[nth - 1] + 1 >= len(lines):
-        return "unknown"
-    return "empty" if _PLACEHOLDER.match(lines[hits[nth - 1] + 1].strip()) else "unknown"
-
-
 def _clean_fields(raw_fields: Any, page_text: str, facts: list[dict[str, str]]) -> tuple[list[dict], list[str]]:
     if not isinstance(raw_fields, list) or not raw_fields:
         raise ValueError("fields 必须是非空列表")
     page_norm = _norm(page_text)
     by_id = {fact["id"]: fact for fact in facts}
     fields, problems = [], []
-    lines, seen = [line for line in page_text.splitlines() if line.strip()], {}
     for raw in raw_fields[:MAX_FIELDS]:
         field, problem = _clean_field(raw if isinstance(raw, dict) else {}, page_norm, by_id)
         if field:
             field["id"] = f"f{len(fields) + 1}"
-            field["existing_state"] = _existing_state(field, lines, seen)
             fields.append(field)
         elif problem:
             problems.append(problem)
@@ -320,7 +299,7 @@ async def regenerate_apply_form_field(form_id: int, field_id: str) -> dict[str, 
                                     {fact["id"]: fact for fact in facts})
         if new is None:
             raise ValueError(problem)
-        fields[index] = {**new, "id": field_id, "existing_state": old.get("existing_state", "unknown")}
+        fields[index] = {**new, "id": field_id}
         form.fields_json = fields
         await db.commit()
         return _view(form)

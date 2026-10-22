@@ -67,10 +67,7 @@ def test_apply_form_main_path(tmp_path):
                 duty = [f for f in saved["fields"] if f["label"] == "项目职责"][0]
                 assert duty["unsupported"] == ["推动社区用户增长 200%。"]  # 编出来的数字被标红
                 assert duty["existing_flags"] and "35%" in duty["existing_flags"][0]  # 案例 B：原内容混入别的经历
-                assert duty["max_chars"] == 500 and duty["existing_state"] == "filled"
-                second_duty = [f for f in saved["fields"] if f["label"] == "项目职责"][1]
-                assert second_duty["existing_state"] == "empty"  # 第二个「项目职责」对应页面上第二处，显示「请输入」
-                assert fields["在校时间"]["existing_state"] == "unknown"  # 复制的文本里看不出原值，不当成空
+                assert duty["max_chars"] == 500
 
                 copied = await af.update_apply_form_field(form["id"], duty["id"], copied=True)  # 案例 D
                 assert next(f for f in copied["fields"] if f["id"] == duty["id"])["copied"]

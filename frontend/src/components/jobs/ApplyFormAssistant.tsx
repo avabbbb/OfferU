@@ -15,7 +15,6 @@ type Field = {
   kind: "fact" | "write" | "confirm" | "manual";
   value: string;
   existing: string;
-  existing_state?: "filled" | "empty" | "unknown";
   sources: Array<{ id: string; label: string }>;
   unsupported: string[];
   existing_flags: string[];
@@ -40,23 +39,10 @@ function Marked({ text, marks }: { text: string; marks: string[] }) {
     : <Fragment key={i}>{part}</Fragment>)}</>;
 }
 
-const norm = (value: string) => value.replace(/[\s\p{P}\p{S}]+/gu, "").toLowerCase();
-
-/** 官网把手机号显示成 138****5678 这种打码值时，只比没打码的部分。 */
-function sameValue(existing: string, value: string) {
-  if (!existing.includes("*")) return norm(existing) === norm(value);
-  const [head, ...rest] = existing.split(/\*+/);
-  return value.startsWith(head.trim()) && value.endsWith(rest.pop()?.trim() ?? "");
-}
-
-/** 为什么这条需要用户处理；null 表示可以折叠。 */
-function attention(field: Field): { text: string; risk: boolean } | null {
-  if (field.existing_flags.length) return { text: "原解析内容混入了其他经历，需要对比修改", risk: true };
-  if (field.unsupported.length) return { text: `有 ${field.unsupported.length} 句在档案里找不到依据，复制前改掉或删掉`, risk: true };
-  if (field.kind === "confirm") return { text: field.note || "档案里没有可靠记录，需要你确认", risk: false };
-  if (field.kind === "fact" && field.existing && !sameValue(field.existing, field.value))
-    return { text: `官网里是「${field.existing}」，和档案不一致`, risk: true };
-  if (field.kind === "write") return { text: field.existing ? "按岗位重写，需要替换官网原内容" : "按岗位写好了，需要复制到官网", risk: false };
+/** 需要用户动手的只有两类：档案里没有、要自己填的；按岗位写好、要复制的长文本。null 表示折叠。 */
+function attention(field: Field): string | null {
+  if (field.kind === "confirm") return field.note || "档案里没有，自己填";
+  if (field.kind === "write") return "";
   return null;
 }
 
@@ -66,17 +52,12 @@ function fieldTitle(field: Field) {
   return owner ? `${owner} · ${field.label}` : field.label;
 }
 
-function copyState(field: Field) {
-  return field.copied ? "已复制，还没确认已粘贴到官网" : "";
-}
-
 /** 已识别、没冲突的字段：一行，标题 + 值 + 复制。 */
 function CompactRow({ field, onCopy }: { field: Field; onCopy: () => void }) {
   return (
     <div className="flex items-baseline gap-3 py-1.5 text-[13px]">
       <span className={`w-28 shrink-0 ${muted}`}>{field.label}</span>
       <span className="min-w-0 flex-1 truncate text-[var(--foreground)]">{field.value || <span className={muted}>{field.kind === "manual" ? field.value : "—"}</span>}</span>
-      {field.existing_state === "unknown" && field.kind === "fact" && <span className={`shrink-0 text-[12px] ${muted}`}>无法确认原填写内容</span>}
       {field.value && field.kind === "fact" && (
         <button type="button" onClick={onCopy} style={small} className="shrink-0 text-[12px] font-medium text-[var(--foreground)] hover:underline">
           {field.copied ? "已复制" : "复制"}
@@ -87,9 +68,8 @@ function CompactRow({ field, onCopy }: { field: Field; onCopy: () => void }) {
 }
 
 function FieldRow({ form, field, onChange }: { form: Form; field: Field; onChange: (form: Form) => void }) {
-  const flagged = field.existing_flags.length > 0;
   const [editing, setEditing] = useState(false);
-  const [compare, setCompare] = useState(flagged);
+  const [compare, setCompare] = useState(false);
   const [showSources, setShowSources] = useState(false);
   const [draft, setDraft] = useState(field.value);
   const [busy, setBusy] = useState("");
@@ -130,9 +110,6 @@ function FieldRow({ form, field, onChange }: { form: Form; field: Field; onChang
       <p className="mt-1 whitespace-pre-wrap text-[13px] leading-6 text-[var(--foreground)]"><Marked text={field.existing} marks={field.existing_flags} /></p>
     </div>
   );
-  const unknownOriginal = !field.existing && field.existing_state === "unknown" && (
-    <p className={`text-[12px] ${muted}`}>复制的页面文字里看不到这一项原来填了什么，请在官网上核对。</p>
-  );
   return (
     <div className="py-3.5">
       <div className="flex items-baseline justify-between gap-4">
@@ -143,7 +120,7 @@ function FieldRow({ form, field, onChange }: { form: Form; field: Field; onChang
           </button>
         )}
       </div>
-      {reason && <p className={`mt-0.5 text-[12px] leading-5 ${reason.risk ? "text-red-700" : muted}`}>{reason.text}</p>}
+      {reason && <p className={`mt-0.5 text-[12px] leading-5 ${muted}`}>{reason}</p>}
 
       {editing ? (
         <div className="mt-2 space-y-2">
@@ -162,7 +139,6 @@ function FieldRow({ form, field, onChange }: { form: Form; field: Field; onChang
       ) : field.value ? (
         <p className="mt-1.5 whitespace-pre-wrap text-[13px] leading-6 text-[var(--foreground)]"><Marked text={field.value} marks={field.unsupported} /></p>
       ) : null}
-      {!editing && unknownOriginal && <div className="mt-1">{unknownOriginal}</div>}
       {showSources && field.sources.length > 0 && (
         <p className={`mt-1 text-[12px] ${muted}`}>来源：{field.sources.map((item) => item.label.split("｜").pop()).join("、")}</p>
       )}
@@ -182,7 +158,6 @@ function FieldRow({ form, field, onChange }: { form: Form; field: Field; onChang
           </>
         )}
         {count && <span className={`text-[12px] ${muted}`}>{count}</span>}
-        {field.copied && <span className={`text-[12px] ${muted}`}>{copyState(field)}</span>}
         {field.edited && <span className={`text-[12px] ${muted}`}>你改过，只用于这次填写</span>}
       </div>
       {error && <p role="alert" className="mt-1 text-[12px] text-red-700">{error}</p>}
@@ -195,9 +170,8 @@ function SectionBlock({ form, name, fields, all, onChange }: {
   form: Form; name: string; fields: Field[]; all: boolean; onChange: (form: Form) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const todo = fields.filter((field) => attention(field));
-  const settled = fields.filter((field) => !attention(field));
-  const unknown = settled.filter((field) => field.kind === "fact" && field.existing_state === "unknown").length;
+  const todo = fields.filter((field) => attention(field) !== null);
+  const settled = fields.filter((field) => attention(field) === null);
   const copyFact = async (field: Field) => {
     await navigator.clipboard.writeText(field.value);
     onChange((await request<{ form: Form }>(`/api/apply-forms/${form.id}/fields/${field.id}`, {
@@ -205,18 +179,18 @@ function SectionBlock({ form, name, fields, all, onChange }: {
   };
   const summary = [
     settled.length && `${settled.length} 项已识别`,
-    todo.length && `${todo.length} 项待处理`,
+    todo.length && `${todo.length} 项要处理`,
   ].filter(Boolean).join(" · ");
   const expanded = all || open;
   return (
     <div className="border-t border-[var(--border)] pt-3">
       <div className="flex items-baseline justify-between gap-4">
-        <p className="text-[12px] font-medium text-[var(--foreground)]">{name}<span className={`ml-2 font-normal ${muted}`}>{summary}{unknown ? ` · ${unknown} 项看不到原填写内容` : ""}</span></p>
+        <p className="text-[12px] font-medium text-[var(--foreground)]">{name}<span className={`ml-2 font-normal ${muted}`}>{summary}</span></p>
         {!all && settled.length > 0 && (
           <button type="button" onClick={() => setOpen(!open)} style={small} className={quietButton}>{open ? "收起" : "展开核对"}</button>
         )}
       </div>
-      {(expanded ? fields : todo).map((field) => attention(field) || field.kind === "write"
+      {(expanded ? fields : todo).map((field) => attention(field) !== null
         ? <FieldRow key={field.id} form={form} field={field} onChange={onChange} />
         : <CompactRow key={field.id} field={field} onCopy={() => void copyFact(field)} />)}
       <div className="pb-1" />
@@ -255,7 +229,8 @@ export function ApplyFormAssistant({ jobId }: { jobId: number }) {
     }
   };
   const agentPrompt = form ? `用 OfferU 官网投递助手，为表单 #${form.id} 按字段写草稿。` : "";
-  const todoCount = form?.fields.filter((field) => attention(field)).length ?? 0;
+  const toCopy = form?.fields.filter((field) => field.kind === "write").length ?? 0;
+  const toFill = form?.fields.filter((field) => field.kind === "confirm").length ?? 0;
   const sections: Array<[string, Field[]]> = [];
   for (const field of form?.fields ?? []) {
     const name = field.section || "其他";
@@ -271,7 +246,7 @@ export function ApplyFormAssistant({ jobId }: { jobId: number }) {
           <h2 id="apply-form-title" className="text-[17px] font-semibold tracking-tight text-[var(--foreground)]">官网投递助手</h2>
           <p className={`mt-1 text-[13px] leading-6 ${muted}`}>
             {form && !pasting && form.status === "ready"
-              ? `${form.site || "官网表单"} · ${todoCount} 项需要你处理，其余 ${form.fields.length - todoCount} 项已识别。复制只是放进剪贴板，粘贴和提交都在官网上由你完成。`
+              ? `${form.site || "官网表单"} · ${toCopy} 段要复制${toFill ? `，${toFill} 项要你自己填` : ""}，其余 ${form.fields.length - toCopy - toFill} 项已从档案带出。`
               : "打开招聘官网的在线简历页，全选复制（Ctrl+A、Ctrl+C）后粘贴到这里。OfferU 按页面上的字段逐条给出可复制的内容，不会打开或提交网站。"}
           </p>
         </div>
