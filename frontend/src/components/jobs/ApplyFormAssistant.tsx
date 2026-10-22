@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Fragment, useState } from "react";
 import useSWR from "swr";
 
@@ -8,7 +9,20 @@ import { SHOWCASE } from "@/lib/showcase";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 
 type Block = { title: string; text: string; sources: Array<{ id: string; label: string }>; unsupported: string[] };
-type Message = { role: "user" | "assistant"; text: string; blocks?: Block[]; by?: string };
+type NewFact = { quote: string; title: string; proposal_id: number | null };
+type Message = { role: "user" | "assistant"; text: string; blocks?: Block[]; new_facts?: NewFact[]; by?: string };
+type Turn = { user?: { message: Message; index: number }; versions: Array<{ message: Message; index: number }> };
+
+/** 同一句话的多次回答是版本，像 ChatGPT 一样可以翻看。 */
+function toTurns(messages: Message[]): Turn[] {
+  const turns: Turn[] = [];
+  messages.forEach((message, index) => {
+    if (message.role === "user") turns.push({ user: { message, index }, versions: [] });
+    else if (turns.length) turns[turns.length - 1].versions.push({ message, index });
+    else turns.push({ versions: [{ message, index }] });
+  });
+  return turns;
+}
 type Form = { id: number; status: "waiting" | "ready"; messages: Message[] };
 
 const muted = "text-[var(--foreground-muted)]";
@@ -40,6 +54,34 @@ function CopyBlock({ block }: { block: Block }) {
   );
 }
 
+/** 用户在对话里说了档案里没有的经历：点了才生成待确认的档案修改。 */
+function NewFacts({ formId, index, facts, onSaved }: { formId: number; index: number; facts: NewFact[]; onSaved: (form: Form) => void }) {
+  const [saving, setSaving] = useState(-1);
+  if (!facts.length) return null;
+  const save = async (fact: number) => {
+    setSaving(fact);
+    try {
+      const result = await request<{ form: Form }>(`/api/apply-forms/${formId}/facts`, { method: "POST", body: JSON.stringify({ message: index, fact }) });
+      onSaved(result.form);
+    } finally {
+      setSaving(-1);
+    }
+  };
+  return (
+    <div className="space-y-1.5">
+      {facts.map((fact, i) => (
+        <div key={i} className={`flex items-baseline justify-between gap-4 text-[12px] ${muted}`}>
+          <span>档案里还没有：「{fact.quote}」</span>
+          {fact.proposal_id
+            ? <Link href="/resume?mode=profile" className="shrink-0 hover:text-[var(--foreground)]">已加入待确认 · 去确认</Link>
+            : <button type="button" disabled={saving === i} onClick={() => void save(i)} style={small}
+                className="shrink-0 font-medium text-[var(--foreground)] hover:underline disabled:opacity-50">存进档案</button>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** 用户贴的整页文字很长：默认只露前几行。 */
 function UserMessage({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
@@ -63,17 +105,21 @@ export function ApplyFormAssistant({ jobId }: { jobId: number }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [promptCopied, setPromptCopied] = useState(false);
+  const [picked, setPicked] = useState<Record<number, number>>({});
   if (!data) return null;
   const form = data.form;
   const messages = form?.messages ?? [];
 
-  const send = async (fresh = false) => {
+  const turns = toTurns(messages);
+  const send = async (fresh = false, retry = false) => {
     setBusy(true);
     setError("");
     try {
-      const result = await request<{ form: Form }>(key, { method: "POST", body: JSON.stringify({ text, new: fresh }) });
+      const body = retry ? { retry: true } : { text, new: fresh };
+      const result = await request<{ form: Form }>(key, { method: "POST", body: JSON.stringify(body) });
       await mutate(result, { revalidate: false });
-      setText("");
+      if (retry) setPicked((current) => ({ ...current, [turns.length - 1]: Number.MAX_SAFE_INTEGER }));
+      else setText("");
     } catch (cause) {
       setError(safeClientErrorMessage(cause, "没发出去，请再试一次。"));
     } finally {
@@ -99,14 +145,39 @@ export function ApplyFormAssistant({ jobId }: { jobId: number }) {
 
       {messages.length > 0 && (
         <div className="mt-4 space-y-4">
-          {messages.map((message, index) => message.role === "user"
-            ? <UserMessage key={index} text={message.text} />
-            : (
-              <div key={index} className="space-y-2">
-                {message.text && <p className="whitespace-pre-wrap text-[13px] leading-6 text-[var(--foreground)]">{message.text}</p>}
-                {(message.blocks ?? []).map((block, i) => <CopyBlock key={i} block={block} />)}
-              </div>
-            ))}
+          {turns.map((turn, t) => {
+            const count = turn.versions.length;
+            const v = Math.min(picked[t] ?? count - 1, count - 1);
+            const shown = turn.versions[v];
+            const last = t === turns.length - 1;
+            return (
+              <Fragment key={t}>
+                {turn.user && <UserMessage text={turn.user.message.text} />}
+                {shown && (
+                  <div className="space-y-2">
+                    {shown.message.text && <p className="whitespace-pre-wrap text-[13px] leading-6 text-[var(--foreground)]">{shown.message.text}</p>}
+                    {(shown.message.blocks ?? []).map((block, i) => <CopyBlock key={i} block={block} />)}
+                    {form && <NewFacts formId={form.id} index={shown.index} facts={shown.message.new_facts ?? []}
+                      onSaved={(saved) => void mutate({ form: saved }, { revalidate: false })} />}
+                    {(count > 1 || (last && form?.status === "ready")) && (
+                      <div className={`flex items-center gap-3 text-[12px] ${muted}`}>
+                        {count > 1 && (
+                          <span className="inline-flex items-center gap-1.5">
+                            <button type="button" aria-label="上一个版本" disabled={v === 0} onClick={() => setPicked({ ...picked, [t]: v - 1 })} className="px-1 text-[15px] leading-none disabled:opacity-30 hover:text-[var(--foreground)]">‹</button>
+                            {v + 1} / {count}
+                            <button type="button" aria-label="下一个版本" disabled={v === count - 1} onClick={() => setPicked({ ...picked, [t]: v + 1 })} className="px-1 text-[15px] leading-none disabled:opacity-30 hover:text-[var(--foreground)]">›</button>
+                          </span>
+                        )}
+                        {last && form?.status === "ready" && (
+                          <button type="button" disabled={busy} onClick={() => void send(false, true)} className="hover:text-[var(--foreground)] disabled:opacity-50">重新回答</button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </Fragment>
+            );
+          })}
           {form?.status === "waiting" && (
             <div className="rounded-lg bg-[var(--background)] p-3">
               <p className="text-[13px] text-[var(--foreground)]">没有可用的内置模型，让你的 Agent 来回复，把这句话发给它：</p>
