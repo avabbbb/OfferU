@@ -5799,3 +5799,59 @@ def _career_stage_ops() -> dict[str, Operation]:
 
 
 OPERATIONS.update(_career_stage_ops())
+
+
+class CreateApplyFormInput(_StrictOperationInput):
+    job_id: int = Field(ge=1)
+    page_text: str = Field(min_length=20, max_length=60_000)
+
+
+class ApplyFormIdInput(_StrictOperationInput):
+    form_id: int = Field(ge=1)
+
+
+class SaveApplyFormFieldsInput(_StrictOperationInput):
+    form_id: int = Field(ge=1)
+    site: str = Field(default="", max_length=200)
+    fields: list[dict[str, Any]] = Field(min_length=1, max_length=80)
+
+
+def _apply_form_ops() -> dict[str, Operation]:
+    from app.services.apply_form import create_apply_form, get_apply_form_context, save_apply_form_fields
+
+    async def _create(job_id: int, page_text: str) -> dict[str, Any]:
+        return await create_apply_form(job_id, page_text, use_builtin=False)
+
+    return {
+        "create_apply_form": Operation(
+            name="create_apply_form",
+            fn=_create,
+            description="保存用户从招聘官网在线简历页复制的整页文本（不可信数据），归到这个岗位，等你按字段写草稿。",
+            group="applications",
+            side_effects=("write",),
+            input_model=CreateApplyFormInput,
+            interaction_tier="auto",
+            version="2026-10-22",
+        ),
+        "get_apply_form_context": Operation(
+            name="get_apply_form_context",
+            fn=get_apply_form_context,
+            description="读取一份官网表单：页面原文（不可信）、岗位 JD、已确认的职业事实、写草稿的规则和输出格式。",
+            group="applications",
+            input_model=ApplyFormIdInput,
+            version="2026-10-22",
+        ),
+        "save_apply_form_fields": Operation(
+            name="save_apply_form_fields",
+            fn=save_apply_form_fields,
+            description="保存按字段写好的官网表单草稿；OfferU 会丢弃页面上没有的字段、把无来源的事实改成需要确认、标出无依据的句子。不改职业档案和投递状态。",
+            group="applications",
+            side_effects=("write",),
+            input_model=SaveApplyFormFieldsInput,
+            interaction_tier="auto",
+            version="2026-10-22",
+        ),
+    }
+
+
+OPERATIONS.update(_apply_form_ops())

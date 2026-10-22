@@ -209,7 +209,7 @@ def _steps(stage: str, state: CareerCheckInState, onboarded: bool, conflict: Opt
         if event.event_type == "deadline" and 0 <= days <= 3 and event.related_job_id not in applied and not skipped:
             add(f"deadline-{event.id}", f"完成网申：{_job_label(facts, event.related_job_id, event.title)}",
                 {0: "今天截止。", 1: "明天截止。"}.get(days, f"还有 {days} 天截止。"),
-                f"/jobs/{event.related_job_id}" if event.related_job_id else "/calendar", "去投递")
+                f"/jobs/{event.related_job_id}?focus=apply-form" if event.related_job_id else "/calendar", "去投递")
             break
 
     records = facts["records"]
