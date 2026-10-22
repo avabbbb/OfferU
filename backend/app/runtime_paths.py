@@ -65,10 +65,15 @@ def runtime_env_file() -> Path:
 
 
 def packaged_resource_dir() -> Path | None:
-    """Read-only files included by the sidecar builder, separate from user data."""
+    """Read-only files shipped with an installed OfferU, separate from user data.
+
+    The PyInstaller sidecar unpacks them under ``_MEIPASS``; the ``offeru``
+    Python package (lite install) carries them in ``app/_bundle``.
+    """
     if getattr(sys, "frozen", False):
         return Path(getattr(sys, "_MEIPASS", PACKAGE_BACKEND_DIR)).resolve()
-    return None
+    bundle = Path(__file__).resolve().parent / "_bundle"
+    return bundle if bundle.is_dir() else None
 
 
 def resume_frontend_dir() -> Path:

@@ -8,6 +8,7 @@ import { Providers } from "@/app/providers";
 import { WorkbenchShell } from "@/components/workbench/WorkbenchShell";
 import { OfferURoutes } from "@/vite/OfferURoutes";
 
+const PairPage = lazy(() => import("@/vite/PairPage"));
 const ResumePrintPage = lazy(() => import("@/app/resume/print/[id]/page"));
 
 const root = document.getElementById("root");
@@ -20,6 +21,7 @@ createRoot(root).render(
   <HashRouter>
     <Routes>
       <Route path="/resume/print/:id" element={<Suspense fallback={<p>正在排版…</p>}><ResumePrintPage /></Suspense>} />
+      <Route path="/pair/:code" element={<Suspense fallback={null}><PairPage /></Suspense>} />
       <Route path="*" element={
         <Providers>
           <WorkbenchShell>

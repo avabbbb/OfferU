@@ -1,0 +1,42 @@
+name: Release lite wheel
+
+on:
+  push:
+    tags: ["v*-lite"]
+
+permissions:
+  contents: write
+
+jobs:
+  wheel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: astral-sh/setup-uv@v6
+      - name: Check tag matches APP_VERSION
+        run: |
+          version=$(grep -oP 'APP_VERSION = "\K[^"]+' backend/app/services/agent_skill_projections.py)
+          test "${GITHUB_REF_NAME}" = "v${version}-lite" || { echo "tag ${GITHUB_REF_NAME} != v${version}-lite"; exit 1; }
+          grep -q "^version = \"${version}\"" backend/pyproject.toml
+      - run: npm ci
+        working-directory: frontend
+      - run: node backend/scripts/build_lite.mjs
+      - name: Install from the wheel and check the main path
+        run: |
+          uv tool install dist-lite/*.whl
+          export OFFERU_DATA_DIR="$RUNNER_TEMP/offeru"
+          offeru start --no-browser > "$RUNNER_TEMP/start.log" 2>&1 &
+          for i in $(seq 60); do curl -sf http://127.0.0.1:8766/api/health >/dev/null && break; sleep 1; done
+          curl -sf http://127.0.0.1:8766/ | grep -q OfferU
+          offeru connect
+          offeru cli doctor --pretty | tee "$RUNNER_TEMP/doctor.json"
+          grep -q '"CORE_READY"' "$RUNNER_TEMP/doctor.json"
+      - name: Upload to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist-lite/*.whl --title "OfferU $GITHUB_REF_NAME" --notes "uv tool install https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/$(basename dist-lite/*.whl)"

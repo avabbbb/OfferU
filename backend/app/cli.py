@@ -27,7 +27,7 @@ from app.services.resume_parser import get_resume_ocr_capabilities
 from app.services.security_redaction import safe_error_message
 
 
-APP_VERSION = "0.4.0"
+from app.services.agent_skill_projections import APP_VERSION
 FRONTEND_URL = "http://127.0.0.1:7410"
 BACKEND_HEALTH_URL = "http://127.0.0.1:8766/api/health"
 
@@ -375,7 +375,10 @@ def _doctor_frontend_health() -> dict[str, Any]:
             "status": "embedded",
             "url": "tauri://localhost",
         }
-    raw_url = (os.getenv("OFFERU_FRONTEND_HEALTH_URL") or f"{FRONTEND_URL}/").strip()
+    # `offeru start` serves the workbench from the backend itself.
+    frontend_url = "http://127.0.0.1:8766" if runtime_mode == "lite" else FRONTEND_URL
+    frontend_port = 8766 if runtime_mode == "lite" else 7410
+    raw_url = (os.getenv("OFFERU_FRONTEND_HEALTH_URL") or f"{frontend_url}/").strip()
     if not raw_url:
         return {
             "status": "unavailable",
@@ -388,7 +391,7 @@ def _doctor_frontend_health() -> dict[str, Any]:
     except ValueError:
         parsed_url = None
         configured_port = None
-    report_url = FRONTEND_URL
+    report_url = frontend_url
     if parsed_url is not None and parsed_url.hostname:
         report_url = f"{parsed_url.scheme or 'http'}://{parsed_url.hostname}"
         if configured_port is not None:
@@ -397,14 +400,14 @@ def _doctor_frontend_health() -> dict[str, Any]:
         return {
             "status": "failed",
             "url": report_url,
-            "expected_url": FRONTEND_URL,
+            "expected_url": frontend_url,
             "error_kind": "frontend_port_8080_forbidden",
         }
     if (
         parsed_url is None
         or parsed_url.scheme.lower() != "http"
         or parsed_url.hostname != "127.0.0.1"
-        or configured_port != 7410
+        or configured_port != frontend_port
         or parsed_url.username
         or parsed_url.password
         or parsed_url.path not in {"", "/"}
@@ -414,10 +417,10 @@ def _doctor_frontend_health() -> dict[str, Any]:
         return {
             "status": "failed",
             "url": report_url,
-            "expected_url": FRONTEND_URL,
+            "expected_url": frontend_url,
             "error_kind": "frontend_url_not_allowed",
         }
-    url = FRONTEND_URL
+    url = frontend_url
     request = Request(
         url,
         headers={"User-Agent": "OfferU-Doctor/0.4"},

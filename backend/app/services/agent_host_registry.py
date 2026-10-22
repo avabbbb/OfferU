@@ -171,6 +171,13 @@ _HOSTS: tuple[AgentHost, ...] = (
         # a verified WorkBuddy Desktop connector.
         docs_url="https://www.workbuddy.cn/docs/workbuddy/Overview",
     ),
+    AgentHost(
+        id="dsh",
+        display_name="DeepSeek Harness",
+        kind=HOST_KIND_SKILL_HOST,
+        can_install_skill=True,
+        docs_url="https://deepseek-harness.github.io/deepseek-harness/reference/subsystems/skills",
+    ),
 )
 
 _BY_ID = {host.id: host for host in _HOSTS}

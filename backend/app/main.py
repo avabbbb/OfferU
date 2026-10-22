@@ -16,6 +16,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import get_settings
@@ -216,7 +217,15 @@ app.add_middleware(
 
 # The OfferU UI itself: the dev/web frontend and the desktop WebView.
 _TRUSTED_WRITE_ORIGINS = frozenset(
-    {*cors_origins, "tauri://localhost", "http://tauri.localhost", "https://tauri.localhost"}
+    {
+        *cors_origins,
+        "tauri://localhost",
+        "http://tauri.localhost",
+        "https://tauri.localhost",
+        # `offeru start` serves the workbench from the API origin itself.
+        "http://127.0.0.1:8766",
+        "http://localhost:8766",
+    }
 )
 
 
@@ -446,6 +455,21 @@ if _HAS_MCP and mcp_server is not None:
     app.mount("/mcp", mcp_server.streamable_http_app())
 
 
+class _PairRequest(BaseModel):
+    code: str
+
+
+@app.post("/api/ui/pair")
+async def pair_ui(req: _PairRequest):
+    """`offeru start` 打开的页面用一次性配对码换取审批能力。"""
+    from app.services.ui_approval_capability import exchange_pairing_code
+
+    token = exchange_pairing_code(req.code)
+    if token is None:
+        raise HTTPException(status_code=403, detail="配对码无效或已过期，请重新运行 offeru start")
+    return {"token": token}
+
+
 @app.get("/api/health")
 async def health_check():
     from app.services.startup_recovery import get_startup_recovery_status
@@ -496,3 +520,16 @@ async def diagnostics_runtime_identity(request: Request) -> dict[str, object]:
         raise HTTPException(status_code=403, detail="本地诊断信息仅供本机查看") from exc
     from app.services.runtime_identity import get_runtime_identity
     return get_runtime_identity(app.version)
+
+
+# ---- Lite install: serve the workbench from the API origin ----
+def _mount_workbench() -> None:
+    from app.runtime_paths import packaged_resource_dir
+
+    packaged = packaged_resource_dir()
+    web = packaged / "resume-frontend" if packaged else None
+    if os.getenv("OFFERU_RUNTIME_MODE") == "lite" and web and (web / "index.html").is_file():
+        app.mount("/", StaticFiles(directory=web, html=True), name="workbench")
+
+
+_mount_workbench()

@@ -16,7 +16,7 @@ from app.runtime_paths import PACKAGE_BACKEND_DIR, packaged_resource_dir, runtim
 
 _BUILD_FINGERPRINT = re.compile(r"^sha256:[0-9a-f]{64}$")
 _BUILD_COMMIT = re.compile(r"^[0-9a-f]{40}$")
-_RUNTIME_TYPES = {"local", "desktop-sidecar"}
+_RUNTIME_TYPES = {"local", "desktop-sidecar", "lite"}
 
 
 def _packaged_metadata(app_version: str) -> dict[str, Any] | None:
@@ -127,9 +127,8 @@ def _actual_data_root() -> str | None:
 def get_runtime_identity(app_version: str) -> dict[str, Any]:
     """Return only nonsecret identity fields; source runs never invent a build time."""
 
-    frozen = bool(getattr(sys, "frozen", False))
     instance_id = _runtime_instance_id()
-    if frozen:
+    if packaged_resource_dir() is not None:
         metadata = _packaged_metadata(app_version)
         if metadata is None:
             version = commit = build_timestamp = source_fingerprint = None
