@@ -75,10 +75,11 @@ def test_apply_form_conversation(tmp_path):
                 await af.send_apply_form_message(job.id, "我还在学生会当过外联部长，拉到 3 家赞助", use_builtin=False)
                 told = await af.reply_apply_form(form["id"], blocks=[
                     {"title": "校园经历", "text": "担任学生会外联部长，拉到 3 家赞助。", "sources": ["new.0"]}],
-                    new_facts=[{"quote": "学生会当过外联部长，拉到 3 家赞助", "title": "学生会外联部长"},
+                    new_facts=[{"quote": "在学生会担任外联部长，拉到 3 家赞助", "title": "学生会外联部长"},
                                {"quote": "获得国家奖学金", "title": "编的"}])
                 last = told["messages"][-1]
                 assert last["blocks"][0]["unsupported"] == [] and len(last["new_facts"]) == 1
+                assert last["new_facts"][0]["quote"] == "在学生会当过外联部长，拉到 3 家赞助"  # 存的是用户原话
                 saved = await af.save_apply_form_fact(form["id"], len(told["messages"]) - 1, 0)
                 assert saved["messages"][-1]["new_facts"][0]["proposal_id"]
 

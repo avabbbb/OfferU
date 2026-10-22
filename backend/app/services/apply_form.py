@@ -30,7 +30,7 @@ GUIDE = (
     "Ctrl+A 复制的页面常常不带输入框里的值，看不到原值就别假设它是空的。"
     "每段要粘贴进官网的内容放进 blocks，一个字段一块，title 写清是哪一段的哪个字段（如「CLIProxyAPI · 项目职责」），"
     "sources 写用到的 facts id；reply 里只放简短的说明和判断，不要重复 blocks 的正文。"
-    "用户在对话里说了 facts 里没有的经历或成果，放进 new_facts：quote 原样摘用户的原话，"
+    "用户在对话里说了 facts 里没有的经历或成果，放进 new_facts：quote 摘用户的原话，"
     "section_type 选 experience / project / skill / certificate / education；用到它的 block 在 sources 里写 new.序号。"
 )
 OUTPUT = {"reply": "简短说明（可空）", "blocks": [{"title": "字段", "text": "可直接粘贴的内容", "sources": ["facts id"],
@@ -105,15 +105,28 @@ def _clean_blocks(raw_blocks: Any, facts: list[dict[str, str]]) -> list[dict[str
     return blocks[:60]
 
 
+def _own_words(quote: str, messages: list[dict]) -> str:
+    """模型摘的话大部分（八成字）能在某条用户消息里按顺序对上，就取用户消息里对应的那一段原话。"""
+    from difflib import SequenceMatcher
+
+    for message in messages:
+        if message["role"] != "user":
+            continue
+        blocks = [b for b in SequenceMatcher(None, message["text"], quote, autojunk=False).get_matching_blocks() if b.size]
+        if blocks and sum(b.size for b in blocks) >= 0.8 * len(quote):
+            return message["text"][blocks[0].a:blocks[-1].a + blocks[-1].size].strip()
+    return ""
+
+
 def _clean_new_facts(raw: Any, messages: list[dict]) -> list[dict[str, Any]]:
-    """只留下真是用户原话的：quote 必须出现在用户消息里。"""
-    said = "\n".join(m["text"] for m in messages if m["role"] == "user")
+    """只留下用户真说过的：存的是用户原话，不是模型的转述。"""
     facts = []
     for item in raw if isinstance(raw, list) else []:
         quote = str((item or {}).get("quote") or "").strip() if isinstance(item, dict) else ""
-        if len(quote) >= 4 and quote in said:
+        words = _own_words(quote, messages) if len(quote) >= 4 else ""
+        if words:
             kind = str(item.get("section_type") or "")
-            facts.append({"quote": quote[:1000], "title": str(item.get("title") or quote).strip()[:80],
+            facts.append({"quote": words[:1000], "title": str(item.get("title") or words).strip()[:80],
                           "section_type": kind if kind in SECTION_TYPES else "experience", "proposal_id": None})
     return facts[:10]
 
