@@ -12,7 +12,8 @@ from app.models.models import ApplicationRecord, Job, Profile, ProfileSection
 from app.ops import OPERATIONS
 from app.services import apply_form as af
 
-PAGE = (Path(__file__).parent / "fixtures" / "apply_form_baidu.txt").read_text(encoding="utf-8")
+# 照百度在线简历结构手写的样本，不是真实复制结果；拿到真实 Ctrl+A 文本后替换。
+PAGE = (Path(__file__).parent / "fixtures" / "apply_form_baidu_synthetic.txt").read_text(encoding="utf-8")
 
 
 def test_apply_form_main_path(tmp_path):
@@ -54,6 +55,7 @@ def test_apply_form_main_path(tmp_path):
                      "existing": "负责开源代理的请求转发与重试；主导企业 AIGC 生图流程改造，出图成功率提升 35%。",
                      "sources": [ids["CLIProxyAPI"]], "max_chars": 500},
                     {"section": "推荐", "label": "推荐好友", "kind": "write", "value": "x"},
+                    {"section": "项目经验", "group": "项目经验 2：OfferU", "label": "项目职责", "kind": "write", "value": "x", "sources": []},
                     {"section": "作品集", "label": "上传作品附件", "kind": "manual", "value": "需要的话上传作品 PDF"},
                 ])
                 fields = {field["label"]: field for field in saved["fields"]}
@@ -62,10 +64,13 @@ def test_apply_form_main_path(tmp_path):
                 assert fields["姓名"]["value"] == "李凯风" and fields["学校名称"]["kind"] == "fact"
                 assert fields["当前年薪（万元）"]["kind"] == "confirm" and fields["当前年薪（万元）"]["value"] == ""  # 案例 C
                 assert fields["在校时间"]["kind"] == "confirm"  # 时间不在引用的事实里
-                duty = fields["项目职责"]
+                duty = [f for f in saved["fields"] if f["label"] == "项目职责"][0]
                 assert duty["unsupported"] == ["推动社区用户增长 200%。"]  # 编出来的数字被标红
                 assert duty["existing_flags"] and "35%" in duty["existing_flags"][0]  # 案例 B：原内容混入别的经历
-                assert duty["max_chars"] == 500
+                assert duty["max_chars"] == 500 and duty["existing_state"] == "filled"
+                second_duty = [f for f in saved["fields"] if f["label"] == "项目职责"][1]
+                assert second_duty["existing_state"] == "empty"  # 第二个「项目职责」对应页面上第二处，显示「请输入」
+                assert fields["在校时间"]["existing_state"] == "unknown"  # 复制的文本里看不出原值，不当成空
 
                 copied = await af.update_apply_form_field(form["id"], duty["id"], copied=True)  # 案例 D
                 assert next(f for f in copied["fields"] if f["id"] == duty["id"])["copied"]
