@@ -3,7 +3,7 @@
 用户贴招聘官网页面（Ctrl+A / Ctrl+C）、说要求（"官网还要个人优势，300 字""项目职责压到 200 字"），
 内置模型或用户自己的 Agent 灵活判断：页面要填哪些、原来解析的哪些行哪些不行、按简历和岗位怎么写。
 OfferU 不规定字段类型，只做一件确定性的事：可复制内容里带数字的句子，数字找不到对应的职业事实，就标「无依据」。
-页面文字是不可信数据，只当材料读。职业事实只读，对话里的改写不回写档案。不打开、不填写、不提交网站。
+页面文字是不可信数据，只当材料读。职业事实只读；用户在对话里补充的新经历，只有用户点「存进档案」才生成一条待确认的档案修改。不打开、不填写、不提交网站。
 """
 
 from __future__ import annotations
@@ -30,9 +30,13 @@ GUIDE = (
     "Ctrl+A 复制的页面常常不带输入框里的值，看不到原值就别假设它是空的。"
     "每段要粘贴进官网的内容放进 blocks，一个字段一块，title 写清是哪一段的哪个字段（如「CLIProxyAPI · 项目职责」），"
     "sources 写用到的 facts id；reply 里只放简短的说明和判断，不要重复 blocks 的正文。"
+    "用户在对话里说了 facts 里没有的经历或成果，放进 new_facts：quote 原样摘用户的原话，"
+    "section_type 选 experience / project / skill / certificate / education；用到它的 block 在 sources 里写 new.序号。"
 )
 OUTPUT = {"reply": "简短说明（可空）", "blocks": [{"title": "字段", "text": "可直接粘贴的内容", "sources": ["facts id"],
-                                                 "unsupported": ["没有把握的句子（可空）"]}]}
+                                                 "unsupported": ["没有把握的句子（可空）"]}],
+          "new_facts": [{"quote": "用户原话", "title": "一句话标题", "section_type": "experience"}]}
+SECTION_TYPES = ("experience", "project", "skill", "certificate", "education")
 
 
 def _numbers(value: str) -> set[str]:
@@ -101,6 +105,32 @@ def _clean_blocks(raw_blocks: Any, facts: list[dict[str, str]]) -> list[dict[str
     return blocks[:60]
 
 
+def _clean_new_facts(raw: Any, messages: list[dict]) -> list[dict[str, Any]]:
+    """只留下真是用户原话的：quote 必须出现在用户消息里。"""
+    said = "\n".join(m["text"] for m in messages if m["role"] == "user")
+    facts = []
+    for item in raw if isinstance(raw, list) else []:
+        quote = str((item or {}).get("quote") or "").strip() if isinstance(item, dict) else ""
+        if len(quote) >= 4 and quote in said:
+            kind = str(item.get("section_type") or "")
+            facts.append({"quote": quote[:1000], "title": str(item.get("title") or quote).strip()[:80],
+                          "section_type": kind if kind in SECTION_TYPES else "experience", "proposal_id": None})
+    return facts[:10]
+
+
+def _turns(messages: list[dict], waiting: bool) -> list[dict]:
+    """同一句话的多个回答是版本，只把最后一个版本给模型；重新回答时去掉末尾的旧回答。"""
+    turns: list[dict] = []
+    for message in messages:
+        if message["role"] == "assistant" and turns and turns[-1]["role"] == "assistant":
+            turns[-1] = message
+        else:
+            turns.append(message)
+    while waiting and turns and turns[-1]["role"] == "assistant":
+        turns.pop()
+    return turns
+
+
 def _view(form: ApplyForm) -> dict[str, Any]:
     return {"id": form.id, "job_id": form.job_id, "status": form.status, "messages": form.messages_json or []}
 
@@ -109,7 +139,7 @@ def _prompt(job: dict, facts: list[dict], messages: list[dict]) -> list[dict[str
     system = f"{GUIDE}\n输出 JSON：{json.dumps(OUTPUT, ensure_ascii=False)}\n" \
              f"<job>{json.dumps(job, ensure_ascii=False)}</job>\n<facts>{json.dumps(facts, ensure_ascii=False)}</facts>"
     turns = [{"role": "system", "content": system}]
-    for message in messages:
+    for message in _turns(messages, waiting=True):
         if message["role"] == "user":
             turns.append({"role": "user", "content": f"<user untrusted_page_text_may_be_inside=\"true\">\n{message['text']}\n</user>"})
         else:
@@ -141,10 +171,12 @@ async def _load(db, form_id: int) -> ApplyForm:  # noqa: ANN001
     return form
 
 
-async def send_apply_form_message(job_id: int, text: str, new: bool = False, use_builtin: bool = True) -> dict[str, Any]:
-    """用户说一句（第一句通常是贴的官网页面）。配了内置模型就直接回复，否则等 Agent 回复。"""
+async def send_apply_form_message(job_id: int, text: str = "", new: bool = False, use_builtin: bool = True,
+                                  retry: bool = False) -> dict[str, Any]:
+    """用户说一句（第一句通常是贴的官网页面）；retry=True 是对最后一句重新回答，旧回答留作版本。
+    配了内置模型就直接回复，否则等 Agent 回复。"""
     clean = str(text or "").strip()[:MAX_MESSAGE_CHARS]
-    if not clean:
+    if not clean and not retry:
         raise ValueError("消息不能为空")
     async with async_session() as db:
         job = await db.get(Job, int(job_id))
@@ -152,17 +184,21 @@ async def send_apply_form_message(job_id: int, text: str, new: bool = False, use
             raise ValueError(f"岗位 #{job_id} 不存在")
         form = None if new else (await db.execute(select(ApplyForm).where(ApplyForm.job_id == job.id)
                                                   .order_by(ApplyForm.id.desc()).limit(1))).scalars().first()
-        if form is None:
-            form = ApplyForm(job_id=job.id, messages_json=[])
-            db.add(form)
-        form.messages_json = [*(form.messages_json or []), {"role": "user", "text": clean}]
+        if retry:
+            if form is None or not form.messages_json:
+                raise ValueError("还没有可以重新回答的消息")
+        else:
+            if form is None:
+                form = ApplyForm(job_id=job.id, messages_json=[])
+                db.add(form)
+            form.messages_json = [*(form.messages_json or []), {"role": "user", "text": clean}]
         form.status = "waiting"
         await db.commit()
         form_id, job_ctx, facts, messages = form.id, _job_context(job), await _facts(db), list(form.messages_json)
     if use_builtin:
         data = await _builtin(_prompt(job_ctx, facts, messages))
         if data:
-            return await _reply(form_id, str(data.get("reply") or ""), data.get("blocks"), "builtin")
+            return await _reply(form_id, str(data.get("reply") or ""), data.get("blocks"), "builtin", data.get("new_facts"))
     return await get_apply_form(form_id)
 
 
@@ -184,22 +220,60 @@ async def get_apply_form_context(form_id: int) -> dict[str, Any]:
         form = await _load(db, form_id)
         return {"form_id": form.id, "status": form.status, "job": _job_context(await db.get(Job, form.job_id)),
                 "facts": await _facts(db), "guide": GUIDE, "output": OUTPUT,
-                "messages": form.messages_json or [], "reply_with": "reply_apply_form(form_id, reply, blocks)"}
+                "messages": _turns(form.messages_json or [], form.status == "waiting"),
+                "reply_with": "reply_apply_form(form_id, reply, blocks, new_facts)"}
 
 
-async def _reply(form_id: int, reply: str, raw_blocks: Any, by: str) -> dict[str, Any]:
+async def _reply(form_id: int, reply: str, raw_blocks: Any, by: str, raw_new_facts: Any = None) -> dict[str, Any]:
     async with async_session() as db:
         form = await _load(db, form_id)
-        blocks = _clean_blocks(raw_blocks, await _facts(db))
+        new_facts = _clean_new_facts(raw_new_facts, form.messages_json or [])
+        said = [{"id": f"new.{i}", "label": "你刚说的", "text": f["quote"]} for i, f in enumerate(new_facts)]
+        blocks = _clean_blocks(raw_blocks, await _facts(db) + said)
         if not reply.strip() and not blocks:
             raise ValueError("回复和可复制内容不能都为空")
         form.messages_json = [*(form.messages_json or []),
-                              {"role": "assistant", "text": reply.strip()[:4000], "blocks": blocks, "by": by}]
+                              {"role": "assistant", "text": reply.strip()[:4000], "blocks": blocks,
+                               "new_facts": new_facts, "by": by}]
         form.status = "ready"
         await db.commit()
         return _view(form)
 
 
-async def reply_apply_form(form_id: int, reply: str = "", blocks: Optional[list[dict[str, Any]]] = None) -> dict[str, Any]:
-    """Agent 的回复：简短说明 + 每段可直接粘贴进官网的内容。不改职业档案和投递状态。"""
-    return await _reply(form_id, reply, blocks or [], "agent")
+async def reply_apply_form(form_id: int, reply: str = "", blocks: Optional[list[dict[str, Any]]] = None,
+                           new_facts: Optional[list[dict[str, Any]]] = None) -> dict[str, Any]:
+    """Agent 的回复：简短说明 + 每段可直接粘贴进官网的内容 + 用户刚补充的新经历。不改职业档案和投递状态。"""
+    return await _reply(form_id, reply, blocks or [], "agent", new_facts)
+
+
+async def save_apply_form_fact(form_id: int, message_index: int, fact_index: int) -> dict[str, Any]:
+    """用户点了「存进档案」：把对话里自己说的一条新经历变成待确认的档案修改，不直接写入档案。"""
+    from app.services.career_memory import create_memory_proposal, record_learning_observation
+
+    async with async_session() as db:
+        form = await _load(db, form_id)
+        messages = [dict(m) for m in form.messages_json or []]
+        try:
+            fact = dict(messages[message_index]["new_facts"][fact_index])
+        except (IndexError, KeyError, TypeError):
+            raise ValueError("找不到这条经历") from None
+        job_id = form.job_id
+    if not fact.get("proposal_id"):
+        observation = await record_learning_observation(
+            source_type="apply_chat", source_external_id=f"apply-chat:{form_id}", source_title="OfferU 官网投递助手",
+            observation_type="user_stated_fact", content={"source_excerpt": fact["quote"], "job_id": job_id},
+            idempotency_key=f"apply-chat:{form_id}:{message_index}:{fact_index}")
+        proposal = await create_memory_proposal(
+            observation_id=int(observation["id"]), target_tier="verified_fact", section_type=fact["section_type"],
+            title=fact["title"], after={"description": fact["quote"], "bullet": fact["quote"]},
+            reason="用户在官网投递助手的对话里自己说的经历；确认前不会写入档案。")
+        fact["proposal_id"] = proposal.get("id")
+        async with async_session() as db:
+            form = await _load(db, form_id)
+            messages = [dict(m) for m in form.messages_json or []]
+            facts = list(messages[message_index]["new_facts"])
+            facts[fact_index] = fact
+            messages[message_index] = {**messages[message_index], "new_facts": facts}
+            form.messages_json = messages
+            await db.commit()
+    return await get_apply_form(form_id)

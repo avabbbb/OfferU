@@ -495,8 +495,14 @@ async def career_check_in(req: _CheckInAnswer):
 
 
 class _ApplyFormMessage(BaseModel):
-    text: str
+    text: str = ""
     new: bool = False
+    retry: bool = False
+
+
+class _ApplyFormFact(BaseModel):
+    message: int
+    fact: int
 
 
 @app.get("/api/jobs/{job_id}/apply-form")
@@ -511,7 +517,17 @@ async def send_apply_form(job_id: int, req: _ApplyFormMessage):
     from app.services.apply_form import send_apply_form_message
 
     try:
-        return {"form": await send_apply_form_message(job_id, req.text, new=req.new)}
+        return {"form": await send_apply_form_message(job_id, req.text, new=req.new, retry=req.retry)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/apply-forms/{form_id}/facts")
+async def save_apply_form_fact_route(form_id: int, req: _ApplyFormFact):
+    from app.services.apply_form import save_apply_form_fact
+
+    try:
+        return {"form": await save_apply_form_fact(form_id, req.message, req.fact)}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

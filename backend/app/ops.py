@@ -5815,6 +5815,7 @@ class ReplyApplyFormInput(_StrictOperationInput):
     form_id: int = Field(ge=1)
     reply: str = Field(default="", max_length=4000)
     blocks: list[dict[str, Any]] = Field(default_factory=list, max_length=60)
+    new_facts: list[dict[str, Any]] = Field(default_factory=list, max_length=10)
 
 
 def _apply_form_ops() -> dict[str, Operation]:
@@ -5845,7 +5846,7 @@ def _apply_form_ops() -> dict[str, Operation]:
         "reply_apply_form": Operation(
             name="reply_apply_form",
             fn=reply_apply_form,
-            description="回复官网投递对话：简短说明，加上每段可直接粘贴进官网的内容（blocks）。数字找不到职业事实的句子会被标无依据。不改职业档案和投递状态。",
+            description="回复官网投递对话：简短说明，加上每段可直接粘贴进官网的内容（blocks）。数字找不到职业事实的句子会被标无依据；用户在对话里补充的新经历放进 new_facts（quote 摘原话），用户点「存进档案」才会生成待确认修改。重复回复会留作多个版本。",
             group="applications",
             side_effects=("write",),
             input_model=ReplyApplyFormInput,

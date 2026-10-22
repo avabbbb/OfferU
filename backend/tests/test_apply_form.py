@@ -34,6 +34,7 @@ def test_apply_form_conversation(tmp_path):
                 await db.commit()
             with ExitStack() as stack:
                 stack.enter_context(patch.object(af, "async_session", sessions))
+                stack.enter_context(patch("app.services.career_memory.async_session", sessions))
                 form = await OPERATIONS["send_apply_form_message"].fn(job_id=job.id, text=PAGE + "\n官网还要个人优势，300 字")
                 assert form["status"] == "waiting"
 
@@ -62,8 +63,28 @@ def test_apply_form_conversation(tmp_path):
                     by_model = await af.send_apply_form_message(job.id, "再短一点")
                 assert by_model["messages"][-1]["by"] == "builtin" and not by_model["messages"][-1]["blocks"][0]["unsupported"]
 
+                # 重新回答：旧回答留作版本，模型只看到用户最后一句
+                async def regen(messages):
+                    assert messages[-1]["role"] == "user" and "再短一点" in messages[-1]["content"]
+                    return {"reply": "换个说法", "blocks": []}
+                with patch.object(af, "_builtin", regen):
+                    versions = await af.send_apply_form_message(job.id, retry=True)
+                assert [m["role"] for m in versions["messages"][-3:]] == ["user", "assistant", "assistant"]
+
+                # 对话里补充的新经历：只认用户原话，点了「存进档案」才生成待确认修改
+                await af.send_apply_form_message(job.id, "我还在学生会当过外联部长，拉到 3 家赞助", use_builtin=False)
+                told = await af.reply_apply_form(form["id"], blocks=[
+                    {"title": "校园经历", "text": "担任学生会外联部长，拉到 3 家赞助。", "sources": ["new.0"]}],
+                    new_facts=[{"quote": "学生会当过外联部长，拉到 3 家赞助", "title": "学生会外联部长"},
+                               {"quote": "获得国家奖学金", "title": "编的"}])
+                last = told["messages"][-1]
+                assert last["blocks"][0]["unsupported"] == [] and len(last["new_facts"]) == 1
+                saved = await af.save_apply_form_fact(form["id"], len(told["messages"]) - 1, 0)
+                assert saved["messages"][-1]["new_facts"][0]["proposal_id"]
+
             async with sessions() as db:
                 assert (await db.execute(ApplicationRecord.__table__.select())).first() is None
+                assert not (await db.execute(ProfileSection.__table__.select().where(ProfileSection.title == "学生会外联部长"))).first()
         finally:
             await engine.dispose()
 
