@@ -96,7 +96,7 @@ async def _facts(db) -> list[dict[str, str]]:  # noqa: ANN001
             .order_by(ProfileSection.sort_order, ProfileSection.id))).scalars().all()
         for section in sections:
             facts.append({"id": f"s{section.id}", "label": f"{section.section_type}｜{section.title}",
-                          "text": _flatten(section.content_json) or section.title})
+                          "text": "；".join(filter(None, [section.title, _flatten(section.content_json)]))})
     for answer in (await db.execute(select(CareerCheckInAnswer).where(
             CareerCheckInAnswer.key.in_(("onboarding.about", "onboarding.deadline"))))).scalars().all():
         if answer.text:

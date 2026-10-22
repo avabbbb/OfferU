@@ -39,6 +39,7 @@ import { ArtifactViewer } from "@/components/career/ArtifactViewer";
 import { readDeliveries } from "@/components/career/deliveries";
 import { RoleIntelligencePanel } from "@/components/jobs/RoleIntelligencePanel";
 import { JobNextStepCard, scrollToWorkspaceSection } from "@/components/jobs/JobNextStepCard";
+import { ApplyFormAssistant } from "@/components/jobs/ApplyFormAssistant";
 import { useBossSearchAvailable } from "@/components/boss-login";
 import {
   jobResearchApi,
@@ -1393,6 +1394,8 @@ export default function JobDetailPage() {
           )}
         </CardBody>
       </Card>
+
+      {jobId && <ApplyFormAssistant jobId={jobId} />}
 
       <div id="interview" className="scroll-mt-6" aria-hidden="true" />
       {interviewLifecycleTasks.map((task) => (
