@@ -113,6 +113,7 @@ const SOURCE_LABEL_MAP: Record<string, string> = {
   zhaopin: "智联招聘",
   zhilian: "智联招聘",
   boss: "BOSS直聘",
+  xiaohongshu: "小红书",
   liepin: "猎聘",
   maimai: "脉脉",
   linkedin: "LinkedIn",
