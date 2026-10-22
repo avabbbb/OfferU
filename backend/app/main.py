@@ -470,6 +470,30 @@ async def pair_ui(req: _PairRequest):
     return {"token": token}
 
 
+class _CheckInAnswer(BaseModel):
+    key: str
+    choice: str = ""
+    text: str = ""
+    question: str = ""
+
+
+@app.get("/api/career/next-step")
+async def career_next_step():
+    from app.services.career_stage import get_career_next_step
+
+    return await get_career_next_step()
+
+
+@app.post("/api/career/check-in")
+async def career_check_in(req: _CheckInAnswer):
+    from app.services.career_stage import answer_check_in
+
+    try:
+        return await answer_check_in(req.key, req.choice, req.text, question=req.question)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.get("/api/health")
 async def health_check():
     from app.services.startup_recovery import get_startup_recovery_status

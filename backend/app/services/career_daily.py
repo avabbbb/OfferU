@@ -116,6 +116,9 @@ class DailyCareerContext(_StrictModel):
     )
     review_date: date
     career_stage: dict[str, Any] | None = None
+    # Rule-based stage, next step and today's questions (services/career_stage).
+    # The brief explains around it; it does not re-rank or add its own questions.
+    offeru_next_step: dict[str, Any] | None = None
     strategy_pack: str = Field(default="", max_length=60)
     pipeline: list[DailyPipelineItem] = Field(default_factory=list, max_length=12)
     follow_ups_due: list[DailyFollowUp] = Field(default_factory=list, max_length=10)
@@ -432,9 +435,13 @@ async def build_daily_career_context(
         if isinstance(career_stage, dict):
             strategy_pack = "campus_search.v1" if career_stage.get("track") == "campus" else "experienced_search.v1"
 
+    from app.services.career_stage import get_career_next_step
+
+    rule = await get_career_next_step(record_ask=False)
     return DailyCareerContext(
         review_date=today,
         career_stage=career_stage,
+        offeru_next_step={key: rule[key] for key in ("stage", "stage_label", "next_step", "alternate", "questions")},
         strategy_pack=strategy_pack,
         pipeline=pipeline[:12],
         follow_ups_due=follow_ups,

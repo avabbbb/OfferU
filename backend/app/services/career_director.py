@@ -216,6 +216,8 @@ class CareerAction(_StrictContract):
 
 
 class CareerQuestion(_StrictContract):
+    # The OfferU rule question this rewords (offeru_next_step.questions[].key).
+    check_in_key: str = Field(default="", max_length=160)
     question: str = Field(min_length=1, max_length=500)
     why_needed: str = Field(min_length=1, max_length=400)
     unlocks: str = Field(min_length=1, max_length=400)

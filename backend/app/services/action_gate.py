@@ -97,7 +97,9 @@ async def run_gated_operation(
             "errors": [],
         }
 
-    if not run_id or reads_file:  # no Agent timeline: unattached CLI call / a read
+    # External Agents call through the CLI without a Run; their writes still land
+    # on the timeline so the user can undo them. Other run-less callers and reads don't.
+    if reads_file or (not run_id and surface != "cli"):
         return await execute_operation(name, inputs, surface=surface)
     with capture() as cap:
         result = await execute_operation(name, inputs, surface=surface)
