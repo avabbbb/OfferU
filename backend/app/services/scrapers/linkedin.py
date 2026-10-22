@@ -6,12 +6,21 @@
 # =============================================
 
 import hashlib
+import os
 from typing import Optional
 
 import httpx
 
 from app.config import get_settings
 from app.services.scrapers.base import JobScraperBase, JobItem, register_scraper
+from app.services.scrapers.linkedin_jobs_adapter import (
+    OPTIONAL_LINKEDIN_JOBS_ACTOR,
+    ENV_NAME,
+    actor_path,
+    jobs_rows_for_normalizer,
+    jobs_run_input,
+    resolve_linkedin_jobs_actor,
+)
 
 
 class LinkedInScraper(JobScraperBase):
@@ -31,31 +40,32 @@ class LinkedInScraper(JobScraperBase):
         if not self.settings.apify_api_key:
             return []
 
-        # 构建搜索 URL 列表
-        urls = [
-            f"https://www.linkedin.com/jobs/search?keywords={kw.replace(' ', '%20')}"
-            f"&location={location.replace(' ', '%20')}&f_TPR=r86400"
-            for kw in keywords
-        ]
+        actor_id = resolve_linkedin_jobs_actor(os.environ.get(ENV_NAME))
+        payload = jobs_run_input(actor_id, keywords, location, max_results)
+        if payload is None:
+            return []
 
-        payload = {
-            "count": max_results,
-            "scrapeCompany": True,
-            "urls": urls,
-        }
-
-        api_url = (
-            f"https://api.apify.com/v2/acts/{self.actor_id}/run-sync-get-dataset-items"
-            f"?token={self.settings.apify_api_key}"
-        )
+        if actor_id == OPTIONAL_LINKEDIN_JOBS_ACTOR:
+            api_url = (
+                "https://api.apify.com/v2/acts/"
+                f"{actor_path(actor_id)}/run-sync-get-dataset-items"
+            )
+            headers = {"Authorization": f"Bearer {self.settings.apify_api_key}"}
+        else:
+            api_url = (
+                f"https://api.apify.com/v2/acts/{self.actor_id}/run-sync-get-dataset-items"
+                f"?token={self.settings.apify_api_key}"
+            )
+            headers = None
 
         async with httpx.AsyncClient(timeout=120) as client:
-            resp = await client.post(api_url, json=payload)
+            resp = await client.post(api_url, json=payload, headers=headers)
             if resp.status_code != 200:
                 return []
             raw_items = resp.json()
 
-        return [self._normalize(item) for item in raw_items if isinstance(item, dict)]
+        rows = jobs_rows_for_normalizer(actor_id, raw_items if isinstance(raw_items, list) else [])
+        return [self._normalize(item) for item in rows]
 
     async def get_detail(self, job_id: str) -> Optional[JobItem]:
         return None  # LinkedIn 详情已包含在搜索结果中

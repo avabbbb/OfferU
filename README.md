@@ -360,6 +360,8 @@ OfferU is not yet published as a signed consumer installer. For source developme
 - [QUICKSTART.md](./QUICKSTART.md) — fastest local path
 - [Quality & release](./docs/09-quality-and-release.md) — acceptance goals and release gates
 
+LinkedIn job search stays on `curious_coder/linkedin-jobs-scraper` and still builds one past-day search URL per keyword. Set `OFFERU_LINKEDIN_JOBS_ACTOR=johnvc/linkedin-jobs-api` to send `keyword`, `location`, `timeRange=past-day`, and `maxJobs` instead. Several keywords are joined with a space. Results keep the scraper's own fields (`title`, `companyName`, `link`, `applyUrl`, `descriptionText`, `postedAt`, and the rest of `JobItem`). Rows whose `result_type` is not `job` are dropped. [Actor](https://apify.com/johnvc/linkedin-jobs-api). [Alpha OSINT](https://alphaosint.com/).
+
 The intended public user path is:
 
 ```text
