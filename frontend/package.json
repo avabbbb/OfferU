@@ -63,7 +63,7 @@
     "postcss": "^8.4.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^5",
-    "vite": "^8.1.5",
+    "vite": "^8.3.5",
     "vitest": "^5.0.1"
   },
   "overrides": {
