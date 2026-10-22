@@ -19,7 +19,7 @@ from app.models.models import (
     CareerCheckInAnswer,
     CareerCheckInState,
     Job,
-    Resume,
+    ProfileSection,
 )
 
 STAGES = ("not_started", "preparing", "applying", "testing", "interviewing", "offer", "done")
@@ -80,7 +80,10 @@ async def _facts(db: Any, now: datetime) -> dict[str, Any]:
 
     board = await get_application_progress_board(status="all")
     records = [record for company in board["companies"] for record in company["records"]]
-    resumes = int((await db.execute(select(func.count(Resume.id)))).scalar() or 0)
+    # Same bar as the old quick-start checklist: at least one confirmed fact.
+    facts_count = int((await db.execute(
+        select(func.count(ProfileSection.id)).where(ProfileSection.tier == "verified_fact")
+    )).scalar() or 0)
     jobs = (await db.execute(select(Job.id, Job.company, Job.title).order_by(Job.id.desc()).limit(200))).all()
     events = (
         await db.execute(
@@ -94,7 +97,7 @@ async def _facts(db: Any, now: datetime) -> dict[str, Any]:
     return {
         "records": records,
         "pending_review": int(board["summary"]["pending_review"]),
-        "resumes": resumes,
+        "profile_facts": facts_count,
         "jobs": [{"id": row.id, "company": row.company or "", "title": row.title or ""} for row in jobs],
         "events": events,
         "answered": answered,
@@ -111,7 +114,7 @@ def _inferred_stage(facts: dict[str, Any]) -> str:
         return "testing"
     if stages & {"applied", "rejected"}:
         return "applying"
-    if facts["resumes"] or facts["jobs"] or facts["records"]:
+    if facts["profile_facts"] or facts["jobs"] or facts["records"]:
         return "preparing"
     return "not_started"
 
@@ -211,8 +214,8 @@ def _steps(stage: str, state: CareerCheckInState, onboarded: bool, conflict: Opt
 
     records = facts["records"]
     if stage in {"not_started", "preparing"}:
-        if not facts["resumes"]:
-            add("import-resume", "导入一份旧简历", "有了简历，OfferU 才能按岗位帮你改。没有也可以从经历开始写。", "/resume", "导入")
+        if not facts["profile_facts"]:
+            add("profile", "建立职业档案", "导入旧简历并确认经历，OfferU 才能按岗位帮你改。没有简历也可以从经历开始写。", "/profile", "去建立")
         elif not facts["jobs"]:
             add("first-job", "存下第一个想投的岗位", "贴一段 JD 或链接，OfferU 会拆出岗位要求。", "/jobs", "添加岗位")
         else:
@@ -241,6 +244,8 @@ def _steps(stage: str, state: CareerCheckInState, onboarded: bool, conflict: Opt
         if record:
             add(f"offer-{record['application_attempt_id']}", f"核对 {_label(record)} 的 offer",
             "看清薪资、地点和回复期限；决定前可以继续推进其他机会。", f"/jobs/{record['job_id']}", "查看")
+    if not state.agent_seen_on:
+        add("connect-agent", "连接你的 Agent", "让你正在用的 Codex、Claude Code 等读到同一份进度；不连也能先用。", "#agent", "去连接")
     return steps
 
 
@@ -294,12 +299,15 @@ def _should_ask_today(state: CareerCheckInState, today: str, urgent: bool) -> bo
     return not state.last_asked_on or (date.fromisoformat(today) - date.fromisoformat(state.last_asked_on)).days >= 7
 
 
-async def get_career_next_step(now: Optional[datetime] = None, *, record_ask: bool = True) -> dict[str, Any]:
+async def get_career_next_step(now: Optional[datetime] = None, *, record_ask: bool = True,
+                               from_agent: bool = False) -> dict[str, Any]:
     """阶段、唯一的下一步（最多一个备选）和今天要问的问题。"""
     now = now or datetime.now()
     today = now.date().isoformat()
     async with async_session() as db:
         state = await _state(db)
+        if from_agent and not state.agent_seen_on:
+            state.agent_seen_on = today
         facts = await _facts(db, now)
         inferred = _inferred_stage(facts)
         if state.self_stage == inferred:
@@ -420,6 +428,11 @@ async def answer_check_in(key: str, choice: str = "", text: str = "", user_quote
             (await _state(db)).self_stage = ""
             await db.commit()
     return {"ok": True, "key": key, "applied_status": status, "next": await get_career_next_step()}
+
+
+async def get_career_next_step_for_agent() -> dict[str, Any]:
+    """Operation entry point: the caller is an Agent, so it is connected."""
+    return await get_career_next_step(from_agent=True)
 
 
 __all__ = ["STAGES", "STAGE_LABELS", "answer_check_in", "get_career_next_step"]

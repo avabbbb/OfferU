@@ -26,10 +26,6 @@ import {
   X,
 } from "lucide-react";
 import {
-  OnboardingChecklist,
-  OnboardingTriggerButton,
-} from "@/components/onboarding/OnboardingChecklist";
-import {
   controlCareerTask,
   dismissAutomationInboxItem,
   triggerDailyCareerReview,
@@ -539,15 +535,10 @@ export default function TodayPage() {
           <p className="text-[12px] font-medium text-[var(--foreground-muted)]">{dateLabel}</p>
           <h1 className="mt-1 text-[28px] font-semibold tracking-tight text-[var(--foreground)]">今天</h1>
         </div>
-        <OnboardingTriggerButton />
       </motion.header>
 
       <motion.div variants={item}>
         <NextStepCard rephrased={briefRephrased} />
-      </motion.div>
-
-      <motion.div variants={item}>
-        <OnboardingChecklist />
       </motion.div>
 
       {dailyReviewTriggerError && !dailyBriefInboxItem && (

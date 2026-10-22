@@ -6,6 +6,7 @@ import { ArrowRight } from "lucide-react";
 
 import Link from "next/link";
 import { request } from "@/lib/api";
+import { useAgentConnectionOptional } from "@/lib/agentConnection";
 import { SHOWCASE } from "@/lib/showcase";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 
@@ -33,6 +34,7 @@ export function NextStepCard({ rephrased = {} }: { rephrased?: Record<string, st
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const agent = useAgentConnectionOptional();
   if (!data) return null;
 
   const answer = async (question: Question, choice: string, text = "") => {
@@ -62,7 +64,12 @@ export function NextStepCard({ rephrased = {} }: { rephrased?: Record<string, st
               <h2 id="today-next-step" className="text-[17px] font-semibold tracking-tight text-[var(--foreground)]">{step.title}</h2>
               <p className="mt-1 text-[13px] leading-6 text-[var(--foreground-muted)]">{step.reason}</p>
             </div>
-            {step.href !== "/" && (
+            {step.href === "#agent" ? (
+              <button type="button" onClick={() => agent?.setOpen(true)} style={{ color: "var(--background)" }}
+                className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-[13px] font-medium">
+                {step.cta}<ArrowRight size={13} />
+              </button>
+            ) : step.href !== "/" && (
               <Link href={step.href} style={{ color: "var(--background)" }}
                 className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-[13px] font-medium">
                 {step.cta}<ArrowRight size={13} />
@@ -72,11 +79,15 @@ export function NextStepCard({ rephrased = {} }: { rephrased?: Record<string, st
         ) : (
           <h2 id="today-next-step" className="mt-3 text-[17px] font-semibold text-[var(--foreground)]">今天没有必须做的事</h2>
         )}
-        {data.alternate && (
+        {data.alternate && (data.alternate.href === "#agent" ? (
+          <button type="button" onClick={() => agent?.setOpen(true)} className="mt-3 inline-block text-[12px] text-[var(--foreground-muted)] hover:text-[var(--foreground)]">
+            或者：{data.alternate.title} →
+          </button>
+        ) : (
           <Link href={data.alternate.href} className="mt-3 inline-block text-[12px] text-[var(--foreground-muted)] hover:text-[var(--foreground)]">
             或者：{data.alternate.title} →
           </Link>
-        )}
+        ))}
       </div>
 
       {data.questions.length > 0 && (

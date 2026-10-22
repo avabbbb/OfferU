@@ -2038,6 +2038,8 @@ class CareerCheckInState(Base):
     last_asked_on: Mapped[str] = mapped_column(String(10), default="")
     last_answered_on: Mapped[str] = mapped_column(String(10), default="")
     ignored_days: Mapped[int] = mapped_column(Integer, default=0)
+    # Set the first time an external Agent asks for the next step: it is connected.
+    agent_seen_on: Mapped[str] = mapped_column(String(10), default="")
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
 

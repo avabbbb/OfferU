@@ -26,6 +26,7 @@ def test_stage_main_path(tmp_path):
                 first = await cs.get_career_next_step()
                 assert first["next_step"]["key"] == "onboarding"
                 assert [q["key"] for q in first["questions"]] == ["onboarding.stage", "onboarding.about", "onboarding.deadline"]
+                assert (await cs.get_career_next_step_for_agent())["alternate"]["key"] != "connect-agent"
 
                 await cs.answer_check_in("onboarding.stage", "interviewing", user_quote="在面试了")
                 after = (await cs.answer_check_in("onboarding.about", text="27 届 产品 上海"))["next"]

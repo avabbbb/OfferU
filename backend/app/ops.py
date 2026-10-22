@@ -5774,12 +5774,12 @@ class AnswerCheckInInput(_StrictOperationInput):
 
 
 def _career_stage_ops() -> dict[str, Operation]:
-    from app.services.career_stage import answer_check_in, get_career_next_step
+    from app.services.career_stage import answer_check_in, get_career_next_step_for_agent
 
     return {
         "get_career_next_step": Operation(
             name="get_career_next_step",
-            fn=get_career_next_step,
+            fn=get_career_next_step_for_agent,
             description="读取用户的求职阶段、唯一的下一步（最多一个备选）和今天要问的问题；工作台显示的是同一份结果。",
             group="career_runtime",
             input_model=_StrictOperationInput,
