@@ -35,7 +35,7 @@ function Marked({ text, marks }: { text: string; marks: string[] }) {
   if (!marks.length) return <>{text}</>;
   const parts = text.split(new RegExp(`(${marks.map((m) => m.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`));
   return <>{parts.map((part, i) => marks.includes(part)
-    ? <mark key={i} className="rounded-sm bg-red-50 text-red-700">{part}</mark>
+    ? <mark key={i} title="档案里找不到依据" className="rounded-sm bg-red-50 text-red-700">{part}<sup className="ml-0.5 text-[10px]">无依据</sup></mark>
     : <Fragment key={i}>{part}</Fragment>)}</>;
 }
 
