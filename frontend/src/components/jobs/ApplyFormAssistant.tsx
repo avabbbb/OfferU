@@ -19,7 +19,7 @@ function Marked({ text, marks }: { text: string; marks: string[] }) {
   if (!marks.length) return <>{text}</>;
   const parts = text.split(new RegExp(`(${marks.map((m) => m.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`));
   return <>{parts.map((part, i) => marks.includes(part)
-    ? <mark key={i} title="档案里找不到依据" className="rounded-sm bg-red-50 text-red-700">{part}<sup className="ml-0.5 text-[10px]">无依据</sup></mark>
+    ? <mark key={i} title="档案里找不到依据" className="rounded-sm bg-amber-50 text-amber-800 underline decoration-dotted decoration-amber-500">{part}<sup className="ml-0.5 text-[10px]">无依据</sup></mark>
     : <Fragment key={i}>{part}</Fragment>)}</>;
 }
 
@@ -43,10 +43,11 @@ function CopyBlock({ block }: { block: Block }) {
 /** 用户贴的整页文字很长：默认只露前几行。 */
 function UserMessage({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
-  const long = text.length > 280;
+  const short = text.split("\n").slice(0, 4).join("\n").slice(0, 160);
+  const long = short.length < text.length;
   return (
     <div className="ml-auto max-w-[85%] rounded-lg bg-[var(--background)] px-3 py-2">
-      <p className="whitespace-pre-wrap text-[13px] leading-6 text-[var(--foreground)]">{long && !open ? `${text.slice(0, 280)}…` : text}</p>
+      <p className="whitespace-pre-wrap text-[13px] leading-6 text-[var(--foreground)]">{long && !open ? `${short}…` : text}</p>
       {long && <button type="button" onClick={() => setOpen(!open)} style={small} className={`${muted} hover:text-[var(--foreground)]`}>{open ? "收起" : `展开全部（${text.length} 字）`}</button>}
     </div>
   );
