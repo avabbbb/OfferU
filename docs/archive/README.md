@@ -2,7 +2,22 @@
 
 > 2026-10-23：旧的 docs/01–09、docs/product、docs/evidence 和旧 AGENTS.md 移到了 [pre-2026-11/](./pre-2026-11/)。当前文档只有 [PRD](../PRD.md)、[DESIGN](../DESIGN.md)、[PLAN](../PLAN.md)。
 
-> 状态：**归档索引**。这里的内容只用于考古，不覆盖 `docs/` 下 10 篇当前文档。当前入口：[docs/README.md](../README.md)。
+> 状态：**归档索引**。这里的内容只用于考古，不覆盖 `docs/` 下的当前文档。当前入口：[docs/README.md](../README.md)。演进脉络见 [发展历史](./development-history.md)。
+
+## 2026-10-21 第三次归档
+
+蒸馏后的完整演进见 [发展历史](./development-history.md)（含 2026-10-21 写下的 Skill-first Career OS 与招聘官网投递助手方向，状态为 PROPOSAL）。
+
+本轮把仍散落在 `docs/` 下的过时施工契约与评审移入 [2026-10/](./2026-10/)，每篇顶部注明「已归档（2026-10-21）」：
+
+| 原路径 | 归档位置 |
+| --- | --- |
+| `docs/review/apple-bar/**` | [2026-10/review/apple-bar/](./2026-10/review/apple-bar/00-SYNTHESIS.md) |
+| `docs/plans/jobsource-contract-v1.md` | [2026-10/plans/](./2026-10/plans/jobsource-contract-v1.md) |
+| `docs/internal/proactive-contract.md` | [2026-10/internal/](./2026-10/internal/proactive-contract.md) |
+| `docs/implementation/migration-roadmap.md` | [2026-10/implementation/](./2026-10/implementation/migration-roadmap.md) |
+
+`docs/product/owner-career-journey.md` 与 `docs/product/video-parity-audit.md` 于 2026-10-23 随其余 `docs/product/` 一起移到 [pre-2026-11/product/](./pre-2026-11/product/)。
 
 ## 2026-10 文档重构
 
@@ -85,11 +100,11 @@
 
 ## 更早的归档（2026-09 及以前）
 
-# Historical Archives / 历史归档
+### Historical Archives / 历史归档
 
 Status: **HISTORICAL MATERIAL — NOT CURRENT AUTHORITY**
 
-Read [Development History / 发展历史](../history/development-history.md) for the distilled timeline. Current instructions start at [the documentation index](../README.md), [GOAL](../../GOAL.md) and [current product](../product/current-product.md).
+Read [发展历史](./development-history.md) for the distilled timeline. Current instructions start at [the documentation index](../README.md).
 
 归档保留决策来由和当时的结果。旧文档内部的 “current”“PASS”“active branch”、端口、宿主优先级和临时施工指令都只属于其原始时间；不得覆盖当前事实源。
 
