@@ -87,8 +87,8 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 | read_file | 读本地 PDF / Word / 图片里的文字（导入简历） | PR2 |
 | export_resume_pdf | 简历 doc → PDF 文件 | PR2 |
 | ask | 交给内置 Agent 处理一句话（Ctrl+K） | PR3 |
-| handoff | 把长任务交给后台 Codex，返回任务 id | PR4 |
-| handoff_status | 看后台任务进度 | PR4 |
+| handoff | 把长任务交给后台 Codex，返回任务 id | PR5 |
+| handoff_status | 看后台任务进度 | PR5 |
 
 工具的说明文字就是 Agent 看到的全部文档。每个工具的说明写清字段和枚举，Skill 只讲「什么时候用哪个工具」，不超过 4KB。
 
@@ -109,7 +109,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 - 系统提示词只有三件事：今天日期和 overview 摘要、工具说明、规则（不编造经历；对外的事只写草稿；长任务调用 handoff）。
 - 没配模型时，Ctrl+K 只做本地解析不了的提示：「先在设置里填模型，或者在 Codex 里说这句话」。
 
-## 8. 后台 Codex 交接（PR4）
+## 8. 后台 Codex 交接（PR5）
 
 - `handoff(task, job_id?)` 在后台启动 `codex exec`，带上 OfferU MCP 和 Skill，工作目录在数据目录下的 `runs/<id>/`。
 - 先验证能否无人值守：非交互模式、MCP 是否自动可用、沙箱是否允许访问 127.0.0.1。验证不过就退回「复制这段话到 Codex」。
@@ -123,7 +123,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 - 共用组件：EventList、RecentChanges、MarkdownEditor（PR2）、ChatDoc（PR3）、CommandK（PR3）。
 - 视觉：黑白灰，13px 正文，不用徽章、统计卡、彩色按钮、网格背景。
 
-## 10. 浏览器插件（第四期）
+## 10. 浏览器插件（PR4，第四期）
 
 - 在已适配的网申系统上自动读出表单字段（沿用 smartfill-v2 的站点规则）；其他网站点一下插件图标再读。
 - 页面右侧开小侧栏，用的是这个岗位的同一份网申对话 doc。
@@ -140,10 +140,10 @@ backend/app/core/   store.py  tools.py  agent.py  handoff.py  pdf.py
 backend/app/        main.py  mcp_server.py  entry.py
 backend/skill/      SKILL.md（≤4KB）
 frontend/src/       app/  components/core/  lib/core.ts
-extension/          smartfill（第四期改接 /api/tools）
+extension/          smartfill（PR4 改接 /api/tools）
 ```
 
-PR4 删除：`app/ops.py`、`app/services/`、`app/agents/`、`app/agent/`、旧 `routes/`、旧 Skill 生成器和 `models/models.py` 里的旧表。
+PR5 删除：`app/ops.py`、`app/services/`、`app/agents/`、`app/agent/`、旧 `routes/`、旧 Skill 生成器和 `models/models.py` 里的旧表。
 
 ## 13. 测试策略
 
