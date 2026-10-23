@@ -418,15 +418,15 @@ Current priorities are productization, not more top-level features:
 
 ## Contributing
 
-OfferU is moving quickly toward a public local-first release. Before contributing, read:
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-- [Overall design](./docs/01-overall-design.md) — product, authorities and glossary
-- [Interaction design](./docs/02-interaction-design.md) — navigation, interruption and anti-deadlock rules
-- [Agent runtime & security](./docs/08-module-agent-runtime.md) — Agent hosts, Registry, approval
-- [DEVELOPMENT.md](./DEVELOPMENT.md) — development setup
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-Please do not bypass the Operation Registry for business mutations, and do not introduce a second source
-of career truth.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for what the main repository accepts, including the rule on third-party integrations.
 
 ---
 

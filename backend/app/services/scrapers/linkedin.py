@@ -44,13 +44,11 @@ class LinkedInScraper(JobScraperBase):
             "urls": urls,
         }
 
-        api_url = (
-            f"https://api.apify.com/v2/acts/{self.actor_id}/run-sync-get-dataset-items"
-            f"?token={self.settings.apify_api_key}"
-        )
+        api_url = f"https://api.apify.com/v2/acts/{self.actor_id}/run-sync-get-dataset-items"
+        headers = {"Authorization": f"Bearer {self.settings.apify_api_key}"}
 
         async with httpx.AsyncClient(timeout=120) as client:
-            resp = await client.post(api_url, json=payload)
+            resp = await client.post(api_url, json=payload, headers=headers)
             if resp.status_code != 200:
                 return []
             raw_items = resp.json()
