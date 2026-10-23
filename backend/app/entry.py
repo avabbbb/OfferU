@@ -75,6 +75,19 @@ def start(*, open_browser: bool) -> int:
     return 0
 
 
+def _register_mcp() -> None:
+    """Let Codex / Claude Code see OfferU's tools directly: `offeru mcp` over stdio."""
+    import shutil
+    import subprocess
+
+    command = [shutil.which("offeru") or sys.executable, *([] if shutil.which("offeru") else ["-m", "app.entry"]), "mcp"]
+    for agent, add in (("codex", ["codex", "mcp", "add", "offeru", "--"]), ("claude", ["claude", "mcp", "add", "--scope", "user", "offeru", "--"])):
+        if not shutil.which(agent):
+            continue
+        done = subprocess.run([*add, *command], capture_output=True, text=True, timeout=30)
+        print(f"{agent} MCP: {'已接入' if done.returncode == 0 else (done.stderr or done.stdout).strip()[:200]}")
+
+
 def connect() -> int:
     from app.services.agent_integration import integration_manager
 
@@ -91,6 +104,7 @@ def connect() -> int:
     # Any agent reading the shared ~/.agents/skills (Codex, DSH, ...) also picks this up.
     result = integration_manager.adapter("external").install()
     print(f"通用 Skill 目录: {'已接入' if result.get('skill_status') == 'INSTALLED' else result.get('error')} → {integration_manager.adapter('external').skill_path()}")
+    _register_mcp()
     if not installed and result.get("skill_status") != "INSTALLED":
         return 1
     print("重开一个 Agent 会话后就能用 OfferU。")
