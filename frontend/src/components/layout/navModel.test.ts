@@ -2,15 +2,12 @@ import { describe, expect, it } from "vitest";
 import { PRIMARY_NAV, activePrimary, activeTab } from "./navModel";
 
 describe("primary navigation", () => {
-  it("has exactly six entries", () => {
-    expect(PRIMARY_NAV.map((item) => item.label)).toEqual(["今天", "岗位", "投递", "简历", "面试", "设置"]);
+  it("has five entries", () => {
+    expect(PRIMARY_NAV.map((item) => item.label)).toEqual(["今天", "岗位", "简历", "面试", "设置"]);
   });
 
   it.each([
     ["/", "今天"],
-    ["/applications", "投递"],
-    ["/email", "投递"],
-    ["/calendar", "投递"],
     ["/jobs", "岗位"],
     ["/jobs/42", "岗位"],
     ["/optimize", "简历"],

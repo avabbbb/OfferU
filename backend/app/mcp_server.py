@@ -1,133 +1,41 @@
+"""OfferU as an MCP server: the same tools as the workbench (app/core/tools.py), nothing more.
+
+`offeru mcp` runs it over stdio for Codex / Claude Code; the running app also serves it at /mcp.
+"""
+
 from __future__ import annotations
 
 import json
-from contextlib import asynccontextmanager
 from typing import Any
 
-from app.ops import execute_operation, get_operation_schema, list_operations
-from app.services.agent_skill_registry import agent_operation_names, skill_tool_catalog
+from mcp.server.fastmcp import FastMCP
+from mcp.types import TextContent, Tool as MCPTool
 
-try:
-    from mcp.server.fastmcp import FastMCP
+from app.core.tools import TOOLS, call
 
-    HAS_MCP_SERVER = True
-except ImportError:
-    HAS_MCP_SERVER = False
-
-    class FastMCP:  # type: ignore[no-redef]
-        """Fallback used when the optional MCP package is unavailable."""
-
-        def __init__(self, *args, **kwargs):
-            self.settings = type("Settings", (), {"streamable_http_path": "/"})()
-
-        def tool(self, *args, **kwargs):
-            def decorator(fn):
-                return fn
-
-            return decorator
-
-        def resource(self, *args, **kwargs):
-            def decorator(fn):
-                return fn
-
-            return decorator
-
-        @property
-        def session_manager(self):
-            @asynccontextmanager
-            async def _noop():
-                yield
-
-            return type("NoopSessionManager", (), {"run": lambda self: _noop()})()
-
-        def streamable_http_app(self):
-            raise RuntimeError("MCP package is not installed")
-
-
-mcp = FastMCP(
-    "OfferU Operation Registry",
-    instructions=(
-        "OfferU MCP 是统一 Operation Registry 的薄投影，不包含数据库、业务服务或任意 HTTP 逃生口。"
-        "先用 operation_catalog / operation_schema 发现能力。读操作和标记 L1_prepare 的草稿准备直接执行；requires_confirmation 的操作创建持久化提案。"
-        "MCP 不提供批准接口；使用者必须在 OfferU 桌面工作区审核并决定提案。"
-    ),
-    stateless_http=True,
-    json_response=True,
+HAS_MCP_SERVER = True
+INSTRUCTIONS = (
+    "OfferU 是用户本地的求职工作台。先调 overview 看阶段、下一步和待办；找用户的经历和说过的话用 search。"
+    "写入直接生效，用户能在「最近改动」里撤销，所以该存就存：用户提到的新经历、偏好、截止时间、面试安排都存下来。"
+    "只能用用户真实的经历写简历和网申，不编数字。不替用户提交网申、不发消息。"
 )
 
 
-@mcp.tool()
-async def operation_catalog(
-    group: str = "",
-    mutation_only: bool = False,
-    skill: str = "",
-) -> dict[str, Any]:
-    """List Registry-generated Operation contracts."""
+class OfferUMCP(FastMCP):
+    async def list_tools(self) -> list[MCPTool]:
+        return [MCPTool(name=t.name, description=t.description, inputSchema=t.input.model_json_schema()) for t in TOOLS.values()]
 
-    try:
-        catalog = skill_tool_catalog(list_operations(), skill)
-    except ValueError as exc:
-        return {"ok": False, "errors": [str(exc)]}
-    operations = catalog["operations"]
-    if group:
-        operations = [item for item in operations if item.get("group") == group]
-    if mutation_only:
-        operations = [
-            item
-            for item in operations
-            if any(
-                effect in {"write", "llm", "external"}
-                for effect in item.get("side_effects") or []
-            )
-        ]
-    return {
-        "ok": True,
-        "operation_count": len(operations),
-        "tool_contract": catalog["tool_contract"],
-        "skill_registry": catalog["skill_registry"],
-        "operations": operations,
-    }
+    async def call_tool(self, name: str, arguments: dict[str, Any]):  # type: ignore[override]
+        client = None
+        try:
+            client = self.get_context().session.client_params.clientInfo.name  # type: ignore[union-attr]
+        except Exception:  # noqa: BLE001 - client info is optional
+            pass
+        try:
+            result = call(name, arguments, actor=client or "agent")
+        except Exception as exc:  # noqa: BLE001 - tool errors go back to the agent as text
+            return [TextContent(type="text", text=f"错误：{exc}")]
+        return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False, default=str))]
 
 
-@mcp.tool()
-async def operation_schema(operation: str) -> dict[str, Any]:
-    """Read one Operation schema from the same Registry used by Python and CLI."""
-
-    schema = get_operation_schema(operation) if operation in agent_operation_names() else None
-    if schema is None:
-        return {"ok": False, "errors": [f"未知操作: {operation}"]}
-    return {"ok": True, "schema": schema}
-
-
-@mcp.tool()
-async def offeru_operation(
-    operation: str,
-    args: dict[str, Any] | None = None,
-    dry_run: bool = False,
-    run_id: str = "",
-) -> dict[str, Any]:
-    """Run an Operation; irreversible writes are queued for the user to confirm."""
-
-    if operation not in agent_operation_names():
-        return {"ok": False, "errors": ["该操作不属于 Agent Tool Surface"]}
-    from app.services.action_gate import run_gated_operation
-
-    return await run_gated_operation(
-        operation,
-        args or {},
-        surface="mcp",
-        dry_run=dry_run,
-        run_id=run_id,
-    )
-
-
-@mcp.resource("profile://current")
-async def resource_profile() -> str:
-    """Read the current profile through the Operation Registry."""
-
-    result = await execute_operation(
-        "get_profile",
-        {},
-        surface="mcp",
-    )
-    return json.dumps(result, ensure_ascii=False, indent=2)
+mcp = OfferUMCP("OfferU", instructions=INSTRUCTIONS, stateless_http=True, json_response=True)
