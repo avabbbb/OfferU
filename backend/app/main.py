@@ -480,19 +480,14 @@ def core_tool(name: str, request: Request, args: dict[str, Any] | None = None):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-class _RenderIn(BaseModel):
-    body: str = ""
-    template: str = "single"
+@app.get("/api/resume/templates/{template}.css")
+def resume_template_css(template: str):
+    """The live editor styles the page with the same CSS the PDF is printed with."""
+    from fastapi.responses import Response
 
+    from app.core import resume
 
-@app.post("/api/resume/render")
-def resume_render(req: _RenderIn):
-    """Live preview: the exact HTML the PDF is printed from."""
-    from fastapi.responses import HTMLResponse
-
-    from app.core import resume, store
-
-    return HTMLResponse(resume.render_html(req.body, req.template, (store.first("profile") or {}).get("photo")))
+    return Response(resume.css(template), media_type="text/css")
 
 
 @app.get("/api/resume/{doc_id}/pdf")

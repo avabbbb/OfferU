@@ -97,7 +97,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 
 - 简历是 doc（kind=resume）：`body` 是 Markdown，`template` 是 single / compact / photo。
 - `core/resume.py` 用 markdown-it 把 Markdown 转成 HTML，套 `core/templates/` 里的 CSS。`### A | B | 时间` 渲染成左右两端对齐的一行。
-- 预览（`POST /api/resume/render`）和 PDF（`GET /api/resume/{id}/pdf`、`export_resume_pdf`）用同一份 HTML，所以预览就是导出的样子。
+- 编辑器和 PDF（`GET /api/resume/{id}/pdf`、`export_resume_pdf`）共用同一份模板 CSS（`GET /api/resume/templates/{t}.css`，全部限定在 `.resume` 下），所以纸面就是导出的样子。没有单独的预览接口。
 - PDF 用 Playwright 驱动本机的 Chrome 或 Edge 打印，不随安装包带浏览器。
 - 证件照和导入的文件存在数据目录的 `files/`，档案里只存文件名（`POST /api/files` 上传）。
 
@@ -129,7 +129,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 
 - Vite + React + HashRouter，`lib/core.ts` 提供 `tool()`、`useTool()`（SWR）、`write()`（写完全局刷新）。页面只调工具，不调其他接口。
 - 页面：今天 `/`、岗位 `/jobs`、岗位详情 `/jobs/:id`、简历 `/resume/:id?`、档案 `/profile`（和简历同一个导航项，两个标签）、面试 `/interview`、设置 `/settings`。
-- 共用组件：EventList、RecentChanges、ChatDoc（PR3）、CommandK（PR3）。简历编辑器就是一个 textarea + 预览 iframe。
+- 共用组件：EventList、RecentChanges、ChatDoc（PR3）、CommandK（PR3）。简历编辑器是 TipTap 纸面编辑（Typora 式：光标所在行显示原文，其余按 PDF 排版），存的仍是 Markdown；「源码」切到 textarea。
 - 视觉：黑白灰，13px 正文，不用徽章、统计卡、彩色按钮、网格背景。
 
 ## 11. 浏览器插件（PR4，第四期）

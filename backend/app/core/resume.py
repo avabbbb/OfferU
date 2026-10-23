@@ -28,11 +28,17 @@ _md = MarkdownIt("commonmark", {"html": False, "linkify": False}).enable("table"
 
 
 def _heading3(match: re.Match) -> str:
+    """### A | B | C → A · B ······ C (the editor decorates the same way, see ResumeEditor)."""
     parts = [p.strip() for p in match.group(1).split("|")]
     if len(parts) == 1:
-        return f"<h3><span class=\"l\"><b>{parts[0]}</b></span></h3>"
-    left = f"<b>{parts[0]}</b>" + "".join(f"<span class=\"sep\"></span>{p}" for p in parts[1:-1])
-    return f"<h3><span class=\"l\">{left}</span><span class=\"r\">{parts[-1]}</span></h3>"
+        return f"<h3>{parts[0]}</h3>"
+    middle = "".join(f'<span class="sep">|</span><span class="seg">{p}</span>' for p in parts[1:-1])
+    return f'<h3>{parts[0]}{middle}<span class="sep-r">|</span><span class="r">{parts[-1]}</span></h3>'
+
+
+def css(template: str) -> str:
+    template = template if template in TEMPLATES else "single"
+    return (_CSS / "base.css").read_text(encoding="utf-8") + (_CSS / f"{template}.css").read_text(encoding="utf-8")
 
 
 def _photo_uri(photo: Optional[str]) -> Optional[str]:
@@ -45,15 +51,12 @@ def _photo_uri(photo: Optional[str]) -> Optional[str]:
 
 
 def render_html(body: str, template: str = "single", photo: Optional[str] = None, title: str = "简历") -> str:
-    template = template if template in TEMPLATES else "single"
     inner = re.sub(r"<h3>(.*?)</h3>", _heading3, _md.render(body or ""), flags=re.S)
-    # Header = the h1 and the paragraph right after it.
-    header = re.match(r"\s*(<h1>.*?</h1>)\s*(<p>.*?</p>)?", inner, re.S)
-    head_html, rest = ("", inner) if not header else (header.group(0), inner[header.end():])
     img = _photo_uri(photo) if template == "photo" else None
-    head = f"<header><div>{head_html}</div>{f'<img src={html.escape(img, quote=True)!r} alt=\"\">' if img else ''}</header>"
-    css = (_CSS / "base.css").read_text(encoding="utf-8") + (_CSS / f"{template}.css").read_text(encoding="utf-8")
-    return f"<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><title>{html.escape(title)}</title><style>{css}</style></head><body><main class=\"resume\">{head}{rest}</main></body></html>"
+    photo_tag = f'<img class="photo" src="{html.escape(img, quote=True)}" alt="">' if img else ""
+    return (f'<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>{html.escape(title)}</title>'
+            f"<style>@page {{ size: A4; margin: 0; }} html, body {{ margin: 0; }}{css(template)}</style></head>"
+            f'<body><main class="resume{" photo-on" if img else ""}">{photo_tag}{inner}</main></body></html>')
 
 
 def _launch(playwright):

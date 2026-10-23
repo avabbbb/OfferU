@@ -17,3 +17,10 @@ describe("resumeFromProfile", () => {
     expect(md).toContain("## 技能\n- 语言：Go、Python");
   });
 });
+
+describe("tidy", () => {
+  it("drops the empty paragraphs Enter leaves behind", async () => {
+    const { tidy } = await import("@/components/core/ResumeEditor");
+    expect(tidy("- a\n\n\n\n&nbsp;\n\n## 技能\n\n- Go\n\n")).toBe("- a\n\n## 技能\n\n- Go\n");
+  });
+});

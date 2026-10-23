@@ -5,39 +5,13 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { mutate } from "swr";
 
-import { apiUrl, type Doc, type Job, type Memory, type Profile, renderResume, TEMPLATES, type Template, tool, useTool, write } from "@/lib/core";
+import { ResumeEditor } from "@/components/core/ResumeEditor";
+import { apiUrl, type Doc, type Job, type Memory, type Profile, TEMPLATES, type Template, tool, useTool, write } from "@/lib/core";
 import { resumeFromProfile } from "@/lib/resumeDraft";
 
-const A4 = 794; // px at 96dpi
-
-/** 和 PDF 同一份 HTML，按容器宽度缩放。 */
-function Preview({ body, template }: { body: string; template: Template }) {
-  const [html, setHtml] = useState("");
-  const [scale, setScale] = useState(0.6);
-  const box = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => void renderResume(body, template, ctrl.signal).then(setHtml).catch(() => {}), 250);
-    return () => { clearTimeout(t); ctrl.abort(); };
-  }, [body, template]);
-  useEffect(() => {
-    const el = box.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => setScale(Math.min(1, el.clientWidth / A4)));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  return (
-    <div ref={box} className="min-w-0">
-      <div style={{ width: A4 * scale, height: 1123 * scale }} className="overflow-hidden rounded-md shadow-[0_0_0_1px_var(--border),0_8px_24px_rgba(0,0,0,0.06)]">
-        <iframe title="简历预览" srcDoc={html} style={{ width: A4, height: 1123, transform: `scale(${scale})`, transformOrigin: "0 0", border: 0, background: "#fff" }} />
-      </div>
-    </div>
-  );
-}
-
-function Editor({ doc, jobs }: { doc: Doc; jobs: Job[] }) {
+function Editor({ doc, jobs, photo }: { doc: Doc; jobs: Job[]; photo?: string }) {
   const router = useRouter();
+  const [source, setSource] = useState(false);
   const [body, setBody] = useState(doc.body ?? "");
   const [title, setTitle] = useState(doc.title ?? "");
   const [saved, setSaved] = useState(true);
@@ -67,18 +41,18 @@ function Editor({ doc, jobs }: { doc: Doc; jobs: Job[] }) {
               className={template === id ? "font-medium text-[var(--foreground)]" : "text-[var(--foreground-muted)] hover:text-[var(--foreground)]"}>{TEMPLATES[id]}</button>
           ))}
         </div>
+        <button type="button" onClick={() => setSource(!source)} style={{ fontSize: 13 }} aria-pressed={source}
+          className={source ? "text-[13px] font-medium text-[var(--foreground)]" : "text-[13px] text-[var(--foreground-muted)] hover:text-[var(--foreground)]"}>源码</button>
         <span className="w-12 text-[12px] text-[var(--foreground-muted)]">{saved ? "已保存" : "保存中"}</span>
         <a href={apiUrl(`/api/resume/${doc.id}/pdf`)} download style={{ fontSize: 13 }}
           className="rounded-md border border-[var(--border)] px-3 py-1.5 text-[13px] text-[var(--foreground)] hover:bg-[var(--surface)]">导出 PDF</a>
         <button type="button" aria-label="删除这份简历" style={{ fontSize: 12.5 }} className="text-[12.5px] text-[var(--foreground-muted)] hover:text-[var(--foreground)]"
           onClick={async () => { await write("delete", { type: "doc", id: doc.id }); router.push("/resume"); }}>删除</button>
       </div>
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 overflow-auto px-6 py-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)]">
-        <textarea value={body} onChange={(e) => setBody(e.target.value)} aria-label="简历内容（Markdown）" spellCheck={false}
-          style={{ fontSize: 13 }}
-          className="min-h-[70vh] w-full resize-none bg-transparent font-mono text-[13px] leading-6 text-[var(--foreground)] outline-none" />
-        <Preview body={body} template={template} />
-      </div>
+      <p className="px-6 pt-3 text-[12px] text-[var(--foreground-muted)]">
+        直接在纸上改，和 Typora 一样用 Markdown 的写法：{["# 名字", "## 分节", "### 公司 | 职位 | 时间", "- 要点", "**加粗**"].map((t) => <span key={t} className="ml-3 text-[var(--foreground)]">{t}</span>)}
+      </p>
+      <ResumeEditor body={body} template={template} photo={photo} source={source} onChange={setBody} />
     </div>
   );
 }
@@ -89,6 +63,7 @@ export default function ResumePage() {
   const router = useRouter();
   const { data } = useTool<{ items: Doc[] }>("list", { type: "doc", kind: "resume", full: true, limit: 200 }, 5000);
   const { data: jobData } = useTool<{ items: Job[] }>("list", { type: "job", limit: 500 });
+  const { data: profileData } = useTool<{ record: Profile | null }>("get", { type: "profile" });
   if (!data) return null;
   const docs = [...data.items].sort((a, b) => Number(Boolean(a.job_id)) - Number(Boolean(b.job_id)) || a.id - b.id);
   const jobs = jobData?.items ?? [];
@@ -111,7 +86,7 @@ export default function ResumePage() {
     return (
       <div className="mx-auto max-w-3xl px-6 py-10">
         <h1 className="text-[24px] font-semibold tracking-tight text-[var(--foreground)]">简历</h1>
-        <p className="mt-1 text-[13.5px] text-[var(--foreground-muted)]">先有一份主简历，再按岗位复制一份改。导出的 PDF 和右边预览一模一样。</p>
+        <p className="mt-1 text-[13.5px] text-[var(--foreground-muted)]">先有一份主简历，再按岗位复制一份改。直接在纸上写，导出的 PDF 就是你看到的样子。</p>
         <div className="mt-6 flex gap-3">
           <button type="button" onClick={() => void create(true)} style={{ fontSize: 13 }} className="rounded-md bg-[var(--foreground)] px-3 py-1.5 text-[13px] font-medium text-[var(--background)]">从档案生成</button>
           <button type="button" onClick={() => void create(false)} style={{ fontSize: 13 }} className="rounded-md border border-[var(--border)] px-3 py-1.5 text-[13px] text-[var(--foreground)] hover:bg-[var(--surface)]">空白开始</button>
@@ -133,7 +108,7 @@ export default function ResumePage() {
         ))}
         <button type="button" onClick={() => void create(true)} style={{ fontSize: 12.5 }} className="mt-2 px-2 text-[12.5px] text-[var(--foreground-muted)] hover:text-[var(--foreground)]">从档案新建</button>
       </nav>
-      <Editor key={current.id} doc={current} jobs={jobs} />
+      <Editor key={current.id} doc={current} jobs={jobs} photo={profileData?.record?.photo} />
     </div>
   );
 }

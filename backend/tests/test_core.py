@@ -56,7 +56,7 @@ def test_mcp_and_http_share_tools(tmp_path, monkeypatch):
 
 
 def test_resume_import_edit_export(tmp_path, monkeypatch):
-    """导入旧简历 → 档案 → Markdown 简历（连续编辑只算一条改动）→ 预览和 PDF 是同一份排版。"""
+    """导入旧简历 → 档案 → Markdown 简历（连续编辑只算一条改动）→ 编辑器和 PDF 用同一份模板样式。"""
     monkeypatch.setenv("OFFERU_DATA_DIR", str(tmp_path))
     import docx
     import fitz
@@ -80,8 +80,7 @@ def test_resume_import_edit_export(tmp_path, monkeypatch):
         assert first == second
         assert client.post("/api/tools/save", json={"type": "doc", "id": doc["id"], "data": {"template": "fancy"}}).status_code == 400
 
-        preview = client.post("/api/resume/render", json={"body": body, "template": "compact"}).text
-        assert '<span class="r">2024.06 – 2024.09</span>' in preview
+        assert "--fs: 9.2pt" in client.get("/api/resume/templates/compact.css").text
         pdf = client.get(f"/api/resume/{doc['id']}/pdf").content
         assert "接口延迟从 120ms 降到 40ms" in fitz.open(stream=pdf, filetype="pdf")[0].get_text()
         path = client.post("/api/tools/export_resume_pdf", json={"id": doc["id"]}).json()["path"]

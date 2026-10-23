@@ -60,14 +60,6 @@ export function when(at?: string): string {
 
 export const apiUrl = (path: string) => `${resolveApiBase()}${path}`;
 
-/** 预览和 PDF 用同一份 HTML（backend/app/core/resume.py）。 */
-export async function renderResume(body: string, template: Template, signal?: AbortSignal): Promise<string> {
-  const res = await fetch(apiUrl("/api/resume/render"), {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body, template }), signal,
-  });
-  return res.text();
-}
-
 export async function upload(file: File): Promise<{ name: string; original: string }> {
   const form = new FormData();
   form.append("file", file);
