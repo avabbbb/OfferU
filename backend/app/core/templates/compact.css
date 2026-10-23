@@ -1,0 +1,4 @@
+.resume { --pad-y: 10mm; --pad-x: 12mm; --fs: 9.2pt; --lh: 1.4; --name: 16pt; --gap: 3.2mm; }
+header { border-bottom: .3mm solid #1d1d1f; padding-bottom: 2mm; }
+h2 { border-bottom: none; padding-bottom: 0; text-transform: none; color: #1d1d1f; }
+h3 { margin-top: 1.4mm; }

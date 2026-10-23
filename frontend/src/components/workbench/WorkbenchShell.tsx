@@ -44,8 +44,6 @@ interface FocusRule {
 }
 
 const FOCUS_RULES: FocusRule[] = [
-  { pattern: /^\/resume\/print\//, backHref: "/resume", backLabel: "返回材料", bare: true },
-  { pattern: /^\/resume\/\d+/, backHref: "/resume", backLabel: "返回材料", ownChrome: true },
   { pattern: /^\/interview\/ai(\/|$)/, backHref: "/interview", backLabel: "返回面试" },
   { pattern: /^\/interview\/pose(\/|$)/, backHref: "/interview", backLabel: "返回面试" },
 ];

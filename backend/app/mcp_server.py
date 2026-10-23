@@ -8,6 +8,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+import anyio
+
 from mcp.server.fastmcp import FastMCP
 from mcp.types import TextContent, Tool as MCPTool
 
@@ -32,7 +34,7 @@ class OfferUMCP(FastMCP):
         except Exception:  # noqa: BLE001 - client info is optional
             pass
         try:
-            result = call(name, arguments, actor=client or "agent")
+            result = await anyio.to_thread.run_sync(lambda: call(name, arguments, actor=client or "agent"))
         except Exception as exc:  # noqa: BLE001 - tool errors go back to the agent as text
             return [TextContent(type="text", text=f"错误：{exc}")]
         return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False, default=str))]

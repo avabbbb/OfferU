@@ -25,7 +25,7 @@ export const PRIMARY_NAV: PrimaryNavItem[] = [
   { href: "/", label: "今天", icon: Sun, tabs: [{ href: "/", label: "今天", match: ["/"] }] },
   { href: "/jobs", label: "岗位", icon: Briefcase, tabs: [{ href: "/jobs", label: "岗位", match: ["/jobs"] }] },
   // 简历自己的「我的简历 / 岗位定制 / 档案」切换在页内（ResumeHub），这里只占一个入口，避免两排标签。
-  { href: "/resume", label: "简历", icon: FileText, tabs: [{ href: "/resume", label: "简历", match: ["/resume", "/optimize", "/profile"] }] },
+  { href: "/resume", label: "简历", icon: FileText, tabs: [{ href: "/resume", label: "简历", match: ["/resume", "/optimize"] }, { href: "/profile", label: "档案", match: ["/profile"] }] },
   {
     href: "/interview",
     label: "面试",
