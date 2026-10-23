@@ -13,8 +13,8 @@ Bug 修复可直接提 PR；新功能与重构请先开 Issue。
 
 ## What the main repository accepts / 主仓接受什么
 
-- OfferU is a local, single-user app. Business mutations go through the Operation Registry, and configuration goes through `app.config` settings.
-  OfferU 是本地单人应用；业务写入走 Operation Registry，配置走 `app.config` settings。
+- OfferU is a local, single-user app. Writes go through the repository's existing write path (do not add a second source of truth), configuration goes through `app.config` settings, and `docs/README.md` is the design authority.
+  OfferU 是本地单人应用；写入走仓库现有的写入路径，不另起一套数据真相；配置走 `app.config` settings；设计以 `docs/README.md` 为准。
 - No affiliate, referral or promotional links. PRs that add them will be closed.
   不接受返佣、推荐或推广链接，此类 PR 会被关闭。
 - Changes must pass CI. If you used AI tools, say so in the PR.
