@@ -38,12 +38,12 @@ export function AddEvent({ jobId }: { jobId?: number }) {
   const field = "rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-[13px] text-[var(--foreground)] outline-none focus:border-[var(--foreground-muted)]";
   return (
     <form className="mt-2 flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); void add(); }}>
-      <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="加一件事" aria-label="事项" className={`${field} min-w-[200px] flex-1`} />
-      <select value={kind} onChange={(e) => setKind(e.target.value as EventKind)} aria-label="类型" className={field}>
+      <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="加一件事" aria-label="事项" style={{ fontSize: 13 }} className={`${field} min-w-[200px] flex-1`} />
+      <select value={kind} onChange={(e) => setKind(e.target.value as EventKind)} aria-label="类型" style={{ fontSize: 13 }} className={field}>
         {Object.entries(EVENT_KIND).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
       </select>
-      <input type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} aria-label="时间" className={field} />
-      <button type="submit" disabled={!title.trim()} className="rounded-md bg-[var(--foreground)] px-3 py-1.5 text-[13px] font-medium text-[var(--background)] disabled:opacity-40">添加</button>
+      <input type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} aria-label="时间" style={{ fontSize: 13 }} className={field} />
+      <button type="submit" style={{ fontSize: 13 }} disabled={!title.trim()} className="rounded-md bg-[var(--foreground)] px-3 py-1.5 text-[13px] font-medium text-[var(--background)] disabled:opacity-40">添加</button>
     </form>
   );
 }

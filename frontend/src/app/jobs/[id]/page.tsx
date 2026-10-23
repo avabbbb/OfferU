@@ -18,7 +18,7 @@ function LongText({ job, field, label, placeholder }: { job: Job; field: "jd" | 
       <textarea value={value} onChange={(e) => setValue(e.target.value)} placeholder={placeholder} aria-label={label}
         rows={field === "jd" ? 10 : 4}
         onBlur={() => { if (value !== (job[field] ?? "")) void write("save", { type: "job", id: job.id, data: { [field]: value || null } }); }}
-        className="mt-2 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3 text-[13px] leading-6 text-[var(--foreground)] outline-none focus:border-[var(--foreground-muted)]" />
+        style={{ fontSize: 13 }} className="mt-2 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3 text-[13px] leading-6 text-[var(--foreground)] outline-none focus:border-[var(--foreground-muted)]" />
     </section>
   );
 }
@@ -52,7 +52,7 @@ export default function JobDetailPage() {
       <LongText job={job} field="jd" label="岗位描述" placeholder="贴岗位 JD，Agent 改简历、写网申都会用到" />
       <LongText job={job} field="notes" label="备注" placeholder="内推人、薪资、面试官说了什么……" />
 
-      <button type="button" className="text-[13px] text-[var(--foreground-muted)] hover:text-[var(--foreground)]"
+      <button type="button" style={{ fontSize: 13 }} className="text-[13px] text-[var(--foreground-muted)] hover:text-[var(--foreground)]"
         onClick={async () => { await write("delete", { type: "job", id: job.id }); router.push("/jobs"); }}>
         删除这个岗位（可在今天页撤销）
       </button>

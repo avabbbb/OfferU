@@ -13,7 +13,7 @@ const field = "rounded-md border border-[var(--border)] bg-[var(--surface)] px-2
 
 export function StatusSelect({ job }: { job: Job }) {
   return (
-    <select value={job.status} aria-label="投递状态" className={`${field} py-1`}
+    <select value={job.status} aria-label="投递状态" style={{ fontSize: 13 }} className={`${field} py-1`}
       onChange={(e) => void write("save", { type: "job", id: job.id, data: { status: e.target.value } })}>
       {Object.entries(JOB_STATUS).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
     </select>
@@ -40,10 +40,10 @@ export default function JobsPage() {
     <div className="mx-auto max-w-4xl space-y-6 px-6 py-10">
       <h1 className="text-[24px] font-semibold tracking-tight text-[var(--foreground)]">岗位</h1>
       <form className="flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); void add(); }}>
-        <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="公司" aria-label="公司" className={`${field} w-36`} />
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="岗位" aria-label="岗位" className={`${field} w-48`} />
-        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="链接（可选）" aria-label="链接" className={`${field} min-w-[180px] flex-1`} />
-        <button type="submit" disabled={!company.trim() && !title.trim()} className="rounded-md bg-[var(--foreground)] px-3 py-1.5 text-[13px] font-medium text-[var(--background)] disabled:opacity-40">添加</button>
+        <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="公司" aria-label="公司" style={{ fontSize: 13 }} className={`${field} w-36`} />
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="岗位" aria-label="岗位" style={{ fontSize: 13 }} className={`${field} w-48`} />
+        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="链接（可选）" aria-label="链接" style={{ fontSize: 13 }} className={`${field} min-w-[180px] flex-1`} />
+        <button type="submit" style={{ fontSize: 13 }} disabled={!company.trim() && !title.trim()} className="rounded-md bg-[var(--foreground)] px-3 py-1.5 text-[13px] font-medium text-[var(--background)] disabled:opacity-40">添加</button>
       </form>
 
       <div className="flex gap-4 border-b border-[var(--border)] text-[13px]">

@@ -14,7 +14,6 @@ import { ArrowLeft, Bot } from "lucide-react";
 import { AGENT_COMPOSE_EVENT, AGENT_TOGGLE_EVENT, toggleAgentDrawer } from "@/lib/agentCompose";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { SectionTabs } from "@/components/layout/SectionTabs";
-import { OnboardingGate } from "@/components/onboarding/OnboardingGate";
 import { WorkbenchProvider, useWorkbench } from "@/lib/workbench";
 import { AgentConnectionProvider } from "@/lib/agentConnection";
 import { AgentConnectionDialog, AgentConnectionStatus } from "./AgentConnectionPanel";
@@ -205,7 +204,7 @@ export function WorkbenchShell({ children }: { children: React.ReactNode }) {
     <WorkbenchProvider>
       <AgentConnectionProvider>
         <WorkbenchFrame>
-          <OnboardingGate>{children}</OnboardingGate>
+          {children}
         </WorkbenchFrame>
         <AgentConnectionDialog />
       </AgentConnectionProvider>
