@@ -1,5 +1,7 @@
 # 文档归档
 
+> 2026-10-23：旧的 docs/01–09、docs/product、docs/evidence 和旧 AGENTS.md 移到了 [pre-2026-11/](./pre-2026-11/)。当前文档只有 [PRD](../PRD.md)、[DESIGN](../DESIGN.md)、[PLAN](../PLAN.md)。
+
 > 状态：**归档索引**。这里的内容只用于考古，不覆盖 `docs/` 下 10 篇当前文档。当前入口：[docs/README.md](../README.md)。
 
 ## 2026-10 文档重构
