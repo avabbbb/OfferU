@@ -38,12 +38,23 @@ def configure(data_dir: Path | None) -> Path:
     return resolved
 
 
-def _running() -> bool:
-    try:
-        with urllib.request.urlopen(f"{BASE_URL}/api/health", timeout=1) as response:
-            return response.status == 200
-    except OSError:
-        return False
+def _running(attempts: int = 1, timeout: float = 1) -> bool:
+    for _ in range(attempts):
+        try:
+            with urllib.request.urlopen(f"{BASE_URL}/api/health", timeout=timeout) as response:
+                if response.status == 200:
+                    return True
+        except OSError:
+            pass
+    return False
+
+
+def _port_taken() -> bool:
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(1)
+        return sock.connect_ex(("127.0.0.1", PORT)) == 0
 
 
 def _open_when_ready(url: str) -> None:
@@ -54,12 +65,32 @@ def _open_when_ready(url: str) -> None:
         time.sleep(0.5)
 
 
+def _running_data_root() -> str | None:
+    import json
+
+    try:
+        with urllib.request.urlopen(f"{BASE_URL}/api/health", timeout=1) as response:
+            body = json.loads(response.read().decode("utf-8"))
+    except (OSError, ValueError):
+        return None
+    root = (body.get("build_identity") or {}).get("data_root")
+    return str(root) if root else None
+
+
 def start(*, open_browser: bool) -> int:
-    if _running():
+    if _running(attempts=2, timeout=3):
+        other, mine = _running_data_root(), os.environ["OFFERU_DATA_DIR"]
+        if other and Path(other).resolve() != Path(mine).resolve():
+            print(f"8766 上已经有一个 OfferU 在用另一个数据目录：{other}", file=sys.stderr)
+            print(f"这次指定的是：{mine}。先关掉那个实例再启动，否则你看到的是旧数据。", file=sys.stderr)
+            return 2
         print(f"OfferU 已在运行：{BASE_URL}")
         if open_browser:
             webbrowser.open(f"{BASE_URL}/")
         return 0
+    if _port_taken():
+        print(f"{PORT} 端口已被占用，但健康检查没有响应。先关掉占用该端口的进程再启动。", file=sys.stderr)
+        return 2
 
     os.environ["OFFERU_APPROVAL_TOKEN"] = secrets.token_urlsafe(32)
     import uvicorn
@@ -76,16 +107,42 @@ def start(*, open_browser: bool) -> int:
 
 
 def _register_mcp() -> None:
-    """Let Codex / Claude Code see OfferU's tools directly: `offeru mcp` over stdio."""
+    """Let Codex / Claude Code see OfferU's tools directly: offeru mcp over stdio."""
     import shutil
     import subprocess
 
     command = [shutil.which("offeru") or sys.executable, *([] if shutil.which("offeru") else ["-m", "app.entry"]), "mcp"]
-    for agent, add in (("codex", ["codex", "mcp", "add", "offeru", "--"]), ("claude", ["claude", "mcp", "add", "--scope", "user", "offeru", "--"])):
+    data_env = f"OFFERU_DATA_DIR={os.environ['OFFERU_DATA_DIR']}"
+    adds = (
+        ("codex", ["codex", "mcp", "add", "offeru", "--env", data_env, "--"]),
+        ("claude", ["claude", "mcp", "add", "--scope", "user", "-e", data_env, "offeru", "--"]),
+    )
+    for agent, add in adds:
         if not shutil.which(agent):
             continue
         done = subprocess.run([*add, *command], capture_output=True, text=True, timeout=30)
         print(f"{agent} MCP: {'已接入' if done.returncode == 0 else (done.stderr or done.stdout).strip()[:200]}")
+        if agent == "codex" and done.returncode == 0:
+            print(f"codex 后台运行自动批准 OfferU 工具: {_codex_auto_approve()}")
+
+
+def _codex_auto_approve(config: Path | None = None) -> str:
+    """codex exec 没人点批准弹窗，会静默取消每次 MCP 调用并仍然 exit 0。给 offeru 这一个服务打开 approve。"""
+    path = config or Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex") / "config.toml"
+    if not path.exists():
+        return f"找不到 {path}"
+    lines = path.read_text(encoding="utf-8").splitlines()
+    stripped = [line.strip() for line in lines]
+    header = "[mcp_servers.offeru]"
+    if header not in stripped:
+        return f"{path} 里没有 {header}"
+    start = stripped.index(header)
+    end = next((i for i in range(start + 1, len(lines)) if stripped[i].startswith("[")), len(lines))
+    if any(stripped[i].startswith("default_tools_approval_mode") for i in range(start + 1, end)):
+        return "已是打开状态"
+    lines.insert(start + 1, 'default_tools_approval_mode = "approve"')
+    path.write_text(chr(10).join(lines) + chr(10), encoding="utf-8")
+    return "已打开"
 
 
 def connect() -> int:

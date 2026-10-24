@@ -364,6 +364,18 @@ def _router_transcript(
     return "\n".join(rows)
 
 
+def _llm_failure_message(error: object) -> str:
+    text = str(error or "")
+    low = text.lower()
+    if any(k in low for k in ("401", "invalid api key", "unauthorized", "authentication")):
+        return "模型 API key 无效或已过期（网关返回 401）。请到「设置 → 模型」更换 key 后重试。"
+    if any(k in low for k in ("403", "forbidden")):
+        return "模型网关拒绝了请求（403）。请检查 key 权限或网关地址。"
+    if text:
+        return f"模型调用失败：{text[:200]}"
+    return "Skill 自动路由无响应（LLM 未返回结果）；请显式选择技能后重试。"
+
+
 async def _auto_route_skill(
     *,
     user_message: str,
@@ -385,6 +397,9 @@ async def _auto_route_skill(
     catalog_rows = "\n".join(
         f'- "{skill.id}": {skill.description}' for skill in candidates
     )
+    from app.agents import llm as _llm_module
+
+    _llm_module.LAST_ERROR["message"] = None
     try:
         raw = await asyncio.wait_for(
             chat_completion(
@@ -417,7 +432,7 @@ async def _auto_route_skill(
             f"Skill 自动路由失败：{safe_error_message(exc)}"
         ) from exc
     if not raw:
-        raise SkillRoutingError("Skill 自动路由无响应（LLM 未返回结果）；请显式选择技能后重试。")
+        raise SkillRoutingError(_llm_failure_message(_llm_module.LAST_ERROR.get("message")))
     parsed = extract_json(raw)
     selected_id = str(parsed.get("skill_id") or "").strip() if isinstance(parsed, dict) else ""
     resolved = resolve_skill(selected_id) if selected_id else None
