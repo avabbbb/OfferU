@@ -586,11 +586,15 @@ async def diagnostics_runtime_identity(request: Request) -> dict[str, object]:
 
 # ---- Lite install: serve the workbench from the API origin ----
 def _mount_workbench() -> None:
-    from app.runtime_paths import packaged_resource_dir
+    import mimetypes
 
-    packaged = packaged_resource_dir()
-    web = packaged / "resume-frontend" if packaged else None
-    if os.getenv("OFFERU_RUNTIME_MODE") == "lite" and web and (web / "index.html").is_file():
+    from app.runtime_paths import resume_frontend_dir
+
+    # Windows registry often maps .js to text/plain; browsers refuse such module scripts.
+    for ext, mime in ((".js", "text/javascript"), (".mjs", "text/javascript"), (".css", "text/css"), (".svg", "image/svg+xml")):
+        mimetypes.add_type(mime, ext)
+    web = resume_frontend_dir()
+    if os.getenv("OFFERU_RUNTIME_MODE") == "lite" and (web / "index.html").is_file():
         app.mount("/", StaticFiles(directory=web, html=True), name="workbench")
 
 
