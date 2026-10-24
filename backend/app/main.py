@@ -59,7 +59,7 @@ if settings.offeru_enable_mcp:
 else:
     mcp_server = None
     _HAS_MCP = False
-from app.routes import config, interview, main_agent, interviews, research, bridge, connections
+from app.routes import config, interview, main_agent, interviews, research, bridge, connections, boss
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -433,6 +433,7 @@ app.include_router(config.router, prefix="/api/config", tags=["Config"])
 app.include_router(interview.router, prefix="/api/interview", tags=["Interview"])
 app.include_router(bridge.router, prefix="/api/bridge", tags=["Bridge"])
 app.include_router(connections.router, prefix="/api/connections", tags=["Connections"])
+app.include_router(boss.router, prefix="/api/applications", tags=["BOSS"])
 
 # ---- 静态文件（头像等上传文件） ----
 UPLOAD_DIR = os.fspath(runtime_uploads_dir())
