@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Any, Callable, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -17,17 +18,18 @@ from app.core import store
 JOB_STATUS = {"saved": "想投", "applied": "已投递", "test": "笔试 / 测评", "interview": "面试中",
               "offer": "offer", "rejected": "未通过", "closed": "不投了"}
 EVENT_KIND = {"todo": "待办", "deadline": "截止", "test": "笔试 / 测评", "interview": "面试"}
+RESUME_TEMPLATE = {"single": "单栏", "compact": "紧凑", "photo": "带照片"}
 DOC_KIND = {"resume": "简历", "apply_chat": "官网投递对话", "review": "面试复盘", "research": "调研", "note": "笔记"}
 MEMORY_KIND = {"experience": "实习 / 工作", "project": "项目", "education": "教育", "skill": "技能",
                "award": "奖项 / 证书", "preference": "偏好", "note": "其他"}
 TYPE_LABEL = {"profile": "档案", "memory": "记忆", "job": "岗位", "event": "事项", "doc": "文档"}
 
 FIELDS = {
-    "profile": "唯一一份。name, school, major, degree, grad_year, phone, email, city, target（求职方向）, stage（用户自己说的阶段）, about",
+    "profile": "唯一一份。name, school, major, degree, grad_year, phone, email, city, target（求职方向）, stage（用户自己说的阶段）, about, photo（证件照文件名）",
     "memory": f"职业记忆，一条一件事。kind: {'/'.join(MEMORY_KIND)}; title; body（具体经历、数字、用户原话）; start, end; tags",
     "job": f"岗位和投递状态。company, title, status: {'/'.join(JOB_STATUS)}; url, city, jd, notes, applied_at",
     "event": f"待办和日程。title, kind: {'/'.join(EVENT_KIND)}; at（YYYY-MM-DD 或 YYYY-MM-DDTHH:MM，可空）, done, job_id, notes",
-    "doc": f"文档。kind: {'/'.join(DOC_KIND)}; title, body（Markdown）, job_id, template（简历模板）",
+    "doc": f"文档。kind: {'/'.join(DOC_KIND)}; title, body（Markdown）, job_id, template（简历模板：single 单栏 / compact 紧凑 / photo 带照片）。简历 body 的写法：第一行 # 名字，下一段是联系方式，## 分节，### 学校或公司 | 专业或职位 | 时间（最后一段靠右），- 要点",
 }
 RecordType = Literal["profile", "memory", "job", "event", "doc"]
 
@@ -69,6 +71,7 @@ def _check(type_: str, data: dict[str, Any], creating: bool) -> None:
             datetime.fromisoformat(str(data["at"]))
     elif type_ == "doc":
         one_of("kind", DOC_KIND)
+        one_of("template", RESUME_TEMPLATE)
         if creating and not data.get("kind"):
             raise ValueError("文档要有 kind")
     elif type_ == "memory":
@@ -135,11 +138,12 @@ class ListIn(_In):
     kind: Optional[str] = None
     job_id: Optional[int] = None
     done: Optional[bool] = Field(None, description="事项是否完成")
+    full: bool = Field(False, description="返回全文，不截断")
     limit: int = Field(50, ge=1, le=500)
 
 
 def list_(type: str, status: Optional[str] = None, kind: Optional[str] = None, job_id: Optional[int] = None,
-          done: Optional[bool] = None, limit: int = 50, *, actor: str = "") -> dict[str, Any]:
+          done: Optional[bool] = None, full: bool = False, limit: int = 50, *, actor: str = "") -> dict[str, Any]:
     items = store.all_of(type, job_id=job_id)
     if status:
         items = [i for i in items if i.get("status") == status]
@@ -149,7 +153,7 @@ def list_(type: str, status: Optional[str] = None, kind: Optional[str] = None, j
         items = [i for i in items if bool(i.get("done")) == done]
     if type == "event":
         items.sort(key=lambda e: (bool(e.get("done")), e.get("at") or "9999"))
-    return {"total": len(items), "items": [_brief(i) for i in items[:limit]]}
+    return {"total": len(items), "items": [{**i, "label": label(i)} if full else _brief(i) for i in items[:limit]]}
 
 
 class SearchIn(_In):
@@ -262,6 +266,10 @@ def overview(*, actor: str = "", today: Optional[date] = None) -> dict[str, Any]
         e = soon[0]
         step = {"title": f"准备「{e['label']}」", "why": f"{EVENT_KIND[e['kind']]}在 {e['at'].replace('T', ' ')}",
                 "link": f"/jobs/{e['job_id']}" if e.get("job_id") else "/"}
+    elif not profile.get("name"):
+        step = {"title": "先建档案", "why": "填好基本信息和经历，简历和网申都从这里取", "link": "/profile"}
+    elif not any(d.get("kind") == "resume" for d in store.all_of("doc")):
+        step = {"title": "写一份简历", "why": "从档案生成一份，再按岗位改", "link": "/resume"}
     elif not jobs:
         step = {"title": "存几个想投的岗位", "why": "还没有岗位，OfferU 没法帮你安排", "link": "/jobs"}
     elif statuses["saved"]:
@@ -280,6 +288,52 @@ def overview(*, actor: str = "", today: Optional[date] = None) -> dict[str, Any]
         "jobs": {s: len(v) for s, v in statuses.items()},
         "recent_changes": store.changes(5),
     }
+
+
+class ReadFileIn(_In):
+    path: str = Field(description="本机文件的绝对路径，或用户上传后拿到的文件名")
+
+
+def read_file(path: str, *, actor: str = "") -> dict[str, Any]:
+    """Text out of a PDF / Word / txt / md file, e.g. an old resume to split into memories."""
+    file = Path(path).expanduser()
+    if not file.is_absolute():
+        file = store.data_dir("files") / Path(path).name
+    if not file.is_file():
+        raise ValueError(f"找不到文件 {path}")
+    suffix = file.suffix.lower()
+    if suffix == ".pdf":
+        import fitz
+
+        with fitz.open(file) as pdf:
+            text = "\n".join(page.get_text() for page in pdf)
+    elif suffix == ".docx":
+        import docx
+
+        document = docx.Document(str(file))
+        text = "\n".join(p.text for p in document.paragraphs)
+        text += "".join("\n" + " | ".join(c.text for c in row.cells) for t in document.tables for row in t.rows)
+    elif suffix in (".txt", ".md", ".markdown"):
+        text = file.read_text(encoding="utf-8", errors="replace")
+    else:
+        raise ValueError("只支持 PDF、Word（.docx）、txt 和 md")
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    return {"path": str(file), "text": text[:30_000], "truncated": len(text) > 30_000}
+
+
+class ExportIn(_In):
+    id: int = Field(description="简历 doc 的 id")
+
+
+def export_resume_pdf(id: int, *, actor: str = "") -> dict[str, Any]:
+    from app.core import resume
+
+    doc = store.get("doc", id)
+    if doc is None or doc.get("kind") != "resume":
+        raise ValueError(f"简历 #{id} 不存在")
+    out = store.data_dir("exports") / resume.file_name(doc)
+    out.write_bytes(resume.pdf_bytes(resume.doc_html(doc)))
+    return {"path": str(out)}
 
 
 # ---------- registry ----------
@@ -305,6 +359,10 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
     Tool(name="delete", input=DeleteIn, fn=delete, description="删除一条记录（可撤销）。"),
     Tool(name="undo", input=UndoIn, fn=undo, description="撤销一条改动，把记录恢复到改动之前。"),
     Tool(name="changes", input=ChangesIn, fn=changes, description="最近改动，谁改了什么，最新在前。"),
+    Tool(name="read_file", input=ReadFileIn, fn=read_file,
+         description="读本机 PDF / Word / txt / md 文件的文字，比如用户的旧简历。读完把经历拆成一条条 memory 存进档案。"),
+    Tool(name="export_resume_pdf", input=ExportIn, fn=export_resume_pdf,
+         description="把一份简历（doc kind=resume）按它的模板导出成 PDF，返回文件路径。"),
     Tool(name="fetch_page", input=FetchIn, fn=fetch_page, description="抓取一个公开网页的文字（比如岗位详情页链接），需要登录或 JS 的页面可能拿不到内容。"),
 ]}
 

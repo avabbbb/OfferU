@@ -1,616 +1,114 @@
-// =============================================
-// 简历列表页 — 简历管理入口
-// =============================================
-// 展示用户所有简历的卡片列表
-// 支持：新建简历、删除简历、进入编辑器
-// Figma/Notion 风格：简洁卡片 + 渐变装饰
-// =============================================
-
 "use client";
 
-import { useState, useEffect, type KeyboardEvent } from "react";
-import { useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
-import { Card, CardBody, Button, Chip, Input, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure, Checkbox, Textarea } from "@heroui/react";
-import { Plus, FileText, Trash2, Edit3, Globe, Upload, CheckCircle2 } from "lucide-react";
-import {
-  ResumeBrief,
-  useProfile,
-  useResumes,
-  createResume,
-  deleteResume,
-  importProfileResume,
-  type ResumeParseDiagnostics,
-} from "@/lib/hooks";
-import { resumeApi } from "@/lib/api";
-import ResumeThumbnail from "./components/ResumeThumbnail";
-import { safeClientErrorMessage } from "@/lib/safe-error";
-import {
-  getProfileBulletText,
-  groupProfileCandidatesForResume,
-  normalizeProfileCategoryKey,
-  resolveProfileCategoryLabel,
-} from "@/lib/profileSchema";
+import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { mutate } from "swr";
 
-const bauhausFieldClassNames = {
-  inputWrapper:
-    "border border-[var(--border-strong)] bg-[var(--surface)] group-data-[focus=true]:border-[var(--foreground-muted)]",
-  input: "font-medium text-[var(--foreground)] placeholder:text-[var(--foreground-muted)]",
-  label: "font-semibold text-[11px] text-[var(--foreground-soft)]",
-};
+import { ResumeEditor } from "@/components/core/ResumeEditor";
+import { apiUrl, type Doc, type Job, type Memory, type Profile, TEMPLATES, type Template, tool, useTool, write } from "@/lib/core";
+import { resumeFromProfile } from "@/lib/resumeDraft";
 
-const bauhausModalContentClassName =
-  "border border-[var(--border-strong)] bg-[var(--surface)] text-[var(--foreground)]";
-
-function getResumeSourceLabel(resume: ResumeBrief): { text: string; color: "default" | "secondary" | "success" } {
-  if (resume.source_mode === "per_job") {
-    const first = resume.source_jobs?.[0];
-    if (first) {
-      return { text: `基于 ${first.company}-${first.title} 生成`, color: "secondary" };
-    }
-    const count = resume.source_job_ids?.length || 0;
-    return { text: count > 0 ? `基于 ${count} 个岗位生成` : "AI 逐岗位生成", color: "secondary" };
-  }
-
-  if (resume.source_mode === "combined") {
-    const count = resume.source_job_ids?.length || 0;
-    return { text: count > 0 ? `综合 ${count} 个岗位生成` : "AI 综合生成", color: "success" };
-  }
-
-  if (resume.source_mode === "imported") {
-    return { text: "由现有简历导入", color: "success" };
-  }
-
-  return { text: "手动创建", color: "default" };
-}
-
-interface UploadCandidateDraft {
-  localId: string;
-  selected: boolean;
-  sectionType: string;
-  categoryLabel: string;
-  title: string;
-  confidence: number;
-  sourcePages: number[];
-  sourceRef: string;
-  contentJson: Record<string, any>;
-}
-
-export default function ResumesListPage() {
+function Editor({ doc, jobs, photo }: { doc: Doc; jobs: Job[]; photo?: string }) {
   const router = useRouter();
-  const { data: resumes, mutate } = useResumes();
-  const { data: profileData } = useProfile();
-  const { isOpen, onOpen, onClose } = useDisclosure();
-  const [newTitle, setNewTitle] = useState("未命名简历");
-  const [creating, setCreating] = useState(false);
-  const [deletingId, setDeletingId] = useState<number | null>(null);
-  const [actionError, setActionError] = useState("");
-  const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
-  const { isOpen: isDeleteOpen, onOpen: onDeleteOpen, onClose: onDeleteClose } = useDisclosure();
-
-  // ---- 上传简历相关状态 ----
-  const [uploading, setUploading] = useState(false);
-  const [uploadingToDb, setUploadingToDb] = useState(false);
-  const [uploadModalOpen, setUploadModalOpen] = useState(false);
-  const [uploadCandidates, setUploadCandidates] = useState<UploadCandidateDraft[]>([]);
-  const [uploadTitle, setUploadTitle] = useState("上传简历");
-  const [uploadDiagnostics, setUploadDiagnostics] = useState<ResumeParseDiagnostics | null>(null);
-
-  // 错误横幅 5.5s 自动消失
+  const [source, setSource] = useState(false);
+  const [body, setBody] = useState(doc.body ?? "");
+  const [title, setTitle] = useState(doc.title ?? "");
+  const [saved, setSaved] = useState(true);
+  useEffect(() => { setBody(doc.body ?? ""); setTitle(doc.title ?? ""); }, [doc.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Agent 或撤销改了内容、而你这边没有没存的修改时，跟上外面的版本。
+  useEffect(() => { if (saved && (doc.body ?? "") !== body) setBody(doc.body ?? ""); }, [doc.body]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 边写边存：连续编辑在「最近改动」里只算一条，可以整段撤销。
   useEffect(() => {
-    if (!actionError) return;
-    const t = setTimeout(() => setActionError(""), 5500);
+    if (body === (doc.body ?? "")) return;
+    setSaved(false);
+    const t = setTimeout(async () => { await tool("save", { type: "doc", id: doc.id, data: { body } }); setSaved(true); void mutate((k) => Array.isArray(k) && k[1] === "overview"); }, 800);
     return () => clearTimeout(t);
-  }, [actionError]);
+  }, [body]); // eslint-disable-line react-hooks/exhaustive-deps
+  const template = doc.template ?? "single";
+  const job = jobs.find((j) => j.id === doc.job_id);
+  return (
+    <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-[var(--border)] px-6 py-3">
+        <input value={title} onChange={(e) => setTitle(e.target.value)} aria-label="简历名称" style={{ fontSize: 15 }}
+          onBlur={() => { if (title !== (doc.title ?? "")) void write("save", { type: "doc", id: doc.id, data: { title: title.trim() || null } }); }}
+          className="min-w-[160px] flex-1 bg-transparent text-[15px] font-medium text-[var(--foreground)] outline-none" />
+        {job && <Link href={`/jobs/${job.id}`} className="text-[12.5px] text-[var(--foreground-muted)] hover:text-[var(--foreground)]">{job.label}</Link>}
+        <div role="radiogroup" aria-label="模板" className="flex gap-3 text-[13px]" style={{ fontSize: 13 }}>
+          {(Object.keys(TEMPLATES) as Template[]).map((id) => (
+            <button key={id} type="button" role="radio" aria-checked={template === id} style={{ fontSize: 13 }}
+              onClick={() => void write("save", { type: "doc", id: doc.id, data: { template: id } })}
+              className={template === id ? "font-medium text-[var(--foreground)]" : "text-[var(--foreground-muted)] hover:text-[var(--foreground)]"}>{TEMPLATES[id]}</button>
+          ))}
+        </div>
+        <button type="button" onClick={() => setSource(!source)} style={{ fontSize: 13 }} aria-pressed={source}
+          className={source ? "text-[13px] font-medium text-[var(--foreground)]" : "text-[13px] text-[var(--foreground-muted)] hover:text-[var(--foreground)]"}>源码</button>
+        <span className="w-12 text-[12px] text-[var(--foreground-muted)]">{saved ? "已保存" : "保存中"}</span>
+        <a href={apiUrl(`/api/resume/${doc.id}/pdf`)} download style={{ fontSize: 13 }}
+          className="rounded-md border border-[var(--border)] px-3 py-1.5 text-[13px] text-[var(--foreground)] hover:bg-[var(--surface)]">导出 PDF</a>
+        <button type="button" aria-label="删除这份简历" style={{ fontSize: 12.5 }} className="text-[12.5px] text-[var(--foreground-muted)] hover:text-[var(--foreground)]"
+          onClick={async () => { await write("delete", { type: "doc", id: doc.id }); router.push("/resume"); }}>删除</button>
+      </div>
+      <p className="px-6 pt-3 text-[12px] text-[var(--foreground-muted)]">
+        直接在纸上改，和 Typora 一样用 Markdown 的写法：{["# 名字", "## 分节", "### 公司 | 职位 | 时间", "- 要点", "**加粗**"].map((t) => <span key={t} className="ml-3 text-[var(--foreground)]">{t}</span>)}
+      </p>
+      <ResumeEditor body={body} template={template} photo={photo} source={source} onChange={setBody} />
+    </div>
+  );
+}
 
-  const openResume = (resumeId: number) => {
-    router.push(`/resume/${resumeId}`);
-  };
+/** 简历：一份主简历 + 按岗位改的版本。左边写 Markdown，右边就是导出的样子。 */
+export default function ResumePage() {
+  const params = useParams();
+  const router = useRouter();
+  const { data } = useTool<{ items: Doc[] }>("list", { type: "doc", kind: "resume", full: true, limit: 200 }, 5000);
+  const { data: jobData } = useTool<{ items: Job[] }>("list", { type: "job", limit: 500 });
+  const { data: profileData } = useTool<{ record: Profile | null }>("get", { type: "profile" });
+  if (!data) return null;
+  const docs = [...data.items].sort((a, b) => Number(Boolean(a.job_id)) - Number(Boolean(b.job_id)) || a.id - b.id);
+  const jobs = jobData?.items ?? [];
+  const current = docs.find((d) => d.id === Number(params.id)) ?? docs[0];
 
-  const handleResumeCardKeyDown = (event: KeyboardEvent<HTMLDivElement>, resumeId: number) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      openResume(resumeId);
+  const create = async (fromProfile: boolean) => {
+    let body = "# 你的名字\n电话 · 邮箱 · 城市\n\n## 教育经历\n### 学校 | 专业 学历 | 2022.09 – 2026.06\n";
+    if (fromProfile) {
+      const [profile, memories] = await Promise.all([
+        tool<{ record: Profile | null }>("get", { type: "profile" }),
+        tool<{ items: Memory[] }>("list", { type: "memory", full: true, limit: 500 }),
+      ]);
+      body = resumeFromProfile(profile.record ?? {}, [...memories.items].sort((a, b) => a.id - b.id));
     }
+    const { record } = await write<{ record: Doc }>("save", { type: "doc", data: { kind: "resume", title: docs.length ? "新简历" : "主简历", body, template: "single" } });
+    router.push(`/resume/${record.id}`);
   };
 
-  /** 创建新简历并跳转到编辑器 */
-  const handleCreate = async () => {
-    try {
-      setActionError("");
-      setCreating(true);
-      const profileName = String(profileData?.base_info_json?.name || profileData?.name || "").trim();
-      const res = await createResume({
-        user_name: profileName,
-        title: newTitle.trim() || "未命名简历",
-      });
-      onClose();
-      mutate();
-      if (res?.id) {
-        router.push(`/resume/${res.id}`);
-      }
-    } catch (err: any) {
-      setActionError(safeClientErrorMessage(err, "创建失败，请重试"));
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  /** 删除简历 — 先设目标，弹确认框 */
-  const handleDelete = (id: number, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setDeleteTargetId(id);
-    onDeleteOpen();
-  };
-
-  /** 确认删除 */
-  const confirmDelete = async () => {
-    if (deleteTargetId == null) return;
-    try {
-      setActionError("");
-      setDeletingId(deleteTargetId);
-      onDeleteClose();
-      await deleteResume(deleteTargetId);
-      mutate();
-    } catch (err: any) {
-      setActionError(safeClientErrorMessage(err, "删除失败，请重试"));
-    } finally {
-      setDeletingId(null);
-      setDeleteTargetId(null);
-    }
-  };
-
-  /** 上传简历 — 解析 + AI 提取候选 */
-  const handleUploadResume = async (file: File) => {
-    if (!file) return;
-    try {
-      setUploading(true);
-      setActionError("");
-      const result = await importProfileResume(file);
-      const candidates = (result.bullets || []).map((item, index) => {
-        const sectionType = normalizeProfileCategoryKey(item.section_type || "custom");
-        const contentJson =
-          item.content_json && typeof item.content_json === "object"
-            ? { ...item.content_json }
-            : {};
-        const previewBullet =
-          String(contentJson.bullet || "").trim() ||
-          getProfileBulletText({
-            id: index,
-            section_type: sectionType,
-            title: String(item.title || ""),
-            content_json: contentJson,
-          } as any);
-        return {
-          localId: `upload-${item.session_id}-${item.index}-${index}`,
-          selected: true,
-          sectionType,
-          categoryLabel: resolveProfileCategoryLabel(sectionType),
-          title: String(item.title || resolveProfileCategoryLabel(sectionType)),
-          confidence: Number(item.confidence ?? 0.7),
-          sourcePages: Array.isArray(item.source_pages) ? item.source_pages : [],
-          sourceRef: String(item.source_ref || ""),
-          contentJson: { ...contentJson, bullet: previewBullet },
-        } as UploadCandidateDraft;
-      });
-      setUploadCandidates(candidates);
-      setUploadDiagnostics(result.parse_diagnostics || null);
-      const baseName = file.name.replace(/\.(pdf|docx?)$/i, "").trim();
-      setUploadTitle(baseName || "上传简历");
-      setUploadModalOpen(true);
-    } catch (err: any) {
-      setActionError(safeClientErrorMessage(err, "简历解析失败，请重试"));
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  /** 确认上传 — 新建简历 + 逐条写入段落 + 跳转编辑器 */
-  const confirmUploadResume = async () => {
-    const selected = uploadCandidates.filter((c) => c.selected);
-    if (selected.length === 0) {
-      setActionError("请至少选择一条候选内容");
-      return;
-    }
-    try {
-      setUploadingToDb(true);
-      setActionError("");
-      const profileName = String(profileData?.base_info_json?.name || profileData?.name || "").trim();
-      const newResume = await createResume({
-        user_name: profileName,
-        title: uploadTitle.trim() || "上传简历",
-        source_mode: "imported",
-      });
-      const groups = groupProfileCandidatesForResume(
-        selected.map((candidate, index) => ({
-          id: index,
-          section_type: candidate.sectionType,
-          title: candidate.title,
-          content_json: candidate.contentJson,
-        }))
-      );
-      const existingSections = Array.isArray(newResume.sections) ? newResume.sections : [];
-      for (let index = 0; index < groups.length; index++) {
-        const group = groups[index];
-        const existing = existingSections.find(
-          (section: any) => section.section_type === group.sectionType
-        );
-        if (existing?.id) {
-          await resumeApi.updateSection(newResume.id, existing.id, {
-            title: group.title,
-            sort_order: group.sortOrder,
-            content_json: group.items,
-          });
-        } else {
-          await resumeApi.createSection(newResume.id, {
-            section_type: group.sectionType,
-            title: group.title,
-            sort_order: group.sortOrder,
-            visible: true,
-            content_json: group.items,
-          });
-        }
-      }
-      setUploadModalOpen(false);
-      setUploadCandidates([]);
-      setUploadDiagnostics(null);
-      mutate();
-      router.push(`/resume/${newResume.id}`);
-    } catch (err: any) {
-      setActionError(safeClientErrorMessage(err, "创建简历失败，请重试"));
-    } finally {
-      setUploadingToDb(false);
-    }
-  };
-
-  const selectedUploadCount = uploadCandidates.filter((c) => c.selected).length;
+  if (!current) {
+    return (
+      <div className="mx-auto max-w-3xl px-6 py-10">
+        <h1 className="text-[24px] font-semibold tracking-tight text-[var(--foreground)]">简历</h1>
+        <p className="mt-1 text-[13.5px] text-[var(--foreground-muted)]">先有一份主简历，再按岗位复制一份改。直接在纸上写，导出的 PDF 就是你看到的样子。</p>
+        <div className="mt-6 flex gap-3">
+          <button type="button" onClick={() => void create(true)} style={{ fontSize: 13 }} className="rounded-md bg-[var(--foreground)] px-3 py-1.5 text-[13px] font-medium text-[var(--background)]">从档案生成</button>
+          <button type="button" onClick={() => void create(false)} style={{ fontSize: 13 }} className="rounded-md border border-[var(--border)] px-3 py-1.5 text-[13px] text-[var(--foreground)] hover:bg-[var(--surface)]">空白开始</button>
+        </div>
+        <p className="mt-4 text-[13px] text-[var(--foreground-muted)]">档案还空着？先去 <Link href="/profile" className="underline">档案</Link> 填经历，或者导入旧简历。</p>
+      </div>
+    );
+  }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ type: "spring", stiffness: 360, damping: 34, mass: 0.82 }}
-      className="stage-page stage-page--resume space-y-6"
-    >
-      <header className="flex flex-wrap items-end justify-between gap-3 px-1">
-        <div>
-          <h1 className="text-[22px] font-semibold tracking-tight text-[var(--foreground)]">简历</h1>
-          <p className="mt-1 text-[13px] text-[var(--foreground-muted)]">
-            {resumes?.length ? `${resumes.length} 份简历。` : ""}通用版本在这里维护；针对某个岗位的版本在「岗位定制」里生成。
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <label className="block">
-            <input
-              type="file"
-              accept=".pdf,.docx"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void handleUploadResume(f);
-                e.target.value = "";
-              }}
-            />
-            <Button
-              as="span"
-              startContent={<Upload size={15} />}
-              isLoading={uploading}
-              className="bauhaus-button bauhaus-button-outline !px-4 !py-2.5 !text-[12px] cursor-pointer"
-            >
-              上传 PDF / Word
-            </Button>
-          </label>
-          <Button
-            startContent={<Plus size={15} />}
-            onPress={onOpen}
-            className="bauhaus-button bauhaus-button-red !px-4 !py-2.5 !text-[12px]"
-          >
-            新建简历
-          </Button>
-        </div>
-      </header>
-
-      {actionError && (
-        <div role="alert" className="bauhaus-panel-sm flex items-center justify-between bg-[var(--status-blush)] px-4 py-3 text-sm font-semibold text-[var(--primary-red)]">
-          <span>{actionError}</span>
-          <button onClick={() => setActionError("")} className="ml-4 font-semibold" aria-label="关闭错误提示">✕</button>
-        </div>
-      )}
-
-      {/* 简历卡片网格 */}
-      <div className="grid [grid-template-columns:repeat(2,minmax(0,1fr))] md:[grid-template-columns:repeat(3,minmax(0,1fr))] lg:[grid-template-columns:repeat(3,minmax(0,1fr))] xl:[grid-template-columns:repeat(4,minmax(0,1fr))] 2xl:[grid-template-columns:repeat(5,minmax(0,1fr))] gap-5 items-start">
-        <AnimatePresence>
-          {(resumes || []).map((resume: ResumeBrief, i: number) => (
-            <motion.div
-              key={resume.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ delay: i * 0.05 }}
-              className="min-w-0"
-            >
-<div
-                role="button"
-                tabIndex={0}
-                aria-label={`编辑 ${resume.title || "未命名简历"}`}
-                onClick={() => openResume(resume.id)}
-                onKeyDown={(event) => handleResumeCardKeyDown(event, resume.id)}
-                className="resume-glass-card group relative cursor-pointer overflow-hidden rounded-[16px] bg-white outline-none shadow-[0_0_0_0.5px_rgba(0,0,0,0.08),0_2px_8px_rgba(0,0,0,0.06),0_12px_32px_rgba(0,0,0,0.06)] transition-[transform,box-shadow] duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] hover:-translate-y-1 hover:shadow-[0_0_0_0.5px_rgba(0,0,0,0.08),0_6px_16px_rgba(0,0,0,0.08),0_24px_48px_rgba(0,0,0,0.10)] focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
-              >
-                <ResumeThumbnail resumeId={resume.id} variant="page" />
-                {/* 毛玻璃信息层：平时藏起来只看简历本身，悬停/键盘聚焦时浮出；触屏设备没有悬停，常显 */}
-                <div className="resume-glass resume-glass-info absolute inset-x-2 bottom-2 rounded-[12px] px-3 py-2.5">
-                  <div className="flex items-baseline gap-2">
-                    <h3 className="min-w-0 flex-1 truncate text-[14px] font-semibold tracking-[-0.01em] text-[#1d1d1f]">{resume.title || "未命名简历"}</h3>
-                    {resume.language && <span className="shrink-0 text-[11px] font-medium text-[#1d1d1f]/45">{resume.language === "en" ? "EN" : resume.language === "zh" ? "中文" : resume.language}</span>}
-                  </div>
-                  <p className="mt-0.5 truncate text-[12px] text-[#1d1d1f]/60">
-                    {[resume.user_name, `${new Date(resume.updated_at).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })} 更新`].filter(Boolean).join(" · ")}
-                  </p>
-                  {getResumeSourceLabel(resume).color !== "default" && (
-                    <p className="mt-1 truncate text-[11.5px] font-medium text-[#6940a5]">{getResumeSourceLabel(resume).text}</p>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  aria-label="删除简历"
-                  title="删除"
-                  disabled={deletingId === resume.id}
-                  onClick={(e) => { e.stopPropagation(); handleDelete(resume.id, e); }}
-                  className="resume-glass absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full text-[#1d1d1f]/70 opacity-0 transition-opacity hover:text-[#d70015] group-hover:opacity-100 focus-visible:opacity-100"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            </motion.div>
-          ))}
-        </AnimatePresence>
-
-        {/* 空状态 */}
-        {resumes && resumes.length === 0 && (
-          <motion.section
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="bauhaus-panel col-span-full overflow-hidden bg-[var(--surface)]"
-          >
-            <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
-              <FileText size={36} className="text-[var(--foreground-muted)]" aria-hidden="true" />
-              <h2 className="text-lg font-semibold text-[var(--foreground)]">还没有简历</h2>
-              <p className="max-w-md text-sm leading-relaxed text-[var(--foreground-muted)]">
-                上传一份现有简历最快，OfferU 会把内容拆进档案，由你确认后再使用；也可以从空白开始。
-              </p>
-              <div className="mt-2 flex gap-2">
-                <Button startContent={<Plus size={15} />} onPress={onOpen} className="bauhaus-button bauhaus-button-red !px-4 !py-2.5 !text-[12px]">
-                  新建简历
-                </Button>
-              </div>
-            </div>
-          </motion.section>
-        )}
-      </div>
-
-      {/* 新建简历弹窗 */}
-      <Modal isOpen={isOpen} onClose={onClose} placement="center">
-        <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b border-[var(--border)] px-6 py-5 text-xl font-semibold">
-            新建简历
-          </ModalHeader>
-          <ModalBody className="space-y-3 px-6 py-6">
-            <Input
-              label="简历命名"
-              variant="bordered"
-              value={newTitle}
-              onValueChange={setNewTitle}
-              autoFocus
-              placeholder="如：前端工程师-中文版"
-              classNames={bauhausFieldClassNames}
-            />
-            <p className="text-[11px] leading-5 text-[var(--foreground-muted)]">
-              新简历默认使用「纸」模板：页面上看到的就是导出的样子，点任意文字直接改。
-            </p>
-            <button
-              type="button"
-              data-testid="resume-create-from-job"
-              onClick={() => { onClose(); router.push("/optimize"); }}
-              className="w-full rounded-md border border-[var(--border)] px-3 py-2.5 text-left transition-colors hover:border-[var(--border-strong)]"
-            >
-              <span className="block text-[12px] font-semibold text-[var(--foreground)]">按岗位生成</span>
-              <span className="mt-0.5 block text-[11px] leading-4 text-[var(--foreground-muted)]">
-                选一个岗位，AI 只用你档案里已确认的经历起草，你逐条决定后才生成正式简历。
-              </span>
-            </button>
-          </ModalBody>
-          <ModalFooter className="border-t border-[var(--border)] px-6 py-5">
-            <Button
-              variant="light"
-              className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
-              onPress={onClose}
-            >
-              取消
-            </Button>
-            <Button
-              isLoading={creating}
-              onPress={handleCreate}
-              className="bauhaus-button bauhaus-button-red !px-4 !py-3 !text-[11px]"
-            >
-              创建并编辑
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
-
-      {/* 删除确认弹窗 */}
-      <Modal isOpen={isDeleteOpen} onClose={onDeleteClose} placement="center">
-        <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b border-[var(--border)] bg-[var(--status-blush)] px-6 py-5 text-xl font-semibold text-[var(--primary-red)]">
-            确认删除
-          </ModalHeader>
-          <ModalBody className="px-6 py-6">
-            <p className="text-base font-medium text-[var(--foreground-soft)]">确定要删除这份简历吗？此操作不可撤销。</p>
-          </ModalBody>
-          <ModalFooter className="border-t border-[var(--border)] px-6 py-5">
-            <Button
-              variant="light"
-              className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
-              onPress={onDeleteClose}
-            >
-              取消
-            </Button>
-            <Button
-              isLoading={deletingId === deleteTargetId}
-              onPress={confirmDelete}
-              className="bauhaus-button bauhaus-button-red !px-4 !py-3 !text-[11px]"
-            >
-              确认删除
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
-
-      {/* 上传简历审核弹窗 */}
-      <Modal isOpen={uploadModalOpen} onClose={() => setUploadModalOpen(false)} size="3xl" scrollBehavior="inside">
-        <ModalContent className={bauhausModalContentClassName}>
-          <ModalHeader className="border-b border-[var(--border)] bg-[var(--status-sage)] px-6 py-5 text-xl font-semibold text-[var(--foreground)]">
-            上传简历 — AI 解析审核
-          </ModalHeader>
-          <ModalBody className="space-y-4 px-6 py-6">
-            <Input
-              label="简历标题"
-              variant="bordered"
-              value={uploadTitle}
-              onValueChange={setUploadTitle}
-              placeholder="如：前端工程师-中文版"
-              classNames={bauhausFieldClassNames}
-            />
-            {uploadDiagnostics && (
-              <div className="bauhaus-panel-sm bg-[var(--surface-muted)] px-4 py-3 text-xs text-[var(--foreground-soft)]">
-                {uploadDiagnostics.parser === "python-docx"
-                  ? "已解析 Word 文档"
-                  : `已解析 ${uploadDiagnostics.page_count} 页`}
-                {uploadDiagnostics.parser === "python-docx"
-                  ? ""
-                  : uploadDiagnostics.used_ocr
-                    ? " · 扫描页已使用 OCR"
-                    : " · 原生文本层"}
-                {` · 质量 ${Math.round(uploadDiagnostics.average_quality * 100)}%`}
-                {uploadDiagnostics.parser !== "python-docx"
-                  && uploadDiagnostics.low_quality_pages.length > 0 && (
-                  <p className="mt-1 font-semibold text-[var(--primary-yellow)]">
-                    第 {uploadDiagnostics.low_quality_pages.join("、")} 页识别质量偏低，请结合页码来源重点核对。
-                  </p>
-                  )}
-                {uploadDiagnostics.parser !== "python-docx"
-                  && uploadDiagnostics.ocr
-                  && !uploadDiagnostics.ocr.configured && (
-                  <p className="mt-1 font-semibold text-[var(--primary-yellow)]">
-                    当前未配置完整的 {uploadDiagnostics.ocr.language} OCR 训练数据；纯扫描 PDF 可能无法识别。
-                  </p>
-                  )}
-              </div>
-            )}
-
-            {uploadCandidates.length === 0 ? (
-              <div className="bauhaus-panel-sm bg-[var(--surface)] px-4 py-3 text-sm font-medium text-[var(--foreground-soft)]">
-                暂无候选段落。
-              </div>
-            ) : (
-              uploadCandidates.map((candidate) => (
-                <div
-                  key={candidate.localId}
-                  className={`bauhaus-panel-sm space-y-3 p-4 bg-[var(--surface-muted)]`}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <Checkbox
-                      isSelected={candidate.selected}
-                      onValueChange={(next) => {
-                        setUploadCandidates((prev) =>
-                          prev.map((c) => c.localId === candidate.localId ? { ...c, selected: next } : c)
-                        );
-                      }}
-                    >
-                      导入此段
-                    </Checkbox>
-                    <span
-                      className={`inline-block border border-[var(--border)] px-2 py-0.5 text-[10px] font-semibold bg-[var(--surface)] text-[var(--foreground-soft)]`}
-                    >
-                      置信度 {Math.round(candidate.confidence * 100)}%
-                    </span>
-                    {candidate.sourcePages.length > 0 && (
-                      <span className="text-[10px] font-semibold text-[var(--foreground-soft)]">
-                        来源：第 {candidate.sourcePages.join("、")} 页
-                      </span>
-                    )}
-                    {uploadDiagnostics?.parser !== "python-docx"
-                      && candidate.sourcePages.length === 0 && (
-                      <span className="text-[10px] font-semibold text-[var(--primary-yellow)]">
-                        {candidate.sourceRef || "未精确定位原文页码"}
-                      </span>
-                      )}
-                  </div>
-
-                  {candidate.confidence < 0.65 && (
-                    <div className="text-[11px] font-semibold text-[var(--primary-yellow)]">
-                      该候选条目置信度偏低，建议核对后再导入。
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-1 gap-2 md:grid-cols-[160px_1fr]">
-                    <span className="inline-block border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-1.5 text-[11px] font-semibold text-[var(--foreground-soft)]">
-                      {candidate.categoryLabel}
-                    </span>
-                    <Input
-                      size="sm"
-                      variant="bordered"
-                      value={candidate.title}
-                      onValueChange={(next) => {
-                        setUploadCandidates((prev) =>
-                          prev.map((c) => c.localId === candidate.localId ? { ...c, title: next } : c)
-                        );
-                      }}
-                      classNames={bauhausFieldClassNames}
-                    />
-                  </div>
-
-                  <Textarea
-                    size="sm"
-                    variant="bordered"
-                    minRows={2}
-                    value={String(candidate.contentJson?.bullet || "")}
-                    onValueChange={(next) => {
-                      setUploadCandidates((prev) =>
-                        prev.map((c) =>
-                          c.localId === candidate.localId
-                            ? { ...c, contentJson: { ...(c.contentJson || {}), bullet: next } }
-                            : c
-                        )
-                      );
-                    }}
-                    classNames={bauhausFieldClassNames}
-                  />
-                </div>
-              ))
-            )}
-          </ModalBody>
-          <ModalFooter className="border-t border-[var(--border)] px-6 py-5">
-            <Button
-              variant="light"
-              className="bauhaus-button bauhaus-button-outline !px-4 !py-3 !text-[11px]"
-              onPress={() => setUploadModalOpen(false)}
-            >
-              取消
-            </Button>
-            <Button
-              startContent={<CheckCircle2 size={14} />}
-              isLoading={uploadingToDb}
-              isDisabled={selectedUploadCount === 0}
-              onPress={() => void confirmUploadResume()}
-              className="bauhaus-button bauhaus-button-blue !px-4 !py-3 !text-[11px]"
-            >
-              创建简历（{selectedUploadCount} 段）
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
-    </motion.div>
+    <div className="flex h-full min-h-0">
+      <nav aria-label="简历列表" className="w-52 shrink-0 space-y-0.5 border-r border-[var(--border)] px-3 py-4">
+        {docs.map((d) => (
+          <Link key={d.id} href={`/resume/${d.id}`}
+            className={`block truncate rounded-md px-2 py-1.5 text-[13px] ${d.id === current.id ? "bg-[var(--surface)] font-medium text-[var(--foreground)]" : "text-[var(--foreground-muted)] hover:text-[var(--foreground)]"}`}>
+            {d.title || "简历"}
+            {d.job_id && <span className="block truncate text-[11.5px] font-normal text-[var(--foreground-muted)]">{jobs.find((j) => j.id === d.job_id)?.label}</span>}
+          </Link>
+        ))}
+        <button type="button" onClick={() => void create(true)} style={{ fontSize: 12.5 }} className="mt-2 px-2 text-[12.5px] text-[var(--foreground-muted)] hover:text-[var(--foreground)]">从档案新建</button>
+      </nav>
+      <Editor key={current.id} doc={current} jobs={jobs} photo={profileData?.record?.photo} />
+    </div>
   );
 }
