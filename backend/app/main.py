@@ -9,10 +9,10 @@ import os
 import re
 import logging
 from contextlib import asynccontextmanager
-from typing import Optional
+from typing import Any, Optional
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -59,7 +59,7 @@ if settings.offeru_enable_mcp:
 else:
     mcp_server = None
     _HAS_MCP = False
-from app.routes import jobs, resume, calendar, email, config, applications, scraper, pools, profile, profile_agent, optimize, interview, main_agent, interviews, research, memory, bridge, connections
+from app.routes import config, interview, main_agent, interviews, research, bridge, connections
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -425,23 +425,12 @@ async def add_security_headers(request, call_next):
     return response
 
 # ---- 注册路由 ----
-app.include_router(jobs.router, prefix="/api/jobs", tags=["Jobs"])
-app.include_router(pools.router, prefix="/api/pools", tags=["Pools"])
-app.include_router(profile.router, prefix="/api/profile", tags=["Profile"])
-app.include_router(profile_agent.router, prefix="/api/profile/agent", tags=["Profile Agent"])
 app.include_router(main_agent.router, prefix="/api/agent", tags=["Agent"])
 app.include_router(main_agent.runtime_router, prefix="/api/agent", tags=["Agent Runtime"])
-app.include_router(optimize.router, prefix="/api/optimize", tags=["Optimize"])
-app.include_router(resume.router, prefix="/api/resume", tags=["Resume"])
 app.include_router(interviews.router, prefix="/api/interviews", tags=["Interviews"])
-app.include_router(calendar.router, prefix="/api/calendar", tags=["Calendar"])
-app.include_router(email.router, prefix="/api/email", tags=["Email"])
 app.include_router(research.router, prefix="/api/research", tags=["Research"])
 app.include_router(config.router, prefix="/api/config", tags=["Config"])
-app.include_router(applications.router, prefix="/api/applications", tags=["Applications"])
-app.include_router(scraper.router, prefix="/api/scraper", tags=["Scraper"])
 app.include_router(interview.router, prefix="/api/interview", tags=["Interview"])
-app.include_router(memory.router, prefix="/api/memory", tags=["Memory"])
 app.include_router(bridge.router, prefix="/api/bridge", tags=["Bridge"])
 app.include_router(connections.router, prefix="/api/connections", tags=["Connections"])
 
@@ -471,76 +460,76 @@ async def pair_ui(req: _PairRequest):
     return {"token": token}
 
 
-class _CheckInAnswer(BaseModel):
-    key: str
-    choice: str = ""
-    text: str = ""
-    question: str = ""
+@app.get("/api/tools")
+async def core_tools():
+    from app.core.tools import TOOLS
+
+    return {"tools": [{"name": t.name, "description": t.description, "input": t.input.model_json_schema()} for t in TOOLS.values()]}
 
 
-@app.get("/api/career/next-step")
-async def career_next_step():
-    from app.services.career_stage import get_career_next_step
+@app.post("/api/tools/{name}")
+def core_tool(name: str, request: Request, args: dict[str, Any] | None = None):
+    """The workbench calls the same tools as agents. Sync on purpose: SQLite, runs in the threadpool."""
+    from pydantic import ValidationError
 
-    return await get_career_next_step()
-
-
-@app.post("/api/career/check-in")
-async def career_check_in(req: _CheckInAnswer):
-    from app.services.career_stage import answer_check_in
+    from app.core.tools import call
 
     try:
-        return await answer_check_in(req.key, req.choice, req.text, question=req.question)
-    except ValueError as exc:
+        return call(name, args, actor=request.headers.get("x-offeru-actor") or "你")
+    except (ValueError, ValidationError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-class _ApplyFormPaste(BaseModel):
-    page_text: str
+@app.get("/api/resume/templates/{template}.css")
+def resume_template_css(template: str):
+    """The live editor styles the page with the same CSS the PDF is printed with."""
+    from fastapi.responses import Response
+
+    from app.core import resume
+
+    return Response(resume.css(template), media_type="text/css")
 
 
-class _ApplyFormFieldEdit(BaseModel):
-    value: Optional[str] = None
-    copied: Optional[bool] = None
+@app.get("/api/resume/{doc_id}/pdf")
+def resume_pdf(doc_id: int):
+    from urllib.parse import quote
+
+    from fastapi.responses import Response
+
+    from app.core import resume, store
+
+    doc = store.get("doc", doc_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="简历不存在")
+    return Response(resume.pdf_bytes(resume.doc_html(doc)), media_type="application/pdf",
+                    headers={"Content-Disposition": f"attachment; filename=\"resume.pdf\"; filename*=UTF-8''{quote(resume.file_name(doc))}"})
 
 
-@app.get("/api/jobs/{job_id}/apply-form")
-async def latest_apply_form(job_id: int):
-    from app.services.apply_form import get_latest_apply_form
+@app.post("/api/files")
+async def upload_file(file: UploadFile):
+    """Old resumes and ID photos land in <data>/files; tools refer to them by name."""
+    import uuid
+    from pathlib import Path
 
-    return {"form": await get_latest_apply_form(job_id)}
+    from app.core import store
 
-
-@app.post("/api/jobs/{job_id}/apply-form")
-async def paste_apply_form(job_id: int, req: _ApplyFormPaste):
-    from app.services.apply_form import create_apply_form
-
-    try:
-        return {"form": await create_apply_form(job_id, req.page_text)}
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    name = f"{uuid.uuid4().hex[:10]}{Path(file.filename or '').suffix.lower()}"
+    (store.data_dir("files") / name).write_bytes(await file.read())
+    return {"name": name, "original": file.filename}
 
 
-@app.patch("/api/apply-forms/{form_id}/fields/{field_id}")
-async def edit_apply_form_field(form_id: int, field_id: str, req: _ApplyFormFieldEdit):
-    from app.services.apply_form import update_apply_form_field
+@app.get("/api/files/{name}")
+def get_file(name: str):
+    from pathlib import Path
 
-    try:
-        return {"form": await update_apply_form_field(form_id, field_id, req.value, req.copied)}
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    from fastapi.responses import FileResponse
 
+    from app.core import store
 
-@app.post("/api/apply-forms/{form_id}/fields/{field_id}/regenerate")
-async def regenerate_apply_form_field_route(form_id: int, field_id: str):
-    from app.services.apply_form import regenerate_apply_form_field
-
-    try:
-        return {"form": await regenerate_apply_form_field(form_id, field_id)}
-    except LookupError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    path = store.data_dir("files") / Path(name).name
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="文件不存在")
+    return FileResponse(path)
 
 
 @app.get("/api/health")
@@ -597,11 +586,15 @@ async def diagnostics_runtime_identity(request: Request) -> dict[str, object]:
 
 # ---- Lite install: serve the workbench from the API origin ----
 def _mount_workbench() -> None:
-    from app.runtime_paths import packaged_resource_dir
+    import mimetypes
 
-    packaged = packaged_resource_dir()
-    web = packaged / "resume-frontend" if packaged else None
-    if os.getenv("OFFERU_RUNTIME_MODE") == "lite" and web and (web / "index.html").is_file():
+    from app.runtime_paths import resume_frontend_dir
+
+    # Windows registry often maps .js to text/plain; browsers refuse such module scripts.
+    for ext, mime in ((".js", "text/javascript"), (".mjs", "text/javascript"), (".css", "text/css"), (".svg", "image/svg+xml")):
+        mimetypes.add_type(mime, ext)
+    web = resume_frontend_dir()
+    if os.getenv("OFFERU_RUNTIME_MODE") == "lite" and (web / "index.html").is_file():
         app.mount("/", StaticFiles(directory=web, html=True), name="workbench")
 
 

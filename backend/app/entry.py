@@ -75,6 +75,19 @@ def start(*, open_browser: bool) -> int:
     return 0
 
 
+def _register_mcp() -> None:
+    """Let Codex / Claude Code see OfferU's tools directly: `offeru mcp` over stdio."""
+    import shutil
+    import subprocess
+
+    command = [shutil.which("offeru") or sys.executable, *([] if shutil.which("offeru") else ["-m", "app.entry"]), "mcp"]
+    for agent, add in (("codex", ["codex", "mcp", "add", "offeru", "--"]), ("claude", ["claude", "mcp", "add", "--scope", "user", "offeru", "--"])):
+        if not shutil.which(agent):
+            continue
+        done = subprocess.run([*add, *command], capture_output=True, text=True, timeout=30)
+        print(f"{agent} MCP: {'已接入' if done.returncode == 0 else (done.stderr or done.stdout).strip()[:200]}")
+
+
 def connect() -> int:
     from app.services.agent_integration import integration_manager
 
@@ -91,9 +104,28 @@ def connect() -> int:
     # Any agent reading the shared ~/.agents/skills (Codex, DSH, ...) also picks this up.
     result = integration_manager.adapter("external").install()
     print(f"通用 Skill 目录: {'已接入' if result.get('skill_status') == 'INSTALLED' else result.get('error')} → {integration_manager.adapter('external').skill_path()}")
+    _register_mcp()
     if not installed and result.get("skill_status") != "INSTALLED":
         return 1
     print("重开一个 Agent 会话后就能用 OfferU。")
+    return 0
+
+
+def tool(name: str | None, raw: str) -> int:
+    import json
+
+    from app.core.tools import TOOLS, call
+
+    if not name:
+        for item in TOOLS.values():
+            print(f"{item.name}: {item.description}")
+        return 0
+    try:
+        result = call(name, json.loads(raw or "{}"), actor=os.environ.get("OFFERU_ACTOR") or "agent")
+    except Exception as exc:  # noqa: BLE001 - shown to the agent as-is
+        print(json.dumps({"error": str(exc)}, ensure_ascii=False))
+        return 1
+    print(json.dumps(result, ensure_ascii=False, default=str))
     return 0
 
 
@@ -104,11 +136,22 @@ def main(argv: list[str] | None = None) -> int:
     start_parser = sub.add_parser("start", help="启动 OfferU 并在浏览器打开工作台")
     start_parser.add_argument("--no-browser", action="store_true", help="只启动，不打开浏览器")
     sub.add_parser("connect", help="把 OfferU Skill 装进本机的 Agent（Codex、Claude Code、DSH 等）")
+    tool_parser = sub.add_parser("tool", help="调用一个 OfferU 工具：offeru tool overview / offeru tool save '{\"type\":\"job\",...}'")
+    tool_parser.add_argument("name", nargs="?")
+    tool_parser.add_argument("args", nargs="?", default="{}", help="JSON 参数")
+    sub.add_parser("mcp", help="以 MCP（stdio）方式提供 OfferU 工具，给 Codex / Claude Code 用")
     cli_parser = sub.add_parser("cli", help="Agent 用的操作命令", add_help=False)
     cli_parser.add_argument("cli_args", nargs=argparse.REMAINDER)
     args = parser.parse_args(argv)
 
     configure(args.data_dir)
+    if args.command == "tool":
+        return tool(args.name, args.args)
+    if args.command == "mcp":
+        from app.mcp_server import mcp
+
+        mcp.run("stdio")
+        return 0
     if args.command == "cli":
         from app.cli import main as cli_main
 

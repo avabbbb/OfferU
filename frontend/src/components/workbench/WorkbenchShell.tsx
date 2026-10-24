@@ -14,7 +14,6 @@ import { ArrowLeft, Bot } from "lucide-react";
 import { AGENT_COMPOSE_EVENT, AGENT_TOGGLE_EVENT, toggleAgentDrawer } from "@/lib/agentCompose";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { SectionTabs } from "@/components/layout/SectionTabs";
-import { OnboardingGate } from "@/components/onboarding/OnboardingGate";
 import { WorkbenchProvider, useWorkbench } from "@/lib/workbench";
 import { AgentConnectionProvider } from "@/lib/agentConnection";
 import { AgentConnectionDialog, AgentConnectionStatus } from "./AgentConnectionPanel";
@@ -45,8 +44,6 @@ interface FocusRule {
 }
 
 const FOCUS_RULES: FocusRule[] = [
-  { pattern: /^\/resume\/print\//, backHref: "/resume", backLabel: "返回材料", bare: true },
-  { pattern: /^\/resume\/\d+/, backHref: "/resume", backLabel: "返回材料", ownChrome: true },
   { pattern: /^\/interview\/ai(\/|$)/, backHref: "/interview", backLabel: "返回面试" },
   { pattern: /^\/interview\/pose(\/|$)/, backHref: "/interview", backLabel: "返回面试" },
 ];
@@ -205,7 +202,7 @@ export function WorkbenchShell({ children }: { children: React.ReactNode }) {
     <WorkbenchProvider>
       <AgentConnectionProvider>
         <WorkbenchFrame>
-          <OnboardingGate>{children}</OnboardingGate>
+          {children}
         </WorkbenchFrame>
         <AgentConnectionDialog />
       </AgentConnectionProvider>

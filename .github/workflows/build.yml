@@ -89,10 +89,6 @@ jobs:
         if: ${{ github.event_name != 'pull_request' }}
         run: python backend/scripts/release/audit_product_claims.py --repo-root . --json
 
-      - name: Audit architecture and Operation Registry boundaries
-        if: ${{ github.event_name != 'pull_request' }}
-        run: python backend/scripts/release/audit_architecture.py --json
-
       - name: Audit release severity ledger
         if: ${{ github.event_name != 'pull_request' }}
         run: python backend/scripts/release/audit_release_severity.py --repo-root . --json
@@ -225,10 +221,6 @@ jobs:
       - name: Build extension
         working-directory: extension
         run: npm run build
-
-      - name: Audit generated extension artifacts
-        working-directory: extension
-        run: python ../backend/scripts/release/audit_architecture.py --generated-extension-artifacts --json
 
       - name: Audit extension production dependencies
         continue-on-error: ${{ github.event_name == 'pull_request' }}

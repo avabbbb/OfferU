@@ -11,20 +11,15 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   Briefcase,
   Bot,
-  Calendar,
   CornerDownLeft,
   FileText,
   GraduationCap,
-  Mail,
   Search,
-  Send,
   Settings,
-  Sparkles,
   Sun,
   UserRound,
 } from "lucide-react";
 import { useWorkbench } from "@/lib/workbench";
-import { tailorResumeHref } from "@/app/resume/resumeModes";
 
 interface Command {
   id: string;
@@ -54,15 +49,12 @@ export function CommandPalette() {
       close();
     };
     return [
-      { id: "today", label: "今日", hint: "行动队列", keywords: "today dashboard 首页 仪表盘", icon: Sun, run: go("/") },
-      { id: "jobs", label: "机会", hint: "岗位与调研", keywords: "jobs 岗位 机会 job", icon: Briefcase, run: go("/jobs") },
-      { id: "resume", label: "材料", hint: "简历与定制", keywords: "resume 简历 材料 优化 optimize", icon: FileText, run: go("/resume") },
-      { id: "applications", label: "进展", hint: "投递与信号", keywords: "applications 投递 进展 跟进", icon: Send, run: go("/applications") },
-      { id: "interview", label: "面试", hint: "训练与日程", keywords: "interview 面试 训练", icon: GraduationCap, run: go("/interview") },
-      { id: "calendar", label: "日程", hint: "进展 · 日历", keywords: "calendar 日程 日历", icon: Calendar, run: go("/calendar") },
-      { id: "email", label: "信号收件箱", hint: "进展 · 邮箱信号", keywords: "email 邮箱 邮件 信号", icon: Mail, run: go("/email") },
-      { id: "profile", label: "档案", hint: "职业模型", keywords: "profile 档案 个人", icon: UserRound, run: go("/resume?mode=profile") },
-      { id: "settings", label: "设置", hint: "来源与授权", keywords: "settings 设置 配置", icon: Settings, run: go("/settings") },
+      { id: "today", label: "今天", hint: "下一步和待办", keywords: "today 今天 首页 待办", icon: Sun, run: go("/") },
+      { id: "jobs", label: "岗位", hint: "岗位和投递状态", keywords: "jobs 岗位 投递 job", icon: Briefcase, run: go("/jobs") },
+      { id: "resume", label: "简历", hint: "主简历和定制版本", keywords: "resume 简历 pdf", icon: FileText, run: go("/resume") },
+      { id: "profile", label: "档案", hint: "基本信息和经历", keywords: "profile 档案 经历 记忆", icon: UserRound, run: go("/profile") },
+      { id: "interview", label: "面试", hint: "准备和复盘", keywords: "interview 面试 复盘", icon: GraduationCap, run: go("/interview") },
+      { id: "settings", label: "设置", hint: "连接和模型", keywords: "settings 设置 配置", icon: Settings, run: go("/settings") },
       {
         id: "ask-offeru",
         label: "问 OfferU",
@@ -74,14 +66,6 @@ export function CommandPalette() {
           setRailOpen(true);
           close();
         },
-      },
-      {
-        id: "tailor-resume",
-        label: "定制简历",
-        hint: "材料 · 从岗位生成",
-        keywords: "optimize 优化 定制 简历 tailor",
-        icon: Sparkles,
-        run: go(tailorResumeHref()),
       },
     ];
   }, [router, close, setRailMode, setRailOpen]);

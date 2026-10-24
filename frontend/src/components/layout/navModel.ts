@@ -1,12 +1,11 @@
 // =============================================
-// 一级导航 6 个：今天 / 岗位 / 投递 / 简历 / 面试 / 设置。
+// 一级导航 5 个：今天 / 岗位 / 简历 / 面试 / 设置。投递状态就在岗位里，日程在今天里。
 // 其余页面按「属于谁」归入某个一级入口，在页面顶部以二级标签出现：
-//   投递 ← 看板、邮件、日历（进展事件的来源）
 //   简历 ← 我的简历、岗位定制、档案（页内切换；档案是写简历的事实来源）
 //   面试 ← 准备（题库、面经、模拟面试）、复盘（真实面试逐题记录）
 // =============================================
 
-import { Briefcase, FileText, MessagesSquare, Send, Settings, Sun } from "lucide-react";
+import { Briefcase, FileText, MessagesSquare, Settings, Sun } from "lucide-react";
 
 export interface SectionTab {
   href: string;
@@ -25,18 +24,8 @@ export interface PrimaryNavItem {
 export const PRIMARY_NAV: PrimaryNavItem[] = [
   { href: "/", label: "今天", icon: Sun, tabs: [{ href: "/", label: "今天", match: ["/"] }] },
   { href: "/jobs", label: "岗位", icon: Briefcase, tabs: [{ href: "/jobs", label: "岗位", match: ["/jobs"] }] },
-  {
-    href: "/applications?view=board",
-    label: "投递",
-    icon: Send,
-    tabs: [
-      { href: "/applications?view=board", label: "看板", match: ["/applications"] },
-      { href: "/email", label: "邮件", match: ["/email"] },
-      { href: "/calendar", label: "日历", match: ["/calendar"] },
-    ],
-  },
   // 简历自己的「我的简历 / 岗位定制 / 档案」切换在页内（ResumeHub），这里只占一个入口，避免两排标签。
-  { href: "/resume", label: "简历", icon: FileText, tabs: [{ href: "/resume", label: "简历", match: ["/resume", "/optimize", "/profile"] }] },
+  { href: "/resume", label: "简历", icon: FileText, tabs: [{ href: "/resume", label: "简历", match: ["/resume", "/optimize"] }, { href: "/profile", label: "档案", match: ["/profile"] }] },
   {
     href: "/interview",
     label: "面试",

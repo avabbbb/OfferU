@@ -18,8 +18,8 @@
   <a href="#watch-the-videos">Videos</a> ·
   <a href="./README_ZH.md">简体中文</a> ·
   <a href="./QUICKSTART.md">Quickstart</a> ·
-  <a href="./docs/09-quality-and-release.md">Quality</a> ·
-  <a href="./docs/01-overall-design.md">Design</a> ·
+  <a href="./docs/PLAN.md">Plan</a> ·
+  <a href="./docs/PRD.md">PRD</a> ·
   <a href="./docs/README.md">Docs</a>
 </p>
 
@@ -315,7 +315,7 @@ This is why the underlying agent harness can evolve without moving career truth 
 external runtime. Every surface — GUI, CLI, TUI, skills and agent integrations — goes through the same
 Operation Registry; none of them writes business state on its own.
 
-See [Overall design](./docs/01-overall-design.md) for the full boundaries and [its glossary](./docs/01-overall-design.md#10-核心术语) for
+See [System design](./docs/DESIGN.md) for the full boundaries and [its glossary](./docs/DESIGN.md) for
 domain language and invariants.
 
 ---
@@ -358,7 +358,7 @@ OfferU is not yet published as a signed consumer installer. For source developme
 
 - [DEVELOPMENT.md](./DEVELOPMENT.md) — environment and dev setup
 - [QUICKSTART.md](./QUICKSTART.md) — fastest local path
-- [Quality & release](./docs/09-quality-and-release.md) — acceptance goals and release gates
+- [Project plan](./docs/PLAN.md) — PRs and how each is accepted
 
 The intended public user path is:
 
@@ -387,7 +387,7 @@ Current status, validation evidence, known issues and quality scores live in:
 
 - [RELEASE_CHECKLIST.md](./RELEASE_CHECKLIST.md)
 - [KNOWN_ISSUES.md](./KNOWN_ISSUES.md)
-- [Quality & release](./docs/09-quality-and-release.md)
+- [Project plan](./docs/PLAN.md)
 
 Suggested developer checks:
 
@@ -419,6 +419,11 @@ Current priorities are productization, not more top-level features:
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+- [PRD](./docs/PRD.md) — users, scope and acceptance
+- [System design](./docs/DESIGN.md) — data, tools, agents and undo
+- [Project plan](./docs/PLAN.md) — daily plan and PR acceptance
+- [DEVELOPMENT.md](./DEVELOPMENT.md) — development setup
 
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)

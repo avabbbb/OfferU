@@ -1,0 +1,24 @@
+/* Shared by the PDF (core/resume.py) and the live editor (frontend ResumeEditor). Everything is scoped to .resume. */
+.resume { position: relative; box-sizing: border-box; width: 210mm; min-height: 297mm; padding: var(--pad-y) var(--pad-x);
+  background: #fff; color: #1d1d1f; font-size: var(--fs); line-height: var(--lh); -webkit-font-smoothing: antialiased;
+  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", "Noto Sans CJK SC", system-ui, sans-serif; }
+.resume * { box-sizing: border-box; }
+.resume .photo { position: absolute; top: var(--pad-y); right: var(--pad-x); width: 25mm; height: 33mm; object-fit: cover; border-radius: 1.5mm; }
+.resume h1 { font-size: var(--name); font-weight: 600; letter-spacing: .02em; line-height: 1.3; margin: 0 0 1.2mm; }
+.resume h1 + p { margin: 0; color: #6e6e73; }
+.resume h2 { font-size: calc(var(--fs) * 1.08); font-weight: 600; margin: var(--gap) 0 1.6mm; padding-bottom: 1mm; border-bottom: .3mm solid #d2d2d7; }
+.resume h3 { display: flex; align-items: baseline; font-size: var(--fs); font-weight: 600; line-height: var(--lh); margin: 2.2mm 0 .6mm; }
+.resume h3 .seg, .resume h3 .r { font-weight: 400; }
+.resume h3 .sep, .resume h3 .sep-r { font-size: 0; }
+.resume h3 .sep::before { content: "·"; font-size: var(--fs); font-weight: 400; margin: 0 1.6mm; color: #86868b; }
+.resume h3 .r { margin-left: auto; padding-left: 4mm; color: #6e6e73; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.resume p { margin: .6mm 0; }
+.resume ul, .resume ol { margin: .4mm 0; padding-left: 4.2mm; }
+.resume li { margin: .3mm 0; }
+.resume li p { margin: 0; }
+.resume a { color: inherit; text-decoration: none; }
+.resume strong, .resume b { font-weight: 600; }
+.resume table { border-collapse: collapse; width: 100%; }
+.resume td, .resume th { padding: .6mm 1.2mm; text-align: left; }
+.resume.photo-on h1, .resume.photo-on h1 + p { padding-right: 30mm; }
+.resume.photo-on h1 + p { min-height: calc(33mm - var(--name) * 1.3 - 1.2mm); }
