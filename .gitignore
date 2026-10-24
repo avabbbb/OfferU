@@ -77,6 +77,7 @@ docs/*
 !docs/PRD.md
 !docs/DESIGN.md
 !docs/PLAN.md
+!docs/agent-testing/
 !docs/archive/
 !docs/archive/**
 # Eval 原始截图/trace 默认只保留本地；正式报告必须包含脱敏后的关键证据。
