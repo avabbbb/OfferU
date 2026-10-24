@@ -89,6 +89,7 @@
   1. Ctrl+K 说一件长任务，几分钟后最近改动出现 codex 的改动，能撤销。
   2. 如果 `codex exec` 不能无人值守，界面给出可复制的一句话，用户贴到 Codex 里能完成同样的事。
   3. 一台没有装过 OfferU 的电脑，按 QUICKSTART 从零装好，走完 #134–PR4 的验收步骤。
+  4. 重写最小浏览器 smoke（新界面：今天、档案、简历），恢复 build.yml 里暂停的 browser-smoke、critical-browser-repeatability、migration-browser-smoke 三个 job，main 的 Build & Release 全绿。
 
 ### PR6 桌面小球
 
