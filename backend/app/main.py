@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from typing import Any, Optional
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -59,7 +59,7 @@ if settings.offeru_enable_mcp:
 else:
     mcp_server = None
     _HAS_MCP = False
-from app.routes import resume, config, profile, profile_agent, optimize, interview, main_agent, interviews, research, memory, bridge, connections
+from app.routes import config, interview, main_agent, interviews, research, bridge, connections
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -425,17 +425,12 @@ async def add_security_headers(request, call_next):
     return response
 
 # ---- 注册路由 ----
-app.include_router(profile.router, prefix="/api/profile", tags=["Profile"])
-app.include_router(profile_agent.router, prefix="/api/profile/agent", tags=["Profile Agent"])
 app.include_router(main_agent.router, prefix="/api/agent", tags=["Agent"])
 app.include_router(main_agent.runtime_router, prefix="/api/agent", tags=["Agent Runtime"])
-app.include_router(optimize.router, prefix="/api/optimize", tags=["Optimize"])
-app.include_router(resume.router, prefix="/api/resume", tags=["Resume"])
 app.include_router(interviews.router, prefix="/api/interviews", tags=["Interviews"])
 app.include_router(research.router, prefix="/api/research", tags=["Research"])
 app.include_router(config.router, prefix="/api/config", tags=["Config"])
 app.include_router(interview.router, prefix="/api/interview", tags=["Interview"])
-app.include_router(memory.router, prefix="/api/memory", tags=["Memory"])
 app.include_router(bridge.router, prefix="/api/bridge", tags=["Bridge"])
 app.include_router(connections.router, prefix="/api/connections", tags=["Connections"])
 
@@ -483,6 +478,58 @@ def core_tool(name: str, request: Request, args: dict[str, Any] | None = None):
         return call(name, args, actor=request.headers.get("x-offeru-actor") or "你")
     except (ValueError, ValidationError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/resume/templates/{template}.css")
+def resume_template_css(template: str):
+    """The live editor styles the page with the same CSS the PDF is printed with."""
+    from fastapi.responses import Response
+
+    from app.core import resume
+
+    return Response(resume.css(template), media_type="text/css")
+
+
+@app.get("/api/resume/{doc_id}/pdf")
+def resume_pdf(doc_id: int):
+    from urllib.parse import quote
+
+    from fastapi.responses import Response
+
+    from app.core import resume, store
+
+    doc = store.get("doc", doc_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="简历不存在")
+    return Response(resume.pdf_bytes(resume.doc_html(doc)), media_type="application/pdf",
+                    headers={"Content-Disposition": f"attachment; filename=\"resume.pdf\"; filename*=UTF-8''{quote(resume.file_name(doc))}"})
+
+
+@app.post("/api/files")
+async def upload_file(file: UploadFile):
+    """Old resumes and ID photos land in <data>/files; tools refer to them by name."""
+    import uuid
+    from pathlib import Path
+
+    from app.core import store
+
+    name = f"{uuid.uuid4().hex[:10]}{Path(file.filename or '').suffix.lower()}"
+    (store.data_dir("files") / name).write_bytes(await file.read())
+    return {"name": name, "original": file.filename}
+
+
+@app.get("/api/files/{name}")
+def get_file(name: str):
+    from pathlib import Path
+
+    from fastapi.responses import FileResponse
+
+    from app.core import store
+
+    path = store.data_dir("files") / Path(name).name
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="文件不存在")
+    return FileResponse(path)
 
 
 @app.get("/api/health")
@@ -539,11 +586,15 @@ async def diagnostics_runtime_identity(request: Request) -> dict[str, object]:
 
 # ---- Lite install: serve the workbench from the API origin ----
 def _mount_workbench() -> None:
-    from app.runtime_paths import packaged_resource_dir
+    import mimetypes
 
-    packaged = packaged_resource_dir()
-    web = packaged / "resume-frontend" if packaged else None
-    if os.getenv("OFFERU_RUNTIME_MODE") == "lite" and web and (web / "index.html").is_file():
+    from app.runtime_paths import resume_frontend_dir
+
+    # Windows registry often maps .js to text/plain; browsers refuse such module scripts.
+    for ext, mime in ((".js", "text/javascript"), (".mjs", "text/javascript"), (".css", "text/css"), (".svg", "image/svg+xml")):
+        mimetypes.add_type(mime, ext)
+    web = resume_frontend_dir()
+    if os.getenv("OFFERU_RUNTIME_MODE") == "lite" and (web / "index.html").is_file():
         app.mount("/", StaticFiles(directory=web, html=True), name="workbench")
 
 

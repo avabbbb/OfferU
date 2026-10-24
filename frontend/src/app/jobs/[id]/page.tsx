@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { AddEvent, EventRow } from "@/components/core/EventList";
-import { type Event, type Job, useTool, write } from "@/lib/core";
+import { type Doc, type Event, type Job, tool, useTool, write } from "@/lib/core";
 
 import { StatusSelect } from "../page";
 
@@ -26,7 +26,7 @@ function LongText({ job, field, label, placeholder }: { job: Job; field: "jd" | 
 export default function JobDetailPage() {
   const id = Number(useParams().id);
   const router = useRouter();
-  const { data, error } = useTool<{ record: Job; events: Event[] }>("get", { type: "job", id }, 5000);
+  const { data, error } = useTool<{ record: Job; events: Event[]; docs: Doc[] }>("get", { type: "job", id }, 5000);
   if (error) return <p className="px-6 py-10 text-[13.5px] text-[var(--foreground-muted)]">这个岗位不存在了。<Link href="/jobs" className="underline">回到岗位</Link></p>;
   if (!data) return null;
   const job = data.record;
@@ -47,6 +47,29 @@ export default function JobDetailPage() {
         <h2 className="text-[13px] font-medium text-[var(--foreground-muted)]">事项</h2>
         <ul className="divide-y divide-[var(--border)]">{data.events.map((event) => <EventRow key={event.id} event={event} showJob={false} />)}</ul>
         <AddEvent jobId={job.id} />
+      </section>
+
+      <section>
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-[13px] font-medium text-[var(--foreground-muted)]">材料</h2>
+          <button type="button" className="text-[12.5px] text-[var(--foreground-muted)] hover:text-[var(--foreground)]" onClick={async () => {
+            // 复制主简历（没挂岗位的那份），挂到这个岗位下面再改。
+            const { items } = await tool<{ items: Doc[] }>("list", { type: "doc", kind: "resume", full: true, limit: 200 });
+            const base = items.filter((d) => !d.job_id).sort((a, b) => a.id - b.id)[0];
+            if (!base) { router.push("/resume"); return; }
+            const { record } = await write<{ record: Doc }>("save", { type: "doc", data: { kind: "resume", job_id: job.id, title: `简历 · ${job.company ?? job.title}`, body: base.body, template: base.template } });
+            router.push(`/resume/${record.id}`);
+          }}>为这个岗位复制一份简历</button>
+        </div>
+        {data.docs.length ? (
+          <ul className="divide-y divide-[var(--border)]">
+            {data.docs.map((doc) => (
+              <li key={doc.id} className="py-2 text-[13.5px]">
+                <Link href={doc.kind === "resume" ? `/resume/${doc.id}` : `/jobs/${job.id}`} className="text-[var(--foreground)] hover:underline">{doc.label}</Link>
+              </li>
+            ))}
+          </ul>
+        ) : <p className="mt-2 text-[13px] text-[var(--foreground-muted)]">还没有。定制简历、网申回答、面试复盘都会放在这里。</p>}
       </section>
 
       <LongText job={job} field="jd" label="岗位描述" placeholder="贴岗位 JD，Agent 改简历、写网申都会用到" />

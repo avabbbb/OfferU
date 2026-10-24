@@ -31,10 +31,14 @@ CREATE TABLE IF NOT EXISTS changes (
 """
 
 
+def data_dir(*parts: str) -> Path:
+    path = Path(os.environ.get("OFFERU_DATA_DIR") or Path.home() / ".offeru").joinpath(*parts)
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def db_path() -> str:
-    base = os.environ.get("OFFERU_DATA_DIR") or str(Path.home() / ".offeru")
-    Path(base).mkdir(parents=True, exist_ok=True)
-    return str(Path(base) / "offeru.db")
+    return str(data_dir() / "offeru.db")
 
 
 def conn() -> sqlite3.Connection:
@@ -79,8 +83,18 @@ def all_of(type_: str, job_id: Optional[int] = None) -> list[dict[str, Any]]:
     return [_row(r) for r in conn().execute(sql + " ORDER BY updated_at DESC, id DESC", args)]
 
 
+MERGE_WINDOW = 600  # seconds
+
+
 def _log(c: sqlite3.Connection, actor: str, summary: str, type_: str, record_id: int,
          before: Optional[dict], after: Optional[dict]) -> int:
+    # Typing in an editor saves every few seconds; keep it one undoable change instead of fifty.
+    last = c.execute("SELECT * FROM changes ORDER BY id DESC LIMIT 1").fetchone()
+    if (last and before is not None and after is not None and last["after"] is not None and last["before"] is not None
+            and not last["undone_at"] and (last["actor"], last["summary"], last["type"], last["record_id"]) == (actor, summary, type_, record_id)
+            and (datetime.now() - datetime.fromisoformat(last["at"])).total_seconds() < MERGE_WINDOW):
+        c.execute("UPDATE changes SET at=?, after=? WHERE id=?", (now(), json.dumps(after, ensure_ascii=False), last["id"]))
+        return int(last["id"])
     cur = c.execute("INSERT INTO changes(at, actor, summary, type, record_id, before, after) VALUES (?,?,?,?,?,?,?)",
                     (now(), actor, summary, type_, record_id,
                      json.dumps(before, ensure_ascii=False) if before is not None else None,
