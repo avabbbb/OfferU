@@ -453,6 +453,7 @@ async def chat_completion(
         return response.choices[0].message.content
     except asyncio.TimeoutError:
         _logger.error(f"[LLM Timeout] {provider}/{model} (tier={tier}): 超过 {settings.llm_timeout}s")
+        LAST_ERROR["message"] = f"超时（{settings.llm_timeout}s）"
         return None
     except Exception as e:
         _logger.error(
@@ -462,9 +463,15 @@ async def chat_completion(
             tier,
             redact_sensitive_text(e, max_length=500),
         )
+        LAST_ERROR["message"] = str(redact_sensitive_text(e, max_length=300))
         return None
     finally:
         await client.close()
+
+
+# 最近一次 chat_completion 失败的原因（已脱敏）。chat_completion 失败时返回 None，
+# 调用方靠它区分「模型没回答」和「key 失效 / 超时」，而不是统一说无响应。
+LAST_ERROR: dict[str, Optional[str]] = {"message": None}
 
 
 async def chat_completion_stream(
