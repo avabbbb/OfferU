@@ -58,7 +58,7 @@ def audit_version_consistency(repo_root: Path) -> dict[str, Any]:
         "frontend_package": repo_root / "frontend" / "package.json",
         "tauri_config": repo_root / "frontend" / "src-tauri" / "tauri.conf.json",
         "rust_package": repo_root / "frontend" / "src-tauri" / "Cargo.toml",
-        "backend_cli": repo_root / "backend" / "app" / "cli.py",
+        "backend_cli": repo_root / "backend" / "app" / "services" / "agent_skill_projections.py",
         "backend_health": repo_root / "backend" / "app" / "main.py",
     }
     readers = {
