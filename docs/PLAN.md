@@ -65,7 +65,7 @@
 
 ### PR3 重构 3/4：网申、面试、Ctrl+K
 
-- **做**：设置里配置模型；内置 Agent（`/api/agent`，最多 6 步）；Ctrl+K；官网投递助手（apply_chat doc）；面试准备和复盘（review doc）；导入旧简历后显示「拆成经历」按钮，用户点了才由内置 Agent 拆成记忆；职业发现：今天页给还不知道投什么的人一个内置 Agent 对话入口，问几个问题后给出方向，结论存进记忆（不恢复旧的 CareerDiscoveryCard / career_stage）。
+- **做**：设置里配置模型；内置 Agent（`/api/agent`，最多 6 步；复用现有 `app/agent/` 的 `run_agent_loop` 和 provider，只把工具换成 9 个共用工具，不重写循环）；Ctrl+K；官网投递助手（apply_chat doc）；面试准备和复盘（review doc）；导入旧简历后显示「拆成经历」按钮，用户点了才由内置 Agent 拆成记忆；职业发现：今天页给还不知道投什么的人一个内置 Agent 对话入口，问几个问题后给出方向，结论存进记忆（不恢复旧的 CareerDiscoveryCard / career_stage）。
 - **删**：旧 interview / main_agent / profile_agent / research 路由，旧面试页组件。
 - **验收**：
   1. 没填模型时按 Ctrl+K，提示去设置或用 Codex，不报错。
@@ -84,7 +84,7 @@
 ### PR5 重构 4/4：后台 Codex 和清理
 
 - **做**：handoff / handoff_status；新 Skill（≤4KB）；README、QUICKSTART 改成新架构。
-- **删**：`app/ops.py`、`app/services/`、`app/agents/`、`app/agent/`、剩余旧路由、旧 Skill 生成器、旧表和旧测试。
+- **删**：`app/ops.py`、`app/services/`、`app/agents/`、剩余旧路由、旧 Skill 生成器、旧表和旧测试。`app/agent/`（内置 Agent 的循环和 provider）保留，由 `app/core/agent.py` 调用。
 - **验收**：
   1. Ctrl+K 说一件长任务，几分钟后最近改动出现 codex 的改动，能撤销。
   2. 如果 `codex exec` 不能无人值守，界面给出可复制的一句话，用户贴到 Codex 里能完成同样的事。

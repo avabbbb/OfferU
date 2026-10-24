@@ -32,7 +32,7 @@
                        ▼
           app/core/store.py   ← SQLite offeru.db：records + changes
                        │
-          内置 Agent（app/core/agent.py）   后台 Codex（app/core/handoff.py）
+          内置 Agent（app/core/agent.py → app/agent 循环）   后台 Codex（app/core/handoff.py）
           OpenAI 兼容接口，最多 6 步        codex exec + OfferU MCP
 ```
 
@@ -115,6 +115,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 
 - 设置里填 OpenAI 兼容的 base_url、key、模型名，存在本机配置文件里。
 - `/api/agent` 接收一句话 + 当前页面（比如正在看的岗位 id），用 function calling 调同一套工具，最多 6 步，流式返回。
+- 循环、流式和 provider 复用现有的 `app/agent/`（`run_agent_loop`），`app/core/agent.py` 只负责把 9 个工具包成 `LoopTool`、记 actor 和限制步数。
 - 系统提示词只有三件事：今天日期和 overview 摘要、工具说明、规则（不编造经历；对外的事只写草稿；长任务调用 handoff）。
 - 没配模型时，Ctrl+K 只做本地解析不了的提示：「先在设置里填模型，或者在 Codex 里说这句话」。
 
