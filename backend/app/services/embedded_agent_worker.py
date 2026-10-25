@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any, Callable
@@ -27,6 +28,24 @@ from app.services.security_redaction import redact_secret_value, safe_error_mess
 PROTOCOL_VERSION = "offeru.python-agent.v1"
 SESSION_VERSION = 1
 _MESSAGES = TypeAdapter(list[AgentMessage])
+
+
+def _env_number(name: str, default: float, minimum: float) -> float:
+    try:
+        value = float(os.environ.get(name, "") or default)
+    except ValueError:
+        value = default
+    return max(minimum, value)
+
+
+def _turn_timeout_seconds() -> float:
+    """Wall-clock budget for one model turn, tool calls included."""
+    return _env_number("OFFERU_AGENT_TURN_TIMEOUT_SECONDS", 600, 30)
+
+
+def _max_concurrent_runs() -> int:
+    """How many embedded Agent Runs may be live at the same time."""
+    return int(_env_number("OFFERU_AGENT_MAX_CONCURRENT_RUNS", 4, 1))
 
 
 class EmbeddedAgentWorkerError(RuntimeError):
@@ -64,6 +83,16 @@ class EmbeddedAgentWorker:
     @property
     def prompt_active(self) -> bool:
         return self._prompt_lock.locked()
+
+    @property
+    def active_run_ids(self) -> list[str]:
+        return [self.active_run_id] if self.active_run_id else []
+
+    def is_active(self, run_id: str) -> bool:
+        return bool(run_id) and self.active_run_id == run_id
+
+    def is_prompt_active(self, run_id: str) -> bool:
+        return self.is_active(run_id) and self.prompt_active
 
     async def _emit(self, event: str, payload: dict[str, Any]) -> None:
         if self._event_listener:
@@ -238,7 +267,7 @@ class EmbeddedAgentWorker:
             context = await self._compact(context)
         return {"context": context}
 
-    async def prompt(self, *, run_id: str, message: str, timeout: float = 180) -> dict[str, Any]:
+    async def prompt(self, *, run_id: str, message: str, timeout: float | None = None) -> dict[str, Any]:
         self._check_run(run_id)
         if self._prompt_lock.locked():
             raise EmbeddedAgentWorkerError("A model turn is already running")
@@ -269,7 +298,14 @@ class EmbeddedAgentWorker:
                 prepare_next_turn=self._prepare_next_turn)
             self._task = asyncio.create_task(run_agent_loop(context, config, self._on_loop_event))
             try:
-                result = await asyncio.wait_for(self._task, timeout=timeout)
+                turn_timeout = timeout if timeout is not None else _turn_timeout_seconds()
+                try:
+                    result = await asyncio.wait_for(self._task, timeout=turn_timeout)
+                except asyncio.TimeoutError as exc:
+                    raise EmbeddedAgentWorkerError(
+                        f"模型回合超时（超过 {int(turn_timeout)} 秒）；会话已保存，可重试，"
+                        "或调大 OFFERU_AGENT_TURN_TIMEOUT_SECONDS。"
+                    ) from exc
                 if result.stop_reason in {"error", "hard_loop_limit", "aborted"}:
                     errors = [m.error_message for m in result.messages if isinstance(m, AssistantMessage) and m.error_message]
                     raise EmbeddedAgentWorkerError(safe_error_message(errors[-1] if errors else result.stop_reason))
@@ -344,10 +380,113 @@ class EmbeddedAgentWorker:
             await self.dispose_run(self.active_run_id)
 
 
-_worker = EmbeddedAgentWorker()
+class EmbeddedAgentWorkerPool:
+    """One EmbeddedAgentWorker per Agent Run, so independent Runs proceed in parallel.
+
+    A run_id never runs twice at once (its session file keeps a single writer),
+    and total live Runs are capped by OFFERU_AGENT_MAX_CONCURRENT_RUNS.
+    """
+
+    def __init__(self, *, provider_factory: Callable[[], Any] = LlmStreamProvider,
+                 max_runs: int | None = None) -> None:
+        self._provider_factory = provider_factory
+        self._max_runs = max_runs
+        self._workers: dict[str, EmbeddedAgentWorker] = {}
+        self._lock = asyncio.Lock()
+
+    @property
+    def max_runs(self) -> int:
+        return self._max_runs or _max_concurrent_runs()
+
+    async def probe(self) -> dict[str, Any]:
+        info = await EmbeddedAgentWorker(provider_factory=self._provider_factory).probe()
+        info["features"] = {**info.get("features", {}), "concurrent_runs": True}
+        info["max_concurrent_runs"] = self.max_runs
+        info["active_runs"] = len(self._workers)
+        return info
+
+    @property
+    def active_run_ids(self) -> list[str]:
+        return list(self._workers)
+
+    @property
+    def active_run_id(self) -> str | None:
+        """Legacy single-run view; prefer is_active(run_id) or active_run_ids."""
+        return next(iter(self._workers), None)
+
+    def is_active(self, run_id: str) -> bool:
+        return bool(run_id) and run_id in self._workers
+
+    def is_prompt_active(self, run_id: str) -> bool:
+        worker = self._workers.get(run_id)
+        return worker is not None and worker.prompt_active
+
+    def _get(self, run_id: str) -> EmbeddedAgentWorker:
+        worker = self._workers.get(run_id)
+        if worker is None:
+            raise EmbeddedAgentWorkerError("Run is not active in the embedded Agent")
+        return worker
+
+    def _release(self, run_id: str, worker: EmbeddedAgentWorker) -> None:
+        if self._workers.get(run_id) is worker:
+            del self._workers[run_id]
+
+    async def start_run(self, *, run_id: str, **kwargs: Any) -> dict[str, Any]:
+        async with self._lock:
+            if run_id in self._workers:
+                raise EmbeddedAgentWorkerError(f"An Agent Run is already active: {run_id}")
+            if len(self._workers) >= self.max_runs:
+                raise EmbeddedAgentWorkerError(
+                    f"已有 {len(self._workers)} 个 Agent Run 在运行，达到并发上限 {self.max_runs}；"
+                    "请等其中一个结束，或调大 OFFERU_AGENT_MAX_CONCURRENT_RUNS。"
+                )
+            worker = EmbeddedAgentWorker(provider_factory=self._provider_factory)
+            self._workers[run_id] = worker
+        try:
+            return await worker.start_run(run_id=run_id, **kwargs)
+        except BaseException:
+            self._release(run_id, worker)
+            raise
+
+    async def prompt(self, *, run_id: str, message: str, timeout: float | None = None) -> dict[str, Any]:
+        return await self._get(run_id).prompt(run_id=run_id, message=message, timeout=timeout)
+
+    async def steer_run(self, run_id: str, message: str) -> dict[str, Any]:
+        return await self._get(run_id).steer_run(run_id, message)
+
+    async def follow_up_run(self, run_id: str, message: str) -> dict[str, Any]:
+        return await self._get(run_id).follow_up_run(run_id, message)
+
+    async def compact_run(self, run_id: str, instructions: str = "") -> dict[str, Any]:
+        return await self._get(run_id).compact_run(run_id, instructions)
+
+    async def abort_run(self, run_id: str) -> dict[str, Any]:
+        return await self._get(run_id).abort_run(run_id)
+
+    async def dispose_run(self, run_id: str) -> None:
+        worker = self._get(run_id)
+        try:
+            await worker.dispose_run(run_id)
+        finally:
+            self._release(run_id, worker)
+
+    async def forget_run_after_fresh_reset(self, run_id: str) -> None:
+        worker = self._workers.get(run_id)
+        if worker is None:
+            return
+        try:
+            await worker.forget_run_after_fresh_reset(run_id)
+        finally:
+            self._release(run_id, worker)
+
+    async def close(self) -> None:
+        await asyncio.gather(*(self.dispose_run(run_id) for run_id in list(self._workers)),
+                             return_exceptions=True)
+
+_worker = EmbeddedAgentWorkerPool()
 
 
-def get_embedded_agent_worker() -> EmbeddedAgentWorker:
+def get_embedded_agent_worker() -> EmbeddedAgentWorkerPool:
     return _worker
 
 

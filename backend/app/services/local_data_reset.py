@@ -332,13 +332,15 @@ async def _quiesce_active_work(*, current_run_id: str, current_task_id: str) -> 
     )
 
     worker = get_embedded_agent_worker()
-    active_run_id = worker.active_run_id
-    if active_run_id == current_run_id:
-        await worker.dispose_run(active_run_id)
-    elif active_run_id:
+    embedded_cancelled = 0
+    for active_run_id in list(worker.active_run_ids):
+        if active_run_id == current_run_id:
+            await worker.dispose_run(active_run_id)
+            continue
         from app.services.embedded_agent_host import abort_embedded_agent_run
 
         await abort_embedded_agent_run(active_run_id, worker=worker)
+        embedded_cancelled += 1
 
     return {
         "career_tasks": career_cancelled,
@@ -347,7 +349,7 @@ async def _quiesce_active_work(*, current_run_id: str, current_task_id: str) -> 
         "role_benchmark_workers": benchmark_cancelled,
         "batch_workers": batch_workers_cancelled,
         "agent_runtime_streams": runtime_streams_cancelled,
-        "embedded_agent_runs": int(bool(active_run_id and active_run_id != current_run_id)),
+        "embedded_agent_runs": embedded_cancelled,
     }
 
 

@@ -948,7 +948,7 @@ async def start_embedded_agent_run(
         }
     except Exception as exc:
         await flush_delta_buffer()
-        if active_worker.active_run_id == run_id:
+        if active_worker.is_active(run_id):
             try:
                 await active_worker.dispose_run(run_id)
             except Exception:
@@ -1118,7 +1118,7 @@ async def answer_agent_input(
         return result
 
     active_worker = worker or get_embedded_agent_worker()
-    if active_worker.active_run_id == run_id:
+    if active_worker.is_active(run_id):
         try:
             await active_worker.dispose_run(run_id)
         except Exception:
@@ -1205,7 +1205,7 @@ async def steer_embedded_agent_run(
     if run is None:
         raise ValueError(f"Agent Run {run_id} 不存在。")
     active_worker = worker or get_embedded_agent_worker()
-    if active_worker.active_run_id != run_id or not active_worker.prompt_active:
+    if not active_worker.is_prompt_active(run_id):
         return {"ok": True, "disposition": "not_running", "run": run}
     try:
         await active_worker.steer_run(run_id, text[:4000])
@@ -1231,7 +1231,7 @@ async def abort_embedded_agent_run(
         return {"ok": True, "run": run, "warnings": ["Run 已经结束。"]}
 
     active_worker = worker or get_embedded_agent_worker()
-    if active_worker.active_run_id == run_id:
+    if active_worker.is_active(run_id):
         await active_worker.abort_run(run_id)
         await active_worker.dispose_run(run_id)
     run = await load_agent_run(run_id) or run
