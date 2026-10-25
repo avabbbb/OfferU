@@ -50,7 +50,7 @@ import { AGENT_COMPOSE_EVENT, drainAgentCompose } from "@/lib/agentCompose";
 import { presentAgentToolCall } from "@/lib/agentToolPresentation";
 import { bauhausFieldClassNames } from "@/lib/bauhaus";
 import { safeClientErrorMessage } from "@/lib/safe-error";
-import { AgentConnectionStatus } from "./AgentConnectionPanel";
+import { BuiltinModelStatus } from "./BuiltinModelStatus";
 import { ExternalUrlLink } from "@/components/ExternalUrlLink";
 import { SHOWCASE } from "@/lib/showcase";
 import Link from "next/link";
@@ -208,7 +208,7 @@ export function AgentPanel() {
       role: "assistant",
       content: SHOWCASE
         ? "这是 OfferU 网页演示 Agent。它只使用演示数据，不连接你电脑里的 Coding Agent；真实本地数据与外置 Agent 请在本机安装 OfferU。"
-        : "在这里查看 OfferU 任务与确认请求。需要时可从「接入与同步」连接本机 Coding Agent，把当前工作交给它。",
+        : "这里是 OfferU 内置助手，用你自己配置的模型密钥运行，可在上方查看和管理当前模型。想改用本机 Coding Agent，可从侧栏「使用我的 Agent」接入。",
     },
   ]);
   const [input, setInput] = useState("");
@@ -951,7 +951,7 @@ export function AgentPanel() {
   return (
     <div className="offeru-agent-panel flex h-full min-h-0 flex-col">
       <div className="border-b border-[var(--border)] p-3">
-        <AgentConnectionStatus />
+        <BuiltinModelStatus />
       </div>
       {/* 对话状态行 */}
       <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] px-3 py-2">
@@ -978,7 +978,6 @@ export function AgentPanel() {
             {hostedOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
           </button>
           <span className="bauhaus-chip !py-0.5 !text-[10.5px]">内置助手</span>
-          <Link href={MODEL_SETTINGS_ROUTE} className="text-[11px] text-[var(--foreground-muted)] underline underline-offset-4 hover:text-[var(--foreground)] focus-visible:ring-2">模型设置</Link>
           {activeRun && activeRun.harness_name && (
             <span
               className="bauhaus-chip !py-0.5 !text-[10.5px]"
