@@ -85,10 +85,46 @@ def default_database_url() -> str:
     return f"sqlite+aiosqlite:///{(runtime_data_dir() / 'djm.db').as_posix()}"
 
 
+def sqlite_path_from_url(database_url: str) -> str | None:
+    """Return the raw filesystem part of a sqlite URL, or None for other databases."""
+
+    url = str(database_url or "").strip()
+    if not url.lower().startswith("sqlite"):
+        return None
+    _, sep, rest = url.partition(":///")
+    if not sep:
+        return None
+    return rest.split("?", 1)[0]
+
+
+def database_location_problem(database_url: str, data_dir: Path) -> str | None:
+    """Explain why ``database_url`` would split OfferU's state, or return None.
+
+    Sessions, config and uploads always follow ``OFFERU_DATA_DIR``.  A sqlite
+    DATABASE_URL that is relative (resolved against whatever directory the
+    process happened to start in) or that points outside the data directory
+    sends runs, actions and audit logs somewhere else, which looks like data
+    loss later.
+    """
+
+    raw = sqlite_path_from_url(database_url)
+    if raw is None or raw in ("", ":memory:"):
+        return None
+    candidate = Path(raw).expanduser()
+    if not candidate.is_absolute():
+        return f"DATABASE_URL 使用相对路径 {raw!r}，会随启动目录变化"
+    root = Path(data_dir).expanduser().resolve()
+    resolved = candidate.resolve()
+    if resolved != root and root not in resolved.parents:
+        return f"DATABASE_URL 指向数据目录之外：{resolved.as_posix()}（数据目录：{root.as_posix()}）"
+    return None
+
+
 __all__ = [
     "PACKAGE_BACKEND_DIR",
     "OFFERU_BACKEND_PORT",
     "configured_backend_port",
+    "database_location_problem",
     "default_database_url",
     "runtime_backend_dir",
     "runtime_config_file",
@@ -96,6 +132,7 @@ __all__ = [
     "runtime_data_path",
     "runtime_env_file",
     "runtime_uploads_dir",
+    "sqlite_path_from_url",
     "packaged_resource_dir",
     "resume_frontend_dir",
 ]

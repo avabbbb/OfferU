@@ -31,7 +31,22 @@ def configure(data_dir: Path | None) -> Path:
     resolved = configured.expanduser().resolve()
     resolved.mkdir(parents=True, exist_ok=True)
     os.environ["OFFERU_DATA_DIR"] = str(resolved)
-    os.environ.setdefault("DATABASE_URL", f"sqlite+aiosqlite:///{(resolved / 'djm.db').as_posix()}")
+    inherited = str(os.environ.get("DATABASE_URL") or "").strip()
+    if inherited:
+        from app.runtime_paths import database_location_problem
+
+        problem = database_location_problem(inherited, resolved)
+        if problem and os.environ.get("OFFERU_ALLOW_EXTERNAL_DATABASE") != "1":
+            raise SystemExit(
+                f"OfferU 拒绝启动：{problem}。\n"
+                "会话和配置写入数据目录，而 Agent 运行记录、操作审计会写到另一个库，看起来像数据丢失。\n"
+                "请取消 DATABASE_URL（常见来源：仓库根目录的旧 .env），"
+                "或确需外部数据库时设置 OFFERU_ALLOW_EXTERNAL_DATABASE=1。"
+            )
+        if problem:
+            print(f"警告：{problem}（已按 OFFERU_ALLOW_EXTERNAL_DATABASE=1 继续）", file=sys.stderr, flush=True)
+    else:
+        os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{(resolved / 'djm.db').as_posix()}"
     os.environ["OFFERU_RUNTIME_MODE"] = "lite"
     os.environ["OFFERU_PORT"] = str(PORT)
     os.environ.setdefault("OFFERU_FRONTEND_HEALTH_URL", f"{BASE_URL}/")

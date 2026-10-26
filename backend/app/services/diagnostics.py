@@ -257,6 +257,25 @@ def _provider_summary(payload: Any) -> list[dict[str, Any]]:
     return result
 
 
+def _database_location_mismatch(database_url: str | None = None) -> bool | None:
+    """True when runs/audit would be written outside OFFERU_DATA_DIR (split state).
+
+    None when no data dir is configured (development layout), so the bundle
+    never claims a mismatch it cannot judge.  Only the verdict is reported;
+    paths stay out of the diagnostics bundle.
+    """
+
+    if not str(os.environ.get("OFFERU_DATA_DIR") or "").strip():
+        return None
+    from app.runtime_paths import database_location_problem, runtime_data_dir
+
+    if database_url is None:
+        from app.config import get_settings
+
+        database_url = get_settings().database_url
+    return database_location_problem(database_url, runtime_data_dir()) is not None
+
+
 def _data_safety_summary(payload: Any, integrity: Any) -> dict[str, Any]:
     safety = payload if isinstance(payload, dict) else {}
     integrity_payload = integrity if isinstance(integrity, dict) else {}
@@ -268,6 +287,7 @@ def _data_safety_summary(payload: Any, integrity: Any) -> dict[str, Any]:
         "invalid_backup_count": int(safety.get("invalid_backup_count") or 0),
         "pending_restore": bool(safety.get("pending_restore")),
         "storage_mode": _safe_text(safety.get("storage_mode"), max_length=40),
+        "database_location_mismatch": _database_location_mismatch(),
         "foreign_key_violation_count": len(
             integrity_payload.get("foreign_key_violations") or []
         ),
