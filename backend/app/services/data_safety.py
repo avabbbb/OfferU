@@ -83,7 +83,7 @@ def _utc_now() -> str:
 
 
 def _application_version() -> str:
-    return os.getenv("OFFERU_VERSION", "0.4.0")
+    return os.getenv("OFFERU_VERSION", "0.2.0")
 
 
 def _database_path_from_url(database_url: str) -> Path:

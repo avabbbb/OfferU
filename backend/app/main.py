@@ -158,7 +158,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="OfferU API",
     description="AI 驱动的智能求职助手后端",
-    version="0.4.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 

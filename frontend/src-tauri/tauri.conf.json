@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "OfferU",
-  "version": "0.4.0",
+  "version": "0.2.0",
   "identifier": "com.offeru.app",
   "build": {
     "frontendDist": "../dist",
