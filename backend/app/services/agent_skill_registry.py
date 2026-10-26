@@ -60,9 +60,13 @@ class AgentSkill:
     version: str = SKILL_REGISTRY_VERSION
     missing_capabilities: tuple[str, ...] = ()
     aliases: tuple[str, ...] = ()
+    # Read-only local Skill provenance ("local:agents" / "local:claude"); empty otherwise.
+    source: str = ""
+    # Local SKILL.md body: prompt-only, never part of summary() or the registry sha256.
+    instructions: str = ""
 
     def summary(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "id": self.id,
             "name": self.name,
             "group": self.group,
@@ -77,6 +81,9 @@ class AgentSkill:
             "aliases": list(self.aliases),
             "confirmation_policy": CONFIRMATION_POLICY,
         }
+        if self.source:
+            payload["source"] = self.source
+        return payload
 
 
 def _skill(
@@ -169,6 +176,39 @@ def _plugin_skills() -> tuple[AgentSkill, ...]:
         return ()
 
 
+def _local_skills() -> tuple[AgentSkill, ...]:
+    """Read-only Skills imported from the user's local shared skill dirs.
+
+    Explicit selection only: never part of catalog(), registry_snapshot(),
+    projections or auto routing, so the registry sha256 stays machine-independent.
+    """
+    from app.services.directory_skills import scan_local_skills
+
+    return tuple(scan_local_skills())
+
+
+def local_skill_summaries(operation_schemas: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Summaries of read-only local Skills for the slash picker (GET /skills).
+
+    Kept outside registry_snapshot() so its sha256 never depends on the user's machine.
+    """
+    available = {str(operation.get("name") or "") for operation in operation_schemas}
+    confirmed = {
+        str(operation.get("name") or "")
+        for operation in operation_schemas
+        if operation.get("requires_confirmation")
+    }
+    rows: list[dict[str, Any]] = []
+    for skill in sorted(_local_skills(), key=lambda item: (item.order, item.id)):
+        tools = sorted(skill.allowed_tools.intersection(available))
+        rows.append({
+            **skill.summary(),
+            "allowed_tools": tools,
+            "confirmation_required_operations": sorted(confirmed.intersection(tools)),
+        })
+    return rows
+
+
 def catalog() -> list[dict[str, Any]]:
     skills = [*_SKILLS, *_directory_skills(), *_plugin_skills()]
     return [skill.summary() for skill in sorted(skills, key=lambda item: (item.order, item.id))]
@@ -258,7 +298,7 @@ def resolve_skill(value: str | None) -> AgentSkill | None:
         return None
     if normalized == "offeru":
         normalized = "discovery"
-    for skill in (*_SKILLS, *_directory_skills(), *_plugin_skills()):
+    for skill in (*_SKILLS, *_directory_skills(), *_plugin_skills(), *_local_skills()):
         if normalized == skill.id or normalized in skill.aliases:
             return skill
     return None

@@ -576,6 +576,8 @@ export interface AgentSkill {
   missing_capabilities: string[];
   /** Present when the runtime selected this Skill; display-only provenance. */
   routing?: { via?: string; routed_from?: string; reason?: string };
+  // "local:agents" / "local:claude" / "local": read-only Skill imported from the user's machine.
+  source?: string;
 }
 
 /** Natural-language turns send this sentinel; the runtime resolves one business Skill once per Run. */
