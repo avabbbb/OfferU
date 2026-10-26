@@ -19,7 +19,7 @@ from app.services.harness_memory import (
     export_agent_memory_markdown,
     load_agent_memory,
 )
-from app.services.agent_skill_registry import registry_snapshot
+from app.services.agent_skill_registry import local_skill_summaries, registry_snapshot
 from app.services.agent_runtime import (
     canonical_agent_run_event,
     get_agent_run_provider,
@@ -208,7 +208,10 @@ def _runtime_stream_error_payload(
 
 @router.get("/skills")
 async def skills() -> dict[str, Any]:
-    return registry_snapshot(list_operations())
+    operations = list_operations()
+    snapshot = registry_snapshot(operations)
+    # 本机只读技能只追加到 picker 列表；sha256 仍是与机器无关的 Registry 指纹。
+    return dict(snapshot, skills=list(snapshot["skills"]) + local_skill_summaries(operations))
 
 
 @runtime_router.get("/runs")

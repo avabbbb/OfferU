@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -36,12 +37,21 @@ DEFAULT_READONLY_TOOLS = (
 )
 
 _CACHE: list[AgentSkill] | None = None
+_LOCAL_CACHE: list[AgentSkill] | None = None
+
+# 本机共享技能目录（只读导入；OfferU 永不写入这些目录）。测试可用该环境变量覆盖。
+LOCAL_SKILL_DIRS_ENV = "OFFERU_LOCAL_SKILL_DIRS"
+# OfferU 投影给外部 Agent 的自身技能目录名：导入时跳过，避免自我回环。
+_OWN_PROJECTION_DIR = "offeru"
+# 本机技能正文进入 prompt 的字符上限
+LOCAL_SKILL_INSTRUCTIONS_MAX_CHARS = 12_000
 
 
 def reload_directory_skills() -> None:
-    """清空扫描缓存，下次 catalog/resolve 时重新扫描磁盘。"""
-    global _CACHE
+    """清空扫描缓存（目录技能与本机技能），下次 catalog/resolve 时重新扫描磁盘。"""
+    global _CACHE, _LOCAL_CACHE
     _CACHE = None
+    _LOCAL_CACHE = None
 
 
 def scan_directory_skills() -> list[AgentSkill]:
@@ -71,7 +81,70 @@ def scan_directory_skills() -> list[AgentSkill]:
     return found
 
 
-def _parse_skill_file(skill_dir: Path, skill_file: Path) -> AgentSkill | None:
+def local_skill_roots() -> list[tuple[str, Path]]:
+    """本机共享技能根目录 (source, path)。
+
+    设置 OFFERU_LOCAL_SKILL_DIRS（os.pathsep 分隔）时改用这些路径，source 为 local；空串 = 无根目录。
+    """
+    override = os.environ.get(LOCAL_SKILL_DIRS_ENV)
+    if override is not None:
+        return [
+            ("local", Path(part.strip()).expanduser())
+            for part in override.split(os.pathsep)
+            if part.strip()
+        ]
+    try:
+        home = Path.home()
+    except RuntimeError:
+        return []
+    return [
+        ("local:agents", home / ".agents" / "skills"),
+        ("local:claude", home / ".claude" / "skills"),
+    ]
+
+
+def scan_local_skills() -> list[AgentSkill]:
+    """只读导入本机共享技能：非递归扫描 <root>/<name>/SKILL.md，绝不写盘。
+
+    - 跳过 offeru 目录（OfferU 自身投影）
+    - id 已被内置技能、目录技能或更早的本机根目录占用则跳过
+    - 工具只保留只读白名单交集，永不授予写操作
+    - 不可读目录静默容忍
+    """
+    global _LOCAL_CACHE
+    if _LOCAL_CACHE is not None:
+        return _LOCAL_CACHE
+    from app.services.agent_skill_registry import AUTO_SKILL_ID, _SKILLS
+
+    taken = {_OWN_PROJECTION_DIR, AUTO_SKILL_ID}
+    taken.update(skill.id for skill in _SKILLS)
+    taken.update(skill.id for skill in scan_directory_skills())
+    found: list[AgentSkill] = []
+    for source, root in local_skill_roots():
+        try:
+            entries = sorted(root.iterdir()) if root.is_dir() else []
+        except OSError as exc:
+            logger.warning("[local-skill] 无法读取 %s 技能目录: %s", source, safe_error_message(exc))
+            continue
+        for skill_dir in entries:
+            try:
+                if skill_dir.name.lower() == _OWN_PROJECTION_DIR or not skill_dir.is_dir():
+                    continue
+                skill_file = skill_dir / "SKILL.md"
+                if not skill_file.is_file():
+                    continue
+            except OSError:
+                continue
+            skill = _parse_skill_file(skill_dir, skill_file, source=source)
+            if skill is None or skill.id in taken:
+                continue
+            taken.add(skill.id)
+            found.append(skill)
+    _LOCAL_CACHE = found
+    return found
+
+
+def _parse_skill_file(skill_dir: Path, skill_file: Path, source: str = "") -> AgentSkill | None:
     try:
         text = skill_file.read_text(encoding="utf-8")
     except OSError:
@@ -122,9 +195,31 @@ def _parse_skill_file(skill_dir: Path, skill_file: Path) -> AgentSkill | None:
         )
     else:
         aliases = ()
+    name = str(meta.get("display_name") or meta.get("name") or skill_dir.name).strip()
+    if source:
+        # 本机技能：只读白名单交集，声明的写工具一律丢弃；交集为空回落到默认只读集。
+        readonly = frozenset(DEFAULT_READONLY_TOOLS)
+        body_start = text.find("\n", end + 4)
+        body = "" if body_start < 0 else text[body_start + 1:].strip()
+        return AgentSkill(
+            id=skill_id,
+            name=name,
+            group="local",
+            status="native",
+            description=description,
+            mode="skill_assistant",
+            allowed_tools=(frozenset(tools) & readonly) or readonly,
+            featured=False,
+            order=950,
+            version="local",
+            missing_capabilities=(),
+            aliases=aliases,
+            source=source,
+            instructions=body[:LOCAL_SKILL_INSTRUCTIONS_MAX_CHARS],
+        )
     return AgentSkill(
         id=skill_id,
-        name=str(meta.get("display_name") or meta.get("name") or skill_dir.name).strip(),
+        name=name,
         group=str(meta.get("group") or "custom").strip() or "custom",
         status="native",
         description=description,

@@ -1411,6 +1411,9 @@ export function AgentPanel() {
               >
                 <span className="shrink-0 font-mono text-[var(--foreground)]">/{skill.id}</span>
                 <span className="truncate text-[var(--foreground-muted)]">{skill.name}</span>
+                {skill.source?.startsWith("local") && (
+                  <span className="ml-auto shrink-0 rounded border border-[var(--border)] px-1 text-[10px] leading-4 text-[var(--foreground-muted)]">本机</span>
+                )}
               </button>
             ))}
           </div>
