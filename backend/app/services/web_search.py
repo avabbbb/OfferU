@@ -198,6 +198,13 @@ async def _search_serper(query: str, limit: int, api_key: str) -> list[SearchRes
     return results
 
 
+def _ddgs_available() -> bool:
+    """ddgs is an optional dependency; only list it when one of its packages is installed."""
+    import importlib.util
+
+    return any(importlib.util.find_spec(name) for name in ("ddgs", "duckduckgo_search"))
+
+
 async def _search_ddgs(query: str, limit: int) -> list[SearchResult]:
     """ddgs 免 key 兜底（可选依赖；国内直连不稳定，尽力而为）。"""
     try:
@@ -247,7 +254,7 @@ async def web_search(
         chain.append(("tavily", lambda: _search_tavily(clean_query, safe_limit, settings.tavily_api_key)))
     if provider in {"auto", "serper"} and settings.serper_api_key:
         chain.append(("serper", lambda: _search_serper(clean_query, safe_limit, settings.serper_api_key)))
-    if allow_optional_ddgs and provider in {"auto", "ddgs"}:
+    if allow_optional_ddgs and provider in {"auto", "ddgs"} and _ddgs_available():
         chain.append(("ddgs", lambda: _search_ddgs(clean_query, safe_limit)))
     if provider not in {"auto", "bocha", "tavily", "serper", "ddgs"}:
         raise ValueError(f"未知 search_provider: {provider}")
@@ -261,6 +268,9 @@ async def web_search(
             continue
         if results:
             return results
+    if not chain:
+        # Not an empty result: nothing searched. Callers and the Agent must not read this as "no jobs".
+        _logger.warning("web_search unavailable: no search provider configured (set a Bocha/Tavily/Serper key or install ddgs)")
     if errors:
         _logger.warning(
             "web_search all providers failed: %s",
@@ -379,6 +389,9 @@ async def web_search_preview(*, query: str, limit: int = 8) -> dict[str, Any]:
             )
             if key
         ]
-        + ["ddgs"],
+        + (["ddgs"] if _ddgs_available() else []),
+        "available": bool(
+            settings.bocha_api_key or settings.tavily_api_key or settings.serper_api_key or _ddgs_available()
+        ),
         "results": results,
     }
