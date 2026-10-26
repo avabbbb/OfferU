@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "offeru"
-version = "0.4.0"
+version = "0.2.0"
 description = "Local-first AI job search workbench for your own Agent"
 readme = { text = "OfferU: local-first job search workbench. Run `offeru start`.", content-type = "text/markdown" }
 license = "MIT"

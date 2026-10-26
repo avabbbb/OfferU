@@ -319,7 +319,7 @@ async def export_diagnostic_bundle() -> dict[str, Any]:
         "schema_version": "offeru.internal-beta.diagnostics.v1",
         "created_at": _utc_now(),
         "app": {
-            "version": _safe_text(os.getenv("OFFERU_VERSION", "0.4.0"), max_length=40),
+            "version": _safe_text(os.getenv("OFFERU_VERSION", "0.2.0"), max_length=40),
             "build_mode": _safe_text(
                 os.getenv("OFFERU_BUILD_MODE", "local-development"), max_length=60
             ),

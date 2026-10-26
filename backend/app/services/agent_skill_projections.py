@@ -38,7 +38,7 @@ def _host_capability_note(host_id: str) -> str:
     )
 
 
-APP_VERSION = "0.4.0"
+APP_VERSION = "0.2.0"
 WHEEL_URL = (
     "https://github.com/avabbbb/OfferU/releases/download/"
     f"v{APP_VERSION}-lite/offeru-{APP_VERSION}-py3-none-any.whl"

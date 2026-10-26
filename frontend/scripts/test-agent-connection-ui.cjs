@@ -21,7 +21,7 @@ const host = {id:'codex',name:'Codex',installed:true,compatible:true,can_install
       await context.route('**/api/**', async route => {
         const req=route.request(); const path=new globalThis.URL(req.url()).pathname;
         let value={};
-        if (path==='/api/health') value={status:'ok',service:'OfferU',runtime:'python',version:'0.4.0'};
+        if (path==='/api/health') value={status:'ok',service:'OfferU',runtime:'python',version:'0.2.0'};
         else if (path.endsWith('/context')) {const body=req.postDataJSON() || {};value={ok:true,outputs:{...body,version:++version}};}
         else if (path.endsWith('/runtime/connections')) {scans++;value={items:[host],recommended_provider_id:'codex'};}
         else if (path.includes('/runtime/connections/codex/')) {installs++;value={items:[{...host,skill_status:'INSTALLED',connection_verified:true,status:'ready'}],recommended_provider_id:'codex'};}
