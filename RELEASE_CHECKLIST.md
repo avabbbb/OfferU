@@ -97,7 +97,7 @@
 | 84 | Clean Machine | NOT_VERIFIED | workflow 已新增独立 `desktop-installed-smoke`：先校验下载的 NSIS/MSI artifact manifest/hash/version/signature，再拒绝复用已占用的 `8765`、安装到 runner 临时目录、启动已安装 app、直连 `127.0.0.1:8765/api/health` 并严格核对 `status=ok`、`service=OfferU`、`runtime=python`、监听 owner 来自该安装目录、卸载并上传结果；本轮未执行远程 runner，仍不是无开发工具 clean OS/独立用户人工验收 |
 | 85 | Python Sidecar | PASS | installed `offeru-backend.exe`、`node.exe`、`agent-runtime`、health/integrity/skills smoke 通过 |
 | 86 | Installer lifecycle | PASS | uninstall → reinstall → launch/smoke → final uninstall 全通过，用户 appdata 保留 |
-| 87 | Unified Versioning | PASS | backend/frontend/Tauri/Rust 当前均为 `0.4.0`，FastAPI health 使用的 `backend/app/main.py` 也纳入版本审计；`audit_version_consistency.py` 对五处声明做 fail-closed 机械核对，远程 Release runner 尚未重验 |
+| 87 | Unified Versioning | PASS | backend/frontend/Tauri/Rust 当前均为 `0.2.0`（内测 demo），FastAPI health 使用的 `backend/app/main.py` 也纳入版本审计；`audit_version_consistency.py` 对五处声明做 fail-closed 机械核对，远程 Release runner 尚未重验 |
 | 88 | Upgrade | NOT_VERIFIED | previous installer→current→migration→Golden Path 未跑 |
 | 89 | Update Signing | NOT_VERIFIED | updater 未启用；启用时签名不可关闭 |
 | 90 | Code Signing | BLOCKED_EXTERNAL | 代码/installer 尚未 ready；最终证书需要所有者 |

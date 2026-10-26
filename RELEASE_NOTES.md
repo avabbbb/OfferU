@@ -1,4 +1,16 @@
-# OfferU 0.4.0 Release Candidate Notes
+# OfferU 0.2.0 内测版 Demo
+
+状态：内测 demo（GitHub pre-release `v0.2.0`），不是公开发布版本；未重新打包 installer，按 DEVELOPMENT.md 从源码启动。
+
+## 包含
+
+- 一套共用工具层（HTTP / MCP / CLI）+ 撤销记录，今天和岗位页（#134）；
+- Agent 面板：逐个 Agent 的接入清单、/skill 选择器、默认不预设模型服务（#154）；
+- 设置页渐进式披露：6 行，点开弹窗；删除无效的搜索、邮箱推送、档案同步配置（#154）；
+- 今天页投递进度看板（#155）；
+- 版本号统一为 0.2.0（#156）。
+
+## 历史：0.4.0 Release Candidate（已被 0.2.0 内测 demo 取代）
 
 状态：`INTERNAL_RELEASE_CANDIDATE`，不是公开发布版本。
 

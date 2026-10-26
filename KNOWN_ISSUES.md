@@ -22,7 +22,7 @@
 | PRIV-001 | EXTERNAL_DECISION | GATE | BLOCKED_EXTERNAL | 3 条历史旧邮箱正文需要产品/隐私决定 |
 | PROVIDER-001 | PROVIDER_ISSUE | P2 | OPEN | 默认 DeepSeek 模型不可用，但 Replay/已验证 staged Pi 路径可用 |
 
-- 当前 `0.4.0` Windows NSIS/MSI 可以安装并运行 Python sidecar，但 Authenticode 状态仍为 `NotSigned`；在取得合法代码签名证书前不得作为公开发布 installer 分发。
+- 0.4.0 RC 时期验证的 Windows NSIS/MSI 可以安装并运行 Python sidecar（0.2.0 内测 demo 尚未重新打包验证），但 Authenticode 状态仍为 `NotSigned`；在取得合法代码签名证书前不得作为公开发布 installer 分发。
 - 当前没有 previous-release installer，因此升级/迁移 Golden Path 尚未验证；Tauri updater 也未启用，不能宣传自动更新。
 - Release-mode Doctor、packaged PDF 和 staged Provider 的 Pi smoke 已通过；当前开发配置选择的 `deepseek-v4-flash-free` 由上游返回 `model unavailable`，界面应保持失败可见，不应回退成伪造成功。
 - [Live Role Intelligence report](docs/archive/pre-2026-10/evals/reports/2026-09-01-codex-offeru-public-release-live-role.md)：Pi CLI `0.74.0` 的真实网页研究任务未返回结构化结果；Pi/OMP 已 fail closed，不作为 live web research Provider。Codex live 仍需要外部认证。
