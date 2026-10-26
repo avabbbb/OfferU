@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import { AddEvent, EventRow } from "@/components/core/EventList";
 import { RecentChanges } from "@/components/core/RecentChanges";
+import { ProgressBoard } from "@/components/today/ProgressBoard";
 import { type Overview, useTool } from "@/lib/core";
 
 const STAGE: Record<string, string> = {
@@ -25,6 +26,8 @@ export default function TodayPage() {
         </Link>
         <p className="mt-1 text-[13.5px] text-[var(--foreground-muted)]">{data.next_step.why}</p>
       </header>
+
+      <ProgressBoard counts={data.jobs} />
 
       <section>
         <h2 className="text-[13px] font-medium text-[var(--foreground-muted)]">要做的事</h2>
