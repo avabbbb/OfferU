@@ -1158,6 +1158,9 @@ export interface AgentConnection {
   transport?: string;
   capabilities?: Record<string, string>;
   verification_challenge?: { provider_id: string; challenge_id: string } | null;
+  executable_path?: string;
+  skill_path?: string;
+  mcp_status?: "REGISTERED" | "NOT_REGISTERED" | "NOT_SUPPORTED" | "UNKNOWN";
 }
 
 export interface AgentConnectionsSnapshot {

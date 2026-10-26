@@ -202,6 +202,7 @@ function toPanelResponse(response: AgentRunResponse): AgentResponse {
 }
 
 export function AgentPanel() {
+  const [slashIndex, setSlashIndex] = useState(0);
   const [messages, setMessages] = useState<PanelMessage[]>([
     {
       id: "welcome",
@@ -948,47 +949,57 @@ export function AgentPanel() {
     }
   };
 
+  const slashQuery = input.startsWith("/") && !/\s/.test(input) ? input.slice(1).toLowerCase() : null;
+  const slashMatches = slashQuery === null
+    ? []
+    : skills
+        .filter((skill) => skill.id.toLowerCase().includes(slashQuery) || skill.name.toLowerCase().includes(slashQuery))
+        .slice(0, 8);
+  const pickSlashSkill = (skillId: string) => {
+    setInput(`/${skillId} `);
+    setSlashIndex(0);
+  };
+
   return (
     <div className="offeru-agent-panel flex h-full min-h-0 flex-col">
-      <div className="agent-bar border-b border-[var(--border)] px-3.5 py-2.5">
-        <AgentConnectionStatus />
-      </div>
-      {/* 对话状态行 */}
-      <div className="agent-bar flex items-center justify-between gap-2 border-b border-[var(--border)] px-3.5 py-1.5">
+      <div className="agent-bar flex items-center justify-between gap-2 border-b border-[var(--border)] px-3 py-1.5">
         <button
           type="button"
           onClick={() => setHistoryOpen((value) => !value)}
-          className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-[12px] font-medium text-[var(--foreground-soft)] transition-colors duration-[var(--dur-quick)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
-          title="打开历史对话"
+          className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-[12.5px] font-medium text-[var(--foreground)] transition-colors duration-[var(--dur-quick)] hover:bg-[var(--surface-muted)]"
+          title="历史对话"
         >
-          <History size={13} />
-          <span className="truncate">{conversationTitle || "历史对话"}</span>
+          <History size={13} className="shrink-0 text-[var(--foreground-muted)]" />
+          <span className="truncate">{conversationTitle || "新对话"}</span>
         </button>
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="flex shrink-0 items-center gap-0.5">
+          {hostedSessions.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setHostedOpen((value) => !value)}
+              aria-label="外部执行器"
+              title="外部执行器会话"
+              className="rounded-md p-1.5 text-[var(--foreground-muted)] transition-colors duration-[var(--dur-quick)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+            >
+              <Activity size={13} />
+            </button>
+          )}
+          <Link
+            href={MODEL_SETTINGS_ROUTE}
+            title="模型设置"
+            className="rounded-md px-1.5 py-1 text-[11px] text-[var(--foreground-muted)] transition-colors duration-[var(--dur-quick)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+          >
+            模型
+          </Link>
           <button
             type="button"
-            onClick={() => setHostedOpen((value) => !value)}
-            className={`bauhaus-chip !flex !items-center !gap-1 !py-0.5 !text-[10.5px] ${
-              hostedOpen ? "!border-[var(--border-strong)] !bg-[var(--surface-muted)]" : ""
-            }`}
-            title="查看外部 Coding Agent 托管会话"
+            onClick={startNewConversation}
+            aria-label="新对话"
+            title="新对话"
+            className="rounded-md p-1.5 text-[var(--foreground-muted)] transition-colors duration-[var(--dur-quick)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
           >
-            <Activity size={11} />
-            托管 {hostedSessions.filter((item) => HOSTED_ACTIVE_STATUSES.has(item.status)).length || hostedSessions.length}
-            {hostedOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+            <Plus size={14} />
           </button>
-          <span className="bauhaus-chip !py-0.5 !text-[10.5px]">内置助手</span>
-          <Link href={MODEL_SETTINGS_ROUTE} className="text-[11px] text-[var(--foreground-muted)] underline underline-offset-4 hover:text-[var(--foreground)] focus-visible:ring-2">模型设置</Link>
-          {activeRun && activeRun.harness_name && (
-            <span
-              className="bauhaus-chip !py-0.5 !text-[10.5px]"
-              title={`harness=${activeRun.harness_name} v${activeRun.harness_version || "?"} · adapter=${activeRun.adapter_name || "?"} v${activeRun.adapter_version || "?"} · lease=${activeRun.lease_id ? activeRun.lease_id.slice(0, 12) + "…" : "无"}`}
-            >
-              {activeRun.harness_name} {activeRun.lease_id ? "· 已配对" : "· 未配对"}
-            </span>
-          )}
-          <span className="bauhaus-chip !py-0.5 !text-[10.5px]">{STAGE_LABELS[latestStage] || latestStage}</span>
-          <span className="bauhaus-chip !py-0.5 !text-[10.5px]">{latestMode}</span>
         </div>
       </div>
 
@@ -996,14 +1007,44 @@ export function AgentPanel() {
         <div className="border-b border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2.5">
           <div className="mb-2 flex items-center justify-between">
             <p className="text-[12px] font-semibold text-[var(--foreground)]">历史对话</p>
-            <button
-              type="button"
-              onClick={startNewConversation}
-              className="bauhaus-button bauhaus-button-sm"
-            >
-              <Plus size={12} />
-              新建
-            </button>
+            <div className="flex items-center gap-0.5">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".md,.markdown,.json,.txt"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) importMemoryFile(file);
+                }}
+              />
+              <button
+                type="button"
+                aria-label="导入本地记忆"
+                title="导入外部 Harness / 本地 Markdown 或 JSON 记忆"
+                onClick={() => fileInputRef.current?.click()}
+                className="rounded-md p-1.5 text-[var(--foreground-muted)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
+              >
+                <Upload size={13} />
+              </button>
+              <button
+                type="button"
+                aria-label="导出助手记忆"
+                title="导出记忆为 Markdown"
+                onClick={exportMemory}
+                className="rounded-md p-1.5 text-[var(--foreground-muted)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
+              >
+                <Download size={13} />
+              </button>
+              <button
+                type="button"
+                onClick={startNewConversation}
+                className="bauhaus-button bauhaus-button-sm"
+              >
+                <Plus size={12} />
+                新建
+              </button>
+            </div>
           </div>
           <div className="max-h-40 space-y-1 overflow-y-auto">
             {conversations.length === 0 && (
@@ -1225,76 +1266,6 @@ export function AgentPanel() {
         </section>
       )}
 
-      {/* 快捷技能 */}
-      <div className="agent-bar flex flex-wrap items-center gap-1.5 border-b border-[var(--border)] px-3.5 py-2">
-        <select
-          aria-label="当前 Agent Skill"
-          title="默认由助手按任务自动选择 Skill"
-          value={selectedSkillId}
-          onChange={(event) => setSelectedSkillId(event.target.value)}
-          className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[11.5px] text-[var(--foreground)] outline-none disabled:opacity-50"
-        >
-          <option value={AUTO_SKILL_ID}>自动选择技能</option>
-          {skills.map((skill) => (
-            <option key={skill.id} value={skill.id}>
-              {skill.name}{skill.status === "partial" ? "（部分能力）" : ""}
-            </option>
-          ))}
-          {selectedSkillId !== AUTO_SKILL_ID
-            && !skills.some((skill) => skill.id === selectedSkillId) && (
-            <option value={selectedSkillId}>{selectedSkillId}</option>
-          )}
-        </select>
-        {selectedSkillId === AUTO_SKILL_ID && resolvedSkillName && (
-          <span
-            className="bauhaus-chip !py-0.5 !text-[10.5px]"
-            title={resolvedRoutingReason || `本 Run 已解析为 ${resolvedSkillId}；选择仍保持自动`}
-          >
-            本轮：{resolvedSkillName}
-          </span>
-        )}
-        <div className="basis-full" />
-        {quickActionsForStage(latestStage).map((action) => (
-          <button
-            key={action.label}
-            type="button"
-            onClick={() => sendMessage(action.prompt, action.skillId)}
-            className="bauhaus-chip cursor-pointer transition-colors duration-[var(--dur-quick)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {action.label}
-          </button>
-        ))}
-        <div className="ml-auto flex items-center gap-0.5">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".md,.markdown,.json,.txt"
-            className="hidden"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) importMemoryFile(file);
-            }}
-          />
-          <button
-            type="button"
-            aria-label="导入本地记忆"
-            title="导入外部 Harness / 本地 Markdown 或 JSON 记忆"
-            onClick={() => fileInputRef.current?.click()}
-            className="rounded-md p-1.5 text-[var(--foreground-muted)] transition-colors duration-[var(--dur-quick)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
-          >
-            <Upload size={14} />
-          </button>
-          <button
-            type="button"
-            aria-label="导出助手记忆"
-            title="导出记忆为 Markdown"
-            onClick={exportMemory}
-            className="rounded-md p-1.5 text-[var(--foreground-muted)] transition-colors duration-[var(--dur-quick)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
-          >
-            <Download size={14} />
-          </button>
-        </div>
-      </div>
 
       {/* 消息流 */}
       <div ref={scrollRef} className="agent-thread custom-scrollbar min-h-0 flex-1 overflow-y-auto px-3.5 py-4">
@@ -1370,7 +1341,7 @@ export function AgentPanel() {
           <p className="font-semibold text-[var(--foreground)]">{agentRecovery(error).title}</p>
           <p className="break-words text-[var(--primary-red)]">{error}</p>
           <p className="text-[var(--foreground-muted)]">{agentRecovery(error).hint}</p>
-          {agentRecovery(error).configure && <Link href={MODEL_SETTINGS_ROUTE} className="inline-flex rounded-md bg-[var(--foreground)] px-3 py-2 font-medium text-[var(--surface)] focus-visible:ring-2">配置内置 Agent</Link>}
+          {agentRecovery(error).configure && <Link href={MODEL_SETTINGS_ROUTE} style={{ background: "var(--foreground)", color: "#ffffff" }} className="inline-flex rounded-md px-3 py-2 font-medium no-underline transition-opacity hover:opacity-90 focus-visible:ring-2">配置内置 Agent</Link>}
         </div>
       )}
 
@@ -1422,6 +1393,28 @@ export function AgentPanel() {
 
       {/* 输入区 */}
       <footer className="agent-bar border-t border-[var(--border)] px-3 py-2.5">
+        {slashMatches.length > 0 && (
+          <div role="listbox" aria-label="技能" className="custom-scrollbar mb-1.5 max-h-56 overflow-y-auto rounded-md border border-[var(--border)] bg-[var(--surface)] py-1">
+            {slashMatches.map((skill, index) => (
+              <button
+                key={skill.id}
+                type="button"
+                role="option"
+                aria-selected={index === slashIndex}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  pickSlashSkill(skill.id);
+                }}
+                className={`flex w-full items-baseline gap-2 px-2.5 py-1.5 text-left text-[12px] ${
+                  index === slashIndex ? "bg-[var(--surface-muted)]" : "hover:bg-[var(--surface-hover)]"
+                }`}
+              >
+                <span className="shrink-0 font-mono text-[var(--foreground)]">/{skill.id}</span>
+                <span className="truncate text-[var(--foreground-muted)]">{skill.name}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex items-end gap-1.5">
           <Textarea
             value={input}
@@ -1435,12 +1428,30 @@ export function AgentPanel() {
                   ? "可以继续输入，空闲后按顺序发送..."
                   : runNeedsUser
                     ? "继续对话或说明如何调整；当前待处理的任务会先保存，随时可回来"
-                    : "问 OfferU，或说你要推进哪一步..."
+                    : "问 OfferU，输入 / 选择技能..."
             }
             variant="bordered"
             className="flex-1"
             classNames={bauhausFieldClassNames}
             onKeyDown={(event) => {
+              if (slashMatches.length > 0) {
+                const count = slashMatches.length;
+                if (event.key === "ArrowDown") {
+                  event.preventDefault();
+                  setSlashIndex((value) => (value + 1) % count);
+                  return;
+                }
+                if (event.key === "ArrowUp") {
+                  event.preventDefault();
+                  setSlashIndex((value) => (value + count - 1) % count);
+                  return;
+                }
+                if (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) {
+                  event.preventDefault();
+                  pickSlashSkill(slashMatches[Math.min(slashIndex, count - 1)].id);
+                  return;
+                }
+              }
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
                 sendMessage();
@@ -1471,6 +1482,14 @@ function PanelMessageBubble({
 }) {
   const isUser = message.role === "user";
   const response = message.response;
+
+  if (!isUser && message.id.startsWith("welcome")) {
+    return (
+      <p className="px-2 pt-8 text-center text-[12px] leading-5 text-[var(--foreground-muted)] opacity-80">
+        {message.content}
+      </p>
+    );
+  }
 
   return (
     <div className={isUser ? "flex justify-end pl-10" : "flex justify-start"}>
@@ -1628,11 +1647,11 @@ function ToolCallList({ calls }: { calls: AgentResponse["tool_calls"] }) {
               )}
               <ChevronDown size={11} className="ml-auto shrink-0 text-[var(--foreground-muted)] transition-transform duration-[var(--dur-quick)] group-open:rotate-180" />
             </summary>
-            <div className="ml-[17px] mt-0.5 space-y-1 pb-1">
+            <div className="agent-tool-detail space-y-1">
               {presentation && (
                 <p className="text-[11.5px] leading-5 text-[var(--foreground-soft)]">{presentation}</p>
               )}
-              <pre className="custom-scrollbar max-h-28 overflow-auto whitespace-pre-wrap rounded bg-white/50 px-2 py-1.5 font-mono text-[10.5px] leading-4 text-[var(--foreground-soft)]">
+              <pre className="custom-scrollbar max-h-28 overflow-auto whitespace-pre-wrap rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-2 py-1.5 font-mono text-[10.5px] leading-4 text-[var(--foreground-soft)]">
                 {previewJson(call.result)}
               </pre>
             </div>

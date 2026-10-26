@@ -142,8 +142,8 @@ export function AgentAskCard({
                 key={option.option_id}
                 className={`agent-ask-option flex cursor-pointer items-start gap-2 rounded-md px-2 py-1 text-[12px] leading-5 transition-colors ${
                   checked
-                    ? "bg-white/80 text-[var(--foreground)] ring-1 ring-[var(--border-strong)]"
-                    : "text-[var(--foreground-soft)] hover:bg-white/50"
+                    ? "bg-[var(--surface-muted)] text-[var(--foreground)] ring-1 ring-[var(--border-strong)]"
+                    : "text-[var(--foreground-soft)] hover:bg-[var(--surface-muted)]"
                 }`}
               >
                 <input
@@ -180,7 +180,7 @@ export function AgentAskCard({
           onChange={(event) => setFreeText(event.target.value)}
           rows={2}
           placeholder={options.length > 0 ? "其他 / 补充说明（可选）" : "输入你的回答…"}
-          className="w-full rounded-md border border-[var(--border)] bg-white/70 px-2 py-1.5 text-[12px] leading-5 text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--foreground)]"
+          className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-[12px] leading-5 text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--foreground)]"
         />
       )}
 

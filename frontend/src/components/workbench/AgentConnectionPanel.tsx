@@ -34,6 +34,25 @@ export function AgentConnectionStatus({ compact = false }: { compact?: boolean }
   );
 }
 
+type AgentConnectionItem = AgentConnectionsSnapshot["items"][number];
+
+const SKILL_LABEL: Record<string, string> = { INSTALLED: "已安装", OUTDATED: "需更新", NOT_INSTALLED: "未安装", ERROR: "异常", NOT_SUPPORTED: "不支持" };
+const MCP_LABEL: Record<string, string> = { REGISTERED: "已注册", NOT_REGISTERED: "未注册", NOT_SUPPORTED: "不适用", UNKNOWN: "无法读取" };
+
+function agentStatusLabel(item: AgentConnectionItem): string {
+  if (item.connection_verified && item.status === "ready") return "已验证连接";
+  switch (item.status) {
+    case "missing": return "未安装";
+    case "incompatible": return "版本不兼容";
+    case "integration_missing": return "未接入";
+    case "outdated": return "接入需更新";
+    case "auth_required": return "需要登录";
+    case "blocked": return "被阻止";
+    case "failed": return "接入失败";
+    default: return item.skill_status === "INSTALLED" ? "已安装，待验证" : "待检查";
+  }
+}
+
 export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean }) {
   const state = useAgentConnection();
   const [connections, setConnections] = useState<AgentConnectionsSnapshot | null>(null);
@@ -81,14 +100,15 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
     finally { setBusy(false); }
   };
 
-  const connect = async () => {
-    if (!desktop || SHOWCASE || !selected || busy) return;
+  const connect = async (target: AgentConnectionItem | undefined = selected) => {
+    if (!desktop || SHOWCASE || !target || busy) return;
     setBusy(true); setError("");
+    setSelectedId(target.id);
     state.reportConnection(null);
     try {
-      applySnapshot(await (selected.skill_status === "INSTALLED"
-        ? agentRuntimeApi.probeConnection(selected.id)
-        : agentRuntimeApi.connectIntegration(selected.id, selected.skill_status === "OUTDATED" ? "update" : "install")));
+      applySnapshot(await (target.skill_status === "INSTALLED"
+        ? agentRuntimeApi.probeConnection(target.id)
+        : agentRuntimeApi.connectIntegration(target.id, target.skill_status === "OUTDATED" ? "update" : "install")));
     } catch (cause) { setError(safeClientErrorMessage(cause, "Agent 接入未完成，请重试。")); }
     finally { setBusy(false); }
   };
@@ -119,16 +139,35 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
           <Button size="sm" onPress={() => void discover()} isDisabled={busy} startContent={busy ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}>
             {connections ? "重新检查本机 Agent" : "发现本机 Agent"}
           </Button>
-          {selected && <div className="rounded-xl border border-[var(--border)] p-4">
-            <p className="text-sm font-semibold">{selected.name}</p>
-            <p role="status" className="mt-2 text-xs text-[var(--foreground-muted)]">{busy ? "正在准备接入…" : selected.connection_verified && selected.status === "ready" ? "已验证连接：已完成真实工具回读。" : selected.last_error || (selected.skill_status === "INSTALLED" ? "接入文件已安装，真实连接尚未验证。" : selected.id === "external" ? "一套 OfferU 接入，适用于能加载 Skill 并执行本地工具的 Agent。" : "已发现 Agent，接入尚未完成。")}</p>
-            <Button size="sm" onPress={() => void connect()} isDisabled={busy || (selected.connection_verified && selected.status === "ready")} className="mt-3">
-              {selected.connection_verified && selected.status === "ready" ? "已验证连接" : selected.skill_status === "INSTALLED" ? "验证连接" : selected.skill_status === "OUTDATED" ? "更新接入并验证" : `连接 ${selected.name}`}
-            </Button>
-          </div>}
-          {awaitingReadback && <p role="status" className="text-xs leading-relaxed text-[var(--foreground-muted)]">接入已准备。现在到你已有的 Agent 中使用 OfferU Skill；完成只读验证后，这里会自动更新。OfferU 不会另起一个 Agent 会话。</p>}
-          {connections && !selected && <p role="status" className="text-xs text-[var(--foreground-muted)]">尚未发现可自动接入的本地 Agent。可以继续使用内置 Agent；消费级 Agent 的连接需由对应宿主支持。</p>}
-          {candidates.length > 1 && <details className="text-xs"><summary className="cursor-pointer">选择其他安装位置</summary><div className="mt-2 flex flex-wrap gap-2">{candidates.filter((item) => item.id !== selected?.id).map((item) => <Button key={item.id} size="sm" isDisabled={busy} onPress={() => { setSelectedId(item.id); state.reportConnection(item); }}>{item.name}</Button>)}</div></details>}
+          {connections && <ul className="divide-y divide-[var(--border)] rounded-xl border border-[var(--border)]" aria-label="本机 Agent 清单" data-testid="agent-checklist">
+            {connections.items.filter((item) => item.installed || item.id === "external").map((item) => {
+              const verified = item.connection_verified && item.status === "ready";
+              return <li key={item.id} className="space-y-2 p-4" data-testid={"agent-row-" + item.id}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-semibold">
+                    {item.name}
+                    {item.id === selected?.id && <span className="ml-2 text-[11px] font-normal text-[var(--foreground-muted)]">当前使用</span>}
+                  </p>
+                  <span role="status" className={"text-xs " + (verified ? "text-emerald-700" : "text-[var(--foreground-muted)]")}>{busy && item.id === selected?.id ? "处理中…" : agentStatusLabel(item)}</span>
+                </div>
+                <dl className="grid grid-cols-[4.5rem_1fr] gap-x-3 gap-y-1 text-[11px] text-[var(--foreground-muted)]">
+                  <dt>程序</dt><dd className="break-all">{item.executable_path || (item.id === "external" ? "通用 Skill 目录，无需程序" : "未发现")}</dd>
+                  <dt>Skill</dt><dd className="break-all">{SKILL_LABEL[item.skill_status] || item.skill_status}{item.skill_path ? " · " + item.skill_path : ""}</dd>
+                  <dt>MCP</dt><dd>{MCP_LABEL[item.mcp_status || "UNKNOWN"]}</dd>
+                  <dt>最后验证</dt><dd>{item.checked_at ? connectionTime(item.checked_at) : "从未验证"}</dd>
+                </dl>
+                {item.last_error && <p className="break-words text-[11px] text-amber-800">{item.last_error}</p>}
+                {item.can_install_skill && item.compatible && <Button size="sm" variant="bordered" onPress={() => void connect(item)} isDisabled={busy || verified}>
+                  {verified ? "已验证" : item.skill_status === "INSTALLED" ? "验证连接" : item.skill_status === "OUTDATED" ? "更新并验证" : "连接"}
+                </Button>}
+              </li>;
+            })}
+          </ul>}
+          {connections && connections.items.some((item) => !item.installed && item.id !== "external") && <p className="text-[11px] text-[var(--foreground-muted)]">
+            本机未发现：{connections.items.filter((item) => !item.installed && item.id !== "external").map((item) => item.name).join("、")}
+          </p>}
+          {awaitingReadback && <p role="status" className="text-xs leading-relaxed text-[var(--foreground-muted)]">接入已准备。到 {selected?.name} 里用一次 OfferU Skill，完成只读回读后这一行会变成「已验证连接」。</p>}
+          {connections && !selected && <p role="status" className="text-xs text-[var(--foreground-muted)]">尚未发现可自动接入的本地 Agent。可以继续使用内置 Agent。</p>}
         </div> : <p role="status" className="text-xs text-[var(--foreground-muted)]">在终端运行 offeru connect，或用 offeru start 打开的工作台连接你的 Agent。当前网页不会扫描本机或安装接入文件。</p>}
         {error && <p role="alert" className="flex gap-2 text-xs text-amber-800"><AlertCircle size={14} />{error}</p>}
         <p className="text-[11px] leading-relaxed text-[var(--foreground-muted)]">

@@ -35,6 +35,32 @@ def _can_install_skill(provider_id: str) -> bool:
     host = get_host(provider_id)
     return provider_id == "external" or bool(host and host.can_install_skill)
 
+def _mcp_status(provider_id: str) -> str:
+    """Read-only: whether offeru connect registered OfferU as an MCP server. Never spawns the CLI."""
+    import json
+    import os
+
+    home = Path.home()
+    try:
+        if provider_id == "codex":
+            config = Path(os.environ.get("CODEX_HOME") or home / ".codex") / "config.toml"
+            if not config.exists():
+                return "NOT_REGISTERED"
+            text = config.read_text(encoding="utf-8")
+            return "REGISTERED" if "[mcp_servers.offeru]" in text or '[mcp_servers."offeru"]' in text else "NOT_REGISTERED"
+        if provider_id == "claude":
+            config_dir = os.environ.get("CLAUDE_CONFIG_DIR")
+            config = Path(config_dir) / ".claude.json" if config_dir else home / ".claude.json"
+            if not config.exists():
+                return "NOT_REGISTERED"
+            data = json.loads(config.read_text(encoding="utf-8"))
+            servers = data.get("mcpServers") if isinstance(data, dict) else None
+            return "REGISTERED" if isinstance(servers, dict) and "offeru" in servers else "NOT_REGISTERED"
+    except (OSError, ValueError):
+        return "UNKNOWN"
+    return "NOT_SUPPORTED"
+
+
 
 def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
     provider_id = item["id"]
@@ -188,6 +214,9 @@ def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
         "transport": "local_cli",
         "capabilities": {"tools": "VERIFIED" if check.get("integration_status") == "VERIFIED" else "NOT_VERIFIED", "interactive_input": "HOST_OWNED", "web": "HOST_OWNED", "streaming": "HOST_OWNED"},
         "verification_challenge": next((value for value in pending_connection_challenges() if value["provider_id"] == provider_id), None),
+        "executable_path": redact_sensitive_text(executable or "", max_length=500),
+        "skill_path": str(integration_manager.adapter(provider_id).skill_path()) if can_install else "",
+        "mcp_status": _mcp_status(provider_id),
     }
 
 

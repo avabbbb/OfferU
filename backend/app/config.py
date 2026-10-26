@@ -30,8 +30,9 @@ class Settings(BaseSettings):
 
     # ---- AI 模型配置 ----
     # llm_provider: openai / deepseek / qwen / siliconflow / gemini / zhipu / ollama / custom
-    llm_provider: str = "deepseek"
-    llm_model: str = "deepseek-v4-flash"
+    # 未配置时保持为空：不替用户隐式选择任何模型服务。
+    llm_provider: str = ""
+    llm_model: str = ""
     active_llm_config_id: str = ""
     active_llm_base_url: str = ""
     active_llm_api_key: str = ""
