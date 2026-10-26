@@ -565,6 +565,11 @@ async def connect_agent_integration(
     )
 
 
+@runtime_router.post("/runtime/connections/{provider_id}/launch")
+async def launch_agent_session(provider_id: str) -> dict[str, Any]:
+    return await _ui_operation_outputs("launch_agent_session", {"provider_id": provider_id})
+
+
 @runtime_router.get("/runtime/conformance")
 async def local_agent_conformance(
     provider: str | None = None,

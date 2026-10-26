@@ -1134,6 +1134,7 @@ export interface AgentConnection {
   expected_skill_version: string;
   expected_skill_hash: string;
   can_install_skill: boolean;
+  can_launch?: boolean;
   can_live_verify_skill: boolean;
   auth_mode: string;
   checked_at: string | null;
@@ -1158,6 +1159,12 @@ export interface AgentConnection {
   transport?: string;
   capabilities?: Record<string, string>;
   verification_challenge?: { provider_id: string; challenge_id: string } | null;
+}
+
+export interface AgentLaunchResult {
+  launched: boolean;
+  command: string;
+  error: string;
 }
 
 export interface AgentConnectionsSnapshot {
@@ -1188,6 +1195,10 @@ export const agentRuntimeApi = {
   connectIntegration: (providerId: string, action: "install" | "update" | "repair") => request<AgentConnectionsSnapshot>(
     `/api/agent/runtime/connections/${encodeURIComponent(providerId)}/integration`,
     { method: "POST", body: JSON.stringify({ action }), signal: AbortSignal.timeout(20000) },
+  ),
+  launchAgentSession: (providerId: string) => request<AgentConnectionsSnapshot & { launch?: AgentLaunchResult }>(
+    `/api/agent/runtime/connections/${encodeURIComponent(providerId)}/launch`,
+    { method: "POST", signal: AbortSignal.timeout(60000) },
   ),
   syncContext: (data: Schemas["AgentContextRequest"], signal: AbortSignal) => request<{
     ok: boolean; outputs?: AgentViewSnapshot; errors?: string[];

@@ -36,6 +36,12 @@ def _can_install_skill(provider_id: str) -> bool:
     return provider_id == "external" or bool(host and host.can_install_skill)
 
 
+def _supports_launch(provider_id: str) -> bool:
+    from app.services.agent_launch import supports_launch
+
+    return supports_launch(provider_id)
+
+
 def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
     provider_id = item["id"]
     can_install = _can_install_skill(provider_id)
@@ -156,6 +162,7 @@ def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
         "expected_skill_version": integration["expected_skill_version"],
         "expected_skill_hash": integration["expected_skill_hash"],
         "can_install_skill": integration["can_install"],
+        "can_launch": _supports_launch(provider_id),
         "can_live_verify_skill": integration["can_live_verify"],
         "auth_mode": check.get("auth_mode", "native_probe" if persisted_authenticated else "unknown"),
         "checked_at": check.get("checked_at") or conformance.get("last_probe_at"),
@@ -396,3 +403,41 @@ async def connect_agent_integration(provider_id: str, action: str = "install") -
         raise ValueError("未检测到本机 Agent，请先安装后重试")
     await asyncio.to_thread(integration_manager.install, provider_id, action)
     return await probe_agent_connection(provider_id)
+
+
+async def launch_agent_session(provider_id: str) -> dict[str, Any]:
+    """One click: install or update the Skill, arm a readback, then open the user's Agent with an init prompt.
+
+    The launched session completes get_agent_connection_nonce itself, so the
+    panel flips to verified through the normal readback poll.
+    """
+    from app.runtime_paths import runtime_data_path
+    from app.services import agent_launch
+
+    if not agent_launch.supports_launch(provider_id):
+        raise ValueError("当前 Agent 尚不支持一键打开，请在你的 Agent 中使用 OfferU Skill 完成验证")
+    installed = await asyncio.to_thread(integration_manager.adapter(provider_id).inspect)
+    if installed["skill_status"] == "INSTALLED":
+        await probe_agent_connection(provider_id)
+    else:
+        action = "update" if installed["skill_status"] == "OUTDATED" else "install"
+        await connect_agent_integration(provider_id, action)
+    check = dict(_CHECKS.get(provider_id) or {})
+    prompt = agent_launch.build_init_prompt(provider_id, str(check.get("challenge_id") or ""))
+    result = await asyncio.to_thread(
+        agent_launch.launch,
+        provider_id,
+        str(check.get("executable") or ""),
+        prompt,
+        runtime_data_path("agent-sessions"),
+    )
+    check["error"] = (
+        "已在新窗口打开 Agent 并发送 OfferU 初始化指令；它完成只读回读后会自动显示已验证。"
+        if result["launched"] else result["error"]
+    )
+    async with _CHECK_LOCK:
+        # Only annotate the challenge we launched with; a newer probe must not be overwritten.
+        if (_CHECKS.get(provider_id) or {}).get("challenge_id") == check.get("challenge_id"):
+            await record_connection_check(provider_id, check)
+            _CHECKS[provider_id] = check
+    return {**await get_agent_connections(), "launch": result}

@@ -6,7 +6,7 @@ import { Button, Modal, ModalBody, ModalContent, ModalHeader } from "@heroui/rea
 import { AlertCircle, ArrowRight, Check, Copy, Loader2, Plug, RefreshCw } from "lucide-react";
 import { connectionTime, useAgentConnection } from "@/lib/agentConnection";
 import { OFFERU_MATERIAL_COLLABORATION_PROMPT } from "@/lib/agentConnectionPrompt";
-import { agentRuntimeApi, type AgentConnectionsSnapshot } from "@/lib/api";
+import { agentRuntimeApi, type AgentConnectionsSnapshot, type AgentLaunchResult } from "@/lib/api";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { SHOWCASE } from "@/lib/showcase";
 import { isLiteRuntime } from "@/lib/liteSession";
@@ -40,6 +40,7 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
   const [selectedId, setSelectedId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [launch, setLaunch] = useState<AgentLaunchResult | null>(null);
   const [materialCopyState, setMaterialCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const desktop = isTauri() || isLiteRuntime();
   const candidates = connections?.items.filter((item) => item.installed && item.compatible && item.can_install_skill) || [];
@@ -86,9 +87,17 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
     setBusy(true); setError("");
     state.reportConnection(null);
     try {
-      applySnapshot(await (selected.skill_status === "INSTALLED"
-        ? agentRuntimeApi.probeConnection(selected.id)
-        : agentRuntimeApi.connectIntegration(selected.id, selected.skill_status === "OUTDATED" ? "update" : "install")));
+      setLaunch(null);
+      if (selected.can_launch) {
+        // 一键：安装/更新接入 → 准备回读 → 在新窗口打开用户的 Agent 并发送初始化指令；回读完成后轮询自动变为已验证。
+        const snapshot = await agentRuntimeApi.launchAgentSession(selected.id);
+        setLaunch(snapshot.launch || null);
+        applySnapshot(snapshot);
+      } else {
+        applySnapshot(await (selected.skill_status === "INSTALLED"
+          ? agentRuntimeApi.probeConnection(selected.id)
+          : agentRuntimeApi.connectIntegration(selected.id, selected.skill_status === "OUTDATED" ? "update" : "install")));
+      }
     } catch (cause) { setError(safeClientErrorMessage(cause, "Agent 接入未完成，请重试。")); }
     finally { setBusy(false); }
   };
@@ -110,7 +119,7 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
         <span className="inline-flex items-center gap-2 text-[11px] font-semibold tracking-wide text-[var(--foreground-muted)]"><Plug size={14} /> 你的 Agent</span>
         <h3 className="mt-4 text-xl font-semibold tracking-tight sm:text-2xl">把 OfferU 交给你正在使用的 Agent。</h3>
         <p className="mt-2 max-w-xl text-sm leading-relaxed text-[var(--foreground-muted)]">
-          OfferU 为你已有的 Agent 提供职业档案、岗位工具和审核工作区。准备接入后，在你的 Agent 中使用 OfferU，连接结果会自动回读。你也可以先用内置 Agent 操作 OfferU、准备岗位简历。
+          OfferU 为你已有的 Agent 提供职业档案、岗位工具和审核工作区。点击连接后，OfferU 会安装接入文件、在新窗口打开你的 Agent 并自动完成只读验证。你也可以先用内置 Agent 操作 OfferU、准备岗位简历。
         </p>
       </div>
 
@@ -123,10 +132,11 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
             <p className="text-sm font-semibold">{selected.name}</p>
             <p role="status" className="mt-2 text-xs text-[var(--foreground-muted)]">{busy ? "正在准备接入…" : selected.connection_verified && selected.status === "ready" ? "已验证连接：已完成真实工具回读。" : selected.last_error || (selected.skill_status === "INSTALLED" ? "接入文件已安装，真实连接尚未验证。" : selected.id === "external" ? "一套 OfferU 接入，适用于能加载 Skill 并执行本地工具的 Agent。" : "已发现 Agent，接入尚未完成。")}</p>
             <Button size="sm" onPress={() => void connect()} isDisabled={busy || (selected.connection_verified && selected.status === "ready")} className="mt-3">
-              {selected.connection_verified && selected.status === "ready" ? "已验证连接" : selected.skill_status === "INSTALLED" ? "验证连接" : selected.skill_status === "OUTDATED" ? "更新接入并验证" : `连接 ${selected.name}`}
+              {selected.connection_verified && selected.status === "ready" ? "已验证连接" : selected.skill_status === "INSTALLED" ? (selected.can_launch ? `打开 ${selected.name} 并验证` : "验证连接") : selected.skill_status === "OUTDATED" ? "更新接入并验证" : selected.can_launch ? `一键连接并打开 ${selected.name}` : `连接 ${selected.name}`}
             </Button>
           </div>}
-          {awaitingReadback && <p role="status" className="text-xs leading-relaxed text-[var(--foreground-muted)]">接入已准备。现在到你已有的 Agent 中使用 OfferU Skill；完成只读验证后，这里会自动更新。OfferU 不会另起一个 Agent 会话。</p>}
+          {launch && !launch.launched && <div role="alert" className="space-y-2 text-xs text-amber-800"><p>{launch.error}</p>{launch.command && <code className="block break-all rounded-lg bg-[var(--surface-muted)] p-2 text-[11px] text-[var(--foreground)]">{launch.command}</code>}</div>}
+          {awaitingReadback && <p role="status" className="text-xs leading-relaxed text-[var(--foreground-muted)]">{launch?.launched ? `已在新窗口打开 ${selected?.name}，并发送了 OfferU 初始化指令。它完成只读验证后，这里会自动变成已验证。` : "接入已准备。在你的 Agent 中使用 OfferU Skill 完成只读验证后，这里会自动更新。"}</p>}
           {connections && !selected && <p role="status" className="text-xs text-[var(--foreground-muted)]">尚未发现可自动接入的本地 Agent。可以继续使用内置 Agent；消费级 Agent 的连接需由对应宿主支持。</p>}
           {candidates.length > 1 && <details className="text-xs"><summary className="cursor-pointer">选择其他安装位置</summary><div className="mt-2 flex flex-wrap gap-2">{candidates.filter((item) => item.id !== selected?.id).map((item) => <Button key={item.id} size="sm" isDisabled={busy} onPress={() => { setSelectedId(item.id); state.reportConnection(item); }}>{item.name}</Button>)}</div></details>}
         </div> : <p role="status" className="text-xs text-[var(--foreground-muted)]">在终端运行 offeru connect，或用 offeru start 打开的工作台连接你的 Agent。当前网页不会扫描本机或安装接入文件。</p>}

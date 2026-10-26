@@ -2623,3 +2623,9 @@ async def job_stats() -> dict:
             "total_jobs": row.total,
             "source_distribution": {s.source: s.count for s in sources},
         }
+
+
+async def launch_agent_session(provider_id: str) -> dict:
+    from app.services.agent_connection import launch_agent_session as _launch
+
+    return await _launch(provider_id)
