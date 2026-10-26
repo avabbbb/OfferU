@@ -36,6 +36,9 @@ jobs:
           offeru connect
           offeru cli doctor --pretty | tee "$RUNNER_TEMP/doctor.json"
           grep -q '"CORE_READY"' "$RUNNER_TEMP/doctor.json"
+      - name: Show start log on failure
+        if: failure()
+        run: cat "$RUNNER_TEMP/start.log" || true
       - name: Upload to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
