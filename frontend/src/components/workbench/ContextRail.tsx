@@ -7,7 +7,15 @@
 // =============================================
 
 import { AnimatePresence, motion } from "framer-motion";
-import { lazy, Suspense, useEffect } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { Bot, PanelRightClose } from "lucide-react";
 import { useWorkbench } from "@/lib/workbench";
 import { AGENT_COMPOSE_EVENT } from "@/lib/agentCompose";
@@ -19,11 +27,102 @@ const InspectorPanel = lazy(() =>
   import("./InspectorPanel").then((module) => ({ default: module.InspectorPanel })),
 );
 
-const RAIL_WIDTH = 340;
+// 右栏宽度：可拖动左边缘调整，键盘 ←/→（Shift 加速）、Home/End，双击恢复默认；宽度存 localStorage。
+const RAIL_MIN = 300;
+const RAIL_MAX = 760;
+const RAIL_DEFAULT = 380;
+const RAIL_STEP = 16;
+const RAIL_STEP_FAST = 64;
+// 主内容区至少留这么宽，避免右栏把页面挤没。
+const MAIN_MIN = 480;
+const RAIL_WIDTH_KEY = "offeru.contextRail.width";
+
+export function clampRailWidth(value: number, viewport?: number): number {
+  const vw = viewport ?? (typeof window === "undefined" ? Infinity : window.innerWidth);
+  const cap = Math.max(RAIL_MIN, Math.min(RAIL_MAX, vw - MAIN_MIN));
+  return Math.round(Math.min(Math.max(value, RAIL_MIN), cap));
+}
+
+function readStoredRailWidth(): number {
+  try {
+    const stored = Number(window.localStorage.getItem(RAIL_WIDTH_KEY));
+    return Number.isFinite(stored) && stored > 0 ? clampRailWidth(stored) : clampRailWidth(RAIL_DEFAULT);
+  } catch {
+    return clampRailWidth(RAIL_DEFAULT);
+  }
+}
+
+function persistRailWidth(width: number) {
+  try {
+    window.localStorage.setItem(RAIL_WIDTH_KEY, String(width));
+  } catch {
+    // 隐私模式等写入失败时只影响下次默认宽度。
+  }
+}
 
 export function ContextRail() {
   const { railMode: chosenMode, setRailMode, railOpen, setRailOpen, selection } = useWorkbench();
   const railMode = selection ? chosenMode : "agent";
+  // SSR 先用默认值，挂载后再读存储，避免 hydration 不一致。
+  const [railWidth, setRailWidth] = useState(RAIL_DEFAULT);
+  const [resizing, setResizing] = useState(false);
+
+  useEffect(() => {
+    setRailWidth(readStoredRailWidth());
+    const onViewportResize = () => setRailWidth((current) => clampRailWidth(current));
+    window.addEventListener("resize", onViewportResize);
+    return () => window.removeEventListener("resize", onViewportResize);
+  }, []);
+
+  const applyWidth = useCallback((next: number) => {
+    const width = clampRailWidth(next);
+    setRailWidth(width);
+    persistRailWidth(width);
+  }, []);
+
+  const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const handle = event.currentTarget;
+    const startX = event.clientX;
+    const startWidth = railWidth;
+    let latest = startWidth;
+    const { cursor, userSelect } = document.body.style;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    handle.setPointerCapture(event.pointerId);
+    setResizing(true);
+    const onMove = (moveEvent: PointerEvent) => {
+      // 把手在左边缘：往左拖 = 变宽。
+      latest = clampRailWidth(startWidth + (startX - moveEvent.clientX));
+      setRailWidth(latest);
+    };
+    const onEnd = () => {
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onEnd);
+      handle.removeEventListener("pointercancel", onEnd);
+      document.body.style.cursor = cursor;
+      document.body.style.userSelect = userSelect;
+      setResizing(false);
+      persistRailWidth(latest);
+    };
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onEnd);
+    handle.addEventListener("pointercancel", onEnd);
+  };
+
+  const resizeWithKeyboard = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const step = event.shiftKey ? RAIL_STEP_FAST : RAIL_STEP;
+    const next =
+      event.key === "ArrowLeft" ? railWidth + step
+      : event.key === "ArrowRight" ? railWidth - step
+      : event.key === "Home" ? RAIL_MIN
+      : event.key === "End" ? RAIL_MAX
+      : null;
+    if (next === null) return;
+    event.preventDefault();
+    applyWidth(next);
+  };
 
   useEffect(() => {
     const openAgent = () => { setRailMode("agent"); setRailOpen(true); };
@@ -74,12 +173,28 @@ export function ContextRail() {
           <motion.aside
             key="context-rail"
             initial={{ width: 0, opacity: 0 }}
-            animate={{ width: RAIL_WIDTH, opacity: 1 }}
+            animate={{ width: railWidth, opacity: 1 }}
             exit={{ width: 0, opacity: 0, pointerEvents: "none" }}
-            transition={{ type: "spring", stiffness: 380, damping: 36 }}
+            // 拖动时宽度直接跟手，不走弹簧，否则会拖出延迟感。
+            transition={resizing ? { duration: 0 } : { type: "spring", stiffness: 380, damping: 36 }}
             className="context-rail offeru-context-rail fixed inset-y-0 right-0 z-50 hidden min-h-0 shrink-0 overflow-hidden border-l border-[var(--border)] bg-[var(--background)] shadow-[-12px_0_32px_var(--shadow-medium)] md:block xl:relative xl:inset-auto xl:z-auto xl:shadow-none"
           >
-            <div className="flex h-full flex-col" style={{ width: RAIL_WIDTH }}>
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="调整 OfferU 助手面板宽度"
+              aria-valuemin={RAIL_MIN}
+              aria-valuemax={RAIL_MAX}
+              aria-valuenow={railWidth}
+              tabIndex={0}
+              title="拖动调整宽度 · 双击恢复默认"
+              data-resizing={resizing || undefined}
+              onPointerDown={startResize}
+              onKeyDown={resizeWithKeyboard}
+              onDoubleClick={() => applyWidth(RAIL_DEFAULT)}
+              className="context-rail-resizer absolute inset-y-0 left-0 z-20 w-2 -translate-x-px cursor-col-resize touch-none outline-none"
+            />
+            <div className="flex h-full flex-col" style={{ width: railWidth }}>
               {/* 模式切换头 */}
               <div className="context-rail-header flex items-center gap-1 border-b border-[var(--border)] px-3 py-2.5">
                 {selection ? (

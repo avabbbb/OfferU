@@ -950,11 +950,11 @@ export function AgentPanel() {
 
   return (
     <div className="offeru-agent-panel flex h-full min-h-0 flex-col">
-      <div className="border-b border-[var(--border)] p-3">
+      <div className="agent-bar border-b border-[var(--border)] px-3.5 py-2.5">
         <AgentConnectionStatus />
       </div>
       {/* 对话状态行 */}
-      <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] px-3 py-2">
+      <div className="agent-bar flex items-center justify-between gap-2 border-b border-[var(--border)] px-3.5 py-1.5">
         <button
           type="button"
           onClick={() => setHistoryOpen((value) => !value)}
@@ -1226,7 +1226,7 @@ export function AgentPanel() {
       )}
 
       {/* 快捷技能 */}
-      <div className="flex flex-wrap gap-1.5 border-b border-[var(--border)] px-3 py-2">
+      <div className="agent-bar flex flex-wrap items-center gap-1.5 border-b border-[var(--border)] px-3.5 py-2">
         <select
           aria-label="当前 Agent Skill"
           title="默认由助手按任务自动选择 Skill"
@@ -1297,22 +1297,20 @@ export function AgentPanel() {
       </div>
 
       {/* 消息流 */}
-      <div ref={scrollRef} className="custom-scrollbar min-h-0 flex-1 overflow-y-auto px-3 py-3">
-        <div className="space-y-3">
+      <div ref={scrollRef} className="agent-thread custom-scrollbar min-h-0 flex-1 overflow-y-auto px-3.5 py-4">
+        <div className="space-y-4">
           {messages.map((message) => (
             <PanelMessageBubble key={message.id} message={message} onSuggestion={sendMessage} />
           ))}
           {streamingText && (
-            <div className="flex justify-start">
-              <div className="max-w-[94%] whitespace-pre-wrap rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-left text-[13px] leading-6 text-[var(--foreground)]">
-                {streamingText}
-              </div>
+            <div className="agent-msg agent-msg-assistant">
+              {streamingText}
             </div>
           )}
           <ToolExecutionList executions={toolStream.toolExecutions} />
           {loading && (
-            <div className="inline-flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[12.5px] text-[var(--foreground-soft)]">
-              <Loader2 size={13} className="animate-spin" />
+            <div className="inline-flex items-center gap-1.5 px-0.5 text-[12px] text-[var(--foreground-muted)]">
+              <Loader2 size={12} className="animate-spin" />
               {progressText}
             </div>
           )}
@@ -1423,7 +1421,7 @@ export function AgentPanel() {
       )}
 
       {/* 输入区 */}
-      <footer className="border-t border-[var(--border)] p-2.5">
+      <footer className="agent-bar border-t border-[var(--border)] px-3 py-2.5">
         <div className="flex items-end gap-1.5">
           <Textarea
             value={input}
@@ -1475,17 +1473,13 @@ function PanelMessageBubble({
   const response = message.response;
 
   return (
-    <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-      <div className={`max-w-[94%] ${isUser ? "text-right" : ""}`}>
-        <div
-          className={`inline-block whitespace-pre-wrap rounded-lg border border-[var(--border)] px-3 py-2 text-left text-[13px] leading-6 ${
-            isUser ? "bg-[var(--surface-muted)]" : "bg-[var(--surface)]"
-          } text-[var(--foreground)]`}
-        >
+    <div className={isUser ? "flex justify-end pl-10" : "flex justify-start"}>
+      <div className={isUser ? "min-w-0 max-w-full" : "w-full min-w-0"}>
+        <div className={isUser ? "agent-msg agent-msg-user" : "agent-msg agent-msg-assistant"}>
           {message.content}
         </div>
         {message.steered && (
-          <p className="mt-0.5 text-[10px] text-[var(--foreground-muted)]">已交给正在进行的任务</p>
+          <p className="mt-1 text-right text-[10.5px] text-[var(--foreground-muted)]">已交给正在进行的任务</p>
         )}
         {response && (
           <div className="mt-2 space-y-2 text-left">
@@ -1494,7 +1488,7 @@ function PanelMessageBubble({
               <SuggestionList suggestions={response.proactive_suggestions} onSuggestion={onSuggestion} />
             )}
             {response.transferable_skills_summary && (
-              <div className="rounded-md border border-[var(--border)] bg-[var(--surface)] p-2.5 text-[12px] leading-5 text-[var(--foreground-soft)]">
+              <div className="agent-card px-3 py-2.5 text-[12px] leading-5 text-[var(--foreground-soft)]">
                 {response.transferable_skills_summary}
               </div>
             )}
@@ -1504,7 +1498,7 @@ function PanelMessageBubble({
             {response.job_cards && response.job_cards.length > 0 && <JobCardList jobs={response.job_cards} />}
             {response.tool_calls && response.tool_calls.length > 0 && <ToolCallList calls={response.tool_calls} />}
             {response.next_steps && response.next_steps.length > 0 && (
-              <ul className="space-y-1 rounded-md border border-[var(--border)] bg-[var(--surface-muted)] p-2.5 text-[12px] text-[var(--foreground-soft)]">
+              <ul className="agent-card space-y-1 px-3 py-2 text-[12px] leading-5 text-[var(--foreground-soft)]">
                 {response.next_steps.map((step) => (
                   <li key={step}>- {step}</li>
                 ))}
@@ -1523,7 +1517,7 @@ function AlertList({ alerts }: { alerts: NonNullable<AgentResponse["alerts"]> })
       {alerts.map((alert) => (
         <div
           key={alert.code}
-          className="rounded-md border border-[var(--border)] bg-[var(--status-blush)] p-2.5 text-[12px] text-[var(--foreground)]"
+          className="agent-card agent-card-alert px-3 py-2.5 text-[12px] text-[var(--foreground)]"
         >
           <div className="flex items-start gap-2">
             <AlertTriangle size={14} className="mt-0.5 shrink-0 text-[var(--primary-red)]" />
@@ -1553,7 +1547,7 @@ function SuggestionList({
           key={`${suggestion.title}-${suggestion.prompt}`}
           type="button"
           onClick={() => onSuggestion(suggestion.prompt)}
-          className="w-full rounded-md border border-[var(--border)] bg-[var(--surface)] p-2.5 text-left text-[12px] text-[var(--foreground)] transition-colors duration-[var(--dur-quick)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-muted)]"
+          className="w-full agent-card px-3 py-2.5 text-left text-[12px] text-[var(--foreground)] transition-colors duration-[var(--dur-quick)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-muted)]"
         >
           <p className="font-semibold">{suggestion.title}</p>
           <p className="mt-0.5 leading-5 text-[var(--foreground-soft)]">{suggestion.description}</p>
@@ -1567,7 +1561,7 @@ function CareerPathList({ paths }: { paths: AgentCareerPath[] }) {
   return (
     <div className="space-y-1.5">
       {paths.map((path) => (
-        <div key={path.title} className="rounded-md border border-[var(--border)] bg-[var(--surface)] p-2.5">
+        <div key={path.title} className="agent-card px-3 py-2.5">
           <div className="flex items-start gap-2">
             <Sparkles size={14} className="mt-0.5 shrink-0 text-[var(--primary-yellow)]" />
             <div className="min-w-0">
@@ -1594,7 +1588,7 @@ function JobCardList({ jobs }: { jobs: AgentJobCard[] }) {
   return (
     <div className="space-y-1.5">
       {jobs.map((job) => (
-        <div key={job.id} className="rounded-md border border-[var(--border)] bg-[var(--surface)] p-2.5">
+        <div key={job.id} className="agent-card px-3 py-2.5">
           <div className="flex items-start gap-2">
             <Briefcase size={14} className="mt-0.5 shrink-0 text-[var(--primary-blue)]" />
             <div className="min-w-0">
@@ -1621,26 +1615,27 @@ function JobCardList({ jobs }: { jobs: AgentJobCard[] }) {
 
 function ToolCallList({ calls }: { calls: AgentResponse["tool_calls"] }) {
   return (
-    <div className="space-y-1.5">
+    <div className="agent-tool-group" role="list" aria-label="本轮工具调用">
       {calls.map((call, index) => {
         const presentation = presentAgentToolCall(call);
         return (
-          <details
-            key={`${call.tool}-${index}`}
-            className="rounded-md border border-[var(--border)] bg-[var(--surface)] p-2 text-[12px] text-[var(--foreground-soft)]"
-          >
-            <summary className="flex cursor-pointer items-center gap-1.5 font-medium text-[var(--foreground)]">
-              <Wrench size={12} />
-              {call.tool}
+          <details key={call.tool + "-" + index} role="listitem" className="group">
+            <summary className="agent-tool-row cursor-pointer list-none">
+              <Wrench size={11} className="shrink-0 text-[var(--foreground-muted)]" />
+              <span className="shrink-0 font-mono text-[11px] text-[var(--foreground)]">{call.tool}</span>
+              {presentation && (
+                <span className="min-w-0 flex-1 truncate text-[var(--foreground-muted)]">{presentation}</span>
+              )}
+              <ChevronDown size={11} className="ml-auto shrink-0 text-[var(--foreground-muted)] transition-transform duration-[var(--dur-quick)] group-open:rotate-180" />
             </summary>
-            {presentation && (
-              <p className="mt-1.5 border-l-2 border-[var(--border-strong)] pl-2 leading-5 text-[var(--foreground)]">
-                {presentation}
-              </p>
-            )}
-            <pre className="custom-scrollbar mt-1.5 max-h-28 overflow-auto whitespace-pre-wrap rounded bg-[var(--surface-muted)] p-2">
-              {previewJson(call.result)}
-            </pre>
+            <div className="ml-[17px] mt-0.5 space-y-1 pb-1">
+              {presentation && (
+                <p className="text-[11.5px] leading-5 text-[var(--foreground-soft)]">{presentation}</p>
+              )}
+              <pre className="custom-scrollbar max-h-28 overflow-auto whitespace-pre-wrap rounded bg-white/50 px-2 py-1.5 font-mono text-[10.5px] leading-4 text-[var(--foreground-soft)]">
+                {previewJson(call.result)}
+              </pre>
+            </div>
           </details>
         );
       })}
