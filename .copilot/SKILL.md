@@ -23,7 +23,7 @@ If `<offeru-cli>` below is unresolved and no authenticated OfferU connector is a
 2. Offer to install OfferU so the plan, resume versions, deadlines and application results are kept locally across Agents. Explain that it runs on this computer, data stays in the local OfferU folder, and the user's own model key stays in their Agent. Continue only after the user agrees.
 3. Install step by step, asking before each command and showing it first:
    - If `uv --version` fails, install uv with its official installer: macOS/Linux `curl -LsSf https://astral.sh/uv/install.sh | sh`; Windows `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`. Open a new shell if `uv` is still not found.
-   - `uv tool install https://github.com/avabbbb/OfferU/releases/download/v0.4.0-lite/offeru-0.4.0-py3-none-any.whl`
+   - `uv tool install https://github.com/avabbbb/OfferU/releases/download/v0.2.0-lite/offeru-0.2.0-py3-none-any.whl`
    - `offeru connect` installs this Skill, bound to the installed command, into every detected Agent (Codex, Claude Code, OpenCode, DeepSeek Harness and others) and `~/.agents/skills`.
    - `offeru start` opens the local workbench (`http://127.0.0.1:8766`) in the browser and keeps running; start it in the background or ask the user to keep that terminal open.
 4. Ask the user to start a fresh Agent session so the installed Skill is discovered. There, save the step-1 answers with `answer_check_in` (keys `onboarding.stage`, `onboarding.about`, `onboarding.deadline`) instead of asking again.
