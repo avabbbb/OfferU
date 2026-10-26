@@ -93,14 +93,6 @@ class LlmApiConfig(BaseModel):
 class ConfigUpdate(BaseModel):
     """Mutable system configuration payload."""
 
-    search_keywords: list[str] = Field(default_factory=list)
-    search_locations: list[str] = Field(default_factory=list)
-    banned_keywords: list[str] = Field(default_factory=list)
-    top_n: int = 15
-    email_to: str = ""
-    sources_enabled: list[str] = Field(default_factory=lambda: ["linkedin"])
-    profile_source_sync_enabled: bool = False
-
     llm_provider: str = ""
     llm_model: str = ""
 

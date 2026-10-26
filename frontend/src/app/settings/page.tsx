@@ -1,7 +1,7 @@
 "use client";
 
 import { PageHeader } from "@/components/layout/PageHeader";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ModelPicker } from "@/components/settings/ModelPicker";
 import { FreshResetPanel } from "@/components/settings/FreshResetPanel";
@@ -20,13 +20,10 @@ import {
   ModalContent,
   ModalFooter,
   ModalHeader,
-  Switch,
   Textarea,
   useDisclosure,
 } from "@heroui/react";
 import {
-  AlertCircle,
-  Check,
   Database,
   Download,
   Eye,
@@ -36,7 +33,6 @@ import {
   Plus,
   RefreshCw,
   RotateCcw,
-  Save,
   ShieldCheck,
   SquarePen,
   Trash2,
@@ -57,6 +53,9 @@ import { AgentConnectionPanel } from "@/components/workbench/AgentConnectionPane
 import { JobSourceConnectionsCard } from "@/components/settings/JobSourceConnectionsCard";
 import { BossLoginCard } from "@/components/boss-login";
 import { HintsToggle } from "@/components/hints";
+import { SettingsRow } from "@/components/settings/SettingsRow";
+import { SettingsDialog } from "@/components/settings/SettingsDialog";
+import { useAgentConnection } from "@/lib/agentConnection";
 
 interface ProviderPreset {
   id: string;
@@ -85,14 +84,6 @@ interface LlmApiConfig {
 }
 
 interface SettingsConfigPayload {
-  search_keywords?: string[];
-  search_locations?: string[];
-  banned_keywords?: string[];
-  top_n?: number;
-  email_to?: string;
-  sources_enabled?: string[];
-  profile_source_sync_enabled?: boolean;
-
   llm_provider?: string;
   llm_model?: string;
   deepseek_api_key?: string;
@@ -122,16 +113,6 @@ interface SettingsConfigPayload {
     error: string;
   };
 }
-
-const dataSources = [
-  { name: "shixiseng", label: "实习僧", available: true },
-  { name: "linkedin", label: "LinkedIn", available: true },
-  { name: "jobspy", label: "JobSpy 聚合", available: true },
-  { name: "bytedance", label: "字节跳动", available: false },
-  { name: "alibaba", label: "阿里巴巴", available: false },
-  { name: "tencent", label: "腾讯", available: false },
-  { name: "maimai", label: "脉脉", available: false },
-];
 
 const bauhausFieldClassNames = {
   inputWrapper:
@@ -857,29 +838,25 @@ export default function SettingsPage() {
   const { data, mutate } = useConfig();
   const config = data as SettingsConfigPayload | undefined;
   const searchParams = useSearchParams();
-  const modelSectionRef = useRef<HTMLElement>(null);
+  type SettingsSectionKey = "agent" | "models" | "accounts" | "data" | "about" | "feedback";
   const modelSectionRequested = searchParams.get("section") === "models";
+  const [openSection, setOpenSection] = useState<SettingsSectionKey | null>(null);
   useEffect(() => {
-    if (modelSectionRequested) modelSectionRef.current?.scrollIntoView({ block: "start" });
+    if (modelSectionRequested) setOpenSection("models");
   }, [modelSectionRequested]);
+  const closeSection = () => setOpenSection(null);
+  const agentState = useAgentConnection();
+  const agentStatus = agentState.connection?.connection_verified && agentState.connection.status === "ready"
+    ? agentState.connection.name + " · 已验证"
+    : "未连接";
+  const modelStatus = config?.active_llm_summary
+    ? config.active_llm_summary.service_name + " · " + config.active_llm_summary.model
+    : "未连接";
 
   const [apiSaving, setApiSaving] = useState(false);
   const [apiSaved, setApiSaved] = useState(false);
   const [apiSaveError, setApiSaveError] = useState("");
   const [apiDirty, setApiDirty] = useState(false);
-
-  const [settingsSaving, setSettingsSaving] = useState(false);
-  const [settingsSaved, setSettingsSaved] = useState(false);
-  const [settingsSaveError, setSettingsSaveError] = useState("");
-  const [settingsDirty, setSettingsDirty] = useState(false);
-
-  const [searchKeywords, setSearchKeywords] = useState("");
-  const [searchLocations, setSearchLocations] = useState("");
-  const [bannedKeywords, setBannedKeywords] = useState("");
-  const [topN, setTopN] = useState("15");
-  const [emailTo, setEmailTo] = useState("");
-  const [sourcesEnabled, setSourcesEnabled] = useState<string[]>(["linkedin"]);
-  const [profileSourceSyncEnabled, setProfileSourceSyncEnabled] = useState(false);
 
 
   const [providerPresets, setProviderPresets] = useState<ProviderPreset[]>([]);
@@ -983,14 +960,6 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!config) return;
 
-    setSearchKeywords((config.search_keywords || []).join("\n"));
-    setSearchLocations((config.search_locations || []).join("\n"));
-    setBannedKeywords((config.banned_keywords || []).join("\n"));
-    setTopN(String(config.top_n || 15));
-    setEmailTo(config.email_to || "");
-    setSourcesEnabled(config.sources_enabled || ["linkedin"]);
-    setProfileSourceSyncEnabled(Boolean(config.profile_source_sync_enabled));
-
     const presets = Array.isArray(config.provider_presets) ? config.provider_presets : [];
     setProviderPresets(presets);
     setProviderPresetError(presets.length ? "" : "后端未返回可用的模型配置模板，请检查本地后端并重试。 ");
@@ -1030,59 +999,12 @@ export default function SettingsPage() {
     setApiDirty(false);
     setApiSaved(false);
     setApiSaveError("");
-    setSettingsDirty(false);
-    setSettingsSaved(false);
-    setSettingsSaveError("");
   }, [config]);
 
   const markApiDirty = () => {
     setApiDirty(true);
     setApiSaved(false);
     setApiSaveError("");
-  };
-
-  const markSettingsDirty = () => {
-    setSettingsDirty(true);
-    setSettingsSaved(false);
-    setSettingsSaveError("");
-  };
-
-  const handleSearchKeywordsChange = (value: string) => {
-    setSearchKeywords(value);
-    markSettingsDirty();
-  };
-
-  const handleSearchLocationsChange = (value: string) => {
-    setSearchLocations(value);
-    markSettingsDirty();
-  };
-
-  const handleBannedKeywordsChange = (value: string) => {
-    setBannedKeywords(value);
-    markSettingsDirty();
-  };
-
-  const handleTopNChange = (value: string) => {
-    setTopN(value);
-    markSettingsDirty();
-  };
-
-  const handleEmailToChange = (value: string) => {
-    setEmailTo(value);
-    markSettingsDirty();
-  };
-
-  const toggleSource = (name: string) => {
-    setSourcesEnabled((prev) => {
-      const next = prev.includes(name) ? prev.filter((item) => item !== name) : [...prev, name];
-      return next;
-    });
-    markSettingsDirty();
-  };
-
-  const handleProfileSourceSyncChange = (enabled: boolean) => {
-    setProfileSourceSyncEnabled(enabled);
-    markSettingsDirty();
   };
 
   const openCreateEditor = () => {
@@ -1256,32 +1178,6 @@ export default function SettingsPage() {
     }
   };
 
-  const handleSaveSettings = async () => {
-    setSettingsSaving(true);
-    setSettingsSaveError("");
-
-    try {
-      await updateConfig({
-        search_keywords: searchKeywords.split("\n").map((item) => item.trim()).filter(Boolean),
-        search_locations: searchLocations.split("\n").map((item) => item.trim()).filter(Boolean),
-        banned_keywords: bannedKeywords.split("\n").map((item) => item.trim()).filter(Boolean),
-        top_n: parseInt(topN, 10) || 15,
-        email_to: emailTo.trim(),
-        sources_enabled: sourcesEnabled,
-        profile_source_sync_enabled: profileSourceSyncEnabled,
-      });
-
-      await mutate();
-      setSettingsSaved(true);
-      setSettingsDirty(false);
-      setTimeout(() => setSettingsSaved(false), 2000);
-    } catch (error) {
-      setSettingsSaveError(safeClientErrorMessage(error, "其他设置保存失败，请稍后重试"));
-    } finally {
-      setSettingsSaving(false);
-    }
-  };
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -1291,13 +1187,21 @@ export default function SettingsPage() {
     >
       <PageHeader title="设置" description={SHOWCASE ? "展示版不连接本机，真实数据和外置 Agent 请使用桌面版。" : "Agent 连接、模型服务和数据安全。"} />
 
-      <AgentConnectionPanel />
-      {!SHOWCASE && <BossLoginCard />}
-      <JobSourceConnectionsCard />
-      <HintsToggle />
+      <div className="divide-y divide-[var(--border)] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+        <SettingsRow rowKey="agent" title="我的 Agent" status={agentStatus} onOpen={() => setOpenSection("agent")} />
+        <SettingsRow rowKey="models" title="模型服务" status={modelStatus} onOpen={() => setOpenSection("models")} />
+        <SettingsRow rowKey="accounts" title="账号与来源" status="登录与求职来源" onOpen={() => setOpenSection("accounts")} />
+        <SettingsRow rowKey="data" title="数据" status="备份、恢复与导出" onOpen={() => setOpenSection("data")} />
+        <SettingsRow rowKey="about" title="关于" status="版本与运行信息" onOpen={() => setOpenSection("about")} />
+        <SettingsRow rowKey="feedback" title="报告问题" onOpen={() => setOpenSection("feedback")} />
+      </div>
 
+      <SettingsDialog isOpen={openSection === "agent"} onClose={closeSection} title="我的 Agent">
+        <AgentConnectionPanel embedded />
+      </SettingsDialog>
 
-      <section id="model-settings" ref={modelSectionRef} className="scroll-mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)]" data-testid="embedded-model-settings">
+      <SettingsDialog isOpen={openSection === "models"} onClose={closeSection} title="模型服务">
+      <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)]" data-testid="embedded-model-settings">
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--border)] p-5">
           <div>
             <p className="text-xs font-medium text-[var(--foreground-muted)]">内置 Agent</p>
@@ -1333,159 +1237,31 @@ export default function SettingsPage() {
           {apiSaveError && <p role="alert" className="text-sm text-red-600">{apiSaveError}</p>}
         </div>
       </section>
+      </SettingsDialog>
 
-      <LocalDataSafetyCard />
-      <FreshResetPanel />
-      <BuildIdentityPanel />
+      <SettingsDialog isOpen={openSection === "accounts"} onClose={closeSection} title="账号与来源">
+        {!SHOWCASE && <BossLoginCard />}
+        <JobSourceConnectionsCard />
+      </SettingsDialog>
 
-      <LocalFeedbackCard />
-
-
-
-      <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
-        <CardBody className="space-y-4 p-5 md:p-6">
-          <div>
-            <p className="bauhaus-label text-[var(--foreground-muted)]">搜索规则</p>
-            <h3 className="mt-2 text-2xl font-bold text-[var(--foreground)]">搜索配置</h3>
+      <SettingsDialog isOpen={openSection === "data"} onClose={closeSection} title="数据">
+        <LocalDataSafetyCard />
+        <details className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+          <summary className="cursor-pointer text-sm font-semibold text-[var(--foreground-muted)]">危险操作</summary>
+          <div className="mt-4">
+            <FreshResetPanel />
           </div>
-          <Textarea
-            label="搜索关键词（每行一个）"
-            variant="bordered"
-            placeholder={"Data Scientist\nPython Developer\nBioinformatics"}
-            value={searchKeywords}
-            onValueChange={handleSearchKeywordsChange}
-            classNames={bauhausFieldClassNames}
-          />
-          <Textarea
-            label="搜索地区（每行一个）"
-            variant="bordered"
-            placeholder={"北京\n上海\n深圳"}
-            value={searchLocations}
-            onValueChange={handleSearchLocationsChange}
-            classNames={bauhausFieldClassNames}
-          />
-          <Textarea
-            label="过滤关键词（每行一个）"
-            variant="bordered"
-            placeholder={"实习\nstudent\n临时"}
-            value={bannedKeywords}
-            onValueChange={handleBannedKeywordsChange}
-            classNames={bauhausFieldClassNames}
-          />
-          <Input
-            label="每日推送数量"
-            variant="bordered"
-            type="number"
-            value={topN}
-            onValueChange={handleTopNChange}
-            classNames={bauhausFieldClassNames}
-          />
-        </CardBody>
-      </Card>
+        </details>
+      </SettingsDialog>
 
-      <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
-        <CardBody className="space-y-4 p-5 md:p-6">
-          <div>
-            <p className="bauhaus-label text-[var(--foreground-muted)]">来源开关</p>
-            <h3 className="mt-2 text-2xl font-bold text-[var(--foreground)]">数据源</h3>
-          </div>
-          {dataSources.map((source) => (
-            <div key={source.name} className="bauhaus-panel-sm flex items-center justify-between gap-4 bg-[var(--surface-muted)] px-4 py-3">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-[var(--foreground)]">{source.label}</span>
-                {!source.available && (
-                  <Chip size="sm" variant="flat" className="border border-[var(--border-strong)] bg-white text-[10px] text-[var(--foreground-muted)]">
-                    即将开放
-                  </Chip>
-                )}
-              </div>
-              <Switch
-                size="sm"
-                isSelected={sourcesEnabled.includes(source.name)}
-                isDisabled={!source.available}
-                onValueChange={() => toggleSource(source.name)}
-                classNames={{ wrapper: "bg-black/10" }}
-              />
-            </div>
-          ))}
-        </CardBody>
-      </Card>
+      <SettingsDialog isOpen={openSection === "about"} onClose={closeSection} title="关于">
+        <BuildIdentityPanel />
+        <HintsToggle />
+      </SettingsDialog>
 
-      <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
-        <CardBody className="space-y-4 p-5 md:p-6">
-          <div>
-            <p className="bauhaus-label text-[var(--foreground-muted)]">档案同步</p>
-            <h3 className="mt-2 text-2xl font-bold text-[var(--foreground)]">档案同步</h3>
-          </div>
-          <div className="bauhaus-panel-sm flex items-start justify-between gap-4 bg-[var(--surface-muted)] px-4 py-4">
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-[var(--foreground)]">档案源数据更新时，同步更新简历中已导入的对应条目</p>
-              <p className="text-xs font-medium leading-relaxed text-[var(--foreground-muted)]">
-                默认关闭。开启后当档案条目被编辑时，简历编辑页会提示你手动确认是否同步；档案删除永不删除简历内容。
-              </p>
-            </div>
-            <Switch
-              size="sm"
-              isSelected={profileSourceSyncEnabled}
-              onValueChange={handleProfileSourceSyncChange}
-              classNames={{ wrapper: "bg-black/10" }}
-            />
-          </div>
-        </CardBody>
-      </Card>
-
-      <Card className="bauhaus-panel overflow-hidden rounded-none bg-white shadow-none">
-        <CardBody className="space-y-4 p-5 md:p-6">
-          <div>
-            <p className="bauhaus-label text-[var(--foreground-muted)]">投递通知</p>
-            <h3 className="mt-2 text-2xl font-bold text-[var(--foreground)]">邮箱推送</h3>
-          </div>
-          <Input
-            label="接收邮箱"
-            variant="bordered"
-            type="email"
-            value={emailTo}
-            onValueChange={handleEmailToChange}
-            classNames={bauhausFieldClassNames}
-          />
-        </CardBody>
-      </Card>
-
-      {settingsSaveError && (
-        <div className="bauhaus-panel-sm flex items-center gap-2 bg-[var(--primary-red)] px-3 py-3 text-sm font-medium text-white">
-          <AlertCircle size={16} />
-          <span>{settingsSaveError}</span>
-        </div>
-      )}
-
-      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-        <p className="text-xs font-medium text-[var(--foreground-muted)]">
-          此按钮仅保存搜索配置、数据源与邮箱推送。
-        </p>
-        <div className="flex items-center gap-2 self-start md:self-auto">
-          <Chip
-            size="sm"
-            variant="flat"
-            className={
-              settingsDirty
-                ? "border border-[var(--border-strong)] bg-[#F0C020] text-[var(--foreground)]"
-                : "border border-[var(--border-strong)] bg-white text-[var(--foreground-muted)]"
-            }
-          >
-            {settingsDirty ? "有未保存改动" : "已同步"}
-          </Chip>
-          <Button
-            startContent={settingsSaved ? <Check size={16} /> : <Save size={16} />}
-            isLoading={settingsSaving}
-            onPress={handleSaveSettings}
-            className={`bauhaus-button !px-4 !py-3 !text-[11px] ${
-              settingsSaved ? "bauhaus-button-yellow" : "bauhaus-button-blue"
-            }`}
-          >
-            {settingsSaved ? "已保存" : "保存其他设置"}
-          </Button>
-        </div>
-      </div>
+      <SettingsDialog isOpen={openSection === "feedback"} onClose={closeSection} title="报告问题">
+        <LocalFeedbackCard />
+      </SettingsDialog>
 
       <Modal isOpen={isEditorOpen} onClose={onEditorClose} size="xl" placement="center" scrollBehavior="inside">
         <ModalContent className="max-h-[88vh] rounded-xl border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] shadow-xl">

@@ -10,9 +10,8 @@ import { resolveApiBase } from "./apiBase";
 import { safeClientErrorMessage } from "./safe-error";
 import { decideAgentActionInDesktop } from "./desktop-proposal-decision";
 import type { AgentInputAnswerBody, AgentInputAnswerResult } from "./agentAsk";
-import type { components, operations } from "./api-types.generated";
+import type { components } from "./api-types.generated";
 type Schemas = components["schemas"];
-type Ops = operations;
 export type {
   AgentInputAnswerBody,
   AgentInputAnswerResult,
@@ -194,22 +193,11 @@ function waitForReconnect(delayMs: number, signal?: AbortSignal) {
   });
 }
 
-export type JobsListQuery = Ops["list_jobs_api_jobs__get"]["parameters"]["query"];
-
 export const jobsApi = {
-  list: (params?: JobsListQuery) =>
-    request(`/api/jobs/?${buildQuery(params as any)}`),
-  
   get: (id: number) => request(`/api/jobs/${id}`),
 
   batches: (limit = 30) => request(`/api/jobs/batches?limit=${limit}`),
 
-  patch: (id: number, data: Schemas["JobPatchRequest"]) =>
-    request(`/api/jobs/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
-
-  patchBatch: (data: Schemas["JobBatchPatchRequest"]) =>
-    request("/api/jobs/batch-update", { method: "PATCH", body: JSON.stringify(data) }),
-  
   stats: (period = "week") => request(`/api/jobs/stats?period=${period}`),
 
   /** 粘贴原文或链接 → 待确认岗位草稿；不写库。 */
@@ -245,12 +233,6 @@ export interface JobCaptureDraft {
 export const poolsApi = {
   list: (scope?: "inbox" | "picked" | "ignored") =>
     request(`/api/pools/?${buildQuery({ scope })}`),
-
-  create: (data: Partial<Schemas["PoolCreateRequest"]> & { name: string }) =>
-    request("/api/pools/", { method: "POST", body: JSON.stringify(data) }),
-
-  update: (id: number, data: Schemas["PoolUpdateRequest"], scope?: "inbox" | "picked" | "ignored") =>
-    request(`/api/pools/${id}?${buildQuery({ scope })}`, { method: "PUT", body: JSON.stringify(data) }),
 
   delete: (id: number, scope?: "inbox" | "picked" | "ignored") =>
     request(`/api/pools/${id}?${buildQuery({ scope })}`, { method: "DELETE" }),
