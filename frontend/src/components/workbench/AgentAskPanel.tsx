@@ -93,7 +93,7 @@ export function AgentAskCard({
     return (
       <section
         aria-label={`已回答：${request.question}`}
-        className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[12px] text-[var(--foreground-soft)]"
+        className="agent-card px-3 py-2 text-[12px] text-[var(--foreground-soft)]"
       >
         已提交回答；OfferU 正在继续当前任务。
       </section>
@@ -103,7 +103,7 @@ export function AgentAskCard({
   return (
     <section
       aria-label={`助手提问：${request.question}`}
-      className="space-y-2 rounded-md border border-[var(--border-strong)] bg-[var(--surface)] p-3"
+      className="agent-ask space-y-2 px-3 py-2.5"
     >
       <div className="flex items-start gap-1.5">
         <HelpCircle size={14} className="mt-0.5 shrink-0 text-[var(--foreground)]" />
@@ -120,7 +120,7 @@ export function AgentAskCard({
       </div>
 
       {options.length > 0 && (
-        <fieldset className="space-y-1">
+        <fieldset className="space-y-0.5">
           <legend className="sr-only">
             {isSingle
               ? "单选"
@@ -140,16 +140,16 @@ export function AgentAskCard({
             return (
               <label
                 key={option.option_id}
-                className={`flex cursor-pointer items-start gap-2 rounded-md border px-2 py-1.5 text-[12px] leading-5 transition-colors ${
+                className={`agent-ask-option flex cursor-pointer items-start gap-2 rounded-md px-2 py-1 text-[12px] leading-5 transition-colors ${
                   checked
-                    ? "border-[var(--foreground)] bg-[var(--background)] text-[var(--foreground)]"
-                    : "border-[var(--border)] bg-[var(--background)] text-[var(--foreground-soft)] hover:border-[var(--border-strong)]"
+                    ? "bg-[var(--surface-muted)] text-[var(--foreground)] ring-1 ring-[var(--border-strong)]"
+                    : "text-[var(--foreground-soft)] hover:bg-[var(--surface-muted)]"
                 }`}
               >
                 <input
                   type={isSingle ? "radio" : "checkbox"}
                   name={isSingle ? `ask-${request.request_id}` : undefined}
-                  className="mt-1"
+                  className="mt-[5px] accent-[var(--foreground)]"
                   checked={checked}
                   disabled={disabled}
                   onChange={() => chooseOption(option.option_id)}
@@ -207,7 +207,7 @@ export function AgentAskCard({
           aria-label={`提交回答：${request.question}`}
           disabled={!canSubmit}
           onClick={() => void submit()}
-          className="bauhaus-button bauhaus-button-red !min-h-8 !justify-center !px-3 !py-1 !text-[11px] disabled:opacity-50"
+          className="bauhaus-button bauhaus-button-red !min-h-7 !justify-center !px-2.5 !py-0.5 !text-[11px] disabled:opacity-50"
         >
           {submitting ? <Loader2 size={12} className="animate-spin" /> : null}
           提交回答
@@ -281,7 +281,7 @@ export function AgentAskPanel({
   if (requests.length === 0 && !error) return null;
 
   return (
-    <div className="space-y-2">
+    <div className="agent-bar space-y-1.5 border-t border-[var(--border)] px-3.5 py-2.5">
       <div className="flex items-center justify-between">
         <p className="text-[11px] font-semibold text-[var(--foreground)]">
           助手需要你确认偏好后继续

@@ -93,16 +93,8 @@ class LlmApiConfig(BaseModel):
 class ConfigUpdate(BaseModel):
     """Mutable system configuration payload."""
 
-    search_keywords: list[str] = Field(default_factory=list)
-    search_locations: list[str] = Field(default_factory=list)
-    banned_keywords: list[str] = Field(default_factory=list)
-    top_n: int = 15
-    email_to: str = ""
-    sources_enabled: list[str] = Field(default_factory=lambda: ["linkedin"])
-    profile_source_sync_enabled: bool = False
-
-    llm_provider: str = "deepseek"
-    llm_model: str = "deepseek-v4-flash"
+    llm_provider: str = ""
+    llm_model: str = ""
 
     deepseek_api_key: str = ""
     openai_api_key: str = ""
@@ -301,7 +293,7 @@ def _first_provider_config(configs: list[LlmApiConfig], provider_id: str) -> Llm
 
 def _build_legacy_configs(cfg: ConfigUpdate) -> list[LlmApiConfig]:
     configs: list[LlmApiConfig] = []
-    active_provider = _normalize_provider_id(cfg.llm_provider or "deepseek")
+    active_provider = _normalize_provider_id(cfg.llm_provider or "")
     known_providers = {"deepseek", "openai", "qwen", "siliconflow", "gemini", "zhipu", "ollama"}
 
     deepseek_key = _sanitize_api_key(cfg.deepseek_api_key)

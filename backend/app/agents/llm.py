@@ -189,7 +189,9 @@ def resolve_llm_client_config(settings: Any | None = None) -> dict[str, Any]:
         models = {}
         source = "active_config"
     else:
-        provider = (getattr(config, "llm_provider", "") or "deepseek").strip().lower() or "deepseek"
+        provider = (getattr(config, "llm_provider", "") or "").strip().lower()
+        if not provider:
+            raise ValueError("还没有配置模型服务，请先在设置里添加一个。")
         provider_id = provider
         service_name = provider
         model = default_model
