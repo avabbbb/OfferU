@@ -175,6 +175,13 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
         </p>
 
         <details className="rounded-xl border border-[var(--border)] p-4">
+          <summary className="cursor-pointer text-xs font-semibold">使用本机已有的 Skill</summary>
+          <div className="mt-3 space-y-3">
+            <p className="text-xs leading-relaxed text-[var(--foreground-muted)]">OfferU 会只读读取 ~/.agents/skills 和 ~/.claude/skills 下的 Skill（每个 Skill 一个文件夹，内含带 description 的 SKILL.md）。它们出现在 Agent 输入框的 / 列表中并标记为「本机」，只能使用只读工具，不会修改这些文件。新增或修改后重启 OfferU 生效。</p>
+          </div>
+        </details>
+
+        <details className="rounded-xl border border-[var(--border)] p-4">
           <summary className="cursor-pointer text-xs font-semibold">我的 Agent 只能聊天，使用材料协作</summary>
           <div className="mt-3 space-y-3">
             <p className="text-xs leading-relaxed text-[var(--foreground-muted)]">复制协作说明到你的聊天 Agent，再自行提供本次岗位和必要经历。先检查要分享的内容；OfferU 不会自动上传档案。审核结果后，将采用的内容保存到对应岗位工作区。</p>
