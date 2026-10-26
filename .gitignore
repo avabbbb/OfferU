@@ -144,3 +144,6 @@ launcher/__pycache__/
 /package-lock.json
 .wrangler/
 dist-lite/
+
+# Agent iteration log is tracked
+!docs/AGENT-ITERATIONS.md
