@@ -1441,6 +1441,45 @@ body {
   background: var(--surface);
 }
 
+.offeru-agent-panel .agent-tool-summary {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  padding: 4px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--foreground-muted);
+  transition: background-color var(--dur-quick) var(--ease-snap), color var(--dur-quick) var(--ease-snap);
+}
+
+.offeru-agent-panel .agent-tool-summary:hover {
+  background: var(--surface);
+  color: var(--foreground);
+}
+
+.offeru-agent-panel .agent-tool-list > :not(:first-child) {
+  border-top: 1px solid var(--border);
+}
+
+.offeru-agent-panel .agent-task-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 7px;
+  min-height: 26px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  transition: background-color var(--dur-quick) var(--ease-snap);
+}
+
+.offeru-agent-panel .agent-task-row:hover:not(:disabled) {
+  background: var(--surface-muted);
+}
+
 .offeru-agent-panel .agent-ask {
   border: 1px solid var(--border);
   border-left: 3px solid var(--accent-clay);

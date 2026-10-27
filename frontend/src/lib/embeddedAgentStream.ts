@@ -10,6 +10,9 @@ export interface ToolExecutionState {
   summary?: string;
   result?: unknown;
   isError?: boolean;
+  // 客户端收到开始/结束事件的时间（ms），只用于展示耗时。
+  startedAt?: number;
+  endedAt?: number;
 }
 
 
@@ -32,6 +35,7 @@ export function agentStreamReducer(state: AgentStreamState, event: AgentStreamEv
             toolName: event.tool_name || event.toolName || "tool",
             args: event.args,
             status: "running",
+            startedAt: Date.now(),
           },
         },
       };
@@ -46,6 +50,7 @@ export function agentStreamReducer(state: AgentStreamState, event: AgentStreamEv
         status: event.is_error ? "error" : "done",
         isError: Boolean(event.is_error),
         result: event.result,
+        endedAt: Date.now(),
       });
     default: return state;
   }

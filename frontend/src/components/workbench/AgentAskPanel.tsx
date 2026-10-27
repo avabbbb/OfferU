@@ -8,7 +8,7 @@
 // =============================================
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { HelpCircle, Loader2, RefreshCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, HelpCircle, Loader2, RefreshCw } from "lucide-react";
 import { agentRuntimeApi } from "@/lib/api";
 import {
   normalizeInputRequest,
@@ -134,7 +134,7 @@ export function AgentAskCard({
               {request.min_selections > 1 ? `，至少 ${request.min_selections} 项` : ""}
             </p>
           )}
-          {options.map((option) => {
+          {options.map((option, index) => {
             const checked = selected.includes(option.option_id);
             const disabled = !checked && atMax;
             return (
@@ -155,7 +155,10 @@ export function AgentAskCard({
                   onChange={() => chooseOption(option.option_id)}
                 />
                 <span>
-                  <span className="font-medium">{option.label}</span>
+                  <span className="font-medium">
+                    <span className="mr-1 tabular-nums text-[var(--foreground-muted)]">{index + 1}.</span>
+                    {option.label}
+                  </span>
                   {option.recommended && (
                     <span className="ml-1.5 rounded-sm border border-[var(--border)] px-1 text-[10px] text-[var(--foreground-muted)]">
                       推荐
@@ -233,6 +236,8 @@ export function AgentAskPanel({
 }) {
   const [requests, setRequests] = useState<AgentInputRequestView[]>([]);
   const [error, setError] = useState("");
+  // Notion 式：多个待答问题一次只显示一个，用 1/N 翻页。
+  const [page, setPage] = useState(0);
   const loadingRef = useRef(false);
   const mountedRef = useRef(false);
   const onPendingChangeRef = useRef(onPendingChange);
@@ -280,29 +285,60 @@ export function AgentAskPanel({
 
   if (requests.length === 0 && !error) return null;
 
+  const index = Math.min(page, Math.max(requests.length - 1, 0));
+  const current = requests[index];
+  const pagerButton = "rounded-md p-1 text-[var(--foreground-muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)] disabled:opacity-40 disabled:hover:bg-transparent";
+
   return (
     <div className="agent-bar space-y-1.5 border-t border-[var(--border)] px-3.5 py-2.5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <p className="text-[11px] font-semibold text-[var(--foreground)]">
           助手需要你确认偏好后继续
         </p>
-        <button
-          type="button"
-          aria-label="刷新待回答问题"
-          onClick={() => void load(false)}
-          className="rounded-md p-1 text-[var(--foreground-muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
-        >
-          <RefreshCw size={12} />
-        </button>
+        <div className="flex shrink-0 items-center gap-0.5">
+          {requests.length > 1 && (
+            <>
+              <button
+                type="button"
+                aria-label="上一个问题"
+                disabled={index === 0}
+                onClick={() => setPage(index - 1)}
+                className={pagerButton}
+              >
+                <ChevronLeft size={12} />
+              </button>
+              <span className="min-w-[2.5em] text-center text-[11px] tabular-nums text-[var(--foreground-muted)]">
+                {index + 1}/{requests.length}
+              </span>
+              <button
+                type="button"
+                aria-label="下一个问题"
+                disabled={index >= requests.length - 1}
+                onClick={() => setPage(index + 1)}
+                className={pagerButton}
+              >
+                <ChevronRight size={12} />
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            aria-label="刷新待回答问题"
+            onClick={() => void load(false)}
+            className={pagerButton}
+          >
+            <RefreshCw size={12} />
+          </button>
+        </div>
       </div>
       {error && (
         <p role="alert" className="rounded-md border border-[var(--status-blush)] bg-[var(--status-blush)]/40 px-2 py-1 text-[11px] text-[var(--primary-red)]">
           {error}
         </p>
       )}
-      {requests.map((request) => (
-        <AgentAskCard key={request.request_id} request={request} runId={runId} onAnswered={onAnswered} />
-      ))}
+      {current && (
+        <AgentAskCard key={current.request_id} request={current} runId={runId} onAnswered={onAnswered} />
+      )}
     </div>
   );
 }

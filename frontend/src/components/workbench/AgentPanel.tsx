@@ -1225,7 +1225,7 @@ export function AgentPanel() {
             <PanelMessageBubble key={message.id} message={message} onSuggestion={sendMessage} />
           ))}
           {inFlightTurns.map((turn) => (
-            <div key={turn.id} data-testid="agent-inflight-turn" className="space-y-2">
+            <div key={turn.id} id={"agent-turn-" + turn.id} data-testid="agent-inflight-turn" className="space-y-2">
               {turn.streamingText && (
                 <div className="agent-msg agent-msg-assistant">
                   <AgentMarkdown text={turn.streamingText} />
@@ -1285,7 +1285,7 @@ export function AgentPanel() {
           </Button>
         </div>
       )}
-      {activeRunId && !loading && (
+      {activeRunId && (
         <div data-testid="agent-ask-panel">
           <AgentAskPanel
           runId={activeRunId}
@@ -1305,24 +1305,49 @@ export function AgentPanel() {
         </div>
       )}
 
-      {parkedRuns.length > 0 && (
-        <div data-testid="agent-parked-runs" className="space-y-1 border-t border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2">
-          {parkedRuns.map((item) => (
-            <div key={item.id} className="flex items-center gap-2 text-[11.5px]">
-              <ClipboardCheck size={12} className="shrink-0 text-[var(--primary-blue)]" />
-              <span className="min-w-0 flex-1 truncate text-[var(--foreground-soft)]">
-                之前的任务{PARKED_RUN_LABELS[item.status] || "等你处理"}，状态已保存
-              </span>
-              <button
-                type="button"
-                onClick={() => void restoreParkedRun(item.id)}
-                disabled={loading}
-                className="shrink-0 font-semibold text-[var(--foreground)] underline disabled:opacity-50"
-              >
-                回去处理
-              </button>
-            </div>
-          ))}
+      {(parkedRuns.length > 0 || inFlightTurns.length > 1) && (
+        <div data-testid="agent-task-strip" className="border-t border-[var(--border)] px-3 py-2">
+          <p className="mb-1 px-1 text-[11px] font-semibold text-[var(--foreground-muted)]">
+            任务 · {inFlightTurns.length + parkedRuns.length}
+          </p>
+          <div className="space-y-0.5">
+            {inFlightTurns.map((turn) => {
+              const prompt = messages.find((message) => message.id === "user-" + turn.id)?.content || "新任务";
+              return (
+                <button
+                  key={turn.id}
+                  type="button"
+                  onClick={() => document.getElementById("agent-turn-" + turn.id)?.scrollIntoView({ behavior: "smooth", block: "nearest" })}
+                  className="agent-task-row"
+                >
+                  <Loader2 size={12} className="shrink-0 animate-spin text-[var(--foreground-muted)]" />
+                  <span className="min-w-0 flex-1 truncate text-left text-[var(--foreground)]">{prompt}</span>
+                  <span className="max-w-[40%] shrink-0 truncate text-[10.5px] text-[var(--foreground-muted)]">
+                    {turn.progressText || "进行中"}
+                  </span>
+                </button>
+              );
+            })}
+            {parkedRuns.length > 0 && (
+              <div data-testid="agent-parked-runs" className="space-y-0.5">
+                {parkedRuns.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => void restoreParkedRun(item.id)}
+                    disabled={loading}
+                    className="agent-task-row disabled:opacity-50"
+                  >
+                    <ClipboardCheck size={12} className="shrink-0 text-[var(--primary-blue)]" />
+                    <span className="min-w-0 flex-1 truncate text-left text-[var(--foreground-soft)]">
+                      之前的任务{PARKED_RUN_LABELS[item.status] || "等你处理"}，状态已保存
+                    </span>
+                    <span className="shrink-0 text-[10.5px] font-semibold text-[var(--foreground)]">回去处理</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
