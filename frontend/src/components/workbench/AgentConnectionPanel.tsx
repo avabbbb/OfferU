@@ -3,9 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { Button, Modal, ModalBody, ModalContent, ModalHeader } from "@heroui/react";
-import { AlertCircle, ArrowRight, Check, Copy, Loader2, Plug, RefreshCw } from "lucide-react";
+import { AlertCircle, ArrowRight, Loader2, Plug, RefreshCw } from "lucide-react";
 import { connectionTime, useAgentConnection } from "@/lib/agentConnection";
-import { OFFERU_MATERIAL_COLLABORATION_PROMPT } from "@/lib/agentConnectionPrompt";
 import { AgentBoardEntry } from "./AgentBoard";
 import { agentRuntimeApi, type AgentConnectionsSnapshot } from "@/lib/api";
 import { safeClientErrorMessage } from "@/lib/safe-error";
@@ -60,7 +59,6 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
   const [selectedId, setSelectedId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [materialCopyState, setMaterialCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const desktop = isTauri() || isLiteRuntime();
   const candidates = connections?.items.filter((item) => item.installed && item.compatible && item.can_install_skill) || [];
   const selected = candidates.find((item) => item.id === selectedId)
@@ -114,16 +112,6 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
     finally { setBusy(false); }
   };
 
-  const copyMaterialPrompt = async () => {
-    try {
-      if (!navigator.clipboard?.writeText) throw new Error("Clipboard API unavailable");
-      await navigator.clipboard.writeText(OFFERU_MATERIAL_COLLABORATION_PROMPT);
-      setMaterialCopyState("copied");
-    } catch {
-      setMaterialCopyState("failed");
-    }
-  };
-
   return (
     <section id={embedded ? undefined : "agent-connection"} data-testid={embedded ? "agent-provider-health-dialog" : "agent-provider-health"}
       className={`${embedded ? "shrink-0 " : ""}overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)]`}>
@@ -170,39 +158,13 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
           </p>}
           {awaitingReadback && <p role="status" className="text-xs leading-relaxed text-[var(--foreground-muted)]">接入已准备。到 {selected?.name} 里用一次 OfferU Skill，完成只读回读后这一行会变成「已验证连接」。</p>}
           {connections && !selected && <p role="status" className="text-xs text-[var(--foreground-muted)]">尚未发现可自动接入的本地 Agent。可以继续使用内置 Agent。</p>}
-        </div> : <p role="status" className="text-xs text-[var(--foreground-muted)]">在终端运行 offeru connect，或用 offeru start 打开的工作台连接你的 Agent。当前网页不会扫描本机或安装接入文件。</p>}
+        </div> : null}
         {error && <p role="alert" className="flex gap-2 text-xs text-amber-800"><AlertCircle size={14} />{error}</p>}
-        <p className="text-[11px] leading-relaxed text-[var(--foreground-muted)]">
-          检测到程序、安装接入文件和验证连接是三个不同状态。OfferU 不会替你改动 Agent 的账号、模型、凭据或代理。远程消费级 Connector 尚未接入，材料协作不会建立工具连接。
-        </p>
-
-        <details className="rounded-xl border border-[var(--border)] p-4">
-          <summary className="cursor-pointer text-xs font-semibold">使用本机已有的 Skill</summary>
-          <div className="mt-3 space-y-3">
-            <p className="text-xs leading-relaxed text-[var(--foreground-muted)]">OfferU 会只读读取 ~/.agents/skills 和 ~/.claude/skills 下的 Skill（每个 Skill 一个文件夹，内含带 description 的 SKILL.md）。它们出现在 Agent 输入框的 / 列表中并标记为「本机」，只能使用只读工具，不会修改这些文件。新增或修改后重启 OfferU 生效。</p>
-          </div>
-        </details>
-
-        <details className="rounded-xl border border-[var(--border)] p-4">
-          <summary className="cursor-pointer text-xs font-semibold">我的 Agent 只能聊天，使用材料协作</summary>
-          <div className="mt-3 space-y-3">
-            <p className="text-xs leading-relaxed text-[var(--foreground-muted)]">复制协作说明到你的聊天 Agent，再自行提供本次岗位和必要经历。先检查要分享的内容；OfferU 不会自动上传档案。审核结果后，将采用的内容保存到对应岗位工作区。</p>
-            <Button size="sm" variant="bordered" onPress={() => void copyMaterialPrompt()} startContent={materialCopyState === "copied" ? <Check size={14} /> : <Copy size={14} />}>
-              {materialCopyState === "copied" ? "已复制协作说明" : "复制协作说明"}
-            </Button>
-            {materialCopyState === "copied" && <p role="status" className="text-xs text-emerald-700">粘贴到你的聊天 Agent，再提供本次需要的材料。当前仍未连接 OfferU。</p>}
-            {materialCopyState === "failed" && <p role="alert" className="text-xs text-amber-800">自动复制失败，请从下方文本框手动复制协作说明。</p>}
-            <label htmlFor="offeru-material-prompt" className="block text-xs font-semibold">材料协作说明</label>
-            <textarea id="offeru-material-prompt" readOnly value={OFFERU_MATERIAL_COLLABORATION_PROMPT} rows={8} onFocus={(event) => event.currentTarget.select()}
-              className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-3 text-xs leading-6 text-[var(--foreground)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2" />
-          </div>
-        </details>
-
-        <div className="rounded-xl border border-[var(--border)] p-4" aria-label="OfferU 当前页面同步状态">
+        {state.sync.status === "failed" && <div className="rounded-xl border border-[var(--border)] p-4" aria-label="OfferU 当前页面同步状态">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs font-semibold">当前页面同步</p>
             <span role="status" className={`text-xs ${state.sync.status === "failed" ? "text-red-700" : "text-[var(--foreground-muted)]"}`}>
-              {state.sync.status === "syncing" ? "同步中…" : state.sync.status === "synced" ? "已同步到 OfferU" : state.sync.status === "failed" ? "同步失败" : "等待同步"}
+              同步失败
             </span>
           </div>
           <p className="mt-2 break-words text-xs text-[var(--foreground-muted)]">
@@ -211,7 +173,7 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
           {state.sync.confirmedAt && <p className="mt-1 text-[11px] text-[var(--foreground-muted)]">上次成功 {connectionTime(state.sync.confirmedAt)} · 版本 {state.sync.version}</p>}
           {state.sync.status === "failed" && <Button size="sm" variant="light" onPress={state.retrySync}
             startContent={<RefreshCw size={12} />} className="mt-2 text-xs text-[var(--foreground)]">重试同步</Button>}
-        </div>
+        </div>}
       </div>}
     </section>
   );
