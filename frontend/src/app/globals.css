@@ -1240,6 +1240,141 @@ body {
   padding: 0 2px;
 }
 
+.offeru-agent-panel .agent-msg-assistant {
+  white-space: normal;
+}
+
+.offeru-agent-panel .agent-md {
+  line-height: 1.65;
+}
+
+.offeru-agent-panel .agent-md > :first-child {
+  margin-top: 0;
+}
+
+.offeru-agent-panel .agent-md > :last-child {
+  margin-bottom: 0;
+}
+
+.offeru-agent-panel .agent-md p {
+  margin: 0.5em 0;
+}
+
+.offeru-agent-panel .agent-md h1,
+.offeru-agent-panel .agent-md h2,
+.offeru-agent-panel .agent-md h3,
+.offeru-agent-panel .agent-md h4 {
+  margin: 1em 0 0.4em;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--foreground);
+}
+
+.offeru-agent-panel .agent-md h1 {
+  font-size: 1.2em;
+}
+
+.offeru-agent-panel .agent-md h2 {
+  font-size: 1.1em;
+}
+
+.offeru-agent-panel .agent-md h3,
+.offeru-agent-panel .agent-md h4 {
+  font-size: 1em;
+}
+
+.offeru-agent-panel .agent-md ul,
+.offeru-agent-panel .agent-md ol {
+  margin: 0.4em 0;
+  padding-left: 1.4em;
+}
+
+.offeru-agent-panel .agent-md ul {
+  list-style: disc;
+}
+
+.offeru-agent-panel .agent-md ol {
+  list-style: decimal;
+}
+
+.offeru-agent-panel .agent-md li {
+  margin: 0.2em 0;
+}
+
+.offeru-agent-panel .agent-md li > ul,
+.offeru-agent-panel .agent-md li > ol {
+  margin: 0.2em 0;
+}
+
+.offeru-agent-panel .agent-md strong {
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.offeru-agent-panel .agent-md a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.offeru-agent-panel .agent-md code {
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: var(--surface-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+}
+
+.offeru-agent-panel .agent-md pre {
+  margin: 0.6em 0;
+  padding: 0.6em 0.75em;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-muted);
+  white-space: pre;
+}
+
+.offeru-agent-panel .agent-md pre code {
+  padding: 0;
+  background: none;
+}
+
+.offeru-agent-panel .agent-md blockquote {
+  margin: 0.6em 0;
+  padding-left: 0.75em;
+  border-left: 2px solid var(--border);
+  color: var(--foreground-muted);
+}
+
+.offeru-agent-panel .agent-md hr {
+  margin: 0.9em 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.offeru-agent-panel .agent-md-table {
+  margin: 0.6em 0;
+  overflow-x: auto;
+}
+
+.offeru-agent-panel .agent-md table {
+  border-collapse: collapse;
+  font-size: 0.92em;
+}
+
+.offeru-agent-panel .agent-md th,
+.offeru-agent-panel .agent-md td {
+  padding: 0.35em 0.6em;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.offeru-agent-panel .agent-md th {
+  font-weight: 600;
+  background: var(--surface-muted);
+}
+
 .offeru-agent-panel .agent-msg-user {
   display: inline-block;
   max-width: 100%;

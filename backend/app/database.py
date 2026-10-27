@@ -20,7 +20,7 @@ from app.services.security_redaction import safe_error_message
 
 settings = get_settings()
 
-CURRENT_SCHEMA_VERSION = 8
+CURRENT_SCHEMA_VERSION = 9
 LEGACY_TEMPLATE_TABLES = ("html_resumes", "html_resume_templates", "resume_templates")
 
 
@@ -492,6 +492,32 @@ def _migrate_schema_v8(connection) -> None:  # noqa: ANN001
     del connection
 
 
+def _migrate_schema_v9(connection) -> None:  # noqa: ANN001
+    """v9: columns that reached the models without a migration (BOSS securityId, input-request selection).
+
+    create_all never alters existing tables, so a v8 database kept failing with
+    no such column on every jobs / agent_input_requests query.
+    """
+
+    from sqlalchemy import text
+
+    added = {
+        "jobs": (("boss_security_id", "VARCHAR(300) NOT NULL DEFAULT ''"),),
+        "agent_input_requests": (
+            ("selection_mode", "VARCHAR(16) NOT NULL DEFAULT 'single'"),
+            ("min_selections", "INTEGER NOT NULL DEFAULT 0"),
+            ("max_selections", "INTEGER NOT NULL DEFAULT 0"),
+            ("allow_skip", "BOOLEAN NOT NULL DEFAULT 1"),
+        ),
+    }
+    for table, columns in added.items():
+        existing = {row[1] for row in connection.execute(text(f'PRAGMA table_info("{table}")'))}
+        for name, ddl in columns:
+            if existing and name not in existing:
+                connection.execute(text(f'ALTER TABLE "{table}" ADD COLUMN "{name}" {ddl}'))
+
+
+
 SCHEMA_MIGRATIONS: dict[int, Callable[[Any], None]] = {
     1: _migrate_schema_v1,
     2: _migrate_schema_v2,
@@ -501,6 +527,7 @@ SCHEMA_MIGRATIONS: dict[int, Callable[[Any], None]] = {
     6: _migrate_schema_v6,
     7: _migrate_schema_v7,
     8: _migrate_schema_v8,
+    9: _migrate_schema_v9,
 }
 
 

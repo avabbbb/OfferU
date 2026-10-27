@@ -300,6 +300,42 @@ class DatabaseMigrationTests(unittest.TestCase):
             finally:
                 connection.close()
 
+    def test_v9_adds_columns_missing_from_a_v8_database_idempotently(self) -> None:
+        from app.database import _migrate_schema_v9
+
+        with tempfile.TemporaryDirectory() as directory:
+            engine = create_engine(f"sqlite:///{Path(directory) / 'drift.db'}")
+            try:
+                with engine.begin() as connection:
+                    connection.execute(text("CREATE TABLE jobs (id INTEGER PRIMARY KEY, title VARCHAR(200))"))
+                    connection.execute(text("INSERT INTO jobs (id, title) VALUES (1, 'kept')"))
+                    connection.execute(text("CREATE TABLE agent_input_requests (id INTEGER PRIMARY KEY)"))
+                    connection.execute(text("INSERT INTO agent_input_requests (id) VALUES (1)"))
+                for _ in range(2):
+                    with engine.begin() as connection:
+                        _migrate_schema_v9(connection)
+
+                columns = inspect(engine)
+                job_columns = {column["name"] for column in columns.get_columns("jobs")}
+                request_columns = {column["name"] for column in columns.get_columns("agent_input_requests")}
+                self.assertIn("boss_security_id", job_columns)
+                self.assertTrue(
+                    {"selection_mode", "min_selections", "max_selections", "allow_skip"} <= request_columns
+                )
+                with engine.connect() as connection:
+                    self.assertEqual(
+                        connection.execute(text("SELECT title, boss_security_id FROM jobs")).one(),
+                        ("kept", ""),
+                    )
+                    self.assertEqual(
+                        connection.execute(
+                            text("SELECT selection_mode, min_selections, max_selections, allow_skip FROM agent_input_requests")
+                        ).one(),
+                        ("single", 0, 0, 1),
+                    )
+            finally:
+                engine.dispose()
+
     def test_v6_migration_is_idempotent_when_tables_already_exist(self) -> None:
         """If create_all already created v6 tables, migration must not fail."""
         with tempfile.TemporaryDirectory() as directory:
