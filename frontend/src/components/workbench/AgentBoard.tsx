@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Button } from "@heroui/react";
-import { AlertCircle, Check, Copy, Eye, EyeOff, Loader2, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Button, Modal, ModalBody, ModalContent, ModalHeader } from "@heroui/react";
+import { AlertCircle, ArrowRight, Check, Copy, Eye, EyeOff, Loader2, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { agentBoardApi, type AgentBoardRow, type AgentBoardSnapshot, type CustomAgentInput } from "@/lib/api";
 import { OFFERU_AGENT_CONNECT_PROMPT } from "@/lib/agentConnectionPrompt";
 import { connectionTime } from "@/lib/agentConnection";
@@ -166,4 +166,38 @@ export function AgentBoard() {
       </div>}
     <p className="text-[11px] leading-relaxed text-[var(--foreground-muted)]">看板只安装、更新或修复 OfferU Skill，并检测启动命令是否在 PATH 上；不会运行 Agent，也不会改它的设置或记忆文件。</p>
   </div>;
+}
+
+/** Entry row on the Agent panel: opens the dialog with the copy-prompt and the full Agent board (web and desktop). */
+export function AgentBoardEntry() {
+  const [open, setOpen] = useState(false);
+  const [summary, setSummary] = useState<AgentBoardSnapshot["summary"] | null>(null);
+  useEffect(() => {
+    let active = true;
+    agentBoardApi.list().then((snapshot) => { if (active) setSummary(snapshot.summary); }).catch(() => undefined);
+    return () => { active = false; };
+  }, [open]);
+  const detail = summary
+    ? "已接入 " + summary.connected + " · 需处理 " + summary.needs_attention + " · 本机检测到 " + summary.detected
+    : "一键复制接入提示词，查看每个 Agent 的连接和记忆状态";
+  return <>
+    <button type="button" onClick={() => setOpen(true)} data-testid="agent-board-entry" aria-label="打开 Agent 看板"
+      className="flex w-full items-center gap-3 rounded-xl border border-[var(--border)] px-4 py-3 text-left transition-colors hover:border-[var(--border-strong)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold">接入和管理我的 Agent</span>
+        <span className="mt-1 block truncate text-[11px] text-[var(--foreground-muted)]">{detail}</span>
+      </span>
+      <ArrowRight size={14} className="shrink-0 text-[var(--foreground-muted)]" />
+    </button>
+    <Modal isOpen={open} onOpenChange={setOpen} size="3xl" scrollBehavior="inside" placement="center"
+      classNames={{ base: "bg-[var(--background)] text-[var(--foreground)]", closeButton: "mt-2 mr-2" }}>
+      <ModalContent>
+        <ModalHeader className="px-6 pb-3 pt-5 text-sm font-semibold">我的 Agent</ModalHeader>
+        <ModalBody className="space-y-4 px-4 pb-5 sm:px-6" data-testid="agent-board-dialog">
+          <AgentConnectPrompt />
+          <AgentBoard />
+        </ModalBody>
+      </ModalContent>
+    </Modal>
+  </>;
 }
