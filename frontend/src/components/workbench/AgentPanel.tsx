@@ -7,6 +7,7 @@
 
 import { ToolExecutionList } from "./EmbeddedAgentStreamView";
 import { AgentAskPanel } from "./AgentAskPanel";
+import { AgentMarkdown } from "./AgentMarkdown";
 import { applyRuntimeToolEvent, createInitialAgentStreamState, type AgentStreamState } from "@/lib/embeddedAgentStream";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, Textarea } from "@heroui/react";
@@ -1227,7 +1228,7 @@ export function AgentPanel() {
             <div key={turn.id} data-testid="agent-inflight-turn" className="space-y-2">
               {turn.streamingText && (
                 <div className="agent-msg agent-msg-assistant">
-                  {turn.streamingText}
+                  <AgentMarkdown text={turn.streamingText} />
                 </div>
               )}
               <ToolExecutionList executions={turn.toolStream.toolExecutions} />
@@ -1428,7 +1429,7 @@ function PanelMessageBubble({
     <div className={isUser ? "flex justify-end pl-10" : "flex justify-start"}>
       <div className={isUser ? "min-w-0 max-w-full" : "w-full min-w-0"}>
         <div className={isUser ? "agent-msg agent-msg-user" : "agent-msg agent-msg-assistant"}>
-          {message.content}
+          {isUser ? message.content : <AgentMarkdown text={message.content} />}
         </div>
         {response && (
           <div className="mt-2 space-y-2 text-left">
