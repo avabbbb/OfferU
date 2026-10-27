@@ -1355,6 +1355,51 @@ export const agentRuntimeApi = {
     ),
 };
 
+export interface AgentBoardRow {
+  id: string;
+  display_name: string;
+  custom: boolean;
+  hidden: boolean;
+  executable_found: boolean;
+  skill_status: string;
+  skill_path: string;
+  error: string;
+  memory_status: "none" | "exported" | "imported";
+  memory: { exported_at?: string; imported_at?: string; target?: string };
+  last_check: { at?: string; action?: string; skill_status?: string; executable_found?: boolean };
+  executable: string;
+  memory_file: string;
+  docs_url: string;
+}
+
+export interface AgentBoardSnapshot {
+  agents: AgentBoardRow[];
+  summary: { connected: number; needs_attention: number; detected: number };
+}
+
+export interface CustomAgentInput {
+  id?: string;
+  display_name: string;
+  executable?: string;
+  skill_root: string;
+  memory_file?: string;
+}
+
+const agentBoardPath = (agentId: string, suffix = "") => "/api/agent-board/" + encodeURIComponent(agentId) + suffix;
+
+export const agentBoardApi = {
+  list: () => request<AgentBoardSnapshot>("/api/agent-board", { signal: AbortSignal.timeout(20000) }),
+  add: (body: CustomAgentInput) => request<AgentBoardRow>("/api/agent-board", { method: "POST", body: JSON.stringify(body) }),
+  edit: (agentId: string, body: Omit<CustomAgentInput, "id">) =>
+    request<AgentBoardRow>(agentBoardPath(agentId), { method: "PATCH", body: JSON.stringify(body) }),
+  remove: (agentId: string) => request<Record<string, unknown>>(agentBoardPath(agentId), { method: "DELETE" }),
+  setHidden: (agentId: string, hidden: boolean) =>
+    request<AgentBoardRow>(agentBoardPath(agentId, "/hidden"), { method: "POST", body: JSON.stringify({ hidden }) }),
+  connect: (agentId: string, action: "install" | "update" | "repair") =>
+    request<AgentBoardRow>(agentBoardPath(agentId, "/connect"), { method: "POST", body: JSON.stringify({ action }), signal: AbortSignal.timeout(20000) }),
+  check: (agentId: string) => request<AgentBoardRow>(agentBoardPath(agentId, "/check"), { method: "POST" }),
+};
+
 export const agentActionsApi = {
   list: (params?: { run_id?: string; status?: AgentActionStatus }) =>
     request<{ items: AgentActionRecord[] }>(

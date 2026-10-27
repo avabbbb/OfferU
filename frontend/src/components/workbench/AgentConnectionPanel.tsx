@@ -6,6 +6,7 @@ import { Button, Modal, ModalBody, ModalContent, ModalHeader } from "@heroui/rea
 import { AlertCircle, ArrowRight, Check, Copy, Loader2, Plug, RefreshCw } from "lucide-react";
 import { connectionTime, useAgentConnection } from "@/lib/agentConnection";
 import { OFFERU_MATERIAL_COLLABORATION_PROMPT } from "@/lib/agentConnectionPrompt";
+import { AgentBoard, AgentConnectPrompt } from "./AgentBoard";
 import { agentRuntimeApi, type AgentConnectionsSnapshot } from "@/lib/api";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { SHOWCASE } from "@/lib/showcase";
@@ -135,6 +136,7 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
       </div>
 
       {SHOWCASE ? <p role="status" className="p-6 text-sm text-[var(--foreground-muted)]">展示模式使用 Demo Agent 和虚构数据。真实 Agent 接入请在本机安装 OfferU 后运行 offeru start。</p> : <div className="space-y-5 p-5 sm:p-7">
+        <AgentConnectPrompt />
         {desktop ? <div className="space-y-3">
           <Button size="sm" onPress={() => void discover()} isDisabled={busy} startContent={busy ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}>
             {connections ? "重新检查本机 Agent" : "发现本机 Agent"}
@@ -169,6 +171,10 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
           {awaitingReadback && <p role="status" className="text-xs leading-relaxed text-[var(--foreground-muted)]">接入已准备。到 {selected?.name} 里用一次 OfferU Skill，完成只读回读后这一行会变成「已验证连接」。</p>}
           {connections && !selected && <p role="status" className="text-xs text-[var(--foreground-muted)]">尚未发现可自动接入的本地 Agent。可以继续使用内置 Agent。</p>}
         </div> : <p role="status" className="text-xs text-[var(--foreground-muted)]">在终端运行 offeru connect，或用 offeru start 打开的工作台连接你的 Agent。当前网页不会扫描本机或安装接入文件。</p>}
+        {desktop && <details className="rounded-xl border border-[var(--border)] p-4" data-testid="agent-board-details">
+          <summary className="cursor-pointer text-xs font-semibold">Agent 看板：连接状态、检查和记忆导入</summary>
+          <div className="mt-3"><AgentBoard /></div>
+        </details>}
         {error && <p role="alert" className="flex gap-2 text-xs text-amber-800"><AlertCircle size={14} />{error}</p>}
         <p className="text-[11px] leading-relaxed text-[var(--foreground-muted)]">
           检测到程序、安装接入文件和验证连接是三个不同状态。OfferU 不会替你改动 Agent 的账号、模型、凭据或代理。远程消费级 Connector 尚未接入，材料协作不会建立工具连接。
