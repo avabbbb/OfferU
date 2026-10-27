@@ -33,8 +33,12 @@ class EmbeddedAgentWorkerError(RuntimeError):
     pass
 
 
+class EmbeddedAgentConcurrencyError(EmbeddedAgentWorkerError):
+    pass
+
+
 class EmbeddedAgentWorker:
-    """One active session; credentials and Career Truth never enter session files."""
+    """Exactly one Agent Run per worker; credentials and Career Truth never enter session files."""
 
     def __init__(self, *, provider_factory: Callable[[], Any] = LlmStreamProvider) -> None:
         self._provider_factory = provider_factory
@@ -54,12 +58,6 @@ class EmbeddedAgentWorker:
         self._host_tools: dict[str, dict[str, Any]] = {}
         self._start_lock = asyncio.Lock()
         self._prompt_lock = asyncio.Lock()
-
-    async def probe(self) -> dict[str, Any]:
-        return {"available": True, "kernel": "python", "protocol_version": PROTOCOL_VERSION,
-                "version": "luyishui-offeru-3a446ff", "session_scope": "one_session_per_agent_run",
-                "features": {"persistent_sessions": True, "compaction": True, "steer": True,
-                             "follow_up": True, "registry_tools_only": True}}
 
     @property
     def prompt_active(self) -> bool:
@@ -92,7 +90,7 @@ class EmbeddedAgentWorker:
         del provider  # Model credentials/configuration stay in the canonical LLM layer.
         async with self._start_lock:
             if self.active_run_id:
-                raise EmbeddedAgentWorkerError(f"An Agent Run is already active: {self.active_run_id}")
+                raise EmbeddedAgentWorkerError("Worker already holds a Run")
             if not re.fullmatch(r"run_[a-f0-9]{16,32}", run_id):
                 raise EmbeddedAgentWorkerError("Invalid Agent Run ID")
             directory = Path(session_directory).resolve()
@@ -312,44 +310,79 @@ class EmbeddedAgentWorker:
 
     async def dispose_run(self, run_id: str) -> None:
         self._check_run(run_id)
-        if self._task:
-            await self.abort_run(run_id)
-        close = getattr(self._provider, "close", None)
-        if close:
-            await close()
-        await self._emit("run.disposed", {})
-        self.active_run_id = None
-        self._provider = None
-
-    async def forget_run_after_fresh_reset(self, run_id: str) -> None:
-        """Dispose a reset-approved Run and erase its volatile career context."""
-        async with self._start_lock:
-            if self.active_run_id != run_id:
-                return
-            await self.dispose_run(run_id)
-            self._messages.clear()
-            self._system_prompt = ""
-            self._operations.clear()
-            self._operation_runner = None
-            self._event_listener = None
-            self._session_path = None
-            self._steering.clear()
-            self._follow_up.clear()
-            self._task = None
-            self._hooks = HookRegistry()
-            self._cancel = CancelToken()
-
-    async def close(self) -> None:
-        if self.active_run_id:
-            await self.dispose_run(self.active_run_id)
+        try:
+            if self._task:
+                await self.abort_run(run_id)
+            close = getattr(self._provider, "close", None)
+            if close:
+                await close()
+            await self._emit("run.disposed", {})
+        finally:
+            self.active_run_id = None
+            self._provider = None
+            if _POOL.get(run_id) is self:
+                del _POOL[run_id]
 
 
-_worker = EmbeddedAgentWorker()
+_POOL: dict[str, EmbeddedAgentWorker] = {}
+_POOL_LOCK = asyncio.Lock()
 
 
-def get_embedded_agent_worker() -> EmbeddedAgentWorker:
-    return _worker
+def max_concurrent_agent_runs() -> int:
+    from app.config import get_settings
+
+    return min(10, max(1, int(get_settings().max_concurrent_agent_runs)))
 
 
-async def close_embedded_agent_worker() -> None:
-    await _worker.close()
+def _limit_error(limit: int) -> EmbeddedAgentConcurrencyError:
+    return EmbeddedAgentConcurrencyError(f"已达到最大并发数 {limit}，请等待其他任务完成或在设置中调高。")
+
+
+def ensure_embedded_agent_capacity() -> None:
+    """Cheap pre-check before routing; the atomic reservation is get_embedded_agent_worker."""
+    limit = max_concurrent_agent_runs()
+    if len(_POOL) >= limit:
+        raise _limit_error(limit)
+
+
+async def get_embedded_agent_worker(run_id: str) -> EmbeddedAgentWorker:
+    """Return the Run's worker, reserving a fresh pool slot for a Run not yet active."""
+    async with _POOL_LOCK:
+        existing = _POOL.get(run_id)
+        if existing is not None:
+            return existing
+        limit = max_concurrent_agent_runs()
+        if len(_POOL) >= limit:
+            raise _limit_error(limit)
+        worker = EmbeddedAgentWorker()
+        _POOL[run_id] = worker
+        return worker
+
+
+def find_embedded_agent_worker(run_id: str) -> EmbeddedAgentWorker | None:
+    return _POOL.get(run_id)
+
+
+def release_embedded_agent_worker(run_id: str, worker: EmbeddedAgentWorker) -> None:
+    """Free a slot reserved for a Run that never became (or no longer is) active."""
+    if _POOL.get(run_id) is worker and worker.active_run_id != run_id:
+        del _POOL[run_id]
+
+
+def active_embedded_agent_runs() -> list[str]:
+    return list(_POOL)
+
+
+async def probe_embedded_agent() -> dict[str, Any]:
+    return {"available": True, "kernel": "python", "protocol_version": PROTOCOL_VERSION,
+            "version": "luyishui-offeru-3a446ff", "session_scope": "one_session_per_agent_run",
+            "active_runs": len(_POOL), "max_concurrent_runs": max_concurrent_agent_runs(),
+            "features": {"persistent_sessions": True, "compaction": True, "steer": True,
+                         "follow_up": True, "registry_tools_only": True}}
+
+
+async def close_embedded_agent_workers() -> None:
+    for run_id, worker in list(_POOL.items()):
+        if worker.active_run_id == run_id:
+            await worker.dispose_run(run_id)
+        _POOL.pop(run_id, None)

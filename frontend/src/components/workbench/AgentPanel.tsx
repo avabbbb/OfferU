@@ -7,7 +7,7 @@
 
 import { ToolExecutionList } from "./EmbeddedAgentStreamView";
 import { AgentAskPanel } from "./AgentAskPanel";
-import { applyRuntimeToolEvent, createInitialAgentStreamState } from "@/lib/embeddedAgentStream";
+import { applyRuntimeToolEvent, createInitialAgentStreamState, type AgentStreamState } from "@/lib/embeddedAgentStream";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, Textarea } from "@heroui/react";
 import {
@@ -62,8 +62,6 @@ interface PanelMessage {
   role: "user" | "assistant";
   content: string;
   response?: AgentResponse;
-  /** D-1：运行中发来、已在下一个工具边界注入当前任务的消息。 */
-  steered?: boolean;
 }
 
 interface ResumeCandidate {
@@ -73,10 +71,12 @@ interface ResumeCandidate {
   status: string;
 }
 
-interface QueuedPanelMessage {
+/** 一个正在跑的发送：每轮自己的流式文字、工具进度和进度提示，并发时互不覆盖。 */
+interface InFlightTurn {
   id: string;
-  content: string;
-  skillId?: string;
+  progressText: string;
+  streamingText: string;
+  toolStream: AgentStreamState;
 }
 
 interface ParkedRun {
@@ -201,6 +201,34 @@ function toPanelResponse(response: AgentRunResponse): AgentResponse {
   };
 }
 
+function progressForEvent(event: string, operation: unknown): string | null {
+  switch (event) {
+    case "run.started":
+    case "run.created":
+      return "正在思考...";
+    case "executor.started":
+    case "runtime.session_started":
+      return "助手已就绪，正在处理当前任务...";
+    case "tool.started":
+    case "runtime.tool_started":
+      return "助手正在调用 OfferU 工具...";
+    case "operation.started":
+      return "正在读取：" + String(operation || "OfferU 数据");
+    case "approval.requested":
+      return "有一步不可撤销，已放进待确认列表；助手继续做别的...";
+    case "input.required":
+      return "助手需要你的回答后继续...";
+    case "runtime.retry_started":
+      return "模型调用正在安全重试...";
+    case "runtime.compaction_started":
+      return "正在压缩本 Run 的模型上下文...";
+    case "stream.reconnecting":
+      return "连接中断，正在按事件游标恢复同一个 Run...";
+    default:
+      return null;
+  }
+}
+
 export function AgentPanel() {
   const [slashIndex, setSlashIndex] = useState(0);
   const [messages, setMessages] = useState<PanelMessage[]>([
@@ -214,10 +242,10 @@ export function AgentPanel() {
   ]);
   const [input, setInput] = useState("");
   const [pendingActionCount, setPendingActionCount] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const [runActionPending, setRunActionPending] = useState(false);
+  const [inFlightTurns, setInFlightTurns] = useState<InFlightTurn[]>([]);
   const [toolStream, setToolStream] = useState(createInitialAgentStreamState);
-  const [progressText, setProgressText] = useState(SHOWCASE ? "正在准备演示 Agent..." : "正在准备 OfferU Agent...");
-  const [streamingText, setStreamingText] = useState("");
+  const [progressText, setProgressText] = useState("");
   const [error, setError] = useState("");
   const [importedStage, setImportedStage] = useState<string>("unknown");
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -240,22 +268,20 @@ export function AgentPanel() {
   const [hostedRefreshKey, setHostedRefreshKey] = useState(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const sendRequestPendingRef = useRef(false);
+  const turnControllersRef = useRef<Map<string, AbortController>>(new Map());
+  const lastSendRef = useRef<{ content: string; at: number } | null>(null);
+  const turnSeqRef = useRef(0);
   const suppressResumePromptRef = useRef(false);
   const currentConvRef = useRef<string | null>(null);
-  // D-2：导航只"分离"正在跑的流，不中断它；后台流结束前新消息先排队。
-  const [backgroundStreams, setBackgroundStreams] = useState(0);
-  const [queuedMessages, setQueuedMessages] = useState<QueuedPanelMessage[]>([]);
+  // D-2：导航只"分离"正在跑的流，不中断它；分离的流结果不再写进当前界面。
   const [parkedRuns, setParkedRuns] = useState<ParkedRun[]>([]);
   const detachedControllersRef = useRef<Set<AbortController>>(new Set());
   const [reviewPending, setReviewPending] = useState(0);
   // 当前 Run 在等用户回答 Ask 或可恢复。这只决定"新消息开新一轮前先把它停放"，
   // 从不禁用输入。待确认的不可逆操作不挡 Run：它们在全局待确认列表里。
   const runNeedsUser = Boolean(interruptedRunId) || reviewPending > 0;
-  // 只有真正在跑的流才算"忙"。等用户回答的 Ask 不算忙：新消息直接开新一轮，
-  // 旧 Run 先停放（main 5092639 的约定：Ask 待答时仍可发新消息）。
-  const agentBusy = loading || backgroundStreams > 0;
+  // 每次发送都开一个新 Run，可与其他 Run 并发；超过设置里的并发上限时后端直接报错。
+  const loading = inFlightTurns.length > 0 || runActionPending;
 
   const latestResponse = useMemo(() => {
     return [...messages].reverse().find((message) => message.response)?.response;
@@ -291,15 +317,15 @@ export function AgentPanel() {
     const cleared = () => {
       // Backend reset already ended the old session. Clear its local
       // projection without cancelling or approving any surviving receipt.
-      abortControllerRef.current?.abort();
-      abortControllerRef.current = null;
-      sendRequestPendingRef.current = false;
+      turnControllersRef.current.forEach((controller) => controller.abort());
+      turnControllersRef.current.clear();
+      lastSendRef.current = null;
       suppressResumePromptRef.current = false;
       currentConvRef.current = null;
       setMessages([]);
       setInput("");
-      setLoading(false);
-      setStreamingText("");
+      setRunActionPending(false);
+      setInFlightTurns([]);
       setToolStream(createInitialAgentStreamState());
       setActiveRun(null);
       setActiveRunId(null);
@@ -323,9 +349,9 @@ export function AgentPanel() {
   }, []);
 
   useEffect(() => () => {
-    const controller = abortControllerRef.current;
-    abortControllerRef.current = null;
-    controller?.abort();
+    const controllers = [...turnControllersRef.current.values()];
+    turnControllersRef.current.clear();
+    controllers.forEach((controller) => controller.abort());
   }, []);
 
   useEffect(() => {
@@ -383,7 +409,7 @@ export function AgentPanel() {
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, loading]);
+  }, [messages, inFlightTurns]);
 
   /** 把等用户处理的 Run 收进"停放"条：状态已持久化，随时可回来处理，绝不隐式取消。 */
   const parkActiveRun = () => {
@@ -400,65 +426,42 @@ export function AgentPanel() {
     setInterruptedRunId(null);
   };
 
-  const enqueueMessage = (content: string, skillId?: string) => {
-    setQueuedMessages((current) => [
-      ...current,
-      { id: `queued-${Date.now()}-${current.length}`, content, skillId },
-    ]);
-  };
-
   const sendMessage = async (text?: string, explicitSkillId?: string) => {
     const content = (text ?? input).trim();
     if (!content) return;
     if (text === undefined) setInput("");
-    if (agentBusy) {
-      // 正在跑：先尝试在下一个工具边界引导当前任务；跑不到就排队，绝不丢、绝不锁。
-      if (loading && activeRunId && reviewPending === 0 && !explicitSkillId) {
-        try {
-          const result = await agentRuntimeApi.steer(activeRunId, content);
-          if (result.disposition === "steered") {
-            setMessages((current) => [
-              ...current,
-              { id: `user-steer-${Date.now()}`, role: "user", content, steered: true },
-            ]);
-            return;
-          }
-        } catch {
-          // 引导失败时退回排队，消息不能丢。
-        }
-      }
-      enqueueMessage(content, explicitSkillId);
-      return;
-    }
     await startTurn(content, explicitSkillId);
   };
 
+  const patchTurn = (turnId: string, patch: (turn: InFlightTurn) => InFlightTurn) => {
+    setInFlightTurns((current) => current.map((turn) => (turn.id === turnId ? patch(turn) : turn)));
+  };
+
   const startTurn = async (content: string, explicitSkillId?: string) => {
-    // 双击 / 连按回车的防重：上一轮请求还没真正发出去时不重复开轮（来自 main 5092639）。
-    if (!content || loading || sendRequestPendingRef.current) return;
+    if (!content) return;
+    // 双击 / 连按回车防重：同一段文字 800ms 内只开一轮。
+    const now = Date.now();
+    const last = lastSendRef.current;
+    if (last && last.content === content && now - last.at < 800) return;
+    lastSendRef.current = { content, at: now };
     parkActiveRun();
     const requestSkillId = explicitSkillId || selectedSkillId;
     const currentConversationId = conversationId;
     suppressResumePromptRef.current = true;
     setResumeCandidate(null);
     currentConvRef.current = currentConversationId;
+    const turnId = "turn-" + now + "-" + ++turnSeqRef.current;
     const controller = new AbortController();
-    abortControllerRef.current = controller;
-    sendRequestPendingRef.current = true;
-    const userMessage: PanelMessage = {
-      id: `user-${Date.now()}`,
-      role: "user",
-      content,
-    };
-    const nextMessages = [...messages, userMessage];
+    turnControllersRef.current.set(turnId, controller);
     // 被导航分离到后台的流：结果只落在它自己的对话里，绝不写进当前界面。
     const isDetached = () => detachedControllersRef.current.has(controller) || controller.signal.aborted;
+    let streamState = createInitialAgentStreamState();
 
-    setMessages(nextMessages);
-    setLoading(true);
-    setProgressText("正在启动内置助手...");
-    setStreamingText("");
-    setToolStream(createInitialAgentStreamState());
+    setMessages((prev) => [...prev, { id: "user-" + turnId, role: "user", content }]);
+    setInFlightTurns((current) => [
+      ...current,
+      { id: turnId, progressText: "正在发送...", streamingText: "", toolStream: streamState },
+    ]);
     setError("");
 
     try {
@@ -469,36 +472,25 @@ export function AgentPanel() {
           conversation_id: currentConversationId,
         },
         (event, data) => {
-          if (isDetached() || currentConvRef.current !== currentConversationId) return;
-          setToolStream((current) => applyRuntimeToolEvent(current, event, data || {}));
+          if (isDetached()) return;
+          streamState = applyRuntimeToolEvent(streamState, event, data || {});
+          const nextStream = streamState;
           const eventRunId = String(data?.run_id || "");
           if (eventRunId) setActiveRunId(eventRunId);
-          if (event === "run.started" || event === "run.created") {
-            setProgressText("任务已保存，正在启动助手...");
-          } else if (event === "executor.started" || event === "runtime.session_started") {
-            setProgressText("助手已就绪，正在处理当前任务...");
-          } else if (event === "tool.started" || event === "runtime.tool_started") {
-            setProgressText("助手正在调用 OfferU 工具...");
-          } else if (event === "operation.started") {
-            setProgressText(`正在读取：${data?.payload?.operation || "OfferU 数据"}`);
-          } else if (event === "approval.requested") {
-            setProgressText("有一步不可撤销，已放进待确认列表；助手继续做别的...");
-          } else if (event === "input.required") {
-            setProgressText("助手需要你的回答后继续...");
-          } else if (event === "runtime.retry_started") {
-            setProgressText("模型调用正在安全重试...");
-          } else if (event === "runtime.compaction_started") {
-            setProgressText("正在压缩本 Run 的模型上下文...");
-          } else if (event === "stream.reconnecting") {
-            setProgressText("连接中断，正在按事件游标恢复同一个 Run...");
-          } else if (event === "assistant.delta" || event === "message.delta") {
-            const delta = String(data?.payload?.delta || "");
-            if (delta) setStreamingText((current) => current + delta);
-          }
+          const progress = progressForEvent(event, data?.payload?.operation);
+          const delta = event === "assistant.delta" || event === "message.delta"
+            ? String(data?.payload?.delta || "")
+            : "";
+          patchTurn(turnId, (turn) => ({
+            ...turn,
+            toolStream: nextStream,
+            progressText: progress ?? turn.progressText,
+            streamingText: delta ? turn.streamingText + delta : turn.streamingText,
+          }));
         },
         controller.signal,
       );
-      if (isDetached() || currentConvRef.current !== currentConversationId) return;
+      if (isDetached()) return;
       if (!runtimeResponse.ok) {
         setActiveRunId(runtimeResponse.run.id);
         setActiveRun(runtimeResponse.run);
@@ -510,7 +502,7 @@ export function AgentPanel() {
       }
       const response = toPanelResponse(runtimeResponse);
       const assistantMessage: PanelMessage = {
-        id: `assistant-${Date.now()}`,
+        id: "assistant-" + turnId,
         role: "assistant",
         content: response.assistant_message,
         response,
@@ -523,71 +515,34 @@ export function AgentPanel() {
       setActiveRunId(runtimeResponse.run.id);
       setActiveRun(runtimeResponse.run);
       setMessages((prev) => [...prev, assistantMessage]);
+      setToolStream(streamState);
       setPendingActionCount(pendingCountOf(runtimeResponse.run));
       refreshConversations();
     } catch (err: any) {
-      if (abortControllerRef.current !== controller) return;
-      if (err instanceof Error && (err.name === "AbortError" || controller.signal.aborted)) return;
+      if (isDetached()) return;
+      if (err instanceof Error && err.name === "AbortError") return;
       setError(safeClientErrorMessage(err, "OfferU 请求失败"));
       setInput((current) => current || content);
     } finally {
-      if (detachedControllersRef.current.delete(controller)) {
-        setBackgroundStreams((count) => Math.max(0, count - 1));
-      }
-      if (abortControllerRef.current === controller) {
-        abortControllerRef.current = null;
-        sendRequestPendingRef.current = false;
-        setStreamingText("");
-        setLoading(false);
-      }
+      detachedControllersRef.current.delete(controller);
+      turnControllersRef.current.delete(turnId);
+      setInFlightTurns((current) => current.filter((turn) => turn.id !== turnId));
     }
   };
 
-  // 排队的消息：Agent 空闲且当前没有等用户处理的 Run 时自动按顺序发送；
-  // 有待处理事项时不抢跑，由用户在队列条上点"现在发送"（会先停放待处理 Run）。
-  useEffect(() => {
-    if (agentBusy || runNeedsUser || queuedMessages.length === 0) return;
-    const [next, ...rest] = queuedMessages;
-    setQueuedMessages(rest);
-    void startTurn(next.content, next.skillId);
-    // startTurn 读取的是最新渲染闭包；依赖只需要驱动出队的状态。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agentBusy, runNeedsUser, queuedMessages]);
-
-  // 其他页面（如简历画布）交来的意图：一律先进待发送队列，由出队逻辑按 D-1 规则发送，
-  // 避免一批消息在同一帧里并发开出多个 Run。
+  // 其他页面（如简历画布）交来的意图：每条直接开一个新 Run，可与其他 Run 并发。
+  const startTurnRef = useRef(startTurn);
+  startTurnRef.current = startTurn;
   useEffect(() => {
     const take = () => {
-      const requests = drainAgentCompose();
-      if (!requests.length) return;
-      setQueuedMessages((current) => [
-        ...current,
-        ...requests.map((request, index) => ({
-          id: `compose-${Date.now()}-${index}`,
-          content: request.message,
-          skillId: request.skillId,
-        })),
-      ]);
+      for (const request of drainAgentCompose()) {
+        void startTurnRef.current(request.message, request.skillId);
+      }
     };
     take();
     window.addEventListener(AGENT_COMPOSE_EVENT, take);
     return () => window.removeEventListener(AGENT_COMPOSE_EVENT, take);
   }, []);
-
-  const sendQueuedNow = (id: string) => {
-    if (agentBusy) return;
-    const item = queuedMessages.find((entry) => entry.id === id);
-    if (!item) return;
-    setQueuedMessages((current) => current.filter((entry) => entry.id !== id));
-    void startTurn(item.content, item.skillId);
-  };
-
-  const editQueued = (id: string) => {
-    const item = queuedMessages.find((entry) => entry.id === id);
-    if (!item) return;
-    setQueuedMessages((current) => current.filter((entry) => entry.id !== id));
-    setInput((current) => (current ? `${current}\n${item.content}` : item.content));
-  };
 
   const restoreParkedRun = async (id: string) => {
     if (loading) return;
@@ -607,18 +562,15 @@ export function AgentPanel() {
   /**
    * D-2：切换或新建对话只把当前流"分离"到后台，不中断 Run，也不取消等用户处理的 Run。
    * 等待中的 Run 已持久化，可在历史对话、输入框上方的待处理条或统一审核入口继续处理。
-   * 合并说明：保留 main 的 sendRequestPendingRef 复位与 detachActiveStream 命名，
-   * 但不再 abort——abort 会断开 SSE 并让后端把 Run 标成 interrupted。
+   * 不 abort——abort 会断开 SSE 并让后端把 Run 标成 interrupted。
    */
   const detachActiveStream = () => {
-    const controller = abortControllerRef.current;
-    abortControllerRef.current = null;
-    sendRequestPendingRef.current = false;
-    if (controller && loading && !controller.signal.aborted) {
-      setBackgroundStreams((count) => count + 1);
-      detachedControllersRef.current.add(controller);
-    }
-    setLoading(false);
+    turnControllersRef.current.forEach((controller) => {
+      if (!controller.signal.aborted) detachedControllersRef.current.add(controller);
+    });
+    turnControllersRef.current.clear();
+    lastSendRef.current = null;
+    setInFlightTurns([]);
   };
 
   const startNewConversation = () => {
@@ -626,7 +578,6 @@ export function AgentPanel() {
     setResumeCandidate(null);
     detachActiveStream();
     currentConvRef.current = null;
-    setStreamingText("");
     setToolStream(createInitialAgentStreamState());
     setParkedRuns([]);
     setConversationId(null);
@@ -653,7 +604,6 @@ export function AgentPanel() {
     detachActiveStream();
     currentConvRef.current = id;
     setError("");
-    setStreamingText("");
     setToolStream(createInitialAgentStreamState());
     setParkedRuns([]);
     try {
@@ -802,7 +752,7 @@ export function AgentPanel() {
 
   const abortPendingRun = async () => {
     if (!activeRunId || loading) return;
-    setLoading(true);
+    setRunActionPending(true);
     setProgressText("正在取消当前 Run...");
     setError("");
     try {
@@ -823,7 +773,7 @@ export function AgentPanel() {
     } catch (err: any) {
       setError(safeClientErrorMessage(err, "取消 Run 失败"));
     } finally {
-      setLoading(false);
+      setRunActionPending(false);
     }
   };
   // Ask 回答落地后刷新同一 Run；只有后端返回的助手消息才进入对话。
@@ -838,7 +788,7 @@ export function AgentPanel() {
 
   const resumeInterruptedRun = async () => {
     if (!interruptedRunId || loading) return;
-    setLoading(true);
+    setRunActionPending(true);
     setProgressText("正在从已保存的 Agent 会话恢复任务...");
     setError("");
     try {
@@ -867,7 +817,7 @@ export function AgentPanel() {
     } catch (err: any) {
       setError(safeClientErrorMessage(err, "恢复 Run 失败"));
     } finally {
-      setLoading(false);
+      setRunActionPending(false);
     }
   };
 
@@ -1273,13 +1223,22 @@ export function AgentPanel() {
           {messages.map((message) => (
             <PanelMessageBubble key={message.id} message={message} onSuggestion={sendMessage} />
           ))}
-          {streamingText && (
-            <div className="agent-msg agent-msg-assistant">
-              {streamingText}
+          {inFlightTurns.map((turn) => (
+            <div key={turn.id} data-testid="agent-inflight-turn" className="space-y-2">
+              {turn.streamingText && (
+                <div className="agent-msg agent-msg-assistant">
+                  {turn.streamingText}
+                </div>
+              )}
+              <ToolExecutionList executions={turn.toolStream.toolExecutions} />
+              <div className="inline-flex items-center gap-1.5 px-0.5 text-[12px] text-[var(--foreground-muted)]">
+                <Loader2 size={12} className="animate-spin" />
+                {turn.progressText}
+              </div>
             </div>
-          )}
-          <ToolExecutionList executions={toolStream.toolExecutions} />
-          {loading && (
+          ))}
+          {inFlightTurns.length === 0 && <ToolExecutionList executions={toolStream.toolExecutions} />}
+          {runActionPending && (
             <div className="inline-flex items-center gap-1.5 px-0.5 text-[12px] text-[var(--foreground-muted)]">
               <Loader2 size={12} className="animate-spin" />
               {progressText}
@@ -1366,31 +1325,6 @@ export function AgentPanel() {
         </div>
       )}
 
-      {queuedMessages.length > 0 && (
-        <div data-testid="agent-message-queue" className="space-y-1 border-t border-[var(--border)] px-3 py-2">
-          <p className="text-[10.5px] text-[var(--foreground-muted)]">
-            {agentBusy ? "待发送：助手空闲后按顺序发送" : runNeedsUser ? "待发送：当前任务在等你，处理完会自动发送" : "待发送"}
-          </p>
-          {queuedMessages.map((item) => (
-            <div key={item.id} className="flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[11.5px]">
-              <span className="min-w-0 flex-1 truncate text-[var(--foreground)]">{item.content}</span>
-              {!agentBusy && runNeedsUser && (
-                <button type="button" onClick={() => sendQueuedNow(item.id)} className="shrink-0 font-semibold underline">现在发送</button>
-              )}
-              <button type="button" onClick={() => editQueued(item.id)} className="shrink-0 text-[var(--foreground-muted)] underline">改</button>
-              <button
-                type="button"
-                aria-label="删除待发送消息"
-                onClick={() => setQueuedMessages((current) => current.filter((entry) => entry.id !== item.id))}
-                className="shrink-0 text-[var(--foreground-muted)] underline"
-              >
-                删
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
       {/* 输入区 */}
       <footer className="agent-bar border-t border-[var(--border)] px-3 py-2.5">
         {slashMatches.length > 0 && (
@@ -1425,13 +1359,9 @@ export function AgentPanel() {
             minRows={1}
             maxRows={4}
             placeholder={
-              loading
-                ? "补充或纠正，助手会在下一步读到..."
-                : agentBusy
-                  ? "可以继续输入，空闲后按顺序发送..."
-                  : runNeedsUser
-                    ? "继续对话或说明如何调整；当前待处理的任务会先保存，随时可回来"
-                    : "问 OfferU，输入 / 选择技能..."
+              runNeedsUser
+                ? "继续对话或说明如何调整；当前待处理的任务会先保存，随时可回来"
+                : "问 OfferU，输入 / 选择技能..."
             }
             variant="bordered"
             className="flex-1"
@@ -1500,9 +1430,6 @@ function PanelMessageBubble({
         <div className={isUser ? "agent-msg agent-msg-user" : "agent-msg agent-msg-assistant"}>
           {message.content}
         </div>
-        {message.steered && (
-          <p className="mt-1 text-right text-[10.5px] text-[var(--foreground-muted)]">已交给正在进行的任务</p>
-        )}
         {response && (
           <div className="mt-2 space-y-2 text-left">
             {response.alerts && response.alerts.length > 0 && <AlertList alerts={response.alerts} />}

@@ -50,6 +50,8 @@ class Settings(BaseSettings):
     ssl_verify: bool = True
     # LLM API 全局超时（秒），防止请求挂起
     llm_timeout: int = 60
+    # 内置 Agent 同时运行的 Run 上限（1-10），由 config.json 同步，每次启动 Run 时现读。
+    max_concurrent_agent_runs: int = 3
     # MCP is optional for external coding-agent clients. Keeping it off avoids
     # importing the MCP protocol stack on every desktop cold start.
     offeru_enable_mcp: bool = False

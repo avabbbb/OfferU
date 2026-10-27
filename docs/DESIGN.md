@@ -115,6 +115,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 
 - 设置里填 OpenAI 兼容的 base_url、key、模型名，存在本机配置文件里。
 - `/api/agent` 接收一句话 + 当前页面（比如正在看的岗位 id），用 function calling 调同一套工具，最多 6 步，流式返回。
+- 并发：每个 Run 独占一个 Worker（按 run_id 放在进程内池子里），不同对话、同一对话的多次发送都可以同时跑，不再抢占旧 Run，也不排队、不 steer。上限是设置里的「Agent 最大并发数」（默认 3，1–10，保存后对新任务立即生效）；超出时启动直接返回中文提示。Run 结束、中止或启动失败都释放名额；前端每次发送是独立的 turn（各自的 AbortController、流式文字和工具进度），运行中仍可继续输入。
 - 循环、流式和 provider 复用现有的 `app/agent/`（`run_agent_loop`），`app/core/agent.py` 只负责把 9 个工具包成 `LoopTool`、记 actor 和限制步数。
 - 系统提示词只有三件事：今天日期和 overview 摘要、工具说明、规则（不编造经历；对外的事只写草稿；长任务调用 handoff）。
 - 没配模型时，Ctrl+K 只做本地解析不了的提示：「先在设置里填模型，或者在 Codex 里说这句话」。

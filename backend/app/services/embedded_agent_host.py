@@ -38,9 +38,13 @@ from app.services.main_agent_guardian import (
 from app.services.action_gate import list_actions, run_gated_operation, take_decisions_for_agent
 from app.services.embedded_agent_worker import (
     PROTOCOL_VERSION,
+    EmbeddedAgentConcurrencyError,
     EmbeddedAgentWorker,
     EmbeddedAgentWorkerError,
+    ensure_embedded_agent_capacity,
+    find_embedded_agent_worker,
     get_embedded_agent_worker,
+    release_embedded_agent_worker,
 )
 from app.services.security_redaction import safe_error_message
 from app.runtime_paths import runtime_data_path
@@ -424,6 +428,11 @@ async def start_embedded_agent_run(
     goal = str(message or "").strip()
     if not goal and not resume_run_id:
         raise ValueError("Agent Run 需要非空消息。")
+    if worker is None:
+        try:
+            ensure_embedded_agent_capacity()
+        except EmbeddedAgentConcurrencyError as exc:
+            raise ValueError(str(exc)) from exc
     resume_session_file = ""
     routing: SkillRouting | None = None
     if resume_run_id:
@@ -483,7 +492,15 @@ async def start_embedded_agent_run(
         )
     allowed_operations = _allowed_operations(skill)
     run_id = run["id"]
-    active_worker = worker or get_embedded_agent_worker()
+    if worker is not None:
+        active_worker = worker
+    else:
+        try:
+            active_worker = await get_embedded_agent_worker(run_id)
+        except EmbeddedAgentConcurrencyError as exc:
+            if not resume_run_id:
+                await _fail_run(run_id, exc)
+            raise ValueError(str(exc)) from exc
     expected_session_file = (
         resume_session_file
         or str(_SESSION_DIRECTORY / f"{run_id}.json")
@@ -1044,6 +1061,15 @@ async def start_embedded_agent_run(
             "guardian": guardian_result,
             "errors": [safe_error_message(exc)],
         }
+    finally:
+        # CancelledError (client disconnect) bypasses except Exception;
+        # never leave a pooled worker holding a dead Run or a reserved slot.
+        if active_worker.active_run_id == run_id:
+            try:
+                await active_worker.dispose_run(run_id)
+            except Exception:
+                pass
+        release_embedded_agent_worker(run_id, active_worker)
 
 
 async def resume_embedded_agent_run(
@@ -1140,8 +1166,8 @@ async def answer_agent_input(
         result["warnings"] = ["该回答已触发过续跑；返回当前持久化状态。"]
         return result
 
-    active_worker = worker or get_embedded_agent_worker()
-    if active_worker.active_run_id == run_id:
+    active_worker = worker or find_embedded_agent_worker(run_id)
+    if active_worker is not None and active_worker.active_run_id == run_id:
         try:
             await active_worker.dispose_run(run_id)
         except Exception:
@@ -1227,8 +1253,8 @@ async def steer_embedded_agent_run(
     run = await load_agent_run(run_id)
     if run is None:
         raise ValueError(f"Agent Run {run_id} 不存在。")
-    active_worker = worker or get_embedded_agent_worker()
-    if active_worker.active_run_id != run_id or not active_worker.prompt_active:
+    active_worker = worker or find_embedded_agent_worker(run_id)
+    if active_worker is None or active_worker.active_run_id != run_id or not active_worker.prompt_active:
         return {"ok": True, "disposition": "not_running", "run": run}
     try:
         await active_worker.steer_run(run_id, text[:4000])
@@ -1253,8 +1279,8 @@ async def abort_embedded_agent_run(
     if run.get("status") in {"completed", "failed", "cancelled"}:
         return {"ok": True, "run": run, "warnings": ["Run 已经结束。"]}
 
-    active_worker = worker or get_embedded_agent_worker()
-    if active_worker.active_run_id == run_id:
+    active_worker = worker or find_embedded_agent_worker(run_id)
+    if active_worker is not None and active_worker.active_run_id == run_id:
         await active_worker.abort_run(run_id)
         await active_worker.dispose_run(run_id)
     run = await load_agent_run(run_id) or run

@@ -280,7 +280,7 @@ async def _cancel_task_objects(tasks: list[asyncio.Task[Any]]) -> int:
 
 async def _quiesce_active_work(*, current_run_id: str, current_task_id: str) -> dict[str, int]:
     from app.services.career_tasks import _LIVE_TASKS, cancel_career_task
-    from app.services.embedded_agent_worker import get_embedded_agent_worker
+    from app.services.embedded_agent_worker import active_embedded_agent_runs, find_embedded_agent_worker
     from app.services.job_research import cancel_job_research
     from app.services.memory_distiller import stop_memory_distill_service
 
@@ -331,14 +331,18 @@ async def _quiesce_active_work(*, current_run_id: str, current_task_id: str) -> 
         list(BACKGROUND_RUNTIME_TASKS)
     )
 
-    worker = get_embedded_agent_worker()
-    active_run_id = worker.active_run_id
-    if active_run_id == current_run_id:
-        await worker.dispose_run(active_run_id)
-    elif active_run_id:
-        from app.services.embedded_agent_host import abort_embedded_agent_run
+    from app.services.embedded_agent_host import abort_embedded_agent_run
 
-        await abort_embedded_agent_run(active_run_id, worker=worker)
+    embedded_cancelled = 0
+    for run_id in active_embedded_agent_runs():
+        worker = find_embedded_agent_worker(run_id)
+        if worker is None or worker.active_run_id != run_id:
+            continue
+        if run_id == current_run_id:
+            await worker.dispose_run(run_id)
+        else:
+            await abort_embedded_agent_run(run_id, worker=worker)
+            embedded_cancelled += 1
 
     return {
         "career_tasks": career_cancelled,
@@ -347,7 +351,7 @@ async def _quiesce_active_work(*, current_run_id: str, current_task_id: str) -> 
         "role_benchmark_workers": benchmark_cancelled,
         "batch_workers": batch_workers_cancelled,
         "agent_runtime_streams": runtime_streams_cancelled,
-        "embedded_agent_runs": int(bool(active_run_id and active_run_id != current_run_id)),
+        "embedded_agent_runs": embedded_cancelled,
     }
 
 
