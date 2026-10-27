@@ -202,10 +202,10 @@ class EmbeddedAgentRuntimeProvider:
     protocol_version = "offeru.agent-runtime.v1"
 
     async def status(self) -> dict[str, Any]:
-        from app.services.embedded_agent_worker import get_embedded_agent_worker
+        from app.services.embedded_agent_worker import probe_embedded_agent
 
         try:
-            probe = await get_embedded_agent_worker().probe()
+            probe = await probe_embedded_agent()
         except Exception as exc:
             return {
                 "provider_id": self.provider_id,

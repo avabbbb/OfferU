@@ -97,6 +97,7 @@ interface SettingsConfigPayload {
   llm_api_configs?: LlmApiConfig[];
   active_llm_config_id?: string;
   disabled_llm_providers?: string[];
+  max_concurrent_agent_runs?: number;
   provider_presets?: ProviderPreset[];
 
   active_llm_summary?: {
@@ -127,6 +128,55 @@ const modelFieldClassNames = {
   inputWrapper: "rounded-lg border border-[var(--border)] bg-[var(--surface)] shadow-none",
   input: "text-[var(--foreground)]", label: "text-sm text-[var(--foreground-muted)]",
 };
+
+function AgentConcurrencySetting({ value, onSave }: { value: number; onSave: (next: number) => Promise<void> }) {
+  const [draft, setDraft] = useState(String(value));
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState("");
+  useEffect(() => setDraft(String(value)), [value]);
+  const parsed = Number(draft);
+  const valid = Number.isInteger(parsed) && parsed >= 1 && parsed <= 10;
+  const save = async () => {
+    setSaving(true);
+    setStatus("");
+    try {
+      await onSave(parsed);
+      setStatus("已保存，新任务立即生效");
+    } catch (error) {
+      setStatus(safeClientErrorMessage(error, "保存失败，请稍后重试"));
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <section data-testid="agent-concurrency-setting" className="flex flex-wrap items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 text-[13px]">
+      <div className="min-w-0 flex-1">
+        <label htmlFor="agent-max-concurrency" className="font-medium text-[var(--foreground)]">Agent 最大并发数</label>
+        <p className="mt-1 text-[var(--foreground-muted)]">同时运行的助手任务上限，过高可能触发模型限流</p>
+      </div>
+      <input
+        id="agent-max-concurrency"
+        type="number"
+        min={1}
+        max={10}
+        step={1}
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        className="w-16 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[13px] text-[var(--foreground)]"
+      />
+      <button
+        type="button"
+        disabled={!valid || parsed === value || saving}
+        onClick={() => void save()}
+        className="rounded-md border border-[var(--border)] px-3 py-1 text-[13px] text-[var(--foreground)] disabled:opacity-50"
+      >
+        保存
+      </button>
+      {!valid && <p role="alert" className="w-full text-[var(--foreground-muted)]">请输入 1 到 10 的整数</p>}
+      {status && <p role="status" className="w-full text-[var(--foreground-muted)]">{status}</p>}
+    </section>
+  );
+}
 
 const bauhausModalContentClassName =
   "max-h-[88vh] border border-[var(--border-strong)] bg-[var(--surface-muted)] text-[var(--foreground)] shadow-[4px_4px_0_0_rgba(18,18,18,0.45)]";
@@ -1237,6 +1287,13 @@ export default function SettingsPage() {
           {apiSaveError && <p role="alert" className="text-sm text-red-600">{apiSaveError}</p>}
         </div>
       </section>
+      <AgentConcurrencySetting
+        value={config?.max_concurrent_agent_runs ?? 3}
+        onSave={async (next) => {
+          await updateConfig({ max_concurrent_agent_runs: next });
+          await mutate();
+        }}
+      />
       </SettingsDialog>
 
       <SettingsDialog isOpen={openSection === "accounts"} onClose={closeSection} title="账号与来源">
