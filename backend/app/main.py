@@ -59,7 +59,7 @@ if settings.offeru_enable_mcp:
 else:
     mcp_server = None
     _HAS_MCP = False
-from app.routes import config, interview, main_agent, interviews, research, bridge, connections
+from app.routes import config, interview, main_agent, interviews, research, bridge, connections, agent_board
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -427,6 +427,7 @@ async def add_security_headers(request, call_next):
 # ---- 注册路由 ----
 app.include_router(main_agent.router, prefix="/api/agent", tags=["Agent"])
 app.include_router(main_agent.runtime_router, prefix="/api/agent", tags=["Agent Runtime"])
+app.include_router(agent_board.router, prefix="/api/agent-board", tags=["Agent Board"])
 app.include_router(interviews.router, prefix="/api/interviews", tags=["Interviews"])
 app.include_router(research.router, prefix="/api/research", tags=["Research"])
 app.include_router(config.router, prefix="/api/config", tags=["Config"])

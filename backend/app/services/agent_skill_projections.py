@@ -139,6 +139,24 @@ For a consumer Agent, use only its officially supported and actually connected t
 
 Do not change Agent account/login, model, credentials, proxy or unrelated settings. `offeru connect` installs only the OfferU-owned Skill and never overwrites another Skill. Start a fresh Agent session if required by host discovery.
 
+## Connect this Agent: setup, reconnect or bring OfferU memory
+
+Decide the case from evidence, never by guessing, and tell the user which one applies:
+
+1. Setup (first use): the `offeru` command is not found. Follow "First run" above. After `offeru connect`, ask whether to import the user's existing Agent memory or notes, then select `profile_onboarding` to build the first profile with the user.
+2. Reconnect: `offeru agent list` shows this Agent. Run `offeru agent connect <id>` (add `--mode update` when its `skill_status` is `OUTDATED`, `--mode repair` when `ERROR`), then `offeru agent check <id>`. Start a fresh session if the host needs it to discover the Skill.
+3. New or migrated Agent for a long-time OfferU user: do case 2, then, if `doctor` shows an existing profile and this Agent's `memory_status` is `none`, run `offeru agent memory-export <id>`. Show the user what it contains, write it into this Agent's own memory only after they agree, then run `offeru agent memory-done <id> --target <where you wrote it>`.
+
+`offeru agent` only installs, updates or repairs the OfferU Skill and exports OfferU memory. It never runs your commands or edits your settings; writing your own memory stays your job and needs the user's consent.
+
+## Adapting an Agent OfferU does not list yet
+
+When `offeru agent list` has no row for this Agent:
+
+1. Find this Agent's user-level Skill folder and, if it has one, its memory file, from its own documentation or configuration. Ask the user when unsure; do not guess paths.
+2. Register it: `offeru agent add <id> --name "<display name>" --skill-root <absolute skill folder> --executable <command name> --memory-file <absolute path>`. The id is lowercase letters, digits, `-` or `_`; the Skill folder must be inside the user's home directory; leave out options you do not know.
+3. Run `offeru agent connect <id>`, start a fresh session, then `offeru agent check <id>`. The Agent now appears on the OfferU workbench board, where the user can edit, hide or remove it.
+
 ## Start every task
 
 ```text
