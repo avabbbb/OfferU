@@ -366,9 +366,11 @@ class AgentIntegrationManager:
 
             async def execute_probe_operation(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
                 nonlocal probe_calls
-                if name != "get_agent_connection_nonce" or arguments != {
-                    "provider_id": provider_id, "challenge_id": challenge["challenge_id"],
-                }:
+                expected = {"provider_id": provider_id, "challenge_id": challenge["challenge_id"]}
+                # The Skill now asks for an optional session_hint; anything else is still refused.
+                if name != "get_agent_connection_nonce" or {
+                    key: value for key, value in arguments.items() if key != "session_hint"
+                } != expected:
                     raise ValueError("connection probe 只允许 nonce Operation")
                 operation_result = await execute_operation(
                     name,
@@ -417,6 +419,15 @@ class AgentIntegrationManager:
             except (ValueError, AttributeError):
                 returned_nonce = None
             verified = returned_nonce == challenge["nonce"] and used_operation and probe_calls == 1
+            if verified:
+                from app.services.agent_board import record_connection
+
+                record_connection(
+                    provider_id,
+                    challenge_id=challenge["challenge_id"],
+                    session_hint="OfferU 自动验证",
+                    thread_id=str(result.get("threadId") or ""),
+                )
             return {
                 **installed,
                 "integration_status": "VERIFIED" if verified else "ERROR",

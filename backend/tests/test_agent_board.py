@@ -71,3 +71,19 @@ def test_rejects_skill_root_outside_home(board_home, tmp_path):
 def test_unknown_agent_is_a_clear_error(board_home):
     with pytest.raises(ValueError, match="offeru agent list"):
         agent_board.connect_agent("nobody")
+
+
+def test_connected_needs_a_conversation_readback(board_home):
+    agent_board.add_custom_agent(_workbuddy(board_home))
+    row = agent_board.connect_agent("workbuddy")
+    assert row["skill_status"] == "INSTALLED"
+    assert row["connected"] is False
+    assert agent_board.list_board()["summary"]["connected"] == 0
+
+    agent_board.record_connection("workbuddy", challenge_id="a" * 32, session_hint="  OFFERU \n main  ")
+    row = agent_board.check_agent("workbuddy")
+    assert row["connected"] is True
+    assert row["connection"]["session_hint"] == "OFFERU main"
+    assert agent_board.list_board()["summary"]["connected"] == 1
+
+    assert agent_board.connect_agent("workbuddy", "repair")["connected"] is False

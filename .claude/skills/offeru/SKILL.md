@@ -61,7 +61,7 @@ When `offeru agent list` has no row for this Agent:
 
 Read `skill_registry.skills` from the compact manifest, choose one Skill, then run `<offeru-cli> manifest --skill <skill-id> --pretty`. Inspect each selected Operation with `<offeru-cli> schema <operation> --pretty` before calling it. MCP/Connector hosts use the corresponding authenticated catalog/schema/invoke tools; transport does not change permissions.
 
-If `tool_contract.connection_verification` contains a pending challenge for this connection, first select `connection_bootstrap` and read `get_current_view`, then select `connection_probe` and call `get_agent_connection_nonce` with the supplied `provider_id` and `challenge_id`. Return the readback and wait; this check does not authorize reading Profile or launching a career task. The host's brand is irrelevant to this contract.
+If `tool_contract.connection_verification` contains a pending challenge for this connection, first select `connection_bootstrap` and read `get_current_view`, then select `connection_probe` and call `get_agent_connection_nonce` with the supplied `provider_id` and `challenge_id`. Also pass `session_hint`: a short label for this conversation, such as the working directory or session name, so the OfferU Agent board can show which conversation connected; never put career data or credentials in it. Return the readback and wait; this check does not authorize reading Profile or launching a career task. The host's brand is irrelevant to this contract.
 
 ## Where the user is and what to do next
 
@@ -139,7 +139,7 @@ OfferU is the Career OS state/tool authority, not the exclusive career-methodolo
 
 When the OfferU workbench requests a bootstrap readback, select the live `connection_bootstrap` Skill, inspect the `get_current_view` schema, and execute that read-only Operation once. Report only the current page and explicit selection, then wait. This bootstrap read does not authorize reading other career data.
 
-When OfferU asks for integration verification, select the live `connection_probe` Skill, inspect `get_agent_connection_nonce`, execute it with the supplied `provider_id` and `challenge_id`, and return the nonce unchanged. Never read challenge storage directly or guess a nonce.
+When OfferU asks for integration verification, select the live `connection_probe` Skill, inspect `get_agent_connection_nonce`, execute it with the supplied `provider_id` and `challenge_id` plus a short `session_hint` naming this conversation (working directory or session name, no career data or credentials), and return the nonce unchanged. Never read challenge storage directly or guess a nonce.
 
 ## Control rules
 

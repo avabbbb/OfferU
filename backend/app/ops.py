@@ -427,6 +427,11 @@ class AgentIntegrationInput(ProviderHealthInput):
 
 class AgentConnectionNonceInput(ProviderHealthInput):
     challenge_id: str = Field(pattern="^[a-f0-9]{32}$")
+    session_hint: str = Field(
+        default="",
+        max_length=120,
+        description="可选：标识当前对话，例如工作目录或会话名，用于在 Agent 看板显示是哪个对话连上的；不要放职业数据或凭据。",
+    )
 
 
 class LocalAgentCapabilityMatrixInput(_StrictOperationInput):

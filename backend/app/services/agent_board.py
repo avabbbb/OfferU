@@ -62,6 +62,7 @@ def _load() -> dict[str, Any]:
         "hidden": [str(item) for item in raw.get("hidden") or []],
         "memory": {key: value for key, value in (raw.get("memory") or {}).items() if isinstance(value, dict)},
         "checks": {key: value for key, value in (raw.get("checks") or {}).items() if isinstance(value, dict)},
+        "connections": {key: value for key, value in (raw.get("connections") or {}).items() if isinstance(value, dict)},
     }
 
 
@@ -139,6 +140,7 @@ def _row(data: dict[str, Any], agent_id: str) -> dict[str, Any]:
     except (OSError, ValueError) as exc:
         skill = {"skill_status": "ERROR", "error": str(exc)[:300]}
     memory = data["memory"].get(agent_id, {})
+    connection = data["connections"].get(agent_id, {})
     host = get_host(agent_id)
     return {
         "id": agent_id,
@@ -147,6 +149,8 @@ def _row(data: dict[str, Any], agent_id: str) -> dict[str, Any]:
         "hidden": agent_id in data["hidden"],
         "executable_found": bool(adapter.detected_executable()),
         "skill_status": skill.get("skill_status", "ERROR"),
+        "connected": skill.get("skill_status") == "INSTALLED" and bool(connection.get("at")),
+        "connection": connection,
         "skill_path": str(adapter.skill_path()),
         "error": skill.get("error", ""),
         "memory_status": _memory_state(memory),
@@ -166,7 +170,8 @@ def list_board() -> dict[str, Any]:
     return {
         "agents": rows,
         "summary": {
-            "connected": sum(row["skill_status"] == "INSTALLED" for row in visible),
+            "connected": sum(row["connected"] for row in visible),
+            "installed": sum(row["skill_status"] == "INSTALLED" for row in visible),
             "needs_attention": sum(row["skill_status"] in {"OUTDATED", "ERROR"} for row in visible),
             "detected": sum(row["executable_found"] for row in visible),
         },
@@ -207,6 +212,7 @@ def remove_custom_agent(agent_id: str) -> dict[str, Any]:
         data["hidden"] = [item for item in data["hidden"] if item != agent_id]
         data["memory"].pop(agent_id, None)
         data["checks"].pop(agent_id, None)
+        data["connections"].pop(agent_id, None)
         _save(data)
         return {"removed": agent_id}
 
@@ -227,6 +233,8 @@ def connect_agent(agent_id: str, action: str = "install") -> dict[str, Any]:
         data = _load()
         result = _adapter(data, agent_id).install(action)
         data["checks"][agent_id] = {"at": _now(), "action": action, "skill_status": result.get("skill_status", "")}
+        # A fresh Skill copy needs a fresh readback from a conversation before it counts as connected.
+        data["connections"].pop(agent_id, None)
         _save(data)
         return _row(data, agent_id)
 
@@ -243,6 +251,25 @@ def check_agent(agent_id: str) -> dict[str, Any]:
         }
         _save(data)
         return {**row, "last_check": data["checks"][agent_id]}
+
+
+def record_connection(agent_id: str, *, challenge_id: str = "", session_hint: str = "", thread_id: str = "") -> None:
+    """Record that a real Agent conversation read the connection nonce back: the only proof of 已连接.
+
+    `session_hint` is what the Agent says identifies its conversation (working directory or
+    session name); `thread_id` is set when the host reports one (Codex).
+    """
+
+    hint = " ".join(str(session_hint or "").split())[:120]
+    with _LOCK:
+        data = _load()
+        data["connections"][agent_id] = {
+            "at": _now(),
+            "challenge_id": challenge_id,
+            "session_hint": hint,
+            "thread_id": str(thread_id or "")[:80],
+        }
+        _save(data)
 
 
 def export_memory_for_agent(agent_id: str) -> dict[str, Any]:

@@ -13,7 +13,7 @@ You are the OfferU operator subagent. Use the runtime-bound OfferU Skill install
 
 Start with `<offeru-cli> doctor --pretty` and `<offeru-cli> manifest --pretty`. Choose one Skill from `skill_registry.skills`, fetch it with `<offeru-cli> manifest --skill <skill-id> --pretty`, and inspect each selected Operation with `<offeru-cli> schema <operation> --pretty` before use.
 
-When the Tool Contract advertises connection_verification, read get_current_view through connection_bootstrap, then use connection_probe to read get_agent_connection_nonce with the supplied challenge. Return the readback to the parent and wait without reading Profile.
+When the Tool Contract advertises connection_verification, read get_current_view through connection_bootstrap, then use connection_probe to read get_agent_connection_nonce with the supplied challenge and a short session_hint naming this conversation (working directory or session name, no career data or credentials). Return the readback to the parent and wait without reading Profile.
 
 ## Collaborate through the active Agent
 

@@ -1362,6 +1362,8 @@ export interface AgentBoardRow {
   hidden: boolean;
   executable_found: boolean;
   skill_status: string;
+  connected: boolean;
+  connection: { at?: string; challenge_id?: string; session_hint?: string; thread_id?: string };
   skill_path: string;
   error: string;
   memory_status: "none" | "exported" | "imported";
@@ -1374,7 +1376,7 @@ export interface AgentBoardRow {
 
 export interface AgentBoardSnapshot {
   agents: AgentBoardRow[];
-  summary: { connected: number; needs_attention: number; detected: number };
+  summary: { connected: number; installed: number; needs_attention: number; detected: number };
 }
 
 export interface CustomAgentInput {

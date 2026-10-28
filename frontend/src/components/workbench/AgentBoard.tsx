@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Modal, ModalBody, ModalContent, ModalHeader } from "@heroui/react";
 import { AlertCircle, ArrowRight, Check, Copy, Eye, EyeOff, Loader2, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { agentBoardApi, type AgentBoardRow, type AgentBoardSnapshot, type CustomAgentInput } from "@/lib/api";
@@ -8,7 +8,7 @@ import { OFFERU_AGENT_CONNECT_PROMPT } from "@/lib/agentConnectionPrompt";
 import { connectionTime } from "@/lib/agentConnection";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 
-const SKILL_TEXT: Record<string, string> = { INSTALLED: "已接入", OUTDATED: "需更新", NOT_INSTALLED: "未接入", ERROR: "异常", NOT_SUPPORTED: "不支持" };
+const SKILL_TEXT: Record<string, string> = { INSTALLED: "Skill 已安装", OUTDATED: "需更新", NOT_INSTALLED: "未安装", ERROR: "异常", NOT_SUPPORTED: "不支持" };
 const MEMORY_TEXT: Record<AgentBoardRow["memory_status"], string> = { none: "未导入", exported: "已导出，等 Agent 写入", imported: "已导入" };
 const EMPTY_FORM: CustomAgentInput = { id: "", display_name: "", executable: "", skill_root: "", memory_file: "" };
 const INPUT_CLASS = "w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-2.5 py-1.5 text-xs text-[var(--foreground)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2";
@@ -19,6 +19,14 @@ function connectAction(row: AgentBoardRow): "install" | "update" | "repair" {
 }
 
 const CONNECT_LABEL = { install: "连接", update: "更新", repair: "修复" } as const;
+
+/** Which conversation last read the connection nonce back; only that counts as 已连接. */
+function connectionText(row: AgentBoardRow): string {
+  const link = row.connection;
+  if (!link?.at) return row.skill_status === "INSTALLED" ? "还没有对话连上，把接入提示词贴进一个对话" : "—";
+  const who = [link.session_hint, link.thread_id ? "对话 " + link.thread_id.slice(0, 8) : ""].filter(Boolean).join(" · ");
+  return connectionTime(link.at) + " · " + (who || "未记录是哪个对话");
+}
 
 /** The single self-routing prompt: paste it into any Agent and it picks setup, reconnect or memory import. */
 export function AgentConnectPrompt() {
@@ -75,16 +83,20 @@ function AgentForm({ initial, editing, busy, onCancel, onSave }: {
 }
 
 /** Board of built-in and user-added Agents: Skill connection, executable detection and memory import. */
-export function AgentBoard() {
+export function AgentBoard({ onChange }: { onChange?: (snapshot: AgentBoardSnapshot) => void } = {}) {
   const [board, setBoard] = useState<AgentBoardSnapshot | null>(null);
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
   const [showHidden, setShowHidden] = useState(false);
   const [form, setForm] = useState<{ initial: CustomAgentInput; editing: string } | null>(null);
 
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
   const load = useCallback(async () => {
     try {
-      setBoard(await agentBoardApi.list());
+      const snapshot = await agentBoardApi.list();
+      setBoard(snapshot);
+      onChangeRef.current?.(snapshot);
       setError("");
     } catch (cause) { setError(safeClientErrorMessage(cause, "读取 Agent 看板失败，请重试。")); }
   }, []);
@@ -113,7 +125,7 @@ export function AgentBoard() {
     <div className="flex flex-wrap items-center justify-between gap-2">
       <p className="text-sm font-semibold">Agent 看板</p>
       {board && <span role="status" className="text-[11px] text-[var(--foreground-muted)]">
-        已接入 {board.summary.connected} · 需处理 {board.summary.needs_attention} · 本机检测到 {board.summary.detected}
+        已连接 {board.summary.connected} · Skill 已安装 {board.summary.installed} · 需处理 {board.summary.needs_attention} · 本机检测到 {board.summary.detected}
       </span>}
     </div>
     {!board && !error && <p role="status" className="flex items-center gap-2 text-xs text-[var(--foreground-muted)]"><Loader2 size={14} className="motion-safe:animate-spin" />读取中…</p>}
@@ -128,8 +140,8 @@ export function AgentBoard() {
               {row.custom && <span className="ml-2 text-[11px] font-normal text-[var(--foreground-muted)]">自定义</span>}
               {row.hidden && <span className="ml-2 text-[11px] font-normal text-[var(--foreground-muted)]">已隐藏</span>}
             </p>
-            <span role="status" className={"text-xs " + (row.skill_status === "INSTALLED" ? "text-emerald-700" : row.skill_status === "ERROR" ? "text-amber-800" : "text-[var(--foreground-muted)]")}>
-              {busy ? "处理中…" : SKILL_TEXT[row.skill_status] || row.skill_status}
+            <span role="status" className={"text-xs " + (row.connected ? "text-emerald-700" : row.skill_status === "ERROR" ? "text-amber-800" : "text-[var(--foreground-muted)]")}>
+              {busy ? "处理中…" : row.connected ? "已连接" : SKILL_TEXT[row.skill_status] || row.skill_status}
             </span>
           </div>
           <dl className="grid grid-cols-[4.5rem_1fr] gap-x-3 gap-y-1 text-[11px] text-[var(--foreground-muted)]">
@@ -137,6 +149,7 @@ export function AgentBoard() {
             <dt>Skill</dt><dd className="break-all">{row.skill_path}</dd>
             <dt>记忆</dt><dd className="break-all">{MEMORY_TEXT[row.memory_status]}{row.memory.target ? " · " + row.memory.target : ""}</dd>
             <dt>最后检查</dt><dd>{connectionTime(row.last_check.at)}</dd>
+            <dt>最近连接</dt><dd className="break-all" data-testid={"agent-board-connection-" + row.id}>{connectionText(row)}</dd>
           </dl>
           {row.error && <p className="break-words text-[11px] text-amber-800">{row.error}</p>}
           <div className="flex flex-wrap gap-1.5">
@@ -178,7 +191,7 @@ export function AgentBoardEntry() {
     return () => { active = false; };
   }, [open]);
   const detail = summary
-    ? "已接入 " + summary.connected + " · 需处理 " + summary.needs_attention + " · 本机检测到 " + summary.detected
+    ? "已连接 " + summary.connected + " · 需处理 " + summary.needs_attention + " · 本机检测到 " + summary.detected
     : "一键复制接入提示词，查看每个 Agent 的连接和记忆状态";
   return <>
     <button type="button" onClick={() => setOpen(true)} data-testid="agent-board-entry" aria-label="打开 Agent 看板"
@@ -195,7 +208,7 @@ export function AgentBoardEntry() {
         <ModalHeader className="px-6 pb-3 pt-5 text-sm font-semibold">我的 Agent</ModalHeader>
         <ModalBody className="space-y-4 px-4 pb-5 sm:px-6" data-testid="agent-board-dialog">
           <AgentConnectPrompt />
-          <AgentBoard />
+          <AgentBoard onChange={(snapshot) => setSummary(snapshot.summary)} />
         </ModalBody>
       </ModalContent>
     </Modal>

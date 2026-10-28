@@ -42,7 +42,7 @@ describe("AgentBoardEntry", () => {
 
   it("shows the board summary on the entry row", async () => {
     render(<AgentBoardEntry />);
-    expect(await screen.findByText("已接入 1 · 需处理 2 · 本机检测到 3")).toBeTruthy();
+    expect(await screen.findByText("已连接 1 · 需处理 2 · 本机检测到 3")).toBeTruthy();
   });
 
   it("opens a dialog with the copy prompt and the board", async () => {
