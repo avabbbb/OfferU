@@ -420,11 +420,11 @@ class AgentIntegrationManager:
                 returned_nonce = None
             verified = returned_nonce == challenge["nonce"] and used_operation and probe_calls == 1
             if verified:
-                from app.services.agent_board import record_connection
+                from app.services.agent_board import record_call
 
-                record_connection(
+                record_call(
                     provider_id,
-                    challenge_id=challenge["challenge_id"],
+                    client="offeru",
                     session_hint="OfferU 自动验证",
                     thread_id=str(result.get("threadId") or ""),
                 )

@@ -1157,14 +1157,14 @@ async def connect_agent_integration(provider_id: str, action: str = "install") -
 
 
 async def get_agent_connection_nonce(provider_id: str, challenge_id: str, session_hint: str = "") -> dict:
-    from app.services.agent_board import record_connection
+    from app.services.agent_board import record_call
     from app.services.agent_integration import get_connection_nonce, complete_connection_challenge
     from app.services.agent_connection import record_external_readback
 
     result = await asyncio.to_thread(get_connection_nonce, provider_id, challenge_id, consume=False)
     if await record_external_readback(provider_id, challenge_id):
         await asyncio.to_thread(complete_connection_challenge, provider_id, challenge_id)
-        await asyncio.to_thread(record_connection, provider_id, challenge_id=challenge_id, session_hint=session_hint)
+        await asyncio.to_thread(record_call, provider_id, session_hint=session_hint)
     else:
         await asyncio.to_thread(get_connection_nonce, provider_id, challenge_id)
     return result

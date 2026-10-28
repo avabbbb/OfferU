@@ -111,7 +111,7 @@ def connect() -> int:
     return 0
 
 
-AGENT_ACTIONS = ("list", "add", "edit", "remove", "hide", "show", "connect", "check", "memory-export", "memory-done")
+AGENT_ACTIONS = ("list", "add", "edit", "remove", "hide", "show", "connect", "check", "launch", "memory-export", "memory-done")
 
 
 def agent(args: argparse.Namespace) -> int:
@@ -138,6 +138,7 @@ def agent(args: argparse.Namespace) -> int:
         "show": lambda agent_id: board.set_hidden(agent_id, False),
         "connect": lambda agent_id: board.connect_agent(agent_id, args.mode),
         "check": board.check_agent,
+        "launch": board.launch_agent,
         "memory-export": board.export_memory_for_agent,
         "memory-done": lambda agent_id: board.mark_memory_imported(agent_id, args.target or ""),
     }
@@ -156,13 +157,17 @@ def tool(name: str | None, raw: str) -> int:
     import json
 
     from app.core.tools import TOOLS, call
+    from app.services.agent_board import record_client_call
 
     if not name:
         for item in TOOLS.values():
             print(f"{item.name}: {item.description}")
         return 0
+    actor = os.environ.get("OFFERU_ACTOR")
+    if actor:
+        record_client_call(actor)
     try:
-        result = call(name, json.loads(raw or "{}"), actor=os.environ.get("OFFERU_ACTOR") or "agent")
+        result = call(name, json.loads(raw or "{}"), actor=actor or "agent")
     except Exception as exc:  # noqa: BLE001 - shown to the agent as-is
         print(json.dumps({"error": str(exc)}, ensure_ascii=False))
         return 1
@@ -177,11 +182,11 @@ def main(argv: list[str] | None = None) -> int:
     start_parser = sub.add_parser("start", help="启动 OfferU 并在浏览器打开工作台")
     start_parser.add_argument("--no-browser", action="store_true", help="只启动，不打开浏览器")
     sub.add_parser("connect", help="把 OfferU Skill 装进本机的 Agent（Codex、Claude Code、DSH 等）")
-    agent_parser = sub.add_parser("agent", help="管理接入 OfferU 的 Agent：list / add / edit / remove / hide / show / connect / check / memory-export / memory-done")
+    agent_parser = sub.add_parser("agent", help="管理接入 OfferU 的 Agent：list / add / edit / remove / hide / show / connect / check / launch / memory-export / memory-done")
     agent_parser.add_argument("action", choices=AGENT_ACTIONS)
     agent_parser.add_argument("agent_id", nargs="?", default="")
     agent_parser.add_argument("--name", help="显示名称（add / edit）")
-    agent_parser.add_argument("--executable", help="启动命令名，只用于检测是否安装（add / edit）")
+    agent_parser.add_argument("--executable", help="启动命令名，用于检测是否安装和打开对话（add / edit）")
     agent_parser.add_argument("--skill-root", help="Agent 的 Skill 目录，需在用户目录下（add / edit）")
     agent_parser.add_argument("--memory-file", help="Agent 的记忆文件，可选（add / edit）")
     agent_parser.add_argument("--mode", choices=("install", "update", "repair"), default="install", help="connect 的方式")

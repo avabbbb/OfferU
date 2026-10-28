@@ -111,6 +111,16 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 
 三个入口最后都调用 `tools.call(name, args, actor=)`，没有各自的业务逻辑。
 
+### 7.1 Agent 看板（设置 > 我的 Agent）
+
+- 一行一个 Agent：内置宿主（codex / claude / opencode / pi / omp / gemini / codebuddy / dsh）加使用者自己添加的。数据在数据目录的 agent_board.json，字段 custom / hidden / memory / checks / calls。
+- 在线 = 正在运行 且 最近 10 分钟内有对话调用过 OfferU。Skill 文件在磁盘上、旧的 nonce 回读都不算。
+  - 正在运行：每次列看板扫一次进程表（Windows 用 Get-CimInstance Win32_Process，其他系统用 ps），缓存 5 秒；命令行按空白、斜杠、引号切成词，匹配内置表里的名字（如 gemini-cli、oh-my-pi），自定义 Agent 匹配 id 和启动命令名。
+  - 调用过：MCP 取客户端名（无状态 HTTP 取 User-Agent），命令行取 OFFERU_ACTOR，映射到看板上的 Agent 后记一条 calls（时间、客户端、对话提示、thread）。没有对话提示的普通调用同一个 Agent 30 秒最多写一次；记账失败不影响工具调用。
+- 摘要行（在线 · 运行中 · Skill 已安装 · 需处理）由前端按当前显示的行计算，所以和看到的行永远一致；后端不返回汇总。
+- 打开对话：POST /api/agent-board/{id}/launch，和确认动作一样要工作台的 Authorization，在用户目录下开一个新终端窗口运行 Agent 的交互式 CLI。命令只来自内置表或自定义 Agent 保存的裸命令名，从不来自请求。命令行对应 offeru agent launch <id>。
+- 看板不改 Agent 的设置或记忆文件。
+
 ## 8. 内置 Agent（PR3）
 
 - 设置里填 OpenAI 兼容的 base_url、key、模型名，存在本机配置文件里。

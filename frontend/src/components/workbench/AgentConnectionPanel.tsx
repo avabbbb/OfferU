@@ -5,7 +5,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { Button, Modal, ModalBody, ModalContent, ModalHeader } from "@heroui/react";
 import { AlertCircle, ArrowRight, Loader2, Plug, RefreshCw } from "lucide-react";
 import { connectionTime, useAgentConnection } from "@/lib/agentConnection";
-import { AgentBoardEntry } from "./AgentBoard";
+import { AgentBoard, AgentConnectPrompt } from "./AgentBoard";
 import { agentRuntimeApi, type AgentConnectionsSnapshot } from "@/lib/api";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { SHOWCASE } from "@/lib/showcase";
@@ -124,7 +124,8 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
       </div>
 
       {SHOWCASE ? <p role="status" className="p-6 text-sm text-[var(--foreground-muted)]">展示模式使用 Demo Agent 和虚构数据。真实 Agent 接入请在本机安装 OfferU 后运行 offeru start。</p> : <div className="space-y-5 p-5 sm:p-7">
-        <AgentBoardEntry />
+        <AgentConnectPrompt />
+        <AgentBoard />
         {desktop ? <div className="space-y-3">
           <Button size="sm" onPress={() => void discover()} isDisabled={busy} startContent={busy ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}>
             {connections ? "重新检查本机 Agent" : "发现本机 Agent"}

@@ -5,10 +5,11 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Callable
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from app.services import agent_board
+from app.services.ui_approval_capability import accepts_authorization
 
 router = APIRouter()
 
@@ -69,6 +70,14 @@ async def connect_agent(agent_id: str, body: ConnectRequest) -> dict[str, Any]:
 @router.post("/{agent_id}/check")
 async def check_agent(agent_id: str) -> dict[str, Any]:
     return await _call(agent_board.check_agent, agent_id)
+
+
+@router.post("/{agent_id}/launch")
+async def launch_agent(agent_id: str, authorization: str = Header(...)) -> dict[str, Any]:
+    # Opening a terminal runs a program on the user's machine: only the workbench may ask.
+    if not accepts_authorization(authorization):
+        raise HTTPException(status_code=403, detail="只能在 OfferU 工作台里打开对话")
+    return await _call(agent_board.launch_agent, agent_id)
 
 
 @router.post("/{agent_id}/memory-export")

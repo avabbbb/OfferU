@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Modal, ModalBody, ModalContent, ModalHeader } from "@heroui/react";
-import { AlertCircle, ArrowRight, Check, Copy, Eye, EyeOff, Loader2, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Button } from "@heroui/react";
+import { AlertCircle, Check, Copy, Eye, EyeOff, Loader2, Pencil, Plus, RefreshCw, Terminal, Trash2 } from "lucide-react";
 import { agentBoardApi, type AgentBoardRow, type AgentBoardSnapshot, type CustomAgentInput } from "@/lib/api";
 import { OFFERU_AGENT_CONNECT_PROMPT } from "@/lib/agentConnectionPrompt";
 import { connectionTime } from "@/lib/agentConnection";
@@ -20,12 +20,28 @@ function connectAction(row: AgentBoardRow): "install" | "update" | "repair" {
 
 const CONNECT_LABEL = { install: "连接", update: "更新", repair: "修复" } as const;
 
-/** Which conversation last read the connection nonce back; only that counts as 已连接. */
-function connectionText(row: AgentBoardRow): string {
-  const link = row.connection;
-  if (!link?.at) return row.skill_status === "INSTALLED" ? "还没有对话连上，把接入提示词贴进一个对话" : "—";
-  const who = [link.session_hint, link.thread_id ? "对话 " + link.thread_id.slice(0, 8) : ""].filter(Boolean).join(" · ");
-  return connectionTime(link.at) + " · " + (who || "未记录是哪个对话");
+/** 在线 = the Agent runs now and one of its conversations called OfferU recently; never a Skill file on disk. */
+function statusText(row: AgentBoardRow): string {
+  if (row.connected) return "在线";
+  if (row.running) return "运行中 · 未调用 OfferU";
+  return SKILL_TEXT[row.skill_status] || row.skill_status;
+}
+
+/** When and from which conversation this Agent last called OfferU. */
+function lastCallText(row: AgentBoardRow): string {
+  const call = row.last_call;
+  if (!call?.at) return "还没有对话调用过 OfferU";
+  const who = [call.client, call.session_hint, call.thread_id ? "对话 " + call.thread_id.slice(0, 8) : ""].filter(Boolean).join(" · ");
+  return connectionTime(call.at) + (who ? " · " + who : "");
+}
+
+/** Counts come from the rows on screen, so the summary always matches what the user sees. */
+function summaryText(rows: AgentBoardRow[]): string {
+  const count = (test: (row: AgentBoardRow) => boolean) => rows.filter(test).length;
+  return "在线 " + count((row) => row.connected)
+    + " · 运行中 " + count((row) => row.running)
+    + " · Skill 已安装 " + count((row) => row.skill_status === "INSTALLED")
+    + " · 需处理 " + count((row) => row.skill_status === "OUTDATED" || row.skill_status === "ERROR");
 }
 
 /** The single self-routing prompt: paste it into any Agent and it picks setup, reconnect or memory import. */
@@ -72,7 +88,7 @@ function AgentForm({ initial, editing, busy, onCancel, onSave }: {
       {field("id", "ID（小写字母、数字、- 或 _）", "workbuddy", editing)}
       {field("display_name", "名称", "WorkBuddy")}
       {field("skill_root", "Skill 目录（用户目录下的绝对路径）", "~/.workbuddy/skills")}
-      {field("executable", "启动命令名（只用于检测，不会执行）", "workbuddy")}
+      {field("executable", "启动命令名（用于检测和打开对话）", "workbuddy")}
       {field("memory_file", "记忆文件（可留空）", "~/.workbuddy/MEMORY.md")}
     </div>
     <div className="flex gap-2">
@@ -82,7 +98,7 @@ function AgentForm({ initial, editing, busy, onCancel, onSave }: {
   </form>;
 }
 
-/** Board of built-in and user-added Agents: Skill connection, executable detection and memory import. */
+/** Board of built-in and user-added Agents: live connection, opening a conversation, Skill install and memory import. */
 export function AgentBoard({ onChange }: { onChange?: (snapshot: AgentBoardSnapshot) => void } = {}) {
   const [board, setBoard] = useState<AgentBoardSnapshot | null>(null);
   const [busyId, setBusyId] = useState("");
@@ -124,9 +140,7 @@ export function AgentBoard({ onChange }: { onChange?: (snapshot: AgentBoardSnaps
   return <div className="space-y-3" data-testid="agent-board">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <p className="text-sm font-semibold">Agent 看板</p>
-      {board && <span role="status" className="text-[11px] text-[var(--foreground-muted)]">
-        已连接 {board.summary.connected} · Skill 已安装 {board.summary.installed} · 需处理 {board.summary.needs_attention} · 本机检测到 {board.summary.detected}
-      </span>}
+      {board && <span role="status" className="text-[11px] text-[var(--foreground-muted)]">{summaryText(rows)}</span>}
     </div>
     {!board && !error && <p role="status" className="flex items-center gap-2 text-xs text-[var(--foreground-muted)]"><Loader2 size={14} className="motion-safe:animate-spin" />读取中…</p>}
     {rows.length > 0 && <ul className="divide-y divide-[var(--border)] rounded-xl border border-[var(--border)]" aria-label="Agent 看板">
@@ -140,19 +154,21 @@ export function AgentBoard({ onChange }: { onChange?: (snapshot: AgentBoardSnaps
               {row.custom && <span className="ml-2 text-[11px] font-normal text-[var(--foreground-muted)]">自定义</span>}
               {row.hidden && <span className="ml-2 text-[11px] font-normal text-[var(--foreground-muted)]">已隐藏</span>}
             </p>
-            <span role="status" className={"text-xs " + (row.connected ? "text-emerald-700" : row.skill_status === "ERROR" ? "text-amber-800" : "text-[var(--foreground-muted)]")}>
-              {busy ? "处理中…" : row.connected ? "已连接" : SKILL_TEXT[row.skill_status] || row.skill_status}
+            <span role="status" className={"text-xs " + (row.connected ? "font-semibold text-[var(--foreground)]" : row.skill_status === "ERROR" ? "text-amber-800" : "text-[var(--foreground-muted)]")}>
+              {busy ? "处理中…" : statusText(row)}
             </span>
           </div>
           <dl className="grid grid-cols-[4.5rem_1fr] gap-x-3 gap-y-1 text-[11px] text-[var(--foreground-muted)]">
-            <dt>程序</dt><dd>{row.executable_found ? "本机已检测到" : "未检测到"}</dd>
+            <dt>程序</dt><dd>{row.running ? "正在运行" : row.executable_found ? "本机已安装，未运行" : "未检测到"}</dd>
             <dt>Skill</dt><dd className="break-all">{row.skill_path}</dd>
             <dt>记忆</dt><dd className="break-all">{MEMORY_TEXT[row.memory_status]}{row.memory.target ? " · " + row.memory.target : ""}</dd>
             <dt>最后检查</dt><dd>{connectionTime(row.last_check.at)}</dd>
-            <dt>最近连接</dt><dd className="break-all" data-testid={"agent-board-connection-" + row.id}>{connectionText(row)}</dd>
+            <dt>最近调用</dt><dd className="break-all" data-testid={"agent-board-call-" + row.id}>{lastCallText(row)}</dd>
           </dl>
           {row.error && <p className="break-words text-[11px] text-amber-800">{row.error}</p>}
           <div className="flex flex-wrap gap-1.5">
+            <Button size="sm" variant="bordered" isDisabled={Boolean(busyId)} startContent={<Terminal size={12} />}
+              onPress={() => void run(row.id, () => agentBoardApi.launch(row.id))}>打开对话</Button>
             {row.skill_status !== "INSTALLED" && row.skill_status !== "NOT_SUPPORTED" && <Button size="sm" variant="bordered" isDisabled={Boolean(busyId)}
               onPress={() => void run(row.id, () => agentBoardApi.connect(row.id, action))}>{CONNECT_LABEL[action]}</Button>}
             <Button size="sm" variant="light" isDisabled={Boolean(busyId)} startContent={<RefreshCw size={12} />}
@@ -177,40 +193,6 @@ export function AgentBoard({ onChange }: { onChange?: (snapshot: AgentBoardSnaps
           {showHidden ? "收起已隐藏" : "显示已隐藏（" + hiddenCount + "）"}
         </Button>}
       </div>}
-    <p className="text-[11px] leading-relaxed text-[var(--foreground-muted)]">看板只安装、更新或修复 OfferU Skill，并检测启动命令是否在 PATH 上；不会运行 Agent，也不会改它的设置或记忆文件。</p>
+    <p className="text-[11px] leading-relaxed text-[var(--foreground-muted)]">在线表示 Agent 正在运行，而且它的对话最近 {Math.round((board?.live_window_seconds || 600) / 60)} 分钟内调用过 OfferU。看板可以安装、更新或修复 OfferU Skill，并在你点「打开对话」时在新终端窗口里启动 Agent；不会改它的设置或记忆文件。</p>
   </div>;
-}
-
-/** Entry row on the Agent panel: opens the dialog with the copy-prompt and the full Agent board (web and desktop). */
-export function AgentBoardEntry() {
-  const [open, setOpen] = useState(false);
-  const [summary, setSummary] = useState<AgentBoardSnapshot["summary"] | null>(null);
-  useEffect(() => {
-    let active = true;
-    agentBoardApi.list().then((snapshot) => { if (active) setSummary(snapshot.summary); }).catch(() => undefined);
-    return () => { active = false; };
-  }, [open]);
-  const detail = summary
-    ? "已连接 " + summary.connected + " · 需处理 " + summary.needs_attention + " · 本机检测到 " + summary.detected
-    : "一键复制接入提示词，查看每个 Agent 的连接和记忆状态";
-  return <>
-    <button type="button" onClick={() => setOpen(true)} data-testid="agent-board-entry" aria-label="打开 Agent 看板"
-      className="flex w-full items-center gap-3 rounded-xl border border-[var(--border)] px-4 py-3 text-left transition-colors hover:border-[var(--border-strong)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-semibold">接入和管理我的 Agent</span>
-        <span className="mt-1 block truncate text-[11px] text-[var(--foreground-muted)]">{detail}</span>
-      </span>
-      <ArrowRight size={14} className="shrink-0 text-[var(--foreground-muted)]" />
-    </button>
-    <Modal isOpen={open} onOpenChange={setOpen} size="3xl" scrollBehavior="inside" placement="center"
-      classNames={{ base: "bg-[var(--background)] text-[var(--foreground)]", closeButton: "mt-2 mr-2" }}>
-      <ModalContent>
-        <ModalHeader className="px-6 pb-3 pt-5 text-sm font-semibold">我的 Agent</ModalHeader>
-        <ModalBody className="space-y-4 px-4 pb-5 sm:px-6" data-testid="agent-board-dialog">
-          <AgentConnectPrompt />
-          <AgentBoard onChange={(snapshot) => setSummary(snapshot.summary)} />
-        </ModalBody>
-      </ModalContent>
-    </Modal>
-  </>;
 }

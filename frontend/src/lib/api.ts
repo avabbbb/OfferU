@@ -9,6 +9,8 @@ import { SHOWCASE, SHOWCASE_UNSUPPORTED, showcaseHandle } from "./showcase";
 import { resolveApiBase } from "./apiBase";
 import { safeClientErrorMessage } from "./safe-error";
 import { decideAgentActionInDesktop } from "./desktop-proposal-decision";
+import { invoke, isTauri } from "@tauri-apps/api/core";
+import { liteToken } from "./liteSession";
 import type { AgentInputAnswerBody, AgentInputAnswerResult } from "./agentAsk";
 import type { components } from "./api-types.generated";
 type Schemas = components["schemas"];
@@ -1362,8 +1364,11 @@ export interface AgentBoardRow {
   hidden: boolean;
   executable_found: boolean;
   skill_status: string;
+  /** The Agent process is running on this machine right now. */
+  running: boolean;
+  /** Live: running, and one of its conversations called OfferU within live_window_seconds. */
   connected: boolean;
-  connection: { at?: string; challenge_id?: string; session_hint?: string; thread_id?: string };
+  last_call: { at?: string; client?: string; session_hint?: string; thread_id?: string };
   skill_path: string;
   error: string;
   memory_status: "none" | "exported" | "imported";
@@ -1376,7 +1381,12 @@ export interface AgentBoardRow {
 
 export interface AgentBoardSnapshot {
   agents: AgentBoardRow[];
-  summary: { connected: number; installed: number; needs_attention: number; detected: number };
+  live_window_seconds: number;
+}
+
+export interface AgentLaunchResult {
+  launched: boolean;
+  executable: string;
 }
 
 export interface CustomAgentInput {
@@ -1400,6 +1410,16 @@ export const agentBoardApi = {
   connect: (agentId: string, action: "install" | "update" | "repair") =>
     request<AgentBoardRow>(agentBoardPath(agentId, "/connect"), { method: "POST", body: JSON.stringify({ action }), signal: AbortSignal.timeout(20000) }),
   check: (agentId: string) => request<AgentBoardRow>(agentBoardPath(agentId, "/check"), { method: "POST" }),
+  /** Opening a terminal runs a program, so it carries the workbench approval capability like agent action confirm / reject. */
+  launch: async (agentId: string): Promise<AgentLaunchResult> => {
+    if (isTauri()) return invoke<AgentLaunchResult>("launch_agent", { agentId });
+    const token = liteToken();
+    if (!token) throw new Error("请用 offeru start 打开的工作台打开对话");
+    const res = await fetch(API_BASE + agentBoardPath(agentId, "/launch"), { method: "POST", headers: { Authorization: "Bearer " + token }, redirect: "error" });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(res.status === 403 ? "工作台授权已失效，请重新运行 offeru start" : payload?.detail || "打开对话失败：" + res.status);
+    return payload as AgentLaunchResult;
+  },
 };
 
 export const agentActionsApi = {
