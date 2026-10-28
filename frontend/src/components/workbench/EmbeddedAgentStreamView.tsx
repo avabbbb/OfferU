@@ -14,17 +14,18 @@ export function toolGroupSeconds(rows: ToolExecutionState[], now: number): numbe
   return Math.max(0, Math.round((Math.max(...ends) - Math.min(...starts)) / 1000));
 }
 
-// Notion 式：一组工具折成一行摘要，点开才看逐条。
-export function toolGroupSummary(rows: ToolExecutionState[], now: number): string {
+// Notion 式：一组工具折成一行摘要，点开才看逐条。title 可截断，meta 始终完整显示。
+export function toolGroupSummary(rows: ToolExecutionState[], now: number): { title: string; meta: string } {
   const current = rows.find((tool) => tool.status === "running");
   const seconds = toolGroupSeconds(rows, now);
   if (current) {
-    return current.toolName + " · 第 " + rows.length + " 步" + (seconds > 0 ? " · " + seconds + " 秒" : "");
+    return { title: current.toolName, meta: "第 " + rows.length + " 步" + (seconds > 0 ? " · " + seconds + " 秒" : "") };
   }
   const failed = rows.filter((tool) => tool.status === "error").length;
-  return "已执行 " + rows.length + " 步"
-    + (seconds > 0 ? " · 耗时 " + seconds + " 秒" : "")
-    + (failed > 0 ? " · " + failed + " 步出错" : "");
+  return {
+    title: "已执行 " + rows.length + " 步",
+    meta: [seconds > 0 ? "耗时 " + seconds + " 秒" : "", failed > 0 ? failed + " 步出错" : ""].filter(Boolean).join(" · "),
+  };
 }
 
 export function ToolExecutionList({ executions }: { executions: Record<string, ToolExecutionState> }) {
@@ -40,6 +41,7 @@ export function ToolExecutionList({ executions }: { executions: Record<string, T
     return () => window.clearInterval(timer);
   }, [running]);
   if (rows.length === 0) return null;
+  const summary = toolGroupSummary(rows, now);
   // Tool payloads are LLM-facing: no raw result/summary body is rendered.
   return (
     <div className="agent-tool-group">
@@ -56,7 +58,10 @@ export function ToolExecutionList({ executions }: { executions: Record<string, T
         ) : (
           <CheckCircle2 size={12} className="shrink-0 text-[var(--primary-green)]" />
         )}
-        <span className="min-w-0 flex-1 truncate text-left">{toolGroupSummary(rows, now)}</span>
+        <span className="min-w-0 flex-1 truncate text-left" title={summary.title}>{summary.title}</span>
+        {summary.meta && (
+          <span className="shrink-0 tabular-nums text-[10.5px] text-[var(--foreground-muted)]">{summary.meta}</span>
+        )}
         <ChevronRight
           size={12}
           className={"shrink-0 text-[var(--foreground-muted)] transition-transform duration-[var(--dur-quick)] " + (open ? "rotate-90" : "")}
