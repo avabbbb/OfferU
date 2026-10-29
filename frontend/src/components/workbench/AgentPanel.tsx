@@ -917,7 +917,7 @@ export function AgentPanel() {
         <button
           type="button"
           onClick={() => setHistoryOpen((value) => !value)}
-          className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-[12.5px] font-medium text-[var(--foreground)] transition-colors duration-[var(--dur-quick)] hover:bg-[var(--surface-muted)]"
+          className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-[length:var(--agent-fs-sm)] font-medium text-[var(--foreground)] transition-colors duration-[var(--dur-quick)] hover:bg-[var(--surface-muted)]"
           title="历史对话"
         >
           <History size={13} className="shrink-0 text-[var(--foreground-muted)]" />
@@ -938,7 +938,7 @@ export function AgentPanel() {
           <Link
             href={MODEL_SETTINGS_ROUTE}
             title="模型设置"
-            className="rounded-md px-1.5 py-1 text-[11px] text-[var(--foreground-muted)] transition-colors duration-[var(--dur-quick)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+            className="rounded-md px-1.5 py-1 text-[length:var(--agent-fs-xs)] text-[var(--foreground-muted)] transition-colors duration-[var(--dur-quick)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
           >
             模型
           </Link>

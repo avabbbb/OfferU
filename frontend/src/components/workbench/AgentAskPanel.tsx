@@ -93,7 +93,7 @@ export function AgentAskCard({
     return (
       <section
         aria-label={`已回答：${request.question}`}
-        className="agent-card px-3 py-2 text-[12px] text-[var(--foreground-soft)]"
+        className="agent-card px-3 py-2 text-[length:var(--agent-fs-sm)] text-[var(--foreground-soft)]"
       >
         已提交回答；OfferU 正在继续当前任务。
       </section>
@@ -108,11 +108,11 @@ export function AgentAskCard({
       <div className="flex items-start gap-1.5">
         <HelpCircle size={14} className="mt-0.5 shrink-0 text-[var(--foreground)]" />
         <div className="min-w-0">
-          <p className="text-[12.5px] font-semibold leading-5 text-[var(--foreground)]">
+          <p className="text-[length:var(--agent-fs)] font-semibold leading-snug text-[var(--foreground)]">
             {request.question}
           </p>
           {request.reason && (
-            <p className="mt-0.5 text-[10.5px] leading-4 text-[var(--foreground-muted)]">
+            <p className="mt-0.5 text-[length:var(--agent-fs-xs)] leading-normal text-[var(--foreground-muted)]">
               {request.reason}
             </p>
           )}
@@ -129,7 +129,7 @@ export function AgentAskCard({
                 : "多选"}
           </legend>
           {!isSingle && (
-            <p className="text-[10.5px] leading-4 text-[var(--foreground-muted)]">
+            <p className="text-[length:var(--agent-fs-xs)] leading-normal text-[var(--foreground-muted)]">
               可多选{maxSelections > 0 ? `，最多 ${maxSelections} 项` : ""}
               {request.min_selections > 1 ? `，至少 ${request.min_selections} 项` : ""}
             </p>
@@ -140,7 +140,7 @@ export function AgentAskCard({
             return (
               <label
                 key={option.option_id}
-                className={`agent-ask-option flex cursor-pointer items-start gap-2 rounded-md px-2 py-1 text-[12px] leading-5 transition-colors ${
+                className={`agent-ask-option flex cursor-pointer items-start gap-2 rounded-md px-2 py-1 text-[length:var(--agent-fs-sm)] leading-normal transition-colors ${
                   checked
                     ? "bg-[var(--surface-muted)] text-[var(--foreground)] ring-1 ring-[var(--border-strong)]"
                     : "text-[var(--foreground-soft)] hover:bg-[var(--surface-muted)]"
@@ -160,12 +160,12 @@ export function AgentAskCard({
                     {option.label}
                   </span>
                   {option.recommended && (
-                    <span className="ml-1.5 rounded-sm border border-[var(--border)] px-1 text-[10px] text-[var(--foreground-muted)]">
+                    <span className="ml-1.5 rounded-sm border border-[var(--border)] px-1 text-[length:var(--agent-fs-xs)] text-[var(--foreground-muted)]">
                       推荐
                     </span>
                   )}
                   {option.description && (
-                    <span className="block text-[10.5px] text-[var(--foreground-muted)]">
+                    <span className="block text-[length:var(--agent-fs-xs)] text-[var(--foreground-muted)]">
                       {option.description}
                     </span>
                   )}
@@ -183,12 +183,12 @@ export function AgentAskCard({
           onChange={(event) => setFreeText(event.target.value)}
           rows={2}
           placeholder={options.length > 0 ? "其他 / 补充说明（可选）" : "输入你的回答…"}
-          className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-[12px] leading-5 text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--foreground)]"
+          className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-[length:var(--agent-fs-sm)] leading-normal text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--foreground)]"
         />
       )}
 
       {error && (
-        <p role="alert" className="text-[11px] leading-4 text-[var(--primary-red)]">
+        <p role="alert" className="text-[length:var(--agent-fs-xs)] leading-normal text-[var(--primary-red)]">
           {error}
         </p>
       )}
@@ -200,7 +200,7 @@ export function AgentAskCard({
             aria-label={`跳过：${request.question}`}
             disabled={submitting}
             onClick={() => void submit(true)}
-            className="text-[11px] text-[var(--foreground-muted)] underline-offset-2 hover:text-[var(--foreground)] hover:underline disabled:opacity-50"
+            className="text-[length:var(--agent-fs-xs)] text-[var(--foreground-muted)] underline-offset-2 hover:text-[var(--foreground)] hover:underline disabled:opacity-50"
           >
             跳过，让 OfferU 按推荐继续
           </button>
@@ -210,7 +210,7 @@ export function AgentAskCard({
           aria-label={`提交回答：${request.question}`}
           disabled={!canSubmit}
           onClick={() => void submit()}
-          className="bauhaus-button bauhaus-button-red !min-h-7 !justify-center !px-2.5 !py-0.5 !text-[11px] disabled:opacity-50"
+          className="bauhaus-button bauhaus-button-red !min-h-7 !justify-center !px-2.5 !py-0.5 !text-[length:var(--agent-fs-xs)] disabled:opacity-50"
         >
           {submitting ? <Loader2 size={12} className="animate-spin" /> : null}
           提交回答
@@ -292,7 +292,7 @@ export function AgentAskPanel({
   return (
     <div className="agent-bar space-y-1.5 border-t border-[var(--border)] px-3.5 py-2.5">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] font-semibold text-[var(--foreground)]">
+        <p className="text-[length:var(--agent-fs-xs)] font-semibold text-[var(--foreground)]">
           助手需要你确认偏好后继续
         </p>
         <div className="flex shrink-0 items-center gap-0.5">
@@ -307,7 +307,7 @@ export function AgentAskPanel({
               >
                 <ChevronLeft size={12} />
               </button>
-              <span className="min-w-[2.5em] text-center text-[11px] tabular-nums text-[var(--foreground-muted)]">
+              <span className="min-w-[2.5em] text-center text-[length:var(--agent-fs-xs)] tabular-nums text-[var(--foreground-muted)]">
                 {index + 1}/{requests.length}
               </span>
               <button
@@ -332,7 +332,7 @@ export function AgentAskPanel({
         </div>
       </div>
       {error && (
-        <p role="alert" className="rounded-md border border-[var(--status-blush)] bg-[var(--status-blush)]/40 px-2 py-1 text-[11px] text-[var(--primary-red)]">
+        <p role="alert" className="rounded-md border border-[var(--status-blush)] bg-[var(--status-blush)]/40 px-2 py-1 text-[length:var(--agent-fs-xs)] text-[var(--primary-red)]">
           {error}
         </p>
       )}

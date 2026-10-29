@@ -60,7 +60,7 @@ export function ToolExecutionList({ executions }: { executions: Record<string, T
         )}
         <span className="min-w-0 flex-1 truncate text-left" title={summary.title}>{summary.title}</span>
         {summary.meta && (
-          <span className="shrink-0 tabular-nums text-[10.5px] text-[var(--foreground-muted)]">{summary.meta}</span>
+          <span className="shrink-0 tabular-nums text-[length:var(--agent-fs-xs)] text-[var(--foreground-muted)]">{summary.meta}</span>
         )}
         <ChevronRight
           size={12}
@@ -80,10 +80,10 @@ export function ToolExecutionList({ executions }: { executions: Record<string, T
                 ) : (
                   <CheckCircle2 size={12} className="shrink-0 text-[var(--primary-green)]" />
                 )}
-                <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-[var(--foreground)]" title={tool.toolName}>
+                <span className="min-w-0 flex-1 truncate font-mono text-[length:var(--agent-fs-xs)] text-[var(--foreground)]" title={tool.toolName}>
                   {tool.toolName}
                 </span>
-                <span className="shrink-0 text-[10.5px] text-[var(--foreground-muted)]">{label}</span>
+                <span className="shrink-0 text-[length:var(--agent-fs-xs)] text-[var(--foreground-muted)]">{label}</span>
               </div>
             );
           })}

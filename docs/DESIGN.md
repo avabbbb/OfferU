@@ -142,7 +142,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 - Vite + React + HashRouter，`lib/core.ts` 提供 `tool()`、`useTool()`（SWR）、`write()`（写完全局刷新）。页面只调工具，不调其他接口。
 - 页面：今天 `/`、岗位 `/jobs`、岗位详情 `/jobs/:id`、简历 `/resume/:id?`、档案 `/profile`（和简历同一个导航项，两个标签）、面试 `/interview`、设置 `/settings`。
 - 共用组件：EventList、RecentChanges、ChatDoc（PR3）、CommandK（PR3）。简历编辑器是 TipTap 纸面编辑（Typora 式：光标所在行显示原文，其余按 PDF 排版），存的仍是 Markdown；「源码」切到 textarea。
-- 视觉：黑白灰，13px 正文，不用徽章、统计卡、彩色按钮、网格背景。
+- 视觉：黑白灰；字号和间距弹性适配不同设备（字号走 CSS 变量 + clamp()，正文约 13–15px，间距用 em / rem）；不用徽章、统计卡、彩色按钮、网格背景。
 
 ## 11. 浏览器插件（PR4，第四期）
 

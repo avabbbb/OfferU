@@ -147,3 +147,6 @@ dist-lite/
 
 # Agent iteration log is tracked
 !docs/AGENT-ITERATIONS.md
+
+# ---- Agent 看板运行时状态 ----
+backend/agent_board.json
