@@ -10,11 +10,11 @@
 | 二期 | #126 | 阶段判断和下一步 | 已合并 |
 | 三期 | #127 | 固定字段网申 | 已合并 |
 | — | #132 | 对话式网申（旧架构） | 关闭，PR3 重做 |
-| 重构 1/4 | #134 | 共用工具层 + 撤销记录 + 今天 / 岗位页 | 待验收 |
-| 文档 | 本 PR | PRD、系统设计、项目计划 | 待验收 |
-| 重构 2/4 | PR2 | 档案 + 职业记忆 + Markdown 简历 + PDF | 待验收 |
-| 重构 3/4 | PR3 | 官网投递助手 + 面试 + Ctrl+K 内置 Agent + 职业发现（轻量） | 未开始 |
-| — | 本 PR | Agent 看板：打开对话 + 「在线」改为实时连接（进程在跑且最近调用过） | 待验收 |
+| 重构 1/4 | #134 | 共用工具层 + 撤销记录 + 今天 / 岗位页 | 已合并 |
+| 文档 | #135 | PRD、系统设计、项目计划 | 已合并 |
+| 重构 2/4 | #137 | 档案 + 职业记忆 + Markdown 简历 + PDF | 已合并 |
+| 重构 3/4 | PR3 | 官网投递助手 + 面试 + Ctrl+K 内置 Agent + 职业发现（轻量） | 进行中（按 Run 并发已在 #163 合并） |
+| — | #162 / #164 / #165 / #170 | Agent 看板：打开对话 + 「在线」改为实时连接 | 关闭，未合并 |
 | 四期 | PR4 | 浏览器插件半自动填写（提前，网申最痛） | 未开始 |
 | 四期 | PR4.5 | 邮箱同步：只读拉取，识别回执和邀约，回写岗位状态和待办 | 未开始 |
 | 重构 4/4 | PR5 | 后台 Codex 交接 + Skill + 删除旧代码 | 未开始 |
@@ -39,7 +39,7 @@
 | 11-02 周一 | PR4.5 前半：设置里连 IMAP / Gmail（凭据存本机配置文件）；core/mail.py 只读增量拉取；email_sync status / sync | 测试邮箱连上，status 显示账号和上次同步时间 |
 | 11-03 周二 | PR4.5 后半：识别规则（发件域名 + 关键词 + 时间）、模型兜底；回写岗位和待办；mail_id 去重；开 PR4.5 | 一封面试邀约同步后，岗位变「面试中」，今天页出现这场面试 |
 | 11-04 周三 | PR5 前半：验证 codex exec 无人值守；handoff / handoff_status；新 Skill（≤4KB） | Ctrl+K 说「按腾讯这个岗位改简历」→ 后台 Codex 完成 → 最近改动里出现 |
-| 11-05 周四 | PR5 后半：删除 ops.py、services、agents、旧 Skill 生成器、旧表；更新 README / QUICKSTART；开 PR5 | 后端只剩 core + 入口；新电脑从零安装走通 |
+| 11-05 周四 | PR5 后半：删除 ops.py、services、agents、旧 Skill 生成器、旧表；更新 README；开 PR5 | 后端只剩 core + 入口；新电脑从零安装走通 |
 | 11-06 周五 | 全流程验收：一个真实岗位从添加走到复盘，记录问题 | 问题清单，逐条修 |
 | 11-07 – 11-08 | PR6 桌面小球 | offeru start 后小球出现，悬停能勾待办 |
 
@@ -100,12 +100,12 @@
 
 ### PR5 重构 4/4：后台 Codex 和清理
 
-- **做**：handoff / handoff_status；新 Skill（≤4KB）；README、QUICKSTART 改成新架构。
+- **做**：handoff / handoff_status；新 Skill（≤4KB）；README 改成新架构（QUICKSTART 已在 #172 删除）。
 - **删**：`app/ops.py`、`app/services/`、`app/agents/`、剩余旧路由、旧 Skill 生成器、旧表和旧测试。`app/agent/`（内置 Agent 的循环和 provider）保留，由 `app/core/agent.py` 调用。
 - **验收**：
   1. Ctrl+K 说一件长任务，几分钟后最近改动出现 codex 的改动，能撤销。
   2. 如果 `codex exec` 不能无人值守，界面给出可复制的一句话，用户贴到 Codex 里能完成同样的事。
-  3. 一台没有装过 OfferU 的电脑，按 QUICKSTART 从零装好，走完 #134–PR4.5 的验收步骤。
+  3. 一台没有装过 OfferU 的电脑，按 README 从零装好，走完 #134–PR4.5 的验收步骤。
   4. 重写最小浏览器 smoke（新界面：今天、档案、简历），恢复 build.yml 里暂停的 browser-smoke、critical-browser-repeatability、migration-browser-smoke 三个 job，main 的 Build & Release 全绿。
 
 ### PR6 桌面小球
@@ -119,9 +119,9 @@
 - 改了界面就截图，放在 PR 正文里。
 - 删掉的代码不留兼容层，不留「以后可能用到」的开关。
 - 同一个 PR 里更新本页的状态和 DESIGN 里对应的章节。
-- 不合并 PR，由产品负责人验收后合并。
-- PR4 合入前不打 release tag：重构栈合入后、PR3 / PR4 之前，main 没有网申、面试和按岗位改简历。
-- 重构前的完整代码在 archive/pre-refactor 分支，需要时从那里取回。
+- 合进 main：4 项 CI 全绿，不要求 review，由产品负责人验收后合并；合进 test 不等 CI。
+- 正式 release tag 等 PR4 合入后再打：重构栈合入后、PR3 / PR4 之前，main 没有网申、面试和按岗位改简历。`v0.2.0` / `v0.2.0-lite`（#156）只是内测 demo。
+- 重构前的完整代码在 tag `pre-refactor`（`dc7f961`），需要时 `git checkout pre-refactor -- <路径>` 取回。
 
 ## 5. 不做
 
