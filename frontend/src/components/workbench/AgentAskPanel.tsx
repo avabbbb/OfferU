@@ -140,11 +140,11 @@ export function AgentAskCard({
             return (
               <label
                 key={option.option_id}
-                className={`agent-ask-option flex cursor-pointer items-start gap-2 rounded-md px-2 py-1 text-[length:var(--agent-fs-sm)] leading-normal transition-colors ${
+                className={"agent-ask-option flex cursor-pointer items-start gap-2 rounded-md px-2 py-1 text-[length:var(--agent-fs-sm)] leading-normal transition-colors " + (
                   checked
-                    ? "bg-[var(--surface-muted)] text-[var(--foreground)] ring-1 ring-[var(--border-strong)]"
+                    ? "bg-[var(--surface-muted)] text-[var(--foreground)]"
                     : "text-[var(--foreground-soft)] hover:bg-[var(--surface-muted)]"
-                }`}
+                )}
               >
                 <input
                   type={isSingle ? "radio" : "checkbox"}
@@ -154,9 +154,8 @@ export function AgentAskCard({
                   disabled={disabled}
                   onChange={() => chooseOption(option.option_id)}
                 />
-                <span>
+                <span className="min-w-0 flex-1">
                   <span className="font-medium">
-                    <span className="mr-1 tabular-nums text-[var(--foreground-muted)]">{index + 1}.</span>
                     {option.label}
                   </span>
                   {option.recommended && (
@@ -170,6 +169,7 @@ export function AgentAskCard({
                     </span>
                   )}
                 </span>
+                <span className="mt-[2px] shrink-0 rounded border border-[var(--border)] px-1 text-[length:var(--agent-fs-xs)] tabular-nums leading-tight text-[var(--foreground-muted)]">{index + 1}</span>
               </label>
             );
           })}
@@ -202,7 +202,7 @@ export function AgentAskCard({
             onClick={() => void submit(true)}
             className="text-[length:var(--agent-fs-xs)] text-[var(--foreground-muted)] underline-offset-2 hover:text-[var(--foreground)] hover:underline disabled:opacity-50"
           >
-            跳过，让 OfferU 按推荐继续
+            跳过
           </button>
         )}
         <button
@@ -210,7 +210,7 @@ export function AgentAskCard({
           aria-label={`提交回答：${request.question}`}
           disabled={!canSubmit}
           onClick={() => void submit()}
-          className="bauhaus-button bauhaus-button-red !min-h-7 !justify-center !px-2.5 !py-0.5 !text-[length:var(--agent-fs-xs)] disabled:opacity-50"
+          className="inline-flex items-center gap-1 rounded-md bg-[var(--foreground)] px-2.5 py-1 text-[length:var(--agent-fs-xs)] font-medium text-[var(--surface)] disabled:opacity-40"
         >
           {submitting ? <Loader2 size={12} className="animate-spin" /> : null}
           提交回答

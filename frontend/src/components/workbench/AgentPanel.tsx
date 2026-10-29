@@ -18,7 +18,6 @@ import {
   ClipboardCheck,
   ChevronDown,
   ChevronUp,
-  History,
   Download,
   Loader2,
   Plus,
@@ -49,7 +48,6 @@ import {
 } from "@/lib/api";
 import { AGENT_COMPOSE_EVENT, drainAgentCompose } from "@/lib/agentCompose";
 import { presentAgentToolCall } from "@/lib/agentToolPresentation";
-import { bauhausFieldClassNames } from "@/lib/bauhaus";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { AgentConnectionStatus } from "./AgentConnectionPanel";
 import { ExternalUrlLink } from "@/components/ExternalUrlLink";
@@ -113,6 +111,11 @@ const HOSTED_STATUS_LABELS: Record<string, string> = {
 };
 
 const HOSTED_ACTIVE_STATUSES = new Set(["created", "starting", "running"]);
+
+const agentComposerFieldClassNames = {
+  inputWrapper: "!min-h-0 !border-0 !bg-transparent !px-1 !py-0.5 !shadow-none",
+  input: "!text-[length:var(--agent-fs)] placeholder:!text-[var(--foreground-faint)]",
+};
 
 function executorLabel(executorId: string) {
   return executorId
@@ -913,15 +916,18 @@ export function AgentPanel() {
 
   return (
     <div className="offeru-agent-panel flex h-full min-h-0 flex-col">
-      <div className="agent-bar flex items-center justify-between gap-2 border-b border-[var(--border)] px-3 py-1.5">
+      <div className="agent-bar flex items-center justify-between gap-2 px-3 py-2">
         <button
           type="button"
           onClick={() => setHistoryOpen((value) => !value)}
           className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-[length:var(--agent-fs-sm)] font-medium text-[var(--foreground)] transition-colors duration-[var(--dur-quick)] hover:bg-[var(--surface-muted)]"
           title="历史对话"
         >
-          <History size={13} className="shrink-0 text-[var(--foreground-muted)]" />
           <span className="truncate">{conversationTitle || "新对话"}</span>
+          <ChevronDown
+            size={13}
+            className={"shrink-0 text-[var(--foreground-muted)] transition-transform duration-[var(--dur-quick)] " + (historyOpen ? "rotate-180" : "")}
+          />
         </button>
         <div className="flex shrink-0 items-center gap-0.5">
           {hostedSessions.length > 0 && (
@@ -935,13 +941,6 @@ export function AgentPanel() {
               <Activity size={13} />
             </button>
           )}
-          <Link
-            href={MODEL_SETTINGS_ROUTE}
-            title="模型设置"
-            className="rounded-md px-1.5 py-1 text-[length:var(--agent-fs-xs)] text-[var(--foreground-muted)] transition-colors duration-[var(--dur-quick)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
-          >
-            模型
-          </Link>
           <button
             type="button"
             onClick={startNewConversation}
@@ -955,9 +954,11 @@ export function AgentPanel() {
       </div>
 
       {historyOpen && (
-        <div className="border-b border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2.5">
+        <>
+        <div className="fixed inset-0 z-20" aria-hidden onClick={() => setHistoryOpen(false)} />
+        <div className="absolute left-2 right-2 top-11 z-30 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-2 shadow-[0_12px_32px_rgba(31,31,29,0.14)]">
           <div className="mb-2 flex items-center justify-between">
-            <p className="text-[12px] font-semibold text-[var(--foreground)]">历史对话</p>
+            <p className="px-1 text-[length:var(--agent-fs-xs)] font-medium text-[var(--foreground-muted)]">历史对话</p>
             <div className="flex items-center gap-0.5">
               <input
                 ref={fileInputRef}
@@ -1006,7 +1007,7 @@ export function AgentPanel() {
                 key={conversation.id}
                 className={`flex items-center gap-1 rounded-md px-2 py-1.5 transition-colors duration-[var(--dur-quick)] ${
                   conversation.id === conversationId
-                    ? "bg-[var(--surface)] text-[var(--foreground)]"
+                    ? "bg-[var(--surface-muted)] text-[var(--foreground)]"
                     : "hover:bg-[var(--surface-hover)]"
                 }`}
               >
@@ -1034,6 +1035,7 @@ export function AgentPanel() {
             ))}
           </div>
         </div>
+        </>
       )}
 
       {resumeCandidate && !conversationId && (
@@ -1352,7 +1354,7 @@ export function AgentPanel() {
       )}
 
       {/* 输入区 */}
-      <footer className="agent-bar border-t border-[var(--border)] px-3 py-2.5">
+      <footer className="agent-bar px-3 pb-3 pt-1.5">
         {slashMatches.length > 0 && (
           <div role="listbox" aria-label="技能" className="custom-scrollbar mb-1.5 max-h-56 overflow-y-auto rounded-md border border-[var(--border)] bg-[var(--surface)] py-1">
             {slashMatches.map((skill, index) => (
@@ -1378,20 +1380,20 @@ export function AgentPanel() {
             ))}
           </div>
         )}
-        <div className="flex items-end gap-1.5">
+        <div className="agent-composer px-2 pb-1 pt-1.5">
           <Textarea
             value={input}
             onValueChange={setInput}
             minRows={1}
-            maxRows={4}
+            maxRows={6}
             placeholder={
               runNeedsUser
                 ? "继续对话或说明如何调整；当前待处理的任务会先保存，随时可回来"
                 : "问 OfferU，输入 / 选择技能..."
             }
-            variant="bordered"
-            className="flex-1"
-            classNames={bauhausFieldClassNames}
+            variant="flat"
+            className="w-full"
+            classNames={agentComposerFieldClassNames}
             onKeyDown={(event) => {
               if (slashMatches.length > 0) {
                 const count = slashMatches.length;
@@ -1417,15 +1419,24 @@ export function AgentPanel() {
               }
             }}
           />
-          <Button
-            isIconOnly
-            aria-label="发送"
-            onPress={() => sendMessage()}
-            isDisabled={!input.trim()}
-            className="bauhaus-button bauhaus-button-outline !min-h-9 !min-w-9 !px-0 !py-0"
-          >
-            <Send size={14} />
-          </Button>
+          <div className="flex items-center justify-between pt-0.5">
+            <Link
+              href={MODEL_SETTINGS_ROUTE}
+              title="模型设置"
+              className="rounded-md px-1.5 py-0.5 text-[length:var(--agent-fs-xs)] text-[var(--foreground-muted)] transition-colors duration-[var(--dur-quick)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+            >
+              模型
+            </Link>
+            <Button
+              isIconOnly
+              aria-label="发送"
+              onPress={() => sendMessage()}
+              isDisabled={!input.trim()}
+              className="!h-7 !min-h-7 !w-7 !min-w-7 !rounded-full !bg-[var(--foreground)] !text-[var(--surface)]"
+            >
+              <Send size={13} />
+            </Button>
+          </div>
         </div>
       </footer>
     </div>
@@ -1463,7 +1474,7 @@ function PanelMessageBubble({
               <SuggestionList suggestions={response.proactive_suggestions} onSuggestion={onSuggestion} />
             )}
             {response.transferable_skills_summary && (
-              <div className="agent-card px-3 py-2.5 text-[12px] leading-5 text-[var(--foreground-soft)]">
+              <div className="agent-card px-3 py-2 text-[length:var(--agent-fs-sm)] leading-relaxed text-[var(--foreground-soft)]">
                 {response.transferable_skills_summary}
               </div>
             )}
@@ -1473,7 +1484,7 @@ function PanelMessageBubble({
             {response.job_cards && response.job_cards.length > 0 && <JobCardList jobs={response.job_cards} />}
             {response.tool_calls && response.tool_calls.length > 0 && <ToolCallList calls={response.tool_calls} />}
             {response.next_steps && response.next_steps.length > 0 && (
-              <ul className="agent-card space-y-1 px-3 py-2 text-[12px] leading-5 text-[var(--foreground-soft)]">
+              <ul className="space-y-1 pl-1 text-[length:var(--agent-fs-sm)] leading-relaxed text-[var(--foreground-soft)]">
                 {response.next_steps.map((step) => (
                   <li key={step}>- {step}</li>
                 ))}
@@ -1488,20 +1499,15 @@ function PanelMessageBubble({
 
 function AlertList({ alerts }: { alerts: NonNullable<AgentResponse["alerts"]> }) {
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-2.5">
       {alerts.map((alert) => (
-        <div
-          key={alert.code}
-          className="agent-card agent-card-alert px-3 py-2.5 text-[12px] text-[var(--foreground)]"
-        >
-          <div className="flex items-start gap-2">
-            <AlertTriangle size={14} className="mt-0.5 shrink-0 text-[var(--primary-red)]" />
-            <div>
-              <p className="font-semibold">{alert.title}</p>
-              <p className="mt-0.5 leading-5 text-[var(--foreground-soft)]">{alert.message}</p>
-              {alert.action && <p className="mt-0.5 font-medium">{alert.action}</p>}
-            </div>
-          </div>
+        <div key={alert.code} className="agent-card agent-card-alert pl-2.5 text-[length:var(--agent-fs-sm)] leading-relaxed">
+          <p className="flex items-center gap-1.5 font-medium text-[var(--foreground)]">
+            <AlertTriangle size={12} className="shrink-0 text-[var(--primary-red)]" />
+            {alert.title}
+          </p>
+          <p className="text-[var(--foreground-soft)]">{alert.message}</p>
+          {alert.action && <p className="text-[var(--foreground)]">→ {alert.action}</p>}
         </div>
       ))}
     </div>
@@ -1516,16 +1522,17 @@ function SuggestionList({
   onSuggestion: (prompt: string) => void;
 }) {
   return (
-    <div className="space-y-1.5">
+    <div className="pt-1">
+      <p className="px-[0.6em] pb-0.5 text-[length:var(--agent-fs-xs)] text-[var(--foreground-muted)]">接下来可以</p>
       {suggestions.map((suggestion) => (
         <button
-          key={`${suggestion.title}-${suggestion.prompt}`}
+          key={suggestion.title + "-" + suggestion.prompt}
           type="button"
           onClick={() => onSuggestion(suggestion.prompt)}
-          className="w-full agent-card px-3 py-2.5 text-left text-[12px] text-[var(--foreground)] transition-colors duration-[var(--dur-quick)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-muted)]"
+          className="agent-suggestion"
         >
-          <p className="font-semibold">{suggestion.title}</p>
-          <p className="mt-0.5 leading-5 text-[var(--foreground-soft)]">{suggestion.description}</p>
+          <span className="text-[length:var(--agent-fs-sm)] font-medium text-[var(--foreground)]">{suggestion.title}</span>
+          <span className="text-[length:var(--agent-fs-xs)] leading-normal text-[var(--foreground-muted)]">{suggestion.description}</span>
         </button>
       ))}
     </div>

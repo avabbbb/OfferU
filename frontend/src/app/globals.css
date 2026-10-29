@@ -1392,27 +1392,24 @@ body {
 }
 
 .offeru-agent-panel .agent-card {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface);
+  border-radius: 8px;
+  background: var(--surface-muted);
 }
 
 .offeru-agent-panel .agent-card-alert {
-  border-color: rgba(185, 81, 70, 0.25);
-  background: var(--status-blush);
+  border-radius: 0;
+  border-left: 2px solid rgba(185, 81, 70, 0.45);
+  background: transparent;
 }
 
 .offeru-agent-panel .agent-tool-group {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface-muted);
 }
 
-.offeru-agent-panel .agent-tool-group > :not(:first-child) {
-  border-top: 1px solid var(--border);
+.offeru-agent-panel .agent-tool-list {
+  margin: 2px 0 2px 16px;
+  border-left: 1px solid var(--border);
 }
 
 .offeru-agent-panel .agent-tool-row {
@@ -1462,7 +1459,8 @@ body {
 }
 
 .offeru-agent-panel .agent-tool-summary:hover {
-  background: var(--surface);
+  border-radius: 6px;
+  background: var(--surface-muted);
   color: var(--foreground);
 }
 
@@ -1489,7 +1487,34 @@ body {
 
 .offeru-agent-panel .agent-ask {
   border: 1px solid var(--border);
-  border-left: 3px solid var(--accent-clay);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--surface);
+  box-shadow: 0 1px 2px var(--shadow-soft), 0 4px 16px rgba(31, 31, 29, 0.04);
+}
+
+.offeru-agent-panel .agent-suggestion {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 1px;
+  padding: 0.4em 0.6em;
+  border-radius: 6px;
+  text-align: left;
+  transition: background-color var(--dur-quick) var(--ease-snap);
+}
+
+.offeru-agent-panel .agent-suggestion:hover {
+  background: var(--surface-muted);
+}
+
+.offeru-agent-panel .agent-composer {
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 1px 2px var(--shadow-soft);
+  transition: border-color var(--dur-quick) var(--ease-snap);
+}
+
+.offeru-agent-panel .agent-composer:focus-within {
+  border-color: var(--foreground-faint);
 }
