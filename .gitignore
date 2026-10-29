@@ -71,12 +71,11 @@ coverage/
 *playwright-cli/
 backend/.playwright-cli/
 .temp/
-# 文档默认保持本地；只版本化 PRD / DESIGN / PLAN 和归档。
+# 文档默认保持本地；只版本化 PRD / DESIGN 和归档。
 docs/*
 !docs/README.md
 !docs/PRD.md
 !docs/DESIGN.md
-!docs/PLAN.md
 !docs/archive/
 !docs/archive/**
 # Eval 原始截图/trace 默认只保留本地；正式报告必须包含脱敏后的关键证据。
@@ -146,7 +145,6 @@ launcher/__pycache__/
 dist-lite/
 
 # Agent iteration log is tracked
-!docs/AGENT-ITERATIONS.md
 
 # ---- Agent 看板运行时状态 ----
 backend/agent_board.json

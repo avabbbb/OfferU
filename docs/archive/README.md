@@ -1,8 +1,13 @@
 # 文档归档
 
-> 2026-10-23：旧的 docs/01–09、docs/product、docs/evidence 和旧 AGENTS.md 移到了 [pre-2026-11/](./pre-2026-11/)。当前文档只有 [PRD](../PRD.md)、[DESIGN](../DESIGN.md)、[PLAN](../PLAN.md)。
+> 2026-10-23：旧的 docs/01–09、docs/product、docs/evidence 和旧 AGENTS.md 移到了 [pre-2026-11/](./pre-2026-11/)。当前文档只有 [PRD](../PRD.md)、[DESIGN](../DESIGN.md)。
 
 > 状态：**归档索引**。这里的内容只用于考古，不覆盖 `docs/` 下的当前文档。当前入口：[docs/README.md](../README.md)。演进脉络见 [发展历史](./development-history.md)。
+
+## 2026-10-30 第四次归档
+
+- 删除 `docs/PLAN.md`：项目计划已停用，历史在 git 里。重构前的代码在 tag `pre-refactor`。
+- `docs/AGENT-ITERATIONS.md`（2026-10-26 后停更）移到 [2026-10/AGENT-ITERATIONS.md](./2026-10/AGENT-ITERATIONS.md)。
 
 ## 2026-10-21 第三次归档
 

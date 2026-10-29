@@ -18,7 +18,6 @@
   <strong>简体中文</strong> ·
   <a href="#宣传视频">宣传视频</a> ·
   <a href="./docs/DEVELOPMENT.md">快速开始</a> ·
-  <a href="./docs/PLAN.md">项目计划</a> ·
   <a href="./docs/PRD.md">产品需求</a> ·
   <a href="./docs/README.md">文档</a>
 </p>
@@ -341,7 +340,6 @@ OfferU 刻意不在 UI、CLI、插件和 Agent 集成之间复制业务逻辑。
 OfferU 还没有对外发布签名安装包。源码开发与内测请看：
 
 - [DEVELOPMENT.md](./docs/DEVELOPMENT.md) —— 环境与开发启动
-- [项目计划](./docs/PLAN.md) —— 每个 PR 做什么、怎么验收
 
 面向普通用户的最终路径是：
 
@@ -369,7 +367,6 @@ OfferU 用证据驱动的发布 Gate 判断能否发布，构建成功不等于�
 
 - [KNOWN_ISSUES.md](./docs/KNOWN_ISSUES.md)
 - [RELEASE_CHECKLIST.md](./docs/RELEASE_CHECKLIST.md)
-- [项目计划](./docs/PLAN.md)
 
 开发者建议检查命令：
 
@@ -404,7 +401,6 @@ OfferU 正在快速走向公开的本地优先版本。贡献前请先读：
 
 - [产品需求](./docs/PRD.md) —— 用户、范围和验收
 - [系统设计](./docs/DESIGN.md) —— 数据、工具、Agent 和撤销
-- [项目计划](./docs/PLAN.md) —— 每天计划和 PR 验收
 - [DEVELOPMENT.md](./docs/DEVELOPMENT.md) —— 开发设置
 
 请不要绕过 Operation Registry 直接做业务变更，也不要引入第二个职业事实来源。
