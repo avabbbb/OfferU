@@ -119,7 +119,7 @@ def main() -> int:
         "--repo-root",
         type=Path,
         default=Path("."),
-        help="repository root containing RELEASE_CHECKLIST.md",
+        help="repository root containing docs/RELEASE_CHECKLIST.md",
     )
     parser.add_argument("--json", action="store_true", dest="as_json")
     parser.add_argument(
@@ -128,7 +128,7 @@ def main() -> int:
         help="return a non-zero exit code unless the checklist is release-ready",
     )
     args = parser.parse_args()
-    checklist_path = (args.repo_root / "RELEASE_CHECKLIST.md").resolve()
+    checklist_path = (args.repo_root / "docs" / "RELEASE_CHECKLIST.md").resolve()
     result = audit_release_readiness(checklist_path)
     if args.as_json:
         print(json.dumps(result, ensure_ascii=False, indent=2))

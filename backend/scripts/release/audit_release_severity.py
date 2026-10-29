@@ -24,9 +24,9 @@ def _cells(line: str) -> list[str]:
 
 def audit_release_severity(root: Path) -> dict[str, Any]:
     root = root.resolve()
-    path = root / "KNOWN_ISSUES.md"
+    path = root / "docs" / "KNOWN_ISSUES.md"
     if not path.is_file():
-        raise ValueError("KNOWN_ISSUES.md is missing")
+        raise ValueError("docs/KNOWN_ISSUES.md is missing")
 
     lines = path.read_text(encoding="utf-8").splitlines()
     rows: list[dict[str, str]] = []
@@ -83,7 +83,7 @@ def audit_release_severity(root: Path) -> dict[str, Any]:
 
     return {
         "schema_version": "offeru.release_severity_audit.v1",
-        "ledger": "KNOWN_ISSUES.md",
+        "ledger": "docs/KNOWN_ISSUES.md",
         "issue_count": len(rows),
         "severity_counts": counts,
         "open_p0_p1": p0_p1,

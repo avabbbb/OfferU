@@ -1,6 +1,6 @@
 # OfferU 0.2.0 内测版 Demo
 
-状态：内测 demo（GitHub pre-release `v0.2.0`），不是公开发布版本；未重新打包 installer，按 DEVELOPMENT.md 从源码启动。
+状态：内测 demo（GitHub pre-release `v0.2.0`），不是公开发布版本；未重新打包 installer，按 docs/DEVELOPMENT.md 从源码启动。
 
 ## 包含
 

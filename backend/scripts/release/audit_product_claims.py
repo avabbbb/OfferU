@@ -12,8 +12,7 @@ from pathlib import Path
 _SURFACE_FILES = {
     "README.md",
     "README_EN.md",
-    "QUICKSTART.md",
-    "RELEASE_NOTES.md",
+    "CHANGELOG.md",
 }
 _SURFACE_SUFFIXES = {".ts", ".tsx"}
 _CLAIM_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
