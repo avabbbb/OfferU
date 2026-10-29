@@ -19,6 +19,8 @@ class RunOptions:
     reasoning_effort: str = ""
     # auto: only irreversible writes wait for the user; ask: every write does
     approval_mode: str = "auto"
+    # ids of image attachments the user sent with this message
+    image_attachments: tuple[str, ...] = ()
 
 
 _RUN_OPTIONS: ContextVar[RunOptions] = ContextVar("offeru_run_options", default=RunOptions())

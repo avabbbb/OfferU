@@ -27,6 +27,8 @@ BRANCH_SUMMARY_PREFIX = "The following is a summary of a branch that this conver
 BRANCH_SUMMARY_SUFFIX = "</summary>"
 
 _AGENT_MESSAGE_LIST_ADAPTER = TypeAdapter(list[AgentMessage])
+# Images the user attached in the composer; see app.services.agent_attachments.
+ATTACHMENT_IMAGE_PREFIX = "offeru-attachment://"
 
 
 def create_text_message(text: str, timestamp: Optional[float] = None) -> UserMessage:
@@ -93,12 +95,32 @@ def _tool_result_to_llm(message: ToolResultMessage) -> dict[str, Any]:
     return {"role": "tool", "tool_call_id": message.tool_call_id, "content": text}
 
 
+def _user_to_llm(message: UserMessage) -> dict[str, Any]:
+    # Only stored attachments become vision parts; any other image URL stays text,
+    # so a message can never make the model host fetch an arbitrary address.
+    if not any(
+        isinstance(block, ImageContent) and block.url.startswith(ATTACHMENT_IMAGE_PREFIX)
+        for block in message.content
+    ):
+        return {"role": "user", "content": _content_to_text(message.content)}
+    parts: list[dict[str, Any]] = []
+    for block in message.content:
+        if isinstance(block, TextContent) and block.text:
+            parts.append({"type": "text", "text": block.text})
+        elif isinstance(block, ImageContent):
+            if block.url.startswith(ATTACHMENT_IMAGE_PREFIX):
+                parts.append({"type": "image_url", "image_url": {"url": block.url}})
+            else:
+                parts.append({"type": "text", "text": f"[image: {block.url}]"})
+    return {"role": "user", "content": parts}
+
+
 def convert_to_llm(messages: Union[list[AgentMessage], list[dict[str, Any]]]) -> list[dict[str, Any]]:
     parsed = _AGENT_MESSAGE_LIST_ADAPTER.validate_python(messages)
     llm_messages: list[dict[str, Any]] = []
     for message in parsed:
         if isinstance(message, UserMessage):
-            llm_messages.append({"role": "user", "content": _content_to_text(message.content)})
+            llm_messages.append(_user_to_llm(message))
         elif isinstance(message, AssistantMessage):
             llm_messages.append(_assistant_to_llm(message))
         elif isinstance(message, ToolResultMessage):

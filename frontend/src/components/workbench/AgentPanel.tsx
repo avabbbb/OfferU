@@ -56,12 +56,16 @@ import Link from "next/link";
 import { agentRecovery, MODEL_SETTINGS_ROUTE } from "@/lib/agentRecovery";
 import { quickActionsForStage } from "@/lib/quickActions";
 import { AgentComposerControls, useComposerOptions } from "./AgentComposerControls";
+import { AgentAttachmentTray, AgentMessageAttachments, type SentAttachment } from "./AgentAttachmentTray";
+import { useComposerAttachments, type ComposerAttachment } from "./useComposerAttachments";
+import { AGENT_ATTACHMENT_ACCEPT, ATTACHMENT_ONLY_MESSAGE, hasDraggedFiles } from "@/lib/agentAttachments";
 
 interface PanelMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   response?: AgentResponse;
+  attachments?: SentAttachment[];
 }
 
 interface ResumeCandidate {
@@ -273,6 +277,11 @@ export function AgentPanel() {
   const [hostedError, setHostedError] = useState("");
   const [hostedRefreshKey, setHostedRefreshKey] = useState(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // 输入框附件：拖入、粘贴或点 + 号添加，选中即上传
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const dragDepthRef = useRef(0);
+  const [dragActive, setDragActive] = useState(false);
+  const composerAttachments = useComposerAttachments(agentRuntimeApi.uploadAttachment);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const turnControllersRef = useRef<Map<string, AbortController>>(new Map());
   const lastSendRef = useRef<{ content: string; at: number } | null>(null);
@@ -433,22 +442,34 @@ export function AgentPanel() {
   };
 
   const sendMessage = async (text?: string, explicitSkillId?: string) => {
-    const content = (text ?? input).trim();
-    if (!content) return;
-    if (text === undefined) setInput("");
-    await startTurn(content, explicitSkillId);
+    const typed = (text ?? input).trim();
+    const fromComposer = text === undefined;
+    // 附件还在上传时不发，免得模型看不到它们
+    if (fromComposer && composerAttachments.uploading) return;
+    const withAttachments = fromComposer && composerAttachments.readyCount > 0;
+    if (!typed && !withAttachments) return;
+    const attachments = withAttachments ? composerAttachments.takeForSend() : [];
+    if (fromComposer) setInput("");
+    await startTurn(typed || ATTACHMENT_ONLY_MESSAGE, explicitSkillId, attachments);
   };
 
   const patchTurn = (turnId: string, patch: (turn: InFlightTurn) => InFlightTurn) => {
     setInFlightTurns((current) => current.map((turn) => (turn.id === turnId ? patch(turn) : turn)));
   };
 
-  const startTurn = async (content: string, explicitSkillId?: string) => {
+  const startTurn = async (
+    content: string,
+    explicitSkillId?: string,
+    attachments: ComposerAttachment[] = [],
+  ) => {
     if (!content) return;
     // 双击 / 连按回车防重：同一段文字 800ms 内只开一轮。
     const now = Date.now();
     const last = lastSendRef.current;
-    if (last && last.content === content && now - last.at < 800) return;
+    if (last && last.content === content && now - last.at < 800) {
+      composerAttachments.restore(attachments);
+      return;
+    }
     lastSendRef.current = { content, at: now };
     parkActiveRun();
     const requestSkillId = explicitSkillId || selectedSkillId;
@@ -463,7 +484,15 @@ export function AgentPanel() {
     const isDetached = () => detachedControllersRef.current.has(controller) || controller.signal.aborted;
     let streamState = createInitialAgentStreamState();
 
-    setMessages((prev) => [...prev, { id: "user-" + turnId, role: "user", content }]);
+    const sentAttachments: SentAttachment[] = attachments.map((item) => ({
+      id: item.attachmentId,
+      name: item.name,
+      kind: item.kind,
+    }));
+    setMessages((prev) => [
+      ...prev,
+      { id: "user-" + turnId, role: "user", content, attachments: sentAttachments },
+    ]);
     setInFlightTurns((current) => [
       ...current,
       { id: turnId, progressText: "正在发送...", streamingText: "", toolStream: streamState },
@@ -479,6 +508,7 @@ export function AgentPanel() {
           llm_config_id: composerOptions.llmConfigId,
           reasoning_effort: composerOptions.reasoningEffort,
           approval_mode: composerOptions.approvalMode,
+          attachments: sentAttachments.map((item) => item.id),
         },
         (event, data) => {
           if (isDetached()) return;
@@ -531,7 +561,8 @@ export function AgentPanel() {
       if (isDetached()) return;
       if (err instanceof Error && err.name === "AbortError") return;
       setError(safeClientErrorMessage(err, "OfferU 请求失败"));
-      setInput((current) => current || content);
+      setInput((current) => current || (content === ATTACHMENT_ONLY_MESSAGE && attachments.length > 0 ? "" : content));
+      composerAttachments.restore(attachments);
     } finally {
       detachedControllersRef.current.delete(controller);
       turnControllersRef.current.delete(turnId);
@@ -1385,7 +1416,34 @@ export function AgentPanel() {
             ))}
           </div>
         )}
-        <div className="agent-composer">
+        <div
+          className={dragActive ? "agent-composer is-drag-active" : "agent-composer"}
+          data-testid="agent-composer"
+          onDragEnter={(event) => {
+            if (!hasDraggedFiles(event.dataTransfer.types)) return;
+            event.preventDefault();
+            dragDepthRef.current += 1;
+            setDragActive(true);
+          }}
+          onDragOver={(event) => {
+            if (!hasDraggedFiles(event.dataTransfer.types)) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "copy";
+          }}
+          onDragLeave={(event) => {
+            if (!hasDraggedFiles(event.dataTransfer.types)) return;
+            dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+            if (dragDepthRef.current === 0) setDragActive(false);
+          }}
+          onDrop={(event) => {
+            if (!hasDraggedFiles(event.dataTransfer.types)) return;
+            event.preventDefault();
+            dragDepthRef.current = 0;
+            setDragActive(false);
+            composerAttachments.addFiles(event.dataTransfer.files);
+          }}
+        >
+          <AgentAttachmentTray items={composerAttachments.items} onRemove={composerAttachments.remove} />
           <Textarea
             value={input}
             onValueChange={setInput}
@@ -1399,6 +1457,12 @@ export function AgentPanel() {
             variant="flat"
             className="w-full"
             classNames={agentComposerFieldClassNames}
+            onPaste={(event) => {
+              const files = Array.from(event.clipboardData.files);
+              if (files.length === 0) return;
+              event.preventDefault();
+              composerAttachments.addFiles(files);
+            }}
             onKeyDown={(event) => {
               if (slashMatches.length > 0) {
                 const count = slashMatches.length;
@@ -1425,12 +1489,34 @@ export function AgentPanel() {
             }}
           />
           <div className="agent-composer-controls">
+            <input
+              ref={attachmentInputRef}
+              type="file"
+              multiple
+              accept={AGENT_ATTACHMENT_ACCEPT}
+              className="hidden"
+              data-testid="agent-attachment-input"
+              onChange={(event) => {
+                const files = event.target.files;
+                if (files) composerAttachments.addFiles(Array.from(files));
+                event.target.value = "";
+              }}
+            />
+            <button
+              type="button"
+              aria-label="添加图片、PDF 或 PPT"
+              title="添加图片、PDF 或 PPT（也可以拖入或粘贴）"
+              onClick={() => attachmentInputRef.current?.click()}
+              className="agent-composer-attach"
+            >
+              <Plus size={16} strokeWidth={2} />
+            </button>
             <AgentComposerControls options={composerOptions} onChange={setComposerOptions} />
             <button
               type="button"
               aria-label="发送"
               onClick={() => sendMessage()}
-              disabled={!input.trim()}
+              disabled={(!input.trim() && composerAttachments.readyCount === 0) || composerAttachments.uploading}
               className="agent-composer-send"
             >
               <Send size={16} strokeWidth={2} />
@@ -1463,6 +1549,9 @@ function PanelMessageBubble({
   return (
     <div className={isUser ? "flex justify-end pl-10" : "flex justify-start"}>
       <div className={isUser ? "min-w-0 max-w-full" : "w-full min-w-0"}>
+        {isUser && message.attachments && message.attachments.length > 0 && (
+          <AgentMessageAttachments attachments={message.attachments} imageUrl={agentRuntimeApi.attachmentUrl} />
+        )}
         <div className={isUser ? "agent-msg agent-msg-user" : "agent-msg agent-msg-assistant"}>
           {isUser ? message.content : <AgentMarkdown text={message.content} />}
         </div>

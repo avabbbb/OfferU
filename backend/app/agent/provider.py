@@ -209,8 +209,10 @@ class LlmStreamProvider:
             if system_prompt:
                 llm_messages = [{"role": "system", "content": system_prompt}] + llm_messages
             from app.agents.desensitize import desensitize, restore
+            from app.services.agent_attachments import attach_images, detach_images
+            image_urls = detach_images(llm_messages)
             encoded, pii = desensitize(json.dumps(llm_messages, ensure_ascii=False))
-            llm_messages = json.loads(encoded)
+            llm_messages = attach_images(json.loads(encoded), image_urls)
             if resolved.get("api_format") == "anthropic":
                 stream = self._anthropic_chunks(client, model, llm_messages, [self._tool_to_openai(tool) for tool in tools])
                 async for event in self.stream_chunks(stream, provider=provider, model=model, cancel=cancel):
@@ -366,7 +368,9 @@ class LlmStreamProvider:
         settings = get_settings()
         client, default_model = self._client_for_settings(settings)
         model = configured_model_for_tier(tier, settings)
-        llm_messages = convert_to_llm(messages)
+        from app.services.agent_attachments import images_as_text
+
+        llm_messages = images_as_text(convert_to_llm(messages))
         if system_prompt:
             llm_messages = [{"role": "system", "content": system_prompt}] + llm_messages
         from app.agents.desensitize import desensitize, restore
@@ -403,7 +407,13 @@ class LlmStreamProvider:
                 blocks = [{"type": "tool_result", "tool_use_id": message["tool_call_id"], "content": message["content"]}]
                 role = "user"
             else:
-                blocks = [{"type": "text", "text": message["content"]}] if message.get("content") else []
+                content = message.get("content")
+                if isinstance(content, list):
+                    from app.services.agent_attachments import anthropic_blocks
+
+                    blocks = anthropic_blocks(content)
+                else:
+                    blocks = [{"type": "text", "text": content}] if content else []
                 for call in message.get("tool_calls") or []:
                     blocks.append({"type": "tool_use", "id": call["id"], "name": call["function"]["name"],
                                    "input": json.loads(call["function"]["arguments"])})

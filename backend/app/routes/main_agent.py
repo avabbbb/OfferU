@@ -5,8 +5,8 @@ import json
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Header, HTTPException, Query
-from fastapi.responses import PlainTextResponse
+from fastapi import APIRouter, File, Header, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
@@ -71,16 +71,26 @@ class PiAgentRunRequest(BaseModel):
     llm_config_id: str = Field(default="", max_length=64)
     reasoning_effort: str = Field(default="", pattern=r"^(|low|medium|high)$")
     approval_mode: str = Field(default="auto", pattern=r"^(auto|ask)$")
+    # ids returned by POST /runtime/attachments
+    attachments: list[str] = Field(default_factory=list, max_length=8)
 
 
-def _run_options(body: PiAgentRunRequest):
+def _run_options(body: PiAgentRunRequest, image_ids: tuple[str, ...] = ()):
     from app.run_options import RunOptions
 
     return RunOptions(
         llm_config_id=body.llm_config_id,
         reasoning_effort=body.reasoning_effort,
         approval_mode=body.approval_mode,
+        image_attachments=image_ids,
     )
+
+
+async def _prepare_attachments(body: PiAgentRunRequest):
+    """Join document text into the message and pick out the images; raises ValueError."""
+    from app.services.agent_attachments import prepare_message
+
+    return await asyncio.to_thread(prepare_message, body.message, list(body.attachments))
 
 
 class AgentInputAnswerRequest(BaseModel):
@@ -817,6 +827,7 @@ async def start_runtime_run(body: PiAgentRunRequest) -> dict[str, Any]:
             existing = await load_agent_run(body.run_id)
             if existing is not None:
                 return _runtime_response_from_run(existing)
+        prepared = await _prepare_attachments(body)
         previous = (
             get_conversation(body.conversation_id)
             if body.conversation_id
@@ -829,16 +840,16 @@ async def start_runtime_run(body: PiAgentRunRequest) -> dict[str, Any]:
                 "conversation_id": body.conversation_id,
                 "messages": [
                     *previous_messages,
-                    {"role": "user", "content": body.message},
+                    {"role": "user", "content": prepared.history_message},
                 ],
             },
         )
         provider = _main_agent_provider(body.runtime_provider)
         from app.run_options import use_run_options
 
-        with use_run_options(_run_options(body)):
+        with use_run_options(_run_options(body, prepared.image_ids)):
             result = await provider.start_run(
-                message=body.message,
+                message=prepared.model_message,
                 skill_id=body.skill_id,
                 conversation_id=conversation["id"],
                 task_id=str(body.task_id or ""),
@@ -872,6 +883,10 @@ async def stream_runtime_run(body: PiAgentRunRequest):
     if body.run_id and await load_agent_run(body.run_id) is not None:
         return await follow_runtime_run_events(body.run_id)
 
+    try:
+        prepared = await _prepare_attachments(body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=safe_error_message(exc))
     previous = (
         get_conversation(body.conversation_id)
         if body.conversation_id
@@ -884,7 +899,7 @@ async def stream_runtime_run(body: PiAgentRunRequest):
             "conversation_id": body.conversation_id,
             "messages": [
                 *previous_messages,
-                {"role": "user", "content": body.message},
+                {"role": "user", "content": prepared.history_message},
             ],
         },
     )
@@ -908,9 +923,9 @@ async def stream_runtime_run(body: PiAgentRunRequest):
         async def run_and_record() -> dict[str, Any]:
             from app.run_options import use_run_options
 
-            with use_run_options(_run_options(body)):
+            with use_run_options(_run_options(body, prepared.image_ids)):
                 result = await provider.start_run(
-                    message=body.message,
+                    message=prepared.model_message,
                     skill_id=body.skill_id,
                     conversation_id=conversation["id"],
                     task_id=str(body.task_id or ""),
@@ -1318,3 +1333,30 @@ async def import_memory(body: AgentMemoryImportRequest) -> dict[str, Any]:
         "import_harness_memory",
         {"content": body.content},
     )
+
+
+@runtime_router.post("/runtime/attachments")
+async def upload_agent_attachment(file: UploadFile = File(...)) -> dict[str, Any]:
+    """Store one image, PDF or PPTX the user attached in the composer."""
+    from app.services.agent_attachments import MAX_UPLOAD_BYTES, AttachmentError, save_attachment
+
+    data = await file.read(MAX_UPLOAD_BYTES + 1)
+    try:
+        stored = await asyncio.to_thread(save_attachment, file.filename or "", data)
+    except AttachmentError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return stored.public()
+
+
+@runtime_router.get("/runtime/attachments/{attachment_id}")
+def get_agent_attachment(attachment_id: str) -> FileResponse:
+    """Serve an image attachment for its thumbnail in the conversation."""
+    from app.services.agent_attachments import AttachmentError, load_attachment
+
+    try:
+        attachment, path = load_attachment(attachment_id)
+    except AttachmentError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    if attachment.kind != "image":
+        raise HTTPException(status_code=404, detail="只能预览图片附件")
+    return FileResponse(path, media_type=attachment.mime_type)

@@ -11,6 +11,7 @@ import { safeClientErrorMessage } from "./safe-error";
 import { decideAgentActionInDesktop } from "./desktop-proposal-decision";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { liteToken } from "./liteSession";
+import { parseAgentAttachment, type AgentAttachment } from "./agentAttachments";
 import type { AgentInputAnswerBody, AgentInputAnswerResult } from "./agentAsk";
 import type { components } from "./api-types.generated";
 type Schemas = components["schemas"];
@@ -1187,6 +1188,28 @@ export const agentRuntimeApi = {
     request<Record<string, any> & { available: boolean; runtime: string }>("/api/agent/runtime"),
   providerHealth: () =>
     request<{ providers: AgentProviderHealth[] }>("/api/agent/runtime/providers/health"),
+  // 输入框附件：图片交给视觉模型，PDF / PPTX 由后端读成文字
+  uploadAttachment: async (file: File): Promise<AgentAttachment> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch(API_BASE + "/api/agent/runtime/attachments", {
+      method: "POST",
+      body: formData,
+      redirect: "error",
+    });
+    const body: unknown = await res.json().catch(() => null);
+    if (!res.ok) {
+      const detail =
+        typeof body === "object" && body !== null && "detail" in body && typeof body.detail === "string"
+          ? body.detail
+          : "上传失败（" + res.status + "）";
+      throw new Error(detail);
+    }
+    const attachment = parseAgentAttachment(body);
+    if (!attachment) throw new Error("上传结果格式不对");
+    return attachment;
+  },
+  attachmentUrl: (id: string) => API_BASE + "/api/agent/runtime/attachments/" + encodeURIComponent(id),
   start: async (data: {
     message: string;
     skill_id?: string;
@@ -1196,6 +1219,7 @@ export const agentRuntimeApi = {
     llm_config_id?: string;
     reasoning_effort?: "" | "low" | "medium" | "high";
     approval_mode?: "auto" | "ask";
+    attachments?: string[];
   }, onEvent?: (event: string, data: any) => void, signal?: AbortSignal) => {
     const runId = createAgentRunId();
     const requestData = { ...data, skill_id: data.skill_id || AUTO_SKILL_ID, run_id: runId };

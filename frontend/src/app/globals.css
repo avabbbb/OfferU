@@ -1714,3 +1714,177 @@ body {
   cursor: default;
   opacity: 0.35;
 }
+
+/* Agent 输入框附件：拖入高亮、附件小卡片、消息里的附件 */
+.offeru-agent-panel .agent-composer {
+  position: relative;
+}
+
+.offeru-agent-panel .agent-composer.is-drag-active {
+  border-color: var(--primary-blue);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-blue) 18%, transparent);
+}
+
+.offeru-agent-panel .agent-composer.is-drag-active::after {
+  content: "松开即可添加图片、PDF 或 PPT";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  color: var(--primary-blue);
+  font-size: 13px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.offeru-agent-panel .agent-attachment-tray {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 8px 0;
+  list-style: none;
+}
+
+.offeru-agent-panel .agent-attachment-chip {
+  display: flex;
+  max-width: 220px;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 4px 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.offeru-agent-panel .agent-attachment-chip.is-error {
+  border-color: var(--danger, #dc2626);
+}
+
+.offeru-agent-panel .agent-attachment-thumb {
+  position: relative;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--foreground-muted);
+}
+
+.offeru-agent-panel .agent-attachment-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.offeru-agent-panel .agent-attachment-busy {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  color: var(--foreground);
+}
+
+.offeru-agent-panel .agent-attachment-meta {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.offeru-agent-panel .agent-attachment-name,
+.offeru-agent-panel .agent-attachment-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.offeru-agent-panel .agent-attachment-name {
+  font-size: 12px;
+  color: var(--foreground);
+}
+
+.offeru-agent-panel .agent-attachment-sub {
+  font-size: 10.5px;
+  color: var(--foreground-muted);
+}
+
+.offeru-agent-panel .agent-attachment-chip.is-error .agent-attachment-sub {
+  color: var(--danger, #dc2626);
+}
+
+.offeru-agent-panel .agent-attachment-remove {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: 999px;
+  color: var(--foreground-muted);
+}
+
+.offeru-agent-panel .agent-attachment-remove:hover,
+.offeru-agent-panel .agent-composer-attach:hover {
+  background: var(--surface-hover);
+  color: var(--foreground);
+}
+
+.offeru-agent-panel .agent-composer-attach {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  align-self: flex-end;
+  place-items: center;
+  border-radius: 999px;
+  color: var(--foreground-muted);
+}
+
+.offeru-agent-panel .agent-message-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.offeru-agent-panel .agent-message-image {
+  display: block;
+  width: 96px;
+  height: 96px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.offeru-agent-panel .agent-message-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.offeru-agent-panel .agent-message-file {
+  display: inline-flex;
+  max-width: 220px;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--foreground-soft);
+  font-size: 12px;
+}
+
+.offeru-agent-panel .agent-message-file span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
