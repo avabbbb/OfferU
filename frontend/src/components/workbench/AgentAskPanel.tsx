@@ -8,7 +8,7 @@
 // =============================================
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { HelpCircle, Loader2, RefreshCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, HelpCircle, Loader2, RefreshCw } from "lucide-react";
 import { agentRuntimeApi } from "@/lib/api";
 import {
   normalizeInputRequest,
@@ -93,7 +93,7 @@ export function AgentAskCard({
     return (
       <section
         aria-label={`已回答：${request.question}`}
-        className="agent-card px-3 py-2 text-[12px] text-[var(--foreground-soft)]"
+        className="agent-card px-3 py-2 text-[length:var(--agent-fs-sm)] text-[var(--foreground-soft)]"
       >
         已提交回答；OfferU 正在继续当前任务。
       </section>
@@ -108,11 +108,11 @@ export function AgentAskCard({
       <div className="flex items-start gap-1.5">
         <HelpCircle size={14} className="mt-0.5 shrink-0 text-[var(--foreground)]" />
         <div className="min-w-0">
-          <p className="text-[12.5px] font-semibold leading-5 text-[var(--foreground)]">
+          <p className="text-[length:var(--agent-fs)] font-semibold leading-snug text-[var(--foreground)]">
             {request.question}
           </p>
           {request.reason && (
-            <p className="mt-0.5 text-[10.5px] leading-4 text-[var(--foreground-muted)]">
+            <p className="mt-0.5 text-[length:var(--agent-fs-xs)] leading-normal text-[var(--foreground-muted)]">
               {request.reason}
             </p>
           )}
@@ -129,22 +129,22 @@ export function AgentAskCard({
                 : "多选"}
           </legend>
           {!isSingle && (
-            <p className="text-[10.5px] leading-4 text-[var(--foreground-muted)]">
+            <p className="text-[length:var(--agent-fs-xs)] leading-normal text-[var(--foreground-muted)]">
               可多选{maxSelections > 0 ? `，最多 ${maxSelections} 项` : ""}
               {request.min_selections > 1 ? `，至少 ${request.min_selections} 项` : ""}
             </p>
           )}
-          {options.map((option) => {
+          {options.map((option, index) => {
             const checked = selected.includes(option.option_id);
             const disabled = !checked && atMax;
             return (
               <label
                 key={option.option_id}
-                className={`agent-ask-option flex cursor-pointer items-start gap-2 rounded-md px-2 py-1 text-[12px] leading-5 transition-colors ${
+                className={"agent-ask-option flex cursor-pointer items-start gap-2 rounded-md px-2 py-1 text-[length:var(--agent-fs-sm)] leading-normal transition-colors " + (
                   checked
-                    ? "bg-[var(--surface-muted)] text-[var(--foreground)] ring-1 ring-[var(--border-strong)]"
+                    ? "bg-[var(--surface-muted)] text-[var(--foreground)]"
                     : "text-[var(--foreground-soft)] hover:bg-[var(--surface-muted)]"
-                }`}
+                )}
               >
                 <input
                   type={isSingle ? "radio" : "checkbox"}
@@ -154,19 +154,22 @@ export function AgentAskCard({
                   disabled={disabled}
                   onChange={() => chooseOption(option.option_id)}
                 />
-                <span>
-                  <span className="font-medium">{option.label}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="font-medium">
+                    {option.label}
+                  </span>
                   {option.recommended && (
-                    <span className="ml-1.5 rounded-sm border border-[var(--border)] px-1 text-[10px] text-[var(--foreground-muted)]">
+                    <span className="ml-1.5 rounded-sm border border-[var(--border)] px-1 text-[length:var(--agent-fs-xs)] text-[var(--foreground-muted)]">
                       推荐
                     </span>
                   )}
                   {option.description && (
-                    <span className="block text-[10.5px] text-[var(--foreground-muted)]">
+                    <span className="block text-[length:var(--agent-fs-xs)] text-[var(--foreground-muted)]">
                       {option.description}
                     </span>
                   )}
                 </span>
+                <span className="mt-[2px] shrink-0 rounded border border-[var(--border)] px-1 text-[length:var(--agent-fs-xs)] tabular-nums leading-tight text-[var(--foreground-muted)]">{index + 1}</span>
               </label>
             );
           })}
@@ -180,12 +183,12 @@ export function AgentAskCard({
           onChange={(event) => setFreeText(event.target.value)}
           rows={2}
           placeholder={options.length > 0 ? "其他 / 补充说明（可选）" : "输入你的回答…"}
-          className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-[12px] leading-5 text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--foreground)]"
+          className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-[length:var(--agent-fs-sm)] leading-normal text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--foreground)]"
         />
       )}
 
       {error && (
-        <p role="alert" className="text-[11px] leading-4 text-[var(--primary-red)]">
+        <p role="alert" className="text-[length:var(--agent-fs-xs)] leading-normal text-[var(--primary-red)]">
           {error}
         </p>
       )}
@@ -197,9 +200,9 @@ export function AgentAskCard({
             aria-label={`跳过：${request.question}`}
             disabled={submitting}
             onClick={() => void submit(true)}
-            className="text-[11px] text-[var(--foreground-muted)] underline-offset-2 hover:text-[var(--foreground)] hover:underline disabled:opacity-50"
+            className="text-[length:var(--agent-fs-xs)] text-[var(--foreground-muted)] underline-offset-2 hover:text-[var(--foreground)] hover:underline disabled:opacity-50"
           >
-            跳过，让 OfferU 按推荐继续
+            跳过
           </button>
         )}
         <button
@@ -207,7 +210,7 @@ export function AgentAskCard({
           aria-label={`提交回答：${request.question}`}
           disabled={!canSubmit}
           onClick={() => void submit()}
-          className="bauhaus-button bauhaus-button-red !min-h-7 !justify-center !px-2.5 !py-0.5 !text-[11px] disabled:opacity-50"
+          className="inline-flex items-center gap-1 rounded-md bg-[var(--foreground)] px-2.5 py-1 text-[length:var(--agent-fs-xs)] font-medium text-[var(--surface)] disabled:opacity-40"
         >
           {submitting ? <Loader2 size={12} className="animate-spin" /> : null}
           提交回答
@@ -233,6 +236,8 @@ export function AgentAskPanel({
 }) {
   const [requests, setRequests] = useState<AgentInputRequestView[]>([]);
   const [error, setError] = useState("");
+  // Notion 式：多个待答问题一次只显示一个，用 1/N 翻页。
+  const [page, setPage] = useState(0);
   const loadingRef = useRef(false);
   const mountedRef = useRef(false);
   const onPendingChangeRef = useRef(onPendingChange);
@@ -280,29 +285,60 @@ export function AgentAskPanel({
 
   if (requests.length === 0 && !error) return null;
 
+  const index = Math.min(page, Math.max(requests.length - 1, 0));
+  const current = requests[index];
+  const pagerButton = "rounded-md p-1 text-[var(--foreground-muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)] disabled:opacity-40 disabled:hover:bg-transparent";
+
   return (
     <div className="agent-bar space-y-1.5 border-t border-[var(--border)] px-3.5 py-2.5">
-      <div className="flex items-center justify-between">
-        <p className="text-[11px] font-semibold text-[var(--foreground)]">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[length:var(--agent-fs-xs)] font-semibold text-[var(--foreground)]">
           助手需要你确认偏好后继续
         </p>
-        <button
-          type="button"
-          aria-label="刷新待回答问题"
-          onClick={() => void load(false)}
-          className="rounded-md p-1 text-[var(--foreground-muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
-        >
-          <RefreshCw size={12} />
-        </button>
+        <div className="flex shrink-0 items-center gap-0.5">
+          {requests.length > 1 && (
+            <>
+              <button
+                type="button"
+                aria-label="上一个问题"
+                disabled={index === 0}
+                onClick={() => setPage(index - 1)}
+                className={pagerButton}
+              >
+                <ChevronLeft size={12} />
+              </button>
+              <span className="min-w-[2.5em] text-center text-[length:var(--agent-fs-xs)] tabular-nums text-[var(--foreground-muted)]">
+                {index + 1}/{requests.length}
+              </span>
+              <button
+                type="button"
+                aria-label="下一个问题"
+                disabled={index >= requests.length - 1}
+                onClick={() => setPage(index + 1)}
+                className={pagerButton}
+              >
+                <ChevronRight size={12} />
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            aria-label="刷新待回答问题"
+            onClick={() => void load(false)}
+            className={pagerButton}
+          >
+            <RefreshCw size={12} />
+          </button>
+        </div>
       </div>
       {error && (
-        <p role="alert" className="rounded-md border border-[var(--status-blush)] bg-[var(--status-blush)]/40 px-2 py-1 text-[11px] text-[var(--primary-red)]">
+        <p role="alert" className="rounded-md border border-[var(--status-blush)] bg-[var(--status-blush)]/40 px-2 py-1 text-[length:var(--agent-fs-xs)] text-[var(--primary-red)]">
           {error}
         </p>
       )}
-      {requests.map((request) => (
-        <AgentAskCard key={request.request_id} request={request} runId={runId} onAnswered={onAnswered} />
-      ))}
+      {current && (
+        <AgentAskCard key={current.request_id} request={current} runId={runId} onAnswered={onAnswered} />
+      )}
     </div>
   );
 }

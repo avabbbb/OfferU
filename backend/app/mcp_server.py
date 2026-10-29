@@ -14,6 +14,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.types import TextContent, Tool as MCPTool
 
 from app.core.tools import TOOLS, call
+from app.services import agent_board
 
 HAS_MCP_SERVER = True
 INSTRUCTIONS = (
@@ -28,13 +29,22 @@ class OfferUMCP(FastMCP):
         return [MCPTool(name=t.name, description=t.description, inputSchema=t.input.model_json_schema()) for t in TOOLS.values()]
 
     async def call_tool(self, name: str, arguments: dict[str, Any]):  # type: ignore[override]
-        client = None
+        name_from_handshake = ""
+        client = ""
         try:
-            client = self.get_context().session.client_params.clientInfo.name  # type: ignore[union-attr]
-        except Exception:  # noqa: BLE001 - client info is optional
-            pass
+            name_from_handshake = client = self.get_context().session.client_params.clientInfo.name  # type: ignore[union-attr]
+        except Exception:  # noqa: BLE001 - stateless HTTP has no initialize handshake
+            try:
+                client = self.get_context().request_context.request.headers.get("user-agent", "")  # type: ignore[union-attr]
+            except Exception:  # noqa: BLE001 - stdio has no HTTP request
+                pass
+
+        def run() -> Any:
+            agent_board.record_client_call(client)
+            return call(name, arguments, actor=name_from_handshake or "agent")
+
         try:
-            result = await anyio.to_thread.run_sync(lambda: call(name, arguments, actor=client or "agent"))
+            result = await anyio.to_thread.run_sync(run)
         except Exception as exc:  # noqa: BLE001 - tool errors go back to the agent as text
             return [TextContent(type="text", text=f"错误：{exc}")]
         return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False, default=str))]

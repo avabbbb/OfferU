@@ -126,17 +126,63 @@ def connect() -> int:
     return 0
 
 
+AGENT_ACTIONS = ("list", "add", "edit", "remove", "hide", "show", "connect", "check", "launch", "memory-export", "memory-done")
+
+
+def agent(args: argparse.Namespace) -> int:
+    import json
+
+    from app.services import agent_board as board
+
+    fields = {
+        key: value
+        for key, value in (
+            ("display_name", args.name),
+            ("executable", args.executable),
+            ("skill_root", args.skill_root),
+            ("memory_file", args.memory_file),
+        )
+        if value is not None
+    }
+    actions = {
+        "list": lambda agent_id: board.list_board(),
+        "add": lambda agent_id: board.add_custom_agent({"id": agent_id, **fields}),
+        "edit": lambda agent_id: board.update_custom_agent(agent_id, fields),
+        "remove": board.remove_custom_agent,
+        "hide": lambda agent_id: board.set_hidden(agent_id, True),
+        "show": lambda agent_id: board.set_hidden(agent_id, False),
+        "connect": lambda agent_id: board.connect_agent(agent_id, args.mode),
+        "check": board.check_agent,
+        "launch": board.launch_agent,
+        "memory-export": board.export_memory_for_agent,
+        "memory-done": lambda agent_id: board.mark_memory_imported(agent_id, args.target or ""),
+    }
+    try:
+        if args.action != "list" and not args.agent_id:
+            raise ValueError("需要 Agent id。先运行 offeru agent list 查看")
+        result = actions[args.action](args.agent_id)
+    except ValueError as exc:
+        print(json.dumps({"error": str(exc)}, ensure_ascii=False))
+        return 1
+    print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+    return 0
+
+
 def tool(name: str | None, raw: str) -> int:
     import json
 
     from app.core.tools import TOOLS, call
+    from app.services.agent_board import record_client_call
 
     if not name:
         for item in TOOLS.values():
             print(f"{item.name}: {item.description}")
         return 0
+    actor = os.environ.get("OFFERU_ACTOR")
+    if actor:
+        record_client_call(actor)
     try:
-        result = call(name, json.loads(raw or "{}"), actor=os.environ.get("OFFERU_ACTOR") or "agent")
+        result = call(name, json.loads(raw or "{}"), actor=actor or "agent")
     except Exception as exc:  # noqa: BLE001 - shown to the agent as-is
         print(json.dumps({"error": str(exc)}, ensure_ascii=False))
         return 1
@@ -151,6 +197,15 @@ def main(argv: list[str] | None = None) -> int:
     start_parser = sub.add_parser("start", help="启动 OfferU 并在浏览器打开工作台")
     start_parser.add_argument("--no-browser", action="store_true", help="只启动，不打开浏览器")
     sub.add_parser("connect", help="把 OfferU Skill 装进本机的 Agent（Codex、Claude Code、DSH 等）")
+    agent_parser = sub.add_parser("agent", help="管理接入 OfferU 的 Agent：list / add / edit / remove / hide / show / connect / check / launch / memory-export / memory-done")
+    agent_parser.add_argument("action", choices=AGENT_ACTIONS)
+    agent_parser.add_argument("agent_id", nargs="?", default="")
+    agent_parser.add_argument("--name", help="显示名称（add / edit）")
+    agent_parser.add_argument("--executable", help="启动命令名，用于检测是否安装和打开对话（add / edit）")
+    agent_parser.add_argument("--skill-root", help="Agent 的 Skill 目录，需在用户目录下（add / edit）")
+    agent_parser.add_argument("--memory-file", help="Agent 的记忆文件，可选（add / edit）")
+    agent_parser.add_argument("--mode", choices=("install", "update", "repair"), default="install", help="connect 的方式")
+    agent_parser.add_argument("--target", help="memory-done：记忆写到了哪里")
     tool_parser = sub.add_parser("tool", help="调用一个 OfferU 工具：offeru tool overview / offeru tool save '{\"type\":\"job\",...}'")
     tool_parser.add_argument("name", nargs="?")
     tool_parser.add_argument("args", nargs="?", default="{}", help="JSON 参数")
@@ -173,6 +228,8 @@ def main(argv: list[str] | None = None) -> int:
         return cli_main(args.cli_args)
     if args.command == "connect":
         return connect()
+    if args.command == "agent":
+        return agent(args)
     if args.command == "start":
         return start(open_browser=not args.no_browser)
     parser.print_help()

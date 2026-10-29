@@ -241,7 +241,14 @@ class EmbeddedAgentWorker:
         if self._prompt_lock.locked():
             raise EmbeddedAgentWorkerError("A model turn is already running")
         async with self._prompt_lock:
-            self._messages.append(create_text_message(message))
+            from app.agent.types import ImageContent
+            from app.run_options import current_run_options
+            from app.services.agent_attachments import image_ref
+
+            image_ids = current_run_options().image_attachments
+            user_message = create_text_message(message)
+            user_message.content.extend(ImageContent(url=image_ref(image_id)) for image_id in image_ids)
+            self._messages.append(user_message)
             self._save()
             tools = [LoopTool(name=item["name"], description=item.get("description", ""),
                 parameters=item.get("input_schema") or {"type": "object", "properties": {}},
@@ -270,7 +277,13 @@ class EmbeddedAgentWorker:
                 result = await asyncio.wait_for(self._task, timeout=timeout)
                 if result.stop_reason in {"error", "hard_loop_limit", "aborted"}:
                     errors = [m.error_message for m in result.messages if isinstance(m, AssistantMessage) and m.error_message]
-                    raise EmbeddedAgentWorkerError(safe_error_message(errors[-1] if errors else result.stop_reason))
+                    detail = safe_error_message(errors[-1] if errors else result.stop_reason)
+                    if image_ids and result.stop_reason == "error":
+                        detail = (
+                            "当前模型可能不支持图片输入，请换一个支持视觉的模型，"
+                            f"或去掉图片后重试。模型返回：{detail}"
+                        )
+                    raise EmbeddedAgentWorkerError(detail)
                 assistant = next((m for m in reversed(result.messages) if isinstance(m, AssistantMessage)), None)
                 text = "".join(block.text for block in assistant.content if isinstance(block, TextContent)) if assistant else ""
                 return {"assistant_message": text, "stop_reason": result.stop_reason}

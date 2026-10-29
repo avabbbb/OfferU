@@ -139,6 +139,24 @@ For a consumer Agent, use only its officially supported and actually connected t
 
 Do not change Agent account/login, model, credentials, proxy or unrelated settings. `offeru connect` installs only the OfferU-owned Skill and never overwrites another Skill. Start a fresh Agent session if required by host discovery.
 
+## Connect this Agent: setup, reconnect or bring OfferU memory
+
+Decide the case from evidence, never by guessing, and tell the user which one applies:
+
+1. Setup (first use): the `offeru` command is not found. Follow "First run" above. After `offeru connect`, ask whether to import the user's existing Agent memory or notes, then select `profile_onboarding` to build the first profile with the user.
+2. Reconnect: `offeru agent list` shows this Agent. Run `offeru agent connect <id>` (add `--mode update` when its `skill_status` is `OUTDATED`, `--mode repair` when `ERROR`), then `offeru agent check <id>`. Start a fresh session if the host needs it to discover the Skill.
+3. New or migrated Agent for a long-time OfferU user: do case 2, then, if `doctor` shows an existing profile and this Agent's `memory_status` is `none`, run `offeru agent memory-export <id>`. Show the user what it contains, write it into this Agent's own memory only after they agree, then run `offeru agent memory-done <id> --target <where you wrote it>`.
+
+`offeru agent` only installs, updates or repairs the OfferU Skill and exports OfferU memory. It never runs your commands or edits your settings; writing your own memory stays your job and needs the user's consent.
+
+## Adapting an Agent OfferU does not list yet
+
+When `offeru agent list` has no row for this Agent:
+
+1. Find this Agent's user-level Skill folder and, if it has one, its memory file, from its own documentation or configuration. Ask the user when unsure; do not guess paths.
+2. Register it: `offeru agent add <id> --name "<display name>" --skill-root <absolute skill folder> --executable <command name> --memory-file <absolute path>`. The id is lowercase letters, digits, `-` or `_`; the Skill folder must be inside the user's home directory; leave out options you do not know.
+3. Run `offeru agent connect <id>`, start a fresh session, then `offeru agent check <id>`. The Agent now appears on the OfferU workbench board, where the user can edit, hide or remove it.
+
 ## Start every task
 
 ```text
@@ -148,7 +166,7 @@ Do not change Agent account/login, model, credentials, proxy or unrelated settin
 
 Read `skill_registry.skills` from the compact manifest, choose one Skill, then run `<offeru-cli> manifest --skill <skill-id> --pretty`. Inspect each selected Operation with `<offeru-cli> schema <operation> --pretty` before calling it. MCP/Connector hosts use the corresponding authenticated catalog/schema/invoke tools; transport does not change permissions.
 
-If `tool_contract.connection_verification` contains a pending challenge for this connection, first select `connection_bootstrap` and read `get_current_view`, then select `connection_probe` and call `get_agent_connection_nonce` with the supplied `provider_id` and `challenge_id`. Return the readback and wait; this check does not authorize reading Profile or launching a career task. The host's brand is irrelevant to this contract.
+If `tool_contract.connection_verification` contains a pending challenge for this connection, first select `connection_bootstrap` and read `get_current_view`, then select `connection_probe` and call `get_agent_connection_nonce` with the supplied `provider_id` and `challenge_id`. Also pass `session_hint`: a short label for this conversation, such as the working directory or session name, so the OfferU Agent board can show which conversation connected; never put career data or credentials in it. Return the readback and wait; this check does not authorize reading Profile or launching a career task. The host's brand is irrelevant to this contract.
 
 ## Where the user is and what to do next
 
@@ -196,7 +214,7 @@ OfferU is the Career OS state/tool authority, not the exclusive career-methodolo
 
 When the OfferU workbench requests a bootstrap readback, select the live `connection_bootstrap` Skill, inspect the `get_current_view` schema, and execute that read-only Operation once. Report only the current page and explicit selection, then wait. This bootstrap read does not authorize reading other career data.
 
-When OfferU asks for integration verification, select the live `connection_probe` Skill, inspect `get_agent_connection_nonce`, execute it with the supplied `provider_id` and `challenge_id`, and return the nonce unchanged. Never read challenge storage directly or guess a nonce.
+When OfferU asks for integration verification, select the live `connection_probe` Skill, inspect `get_agent_connection_nonce`, execute it with the supplied `provider_id` and `challenge_id` plus a short `session_hint` naming this conversation (working directory or session name, no career data or credentials), and return the nonce unchanged. Never read challenge storage directly or guess a nonce.
 
 ## Control rules
 
@@ -231,7 +249,7 @@ Start every task by running:
 
 Resolve Skill IDs and aliases from skill_registry.skills, then fetch one Skill with <offeru-cli> manifest --skill <skill-id> --pretty. Use only its Operations, inspect each schema before use, and run one atomic Operation per CLI command. Each schema's interaction_tier decides the path: auto reads and undoable writes execute immediately and can be undone from the OfferU timeline; confirm actions return executed: false and wait for the user in the OfferU workbench, so tell the user and carry on. Never execute the CLI confirm command yourself.
 
-When the Tool Contract advertises connection_verification, read get_current_view through connection_bootstrap, then use connection_probe to read get_agent_connection_nonce with the supplied challenge. Return the readback and wait without reading Profile.
+When the Tool Contract advertises connection_verification, read get_current_view through connection_bootstrap, then use connection_probe to read get_agent_connection_nonce with the supplied challenge and a short session_hint naming this conversation (working directory or session name, no career data or credentials). Return the readback and wait without reading Profile.
 
 {INTERACTION_PROTOCOL}
 
@@ -264,7 +282,7 @@ You are the OfferU operator subagent. Use the runtime-bound OfferU Skill install
 
 Start with `<offeru-cli> doctor --pretty` and `<offeru-cli> manifest --pretty`. Choose one Skill from `skill_registry.skills`, fetch it with `<offeru-cli> manifest --skill <skill-id> --pretty`, and inspect each selected Operation with `<offeru-cli> schema <operation> --pretty` before use.
 
-When the Tool Contract advertises connection_verification, read get_current_view through connection_bootstrap, then use connection_probe to read get_agent_connection_nonce with the supplied challenge. Return the readback to the parent and wait without reading Profile.
+When the Tool Contract advertises connection_verification, read get_current_view through connection_bootstrap, then use connection_probe to read get_agent_connection_nonce with the supplied challenge and a short session_hint naming this conversation (working directory or session name, no career data or credentials). Return the readback to the parent and wait without reading Profile.
 
 {INTERACTION_PROTOCOL}
 

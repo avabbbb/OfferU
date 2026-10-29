@@ -111,6 +111,16 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 
 三个入口最后都调用 `tools.call(name, args, actor=)`，没有各自的业务逻辑。
 
+### 7.1 Agent 看板（设置 > 我的 Agent）
+
+- 一行一个 Agent：内置宿主（codex / claude / opencode / pi / omp / gemini / codebuddy / dsh）加使用者自己添加的。数据在数据目录的 agent_board.json，字段 custom / hidden / memory / checks / calls。
+- 在线 = 正在运行 且 最近 10 分钟内有对话调用过 OfferU。Skill 文件在磁盘上、旧的 nonce 回读都不算。
+  - 正在运行：每次列看板扫一次进程表（Windows 用 Get-CimInstance Win32_Process，其他系统用 ps），缓存 5 秒；命令行按空白、斜杠、引号切成词，匹配内置表里的名字（如 gemini-cli、oh-my-pi），自定义 Agent 匹配 id 和启动命令名。
+  - 调用过：MCP 取客户端名（无状态 HTTP 取 User-Agent），命令行取 OFFERU_ACTOR，映射到看板上的 Agent 后记一条 calls（时间、客户端、对话提示、thread）。没有对话提示的普通调用同一个 Agent 30 秒最多写一次；记账失败不影响工具调用。
+- 摘要行（在线 · 运行中 · Skill 已安装 · 需处理）由前端按当前显示的行计算，所以和看到的行永远一致；后端不返回汇总。
+- 打开对话：POST /api/agent-board/{id}/launch，和确认动作一样要工作台的 Authorization，在用户目录下开一个新终端窗口运行 Agent 的交互式 CLI。命令只来自内置表或自定义 Agent 保存的裸命令名，从不来自请求。命令行对应 offeru agent launch <id>。
+- 看板不改 Agent 的设置或记忆文件。
+
 ## 8. 内置 Agent（PR3）
 
 - 设置里填 OpenAI 兼容的 base_url、key、模型名，存在本机配置文件里。
@@ -132,7 +142,24 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 - Vite + React + HashRouter，`lib/core.ts` 提供 `tool()`、`useTool()`（SWR）、`write()`（写完全局刷新）。页面只调工具，不调其他接口。
 - 页面：今天 `/`、岗位 `/jobs`、岗位详情 `/jobs/:id`、简历 `/resume/:id?`、档案 `/profile`（和简历同一个导航项，两个标签）、面试 `/interview`、设置 `/settings`。
 - 共用组件：EventList、RecentChanges、ChatDoc（PR3）、CommandK（PR3）。简历编辑器是 TipTap 纸面编辑（Typora 式：光标所在行显示原文，其余按 PDF 排版），存的仍是 Markdown；「源码」切到 textarea。
-- 视觉：黑白灰，13px 正文，不用徽章、统计卡、彩色按钮、网格背景。
+- 视觉：黑白灰；字号和间距弹性适配不同设备（字号走 CSS 变量 + clamp()，正文约 13–15px，间距用 em / rem）；不用徽章、统计卡、彩色按钮、网格背景。
+
+### 10.1 Agent 侧栏组件规范
+
+先定层级，再谈装饰。每个元素先归到一层，层级只靠字号、字重、颜色和留白区分；边框、阴影、圆角只用来表达 L4 容器，不用来制造层级。
+
+| 层 | 元素 | 字号 | 字重 | 颜色 |
+| --- | --- | --- | --- | --- |
+| L1 主内容 | Agent 回复正文、用户消息、提问卡的问题 | --agent-fs | 400（提问卡问题 600） | --foreground |
+| L2 次要信息 | 对话标题、工具摘要行（已执行 N 步）、工具步骤、提问选项、输入框占位符 | --agent-fs-sm（对话标题用 --agent-fs 500） | 400 | --foreground-muted |
+| L3 辅助控件 | 图标按钮、模型按钮、步骤状态（完成）、步数和秒数、历史列表时间 | --agent-fs-xs | 400 | --foreground-faint，悬停变 --foreground-muted 加 --surface-muted 底 |
+| L4 容器 | 侧栏、输入框、提问卡、历史浮层、用户消息气泡 | — | — | 只用底色和阴影表达 |
+
+- 降一层至少同时变颜色，再加字号或字重之一；同层元素不能只靠颜色区分。正文只用三种文字色：--foreground、--foreground-muted、--foreground-faint，L3 不放必须读的信息。
+- 留白档位只有 4 / 8 / 12 / 16 / 24px（0.25 / 0.5 / 0.75 / 1 / 1.5rem）。组内用 8，组间用 16，区块之间用 24。顶栏、消息区、输入框外侧共用同一水平边距 12px，所有左边缘对齐。
+- 每个视图最多一层带边框的容器。工具步骤之间不画分隔线，用 4px 间距和缩进表达从属。
+- 阴影只给浮起的 L4：侧栏左缘柔和阴影（不画平直边线），输入框和提问卡用多层柔和阴影（0 0 0 1px + 0 2px 8px + 大半径淡阴影），历史浮层更深一档。圆角：输入框 16px，其他容器 12px，行和工具按钮 8px，发送按钮 14px。
+- 输入框按 Flovart 结构：卡片 16px 圆角、8px 内边距、最小高 148px，多层柔和阴影浮起；上面无边框文本区（13px / 22px 行高），下面一行控件：左侧 28px 高的图标工具按钮（模型等），右侧 40px、14px 圆角的深色发送按钮，底部对齐。
 
 ## 11. 浏览器插件（PR4，第四期）
 

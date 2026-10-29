@@ -18,7 +18,6 @@ import {
   ClipboardCheck,
   ChevronDown,
   ChevronUp,
-  History,
   Download,
   Loader2,
   Plus,
@@ -49,7 +48,6 @@ import {
 } from "@/lib/api";
 import { AGENT_COMPOSE_EVENT, drainAgentCompose } from "@/lib/agentCompose";
 import { presentAgentToolCall } from "@/lib/agentToolPresentation";
-import { bauhausFieldClassNames } from "@/lib/bauhaus";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { AgentConnectionStatus } from "./AgentConnectionPanel";
 import { ExternalUrlLink } from "@/components/ExternalUrlLink";
@@ -57,12 +55,17 @@ import { SHOWCASE } from "@/lib/showcase";
 import Link from "next/link";
 import { agentRecovery, MODEL_SETTINGS_ROUTE } from "@/lib/agentRecovery";
 import { quickActionsForStage } from "@/lib/quickActions";
+import { AgentComposerControls, useComposerOptions } from "./AgentComposerControls";
+import { AgentAttachmentTray, AgentMessageAttachments, type SentAttachment } from "./AgentAttachmentTray";
+import { useComposerAttachments, type ComposerAttachment } from "./useComposerAttachments";
+import { AGENT_ATTACHMENT_ACCEPT, ATTACHMENT_ONLY_MESSAGE, hasDraggedFiles } from "@/lib/agentAttachments";
 
 interface PanelMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   response?: AgentResponse;
+  attachments?: SentAttachment[];
 }
 
 interface ResumeCandidate {
@@ -113,6 +116,11 @@ const HOSTED_STATUS_LABELS: Record<string, string> = {
 };
 
 const HOSTED_ACTIVE_STATUSES = new Set(["created", "starting", "running"]);
+
+const agentComposerFieldClassNames = {
+  inputWrapper: "!min-h-0 !border-0 !bg-transparent !px-1.5 !py-1 !shadow-none",
+  input: "!text-[13px] !leading-[22px] !outline-0 focus-visible:!outline-0 placeholder:!text-[var(--foreground-faint)]",
+};
 
 function executorLabel(executorId: string) {
   return executorId
@@ -256,6 +264,7 @@ export function AgentPanel() {
   const [activeRun, setActiveRun] = useState<AgentRunRecord | null>(null);
   const [interruptedRunId, setInterruptedRunId] = useState<string | null>(null);
   const [selectedSkillId, setSelectedSkillId] = useState<string>(AUTO_SKILL_ID);
+  const [composerOptions, setComposerOptions] = useComposerOptions();
   const [skills, setSkills] = useState<AgentSkill[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [conversations, setConversations] = useState<AgentConversationSummary[]>([]);
@@ -268,6 +277,11 @@ export function AgentPanel() {
   const [hostedError, setHostedError] = useState("");
   const [hostedRefreshKey, setHostedRefreshKey] = useState(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // 输入框附件：拖入、粘贴或点 + 号添加，选中即上传
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const dragDepthRef = useRef(0);
+  const [dragActive, setDragActive] = useState(false);
+  const composerAttachments = useComposerAttachments(agentRuntimeApi.uploadAttachment);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const turnControllersRef = useRef<Map<string, AbortController>>(new Map());
   const lastSendRef = useRef<{ content: string; at: number } | null>(null);
@@ -428,22 +442,34 @@ export function AgentPanel() {
   };
 
   const sendMessage = async (text?: string, explicitSkillId?: string) => {
-    const content = (text ?? input).trim();
-    if (!content) return;
-    if (text === undefined) setInput("");
-    await startTurn(content, explicitSkillId);
+    const typed = (text ?? input).trim();
+    const fromComposer = text === undefined;
+    // 附件还在上传时不发，免得模型看不到它们
+    if (fromComposer && composerAttachments.uploading) return;
+    const withAttachments = fromComposer && composerAttachments.readyCount > 0;
+    if (!typed && !withAttachments) return;
+    const attachments = withAttachments ? composerAttachments.takeForSend() : [];
+    if (fromComposer) setInput("");
+    await startTurn(typed || ATTACHMENT_ONLY_MESSAGE, explicitSkillId, attachments);
   };
 
   const patchTurn = (turnId: string, patch: (turn: InFlightTurn) => InFlightTurn) => {
     setInFlightTurns((current) => current.map((turn) => (turn.id === turnId ? patch(turn) : turn)));
   };
 
-  const startTurn = async (content: string, explicitSkillId?: string) => {
+  const startTurn = async (
+    content: string,
+    explicitSkillId?: string,
+    attachments: ComposerAttachment[] = [],
+  ) => {
     if (!content) return;
     // 双击 / 连按回车防重：同一段文字 800ms 内只开一轮。
     const now = Date.now();
     const last = lastSendRef.current;
-    if (last && last.content === content && now - last.at < 800) return;
+    if (last && last.content === content && now - last.at < 800) {
+      composerAttachments.restore(attachments);
+      return;
+    }
     lastSendRef.current = { content, at: now };
     parkActiveRun();
     const requestSkillId = explicitSkillId || selectedSkillId;
@@ -458,7 +484,15 @@ export function AgentPanel() {
     const isDetached = () => detachedControllersRef.current.has(controller) || controller.signal.aborted;
     let streamState = createInitialAgentStreamState();
 
-    setMessages((prev) => [...prev, { id: "user-" + turnId, role: "user", content }]);
+    const sentAttachments: SentAttachment[] = attachments.map((item) => ({
+      id: item.attachmentId,
+      name: item.name,
+      kind: item.kind,
+    }));
+    setMessages((prev) => [
+      ...prev,
+      { id: "user-" + turnId, role: "user", content, attachments: sentAttachments },
+    ]);
     setInFlightTurns((current) => [
       ...current,
       { id: turnId, progressText: "正在发送...", streamingText: "", toolStream: streamState },
@@ -471,6 +505,10 @@ export function AgentPanel() {
           message: content,
           skill_id: requestSkillId,
           conversation_id: currentConversationId,
+          llm_config_id: composerOptions.llmConfigId,
+          reasoning_effort: composerOptions.reasoningEffort,
+          approval_mode: composerOptions.approvalMode,
+          attachments: sentAttachments.map((item) => item.id),
         },
         (event, data) => {
           if (isDetached()) return;
@@ -523,7 +561,8 @@ export function AgentPanel() {
       if (isDetached()) return;
       if (err instanceof Error && err.name === "AbortError") return;
       setError(safeClientErrorMessage(err, "OfferU 请求失败"));
-      setInput((current) => current || content);
+      setInput((current) => current || (content === ATTACHMENT_ONLY_MESSAGE && attachments.length > 0 ? "" : content));
+      composerAttachments.restore(attachments);
     } finally {
       detachedControllersRef.current.delete(controller);
       turnControllersRef.current.delete(turnId);
@@ -622,6 +661,7 @@ export function AgentPanel() {
           id: `${conversation.id}-${index}`,
           role: message.role,
           content: message.content,
+          attachments: message.role === "user" ? message.attachments : undefined,
         }))
       );
       const runResult = await agentRuntimeApi.runs({
@@ -913,15 +953,18 @@ export function AgentPanel() {
 
   return (
     <div className="offeru-agent-panel flex h-full min-h-0 flex-col">
-      <div className="agent-bar flex items-center justify-between gap-2 border-b border-[var(--border)] px-3 py-1.5">
+      <div className="agent-bar flex items-center justify-between gap-2 px-3 py-2">
         <button
           type="button"
           onClick={() => setHistoryOpen((value) => !value)}
-          className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-[12.5px] font-medium text-[var(--foreground)] transition-colors duration-[var(--dur-quick)] hover:bg-[var(--surface-muted)]"
+          className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-[length:var(--agent-fs-sm)] font-medium text-[var(--foreground)] transition-colors duration-[var(--dur-quick)] hover:bg-[var(--surface-muted)]"
           title="历史对话"
         >
-          <History size={13} className="shrink-0 text-[var(--foreground-muted)]" />
           <span className="truncate">{conversationTitle || "新对话"}</span>
+          <ChevronDown
+            size={13}
+            className={"shrink-0 text-[var(--foreground-muted)] transition-transform duration-[var(--dur-quick)] " + (historyOpen ? "rotate-180" : "")}
+          />
         </button>
         <div className="flex shrink-0 items-center gap-0.5">
           {hostedSessions.length > 0 && (
@@ -935,13 +978,6 @@ export function AgentPanel() {
               <Activity size={13} />
             </button>
           )}
-          <Link
-            href={MODEL_SETTINGS_ROUTE}
-            title="模型设置"
-            className="rounded-md px-1.5 py-1 text-[11px] text-[var(--foreground-muted)] transition-colors duration-[var(--dur-quick)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
-          >
-            模型
-          </Link>
           <button
             type="button"
             onClick={startNewConversation}
@@ -955,9 +991,11 @@ export function AgentPanel() {
       </div>
 
       {historyOpen && (
-        <div className="border-b border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2.5">
+        <>
+        <div className="fixed inset-0 z-20" aria-hidden onClick={() => setHistoryOpen(false)} />
+        <div className="absolute left-2 right-2 top-11 z-30 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-2 shadow-[0_12px_32px_rgba(31,31,29,0.14)]">
           <div className="mb-2 flex items-center justify-between">
-            <p className="text-[12px] font-semibold text-[var(--foreground)]">历史对话</p>
+            <p className="px-1 text-[length:var(--agent-fs-xs)] font-medium text-[var(--foreground-muted)]">历史对话</p>
             <div className="flex items-center gap-0.5">
               <input
                 ref={fileInputRef}
@@ -1006,7 +1044,7 @@ export function AgentPanel() {
                 key={conversation.id}
                 className={`flex items-center gap-1 rounded-md px-2 py-1.5 transition-colors duration-[var(--dur-quick)] ${
                   conversation.id === conversationId
-                    ? "bg-[var(--surface)] text-[var(--foreground)]"
+                    ? "bg-[var(--surface-muted)] text-[var(--foreground)]"
                     : "hover:bg-[var(--surface-hover)]"
                 }`}
               >
@@ -1034,6 +1072,7 @@ export function AgentPanel() {
             ))}
           </div>
         </div>
+        </>
       )}
 
       {resumeCandidate && !conversationId && (
@@ -1225,7 +1264,7 @@ export function AgentPanel() {
             <PanelMessageBubble key={message.id} message={message} onSuggestion={sendMessage} />
           ))}
           {inFlightTurns.map((turn) => (
-            <div key={turn.id} data-testid="agent-inflight-turn" className="space-y-2">
+            <div key={turn.id} id={"agent-turn-" + turn.id} data-testid="agent-inflight-turn" className="space-y-2">
               {turn.streamingText && (
                 <div className="agent-msg agent-msg-assistant">
                   <AgentMarkdown text={turn.streamingText} />
@@ -1285,7 +1324,7 @@ export function AgentPanel() {
           </Button>
         </div>
       )}
-      {activeRunId && !loading && (
+      {activeRunId && (
         <div data-testid="agent-ask-panel">
           <AgentAskPanel
           runId={activeRunId}
@@ -1305,29 +1344,54 @@ export function AgentPanel() {
         </div>
       )}
 
-      {parkedRuns.length > 0 && (
-        <div data-testid="agent-parked-runs" className="space-y-1 border-t border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2">
-          {parkedRuns.map((item) => (
-            <div key={item.id} className="flex items-center gap-2 text-[11.5px]">
-              <ClipboardCheck size={12} className="shrink-0 text-[var(--primary-blue)]" />
-              <span className="min-w-0 flex-1 truncate text-[var(--foreground-soft)]">
-                之前的任务{PARKED_RUN_LABELS[item.status] || "等你处理"}，状态已保存
-              </span>
-              <button
-                type="button"
-                onClick={() => void restoreParkedRun(item.id)}
-                disabled={loading}
-                className="shrink-0 font-semibold text-[var(--foreground)] underline disabled:opacity-50"
-              >
-                回去处理
-              </button>
-            </div>
-          ))}
+      {(parkedRuns.length > 0 || inFlightTurns.length > 1) && (
+        <div data-testid="agent-task-strip" className="border-t border-[var(--border)] px-3 py-2">
+          <p className="mb-1 px-1 text-[11px] font-semibold text-[var(--foreground-muted)]">
+            任务 · {inFlightTurns.length + parkedRuns.length}
+          </p>
+          <div className="space-y-0.5">
+            {inFlightTurns.map((turn) => {
+              const prompt = messages.find((message) => message.id === "user-" + turn.id)?.content || "新任务";
+              return (
+                <button
+                  key={turn.id}
+                  type="button"
+                  onClick={() => document.getElementById("agent-turn-" + turn.id)?.scrollIntoView({ behavior: "smooth", block: "nearest" })}
+                  className="agent-task-row"
+                >
+                  <Loader2 size={12} className="shrink-0 animate-spin text-[var(--foreground-muted)]" />
+                  <span className="min-w-0 flex-1 truncate text-left text-[var(--foreground)]">{prompt}</span>
+                  <span className="max-w-[40%] shrink-0 truncate text-[10.5px] text-[var(--foreground-muted)]">
+                    {turn.progressText || "进行中"}
+                  </span>
+                </button>
+              );
+            })}
+            {parkedRuns.length > 0 && (
+              <div data-testid="agent-parked-runs" className="space-y-0.5">
+                {parkedRuns.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => void restoreParkedRun(item.id)}
+                    disabled={loading}
+                    className="agent-task-row disabled:opacity-50"
+                  >
+                    <ClipboardCheck size={12} className="shrink-0 text-[var(--primary-blue)]" />
+                    <span className="min-w-0 flex-1 truncate text-left text-[var(--foreground-soft)]">
+                      之前的任务{PARKED_RUN_LABELS[item.status] || "等你处理"}，状态已保存
+                    </span>
+                    <span className="shrink-0 text-[10.5px] font-semibold text-[var(--foreground)]">回去处理</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
       {/* 输入区 */}
-      <footer className="agent-bar border-t border-[var(--border)] px-3 py-2.5">
+      <footer className="agent-bar px-3 pb-3 pt-1.5">
         {slashMatches.length > 0 && (
           <div role="listbox" aria-label="技能" className="custom-scrollbar mb-1.5 max-h-56 overflow-y-auto rounded-md border border-[var(--border)] bg-[var(--surface)] py-1">
             {slashMatches.map((skill, index) => (
@@ -1353,20 +1417,53 @@ export function AgentPanel() {
             ))}
           </div>
         )}
-        <div className="flex items-end gap-1.5">
+        <div
+          className={dragActive ? "agent-composer is-drag-active" : "agent-composer"}
+          data-testid="agent-composer"
+          onDragEnter={(event) => {
+            if (!hasDraggedFiles(event.dataTransfer.types)) return;
+            event.preventDefault();
+            dragDepthRef.current += 1;
+            setDragActive(true);
+          }}
+          onDragOver={(event) => {
+            if (!hasDraggedFiles(event.dataTransfer.types)) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "copy";
+          }}
+          onDragLeave={(event) => {
+            if (!hasDraggedFiles(event.dataTransfer.types)) return;
+            dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+            if (dragDepthRef.current === 0) setDragActive(false);
+          }}
+          onDrop={(event) => {
+            if (!hasDraggedFiles(event.dataTransfer.types)) return;
+            event.preventDefault();
+            dragDepthRef.current = 0;
+            setDragActive(false);
+            composerAttachments.addFiles(event.dataTransfer.files);
+          }}
+        >
+          <AgentAttachmentTray items={composerAttachments.items} onRemove={composerAttachments.remove} />
           <Textarea
             value={input}
             onValueChange={setInput}
-            minRows={1}
-            maxRows={4}
+            minRows={3}
+            maxRows={6}
             placeholder={
               runNeedsUser
                 ? "继续对话或说明如何调整；当前待处理的任务会先保存，随时可回来"
                 : "问 OfferU，输入 / 选择技能..."
             }
-            variant="bordered"
-            className="flex-1"
-            classNames={bauhausFieldClassNames}
+            variant="flat"
+            className="w-full"
+            classNames={agentComposerFieldClassNames}
+            onPaste={(event) => {
+              const files = Array.from(event.clipboardData.files);
+              if (files.length === 0) return;
+              event.preventDefault();
+              composerAttachments.addFiles(files);
+            }}
             onKeyDown={(event) => {
               if (slashMatches.length > 0) {
                 const count = slashMatches.length;
@@ -1392,15 +1489,40 @@ export function AgentPanel() {
               }
             }}
           />
-          <Button
-            isIconOnly
-            aria-label="发送"
-            onPress={() => sendMessage()}
-            isDisabled={!input.trim()}
-            className="bauhaus-button bauhaus-button-outline !min-h-9 !min-w-9 !px-0 !py-0"
-          >
-            <Send size={14} />
-          </Button>
+          <div className="agent-composer-controls">
+            <input
+              ref={attachmentInputRef}
+              type="file"
+              multiple
+              accept={AGENT_ATTACHMENT_ACCEPT}
+              className="hidden"
+              data-testid="agent-attachment-input"
+              onChange={(event) => {
+                const files = event.target.files;
+                if (files) composerAttachments.addFiles(Array.from(files));
+                event.target.value = "";
+              }}
+            />
+            <button
+              type="button"
+              aria-label="添加图片、PDF 或 PPT"
+              title="添加图片、PDF 或 PPT（也可以拖入或粘贴）"
+              onClick={() => attachmentInputRef.current?.click()}
+              className="agent-composer-attach"
+            >
+              <Plus size={16} strokeWidth={2} />
+            </button>
+            <AgentComposerControls options={composerOptions} onChange={setComposerOptions} />
+            <button
+              type="button"
+              aria-label="发送"
+              onClick={() => sendMessage()}
+              disabled={(!input.trim() && composerAttachments.readyCount === 0) || composerAttachments.uploading}
+              className="agent-composer-send"
+            >
+              <Send size={16} strokeWidth={2} />
+            </button>
+          </div>
         </div>
       </footer>
     </div>
@@ -1428,6 +1550,9 @@ function PanelMessageBubble({
   return (
     <div className={isUser ? "flex justify-end pl-10" : "flex justify-start"}>
       <div className={isUser ? "min-w-0 max-w-full" : "w-full min-w-0"}>
+        {isUser && message.attachments && message.attachments.length > 0 && (
+          <AgentMessageAttachments attachments={message.attachments} imageUrl={agentRuntimeApi.attachmentUrl} />
+        )}
         <div className={isUser ? "agent-msg agent-msg-user" : "agent-msg agent-msg-assistant"}>
           {isUser ? message.content : <AgentMarkdown text={message.content} />}
         </div>
@@ -1438,7 +1563,7 @@ function PanelMessageBubble({
               <SuggestionList suggestions={response.proactive_suggestions} onSuggestion={onSuggestion} />
             )}
             {response.transferable_skills_summary && (
-              <div className="agent-card px-3 py-2.5 text-[12px] leading-5 text-[var(--foreground-soft)]">
+              <div className="agent-card px-3 py-2 text-[length:var(--agent-fs-sm)] leading-relaxed text-[var(--foreground-soft)]">
                 {response.transferable_skills_summary}
               </div>
             )}
@@ -1448,7 +1573,7 @@ function PanelMessageBubble({
             {response.job_cards && response.job_cards.length > 0 && <JobCardList jobs={response.job_cards} />}
             {response.tool_calls && response.tool_calls.length > 0 && <ToolCallList calls={response.tool_calls} />}
             {response.next_steps && response.next_steps.length > 0 && (
-              <ul className="agent-card space-y-1 px-3 py-2 text-[12px] leading-5 text-[var(--foreground-soft)]">
+              <ul className="space-y-1 pl-1 text-[length:var(--agent-fs-sm)] leading-relaxed text-[var(--foreground-soft)]">
                 {response.next_steps.map((step) => (
                   <li key={step}>- {step}</li>
                 ))}
@@ -1463,20 +1588,15 @@ function PanelMessageBubble({
 
 function AlertList({ alerts }: { alerts: NonNullable<AgentResponse["alerts"]> }) {
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-2.5">
       {alerts.map((alert) => (
-        <div
-          key={alert.code}
-          className="agent-card agent-card-alert px-3 py-2.5 text-[12px] text-[var(--foreground)]"
-        >
-          <div className="flex items-start gap-2">
-            <AlertTriangle size={14} className="mt-0.5 shrink-0 text-[var(--primary-red)]" />
-            <div>
-              <p className="font-semibold">{alert.title}</p>
-              <p className="mt-0.5 leading-5 text-[var(--foreground-soft)]">{alert.message}</p>
-              {alert.action && <p className="mt-0.5 font-medium">{alert.action}</p>}
-            </div>
-          </div>
+        <div key={alert.code} className="agent-card agent-card-alert pl-2.5 text-[length:var(--agent-fs-sm)] leading-relaxed">
+          <p className="flex items-center gap-1.5 font-medium text-[var(--foreground)]">
+            <AlertTriangle size={12} className="shrink-0 text-[var(--primary-red)]" />
+            {alert.title}
+          </p>
+          <p className="text-[var(--foreground-soft)]">{alert.message}</p>
+          {alert.action && <p className="text-[var(--foreground)]">→ {alert.action}</p>}
         </div>
       ))}
     </div>
@@ -1491,16 +1611,17 @@ function SuggestionList({
   onSuggestion: (prompt: string) => void;
 }) {
   return (
-    <div className="space-y-1.5">
+    <div className="pt-1">
+      <p className="px-[0.6em] pb-0.5 text-[length:var(--agent-fs-xs)] text-[var(--foreground-muted)]">接下来可以</p>
       {suggestions.map((suggestion) => (
         <button
-          key={`${suggestion.title}-${suggestion.prompt}`}
+          key={suggestion.title + "-" + suggestion.prompt}
           type="button"
           onClick={() => onSuggestion(suggestion.prompt)}
-          className="w-full agent-card px-3 py-2.5 text-left text-[12px] text-[var(--foreground)] transition-colors duration-[var(--dur-quick)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-muted)]"
+          className="agent-suggestion"
         >
-          <p className="font-semibold">{suggestion.title}</p>
-          <p className="mt-0.5 leading-5 text-[var(--foreground-soft)]">{suggestion.description}</p>
+          <span className="text-[length:var(--agent-fs-sm)] font-medium text-[var(--foreground)]">{suggestion.title}</span>
+          <span className="text-[length:var(--agent-fs-xs)] leading-normal text-[var(--foreground-muted)]">{suggestion.description}</span>
         </button>
       ))}
     </div>

@@ -88,6 +88,13 @@ def _active_provider_config(settings: Any) -> dict[str, Any] | None:
     configs = getattr(settings, "llm_api_configs", None) or []
     if not isinstance(configs, list):
         return None
+    from app.run_options import current_run_options
+
+    chosen = current_run_options().llm_config_id
+    if chosen:
+        for cfg in configs:
+            if isinstance(cfg, dict) and str(cfg.get("id") or "") == chosen:
+                return cfg
     active_id = str(getattr(settings, "active_llm_config_id", "") or "").strip()
     if active_id:
         for cfg in configs:

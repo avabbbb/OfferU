@@ -155,6 +155,50 @@ async fn decide_agent_action(
     .await
 }
 
+/// Board ids follow backend services/agent_board.py _ID; anything else never reaches a URL path.
+fn validate_agent_id(agent_id: &str) -> Result<(), String> {
+    let bytes = agent_id.as_bytes();
+    let valid = !bytes.is_empty()
+        && bytes.len() <= 40
+        && (bytes[0].is_ascii_lowercase() || bytes[0].is_ascii_digit())
+        && bytes
+            .iter()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || *b == b'_' || *b == b'-');
+    if valid {
+        Ok(())
+    } else {
+        Err("Agent 标识无效".to_string())
+    }
+}
+
+/// 打开对话 runs a program, so the desktop sends it with the approval capability.
+#[tauri::command]
+async fn launch_agent(app: AppHandle, agent_id: String) -> Result<serde_json::Value, String> {
+    validate_agent_id(&agent_id)?;
+    post_approval_request(
+        app,
+        format!("/api/agent-board/{agent_id}/launch"),
+        serde_json::json!({}),
+        Duration::from_secs(20),
+    )
+    .await
+}
+
+#[cfg(test)]
+mod launch_agent_tests {
+    use super::validate_agent_id;
+
+    #[test]
+    fn accepts_board_ids_and_rejects_path_injection() {
+        for id in ["codex", "claude-code", "my_agent2"] {
+            assert!(validate_agent_id(id).is_ok(), "{id}");
+        }
+        for bad in ["", "-x", "Codex", "a/launch", "../codex", "a b", &"a".repeat(41)] {
+            assert!(validate_agent_id(bad).is_err(), "{bad}");
+        }
+    }
+}
+
 #[cfg(test)]
 mod approval_tests {
     use super::validate_action_input;
@@ -890,6 +934,7 @@ pub fn run() {
         .manage(UiApprovalCapability(Uuid::new_v4().to_string()))
         .invoke_handler(tauri::generate_handler![
             decide_agent_action,
+            launch_agent,
             get_desktop_runtime_identity,
             get_desktop_backend_status,
             open_external_url

@@ -23,6 +23,7 @@ from app.agent.types import (
 )
 from app.agents.llm import _get_client, resolve_llm_client_config, resolve_model_for_tier as configured_model_for_tier
 from app.config import get_settings
+from app.run_options import current_run_options
 
 _logger = logging.getLogger(__name__)
 
@@ -171,12 +172,12 @@ def _make_partial_message(
 class LlmStreamProvider:
     def __init__(self, client_factory: Callable[[], tuple[Any, str]] = _get_client) -> None:
         self._client_factory = client_factory
-        self._client_cache: dict[tuple[int, str, str], tuple[Any, str]] = {}
+        self._client_cache: dict[tuple[int, str, str, str], tuple[Any, str]] = {}
 
     def _client_for_settings(self, settings: Any) -> tuple[Any, str]:
         provider = str(getattr(settings, "llm_provider", "") or "")
         model = str(getattr(settings, "llm_model", "") or "")
-        key = (id(settings), provider, model)
+        key = (id(settings), provider, model, current_run_options().llm_config_id)
         if key not in self._client_cache:
             self._client_cache[key] = self._client_factory()
         return self._client_cache[key]
@@ -208,8 +209,10 @@ class LlmStreamProvider:
             if system_prompt:
                 llm_messages = [{"role": "system", "content": system_prompt}] + llm_messages
             from app.agents.desensitize import desensitize, restore
+            from app.services.agent_attachments import attach_images, detach_images
+            image_urls = detach_images(llm_messages)
             encoded, pii = desensitize(json.dumps(llm_messages, ensure_ascii=False))
-            llm_messages = json.loads(encoded)
+            llm_messages = attach_images(json.loads(encoded), image_urls)
             if resolved.get("api_format") == "anthropic":
                 stream = self._anthropic_chunks(client, model, llm_messages, [self._tool_to_openai(tool) for tool in tools])
                 async for event in self.stream_chunks(stream, provider=provider, model=model, cancel=cancel):
@@ -222,14 +225,16 @@ class LlmStreamProvider:
                 "tools": [self._tool_to_openai(tool) for tool in tools] if tools else None,
                 "stream": True,
                 "stream_options": {"include_usage": True},
+                "reasoning_effort": current_run_options().reasoning_effort or None,
             }
             kwargs = {key: value for key, value in kwargs.items() if value is not None}
             try:
                 stream = await client.chat.completions.create(**kwargs)
             except (TypeError, BadRequestError):
                 # SDK 客户端拒参（TypeError）或服务端 400（部分 OpenAI 兼容网关不支持
-                # stream_options），去掉该参数重试一次；若仍失败则走统一错误收尾。
+                # stream_options / reasoning_effort），去掉这两个参数重试一次；若仍失败则走统一错误收尾。
                 kwargs.pop("stream_options", None)
+                kwargs.pop("reasoning_effort", None)
                 stream = await client.chat.completions.create(**kwargs)
 
             async for event in self.stream_chunks(stream, provider=provider, model=model, cancel=cancel):
@@ -363,7 +368,9 @@ class LlmStreamProvider:
         settings = get_settings()
         client, default_model = self._client_for_settings(settings)
         model = configured_model_for_tier(tier, settings)
-        llm_messages = convert_to_llm(messages)
+        from app.services.agent_attachments import images_as_text
+
+        llm_messages = images_as_text(convert_to_llm(messages))
         if system_prompt:
             llm_messages = [{"role": "system", "content": system_prompt}] + llm_messages
         from app.agents.desensitize import desensitize, restore
@@ -400,7 +407,13 @@ class LlmStreamProvider:
                 blocks = [{"type": "tool_result", "tool_use_id": message["tool_call_id"], "content": message["content"]}]
                 role = "user"
             else:
-                blocks = [{"type": "text", "text": message["content"]}] if message.get("content") else []
+                content = message.get("content")
+                if isinstance(content, list):
+                    from app.services.agent_attachments import anthropic_blocks
+
+                    blocks = anthropic_blocks(content)
+                else:
+                    blocks = [{"type": "text", "text": content}] if content else []
                 for call in message.get("tool_calls") or []:
                     blocks.append({"type": "tool_use", "id": call["id"], "name": call["function"]["name"],
                                    "input": json.loads(call["function"]["arguments"])})

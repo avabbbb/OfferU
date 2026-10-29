@@ -24,8 +24,10 @@ from app.models.models import AgentAction, AgentRunRecord
 from app.ops import OPERATIONS, confirmed_action, execute_operation
 from app.services.change_capture import capture, changed_since, current_rows, restore, to_undo
 from app.services.operation_tiers import LOCAL_FILE_READS, needs_confirmation
+from app.run_options import current_run_options
 
 PENDING_MESSAGE = "这一步不可撤销，已放进待确认列表请用户确认；不用等，先继续做别的。"
+ASK_MODE_MESSAGE = "用户选了询问模式，这一步已放进待确认列表请用户确认；不用等，先继续做别的。"
 
 
 def _view(row: AgentAction) -> dict[str, Any]:
@@ -80,7 +82,8 @@ async def run_gated_operation(
     summary = op.description or name
 
     reads_file = name in LOCAL_FILE_READS
-    if needs_confirmation(name, op.tier, inputs):
+    irreversible = needs_confirmation(name, op.tier, inputs)
+    if irreversible or current_run_options().approval_mode == "ask":
         if reads_file and await _approved_before(name, inputs):
             with confirmed_action(name):
                 return await execute_operation(name, inputs, surface=surface)
@@ -92,7 +95,8 @@ async def run_gated_operation(
         return {
             "ok": True,
             "operation": name,
-            "outputs": {"executed": False, "pending_action": _view(row), "message": PENDING_MESSAGE},
+            "outputs": {"executed": False, "pending_action": _view(row),
+                        "message": PENDING_MESSAGE if irreversible else ASK_MODE_MESSAGE},
             "warnings": [],
             "errors": [],
         }

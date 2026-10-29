@@ -9,6 +9,9 @@ import { SHOWCASE, SHOWCASE_UNSUPPORTED, showcaseHandle } from "./showcase";
 import { resolveApiBase } from "./apiBase";
 import { safeClientErrorMessage } from "./safe-error";
 import { decideAgentActionInDesktop } from "./desktop-proposal-decision";
+import { invoke, isTauri } from "@tauri-apps/api/core";
+import { liteToken } from "./liteSession";
+import { parseAgentAttachment, type AgentAttachment } from "./agentAttachments";
 import type { AgentInputAnswerBody, AgentInputAnswerResult } from "./agentAsk";
 import type { components } from "./api-types.generated";
 type Schemas = components["schemas"];
@@ -543,6 +546,8 @@ export const configApi = {
 export interface AgentConversationMessage {
   role: "user" | "assistant";
   content: string;
+  // files the user sent with this message; shown as cards above the bubble
+  attachments?: { id: string; name: string; kind: "image" | "document" }[];
 }
 
 export interface AgentToolCall {
@@ -1185,12 +1190,38 @@ export const agentRuntimeApi = {
     request<Record<string, any> & { available: boolean; runtime: string }>("/api/agent/runtime"),
   providerHealth: () =>
     request<{ providers: AgentProviderHealth[] }>("/api/agent/runtime/providers/health"),
+  // 输入框附件：图片交给视觉模型，PDF / PPTX 由后端读成文字
+  uploadAttachment: async (file: File): Promise<AgentAttachment> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch(API_BASE + "/api/agent/runtime/attachments", {
+      method: "POST",
+      body: formData,
+      redirect: "error",
+    });
+    const body: unknown = await res.json().catch(() => null);
+    if (!res.ok) {
+      const detail =
+        typeof body === "object" && body !== null && "detail" in body && typeof body.detail === "string"
+          ? body.detail
+          : "上传失败（" + res.status + "）";
+      throw new Error(detail);
+    }
+    const attachment = parseAgentAttachment(body);
+    if (!attachment) throw new Error("上传结果格式不对");
+    return attachment;
+  },
+  attachmentUrl: (id: string) => API_BASE + "/api/agent/runtime/attachments/" + encodeURIComponent(id),
   start: async (data: {
     message: string;
     skill_id?: string;
     conversation_id?: string | null;
     task_id?: string | null;
     runtime_provider?: string;
+    llm_config_id?: string;
+    reasoning_effort?: "" | "low" | "medium" | "high";
+    approval_mode?: "auto" | "ask";
+    attachments?: string[];
   }, onEvent?: (event: string, data: any) => void, signal?: AbortSignal) => {
     const runId = createAgentRunId();
     const requestData = { ...data, skill_id: data.skill_id || AUTO_SKILL_ID, run_id: runId };
@@ -1353,6 +1384,71 @@ export const agentRuntimeApi = {
       `/api/agent/runtime/runs/${encodeURIComponent(runId)}/input-requests/${encodeURIComponent(requestId)}/answer`,
       { method: "POST", body: JSON.stringify(body) }
     ),
+};
+
+export interface AgentBoardRow {
+  id: string;
+  display_name: string;
+  custom: boolean;
+  hidden: boolean;
+  executable_found: boolean;
+  skill_status: string;
+  /** The Agent process is running on this machine right now. */
+  running: boolean;
+  /** Live: running, and one of its conversations called OfferU within live_window_seconds. */
+  connected: boolean;
+  last_call: { at?: string; client?: string; session_hint?: string; thread_id?: string };
+  skill_path: string;
+  error: string;
+  memory_status: "none" | "exported" | "imported";
+  memory: { exported_at?: string; imported_at?: string; target?: string };
+  last_check: { at?: string; action?: string; skill_status?: string; executable_found?: boolean };
+  executable: string;
+  memory_file: string;
+  docs_url: string;
+}
+
+export interface AgentBoardSnapshot {
+  agents: AgentBoardRow[];
+  live_window_seconds: number;
+}
+
+export interface AgentLaunchResult {
+  launched: boolean;
+  executable: string;
+}
+
+export interface CustomAgentInput {
+  id?: string;
+  display_name: string;
+  executable?: string;
+  skill_root: string;
+  memory_file?: string;
+}
+
+const agentBoardPath = (agentId: string, suffix = "") => "/api/agent-board/" + encodeURIComponent(agentId) + suffix;
+
+export const agentBoardApi = {
+  list: () => request<AgentBoardSnapshot>("/api/agent-board", { signal: AbortSignal.timeout(20000) }),
+  add: (body: CustomAgentInput) => request<AgentBoardRow>("/api/agent-board", { method: "POST", body: JSON.stringify(body) }),
+  edit: (agentId: string, body: Omit<CustomAgentInput, "id">) =>
+    request<AgentBoardRow>(agentBoardPath(agentId), { method: "PATCH", body: JSON.stringify(body) }),
+  remove: (agentId: string) => request<Record<string, unknown>>(agentBoardPath(agentId), { method: "DELETE" }),
+  setHidden: (agentId: string, hidden: boolean) =>
+    request<AgentBoardRow>(agentBoardPath(agentId, "/hidden"), { method: "POST", body: JSON.stringify({ hidden }) }),
+  connect: (agentId: string, action: "install" | "update" | "repair") =>
+    request<AgentBoardRow>(agentBoardPath(agentId, "/connect"), { method: "POST", body: JSON.stringify({ action }), signal: AbortSignal.timeout(20000) }),
+  check: (agentId: string) => request<AgentBoardRow>(agentBoardPath(agentId, "/check"), { method: "POST" }),
+  /** Opening a terminal runs a program, so it carries the workbench approval capability like agent action confirm / reject. */
+  launch: async (agentId: string): Promise<AgentLaunchResult> => {
+    if (isTauri()) return invoke<AgentLaunchResult>("launch_agent", { agentId });
+    const token = liteToken();
+    if (!token) throw new Error("请用 offeru start 打开的工作台打开对话");
+    const res = await fetch(API_BASE + agentBoardPath(agentId, "/launch"), { method: "POST", headers: { Authorization: "Bearer " + token }, redirect: "error" });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(res.status === 403 ? "工作台授权已失效，请重新运行 offeru start" : payload?.detail || "打开对话失败：" + res.status);
+    return payload as AgentLaunchResult;
+  },
 };
 
 export const agentActionsApi = {

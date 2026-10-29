@@ -24,17 +24,37 @@ def _empty_store() -> dict[str, Any]:
     return {"schema_version": "offeru.harness_conversations.v1", "conversations": []}
 
 
-def _clean_message(message: Any) -> dict[str, str] | None:
+def _clean_attachments(raw: Any) -> list[dict[str, str]]:
+    # id / name / kind of files the user sent, so a reloaded conversation can show them as cards
+    if not isinstance(raw, list):
+        return []
+    out: list[dict[str, str]] = []
+    for item in raw[:8]:
+        if not isinstance(item, dict):
+            continue
+        attachment_id = str(item.get("id") or "").strip()
+        kind = str(item.get("kind") or "").strip()
+        if not attachment_id or kind not in {"image", "document"}:
+            continue
+        out.append({"id": attachment_id[:80], "name": str(item.get("name") or "")[:200], "kind": kind})
+    return out
+
+
+def _clean_message(message: Any) -> dict[str, Any] | None:
     if not isinstance(message, dict):
         return None
     role = str(message.get("role") or "").strip()
     content = str(message.get("content") or "").strip()
     if role not in {"user", "assistant"} or not content:
         return None
-    return {"role": role, "content": content[:8000]}
+    cleaned: dict[str, Any] = {"role": role, "content": content[:8000]}
+    attachments = _clean_attachments(message.get("attachments")) if role == "user" else []
+    if attachments:
+        cleaned["attachments"] = attachments
+    return cleaned
 
 
-def _clean_messages(messages: list[dict[str, str]] | Any) -> list[dict[str, str]]:
+def _clean_messages(messages: list[dict[str, Any]] | Any) -> list[dict[str, Any]]:
     if not isinstance(messages, list):
         return []
     cleaned = [_clean_message(message) for message in messages]
@@ -107,7 +127,7 @@ def get_conversation(conversation_id: str, path: Path | None = None) -> dict[str
 def save_conversation_messages(
     *,
     conversation_id: str | None,
-    messages: list[dict[str, str]],
+    messages: list[dict[str, Any]],
     path: Path | None = None,
 ) -> dict[str, Any]:
     clean_messages = _clean_messages(messages)
