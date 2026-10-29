@@ -87,9 +87,9 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 | fetch_page | 抓公开网页的文字（岗位链接） | ✓ |
 | read_file | 读本地 PDF / Word / txt / md 的文字（导入简历） | ✓ |
 | export_resume_pdf | 简历 doc → PDF 文件 | ✓ |
-| ask | 交给内置 Agent 处理一句话（Ctrl+K） | PR3 |
-| handoff | 把长任务交给后台 Codex，返回任务 id | PR5 |
-| handoff_status | 看后台任务进度 | PR5 |
+| ask | 交给内置 Agent 处理一句话（Ctrl+K） | 待做 |
+| handoff | 把长任务交给后台 Codex，返回任务 id | 待做 |
+| handoff_status | 看后台任务进度 | 待做 |
 | email_sync | 邮箱状态 / 同步：拉新邮件，识别回执和邀约，回写岗位状态和待办 | 待做 |
 
 工具的说明文字就是 Agent 看到的全部文档。每个工具的说明写清字段和枚举，Skill 只讲「什么时候用哪个工具」，不超过 4KB。
@@ -122,7 +122,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 - 打开对话：POST /api/agent-board/{id}/launch，和确认动作一样要工作台的 Authorization，在用户目录下开一个新终端窗口运行 Agent 的交互式 CLI。命令只来自内置表或自定义 Agent 保存的裸命令名，从不来自请求。命令行对应 offeru agent launch <id>。
 - 看板不改 Agent 的设置或记忆文件。
 
-## 8. 内置 Agent（PR3）
+## 8. 内置 Agent
 
 - 设置里填 OpenAI 兼容的 base_url、key、模型名，存在本机配置文件里。
 - `/api/agent` 接收一句话 + 当前页面（比如正在看的岗位 id），用 function calling 调同一套工具，最多 6 步，流式返回。
@@ -131,7 +131,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 - 系统提示词只有三件事：今天日期和 overview 摘要、工具说明、规则（不编造经历；对外的事只写草稿；长任务调用 handoff）。
 - 没配模型时，Ctrl+K 只做本地解析不了的提示：「先在设置里填模型，或者在 Codex 里说这句话」。
 
-## 9. 后台 Codex 交接（PR5）
+## 9. 后台 Codex 交接（未做）
 
 - `handoff(task, job_id?)` 在后台启动 `codex exec`，带上 OfferU MCP 和 Skill，工作目录在数据目录下的 `runs/<id>/`。
 - 先验证能否无人值守：非交互模式、MCP 是否自动可用、沙箱是否允许访问 127.0.0.1。验证不过就退回「复制这段话到 Codex」。
@@ -147,13 +147,13 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 - 回写全部走 save()，actor=邮箱：岗位按公司 + 岗位名匹配，匹配不到新建 status=applied；status 只前进不后退；时间写成 event（kind=test / interview / deadline，job_id 指向岗位），notes 存发件人、主题、链接。每条写入的 data 带 mail_id（Message-ID）。
 - 去重：同步前查 records 和 changes（before / after）里出现过的 mail_id，处理过的跳过，所以撤销后下次同步不会写回来。
 - 不做：发信、标已读、删信、保存原始邮件。
-- 旧 Operation Registry 里的邮箱操作（email_connection_status 等）随 PR5 删除，email_sync 在新工具层重写。
+- 旧 Operation Registry 里的邮箱操作（email_connection_status 等）随旧架构一起删除，email_sync 在新工具层重写。
 
 ## 11. 前端
 
 - Vite + React + HashRouter，`lib/core.ts` 提供 `tool()`、`useTool()`（SWR）、`write()`（写完全局刷新）。页面只调工具，不调其他接口。
 - 页面：今天 `/`、岗位 `/jobs`、岗位详情 `/jobs/:id`、简历 `/resume/:id?`、档案 `/profile`（和简历同一个导航项，两个标签）、面试 `/interview`、设置 `/settings`。
-- 共用组件：EventList、RecentChanges、ChatDoc（PR3）、CommandK（PR3）。简历编辑器是 TipTap 纸面编辑（Typora 式：光标所在行显示原文，其余按 PDF 排版），存的仍是 Markdown；「源码」切到 textarea。
+- 共用组件：EventList、RecentChanges、ChatDoc、CommandK。简历编辑器是 TipTap 纸面编辑（Typora 式：光标所在行显示原文，其余按 PDF 排版），存的仍是 Markdown；「源码」切到 textarea。
 - 视觉：黑白灰；字号和间距弹性适配不同设备（字号走 CSS 变量 + clamp()，正文约 13–15px，间距用 em / rem）；不用徽章、统计卡、彩色按钮、网格背景。
 
 ### 11.1 Agent 侧栏组件规范
@@ -173,7 +173,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 - 阴影只给浮起的 L4：侧栏左缘柔和阴影（不画平直边线），输入框和提问卡用多层柔和阴影（0 0 0 1px + 0 2px 8px + 大半径淡阴影），历史浮层更深一档。圆角：输入框 16px，其他容器 12px，行和工具按钮 8px，发送按钮 14px。
 - 输入框按 Flovart 结构：卡片 16px 圆角、8px 内边距、最小高 148px，多层柔和阴影浮起；上面无边框文本区（13px / 22px 行高），下面一行控件：左侧 28px 高的图标工具按钮（模型等），右侧 40px、14px 圆角的深色发送按钮，底部对齐。
 
-## 12. 浏览器插件（PR4，第四期）
+## 12. 浏览器插件（第四期）
 
 - 在已适配的网申系统上自动读出表单字段（沿用 smartfill-v2 的站点规则）；其他网站点一下插件图标再读。
 - 页面右侧开小侧栏，用的是这个岗位的同一份网申对话 doc。
@@ -190,13 +190,13 @@ backend/app/core/   store.py  tools.py  resume.py  templates/  agent.py  handoff
 backend/app/        main.py  mcp_server.py  entry.py
 backend/skill/      SKILL.md（≤4KB）
 frontend/src/       app/  components/core/  lib/core.ts
-extension/          smartfill（PR4 改接 /api/tools）
+extension/          smartfill（第四期改接 /api/tools）
 ```
 
-PR5 删除：`app/ops.py`、`app/services/`、`app/agents/`、`app/agent/`、旧 `routes/`、旧 Skill 生成器和 `models/models.py` 里的旧表。
+待删（旧架构）：`app/ops.py`、`app/services/`、`app/agents/`、旧 `routes/`、旧 Skill 生成器（`services/agent_skill_projections.py` 及其生成的 `.claude/`、`.codex/`、`.copilot/` 投影）和 `models/models.py` 里的旧表。`app/agent/`（循环和 provider）保留。`.agents/skills/offeru/` 随安装包发布，删旧生成器时改为手写。
 
 ## 15. 测试策略
 
 - 后端：`tests/test_core.py` 走真实的 HTTP + MCP + 撤销路径，每个新工具至少一条端到端用例。旧测试随旧代码一起删。
-- 前端：每个 PR 用 Playwright 在干净数据目录下把主线点一遍并截图。
+- 前端：改了界面要说清楚改了哪里、怎么点能看到；用户自己验收时不跑 Playwright。
 - 不写只为提高覆盖率的单元测试，不写防御性分支。
