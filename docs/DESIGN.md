@@ -90,6 +90,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 | ask | 交给内置 Agent 处理一句话（Ctrl+K） | PR3 |
 | handoff | 把长任务交给后台 Codex，返回任务 id | PR5 |
 | handoff_status | 看后台任务进度 | PR5 |
+| email_sync | 邮箱状态 / 同步：拉新邮件，识别回执和邀约，回写岗位状态和待办 | 待做 |
 
 工具的说明文字就是 Agent 看到的全部文档。每个工具的说明写清字段和枚举，Skill 只讲「什么时候用哪个工具」，不超过 4KB。
 
@@ -137,14 +138,25 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 - 进度只看两样：进程是否还在、它写了哪些 change。完成后今天页的最近改动里出现「codex：……」。
 - 同时只跑一个后台任务。
 
-## 10. 前端
+## 10. 邮箱同步
+
+- 工具只加一个 email_sync(action: status | sync, account?)，工具总数到 15。status 返回已连账号、上次同步时间和结果，不含凭据；sync 拉新邮件并回写，返回处理了哪几封、各写了哪些 change。
+- 凭据和模型设置一样存在本机配置文件（Gmail 存 refresh token，IMAP 存 host / user / 授权码），不进 offeru.db、不进 changes、不出现在任何工具返回里。连接和断开在设置页完成。
+- 拉取在 core/mail.py：IMAP 用标准库 imaplib，只用 BODY.PEEK，不改已读状态；Gmail 用 REST，只申请 gmail.readonly。每个账号记 last_uid / history_id，增量拉取。
+- 识别：classify(msg) -> {kind: receipt / test / interview / result, company, title, at, link, outcome}。规则优先（发件域名表 + 主题关键词 + 时间正则）；规则返回空且配了模型时调一次内置模型，只给发件人、主题和正文前 2000 字。
+- 回写全部走 save()，actor=邮箱：岗位按公司 + 岗位名匹配，匹配不到新建 status=applied；status 只前进不后退；时间写成 event（kind=test / interview / deadline，job_id 指向岗位），notes 存发件人、主题、链接。每条写入的 data 带 mail_id（Message-ID）。
+- 去重：同步前查 records 和 changes（before / after）里出现过的 mail_id，处理过的跳过，所以撤销后下次同步不会写回来。
+- 不做：发信、标已读、删信、保存原始邮件。
+- 旧 Operation Registry 里的邮箱操作（email_connection_status 等）随 PR5 删除，email_sync 在新工具层重写。
+
+## 11. 前端
 
 - Vite + React + HashRouter，`lib/core.ts` 提供 `tool()`、`useTool()`（SWR）、`write()`（写完全局刷新）。页面只调工具，不调其他接口。
 - 页面：今天 `/`、岗位 `/jobs`、岗位详情 `/jobs/:id`、简历 `/resume/:id?`、档案 `/profile`（和简历同一个导航项，两个标签）、面试 `/interview`、设置 `/settings`。
 - 共用组件：EventList、RecentChanges、ChatDoc（PR3）、CommandK（PR3）。简历编辑器是 TipTap 纸面编辑（Typora 式：光标所在行显示原文，其余按 PDF 排版），存的仍是 Markdown；「源码」切到 textarea。
 - 视觉：黑白灰；字号和间距弹性适配不同设备（字号走 CSS 变量 + clamp()，正文约 13–15px，间距用 em / rem）；不用徽章、统计卡、彩色按钮、网格背景。
 
-### 10.1 Agent 侧栏组件规范
+### 11.1 Agent 侧栏组件规范
 
 先定层级，再谈装饰。每个元素先归到一层，层级只靠字号、字重、颜色和留白区分；边框、阴影、圆角只用来表达 L4 容器，不用来制造层级。
 
@@ -161,20 +173,20 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 - 阴影只给浮起的 L4：侧栏左缘柔和阴影（不画平直边线），输入框和提问卡用多层柔和阴影（0 0 0 1px + 0 2px 8px + 大半径淡阴影），历史浮层更深一档。圆角：输入框 16px，其他容器 12px，行和工具按钮 8px，发送按钮 14px。
 - 输入框按 Flovart 结构：卡片 16px 圆角、8px 内边距、最小高 148px，多层柔和阴影浮起；上面无边框文本区（13px / 22px 行高），下面一行控件：左侧 28px 高的图标工具按钮（模型等），右侧 40px、14px 圆角的深色发送按钮，底部对齐。
 
-## 11. 浏览器插件（PR4，第四期）
+## 12. 浏览器插件（PR4，第四期）
 
 - 在已适配的网申系统上自动读出表单字段（沿用 smartfill-v2 的站点规则）；其他网站点一下插件图标再读。
 - 页面右侧开小侧栏，用的是这个岗位的同一份网申对话 doc。
 - 每个输入框标题旁边放「填写」：悬停预览，已有内容时变「替换」，填完可撤销。不自动点提交。
 
-## 12. 桌面小球（第四期之后）
+## 13. 桌面小球（第四期之后）
 
 pywebview 小窗，随 `offeru start` 打开，轮询 overview；有新的改动或临近的日程时头像动一下；悬停展开今天的待办，可以勾掉。
 
-## 13. 目录（重构完成后）
+## 14. 目录（重构完成后）
 
 ```text
-backend/app/core/   store.py  tools.py  resume.py  templates/  agent.py  handoff.py
+backend/app/core/   store.py  tools.py  resume.py  templates/  agent.py  handoff.py  mail.py
 backend/app/        main.py  mcp_server.py  entry.py
 backend/skill/      SKILL.md（≤4KB）
 frontend/src/       app/  components/core/  lib/core.ts
@@ -183,7 +195,7 @@ extension/          smartfill（PR4 改接 /api/tools）
 
 PR5 删除：`app/ops.py`、`app/services/`、`app/agents/`、`app/agent/`、旧 `routes/`、旧 Skill 生成器和 `models/models.py` 里的旧表。
 
-## 14. 测试策略
+## 15. 测试策略
 
 - 后端：`tests/test_core.py` 走真实的 HTTP + MCP + 撤销路径，每个新工具至少一条端到端用例。旧测试随旧代码一起删。
 - 前端：每个 PR 用 Playwright 在干净数据目录下把主线点一遍并截图。
