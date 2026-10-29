@@ -257,6 +257,10 @@ async def restore(changes: list[dict]) -> int:
     """Put every touched row back to its state before the Agent's write."""
 
     def _apply(conn: Connection) -> int:
+        if conn.dialect.name == "sqlite":
+            # Replay order can restore a child before its deleted parent is re-inserted;
+            # check foreign keys once at commit, when every row is back.
+            conn.exec_driver_sql("PRAGMA defer_foreign_keys=ON")
         for change in reversed(changes):
             table = Base.metadata.tables[change["table"]]
             where = _where(table, change["pk"])
