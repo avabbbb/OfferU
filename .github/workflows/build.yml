@@ -1177,7 +1177,7 @@ jobs:
             release-assets/SHA256SUMS.txt
             release-assets/artifacts-*.json
             release-assets/version-*.json
-            release-assets/windows-x64/RELEASE_NOTES.md
+            release-assets/windows-x64/CHANGELOG.md
             release-assets/windows-x64/THIRD_PARTY_NOTICES.md
             release-assets/windows-x64/LICENSE
 

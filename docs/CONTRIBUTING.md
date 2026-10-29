@@ -30,9 +30,9 @@ Non-integration fixes to existing sources (bugs, security) are still welcome in 
 
 ## Security / 安全
 
-Report vulnerabilities privately as described in [SECURITY.md](./SECURITY.md), not in public Issues.
-漏洞请按 [SECURITY.md](./SECURITY.md) 私密报告，勿发公开 Issue。
+Report vulnerabilities privately as described in [SECURITY.md](../SECURITY.md), not in public Issues.
+漏洞请按 [SECURITY.md](../SECURITY.md) 私密报告，勿发公开 Issue。
 
 ## License / 许可证
 
-Contributions are released under the [MIT License](./LICENSE). / 贡献内容以 [MIT 许可证](./LICENSE) 发布。
+Contributions are released under the [MIT License](../LICENSE). / 贡献内容以 [MIT 许可证](../LICENSE) 发布。

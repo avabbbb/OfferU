@@ -33,7 +33,7 @@ OfferU 自有代码使用本仓库 [MIT License](./LICENSE)。
 - `backend/requirements.txt`
 - `frontend/src-tauri/Cargo.lock`
 
-最终 RC artifact 必须包含本文件、`RELEASE_NOTES.md`、`LICENSE` 和生成的 checksum；在法律/许可证审阅完成前，发布清单保持 `PARTIAL`。
+最终 RC artifact 必须包含本文件、`CHANGELOG.md`、`LICENSE` 和生成的 checksum；在法律/许可证审阅完成前，发布清单保持 `PARTIAL`。
 
 ## Migrated OfferU Agent source
 

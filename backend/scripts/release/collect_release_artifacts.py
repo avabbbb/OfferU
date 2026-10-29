@@ -32,7 +32,7 @@ def collect_artifacts(source: Path, output: Path, *, version: str, target: str, 
         "product": "OfferU", "version": version, "target": target,
         "installers": [item["name"] for item in manifest], "signed": signed,
     }, indent=2) + "\n", encoding="utf-8")
-    for name in ("RELEASE_NOTES.md", "THIRD_PARTY_NOTICES.md", "LICENSE"):
+    for name in ("CHANGELOG.md", "THIRD_PARTY_NOTICES.md", "LICENSE"):
         shutil.copy2(repo / name, output / name)
 
 
