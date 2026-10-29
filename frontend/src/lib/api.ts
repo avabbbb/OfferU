@@ -546,6 +546,8 @@ export const configApi = {
 export interface AgentConversationMessage {
   role: "user" | "assistant";
   content: string;
+  // files the user sent with this message; shown as cards above the bubble
+  attachments?: { id: string; name: string; kind: "image" | "document" }[];
 }
 
 export interface AgentToolCall {

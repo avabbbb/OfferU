@@ -242,16 +242,18 @@ def _clip(text: str, limit: int) -> str:
 class PreparedMessage:
     # what the model reads: the user's words plus every document's text
     model_message: str
-    # what the conversation history keeps: the user's words plus attachment names
+    # what the conversation history keeps: only the words the user typed
     history_message: str
     image_ids: tuple[str, ...]
+    # id / name / kind of each attachment, saved on the user message so it reloads as cards
+    attachments: tuple[dict[str, str], ...] = ()
 
 
 def prepare_message(message: str, attachment_ids: list[str]) -> PreparedMessage:
     if len(attachment_ids) > MAX_ATTACHMENTS:
         raise AttachmentError(f"一次最多发送 {MAX_ATTACHMENTS} 个附件")
     seen: set[str] = set()
-    names: list[str] = []
+    saved: list[dict[str, str]] = []
     images: list[str] = []
     sections: list[str] = []
     budget = MAX_TOTAL_DOCUMENT_CHARS
@@ -260,7 +262,7 @@ def prepare_message(message: str, attachment_ids: list[str]) -> PreparedMessage:
             continue
         seen.add(attachment_id)
         attachment, _ = load_attachment(attachment_id)
-        names.append(attachment.name)
+        saved.append({"id": attachment.id, "name": attachment.name, "kind": attachment.kind})
         if attachment.kind == "image":
             images.append(attachment.id)
             continue
@@ -281,10 +283,12 @@ def prepare_message(message: str, attachment_ids: list[str]) -> PreparedMessage:
         )
     if images:
         model_message += f"\n\n（用户附上了 {len(images)} 张图片）"
-    history_message = base
-    if names:
-        history_message = f"{base}\n\n[附件：{'、'.join(names)}]"
-    return PreparedMessage(model_message=model_message, history_message=history_message, image_ids=tuple(images))
+    return PreparedMessage(
+        model_message=model_message,
+        history_message=base,
+        image_ids=tuple(images),
+        attachments=tuple(saved),
+    )
 
 
 def image_ref(attachment_id: str) -> str:

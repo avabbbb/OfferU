@@ -14,7 +14,7 @@ from app.services.harness_memory import import_agent_memory_payload, save_agent_
 
 def save_harness_conversation(
     conversation_id: str | None = None,
-    messages: list[dict[str, str]] | None = None,
+    messages: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     return save_conversation_messages(
         conversation_id=conversation_id,

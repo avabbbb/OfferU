@@ -661,6 +661,7 @@ export function AgentPanel() {
           id: `${conversation.id}-${index}`,
           role: message.role,
           content: message.content,
+          attachments: message.role === "user" ? message.attachments : undefined,
         }))
       );
       const runResult = await agentRuntimeApi.runs({

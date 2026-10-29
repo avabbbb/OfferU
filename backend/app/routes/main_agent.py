@@ -840,7 +840,7 @@ async def start_runtime_run(body: PiAgentRunRequest) -> dict[str, Any]:
                 "conversation_id": body.conversation_id,
                 "messages": [
                     *previous_messages,
-                    {"role": "user", "content": prepared.history_message},
+                    {"role": "user", "content": prepared.history_message, "attachments": list(prepared.attachments)},
                 ],
             },
         )
@@ -853,7 +853,7 @@ async def start_runtime_run(body: PiAgentRunRequest) -> dict[str, Any]:
                 skill_id=body.skill_id,
                 conversation_id=conversation["id"],
                 task_id=str(body.task_id or ""),
-                context_messages=previous_messages,
+                context_messages=[{"role": m["role"], "content": m["content"]} for m in previous_messages],
                 requested_run_id=str(body.run_id or ""),
             )
         assistant_message = str(result.get("assistant_message") or "").strip()
@@ -899,7 +899,7 @@ async def stream_runtime_run(body: PiAgentRunRequest):
             "conversation_id": body.conversation_id,
             "messages": [
                 *previous_messages,
-                {"role": "user", "content": prepared.history_message},
+                {"role": "user", "content": prepared.history_message, "attachments": list(prepared.attachments)},
             ],
         },
     )
@@ -929,7 +929,7 @@ async def stream_runtime_run(body: PiAgentRunRequest):
                     skill_id=body.skill_id,
                     conversation_id=conversation["id"],
                     task_id=str(body.task_id or ""),
-                    context_messages=previous_messages,
+                    context_messages=[{"role": m["role"], "content": m["content"]} for m in previous_messages],
                     requested_run_id=str(body.run_id or ""),
                     stream_listener=listener,
                 )

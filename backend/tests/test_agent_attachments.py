@@ -105,7 +105,9 @@ def test_pdf_and_pptx_text_join_the_model_message_only():
     assert "第 2 页" in prepared.model_message
     assert "PM | 3" in prepared.model_message
     assert "1 张图片" in prepared.model_message
-    assert prepared.history_message == "帮我看看\n\n[附件：resume.pdf、review.pptx、shot.png]"
+    assert prepared.history_message == "帮我看看"
+    assert [item["name"] for item in prepared.attachments] == ["resume.pdf", "review.pptx", "shot.png"]
+    assert [item["kind"] for item in prepared.attachments] == ["document", "document", "image"]
     assert prepared.image_ids == (image.id,)
 
 
@@ -195,3 +197,28 @@ def test_upload_and_preview_routes():
     refused = client.post("/api/agent/runtime/attachments", files={"file": ("x.exe", b"MZ", "application/octet-stream")})
     assert refused.status_code == 400
     assert client.get("/api/agent/runtime/attachments/..%2Fsecret.png").status_code == 404
+
+
+def test_saved_conversation_keeps_attachments_out_of_text_and_title(tmp_path):
+    from app.services.harness_history import get_conversation, save_conversation_messages
+
+    store = tmp_path / "conversations.json"
+    files = [
+        {"id": "a" * 32 + ".png", "name": "shot.png", "kind": "image"},
+        {"id": "b" * 32 + ".pdf", "name": "resume.pdf", "kind": "document"},
+        {"id": "", "name": "dropped", "kind": "image"},
+    ]
+    saved = save_conversation_messages(
+        conversation_id=None,
+        messages=[
+            {"role": "user", "content": "帮我看看", "attachments": files},
+            {"role": "assistant", "content": "好", "attachments": files},
+        ],
+        path=store,
+    )
+    assert saved["title"] == "帮我看看"
+    reloaded = get_conversation(saved["id"], path=store)
+    user, assistant = reloaded["messages"]
+    assert user["content"] == "帮我看看"
+    assert [item["name"] for item in user["attachments"]] == ["shot.png", "resume.pdf"]
+    assert "attachments" not in assistant
