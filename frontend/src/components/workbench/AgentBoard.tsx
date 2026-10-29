@@ -103,6 +103,7 @@ export function AgentBoard({ onChange }: { onChange?: (snapshot: AgentBoardSnaps
   const [board, setBoard] = useState<AgentBoardSnapshot | null>(null);
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
+  const [errorId, setErrorId] = useState("");
   const [showHidden, setShowHidden] = useState(false);
   const [form, setForm] = useState<{ initial: CustomAgentInput; editing: string } | null>(null);
 
@@ -119,12 +120,12 @@ export function AgentBoard({ onChange }: { onChange?: (snapshot: AgentBoardSnaps
   useEffect(() => { void load(); }, [load]);
 
   const run = async (id: string, action: () => Promise<unknown>, after?: () => void) => {
-    setBusyId(id); setError("");
+    setBusyId(id); setError(""); setErrorId("");
     try {
       await action();
       after?.();
       await load();
-    } catch (cause) { setError(safeClientErrorMessage(cause, "操作未完成，请重试。")); }
+    } catch (cause) { setErrorId(id); setError(safeClientErrorMessage(cause, "操作未完成，请重试。")); }
     finally { setBusyId(""); }
   };
 
@@ -166,6 +167,7 @@ export function AgentBoard({ onChange }: { onChange?: (snapshot: AgentBoardSnaps
             <dt>最近调用</dt><dd className="break-all" data-testid={"agent-board-call-" + row.id}>{lastCallText(row)}</dd>
           </dl>
           {row.error && <p className="break-words text-[11px] text-amber-800">{row.error}</p>}
+          {error && errorId === row.id && <p role="alert" className="flex gap-2 text-xs text-amber-800"><AlertCircle size={14} />{error}</p>}
           <div className="flex flex-wrap gap-1.5">
             <Button size="sm" variant="bordered" isDisabled={Boolean(busyId)} startContent={<Terminal size={12} />}
               onPress={() => void run(row.id, () => agentBoardApi.launch(row.id))}>打开对话</Button>
@@ -183,7 +185,7 @@ export function AgentBoard({ onChange }: { onChange?: (snapshot: AgentBoardSnaps
         </li>;
       })}
     </ul>}
-    {error && <p role="alert" className="flex gap-2 text-xs text-amber-800"><AlertCircle size={14} />{error}</p>}
+    {error && !rows.some((row) => row.id === errorId) && <p role="alert" className="flex gap-2 text-xs text-amber-800"><AlertCircle size={14} />{error}</p>}
     {form ? <AgentForm key={form.editing || "new"} initial={form.initial} editing={Boolean(form.editing)} busy={Boolean(busyId)}
       onCancel={() => setForm(null)} onSave={save} />
       : <div className="flex flex-wrap gap-2">
