@@ -68,6 +68,19 @@ class PiAgentRunRequest(BaseModel):
         max_length=40,
         pattern=r"^[a-z0-9][a-z0-9_-]*$",
     )
+    llm_config_id: str = Field(default="", max_length=64)
+    reasoning_effort: str = Field(default="", pattern=r"^(|low|medium|high)$")
+    approval_mode: str = Field(default="auto", pattern=r"^(auto|ask)$")
+
+
+def _run_options(body: PiAgentRunRequest):
+    from app.run_options import RunOptions
+
+    return RunOptions(
+        llm_config_id=body.llm_config_id,
+        reasoning_effort=body.reasoning_effort,
+        approval_mode=body.approval_mode,
+    )
 
 
 class AgentInputAnswerRequest(BaseModel):
@@ -821,14 +834,17 @@ async def start_runtime_run(body: PiAgentRunRequest) -> dict[str, Any]:
             },
         )
         provider = _main_agent_provider(body.runtime_provider)
-        result = await provider.start_run(
-            message=body.message,
-            skill_id=body.skill_id,
-            conversation_id=conversation["id"],
-            task_id=str(body.task_id or ""),
-            context_messages=previous_messages,
-            requested_run_id=str(body.run_id or ""),
-        )
+        from app.run_options import use_run_options
+
+        with use_run_options(_run_options(body)):
+            result = await provider.start_run(
+                message=body.message,
+                skill_id=body.skill_id,
+                conversation_id=conversation["id"],
+                task_id=str(body.task_id or ""),
+                context_messages=previous_messages,
+                requested_run_id=str(body.run_id or ""),
+            )
         assistant_message = str(result.get("assistant_message") or "").strip()
         if assistant_message:
             conversation = await _ui_operation_outputs(
@@ -890,15 +906,18 @@ async def stream_runtime_run(body: PiAgentRunRequest):
                 pass
 
         async def run_and_record() -> dict[str, Any]:
-            result = await provider.start_run(
-                message=body.message,
-                skill_id=body.skill_id,
-                conversation_id=conversation["id"],
-                task_id=str(body.task_id or ""),
-                context_messages=previous_messages,
-                requested_run_id=str(body.run_id or ""),
-                stream_listener=listener,
-            )
+            from app.run_options import use_run_options
+
+            with use_run_options(_run_options(body)):
+                result = await provider.start_run(
+                    message=body.message,
+                    skill_id=body.skill_id,
+                    conversation_id=conversation["id"],
+                    task_id=str(body.task_id or ""),
+                    context_messages=previous_messages,
+                    requested_run_id=str(body.run_id or ""),
+                    stream_listener=listener,
+                )
             assistant_message = str(result.get("assistant_message") or "").strip()
             completed_conversation = conversation
             if assistant_message:

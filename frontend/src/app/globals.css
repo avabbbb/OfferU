@@ -1116,8 +1116,9 @@ body {
 }
 
 .context-rail.offeru-context-rail {
-  border-left-color: var(--border) !important;
+  border-left-color: transparent !important;
   background: var(--sidebar-bg) !important;
+  box-shadow: -12px 0 32px -16px rgba(31, 31, 29, 0.22), -1px 0 0 rgba(31, 31, 29, 0.04) !important;
 }
 
 .context-rail-header {
@@ -1408,8 +1409,10 @@ body {
 }
 
 .offeru-agent-panel .agent-tool-list {
-  margin: 2px 0 2px 16px;
-  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0.25rem 0 0.25rem 1rem;
 }
 
 .offeru-agent-panel .agent-tool-row {
@@ -1420,7 +1423,7 @@ body {
   padding: 3px 10px;
   font-size: var(--agent-fs-sm);
   line-height: 1.4;
-  color: var(--foreground-soft);
+  color: var(--foreground-muted);
   transition: background-color var(--dur-quick) var(--ease-snap);
 }
 
@@ -1464,10 +1467,6 @@ body {
   color: var(--foreground);
 }
 
-.offeru-agent-panel .agent-tool-list > :not(:first-child) {
-  border-top: 1px solid var(--border);
-}
-
 .offeru-agent-panel .agent-task-row {
   display: flex;
   width: 100%;
@@ -1508,13 +1507,210 @@ body {
 }
 
 .offeru-agent-panel .agent-composer {
-  border: 1px solid var(--border-strong);
-  border-radius: 12px;
+  display: flex;
+  min-height: 148px;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
   background: var(--surface);
-  box-shadow: 0 1px 2px var(--shadow-soft);
-  transition: border-color var(--dur-quick) var(--ease-snap);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.02), 0 2px 8px rgba(0, 0, 0, 0.05), 0 16px 40px rgba(0, 0, 0, 0.08);
+  transition: border-color var(--dur-quick) var(--ease-snap), box-shadow var(--dur-quick) var(--ease-snap);
 }
 
 .offeru-agent-panel .agent-composer:focus-within {
-  border-color: var(--foreground-faint);
+  border-color: var(--border-strong);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.03), 0 2px 8px rgba(0, 0, 0, 0.06), 0 18px 44px rgba(0, 0, 0, 0.11);
+}
+
+.offeru-agent-panel .agent-composer-menu-anchor {
+  position: relative;
+  min-width: 0;
+}
+
+.offeru-agent-panel button.agent-composer-tool {
+  max-width: 180px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.offeru-agent-panel .agent-composer-tool-sub {
+  color: var(--foreground-faint);
+  font-weight: 500;
+}
+
+.offeru-agent-panel .agent-composer-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: -4px;
+  z-index: 40;
+  width: 248px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.02), 0 4px 12px rgba(0, 0, 0, 0.08), 0 20px 48px rgba(0, 0, 0, 0.12);
+}
+
+.offeru-agent-panel .agent-composer-menu-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--foreground);
+  text-align: left;
+  cursor: pointer;
+}
+
+.offeru-agent-panel .agent-composer-menu-item:hover {
+  background: var(--surface-muted);
+}
+
+.offeru-agent-panel .agent-composer-menu-text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.offeru-agent-panel .agent-composer-menu-text strong,
+.offeru-agent-panel .agent-composer-menu-text small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.offeru-agent-panel .agent-composer-menu-text strong {
+  font-size: var(--agent-fs-sm);
+  font-weight: 600;
+}
+
+.offeru-agent-panel .agent-composer-menu-text small {
+  color: var(--foreground-muted);
+  font-size: var(--agent-fs-xs);
+}
+
+.offeru-agent-panel .agent-composer-chevron {
+  color: var(--foreground-faint);
+  transition: transform var(--dur-quick) var(--ease-snap);
+}
+
+.offeru-agent-panel .agent-composer-chevron.is-open {
+  transform: rotate(90deg);
+}
+
+.offeru-agent-panel .agent-composer-effort {
+  display: flex;
+  gap: 4px;
+  padding: 2px 8px 8px;
+}
+
+.offeru-agent-panel .agent-composer-effort-option {
+  flex: 1;
+  height: 26px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--foreground-muted);
+  font-size: var(--agent-fs-xs);
+  cursor: pointer;
+  transition: background-color var(--dur-quick) var(--ease-snap), color var(--dur-quick) var(--ease-snap);
+}
+
+.offeru-agent-panel .agent-composer-effort-option:hover,
+.offeru-agent-panel .agent-composer-effort-option.is-on {
+  background: var(--surface-muted);
+  color: var(--foreground);
+}
+
+.offeru-agent-panel .agent-composer-effort-option.is-on {
+  font-weight: 600;
+}
+
+.offeru-agent-panel .agent-composer-menu-foot {
+  display: block;
+  margin-top: 4px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--border);
+  color: var(--foreground-muted);
+  font-size: var(--agent-fs-xs);
+}
+
+.offeru-agent-panel .agent-composer-menu-foot:hover {
+  color: var(--foreground);
+}
+
+.offeru-agent-panel .agent-composer [data-slot="input-wrapper"],
+.offeru-agent-panel .agent-composer [data-slot="inner-wrapper"],
+.offeru-agent-panel .agent-composer textarea,
+.offeru-agent-panel .agent-composer textarea:focus,
+.offeru-agent-panel .agent-composer textarea:focus-visible {
+  border: 0 !important;
+  outline: none !important;
+  box-shadow: none !important;
+  --tw-ring-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+  background: transparent !important;
+}
+
+.offeru-agent-panel .agent-composer-controls {
+  display: flex;
+  margin-top: auto;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.offeru-agent-panel .agent-composer-tools {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 1px;
+}
+
+.offeru-agent-panel .agent-composer-tool {
+  display: flex;
+  height: 28px;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  border-radius: 8px;
+  padding: 0 6px;
+  color: var(--foreground-muted);
+  font-size: var(--agent-fs-xs);
+  font-weight: 600;
+  transition: background-color var(--dur-quick) var(--ease-snap), color var(--dur-quick) var(--ease-snap);
+}
+
+.offeru-agent-panel .agent-composer-tool:hover {
+  color: var(--foreground);
+  background: var(--surface-muted);
+}
+
+.offeru-agent-panel .agent-composer-send {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  place-content: center;
+  border: 0;
+  border-radius: 14px;
+  color: var(--surface);
+  background: var(--foreground);
+  cursor: pointer;
+  transition: opacity var(--dur-quick) var(--ease-snap);
+}
+
+.offeru-agent-panel .agent-composer-send:disabled {
+  cursor: default;
+  opacity: 0.35;
 }

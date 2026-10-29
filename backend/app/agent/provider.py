@@ -23,6 +23,7 @@ from app.agent.types import (
 )
 from app.agents.llm import _get_client, resolve_llm_client_config, resolve_model_for_tier as configured_model_for_tier
 from app.config import get_settings
+from app.run_options import current_run_options
 
 _logger = logging.getLogger(__name__)
 
@@ -171,12 +172,12 @@ def _make_partial_message(
 class LlmStreamProvider:
     def __init__(self, client_factory: Callable[[], tuple[Any, str]] = _get_client) -> None:
         self._client_factory = client_factory
-        self._client_cache: dict[tuple[int, str, str], tuple[Any, str]] = {}
+        self._client_cache: dict[tuple[int, str, str, str], tuple[Any, str]] = {}
 
     def _client_for_settings(self, settings: Any) -> tuple[Any, str]:
         provider = str(getattr(settings, "llm_provider", "") or "")
         model = str(getattr(settings, "llm_model", "") or "")
-        key = (id(settings), provider, model)
+        key = (id(settings), provider, model, current_run_options().llm_config_id)
         if key not in self._client_cache:
             self._client_cache[key] = self._client_factory()
         return self._client_cache[key]
@@ -222,14 +223,16 @@ class LlmStreamProvider:
                 "tools": [self._tool_to_openai(tool) for tool in tools] if tools else None,
                 "stream": True,
                 "stream_options": {"include_usage": True},
+                "reasoning_effort": current_run_options().reasoning_effort or None,
             }
             kwargs = {key: value for key, value in kwargs.items() if value is not None}
             try:
                 stream = await client.chat.completions.create(**kwargs)
             except (TypeError, BadRequestError):
                 # SDK 客户端拒参（TypeError）或服务端 400（部分 OpenAI 兼容网关不支持
-                # stream_options），去掉该参数重试一次；若仍失败则走统一错误收尾。
+                # stream_options / reasoning_effort），去掉这两个参数重试一次；若仍失败则走统一错误收尾。
                 kwargs.pop("stream_options", None)
+                kwargs.pop("reasoning_effort", None)
                 stream = await client.chat.completions.create(**kwargs)
 
             async for event in self.stream_chunks(stream, provider=provider, model=model, cancel=cancel):

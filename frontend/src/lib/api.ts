@@ -1193,6 +1193,9 @@ export const agentRuntimeApi = {
     conversation_id?: string | null;
     task_id?: string | null;
     runtime_provider?: string;
+    llm_config_id?: string;
+    reasoning_effort?: "" | "low" | "medium" | "high";
+    approval_mode?: "auto" | "ask";
   }, onEvent?: (event: string, data: any) => void, signal?: AbortSignal) => {
     const runId = createAgentRunId();
     const requestData = { ...data, skill_id: data.skill_id || AUTO_SKILL_ID, run_id: runId };

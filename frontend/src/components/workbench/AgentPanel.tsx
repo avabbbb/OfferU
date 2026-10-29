@@ -55,6 +55,7 @@ import { SHOWCASE } from "@/lib/showcase";
 import Link from "next/link";
 import { agentRecovery, MODEL_SETTINGS_ROUTE } from "@/lib/agentRecovery";
 import { quickActionsForStage } from "@/lib/quickActions";
+import { AgentComposerControls, useComposerOptions } from "./AgentComposerControls";
 
 interface PanelMessage {
   id: string;
@@ -113,8 +114,8 @@ const HOSTED_STATUS_LABELS: Record<string, string> = {
 const HOSTED_ACTIVE_STATUSES = new Set(["created", "starting", "running"]);
 
 const agentComposerFieldClassNames = {
-  inputWrapper: "!min-h-0 !border-0 !bg-transparent !px-1 !py-0.5 !shadow-none",
-  input: "!text-[length:var(--agent-fs)] placeholder:!text-[var(--foreground-faint)]",
+  inputWrapper: "!min-h-0 !border-0 !bg-transparent !px-1.5 !py-1 !shadow-none",
+  input: "!text-[13px] !leading-[22px] !outline-0 focus-visible:!outline-0 placeholder:!text-[var(--foreground-faint)]",
 };
 
 function executorLabel(executorId: string) {
@@ -259,6 +260,7 @@ export function AgentPanel() {
   const [activeRun, setActiveRun] = useState<AgentRunRecord | null>(null);
   const [interruptedRunId, setInterruptedRunId] = useState<string | null>(null);
   const [selectedSkillId, setSelectedSkillId] = useState<string>(AUTO_SKILL_ID);
+  const [composerOptions, setComposerOptions] = useComposerOptions();
   const [skills, setSkills] = useState<AgentSkill[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [conversations, setConversations] = useState<AgentConversationSummary[]>([]);
@@ -474,6 +476,9 @@ export function AgentPanel() {
           message: content,
           skill_id: requestSkillId,
           conversation_id: currentConversationId,
+          llm_config_id: composerOptions.llmConfigId,
+          reasoning_effort: composerOptions.reasoningEffort,
+          approval_mode: composerOptions.approvalMode,
         },
         (event, data) => {
           if (isDetached()) return;
@@ -1380,11 +1385,11 @@ export function AgentPanel() {
             ))}
           </div>
         )}
-        <div className="agent-composer px-2 pb-1 pt-1.5">
+        <div className="agent-composer">
           <Textarea
             value={input}
             onValueChange={setInput}
-            minRows={1}
+            minRows={3}
             maxRows={6}
             placeholder={
               runNeedsUser
@@ -1419,23 +1424,17 @@ export function AgentPanel() {
               }
             }}
           />
-          <div className="flex items-center justify-between pt-0.5">
-            <Link
-              href={MODEL_SETTINGS_ROUTE}
-              title="模型设置"
-              className="rounded-md px-1.5 py-0.5 text-[length:var(--agent-fs-xs)] text-[var(--foreground-muted)] transition-colors duration-[var(--dur-quick)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
-            >
-              模型
-            </Link>
-            <Button
-              isIconOnly
+          <div className="agent-composer-controls">
+            <AgentComposerControls options={composerOptions} onChange={setComposerOptions} />
+            <button
+              type="button"
               aria-label="发送"
-              onPress={() => sendMessage()}
-              isDisabled={!input.trim()}
-              className="!h-7 !min-h-7 !w-7 !min-w-7 !rounded-full !bg-[var(--foreground)] !text-[var(--surface)]"
+              onClick={() => sendMessage()}
+              disabled={!input.trim()}
+              className="agent-composer-send"
             >
-              <Send size={13} />
-            </Button>
+              <Send size={16} strokeWidth={2} />
+            </button>
           </div>
         </div>
       </footer>
