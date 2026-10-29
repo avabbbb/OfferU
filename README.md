@@ -18,7 +18,6 @@
   <a href="#watch-the-videos">Videos</a> ·
   <a href="./README_ZH.md">简体中文</a> ·
   <a href="./docs/DEVELOPMENT.md">Quickstart</a> ·
-  <a href="./docs/PLAN.md">Plan</a> ·
   <a href="./docs/PRD.md">PRD</a> ·
   <a href="./docs/README.md">Docs</a>
 </p>
@@ -357,7 +356,6 @@ See [SECURITY.md](./SECURITY.md) for the current security status.
 OfferU is not yet published as a signed consumer installer. For source development and internal testing:
 
 - [DEVELOPMENT.md](./docs/DEVELOPMENT.md) — environment and dev setup
-- [Project plan](./docs/PLAN.md) — PRs and how each is accepted
 
 The intended public user path is:
 
@@ -386,7 +384,6 @@ Current status, validation evidence, known issues and quality scores live in:
 
 - [RELEASE_CHECKLIST.md](./docs/RELEASE_CHECKLIST.md)
 - [KNOWN_ISSUES.md](./docs/KNOWN_ISSUES.md)
-- [Project plan](./docs/PLAN.md)
 
 Suggested developer checks:
 
@@ -421,7 +418,6 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 - [PRD](./docs/PRD.md) — users, scope and acceptance
 - [System design](./docs/DESIGN.md) — data, tools, agents and undo
-- [Project plan](./docs/PLAN.md) — daily plan and PR acceptance
 - [DEVELOPMENT.md](./docs/DEVELOPMENT.md) — development setup
 
 1. Fork the repository

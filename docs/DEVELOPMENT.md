@@ -92,7 +92,6 @@ npm run build
 ## Current facts and goals
 
 - 设计文档入口：[`docs/README.md`](./README.md)
-- 项目计划与验收：[`docs/PLAN.md`](./PLAN.md)
 - 当前 Gate：[`RELEASE_CHECKLIST.md`](./RELEASE_CHECKLIST.md)、[`KNOWN_ISSUES.md`](./KNOWN_ISSUES.md)
 - Release matrix：[`RELEASE_CHECKLIST.md`](./RELEASE_CHECKLIST.md)
 
