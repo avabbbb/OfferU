@@ -525,6 +525,25 @@ def resume_pdf(doc_id: int):
                     headers={"Content-Disposition": f"attachment; filename=\"resume.pdf\"; filename*=UTF-8''{quote(resume.file_name(doc))}"})
 
 
+@app.post("/api/resume/{doc_id}/tailor")
+async def resume_tailor(doc_id: int, request: Request):
+    """按岗位 JD 改写简历，SSE 推进度（start / delta / done / error）。断开连接就是取消；没跑完不写库。Body: {job_id?}."""
+    import json
+
+    from fastapi.responses import StreamingResponse
+
+    from app.core import tailor
+
+    payload = (await request.json()) if await request.body() else {}
+
+    async def events():
+        async for event in tailor.run(doc_id, payload.get("job_id")):
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(events(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
 @app.post("/api/files")
 async def upload_file(file: UploadFile):
     """Old resumes and ID photos land in <data>/files; tools refer to them by name."""
