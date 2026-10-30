@@ -12,6 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import { apiUrl, type Template } from "@/lib/core";
 import { SlashMenu } from "@/components/resume/SlashMenu";
 import { FormatBubble } from "@/components/resume/FormatBubble";
+import { BlockHandle } from "@/components/resume/BlockHandle";
 
 /** 回车多按出来的空段落会被序列化成 &nbsp;，存之前去掉。 */
 export const tidy = (md: string) => md.split("\n").filter((l) => l.trim() !== "&nbsp;").join("\n").replace(/\n{3,}/g, "\n\n").trim() + "\n";
@@ -119,6 +120,7 @@ export function ResumeEditor({ body, template, photo, source, onChange }: {
             {showPhoto && <img className="photo" src={apiUrl(`/api/files/${photo}`)} alt="" />}
             <EditorContent editor={editor} />
             {editor && <FormatBubble editor={editor} />}
+            {editor && <BlockHandle editor={editor} paper={paper} zoom={zoom} />}
             {overflow && <div className="page-end"><span>第一页到这</span></div>}
           </div>
         </div>
