@@ -29,6 +29,7 @@
     "@tiptap/pm": "^3.32.0",
     "@tiptap/react": "^3.32.0",
     "@tiptap/starter-kit": "^3.32.0",
+    "@tiptap/suggestion": "^3.32.0",
     "framer-motion": "^11.0.0",
     "localforage": "^1.10.0",
     "lucide-react": "^0.400.0",

@@ -10,6 +10,7 @@ import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useRef, useState } from "react";
 
 import { apiUrl, type Template } from "@/lib/core";
+import { SlashMenu } from "@/components/resume/SlashMenu";
 
 /** 回车多按出来的空段落会被序列化成 &nbsp;，存之前去掉。 */
 export const tidy = (md: string) => md.split("\n").filter((l) => l.trim() !== "&nbsp;").join("\n").replace(/\n{3,}/g, "\n\n").trim() + "\n";
@@ -65,7 +66,7 @@ export function ResumeEditor({ body, template, photo, source, onChange }: {
   const emitted = useRef(body);
 
   const editor = useEditor({
-    extensions: [StarterKit.configure({ link: false, codeBlock: false, code: false, blockquote: false, horizontalRule: false }), Markdown, ResumeRow],
+    extensions: [StarterKit.configure({ link: false, codeBlock: false, code: false, blockquote: false, horizontalRule: false }), Markdown, ResumeRow, SlashMenu],
     content: body,
     contentType: "markdown",
     immediatelyRender: true,
