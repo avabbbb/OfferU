@@ -8,6 +8,7 @@ import { mutate } from "swr";
 import { ResumeEditor } from "@/components/core/ResumeEditor";
 import { type PreviewHandle, ResumePreview } from "@/components/resume/ResumePreview";
 import { StylePanel } from "@/components/resume/StylePanel";
+import { TailorBar } from "@/components/resume/TailorBar";
 import { apiUrl, type Doc, type Job, type Memory, type Profile, tool, useTool, write } from "@/lib/core";
 import { resumeFromProfile } from "@/lib/resumeDraft";
 import { type FitOutcome, fitOnePage, resolveStyle, type ResumeStyle } from "@/lib/resumeStyle";
@@ -87,6 +88,8 @@ function Editor({ doc, jobs, photo, onCopy }: { doc: Doc; jobs: Job[]; photo?: s
       <div className="flex min-h-0 flex-1">
         <ResumeEditor body={body} template={style.template} photo={style.photo ? photo : undefined} source={source} onChange={setBody} />
         <div className="flex w-[46%] min-w-[360px] shrink-0 flex-col border-l border-[var(--border)]">
+          <TailorBar docId={doc.id} jobId={doc.job_id} jobs={jobs} disabled={!saved || !styleSaved}
+            onDone={() => mutate((k) => Array.isArray(k) && k[0] === "tool")} />
           <StylePanel style={style} onChange={changeStyle} onFit={() => void fit()} fitting={fitting} notice={notice}
             hasPhoto={Boolean(photo)} pdfHref={apiUrl("/api/resume/" + doc.id + "/pdf")} />
           <ResumePreview ref={preview} body={body} style={style} />
