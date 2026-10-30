@@ -80,7 +80,7 @@ def test_resume_import_edit_export(tmp_path, monkeypatch):
         assert first == second
         assert client.post("/api/tools/save", json={"type": "doc", "id": doc["id"], "data": {"template": "fancy"}}).status_code == 400
 
-        assert "--fs: 9.2pt" in client.get("/api/resume/templates/compact.css").text
+        assert "--body-size: 9.2pt" in client.get("/api/resume/templates/compact.css").text
         pdf = client.get(f"/api/resume/{doc['id']}/pdf").content
         assert "接口延迟从 120ms 降到 40ms" in fitz.open(stream=pdf, filetype="pdf")[0].get_text()
         path = client.post("/api/tools/export_resume_pdf", json={"id": doc["id"]}).json()["path"]

@@ -492,6 +492,24 @@ def resume_template_css(template: str):
     return Response(resume.css(template), media_type="text/css")
 
 
+@app.post("/api/resume/render")
+async def resume_render(request: Request):
+    """Live preview: the exact HTML the PDF is printed from. Body: {body, style}."""
+    from fastapi.responses import HTMLResponse
+
+    from app.core import resume, store
+    from app.core.tools import check_style
+
+    payload = await request.json()
+    style = payload.get("style") or {}
+    try:
+        check_style(style)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    profile = store.first("profile") or {}
+    return HTMLResponse(resume.render_html(str(payload.get("body") or ""), style, profile.get("photo")))
+
+
 @app.get("/api/resume/{doc_id}/pdf")
 def resume_pdf(doc_id: int):
     from urllib.parse import quote

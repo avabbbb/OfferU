@@ -1,0 +1,4 @@
+/* 留白（Kami）：宋体、墨蓝、暖灰分隔线，层级只靠字号、字重、颜色和留白。 */
+.resume { --name: 26.5pt; --h2: 12.5pt; --ink: #141413; --muted: #5f5e5a; --rule: #E8E6DC; }
+.resume h1 { font-weight: 500; letter-spacing: .04em; }
+.resume h2 { letter-spacing: .08em; border-bottom-width: .25mm; }
