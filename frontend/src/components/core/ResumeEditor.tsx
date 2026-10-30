@@ -9,7 +9,7 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useRef, useState } from "react";
 
-import { apiUrl, type Template } from "@/lib/core";
+import { apiUrl } from "@/lib/core";
 import { SlashMenu } from "@/components/resume/SlashMenu";
 import { FormatBubble } from "@/components/resume/FormatBubble";
 import { BlockHandle } from "@/components/resume/BlockHandle";
@@ -58,7 +58,7 @@ const ResumeRow = Extension.create({
 });
 
 export function ResumeEditor({ body, template, photo, source, onChange }: {
-  body: string; template: Template; photo?: string; source: boolean; onChange: (markdown: string) => void;
+  body: string; template: string; photo?: string; source: boolean; onChange: (markdown: string) => void;
 }) {
   const [css, setCss] = useState("");
   const [zoom, setZoom] = useState(1);
@@ -103,7 +103,7 @@ export function ResumeEditor({ body, template, photo, source, onChange }: {
     return () => ro.disconnect();
   }, [source]);
 
-  const showPhoto = template === "photo" && photo;
+  const showPhoto = photo;
   return (
     <div ref={box} className="min-w-0 flex-1 overflow-auto px-6 py-6">
       <style>{`${css}
