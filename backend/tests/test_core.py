@@ -87,4 +87,5 @@ def test_resume_import_edit_export(tmp_path, monkeypatch):
         assert path.endswith("主简历.pdf")
 
         client.post("/api/tools/undo", json={"change_id": second})
-        assert client.post("/api/tools/get", json={"type": "doc", "id": doc["id"]}).json()["record"]["body"] == "# 李四"
+        record = client.post("/api/tools/get", json={"type": "doc", "id": doc["id"]}).json()["record"]
+        assert record["body"] == "# 李四\n" and record["resume"]["basics"]["name"] == "李四" and record["resume"]["sections"] == []

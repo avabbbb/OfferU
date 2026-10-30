@@ -4,6 +4,7 @@ import asyncio
 
 from app.core import store, tailor
 from app.core.tools import save
+from app.core.resume_model import from_markdown, to_markdown
 
 FENCE = chr(96) * 3
 
@@ -41,7 +42,8 @@ def test_tailor_saves_one_agent_change(tmp_path, monkeypatch):
     events = _run(doc_id, job_id, _chunks(FENCE + "markdown\n", NEW[:20], NEW[20:], FENCE))
     assert [e["type"] for e in events] == ["start", "delta", "delta", "delta", "delta", "done"]
     doc = store.get("doc", doc_id)
-    assert doc["body"] == NEW and doc["job_id"] == job_id
+    assert doc["body"] == to_markdown(from_markdown(NEW)) and doc["job_id"] == job_id
+    assert doc["resume"]["sections"][0]["type"] == "internship" and events[-1]["resume"] == doc["resume"]
     assert store.changes(1)[0]["actor"] == "Agent"
 
 
@@ -55,7 +57,7 @@ def test_tailor_failures_leave_resume_alone(tmp_path, monkeypatch):
     for stream, deadline, message in cases:
         events = _run(doc_id, job_id, stream, deadline)
         assert events[-1]["type"] == "error" and message in events[-1]["message"], events
-    assert store.get("doc", doc_id)["body"] == OLD
+    assert store.get("doc", doc_id)["body"] == to_markdown(from_markdown(OLD))
 
 
 def test_tailor_needs_jd(tmp_path, monkeypatch):

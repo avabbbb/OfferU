@@ -35,7 +35,7 @@ FIELDS = {
     "memory": f"职业记忆，一条一件事。kind: {'/'.join(MEMORY_KIND)}; title; body（具体经历、数字、用户原话）; start, end; tags",
     "job": f"岗位和投递状态。company, title, status: {'/'.join(JOB_STATUS)}; url, city, jd, notes, applied_at",
     "event": f"待办和日程。title, kind: {'/'.join(EVENT_KIND)}; at（YYYY-MM-DD 或 YYYY-MM-DDTHH:MM，可空）, done, job_id, notes",
-    "doc": f"文档。kind: {'/'.join(DOC_KIND)}; title, body（Markdown）, job_id, style（简历排版，对象，缺的键用模板默认值，更新时传完整对象：template clear 清晰 / kami 留白 / compact 紧凑；font sans 黑体 / serif 宋体 / kai 楷体；bodySize 8–14（pt）；lineHeight 1–2；sectionGap 0–30（pt）；itemGap 0–20（pt）；margin {{top, right, bottom, left}} 3–30（mm）；accent #RRGGBB；photo true 用档案证件照；logo 校徽文件名）。简历 body 的写法：第一行 # 名字，下一段是联系方式，## 分节，### 学校或公司 | 专业或职位 | 时间（最后一段靠右），- 要点",
+    "doc": f"文档。kind: {'/'.join(DOC_KIND)}; title, body（Markdown）, job_id, style（简历排版，对象，缺的键用模板默认值，更新时传完整对象：template clear 清晰 / kami 留白 / compact 紧凑；font sans 黑体 / serif 宋体 / kai 楷体；bodySize 8–14（pt）；lineHeight 1–2；sectionGap 0–30（pt）；itemGap 0–20（pt）；margin {{top, right, bottom, left}} 3–30（mm）；accent #RRGGBB；photo true 用档案证件照；logo 校徽文件名）。简历以 resume 为准（对象：{{basics: {{name, target, contacts: [文字]}}, sections: [{{id, type, title, hidden, items: [{{id, title, subtitle, date, location, bullets: [文字], text}}]}}]}}），body 由它自动生成；也可以只传 body，写法：第一行 # 名字，下一段是联系方式，## 分节，### 学校或公司 | 专业或职位 | 时间（最后一段靠右），- 要点，保存时转成 resume",
 }
 RecordType = Literal["profile", "memory", "job", "event", "doc"]
 
@@ -52,7 +52,7 @@ def label(record: dict[str, Any]) -> str:
 
 
 def _brief(record: dict[str, Any]) -> dict[str, Any]:
-    out = {k: v for k, v in record.items() if k not in ("jd", "body", "messages", "created_at")}
+    out = {k: v for k, v in record.items() if k not in ("jd", "body", "resume", "messages", "created_at")}
     for key in ("jd", "body"):
         if record.get(key):
             out[key] = str(record[key])[:160] + ("…" if len(str(record[key])) > 160 else "")
@@ -123,6 +123,20 @@ def _check(type_: str, data: dict[str, Any], creating: bool) -> None:
         raise ValueError(f"岗位 #{data['job_id']} 不存在")
 
 
+def _with_resume(data: dict[str, Any], id_: Optional[int]) -> dict[str, Any]:
+    """简历以 doc.resume 为准，body 从它派生；只给 body（agent / 旧代码）的简历就解析成 resume。"""
+    from app.core import resume_model
+
+    if data.get("resume") is not None:
+        resume = resume_model.normalize(data["resume"])
+    else:
+        kind = data.get("kind") or ((store.get("doc", id_) or {}).get("kind") if id_ else None)
+        if data.get("body") is None or kind != "resume":
+            return data
+        resume = resume_model.from_markdown(str(data["body"]))
+    return dict(data, resume=resume, body=resume_model.to_markdown(resume))
+
+
 # ---------- tools ----------
 
 class _In(BaseModel):
@@ -139,6 +153,8 @@ def save(type: str, data: dict[str, Any], id: Optional[int] = None, *, actor: st
     if type == "profile" and id is None and (existing := store.first("profile")):
         id = existing["id"]
     _check(type, data, creating=id is None)
+    if type == "doc":
+        data = _with_resume(data, id)
     if type == "event" and data.get("done") is True and id is not None:
         verb = "完成"
     else:

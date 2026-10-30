@@ -17,7 +17,8 @@ Stream = Callable[[list[dict[str, str]]], AsyncIterator[str]]
 PROMPT = (
     "你是简历编辑。按岗位 JD 改写用户的简历。只用「档案和经历」里有的事实，不编造经历、数字、公司、技能。\n"
     "和 JD 相关的经历放前面、写具体，无关的压缩或删掉；要点动词开头，写清做了什么、结果和数字；控制在一页 A4。\n"
-    "只输出完整的 Markdown 简历本身，不要解释，不要代码块。写法：" + FIELDS["doc"].split("简历 body 的写法：", 1)[1]
+    "只输出完整的 Markdown 简历本身，不要解释，不要代码块。写法："
+    + FIELDS["doc"].split("也可以只传 body，写法：", 1)[1].split("，保存时转成", 1)[0]
 )
 
 _running: set[int] = set()
@@ -108,6 +109,7 @@ async def run(doc_id: int, job_id: Optional[int] = None, *, stream: Optional[Str
             return
         data: dict[str, Any] = {"body": body} if doc.get("job_id") else {"body": body, "job_id": job["id"]}
         result = await asyncio.to_thread(save, "doc", data, doc["id"], actor="Agent")
-        yield {"type": "done", "body": body, "change_id": result["change_id"]}
+        record = result["record"]
+        yield {"type": "done", "body": record["body"], "resume": record["resume"], "change_id": result["change_id"]}
     finally:
         _running.discard(doc["id"])
