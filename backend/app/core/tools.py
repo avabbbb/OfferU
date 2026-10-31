@@ -18,7 +18,13 @@ from app.core import store
 JOB_STATUS = {"saved": "想投", "applied": "已投递", "test": "笔试 / 测评", "interview": "面试中",
               "offer": "offer", "rejected": "未通过", "closed": "不投了"}
 EVENT_KIND = {"todo": "待办", "deadline": "截止", "test": "笔试 / 测评", "interview": "面试"}
-RESUME_TEMPLATE = {"single": "单栏", "compact": "紧凑", "photo": "带照片"}
+RESUME_TEMPLATE = {"clear": "清晰", "kami": "留白", "compact": "紧凑"}
+RESUME_FONT = {"sans": "黑体", "serif": "宋体", "kai": "楷体"}
+# Old docs carry doc.template; resume.resolve_style reads it as style. Still accepted on save until the editor writes style.
+LEGACY_TEMPLATE = {"single": {"template": "clear"}, "compact": {"template": "compact"}, "photo": {"template": "clear", "photo": True}}
+STYLE_RANGE = {"bodySize": (8, 14), "lineHeight": (1.0, 2.0), "sectionGap": (0, 30), "itemGap": (0, 20)}
+MARGIN_RANGE = (3, 30)
+STYLE_KEYS = ("template", "font", *STYLE_RANGE, "margin", "accent", "photo", "logo")
 DOC_KIND = {"resume": "简历", "apply_chat": "官网投递对话", "review": "面试复盘", "research": "调研", "note": "笔记"}
 MEMORY_KIND = {"experience": "实习 / 工作", "project": "项目", "education": "教育", "skill": "技能",
                "award": "奖项 / 证书", "preference": "偏好", "note": "其他"}
@@ -29,7 +35,7 @@ FIELDS = {
     "memory": f"职业记忆，一条一件事。kind: {'/'.join(MEMORY_KIND)}; title; body（具体经历、数字、用户原话）; start, end; tags",
     "job": f"岗位和投递状态。company, title, status: {'/'.join(JOB_STATUS)}; url, city, jd, notes, applied_at",
     "event": f"待办和日程。title, kind: {'/'.join(EVENT_KIND)}; at（YYYY-MM-DD 或 YYYY-MM-DDTHH:MM，可空）, done, job_id, notes",
-    "doc": f"文档。kind: {'/'.join(DOC_KIND)}; title, body（Markdown）, job_id, template（简历模板：single 单栏 / compact 紧凑 / photo 带照片）。简历 body 的写法：第一行 # 名字，下一段是联系方式，## 分节，### 学校或公司 | 专业或职位 | 时间（最后一段靠右），- 要点",
+    "doc": f"文档。kind: {'/'.join(DOC_KIND)}; title, body（Markdown）, job_id, style（简历排版，对象，缺的键用模板默认值，更新时传完整对象：template clear 清晰 / kami 留白 / compact 紧凑；font sans 黑体 / serif 宋体 / kai 楷体；bodySize 8–14（pt）；lineHeight 1–2；sectionGap 0–30（pt）；itemGap 0–20（pt）；margin {{top, right, bottom, left}} 3–30（mm）；accent #RRGGBB；photo true 用档案证件照；logo 校徽文件名）。简历以 resume 为准（对象：{{basics: {{name, target, contacts: [文字]}}, sections: [{{id, type, title, hidden, items: [{{id, title, subtitle, date, location, bullets: [文字], text}}]}}]}}），body 由它自动生成；也可以只传 body，写法：第一行 # 名字，下一段是联系方式，## 分节，### 学校或公司 | 专业或职位 | 时间（最后一段靠右），- 要点，保存时转成 resume",
 }
 RecordType = Literal["profile", "memory", "job", "event", "doc"]
 
@@ -46,12 +52,45 @@ def label(record: dict[str, Any]) -> str:
 
 
 def _brief(record: dict[str, Any]) -> dict[str, Any]:
-    out = {k: v for k, v in record.items() if k not in ("jd", "body", "messages", "created_at")}
+    out = {k: v for k, v in record.items() if k not in ("jd", "body", "resume", "messages", "created_at")}
     for key in ("jd", "body"):
         if record.get(key):
             out[key] = str(record[key])[:160] + ("…" if len(str(record[key])) > 160 else "")
     out["label"] = label(record)
     return out
+
+
+def check_style(style: Any) -> None:
+    """doc.style: unknown keys and out-of-range values are errors, never clamped, so an agent sees what went wrong."""
+    if not isinstance(style, dict):
+        raise ValueError("doc.style 要是对象")
+    if unknown := sorted(set(style) - set(STYLE_KEYS)):
+        raise ValueError(f"doc.style 没有 {', '.join(unknown)}；可用：{', '.join(STYLE_KEYS)}")
+
+    def number(key: str, value: Any, low: float, high: float) -> None:
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not low <= value <= high:
+            raise ValueError(f"doc.style.{key} 要在 {low}–{high} 之间")
+
+    for key, value in style.items():
+        if value is None:
+            continue
+        if key == "template" and value not in RESUME_TEMPLATE:
+            raise ValueError(f"doc.style.template 只能是 {', '.join(RESUME_TEMPLATE)}")
+        if key == "font" and value not in RESUME_FONT:
+            raise ValueError(f"doc.style.font 只能是 {', '.join(RESUME_FONT)}")
+        if key in STYLE_RANGE:
+            number(key, value, *STYLE_RANGE[key])
+        if key == "margin":
+            if not isinstance(value, dict) or set(value) - {"top", "right", "bottom", "left"}:
+                raise ValueError("doc.style.margin 是 {top, right, bottom, left}，单位 mm")
+            for side, mm in value.items():
+                number(f"margin.{side}", mm, *MARGIN_RANGE)
+        if key == "accent" and not (isinstance(value, str) and re.fullmatch(r"#[0-9A-Fa-f]{6}", value)):
+            raise ValueError("doc.style.accent 要是 #RRGGBB")
+        if key == "photo" and not isinstance(value, bool):
+            raise ValueError("doc.style.photo 是 true / false")
+        if key == "logo" and not (isinstance(value, str) and value and Path(value).name == value):
+            raise ValueError("doc.style.logo 是上传（POST /api/files）返回的文件名")
 
 
 def _check(type_: str, data: dict[str, Any], creating: bool) -> None:
@@ -71,7 +110,9 @@ def _check(type_: str, data: dict[str, Any], creating: bool) -> None:
             datetime.fromisoformat(str(data["at"]))
     elif type_ == "doc":
         one_of("kind", DOC_KIND)
-        one_of("template", RESUME_TEMPLATE)
+        one_of("template", LEGACY_TEMPLATE)
+        if data.get("style") is not None:
+            check_style(data["style"])
         if creating and not data.get("kind"):
             raise ValueError("文档要有 kind")
     elif type_ == "memory":
@@ -80,6 +121,20 @@ def _check(type_: str, data: dict[str, Any], creating: bool) -> None:
             raise ValueError("记忆要有 title 或 body")
     if data.get("job_id") is not None and store.get("job", int(data["job_id"])) is None:
         raise ValueError(f"岗位 #{data['job_id']} 不存在")
+
+
+def _with_resume(data: dict[str, Any], id_: Optional[int]) -> dict[str, Any]:
+    """简历以 doc.resume 为准，body 从它派生；只给 body（agent / 旧代码）的简历就解析成 resume。"""
+    from app.core import resume_model
+
+    if data.get("resume") is not None:
+        resume = resume_model.normalize(data["resume"])
+    else:
+        kind = data.get("kind") or ((store.get("doc", id_) or {}).get("kind") if id_ else None)
+        if data.get("body") is None or kind != "resume":
+            return data
+        resume = resume_model.from_markdown(str(data["body"]))
+    return dict(data, resume=resume, body=resume_model.to_markdown(resume))
 
 
 # ---------- tools ----------
@@ -98,6 +153,8 @@ def save(type: str, data: dict[str, Any], id: Optional[int] = None, *, actor: st
     if type == "profile" and id is None and (existing := store.first("profile")):
         id = existing["id"]
     _check(type, data, creating=id is None)
+    if type == "doc":
+        data = _with_resume(data, id)
     if type == "event" and data.get("done") is True and id is not None:
         verb = "完成"
     else:
@@ -362,7 +419,7 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
     Tool(name="read_file", input=ReadFileIn, fn=read_file,
          description="读本机 PDF / Word / txt / md 文件的文字，比如用户的旧简历。读完把经历拆成一条条 memory 存进档案。"),
     Tool(name="export_resume_pdf", input=ExportIn, fn=export_resume_pdf,
-         description="把一份简历（doc kind=resume）按它的模板导出成 PDF，返回文件路径。"),
+         description="把一份简历（doc kind=resume）按它的排版（style）导出成 PDF，和工作台预览是同一份 HTML，返回文件路径。"),
     Tool(name="fetch_page", input=FetchIn, fn=fetch_page, description="抓取一个公开网页的文字（比如岗位详情页链接），需要登录或 JS 的页面可能拿不到内容。"),
 ]}
 

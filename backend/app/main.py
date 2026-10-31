@@ -492,6 +492,29 @@ def resume_template_css(template: str):
     return Response(resume.css(template), media_type="text/css")
 
 
+@app.post("/api/resume/render")
+async def resume_render(request: Request):
+    """Live preview: the exact HTML the PDF is printed from. Body: {resume, style}; old clients send {body, style}."""
+    from fastapi.responses import HTMLResponse
+
+    from app.core import resume, resume_model, store
+    from app.core.tools import check_style
+
+    payload = await request.json()
+    style = payload.get("style") or {}
+    try:
+        check_style(style)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    profile = store.first("profile") or {}
+    try:  # Body: {resume, style}；旧客户端只给 body（Markdown）就先解析
+        data = (resume_model.normalize(payload["resume"]) if payload.get("resume") is not None
+                else resume_model.from_markdown(str(payload.get("body") or "")))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return HTMLResponse(resume.render_html(data, style, profile.get("photo")))
+
+
 @app.get("/api/resume/{doc_id}/pdf")
 def resume_pdf(doc_id: int):
     from urllib.parse import quote
@@ -505,6 +528,25 @@ def resume_pdf(doc_id: int):
         raise HTTPException(status_code=404, detail="简历不存在")
     return Response(resume.pdf_bytes(resume.doc_html(doc)), media_type="application/pdf",
                     headers={"Content-Disposition": f"attachment; filename=\"resume.pdf\"; filename*=UTF-8''{quote(resume.file_name(doc))}"})
+
+
+@app.post("/api/resume/{doc_id}/tailor")
+async def resume_tailor(doc_id: int, request: Request):
+    """按岗位 JD 改写简历，SSE 推进度（start / delta / done / error）。断开连接就是取消；没跑完不写库。Body: {job_id?}."""
+    import json
+
+    from fastapi.responses import StreamingResponse
+
+    from app.core import tailor
+
+    payload = (await request.json()) if await request.body() else {}
+
+    async def events():
+        async for event in tailor.run(doc_id, payload.get("job_id")):
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(events(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.post("/api/files")

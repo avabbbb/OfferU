@@ -1,0 +1,19 @@
+/* 留白（Kami）：照 tw93/Kami 的 resume 模板和 design.md。
+   暖羊皮纸底 #f5f4ed；唯一强调色墨蓝 --accent（#1B365D，面积不超过 5%：只给要点符号和加粗的数字/短语）；
+   灰全部是暖灰；一种衬线；字重只用 400/500；没有阴影、色块、竖条，分隔只用一条暖灰细线。 */
+.resume { --name: 26.5pt; --h2: 12.5pt; --ink: #141413; --olive: #504e49; --muted: #6b6a64; --rule: #e8e6dc;
+  background: #f5f4ed; color: var(--ink); letter-spacing: .3pt; }
+.resume h1 { color: var(--ink); font-weight: 500; letter-spacing: .5pt; line-height: 1; margin: 0 0 2.3mm; }
+.resume h1 + p.contact { color: var(--muted); font-size: 9pt; line-height: 1.5; margin: 0 0 4.2mm; padding-bottom: 2.3mm;
+  border-bottom: .6pt solid var(--rule); }
+.resume h2 { color: var(--ink); font-weight: 500; letter-spacing: 0; margin-bottom: 1.7mm; padding-bottom: 1mm;
+  border-bottom: .5pt solid var(--rule); }
+.resume section:first-of-type h2 { margin-top: 0; }
+.resume h3 { font-weight: 500; font-size: calc(var(--body-size) + 1.5pt); }
+.resume h3 .seg { color: var(--olive); font-size: var(--body-size); }
+.resume h3 .r { color: var(--muted); font-size: 9pt; }
+.resume h3 .sep::before { color: var(--rule); }
+.resume p, .resume li { color: var(--ink); }
+.resume li::marker { color: var(--accent); }
+.resume strong, .resume b { font-weight: 500; color: var(--accent); }
+.resume .photo { border-radius: 2pt; }
