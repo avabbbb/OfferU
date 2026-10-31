@@ -5,7 +5,7 @@ import { readSse } from "@/lib/sse";
 export type TailorEvent =
   | { type: "start"; job: string }
   | { type: "delta"; text: string }
-  | { type: "done"; body: string; change_id: number }
+  | { type: "done"; body: string; resume: unknown; change_id: number }
   | { type: "error"; message: string };
 
 export async function tailorResume(docId: number, jobId: number, signal: AbortSignal, onEvent: (event: TailorEvent) => void): Promise<void> {

@@ -22,7 +22,7 @@ def test_resume_style_and_render(tmp_path, monkeypatch):
 
         page = client.post("/api/resume/render", json={"body": body, "style": style}).text
         assert '<h3 data-path="sections.0.items.0.head">OfferU' in page and '<span class="r">2025.03 – 2025.06</span>' in page
-        assert "--body-size: 9.8pt" in page and "--margin-top: 12mm" in page and "--margin-left: 16mm" in page
+        assert "--body-size: 9.8pt" in page and "--margin-top: 12mm" in page and "--margin-left: 13mm" in page
         assert "Songti SC" in page and 'class="resume t-kami"' in page
         assert client.post("/api/resume/render", json={"body": body, "style": {"bodySize": 30}}).status_code == 400
         assert doc["resume"]["sections"][0]["type"] == "project"

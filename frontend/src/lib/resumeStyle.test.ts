@@ -11,7 +11,7 @@ describe("resolveStyle", () => {
     expect(legacy.template).toBe("clear");
     expect(legacy.photo).toBe(true);
     expect(resolveStyle({ template: "compact", margin: { top: 5 } }).margin).toEqual({ top: 5, right: 12, bottom: 10, left: 12 });
-    expect(resolveStyle({ template: "fancy" as never }).template).toBe("clear");
+    expect(resolveStyle({ template: "fancy" as never }).template).toBe("kami");
   });
   it("换模板保留照片和校徽", () => {
     const s = withTemplate(resolveStyle({ photo: true, logo: "pku.png", bodySize: 12 }), "kami");

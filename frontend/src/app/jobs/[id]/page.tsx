@@ -57,7 +57,7 @@ export default function JobDetailPage() {
             const { items } = await tool<{ items: Doc[] }>("list", { type: "doc", kind: "resume", full: true, limit: 200 });
             const base = items.filter((d) => !d.job_id).sort((a, b) => a.id - b.id)[0];
             if (!base) { router.push("/resume"); return; }
-            const { record } = await write<{ record: Doc }>("save", { type: "doc", data: { kind: "resume", job_id: job.id, title: `简历 · ${job.company ?? job.title}`, body: base.body, template: base.template } });
+            const { record } = await write<{ record: Doc }>("save", { type: "doc", data: { kind: "resume", job_id: job.id, title: "简历 · " + (job.company ?? job.title), resume: base.resume, style: base.style, template: base.template } });
             router.push(`/resume/${record.id}`);
           }}>为这个岗位复制一份简历</button>
         </div>

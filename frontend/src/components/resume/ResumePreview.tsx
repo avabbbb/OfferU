@@ -6,14 +6,15 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 
 import { apiUrl } from "@/lib/core";
 import { PAGE_PX, SIDES, type ResumeStyle } from "@/lib/resumeStyle";
+import type { Resume } from "@/lib/resumeModel";
 
 const A4_W = 794; // 210mm @ 96dpi
 
 export type PreviewHandle = { measure: (style: ResumeStyle) => number };
 
-type Props = { body: string; style: ResumeStyle; onLocate?: (line: number) => void };
+type Props = { resume: Resume; style: ResumeStyle; onLocate?: (path: string) => void };
 
-export const ResumePreview = forwardRef<PreviewHandle, Props>(function ResumePreview({ body, style, onLocate }, ref) {
+export const ResumePreview = forwardRef<PreviewHandle, Props>(function ResumePreview({ resume, style, onLocate }, ref) {
   const box = useRef<HTMLDivElement>(null);
   const frame = useRef<HTMLIFrameElement>(null);
   const seq = useRef(0);
@@ -31,7 +32,7 @@ export const ResumePreview = forwardRef<PreviewHandle, Props>(function ResumePre
     const timer = window.setTimeout(async () => {
       try {
         const res = await fetch(apiUrl("/api/resume/render"), {
-          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body, style }),
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ resume, style }),
         });
         const text = await res.text();
         if (id !== seq.current) return;
@@ -48,7 +49,7 @@ export const ResumePreview = forwardRef<PreviewHandle, Props>(function ResumePre
       }
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [body, styleKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [resume, styleKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const el = box.current;
@@ -84,8 +85,8 @@ export const ResumePreview = forwardRef<PreviewHandle, Props>(function ResumePre
     if (!doc || !main) return;
     setHeight(Math.max(PAGE_PX, Math.ceil(main.scrollHeight)));
     doc.addEventListener("click", (event) => {
-      const block = (event.target as Element | null)?.closest?.("[data-line]");
-      if (block) locate.current?.(Number(block.getAttribute("data-line")));
+      const block = (event.target as Element | null)?.closest?.("[data-path]");
+      if (block) locate.current?.(block.getAttribute("data-path") ?? "");
     });
   };
 

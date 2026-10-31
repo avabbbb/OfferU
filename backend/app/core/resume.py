@@ -28,7 +28,7 @@ _BOLD = re.compile(re.escape(chr(42) * 2) + r"(.+?)" + re.escape(chr(42) * 2))
 
 FONTS = {
     "sans": '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", "Noto Sans CJK SC", system-ui, sans-serif',
-    "serif": '"Songti SC", "STSong", "SimSun", "Noto Serif SC", "Noto Serif CJK SC", serif',
+    "serif": '"Source Han Serif SC", "Noto Serif SC", "Noto Serif CJK SC", "Songti SC", "STSong", "SimSun", Georgia, serif',
     "kai": '"Kaiti SC", "STKaiti", "KaiTi", "Noto Serif SC", serif',
 }
 
@@ -37,7 +37,7 @@ DEFAULTS: dict[str, dict[str, Any]] = {
     "clear": {"font": "sans", "bodySize": 9.5, "lineHeight": 1.45, "sectionGap": 9, "itemGap": 4.5,
               "margin": {"top": 11, "right": 13, "bottom": 11, "left": 13}, "accent": "#141413"},
     "kami": {"font": "serif", "bodySize": 9.2, "lineHeight": 1.42, "sectionGap": 16, "itemGap": 7,
-             "margin": {"top": 14, "right": 16, "bottom": 14, "left": 16}, "accent": "#1B365D"},
+             "margin": {"top": 11, "right": 13, "bottom": 11, "left": 13}, "accent": "#1B365D"},
     "compact": {"font": "sans", "bodySize": 9.2, "lineHeight": 1.4, "sectionGap": 7, "itemGap": 3,
                 "margin": {"top": 10, "right": 12, "bottom": 10, "left": 12}, "accent": "#1D1D1F"},
 }
@@ -47,7 +47,7 @@ def resolve_style(style: Optional[dict] = None, legacy_template: Optional[str] =
     """Template defaults < old doc.template < doc.style. Always returns every key."""
     given = dict(LEGACY_TEMPLATE.get(legacy_template or "", {}))
     given.update({k: v for k, v in (style or {}).items() if v is not None})
-    template = given["template"] if given.get("template") in RESUME_TEMPLATE else "clear"
+    template = given["template"] if given.get("template") in RESUME_TEMPLATE else "kami"
     base = DEFAULTS[template]
     out = dict(base, photo=False, logo=None)
     out.update(given)

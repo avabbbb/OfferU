@@ -20,7 +20,7 @@ export const RANGE = { bodySize: [8, 14], lineHeight: [1, 2], sectionGap: [0, 30
 type Typography = Omit<ResumeStyle, "template" | "photo" | "logo">;
 const DEFAULTS: Record<ResumeTemplate, Typography> = {
   clear: { font: "sans", bodySize: 9.5, lineHeight: 1.45, sectionGap: 9, itemGap: 4.5, margin: { top: 11, right: 13, bottom: 11, left: 13 }, accent: "#141413" },
-  kami: { font: "serif", bodySize: 9.2, lineHeight: 1.42, sectionGap: 16, itemGap: 7, margin: { top: 14, right: 16, bottom: 14, left: 16 }, accent: "#1B365D" },
+  kami: { font: "serif", bodySize: 9.2, lineHeight: 1.42, sectionGap: 16, itemGap: 7, margin: { top: 11, right: 13, bottom: 11, left: 13 }, accent: "#1B365D" },
   compact: { font: "sans", bodySize: 9.2, lineHeight: 1.4, sectionGap: 7, itemGap: 3, margin: { top: 10, right: 12, bottom: 10, left: 12 }, accent: "#1D1D1F" },
 };
 const LEGACY: Record<string, StyleInput> = { single: { template: "clear" }, compact: { template: "compact" }, photo: { template: "clear", photo: true } };
@@ -31,7 +31,7 @@ const present = <T extends object>(o: T): Partial<T> =>
 // 模板默认 < 旧 doc.template < doc.style，和 resume.resolve_style 同一规则；永远返回全部键。
 export function resolveStyle(style?: StyleInput | null, legacyTemplate?: string | null): ResumeStyle {
   const given: StyleInput = { ...(legacyTemplate ? LEGACY[legacyTemplate] : undefined), ...present(style ?? {}) };
-  const template: ResumeTemplate = given.template && given.template in DEFAULTS ? given.template : "clear";
+  const template: ResumeTemplate = given.template && given.template in DEFAULTS ? given.template : "kami";
   const base = DEFAULTS[template];
   return { ...base, photo: false, logo: null, ...given, template, margin: { ...base.margin, ...present(given.margin ?? {}) } } as ResumeStyle;
 }

@@ -23,7 +23,7 @@ export const MEMORY_KIND: Record<MemoryKind, string> = {
 };
 export type Profile = Partial<Record<"name" | "school" | "major" | "degree" | "grad_year" | "phone" | "email" | "city" | "target" | "about" | "photo", string>> & { id?: number };
 export type Memory = Base & { kind: MemoryKind; title?: string; body?: string; start?: string; end?: string };
-export type Doc = Base & { kind: string; title?: string; body?: string; template?: string; style?: import("@/lib/resumeStyle").StyleInput };
+export type Doc = Base & { kind: string; title?: string; body?: string; resume?: unknown; template?: string; style?: import("@/lib/resumeStyle").StyleInput };
 export type Change = { id: number; at: string; actor: string; summary: string; undone_at: string | null };
 export type Overview = {
   today: string;
