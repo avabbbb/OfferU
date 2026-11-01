@@ -1,47 +1,114 @@
 "use client";
 
 // 左侧表单：只改 doc.resume 这棵树（基本信息 + 模块 / 条目 / 要点），增删、排序、隐藏都在这里。
+// 每个模块一张卡；条目平时只露一行摘要（标题 | 副标题 · 时间），点开才编辑。
 // 预览里点到的 data-path 由上层换成 focus（模块 / 条目 id），这里展开并滚过去。
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import {
   emptyItem, emptySection, ITEM_FIELDS, move, type Resume, type ResumeBasics, type ResumeItem, type ResumeSection,
   SECTION_LABEL, SECTION_TYPES, type SectionType, updateItem, updateSection,
 } from "@/lib/resumeModel";
+import { plainText } from "@/lib/richMarkup";
+import { RichText } from "./RichText";
 
 export type FormFocus = { sectionId?: string; itemId?: string; basics?: boolean; at: number };
 
 type Props = { resume: Resume; onChange: (next: Resume) => void; focus?: FormFocus | null };
 
-const input = "w-full rounded border border-[var(--border)] bg-transparent px-2 py-1 text-[13px] text-[var(--foreground)] outline-none focus:border-[var(--foreground-muted)]";
-const label = "block text-[12px] text-[var(--foreground-muted)]";
-const ghost = "px-1 text-[12px] text-[var(--foreground-muted)] hover:text-[var(--foreground)] disabled:opacity-30";
+// 每类模块一个线性图标（24 视框、1.6 线宽、currentColor），只为让卡片标题一眼可辨。
+const ICON: Record<SectionType | "basics", string> = {
+  basics: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0",
+  education: "M3 9l9-4 9 4-9 4-9-4Zm4 2v4c0 1.5 2.2 3 5 3s5-1.5 5-3v-4",
+  work: "M4 8h16v11H4zM9 8V5h6v3M4 13h16",
+  internship: "M4 8h16v11H4zM9 8V5h6v3",
+  project: "M4 5h7v6H4zM13 5h7v14h-7zM4 13h7v6H4z",
+  campus: "M4 20V9l8-5 8 5v11M9 20v-6h6v6",
+  skills: "M14 6l4 4-9 9H5v-4l9-9Zm-2 2l4 4",
+  awards: "M12 14a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm-3 0-1 7 4-2 4 2-1-7",
+  summary: "M5 5h14M5 10h14M5 15h9",
+  custom: "M5 5h6v6H5zM13 5h6v6h-6zM5 13h6v6H5zM13 13h6v6h-6z",
+};
+
+function Icon({ kind }: { kind: SectionType | "basics" }) {
+  return (
+    <span className="rf-icon" aria-hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+        <path d={ICON[kind]} />
+      </svg>
+    </span>
+  );
+}
+
+// 操作按钮的线性小图标（同一套 24 视框、currentColor）。
+const GLYPH = {
+  up: "M12 19V5M6 11l6-6 6 6",
+  down: "M12 5v14M6 13l6 6 6-6",
+  trash: "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6",
+  eye: "M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12Zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z",
+  eyeOff: "M3 3l18 18M10.6 6.1Q11.3 6 12 6c6.4 0 10 6 10 6a17 17 0 0 1-3 3.6M6.5 6.6C3.8 8.3 2 12 2 12s3.6 6 10 6c1.5 0 2.9-.3 4.1-.9M9.9 9.9a3 3 0 0 0 4.2 4.2",
+  pencil: "M4 20h4L19 9l-4-4L4 16v4ZM13.5 6.5l4 4",
+  chevron: "M6 9l6 6 6-6",
+} as const;
+
+function Glyph({ name }: { name: keyof typeof GLYPH }) {
+  return (
+    <svg className="rf-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round"
+      strokeLinejoin="round" aria-hidden>
+      <path d={GLYPH[name]} />
+    </svg>
+  );
+}
+
+function Btn({ label, onClick, disabled, danger, children }: {
+  label: string; onClick: () => void; disabled?: boolean; danger?: boolean; children: ReactNode;
+}) {
+  return (
+    <button type="button" className="rf-btn" data-danger={danger || undefined} aria-label={label} title={label} disabled={disabled}
+      onClick={(e) => { e.stopPropagation(); onClick(); }}>
+      {children}
+    </button>
+  );
+}
+
+// 收起时朝下，展开时朝上。
+function Chevron({ open }: { open: boolean }) {
+  return <span className="rf-chevron" data-open={open || undefined} aria-hidden><Glyph name="chevron" /></span>;
+}
 
 function Arrows({ index, count, onMove }: { index: number; count: number; onMove: (to: number) => void }) {
   return (
     <>
-      <button type="button" className={ghost} disabled={index === 0} onClick={() => onMove(index - 1)} aria-label="上移">↑</button>
-      <button type="button" className={ghost} disabled={index === count - 1} onClick={() => onMove(index + 1)} aria-label="下移">↓</button>
+      <Btn label="上移" disabled={index === 0} onClick={() => onMove(index - 1)}><Glyph name="up" /></Btn>
+      <Btn label="下移" disabled={index === count - 1} onClick={() => onMove(index + 1)}><Glyph name="down" /></Btn>
     </>
+  );
+}
+
+function Field({ name, wide, children }: { name: string; wide?: boolean; children: ReactNode }) {
+  return (
+    <label className={"rf-field" + (wide ? " col-span-2" : "")}>
+      <span className="rf-label">{name}</span>
+      {children}
+    </label>
   );
 }
 
 function Bullets({ bullets, onChange }: { bullets: string[]; onChange: (next: string[]) => void }) {
   const set = (i: number, value: string) => onChange(bullets.map((b, k) => (k === i ? value : b)));
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-2">
       {bullets.map((b, i) => (
-        <div key={i} className="flex items-start gap-1.5">
-          <span className="pt-1 text-[13px] text-[var(--foreground-muted)]">·</span>
-          <textarea value={b} rows={2} onChange={(e) => set(i, e.target.value)} aria-label={"要点 " + (i + 1)}
-            className={input + " resize-y"} />
-          <div className="flex shrink-0 items-center pt-1">
+        <div key={i} className="rf-bullet">
+          <span className="rf-dot" aria-hidden />
+          <RichText value={b} rows={2} compact label={"要点 " + (i + 1)} onChange={(v) => set(i, v)} />
+          <div className="rf-actions">
             <Arrows index={i} count={bullets.length} onMove={(to) => onChange(move(bullets, i, to))} />
-            <button type="button" className={ghost} aria-label="删除要点" onClick={() => onChange(bullets.filter((_, k) => k !== i))}>×</button>
+            <Btn label="删除要点" danger onClick={() => onChange(bullets.filter((_, k) => k !== i))}><Glyph name="trash" /></Btn>
           </div>
         </div>
       ))}
-      <button type="button" className={ghost} onClick={() => onChange([...bullets, ""])}>+ 要点</button>
+      <button type="button" className="rf-link" onClick={() => onChange([...bullets, ""])}>+ 添加要点</button>
     </div>
   );
 }
@@ -49,126 +116,209 @@ function Bullets({ bullets, onChange }: { bullets: string[]; onChange: (next: st
 function ItemForm({ type, item, onPatch }: { type: SectionType; item: ResumeItem; onPatch: (patch: Partial<ResumeItem>) => void }) {
   const fields = ITEM_FIELDS[type];
   const field = (key: "title" | "subtitle" | "location" | "date", name: string) => name ? (
-    <label className="block space-y-1">
-      <span className={label}>{name}</span>
-      <input value={item[key]} onChange={(e) => onPatch({ [key]: e.target.value } as Partial<ResumeItem>)} className={input} />
-    </label>
+    <Field name={name}>
+      <input value={item[key]} onChange={(e) => onPatch({ [key]: e.target.value } as Partial<ResumeItem>)} className="rf-input" />
+    </Field>
   ) : null;
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       {fields && (
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-3">
           {field("title", fields.title)}{field("subtitle", fields.subtitle)}{field("location", fields.location)}{field("date", fields.date)}
         </div>
       )}
-      <label className="block space-y-1">
-        <span className={label}>{fields ? "描述（可选）" : "内容"}</span>
-        <textarea value={item.text} rows={fields ? 2 : 3} onChange={(e) => onPatch({ text: e.target.value })} className={input + " resize-y"} />
-      </label>
-      <div className="space-y-1">
-        <span className={label}>要点</span>
-        <Bullets bullets={item.bullets} onChange={(bullets) => onPatch({ bullets })} />
+      {/* 不用 label 包：里面有工具栏按钮，点标题字会误触第一个按钮。 */}
+      <div className="rf-field">
+        <span className="rf-label">{fields ? "描述（可选）" : "内容"}</span>
+        <RichText value={item.text} rows={fields ? 2 : 4} label={fields ? "描述" : "内容"} onChange={(text) => onPatch({ text })} />
       </div>
+      {/* 个人总结 / 技能这类只有正文的模块不给要点；老数据里已有要点的照常显示，免得看不见。 */}
+      {(fields || item.bullets.length > 0) && (
+        <div className="rf-field">
+          <span className="rf-label">要点</span>
+          <Bullets bullets={item.bullets} onChange={(bullets) => onPatch({ bullets })} />
+        </div>
+      )}
     </div>
   );
 }
 
-function SectionForm({ resume, section, index, open, onToggle, onChange }: {
-  resume: Resume; section: ResumeSection; index: number; open: boolean; onToggle: () => void; onChange: (next: Resume) => void;
+// 条目摘要两行：第一行标题（没填用正文开头），第二行 副标题 | 城市 | 时间。
+function summaryOf(item: ResumeItem, j: number) {
+  return item.title.trim() || plainText(item.text).split("\n")[0] || item.bullets.find(Boolean) || "第 " + (j + 1) + " 段";
+}
+
+const detailOf = (item: ResumeItem) =>
+  item.title.trim() ? [item.subtitle, item.location, item.date].map((s) => s.trim()).filter(Boolean).join(" | ") : item.date.trim();
+
+const addLabel = (type: SectionType) => {
+  const name = SECTION_LABEL[type];
+  return "+ 添加" + (name.endsWith("经历") ? "一段" + name : name);
+};
+
+function ItemCard({ section, item, index, open, onToggle, onPatch, onMove, onDelete }: {
+  section: ResumeSection; item: ResumeItem; index: number; open: boolean; onToggle: () => void;
+  onPatch: (patch: Partial<ResumeItem>) => void; onMove: (to: number) => void; onDelete: () => void;
+}) {
+  return (
+    <div id={"rf-item-" + item.id} className="rf-item" data-open={open || undefined}>
+      <div className="rf-item-head" role="button" tabIndex={0} aria-expanded={open} onClick={onToggle}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); } }}>
+        <span className="rf-item-main">
+          <span className="rf-item-title">{summaryOf(item, index)}</span>
+          {detailOf(item) && <span className="rf-item-sub">{detailOf(item)}</span>}
+        </span>
+        <div className="rf-actions">
+          <span className="rf-hover"><Arrows index={index} count={section.items.length} onMove={onMove} /></span>
+          <Btn label="删除这段" danger onClick={onDelete}><Glyph name="trash" /></Btn>
+          <Chevron open={open} />
+        </div>
+      </div>
+      {open && <div className="rf-item-body"><ItemForm type={section.type} item={item} onPatch={onPatch} /></div>}
+    </div>
+  );
+}
+
+function SectionCard({ resume, section, index, open, openItems, onToggle, onToggleItem, onOpenItem, onChange }: {
+  resume: Resume; section: ResumeSection; index: number; open: boolean; openItems: Set<string>;
+  onToggle: () => void; onToggleItem: (id: string) => void; onOpenItem: (id: string) => void; onChange: (next: Resume) => void;
 }) {
   const patch = (fn: (s: ResumeSection) => ResumeSection) => onChange(updateSection(resume, section.id, fn));
+  const titleRef = useRef<HTMLInputElement>(null);
+  const single = ITEM_FIELDS[section.type] === null;
+  const addItem = () => {
+    const item = emptyItem();
+    patch((s) => ({ ...s, items: [...s.items, item] }));
+    onOpenItem(item.id);
+  };
   return (
-    <section id={"rf-sec-" + section.id} className="border-b border-[var(--border)] py-3">
-      <div className="flex items-center gap-1">
-        <button type="button" className={ghost} onClick={onToggle} aria-expanded={open} aria-label={open ? "收起" : "展开"}>{open ? "▾" : "▸"}</button>
-        <input value={section.title} onChange={(e) => patch((s) => ({ ...s, title: e.target.value }))} aria-label="模块标题"
-          className={"min-w-0 flex-1 bg-transparent text-[14px] font-medium outline-none " + (section.hidden ? "text-[var(--foreground-muted)] line-through" : "text-[var(--foreground)]")} />
-        <button type="button" className={ghost} onClick={() => patch((s) => ({ ...s, hidden: !s.hidden }))}>{section.hidden ? "显示" : "隐藏"}</button>
-        <Arrows index={index} count={resume.sections.length} onMove={(to) => onChange({ ...resume, sections: move(resume.sections, index, to) })} />
-        <button type="button" className={ghost} aria-label="删除模块"
-          onClick={() => onChange({ ...resume, sections: resume.sections.filter((s) => s.id !== section.id) })}>删除</button>
-      </div>
+    <section id={"rf-sec-" + section.id} className="rf-card" data-hidden={section.hidden || undefined}>
+      <header className="rf-card-head">
+        <Icon kind={section.type} />
+        <input ref={titleRef} value={section.title} onChange={(e) => patch((s) => ({ ...s, title: e.target.value }))} aria-label="模块标题"
+          className="rf-card-title" style={{ width: Math.max(2, section.title.length) + 0.5 + "em" }} />
+        <Btn label="改模块名" onClick={() => titleRef.current?.select()}><Glyph name="pencil" /></Btn>
+        {section.hidden && <span className="rf-muted">已隐藏</span>}
+        <div className="rf-actions">
+          <span className="rf-hover">
+            <Btn label={section.hidden ? "在简历里显示" : "在简历里隐藏"} onClick={() => patch((s) => ({ ...s, hidden: !s.hidden }))}>
+              <Glyph name={section.hidden ? "eyeOff" : "eye"} />
+            </Btn>
+            <Arrows index={index} count={resume.sections.length} onMove={(to) => onChange({ ...resume, sections: move(resume.sections, index, to) })} />
+          </span>
+          <Btn label="删除模块" danger onClick={() => onChange({ ...resume, sections: resume.sections.filter((s) => s.id !== section.id) })}>
+            <Glyph name="trash" />
+          </Btn>
+          <Btn label={open ? "收起" : "展开"} onClick={onToggle}><Chevron open={open} /></Btn>
+        </div>
+      </header>
       {open && (
-        <div className="mt-2 space-y-3 pl-5">
-          {section.items.map((item, j) => (
-            <div key={item.id} id={"rf-item-" + item.id} className="space-y-2 border-l border-[var(--border)] pl-3">
-              <div className="flex items-center gap-1">
-                <span className="flex-1 truncate text-[12px] text-[var(--foreground-muted)]">{item.title || "条目 " + (j + 1)}</span>
-                <Arrows index={j} count={section.items.length} onMove={(to) => patch((s) => ({ ...s, items: move(s.items, j, to) }))} />
-                <button type="button" className={ghost} aria-label="删除条目"
-                  onClick={() => patch((s) => ({ ...s, items: s.items.filter((it) => it.id !== item.id) }))}>删除</button>
-              </div>
-              <ItemForm type={section.type} item={item} onPatch={(p) => onChange(updateItem(resume, section.id, item.id, p))} />
-            </div>
-          ))}
-          <button type="button" className={ghost} onClick={() => patch((s) => ({ ...s, items: [...s.items, emptyItem()] }))}>+ 条目</button>
+        <div className="rf-card-body">
+          {single && section.items.length <= 1 ? (
+            section.items[0]
+              ? <div id={"rf-item-" + section.items[0].id}>
+                  <ItemForm type={section.type} item={section.items[0]} onPatch={(p) => onChange(updateItem(resume, section.id, section.items[0].id, p))} />
+                </div>
+              : <button type="button" className="rf-add" onClick={addItem}>+ 填写{section.title || SECTION_LABEL[section.type]}</button>
+          ) : (
+            <>
+              {section.items.map((item, j) => (
+                <ItemCard key={item.id} section={section} item={item} index={j} open={openItems.has(item.id)}
+                  onToggle={() => onToggleItem(item.id)}
+                  onPatch={(p) => onChange(updateItem(resume, section.id, item.id, p))}
+                  onMove={(to) => patch((s) => ({ ...s, items: move(s.items, j, to) }))}
+                  onDelete={() => patch((s) => ({ ...s, items: s.items.filter((it) => it.id !== item.id) }))} />
+              ))}
+              <button type="button" className="rf-add" onClick={addItem}>{addLabel(section.type)}</button>
+            </>
+          )}
         </div>
       )}
+      {!open && single && section.items[0]?.text.trim() && <p className="rf-card-body rf-clamp">{plainText(section.items[0].text)}</p>}
     </section>
   );
 }
 
+const toggled = (set: Set<string>, id: string, on?: boolean) => {
+  const next = new Set(set);
+  if (on ?? !next.has(id)) next.add(id);
+  else next.delete(id);
+  return next;
+};
+
 export function ResumeForm({ resume, onChange, focus }: Props) {
   const root = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState<Set<string>>(() => new Set(resume.sections.slice(0, 1).map((s) => s.id)));
-  const [adding, setAdding] = useState<SectionType>("project");
+  // 模块默认全展开（记收起的）；条目默认只露摘要（记展开的）。
+  const [closed, setClosed] = useState<Set<string>>(() => new Set());
+  const [openItems, setOpenItems] = useState<Set<string>>(() => new Set());
+  const [basicsOpen, setBasicsOpen] = useState(true);
 
   useEffect(() => {
     if (!focus) return;
-    const sectionId = focus.sectionId;
-    if (sectionId) setOpen((prev) => new Set(prev).add(sectionId));
-    const target = focus.itemId ? "rf-item-" + focus.itemId : sectionId ? "rf-sec-" + sectionId : focus.basics ? "rf-basics" : "";
+    const { sectionId, itemId } = focus;
+    if (sectionId) setClosed((prev) => toggled(prev, sectionId, false));
+    if (itemId) setOpenItems((prev) => toggled(prev, itemId, true));
+    if (focus.basics) setBasicsOpen(true);
+    const target = itemId ? "rf-item-" + itemId : sectionId ? "rf-sec-" + sectionId : focus.basics ? "rf-basics" : "";
     if (!target) return;
     requestAnimationFrame(() => {
       const el = root.current?.querySelector<HTMLElement>("#" + CSS.escape(target));
       el?.scrollIntoView({ block: "start", behavior: "smooth" });
-      el?.querySelector<HTMLElement>("input, textarea")?.focus({ preventScroll: true });
+      el?.querySelector<HTMLElement>("input, textarea, [contenteditable]")?.focus({ preventScroll: true });
     });
   }, [focus]);
 
-  const toggle = (id: string) => setOpen((prev) => {
-    const next = new Set(prev);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    return next;
-  });
   const setBasics = (patch: Partial<ResumeBasics>) => onChange({ ...resume, basics: { ...resume.basics, ...patch } });
-  const addSection = () => {
-    const section = emptySection(adding);
+  const addSection = (type: SectionType) => {
+    const section = emptySection(type);
     onChange({ ...resume, sections: [...resume.sections, section] });
-    setOpen((prev) => new Set(prev).add(section.id));
+    setOpenItems((prev) => new Set([...prev, ...section.items.map((it) => it.id)]));
+    requestAnimationFrame(() => root.current?.querySelector("#" + CSS.escape("rf-sec-" + section.id))?.scrollIntoView({ block: "start", behavior: "smooth" }));
   };
 
   return (
-    <div ref={root} className="min-w-0 flex-1 overflow-auto px-6 py-4">
-      <section id="rf-basics" className="space-y-2 border-b border-[var(--border)] pb-4">
-        <h2 className="text-[14px] font-medium text-[var(--foreground)]">基本信息</h2>
-        <div className="grid grid-cols-2 gap-2">
-          <label className="block space-y-1">
-            <span className={label}>姓名</span>
-            <input value={resume.basics.name} onChange={(e) => setBasics({ name: e.target.value })} className={input} />
-          </label>
-          <label className="block space-y-1">
-            <span className={label}>求职意向</span>
-            <input value={resume.basics.target} onChange={(e) => setBasics({ target: e.target.value })} className={input} />
-          </label>
-        </div>
-        <label className="block space-y-1">
-          <span className={label}>联系方式（一行一项：电话、邮箱、城市、主页）</span>
-          <textarea value={resume.basics.contacts.join("\n")} rows={3} onChange={(e) => setBasics({ contacts: e.target.value.split("\n") })}
-            className={input + " resize-y"} />
-        </label>
+    <div ref={root} className="rf-scroll">
+      <section id="rf-basics" className="rf-card">
+        <header className="rf-card-head">
+          <Icon kind="basics" />
+          <h2 className="rf-card-title">基本信息</h2>
+          <div className="rf-actions">
+            <Btn label={basicsOpen ? "收起" : "展开"} onClick={() => setBasicsOpen(!basicsOpen)}><Chevron open={basicsOpen} /></Btn>
+          </div>
+        </header>
+        {basicsOpen ? (
+          <div className="rf-card-body grid grid-cols-2 gap-3">
+            <Field name="姓名">
+              <input value={resume.basics.name} onChange={(e) => setBasics({ name: e.target.value })} className="rf-input" />
+            </Field>
+            <Field name="求职意向">
+              <input value={resume.basics.target} onChange={(e) => setBasics({ target: e.target.value })} className="rf-input" />
+            </Field>
+            <Field name="联系方式（一行一项：电话、邮箱、城市、主页）" wide>
+              <textarea value={resume.basics.contacts.join("\n")} rows={3} onChange={(e) => setBasics({ contacts: e.target.value.split("\n") })}
+                className="rf-input resize-y" />
+            </Field>
+          </div>
+        ) : (
+          <p className="rf-card-body rf-muted truncate">
+            {[resume.basics.name, ...resume.basics.contacts.filter(Boolean)].join(" | ") || "还没填"}
+          </p>
+        )}
       </section>
       {resume.sections.map((section, i) => (
-        <SectionForm key={section.id} resume={resume} section={section} index={i} open={open.has(section.id)}
-          onToggle={() => toggle(section.id)} onChange={onChange} />
+        <SectionCard key={section.id} resume={resume} section={section} index={i} open={!closed.has(section.id)} openItems={openItems}
+          onToggle={() => setClosed((prev) => toggled(prev, section.id))}
+          onToggleItem={(id) => setOpenItems((prev) => toggled(prev, id))}
+          onOpenItem={(id) => setOpenItems((prev) => toggled(prev, id, true))}
+          onChange={onChange} />
       ))}
-      <div className="flex items-center gap-2 py-4">
-        <select value={adding} onChange={(e) => setAdding(e.target.value as SectionType)} aria-label="模块类型"
-          className="rounded border border-[var(--border)] bg-transparent px-2 py-1 text-[13px] text-[var(--foreground)]">
-          {SECTION_TYPES.map((t) => <option key={t} value={t}>{SECTION_LABEL[t]}</option>)}
-        </select>
-        <button type="button" onClick={addSection} className="text-[13px] text-[var(--foreground)] hover:underline">+ 添加模块</button>
+      <div className="rf-card rf-card-dashed">
+        <span className="rf-label">添加模块</span>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {SECTION_TYPES.map((t) => (
+            <button key={t} type="button" className="rf-chip" onClick={() => addSection(t)}>+ {SECTION_LABEL[t]}</button>
+          ))}
+        </div>
       </div>
     </div>
   );

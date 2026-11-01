@@ -96,9 +96,10 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 
 ## 6. 简历渲染
 
-- 简历是 doc（kind=resume）：`body` 是 Markdown，`template` 是 single / compact / photo。
-- `core/resume.py` 用 markdown-it 把 Markdown 转成 HTML，套 `core/templates/` 里的 CSS。`### A | B | 时间` 渲染成左右两端对齐的一行。
-- 编辑器和 PDF（`GET /api/resume/{id}/pdf`、`export_resume_pdf`）共用同一份模板 CSS（`GET /api/resume/templates/{t}.css`，全部限定在 `.resume` 下），所以纸面就是导出的样子。没有单独的预览接口。
+- 简历是 doc（kind=resume）：结构化的 resume（basics + sections / items / bullets，见 core/resume_model.py）是唯一事实源，style 是排版（模板、字体、字号、行距、间距、边距、主题色、证件照、校徽）；body 由结构派生。
+- core/resume.py 从结构直接渲染 HTML，每个可编辑元素带 data-path（如 sections.1.items.0.bullets.2），预览里点哪儿就定位到左侧表单哪儿。
+- 正文和要点存轻量标记：双星号粗体、单星号斜体、方括号文字接圆括号链接、行首每 2 个空格缩进一级、{center} / {right} / {justify} 对齐、减号或「1.」开头的列表。前端 lib/richMarkup.ts 和后端渲染一一对应。
+- 预览（POST /api/resume/render）和 PDF（GET /api/resume/{id}/pdf、export_resume_pdf）用同一个渲染函数和同一份模板 CSS，所以纸面就是导出的样子。
 - PDF 用 Playwright 驱动本机的 Chrome 或 Edge 打印，不随安装包带浏览器。
 - 证件照和导入的文件存在数据目录的 `files/`，档案里只存文件名（`POST /api/files` 上传）。
 
@@ -153,7 +154,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 
 - Vite + React + HashRouter，`lib/core.ts` 提供 `tool()`、`useTool()`（SWR）、`write()`（写完全局刷新）。页面只调工具，不调其他接口。
 - 页面：今天 `/`、岗位 `/jobs`、岗位详情 `/jobs/:id`、简历 `/resume/:id?`、档案 `/profile`（和简历同一个导航项，两个标签）、面试 `/interview`、设置 `/settings`。
-- 共用组件：EventList、RecentChanges、ChatDoc（PR3）、CommandK（PR3）。简历编辑器是 TipTap 纸面编辑（Typora 式：光标所在行显示原文，其余按 PDF 排版），存的仍是 Markdown；「源码」切到 textarea。
+- 共用组件：EventList、RecentChanges、ChatDoc（PR3）、CommandK（PR3）。简历编辑器：顶栏一行（简历名下拉切换 / 新建 / 改名 / 复制 / 删除 | 排版工具栏，数值是「输入 + 下拉常用值」 | 下载 PDF）；左侧结构化表单，正文是所见即所得编辑框（存轻量标记）；右侧深色画布上的 A4 预览，悬停模块显示虚线框，点击定位左侧。
 - 视觉：黑白灰；字号和间距弹性适配不同设备（字号走 CSS 变量 + clamp()，正文约 13–15px，间距用 em / rem）；不用徽章、统计卡、彩色按钮、网格背景。
 
 ### 11.1 Agent 侧栏组件规范

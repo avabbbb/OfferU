@@ -10,6 +10,15 @@ import type { Resume } from "@/lib/resumeModel";
 
 const A4_W = 794; // 210mm @ 96dpi
 
+// 只注入预览 iframe（导出的 PDF 不带）：悬停的块画橙色虚线框，左上角标「点击编辑此模块」。
+const HOVER_CSS = `
+.resume .item, .resume h1, .resume p.contact, .resume section > h2 { position: relative; cursor: pointer; border-radius: 2px; }
+.resume .item:hover, .resume h1:hover, .resume p.contact:hover, .resume section > h2:hover {
+  outline: 1px dashed #f97316; outline-offset: 2px; background: rgba(249, 115, 22, 0.04); }
+.resume .item:hover::before, .resume section > h2:hover::before {
+  content: "点击编辑此模块"; position: absolute; left: -3px; bottom: 100%; margin-bottom: 2px; padding: 1px 6px; border-radius: 3px 3px 0 0;
+  background: #f97316; color: #fff; font: 500 9px/1.6 system-ui, sans-serif; letter-spacing: 0; white-space: nowrap; z-index: 1; }`;
+
 export type PreviewHandle = { measure: (style: ResumeStyle) => number };
 
 type Props = { resume: Resume; style: ResumeStyle; onLocate?: (path: string) => void };
@@ -54,7 +63,7 @@ export const ResumePreview = forwardRef<PreviewHandle, Props>(function ResumePre
   useEffect(() => {
     const el = box.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setScale(Math.min(1, (el.clientWidth - 32) / A4_W)));
+    const ro = new ResizeObserver(() => setScale(Math.min(1, (el.clientWidth - 48) / A4_W)));
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
@@ -84,6 +93,9 @@ export const ResumePreview = forwardRef<PreviewHandle, Props>(function ResumePre
     const main = doc?.querySelector<HTMLElement>("main.resume");
     if (!doc || !main) return;
     setHeight(Math.max(PAGE_PX, Math.ceil(main.scrollHeight)));
+    const hint = doc.createElement("style");
+    hint.textContent = HOVER_CSS;
+    doc.head.appendChild(hint);
     doc.addEventListener("click", (event) => {
       const block = (event.target as Element | null)?.closest?.("[data-path]");
       if (block) locate.current?.(block.getAttribute("data-path") ?? "");
@@ -91,12 +103,12 @@ export const ResumePreview = forwardRef<PreviewHandle, Props>(function ResumePre
   };
 
   return (
-    <div ref={box} className="min-w-0 flex-1 overflow-auto bg-[var(--surface)] px-4 py-6">
+    <div ref={box} className="rp-canvas min-w-0 flex-1 overflow-auto px-6 py-8">
       {error && <p role="alert" className="mx-auto mb-3 max-w-[794px] text-[12.5px] text-red-600">{error}</p>}
       <div className="relative mx-auto" style={{ width: A4_W * scale, height: height * scale }}>
         <iframe ref={frame} title="简历预览（和导出的 PDF 一致）" srcDoc={html} sandbox="allow-same-origin" onLoad={loaded}
           style={{ width: A4_W, height, transform: "scale(" + scale + ")", transformOrigin: "0 0", border: 0, background: "#fff" }}
-          className="absolute left-0 top-0 shadow-[0_0_0_1px_var(--border),0_10px_30px_rgba(0,0,0,0.06)]" />
+          className="rp-paper absolute left-0 top-0" />
         {height > PAGE_PX && (
           <div className="pointer-events-none absolute inset-x-0 border-t border-dashed border-red-400" style={{ top: PAGE_PX * scale }}>
             <span className="absolute -top-5 right-0 text-[11px] text-red-500">第一页到这</span>

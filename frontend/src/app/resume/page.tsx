@@ -7,6 +7,7 @@ import { mutate } from "swr";
 
 import { type FormFocus, ResumeForm } from "@/components/resume/ResumeForm";
 import { type PreviewHandle, ResumePreview } from "@/components/resume/ResumePreview";
+import { ResumeSwitcher } from "@/components/resume/ResumeSwitcher";
 import { StylePanel } from "@/components/resume/StylePanel";
 import { TailorBar } from "@/components/resume/TailorBar";
 import { apiUrl, type Doc, type Job, type Memory, type Profile, tool, useTool, write } from "@/lib/core";
@@ -23,7 +24,9 @@ const FIT_NOTICE: Record<FitOutcome, string> = {
 
 const refreshOverview = () => void mutate((k) => Array.isArray(k) && k[1] === "overview");
 
-function Editor({ doc, jobs, photo, onCopy }: { doc: Doc; jobs: Job[]; photo?: string; onCopy: (doc: Doc) => void }) {
+function Editor({ doc, docs, jobs, photo, onCopy, onCreate }: {
+  doc: Doc; docs: Doc[]; jobs: Job[]; photo?: string; onCopy: (doc: Doc) => void; onCreate: (fromProfile: boolean) => void;
+}) {
   const router = useRouter();
   const preview = useRef<PreviewHandle>(null);
   const [resume, setResume] = useState<Resume>(() => normalizeResume(doc.resume));
@@ -75,26 +78,33 @@ function Editor({ doc, jobs, photo, onCopy }: { doc: Doc; jobs: Job[]; photo?: s
     }
   };
 
+  // 名字下拉里的增删改：改当前这份时同步编辑器里的名字；复制当前这份带上还没存的内容。
+  const rename = (target: Doc, next: string) => {
+    if (target.id === doc.id) setTitle(next);
+    void write("save", { type: "doc", id: target.id, data: { title: next } });
+  };
+  const remove = async (target: Doc) => {
+    await write("delete", { type: "doc", id: target.id });
+    if (target.id === doc.id) router.push("/resume");
+  };
+  const copy = (target: Doc) => onCopy(target.id === doc.id ? { ...doc, title, resume, style } : target);
+
   const job = jobs.find((j) => j.id === doc.job_id);
   const link = "text-[12.5px] text-[var(--foreground-muted)] hover:text-[var(--foreground)]";
   return (
     <div className="resume-shell flex min-w-0 flex-1 flex-col bg-[var(--background)]">
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-[var(--border)] px-6 py-3">
-        <input value={title} onChange={(e) => setTitle(e.target.value)} aria-label="简历名称" style={{ fontSize: 15 }}
-          onBlur={() => { if (title !== (doc.title ?? "")) void write("save", { type: "doc", id: doc.id, data: { title: title.trim() || null } }); }}
-          className="min-w-[160px] flex-1 bg-transparent text-[15px] font-medium text-[var(--foreground)] outline-none" />
-        {job && <Link href={"/jobs/" + job.id} className={link}>{job.label}</Link>}
-        <span className="w-12 text-[12px] text-[var(--foreground-muted)]">{saved && styleSaved ? "已保存" : "保存中"}</span>
-        <button type="button" style={{ fontSize: 12.5 }} className={link}
-          onClick={() => onCopy({ ...doc, title, resume, style })}>复制</button>
-        <button type="button" aria-label="删除这份简历" style={{ fontSize: 12.5 }} className={link}
-          onClick={async () => { await write("delete", { type: "doc", id: doc.id }); router.push("/resume"); }}>删除</button>
-      </div>
-      <StylePanel style={style} onChange={changeStyle} onFit={() => void fit()} fitting={fitting} notice={notice}
-        hasPhoto={Boolean(photo)} pdfHref={apiUrl("/api/resume/" + doc.id + "/pdf")} />
+      <header className="rs-head">
+        <ResumeSwitcher docs={docs} current={doc} jobs={jobs} title={title} onRename={rename} onCreate={onCreate} onCopy={copy}
+          onDelete={(d) => void remove(d)} />
+        {job && <Link href={"/jobs/" + job.id} className={link + " shrink-0"}>{job.label}</Link>}
+        <span className="rs-saved">{saved && styleSaved ? "已保存" : "保存中…"}</span>
+        <StylePanel style={style} onChange={changeStyle} onFit={() => void fit()} fitting={fitting} notice={notice}
+          hasPhoto={Boolean(photo)} />
+        <a href={apiUrl("/api/resume/" + doc.id + "/pdf")} download className="rs-download">下载 PDF</a>
+      </header>
       <div className="flex min-h-0 flex-1">
         <ResumeForm resume={resume} onChange={changeResume} focus={focus} />
-        <div className="flex w-[46%] min-w-[360px] shrink-0 flex-col border-l border-[var(--border)]">
+        <div className="flex w-[56%] min-w-[420px] shrink-0 flex-col border-l border-[var(--border)] bg-[var(--surface)]">
           <TailorBar docId={doc.id} jobId={doc.job_id} jobs={jobs} disabled={!saved || !styleSaved}
             onDone={() => mutate((k) => Array.isArray(k) && k[0] === "tool")} />
           <ResumePreview ref={preview} resume={resume} style={style}
@@ -105,7 +115,7 @@ function Editor({ doc, jobs, photo, onCopy }: { doc: Doc; jobs: Job[]; photo?: s
   );
 }
 
-/** 简历：一份主简历 + 按岗位改的版本。左边按块写，右边就是导出的样子。 */
+/** 简历：一份主简历 + 按岗位改的版本。左边按块写，右边就是导出的样子；切换、新建、改名、复制、删除都在简历名的下拉里。 */
 export default function ResumePage() {
   const params = useParams();
   const router = useRouter();
@@ -151,19 +161,9 @@ export default function ResumePage() {
   }
 
   return (
-    <div className="flex h-full min-h-0">
-      <nav aria-label="简历列表" className="w-52 shrink-0 space-y-0.5 border-r border-[var(--border)] px-3 py-4">
-        {docs.map((d) => (
-          <Link key={d.id} href={"/resume/" + d.id}
-            className={"block truncate rounded-md px-2 py-1.5 text-[13px] " + (d.id === current.id ? "bg-[var(--surface)] font-medium text-[var(--foreground)]" : "text-[var(--foreground-muted)] hover:text-[var(--foreground)]")}>
-            {d.title || "简历"}
-            {d.job_id && <span className="block truncate text-[11.5px] font-normal text-[var(--foreground-muted)]">{jobs.find((j) => j.id === d.job_id)?.label}</span>}
-          </Link>
-        ))}
-        <button type="button" onClick={() => void create(true)} style={{ fontSize: 12.5 }} className="mt-2 block px-2 text-[12.5px] text-[var(--foreground-muted)] hover:text-[var(--foreground)]">从档案新建</button>
-        <button type="button" onClick={() => void create(false)} style={{ fontSize: 12.5 }} className="mt-1 block px-2 text-[12.5px] text-[var(--foreground-muted)] hover:text-[var(--foreground)]">空白新建</button>
-      </nav>
-      <Editor key={current.id} doc={current} jobs={jobs} photo={profileData?.record?.photo} onCopy={copy} />
+    <div className="resume-shell flex h-full min-h-0 bg-[var(--background)]">
+      <Editor key={current.id} doc={current} docs={docs} jobs={jobs} photo={profileData?.record?.photo} onCopy={copy}
+        onCreate={(fromProfile) => void create(fromProfile)} />
     </div>
   );
 }

@@ -73,9 +73,50 @@ def css(template: str) -> str:
     return _sheet(resolve_style(None, template) if template in LEGACY_TEMPLATE else resolve_style({"template": template}))
 
 
+_ITALIC = re.compile(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)")
+_LINK = re.compile(r"\[([^\]]+)\]\((https?://[^\s)]+)\)")
+_LINE = re.compile(r"^( *)(?:\{(center|right|justify)\} )?(- |\d+\. )?")
+
+
 def _inline(text: str) -> str:
-    """转义，行内只认加粗。"""
-    return _BOLD.sub(r"<strong>\1</strong>", html.escape(text, quote=False))
+    """转义，行内认加粗、斜体和 [文字](链接)。"""
+    out = _ITALIC.sub(r"<em>\1</em>", _BOLD.sub(r"<strong>\1</strong>", html.escape(text, quote=False)))
+    return _LINK.sub(lambda m: f'<a href="{m.group(2).replace(chr(34), "%22")}">{m.group(1)}</a>', out)
+
+
+def _block_style(indent: int, align: str) -> str:
+    rules = ([f"margin-left:{2 * indent}em"] if indent else []) + ([f"text-align:{align}"] if align else [])
+    return f' style="{";".join(rules)}"' if rules else ""
+
+
+def _text_html(text: str, path: str) -> list[str]:
+    """正文，一行一块（和前端 lib/richMarkup 同一套标记）：行首每 2 个空格缩进一级（最多 4 级），
+    {center} / {right} / {justify} 对齐；连续的 "- " 行成无序列表，"1. " 行成有序列表。"""
+    out: list[str] = []
+    kind, rows = "", []
+
+    def flush() -> None:
+        nonlocal kind, rows
+        if rows:
+            out.append(f'<{kind} data-path="{path}">' + "".join(rows) + f"</{kind}>")
+        kind, rows = "", []
+
+    for raw in text.split("\n"):
+        m = _LINE.match(raw)
+        body = raw[m.end():].strip()
+        attrs = _block_style(min(len(m.group(1)) // 2, 4), m.group(2) or "")
+        if not m.group(3):
+            flush()
+            if body:
+                out.append(f'<p data-path="{path}"{attrs}>{_inline(body)}</p>')
+            continue
+        k = "ul" if m.group(3) == "- " else "ol"
+        if k != kind:
+            flush()
+            kind = k
+        rows.append(f"<li{attrs}>{_inline(body)}</li>")
+    flush()
+    return out
 
 
 def _item_head(item: dict[str, Any], path: str) -> str:
@@ -93,11 +134,15 @@ def resume_html(resume: dict[str, Any]) -> str:
     basics = resume["basics"]
     lines = []
     if contacts := [c.strip() for c in basics["contacts"] if c.strip()]:
-        lines.append(" · ".join(_inline(c) for c in contacts))
+        # 参考版式：每行两项键值，用竖线隔开，多的接着换行。
+        lines += [" | ".join(_inline(c) for c in contacts[i:i + 2]) for i in range(0, len(contacts), 2)]
     if basics["target"].strip():
         lines.append(_inline(TARGET_PREFIX + basics["target"].strip()))
-    out = [f'<h1 data-path="basics.name">{_inline(basics["name"].strip())}</h1>',
-           f'<p class="contact" data-path="basics.contacts">{"<br>".join(lines)}</p>']
+    out = []
+    if name := basics["name"].strip():
+        out.append(f'<h1 data-path="basics.name">{_inline(name)}</h1>')
+    if lines:
+        out.append(f'<p class="contact" data-path="basics.contacts">{"<br>".join(lines)}</p>')
     for i, sec in enumerate(resume["sections"]):
         if sec["hidden"]:
             continue
@@ -106,7 +151,7 @@ def resume_html(resume: dict[str, Any]) -> str:
         for j, item in enumerate(sec["items"]):
             ip = f"{path}.items.{j}"
             out.append(f'<div class="item" data-path="{ip}">{_item_head(item, ip + ".head")}')
-            out += [f'<p data-path="{ip}.text">{_inline(line.strip())}</p>' for line in item["text"].split("\n") if line.strip()]
+            out += _text_html(item["text"], ip + ".text")
             bullets = [f'<li data-path="{ip}.bullets.{k}">{_inline(b.strip())}</li>' for k, b in enumerate(item["bullets"]) if b.strip()]
             if bullets:
                 out.append("<ul>" + "".join(bullets) + "</ul>")
