@@ -2,7 +2,7 @@
 
 // 右侧 A4 预览：iframe 里放 POST /api/resume/render 返回的 HTML，也就是 PDF 打印的那一份。
 // 智能一页在这个 iframe 里量高度：临时改 CSS 变量、读高度、还原，不重新请求。
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, type ReactNode, useEffect, useImperativeHandle, useRef, useState } from "react";
 
 import { apiUrl } from "@/lib/core";
 import { PAGE_PX, SIDES, type ResumeStyle } from "@/lib/resumeStyle";
@@ -21,9 +21,10 @@ const HOVER_CSS = `
 
 export type PreviewHandle = { measure: (style: ResumeStyle) => number };
 
-type Props = { resume: Resume; style: ResumeStyle; onLocate?: (path: string) => void };
+// toolbar：浮在画布顶部的一条（按岗位改写），不单独占一行。
+type Props = { resume: Resume; style: ResumeStyle; onLocate?: (path: string) => void; toolbar?: ReactNode };
 
-export const ResumePreview = forwardRef<PreviewHandle, Props>(function ResumePreview({ resume, style, onLocate }, ref) {
+export const ResumePreview = forwardRef<PreviewHandle, Props>(function ResumePreview({ resume, style, onLocate, toolbar }, ref) {
   const box = useRef<HTMLDivElement>(null);
   const frame = useRef<HTMLIFrameElement>(null);
   const seq = useRef(0);
@@ -63,7 +64,8 @@ export const ResumePreview = forwardRef<PreviewHandle, Props>(function ResumePre
   useEffect(() => {
     const el = box.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setScale(Math.min(1, (el.clientWidth - 48) / A4_W)));
+    // 按画布宽度铺满，允许放大到 1.35 倍，两侧只留 16px。
+    const ro = new ResizeObserver(() => setScale(Math.min(1.35, Math.max(0.3, (el.clientWidth - 32) / A4_W))));
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
@@ -103,7 +105,8 @@ export const ResumePreview = forwardRef<PreviewHandle, Props>(function ResumePre
   };
 
   return (
-    <div ref={box} className="rp-canvas min-w-0 flex-1 overflow-auto px-6 py-8">
+    <div ref={box} className="rp-canvas min-w-0 flex-1 overflow-auto px-4 pb-6 pt-3">
+      {toolbar && <div className="rp-toolbar">{toolbar}</div>}
       {error && <p role="alert" className="mx-auto mb-3 max-w-[794px] text-[12.5px] text-red-600">{error}</p>}
       <div className="relative mx-auto" style={{ width: A4_W * scale, height: height * scale }}>
         <iframe ref={frame} title="简历预览（和导出的 PDF 一致）" srcDoc={html} sandbox="allow-same-origin" onLoad={loaded}

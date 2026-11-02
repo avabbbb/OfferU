@@ -1,7 +1,7 @@
 // doc.style 的前端镜像：默认值和范围要和 backend/app/core/resume.py（DEFAULTS）、tools.py（check_style）一致。
 // 排版面板和智能一页只在这些范围里取值；越界由后端报 400。
 
-export type ResumeTemplate = "clear" | "kami" | "compact";
+export type ResumeTemplate = "classic" | "clear" | "kami" | "compact";
 export type ResumeFont = "sans" | "serif" | "kai";
 export type Side = "top" | "right" | "bottom" | "left";
 export type Margin = Record<Side, number>;
@@ -11,7 +11,7 @@ export type ResumeStyle = {
 };
 export type StyleInput = Partial<Omit<ResumeStyle, "margin">> & { margin?: Partial<Margin> };
 
-export const RESUME_TEMPLATES: Record<ResumeTemplate, string> = { clear: "清晰", kami: "留白", compact: "紧凑" };
+export const RESUME_TEMPLATES: Record<ResumeTemplate, string> = { classic: "经典", clear: "清晰", kami: "留白", compact: "紧凑" };
 export const RESUME_FONTS: Record<ResumeFont, string> = { sans: "黑体", serif: "宋体", kai: "楷体" };
 export const ACCENTS = ["#141413", "#1B365D", "#2F5D50", "#7A2E2E", "#4B3F72"] as const;
 export const SIDES: Side[] = ["top", "right", "bottom", "left"];
@@ -19,6 +19,7 @@ export const RANGE = { bodySize: [8, 14], lineHeight: [1, 2], sectionGap: [0, 30
 
 type Typography = Omit<ResumeStyle, "template" | "photo" | "logo">;
 const DEFAULTS: Record<ResumeTemplate, Typography> = {
+  classic: { font: "sans", bodySize: 10.5, lineHeight: 1.3, sectionGap: 10, itemGap: 3, margin: { top: 7, right: 8, bottom: 7, left: 8 }, accent: "#000000" },
   clear: { font: "sans", bodySize: 9.5, lineHeight: 1.45, sectionGap: 9, itemGap: 4.5, margin: { top: 11, right: 13, bottom: 11, left: 13 }, accent: "#141413" },
   kami: { font: "serif", bodySize: 9.2, lineHeight: 1.42, sectionGap: 16, itemGap: 7, margin: { top: 11, right: 13, bottom: 11, left: 13 }, accent: "#1B365D" },
   compact: { font: "sans", bodySize: 9.2, lineHeight: 1.4, sectionGap: 7, itemGap: 3, margin: { top: 10, right: 12, bottom: 10, left: 12 }, accent: "#1D1D1F" },
@@ -31,7 +32,7 @@ const present = <T extends object>(o: T): Partial<T> =>
 // 模板默认 < 旧 doc.template < doc.style，和 resume.resolve_style 同一规则；永远返回全部键。
 export function resolveStyle(style?: StyleInput | null, legacyTemplate?: string | null): ResumeStyle {
   const given: StyleInput = { ...(legacyTemplate ? LEGACY[legacyTemplate] : undefined), ...present(style ?? {}) };
-  const template: ResumeTemplate = given.template && given.template in DEFAULTS ? given.template : "kami";
+  const template: ResumeTemplate = given.template && given.template in DEFAULTS ? given.template : "classic";
   const base = DEFAULTS[template];
   return { ...base, photo: false, logo: null, ...given, template, margin: { ...base.margin, ...present(given.margin ?? {}) } } as ResumeStyle;
 }

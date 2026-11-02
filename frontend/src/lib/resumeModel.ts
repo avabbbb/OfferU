@@ -24,7 +24,11 @@ export const ITEM_FIELDS: Record<SectionType, { title: string; subtitle: string;
 
 export type ResumeItem = { id: string; title: string; subtitle: string; date: string; location: string; bullets: string[]; text: string };
 export type ResumeSection = { id: string; type: SectionType; title: string; hidden: boolean; items: ResumeItem[] };
-export type ResumeBasics = { name: string; target: string; contacts: string[] };
+// 联系方式一项：label 是「电话」「邮箱」或用户自己起的名字（可空），和后端 resume_model.contact 一致。
+export type ResumeContact = { label: string; value: string };
+export type ResumeBasics = { name: string; target: string; contacts: ResumeContact[] };
+// 基本信息下方的快捷标签：点一下加一项；「自定义」名字自己填。
+export const CONTACT_PRESETS = ["电话", "邮箱", "城市", "微信", "GitHub", "个人主页", "出生年月", "政治面貌"] as const;
 export type Resume = { version: 1; basics: ResumeBasics; sections: ResumeSection[] };
 
 export const newId = () => Math.random().toString(16).slice(2, 10).padEnd(8, "0");
@@ -37,11 +41,26 @@ export const emptySection = (type: SectionType): ResumeSection => ({
 
 export const emptyResume = (): Resume => ({
   version: 1,
-  basics: { name: "", target: "", contacts: [] },
+  basics: { name: "", target: "", contacts: ["电话", "邮箱", "城市"].map((label) => ({ label, value: "" })) },
   sections: (["education", "internship", "project", "skills"] as SectionType[]).map(emptySection),
 });
 
 const text = (v: unknown) => (v === null || v === undefined ? "" : String(v));
+
+const LABELED = /^([^：:\s]{1,8})\s*[：:]\s*(.+)$/;
+
+// 旧数据是一行文字（「电话：138…」或「138…」）：能拆出标签就拆，网址不拆。
+export function toContact(raw: unknown): ResumeContact {
+  if (raw && typeof raw === "object") {
+    const c = raw as Partial<ResumeContact>;
+    return { label: text(c.label), value: text(c.value) };
+  }
+  const s = text(raw);
+  const m = LABELED.exec(s.trim());
+  return m && !m[2].startsWith("//") ? { label: m[1], value: m[2] } : { label: "", value: s };
+}
+
+export const contactText = (c: ResumeContact) => (c.label.trim() ? c.label.trim() + "：" + c.value : c.value);
 
 /** 后端给的 resume 补齐缺的字段（老数据、agent 写的都可能缺）。 */
 export function normalizeResume(raw: unknown): Resume {
@@ -50,7 +69,7 @@ export function normalizeResume(raw: unknown): Resume {
   const b = (r.basics ?? {}) as Partial<ResumeBasics>;
   return {
     version: 1,
-    basics: { name: text(b.name), target: text(b.target), contacts: Array.isArray(b.contacts) ? b.contacts.map(text) : [] },
+    basics: { name: text(b.name), target: text(b.target), contacts: Array.isArray(b.contacts) ? (b.contacts as unknown[]).map(toContact) : [] },
     sections: (Array.isArray(r.sections) ? r.sections : []).map((s) => ({
       id: s.id || newId(),
       type: (SECTION_TYPES as readonly string[]).includes(s.type) ? s.type : "custom",

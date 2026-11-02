@@ -1,12 +1,13 @@
 """结构化简历：doc.resume 是事实来源，doc.body（Markdown）由它派生，给 agent、搜索和旧代码读。
 
-Resume  = {version: 1, basics: {name, target, contacts: [str]}, sections: [Section]}
+Resume  = {version: 1, basics: {name, target, contacts: [Contact]}, sections: [Section]}
+Contact = {label, value}          label 是「电话」「邮箱」「微信」或用户自己起的名字，可空
 Section = {id, type, title, hidden, items: [Item]}
 Item    = {id, title, subtitle, date, location, bullets: [str], text}
 
 Markdown 写法（agent 和模型只写这个，保存时转成结构）：
   # 名字
-  电话 · 邮箱 · 城市            名字后第一段 = 联系方式
+  电话：138… · 邮箱：a@b.c      名字后第一段 = 联系方式；「标签：内容」，没标签就只写内容
   求职意向：产品经理            可选
   ## 教育经历                   节
   ### 学校 | 专业 | 2021.09 – 2025.06    最后一段是时间；4 段时第 3 段是城市
@@ -36,6 +37,7 @@ TARGET_PREFIX = "求职意向："
 _TARGET_RE = re.compile(r"^(?:求职意向|意向岗位|求职方向)\s*[：:]\s*")
 _CONTACT_SPLIT = re.compile(r"\s*(?:·|\||｜)\s*")
 _ROW_SPLIT = re.compile(r"\s*(?:\||｜)\s*")
+_LABELED = re.compile(r"^([^：:\s]{1,8})\s*[：:]\s*(.+)$")
 _BULLET = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
 
 
@@ -68,6 +70,23 @@ def _list(value: Any, where: str) -> list:
 
 def _id(value: Any) -> str:
     return value if isinstance(value, str) and value.strip() else new_id()
+
+
+def contact(value: Any, where: str = "basics.contacts") -> dict[str, str]:
+    """联系方式一项 {label, value}。旧数据是一行文字（「电话：138…」或「138…」），能拆出标签就拆，网址不拆。"""
+    if isinstance(value, dict):
+        return {"label": _text(value.get("label"), where + ".label"), "value": _text(value.get("value"), where + ".value")}
+    text = _text(value, where)
+    m = _LABELED.match(text.strip())
+    if m and not m.group(2).startswith("//"):
+        return {"label": m.group(1), "value": m.group(2)}
+    return {"label": "", "value": text}
+
+
+def contact_text(item: dict[str, str]) -> str:
+    """纸面和 Markdown 上的一项：有标签写「标签：内容」，没有就只写内容。"""
+    label = item["label"].strip()
+    return f"{label}：{item['value']}" if label else item["value"]
 
 
 def empty_item() -> dict[str, Any]:
@@ -105,7 +124,7 @@ def normalize(resume: Any) -> dict[str, Any]:
         "basics": {
             "name": _text(basics.get("name"), "basics.name"),
             "target": _text(basics.get("target"), "basics.target"),
-            "contacts": [_text(c, "basics.contacts") for c in _list(basics.get("contacts"), "basics.contacts")],
+            "contacts": [contact(c, f"basics.contacts[{k}]") for k, c in enumerate(_list(basics.get("contacts"), "basics.contacts"))],
         },
         "sections": sections,
     }
@@ -203,7 +222,7 @@ def to_markdown(resume: dict[str, Any]) -> str:
     resume = normalize(resume)
     basics = resume["basics"]
     out = [f"# {_one_line(basics['name'])}".rstrip()]
-    contacts = [_one_line(c) for c in basics["contacts"] if c.strip()]
+    contacts = [_one_line(contact_text(c)) for c in basics["contacts"] if c["value"].strip()]
     if contacts:
         out += ["", " · ".join(contacts)]
     if basics["target"].strip():

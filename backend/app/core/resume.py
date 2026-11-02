@@ -33,7 +33,10 @@ FONTS = {
 }
 
 # clear 对标超级简历；kami 沿用 #99 / #108 量好的 Kami 版式；compact 给内容多的人。
+# classic 照用户留档简历量：微软雅黑、白底黑字、正文 10.5pt、页边距约 8mm；新简历默认用它。
 DEFAULTS: dict[str, dict[str, Any]] = {
+    "classic": {"font": "sans", "bodySize": 10.5, "lineHeight": 1.3, "sectionGap": 10, "itemGap": 3,
+                "margin": {"top": 7, "right": 8, "bottom": 7, "left": 8}, "accent": "#000000"},
     "clear": {"font": "sans", "bodySize": 9.5, "lineHeight": 1.45, "sectionGap": 9, "itemGap": 4.5,
               "margin": {"top": 11, "right": 13, "bottom": 11, "left": 13}, "accent": "#141413"},
     "kami": {"font": "serif", "bodySize": 9.2, "lineHeight": 1.42, "sectionGap": 16, "itemGap": 7,
@@ -47,7 +50,7 @@ def resolve_style(style: Optional[dict] = None, legacy_template: Optional[str] =
     """Template defaults < old doc.template < doc.style. Always returns every key."""
     given = dict(LEGACY_TEMPLATE.get(legacy_template or "", {}))
     given.update({k: v for k, v in (style or {}).items() if v is not None})
-    template = given["template"] if given.get("template") in RESUME_TEMPLATE else "kami"
+    template = given["template"] if given.get("template") in RESUME_TEMPLATE else "classic"
     base = DEFAULTS[template]
     out = dict(base, photo=False, logo=None)
     out.update(given)
@@ -141,7 +144,9 @@ def resume_html(resume: dict[str, Any]) -> str:
     """结构化简历 → 纸面 HTML。隐藏的节不出；元素带 data-path。"""
     basics = resume["basics"]
     lines = []
-    if contacts := [c.strip() for c in basics["contacts"] if c.strip()]:
+    from app.core.resume_model import contact_text
+
+    if contacts := [contact_text(c).strip() for c in basics["contacts"] if c["value"].strip()]:
         # 参考版式：每行两项键值，用竖线隔开，多的接着换行。
         lines += [" | ".join(_inline(c) for c in contacts[i:i + 2]) for i in range(0, len(contacts), 2)]
     if basics["target"].strip():
@@ -212,6 +217,21 @@ def pdf_bytes(page_html: str) -> bytes:
             return page.pdf(format="A4", print_background=True, prefer_css_page_size=True)
         finally:
             browser.close()
+
+
+def png_bytes(page_html: str) -> bytes:
+    """和 PDF 同一份 HTML 截图：A4 宽 794px、2 倍像素，只截 main.resume，超过一页就是长图。"""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as playwright:
+        browser = _launch(playwright)
+        try:
+            page = browser.new_page(viewport={"width": 794, "height": 1123}, device_scale_factor=2)
+            page.set_content(page_html, wait_until="load")
+            return page.locator("main.resume").screenshot(type="png")
+        finally:
+            browser.close()
+
 
 
 def doc_html(doc: dict) -> str:

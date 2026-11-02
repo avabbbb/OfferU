@@ -12,7 +12,7 @@ describe("resumeFromProfile", () => {
       m("experience", "字节跳动 | 后端实习生", "- 接口延迟 120ms → 40ms\n- 写了压测脚本", "2024.06", "2024.09"),
       m("skill", "语言", "Go、Python"),
     ]);
-    expect(r.basics).toEqual({ name: "李四", target: "后端开发", contacts: ["138", "a@b.c"] });
+    expect(r.basics).toEqual({ name: "李四", target: "后端开发", contacts: [{ label: "电话", value: "138" }, { label: "邮箱", value: "a@b.c" }] });
     expect(r.sections.map((s) => s.type)).toEqual(["education", "internship", "skills"]);
     expect(r.sections[0].items[0].title).toBe("浙江大学");
     expect(r.sections[1].items[0]).toMatchObject({

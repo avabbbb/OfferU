@@ -32,7 +32,8 @@ export function resumeFromProfile(profile: Profile, memories: Memory[]): Resume 
   }
   return {
     version: 1,
-    basics: { name: profile.name ?? "", target: profile.target ?? "", contacts: [profile.phone, profile.email, profile.city].filter((c): c is string => Boolean(c)) },
+    basics: { name: profile.name ?? "", target: profile.target ?? "", contacts: ([["电话", profile.phone], ["邮箱", profile.email], ["城市", profile.city]] as Array<[string, unknown]>)
+      .filter(([, value]) => typeof value === "string" && value !== "").map(([label, value]) => ({ label, value: String(value) })) },
     sections,
   };
 }

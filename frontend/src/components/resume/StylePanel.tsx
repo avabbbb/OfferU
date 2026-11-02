@@ -5,7 +5,6 @@
 // 只在 resumeStyle 的 RANGE 里取值；每次改动交给上层，上层停顿后整份 style 存一次（进最近改动，可撤销）。
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 
-import { apiUrl } from "@/lib/core";
 import {
   ACCENTS, RANGE, RESUME_FONTS, RESUME_TEMPLATES, type ResumeFont, type ResumeStyle, type ResumeTemplate, withTemplate,
 } from "@/lib/resumeStyle";
@@ -16,7 +15,6 @@ type Props = {
   onFit: () => void;
   fitting: boolean;
   notice: string | null;
-  hasPhoto: boolean;
 };
 
 // 常用值：都落在 RANGE 里。
@@ -130,30 +128,8 @@ const FONT_FAMILY: Record<ResumeFont, string> = {
   kai: '"Kaiti SC", "KaiTi", "STKaiti", serif',
 };
 
-export function StylePanel({ style, onChange, onFit, fitting, notice, hasPhoto }: Props) {
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const file = useRef<HTMLInputElement>(null);
+export function StylePanel({ style, onChange, onFit, fitting, notice }: Props) {
   const set = (patch: Partial<ResumeStyle>) => onChange({ ...style, ...patch });
-
-  const uploadLogo = async (picked: File | undefined) => {
-    if (!picked) return;
-    setUploading(true);
-    setError(null);
-    try {
-      const form = new FormData();
-      form.append("file", picked);
-      const res = await fetch(apiUrl("/api/files"), { method: "POST", body: form });
-      if (!res.ok) throw new Error(await res.text());
-      const { name } = (await res.json()) as { name: string };
-      set({ logo: name });
-    } catch {
-      setError("校徽上传失败");
-    } finally {
-      setUploading(false);
-      if (file.current) file.current.value = "";
-    }
-  };
 
   return (
     <div role="toolbar" aria-label="排版" className="rs-bar">
@@ -193,25 +169,10 @@ export function StylePanel({ style, onChange, onFit, fitting, notice, hasPhoto }
                 ))}
               </div>
             </div>
-            <label className="rs-row" data-disabled={!hasPhoto || undefined} title={hasPhoto ? undefined : "先在档案里上传证件照"}>
-              <span className="rs-label">证件照</span>
-              <input type="checkbox" checked={style.photo} disabled={!hasPhoto} onChange={(e) => set({ photo: e.target.checked })} />
-            </label>
-            <div className="rs-row">
-              <span className="rs-label">校徽</span>
-              <span className="flex items-center gap-3">
-                <button type="button" onClick={() => file.current?.click()} disabled={uploading} className="rs-link">
-                  {uploading ? "上传中…" : style.logo ? "更换" : "上传"}
-                </button>
-                {style.logo && <button type="button" onClick={() => set({ logo: null })} className="rs-link">去掉</button>}
-              </span>
-              <input ref={file} type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" hidden
-                onChange={(e) => void uploadLogo(e.target.files?.[0])} />
-            </div>
           </>
         )}
       </Pop>
-      {(notice || error) && <p role="status" className="rs-status" data-error={error ? true : undefined}>{error ?? notice}</p>}
+      {notice && <p role="status" className="rs-status">{notice}</p>}
     </div>
   );
 }

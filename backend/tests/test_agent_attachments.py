@@ -222,3 +222,16 @@ def test_saved_conversation_keeps_attachments_out_of_text_and_title(tmp_path):
     assert user["content"] == "帮我看看"
     assert [item["name"] for item in user["attachments"]] == ["shot.png", "resume.pdf"]
     assert "attachments" not in assistant
+
+
+def test_conversation_save_input_accepts_attachments():
+    # 带附件的用户消息里 attachments 是列表，保存会话的参数校验不能要求它是字符串。
+    from app.ops import HarnessConversationSaveInput
+
+    value = HarnessConversationSaveInput.model_validate({
+        "messages": [
+            {"role": "assistant", "content": "hi"},
+            {"role": "user", "content": "帮我看看", "attachments": [{"id": "a1", "name": "resume.pdf", "kind": "document"}]},
+        ],
+    })
+    assert value.messages[1]["attachments"][0]["name"] == "resume.pdf"

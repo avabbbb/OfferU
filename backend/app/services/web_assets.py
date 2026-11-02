@@ -104,6 +104,92 @@ async def find_school_logo(school_name: str) -> dict[str, str] | None:
     return None
 
 
+def _in_order(key: str, name: str) -> bool:
+    """key 的每个字按顺序出现在 name 里：华师 -> 华南师范大学。"""
+    chars = iter(name)
+    return all(ch in chars for ch in key)
+
+
+def search_school_logos(query: str, limit: int = 20) -> list[dict[str, str]]:
+    """边打边联想：全名 / 简称、前缀、片段（华南、师范）、跳字（华师）都算，最像的排前面，给用户挑。"""
+    q = (query or "").strip()
+    if not q:
+        return []
+    key = _normalize(ALIASES.get(q, q))
+    scored = []
+    for name, file in _logo_index().items():
+        n = _normalize(name)
+        if n == key:
+            rank = 0
+        elif n.startswith(key):
+            rank = 1
+        elif key in n:
+            rank = 2
+        elif len(n) >= 4 and n in key:
+            rank = 3
+        elif len(key) >= 2 and _in_order(key, n):
+            rank = 4
+        else:
+            continue
+        scored.append((rank, len(n), name, file))
+    scored.sort()
+    return [{"school_name": name, "file": file, "url": LOGO_URL_PREFIX + file} for _, _, name, file in scored[:limit]]
+
+
+def transparent_logo(data: bytes, max_side: int = 800) -> bytes:
+    """校徽抠成透明底，返回 PNG。从四条边连通、颜色接近边框主色的像素变透明；
+    校徽内部和背景同色的区域（被图形围住的白色）不动；轮廓外一圈按色差给半透明，边缘不发毛。
+    边框本来大多透明的原样转 PNG。打不开的图片抛 ValueError。"""
+    from io import BytesIO
+
+    import numpy as np
+    from PIL import Image, UnidentifiedImageError
+
+    try:
+        img = Image.open(BytesIO(data))
+        img.load()
+    except (UnidentifiedImageError, OSError) as exc:
+        raise ValueError("不是能识别的图片") from exc
+    img = img.convert("RGBA")
+    img.thumbnail((max_side, max_side))
+    px = np.array(img, dtype=np.int16)
+    rgb, alpha = px[..., :3], px[..., 3]
+    border = np.concatenate([px[0], px[-1], px[:, 0], px[:, -1]])
+    opaque = border[border[:, 3] > 8]
+    bg = np.median(opaque[:, :3], axis=0) if len(opaque) > len(border) // 2 else None
+    # 只抠白底/黑底：彩色方块底（如宁波诺丁汉、青海师大）本身就是校徽的一部分，原样保留。
+    if bg is not None and bg.max() - bg.min() <= 24 and (bg.min() >= 200 or bg.max() <= 50):
+        dist = np.abs(rgb - bg).max(axis=2)
+        cand = (alpha <= 8) | (dist <= 40)
+        reached = np.zeros_like(cand)
+        for edge in (np.s_[0, :], np.s_[-1, :], np.s_[:, 0], np.s_[:, -1]):
+            reached[edge] = cand[edge]
+
+        def grow(mask):
+            out = mask.copy()
+            out[1:] |= mask[:-1]
+            out[:-1] |= mask[1:]
+            out[:, 1:] |= mask[:, :-1]
+            out[:, :-1] |= mask[:, 1:]
+            return out
+
+        while True:
+            nxt = grow(reached) & cand
+            if np.array_equal(nxt, reached):
+                break
+            reached = nxt
+        ring = grow(reached) & ~reached & (dist < 100)
+        soft = np.clip(np.divide(dist - 40, 60), 0, 1)
+        new_alpha = alpha.astype(np.float32)
+        new_alpha[ring] = np.multiply(new_alpha[ring], soft[ring])
+        new_alpha[reached] = 0
+        px[..., 3] = new_alpha.round().astype(np.int16)
+        img = Image.fromarray(px.astype(np.uint8), "RGBA")
+    buf = BytesIO()
+    img.save(buf, format="PNG", optimize=True)
+    return buf.getvalue()
+
+
 async def kami_font(name: str) -> Path:
     if name not in FONT_URLS:
         raise ValueError("未知字体")

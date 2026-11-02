@@ -1954,6 +1954,25 @@ body {
   box-shadow: 0 1px 2px rgba(20, 20, 19, 0.12), 0 4px 10px rgba(20, 20, 19, 0.12);
 }
 .resume-shell .rs-download:hover { opacity: 0.9; }
+.resume-shell .rs-download-group { position: relative; display: inline-flex; flex: none; }
+.resume-shell .rs-download-main { border-radius: 0.5rem 0 0 0.5rem; }
+.resume-shell .rs-download-caret { padding: 0 0.5rem; border-radius: 0 0.5rem 0.5rem 0; border-left: 1px solid rgba(255, 255, 255, 0.2); }
+.resume-shell .rs-download-caret .rs-caret-icon { color: inherit; transition: transform 0.15s ease; }
+.resume-shell .rs-download-caret .rs-caret-icon[data-open] { transform: rotate(180deg); }
+.resume-shell .rs-download-menu {
+  position: absolute; top: calc(100% + 0.375rem); right: 0; z-index: 40; min-width: 10rem; padding: 0.25rem;
+  border: 1px solid var(--border); border-radius: 0.625rem; background: var(--card); box-shadow: var(--shadow-raised);
+  animation: rs-slide-down 0.14s ease-out;
+}
+.resume-shell .rs-download-menu .rs-unit { margin-left: 0.25rem; font-size: 0.75rem; }
+@keyframes rs-slide-down { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+/* 按岗位改写：浮在预览画布顶部的半透明胶囊，滚动时贴顶，不再单独占一行。 */
+.resume-shell .rp-toolbar { position: sticky; top: 0; z-index: 5; display: flex; justify-content: center; margin-bottom: 0.625rem; pointer-events: none; }
+.resume-shell .rp-toolbar > div {
+  pointer-events: auto; padding: 0.3rem 0.875rem; border-radius: 999px;
+  background: color-mix(in srgb, var(--card) 82%, transparent); backdrop-filter: blur(6px);
+  box-shadow: 0 1px 2px rgba(20, 20, 19, 0.06), 0 4px 12px rgba(20, 20, 19, 0.06);
+}
 .resume-shell .rs-status {
   position: absolute; top: calc(100% + 0.375rem); left: 0; z-index: 30; padding: 0.25rem 0.5rem; border-radius: 0.375rem;
   background: var(--foreground); color: var(--background); font-size: 0.75rem;
@@ -2103,7 +2122,35 @@ body {
 .resume-shell .rt-edit a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
 
 
-/* 预览：深色画布上放一张白纸 A4，和超级简历一样把纸面“框”出来。 */
-.resume-shell .rp-canvas { background: #1e1f22; color-scheme: dark; }
-.resume-shell .rp-canvas [role="alert"] { color: #fca5a5; }
-.resume-shell .rp-paper { border-radius: 3px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), 0 16px 40px rgba(0, 0, 0, 0.45); }
+/* 预览：和右栏同色的暖灰底上放一张 A4，只用一层浅阴影托出纸面，不要深色边框。 */
+.resume-shell .rp-canvas { background: var(--surface); }
+.resume-shell .rp-canvas [role="alert"] { color: #b91c1c; }
+.resume-shell .rp-paper { border-radius: 2px; box-shadow: 0 1px 2px rgba(20, 20, 19, 0.08), 0 8px 24px rgba(20, 20, 19, 0.10); }
+
+
+.resume-shell .rf-contact-label { min-width: 0; flex: 1; border: 0; background: transparent; padding: 0; color: var(--foreground-muted); font-size: 0.75rem; outline: none; }
+.resume-shell .rf-contact-label:focus { color: var(--foreground); }
+.resume-shell .rf-media { display: flex; flex-wrap: wrap; gap: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
+.resume-shell .rf-media-box { display: flex; flex-direction: column; gap: 0.4rem; }
+.resume-shell .rf-thumb { display: inline-flex; flex: none; align-items: center; justify-content: center; overflow: hidden; border-radius: 0.375rem; border: 1px dashed var(--border); background: var(--field); color: var(--foreground-muted); font-size: 0.75rem; }
+.resume-shell .rf-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.resume-shell .rf-thumb-photo { width: 4.5rem; height: 6rem; }
+.resume-shell .rf-thumb-photo:hover { border-color: var(--ink); }
+.resume-shell .rf-thumb-logo { width: 3.5rem; height: 3.5rem; }
+.resume-shell .rf-thumb-logo img { object-fit: contain; }
+.resume-shell .rf-check { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--foreground-muted); font-size: 0.75rem; }
+.resume-shell .rf-combo-box { position: relative; min-width: 0; }
+.resume-shell .rf-suggest {
+  position: absolute; top: calc(100% + 0.25rem); left: 0; right: 0; z-index: 40; margin: 0; padding: 0.25rem; list-style: none;
+  max-height: 16rem; overflow: auto; border: 1px solid var(--border); border-radius: 0.5rem; background: var(--card);
+  box-shadow: 0 1px 2px rgba(20, 20, 19, 0.08), 0 8px 24px rgba(20, 20, 19, 0.12);
+}
+.resume-shell .rf-suggest li {
+  display: flex; align-items: center; gap: 0.5rem; min-width: 0; padding: 0.375rem 0.5rem; border-radius: 0.375rem;
+  color: var(--foreground); font-size: 0.8125rem; line-height: 1.4; cursor: pointer;
+}
+.resume-shell .rf-suggest li[data-active] { background: var(--field); }
+.resume-shell .rf-suggest li img { flex: none; width: 1.5rem; height: 1.5rem; object-fit: contain; }
+.resume-shell .rf-suggest li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.resume-shell .rf-suggest mark { background: none; color: var(--ink); font-weight: 600; }
+.resume-shell .rf-suggest .rf-suggest-empty { color: var(--foreground-muted); font-size: 0.75rem; cursor: default; }

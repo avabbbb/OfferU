@@ -7,6 +7,7 @@
 
 import asyncio
 import re
+from pathlib import Path
 from typing import Any, AsyncIterator, Callable, Optional
 
 from app.core import store
@@ -20,6 +21,18 @@ PROMPT = (
     "只输出完整的 Markdown 简历本身，不要解释，不要代码块。写法："
     + FIELDS["doc"].split("也可以只传 body，写法：", 1)[1].split("，保存时转成", 1)[0]
 )
+
+# 内置 tw93/Kami 的简历写作规范（app/assets/kami，MIT）。只取内容策略，版式由 doc.style 管。
+_KAMI = Path(__file__).resolve().parents[1] / "assets" / "kami" / "references"
+_KAMI_NOTE = ("\n\n## 写作规范（Kami）\n下面是 Kami 的简历写作规范。只用它的内容策略：角色/动作/结果、动词开头、结果和可核实的数字、"
+              "头衔用词校准、反模式。里面关于两页、HTML/CSS、脚本、字体的规定不适用；输出格式、篇幅和不编造事实以上面为准。\n\n")
+
+
+def kami_rules() -> str:
+    """resume-writing + anti-patterns；文件缺了就不加，改写照常跑。"""
+    parts = [(_KAMI / name).read_text(encoding="utf-8") for name in ("resume-writing.md", "anti-patterns.md") if (_KAMI / name).is_file()]
+    return _KAMI_NOTE + "\n\n".join(parts) if parts else ""
+
 
 _running: set[int] = set()
 FENCE = chr(96) * 3  # 三个反引号
@@ -40,7 +53,7 @@ def messages(doc: dict[str, Any], job: dict[str, Any]) -> list[dict[str, str]]:
     user = (f"## 岗位：{label(job)}\n{str(job.get('jd'))[:8000]}\n\n"
             f"## 档案和经历（唯一的事实来源）\n{_facts()}\n\n"
             f"## 现在的简历\n{doc.get('body') or '（空）'}")
-    return [{"role": "system", "content": PROMPT}, {"role": "user", "content": user}]
+    return [{"role": "system", "content": PROMPT + kami_rules()}, {"role": "user", "content": user}]
 
 
 def clean(text: str) -> str:
@@ -56,9 +69,14 @@ def clean(text: str) -> str:
 
 
 def _default_stream() -> Stream:
+    from app.agents import agent_fallback
     from app.agents.llm import chat_completion_stream, resolve_llm_client_config
 
-    resolve_llm_client_config()  # 没配模型时直接报 ValueError，别等到流里静默返回空
+    try:
+        resolve_llm_client_config()  # 没配模型、又不许交给外置 Agent 时直接报 ValueError，别等到流里静默返回空
+    except ValueError:
+        if not agent_fallback.enabled():
+            raise
     return lambda msgs: chat_completion_stream(msgs, temperature=0.3, max_tokens=4096)
 
 
@@ -89,6 +107,10 @@ async def run(doc_id: int, job_id: Optional[int] = None, *, stream: Optional[Str
         from app.config import get_settings
 
         deadline = float(get_settings().llm_timeout) * 3
+        from app.agents import agent_fallback
+
+        if agent_fallback.needed():  # 外置 Agent 冷启动慢，给足时间
+            deadline = max(deadline, agent_fallback.TIMEOUT_SECONDS + 30.0)
 
     _running.add(doc["id"])
     try:

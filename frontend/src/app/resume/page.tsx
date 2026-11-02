@@ -5,12 +5,14 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { mutate } from "swr";
 
+import { BasicsMedia } from "@/components/resume/BasicsMedia";
+import { DownloadButton } from "@/components/resume/DownloadButton";
 import { type FormFocus, ResumeForm } from "@/components/resume/ResumeForm";
 import { type PreviewHandle, ResumePreview } from "@/components/resume/ResumePreview";
 import { ResumeSwitcher } from "@/components/resume/ResumeSwitcher";
 import { StylePanel } from "@/components/resume/StylePanel";
 import { TailorBar } from "@/components/resume/TailorBar";
-import { apiUrl, type Doc, type Job, type Memory, type Profile, tool, useTool, write } from "@/lib/core";
+import { type Doc, type Job, type Memory, type Profile, tool, useTool, write } from "@/lib/core";
 import { resumeFromProfile } from "@/lib/resumeDraft";
 import { emptyResume, locatePath, normalizeResume, type Resume } from "@/lib/resumeModel";
 import { type FitOutcome, fitOnePage, resolveStyle, type ResumeStyle } from "@/lib/resumeStyle";
@@ -90,6 +92,7 @@ function Editor({ doc, docs, jobs, photo, onCopy, onCreate }: {
   const copy = (target: Doc) => onCopy(target.id === doc.id ? { ...doc, title, resume, style } : target);
 
   const job = jobs.find((j) => j.id === doc.job_id);
+  const school = resume.sections.find((s) => s.type === "education")?.items[0]?.title.trim() ?? "";
   const link = "text-[12.5px] text-[var(--foreground-muted)] hover:text-[var(--foreground)]";
   return (
     <div className="resume-shell flex min-w-0 flex-1 flex-col bg-[var(--background)]">
@@ -98,16 +101,17 @@ function Editor({ doc, docs, jobs, photo, onCopy, onCreate }: {
           onDelete={(d) => void remove(d)} />
         {job && <Link href={"/jobs/" + job.id} className={link + " shrink-0"}>{job.label}</Link>}
         <span className="rs-saved">{saved && styleSaved ? "已保存" : "保存中…"}</span>
-        <StylePanel style={style} onChange={changeStyle} onFit={() => void fit()} fitting={fitting} notice={notice}
-          hasPhoto={Boolean(photo)} />
-        <a href={apiUrl("/api/resume/" + doc.id + "/pdf")} download className="rs-download">下载 PDF</a>
+        <StylePanel style={style} onChange={changeStyle} onFit={() => void fit()} fitting={fitting} notice={notice} />
+        <DownloadButton docId={doc.id} />
       </header>
       <div className="flex min-h-0 flex-1">
-        <ResumeForm resume={resume} onChange={changeResume} focus={focus} />
+        <ResumeForm resume={resume} onChange={changeResume} focus={focus}
+          basicsExtra={<BasicsMedia style={style} onStyle={changeStyle} photo={photo} school={school}
+            onPhoto={() => void mutate((k) => Array.isArray(k) && k[0] === "tool")} />} />
         <div className="flex w-[56%] min-w-[420px] shrink-0 flex-col border-l border-[var(--border)] bg-[var(--surface)]">
-          <TailorBar docId={doc.id} jobId={doc.job_id} jobs={jobs} disabled={!saved || !styleSaved}
-            onDone={() => mutate((k) => Array.isArray(k) && k[0] === "tool")} />
           <ResumePreview ref={preview} resume={resume} style={style}
+            toolbar={<TailorBar docId={doc.id} jobId={doc.job_id} jobs={jobs} disabled={!saved || !styleSaved}
+              onDone={() => mutate((k) => Array.isArray(k) && k[0] === "tool")} />}
             onLocate={(path) => setFocus({ ...locatePath(resume, path), at: Date.now() })} />
         </div>
       </div>

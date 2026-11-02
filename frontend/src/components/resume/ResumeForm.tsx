@@ -6,7 +6,8 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import {
-  emptyItem, emptySection, ITEM_FIELDS, move, type Resume, type ResumeBasics, type ResumeItem, type ResumeSection,
+  CONTACT_PRESETS, contactText, emptyItem, emptySection, ITEM_FIELDS, move, type Resume, type ResumeBasics, type ResumeContact,
+  type ResumeItem, type ResumeSection,
   SECTION_LABEL, SECTION_TYPES, type SectionType, updateItem, updateSection,
 } from "@/lib/resumeModel";
 import { plainText } from "@/lib/richMarkup";
@@ -14,7 +15,8 @@ import { RichText } from "./RichText";
 
 export type FormFocus = { sectionId?: string; itemId?: string; basics?: boolean; at: number };
 
-type Props = { resume: Resume; onChange: (next: Resume) => void; focus?: FormFocus | null };
+// basicsExtra：放在基本信息卡片最下面（证件照、校徽），由上层给。
+type Props = { resume: Resume; onChange: (next: Resume) => void; focus?: FormFocus | null; basicsExtra?: ReactNode };
 
 // 每类模块一个线性图标（24 视框、1.6 线宽、currentColor），只为让卡片标题一眼可辨。
 const ICON: Record<SectionType | "basics", string> = {
@@ -91,6 +93,23 @@ function Field({ name, wide, children }: { name: string; wide?: boolean; childre
       <span className="rf-label">{name}</span>
       {children}
     </label>
+  );
+}
+
+// 联系方式一项：上面一行是字段名（可改）和删除，下面是内容。
+function ContactField({ contact, onChange, onDelete }: {
+  contact: ResumeContact; onChange: (next: ResumeContact) => void; onDelete: () => void;
+}) {
+  return (
+    <div className="rf-field">
+      <div className="flex items-center gap-1">
+        <input value={contact.label} placeholder="字段名" aria-label="字段名" className="rf-contact-label"
+          onChange={(e) => onChange({ ...contact, label: e.target.value })} />
+        <Btn label={"删除" + (contact.label || "这一项")} danger onClick={onDelete}><Glyph name="trash" /></Btn>
+      </div>
+      <input value={contact.value} aria-label={contact.label || "内容"} className="rf-input"
+        onChange={(e) => onChange({ ...contact, value: e.target.value })} />
+    </div>
   );
 }
 
@@ -246,7 +265,7 @@ const toggled = (set: Set<string>, id: string, on?: boolean) => {
   return next;
 };
 
-export function ResumeForm({ resume, onChange, focus }: Props) {
+export function ResumeForm({ resume, onChange, focus, basicsExtra }: Props) {
   const root = useRef<HTMLDivElement>(null);
   // 模块默认全展开（记收起的）；条目默认只露摘要（记展开的）。
   const [closed, setClosed] = useState<Set<string>>(() => new Set());
@@ -269,6 +288,8 @@ export function ResumeForm({ resume, onChange, focus }: Props) {
   }, [focus]);
 
   const setBasics = (patch: Partial<ResumeBasics>) => onChange({ ...resume, basics: { ...resume.basics, ...patch } });
+  const contacts = resume.basics.contacts;
+  const setContacts = (next: ResumeContact[]) => setBasics({ contacts: next });
   const addSection = (type: SectionType) => {
     const section = emptySection(type);
     onChange({ ...resume, sections: [...resume.sections, section] });
@@ -287,21 +308,30 @@ export function ResumeForm({ resume, onChange, focus }: Props) {
           </div>
         </header>
         {basicsOpen ? (
-          <div className="rf-card-body grid grid-cols-2 gap-3">
-            <Field name="姓名">
-              <input value={resume.basics.name} onChange={(e) => setBasics({ name: e.target.value })} className="rf-input" />
-            </Field>
-            <Field name="求职意向">
-              <input value={resume.basics.target} onChange={(e) => setBasics({ target: e.target.value })} className="rf-input" />
-            </Field>
-            <Field name="联系方式（一行一项：电话、邮箱、城市、主页）" wide>
-              <textarea value={resume.basics.contacts.join("\n")} rows={3} onChange={(e) => setBasics({ contacts: e.target.value.split("\n") })}
-                className="rf-input resize-y" />
-            </Field>
+          <div className="rf-card-body">
+            <div className="grid grid-cols-2 gap-3">
+              <Field name="姓名">
+                <input value={resume.basics.name} onChange={(e) => setBasics({ name: e.target.value })} className="rf-input" />
+              </Field>
+              <Field name="求职意向">
+                <input value={resume.basics.target} onChange={(e) => setBasics({ target: e.target.value })} className="rf-input" />
+              </Field>
+              {contacts.map((c, i) => (
+                <ContactField key={i} contact={c} onChange={(next) => setContacts(contacts.map((x, k) => (k === i ? next : x)))}
+                  onDelete={() => setContacts(contacts.filter((_, k) => k !== i))} />
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {CONTACT_PRESETS.filter((label) => !contacts.some((c) => c.label === label)).map((label) => (
+                <button key={label} type="button" className="rf-chip" onClick={() => setContacts([...contacts, { label, value: "" }])}>+ {label}</button>
+              ))}
+              <button type="button" className="rf-chip" onClick={() => setContacts([...contacts, { label: "", value: "" }])}>+ 自定义</button>
+            </div>
+            {basicsExtra}
           </div>
         ) : (
           <p className="rf-card-body rf-muted truncate">
-            {[resume.basics.name, ...resume.basics.contacts.filter(Boolean)].join(" | ") || "还没填"}
+            {[resume.basics.name, ...contacts.filter((c) => c.value.trim()).map(contactText)].filter(Boolean).join(" | ") || "还没填"}
           </p>
         )}
       </section>

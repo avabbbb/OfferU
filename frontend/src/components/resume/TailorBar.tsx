@@ -47,7 +47,7 @@ export function TailorBar({ docId, jobId, jobs, disabled, onDone }: Props) {
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--border)] px-4 py-2 text-[12px]" style={{ fontSize: 12 }}>
+    <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[12px]" style={{ fontSize: 12 }}>
       {jobId == null && (withJd.length ? (
         <select aria-label="按哪个岗位改" value={picked ?? ""} disabled={running} onChange={(e) => setPicked(Number(e.target.value))}
           className="max-w-[220px] truncate bg-transparent text-[12px] text-[var(--foreground)] outline-none">

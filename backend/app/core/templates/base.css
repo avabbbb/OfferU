@@ -5,8 +5,12 @@
   background: #fff; color: var(--ink, #1d1d1f); font-family: var(--font); font-size: var(--body-size); line-height: var(--line-height);
   -webkit-font-smoothing: antialiased; }
 .resume * { box-sizing: border-box; }
-.resume .photo { position: absolute; top: var(--margin-top); left: var(--margin-left); width: 25mm; height: 33mm; object-fit: cover; border-radius: 1.5mm; }
-.resume .logo { position: absolute; top: var(--margin-top); right: var(--margin-right); height: 16mm; max-width: 40mm; object-fit: contain; }
+/* 证件照靠左、校徽靠右浮动：姓名和联系方式排在两者之间（flow-root 让它们的底线不伸到图片底下），
+   第一个模块 clear 到图片下面。姓名、联系方式空着也不会让模块压到图片上。 */
+.resume .photo { float: left; width: 25mm; height: 33mm; margin: 0 5mm 3mm 0; object-fit: cover; border-radius: 1.5mm; }
+.resume .logo { float: right; height: 16mm; max-width: 40mm; margin: 0 0 3mm 4mm; object-fit: contain; }
+.resume h1, .resume p.contact { display: flow-root; }
+.resume section { clear: both; }
 .resume h1 { font-size: var(--name); font-weight: 600; letter-spacing: .02em; line-height: 1.3; margin: 0 0 1.2mm; color: var(--accent); }
 .resume h1 + p { margin: 0; color: var(--muted, #6e6e73); }
 .resume h2 { font-size: var(--h2); font-weight: 600; color: var(--accent); margin: var(--section-gap) 0 1.6mm; padding-bottom: 1mm;
@@ -24,6 +28,3 @@
 .resume strong, .resume b { font-weight: 600; }
 .resume table { border-collapse: collapse; width: 100%; }
 .resume td, .resume th { padding: .6mm 1.2mm; text-align: left; }
-.resume.photo-on h1, .resume.photo-on h1 + p { padding-left: 30mm; }
-.resume.logo-on h1, .resume.logo-on h1 + p { padding-right: 44mm; }
-.resume.photo-on h1 + p { min-height: calc(33mm - var(--name) * 1.3 - 1.2mm); }
