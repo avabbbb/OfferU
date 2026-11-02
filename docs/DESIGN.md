@@ -76,7 +76,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 
 ## 5. 工具清单
 
-目标是不超过 16 个，现在 16 个（`GET /api/tools` 可查）。✓ 表示已实现。
+现在 16 个（`GET /api/tools` 可查）。✓ 表示已实现。
 
 | 工具 | 作用 | 状态 |
 | --- | --- | --- |
