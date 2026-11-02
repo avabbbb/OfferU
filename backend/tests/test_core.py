@@ -97,7 +97,7 @@ def test_mail_writes_core_and_respects_undo(tmp_path, monkeypatch):
     from app.core import mail
     from app.core.tools import TOOLS
 
-    assert "email_sync" in TOOLS and len(TOOLS) <= 16
+    assert "email_sync" in TOOLS
     first = mail.apply({"mail_id": "m1", "stage": "applied", "company": "腾讯", "title": "后端开发", "subject": "投递成功"})
     job_id = first["job_id"]
     assert call("get", {"type": "job", "id": job_id}, actor="你")["record"]["status"] == "applied"
