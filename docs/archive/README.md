@@ -4,6 +4,10 @@
 
 > 状态：**归档索引**。这里的内容只用于考古，不覆盖 `docs/` 下的当前文档。当前入口：[docs/README.md](../README.md)。演进脉络见 [发展历史](./development-history.md)。
 
+## 2026-11-02 第五次归档
+
+- `docs/plans/resume-editor-refactor.md`（简历编辑器重构计划，已随 PR #178 落地）移到 [2026-11/resume-editor-refactor.md](./2026-11/resume-editor-refactor.md)。
+
 ## 2026-10-30 第四次归档
 
 - 删除 `docs/PLAN.md`：项目计划已停用，历史在 git 里。重构前的代码在 tag `pre-refactor`。

@@ -1521,28 +1521,6 @@ export const jobResearchApi = {
   ),
 };
 
-export const resumeOptimizationApi = {
-  list: (jobId: number, params?: { status?: string; limit?: number }) =>
-    request<{ total: number; items: ResumeOptimizationProposalSummary[] }>(
-      `/api/optimize/proposals?${buildQuery({ job_id: jobId, ...params })}`
-    ),
-  detail: (proposalId: string) =>
-    request<ResumeOptimizationProposalDetail>(
-      `/api/optimize/proposals/${encodeURIComponent(proposalId)}`
-    ),
-  review: (
-    proposalId: string,
-    data: { action: "accept" | "reject"; note?: string }
-  ) =>
-    request<ResumeOptimizationProposalDetail>(
-      `/api/optimize/proposals/${encodeURIComponent(proposalId)}/review`,
-      {
-        method: "POST",
-        body: JSON.stringify(data),
-      }
-    ),
-};
-
 export const preApplicationApi = {
   state: (jobId: number) =>
     request<PreApplicationState>(`/api/research/pre-application/${jobId}`),

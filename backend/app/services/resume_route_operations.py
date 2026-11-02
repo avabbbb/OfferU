@@ -9,9 +9,7 @@ from __future__ import annotations
 
 import base64
 import binascii
-import copy
 import logging
-import re
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -32,7 +30,6 @@ from app.models.models import (
     ResumeShare,
     ResumeVersion,
 )
-from app.services.application_workspace import auto_write_job_to_total
 from app.services.resume_drafts import save_resume_draft
 from app.services.resume_fact_gates import validate_generated_content
 from app.services.resume_versions import (
@@ -538,191 +535,6 @@ async def apply_resume_suggestions_batch(resume_id: int, payload: dict[str, Any]
             "backup_version_number": backup.version_number,
             "fact_gates": fact_gates,
         }
-
-
-async def batch_optimize_resume_records(
-    resume_id: int,
-    job_ids: list[int],
-    auto_apply: bool = False,
-) -> dict[str, Any]:
-    """Create one tailored resume candidate per job behind the Registry."""
-
-    from app.agents.skills import SkillPipeline
-
-    async with async_session() as db:
-        source = await _get_resume(db, resume_id, load_sections=True)
-        source_data = _resume_dict(source)
-        # Detach the source section blueprints into plain dicts so the per-job
-        # write loop can use a fresh session without keeping this read session
-        # open (which would deadlock SQLite's write lock).
-        source_sections = [
-            {
-                "section_type": section.section_type,
-                "sort_order": section.sort_order,
-                "title": section.title,
-                "visible": section.visible,
-                "content_json": copy.deepcopy(section.content_json or []),
-            }
-            for section in source.sections
-        ]
-        jobs = (
-            await db.execute(select(Job).where(Job.id.in_(job_ids)))
-        ).scalars().all()
-        jobs_map = {
-            job.id: {
-                "title": job.title,
-                "company": job.company,
-                "raw_description": job.raw_description,
-            }
-            for job in jobs
-        }
-        missing = sorted(set(job_ids) - set(jobs_map))
-        if missing:
-            raise ValueError(f"以下岗位不存在: {missing}")
-
-    pipeline = SkillPipeline()
-    results: list[dict[str, Any]] = []
-    for index, job_id in enumerate(job_ids):
-        job = jobs_map[job_id]
-        entry: dict[str, Any] = {
-            "job_id": job_id,
-            "job_title": job["title"],
-            "company": job["company"],
-            "new_resume_id": None,
-            "ats_score": None,
-            "suggestions_applied": 0,
-            "status": "pending",
-            "error": None,
-            "index": index,
-            "total": len(job_ids),
-        }
-        jd_text = (job["raw_description"] or "").strip()
-        if not jd_text:
-            entry.update(status="skipped", error="岗位无 JD 文本")
-            results.append(entry)
-            continue
-
-        try:
-            # Use a fresh session per job so a rollback in one iteration never
-            # leaves a dirty session for the next (M-30). The async-with closes
-            # (and rolls back any uncommitted work) on exception exit.
-            async with async_session() as db:
-                new_resume = Resume(
-                    user_name=source_data.get("user_name") or "",
-                    title=f"{source_data.get('title') or '简历'} - {job['company']} {job['title']}",
-                    photo_url=source_data.get("photo_url") or "",
-                    summary=source_data.get("summary") or "",
-                    contact_json=copy.deepcopy(source_data.get("contact_json") or {}),
-                    style_config=copy.deepcopy(source_data.get("style_config") or {}),
-                    is_primary=False,
-                    language=source_data.get("language") or "zh",
-                    source_mode="batch_optimize",
-                    source_job_ids=[job_id],
-                )
-                db.add(new_resume)
-                await db.flush()
-                for section in source_sections:
-                    db.add(
-                        ResumeSection(
-                            resume_id=new_resume.id,
-                            section_type=section["section_type"],
-                            sort_order=section["sort_order"],
-                            title=section["title"],
-                            visible=section["visible"],
-                            content_json=copy.deepcopy(section["content_json"]),
-                        )
-                    )
-                await db.flush()
-                entry["new_resume_id"] = new_resume.id
-
-                cloned = await _get_resume(db, new_resume.id, load_sections=True)
-                cloned_data = _resume_dict(cloned)
-                pipeline_result = await pipeline.run(
-                    resume_text=_flatten_resume_data(cloned_data),
-                    resume_data=cloned_data,
-                    jd_text=jd_text,
-                )
-                match_analysis = pipeline_result.get("match_analysis") or {}
-                entry["ats_score"] = match_analysis.get("ats_score")
-                entry["fact_gates"] = pipeline_result.get("fact_gates") or {}
-
-                if auto_apply and entry["fact_gates"].get("status") != "blocked":
-                    applied = 0
-                    for suggestion in ((pipeline_result.get("content_rewrite") or {}).get("suggestions") or []):
-                        section_title = str(suggestion.get("section_title") or "")
-                        original = str(suggestion.get("original") or "")
-                        suggested = str(suggestion.get("suggested") or "")
-                        if not section_title or not suggested:
-                            continue
-                        section = next(
-                            (item for item in cloned.sections if section_title.lower() in (item.title or "").lower()),
-                            None,
-                        )
-                        if section is None:
-                            continue
-                        content = list(section.content_json or [])
-                        for item in content:
-                            if not isinstance(item, dict):
-                                continue
-                            description = str(item.get("description") or "")
-                            plain_description = re.sub(r"<[^>]+>", "", description).strip()
-                            plain_original = re.sub(r"<[^>]+>", "", original).strip()
-                            if plain_original and plain_original in plain_description:
-                                item["description"] = description.replace(original, suggested, 1) if original in description else suggested
-                                applied += 1
-                                break
-                        section.content_json = content
-
-                    for sort_index, section_title in enumerate(
-                        ((pipeline_result.get("section_reorder") or {}).get("suggested_order") or [])
-                    ):
-                        section = next(
-                            (item for item in cloned.sections if section_title.lower() in (item.title or "").lower()),
-                            None,
-                        )
-                        if section:
-                            section.sort_order = sort_index
-                    entry["suggestions_applied"] = applied
-                elif auto_apply:
-                    entry.update(status="review_required", error="事实校验未通过，未自动应用建议")
-
-                if entry["status"] == "pending":
-                    entry["status"] = "success"
-                await db.commit()
-                try:
-                    await auto_write_job_to_total(db, job_id=job_id)
-                except Exception as exc:
-                    entry["auto_write_error"] = f"自动写入投递总表失败: {safe_error_message(exc)}"
-        except Exception as exc:
-            entry.update(status="failed", error=safe_error_message(exc))
-        results.append(entry)
-    return {
-        "total": len(job_ids),
-        "success": sum(1 for item in results if item.get("status") == "success"),
-        "results": results,
-    }
-
-
-def _flatten_resume_data(resume_data: dict[str, Any]) -> str:
-    parts: list[str] = []
-    if resume_data.get("user_name"):
-        parts.append(f"姓名: {resume_data['user_name']}")
-    if resume_data.get("summary"):
-        parts.append(f"个人简介: {resume_data['summary']}")
-    for section in resume_data.get("sections") or []:
-        parts.append(f"\n## {section.get('title') or section.get('section_type') or ''}")
-        for item in section.get("content_json") or []:
-            if isinstance(item, dict):
-                label = item.get("title") or item.get("company") or item.get("school") or ""
-                if label:
-                    parts.append(f"### {label}")
-                if item.get("description"):
-                    parts.append(str(item["description"]))
-                if item.get("items"):
-                    parts.append(", ".join(item["items"]) if isinstance(item["items"], list) else str(item["items"]))
-            elif isinstance(item, str):
-                parts.append(item)
-    return "\n".join(parts)
 
 
 async def create_resume_version_record(

@@ -2584,29 +2584,6 @@ async def record_follow_up(
     return event
 
 
-async def generate_cover_letter(job_id: int, resume_id: int) -> dict:
-    from app.agents.cover_letter import generate_cover_letter as _gen_cover_letter
-    async with async_session() as db:
-        job = (await db.execute(select(Job).where(Job.id == job_id))).scalar_one_or_none()
-        if not job:
-            return {"error": f"Job #{job_id} not found"}
-        resume = (await db.execute(select(Resume).where(Resume.id == resume_id))).scalar_one_or_none()
-        if not resume:
-            return {"error": f"Resume #{resume_id} not found"}
-        sections = (
-            await db.execute(
-                select(ResumeSection)
-                .where(ResumeSection.resume_id == resume_id)
-                .order_by(ResumeSection.sort_order.asc())
-            )
-        ).scalars().all()
-        resume_text = f"姓名: {resume.user_name or ''}\n简介: {resume.summary or ''}\n"
-        for section in sections:
-            resume_text += f"\n[{section.title or section.section_type}]\n"
-            resume_text += str(section.content_json or [])
-        return await _gen_cover_letter(jd=job.raw_description or job.summary, resume=resume_text)
-
-
 async def job_stats() -> dict:
     async with async_session() as db:
         since = datetime.utcnow() - timedelta(days=7)
