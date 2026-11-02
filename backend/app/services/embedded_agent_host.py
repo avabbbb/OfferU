@@ -446,8 +446,7 @@ async def start_embedded_agent_run(
         if declared is not None:
             skill, routing = declared
         else:
-            routing_context = await _skill_routing_context()
-            skill, routing = await resolve_run_skill(goal, skill_id, context_messages, routing_context=routing_context)
+            skill, routing = await resolve_run_skill(goal, skill_id, context_messages)
         run = await create_agent_run(
             conversation_id=conversation_id,
             task_id=task_id,

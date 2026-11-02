@@ -290,13 +290,23 @@ class FetchIn(_In):
 def fetch_page(url: str, *, actor: str = "") -> dict[str, Any]:
     """Plain GET of a public page (e.g. a job posting) as text. Pages that need login or JavaScript come back thin."""
     import html
+    import ssl
+    import urllib.error
     import urllib.request
+
+    from app.config import get_settings
 
     if not re.match(r"^https?://", url):
         raise ValueError("只支持 http/https 链接")
+    context = None if get_settings().ssl_verify else ssl._create_unverified_context()
     request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 OfferU"})
-    with urllib.request.urlopen(request, timeout=15) as response:
-        raw = response.read(3_000_000).decode(response.headers.get_content_charset() or "utf-8", "replace")
+    try:
+        with urllib.request.urlopen(request, timeout=15, context=context) as response:
+            raw = response.read(3_000_000).decode(response.headers.get_content_charset() or "utf-8", "replace")
+    except urllib.error.HTTPError as exc:
+        raise ValueError(f"打开网页失败：HTTP {exc.code}") from exc
+    except (urllib.error.URLError, TimeoutError) as exc:
+        raise ValueError(f"打开网页失败：{getattr(exc, 'reason', exc)}") from exc
     title = html.unescape((re.search(r"<title[^>]*>(.*?)</title>", raw, re.S | re.I) or [None, ""])[1]).strip()
     text = re.sub(r"<(script|style|noscript)[^>]*>.*?</\1>", " ", raw, flags=re.S | re.I)
     text = html.unescape(re.sub(r"<[^>]+>", "\n", text))

@@ -143,6 +143,10 @@ async def lifespan(app: FastAPI):
     finish_startup_recovery()
     try:
         if _HAS_MCP and mcp_server is not None:
+            # session manager 的 run() 每个实例只能跑一次；同一进程里 lifespan 可能跑多次（测试里的 TestClient），
+            # 所以每次启动都让 FastMCP 重建一个。/mcp 路由转给当前那个。
+            mcp_server._session_manager = None
+            mcp_server.streamable_http_app()
             async with mcp_server.session_manager.run():
                 yield
         else:
@@ -448,8 +452,17 @@ app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 # ---- MCP Server (Streamable HTTP) ----
 if _HAS_MCP and mcp_server is not None:
-    mcp_server.settings.streamable_http_path = "/"
-    app.mount("/mcp", mcp_server.streamable_http_app())
+    from starlette.routing import Route
+
+    class _CurrentMCPSession:
+        """把 /mcp 请求交给本次 lifespan 建的 session manager。"""
+
+        async def __call__(self, scope, receive, send):
+            await mcp_server.session_manager.handle_request(scope, receive, send)
+
+    # 直接挂在主路由的 /mcp 上；Mount 会把 POST /mcp 307 到 /mcp/，有些 MCP 客户端不跟跳转。
+    mcp_server.settings.streamable_http_path = "/mcp"
+    app.router.routes.append(Route("/mcp", endpoint=_CurrentMCPSession()))
 
 
 class _PairRequest(BaseModel):
