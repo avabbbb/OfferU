@@ -1,4 +1,4 @@
-"""Run the migrated Python Agent kernel; all business tools call the Registry host."""
+"""Run the migrated Python Agent kernel; business tools are the core TOOLS (app.core.agent)."""
 from __future__ import annotations
 
 import asyncio
@@ -22,6 +22,7 @@ from app.agent.messages import convert_to_llm, create_text_message
 from app.agent.provider import LlmStreamProvider
 from app.agent.types import AgentMessage, AssistantMessage, CancelToken, CompactionSummaryMessage, TextContent, ToolResultMessage
 from app.services.agent_files import atomic_write_bytes
+from app.core.agent import MAX_STEPS
 from app.services.security_redaction import redact_secret_value, safe_error_message
 
 PROTOCOL_VERSION = "offeru.python-agent.v1"
@@ -45,8 +46,7 @@ class EmbeddedAgentWorker:
         self.active_run_id: str | None = None
         self._messages: list[AgentMessage] = []
         self._system_prompt = ""
-        self._operations: list[dict[str, Any]] = []
-        self._operation_runner: Any = None
+        self._tools: list[LoopTool] = []
         self._event_listener: Any = None
         self._session_path: Path | None = None
         self._cancel = CancelToken()
@@ -84,7 +84,7 @@ class EmbeddedAgentWorker:
         atomic_write_bytes(self._session_path, json.dumps(payload, ensure_ascii=False).encode("utf-8"))
 
     async def start_run(self, *, run_id: str, system_prompt: str, provider: dict[str, Any],
-                        allowed_operations: list[dict[str, Any]], operation_runner: Any,
+                        tools: list[LoopTool],
                         event_listener: Any = None, session_directory: str = "", session_file: str = "",
                         host_tools: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         del provider  # Model credentials/configuration stay in the canonical LLM layer.
@@ -115,8 +115,7 @@ class EmbeddedAgentWorker:
             self._session_path = path
             self._messages = messages
             self._system_prompt = system_prompt
-            self._operations = allowed_operations
-            self._operation_runner = operation_runner
+            self._tools = list(tools)
             self._event_listener = event_listener
             self._host_tools = {
                 str(item.get("name") or ""): dict(item)
@@ -131,7 +130,7 @@ class EmbeddedAgentWorker:
             self._save()
             await self._emit("run.started", {"session_id": run_id, "kernel": "python"})
             return {"session_id": run_id, "session_file": str(path), "sdk_version": "luyishui-3a446ff",
-                    "active_tools": [item["name"] for item in allowed_operations] + sorted(self._host_tools)}
+                    "active_tools": [item.name for item in self._tools] + sorted(self._host_tools)}
 
     async def _save_turn(self, payload: dict[str, Any]) -> None:
         self._messages = list(payload["context"].messages)
@@ -145,24 +144,6 @@ class EmbeddedAgentWorker:
         result = list(queue)
         queue.clear()
         return result
-
-    async def _execute(self, name: str, call_id: str, args: dict[str, Any], cancel: Any, on_update: Any) -> ToolResultMessage:
-        del on_update
-        cancel.throw_if_cancelled()
-        result = await self._operation_runner(name, args)
-        details = dict(result)
-        try:
-            content = json.dumps(result, ensure_ascii=False, allow_nan=False)
-        except (TypeError, ValueError) as exc:
-            return ToolResultMessage(
-                tool_call_id=call_id,
-                tool_name=name,
-                content=[TextContent(text="Operation result was not valid JSON; the Run did not receive a success projection.")],
-                details={"operation": name, "serialization_error": type(exc).__name__},
-                is_error=True,
-            )
-        return ToolResultMessage(tool_call_id=call_id, tool_name=name,
-            content=[TextContent(text=content)], details=details, is_error=not result.get("ok", False))
 
     async def _execute_host_tool(self, name: str, call_id: str, args: dict[str, Any], cancel: Any, on_update: Any) -> Any:
         """Run a host-side loop tool (e.g. request_user_input).
@@ -205,8 +186,7 @@ class EmbeddedAgentWorker:
             mapped = {"tool_execution_start": "tool.started", "tool_execution_update": "tool.progress",
                       "tool_execution_end": "tool.completed"}[kind]
             result = event.get("result")
-            description = next((item.get("description", "") for item in self._operations
-                                if item["name"] == event.get("tool_name")), "")
+            description = next((t.description for t in self._tools if t.name == event.get("tool_name")), "")
             await self._emit(mapped, {"tool_call_id": event.get("tool_call_id"),
                 "operation": event.get("tool_name"), "args": event.get("args"),
                 "description": description,
@@ -250,10 +230,7 @@ class EmbeddedAgentWorker:
             user_message.content.extend(ImageContent(url=image_ref(image_id)) for image_id in image_ids)
             self._messages.append(user_message)
             self._save()
-            tools = [LoopTool(name=item["name"], description=item.get("description", ""),
-                parameters=item.get("input_schema") or {"type": "object", "properties": {}},
-                execute=lambda call_id, args, cancel, update, name=item["name"]: self._execute(name, call_id, args, cancel, update),
-                execution_mode="sequential") for item in self._operations]
+            tools = list(self._tools)
             tools += [
                 LoopTool(
                     name=name,
@@ -269,6 +246,7 @@ class EmbeddedAgentWorker:
             context = AgentContext(system_prompt=self._system_prompt, messages=list(self._messages), tools=tools)
             config = AgentLoopConfig(stream_fn=self._provider.stream, convert_to_llm=convert_to_llm,
                 tools=tools, hooks=self._hooks, cancel=self._cancel,
+                soft_loop_limit=MAX_STEPS, hard_loop_limit=MAX_STEPS + 1,
                 get_steering_messages=lambda: self._drain(self._steering),
                 get_follow_up_messages=lambda: self._drain(self._follow_up),
                 prepare_next_turn=self._prepare_next_turn)

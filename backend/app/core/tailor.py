@@ -63,7 +63,7 @@ def _default_stream() -> Stream:
 
 
 async def run(doc_id: int, job_id: Optional[int] = None, *, stream: Optional[Stream] = None,
-              deadline: Optional[float] = None) -> AsyncIterator[dict[str, Any]]:
+              deadline: Optional[float] = None, actor: str = "Agent") -> AsyncIterator[dict[str, Any]]:
     """事件：start → delta… → done（已保存）；任何一步失败是 error，之后不再有事件。"""
     doc = store.get("doc", int(doc_id))
     if doc is None or doc.get("kind") != "resume":
@@ -108,7 +108,7 @@ async def run(doc_id: int, job_id: Optional[int] = None, *, stream: Optional[Str
             yield {"type": "error", "message": str(exc)}
             return
         data: dict[str, Any] = {"body": body} if doc.get("job_id") else {"body": body, "job_id": job["id"]}
-        result = await asyncio.to_thread(save, "doc", data, doc["id"], actor="Agent")
+        result = await asyncio.to_thread(save, "doc", data, doc["id"], actor=actor)
         record = result["record"]
         yield {"type": "done", "body": record["body"], "resume": record["resume"], "change_id": result["change_id"]}
     finally:

@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.database import async_session
+from app.core import mail as core_mail
 from app.models.models import (
     ApplicationProgressCandidate,
     ApplicationStageEvent,
@@ -1075,6 +1076,7 @@ async def sync_email_account(account_id: str) -> dict[str, Any]:
             candidate_ids: list[str] = []
             observation_ids: list[int] = []
             observation_duplicates = 0
+            core_change_ids: list[int] = []
             for message in messages:
                 body = str(message.get("body") or message.get("subject") or "")[
                     :MAX_TRANSIENT_BODY_CHARS
@@ -1101,6 +1103,19 @@ async def sync_email_account(account_id: str) -> dict[str, Any]:
                     synced += 1
                 if result.get("candidate_id"):
                     candidate_ids.append(str(result["candidate_id"]))
+                if not result.get("duplicate"):
+                    application = result.get("application") or {}
+                    extracted = result.get("llm_extracted") or {}
+                    written = await asyncio.to_thread(core_mail.apply, {
+                        "mail_id": message_ref,
+                        "stage": result.get("suggested_stage"),
+                        "company": extracted.get("company") or application.get("company"),
+                        "title": extracted.get("job_title") or application.get("job_title"),
+                        "at": extracted.get("interview_time"),
+                        "sender": message.get("from"),
+                        "subject": message.get("subject"),
+                    })
+                    core_change_ids.extend(written["changes"])
 
                 # Keep email-derived career signals in the same observation
                 # ledger as Resume, interview and conversation evidence.  This
@@ -1163,7 +1178,8 @@ async def sync_email_account(account_id: str) -> dict[str, Any]:
                 "total_found": len(messages),
                 "calendar_created": 0,
                 "candidate_ids": candidate_ids,
-                "requires_review": synced,
+                "requires_review": 0,
+                "core_change_ids": core_change_ids,
                 "observation_ids": observation_ids,
                 "career_observations": len(observation_ids),
                 "observation_duplicates": observation_duplicates,

@@ -6,6 +6,7 @@ plus overview (what to do now) and fetch_page. Agents write directly; every writ
 
 from __future__ import annotations
 
+import asyncio
 import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -29,6 +30,7 @@ DOC_KIND = {"resume": "简历", "apply_chat": "官网投递对话", "review": "�
 MEMORY_KIND = {"experience": "实习 / 工作", "project": "项目", "education": "教育", "skill": "技能",
                "award": "奖项 / 证书", "preference": "偏好", "note": "其他"}
 TYPE_LABEL = {"profile": "档案", "memory": "记忆", "job": "岗位", "event": "事项", "doc": "文档"}
+MAIL_ACTOR = "邮箱"
 
 FIELDS = {
     "profile": "唯一一份。name, school, major, degree, grad_year, phone, email, city, target（求职方向）, stage（用户自己说的阶段）, about, photo（证件照文件名）",
@@ -93,6 +95,20 @@ def check_style(style: Any) -> None:
             raise ValueError("doc.style.logo 是上传（POST /api/files）返回的文件名")
 
 
+REVIEW_QUESTION_KEYS = ("question", "answer", "reflection", "reaction")
+
+
+def check_questions(questions: Any) -> None:
+    """doc.questions（面试复盘的题）：数组，每项 {question, answer, reflection, reaction} 都是字符串，更新时整体替换。"""
+    if not isinstance(questions, list) or len(questions) > 60:
+        raise ValueError("doc.questions 要是数组，最多 60 道题")
+    for index, item in enumerate(questions):
+        if not isinstance(item, dict) or set(item) - set(REVIEW_QUESTION_KEYS):
+            raise ValueError(f"doc.questions[{index}] 只能有 {', '.join(REVIEW_QUESTION_KEYS)}")
+        if not all(isinstance(v, str) for v in item.values()):
+            raise ValueError(f"doc.questions[{index}] 的值要是字符串")
+
+
 def _check(type_: str, data: dict[str, Any], creating: bool) -> None:
     def one_of(field: str, allowed: dict) -> None:
         if data.get(field) is not None and data[field] not in allowed:
@@ -113,6 +129,8 @@ def _check(type_: str, data: dict[str, Any], creating: bool) -> None:
         one_of("template", LEGACY_TEMPLATE)
         if data.get("style") is not None:
             check_style(data["style"])
+        if data.get("questions") is not None:
+            check_questions(data["questions"])
         if creating and not data.get("kind"):
             raise ValueError("文档要有 kind")
     elif type_ == "memory":
@@ -288,6 +306,13 @@ class OverviewIn(_In):
     pass
 
 
+def _mail_today(today: date) -> dict[str, Any]:
+    """邮箱同步的每日进度：今天邮箱写了几条改动、最后一条是什么时候。"""
+    count, last = store.conn().execute(
+        "SELECT COUNT(id), MAX(at) FROM changes WHERE actor = ? AND at >= ?", (MAIL_ACTOR, today.isoformat())).fetchone()
+    return {"today_changes": count, "last_change_at": last}
+
+
 def overview(*, actor: str = "", today: Optional[date] = None) -> dict[str, Any]:
     """现在在哪个阶段、下一步做什么、待办（逾期 / 今天 / 7 天内 / 以后 / 没定时间）、最近改动。"""
     today = today or date.today()
@@ -344,6 +369,7 @@ def overview(*, actor: str = "", today: Optional[date] = None) -> dict[str, Any]
         "todos": todos,
         "jobs": {s: len(v) for s, v in statuses.items()},
         "recent_changes": store.changes(5),
+        "mail": _mail_today(today),
     }
 
 
@@ -393,6 +419,70 @@ def export_resume_pdf(id: int, *, actor: str = "") -> dict[str, Any]:
     return {"path": str(out)}
 
 
+MAIN_LOOP: Optional[asyncio.AbstractEventLoop] = None  # main.py 启动时设置；工具在线程里跑，异步的旧服务投递回主循环
+
+
+def _await(factory: Callable[[], Any]) -> Any:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        pass
+    else:
+        raise RuntimeError("事件循环线程里不能同步等异步任务，用 asyncio.to_thread(tools.call, ...)")
+    loop = MAIN_LOOP
+    if loop is not None and loop.is_running():
+        return asyncio.run_coroutine_threadsafe(factory(), loop).result(timeout=600)
+    return asyncio.run(factory())
+
+
+class EmailSyncIn(_In):
+    action: Literal["status", "sync"] = Field("status", description="status 看已连邮箱和最近同步；sync 立刻拉一次新邮件并回写")
+    account: Optional[str] = Field(None, description="只看 / 只同步这个账号（account_id），不传就是全部")
+
+
+def email_sync(action: str = "status", account: Optional[str] = None, actor: str = "") -> dict[str, Any]:
+    from app.services import email_sync as service
+
+    if action == "sync":
+        result = _await(lambda: service.sync_email_notifications(account_id=account))
+        runs = result["runs"] if "runs" in result else [result]
+        return {"accounts": len(runs), "found": sum(int(r.get("total_found") or 0) for r in runs),
+                "new": sum(int(r.get("synced") or 0) for r in runs),
+                "changes": [c for r in runs for c in r.get("core_change_ids") or []],
+                "failed_accounts": int(result.get("failed_accounts") or 0)}
+    accounts = _await(lambda: service.list_email_accounts(status="active", limit=50))["items"]
+    runs = _await(lambda: service.list_email_sync_runs(account_id=account, limit=5))["items"]
+    keep = ("account_id", "provider", "email_address", "last_synced_at", "last_error")
+    return {
+        "accounts": [{k: a.get(k) for k in keep} for a in accounts if not account or a["account_id"] == account],
+        "recent_runs": [{"status": r["status"], "completed_at": r["completed_at"], "error": r["error"],
+                         "found": r["result"].get("total_found"), "changes": len(r["result"].get("core_change_ids") or [])}
+                        for r in runs],
+        "today": _mail_today(date.today()),
+    }
+
+
+class TailorIn(_In):
+    id: int = Field(description="简历 doc 的 id（kind=resume）")
+    job_id: Optional[int] = Field(None, description="按哪个岗位改；不传就用简历上关联的岗位（岗位要有 JD）")
+
+
+def tailor_resume(id: int, job_id: Optional[int] = None, actor: str = "") -> dict[str, Any]:
+    from app.core import tailor
+
+    async def collect() -> dict[str, Any]:
+        last: dict[str, Any] = {}
+        async for event in tailor.run(id, job_id, actor=actor or "Agent"):
+            if event["type"] in ("done", "error"):
+                last = event
+        return last
+
+    event = _await(collect)
+    if event.get("type") != "done":
+        raise ValueError(event.get("message") or "改写没完成，简历没动")
+    return {"doc_id": id, "change_id": event["change_id"], "body": event["body"]}
+
+
 # ---------- registry ----------
 
 class Tool(BaseModel):
@@ -421,6 +511,12 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
     Tool(name="export_resume_pdf", input=ExportIn, fn=export_resume_pdf,
          description="把一份简历（doc kind=resume）按它的排版（style）导出成 PDF，和工作台预览是同一份 HTML，返回文件路径。"),
     Tool(name="fetch_page", input=FetchIn, fn=fetch_page, description="抓取一个公开网页的文字（比如岗位详情页链接），需要登录或 JS 的页面可能拿不到内容。"),
+    Tool(name="email_sync", input=EmailSyncIn, fn=email_sync,
+         description="邮箱同步。status：已连的邮箱、最近几次同步、今天邮箱写了几条改动；sync：立刻拉一次新邮件，识别投递回执、笔试、面试、offer、拒信，"
+                     "直接改岗位状态（只前进）并把笔试面试时间写成事项，返回写了哪些改动（都能撤销）。连邮箱和断开在设置页。"),
+    Tool(name="tailor_resume", input=TailorIn, fn=tailor_resume,
+         description="按岗位 JD 改写一份简历：只用档案和记忆里的事实，写完直接覆盖这份简历（一条改动，可撤销），返回新正文。"
+                     "要保留原版就先 save 一份副本再改副本。会调模型，要一两分钟。"),
 ]}
 
 

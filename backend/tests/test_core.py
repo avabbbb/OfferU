@@ -89,3 +89,104 @@ def test_resume_import_edit_export(tmp_path, monkeypatch):
         client.post("/api/tools/undo", json={"change_id": second})
         record = client.post("/api/tools/get", json={"type": "doc", "id": doc["id"]}).json()["record"]
         assert record["body"] == "# 李四\n" and record["resume"]["basics"]["name"] == "李四" and record["resume"]["sections"] == []
+
+
+def test_mail_writes_core_and_respects_undo(tmp_path, monkeypatch):
+    """邮件识别结果直接写岗位和事项（actor=邮箱），状态只前进，同一封信只处理一次，撤销后不会被下次同步写回来。"""
+    monkeypatch.setenv("OFFERU_DATA_DIR", str(tmp_path))
+    from app.core import mail
+    from app.core.tools import TOOLS
+
+    assert "email_sync" in TOOLS and len(TOOLS) <= 15
+    first = mail.apply({"mail_id": "m1", "stage": "applied", "company": "腾讯", "title": "后端开发", "subject": "投递成功"})
+    job_id = first["job_id"]
+    assert call("get", {"type": "job", "id": job_id}, actor="你")["record"]["status"] == "applied"
+    assert call("changes", {}, actor="你")["items"][0]["actor"] == "邮箱"
+
+    test_mail = {"mail_id": "m2", "stage": "written_test", "company": "腾讯", "title": "后端开发", "at": "2026-11-05T19:00"}
+    written = mail.apply(test_mail)
+    assert written["job_id"] == job_id and len(written["changes"]) == 2
+    record = call("get", {"type": "job", "id": job_id}, actor="你")
+    assert record["record"]["status"] == "test" and record["events"][0]["at"] == "2026-11-05T19:00"
+    assert mail.apply(test_mail)["skipped"]
+    assert mail.apply({"mail_id": "m3", "stage": "applied", "company": "腾讯", "title": "后端开发"})["skipped"]
+    assert overview()["mail"]["today_changes"] == 3
+
+    for change_id in reversed(written["changes"]):
+        call("undo", {"change_id": change_id}, actor="你")
+    assert mail.apply(test_mail)["skipped"]
+    record = call("get", {"type": "job", "id": job_id}, actor="你")
+    assert record["record"]["status"] == "applied" and record["events"] == []
+
+
+def test_agent_uses_core_tools(tmp_path, monkeypatch):
+    """内置 Agent 的工具就是 core TOOLS，写入记在「助手」名下，校验失败作为错误文本返回。"""
+    monkeypatch.setenv("OFFERU_DATA_DIR", str(tmp_path))
+    from app.core import agent, tools
+
+    assert [t.name for t in agent.loop_tools()] == list(tools.TOOLS)
+    text, failed = asyncio.run(agent.execute("save", {"type": "job", "data": {"company": "美团"}}))
+    assert not failed and json.loads(text)["record"]["company"] == "美团"
+    assert call("changes", {}, actor="你")["items"][0]["actor"] == "助手"
+    text, failed = asyncio.run(agent.execute("save", {"type": "job", "data": {"status": "maybe"}}))
+    assert failed and text.startswith("ERROR")
+    assert "overview" in agent.system_prompt()
+
+
+def test_review_lives_in_core(tmp_path, monkeypatch):
+    """复盘就是 doc kind=review，题目在 doc.questions；标拒就是存 job.status；旧表迁移只迁一次，删了也不会被重新迁回来。"""
+    monkeypatch.setenv("OFFERU_DATA_DIR", str(tmp_path))
+    import pytest
+
+    from app.services import interview_reviews as reviews
+
+    async def no_legacy() -> int:
+        return 0
+
+    monkeypatch.setattr(reviews, "migrate_legacy_reviews", no_legacy)
+    job = call("save", {"type": "job", "data": {"company": "字节跳动", "title": "后端开发"}}, actor="你")["record"]
+    saved = asyncio.run(reviews.save_interview_review(
+        job_id=job["id"], company="字节跳动", round_label="一面", interviewed_on="2026-11-01",
+        questions=[{"question": "讲讲 Redis 持久化", "reflection": "AOF 重写没讲清"}]))
+    doc = call("get", {"type": "doc", "id": saved["id"]}, actor="你")["record"]
+    assert doc["kind"] == "review" and doc["questions"][0]["answer"] == "" and saved["interviewed_on"] == "2026-11-01"
+    assert asyncio.run(reviews.list_interview_reviews())["items"][0]["id"] == saved["id"]
+    assert asyncio.run(reviews._stuck_questions())[0]["ref"] == f"{saved['id']}:0"
+
+    asyncio.run(reviews.mark_application_rejected_from_review(saved["id"]))
+    assert call("get", {"type": "job", "id": job["id"]}, actor="你")["record"]["status"] == "rejected"
+    with pytest.raises(ValueError):
+        call("save", {"type": "doc", "data": {"kind": "review", "questions": [{"score": "1"}]}}, actor="你")
+
+    legacy = [{"kind": "review", "title": "美团 二面", "legacy_review_id": 7, "company": "美团", "job_id": None, "questions": []}]
+    assert reviews._import_legacy(legacy) == 1 and reviews._import_legacy(legacy) == 0
+    migrated = next(d for d in reviews._review_docs() if d.get("legacy_review_id") == 7)
+    assert call("changes", {}, actor="你")["items"][0]["actor"] == "迁移"
+    call("delete", {"type": "doc", "id": migrated["id"]}, actor="你")
+    assert reviews._import_legacy(legacy) == 0
+
+
+def test_tailor_resume_tool(tmp_path, monkeypatch):
+    """tailor_resume 同步返回：成功写一条改动（记在调用方名下）、能撤销；失败是中文 ValueError，简历不动。"""
+    monkeypatch.setenv("OFFERU_DATA_DIR", str(tmp_path))
+    import pytest
+
+    from app.core import tailor
+
+    new = "# 张三\n138 · a@b.com\n\n## 实习经历\n### 字节 | 后端 | 2025.06 – 2025.09\n- 接口 QPS 提升 30%\n"
+
+    async def stream(messages):
+        yield new
+
+    monkeypatch.setattr(tailor, "_default_stream", lambda: stream)
+    job = call("save", {"type": "job", "data": {"company": "美团", "title": "后端", "jd": "负责 Go 后端开发"}}, actor="你")["record"]
+    bare = call("save", {"type": "job", "data": {"company": "京东"}}, actor="你")["record"]
+    doc = call("save", {"type": "doc", "data": {"kind": "resume", "title": "主简历", "body": "# 张三\n"}}, actor="你")["record"]
+
+    with pytest.raises(ValueError, match="JD"):
+        call("tailor_resume", {"id": doc["id"], "job_id": bare["id"]}, actor="助手")
+    result = call("tailor_resume", {"id": doc["id"], "job_id": job["id"]}, actor="助手")
+    assert result["doc_id"] == doc["id"] and "接口 QPS 提升 30%" in result["body"]
+    assert call("changes", {}, actor="你")["items"][0]["actor"] == "助手"
+    call("undo", {"change_id": result["change_id"]}, actor="你")
+    assert "接口 QPS" not in call("get", {"type": "doc", "id": doc["id"]}, actor="你")["record"]["body"]

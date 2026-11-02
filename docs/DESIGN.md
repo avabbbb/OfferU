@@ -55,13 +55,14 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 | memory | 职业记忆，一条一件事 | kind（experience / project / education / skill / award / preference / note）, title, body, start, end, tags |
 | job | 岗位和投递状态 | company, title, status（saved / applied / test / interview / offer / rejected / closed）, url, city, jd, notes, applied_at |
 | event | 待办和日程 | title, kind（todo / deadline / test / interview）, at, done, job_id, notes |
-| doc | 长文本 | kind（resume / apply_chat / review / research / note）, title, body（Markdown）, job_id, template |
+| doc | 长文本 | kind（resume / apply_chat / review / research / note）, title, body（Markdown）, job_id, template；kind=review 另有 questions 数组 |
 
 为什么这样设计：
 
 - 字段会频繁变（Agent 也会写新字段），JSON 不需要迁移；SQLite 的 `json_extract` 足够做筛选。
 - 简历、网申对话、复盘、调研都是「挂在某个岗位下的一篇 Markdown」，用一种 doc 表示，界面按 kind 渲染。
 - 网申对话存成 doc：`body` 是 Markdown，每道题一个 `## 题目` 段落，回答放在代码块里，界面把代码块渲染成可复制的块；同一题的多个版本就是多个代码块。
+- 面试复盘存成 doc（kind=review）：题目放在 `questions` 数组（最多 60 条，每条只允许 REVIEW_QUESTION_KEYS 里的四个键，值都是字符串，save 时校验）。旧复盘表的数据在第一次 list / get / 查卡住的题时一次性迁入，按 legacy_review_id 去重，actor=迁移；`/api/interviews` 的接口形状不变。
 
 ## 4. 写入与撤销
 
@@ -75,7 +76,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 
 ## 5. 工具清单
 
-目标是不超过 15 个。✓ 表示已在 #134 实现。
+目标是不超过 15 个，现在 13 个（`GET /api/tools` 可查）。✓ 表示已实现。
 
 | 工具 | 作用 | 状态 |
 | --- | --- | --- |
@@ -90,7 +91,8 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 | ask | 交给内置 Agent 处理一句话（Ctrl+K） | PR3 |
 | handoff | 把长任务交给后台 Codex，返回任务 id | PR5 |
 | handoff_status | 看后台任务进度 | PR5 |
-| email_sync | 邮箱状态 / 同步：拉新邮件，识别回执和邀约，回写岗位状态和待办 | 待做 |
+| email_sync | 邮箱状态 / 同步：拉新邮件，识别回执和邀约，直接回写岗位状态和事项（可撤销） | ✓ |
+| tailor_resume | 按岗位 JD 改写一份简历，直接覆盖并返回新正文（一条 change，可撤销） | ✓ |
 
 工具的说明文字就是 Agent 看到的全部文档。每个工具的说明写清字段和枚举，Skill 只讲「什么时候用哪个工具」，不超过 4KB。
 
@@ -128,7 +130,8 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 - 设置里填 OpenAI 兼容的 base_url、key、模型名，存在本机配置文件里。
 - `/api/agent` 接收一句话 + 当前页面（比如正在看的岗位 id），用 function calling 调同一套工具，最多 6 步，流式返回。
 - 并发：每个 Run 独占一个 Worker（按 run_id 放在进程内池子里），不同对话、同一对话的多次发送都可以同时跑，不再抢占旧 Run，也不排队、不 steer。上限是设置里的「Agent 最大并发数」（默认 3，1–10，保存后对新任务立即生效）；超出时启动直接返回中文提示。Run 结束、中止或启动失败都释放名额；前端每次发送是独立的 turn（各自的 AbortController、流式文字和工具进度），运行中仍可继续输入。
-- 循环、流式和 provider 复用现有的 `app/agent/`（`run_agent_loop`），`app/core/agent.py` 只负责把 9 个工具包成 `LoopTool`、记 actor 和限制步数。
+- 循环、流式和 provider 复用现有的 `app/agent/`（`run_agent_loop`），`app/core/agent.py` 把全部 core TOOLS 包成 `LoopTool`（`loop_tools()`），每次经 `asyncio.to_thread(tools.call, ...)` 执行，actor=助手，最多 6 步，工具报错作为文本回给模型。宿主里的 skill router 和 guardian 暂时仍走旧 OPERATIONS，PR5 删除。
+- 改写简历：网页仍走 SSE；工具 tailor_resume 同步返回，内部用 `_await` 把协程交给主事件循环（`run_coroutine_threadsafe`，lifespan 里设 `MAIN_LOOP`）。在事件循环线程里同步调用会直接报错，要用 `asyncio.to_thread`。HTTP 的 `POST /api/tools/{name}` 在线程池里跑、MCP 经 `anyio.to_thread`，都不会死锁。
 - 系统提示词只有三件事：今天日期和 overview 摘要、工具说明、规则（不编造经历；对外的事只写草稿；长任务调用 handoff）。
 - 没配模型时，Ctrl+K 只做本地解析不了的提示：「先在设置里填模型，或者在 Codex 里说这句话」。
 
@@ -141,14 +144,14 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 
 ## 10. 邮箱同步
 
-- 工具只加一个 email_sync(action: status | sync, account?)，工具总数到 15。status 返回已连账号、上次同步时间和结果，不含凭据；sync 拉新邮件并回写，返回处理了哪几封、各写了哪些 change。
+- 工具只加一个 email_sync(action: status | sync, account?)。status 返回已连账号、上次同步时间和结果，不含凭据；sync 拉新邮件并回写，返回处理了哪几封、各写了哪些 change。
 - 凭据和模型设置一样存在本机配置文件（Gmail 存 refresh token，IMAP 存 host / user / 授权码），不进 offeru.db、不进 changes、不出现在任何工具返回里。连接和断开在设置页完成。
-- 拉取在 core/mail.py：IMAP 用标准库 imaplib，只用 BODY.PEEK，不改已读状态；Gmail 用 REST，只申请 gmail.readonly。每个账号记 last_uid / history_id，增量拉取。
+- 拉取（现在仍在 services/email_sync.py，PR5 移进 core/mail.py）：IMAP 用标准库 imaplib，只用 BODY.PEEK，不改已读状态；Gmail 用 REST，只申请 gmail.readonly。每个账号记 last_uid / history_id，增量拉取。
 - 识别：classify(msg) -> {kind: receipt / test / interview / result, company, title, at, link, outcome}。规则优先（发件域名表 + 主题关键词 + 时间正则）；规则返回空且配了模型时调一次内置模型，只给发件人、主题和正文前 2000 字。
-- 回写全部走 save()，actor=邮箱：岗位按公司 + 岗位名匹配，匹配不到新建 status=applied；status 只前进不后退；时间写成 event（kind=test / interview / deadline，job_id 指向岗位），notes 存发件人、主题、链接。每条写入的 data 带 mail_id（Message-ID）。
+- 回写在 core/mail.py 的 apply()，全部走 save()，actor=邮箱，直接写入、不进待确认，误判靠撤销：岗位按公司 + 岗位名匹配，匹配不到新建 status=applied；status 只前进不后退；时间写成 event（kind=test / interview / deadline，job_id 指向岗位），notes 存发件人、主题、链接。每条写入的 data 带 mail_id（Message-ID）。
 - 去重：同步前查 records 和 changes（before / after）里出现过的 mail_id，处理过的跳过，所以撤销后下次同步不会写回来。
 - 不做：发信、标已读、删信、保存原始邮件。
-- 旧 Operation Registry 里的邮箱操作（email_connection_status 等）随 PR5 删除，email_sync 在新工具层重写。
+- services/email_sync.py 只管账号、凭据和游标，每封新信交给 core/mail.apply 写入。旧 Operation Registry 里的邮箱操作（email_connection_status 等）随 PR5 删除。邮箱同步已不再调用 ingest_application_signal；旧候选表 application_progress_candidates 只剩旧 Operation 能读写，前端不展示，随 PR5 连表删除，不做数据迁移。
 
 ## 11. 前端
 
@@ -187,7 +190,7 @@ pywebview 小窗，随 `offeru start` 打开，轮询 overview；有新的改动
 ## 14. 目录（重构完成后）
 
 ```text
-backend/app/core/   store.py  tools.py  resume.py  templates/  agent.py  handoff.py  mail.py
+backend/app/core/   store.py  tools.py  resume.py  tailor.py  templates/  agent.py  handoff.py  mail.py
 backend/app/        main.py  mcp_server.py  entry.py
 backend/skill/      SKILL.md（≤4KB）
 frontend/src/       app/  components/core/  lib/core.ts

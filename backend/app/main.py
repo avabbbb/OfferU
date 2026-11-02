@@ -65,6 +65,11 @@ from app.routes import config, interview, main_agent, interviews, research, brid
 async def lifespan(app: FastAPI):
     """应用启动时初始化数据库表与 MCP 会话管理器。"""
     await init_db()
+    import asyncio
+
+    from app.core import tools as core_tools
+
+    core_tools.MAIN_LOOP = asyncio.get_running_loop()
     # JobSource V1: local sources wrap the existing jobs table.
     from app.services.job_sources.router import job_source_router
     from app.services.job_sources.adapters.local import ManualJobSource, WebJobSource

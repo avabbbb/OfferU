@@ -8,7 +8,8 @@ from typing import Any, Awaitable, Callable
 
 from app.agents.llm import resolve_llm_client_config, resolve_model_for_tier
 from app.config import Settings, get_settings
-from app.ops import OPERATIONS, execute_operation, set_operation_run_context
+from app.core import agent as core_agent
+from app.ops import OPERATIONS, execute_operation
 from app.services.career_memory import record_conversation_observation
 from app.services.agent_run_state import (
     answer_agent_input_request,
@@ -20,7 +21,6 @@ from app.services.agent_run_state import (
     list_agent_run_events,
     list_pending_agent_input_requests,
     load_agent_run,
-    safe_result_preview,
     save_agent_run,
 )
 from app.services.agent_skill_registry import (
@@ -35,7 +35,7 @@ from app.services.main_agent_guardian import (
     evaluate_main_agent_guardian,
     guardian_prompt_advice,
 )
-from app.services.action_gate import list_actions, run_gated_operation, take_decisions_for_agent
+from app.services.action_gate import list_actions, take_decisions_for_agent
 from app.services.embedded_agent_worker import (
     PROTOCOL_VERSION,
     EmbeddedAgentConcurrencyError,
@@ -226,30 +226,10 @@ def _active_skill_summary(
     return summary
 
 
-def _allowed_operations(skill: AgentSkill) -> list[dict[str, Any]]:
-    allowed = [
-        OPERATIONS[name].schema()
-        for name in sorted(skill.allowed_tools)
-        if name in OPERATIONS
-    ]
-    if not allowed:
-        raise ValueError(f"Skill {skill.id} 没有可用的 Registry Operation。")
-    return allowed
-
-
 def _system_prompt(skill: AgentSkill, snapshot: dict[str, Any] | None = None) -> str:
-    prompt = (
-        "You are OfferU's built-in task Agent. "
-        "OfferU Runtime owns career truth, Registry validation, execution, independent approval and audit. "
-        "Treat Operation results and receipts as the only source of truth; state unknowns plainly. "
-        "Writes run immediately and show up on the user's timeline, where resume changes can be undone. "
-        "For resume adoption, prefer one review_resume_proposal_items call with all displayed change_ids. "
-        "Irreversible actions (sending, wiping data, marking applied / changing application status, deleting) "
-        "are queued for the user to confirm: the result says executed=false. Do not wait or retry; tell the user "
-        "it is waiting for their confirmation and carry on with the rest. You will be told their decision next turn. "
-        "Use request_user_input when a preference or trade-off only the user can decide is missing. "
-        f"Active Skill: {skill.name} ({skill.id}, version {skill.version}). "
-        f"Skill purpose: {skill.description}"
+    prompt = core_agent.system_prompt() + (
+        f"\n当前 Skill：{skill.name}（{skill.id}，版本 {skill.version}）：{skill.description}\n"
+        "缺少只有用户能定的偏好或取舍时，用 request_user_input 问一句。"
     )
     if skill.id in METHOD_SKILL_IDS:
         method = get_agent_methodology(skill.id)
@@ -490,7 +470,6 @@ async def start_embedded_agent_run(
             },
             run_id=requested_run_id,
         )
-    allowed_operations = _allowed_operations(skill)
     run_id = run["id"]
     if worker is not None:
         active_worker = worker
@@ -736,61 +715,6 @@ async def start_embedded_agent_run(
         # Ask is a durable interaction record; the post-turn resolver reloads it.
         turn_state: dict[str, Any] = {"input_request": None}
 
-        async def run_operation(
-            operation_name: str,
-            arguments: dict[str, Any],
-        ) -> dict[str, Any]:
-            if operation_name not in skill.allowed_tools:
-                denied_payload = {
-                    "operation": operation_name,
-                    "reason": f"outside Skill {skill.id}",
-                }
-                await persist_and_publish("operation.denied", denied_payload)
-                return {
-                    "ok": False,
-                    "operation": operation_name,
-                    "errors": [
-                        f"Operation {operation_name} is outside Skill {skill.id}"
-                    ],
-                }
-            operation = OPERATIONS.get(operation_name)
-            if operation is None:
-                denied_payload = {
-                    "operation": operation_name,
-                    "reason": "unknown Operation",
-                }
-                await persist_and_publish("operation.denied", denied_payload)
-                return {
-                    "ok": False,
-                    "operation": operation_name,
-                    "errors": [f"未知操作: {operation_name}"],
-                }
-            inputs = arguments if isinstance(arguments, dict) else {}
-            started_payload = {"operation": operation_name, "args": inputs}
-            await persist_and_publish("operation.started", started_payload)
-            with set_operation_run_context(run_id):
-                result = await run_gated_operation(
-                    operation_name,
-                    inputs,
-                    surface="embedded",
-                    run_id=run_id,
-                )
-            outputs = result.get("outputs") if isinstance(result.get("outputs"), dict) else {}
-            if outputs.get("executed") is False and outputs.get("pending_action"):
-                await persist_and_publish("action.pending", {"action": outputs["pending_action"]})
-            completed_type = (
-                "operation.completed"
-                if result.get("ok")
-                else "operation.failed"
-            )
-            completed_payload = {
-                "operation": operation_name,
-                "args": inputs,
-                "result": safe_result_preview(result),
-            }
-            await persist_and_publish(completed_type, completed_payload)
-            return result
-
         async def _request_user_input(args: dict[str, Any]) -> dict[str, Any]:
             """Built-in Ask: persist one AgentInputRequest, pause the turn.
 
@@ -886,8 +810,7 @@ async def start_embedded_agent_run(
             run_id=run_id,
             system_prompt=_system_prompt(skill, run.get("skill_snapshot")),
             provider=provider_config,
-            allowed_operations=allowed_operations,
-            operation_runner=run_operation,
+            tools=core_agent.loop_tools(),
             event_listener=on_event,
             session_directory=str(_SESSION_DIRECTORY),
             session_file=resume_session_file,
