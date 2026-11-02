@@ -49,8 +49,9 @@ async def generate_cover_letter(jd: str, resume: str) -> dict:
 
     # 云端 Provider 自动脱敏 PII（本地 LLM 不需要）
     pii_mapping: dict = {}
-    resolved = resolve_llm_client_config()
-    if not _is_local_llm(resolved.get("base_url", "")):
+    from app.agents.agent_fallback import endpoint_is_local
+
+    if not endpoint_is_local():
         resume_safe, pii_mapping = desensitize(resume_safe)
 
     prompt = COVER_LETTER_PROMPT.format(jd=jd_safe, resume=resume_safe)

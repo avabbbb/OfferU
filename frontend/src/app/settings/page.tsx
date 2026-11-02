@@ -98,6 +98,7 @@ interface SettingsConfigPayload {
   active_llm_config_id?: string;
   disabled_llm_providers?: string[];
   max_concurrent_agent_runs?: number;
+  llm_fallback_to_agent?: boolean;
   provider_presets?: ProviderPreset[];
 
   active_llm_summary?: {
@@ -173,6 +174,41 @@ function AgentConcurrencySetting({ value, onSave }: { value: number; onSave: (ne
         保存
       </button>
       {!valid && <p role="alert" className="w-full text-[var(--foreground-muted)]">请输入 1 到 10 的整数</p>}
+      {status && <p role="status" className="w-full text-[var(--foreground-muted)]">{status}</p>}
+    </section>
+  );
+}
+
+function AgentFallbackSetting({ enabled, onSave }: { enabled: boolean; onSave: (next: boolean) => Promise<void> }) {
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState("");
+  const toggle = async () => {
+    setSaving(true);
+    setStatus("");
+    try {
+      await onSave(!enabled);
+      setStatus(enabled ? "已关闭" : "已开启，没配模型时由你的 Agent 代答");
+    } catch (error) {
+      setStatus(safeClientErrorMessage(error, "保存失败，请稍后重试"));
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <section data-testid="agent-fallback-setting" className="flex flex-wrap items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 text-[13px]">
+      <div className="min-w-0 flex-1">
+        <label htmlFor="agent-fallback-toggle" className="font-medium text-[var(--foreground)]">没配模型时交给本机 Agent</label>
+        <p className="mt-1 text-[var(--foreground-muted)]">简历、邮件等内容会经本机 Agent 的 CLI 发到它自己的云端。配了内置模型时不生效。</p>
+      </div>
+      <input
+        id="agent-fallback-toggle"
+        type="checkbox"
+        role="switch"
+        checked={enabled}
+        disabled={saving}
+        onChange={() => void toggle()}
+        className="h-4 w-4 accent-[var(--foreground)]"
+      />
       {status && <p role="status" className="w-full text-[var(--foreground-muted)]">{status}</p>}
     </section>
   );
@@ -1291,6 +1327,13 @@ export default function SettingsPage() {
         value={config?.max_concurrent_agent_runs ?? 3}
         onSave={async (next) => {
           await updateConfig({ max_concurrent_agent_runs: next });
+          await mutate();
+        }}
+      />
+      <AgentFallbackSetting
+        enabled={config?.llm_fallback_to_agent ?? false}
+        onSave={async (next) => {
+          await updateConfig({ llm_fallback_to_agent: next });
           await mutate();
         }}
       />

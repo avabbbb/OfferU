@@ -184,8 +184,14 @@ async def _builtin(messages: list[dict[str, str]]) -> Optional[dict]:
     """内置模型；没配置或失败返回 None，交给 Agent。"""
     from app.agents.llm import chat_completion, extract_json, resolve_llm_client_config
 
-    if not resolve_llm_client_config().get("api_key"):
-        return None
+    from app.agents import agent_fallback
+
+    try:
+        if not resolve_llm_client_config().get("api_key"):
+            return None
+    except ValueError:
+        if not agent_fallback.enabled():
+            return None
     try:
         raw = await asyncio.wait_for(chat_completion(messages, temperature=0.2, json_mode=True, max_tokens=8000),
                                      timeout=LLM_TIMEOUT_SECONDS)

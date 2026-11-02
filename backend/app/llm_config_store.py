@@ -52,6 +52,7 @@ _LLM_RUNTIME_FIELDS: tuple[str, ...] = (
     "ssl_verify",
     "llm_timeout",
     "max_concurrent_agent_runs",
+    "llm_fallback_to_agent",
 )
 
 

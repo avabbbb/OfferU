@@ -122,6 +122,8 @@ class ConfigUpdate(BaseModel):
     llm_timeout: int = 60         # LLM API 超时秒数
     # 内置 Agent 最大并发 Run 数
     max_concurrent_agent_runs: int = Field(default=3, ge=1, le=10)
+    # 没配内置模型时把模型调用交给本机外置 Agent；默认关闭，连接 Agent 时询问用户
+    llm_fallback_to_agent: bool = False
 
 
 
@@ -588,6 +590,7 @@ def _sync_runtime_settings(cfg: ConfigUpdate) -> None:
     settings.ssl_verify = cfg.ssl_verify
     settings.llm_timeout = cfg.llm_timeout
     settings.max_concurrent_agent_runs = cfg.max_concurrent_agent_runs
+    settings.llm_fallback_to_agent = cfg.llm_fallback_to_agent
     # BYOK: 把 provider 列表同步进运行时 Settings，供 llm.py 统一解析
     # （provider 可自由配置，不依赖写死的 provider 行为分支）。
     settings.llm_api_configs = [item.model_dump() for item in cfg.llm_api_configs]
