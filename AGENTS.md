@@ -9,7 +9,7 @@ OfferU 是本地优先的求职工具，用户是国内校招生和实习生。�
 ## 架构
 
 - 所有读写都走 `backend/app/core/tools.py`（工具表是其中的 `TOOLS`，数据在 `core/store.py` 的 SQLite）。HTTP `/api/tools/*`、MCP `/mcp`、命令行 `offeru tool` 只是入口，不写业务逻辑。
-- 数据只有 5 种 type：profile / memory / job / event / doc。新功能优先用它们和现有工具表达；工具总数不超过 15 个，Skill 不超过 4KB。
+- 数据只有 5 种 type：profile / memory / job / event / doc。新功能优先用它们和现有工具表达；工具总数不超过 16 个，Skill 不超过 4KB。
 - 写操作直接生效，记一条 change，可以撤销。不加确认流程；只有对外发送和批量删除需要用户点头。
 - 前端页面只通过 `frontend/src/lib/core.ts` 调工具。
 - 内置 Agent 的循环和 provider 在 `backend/app/agent/`，保留。

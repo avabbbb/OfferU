@@ -7,6 +7,8 @@ plus overview (what to do now) and fetch_page. Agents write directly; every writ
 from __future__ import annotations
 
 import asyncio
+import fnmatch
+import os
 import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -19,7 +21,7 @@ from app.core import store
 JOB_STATUS = {"saved": "想投", "applied": "已投递", "test": "笔试 / 测评", "interview": "面试中",
               "offer": "offer", "rejected": "未通过", "closed": "不投了"}
 EVENT_KIND = {"todo": "待办", "deadline": "截止", "test": "笔试 / 测评", "interview": "面试"}
-RESUME_TEMPLATE = {"clear": "清晰", "kami": "留白", "compact": "紧凑"}
+RESUME_TEMPLATE = {"classic": "经典", "clear": "清晰", "kami": "留白", "compact": "紧凑"}
 RESUME_FONT = {"sans": "黑体", "serif": "宋体", "kai": "楷体"}
 # Old docs carry doc.template; resume.resolve_style reads it as style. Still accepted on save until the editor writes style.
 LEGACY_TEMPLATE = {"single": {"template": "clear"}, "compact": {"template": "compact"}, "photo": {"template": "clear", "photo": True}}
@@ -37,7 +39,7 @@ FIELDS = {
     "memory": f"职业记忆，一条一件事。kind: {'/'.join(MEMORY_KIND)}; title; body（具体经历、数字、用户原话）; start, end; tags",
     "job": f"岗位和投递状态。company, title, status: {'/'.join(JOB_STATUS)}; url, city, jd, notes, applied_at",
     "event": f"待办和日程。title, kind: {'/'.join(EVENT_KIND)}; at（YYYY-MM-DD 或 YYYY-MM-DDTHH:MM，可空）, done, job_id, notes",
-    "doc": f"文档。kind: {'/'.join(DOC_KIND)}; title, body（Markdown）, job_id, style（简历排版，对象，缺的键用模板默认值，更新时传完整对象：template clear 清晰 / kami 留白 / compact 紧凑；font sans 黑体 / serif 宋体 / kai 楷体；bodySize 8–14（pt）；lineHeight 1–2；sectionGap 0–30（pt）；itemGap 0–20（pt）；margin {{top, right, bottom, left}} 3–30（mm）；accent #RRGGBB；photo true 用档案证件照；logo 校徽文件名）。简历以 resume 为准（对象：{{basics: {{name, target, contacts: [文字]}}, sections: [{{id, type, title, hidden, items: [{{id, title, subtitle, date, location, bullets: [文字], text}}]}}]}}），body 由它自动生成；也可以只传 body，写法：第一行 # 名字，下一段是联系方式，## 分节，### 学校或公司 | 专业或职位 | 时间（最后一段靠右），- 要点，保存时转成 resume",
+    "doc": f"文档。kind: {'/'.join(DOC_KIND)}; title, body（Markdown）, job_id, style（简历排版，对象，缺的键用模板默认值，更新时传完整对象：template classic 经典（默认）/ clear 清晰 / kami 留白 / compact 紧凑；font sans 黑体 / serif 宋体 / kai 楷体；bodySize 8–14（pt）；lineHeight 1–2；sectionGap 0–30（pt）；itemGap 0–20（pt）；margin {{top, right, bottom, left}} 3–30（mm）；accent #RRGGBB；photo true 用档案证件照；logo 校徽文件名）。简历以 resume 为准（对象：{{basics: {{name, target, contacts: [{{label（电话 / 邮箱 / 城市 / 微信…，可空）, value}}]}}, sections: [{{id, type, title, hidden, items: [{{id, title, subtitle, date, location, bullets: [文字], text}}]}}]}}），body 由它自动生成；也可以只传 body，写法：第一行 # 名字，下一段是联系方式，## 分节，### 学校或公司 | 专业或职位 | 时间（最后一段靠右），- 要点，保存时转成 resume",
 }
 RecordType = Literal["profile", "memory", "job", "event", "doc"]
 
@@ -404,6 +406,100 @@ def read_file(path: str, *, actor: str = "") -> dict[str, Any]:
     return {"path": str(file), "text": text[:30_000], "truncated": len(text) > 30_000}
 
 
+DOC_SUFFIXES = (".pdf", ".docx", ".txt", ".md", ".markdown")
+_WALK_DEPTH = 3
+_GREP_MAX_FILES = 300
+
+
+def _local_dir(dir: str) -> Path:
+    folder = Path(dir).expanduser()
+    if not folder.is_absolute():
+        raise ValueError("dir 要是本机目录的绝对路径，比如 H:\\学习\\留档")
+    if not folder.is_dir():
+        raise ValueError(f"找不到目录 {dir}")
+    return folder
+
+
+def _walk(folder: Path, pattern: str, recursive: bool, docs_only: bool):
+    """Files under folder matching pattern; hidden dirs skipped, unreadable dirs ignored, at most _WALK_DEPTH levels."""
+    max_depth = _WALK_DEPTH if recursive else 0
+    pattern = (pattern or "*").lower()
+    for root, dirs, files in os.walk(folder):
+        depth = len(Path(root).relative_to(folder).parts)
+        dirs[:] = [d for d in dirs if not d.startswith(".")] if depth < max_depth else []
+        for name in files:
+            if not fnmatch.fnmatch(name.lower(), pattern):
+                continue
+            if docs_only and Path(name).suffix.lower() not in DOC_SUFFIXES:
+                continue
+            yield Path(root) / name
+
+
+class FindFilesIn(_In):
+    dir: str = Field(description="本机目录的绝对路径。用户说「H 盘 学习 留档」就是 H:/学习/留档")
+    query: str = Field("", description="要找的文字，空格分开的词都要出现在文件名或正文里；不填就只列文件")
+    pattern: str = Field("*", description="文件名通配，比如 *简历*；默认全部")
+    recursive: bool | None = Field(None, description="是否进子目录（最多 3 层）；不填时有 query 就进，没有就不进")
+    docs_only: bool = Field(True, description="只列 read_file 能读的 PDF / Word / txt / md；有 query 时总是只看这些")
+    limit: int = Field(50, ge=1, le=200)
+
+
+def find_files(dir: str, query: str = "", pattern: str = "*", recursive: bool | None = None,
+               docs_only: bool = True, limit: int = 50, *, actor: str = "") -> dict[str, Any]:
+    """List a local folder newest first; with query, keep files whose name or text has every term."""
+    folder = _local_dir(dir)
+    terms = [t.lower() for t in query.split() if t]
+    if recursive is None:
+        recursive = bool(terms)
+    items: list[dict[str, Any]] = []
+    scanned = 0
+    for file in _walk(folder, pattern, recursive, docs_only or bool(terms)):
+        try:
+            stat = file.stat()
+        except OSError:
+            continue
+        item = {"path": str(file), "name": file.name, "size": stat.st_size,
+                "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="minutes")}
+        if terms:
+            if scanned >= _GREP_MAX_FILES:
+                break
+            scanned += 1
+            try:
+                text = read_file(str(file))["text"]
+            except Exception:
+                continue
+            if not all(t in (file.name + " " + text).lower() for t in terms):
+                continue
+            at = max(0, text.lower().find(terms[0]))
+            item["snippet"] = text[max(0, at - 60): at + 120]
+        items.append(item)
+    items.sort(key=lambda i: i["modified"], reverse=True)
+    try:
+        subdirs = sorted(p.name for p in folder.iterdir() if p.is_dir() and not p.name.startswith("."))
+    except OSError:
+        subdirs = []
+    out = {"dir": str(folder), "total": len(items), "items": items[:limit],
+           "truncated": len(items) > limit or scanned >= _GREP_MAX_FILES, "dirs": subdirs[:50]}
+    if terms:
+        out["scanned"] = scanned
+    return out
+
+
+class WebSearchIn(_In):
+    query: str = Field(min_length=1)
+    limit: int = Field(8, ge=1, le=20)
+
+
+def web_search(query: str, limit: int = 8, *, actor: str = "") -> dict[str, Any]:
+    from app.config import get_settings
+    from app.services import web_search as service
+
+    settings = get_settings()
+    if not (settings.bocha_api_key or settings.tavily_api_key or settings.serper_api_key or service._ddgs_available()):
+        raise ValueError("没配搜索服务：在设置里填 Bocha / Tavily / Serper 的 key（或装 ddgs）后才能搜网页")
+    return {"query": query, "items": _await(lambda: service.web_search(query, limit=limit))}
+
+
 class ExportIn(_In):
     id: int = Field(description="简历 doc 的 id")
 
@@ -483,6 +579,31 @@ def tailor_resume(id: int, job_id: Optional[int] = None, actor: str = "") -> dic
     return {"doc_id": id, "change_id": event["change_id"], "body": event["body"]}
 
 
+class SplitResumeIn(_In):
+    text: Optional[str] = Field(None, description="简历原文；和 path 二选一")
+    path: Optional[str] = Field(None, description="本机文件的绝对路径，或用户上传后拿到的文件名")
+
+
+def split_resume(text: Optional[str] = None, path: Optional[str] = None, *, actor: str) -> dict[str, Any]:
+    from app.core import resume_split
+
+    if not (text or "").strip() and path:
+        text = read_file(path)["text"]
+    if not (text or "").strip():
+        raise ValueError("要给简历原文 text 或文件 path")
+    if not resume_split.available():
+        raise ValueError("没配模型，也没开「没配模型时交给本机 Agent」，没法自动拆")
+    items = _await(lambda: resume_split.extract(text or ""))
+    if not items:
+        raise ValueError("没从原文里拆出经历，档案没动")
+    saved = [save("memory", item, actor=actor) for item in items]
+    return {
+        "count": len(saved),
+        "change_ids": [s["change_id"] for s in saved],
+        "items": [{"id": s["record"]["id"], "kind": s["record"].get("kind"), "title": s["record"].get("title")} for s in saved],
+    }
+
+
 # ---------- registry ----------
 
 class Tool(BaseModel):
@@ -508,6 +629,11 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
     Tool(name="changes", input=ChangesIn, fn=changes, description="最近改动，谁改了什么，最新在前。"),
     Tool(name="read_file", input=ReadFileIn, fn=read_file,
          description="读本机 PDF / Word / txt / md 文件的文字，比如用户的旧简历。读完把经历拆成一条条 memory 存进档案。"),
+    Tool(name="find_files", input=FindFilesIn, fn=find_files,
+         description="找本机文件：列目录（默认只看 PDF / Word / txt / md，新改的在前，另给子目录名）；给 query 时按文件名或正文里的文字筛，带片段。"
+                     "用户说「H 盘 学习 留档」这类位置时，自己拼成绝对路径（H:/学习/留档）先找，挑出像简历的再 read_file，不要让用户报完整路径。"),
+    Tool(name="web_search", input=WebSearchIn, fn=web_search,
+         description="搜公开网页，返回标题、链接、摘要；要正文再用 fetch_page。没配搜索服务会报错，照实告诉用户。"),
     Tool(name="export_resume_pdf", input=ExportIn, fn=export_resume_pdf,
          description="把一份简历（doc kind=resume）按它的排版（style）导出成 PDF，和工作台预览是同一份 HTML，返回文件路径。"),
     Tool(name="fetch_page", input=FetchIn, fn=fetch_page, description="抓取一个公开网页的文字（比如岗位详情页链接），需要登录或 JS 的页面可能拿不到内容。"),
@@ -517,6 +643,9 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
     Tool(name="tailor_resume", input=TailorIn, fn=tailor_resume,
          description="按岗位 JD 改写一份简历：只用档案和记忆里的事实，写完直接覆盖这份简历（一条改动，可撤销），返回新正文。"
                      "要保留原版就先 save 一份副本再改副本。会调模型，要一两分钟。"),
+    Tool(name="split_resume", input=SplitResumeIn, fn=split_resume,
+         description="把一份旧简历（原文 text 或文件 path）拆成一条条 memory 直接存进档案，只整理不编造；每条一条改动，返回 change_ids 可逐条撤销。"
+                     "会调模型，要一两分钟。你自己能拆就用 read_file + save。"),
 ]}
 
 

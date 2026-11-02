@@ -76,7 +76,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 
 ## 5. 工具清单
 
-目标是不超过 15 个，现在 13 个（`GET /api/tools` 可查）。✓ 表示已实现。
+目标是不超过 16 个，现在 16 个（`GET /api/tools` 可查）。✓ 表示已实现。
 
 | 工具 | 作用 | 状态 |
 | --- | --- | --- |
@@ -87,12 +87,15 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 | undo / changes | 撤销、最近改动 | ✓ |
 | fetch_page | 抓公开网页的文字（岗位链接） | ✓ |
 | read_file | 读本地 PDF / Word / txt / md 的文字（导入简历） | ✓ |
+| find_files | 找本机文件：列目录，或按文件名 / 正文文字筛（带片段） | ✓ |
+| web_search | 搜公开网页，返回标题、链接、摘要；没配搜索服务就报错 | ✓ |
 | export_resume_pdf | 简历 doc → PDF 文件 | ✓ |
 | ask | 交给内置 Agent 处理一句话（Ctrl+K） | PR3 |
 | handoff | 把长任务交给后台 Codex，返回任务 id | PR5 |
 | handoff_status | 看后台任务进度 | PR5 |
 | email_sync | 邮箱状态 / 同步：拉新邮件，识别回执和邀约，直接回写岗位状态和事项（可撤销） | ✓ |
 | tailor_resume | 按岗位 JD 改写一份简历，直接覆盖并返回新正文（一条 change，可撤销） | ✓ |
+| split_resume | 把旧简历原文拆成一条条 memory 写进档案（可整次撤销） | ✓ |
 
 工具的说明文字就是 Agent 看到的全部文档。每个工具的说明写清字段和枚举，Skill 只讲「什么时候用哪个工具」，不超过 4KB。
 
