@@ -26,7 +26,6 @@ from app.services.agent_run_state import (
 from app.services.agent_skill_registry import (
     AgentSkill,
     SkillRouting,
-    SkillRoutingError,
     resolve_declared_skill,
     resolve_run_skill,
     resolve_skill,
@@ -128,83 +127,6 @@ def _skill_snapshot(
 
 def _instructions_digest(skill: AgentSkill) -> str:
     return hashlib.sha256(skill.instructions.encode("utf-8")).hexdigest()
-
-
-async def _skill_routing_context() -> dict[str, Any]:
-    """Read only the canonical current view and compact Career State for routing."""
-    results: dict[str, dict[str, Any]] = {}
-    for operation, arguments in (
-        ("get_current_view", {"scope": "default"}),
-        ("get_career_snapshot", {}),
-    ):
-        result = await execute_operation(
-            operation,
-            arguments,
-            surface="agent_skill_router",
-            audit=True,
-        )
-        outputs = _operation_outputs(result)
-        if not isinstance(outputs, dict):
-            errors = result.get("errors") if isinstance(result, dict) else None
-            detail = next(
-                (str(item).strip() for item in errors or [] if str(item).strip()),
-                "",
-            )
-            raise SkillRoutingError(
-                f"自动选择 Skill 需要读取 {operation}，但当前 OfferU 上下文不可用。"
-                + (
-                    f" {safe_error_message(ValueError(detail))}"
-                    if detail
-                    else ""
-                )
-            )
-        results[operation] = outputs
-
-    view = results["get_current_view"]
-    snapshot = results["get_career_snapshot"]
-    identity = snapshot.get("identity") if isinstance(snapshot.get("identity"), dict) else {}
-    career_stage = (
-        identity.get("career_stage")
-        if isinstance(identity.get("career_stage"), dict)
-        else {}
-    )
-    coverage = (
-        snapshot.get("profile_coverage")
-        if isinstance(snapshot.get("profile_coverage"), dict)
-        else {}
-    )
-
-    def count(items: Any) -> int:
-        return len(items) if isinstance(items, list) else 0
-
-    entity_type = str(view.get("entity_type") or "")
-    entity_id = str(view.get("entity_id") or "")
-    numeric_id = int(entity_id) if entity_id.isdigit() and int(entity_id) > 0 else None
-    return {
-        "source_operations": ["get_current_view", "get_career_snapshot"],
-        "current_view": {
-            "route": str(view.get("route") or "")[:120],
-            "job_id": numeric_id if entity_type == "job" else None,
-            "resume_id": numeric_id if entity_type == "resume" else None,
-        },
-        "career_state": {
-            "profile_available": bool(snapshot.get("profile_id")),
-            "career_stage": {
-                key: career_stage.get(key)
-                for key in ("track", "substage", "confidence")
-                if career_stage.get(key) is not None
-            },
-            "strategy_pack": snapshot.get("strategy_pack"),
-            "evidence_counts": {
-                "strong": count(coverage.get("strong_evidence")),
-                "weak": count(coverage.get("weak_evidence")),
-                "missing": count(coverage.get("missing_evidence")),
-                "unknown": count(coverage.get("unknowns")),
-                "underexpressed": count(coverage.get("underexpressed_strengths")),
-            },
-        },
-    }
-
 
 
 def _active_skill_summary(

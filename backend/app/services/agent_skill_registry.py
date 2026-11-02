@@ -1,32 +1,18 @@
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
 from dataclasses import dataclass
 from typing import Any
 
-from app.services.security_redaction import safe_error_message
-
 
 SKILL_REGISTRY_VERSION = "2026-10-16.1"
 CONFIRMATION_POLICY = "operation_registry"
 
-# skill_id sentinel: request-level "let the router pick once"; never a registered Skill.
+# skill_id sentinel: request-level "no explicit Skill"; never a registered Skill.
 AUTO_SKILL_ID = "auto"
 # auto 不再调 LLM 路由，直接落到这个通用技能；内置 Agent 的工具表本来就是 core_agent.loop_tools()。
 DEFAULT_AUTO_SKILL_ID = "discovery"
-
-# Auto routing MUST NEVER land on integration/privileged Skills; they stay
-# reachable only through explicit slash commands or explicit skill_id.
-_NON_ROUTABLE_SKILL_IDS = frozenset(
-    {"connection_bootstrap", "connection_probe", "career_director"}
-)
-# One bounded classification call per new Run; independent of per-request
-# llm_timeout so a slow provider cannot silently stall routing forever.
-SKILL_ROUTER_TIMEOUT_SECONDS = 30.0
-_ROUTER_CONTEXT_MESSAGES = 6
-_ROUTER_MESSAGE_CHARS = 400
 
 
 def tool_contract_snapshot() -> dict[str, Any]:
@@ -316,12 +302,7 @@ class SkillRoutingError(ValueError):
 
 @dataclass(frozen=True)
 class SkillRouting:
-    """How a Run's Skill was chosen; recorded once and frozen with the Run.
-
-    The frozen provenance is exactly ``via``/``requested``/``reason``. The
-    canonical Career State the router saw is prompt input only; it must never
-    leak into persisted Run provenance or the display Skill summary.
-    """
+    """How a Run's Skill was chosen; recorded once and frozen with the Run."""
 
     via: str  # "explicit" | "slash" | "auto"
     requested: str = ""
@@ -329,27 +310,6 @@ class SkillRouting:
 
     def provenance(self) -> dict[str, Any]:
         return {"via": self.via, "requested": self.requested, "reason": self.reason}
-
-
-def _is_routable_skill(skill: AgentSkill) -> bool:
-    """Auto routing may only land on user-facing business Skills.
-
-    Integration probes and the autonomous Career Director stay explicit-only,
-    and plugin Skills are never auto-selected because their tool surface is an
-    arbitrary plugin capability, not a governed Operation allowlist.
-    """
-    return skill.id not in _NON_ROUTABLE_SKILL_IDS and skill.group != "plugin"
-
-
-def _routable_skills() -> list[AgentSkill]:
-    from app.ops import OPERATIONS
-
-    return [
-        skill
-        for skill in (*_SKILLS, *_directory_skills(), *_plugin_skills())
-        if _is_routable_skill(skill)
-        and any(name in OPERATIONS for name in skill.allowed_tools)
-    ]
 
 
 def _auto_requested(value: str | None) -> bool:
@@ -385,108 +345,16 @@ def resolve_declared_skill(
     return skill, SkillRouting(via="explicit", requested=requested)
 
 
-def _router_transcript(
-    user_message: str,
-    context_messages: list[dict[str, str]] | None,
-) -> str:
-    """Build a bounded, desensitized routing transcript from untrusted text."""
-    from app.agents.desensitize import desensitize
-
-    rows: list[str] = []
-    for item in (context_messages or [])[-_ROUTER_CONTEXT_MESSAGES:]:
-        role = str(item.get("role") or "").strip()
-        content = str(item.get("content") or "").strip()
-        if role not in {"user", "assistant"} or not content:
-            continue
-        masked, _ = desensitize(content[:_ROUTER_MESSAGE_CHARS])
-        rows.append(f"{role}: {masked}")
-    masked_goal, _ = desensitize(str(user_message or "").strip()[:2000])
-    rows.append(f"current user: {masked_goal}")
-    return "\n".join(rows)
-
-
-async def _auto_route_skill(
-    *,
-    user_message: str,
-    context_messages: list[dict[str, str]] | None,
-    requested: str,
-    routing_context: dict[str, Any] | None = None,
-) -> tuple[AgentSkill, SkillRouting]:
-    """Classify one routable Skill through the canonical configured LLM.
-
-    Any failure (timeout, provider/model error, non-JSON or unknown/privileged
-    reply) raises SkillRoutingError before business execution; routing never
-    silently degrades to a fixed Skill.
-    """
-    from app.agents.llm import chat_completion, extract_json
-
-    candidates = _routable_skills()
-    if not candidates:
-        raise SkillRoutingError("Skill 自动路由没有可用候选；请显式选择技能。")
-    catalog_rows = "\n".join(
-        f'- "{skill.id}": {skill.description}' for skill in candidates
-    )
-    try:
-        raw = await asyncio.wait_for(
-            chat_completion(
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "You route one user request to exactly one OfferU Skill. "
-                            "Pick the skill whose purpose best matches the goal; "
-                            'respond with JSON only: {"skill_id":"<id>","reason":"<short>"} '
-                            "using an id copied verbatim from this list:\n"
-                            + catalog_rows
-                        ),
-                    },
-                    {"role": "user", "content": _router_transcript(user_message, context_messages)
-                     + "\nCanonical current Career State:\n" + json.dumps(routing_context or {}, ensure_ascii=False)},
-                ],
-                temperature=0.0,
-                json_mode=True,
-                max_tokens=200,
-            ),
-            timeout=SKILL_ROUTER_TIMEOUT_SECONDS,
-        )
-    except asyncio.TimeoutError:
-        raise SkillRoutingError(
-            f"Skill 自动路由超时（{int(SKILL_ROUTER_TIMEOUT_SECONDS)}s），请显式选择技能后重试。"
-        )
-    except Exception as exc:
-        raise SkillRoutingError(
-            f"Skill 自动路由失败：{safe_error_message(exc)}"
-        ) from exc
-    if not raw:
-        raise SkillRoutingError("Skill 自动路由无响应（LLM 未返回结果）；请显式选择技能后重试。")
-    parsed = extract_json(raw)
-    selected_id = str(parsed.get("skill_id") or "").strip() if isinstance(parsed, dict) else ""
-    resolved = resolve_skill(selected_id) if selected_id else None
-    if resolved is None or resolved.id not in {skill.id for skill in candidates}:
-        raise SkillRoutingError(
-            f"Skill 自动路由返回了无效技能（{selected_id or '空响应'}）；请显式选择技能后重试。"
-        )
-    reason = str(parsed.get("reason") or "") if isinstance(parsed, dict) else ""
-    return resolved, SkillRouting(
-        via="auto",
-        requested=requested or AUTO_SKILL_ID,
-        reason=reason[:300],
-    )
-
-
 async def resolve_run_skill(
     user_message: str | None,
     selected_skill_id: str | None,
     context_messages: list[dict[str, str]] | None = None,
-    *,
-    routing_context: dict[str, Any] | None = None,
 ) -> tuple[AgentSkill, SkillRouting]:
-    """Resolve the Skill for one new Run without model routing.
+    """Resolve the Skill for one new Run; never calls a model.
 
     - Explicit skill_id and slash commands resolve deterministically; unknown
       ids raise ValueError and never fall back.
-    - skill_id="auto" (or empty) lands on DEFAULT_AUTO_SKILL_ID. The LLM router
-      exceeded its 30s budget on slow providers and failed every first message.
+    - skill_id="auto" (or empty) lands on DEFAULT_AUTO_SKILL_ID.
     """
     declared = resolve_declared_skill(user_message, selected_skill_id)
     if declared is not None:

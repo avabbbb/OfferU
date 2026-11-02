@@ -7,7 +7,6 @@ from app.ops import list_operations
 from app.routes.main_agent import skills as skills_route
 from app.services import directory_skills
 from app.services.agent_skill_registry import (
-    _routable_skills,
     catalog,
     registry_snapshot,
     resolve_skill,
@@ -70,7 +69,6 @@ def test_local_skill_listed_with_source_and_readonly_tools(local_root):
     assert row["confirmation_required_operations"] == []
     assert "instructions" not in row
     assert "resume_polish" not in {item["id"] for item in catalog()}
-    assert "resume_polish" not in {skill.id for skill in _routable_skills()}
 
 
 def test_resolve_skill_keeps_instructions_and_drops_write_tools(local_root):
