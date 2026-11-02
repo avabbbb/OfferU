@@ -108,7 +108,7 @@ function Editor({ doc, docs, jobs, photo, onCopy, onCreate }: {
         <ResumeForm resume={resume} onChange={changeResume} focus={focus}
           basicsExtra={<BasicsMedia style={style} onStyle={changeStyle} photo={photo} school={school}
             onPhoto={() => void mutate((k) => Array.isArray(k) && k[0] === "tool")} />} />
-        <div className="flex w-[56%] min-w-[420px] shrink-0 flex-col border-l border-[var(--border)] bg-[var(--surface)]">
+        <div className="flex w-[56%] min-w-[420px] shrink-0 flex-col bg-[var(--background)]">
           <ResumePreview ref={preview} resume={resume} style={style}
             toolbar={<TailorBar docId={doc.id} jobId={doc.job_id} jobs={jobs} disabled={!saved || !styleSaved}
               onDone={() => mutate((k) => Array.isArray(k) && k[0] === "tool")} />}
