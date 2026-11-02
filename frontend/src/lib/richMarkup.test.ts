@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { domToMarkup, markupToHtml, type NodeLike, plainText } from "./richMarkup";
+import { domToMarkup, inlineHtml, markupToHtml, type NodeLike, parseLine, plainText } from "./richMarkup";
+import cases from "./richMarkup.cases.json";
 
 const t = (s: string): NodeLike => ({ nodeType: 3, nodeName: "#text", nodeValue: s, childNodes: [] });
 const h = (tag: string, props: { style?: NodeLike["style"]; href?: string } | null, ...kids: (NodeLike | string)[]): NodeLike => ({
@@ -44,4 +45,10 @@ describe("正文标记", () => {
   it("摘要去掉标记", () => {
     expect(plainText("{center} **甲** *乙* [丙](https://x.dev)\n- 丁")).toBe("甲 乙 丙\n丁");
   });
+});
+
+// 和 backend/tests/test_rich_markup_cases.py 跑同一份用例。
+describe("前后端共用用例", () => {
+  it.each(cases.inline)("行内 %#", (c) => expect(inlineHtml(c.in)).toBe(c.html));
+  it.each(cases.lines)("拆行 %#", (c) => expect(parseLine(c.raw)).toEqual(c.line));
 });

@@ -78,6 +78,14 @@ _LINK = re.compile(r"\[([^\]]+)\]\((https?://[^\s)]+)\)")
 _LINE = re.compile(r"^( *)(?:\{(center|right|justify)\} )?(- |\d+\. )?")
 
 
+def parse_line(raw: str) -> dict[str, Any]:
+    """一行标记拆成缩进、对齐、列表和正文，和前端 lib/richMarkup 的 parseLine 一致（共用用例见 richMarkup.cases.json）。"""
+    m = _LINE.match(raw)
+    mark = m.group(3) or ""
+    return {"indent": min(len(m.group(1)) // 2, 4), "align": m.group(2) or "",
+            "list": "ul" if mark == "- " else "ol" if mark else "", "text": raw[m.end():]}
+
+
 def _inline(text: str) -> str:
     """转义，行内认加粗、斜体和 [文字](链接)。"""
     out = _ITALIC.sub(r"<em>\1</em>", _BOLD.sub(r"<strong>\1</strong>", html.escape(text, quote=False)))
@@ -102,15 +110,15 @@ def _text_html(text: str, path: str) -> list[str]:
         kind, rows = "", []
 
     for raw in text.split("\n"):
-        m = _LINE.match(raw)
-        body = raw[m.end():].strip()
-        attrs = _block_style(min(len(m.group(1)) // 2, 4), m.group(2) or "")
-        if not m.group(3):
+        line = parse_line(raw)
+        body = line["text"].strip()
+        attrs = _block_style(line["indent"], line["align"])
+        if not line["list"]:
             flush()
             if body:
                 out.append(f'<p data-path="{path}"{attrs}>{_inline(body)}</p>')
             continue
-        k = "ul" if m.group(3) == "- " else "ol"
+        k = line["list"]
         if k != kind:
             flush()
             kind = k

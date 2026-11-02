@@ -1,6 +1,7 @@
 // 正文的存储格式：带轻量标记的纯文本，和后端 backend/app/core/resume.py 的 _text_html / _inline 一一对应。
 // 一行一块：行首每 2 个空格缩进一级（最多 4 级），接着可选 {center} / {right} / {justify} 对齐，再可选 "- " / "1. " 列表；
 // 行内 **粗体**、*斜体*、[文字](https://链接)。编辑框（components/resume/RichText）显示成 HTML，改完再从 DOM 读回这种标记。
+// 前后端共用用例在 richMarkup.cases.json，vitest 和 backend/tests/test_rich_markup_cases.py 都跑。
 
 export type Align = "" | "center" | "right" | "justify";
 export type Line = { indent: number; align: Align; list: "" | "ul" | "ol"; text: string };
@@ -36,14 +37,16 @@ export function formatLines(lines: Line[]): string {
   return rows.join("\n");
 }
 
-const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+// 引号不转义（和后端 html.escape(quote=False) 一致），链接里的引号换成 %22。
+const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const BOLD = /\*\*(.+?)\*\*/g;
 // 后行断言用构造函数写，免得 tsc 按 target 卡正则语法。
 const ITALIC = new RegExp("(?<!\\*)\\*(?!\\*)(.+?)(?<!\\*)\\*(?!\\*)", "g");
 const LINK = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
 
 export function inlineHtml(text: string): string {
-  return esc(text).replace(BOLD, "<strong>$1</strong>").replace(ITALIC, "<em>$1</em>").replace(LINK, '<a href="$2">$1</a>');
+  return esc(text).replace(BOLD, "<strong>$1</strong>").replace(ITALIC, "<em>$1</em>")
+    .replace(LINK, (_m, label: string, url: string) => '<a href="' + url.replace(/"/g, "%22") + '">' + label + "</a>");
 }
 
 const styleAttr = (l: Line) => {

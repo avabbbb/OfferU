@@ -1,0 +1,110 @@
+{
+  "inline": [
+    {
+      "in": "**甲** *乙* [丙](https://x.dev) <b>",
+      "html": "<strong>甲</strong> <em>乙</em> <a href=\"https://x.dev\">丙</a> &lt;b&gt;"
+    },
+    {
+      "in": "a & \"b\" 'c'",
+      "html": "a &amp; \"b\" 'c'"
+    },
+    {
+      "in": "[a\"b](https://x.dev)",
+      "html": "<a href=\"https://x.dev\">a\"b</a>"
+    },
+    {
+      "in": "[链](https://x.dev/?a=1&b=2)",
+      "html": "<a href=\"https://x.dev/?a=1&amp;b=2\">链</a>"
+    },
+    {
+      "in": "[引](https://x.dev/\"x)",
+      "html": "<a href=\"https://x.dev/%22x\">引</a>"
+    },
+    {
+      "in": "[坏](javascript:alert(1))",
+      "html": "[坏](javascript:alert(1))"
+    },
+    {
+      "in": "**粗*斜*粗**",
+      "html": "<strong>粗<em>斜</em>粗</strong>"
+    },
+    {
+      "in": "",
+      "html": ""
+    }
+  ],
+  "lines": [
+    {
+      "raw": "{center} 甲",
+      "line": {
+        "indent": 0,
+        "align": "center",
+        "list": "",
+        "text": "甲"
+      }
+    },
+    {
+      "raw": "  - 乙",
+      "line": {
+        "indent": 1,
+        "align": "",
+        "list": "ul",
+        "text": "乙"
+      }
+    },
+    {
+      "raw": "   奇",
+      "line": {
+        "indent": 1,
+        "align": "",
+        "list": "",
+        "text": "奇"
+      }
+    },
+    {
+      "raw": "            1. 深",
+      "line": {
+        "indent": 4,
+        "align": "",
+        "list": "ol",
+        "text": "深"
+      }
+    },
+    {
+      "raw": "  {right} 10. 十",
+      "line": {
+        "indent": 1,
+        "align": "right",
+        "list": "ol",
+        "text": "十"
+      }
+    },
+    {
+      "raw": "{left} 不认",
+      "line": {
+        "indent": 0,
+        "align": "",
+        "list": "",
+        "text": "{left} 不认"
+      }
+    },
+    {
+      "raw": "-没空格",
+      "line": {
+        "indent": 0,
+        "align": "",
+        "list": "",
+        "text": "-没空格"
+      }
+    },
+    {
+      "raw": "",
+      "line": {
+        "indent": 0,
+        "align": "",
+        "list": "",
+        "text": ""
+      }
+    }
+  ]
+}
