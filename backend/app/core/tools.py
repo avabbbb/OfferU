@@ -6,6 +6,9 @@ plus overview (what to do now) and fetch_page. Agents write directly; every writ
 
 from __future__ import annotations
 
+import asyncio
+import fnmatch
+import os
 import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -18,18 +21,25 @@ from app.core import store
 JOB_STATUS = {"saved": "想投", "applied": "已投递", "test": "笔试 / 测评", "interview": "面试中",
               "offer": "offer", "rejected": "未通过", "closed": "不投了"}
 EVENT_KIND = {"todo": "待办", "deadline": "截止", "test": "笔试 / 测评", "interview": "面试"}
-RESUME_TEMPLATE = {"single": "单栏", "compact": "紧凑", "photo": "带照片"}
+RESUME_TEMPLATE = {"classic": "经典", "clear": "清晰", "kami": "留白", "compact": "紧凑"}
+RESUME_FONT = {"sans": "黑体", "serif": "宋体", "kai": "楷体"}
+# Old docs carry doc.template; resume.resolve_style reads it as style. Still accepted on save until the editor writes style.
+LEGACY_TEMPLATE = {"single": {"template": "clear"}, "compact": {"template": "compact"}, "photo": {"template": "clear", "photo": True}}
+STYLE_RANGE = {"bodySize": (8, 14), "lineHeight": (1.0, 2.0), "sectionGap": (0, 30), "itemGap": (0, 20)}
+MARGIN_RANGE = (3, 30)
+STYLE_KEYS = ("template", "font", *STYLE_RANGE, "margin", "accent", "photo", "logo")
 DOC_KIND = {"resume": "简历", "apply_chat": "官网投递对话", "review": "面试复盘", "research": "调研", "note": "笔记"}
 MEMORY_KIND = {"experience": "实习 / 工作", "project": "项目", "education": "教育", "skill": "技能",
                "award": "奖项 / 证书", "preference": "偏好", "note": "其他"}
 TYPE_LABEL = {"profile": "档案", "memory": "记忆", "job": "岗位", "event": "事项", "doc": "文档"}
+MAIL_ACTOR = "邮箱"
 
 FIELDS = {
     "profile": "唯一一份。name, school, major, degree, grad_year, phone, email, city, target（求职方向）, stage（用户自己说的阶段）, about, photo（证件照文件名）",
     "memory": f"职业记忆，一条一件事。kind: {'/'.join(MEMORY_KIND)}; title; body（具体经历、数字、用户原话）; start, end; tags",
     "job": f"岗位和投递状态。company, title, status: {'/'.join(JOB_STATUS)}; url, city, jd, notes, applied_at",
     "event": f"待办和日程。title, kind: {'/'.join(EVENT_KIND)}; at（YYYY-MM-DD 或 YYYY-MM-DDTHH:MM，可空）, done, job_id, notes",
-    "doc": f"文档。kind: {'/'.join(DOC_KIND)}; title, body（Markdown）, job_id, template（简历模板：single 单栏 / compact 紧凑 / photo 带照片）。简历 body 的写法：第一行 # 名字，下一段是联系方式，## 分节，### 学校或公司 | 专业或职位 | 时间（最后一段靠右），- 要点",
+    "doc": f"文档。kind: {'/'.join(DOC_KIND)}; title, body（Markdown）, job_id, style（简历排版，对象，缺的键用模板默认值，更新时传完整对象：template classic 经典（默认）/ clear 清晰 / kami 留白 / compact 紧凑；font sans 黑体 / serif 宋体 / kai 楷体；bodySize 8–14（pt）；lineHeight 1–2；sectionGap 0–30（pt）；itemGap 0–20（pt）；margin {{top, right, bottom, left}} 3–30（mm）；accent #RRGGBB；photo true 用档案证件照；logo 校徽文件名）。简历以 resume 为准（对象：{{basics: {{name, target, contacts: [{{label（电话 / 邮箱 / 城市 / 微信…，可空）, value}}]}}, sections: [{{id, type, title, hidden, items: [{{id, title, subtitle, date, location, bullets: [文字], text}}]}}]}}），body 由它自动生成；也可以只传 body，写法：第一行 # 名字，下一段是联系方式，## 分节，### 学校或公司 | 专业或职位 | 时间（最后一段靠右），- 要点，保存时转成 resume",
 }
 RecordType = Literal["profile", "memory", "job", "event", "doc"]
 
@@ -46,12 +56,59 @@ def label(record: dict[str, Any]) -> str:
 
 
 def _brief(record: dict[str, Any]) -> dict[str, Any]:
-    out = {k: v for k, v in record.items() if k not in ("jd", "body", "messages", "created_at")}
+    out = {k: v for k, v in record.items() if k not in ("jd", "body", "resume", "messages", "created_at")}
     for key in ("jd", "body"):
         if record.get(key):
             out[key] = str(record[key])[:160] + ("…" if len(str(record[key])) > 160 else "")
     out["label"] = label(record)
     return out
+
+
+def check_style(style: Any) -> None:
+    """doc.style: unknown keys and out-of-range values are errors, never clamped, so an agent sees what went wrong."""
+    if not isinstance(style, dict):
+        raise ValueError("doc.style 要是对象")
+    if unknown := sorted(set(style) - set(STYLE_KEYS)):
+        raise ValueError(f"doc.style 没有 {', '.join(unknown)}；可用：{', '.join(STYLE_KEYS)}")
+
+    def number(key: str, value: Any, low: float, high: float) -> None:
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not low <= value <= high:
+            raise ValueError(f"doc.style.{key} 要在 {low}–{high} 之间")
+
+    for key, value in style.items():
+        if value is None:
+            continue
+        if key == "template" and value not in RESUME_TEMPLATE:
+            raise ValueError(f"doc.style.template 只能是 {', '.join(RESUME_TEMPLATE)}")
+        if key == "font" and value not in RESUME_FONT:
+            raise ValueError(f"doc.style.font 只能是 {', '.join(RESUME_FONT)}")
+        if key in STYLE_RANGE:
+            number(key, value, *STYLE_RANGE[key])
+        if key == "margin":
+            if not isinstance(value, dict) or set(value) - {"top", "right", "bottom", "left"}:
+                raise ValueError("doc.style.margin 是 {top, right, bottom, left}，单位 mm")
+            for side, mm in value.items():
+                number(f"margin.{side}", mm, *MARGIN_RANGE)
+        if key == "accent" and not (isinstance(value, str) and re.fullmatch(r"#[0-9A-Fa-f]{6}", value)):
+            raise ValueError("doc.style.accent 要是 #RRGGBB")
+        if key == "photo" and not isinstance(value, bool):
+            raise ValueError("doc.style.photo 是 true / false")
+        if key == "logo" and not (isinstance(value, str) and value and Path(value).name == value):
+            raise ValueError("doc.style.logo 是上传（POST /api/files）返回的文件名")
+
+
+REVIEW_QUESTION_KEYS = ("question", "answer", "reflection", "reaction")
+
+
+def check_questions(questions: Any) -> None:
+    """doc.questions（面试复盘的题）：数组，每项 {question, answer, reflection, reaction} 都是字符串，更新时整体替换。"""
+    if not isinstance(questions, list) or len(questions) > 60:
+        raise ValueError("doc.questions 要是数组，最多 60 道题")
+    for index, item in enumerate(questions):
+        if not isinstance(item, dict) or set(item) - set(REVIEW_QUESTION_KEYS):
+            raise ValueError(f"doc.questions[{index}] 只能有 {', '.join(REVIEW_QUESTION_KEYS)}")
+        if not all(isinstance(v, str) for v in item.values()):
+            raise ValueError(f"doc.questions[{index}] 的值要是字符串")
 
 
 def _check(type_: str, data: dict[str, Any], creating: bool) -> None:
@@ -71,7 +128,11 @@ def _check(type_: str, data: dict[str, Any], creating: bool) -> None:
             datetime.fromisoformat(str(data["at"]))
     elif type_ == "doc":
         one_of("kind", DOC_KIND)
-        one_of("template", RESUME_TEMPLATE)
+        one_of("template", LEGACY_TEMPLATE)
+        if data.get("style") is not None:
+            check_style(data["style"])
+        if data.get("questions") is not None:
+            check_questions(data["questions"])
         if creating and not data.get("kind"):
             raise ValueError("文档要有 kind")
     elif type_ == "memory":
@@ -80,6 +141,20 @@ def _check(type_: str, data: dict[str, Any], creating: bool) -> None:
             raise ValueError("记忆要有 title 或 body")
     if data.get("job_id") is not None and store.get("job", int(data["job_id"])) is None:
         raise ValueError(f"岗位 #{data['job_id']} 不存在")
+
+
+def _with_resume(data: dict[str, Any], id_: Optional[int]) -> dict[str, Any]:
+    """简历以 doc.resume 为准，body 从它派生；只给 body（agent / 旧代码）的简历就解析成 resume。"""
+    from app.core import resume_model
+
+    if data.get("resume") is not None:
+        resume = resume_model.normalize(data["resume"])
+    else:
+        kind = data.get("kind") or ((store.get("doc", id_) or {}).get("kind") if id_ else None)
+        if data.get("body") is None or kind != "resume":
+            return data
+        resume = resume_model.from_markdown(str(data["body"]))
+    return dict(data, resume=resume, body=resume_model.to_markdown(resume))
 
 
 # ---------- tools ----------
@@ -98,6 +173,8 @@ def save(type: str, data: dict[str, Any], id: Optional[int] = None, *, actor: st
     if type == "profile" and id is None and (existing := store.first("profile")):
         id = existing["id"]
     _check(type, data, creating=id is None)
+    if type == "doc":
+        data = _with_resume(data, id)
     if type == "event" and data.get("done") is True and id is not None:
         verb = "完成"
     else:
@@ -231,6 +308,13 @@ class OverviewIn(_In):
     pass
 
 
+def _mail_today(today: date) -> dict[str, Any]:
+    """邮箱同步的每日进度：今天邮箱写了几条改动、最后一条是什么时候。"""
+    count, last = store.conn().execute(
+        "SELECT COUNT(id), MAX(at) FROM changes WHERE actor = ? AND at >= ?", (MAIL_ACTOR, today.isoformat())).fetchone()
+    return {"today_changes": count, "last_change_at": last}
+
+
 def overview(*, actor: str = "", today: Optional[date] = None) -> dict[str, Any]:
     """现在在哪个阶段、下一步做什么、待办（逾期 / 今天 / 7 天内 / 以后 / 没定时间）、最近改动。"""
     today = today or date.today()
@@ -287,6 +371,7 @@ def overview(*, actor: str = "", today: Optional[date] = None) -> dict[str, Any]
         "todos": todos,
         "jobs": {s: len(v) for s, v in statuses.items()},
         "recent_changes": store.changes(5),
+        "mail": _mail_today(today),
     }
 
 
@@ -321,6 +406,100 @@ def read_file(path: str, *, actor: str = "") -> dict[str, Any]:
     return {"path": str(file), "text": text[:30_000], "truncated": len(text) > 30_000}
 
 
+DOC_SUFFIXES = (".pdf", ".docx", ".txt", ".md", ".markdown")
+_WALK_DEPTH = 3
+_GREP_MAX_FILES = 300
+
+
+def _local_dir(dir: str) -> Path:
+    folder = Path(dir).expanduser()
+    if not folder.is_absolute():
+        raise ValueError("dir 要是本机目录的绝对路径，比如 H:\\学习\\留档")
+    if not folder.is_dir():
+        raise ValueError(f"找不到目录 {dir}")
+    return folder
+
+
+def _walk(folder: Path, pattern: str, recursive: bool, docs_only: bool):
+    """Files under folder matching pattern; hidden dirs skipped, unreadable dirs ignored, at most _WALK_DEPTH levels."""
+    max_depth = _WALK_DEPTH if recursive else 0
+    pattern = (pattern or "*").lower()
+    for root, dirs, files in os.walk(folder):
+        depth = len(Path(root).relative_to(folder).parts)
+        dirs[:] = [d for d in dirs if not d.startswith(".")] if depth < max_depth else []
+        for name in files:
+            if not fnmatch.fnmatch(name.lower(), pattern):
+                continue
+            if docs_only and Path(name).suffix.lower() not in DOC_SUFFIXES:
+                continue
+            yield Path(root) / name
+
+
+class FindFilesIn(_In):
+    dir: str = Field(description="本机目录的绝对路径。用户说「H 盘 学习 留档」就是 H:/学习/留档")
+    query: str = Field("", description="要找的文字，空格分开的词都要出现在文件名或正文里；不填就只列文件")
+    pattern: str = Field("*", description="文件名通配，比如 *简历*；默认全部")
+    recursive: bool | None = Field(None, description="是否进子目录（最多 3 层）；不填时有 query 就进，没有就不进")
+    docs_only: bool = Field(True, description="只列 read_file 能读的 PDF / Word / txt / md；有 query 时总是只看这些")
+    limit: int = Field(50, ge=1, le=200)
+
+
+def find_files(dir: str, query: str = "", pattern: str = "*", recursive: bool | None = None,
+               docs_only: bool = True, limit: int = 50, *, actor: str = "") -> dict[str, Any]:
+    """List a local folder newest first; with query, keep files whose name or text has every term."""
+    folder = _local_dir(dir)
+    terms = [t.lower() for t in query.split() if t]
+    if recursive is None:
+        recursive = bool(terms)
+    items: list[dict[str, Any]] = []
+    scanned = 0
+    for file in _walk(folder, pattern, recursive, docs_only or bool(terms)):
+        try:
+            stat = file.stat()
+        except OSError:
+            continue
+        item = {"path": str(file), "name": file.name, "size": stat.st_size,
+                "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="minutes")}
+        if terms:
+            if scanned >= _GREP_MAX_FILES:
+                break
+            scanned += 1
+            try:
+                text = read_file(str(file))["text"]
+            except Exception:
+                continue
+            if not all(t in (file.name + " " + text).lower() for t in terms):
+                continue
+            at = max(0, text.lower().find(terms[0]))
+            item["snippet"] = text[max(0, at - 60): at + 120]
+        items.append(item)
+    items.sort(key=lambda i: i["modified"], reverse=True)
+    try:
+        subdirs = sorted(p.name for p in folder.iterdir() if p.is_dir() and not p.name.startswith("."))
+    except OSError:
+        subdirs = []
+    out = {"dir": str(folder), "total": len(items), "items": items[:limit],
+           "truncated": len(items) > limit or scanned >= _GREP_MAX_FILES, "dirs": subdirs[:50]}
+    if terms:
+        out["scanned"] = scanned
+    return out
+
+
+class WebSearchIn(_In):
+    query: str = Field(min_length=1)
+    limit: int = Field(8, ge=1, le=20)
+
+
+def web_search(query: str, limit: int = 8, *, actor: str = "") -> dict[str, Any]:
+    from app.config import get_settings
+    from app.services import web_search as service
+
+    settings = get_settings()
+    if not (settings.bocha_api_key or settings.tavily_api_key or settings.serper_api_key or service._ddgs_available()):
+        raise ValueError("没配搜索服务：在设置里填 Bocha / Tavily / Serper 的 key（或装 ddgs）后才能搜网页")
+    return {"query": query, "items": _await(lambda: service.web_search(query, limit=limit))}
+
+
 class ExportIn(_In):
     id: int = Field(description="简历 doc 的 id")
 
@@ -334,6 +513,95 @@ def export_resume_pdf(id: int, *, actor: str = "") -> dict[str, Any]:
     out = store.data_dir("exports") / resume.file_name(doc)
     out.write_bytes(resume.pdf_bytes(resume.doc_html(doc)))
     return {"path": str(out)}
+
+
+MAIN_LOOP: Optional[asyncio.AbstractEventLoop] = None  # main.py 启动时设置；工具在线程里跑，异步的旧服务投递回主循环
+
+
+def _await(factory: Callable[[], Any]) -> Any:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        pass
+    else:
+        raise RuntimeError("事件循环线程里不能同步等异步任务，用 asyncio.to_thread(tools.call, ...)")
+    loop = MAIN_LOOP
+    if loop is not None and loop.is_running():
+        return asyncio.run_coroutine_threadsafe(factory(), loop).result(timeout=600)
+    return asyncio.run(factory())
+
+
+class EmailSyncIn(_In):
+    action: Literal["status", "sync"] = Field("status", description="status 看已连邮箱和最近同步；sync 立刻拉一次新邮件并回写")
+    account: Optional[str] = Field(None, description="只看 / 只同步这个账号（account_id），不传就是全部")
+
+
+def email_sync(action: str = "status", account: Optional[str] = None, actor: str = "") -> dict[str, Any]:
+    from app.services import email_sync as service
+
+    if action == "sync":
+        result = _await(lambda: service.sync_email_notifications(account_id=account))
+        runs = result["runs"] if "runs" in result else [result]
+        return {"accounts": len(runs), "found": sum(int(r.get("total_found") or 0) for r in runs),
+                "new": sum(int(r.get("synced") or 0) for r in runs),
+                "changes": [c for r in runs for c in r.get("core_change_ids") or []],
+                "failed_accounts": int(result.get("failed_accounts") or 0)}
+    accounts = _await(lambda: service.list_email_accounts(status="active", limit=50))["items"]
+    runs = _await(lambda: service.list_email_sync_runs(account_id=account, limit=5))["items"]
+    keep = ("account_id", "provider", "email_address", "last_synced_at", "last_error")
+    return {
+        "accounts": [{k: a.get(k) for k in keep} for a in accounts if not account or a["account_id"] == account],
+        "recent_runs": [{"status": r["status"], "completed_at": r["completed_at"], "error": r["error"],
+                         "found": r["result"].get("total_found"), "changes": len(r["result"].get("core_change_ids") or [])}
+                        for r in runs],
+        "today": _mail_today(date.today()),
+    }
+
+
+class TailorIn(_In):
+    id: int = Field(description="简历 doc 的 id（kind=resume）")
+    job_id: Optional[int] = Field(None, description="按哪个岗位改；不传就用简历上关联的岗位（岗位要有 JD）")
+
+
+def tailor_resume(id: int, job_id: Optional[int] = None, actor: str = "") -> dict[str, Any]:
+    from app.core import tailor
+
+    async def collect() -> dict[str, Any]:
+        last: dict[str, Any] = {}
+        async for event in tailor.run(id, job_id, actor=actor or "Agent"):
+            if event["type"] in ("done", "error"):
+                last = event
+        return last
+
+    event = _await(collect)
+    if event.get("type") != "done":
+        raise ValueError(event.get("message") or "改写没完成，简历没动")
+    return {"doc_id": id, "change_id": event["change_id"], "body": event["body"]}
+
+
+class SplitResumeIn(_In):
+    text: Optional[str] = Field(None, description="简历原文；和 path 二选一")
+    path: Optional[str] = Field(None, description="本机文件的绝对路径，或用户上传后拿到的文件名")
+
+
+def split_resume(text: Optional[str] = None, path: Optional[str] = None, *, actor: str) -> dict[str, Any]:
+    from app.core import resume_split
+
+    if not (text or "").strip() and path:
+        text = read_file(path)["text"]
+    if not (text or "").strip():
+        raise ValueError("要给简历原文 text 或文件 path")
+    if not resume_split.available():
+        raise ValueError("没配模型，也没开「没配模型时交给本机 Agent」，没法自动拆")
+    items = _await(lambda: resume_split.extract(text or ""))
+    if not items:
+        raise ValueError("没从原文里拆出经历，档案没动")
+    saved = [save("memory", item, actor=actor) for item in items]
+    return {
+        "count": len(saved),
+        "change_ids": [s["change_id"] for s in saved],
+        "items": [{"id": s["record"]["id"], "kind": s["record"].get("kind"), "title": s["record"].get("title")} for s in saved],
+    }
 
 
 # ---------- registry ----------
@@ -361,9 +629,23 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
     Tool(name="changes", input=ChangesIn, fn=changes, description="最近改动，谁改了什么，最新在前。"),
     Tool(name="read_file", input=ReadFileIn, fn=read_file,
          description="读本机 PDF / Word / txt / md 文件的文字，比如用户的旧简历。读完把经历拆成一条条 memory 存进档案。"),
+    Tool(name="find_files", input=FindFilesIn, fn=find_files,
+         description="找本机文件：列目录（默认只看 PDF / Word / txt / md，新改的在前，另给子目录名）；给 query 时按文件名或正文里的文字筛，带片段。"
+                     "用户说「H 盘 学习 留档」这类位置时，自己拼成绝对路径（H:/学习/留档）先找，挑出像简历的再 read_file，不要让用户报完整路径。"),
+    Tool(name="web_search", input=WebSearchIn, fn=web_search,
+         description="搜公开网页，返回标题、链接、摘要；要正文再用 fetch_page。没配搜索服务会报错，照实告诉用户。"),
     Tool(name="export_resume_pdf", input=ExportIn, fn=export_resume_pdf,
-         description="把一份简历（doc kind=resume）按它的模板导出成 PDF，返回文件路径。"),
+         description="把一份简历（doc kind=resume）按它的排版（style）导出成 PDF，和工作台预览是同一份 HTML，返回文件路径。"),
     Tool(name="fetch_page", input=FetchIn, fn=fetch_page, description="抓取一个公开网页的文字（比如岗位详情页链接），需要登录或 JS 的页面可能拿不到内容。"),
+    Tool(name="email_sync", input=EmailSyncIn, fn=email_sync,
+         description="邮箱同步。status：已连的邮箱、最近几次同步、今天邮箱写了几条改动；sync：立刻拉一次新邮件，识别投递回执、笔试、面试、offer、拒信，"
+                     "直接改岗位状态（只前进）并把笔试面试时间写成事项，返回写了哪些改动（都能撤销）。连邮箱和断开在设置页。"),
+    Tool(name="tailor_resume", input=TailorIn, fn=tailor_resume,
+         description="按岗位 JD 改写一份简历：只用档案和记忆里的事实，写完直接覆盖这份简历（一条改动，可撤销），返回新正文。"
+                     "要保留原版就先 save 一份副本再改副本。会调模型，要一两分钟。"),
+    Tool(name="split_resume", input=SplitResumeIn, fn=split_resume,
+         description="把一份旧简历（原文 text 或文件 path）拆成一条条 memory 直接存进档案，只整理不编造；每条一条改动，返回 change_ids 可逐条撤销。"
+                     "会调模型，要一两分钟。你自己能拆就用 read_file + save。"),
 ]}
 
 

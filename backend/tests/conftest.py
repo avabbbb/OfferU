@@ -122,3 +122,13 @@ def _assert_db_isolation() -> None:
 
 
 _assert_db_isolation()
+
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _isolated_core_store(tmp_path, monkeypatch):
+    """每个测试一份 core store（OFFERU_DATA_DIR/offeru.db）。上面的固定目录跨运行复用，不隔离会读到上次留下的数据。"""
+
+    monkeypatch.setenv("OFFERU_DATA_DIR", str(tmp_path / "offeru-data"))

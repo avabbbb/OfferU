@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
@@ -15,6 +17,9 @@ from sqlalchemy.orm import selectinload
 
 from app.database import async_session
 from app.models.models import InterviewReview, InterviewReviewQuestion, InterviewWeakSpots, Job
+from app.core import store as core_store
+from app.core import tools as core_tools
+from app.core.mail import _find_job
 
 OUTCOMES = ("pending", "passed", "failed")
 AUDIO_SUFFIXES = (".m4a", ".mp3", ".wav", ".webm", ".ogg", ".mp4", ".aac", ".flac")
@@ -59,94 +64,125 @@ class TranscribeInterviewAudioInput(BaseModel):
     file_path: str = Field(min_length=1, max_length=1000)
 
 
-def _serialize(review: InterviewReview) -> dict[str, Any]:
+QUESTION_KEYS = ("question", "answer", "reflection", "reaction")
+ACTOR = "你"
+MIGRATION_ACTOR = "迁移"
+_IMPORT_LOCK = threading.Lock()
+
+
+def _as_review(doc: dict[str, Any]) -> dict[str, Any]:
+    """core 里的 doc kind=review → 复盘页用的形状（summary 就是 body，interviewed_on 就是 at）。"""
     return {
-        "id": review.id,
-        "job_id": review.job_id,
-        "company": review.company,
-        "role": review.role,
-        "round_label": review.round_label,
-        "interviewed_on": review.interviewed_on,
-        "outcome": review.outcome,
-        "summary": review.summary,
-        "transcript": review.transcript,
-        "questions": [
-            {
-                "id": item.id,
-                "question": item.question,
-                "answer": item.answer,
-                "reflection": item.reflection,
-                "reaction": item.reaction,
-            }
-            for item in review.questions
-        ],
-        "created_at": review.created_at.isoformat() if review.created_at else None,
-        "updated_at": review.updated_at.isoformat() if review.updated_at else None,
+        "id": doc["id"],
+        "job_id": doc.get("job_id"),
+        "company": doc.get("company") or "",
+        "role": doc.get("role") or "",
+        "round_label": doc.get("round_label") or "",
+        "interviewed_on": doc.get("at"),
+        "outcome": doc.get("outcome") or "pending",
+        "summary": doc.get("body") or "",
+        "transcript": doc.get("transcript") or "",
+        "questions": [{k: str(q.get(k) or "") for k in QUESTION_KEYS} for q in doc.get("questions") or []],
+        "created_at": doc.get("created_at"),
+        "updated_at": doc.get("updated_at"),
     }
 
 
-async def _load(db, review_id: int) -> InterviewReview:  # noqa: ANN001
-    review = (
-        await db.execute(
-            select(InterviewReview)
-            .where(InterviewReview.id == review_id)
-            .options(selectinload(InterviewReview.questions))
-            .execution_options(populate_existing=True)
-        )
-    ).scalar_one_or_none()
-    if review is None:
+def _title(company: str, role: str, round_label: str) -> str:
+    return " ".join(filter(None, [company, role, round_label])) or "面试复盘"
+
+
+def _review_doc(review_id: int) -> dict[str, Any]:
+    doc = core_store.get("doc", review_id)
+    if doc is None or doc.get("kind") != "review":
         raise ValueError("面试复盘不存在")
-    return review
+    return doc
+
+
+def _review_docs() -> list[dict[str, Any]]:
+    """按面试日期倒序（没日期的在后），同一天新的在前。"""
+    docs = [d for d in core_store.all_of("doc") if d.get("kind") == "review"]
+    docs.sort(key=lambda d: d["id"], reverse=True)
+    docs.sort(key=lambda d: d.get("at") or "", reverse=True)
+    return docs
+
+
+def _migrated_ids() -> set[int]:
+    rows = core_store.conn().execute(
+        "SELECT json_extract(after, '$.legacy_review_id') FROM changes WHERE actor=? AND type='doc'", (MIGRATION_ACTOR,))
+    return {int(r[0]) for r in rows if r[0] is not None}
+
+
+def _import_legacy(items: list[dict[str, Any]]) -> int:
+    """按 legacy_review_id 去重写进 core；迁过的（哪怕之后被删了）不再迁。"""
+    with _IMPORT_LOCK:
+        done = _migrated_ids()
+        created = 0
+        for item in items:
+            if item["legacy_review_id"] in done:
+                continue
+            data = {k: v for k, v in item.items() if v is not None and v != "" and v != []}
+            core_tools.call("save", {"type": "doc", "data": data}, actor=MIGRATION_ACTOR)
+            created += 1
+        return created
+
+
+async def migrate_legacy_reviews() -> int:
+    """旧表 interview_reviews → doc kind=review，一次性、幂等，改动记在「迁移」名下。旧表只读不删。"""
+    async with async_session() as db:
+        rows = (
+            await db.execute(select(InterviewReview).options(selectinload(InterviewReview.questions)).order_by(InterviewReview.id))
+        ).scalars().all()
+        if not rows:
+            return 0
+        jobs = {j.id: j for j in (await db.execute(select(Job))).scalars().all()}
+    items = []
+    for row in rows:
+        legacy_job = jobs.get(row.job_id) if row.job_id else None
+        company = row.company or getattr(legacy_job, "company", "") or ""
+        role = row.role or getattr(legacy_job, "title", "") or ""
+        core_job = _find_job(company, role) if company else None
+        items.append({
+            "kind": "review", "title": _title(company, role, row.round_label), "legacy_review_id": row.id,
+            "job_id": core_job["id"] if core_job else None, "company": company, "role": role,
+            "round_label": row.round_label, "at": row.interviewed_on, "outcome": row.outcome,
+            "body": row.summary, "transcript": row.transcript,
+            "questions": [{k: getattr(q, k) or "" for k in QUESTION_KEYS} for q in row.questions],
+        })
+    return await asyncio.to_thread(_import_legacy, items)
 
 
 async def list_interview_reviews() -> dict[str, Any]:
-    async with async_session() as db:
-        rows = (
-            await db.execute(
-                select(InterviewReview)
-                .options(selectinload(InterviewReview.questions))
-                .order_by(InterviewReview.interviewed_on.desc().nulls_last(), InterviewReview.id.desc())
-            )
-        ).scalars().all()
-        return {"items": [_serialize(row) for row in rows]}
+    await migrate_legacy_reviews()
+    return {"items": [_as_review(d) for d in _review_docs()]}
 
 
 async def get_interview_review(review_id: int) -> dict[str, Any]:
-    async with async_session() as db:
-        return _serialize(await _load(db, review_id))
+    await migrate_legacy_reviews()
+    return _as_review(_review_doc(review_id))
 
 
 async def save_interview_review(**data: Any) -> dict[str, Any]:
-    payload = SaveInterviewReviewInput(**data)
-    async with async_session() as db:
-        if payload.job_id is not None and await db.get(Job, payload.job_id) is None:
-            raise ValueError("关联的岗位不存在")
-        if payload.review_id is None:
-            review = InterviewReview()
-            db.add(review)
-        else:
-            review = await _load(db, payload.review_id)
-        review.job_id = payload.job_id
-        review.company = payload.company.strip()
-        review.role = payload.role.strip()
-        review.round_label = payload.round_label.strip()
-        review.interviewed_on = payload.interviewed_on
-        review.outcome = payload.outcome
-        review.summary = payload.summary
-        review.transcript = payload.transcript
-        review.questions = [
-            InterviewReviewQuestion(sort_order=index, **item.model_dump())
-            for index, item in enumerate(payload.questions)
-        ]
-        await db.commit()
-        return _serialize(await _load(db, review.id))
+    payload = SaveInterviewReviewInput.model_validate(data)
+    if payload.review_id is not None:
+        _review_doc(payload.review_id)
+    company, role, round_label = payload.company.strip(), payload.role.strip(), payload.round_label.strip()
+    record = {
+        "kind": "review", "title": _title(company, role, round_label), "job_id": payload.job_id,
+        "company": company, "role": role, "round_label": round_label, "at": payload.interviewed_on,
+        "outcome": payload.outcome, "body": payload.summary, "transcript": payload.transcript,
+        "questions": [item.model_dump() for item in payload.questions],
+    }
+    args = {"type": "doc", "data": record}
+    if payload.review_id is not None:
+        args["id"] = payload.review_id
+    result = await asyncio.to_thread(core_tools.call, "save", args, actor=ACTOR)
+    return _as_review(result["record"])
 
 
 async def delete_interview_review(review_id: int) -> dict[str, Any]:
-    async with async_session() as db:
-        review = await _load(db, review_id)
-        await db.delete(review)
-        await db.commit()
+    _review_doc(review_id)
+    await asyncio.to_thread(core_tools.call, "delete", {"type": "doc", "id": review_id}, actor=ACTOR)
     return {"deleted": review_id}
 
 
@@ -207,15 +243,13 @@ async def extract_interview_review_questions(transcript: str) -> dict[str, Any]:
 async def _stuck_questions() -> list[dict[str, Any]]:
     """写了「卡在哪」的题才算卡住；按复盘 id + 题序编号，前端用同样的编号跳转。"""
 
-    async with async_session() as db:
-        rows = (
-            await db.execute(select(InterviewReview).options(selectinload(InterviewReview.questions)).order_by(InterviewReview.id))
-        ).scalars().all()
+    await migrate_legacy_reviews()
     stuck = []
-    for review in rows:
-        for index, item in enumerate(review.questions):
-            if item.question.strip() and item.reflection.strip():
-                stuck.append({"ref": f"{review.id}:{index}", "question": item.question.strip()[:600], "reflection": item.reflection.strip()[:600], "company": review.company, "round": review.round_label})
+    for doc in sorted(_review_docs(), key=lambda d: d["id"]):
+        review = _as_review(doc)
+        for index, item in enumerate(review["questions"]):
+            if item["question"].strip() and item["reflection"].strip():
+                stuck.append({"ref": f"{review['id']}:{index}", "question": item["question"].strip()[:600], "reflection": item["reflection"].strip()[:600], "company": review["company"], "round": review["round_label"]})
     return stuck
 
 
@@ -343,24 +377,9 @@ async def transcribe_interview_audio(file_path: str) -> dict[str, Any]:
 async def mark_application_rejected_from_review(review_id: int) -> dict[str, Any]:
     """复盘结果是「没过」时，用户点了确认，才把对应投递标成已拒绝。"""
 
-    from app.models.models import ApplicationRecord
-    from app.services.agent_operations import update_application_status
-
-    async with async_session() as db:
-        review = await _load(db, review_id)
-        if review.job_id is None:
-            raise ValueError("这场复盘没有关联投递")
-        record = (
-            await db.execute(
-                select(ApplicationRecord)
-                .where(ApplicationRecord.job_ref_id == review.job_id)
-                .order_by(ApplicationRecord.updated_at_value.desc(), ApplicationRecord.id.desc())
-                .limit(1)
-            )
-        ).scalar_one_or_none()
-    if record is None:
-        raise ValueError("这个岗位在投递表里还没有记录")
-    result = await update_application_status(application_id=record.id, status="rejected")
-    if result.get("error"):
-        raise ValueError(str(result["error"]))
-    return result
+    review = _review_doc(review_id)
+    if not review.get("job_id"):
+        raise ValueError("这场复盘没有关联岗位")
+    result = await asyncio.to_thread(
+        core_tools.call, "save", {"type": "job", "id": review["job_id"], "data": {"status": "rejected"}}, actor=ACTOR)
+    return {"workspace_status": "rejected", "job_id": review["job_id"], "change_id": result["change_id"]}

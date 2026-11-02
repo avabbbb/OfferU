@@ -10,6 +10,9 @@ import { agentRuntimeApi, type AgentConnectionsSnapshot } from "@/lib/api";
 import { safeClientErrorMessage } from "@/lib/safe-error";
 import { SHOWCASE } from "@/lib/showcase";
 import { isLiteRuntime } from "@/lib/liteSession";
+import { updateConfig, useConfig } from "@/lib/hooks";
+
+const FALLBACK_PROMPTED_KEY = "offeru.llmFallbackPrompted";
 
 export function AgentConnectionStatus({ compact = false }: { compact?: boolean }) {
   const state = useAgentConnection();
@@ -89,6 +92,29 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
     return () => { active = false; window.clearInterval(timer); };
   }, [desktop, awaitingReadback, busy, embedded, state.open, applySnapshot]);
 
+  const { data: config, mutate: mutateConfig } = useConfig();
+  const [askFallback, setAskFallback] = useState(false);
+  const [fallbackSaving, setFallbackSaving] = useState(false);
+  const selectedVerified = Boolean(selected?.connection_verified && selected.status === "ready");
+  const wasVerified = useRef(selectedVerified);
+  useEffect(() => {
+    const justConnected = selectedVerified && !wasVerified.current;
+    wasVerified.current = selectedVerified;
+    if (!justConnected || SHOWCASE || !config || config.llm_fallback_to_agent) return;
+    if (window.localStorage.getItem(FALLBACK_PROMPTED_KEY) === "1") return;
+    setAskFallback(true);
+  }, [selectedVerified, config]);
+  const answerFallback = async (enable: boolean) => {
+    window.localStorage.setItem(FALLBACK_PROMPTED_KEY, "1");
+    if (!enable) { setAskFallback(false); return; }
+    setFallbackSaving(true);
+    try {
+      await updateConfig({ llm_fallback_to_agent: true });
+      await mutateConfig();
+    } catch (cause) { setError(safeClientErrorMessage(cause, "开启失败，可以稍后在 设置 → 模型服务 里打开。")); }
+    finally { setFallbackSaving(false); setAskFallback(false); }
+  };
+
   const discover = async () => {
     if (!desktop || SHOWCASE) return;
     setBusy(true); setError("");
@@ -161,6 +187,18 @@ export function AgentConnectionPanel({ embedded = false }: { embedded?: boolean 
           {connections && !selected && <p role="status" className="text-xs text-[var(--foreground-muted)]">尚未发现可自动接入的本地 Agent。可以继续使用内置 Agent。</p>}
         </div> : null}
         {error && <p role="alert" className="flex gap-2 text-xs text-amber-800"><AlertCircle size={14} />{error}</p>}
+        <Modal isOpen={askFallback} onClose={() => void answerFallback(false)} size="sm">
+          <ModalContent>
+            <ModalHeader className="text-base">同时让 {selected?.name} 代替内置模型？</ModalHeader>
+            <ModalBody className="space-y-3 pb-5 text-sm text-[var(--foreground-muted)]">
+              <p>没配内置模型时，按岗位改写、JD 解析、导入旧简历等会交给 {selected?.name} 完成。简历、邮件等内容会经它的 CLI 发到它自己的云端。之后可在 设置 → 模型服务 里随时关闭。</p>
+              <div className="flex justify-end gap-2">
+                <Button size="sm" variant="light" onPress={() => void answerFallback(false)} isDisabled={fallbackSaving}>暂不</Button>
+                <Button size="sm" onPress={() => void answerFallback(true)} isLoading={fallbackSaving}>开启</Button>
+              </div>
+            </ModalBody>
+          </ModalContent>
+        </Modal>
         {state.sync.status === "failed" && <div className="rounded-xl border border-[var(--border)] p-4" aria-label="OfferU 当前页面同步状态">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs font-semibold">当前页面同步</p>

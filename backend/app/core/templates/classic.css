@@ -1,0 +1,12 @@
+.resume { --name: 16.5pt; --h2: 12pt; --ink: #000; --muted: #000; --rule: #000; background: #fff; color: #000; }
+.resume .photo { width: 21mm; height: 25.4mm; margin-right: 8mm; border-radius: 0; }
+.resume .logo { height: 12.7mm; max-width: 47mm; }
+.resume h1 { color: #000; font-weight: 700; letter-spacing: 0; line-height: 1.2; margin: 0 0 2.2mm; }
+.resume h1 + p.contact { color: #000; line-height: 1.45; }
+.resume h2 { color: #000; font-weight: 700; letter-spacing: 0; margin: var(--section-gap) 0 2mm; padding-bottom: .8mm; border-bottom: .75pt solid #000; }
+.resume h3 { font-weight: 700; }
+.resume h3 .seg, .resume h3 .r { color: #000; }
+.resume h3 .sep::before { content: "-"; margin: 0; color: #000; }
+.resume ul, .resume ol { padding-left: 5mm; }
+.resume li::marker { color: #000; }
+.resume strong, .resume b { font-weight: 700; color: #000; }

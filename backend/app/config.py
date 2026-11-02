@@ -76,6 +76,9 @@ class Settings(BaseSettings):
     # ---- Coding agent runtime ----
     # 自动选择本地 coding agent CLI 的优先顺序（逗号分隔）
     coding_agent_priority: str = "claude,codex,omp,gemini,pi"
+    # 没配内置模型时，把模型调用交给上面顺序里第一个可用的外置 Agent（只读、不联网、只带回文本）。
+    # 默认关闭：内容会经外置 CLI 发到它自己的云端；用户连接本机 Agent 时会被问是否开启。
+    llm_fallback_to_agent: bool = False
 
     # ---- 长时记忆 ----
     # memory distiller 后台循环间隔（秒），0 = 关闭

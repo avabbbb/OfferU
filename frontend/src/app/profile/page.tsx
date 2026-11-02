@@ -57,16 +57,30 @@ export default function ProfilePage() {
   const memories = [...(memoryData?.items ?? [])].sort((a, b) => a.id - b.id);
   const saveProfile = (data: Record<string, unknown>) => void write("save", { type: "profile", data });
 
+  const [lastImport, setLastImport] = useState<number[]>([]);
   const importResume = async (file: File) => {
-    setImporting("正在读取…");
+    setImporting("正在读取...");
+    setLastImport([]);
     try {
       const { name, original } = await upload(file);
-      const { text } = await tool<{ text: string }>("read_file", { path: name });
-      await write("save", { type: "memory", data: { kind: "note", title: `旧简历原文：${original}`, body: text } });
-      setImporting("已存进「其他」。在 Codex 里说「把档案里的旧简历拆成一条条经历」，或者等 Ctrl+K 助手上线后让它来拆。");
+      try {
+        setImporting("正在拆成一条条经历，可能要一两分钟...");
+        const { count, change_ids } = await write<{ count: number; change_ids: number[] }>("split_resume", { path: name });
+        setLastImport(change_ids);
+        setImporting(`已从「${original}」拆出 ${count} 条经历，写进档案。`);
+      } catch (e) {
+        const { text } = await tool<{ text: string }>("read_file", { path: name });
+        await write("save", { type: "memory", data: { kind: "note", title: `旧简历原文：${original}`, body: text } });
+        setImporting(`没能自动拆分（${e instanceof Error ? e.message : "未知原因"}），原文已存进「其他」。可以在你的 Agent 里说「把档案里的旧简历拆成一条条经历」。`);
+      }
     } catch (e) {
       setImporting(e instanceof Error ? e.message : "读取失败");
     }
+  };
+  const undoImport = async () => {
+    for (const id of [...lastImport].reverse()) await write("undo", { change_id: id });
+    setLastImport([]);
+    setImporting("已撤销这次导入。");
   };
 
   return (
@@ -80,7 +94,7 @@ export default function ProfilePage() {
           className="shrink-0 rounded-md border border-[var(--border)] px-3 py-1.5 text-[13px] text-[var(--foreground)] hover:bg-[var(--surface)]">导入旧简历</button>
         <input ref={fileRef} type="file" accept=".pdf,.docx,.txt,.md" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void importResume(f); e.target.value = ""; }} />
       </header>
-      {importing && <p className="-mt-6 text-[13px] text-[var(--foreground-muted)]">{importing}</p>}
+      {importing && <p className="-mt-6 flex flex-wrap items-center gap-3 text-[13px] text-[var(--foreground-muted)]">{importing}{lastImport.length > 0 && <button type="button" onClick={() => void undoImport()} className="underline">撤销这次导入</button>}</p>}
 
       <section className="flex gap-8">
         <dl className="grid flex-1 grid-cols-[88px_1fr] items-center gap-x-2 gap-y-0.5">

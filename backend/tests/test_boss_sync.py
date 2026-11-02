@@ -8,11 +8,22 @@ import pytest
 from app.services import boss_sync
 
 
+def _boss_bin(tmp_path, monkeypatch, body: str) -> None:
+    """写一个假的 boss 命令。Windows 不认 shebang，用 .cmd 包一层再交给当前 Python。"""
+
+    script = tmp_path / "boss.py"
+    script.write_text(f"#!{sys.executable}\n{body}", encoding="utf-8")
+    if sys.platform == "win32":
+        launcher = tmp_path / "boss.cmd"
+        launcher.write_text(f'@"{sys.executable}" "{script}" %*\r\n', encoding="utf-8")
+    else:
+        script.chmod(0o755)
+        launcher = script
+    monkeypatch.setenv("OFFERU_BOSS_BIN", str(launcher))
+
+
 def _fake_boss(tmp_path, monkeypatch, envelope):
-    script = tmp_path / "boss"
-    script.write_text(f"#!{sys.executable}\nimport sys, json\nprint(json.dumps({envelope!r}))\nopen({str(tmp_path / 'args')!r}, 'a').write(' '.join(sys.argv[1:]) + '\\n')\n")
-    script.chmod(0o755)
-    monkeypatch.setenv("OFFERU_BOSS_BIN", str(script))
+    _boss_bin(tmp_path, monkeypatch, f"import sys, json\nprint(json.dumps({envelope!r}))\nopen({str(tmp_path / 'args')!r}, 'a').write(' '.join(sys.argv[1:]) + '\\n')\n")
 
 
 def test_run_boss_ok_and_args(tmp_path, monkeypatch):
@@ -37,16 +48,14 @@ def test_run_boss_explains_missing_web_login(tmp_path, monkeypatch):
 def test_boss_login_shows_qr_then_ok(tmp_path, monkeypatch):
     from app.services import boss_login
 
-    script = tmp_path / "boss"
-    script.write_text(
-        f"#!{sys.executable}\nimport sys, json, time\n"
+    _boss_bin(
+        tmp_path, monkeypatch,
+        "import sys, json, time\n"
         "if sys.argv[1] == 'status':\n    print(json.dumps({'credential_present': True})); sys.exit()\n"
         "open(sys.argv[2], 'wb').write(b'\\x89PNG')\n"
         "print(json.dumps({'event': 'qr'}), flush=True); time.sleep(0.5)\n"
-        "print(json.dumps({'event': 'ok'}), flush=True)\n"
+        "print(json.dumps({'event': 'ok'}), flush=True)\n",
     )
-    script.chmod(0o755)
-    monkeypatch.setenv("OFFERU_BOSS_BIN", str(script))
     monkeypatch.setattr(boss_login, "QR_PNG", tmp_path / "qr.img")
 
     async def flow():

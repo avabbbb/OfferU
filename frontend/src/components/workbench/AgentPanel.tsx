@@ -951,6 +951,9 @@ export function AgentPanel() {
     setSlashIndex(0);
   };
 
+  // 提醒和「接下来可以」每轮都会重算，只跟在最新一条回复下面，旧回复不重复贴。
+  const guidanceMessageId = messages.reduce<string | undefined>((last, item) => (item.response ? item.id : last), undefined);
+
   return (
     <div className="offeru-agent-panel flex h-full min-h-0 flex-col">
       <div className="agent-bar flex items-center justify-between gap-2 px-3 py-2">
@@ -1261,7 +1264,7 @@ export function AgentPanel() {
       <div ref={scrollRef} className="agent-thread custom-scrollbar min-h-0 flex-1 overflow-y-auto px-3.5 py-4">
         <div className="space-y-4">
           {messages.map((message) => (
-            <PanelMessageBubble key={message.id} message={message} onSuggestion={sendMessage} />
+            <PanelMessageBubble key={message.id} message={message} showGuidance={message.id === guidanceMessageId} onSuggestion={sendMessage} />
           ))}
           {inFlightTurns.map((turn) => (
             <div key={turn.id} id={"agent-turn-" + turn.id} data-testid="agent-inflight-turn" className="space-y-2">
@@ -1531,9 +1534,11 @@ export function AgentPanel() {
 
 function PanelMessageBubble({
   message,
+  showGuidance,
   onSuggestion,
 }: {
   message: PanelMessage;
+  showGuidance: boolean;
   onSuggestion: (prompt: string) => void;
 }) {
   const isUser = message.role === "user";
@@ -1558,8 +1563,8 @@ function PanelMessageBubble({
         </div>
         {response && (
           <div className="mt-2 space-y-2 text-left">
-            {response.alerts && response.alerts.length > 0 && <AlertList alerts={response.alerts} />}
-            {response.proactive_suggestions && response.proactive_suggestions.length > 0 && (
+            {showGuidance && response.alerts && response.alerts.length > 0 && <AlertList alerts={response.alerts} />}
+            {showGuidance && response.proactive_suggestions && response.proactive_suggestions.length > 0 && (
               <SuggestionList suggestions={response.proactive_suggestions} onSuggestion={onSuggestion} />
             )}
             {response.transferable_skills_summary && (

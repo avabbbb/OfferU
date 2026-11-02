@@ -65,6 +65,11 @@ from app.routes import config, interview, main_agent, interviews, research, brid
 async def lifespan(app: FastAPI):
     """应用启动时初始化数据库表与 MCP 会话管理器。"""
     await init_db()
+    import asyncio
+
+    from app.core import tools as core_tools
+
+    core_tools.MAIN_LOOP = asyncio.get_running_loop()
     # JobSource V1: local sources wrap the existing jobs table.
     from app.services.job_sources.router import job_source_router
     from app.services.job_sources.adapters.local import ManualJobSource, WebJobSource
@@ -492,6 +497,29 @@ def resume_template_css(template: str):
     return Response(resume.css(template), media_type="text/css")
 
 
+@app.post("/api/resume/render")
+async def resume_render(request: Request):
+    """Live preview: the exact HTML the PDF is printed from. Body: {resume, style}; old clients send {body, style}."""
+    from fastapi.responses import HTMLResponse
+
+    from app.core import resume, resume_model, store
+    from app.core.tools import check_style
+
+    payload = await request.json()
+    style = payload.get("style") or {}
+    try:
+        check_style(style)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    profile = store.first("profile") or {}
+    try:  # Body: {resume, style}；旧客户端只给 body（Markdown）就先解析
+        data = (resume_model.normalize(payload["resume"]) if payload.get("resume") is not None
+                else resume_model.from_markdown(str(payload.get("body") or "")))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return HTMLResponse(resume.render_html(data, style, profile.get("photo")))
+
+
 @app.get("/api/resume/{doc_id}/pdf")
 def resume_pdf(doc_id: int):
     from urllib.parse import quote
@@ -505,6 +533,103 @@ def resume_pdf(doc_id: int):
         raise HTTPException(status_code=404, detail="简历不存在")
     return Response(resume.pdf_bytes(resume.doc_html(doc)), media_type="application/pdf",
                     headers={"Content-Disposition": f"attachment; filename=\"resume.pdf\"; filename*=UTF-8''{quote(resume.file_name(doc))}"})
+
+
+@app.get("/api/resume/{doc_id}/png")
+def resume_png(doc_id: int):
+    """和 PDF 同一份 HTML 截成 PNG（2 倍像素，超过一页就是长图）。"""
+    from urllib.parse import quote
+
+    from fastapi.responses import Response
+
+    from app.core import resume, store
+
+    doc = store.get("doc", doc_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="简历不存在")
+    name = resume.file_name(doc)[:-4] + ".png"
+    return Response(resume.png_bytes(resume.doc_html(doc)), media_type="image/png",
+                    headers={"Content-Disposition": f"attachment; filename=\"resume.png\"; filename*=UTF-8''{quote(name)}"})
+
+
+@app.get("/api/resume/assets/school-logos")
+def school_logo_search(q: str = ""):
+    """校徽库搜索（随应用内置约 800 所学校）：返回候选，前端让用户挑一个。"""
+    from app.services.web_assets import search_school_logos
+
+    return {"items": search_school_logos(q)}
+
+
+@app.get("/api/resume/assets/school-logos/{file_name}")
+def school_logo_file(file_name: str):
+    from fastapi.responses import FileResponse
+
+    from app.services.web_assets import school_logo_path
+
+    try:
+        path = school_logo_path(file_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="校徽不存在")
+    return FileResponse(path, media_type="image/png", headers={"Cache-Control": "max-age=86400"})
+
+
+@app.post("/api/resume/assets/school-logos/{file_name}/use")
+def school_logo_use(file_name: str):
+    """选中的校徽抠成透明底存进数据目录 files/，返回文件名；前端写进 doc.style.logo，和自己上传的校徽走同一条路。"""
+    from app.core import store
+    from app.services.web_assets import school_logo_path, transparent_logo
+
+    try:
+        path = school_logo_path(file_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="校徽不存在")
+    name = "logo-" + file_name
+    target = store.data_dir("files") / name
+    target.write_bytes(transparent_logo(path.read_bytes()))
+    return {"name": name}
+
+
+@app.post("/api/resume/{doc_id}/tailor")
+async def resume_tailor(doc_id: int, request: Request):
+    """按岗位 JD 改写简历，SSE 推进度（start / delta / done / error）。断开连接就是取消；没跑完不写库。Body: {job_id?}."""
+    import json
+
+    from fastapi.responses import StreamingResponse
+
+    from app.core import tailor
+
+    payload = (await request.json()) if await request.body() else {}
+
+    async def events():
+        async for event in tailor.run(doc_id, payload.get("job_id")):
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(events(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.post("/api/resume/logo")
+async def upload_school_logo(file: UploadFile):
+    """自己上传的校徽：抠成透明底的 PNG 存进 files/，返回文件名。"""
+    import uuid
+
+    from app.core import store
+    from app.services.web_assets import transparent_logo
+
+    data = await file.read(10_000_001)
+    if len(data) > 10_000_000:
+        raise HTTPException(status_code=413, detail="校徽图片不能超过 10MB")
+    try:
+        png = transparent_logo(data)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    name = f"logo-{uuid.uuid4().hex[:12]}.png"
+    (store.data_dir("files") / name).write_bytes(png)
+    return {"name": name}
 
 
 @app.post("/api/files")

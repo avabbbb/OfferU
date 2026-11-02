@@ -370,7 +370,15 @@ async def chat_completion(
     # BYOK: 模型与 json_mode 能力由统一解析决定（provider 可自由配置，
     # provider_id 不参与行为分支；仅本地/明确关闭 json 的 provider 禁用 response_format）。
     settings = get_settings()
-    resolved = resolve_llm_client_config()
+    try:
+        resolved = resolve_llm_client_config()
+    except ValueError as exc:
+        # 内置模型用不了：交给本机已装的外置 Agent（见 agent_fallback）；关掉回退就照旧报错。
+        from app.agents import agent_fallback
+
+        if not messages or not agent_fallback.enabled():
+            raise
+        return await agent_fallback.complete(messages, json_mode=json_mode, cause=exc)
     provider = resolved["provider"]
     model = resolve_model_for_tier(tier)
     if not messages:
@@ -488,7 +496,16 @@ async def chat_completion_stream(
     参数同 chat_completion，返回 async generator。
     """
     settings = get_settings()
-    resolved = resolve_llm_client_config()
+    try:
+        resolved = resolve_llm_client_config()
+    except ValueError as exc:
+        from app.agents import agent_fallback
+
+        if not messages or not agent_fallback.enabled():
+            raise
+        # 外置 Agent 不流式：整段回答作为一块吐出。
+        yield await agent_fallback.complete(messages, json_mode=json_mode, cause=exc)
+        return
     provider = resolved["provider"]
     model = resolve_model_for_tier(tier)
     if not messages:

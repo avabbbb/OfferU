@@ -1026,7 +1026,7 @@ class ProfileChatSessionsInput(_StrictOperationInput):
 
 class HarnessConversationSaveInput(_StrictOperationInput):
     conversation_id: str | None = Field(default=None, max_length=120)
-    messages: list[dict[str, str]] = Field(max_length=120)
+    messages: list[dict[str, Any]] = Field(max_length=120)
 
 
 class HarnessConversationIdInput(_StrictOperationInput):

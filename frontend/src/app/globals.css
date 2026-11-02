@@ -888,24 +888,6 @@ select {
   }
 }
 
-.ProseMirror ul {
-  list-style-type: disc;
-  padding-left: 1.2em;
-}
-
-.ProseMirror ol {
-  list-style-type: decimal;
-  padding-left: 1.2em;
-}
-
-.ProseMirror li {
-  margin-bottom: 0.25em;
-}
-
-.ProseMirror li p {
-  margin: 0;
-}
-
 /* ─────────────────────────────────────────────
    OfferU 外壳皮肤：安静的纸面。
    保留三样记忆点：暖白纸色 + 极淡网格、宋体标题、标题下一笔红。
@@ -1888,3 +1870,287 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* 简历编辑器外壳（Kami）：暖纸底、暖灰细线、墨色文字；只换中性色，不加彩色、不加重阴影。 */
+.resume-shell {
+  --background: #eeede5;
+  --surface: #e5e2d6;
+  --border: #e3e0d4;
+  --foreground: #141413;
+  --foreground-muted: #6b6a64;
+}
+.resume-shell h2 { font-family: "Source Han Serif SC", "Noto Serif SC", "Songti SC", Georgia, serif; font-weight: 500; }
+
+
+.resume-shell {
+  --card: #fffefa;
+  --field: #f3f1e9;
+  --ink: #1f3a5f;
+  --shadow-card: 0 1px 2px rgba(20, 20, 19, 0.04), 0 4px 14px rgba(20, 20, 19, 0.05);
+  --shadow-raised: 0 1px 3px rgba(20, 20, 19, 0.06), 0 14px 36px rgba(20, 20, 19, 0.10);
+  --serif: "Source Han Serif SC", "Noto Serif SC", "Songti SC", Georgia, serif;
+}
+
+
+/* 顶栏一行（对齐超级简历）：简历名下拉 | 保存状态 | 排版工具栏 | 下载。 */
+.resume-shell .rs-head {
+  display: flex; align-items: center; gap: 0.75rem; min-width: 0; padding: 0.625rem 1.25rem;
+  border-bottom: 1px solid var(--border); background: var(--card);
+}
+.resume-shell .rs-saved { flex: none; color: var(--foreground-muted); font-size: 0.75rem; }
+.resume-shell .rs-bar {
+  position: relative; display: flex; flex-wrap: nowrap; align-items: center; gap: 0.125rem; min-width: 0;
+  margin-left: auto; font-size: 0.8125rem; white-space: nowrap;
+}
+.resume-shell .rs-sep { flex: none; width: 1px; height: 1rem; margin: 0 0.375rem; background: var(--border); }
+.resume-shell .rs-btn {
+  flex: none; height: 1.875rem; padding: 0 0.75rem; border: 1px solid var(--border); border-radius: 0.5rem;
+  background: var(--card); color: var(--foreground); font-size: 0.8125rem;
+}
+.resume-shell .rs-btn:hover { background: var(--field); }
+.resume-shell .rs-btn:disabled { opacity: 0.5; }
+.resume-shell .rs-pop, .resume-shell .rs-combo { position: relative; flex: none; }
+.resume-shell .rs-trigger {
+  display: inline-flex; align-items: center; gap: 0.3rem; height: 1.875rem; padding: 0 0.5rem; border-radius: 0.5rem;
+  color: var(--foreground); font-size: 0.8125rem;
+}
+.resume-shell .rs-trigger:hover, .resume-shell .rs-trigger[aria-expanded="true"] { background: var(--field); }
+.resume-shell .rs-caret-icon { width: 0.75rem; height: 0.75rem; flex: none; color: var(--foreground-muted); }
+.resume-shell .rs-dot { width: 0.625rem; height: 0.625rem; border-radius: 999px; }
+.resume-shell .rs-combo {
+  display: inline-flex; align-items: center; gap: 0.2rem; height: 1.875rem; padding: 0 0.125rem 0 0.5rem; border-radius: 0.5rem;
+}
+.resume-shell .rs-combo:hover, .resume-shell .rs-combo:focus-within { background: var(--field); }
+.resume-shell .rs-combo input {
+  width: 2.75rem; height: 1.5rem; padding: 0 0.25rem; border: 1px solid transparent; border-radius: 0.375rem; background: transparent;
+  color: var(--foreground); font-size: 0.8125rem; text-align: right; font-variant-numeric: tabular-nums; outline: none;
+}
+.resume-shell .rs-combo input:focus { border-color: var(--ink); background: var(--card); }
+.resume-shell .rs-caret { display: inline-flex; align-items: center; justify-content: center; width: 1.25rem; height: 1.5rem; border-radius: 0.25rem; }
+.resume-shell .rs-caret:hover { background: var(--surface); }
+.resume-shell .rs-label, .resume-shell .rs-unit { color: var(--foreground-muted); font-size: 0.8125rem; }
+.resume-shell .rs-menu {
+  position: absolute; top: calc(100% + 0.375rem); left: 0; z-index: 40; min-width: 100%; max-height: 18rem; overflow: auto;
+  padding: 0.25rem; border: 1px solid var(--border); border-radius: 0.625rem; background: var(--card); box-shadow: var(--shadow-raised);
+}
+.resume-shell .rs-menu-panel { left: auto; right: 0; display: grid; gap: 0.5rem; min-width: 16rem; max-height: none; overflow: visible; padding: 0.75rem; }
+.resume-shell .rs-menu-panel .rs-combo { display: flex; background: var(--field); }
+.resume-shell .rs-menu-panel .rs-combo > .rs-label { flex: 1; }
+.resume-shell .rs-option {
+  display: block; width: 100%; padding: 0.375rem 0.625rem; border-radius: 0.375rem; text-align: left;
+  color: var(--foreground); font-size: 0.8125rem; white-space: nowrap;
+}
+.resume-shell .rs-option:hover { background: var(--field); }
+.resume-shell .rs-option[aria-checked="true"], .resume-shell .rs-option[aria-selected="true"] { color: var(--ink); font-weight: 600; }
+.resume-shell .rs-row { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; min-height: 1.875rem; padding: 0 0.5rem; }
+.resume-shell .rs-row[data-disabled] { opacity: 0.45; }
+.resume-shell .rs-link { color: var(--foreground); font-size: 0.8125rem; }
+.resume-shell .rs-link:hover { color: var(--ink); }
+.resume-shell .rs-swatch { width: 0.875rem; height: 0.875rem; border-radius: 999px; }
+.resume-shell .rs-swatch[aria-checked="true"] { box-shadow: 0 0 0 2px var(--card), 0 0 0 3.5px var(--foreground); }
+.resume-shell .rs-download {
+  flex-shrink: 0; height: 1.875rem; display: inline-flex; align-items: center; padding: 0 0.875rem;
+  border-radius: 0.5rem; background: var(--foreground); color: var(--background); font-size: 0.8125rem; font-weight: 500;
+  box-shadow: 0 1px 2px rgba(20, 20, 19, 0.12), 0 4px 10px rgba(20, 20, 19, 0.12);
+}
+.resume-shell .rs-download:hover { opacity: 0.9; }
+.resume-shell .rs-download-group { position: relative; display: inline-flex; flex: none; }
+.resume-shell .rs-download-main { border-radius: 0.5rem 0 0 0.5rem; }
+.resume-shell .rs-download-caret { padding: 0 0.5rem; border-radius: 0 0.5rem 0.5rem 0; border-left: 1px solid rgba(255, 255, 255, 0.2); }
+.resume-shell .rs-download-caret .rs-caret-icon { color: inherit; transition: transform 0.15s ease; }
+.resume-shell .rs-download-caret .rs-caret-icon[data-open] { transform: rotate(180deg); }
+.resume-shell .rs-download-menu {
+  position: absolute; top: calc(100% + 0.375rem); right: 0; z-index: 40; min-width: 10rem; padding: 0.25rem;
+  border: 1px solid var(--border); border-radius: 0.625rem; background: var(--card); box-shadow: var(--shadow-raised);
+  animation: rs-slide-down 0.14s ease-out;
+}
+.resume-shell .rs-download-menu .rs-unit { margin-left: 0.25rem; font-size: 0.75rem; }
+@keyframes rs-slide-down { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+/* 按岗位改写：浮在预览画布顶部的半透明胶囊，滚动时贴顶，不再单独占一行。 */
+.resume-shell .rp-toolbar { position: sticky; top: 0; z-index: 5; display: flex; justify-content: center; margin-bottom: 0.625rem; pointer-events: none; }
+.resume-shell .rp-toolbar > div {
+  pointer-events: auto; padding: 0.3rem 0.875rem; border-radius: 999px;
+  background: color-mix(in srgb, var(--card) 82%, transparent); backdrop-filter: blur(6px);
+  box-shadow: 0 1px 2px rgba(20, 20, 19, 0.06), 0 4px 12px rgba(20, 20, 19, 0.06);
+}
+.resume-shell .rs-status {
+  position: absolute; top: calc(100% + 0.375rem); left: 0; z-index: 30; padding: 0.25rem 0.5rem; border-radius: 0.375rem;
+  background: var(--foreground); color: var(--background); font-size: 0.75rem;
+}
+.resume-shell .rs-status[data-error] { background: #b42318; color: #fff; }
+
+/* 简历名切换器：点名字下拉切换 / 新建 / 改名 / 复制 / 删除。 */
+.resume-shell .rw { position: relative; display: flex; flex: 0 1 auto; align-items: center; gap: 0.125rem; min-width: 8.5rem; }
+.resume-shell .rw-name {
+  display: inline-flex; align-items: center; gap: 0.375rem; min-width: 0; max-width: 18rem; height: 2rem; padding: 0 0.5rem;
+  border-radius: 0.5rem; color: var(--foreground); font-family: var(--serif); font-size: 1.0625rem; font-weight: 600;
+}
+.resume-shell .rw-name:hover, .resume-shell .rw-name[aria-expanded="true"] { background: var(--field); }
+.resume-shell .rw-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.resume-shell .rw-glyph { width: 0.9rem; height: 0.9rem; flex: none; }
+.resume-shell .rw-icon {
+  display: inline-flex; flex: none; align-items: center; justify-content: center; width: 1.75rem; height: 1.75rem;
+  border-radius: 0.375rem; color: var(--foreground-muted);
+}
+.resume-shell .rw-icon:hover { background: var(--surface); color: var(--foreground); }
+.resume-shell .rw-icon[data-danger]:hover { color: #b42318; }
+.resume-shell .rw-input {
+  width: 14rem; height: 2rem; padding: 0 0.5rem; border: 1px solid var(--ink); border-radius: 0.5rem; background: var(--card);
+  color: var(--foreground); font-family: var(--serif); font-size: 1.0625rem; font-weight: 600; outline: none;
+}
+.resume-shell .rw-input-row { flex: 1; width: auto; min-width: 0; height: 1.875rem; margin: 0.25rem 0 0.25rem 0.375rem; font-family: inherit; font-size: 0.875rem; font-weight: 500; }
+.resume-shell .rw-menu {
+  position: absolute; top: calc(100% + 0.375rem); left: 0; z-index: 50; width: 20rem; padding: 0.375rem;
+  border: 1px solid var(--border); border-radius: 0.75rem; background: var(--card); box-shadow: var(--shadow-raised);
+}
+.resume-shell .rw-caption { padding: 0.375rem 0.625rem 0.25rem; color: var(--foreground-muted); font-size: 0.75rem; }
+.resume-shell .rw-list { max-height: 20rem; overflow: auto; }
+.resume-shell .rw-row { display: flex; align-items: center; gap: 0.125rem; padding-right: 0.25rem; border-radius: 0.5rem; }
+.resume-shell .rw-row:hover, .resume-shell .rw-row:focus-within { background: var(--field); }
+.resume-shell .rw-row[data-current] .rw-row-title { color: var(--ink); font-weight: 600; }
+.resume-shell .rw-link { display: flex; flex: 1; flex-direction: column; min-width: 0; padding: 0.4375rem 0.625rem; }
+.resume-shell .rw-row-title, .resume-shell .rw-row-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.resume-shell .rw-row-title { color: var(--foreground); font-size: 0.875rem; }
+.resume-shell .rw-row-sub { color: var(--foreground-muted); font-size: 0.75rem; }
+.resume-shell .rw-acts { display: flex; opacity: 0; }
+.resume-shell .rw-row:hover .rw-acts, .resume-shell .rw-row:focus-within .rw-acts { opacity: 1; }
+.resume-shell .rw-foot { display: flex; gap: 0.25rem; margin-top: 0.25rem; padding-top: 0.375rem; border-top: 1px solid var(--border); }
+.resume-shell .rw-new {
+  display: inline-flex; flex: 1; align-items: center; justify-content: center; gap: 0.3rem; height: 2rem;
+  border-radius: 0.5rem; color: var(--foreground); font-size: 0.8125rem;
+}
+.resume-shell .rw-new:hover { background: var(--field); color: var(--ink); }
+
+
+.resume-shell .rf-scroll { min-width: 0; flex: 1; overflow: auto; padding: 0.25rem 1.5rem 2rem; display: flex; flex-direction: column; gap: 1rem; }
+.resume-shell .rf-card {
+  border: 1px solid var(--border); border-radius: 1rem; background: var(--card); box-shadow: var(--shadow-card);
+  padding: 1rem 1.25rem; scroll-margin-top: 0.75rem;
+}
+.resume-shell .rf-card[data-hidden] { opacity: 0.6; }
+.resume-shell .rf-card-dashed { border-style: dashed; background: transparent; box-shadow: none; }
+.resume-shell .rf-card-head { display: flex; align-items: center; gap: 0.625rem; min-width: 0; }
+.resume-shell .rf-card-head > * { flex: none; }
+.resume-shell .rf-card-title {
+  min-width: 2em; max-width: 60%; flex: none; padding: 0 0.125rem; border: 0; border-radius: 0.375rem; background: transparent; outline: none;
+  font-family: var(--serif); font-size: 1.1875rem; font-weight: 600; color: var(--foreground);
+}
+.resume-shell h2.rf-card-title { flex: 1; max-width: none; }
+.resume-shell input.rf-card-title:focus { box-shadow: 0 0 0 2px rgba(31, 58, 95, 0.15); }
+.resume-shell .rf-card-body { margin-top: 0.875rem; display: flex; flex-direction: column; gap: 0.625rem; }
+.resume-shell .rf-card-body.grid { display: grid; }
+.resume-shell .rf-icon {
+  display: inline-flex; width: 2rem; height: 2rem; flex-shrink: 0; align-items: center; justify-content: center;
+  border-radius: 999px; background: var(--ink); color: #fff; box-shadow: 0 2px 6px rgba(31, 58, 95, 0.25);
+}
+.resume-shell .rf-icon svg { width: 1rem; height: 1rem; }
+.resume-shell .rf-actions { display: flex; flex-shrink: 0; align-items: center; gap: 0.125rem; margin-left: auto; }
+.resume-shell .rf-btn {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 1.75rem; height: 1.75rem; padding: 0 0.3rem;
+  border-radius: 0.375rem; color: var(--foreground-muted); font-size: 0.75rem; line-height: 1;
+}
+.resume-shell .rf-btn:hover:not(:disabled) { background: var(--field); color: var(--foreground); }
+.resume-shell .rf-btn[data-danger]:hover:not(:disabled) { background: #fbeae8; color: #b42318; }
+.resume-shell .rf-btn:disabled { opacity: 0.3; }
+.resume-shell .rf-glyph { width: 1rem; height: 1rem; }
+.resume-shell .rf-chevron { display: inline-flex; transition: transform 0.15s; }
+.resume-shell .rf-chevron[data-open] { transform: rotate(180deg); }
+/* 排序、隐藏这类低频操作平时藏起来，悬停或键盘聚焦时才出现。 */
+.resume-shell .rf-hover { display: inline-flex; align-items: center; gap: 0.125rem; max-width: 0; overflow: hidden; opacity: 0; transition: opacity 0.15s, max-width 0.15s; }
+.resume-shell .rf-card-head:hover .rf-hover, .resume-shell .rf-item-head:hover .rf-hover, .resume-shell .rf-hover:focus-within { max-width: 8rem; opacity: 1; }
+.resume-shell .rf-muted { color: var(--foreground-muted); font-size: 0.75rem; }
+.resume-shell .rf-item { border-radius: 0.625rem; background: var(--field); scroll-margin-top: 0.75rem; }
+.resume-shell .rf-item[data-open] { background: var(--card); box-shadow: 0 0 0 1px var(--border), 0 2px 8px rgba(20, 20, 19, 0.05); }
+.resume-shell .rf-item-head { display: flex; align-items: center; gap: 0.75rem; padding: 0.7rem 0.75rem 0.7rem 1rem; cursor: pointer; }
+.resume-shell .rf-item-main { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 0.15rem; }
+.resume-shell .rf-item-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.875rem; font-weight: 600; color: var(--foreground); }
+.resume-shell .rf-item-sub {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--foreground-muted); font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+.resume-shell .rf-item-body { padding: 0.25rem 0.75rem 0.875rem; }
+.resume-shell .rf-field { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
+.resume-shell .rf-label { color: var(--foreground-muted); font-size: 0.75rem; }
+.resume-shell .rf-input {
+  width: 100%; border: 1px solid transparent; border-radius: 0.5rem; background: var(--field);
+  padding: 0.4rem 0.625rem; color: var(--foreground); font-size: 0.8125rem; line-height: 1.55; outline: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+.resume-shell .rf-item[data-open] .rf-input { background: var(--background); }
+.resume-shell .rf-input:focus { border-color: var(--ink); background: var(--card); box-shadow: 0 0 0 3px rgba(31, 58, 95, 0.08); }
+.resume-shell .rf-bullet { display: flex; align-items: flex-start; gap: 0.5rem; }
+.resume-shell .rf-dot { margin-top: 0.85rem; width: 0.3rem; height: 0.3rem; flex-shrink: 0; border-radius: 999px; background: var(--foreground-muted); }
+.resume-shell .rf-bullet .rf-actions { padding-top: 0.25rem; }
+.resume-shell .rf-link { align-self: flex-start; color: var(--ink); font-size: 0.75rem; }
+.resume-shell .rf-add {
+  align-self: center; display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.45rem 1.25rem; border: 0; border-radius: 999px;
+  background: var(--field); color: var(--foreground); font-size: 0.8125rem; transition: background 0.15s, color 0.15s;
+}
+.resume-shell .rf-add:hover { background: var(--surface); color: var(--ink); }
+/* 收起的正文模块（个人总结）露前两行。 */
+.resume-shell .rf-clamp {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; white-space: pre-line;
+  color: var(--foreground-muted); font-size: 0.8125rem; line-height: 1.6;
+}
+.resume-shell .rf-chip {
+  padding: 0.3rem 0.75rem; border: 1px solid var(--border); border-radius: 999px; background: var(--card);
+  color: var(--foreground); font-size: 0.75rem;
+}
+.resume-shell .rf-chip:hover { border-color: var(--ink); color: var(--ink); }
+
+/* 正文 / 要点的所见即所得编辑框：正文工具栏常驻，要点（一行字）只在聚焦时露出工具栏。 */
+.resume-shell .rt { display: flex; flex-direction: column; flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: 0.625rem; background: var(--card); overflow: hidden; transition: border-color 0.15s; }
+.resume-shell .rt:focus-within { border-color: var(--ink); }
+.resume-shell .rt-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.125rem 0; padding: 0.25rem 0.375rem; border-bottom: 1px solid var(--border); color: var(--foreground-muted); }
+.resume-shell .rt-bar::-webkit-scrollbar { display: none; }
+.resume-shell .rt-bar > .rt-group { flex: none; }
+.resume-shell .rt-group { display: inline-flex; align-items: center; gap: 0.0625rem; padding: 0 0.25rem; }
+.resume-shell .rt-group + .rt-group { border-left: 1px solid var(--border); }
+.resume-shell .rt-group:first-child { padding-left: 0; }
+.resume-shell .rt-btn { display: inline-flex; align-items: center; justify-content: center; width: 1.625rem; height: 1.625rem; border-radius: 0.375rem; color: inherit; }
+.resume-shell .rt-btn svg { width: 0.95rem; height: 0.95rem; }
+.resume-shell .rt-btn:hover { background: var(--surface); color: var(--ink); }
+.resume-shell .rt-btn[aria-pressed="true"] { background: var(--surface); color: var(--ink); }
+.resume-shell .rt-compact .rt-bar { display: none; }
+.resume-shell .rt-compact:focus-within .rt-bar { display: flex; }
+.resume-shell .rt .rt-edit { height: auto; margin: 0; padding: 0.5rem 0.75rem; border: 0; border-radius: 0; background: transparent; box-shadow: none; outline: none; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; cursor: text; }
+.resume-shell .rt-edit ul, .resume-shell .rt-edit ol { margin: 0.125rem 0; padding-left: 1.4em; }
+.resume-shell .rt-edit ul { list-style: disc; }
+.resume-shell .rt-edit ol { list-style: decimal; }
+.resume-shell .rt-edit blockquote { margin: 0 0 0 2em; }
+.resume-shell .rt-edit b, .resume-shell .rt-edit strong { font-weight: 600; }
+.resume-shell .rt-edit a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
+
+
+/* 预览：和右栏同色的暖灰底上放一张 A4，只用一层浅阴影托出纸面，不要深色边框。 */
+.resume-shell .rp-canvas { background: var(--surface); }
+.resume-shell .rp-canvas [role="alert"] { color: #b91c1c; }
+.resume-shell .rp-paper { border-radius: 2px; box-shadow: 0 1px 2px rgba(20, 20, 19, 0.08), 0 8px 24px rgba(20, 20, 19, 0.10); }
+
+
+.resume-shell .rf-contact-label { min-width: 0; flex: 1; border: 0; background: transparent; padding: 0; color: var(--foreground-muted); font-size: 0.75rem; outline: none; }
+.resume-shell .rf-contact-label:focus { color: var(--foreground); }
+.resume-shell .rf-media { display: flex; flex-wrap: wrap; gap: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
+.resume-shell .rf-media-box { display: flex; flex-direction: column; gap: 0.4rem; }
+.resume-shell .rf-thumb { display: inline-flex; flex: none; align-items: center; justify-content: center; overflow: hidden; border-radius: 0.375rem; border: 1px dashed var(--border); background: var(--field); color: var(--foreground-muted); font-size: 0.75rem; }
+.resume-shell .rf-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.resume-shell .rf-thumb-photo { width: 4.5rem; height: 6rem; }
+.resume-shell .rf-thumb-photo:hover { border-color: var(--ink); }
+.resume-shell .rf-thumb-logo { width: 3.5rem; height: 3.5rem; }
+.resume-shell .rf-thumb-logo img { object-fit: contain; }
+.resume-shell .rf-check { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--foreground-muted); font-size: 0.75rem; }
+.resume-shell .rf-combo-box { position: relative; min-width: 0; }
+.resume-shell .rf-suggest {
+  position: absolute; top: calc(100% + 0.25rem); left: 0; right: 0; z-index: 40; margin: 0; padding: 0.25rem; list-style: none;
+  max-height: 16rem; overflow: auto; border: 1px solid var(--border); border-radius: 0.5rem; background: var(--card);
+  box-shadow: 0 1px 2px rgba(20, 20, 19, 0.08), 0 8px 24px rgba(20, 20, 19, 0.12);
+}
+.resume-shell .rf-suggest li {
+  display: flex; align-items: center; gap: 0.5rem; min-width: 0; padding: 0.375rem 0.5rem; border-radius: 0.375rem;
+  color: var(--foreground); font-size: 0.8125rem; line-height: 1.4; cursor: pointer;
+}
+.resume-shell .rf-suggest li[data-active] { background: var(--field); }
+.resume-shell .rf-suggest li img { flex: none; width: 1.5rem; height: 1.5rem; object-fit: contain; }
+.resume-shell .rf-suggest li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.resume-shell .rf-suggest mark { background: none; color: var(--ink); font-weight: 600; }
+.resume-shell .rf-suggest .rf-suggest-empty { color: var(--foreground-muted); font-size: 0.75rem; cursor: default; }

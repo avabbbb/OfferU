@@ -79,8 +79,9 @@ async def extract_questions(
 
     # 云端 Provider 自动脱敏 PII（面经可能包含个人联系方式等敏感信息）
     pii_mapping: dict = {}
-    resolved = resolve_llm_client_config()
-    if not _is_local_llm(resolved.get("base_url", "")):
+    from app.agents.agent_fallback import endpoint_is_local
+
+    if not endpoint_is_local():
         raw_text_safe, pii_mapping = desensitize(raw_text_safe)
 
     prompt = EXTRACT_PROMPT.format(

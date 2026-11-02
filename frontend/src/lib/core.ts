@@ -21,11 +21,9 @@ export type MemoryKind = "experience" | "project" | "education" | "skill" | "awa
 export const MEMORY_KIND: Record<MemoryKind, string> = {
   education: "教育", experience: "实习 / 工作", project: "项目", award: "奖项", skill: "技能", preference: "偏好", note: "其他",
 };
-export type Template = "single" | "compact" | "photo";
-export const TEMPLATES: Record<Template, string> = { single: "单栏", compact: "紧凑", photo: "带照片" };
 export type Profile = Partial<Record<"name" | "school" | "major" | "degree" | "grad_year" | "phone" | "email" | "city" | "target" | "about" | "photo", string>> & { id?: number };
 export type Memory = Base & { kind: MemoryKind; title?: string; body?: string; start?: string; end?: string };
-export type Doc = Base & { kind: string; title?: string; body?: string; template?: Template };
+export type Doc = Base & { kind: string; title?: string; body?: string; resume?: unknown; template?: string; style?: import("@/lib/resumeStyle").StyleInput };
 export type Change = { id: number; at: string; actor: string; summary: string; undone_at: string | null };
 export type Overview = {
   today: string;
