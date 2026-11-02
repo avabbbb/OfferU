@@ -68,12 +68,6 @@ from app.services.boss_blast import BossBlastSearchInput, BossBlastStartInput, g
 from app.services.boss_sync import BossSyncSettingsInput, get_boss_sync, run_boss_sync, set_boss_sync
 from app.services.boss_login import cancel_boss_login, get_boss_login, logout_boss, start_boss_login
 from app.services.local_memory import LocalMemoryPreviewInput, list_local_memory_sources, preview_local_memory_source
-from app.services.optimize_agent_operations import (
-    chat_optimize_agent_session,
-    delete_optimize_agent_session,
-    start_optimize_agent_session,
-    stream_optimize_agent_session,
-)
 from app.services.agent_operations import (
     activate_authorized_research_read_only,
     add_profile_evidence,
@@ -99,7 +93,6 @@ from app.services.agent_operations import (
     distill_memory,
     draft_interview_scoring_skill,
     export_resume_pdf,
-    generate_cover_letter,
     get_application_workspace,
     get_application_progress_candidate,
     get_application_progress_board,
@@ -276,7 +269,6 @@ from app.services.resume_route_operations import (
     access_resume_share_record,
     apply_resume_suggestions_batch,
     apply_resume_suggestion,
-    batch_optimize_resume_records,
     create_resume_record,
     create_resume_section,
     create_resume_share_record,
@@ -1037,24 +1029,6 @@ class HarnessMemoryImportInput(_StrictOperationInput):
     content: dict[str, Any] | str
 
 
-class OptimizeAgentStartInput(_StrictOperationInput):
-    job_ids: list[int] = Field(min_length=1, max_length=200)
-    mode: str = Field(default="per_job", pattern="^(per_job|combined)$")
-    profile_id: int | None = Field(default=None, gt=0)
-    reference_resume_id: int | None = Field(default=None, gt=0)
-
-
-class OptimizeAgentChatInput(_StrictOperationInput):
-    session_id: str = Field(min_length=1, max_length=120)
-    message: str = Field(min_length=1, max_length=20_000)
-    action: str = Field(default="reply", pattern="^(reply|confirm|reject|adjust)$")
-    feedback: str = Field(default="", max_length=20_000)
-
-
-class OptimizeAgentSessionIdInput(_StrictOperationInput):
-    session_id: str = Field(min_length=1, max_length=120)
-
-
 class ProfileChatSessionIdInput(_StrictOperationInput):
     session_id: int = Field(gt=0)
 
@@ -1154,12 +1128,6 @@ class ResumeSuggestionInput(_StrictOperationInput):
 class ResumeSuggestionBatchInput(_StrictOperationInput):
     resume_id: int = Field(gt=0)
     payload: dict[str, Any] = Field(min_length=1)
-
-
-class ResumeBatchOptimizeInput(_StrictOperationInput):
-    resume_id: int = Field(gt=0)
-    job_ids: list[int] = Field(min_length=1, max_length=20)
-    auto_apply: bool = False
 
 
 class ResumeVersionCreateInput(_StrictOperationInput):
@@ -1708,7 +1676,6 @@ _PROTECTED_AGENT_SURFACES = {
     "mcp",
     "pi",
     "web_agent",
-    "optimize_agent",
     "decision_node",
 }
 
@@ -3892,14 +3859,6 @@ OPERATIONS: dict[str, Operation] = {
         side_effects=("write",),
         input_model=SaveCareerArtifactInput,
     ),
-    "generate_cover_letter": Operation(
-        name="generate_cover_letter",
-        fn=generate_cover_letter,
-        description="为指定岗位和简历生成求职信草稿。",
-        parameters={"job_id": "int", "resume_id": "int"},
-        group="applications",
-        side_effects=("llm",),
-    ),
     "job_stats": Operation(
         name="job_stats",
         fn=job_stats,
@@ -4267,48 +4226,6 @@ OPERATIONS.update(
 )
 
 
-OPERATIONS.update(
-    {
-        "start_optimize_agent_session": Operation(
-            name="start_optimize_agent_session",
-            fn=start_optimize_agent_session,
-            description="启动兼容的对话式简历优化会话并持久化会话快照。",
-            group="resume",
-            side_effects=("llm", "write"),
-            input_model=OptimizeAgentStartInput,
-            version="2026-08-28",
-        ),
-        "chat_optimize_agent_session": Operation(
-            name="chat_optimize_agent_session",
-            fn=chat_optimize_agent_session,
-            description="推进对话式简历优化会话并保存状态。",
-            group="resume",
-            side_effects=("llm", "write"),
-            input_model=OptimizeAgentChatInput,
-            version="2026-08-28",
-        ),
-        "stream_optimize_agent_session": Operation(
-            name="stream_optimize_agent_session",
-            fn=stream_optimize_agent_session,
-            description="执行兼容的对话式简历优化会话并返回可复用 SSE 事件。",
-            group="resume",
-            side_effects=("llm", "write"),
-            input_model=OptimizeAgentChatInput,
-            audit_redacted_output_parameters=("events",),
-            version="2026-08-28",
-        ),
-        "delete_optimize_agent_session": Operation(
-            name="delete_optimize_agent_session",
-            fn=delete_optimize_agent_session,
-            description="删除对话式简历优化会话。",
-            group="resume",
-            side_effects=("write",),
-            input_model=OptimizeAgentSessionIdInput,
-            version="2026-08-28",
-        ),
-    }
-)
-
 
 OPERATIONS.update(
     {
@@ -4424,15 +4341,6 @@ OPERATIONS.update(
             side_effects=("write",),
             permissions=("resume_write",),
             input_model=ResumeSuggestionBatchInput,
-        ),
-        "batch_optimize_resume_records": Operation(
-            name="batch_optimize_resume_records",
-            fn=batch_optimize_resume_records,
-            description="按岗位批量创建岗位化简历候选稿。",
-            group="resume",
-            side_effects=("llm", "write"),
-            permissions=("resume_write", "job_description"),
-            input_model=ResumeBatchOptimizeInput,
         ),
         "create_resume_version_record": Operation(
             name="create_resume_version_record",

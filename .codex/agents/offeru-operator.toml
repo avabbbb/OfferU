@@ -1,4 +1,4 @@
-# generated: offeru-skill-registry@2026-10-16.1 sha256=f0a83e685f1f4c7dfe097760b4b58785f1e280bfbd0be40b53d7ed3183c82a1a
+# generated: offeru-skill-registry@2026-10-16.1 sha256=39e00323ac9a4c6850ae22a5b4c3cfc98f2d3b6266292a3d100439080de825a3
 name = "offeru-operator"
 description = "Operate OfferU through its live Skill Registry and atomic CLI control contract."
 developer_instructions = """
