@@ -76,7 +76,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 
 ## 5. 工具清单
 
-现在 17 个（`GET /api/tools` 可查）。✓ 表示已实现。
+现在 18 个（`GET /api/tools` 可查）。✓ 表示已实现。
 
 | 工具 | 作用 | 状态 |
 | --- | --- | --- |
@@ -97,6 +97,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 | tailor_resume | 按岗位 JD 改写一份简历，直接覆盖并返回新正文（一条 change，可撤销） | ✓ |
 | split_resume | 把旧简历原文拆成一条条 memory 写进档案（可整次撤销） | ✓ |
 | add_job | 贴岗位链接或 JD：抓正文、拆公司 / 岗位 / 城市 / JD，截止日另存 deadline 事项；抓不到正文就报错不存 | ✓ |
+| rank_jobs | 批量评估：按档案和偏好给岗位打 0–100 分并写三句理由，存在 job.score / reasons（每个岗位一条 change） | ✓ |
 
 工具的说明文字就是 Agent 看到的全部文档。每个工具的说明写清字段和枚举，Skill 只讲「什么时候用哪个工具」，不超过 4KB。
 

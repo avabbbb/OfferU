@@ -46,7 +46,7 @@ def test_mcp_and_http_share_tools(tmp_path, monkeypatch):
     from app.mcp_server import mcp
 
     names = [t.name for t in asyncio.run(mcp.list_tools())]
-    assert names[0] == "overview" and len(names) <= 17
+    assert names[0] == "overview" and len(names) <= 18
     asyncio.run(mcp.call_tool("save", {"type": "job", "data": {"company": "米哈游"}}))
     with TestClient(app, base_url="http://127.0.0.1:8766") as client:
         listed = client.post("/api/tools/list", json={"type": "job"}).json()
@@ -220,3 +220,28 @@ def test_add_job_from_text_or_link(tmp_path, monkeypatch):
     bare = call("add_job", {"text": "京东 算法工程师\n负责推荐"}, actor="你")["record"]
     assert bare["title"] == "京东 算法工程师" and "负责推荐" in bare["jd"]
     assert len(call("list", {"type": "job"}, actor="你")["items"]) == 2
+
+
+def test_rank_jobs(tmp_path, monkeypatch):
+    """批量评估：只评没打分的岗位，分数和理由存在 job 上、按分排序，每个岗位一条改动可撤销。"""
+    monkeypatch.setenv("OFFERU_DATA_DIR", str(tmp_path))
+    from app.core import job_rank
+
+    assert job_rank.normalize({"items": [{"id": 1, "score": 120, "reasons": ["x"]}, {"id": 9, "score": 5}]}, {1}) == {1: {"score": 100, "reasons": ["x"]}}
+    a = call("save", {"type": "job", "data": {"company": "美团", "title": "后端实习", "jd": "Go"}}, actor="你")["record"]
+    b = call("save", {"type": "job", "data": {"company": "京东", "title": "算法实习", "jd": "推荐"}}, actor="你")["record"]
+    call("save", {"type": "memory", "data": {"kind": "preference", "title": "想去北京"}}, actor="你")
+
+    async def evaluate(text, jobs):
+        assert "想去北京" in text and sorted(j["id"] for j in jobs) == sorted([a["id"], b["id"]])
+        return {a["id"]: {"score": 62, "reasons": ["Go 对口", "缺实习", "在北京"]},
+                b["id"]: {"score": 85, "reasons": ["有推荐经历", "无明显差距", "在北京"]}}
+
+    monkeypatch.setattr(job_rank, "available", lambda: True)
+    monkeypatch.setattr(job_rank, "evaluate", evaluate)
+    out = call("rank_jobs", {}, actor="助手")
+    assert [i["id"] for i in out["items"]] == [b["id"], a["id"]] and len(out["change_ids"]) == 2
+    assert call("get", {"type": "job", "id": a["id"]}, actor="你")["record"]["reasons"][0] == "Go 对口"
+    assert call("rank_jobs", {}, actor="助手")["count"] == 0
+    call("undo", {"change_id": out["change_ids"][0]}, actor="你")
+    assert call("get", {"type": "job", "id": a["id"]}, actor="你")["record"].get("score") is None

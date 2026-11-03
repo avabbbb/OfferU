@@ -32,7 +32,10 @@ export default function JobsPage() {
   const [url, setUrl] = useState("");
   const jobs = data?.items ?? [];
   const statuses = FILTERS.find(([id]) => id === filter)![2];
-  const shown = statuses.length ? jobs.filter((job) => statuses.includes(job.status)) : jobs;
+  const filtered = statuses.length ? jobs.filter((job) => statuses.includes(job.status)) : jobs;
+  const shown = [...filtered].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+  const unscored = jobs.filter((job) => job.score == null && job.status !== "rejected" && job.status !== "closed").length;
+  const [ranking, setRanking] = useState(false);
 
   /** 贴链接或 JD：后端抓正文、拆字段；抓不到就报错，不存空壳。 */
   const paste = async () => {
@@ -50,6 +53,18 @@ export default function JobsPage() {
   const add = async () => {
     await write("save", { type: "job", data: { company: company.trim() || null, title: title.trim() || null, url: url.trim() || null } });
     setCompany(""); setTitle(""); setUrl("");
+  };
+
+  /** 读档案和偏好给没打分的岗位打分，结果存在岗位上，列表按分排。 */
+  const rank = async () => {
+    setRanking(true); setError("");
+    try {
+      await write("rank_jobs", {});
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRanking(false);
+    }
   };
 
   return (
@@ -73,6 +88,12 @@ export default function JobsPage() {
           <button type="submit" style={{ fontSize: 13 }} disabled={!company.trim() || !title.trim()} className="rounded-md border border-[var(--border)] px-3 py-1.5 text-[13px] text-[var(--foreground)] disabled:opacity-40">添加</button>
         </form>
       </details>
+      {unscored > 0 && (
+        <div className="flex items-center gap-3 text-[13px] text-[var(--foreground-muted)]">
+          <span>{unscored} 个岗位还没评估</span>
+          <button type="button" onClick={() => void rank()} disabled={ranking} style={{ fontSize: 13 }} className="rounded-md border border-[var(--border)] px-3 py-1 text-[13px] text-[var(--foreground)] disabled:opacity-40">{ranking ? "正在评估…" : "评估未评估的"}</button>
+        </div>
+      )}
 
       <div className="flex gap-4 border-b border-[var(--border)] text-[13px]">
         {FILTERS.map(([id, name, match]) => {
@@ -94,6 +115,8 @@ export default function JobsPage() {
               <span className="text-[14px] font-medium text-[var(--foreground)]">{job.company || "未填公司"}</span>
               <span className="ml-2 text-[13.5px] text-[var(--foreground-muted)]">{job.title}</span>
             </Link>
+            {job.score != null && <span title={(job.reasons ?? []).join("\n")} aria-label={"评分 " + job.score}
+              className={"rounded px-1.5 py-0.5 text-[12px] font-medium tabular-nums " + (job.score >= 80 ? "bg-green-100 text-green-800" : job.score >= 60 ? "bg-amber-100 text-amber-800" : "bg-[var(--surface)] text-[var(--foreground-muted)]")}>{job.score}</span>}
             {job.applied_at && <span className="text-[12px] text-[var(--foreground-muted)]">{job.applied_at.slice(5)} 投递</span>}
             <StatusSelect job={job} />
           </li>

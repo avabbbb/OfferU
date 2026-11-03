@@ -640,6 +640,40 @@ def add_job(text: str, *, actor: str) -> dict[str, Any]:
     return out
 
 
+class RankJobsIn(_In):
+    ids: Optional[list[int]] = Field(None, description="只评这些岗位；不传就评所有没打过分、没结束的岗位")
+    redo: bool = Field(False, description="不传 ids 时，true 表示打过分的也重评")
+
+
+def rank_jobs(ids: Optional[list[int]] = None, redo: bool = False, *, actor: str) -> dict[str, Any]:
+    """读档案和偏好给岗位打 0–100 分、写三句理由，存在 job 的 score / reasons 上，每个岗位一条改动。"""
+    from app.core import job_rank
+
+    if not job_rank.available():
+        raise ValueError("没配模型，没法自动评估。你自己评就用 save 给 job 写 score（0–100）和 reasons（三句）")
+    if ids:
+        jobs = []
+        for id_ in ids:
+            job = store.get("job", int(id_))
+            if job is None:
+                raise ValueError(f"岗位 #{id_} 不存在")
+            jobs.append(job)
+    else:
+        jobs = [j for j in store.all_of("job") if j.get("status") not in ("rejected", "closed")
+                and (redo or j.get("score") is None)]
+    if not jobs:
+        return {"count": 0, "change_ids": [], "items": []}
+    text = job_rank.candidate(store.first("profile"), store.all_of("memory"))
+    results = _await(lambda: job_rank.evaluate(text, jobs))
+    if not results:
+        raise ValueError("模型没返回可用的评分，岗位没动")
+    saved = [save("job", {"score": r["score"], "reasons": r["reasons"]}, id=job_id, actor=actor)
+             for job_id, r in results.items()]
+    items = sorted(({"id": s["record"]["id"], "label": label(s["record"]), "score": s["record"]["score"],
+                     "reasons": s["record"]["reasons"]} for s in saved), key=lambda i: -i["score"])
+    return {"count": len(saved), "change_ids": [s["change_id"] for s in saved], "items": items}
+
+
 # ---------- registry ----------
 
 class Tool(BaseModel):
@@ -685,6 +719,9 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
     Tool(name="add_job", input=AddJobIn, fn=add_job,
          description="用户贴来岗位链接或 JD 文本时用：抓链接正文、拆出公司 / 岗位 / 城市 / JD，截止日期另存成 deadline 事项，返回岗位和 change_ids（可撤销）。"
                      "页面要登录或靠 JS 渲染时报错不存，让用户用插件「存为岗位」或贴 JD。会调模型。"),
+    Tool(name="rank_jobs", input=RankJobsIn, fn=rank_jobs,
+         description="批量评估岗位：读档案、职业记忆和偏好，给岗位打 0–100 分并写三句理由（匹配点 / 差距 / 是否合偏好），存在 job.score 和 job.reasons 上，"
+                     "每个岗位一条改动可撤销。不传 ids 就评所有没打过分、没结束的岗位。会调模型。"),
 ]}
 
 
