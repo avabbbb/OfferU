@@ -1,4 +1,5 @@
 import type { PageSnapshot } from "./background/save-page-job.js";
+import type { ListCard } from "./background/list-jobs.js";
 // =============================================
 // OfferU Extension — 共享类型定义
 // =============================================
@@ -171,4 +172,5 @@ export type Message =
   | { type: "OFFSCREEN_WRITE_IMAGE"; requestId: string; imageUrl: string }
   | { type: "OFFSCREEN_WRITE_IMAGE_RESULT"; requestId: string; ok: boolean; error?: string }
   | { type: "OPEN_DRAWER"; tab?: "cart" | "resumes" | "settings" }
-  | { type: "SAVE_PAGE_AS_JOB"; page?: PageSnapshot };
+  | { type: "SAVE_PAGE_AS_JOB"; page?: PageSnapshot }
+  | { type: "SAVE_LIST_JOBS"; cards: ListCard[] };

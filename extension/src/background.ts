@@ -17,6 +17,7 @@ import type {
   Message,
 } from "./types.js";
 import { savePageAsJob, showToast, type PageSnapshot, type SavePageResult } from "./background/save-page-job.js";
+import { saveListJobs } from "./background/list-jobs.js";
 import {
   hasDirectChannelConfig,
   resolveChannelOrder,
@@ -1430,6 +1431,14 @@ chrome.runtime.onMessage.addListener(
         });
         return true;
       }
+
+      case "SAVE_LIST_JOBS":
+        getSettings()
+          .then((settings) => saveListJobs(settings.serverUrl, message.cards))
+          .then(sendResponse, (error: unknown) => {
+            sendResponse({ ok: false, message: safeExtensionError(error, "存岗位失败") });
+          });
+        return true;
 
       case "SAVE_PAGE_AS_JOB":
         // 带 page 的是页内 content script 已读好的快照（悬浮 dock 抽屉），直接用；否则走 activeTab 注入。

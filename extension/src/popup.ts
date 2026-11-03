@@ -13,6 +13,7 @@ import {
   normalizeOfferUServerUrl,
 } from "./background/server-url.js";
 import { safeExtensionError } from "./lib/safe-error.js";
+import { initListSelect } from "./popup-list-select.js";
 
 type MessageType = "success" | "error" | "info";
 type TabKey = "cart" | "resumes" | "settings";
@@ -1732,6 +1733,7 @@ function bindCartEvents(): void {
   addCurrentBtn.addEventListener("click", () => {
     void saveCurrentPageAsJob();
   });
+  initListSelect(showMessage, EMBED_MODE);
 }
 
 function bindResumeEvents(): void {

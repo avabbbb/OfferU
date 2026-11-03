@@ -440,6 +440,8 @@ app.include_router(interview.router, prefix="/api/interview", tags=["Interview"]
 app.include_router(bridge.router, prefix="/api/bridge", tags=["Bridge"])
 app.include_router(connections.router, prefix="/api/connections", tags=["Connections"])
 app.include_router(boss.router, prefix="/api/applications", tags=["BOSS"])
+from app.routes import consent as consent_routes  # noqa: E402
+app.include_router(consent_routes.router, prefix="/api/consent", tags=["Consent"])
 
 # ---- 静态文件（头像等上传文件） ----
 UPLOAD_DIR = os.fspath(runtime_uploads_dir())

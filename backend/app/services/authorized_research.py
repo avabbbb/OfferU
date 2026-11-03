@@ -26,6 +26,8 @@ from app.services.job_research import (
     persist_authorized_research_result,
 )
 from app.services.security_redaction import safe_error_message
+from app.core import chrome_cdp
+from app.core.store import data_dir
 
 
 _ACTIVE_STATUSES = {"starting", "authenticating", "read_only"}
@@ -63,6 +65,7 @@ class _LiveBrowser:
     browser: Any
     context: Any
     page: Any
+    process: Any = None
 
 
 _LIVE_BROWSERS: dict[str, _LiveBrowser] = {}
@@ -176,6 +179,8 @@ async def _close_live_browser(session_id: str) -> None:
     live = _LIVE_BROWSERS.pop(session_id, None)
     if live is None:
         return
+    if live.process is not None:
+        await chrome_cdp.close_browser(live.browser)
     try:
         await live.context.close()
     except Exception:
@@ -188,6 +193,7 @@ async def _close_live_browser(session_id: str) -> None:
         await live.playwright.stop()
     except Exception:
         pass
+    chrome_cdp.stop(live.process)
 
 
 async def _abort_live_session(session_id: str, exc: BaseException) -> None:
@@ -234,7 +240,7 @@ async def _expire_session(session_id: str, expires_at: datetime) -> None:
             if session is not None and session.status in _ACTIVE_STATUSES:
                 session.status = "expired"
                 session.read_only_active = False
-                session.error = "临时浏览会话已到期；登录状态已销毁，已选摘录仍可供使用者审阅"
+                session.error = "临时浏览会话已到期，窗口已关闭；登录状态保留在 OfferU 的独立 Chrome 资料目录，已选摘录仍可审阅"
                 await db.commit()
     except asyncio.CancelledError:
         raise
@@ -273,7 +279,7 @@ async def recover_authorized_research_sessions() -> None:
         for session in sessions:
             session.status = "interrupted"
             session.read_only_active = False
-            session.error = "应用已重启；临时登录状态未保存，请重新开始授权浏览会话"
+            session.error = "应用已重启，浏览窗口已关闭；请重新开始授权浏览会话（登录状态保留在独立 Chrome 资料目录）"
         if sessions:
             await db.commit()
 
@@ -297,8 +303,11 @@ async def start_authorized_research_session(
     base_run_id: Optional[str] = None,
     expires_minutes: int = 30,
 ) -> dict[str, Any]:
-    # 确认已由 _validate_authorization 服务端校验；到达此处即视为已确认
-    user_authorized = True
+    from app.core import consent
+
+    consent.require()
+    if _LIVE_BROWSERS:
+        raise ValueError("已有一个授权浏览窗口在用独立 Chrome 资料目录，先完成或取消它")
     clean_platform, clean_url = _platform_url(platform, initial_url)
     safe_expiry = max(5, min(int(expires_minutes), 120))
     async with async_session() as db:
@@ -364,20 +373,31 @@ async def start_authorized_research_session(
     try:
         from playwright.async_api import async_playwright
 
-        playwright = await async_playwright().start()
-        browser = await playwright.chromium.launch(headless=False)
-        context = await browser.new_context(
-            accept_downloads=False,
-            service_workers="block",
-        )
-        page = await context.new_page()
+        # 真 Chrome + 独立资料目录：登录状态留在本机，调试端口只在 127.0.0.1。
+        process, endpoint = await chrome_cdp.launch(data_dir("chrome-profile"), clean_url)
+        playwright = None
+        try:
+            playwright = await async_playwright().start()
+            browser = await playwright.chromium.connect_over_cdp(endpoint)
+        except Exception:
+            if playwright is not None:
+                await playwright.stop()
+            chrome_cdp.stop(process)
+            raise
+        context = browser.contexts[0] if browser.contexts else await browser.new_context()
         live = _LiveBrowser(
             playwright=playwright,
             browser=browser,
             context=context,
-            page=page,
+            page=None,
+            process=process,
         )
         _LIVE_BROWSERS[session.session_id] = live
+        # 连接已有浏览器时不能用 accept_downloads=False，改用 CDP 禁止下载。
+        cdp = await browser.new_browser_cdp_session()
+        await cdp.send("Browser.setDownloadBehavior", {"behavior": "deny"})
+        page = next((p for p in context.pages if not p.is_closed()), None) or await context.new_page()
+        live.page = page
         await page.goto(clean_url, wait_until="domcontentloaded", timeout=45_000)
         _schedule_expiry(session.session_id, session.expires_at)
         async with async_session() as db:
@@ -454,7 +474,13 @@ async def activate_authorized_research_read_only(
             await live.context.route_web_socket("**/*", block_socket)
         for page in pages:
             await page.close(run_before_unload=False)
+        async def bypass_sw(p: Any) -> None:
+            session = await live.context.new_cdp_session(p)
+            await session.send("Network.setBypassServiceWorker", {"bypass": True})
+
+        live.context.on("page", lambda p: asyncio.ensure_future(bypass_sw(p)))
         live.page = await live.context.new_page()
+        await bypass_sw(live.page)
         await live.page.goto(
             target_url,
             wait_until="domcontentloaded",

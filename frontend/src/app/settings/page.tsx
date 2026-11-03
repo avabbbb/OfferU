@@ -51,6 +51,7 @@ import { SHOWCASE } from "@/lib/showcase";
 import { useConfig, updateConfig } from "@/lib/hooks";
 import { AgentConnectionPanel } from "@/components/workbench/AgentConnectionPanel";
 import { JobSourceConnectionsCard } from "@/components/settings/JobSourceConnectionsCard";
+import { PlatformConsentCard } from "@/components/settings/PlatformConsentCard";
 import { BossLoginCard } from "@/components/boss-login";
 import { HintsToggle } from "@/components/hints";
 import { SettingsRow } from "@/components/settings/SettingsRow";
@@ -924,7 +925,7 @@ export default function SettingsPage() {
   const { data, mutate } = useConfig();
   const config = data as SettingsConfigPayload | undefined;
   const searchParams = useSearchParams();
-  type SettingsSectionKey = "agent" | "models" | "accounts" | "data" | "about" | "feedback";
+  type SettingsSectionKey = "agent" | "models" | "accounts" | "collect" | "data" | "about" | "feedback";
   const modelSectionRequested = searchParams.get("section") === "models";
   const [openSection, setOpenSection] = useState<SettingsSectionKey | null>(null);
   useEffect(() => {
@@ -1277,6 +1278,7 @@ export default function SettingsPage() {
         <SettingsRow rowKey="agent" title="我的 Agent" status={agentStatus} onOpen={() => setOpenSection("agent")} />
         <SettingsRow rowKey="models" title="模型服务" status={modelStatus} onOpen={() => setOpenSection("models")} />
         <SettingsRow rowKey="accounts" title="账号与来源" status="登录与求职来源" onOpen={() => setOpenSection("accounts")} />
+        {!SHOWCASE && <SettingsRow rowKey="collect" title="登录态采集" status="BOSS / 小红书 · 风险说明与同意" onOpen={() => setOpenSection("collect")} />}
         <SettingsRow rowKey="data" title="数据" status="备份、恢复与导出" onOpen={() => setOpenSection("data")} />
         <SettingsRow rowKey="about" title="关于" status="版本与运行信息" onOpen={() => setOpenSection("about")} />
         <SettingsRow rowKey="feedback" title="报告问题" onOpen={() => setOpenSection("feedback")} />
@@ -1342,6 +1344,10 @@ export default function SettingsPage() {
       <SettingsDialog isOpen={openSection === "accounts"} onClose={closeSection} title="账号与来源">
         {!SHOWCASE && <BossLoginCard />}
         <JobSourceConnectionsCard />
+      </SettingsDialog>
+
+      <SettingsDialog isOpen={openSection === "collect"} onClose={closeSection} title="登录态采集">
+        <PlatformConsentCard />
       </SettingsDialog>
 
       <SettingsDialog isOpen={openSection === "data"} onClose={closeSection} title="数据">
