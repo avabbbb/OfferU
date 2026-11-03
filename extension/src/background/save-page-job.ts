@@ -97,7 +97,6 @@ export function toJobData(page: PageSnapshot): Record<string, unknown> {
     company: posting?.hiringOrganization?.name || null,
     url: page.url,
     jd: page.selection || postingText || page.text || page.meta["description"] || null,
-    deadline: posting?.validThrough || null,
     source: SOURCES.find(([re]) => re.test(host))?.[1] || host,
     images: page.images.length ? page.images : null,
   };
@@ -113,11 +112,12 @@ export async function savePageAsJob(tabId: number, serverUrl: string): Promise<S
     return { ok: false, message: "这个页面读不了：" + (error instanceof Error ? error.message : String(error)) };
   }
   if (!page) return { ok: false, message: "这个页面读不了" };
+  const headers = { "content-type": "application/json", "x-offeru-actor": encodeURIComponent(ACTOR) };
   let resp: Response;
   try {
     resp = await fetch(serverUrl + "/api/tools/save", {
       method: "POST",
-      headers: { "content-type": "application/json", "x-offeru-actor": encodeURIComponent(ACTOR) },
+      headers,
       body: JSON.stringify({ type: "job", data: toJobData(page) }),
     });
   } catch {
@@ -125,6 +125,15 @@ export async function savePageAsJob(tabId: number, serverUrl: string): Promise<S
   }
   const body = await resp.json();
   if (!resp.ok) return { ok: false, message: "没存上：" + (body.detail ?? resp.status) };
+  // 截止日期按设计存成 event（kind=deadline），挂在刚建的岗位下；没存上不影响岗位本身。
+  const deadline = findPosting(page.ldjson)?.validThrough;
+  if (deadline) {
+    await fetch(serverUrl + "/api/tools/save", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ type: "event", data: { title: "截止：" + body.record.title, kind: "deadline", at: String(deadline).slice(0, 10), job_id: body.record.id } }),
+    }).catch(() => undefined);
+  }
   return { ok: true, message: "已存为岗位：" + body.record.title, id: body.record.id };
 }
 

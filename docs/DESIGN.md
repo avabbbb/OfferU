@@ -53,7 +53,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 | --- | --- | --- |
 | profile | 基本信息，只有一条 | name, school, major, degree, grad_year, phone, email, city, target, stage, about |
 | memory | 职业记忆，一条一件事 | kind（experience / project / education / skill / award / preference / note）, title, body, start, end, tags |
-| job | 岗位和投递状态 | company, title, status（saved / applied / test / interview / offer / rejected / closed）, url, city, jd, notes, applied_at |
+| job | 岗位和投递状态 | company, title, status（saved / applied / test / interview / offer / rejected / closed）, url, city, jd, notes, applied_at, source（来源站点）, images（页面图片链接）；截止日期不放这里，存 event kind=deadline |
 | event | 待办和日程 | title, kind（todo / deadline / test / interview）, at, done, job_id, notes |
 | doc | 长文本 | kind（resume / apply_chat / review / research / note）, title, body（Markdown）, job_id, template；kind=review 另有 questions 数组 |
 
