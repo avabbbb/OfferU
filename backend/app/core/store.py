@@ -116,9 +116,11 @@ def save(type_: str, data: dict[str, Any], *, id_: Optional[int], actor: str, su
             job_id = merged.pop("job_id", None)
             stamp = now()
             if before is None:
-                cur = c.execute("INSERT INTO records(type, job_id, data, created_at, updated_at) VALUES (?,?,?,?,?)",
-                                (type_, job_id, json.dumps(merged, ensure_ascii=False), stamp, stamp))
-                id_ = int(cur.lastrowid)
+                # 不复用被撤销记录的 id：那条改动再被撤销时会按原 id 插回去，和新记录撞在一起。
+                top = c.execute("SELECT MAX(m) FROM (SELECT MAX(id) AS m FROM records UNION ALL SELECT MAX(record_id) FROM changes)").fetchone()[0]
+                id_ = int(top or 0) + 1
+                c.execute("INSERT INTO records(id, type, job_id, data, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+                          (id_, type_, job_id, json.dumps(merged, ensure_ascii=False), stamp, stamp))
             else:
                 c.execute("UPDATE records SET job_id=?, data=?, updated_at=? WHERE id=?",
                           (job_id, json.dumps(merged, ensure_ascii=False), stamp, id_))

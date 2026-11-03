@@ -245,3 +245,12 @@ def test_rank_jobs(tmp_path, monkeypatch):
     assert call("rank_jobs", {}, actor="助手")["count"] == 0
     call("undo", {"change_id": out["change_ids"][0]}, actor="你")
     assert call("get", {"type": "job", "id": a["id"]}, actor="你")["record"].get("score") is None
+
+
+def test_new_record_never_reuses_undone_id(tmp_path, monkeypatch):
+    """撤销新建以后再建记录，id 不复用（岗位 20 被旧表单只填公司重新占用的问题）。"""
+    monkeypatch.setenv("OFFERU_DATA_DIR", str(tmp_path))
+    first = call("save", {"type": "job", "data": {"company": "字节跳动", "title": "产品实习生"}}, actor="插件")
+    call("undo", {"change_id": first["change_id"]}, actor="你")
+    second = call("save", {"type": "job", "data": {"company": "字节跳动"}}, actor="你")["record"]
+    assert second["id"] > first["record"]["id"]
