@@ -46,7 +46,7 @@ def test_mcp_and_http_share_tools(tmp_path, monkeypatch):
     from app.mcp_server import mcp
 
     names = [t.name for t in asyncio.run(mcp.list_tools())]
-    assert names[0] == "overview" and len(names) <= 16
+    assert names[0] == "overview" and len(names) <= 17
     asyncio.run(mcp.call_tool("save", {"type": "job", "data": {"company": "米哈游"}}))
     with TestClient(app, base_url="http://127.0.0.1:8766") as client:
         listed = client.post("/api/tools/list", json={"type": "job"}).json()
@@ -190,3 +190,33 @@ def test_tailor_resume_tool(tmp_path, monkeypatch):
     assert call("changes", {}, actor="你")["items"][0]["actor"] == "助手"
     call("undo", {"change_id": result["change_id"]}, actor="你")
     assert "接口 QPS" not in call("get", {"type": "doc", "id": doc["id"]}, actor="你")["record"]["body"]
+
+
+def test_add_job_from_text_or_link(tmp_path, monkeypatch):
+    """贴 JD：模型拆出公司 / 岗位 / 截止，岗位和截止事项各一条改动；链接抓不到正文就报错、不存空壳；没配模型时第一行当岗位名。"""
+    monkeypatch.setenv("OFFERU_DATA_DIR", str(tmp_path))
+    import pytest
+
+    from app.core import job_intake, tools
+
+    async def extract(text):
+        assert "Go" in text
+        return {"company": "美团", "title": "后端开发实习生", "city": "北京", "deadline": "2026-11-20", "jd": "负责 Go 后端开发"}
+
+    monkeypatch.setattr(job_intake, "available", lambda: True)
+    monkeypatch.setattr(job_intake, "extract", extract)
+    out = call("add_job", {"text": "美团 后端开发实习生\n负责 Go 后端开发\n11 月 20 日截止"}, actor="你")
+    job = out["record"]
+    assert (job["company"], job["title"], job["jd"]) == ("美团", "后端开发实习生", "负责 Go 后端开发")
+    assert len(out["change_ids"]) == 2
+    events = call("get", {"type": "job", "id": job["id"]}, actor="你")["events"]
+    assert events[0]["kind"] == "deadline" and events[0]["at"] == "2026-11-20"
+
+    monkeypatch.setattr(tools, "fetch_page", lambda url, **_: {"url": url, "title": "腾讯招聘", "text": "加载中", "truncated": False})
+    with pytest.raises(ValueError, match="插件"):
+        call("add_job", {"text": "https://join.qq.com/post.html?pid=1"}, actor="你")
+
+    monkeypatch.setattr(job_intake, "available", lambda: False)
+    bare = call("add_job", {"text": "京东 算法工程师\n负责推荐"}, actor="你")["record"]
+    assert bare["title"] == "京东 算法工程师" and "负责推荐" in bare["jd"]
+    assert len(call("list", {"type": "job"}, actor="你")["items"]) == 2

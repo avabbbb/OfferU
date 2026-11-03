@@ -24,12 +24,28 @@ export function StatusSelect({ job }: { job: Job }) {
 export default function JobsPage() {
   const { data } = useTool<{ items: Job[] }>("list", { type: "job", limit: 500 }, 5000);
   const [filter, setFilter] = useState("all");
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   const [company, setCompany] = useState("");
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
   const jobs = data?.items ?? [];
   const statuses = FILTERS.find(([id]) => id === filter)![2];
   const shown = statuses.length ? jobs.filter((job) => statuses.includes(job.status)) : jobs;
+
+  /** 贴链接或 JD：后端抓正文、拆字段；抓不到就报错，不存空壳。 */
+  const paste = async () => {
+    setBusy(true); setError("");
+    try {
+      await write("add_job", { text: text.trim() });
+      setText("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const add = async () => {
     await write("save", { type: "job", data: { company: company.trim() || null, title: title.trim() || null, url: url.trim() || null } });
@@ -39,12 +55,24 @@ export default function JobsPage() {
   return (
     <div className="mx-auto max-w-4xl space-y-6 px-6 py-10">
       <h1 className="text-[24px] font-semibold tracking-tight text-[var(--foreground)]">岗位</h1>
-      <form className="flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); void add(); }}>
-        <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="公司" aria-label="公司" style={{ fontSize: 13 }} className={`${field} w-36`} />
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="岗位" aria-label="岗位" style={{ fontSize: 13 }} className={`${field} w-48`} />
-        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="链接（可选）" aria-label="链接" style={{ fontSize: 13 }} className={`${field} min-w-[180px] flex-1`} />
-        <button type="submit" style={{ fontSize: 13 }} disabled={!company.trim() && !title.trim()} className="rounded-md bg-[var(--foreground)] px-3 py-1.5 text-[13px] font-medium text-[var(--background)] disabled:opacity-40">添加</button>
+      <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); void paste(); }}>
+        <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} aria-label="岗位链接或 JD"
+          placeholder="贴岗位链接，或者整段 JD" style={{ fontSize: 13 }} className={`${field} block w-full resize-y`}
+          onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && text.trim() && !busy) { e.preventDefault(); void paste(); } }} />
+        <div className="flex items-center gap-3">
+          <button type="submit" style={{ fontSize: 13 }} disabled={!text.trim() || busy} className="rounded-md bg-[var(--foreground)] px-3 py-1.5 text-[13px] font-medium text-[var(--background)] disabled:opacity-40">{busy ? "正在读…" : "添加"}</button>
+          {error && <span role="alert" className="text-[12.5px] text-red-600">{error}</span>}
+        </div>
       </form>
+      <details className="text-[13px] text-[var(--foreground-muted)]">
+        <summary className="cursor-pointer select-none">手动填</summary>
+        <form className="mt-2 flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); void add(); }}>
+          <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="公司" aria-label="公司" style={{ fontSize: 13 }} className={`${field} w-36`} />
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="岗位" aria-label="岗位" style={{ fontSize: 13 }} className={`${field} w-48`} />
+          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="链接（可选）" aria-label="链接" style={{ fontSize: 13 }} className={`${field} min-w-[180px] flex-1`} />
+          <button type="submit" style={{ fontSize: 13 }} disabled={!company.trim() || !title.trim()} className="rounded-md border border-[var(--border)] px-3 py-1.5 text-[13px] text-[var(--foreground)] disabled:opacity-40">添加</button>
+        </form>
+      </details>
 
       <div className="flex gap-4 border-b border-[var(--border)] text-[13px]">
         {FILTERS.map(([id, name, match]) => {
@@ -58,7 +86,7 @@ export default function JobsPage() {
         })}
       </div>
 
-      {data && !shown.length && <p className="text-[13.5px] text-[var(--foreground-muted)]">{jobs.length ? "这一栏没有岗位。" : "还没有岗位。上面填公司和岗位，或者让 Agent 把链接存进来。"}</p>}
+      {data && !shown.length && <p className="text-[13.5px] text-[var(--foreground-muted)]">{jobs.length ? "这一栏没有岗位。" : "还没有岗位。上面贴一个岗位链接或 JD。"}</p>}
       <ul className="divide-y divide-[var(--border)]">
         {shown.map((job) => (
           <li key={job.id} className="flex items-center gap-4 py-3">

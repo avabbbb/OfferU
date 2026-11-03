@@ -604,6 +604,42 @@ def split_resume(text: Optional[str] = None, path: Optional[str] = None, *, acto
     }
 
 
+class AddJobIn(_In):
+    text: str = Field(description="岗位详情页链接，或整段 JD 文本")
+
+
+def add_job(text: str, *, actor: str) -> dict[str, Any]:
+    """贴链接或 JD 建岗位：链接先抓正文（抓不到就报错，不存空壳），再由模型拆出公司、岗位、城市、截止、投递方式。"""
+    from urllib.parse import urlparse
+
+    from app.core import job_intake
+
+    text = text.strip()
+    if not text:
+        raise ValueError("要给岗位链接或 JD 文本")
+    url = text if re.fullmatch(r"https?://\S+", text) else None
+    source = text
+    if url:
+        page = fetch_page(url)
+        if len(page["text"]) < 200:
+            raise ValueError("这个页面要登录或靠 JS 渲染，抓不到正文，没存。用插件「存为岗位」，或者把 JD 文字贴进来")
+        source = f"{page['title']}\n{page['text']}"
+    fields = _await(lambda: job_intake.extract(source)) if job_intake.available() else job_intake.guess(source)
+    deadline = fields.pop("deadline", None)
+    how = fields.pop("apply", None)
+    data = {**fields, "jd": fields.get("jd") or source, "url": url,
+            "source": urlparse(url).hostname if url else None, "notes": f"投递方式：{how}" if how else None}
+    if not (data.get("company") or data.get("title")):
+        data["title"] = job_intake.guess(source)["title"]
+    saved = save("job", {k: v for k, v in data.items() if v}, actor=actor)
+    out = {"record": saved["record"], "change_ids": [saved["change_id"]]}
+    if deadline:
+        event = save("event", {"title": f"截止：{label(saved['record'])}", "kind": "deadline", "at": deadline,
+                               "job_id": saved["record"]["id"]}, actor=actor)
+        out["change_ids"].append(event["change_id"])
+    return out
+
+
 # ---------- registry ----------
 
 class Tool(BaseModel):
@@ -646,6 +682,9 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
     Tool(name="split_resume", input=SplitResumeIn, fn=split_resume,
          description="把一份旧简历（原文 text 或文件 path）拆成一条条 memory 直接存进档案，只整理不编造；每条一条改动，返回 change_ids 可逐条撤销。"
                      "会调模型，要一两分钟。你自己能拆就用 read_file + save。"),
+    Tool(name="add_job", input=AddJobIn, fn=add_job,
+         description="用户贴来岗位链接或 JD 文本时用：抓链接正文、拆出公司 / 岗位 / 城市 / JD，截止日期另存成 deadline 事项，返回岗位和 change_ids（可撤销）。"
+                     "页面要登录或靠 JS 渲染时报错不存，让用户用插件「存为岗位」或贴 JD。会调模型。"),
 ]}
 
 
