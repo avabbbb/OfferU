@@ -2,6 +2,8 @@
 
 import asyncio
 
+import pytest
+
 from app.core import store, tailor
 from app.core.tools import save
 from app.core.resume_model import from_markdown, to_markdown
@@ -10,6 +12,12 @@ FENCE = chr(96) * 3
 
 OLD = "# 张三\n138 · a@b.com\n\n## 教育经历\n### 某大学 | 计算机 | 2022.09 – 2026.06\n"
 NEW = "# 张三\n138 · a@b.com\n\n## 实习经历\n### 字节 | 后端 | 2025.06 – 2025.09\n- 接口 QPS 提升 30%\n"
+
+
+@pytest.fixture(autouse=True)
+def _no_browser(monkeypatch):
+    """量页数要开 Chromium；单测里固定成一页。"""
+    monkeypatch.setattr(tailor.tailor_report, "page_count", lambda record: 1.0)
 
 
 def _setup(tmp_path, monkeypatch, jd="负责 Go 后端开发"):
@@ -37,14 +45,42 @@ def _run(doc_id, job_id, stream, deadline=5.0):
     return asyncio.run(go())
 
 
-def test_tailor_saves_one_agent_change(tmp_path, monkeypatch):
+def test_tailor_main_resume_gets_job_copy(tmp_path, monkeypatch):
     doc_id, job_id = _setup(tmp_path, monkeypatch)
     events = _run(doc_id, job_id, _chunks(FENCE + "markdown\n", NEW[:20], NEW[20:], FENCE))
     assert [e["type"] for e in events] == ["start", "delta", "delta", "delta", "delta", "done"]
-    doc = store.get("doc", doc_id)
-    assert doc["body"] == to_markdown(from_markdown(NEW)) and doc["job_id"] == job_id
-    assert doc["resume"]["sections"][0]["type"] == "internship" and events[-1]["resume"] == doc["resume"]
+    main = store.get("doc", doc_id)
+    assert main["body"] == to_markdown(from_markdown(OLD)) and not main.get("job_id")  # 主简历不动
+    copy = store.get("doc", events[-1]["doc_id"])
+    assert copy["id"] != doc_id and copy["kind"] == "resume" and copy["job_id"] == job_id
+    assert copy["body"] == to_markdown(from_markdown(NEW)) and copy["title"] == "主简历 · 美团 · 后端"
+    assert copy["resume"]["sections"][0]["type"] == "internship" and events[-1]["resume"] == copy["resume"]
     assert store.changes(1)[0]["actor"] == "Agent"
+    again = _run(doc_id, job_id, _chunks(NEW))  # 同一岗位再改：写回那份定制简历，不再新建
+    assert again[-1]["doc_id"] == copy["id"] and store.get("doc", doc_id)["body"] == main["body"]
+
+    async def plain(messages):
+        yield NEW
+
+    in_place = _run(copy["id"], None, plain)  # 岗位简历本身原地改
+    assert in_place[-1]["doc_id"] == copy["id"]
+
+
+def test_tailor_reads_evaluation(tmp_path, monkeypatch):
+    doc_id, job_id = _setup(tmp_path, monkeypatch)
+    report = ("# 结论\n可以投\n\n## 逐条匹配\n- Go 后端 → 差距\n\n## 简历怎么改\n- 字节实习放最前面\n\n"
+              "## 面试准备\n- Go 调度器\n")
+    save("doc", {"kind": "evaluation", "job_id": job_id, "title": "岗位评估", "body": report}, actor="你")
+    seen = []
+
+    async def stream(messages):
+        seen.append(messages[-1]["content"])
+        yield NEW
+
+    assert _run(doc_id, job_id, stream)[-1]["type"] == "done"
+    assert "## 岗位评估" in seen[0] and "Go 后端 → 差距" in seen[0] and "字节实习放最前面" in seen[0]
+    assert "Go 调度器" not in seen[0] and "可以投" not in seen[0]
+    assert tailor.evaluation_notes(999) == ""
 
 
 def test_tailor_failures_leave_resume_alone(tmp_path, monkeypatch):
@@ -92,3 +128,20 @@ def test_tailor_route_streams_sse(tmp_path, monkeypatch):
         response = client.post(f"/api/resume/{doc_id}/tailor", json={})
     assert response.status_code == 200 and response.headers["content-type"].startswith("text/event-stream")
     assert response.text.startswith("data: ") and "先给这份简历选一个岗位" in response.text
+
+
+def test_tailor_done_carries_report(tmp_path, monkeypatch):
+    jd = "岗位职责：\n负责 Go 后端开发\n任职要求：\n熟悉 Go、Redis\n福利待遇：\n五险一金"
+    doc_id, job_id = _setup(tmp_path, monkeypatch, jd=jd)
+    seen = []
+
+    async def stream(messages):
+        seen.append(messages[-1]["content"])
+        yield NEW
+
+    done = _run(doc_id, job_id, stream)[-1]
+    assert done["type"] == "done"
+    assert "五险一金" not in seen[0] and "熟悉 Go" in seen[0]
+    assert done["coverage"] == {"hit": [], "missing": ["Go", "Redis"]}
+    assert done["pages"] == 1.0 and done["over_page"] is False
+    assert isinstance(done["review"], list)

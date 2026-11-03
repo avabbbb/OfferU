@@ -233,6 +233,21 @@ def png_bytes(page_html: str) -> bytes:
             browser.close()
 
 
+def page_count(page_html: str) -> float:
+    """和 PDF 同一份 HTML，在 A4 宽度下量 main.resume 的高度，按 A4 页高（1123px）折成页数。"""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as playwright:
+        browser = _launch(playwright)
+        try:
+            page = browser.new_page(viewport={"width": 794, "height": 1123})
+            page.set_content(page_html, wait_until="load")
+            height = page.locator("main.resume").evaluate("el => el.scrollHeight")
+            return round(float(height) / 1123, 2)
+        finally:
+            browser.close()
+
+
 
 def doc_html(doc: dict) -> str:
     profile = store.first("profile") or {}

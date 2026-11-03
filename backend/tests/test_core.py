@@ -186,10 +186,13 @@ def test_tailor_resume_tool(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="JD"):
         call("tailor_resume", {"id": doc["id"], "job_id": bare["id"]}, actor="助手")
     result = call("tailor_resume", {"id": doc["id"], "job_id": job["id"]}, actor="助手")
-    assert result["doc_id"] == doc["id"] and "接口 QPS 提升 30%" in result["body"]
+    assert result["doc_id"] != doc["id"] and "接口 QPS 提升 30%" in result["body"]
+    assert "接口 QPS" not in call("get", {"type": "doc", "id": doc["id"]}, actor="你")["record"]["body"]  # 主简历不动
+    copy = call("get", {"type": "doc", "id": result["doc_id"]}, actor="你")["record"]
+    assert copy["job_id"] == job["id"] and copy["kind"] == "resume"
     assert call("changes", {}, actor="你")["items"][0]["actor"] == "助手"
     call("undo", {"change_id": result["change_id"]}, actor="你")
-    assert "接口 QPS" not in call("get", {"type": "doc", "id": doc["id"]}, actor="你")["record"]["body"]
+    assert not [d for d in call("list", {"type": "doc", "job_id": job["id"]}, actor="你")["items"] if d.get("kind") == "resume"]
 
 
 def test_add_job_from_text_or_link(tmp_path, monkeypatch):

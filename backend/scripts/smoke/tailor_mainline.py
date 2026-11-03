@@ -112,10 +112,10 @@ def main() -> None:
         t = step(4, "按 JD 改写（调用真模型）")
         tailored = tool(client, "tailor_resume", {"id": resume_id, "job_id": job["id"]}, timeout=900)
         print("    " + (tailored.get("body") or "")[:400].replace("\n", "\n    "))
-        done(t, f"change_id={tailored.get('change_id')}（可撤销）")
+        done(t, f"doc_id={tailored['doc_id']} change_id={tailored.get('change_id')}（可撤销）")
 
         t = step(5, "导出 PDF")
-        resp = client.get(f"/resume/{resume_id}/pdf", timeout=300)
+        resp = client.get(f"/resume/{tailored['doc_id']}/pdf", timeout=300)
         if resp.status_code >= 400 or not resp.content.startswith(b"%PDF"):
             die(resp, "导出不是 PDF")
         args.out.write_bytes(resp.content)

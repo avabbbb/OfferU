@@ -164,6 +164,57 @@ class _In(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+# 同一个岗位再存一次时更新原记录，不新建。BOSS 链接里的 lid、securityId 每次打开都不一样，按 job_detail 里的岗位编号认；
+# 小红书按笔记编号认；其他站点去掉跟踪参数后按 主机+路径+查询 认。
+TRACKING_PARAMS = ("lid", "securityid", "ka", "spm", "from", "share", "sessionid", "xsec_token", "xsec_source", "share_from_user_hidden")
+
+
+def job_url_key(url: str) -> str:
+    from urllib.parse import parse_qsl, urlencode, urlsplit
+
+    try:
+        parts = urlsplit(str(url or "").strip())
+    except ValueError:
+        return ""
+    host = (parts.hostname or "").lower()
+    if host.startswith("www."):
+        host = host[4:]
+    if not host:
+        return ""
+    path = parts.path.rstrip("/")
+    if host.endswith("zhipin.com") and (hit := re.search(r"job_detail.([0-9A-Za-z_~-]+)", path)):
+        return "boss:" + hit.group(1)
+    if host.endswith("xiaohongshu.com") and (hit := re.search(r"(?:explore|item).([0-9A-Za-z]+)", path)):
+        return "xhs:" + hit.group(1)
+    query = sorted((k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True)
+                   if not k.lower().startswith("utm_") and k.lower() not in TRACKING_PARAMS)
+    return host + path + ("?" + urlencode(query) if query else "")
+
+
+def find_job_by_url(url: str) -> Optional[dict[str, Any]]:
+    key = job_url_key(url)
+    if not key:
+        return None
+    for job in store.all_of("job"):
+        if job.get("url") and job_url_key(job["url"]) == key:
+            return job
+    return None
+
+
+def merge_saved_job(existing: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+    """重复存同一个岗位：只补原来空着的字段，JD 更长才换；不动投递状态，免得把已投递打回想投。"""
+    out: dict[str, Any] = {}
+    for key, value in data.items():
+        if key in ("status", "applied_at") or value is None or value == "" or value == []:
+            continue
+        old = existing.get(key)
+        if old is None or old == "" or old == []:
+            out[key] = value
+        elif key == "jd" and len(str(value)) > len(str(old)):
+            out[key] = value
+    return out
+
+
 class SaveIn(_In):
     type: RecordType
     data: dict[str, Any] = Field(description="要写的字段；更新时只传要改的，传 null 删除该字段")
@@ -173,6 +224,12 @@ class SaveIn(_In):
 def save(type: str, data: dict[str, Any], id: Optional[int] = None, *, actor: str) -> dict[str, Any]:
     if type == "profile" and id is None and (existing := store.first("profile")):
         id = existing["id"]
+    existed = False
+    if type == "job" and id is None and data.get("url") and (prev := find_job_by_url(str(data["url"]))):
+        existed, id = True, prev["id"]
+        data = merge_saved_job(prev, data)
+        if not data:
+            return {"record": prev, "change_id": None, "existed": True}
     _check(type, data, creating=id is None)
     if type == "doc":
         data = _with_resume(data, id)
@@ -189,7 +246,7 @@ def save(type: str, data: dict[str, Any], id: Optional[int] = None, *, actor: st
         data = {"status": "saved", **data}
     preview = {**(store.get(type, id) or {} if id else {}), **data, "type": type, "id": id or 0}
     record, change = store.save(type, data, id_=id, actor=actor, summary=f"{verb}{TYPE_LABEL[type]}「{label(preview)}」{status_note}")
-    return {"record": record, "change_id": change}
+    return {"record": record, "change_id": change, "existed": existed}
 
 
 class GetIn(_In):
@@ -577,7 +634,9 @@ def tailor_resume(id: int, job_id: Optional[int] = None, actor: str = "") -> dic
     event = _await(collect)
     if event.get("type") != "done":
         raise ValueError(event.get("message") or "改写没完成，简历没动")
-    return {"doc_id": id, "change_id": event["change_id"], "body": event["body"]}
+    out = {"doc_id": event["doc_id"], "change_id": event["change_id"], "body": event["body"]}
+    out.update({key: event.get(key) for key in ("unsupported", "coverage", "pages", "over_page", "review")})
+    return out
 
 
 class SplitResumeIn(_In):
@@ -710,8 +769,8 @@ def add_job(text: str, *, actor: str) -> dict[str, Any]:
     if not (data.get("company") or data.get("title")):
         data["title"] = job_intake.guess(source)["title"]
     saved = save("job", {k: v for k, v in data.items() if v}, actor=actor)
-    out = {"record": saved["record"], "change_ids": [saved["change_id"]]}
-    if deadline:
+    out = {"record": saved["record"], "change_ids": [c for c in [saved["change_id"]] if c], "existed": saved.get("existed", False)}
+    if deadline and not out["existed"]:
         event = save("event", {"title": f"截止：{label(saved['record'])}", "kind": "deadline", "at": deadline,
                                "job_id": saved["record"]["id"]}, actor=actor)
         out["change_ids"].append(event["change_id"])
@@ -946,8 +1005,8 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
          description="邮箱同步。status：已连的邮箱、最近几次同步、今天邮箱写了几条改动；sync：立刻拉一次新邮件，识别投递回执、笔试、面试、offer、拒信，"
                      "直接改岗位状态（只前进）并把笔试面试时间写成事项，返回写了哪些改动（都能撤销）。连邮箱和断开在设置页。"),
     Tool(name="tailor_resume", input=TailorIn, fn=tailor_resume,
-         description="按岗位 JD 改写一份简历：只用档案和记忆里的事实，写完直接覆盖这份简历（一条改动，可撤销），返回新正文。"
-                     "要保留原版就先 save 一份副本再改副本。会调模型，要一两分钟。"),
+         description="按岗位 JD 改写简历：只用档案和记忆里的事实，参考这个岗位的评估报告（有的话）。传岗位简历就原地改；传主简历（没挂岗位）"
+                     "就写进这个岗位的定制简历，没有就新建一份，主简历不动。一条改动，可撤销；返回写入的 doc_id 和新正文。会调模型，要一两分钟。"),
     Tool(name="split_resume", input=SplitResumeIn, fn=split_resume,
          description="把一份旧简历（原文 text 或文件 path）拆成一条条 memory 直接存进档案，只整理不编造；每条一条改动，返回 change_ids 可逐条撤销。"
                      "会调模型，要一两分钟。你自己能拆就用 read_file + save。"),
