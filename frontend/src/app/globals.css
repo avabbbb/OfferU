@@ -2122,8 +2122,8 @@ body {
 .resume-shell .rt-edit a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
 
 
-/* 预览：和右栏同色的暖灰底上放一张 A4，只用一层浅阴影托出纸面，不要深色边框。 */
-.resume-shell .rp-canvas { background: var(--surface); }
+/* 预览：和左侧编辑栏同色的暖灰底（--background）上放一张 A4，只用一层浅阴影托出纸面，不要深色边框。 */
+.resume-shell .rp-canvas { background: var(--background); }
 .resume-shell .rp-canvas [role="alert"] { color: #b91c1c; }
 .resume-shell .rp-paper { border-radius: 2px; box-shadow: 0 1px 2px rgba(20, 20, 19, 0.08), 0 8px 24px rgba(20, 20, 19, 0.10); }
 
