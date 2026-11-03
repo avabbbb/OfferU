@@ -24,6 +24,7 @@ import type {
 } from "./types.js";
 import type { CollectResult } from "./page-agent/collect.js";
 import { HttpOfferUControl } from "./background/offeru-control-http.js";
+import { savePageAsJob, showToast, type SavePageResult } from "./background/save-page-job.js";
 import type { SyncJobCandidate } from "./framework/workflow.js";
 import {
   JOBS_SCHEMA_VERSION,
@@ -1845,6 +1846,10 @@ chrome.runtime.onMessage.addListener(
         });
         return true;
 
+      case "SAVE_PAGE_AS_JOB":
+        saveActiveTabAsJob().then(sendResponse);
+        return true;
+
       default:
         sendResponse({ error: "Unknown message type" });
     }
@@ -1860,4 +1865,30 @@ chrome.runtime.onInstalled.addListener(async () => {
 chrome.runtime.onStartup.addListener(async () => {
   const jobs = await getJobs();
   await updateBadge(jobs.length);
+});
+
+// ---- 存为岗位：popup 按钮和右键菜单共用，直接写进本机 OfferU ----
+async function saveTabAsJob(tabId: number): Promise<SavePageResult> {
+  const settings = await getSettings();
+  return savePageAsJob(tabId, settings.serverUrl);
+}
+
+async function saveActiveTabAsJob(): Promise<SavePageResult> {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.id) return { ok: false, message: "未找到当前标签页" };
+  return saveTabAsJob(tab.id);
+}
+
+const SAVE_MENU_ID = "offeru-save-job";
+
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.create({ id: SAVE_MENU_ID, title: "存为 OfferU 岗位", contexts: ["page", "selection"] });
+});
+
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (info.menuItemId !== SAVE_MENU_ID || !tab?.id) return;
+  const result = await saveTabAsJob(tab.id);
+  await chrome.scripting
+    .executeScript({ target: { tabId: tab.id }, func: showToast, args: [result.message] })
+    .catch(() => undefined);
 });

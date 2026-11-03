@@ -233,6 +233,7 @@ export type Message =
   | { type: "REMOVE_JOBS"; hashKeys: string[] }
   | { type: "CLEAR_JOBS" }
   | { type: "COLLECT_VIA_PAGE_AGENT" }
+  | { type: "SAVE_PAGE_AS_JOB" }
   | { type: "PAGE_AGENT_COLLECT"; url: string };
 
 /** popup → background：规则包采集响应（fallback=true 表示可回退旧路径） */

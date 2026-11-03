@@ -479,10 +479,11 @@ def core_tool(name: str, request: Request, args: dict[str, Any] | None = None):
     """The workbench calls the same tools as agents. Sync on purpose: SQLite, runs in the threadpool."""
     from pydantic import ValidationError
 
+    from urllib.parse import unquote
     from app.core.tools import call
 
     try:
-        return call(name, args, actor=request.headers.get("x-offeru-actor") or "你")
+        return call(name, args, actor=unquote(request.headers.get("x-offeru-actor") or "") or "你")
     except (ValueError, ValidationError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

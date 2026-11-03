@@ -1130,18 +1130,6 @@ async function clearJobs(): Promise<void> {
   }
 }
 
-function sendCollectCommandToTab(tabId: number): Promise<CollectFromPageResponse> {
-  return new Promise<CollectFromPageResponse>((resolve, reject) => {
-    chrome.tabs.sendMessage(tabId, { type: "OFFERU_TRIGGER_COLLECT" }, (resp: CollectFromPageResponse) => {
-      if (chrome.runtime.lastError) {
-        reject(new Error(safeExtensionError(chrome.runtime.lastError.message, "当前页面无响应")));
-        return;
-      }
-      resolve(resp);
-    });
-  });
-}
-
 async function collectCurrentPageJob(): Promise<void> {
   addCurrentBtn.disabled = true;
   const previousText = addCurrentBtn.textContent;
@@ -1156,22 +1144,8 @@ async function collectCurrentPageJob(): Promise<void> {
       return;
     }
 
-    // 优先规则包采集（显式注入 Page Agent）；不受支持时回退旧 content script 路径
-    const resp = await sendBackgroundMessage<PageAgentCollectViaResponse>({
-      type: "COLLECT_VIA_PAGE_AGENT",
-    });
-    if (resp.ok) {
-      showMessage(resp.message || "已加入购物车", "success");
-    } else if (!resp.fallback) {
-      showMessage(resp.message || "采集失败", "error");
-    } else {
-      const legacy = await sendCollectCommandToTab(activeTab.id);
-      if (legacy.ok) {
-        showMessage(legacy.message || "已加入购物车", "success");
-      } else {
-        showMessage(legacy.message || "当前页面无法加入岗位", "error");
-      }
-    }
+    const resp = await sendBackgroundMessage<{ ok: boolean; message: string }>({ type: "SAVE_PAGE_AS_JOB" });
+    showMessage(resp.message, resp.ok ? "success" : "error");
 
     await refreshStatus();
   } catch (error: unknown) {
@@ -1179,7 +1153,7 @@ async function collectCurrentPageJob(): Promise<void> {
     showMessage(`加入失败：${text}`, "error");
   } finally {
     addCurrentBtn.disabled = false;
-    addCurrentBtn.textContent = previousText || "+ 加入购物车";
+    addCurrentBtn.textContent = previousText || "存为岗位";
   }
 }
 
