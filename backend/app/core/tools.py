@@ -736,6 +736,48 @@ class DraftEmailIn(_In):
     resume_id: Optional[int] = Field(None, description="附哪份简历；不传就用这个岗位下最新的简历，没有就用主简历")
 
 
+SUBJECT_FORMAT_RE = re.compile(
+    r"(?:邮件)?(?:标题|主题)(?:格式)?(?:请)?(?:注明|命名为|写成|统一为|为|是|按)?\s*[：:]?\s*[「“\"'【]?([^，,。；;\n」”\"'】]+)")
+SUBJECT_SEP_RE = re.compile(r"(\s*[-_—–+＋|｜]\s*)")
+SUBJECT_FIELDS: tuple[tuple[tuple[str, ...], Any], ...] = (
+    (("姓名", "名字"), lambda p, j: p.get("name")),
+    (("学校", "院校", "毕业院校"), lambda p, j: p.get("school")),
+    (("专业",), lambda p, j: p.get("major")),
+    (("学历",), lambda p, j: p.get("degree")),
+    (("岗位", "职位", "应聘岗位", "应聘职位", "岗位名称", "意向岗位"), lambda p, j: j.get("title")),
+    (("届别", "年级", "毕业年份", "毕业时间", "届"), lambda p, j: f"{p['grad_year']}届" if p.get("grad_year") else None),
+    (("电话", "手机", "手机号", "联系方式"), lambda p, j: p.get("phone")),
+    (("城市", "实习城市", "意向城市", "工作城市"), lambda p, j: j.get("city")),
+)
+
+
+def mail_subject(text: str, profile: dict[str, Any], job: dict[str, Any]) -> tuple[str, list[str]]:
+    """按 JD 写的标题格式（如「姓名-学校-岗位-到岗时间」）逐段填；档案里没有的段留 [到岗时间] 占位并列进待补。
+    JD 没给格式就用「姓名-学校-岗位」。返回 (标题, 待补字段)。"""
+    title = job.get("title") or "岗位"
+    default = "-".join(x for x in (profile.get("name"), profile.get("school"), title) if x) or f"应聘{title}"
+    for match in SUBJECT_FORMAT_RE.finditer(text):
+        pieces = SUBJECT_SEP_RE.split(match.group(1).strip())
+        if len(pieces) < 3:  # 不是「A-B-C」这种分段格式，看下一处
+            continue
+        out: list[str] = []
+        todo: list[str] = []
+        for i, piece in enumerate(pieces):
+            if i % 2:
+                out.append(piece.strip())
+                continue
+            token = piece.strip()
+            value = next((get(profile, job) for names, get in SUBJECT_FIELDS if token in names), None)
+            value = value or profile.get(token)  # 档案里有同名字段（如「到岗时间」）也认
+            if value:
+                out.append(str(value))
+            elif token:
+                out.append(f"[{token}]")
+                todo.append(token)
+        return "".join(out), todo
+    return default, []
+
+
 def draft_email(job_id: int, resume_id: Optional[int] = None, *, actor: str) -> dict[str, Any]:
     """从 JD 拆出投递邮箱和邮件要求，写好标题正文、导出简历 PDF，存成岗位下的 email 文档。不发送，用户确认后自己发。"""
     job = store.get("job", int(job_id))
@@ -749,7 +791,7 @@ def draft_email(job_id: int, resume_id: Optional[int] = None, *, actor: str) -> 
     profile = store.first("profile") or {}
     name = profile.get("name") or ""
     title = job.get("title") or "岗位"
-    subject = "-".join(x for x in (name, profile.get("school"), title) if x) or f"应聘{title}"
+    subject, subject_todo = mail_subject(text, profile, job)
     docs = sorted(store.all_of("doc"), key=lambda d: -d["id"])
     if resume_id is not None:
         resume = store.get("doc", int(resume_id))
@@ -773,7 +815,7 @@ def draft_email(job_id: int, resume_id: Optional[int] = None, *, actor: str) -> 
                          "subject": subject, "body": body, "attachment": attachment, "rules": rules or None},
                  id=existing["id"] if existing else None, actor=actor)
     return {"to": emails[0], "cc": emails[1:], "subject": subject, "body": body, "attachment": attachment,
-            "attach_error": attach_error, "rules": rules, "doc_id": saved["record"]["id"], "change_id": saved["change_id"]}
+            "attach_error": attach_error, "subject_todo": subject_todo or None, "rules": rules, "doc_id": saved["record"]["id"], "change_id": saved["change_id"]}
 
 
 # ---------- registry ----------

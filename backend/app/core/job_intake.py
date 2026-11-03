@@ -1,10 +1,11 @@
-"""贴进来的岗位链接正文或 JD 文本 → job 字段。调模型；没配模型时只取第一行当岗位名，正文整段当 JD。
+"""贴进来的岗位链接正文或 JD 文本 → job 字段。调模型；没配模型时只做不会错的拆分（岗位名、截止日期），正文整段当 JD。
 
 只整理不编造：字段都来自原文，没有就留空。写库由调用方走 tools.save。
 """
 
 from __future__ import annotations
 
+import re
 from datetime import date
 from typing import Any
 
@@ -33,10 +34,25 @@ def normalize(parsed: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in out.items() if value}
 
 
+TITLE_HINT = re.compile(r"实习|工程师|开发|产品|运营|设计|分析|经理|助理|专员|顾问|研究员|管培|算法|测试|销售|市场")
+DEADLINE_RE = re.compile(r"截止[^0-9\n]{0,8}(20\d{2})\s*[-./年]\s*(\d{1,2})\s*[-./月]\s*(\d{1,2})")
+
+
 def guess(text: str) -> dict[str, Any]:
-    """没模型时的兜底：第一行当岗位名，整段当 JD。"""
+    """没模型时的兜底：第一行截到第一个标点，按 · | 切开取像岗位名的一段（最多 40 字）；
+    写了「截止 2026-11-30」这类日期就认出来；整段当 JD。不猜公司和城市。"""
     first = next((line.strip() for line in text.splitlines() if line.strip()), "")
-    return {"title": first[:120], "jd": text.strip()[:20_000]}
+    head = re.split(r"[，,。；;：:！!？?]", first, maxsplit=1)[0].strip()
+    parts = [p.strip() for p in re.split(r"[·|｜]", head) if p.strip()]
+    title = next((p for p in parts if TITLE_HINT.search(p)), parts[0] if parts else head)
+    out: dict[str, Any] = {"title": title[:40], "jd": text.strip()[:20_000]}
+    found = DEADLINE_RE.search(text)
+    if found:
+        try:
+            out["deadline"] = date(int(found[1]), int(found[2]), int(found[3])).isoformat()
+        except ValueError:
+            pass
+    return out
 
 
 async def extract(text: str) -> dict[str, Any]:

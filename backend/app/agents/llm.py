@@ -345,6 +345,18 @@ def _get_client() -> tuple[Any, str]:
     return client, resolved["model"]
 
 
+class LLMAuthError(ValueError):
+    """网关拒绝了 Key（401/403）。不吞成 None：上层要把真实原因告诉用户，而不是报成「模型没返回可用内容」。"""
+
+
+def _raise_if_auth(exc: BaseException, provider: str, model: str) -> None:
+    status = getattr(exc, "status_code", None)
+    if status in (401, 403):
+        raise LLMAuthError(
+            f"模型鉴权失败（{status}）：{provider}/{model} 的 Key 无效或已过期，去设置里更新当前模型配置的 Key"
+        ) from exc
+
+
 async def chat_completion(
     messages: list[dict],
     temperature: float = 0.3,
@@ -406,6 +418,7 @@ async def chat_completion(
             text = "".join(block.text for block in response.content if getattr(block, "type", "") == "text")
             return text or None
         except Exception as exc:
+            _raise_if_auth(exc, provider, model)
             _logger.error("[LLM Error] %s/%s (anthropic): %s", provider, model, redact_sensitive_text(exc, max_length=500))
             return None
         finally:
@@ -472,6 +485,7 @@ async def chat_completion(
         _logger.error(f"[LLM Timeout] {provider}/{model} (tier={tier}): 超过 {settings.llm_timeout}s")
         return None
     except Exception as e:
+        _raise_if_auth(e, provider, model)
         _logger.error(
             "[LLM Error] %s/%s (tier=%s): %s",
             provider,
@@ -541,6 +555,7 @@ async def chat_completion_stream(
         except asyncio.TimeoutError:
             _logger.warning("[LLM Timeout] %s/%s (anthropic stream): 超过 %ss", provider, model, settings.llm_timeout)
         except Exception as exc:
+            _raise_if_auth(exc, provider, model)
             _logger.error("[LLM Error] %s/%s (anthropic stream): %s", provider, model, redact_sensitive_text(exc, max_length=500))
         finally:
             await client.close()
@@ -620,6 +635,7 @@ async def chat_completion_stream(
         _logger.error(f"[LLM Timeout] {provider}/{model} (tier={tier}, stream): 超过 {settings.llm_timeout}s")
         return
     except Exception as e:
+        _raise_if_auth(e, provider, model)
         _logger.error(
             "[LLM Error] %s/%s (tier=%s, stream): %s",
             provider,
