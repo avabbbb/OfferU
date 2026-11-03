@@ -49,9 +49,10 @@ export default function JobsPage() {
   const paste = async () => {
     setBusy(true); setError("");
     try {
-      const { record } = await write<{ record: Job }>("add_job", { text: text.trim() });
+      const { record, existed } = await write<{ record: Job; existed?: boolean }>("add_job", { text: text.trim() });
       setText("");
       // 存完接着评估，报告出在岗位页；评估失败只提示，不影响已存的岗位。
+      if (existed) { setError("这个岗位之前存过，已合并到原记录，没有重复新建"); return; }
       void write("evaluate_jobs", { ids: [record.id] }).catch((e) => setError("岗位已存，评估没做完：" + (e instanceof Error ? e.message : String(e))));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

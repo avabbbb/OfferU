@@ -190,6 +190,15 @@ def tool(name: str | None, raw: str) -> int:
     return 0
 
 
+def _tool_args(raw: str) -> str:
+    """JSON 参数也可以是 @文件（UTF-8）或 -（标准输入），避开 PowerShell 吞引号。"""
+    if raw == "-":
+        return sys.stdin.buffer.read().decode("utf-8-sig")
+    if raw.startswith("@"):
+        return Path(raw[1:]).expanduser().read_text(encoding="utf-8-sig")
+    return raw
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="offeru", description="OfferU 本地求职工作台")
     parser.add_argument("--data-dir", type=Path, help="数据目录，默认 ~/.offeru（Windows 为 %%LOCALAPPDATA%%\\OfferU）")
@@ -208,7 +217,7 @@ def main(argv: list[str] | None = None) -> int:
     agent_parser.add_argument("--target", help="memory-done：记忆写到了哪里")
     tool_parser = sub.add_parser("tool", help="调用一个 OfferU 工具：offeru tool overview / offeru tool save '{\"type\":\"job\",...}'")
     tool_parser.add_argument("name", nargs="?")
-    tool_parser.add_argument("args", nargs="?", default="{}", help="JSON 参数")
+    tool_parser.add_argument("args", nargs="?", default="{}", help="JSON 参数；也可以是 @文件路径（UTF-8）或 -（读标准输入）")
     sub.add_parser("mcp", help="以 MCP（stdio）方式提供 OfferU 工具，给 Codex / Claude Code 用")
     cli_parser = sub.add_parser("cli", help="Agent 用的操作命令", add_help=False)
     cli_parser.add_argument("cli_args", nargs=argparse.REMAINDER)
@@ -216,7 +225,7 @@ def main(argv: list[str] | None = None) -> int:
 
     configure(args.data_dir)
     if args.command == "tool":
-        return tool(args.name, args.args)
+        return tool(args.name, _tool_args(args.args))
     if args.command == "mcp":
         from app.mcp_server import mcp
 

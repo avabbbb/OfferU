@@ -71,7 +71,6 @@ def _view(item: dict[str, Any], health: dict[str, Any]) -> dict[str, Any]:
         "skill_hash": "",
         "expected_skill_version": "",
         "expected_skill_hash": "",
-        "registry_hash": "",
         "can_install": False,
         "can_live_verify": False,
         "error": "",

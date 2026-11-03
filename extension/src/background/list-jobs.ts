@@ -105,6 +105,7 @@ export async function saveListJobs(serverUrl: string, cards: ListCard[]): Promis
   const headers = { "content-type": "application/json", "x-offeru-actor": encodeURIComponent("插件") };
   const ids: number[] = [];
   const failed: string[] = [];
+  let existed = 0;
   for (const card of picked) {
     try {
       const resp = await fetch(serverUrl + "/api/tools/save", {
@@ -113,7 +114,10 @@ export async function saveListJobs(serverUrl: string, cards: ListCard[]): Promis
         body: JSON.stringify({ type: "job", data: cardToJob(card) }),
       });
       const body = await resp.json();
-      if (resp.ok) ids.push(body.record.id);
+      if (resp.ok) {
+        ids.push(body.record.id);
+        if (body.existed) existed += 1;
+      }
       else failed.push(card.title);
     } catch {
       failed.push(card.title);
@@ -121,6 +125,7 @@ export async function saveListJobs(serverUrl: string, cards: ListCard[]): Promis
   }
   const skipped = cards.length - picked.length;
   let message = "已存 " + ids.length + " 个岗位";
+  if (existed) message += "（其中 " + existed + " 个之前存过，已合并到原记录）";
   if (failed.length) message += "，" + failed.length + " 个没存上：" + failed.slice(0, 3).join("、");
   if (skipped) message += "，跳过 " + skipped + " 个（不是 BOSS / 小红书卡片或超过一次 " + MAX_BATCH + " 个）";
   return { ok: ids.length > 0, message, ids };

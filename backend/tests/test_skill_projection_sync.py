@@ -7,7 +7,7 @@ from pathlib import Path
 
 from app.ops import list_operations
 from app.services.agent_methodology import METHOD_SKILL_IDS, get_agent_methodology
-from app.services.agent_skill_projections import projection_drift, render_skill_projections
+from app.services.agent_skill_projections import CORE_SKILL, projection_drift, render_skill_projections
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -32,7 +32,7 @@ _REMOVED_RULES = (
 
 
 def _sources() -> dict[str, str]:
-    texts = {path.as_posix(): text for path, text in render_skill_projections().items()}
+    texts = {path.as_posix(): text for path, text in render_skill_projections().items() if path.name != "SKILL.md"}
     for skill_id in sorted(METHOD_SKILL_IDS):
         ref = get_agent_methodology(skill_id)["source_ref"]
         texts[ref] = (REPO_ROOT / ref).read_text(encoding="utf-8")
@@ -56,3 +56,19 @@ def test_referenced_operations_are_registered() -> None:
         for path, text in _sources().items()
     }
     assert {path: names for path, names in missing.items() if names} == {}
+
+
+def test_core_skill_is_small_and_names_every_tool() -> None:
+    from app.core.tools import TOOLS
+
+    text = CORE_SKILL.read_text(encoding="utf-8")
+    assert len(text.encode("utf-8")) <= 4096
+    assert "name: offeru" in text and "<offeru>" in text
+    names = [tool.name for tool in TOOLS.values()]
+    missing = [name for name in names if not re.search(r"(?<![a-z_])" + name + r"(?![a-z_])", text)]
+    assert missing == []
+    for old in ("manifest", "doctor", "app.cli", "Operation"):
+        assert old not in text
+    for path, projected in render_skill_projections().items():
+        if path.name == "SKILL.md":
+            assert projected == text

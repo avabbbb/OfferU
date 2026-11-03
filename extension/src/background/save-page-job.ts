@@ -136,14 +136,14 @@ export async function savePageAsJob(
   if (!resp.ok) return { ok: false, message: "没存上：" + (body.detail ?? resp.status) };
   // 截止日期按设计存成 event（kind=deadline），挂在刚建的岗位下；没存上不影响岗位本身。
   const deadline = findPosting(page.ldjson)?.validThrough;
-  if (deadline) {
+  if (deadline && !body.existed) {
     await fetch(serverUrl + "/api/tools/save", {
       method: "POST",
       headers,
       body: JSON.stringify({ type: "event", data: { title: "截止：" + body.record.title, kind: "deadline", at: String(deadline).slice(0, 10), job_id: body.record.id } }),
     }).catch(() => undefined);
   }
-  return { ok: true, message: "已存为岗位：" + body.record.title, id: body.record.id };
+  return { ok: true, message: (body.existed ? "这个岗位之前存过，已更新：" : "已存为岗位：") + body.record.title, id: body.record.id };
 }
 
 // 在页面右下角提示一下结果（右键菜单触发时没有 popup 可以显示）。同样要自包含。

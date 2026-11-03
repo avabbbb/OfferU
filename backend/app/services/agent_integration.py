@@ -22,10 +22,10 @@ from app.services.agent_methodology import methodology_assets
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _BACKEND_ROOT = _PROJECT_ROOT / "backend"
-_SOURCE_SKILL = _PROJECT_ROOT / ".agents" / "skills" / "offeru" / "SKILL.md"
+_SOURCE_SKILL = _BACKEND_ROOT / "skill" / "SKILL.md"
 _CHALLENGE_TTL_SECONDS = 300
 _CHALLENGE_LOCK = threading.Lock()
-_MARKER = re.compile(r"generated: offeru-skill-registry@([^\s]+) sha256=([a-f0-9]{64})")
+_MARKER = re.compile(r"^version:\s*(\S+)", re.MULTILINE)
 _PROVIDER_IDS = ("external", "codex", "opencode", "claude", "omp", "pi", "gemini", "codebuddy", "dsh")
 
 
@@ -54,36 +54,22 @@ def runtime_cli_command() -> str:
     return f"{_command_prefix()} -m app.cli"
 
 
+def tool_command() -> str:
+    """The offeru command of this installation; fills the Skill's <offeru> placeholder."""
+    data_dir = f"--data-dir {_shell_quote(str(runtime_data_dir()))}"
+    if getattr(sys, "frozen", False):
+        return f"{_command_prefix()} {data_dir}"
+    return f"{_command_prefix()} -m app.entry {data_dir}"
+
+
 def _installed_content() -> str:
     packaged = packaged_resource_dir()
     source = (
         (packaged / "offeru-assets/skills/offeru/SKILL.md") if packaged else _SOURCE_SKILL
     ).read_text(encoding="utf-8")
-    if "<!-- offeru-runtime-binding -->" not in source or "<offeru-cli>" not in source:
-        raise ValueError("OfferU Skill is missing its runtime binding; reinstall OfferU.")
-    if packaged:
-        binding = (
-            "**Runtime binding:** installed OfferU. "
-            "Use the command projected below from any directory; "
-            "do not look for a source checkout."
-        )
-        return (
-            source.replace("<!-- offeru-runtime-binding -->", binding, 1)
-            .replace("<offeru-cli>", runtime_cli_command())
-            .replace("```powershell", "```powershell" if os.name == "nt" else "```sh")
-        )
-
-    backend = str(_BACKEND_ROOT.resolve())
-    binding = (
-        f"**Runtime binding:** developer/source projection at `{backend}`. "
-        "Use this source checkout only for explicit OfferU development/debugging; "
-        "normal career tasks should connect to the installed OfferU instead."
-    )
-    return (
-        source.replace("<!-- offeru-runtime-binding -->", binding, 1)
-        .replace("<offeru-cli>", runtime_cli_command())
-    )
-
+    if "<offeru>" not in source:
+        raise ValueError("OfferU Skill is missing its command placeholder; reinstall OfferU.")
+    return source.replace("<offeru>", tool_command())
 
 def installed_skill_content() -> str:
     """Return the Skill projected for the currently running OfferU install."""
@@ -91,9 +77,9 @@ def installed_skill_content() -> str:
     return _installed_content()
 
 
-def _skill_metadata(content: str) -> tuple[str, str]:
+def _skill_version(content: str) -> str:
     match = _MARKER.search(content)
-    return (match.group(1), match.group(2)) if match else ("", "")
+    return match.group(1) if match else ""
 
 
 @dataclass(frozen=True)
@@ -131,7 +117,7 @@ class AgentIntegrationAdapter:
     def inspect(self) -> dict[str, Any]:
         expected = _installed_content()
         expected_bytes = expected.encode("utf-8")
-        expected_version, registry_hash = _skill_metadata(expected)
+        expected_version = _skill_version(expected)
         path = self.skill_path()
         result = {
             "skill_status": "NOT_INSTALLED",
@@ -139,7 +125,6 @@ class AgentIntegrationAdapter:
             "skill_hash": "",
             "expected_skill_version": expected_version,
             "expected_skill_hash": _sha256(expected_bytes),
-            "registry_hash": registry_hash,
             "can_install": True,
             "can_live_verify": self.provider_id == "codex",
             "error": "",
@@ -152,13 +137,13 @@ class AgentIntegrationAdapter:
             installed = path.read_text(encoding="utf-8")
         except OSError as exc:
             return {**result, "skill_status": "ERROR", "error": redact_sensitive_text(exc, max_length=300)}
-        installed_version, _ = _skill_metadata(installed)
+        installed_version = _skill_version(installed)
         installed_hash = _sha256(installed.encode("utf-8"))
         if "name: offeru" not in installed:
             state = "ERROR"
             error = "目标目录存在非 OfferU Skill；只有明确修复后才会覆盖。"
         elif installed == expected:
-            state = "INSTALLED" if self._methods_match() else "OUTDATED"
+            state = "INSTALLED"
             error = ""
         else:
             state = "OUTDATED"
@@ -189,26 +174,29 @@ class AgentIntegrationAdapter:
             raise ValueError("OfferU Skill 目标路径越过允许目录（可能位于不同盘符）")
         if common != str(resolved_root):
             raise ValueError("OfferU Skill 目标路径越过允许目录")
-        assets = methodology_assets()
-        for relative, payload in assets.items():
-            target = path.parent / relative
-            if target.is_symlink() or not target.resolve().is_relative_to(path.parent.resolve()):
-                raise ValueError("OfferU 方法文件目标路径越过允许目录")
-            atomic_write_bytes(target, payload)
         atomic_write_bytes(path, _installed_content().encode("utf-8"))
+        self._remove_old_methods()
         return self.inspect()
 
-    def _methods_match(self) -> bool:
-        for relative, expected in methodology_assets().items():
+    def _remove_old_methods(self) -> None:
+        """Older Skills installed method files next to SKILL.md; the core Skill has none."""
+        base = self.skill_path().parent.resolve()
+        try:
+            relatives = list(methodology_assets())
+        except ValueError:
+            relatives = []
+        for relative in relatives:
             target = self.skill_path().parent / relative
-            if target.is_symlink() or not target.resolve().is_relative_to(self.skill_path().parent.resolve()):
-                return False
-            try:
-                if target.read_bytes() != expected:
-                    return False
-            except OSError:
-                return False
-        return True
+            if target.is_symlink() or not target.is_file() or not target.resolve().is_relative_to(base):
+                continue
+            target.unlink()
+            parent = target.parent
+            while parent.resolve() != base and parent.resolve().is_relative_to(base):
+                try:
+                    parent.rmdir()
+                except OSError:
+                    break
+                parent = parent.parent
 
     def update(self) -> dict[str, Any]:
         return self.install("update")
