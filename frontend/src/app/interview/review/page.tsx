@@ -29,6 +29,7 @@ import {
   type ReviewQuestion,
   type WeakSpots as WeakSpotsResult,
 } from "@/lib/interviewReviews";
+import { write } from "@/lib/core";
 
 const OUTCOMES: Array<{ id: ReviewOutcome; label: string }> = [
   { id: "pending", label: "等结果" },
@@ -287,7 +288,49 @@ function Editor({ review, onChange, onDelete }: { review: InterviewReview; onCha
 
       <h2 className="mt-8 text-[13px] font-medium text-[var(--foreground-muted)]">整体感受</h2>
       <Field label="整体感受" value={review.summary} onChange={(v) => set("summary", v)} placeholder="这一轮整体怎么样，下次最想改的一件事" className="mt-2 text-[14px]" />
+      <SaveToMemory review={review} />
     </article>
+  );
+}
+
+/** 复盘写回档案：每道题（连同我怎么答、卡在哪）和整体感受各存一条记忆，之后定制简历、网申回答、岗位评估都会读到。 */
+function SaveToMemory({ review }: { review: InterviewReview }) {
+  const [state, setState] = useState<"" | "busy">("");
+  const [saved, setSaved] = useState<Set<string>>(new Set());
+  const [notice, setNotice] = useState("");
+  const where = [reviewTitle(review), review.role, review.interviewed_on].filter(Boolean).join(" · ");
+  const items = [
+    ...review.questions.filter((q) => q.question.trim()).map((q) => ({
+      key: "q:" + q.question.trim(),
+      title: "面试题：" + q.question.trim().slice(0, 60),
+      body: ["题目：" + q.question.trim(), q.answer.trim() && "我的回答：" + q.answer.trim(), q.reflection.trim() && "卡在哪：" + q.reflection.trim(), "来自：" + where].filter(Boolean).join("\n"),
+    })),
+    ...(review.summary.trim() ? [{ key: "s:" + review.summary.trim(), title: "面试复盘：" + where, body: review.summary.trim() }] : []),
+  ].filter((item) => !saved.has(item.key));
+  const save = async () => {
+    setState("busy"); setNotice("");
+    let done = 0;
+    try {
+      for (const item of items) {
+        await write("save", { type: "memory", data: { kind: "note", title: item.title, body: item.body, end: review.interviewed_on || undefined, tags: ["面试复盘", review.company].filter(Boolean) } });
+        done += 1;
+        setSaved((prev) => new Set(prev).add(item.key));
+      }
+      setNotice("存了 " + done + " 条进档案，在档案里可以改或撤销。");
+    } catch (cause) {
+      setNotice((done ? "存了 " + done + " 条，" : "") + safeClientErrorMessage(cause, "剩下的没存上，再点一次"));
+    } finally {
+      setState("");
+    }
+  };
+  return (
+    <div className="mt-4 flex flex-wrap items-center gap-3 text-[13px]" data-testid="review-save-memory">
+      <button type="button" onClick={save} disabled={!items.length || state === "busy"}
+        className="rounded-md border border-[var(--border-strong)] px-3 py-1.5 font-medium text-[var(--foreground)] hover:bg-[var(--surface-muted)] disabled:opacity-40">
+        {state === "busy" ? "正在存…" : items.length ? "存进档案（" + items.length + " 条）" : "都存过了"}
+      </button>
+      {notice && <span role="status" className="text-[var(--foreground-muted)]">{notice}</span>}
+    </div>
   );
 }
 
