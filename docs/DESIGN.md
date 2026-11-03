@@ -97,7 +97,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 | tailor_resume | 按岗位 JD 改写一份简历，直接覆盖并返回新正文（一条 change，可撤销） | ✓ |
 | split_resume | 把旧简历原文拆成一条条 memory 写进档案（可整次撤销） | ✓ |
 | add_job | 贴岗位链接或 JD：抓正文、拆公司 / 岗位 / 城市 / JD，截止日另存 deadline 事项；抓不到正文就报错不存 | ✓ |
-| rank_jobs | 批量评估：按档案和偏好给岗位打 0–100 分并写三句理由，存在 job.score / reasons（每个岗位一条 change） | ✓ |
+| evaluate_jobs | 评估岗位：每个岗位出评估报告（岗位下的 evaluation 文档，重评覆盖），0–100 分和三句理由写回 job.score / reasons（每步一条 change） | ✓ |
 | apply_answer | 官网网申问答：用 JD、该岗位的定制简历、档案和记忆回答问题，问答追加到岗位下的 apply_chat 文档（每问一条 change） | ✓ |
 | draft_email | 邮件投递草稿：从 JD / 备注拆投递邮箱和标题、附件要求，写标题正文、导简历 PDF，存为 email 文档；不发送，用户在邮件客户端确认后自己发 | ✓ |
 

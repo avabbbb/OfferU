@@ -43,7 +43,7 @@ def test_live_main_flow(tmp_path, monkeypatch):
     events = call("get", {"type": "job", "id": job["id"]}, actor="你").get("events") or []
     assert any(e.get("kind") == "deadline" and e.get("at") == "2026-11-30" for e in events)
 
-    ranked = step("rank_jobs", "rank_jobs", {})["items"]
+    ranked = step("evaluate_jobs", "evaluate_jobs", {"ids": [job["id"]]})["items"]
     assert ranked and 0 <= ranked[0]["score"] <= 100 and len(ranked[0]["reasons"]) == 3
 
     doc = step("copy resume", "save", {"type": "doc", "data": {"kind": "resume", "title": "主简历 · 字节", "body": RESUME, "job_id": job["id"]}})

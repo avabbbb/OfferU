@@ -222,29 +222,131 @@ def test_add_job_from_text_or_link(tmp_path, monkeypatch):
     assert len(call("list", {"type": "job"}, actor="你")["items"]) == 2
 
 
-def test_rank_jobs(tmp_path, monkeypatch):
-    """批量评估：只评没打分的岗位，分数和理由存在 job 上、按分排序，每个岗位一条改动可撤销。"""
+def test_add_job_from_name_finds_official_posting(tmp_path, monkeypatch):
+    """只写「公司 岗位」：联网找官方岗位页，跳过要登录的招聘站和对不上公司的页，存正文和链接；找不到就报错、不存。"""
     monkeypatch.setenv("OFFERU_DATA_DIR", str(tmp_path))
-    from app.core import job_rank
+    import pytest
 
-    assert job_rank.normalize({"items": [{"id": 1, "score": 120, "reasons": ["x"]}, {"id": 9, "score": 5}]}, {1}) == {1: {"score": 100, "reasons": ["x"]}}
-    a = call("save", {"type": "job", "data": {"company": "美团", "title": "后端实习", "jd": "Go"}}, actor="你")["record"]
+    from app.core import job_intake, tools
+    from app.services import web_search as service
+
+    def link(host, path):
+        return "https:" + "//" + host + "/" + path
+
+    official = link("jobs" + ".bytedance" + ".com", "campus/position/7")
+    other = link("other" + ".example" + ".com", "jobs/9")
+    hits = [
+        {"title": "字节跳动 后端开发实习生 - 猎聘", "url": link("www" + ".liepin" + ".com", "job/1.shtml")},
+        {"title": "后端开发实习生 招聘", "url": other},
+        {"title": "后端开发实习生 - 字节跳动校园招聘", "url": official},
+    ]
+
+    async def search(query, limit=8, allow_optional_ddgs=True):
+        return list(hits)
+
+    pages = {
+        official: {"title": "后端开发实习生", "text": "字节跳动 后端开发实习生\n" + "负责抖音服务端开发，使用 Go。" * 20},
+        other: {"title": "招聘", "text": "别家公司 后端开发实习生。" * 30},
+    }
+    fetched = []
+
+    def fetch(url, actor=""):
+        fetched.append(url)
+        return dict(pages[url], url=url, truncated=False)
+
+    monkeypatch.setattr(service, "_ddgs_available", lambda: True)
+    monkeypatch.setattr(service, "web_search", search)
+    monkeypatch.setattr(tools, "fetch_page", fetch)
+    monkeypatch.setattr(job_intake, "available", lambda: False)
+    # 这条测的是联网搜索兜底：字节已接官网接口，这里让接口「不通」，测试不碰真网络。
+    from app.core import job_sources
+    def offline(company, rest):
+        raise OSError("offline")
+    monkeypatch.setattr(job_sources, "find_via_api", offline)
+
+    job = call("add_job", {"text": "字节跳动 后端开发实习生"}, actor="你")["record"]
+    assert job["url"] == official and "抖音服务端" in job["jd"]
+    assert not any("liepin" in u for u in fetched)
+
+    hits.pop()
+    with pytest.raises(ValueError, match="没找到"):
+        call("add_job", {"text": "字节跳动 后端开发实习生"}, actor="你")
+    assert len(call("list", {"type": "job"}, actor="你")["items"]) == 1
+
+
+def test_add_job_from_name_uses_career_api(tmp_path, monkeypatch):
+    """腾讯、百度先查招聘官网接口：查到就存官网链接和 JD；给了 J 编号却查不到，只列相近岗位、不顶替、不存。"""
+    monkeypatch.setenv("OFFERU_DATA_DIR", str(tmp_path))
+    import pytest
+
+    from app.core import job_intake, job_sources
+
+    assert job_sources.parse_want("AI产品营销经理（J102408）北京") == ("AI产品营销经理", "北京", "J102408")
+    assert job_sources.split_name("百度 AI产品营销经理") == ("百度", "AI产品营销经理")
+    assert job_sources.official_kind("https:" + "//talent.baidu.com/jobs/detail/SOCIAL/1", "百度") == "own"
+    assert job_sources.official_kind("https:" + "//jobs.ultraai.site/jobs/bytedance_campus/1", "字节跳动") == ""
+    assert job_sources.official_kind("https:" + "//app.mokahr.com/apply/x/1", "某公司") == "ats"
+
+    official = "https:" + "//talent.baidu.com/jobs/detail/SOCIAL/dd58"
+    calls = []
+
+    def lookup(company, rest):
+        calls.append((company, rest))
+        if "J102408" in rest:
+            return None, ["AI产品营销经理（J104122）（北京市）"]
+        return {"url": official, "title": "百度 AI产品营销经理（J104122）", "truncated": False,
+                "text": "百度 AI产品营销经理（J104122）\n地点：北京市\n工作职责：\n负责百度搭子的品牌推广和增长。" + "".join("围绕获客、激活、转化和留存设计内容。" for _ in range(10))}, []
+
+    monkeypatch.setattr(job_sources, "find_via_api", lookup)
+    monkeypatch.setattr(job_intake, "available", lambda: False)
+
+    job = call("add_job", {"text": "百度 AI产品营销经理 北京"}, actor="你")["record"]
+    assert job["url"] == official and "百度搭子" in job["jd"] and job["source"] == "talent.baidu.com"
+
+    with pytest.raises(ValueError, match="J104122"):
+        call("add_job", {"text": "百度 AI产品营销经理（J102408）北京"}, actor="你")
+    assert len(call("list", {"type": "job"}, actor="你")["items"]) == 1
+    assert calls[0][0] == "百度"
+
+
+
+def test_evaluate_jobs(tmp_path, monkeypatch):
+    """岗位评估：报告存成岗位下的 evaluation 文档（来源由代码写，模型编的来源丢掉），分数和理由写回岗位，按分排；
+    评过的不重复评，点名重评覆盖同一份；点名评没 JD 的岗位报错。"""
+    monkeypatch.setenv("OFFERU_DATA_DIR", str(tmp_path))
+    import pytest
+
+    from app.agents import llm
+    from app.core import job_eval
+
+    seen: list[str] = []
+
+    async def fake(messages, temperature=0.3, json_mode=False, max_tokens=4096, tier="standard"):
+        user = messages[-1]["content"]
+        seen.append(user)
+        md = ("# 结论\n可以投。\n> 风险：缺实习\n- 方向对口 [community S1]\n## 岗位摘要\n后端开发。\n- 写 Go [community S1]\n"
+              "## 来源\n- S9 编的 · https:" "//fake.example/x")
+        return json.dumps({"score": 85 if "推荐" in user else 62, "reasons": ["对口", "缺实习", "在北京"], "markdown": md},
+                          ensure_ascii=False)
+
+    monkeypatch.setattr(job_eval, "available", lambda: True)
+    monkeypatch.setattr(llm, "chat_completion", fake)
+    a = call("save", {"type": "job", "data": {"company": "美团", "title": "后端实习", "jd": "Go", "source": "boss"}}, actor="你")["record"]
     b = call("save", {"type": "job", "data": {"company": "京东", "title": "算法实习", "jd": "推荐"}}, actor="你")["record"]
+    empty = call("save", {"type": "job", "data": {"company": "字节跳动"}}, actor="你")["record"]
     call("save", {"type": "memory", "data": {"kind": "preference", "title": "想去北京"}}, actor="你")
 
-    async def evaluate(text, jobs):
-        assert "想去北京" in text and sorted(j["id"] for j in jobs) == sorted([a["id"], b["id"]])
-        return {a["id"]: {"score": 62, "reasons": ["Go 对口", "缺实习", "在北京"]},
-                b["id"]: {"score": 85, "reasons": ["有推荐经历", "无明显差距", "在北京"]}}
-
-    monkeypatch.setattr(job_rank, "available", lambda: True)
-    monkeypatch.setattr(job_rank, "evaluate", evaluate)
-    out = call("rank_jobs", {}, actor="助手")
-    assert [i["id"] for i in out["items"]] == [b["id"], a["id"]] and len(out["change_ids"]) == 2
-    assert call("get", {"type": "job", "id": a["id"]}, actor="你")["record"]["reasons"][0] == "Go 对口"
-    assert call("rank_jobs", {}, actor="助手")["count"] == 0
-    call("undo", {"change_id": out["change_ids"][0]}, actor="你")
-    assert call("get", {"type": "job", "id": a["id"]}, actor="你")["record"].get("score") is None
+    out = call("evaluate_jobs", {}, actor="助手")
+    assert [i["id"] for i in out["items"]] == [b["id"], a["id"]] and len(out["change_ids"]) == 4
+    assert len(seen) == 2 and all("想去北京" in u for u in seen) and any("BOSS 直聘" in u for u in seen)
+    body = call("get", {"type": "doc", "id": out["items"][1]["doc_id"]}, actor="你")["record"]["body"]
+    assert body.startswith("# 结论") and "fake.example" not in body and "S1 岗位 JD · 第三方平台（BOSS 直聘）" in body
+    assert call("get", {"type": "job", "id": a["id"]}, actor="你")["record"]["reasons"][0] == "对口"
+    assert call("evaluate_jobs", {}, actor="助手")["count"] == 0
+    again = call("evaluate_jobs", {"ids": [a["id"]]}, actor="助手")
+    assert again["items"][0]["doc_id"] == out["items"][1]["doc_id"]
+    with pytest.raises(ValueError, match="JD"):
+        call("evaluate_jobs", {"ids": [empty["id"]]}, actor="助手")
 
 
 def test_new_record_never_reuses_undone_id(tmp_path, monkeypatch):
@@ -259,7 +361,7 @@ def test_new_record_never_reuses_undone_id(tmp_path, monkeypatch):
 def test_apply_answer(tmp_path, monkeypatch):
     """官网网申问答：引用 JD 和定制简历，同一岗位的问答追加到同一份 apply_chat，每次一条改动可撤销。"""
     monkeypatch.setenv("OFFERU_DATA_DIR", str(tmp_path))
-    from app.core import job_rank, tools
+    from app.core import job_eval, tools
 
     seen: dict = {}
 
@@ -267,7 +369,7 @@ def test_apply_answer(tmp_path, monkeypatch):
         seen["context"], seen["history"] = context, history
         return "我在实习里做过需求分析。"
 
-    monkeypatch.setattr(job_rank, "available", lambda: True)
+    monkeypatch.setattr(job_eval, "available", lambda: True)
     monkeypatch.setattr(tools, "_apply_reply", fake)
     job = call("save", {"type": "job", "data": {"company": "字节跳动", "title": "产品实习生", "jd": "负责 AI 产品需求分析"}}, actor="你")["record"]
     call("save", {"type": "doc", "data": {"kind": "note", "job_id": job["id"], "title": "定制版", "body": "无关笔记"}}, actor="你")
@@ -295,3 +397,34 @@ def test_draft_email(tmp_path, monkeypatch):
     bare = call("save", {"type": "job", "data": {"company": "无邮箱", "jd": "官网投递"}}, actor="你")["record"]
     with pytest.raises(ValueError):
         call("draft_email", {"job_id": bare["id"]}, actor="你")
+
+
+def test_bytedance_api_uses_portal_site_header(monkeypatch):
+    """字节招聘接口：社招走 website-path=society、校招走 campus，按名字命中后拼官网详情链接；对不上就不顶替。"""
+    import httpx
+
+    from app.core import job_sources
+
+    seen = []
+
+    def handler(request):
+        site = request.headers.get("website-path", "")
+        if request.url.path.endswith("/csrf/token"):
+            return httpx.Response(200, json={"code": 0, "data": {"token": "t"}})
+        if request.url.path.endswith("/search/job/posts"):
+            seen.append((site, request.headers.get("x-csrf-token")))
+            if site not in ("society", "campus"):
+                return httpx.Response(200, json={"code": -9000003, "message": "site not exist"})
+            posts = [{"id": "42", "title": "产品运营实习生 - AI 工具运营", "city_info": {"name": "北京"},
+                      "job_category": {"name": "产品运营"}, "recruit_type": {"name": "实习", "parent": {"name": "校招"}},
+                      "code": "A1A", "description": "负责 AI 工具运营", "requirement": "本科在读"}] if site == "campus" else []
+            return httpx.Response(200, json={"code": 0, "data": {"job_post_list": posts}})
+        return httpx.Response(200, text="<html></html>")
+
+    monkeypatch.setattr(job_sources, "_client", lambda: httpx.Client(transport=httpx.MockTransport(handler)))
+    hit, _ = job_sources.find_via_api("字节跳动", "产品运营实习生 - AI 工具运营 北京")
+    assert hit and hit["url"].endswith("/campus/position/42/detail")
+    assert "负责 AI 工具运营" in hit["text"] and "校招·实习" in hit["text"]
+    assert {s for s, _ in seen} == {"society", "campus"} and all(t == "t" for _, t in seen)
+    missing, _ = job_sources.find_via_api("字节跳动", "完全不相干的岗位")
+    assert missing is None

@@ -49,8 +49,10 @@ export default function JobsPage() {
   const paste = async () => {
     setBusy(true); setError("");
     try {
-      await write("add_job", { text: text.trim() });
+      const { record } = await write<{ record: Job }>("add_job", { text: text.trim() });
       setText("");
+      // 存完接着评估，报告出在岗位页；评估失败只提示，不影响已存的岗位。
+      void write("evaluate_jobs", { ids: [record.id] }).catch((e) => setError("岗位已存，评估没做完：" + (e instanceof Error ? e.message : String(e))));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -63,11 +65,11 @@ export default function JobsPage() {
     setCompany(""); setTitle(""); setUrl("");
   };
 
-  /** 读档案和偏好给没打分的岗位打分，结果存在岗位上，列表按分排。 */
+  // 给没评过的岗位逐个出评估报告（存在岗位下），分数写回岗位，列表按分排。
   const rank = async () => {
     setRanking(true); setError("");
     try {
-      await write("rank_jobs", {});
+      await write("evaluate_jobs", {});
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -80,7 +82,7 @@ export default function JobsPage() {
       <h1 className="text-[24px] font-semibold tracking-tight text-[var(--foreground)]">岗位</h1>
       <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); void paste(); }}>
         <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} aria-label="岗位链接或 JD"
-          placeholder="贴岗位链接，或者整段 JD" style={{ fontSize: 13 }} className={`${field} block w-full resize-y`}
+          placeholder="贴岗位链接、整段 JD，或只写「公司 岗位」（会去官网找）" style={{ fontSize: 13 }} className={field + " block w-full resize-y"}
           onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && text.trim() && !busy) { e.preventDefault(); void paste(); } }} />
         <div className="flex items-center gap-3">
           <button type="submit" style={{ fontSize: 13 }} disabled={!text.trim() || busy} className="rounded-md bg-[var(--foreground)] px-3 py-1.5 text-[13px] font-medium text-[var(--background)] disabled:opacity-40">{busy ? "正在读…" : "添加"}</button>

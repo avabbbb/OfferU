@@ -77,3 +77,8 @@ description: Run evidence-gated research on one target job (company, role, team 
 ```
 
 报告结构：公司档案 → 岗位档案 → 信息缺口 → 综合分析（AI 生成，标注）→ 来源。
+
+## Quality bar（面试前岗位调研）
+
+调研报告和岗位调研卡片按 reference/interview-research-bar.md 的固定板块与口径标签来写：先结论、每板块落到「对你意味着什么」、事实 / 媒体 / 第三方估算 / 社区信号 / 推断 / 缺口分开标注，最后换成候选人能直接用的经历包装、反问和清单。没有可靠来源的板块写缺口，不用相近岗位或镜像站顶替。
+

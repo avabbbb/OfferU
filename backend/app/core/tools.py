@@ -29,7 +29,7 @@ LEGACY_TEMPLATE = {"single": {"template": "clear"}, "compact": {"template": "com
 STYLE_RANGE = {"bodySize": (8, 14), "lineHeight": (1.0, 2.0), "sectionGap": (0, 30), "itemGap": (0, 20)}
 MARGIN_RANGE = (3, 30)
 STYLE_KEYS = ("template", "font", *STYLE_RANGE, "margin", "accent", "photo", "logo")
-DOC_KIND = {"resume": "简历", "apply_chat": "官网投递对话", "email": "投递邮件", "review": "面试复盘", "research": "调研", "note": "笔记"}
+DOC_KIND = {"resume": "简历", "apply_chat": "官网投递对话", "email": "投递邮件", "review": "面试复盘", "research": "调研", "evaluation": "岗位评估", "note": "笔记"}
 MEMORY_KIND = {"experience": "实习 / 工作", "project": "项目", "education": "教育", "skill": "技能",
                "award": "奖项 / 证书", "preference": "偏好", "note": "其他"}
 TYPE_LABEL = {"profile": "档案", "memory": "记忆", "job": "岗位", "event": "事项", "doc": "文档"}
@@ -605,12 +605,86 @@ def split_resume(text: Optional[str] = None, path: Optional[str] = None, *, acto
     }
 
 
+# 只给「公司 岗位」时去官网找岗位页。
+def _is_job_name(text: str) -> bool:
+    """一行、很短、不是链接：当成「公司 岗位」去联网找，而不是当 JD 存。"""
+    return "\n" not in text and len(text) <= 60 and not re.search(r"https?://", text)
+
+
+def _hit(result: Any, key: str) -> str:
+    return str((result.get(key) if isinstance(result, dict) else getattr(result, key, "")) or "")
+
+
+def _find_official_posting(name: str) -> tuple[str, dict[str, Any]]:
+    """只有「公司 岗位」时拿官方 JD：腾讯、百度先查招聘官网公开接口；其余联网搜，只认公司自有招聘域名和
+    公司开通的托管招聘系统（Moka、飞书招聘、北森等），镜像站、聚合站一律不采用。"""
+    from urllib.parse import urlparse
+
+    from app.config import get_settings
+    from app.core import job_sources
+    from app.services import job_capture
+    from app.services import web_search as service
+
+    company, rest = job_sources.split_name(name)
+    if company in job_sources.API_COMPANIES:
+        try:
+            posting, similar = job_sources.find_via_api(company, rest)
+        except Exception:  # 接口不通就退回联网搜，不当成「官网没有」
+            posting, similar = None, None
+        if posting:
+            return posting["url"], posting
+        if similar is not None:
+            near = f"官网上名字相近的有：{'、'.join(similar)}，要的是其中一个就贴它的链接。" if similar else ""
+            raise ValueError(f"{company}招聘官网没找到「{rest}」，没存。{near}"
+                             "这个岗位可能只挂在 BOSS 等平台上：把 JD 文字贴进来就行")
+
+    settings = get_settings()
+    if not (settings.bocha_api_key or settings.tavily_api_key or settings.serper_api_key or service._ddgs_available()):
+        raise ValueError(f"只有「{name}」要联网找官方岗位页，但没配搜索服务：在设置里填 Bocha / Tavily / Serper 的 key"
+                         "（或装 ddgs）。也可以直接贴岗位链接或 JD")
+    blocked = tuple(service.RESTRICTED_DOMAINS) + tuple(job_capture.CAPTURE_PASTE_ONLY_DOMAINS)
+    tokens = [t for t in re.split(r"[\s·|/,，、]+", name) if t]
+    owner = (company or (tokens[0] if tokens else "")).lower()
+    seen: set[str] = set()
+    skipped: list[str] = []
+    ranked: list[tuple[int, str]] = []
+    for query in (f"{name} 招聘 官网", f"{name} 岗位详情 投递"):
+        for r in _await(lambda q=query: service.web_search(q, limit=8)) or []:
+            url = _hit(r, "url").strip()
+            host = (urlparse(url).hostname or "").lower()
+            if not url or url in seen or not host or any(host == d or host.endswith("." + d) for d in blocked):
+                continue
+            seen.add(url)
+            kind = job_sources.official_kind(url, company)
+            if not kind:  # 镜像站、聚合站、新闻页：正文里有公司名也不采用
+                skipped.append(host)
+                continue
+            title = _hit(r, "title").lower()
+            ranked.append(((4 if kind == "own" else 2) + sum(2 for t in tokens if t.lower() in title), url))
+    ranked.sort(key=lambda x: -x[0])
+    tried: list[str] = []
+    for _, url in ranked[:4]:
+        try:
+            page = fetch_page(url)
+        except Exception:
+            tried.append(urlparse(url).hostname or url)
+            continue
+        body = f"{page.get('title', '')}\n{page.get('text', '')}".lower()
+        matched = sum(1 for t in tokens if t.lower() in body)
+        if len(page.get("text", "")) >= 200 and owner and owner in body and matched + matched >= len(tokens):
+            return url, page
+        tried.append(urlparse(url).hostname or url)
+    where = f"（试过：{'、'.join(dict.fromkeys(tried))}）" if tried else ""
+    other = f"搜到的 {'、'.join(list(dict.fromkeys(skipped))[:4])} 不是官方招聘站，没采用。" if skipped else ""
+    raise ValueError(f"联网没找到「{name}」能直接读到正文的官方岗位页{where}，没存。{other}把官网岗位链接或 JD 文字贴进来")
+
+
 class AddJobIn(_In):
-    text: str = Field(description="岗位详情页链接，或整段 JD 文本")
+    text: str = Field(description="岗位详情页链接、整段 JD 文本，或只写「公司 岗位」（会联网找官方岗位页）")
 
 
 def add_job(text: str, *, actor: str) -> dict[str, Any]:
-    """贴链接或 JD 建岗位：链接先抓正文（抓不到就报错，不存空壳），再由模型拆出公司、岗位、城市、截止、投递方式。"""
+    """贴链接、JD 或只写「公司 岗位」建岗位：只有名字时先联网找官方岗位页；链接抓正文（抓不到就报错，不存空壳），再由模型拆出公司、岗位、城市、截止、投递方式。"""
     from urllib.parse import urlparse
 
     from app.core import job_intake
@@ -619,9 +693,12 @@ def add_job(text: str, *, actor: str) -> dict[str, Any]:
     if not text:
         raise ValueError("要给岗位链接或 JD 文本")
     url = text if re.fullmatch(r"https?://\S+", text) else None
+    page = None
+    if not url and _is_job_name(text):
+        url, page = _find_official_posting(text)
     source = text
     if url:
-        page = fetch_page(url)
+        page = page or fetch_page(url)
         if len(page["text"]) < 200:
             raise ValueError("这个页面要登录或靠 JS 渲染，抓不到正文，没存。用插件「存为岗位」，或者把 JD 文字贴进来")
         source = f"{page['title']}\n{page['text']}"
@@ -641,16 +718,16 @@ def add_job(text: str, *, actor: str) -> dict[str, Any]:
     return out
 
 
-class RankJobsIn(_In):
-    ids: Optional[list[int]] = Field(None, description="只评这些岗位；不传就评所有没打过分、没结束的岗位")
-    redo: bool = Field(False, description="不传 ids 时，true 表示打过分的也重评")
+class EvaluateJobsIn(_In):
+    ids: Optional[list[int]] = Field(None, description="只评这些岗位；不传就评所有没评过、没结束、有 JD 的岗位")
+    redo: bool = Field(False, description="不传 ids 时，true 表示评过的也重评")
 
 
-def rank_jobs(ids: Optional[list[int]] = None, redo: bool = False, *, actor: str) -> dict[str, Any]:
-    """读档案和偏好给岗位打 0–100 分、写三句理由，存在 job 的 score / reasons 上，每个岗位一条改动。"""
-    from app.core import job_rank
+def evaluate_jobs(ids: Optional[list[int]] = None, redo: bool = False, *, actor: str) -> dict[str, Any]:
+    """逐个岗位出评估报告（岗位下的 evaluation 文档，重评覆盖同一份），0–100 分和三句理由写回 job.score / reasons。"""
+    from app.core import job_eval
 
-    if not job_rank.available():
+    if not job_eval.available():
         raise ValueError("没配模型，没法自动评估。你自己评就用 save 给 job 写 score（0–100）和 reasons（三句）")
     if ids:
         jobs = []
@@ -658,21 +735,34 @@ def rank_jobs(ids: Optional[list[int]] = None, redo: bool = False, *, actor: str
             job = store.get("job", int(id_))
             if job is None:
                 raise ValueError(f"岗位 #{id_} 不存在")
+            if not str(job.get("jd") or "").strip():
+                raise ValueError(f"「{label(job)}」还没有 JD，先贴 JD 再评估")
             jobs.append(job)
     else:
         jobs = [j for j in store.all_of("job") if j.get("status") not in ("rejected", "closed")
-                and (redo or j.get("score") is None)]
+                and str(j.get("jd") or "").strip() and (redo or j.get("score") is None)]
     if not jobs:
-        return {"count": 0, "change_ids": [], "items": []}
-    text = job_rank.candidate(store.first("profile"), store.all_of("memory"))
-    results = _await(lambda: job_rank.evaluate(text, jobs))
-    if not results:
-        raise ValueError("模型没返回可用的评分，岗位没动")
-    saved = [save("job", {"score": r["score"], "reasons": r["reasons"]}, id=job_id, actor=actor)
-             for job_id, r in results.items()]
-    items = sorted(({"id": s["record"]["id"], "label": label(s["record"]), "score": s["record"]["score"],
-                     "reasons": s["record"]["reasons"]} for s in saved), key=lambda i: -i["score"])
-    return {"count": len(saved), "change_ids": [s["change_id"] for s in saved], "items": items}
+        return {"count": 0, "change_ids": [], "items": [], "failed": []}
+    text = job_eval.candidate(store.first("profile"), store.all_of("memory"))
+    change_ids: list[int] = []
+    items: list[dict[str, Any]] = []
+    failed: list[str] = []
+    for job in jobs:
+        result = _await(lambda j=job: job_eval.evaluate(text, j))
+        if not result:
+            failed.append(label(job))
+            continue
+        old = next((d for d in store.all_of("doc", job_id=job["id"]) if d.get("kind") == "evaluation"), None)
+        doc = save("doc", {"kind": "evaluation", "job_id": job["id"], "title": f"岗位评估 · {label(job)}",
+                           "body": result["markdown"]}, id=old["id"] if old else None, actor=actor)
+        scored = save("job", {"score": result["score"], "reasons": result["reasons"]}, id=job["id"], actor=actor)
+        change_ids += [doc["change_id"], scored["change_id"]]
+        items.append({"id": job["id"], "label": label(job), "score": result["score"],
+                      "reasons": result["reasons"], "doc_id": doc["record"]["id"]})
+    if not items:
+        raise ValueError("模型没返回可用的评估，岗位没动：" + "、".join(failed))
+    items.sort(key=lambda i: -i["score"])
+    return {"count": len(items), "change_ids": change_ids, "items": items, "failed": failed}
 
 
 APPLY_PROMPT = """你在帮候选人填招聘官网的网申问题。只用给出的档案、职业记忆、岗位 JD 和这个岗位的定制简历里的事实作答，不编造经历和数字。
@@ -687,7 +777,7 @@ class ApplyAnswerIn(_In):
 
 def apply_answer(job_id: int, question: str, *, actor: str) -> dict[str, Any]:
     """按 JD 和这个岗位的定制简历回答官网网申问题，问答追加到岗位下的 apply_chat 文档（一条改动，可撤销）。"""
-    from app.core import job_rank
+    from app.core import job_eval
 
     job = store.get("job", int(job_id))
     if job is None:
@@ -695,7 +785,7 @@ def apply_answer(job_id: int, question: str, *, actor: str) -> dict[str, Any]:
     question = question.strip()
     if not question:
         raise ValueError("问题是空的")
-    if not job_rank.available():
+    if not job_eval.available():
         raise ValueError("没配模型，没法自动回答。你自己写好就用 save 存成 kind=apply_chat 的文档")
     docs = store.all_of("doc", job_id=job["id"])
     resume = next((d for d in sorted(docs, key=lambda d: -d["id"]) if d.get("kind") == "resume"), None)
@@ -703,8 +793,8 @@ def apply_answer(job_id: int, question: str, *, actor: str) -> dict[str, Any]:
     resume_text = ""
     if resume:
         resume_text = str(resume.get("body") or "") or json.dumps(resume.get("resume") or {}, ensure_ascii=False)
-    context = (job_rank.candidate(store.first("profile"), store.all_of("memory"))
-               + "\n\n岗位：\n" + job_rank.job_text(job)
+    context = (job_eval.candidate(store.first("profile"), store.all_of("memory"))
+               + "\n\n岗位：\n" + job_eval.job_text(job)
                + "\n\n定制简历：\n" + (resume_text[:6000] or "（这个岗位还没有定制简历）"))
     history = str((chat or {}).get("body") or "")
     reply = _await(lambda: _apply_reply(context, question, history))
@@ -847,7 +937,8 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
          description="找本机文件：列目录（默认只看 PDF / Word / txt / md，新改的在前，另给子目录名）；给 query 时按文件名或正文里的文字筛，带片段。"
                      "用户说「H 盘 学习 留档」这类位置时，自己拼成绝对路径（H:/学习/留档）先找，挑出像简历的再 read_file，不要让用户报完整路径。"),
     Tool(name="web_search", input=WebSearchIn, fn=web_search,
-         description="搜公开网页，返回标题、链接、摘要；要正文再用 fetch_page。没配搜索服务会报错，照实告诉用户。"),
+         description="搜公开网页，返回标题、链接、摘要；要正文再用 fetch_page。没配搜索服务会报错，照实告诉用户。"
+                     "做岗位调研时官网、招聘官网、权威媒体优先，记下每个来源的链接和日期，按系统提示里的调研结构存成 research 文档。"),
     Tool(name="export_resume_pdf", input=ExportIn, fn=export_resume_pdf,
          description="把一份简历（doc kind=resume）按它的排版（style）导出成 PDF，和工作台预览是同一份 HTML，返回文件路径。"),
     Tool(name="fetch_page", input=FetchIn, fn=fetch_page, description="抓取一个公开网页的文字（比如岗位详情页链接），需要登录或 JS 的页面可能拿不到内容。"),
@@ -862,10 +953,11 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
                      "会调模型，要一两分钟。你自己能拆就用 read_file + save。"),
     Tool(name="add_job", input=AddJobIn, fn=add_job,
          description="用户贴来岗位链接或 JD 文本时用：抓链接正文、拆出公司 / 岗位 / 城市 / JD，截止日期另存成 deadline 事项，返回岗位和 change_ids（可撤销）。"
-                     "页面要登录或靠 JS 渲染时报错不存，让用户用插件「存为岗位」或贴 JD。会调模型。"),
-    Tool(name="rank_jobs", input=RankJobsIn, fn=rank_jobs,
-         description="批量评估岗位：读档案、职业记忆和偏好，给岗位打 0–100 分并写三句理由（匹配点 / 差距 / 是否合偏好），存在 job.score 和 job.reasons 上，"
-                     "每个岗位一条改动可撤销。不传 ids 就评所有没打过分、没结束的岗位。会调模型。"),
+                     "页面要登录或靠 JS 渲染时报错不存，让用户用插件「存为岗位」或贴 JD。会调模型。存完接着用 evaluate_jobs 评估这个岗位。"),
+    Tool(name="evaluate_jobs", input=EvaluateJobsIn, fn=evaluate_jobs,
+         description="评估岗位值不值得投：每个岗位出一份评估报告（结论、JD 逐条要求对档案的命中和差距、来源真假、职级薪资、简历怎么改、面试准备、反问），"
+                     "存成岗位下的 evaluation 文档（重评覆盖同一份），0–100 分和三句理由写回 job.score / reasons，每步一条改动可撤销。"
+                     "不联网：公司、竞品、面经调研另存 research。add_job 存完就传 ids 评这一个；不传 ids 评所有没评过的。会调模型，每个岗位几十秒。"),
     Tool(name="apply_answer", input=ApplyAnswerIn, fn=apply_answer,
          description="回答招聘官网的网申问题：用岗位 JD、这个岗位的定制简历、档案和记忆作答，问答追加到岗位下的 apply_chat 文档（一条改动，可撤销），返回回答。会调模型。"),
     Tool(name="draft_email", input=DraftEmailIn, fn=draft_email,
