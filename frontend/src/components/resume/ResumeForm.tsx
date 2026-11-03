@@ -16,7 +16,8 @@ import { RichText } from "./RichText";
 export type FormFocus = { sectionId?: string; itemId?: string; basics?: boolean; at: number };
 
 // basicsExtra：放在基本信息卡片最下面（证件照、校徽），由上层给。
-type Props = { resume: Resume; onChange: (next: Resume) => void; focus?: FormFocus | null; basicsExtra?: ReactNode };
+// readOnly：按岗位改写进行中，整张表单不可交互（inert 连 contentEditable 一起挡住）。
+type Props = { resume: Resume; onChange: (next: Resume) => void; focus?: FormFocus | null; basicsExtra?: ReactNode; readOnly?: boolean };
 
 // 每类模块一个线性图标（24 视框、1.6 线宽、currentColor），只为让卡片标题一眼可辨。
 const ICON: Record<SectionType | "basics", string> = {
@@ -265,7 +266,7 @@ const toggled = (set: Set<string>, id: string, on?: boolean) => {
   return next;
 };
 
-export function ResumeForm({ resume, onChange, focus, basicsExtra }: Props) {
+export function ResumeForm({ resume, onChange, focus, basicsExtra, readOnly }: Props) {
   const root = useRef<HTMLDivElement>(null);
   // 模块默认全展开（记收起的）；条目默认只露摘要（记展开的）。
   const [closed, setClosed] = useState<Set<string>>(() => new Set());
@@ -298,7 +299,8 @@ export function ResumeForm({ resume, onChange, focus, basicsExtra }: Props) {
   };
 
   return (
-    <div ref={root} className="rf-scroll">
+    <div ref={root} className="rf-scroll" aria-readonly={readOnly || undefined} title={readOnly ? "正在按岗位改写，写完再改" : undefined}
+      style={readOnly ? { opacity: 0.55 } : undefined} {...({ inert: readOnly ? "" : undefined } as Record<string, unknown>)}>
       <section id="rf-basics" className="rf-card">
         <header className="rf-card-head">
           <Icon kind="basics" />

@@ -41,6 +41,7 @@ function Editor({ doc, docs, jobs, photo, onCopy, onCreate }: {
   const [styleSaved, setStyleSaved] = useState(true);
   const [fitting, setFitting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [tailoring, setTailoring] = useState(false);
   const outerResume = JSON.stringify(doc.resume ?? null);
   const outerStyle = JSON.stringify([doc.style ?? null, doc.template ?? null]);
 
@@ -65,7 +66,7 @@ function Editor({ doc, docs, jobs, photo, onCopy, onCreate }: {
   }, [style, styleSaved]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const changeStyle = (next: ResumeStyle) => { setStyle(next); setStyleSaved(false); setNotice(null); };
-  const changeResume = (next: Resume) => { setResume(next); setSaved(false); setNotice(null); };
+  const changeResume = (next: Resume) => { if (tailoring) return; setResume(next); setSaved(false); setNotice(null); };
 
   const fit = async () => {
     const measure = (s: ResumeStyle) => preview.current?.measure(s) ?? 0;
@@ -105,13 +106,13 @@ function Editor({ doc, docs, jobs, photo, onCopy, onCreate }: {
         <DownloadButton docId={doc.id} />
       </header>
       <div className="flex min-h-0 flex-1">
-        <ResumeForm resume={resume} onChange={changeResume} focus={focus}
+        <ResumeForm resume={resume} onChange={changeResume} focus={focus} readOnly={tailoring}
           basicsExtra={<BasicsMedia style={style} onStyle={changeStyle} photo={photo} school={school}
             onPhoto={() => void mutate((k) => Array.isArray(k) && k[0] === "tool")} />} />
         <div className="flex w-[56%] min-w-[420px] shrink-0 flex-col bg-[var(--background)]">
           <ResumePreview ref={preview} resume={resume} style={style}
-            toolbar={<TailorBar docId={doc.id} jobId={doc.job_id} jobs={jobs} disabled={!saved || !styleSaved}
-              onDone={() => mutate((k) => Array.isArray(k) && k[0] === "tool")} />}
+            toolbar={<TailorBar docId={doc.id} jobId={doc.job_id} jobs={jobs} disabled={!saved || !styleSaved} onRunning={setTailoring}
+              onDone={async (id) => { await mutate((k) => Array.isArray(k) && k[0] === "tool"); if (id !== doc.id) router.push("/resume/" + id); }} />}
             onLocate={(path) => setFocus({ ...locatePath(resume, path), at: Date.now() })} />
         </div>
       </div>
