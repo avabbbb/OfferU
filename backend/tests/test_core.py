@@ -46,7 +46,7 @@ def test_mcp_and_http_share_tools(tmp_path, monkeypatch):
     from app.mcp_server import mcp
 
     names = [t.name for t in asyncio.run(mcp.list_tools())]
-    assert names[0] == "overview" and len(names) <= 18
+    assert names[0] == "overview" and len(names) <= 19
     asyncio.run(mcp.call_tool("save", {"type": "job", "data": {"company": "米哈游"}}))
     with TestClient(app, base_url="http://127.0.0.1:8766") as client:
         listed = client.post("/api/tools/list", json={"type": "job"}).json()
@@ -254,3 +254,27 @@ def test_new_record_never_reuses_undone_id(tmp_path, monkeypatch):
     call("undo", {"change_id": first["change_id"]}, actor="你")
     second = call("save", {"type": "job", "data": {"company": "字节跳动"}}, actor="你")["record"]
     assert second["id"] > first["record"]["id"]
+
+
+def test_apply_answer(tmp_path, monkeypatch):
+    """官网网申问答：引用 JD 和定制简历，同一岗位的问答追加到同一份 apply_chat，每次一条改动可撤销。"""
+    monkeypatch.setenv("OFFERU_DATA_DIR", str(tmp_path))
+    from app.core import job_rank, tools
+
+    seen: dict = {}
+
+    async def fake(context, question, history):
+        seen["context"], seen["history"] = context, history
+        return "我在实习里做过需求分析。"
+
+    monkeypatch.setattr(job_rank, "available", lambda: True)
+    monkeypatch.setattr(tools, "_apply_reply", fake)
+    job = call("save", {"type": "job", "data": {"company": "字节跳动", "title": "产品实习生", "jd": "负责 AI 产品需求分析"}}, actor="你")["record"]
+    call("save", {"type": "doc", "data": {"kind": "note", "job_id": job["id"], "title": "定制版", "body": "无关笔记"}}, actor="你")
+    first = call("apply_answer", {"job_id": job["id"], "question": "为什么想加入？"}, actor="你")
+    assert "负责 AI 产品需求分析" in seen["context"] and first["answer"]
+    second = call("apply_answer", {"job_id": job["id"], "question": "最有成就感的项目？"}, actor="你")
+    assert second["doc_id"] == first["doc_id"] and "为什么想加入" in seen["history"]
+    call("undo", {"change_id": second["change_id"]}, actor="你")
+    body = call("get", {"type": "doc", "id": first["doc_id"]}, actor="你")["record"]["body"]
+    assert "为什么想加入" in body and "最有成就感" not in body

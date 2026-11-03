@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import fnmatch
+import json
 import os
 import re
 from datetime import date, datetime, timedelta
@@ -674,6 +675,58 @@ def rank_jobs(ids: Optional[list[int]] = None, redo: bool = False, *, actor: str
     return {"count": len(saved), "change_ids": [s["change_id"] for s in saved], "items": items}
 
 
+APPLY_PROMPT = """你在帮候选人填招聘官网的网申问题。只用给出的档案、职业记忆、岗位 JD 和这个岗位的定制简历里的事实作答，不编造经历和数字。
+要求：直接给能粘贴进表单的回答，第一人称；题目有字数限制就遵守，没有就控制在 300 字内；资料里没有的信息写「（待补充：…）」提醒候选人。
+之前答过的题要和这次口径一致，不重复同一个例子。"""
+
+
+class ApplyAnswerIn(_In):
+    job_id: int = Field(description="岗位 id（要有 JD）")
+    question: str = Field(description="官网上的问题原文，有字数限制一起贴")
+
+
+def apply_answer(job_id: int, question: str, *, actor: str) -> dict[str, Any]:
+    """按 JD 和这个岗位的定制简历回答官网网申问题，问答追加到岗位下的 apply_chat 文档（一条改动，可撤销）。"""
+    from app.core import job_rank
+
+    job = store.get("job", int(job_id))
+    if job is None:
+        raise ValueError(f"岗位 #{job_id} 不存在")
+    question = question.strip()
+    if not question:
+        raise ValueError("问题是空的")
+    if not job_rank.available():
+        raise ValueError("没配模型，没法自动回答。你自己写好就用 save 存成 kind=apply_chat 的文档")
+    docs = store.all_of("doc", job_id=job["id"])
+    resume = next((d for d in sorted(docs, key=lambda d: -d["id"]) if d.get("kind") == "resume"), None)
+    chat = next((d for d in docs if d.get("kind") == "apply_chat"), None)
+    resume_text = ""
+    if resume:
+        resume_text = str(resume.get("body") or "") or json.dumps(resume.get("resume") or {}, ensure_ascii=False)
+    context = (job_rank.candidate(store.first("profile"), store.all_of("memory"))
+               + "\n\n岗位：\n" + job_rank.job_text(job)
+               + "\n\n定制简历：\n" + (resume_text[:6000] or "（这个岗位还没有定制简历）"))
+    history = str((chat or {}).get("body") or "")
+    reply = _await(lambda: _apply_reply(context, question, history))
+    if not reply:
+        raise ValueError("模型没返回回答，什么都没存")
+    entry = f"### 问：{question}\n\n{reply}\n"
+    body = f"{history.rstrip()}\n\n{entry}" if history.strip() else entry
+    saved = save("doc", {"kind": "apply_chat", "job_id": job["id"], "title": f"官网投递对话 · {label(job)}", "body": body},
+                 id=chat["id"] if chat else None, actor=actor)
+    return {"answer": reply, "doc_id": saved["record"]["id"], "change_id": saved["change_id"],
+            "used_resume": resume["id"] if resume else None}
+
+
+async def _apply_reply(context: str, question: str, history: str) -> str:
+    from app.agents.llm import chat_completion
+
+    user = context + ("\n\n之前答过的题：\n" + history[-4000:] if history else "") + "\n\n现在要回答：\n" + question
+    raw = await chat_completion([{"role": "system", "content": APPLY_PROMPT}, {"role": "user", "content": user}],
+                                temperature=0.4, max_tokens=1500)
+    return str(raw or "").strip()
+
+
 # ---------- registry ----------
 
 class Tool(BaseModel):
@@ -722,6 +775,8 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
     Tool(name="rank_jobs", input=RankJobsIn, fn=rank_jobs,
          description="批量评估岗位：读档案、职业记忆和偏好，给岗位打 0–100 分并写三句理由（匹配点 / 差距 / 是否合偏好），存在 job.score 和 job.reasons 上，"
                      "每个岗位一条改动可撤销。不传 ids 就评所有没打过分、没结束的岗位。会调模型。"),
+    Tool(name="apply_answer", input=ApplyAnswerIn, fn=apply_answer,
+         description="回答招聘官网的网申问题：用岗位 JD、这个岗位的定制简历、档案和记忆作答，问答追加到岗位下的 apply_chat 文档（一条改动，可撤销），返回回答。会调模型。"),
 ]}
 
 

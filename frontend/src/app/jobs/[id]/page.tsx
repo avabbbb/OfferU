@@ -23,6 +23,38 @@ function LongText({ job, field, label, placeholder }: { job: Job; field: "jd" | 
   );
 }
 
+function ApplyChat({ job }: { job: Job }) {
+  const [question, setQuestion] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [answer, setAnswer] = useState("");
+  const [err, setErr] = useState("");
+  const hasJd = Boolean(job.jd?.trim());
+  return (
+    <section>
+      <h2 className="text-[13px] font-medium text-[var(--foreground-muted)]">官网网申问答</h2>
+      <p className="mt-1 text-[12.5px] text-[var(--foreground-muted)]">贴官网上的问题，按 JD 和这个岗位的定制简历回答；问答存在材料里的「官网投递对话」，可撤销。</p>
+      <textarea value={question} onChange={(e) => setQuestion(e.target.value)} rows={3} aria-label="官网问题"
+        placeholder={hasJd ? "比如：请描述一个你主导的项目（500 字以内）" : "先在下面贴 JD"}
+        style={{ fontSize: 13 }} className="mt-2 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3 text-[13px] leading-6 text-[var(--foreground)] outline-none focus:border-[var(--foreground-muted)]" />
+      <button type="button" disabled={busy || !hasJd || !question.trim()}
+        className="mt-1 text-[12.5px] text-[var(--foreground-muted)] hover:text-[var(--foreground)] disabled:opacity-50"
+        onClick={async () => {
+          setBusy(true); setErr("");
+          try {
+            const out = await write<{ answer: string }>("apply_answer", { job_id: job.id, question });
+            setAnswer(out.answer); setQuestion("");
+          } catch (e) {
+            setErr(e instanceof Error ? e.message : "没答出来，再试一次");
+          } finally {
+            setBusy(false);
+          }
+        }}>{busy ? "正在写…" : "回答"}</button>
+      {err && <p className="mt-1 text-[12.5px] text-red-600">{err}</p>}
+      {answer && <div className="mt-2 whitespace-pre-wrap rounded-lg border border-[var(--border)] p-3 text-[13px] leading-6 text-[var(--foreground)]">{answer}</div>}
+    </section>
+  );
+}
+
 export default function JobDetailPage() {
   const id = Number(useParams().id);
   const router = useRouter();
@@ -79,6 +111,8 @@ export default function JobDetailPage() {
           </ul>
         ) : <p className="mt-2 text-[13px] text-[var(--foreground-muted)]">还没有。定制简历、网申回答、面试复盘都会放在这里。</p>}
       </section>
+
+      <ApplyChat job={job} />
 
       <LongText job={job} field="jd" label="岗位描述" placeholder="贴岗位 JD，Agent 改简历、写网申都会用到" />
       <LongText job={job} field="notes" label="备注" placeholder="内推人、薪资、面试官说了什么……" />
