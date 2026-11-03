@@ -46,7 +46,7 @@ def test_mcp_and_http_share_tools(tmp_path, monkeypatch):
     from app.mcp_server import mcp
 
     names = [t.name for t in asyncio.run(mcp.list_tools())]
-    assert names[0] == "overview" and len(names) <= 19
+    assert names[0] == "overview" and len(names) <= 20
     asyncio.run(mcp.call_tool("save", {"type": "job", "data": {"company": "米哈游"}}))
     with TestClient(app, base_url="http://127.0.0.1:8766") as client:
         listed = client.post("/api/tools/list", json={"type": "job"}).json()
@@ -278,3 +278,20 @@ def test_apply_answer(tmp_path, monkeypatch):
     call("undo", {"change_id": second["change_id"]}, actor="你")
     body = call("get", {"type": "doc", "id": first["doc_id"]}, actor="你")["record"]["body"]
     assert "为什么想加入" in body and "最有成就感" not in body
+
+
+def test_draft_email(tmp_path, monkeypatch):
+    """邮件投递草稿：从 JD 拆邮箱和要求，按档案写标题，存成岗位下的 email 文档；再写一次更新同一份；没邮箱就报错。"""
+    import pytest
+
+    monkeypatch.setenv("OFFERU_DATA_DIR", str(tmp_path))
+    call("save", {"type": "profile", "data": {"name": "林同学", "school": "复旦大学"}}, actor="你")
+    jd = "简历请投递至hr@mihoyo.com。邮件标题：姓名-学校-岗位；附件 PDF 命名同标题"
+    job = call("save", {"type": "job", "data": {"company": "米哈游", "title": "策划实习生", "jd": jd}}, actor="你")["record"]
+    out = call("draft_email", {"job_id": job["id"]}, actor="你")
+    assert out["to"] == "hr@mihoyo.com" and out["subject"] == "林同学-复旦大学-策划实习生"
+    assert any("邮件标题" in r for r in out["rules"]) and out["attachment"] is None
+    assert call("draft_email", {"job_id": job["id"]}, actor="你")["doc_id"] == out["doc_id"]
+    bare = call("save", {"type": "job", "data": {"company": "无邮箱", "jd": "官网投递"}}, actor="你")["record"]
+    with pytest.raises(ValueError):
+        call("draft_email", {"job_id": bare["id"]}, actor="你")

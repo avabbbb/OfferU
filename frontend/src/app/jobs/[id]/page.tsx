@@ -55,6 +55,49 @@ function ApplyChat({ job }: { job: Job }) {
   );
 }
 
+type Draft = { to: string; cc: string[]; subject: string; body: string; attachment?: string | null; attach_error?: string | null; rules: string[] };
+
+function EmailDraft({ job }: { job: Job }) {
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const mailto = draft
+    ? "mailto:" + draft.to + "?subject=" + encodeURIComponent(draft.subject) + "&body=" + encodeURIComponent(draft.body)
+      + (draft.cc.length ? "&cc=" + encodeURIComponent(draft.cc.join(",")) : "")
+    : "";
+  return (
+    <section>
+      <div className="flex items-baseline justify-between">
+        <h2 className="text-[13px] font-medium text-[var(--foreground-muted)]">邮件投递</h2>
+        <button type="button" disabled={busy} className="text-[12.5px] text-[var(--foreground-muted)] hover:text-[var(--foreground)] disabled:opacity-50"
+          onClick={async () => {
+            setBusy(true); setErr("");
+            try { setDraft(await write<Draft>("draft_email", { job_id: job.id })); }
+            catch (e) { setErr(e instanceof Error ? e.message : "草稿没写出来"); }
+            finally { setBusy(false); }
+          }}>{busy ? "正在写…" : draft ? "重写草稿" : "写投递邮件"}</button>
+      </div>
+      {err && <p className="mt-1 text-[12.5px] text-red-600">{err}</p>}
+      {draft && (
+        <div className="mt-2 space-y-2 rounded-lg border border-[var(--border)] p-3 text-[13px] leading-6 text-[var(--foreground)]">
+          <p><span className="text-[var(--foreground-muted)]">收件人：</span>{[draft.to, ...draft.cc].join("，")}</p>
+          <p><span className="text-[var(--foreground-muted)]">标题：</span>{draft.subject}</p>
+          {draft.rules.length > 0 && (
+            <ul className="list-disc pl-5 text-[12.5px] text-[var(--foreground-muted)]">
+              {draft.rules.map((rule) => <li key={rule}>JD 要求：{rule}</li>)}
+            </ul>
+          )}
+          <p className="whitespace-pre-wrap">{draft.body}</p>
+          <p className="text-[12.5px] text-[var(--foreground-muted)]">
+            {draft.attachment ? "附件：" + draft.attachment : draft.attach_error ?? "还没有简历，附件要自己加"}
+          </p>
+          <a href={mailto} className="inline-block text-[12.5px] underline">在邮件客户端打开（附件要自己拖进去，确认后再发）</a>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function JobDetailPage() {
   const id = Number(useParams().id);
   const router = useRouter();
@@ -113,6 +156,8 @@ export default function JobDetailPage() {
       </section>
 
       <ApplyChat job={job} />
+
+      <EmailDraft job={job} />
 
       <LongText job={job} field="jd" label="岗位描述" placeholder="贴岗位 JD，Agent 改简历、写网申都会用到" />
       <LongText job={job} field="notes" label="备注" placeholder="内推人、薪资、面试官说了什么……" />

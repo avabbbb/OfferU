@@ -29,7 +29,7 @@ LEGACY_TEMPLATE = {"single": {"template": "clear"}, "compact": {"template": "com
 STYLE_RANGE = {"bodySize": (8, 14), "lineHeight": (1.0, 2.0), "sectionGap": (0, 30), "itemGap": (0, 20)}
 MARGIN_RANGE = (3, 30)
 STYLE_KEYS = ("template", "font", *STYLE_RANGE, "margin", "accent", "photo", "logo")
-DOC_KIND = {"resume": "简历", "apply_chat": "官网投递对话", "review": "面试复盘", "research": "调研", "note": "笔记"}
+DOC_KIND = {"resume": "简历", "apply_chat": "官网投递对话", "email": "投递邮件", "review": "面试复盘", "research": "调研", "note": "笔记"}
 MEMORY_KIND = {"experience": "实习 / 工作", "project": "项目", "education": "教育", "skill": "技能",
                "award": "奖项 / 证书", "preference": "偏好", "note": "其他"}
 TYPE_LABEL = {"profile": "档案", "memory": "记忆", "job": "岗位", "event": "事项", "doc": "文档"}
@@ -727,6 +727,55 @@ async def _apply_reply(context: str, question: str, history: str) -> str:
     return str(raw or "").strip()
 
 
+EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+")
+MAIL_RULE_RE = re.compile(r"邮件|主题|标题|附件|命名|PDF|pdf")
+
+
+class DraftEmailIn(_In):
+    job_id: int = Field(description="岗位 id（JD 或备注里要有投递邮箱）")
+    resume_id: Optional[int] = Field(None, description="附哪份简历；不传就用这个岗位下最新的简历，没有就用主简历")
+
+
+def draft_email(job_id: int, resume_id: Optional[int] = None, *, actor: str) -> dict[str, Any]:
+    """从 JD 拆出投递邮箱和邮件要求，写好标题正文、导出简历 PDF，存成岗位下的 email 文档。不发送，用户确认后自己发。"""
+    job = store.get("job", int(job_id))
+    if job is None:
+        raise ValueError(f"岗位 #{job_id} 不存在")
+    text = "\n".join(str(job.get(k) or "") for k in ("jd", "notes"))
+    emails = list(dict.fromkeys(EMAIL_RE.findall(text)))
+    if not emails:
+        raise ValueError("JD 和备注里没找到投递邮箱，先把邮箱贴进备注")
+    rules = [s.strip() for s in re.split(r"[\n。；;]", text) if s.strip() and MAIL_RULE_RE.search(s)][:5]
+    profile = store.first("profile") or {}
+    name = profile.get("name") or ""
+    title = job.get("title") or "岗位"
+    subject = "-".join(x for x in (name, profile.get("school"), title) if x) or f"应聘{title}"
+    docs = sorted(store.all_of("doc"), key=lambda d: -d["id"])
+    if resume_id is not None:
+        resume = store.get("doc", int(resume_id))
+        if resume is None or resume.get("kind") != "resume":
+            raise ValueError(f"简历 #{resume_id} 不存在")
+    else:
+        resume = (next((d for d in docs if d.get("kind") == "resume" and d.get("job_id") == job["id"]), None)
+                  or next((d for d in reversed(docs) if d.get("kind") == "resume" and not d.get("job_id")), None))
+    attachment = attach_error = None
+    if resume:
+        try:
+            attachment = export_resume_pdf(resume["id"], actor=actor)["path"]
+        except Exception as exc:  # noqa: BLE001 - 没装浏览器也要把草稿存下来
+            attach_error = f"简历 PDF 没导出来：{exc}"
+    intro = "".join(str(profile.get(k) or "") for k in ("school", "major", "degree"))
+    sign = "\n".join(str(x) for x in (name, profile.get("phone"), profile.get("email")) if x)
+    body = (f"您好：\n\n我是{name or '（姓名）'}{('，' + intro) if intro else ''}，想应聘贵司「{title}」岗位，简历见附件。\n\n"
+            f"期待您的回复，谢谢！\n\n{sign}").rstrip()
+    existing = next((d for d in docs if d.get("kind") == "email" and d.get("job_id") == job["id"]), None)
+    saved = save("doc", {"kind": "email", "job_id": job["id"], "title": f"投递邮件 · {label(job)}", "to": emails[0],
+                         "subject": subject, "body": body, "attachment": attachment, "rules": rules or None},
+                 id=existing["id"] if existing else None, actor=actor)
+    return {"to": emails[0], "cc": emails[1:], "subject": subject, "body": body, "attachment": attachment,
+            "attach_error": attach_error, "rules": rules, "doc_id": saved["record"]["id"], "change_id": saved["change_id"]}
+
+
 # ---------- registry ----------
 
 class Tool(BaseModel):
@@ -777,6 +826,9 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
                      "每个岗位一条改动可撤销。不传 ids 就评所有没打过分、没结束的岗位。会调模型。"),
     Tool(name="apply_answer", input=ApplyAnswerIn, fn=apply_answer,
          description="回答招聘官网的网申问题：用岗位 JD、这个岗位的定制简历、档案和记忆作答，问答追加到岗位下的 apply_chat 文档（一条改动，可撤销），返回回答。会调模型。"),
+    Tool(name="draft_email", input=DraftEmailIn, fn=draft_email,
+         description="写邮件投递草稿：从岗位 JD / 备注里拆出投递邮箱和标题、附件要求，按档案写标题和正文，导出简历 PDF，存成岗位下的 email 文档（可撤销）。"
+                     "不会发送：把草稿给用户看，用户在邮件客户端里确认后自己发。标题格式和 JD 要求不一致时提醒用户改。"),
 ]}
 
 
