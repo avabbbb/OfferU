@@ -1,12 +1,11 @@
 // =============================================
 // OfferU Extension — Background Service Worker
 // =============================================
-// 管理岗位购物车存储、状态分层与后端同步
+// 存为岗位、smartfill 网申智填与剪贴板等后台能力
 // =============================================
 
 import type {
   ClipboardCopyResponse,
-  ExtractedJob,
   ExtensionSettings,
   SmartFillAiMapping,
   SmartFillAiSettings,
@@ -16,33 +15,13 @@ import type {
   SmartFillRuntimeStats,
   SmartFillRunLogEntry,
   Message,
-  MergeResponse,
-  PageAgentCollectViaResponse,
-  RemoveResponse,
-  StatusResponse,
-  SyncResponse,
 } from "./types.js";
-import type { CollectResult } from "./page-agent/collect.js";
-import { HttpOfferUControl } from "./background/offeru-control-http.js";
-import { savePageAsJob, showToast, type SavePageResult } from "./background/save-page-job.js";
-import type { SyncJobCandidate } from "./framework/workflow.js";
-import {
-  JOBS_SCHEMA_VERSION,
-  JOBS_STORAGE_KEY,
-  sanitizeVersionedJobsStore,
-  type VersionedJobsStore,
-} from "./background/storage.js";
-import {
-  buildSyncPlan,
-  isJobReadyToSync,
-  retainUnsyncedJobsByHashKeys,
-} from "./background/sync-contract.js";
+import { savePageAsJob, showToast, type PageSnapshot, type SavePageResult } from "./background/save-page-job.js";
 import {
   hasDirectChannelConfig,
   resolveChannelOrder,
   type SmartFillChannel,
 } from "./background/smartfill-channel.js";
-import { toExtractedJob } from "./background/page-agent-collect.js";
 import {
   buildRuntimeCatalog,
   buildSmartFillCatalogSignature,
@@ -214,132 +193,6 @@ async function copyImageToClipboardViaOffscreen(imageUrl: string): Promise<Clipb
   } catch (error: unknown) {
     return { ok: false, error: safeExtensionError(error, "离屏复制失败") };
   }
-}
-
-function normalizeUrl(url: string): string {
-  if (!url) return "";
-  try {
-    return new URL(url).href;
-  } catch {
-    return url;
-  }
-}
-
-function normalizePostedAt(value: string | null | undefined): string | null {
-  const text = (value || "").trim();
-  return text || null;
-}
-
-function sanitizeJob(job: ExtractedJob): ExtractedJob {
-  const url = normalizeUrl(job.url || "");
-  const applyUrl = normalizeUrl(job.apply_url || url);
-  const rawDescription = (job.raw_description || "").trim();
-
-  return {
-    ...job,
-    title: (job.title || "").trim(),
-    company: (job.company || "").trim(),
-    location: (job.location || "").trim(),
-    salary_text: (job.salary_text || "").trim(),
-    raw_description: rawDescription,
-    posted_at: normalizePostedAt(job.posted_at),
-    url,
-    apply_url: applyUrl,
-    source_page_meta: job.source_page_meta || "",
-    education: (job.education || "").trim(),
-    experience: (job.experience || "").trim(),
-    job_type: (job.job_type || "").trim(),
-    company_size: (job.company_size || "").trim(),
-    company_industry: (job.company_industry || "").trim(),
-    status: rawDescription ? "ready_to_sync" : "draft_pending_jd",
-    created_at: job.created_at || new Date().toISOString(),
-  };
-}
-
-function mergeJob(existing: ExtractedJob, incoming: ExtractedJob): ExtractedJob {
-  const merged: ExtractedJob = {
-    ...existing,
-    ...incoming,
-    title: incoming.title || existing.title,
-    company: incoming.company || existing.company,
-    location: incoming.location || existing.location,
-    salary_text: incoming.salary_text || existing.salary_text,
-    salary_min: incoming.salary_min ?? existing.salary_min,
-    salary_max: incoming.salary_max ?? existing.salary_max,
-    raw_description: incoming.raw_description || existing.raw_description,
-    posted_at: incoming.posted_at || existing.posted_at,
-    url: incoming.url || existing.url,
-    apply_url: incoming.apply_url || existing.apply_url || incoming.url || existing.url,
-    source_page_meta: incoming.source_page_meta || existing.source_page_meta,
-    education: incoming.education || existing.education,
-    experience: incoming.experience || existing.experience,
-    job_type: incoming.job_type || existing.job_type,
-    company_size: incoming.company_size || existing.company_size,
-    company_industry: incoming.company_industry || existing.company_industry,
-    status:
-      incoming.status === "ready_to_sync" || existing.raw_description || incoming.raw_description
-        ? "ready_to_sync"
-        : "draft_pending_jd",
-    created_at: existing.created_at || incoming.created_at || new Date().toISOString(),
-  };
-
-  return sanitizeJob(merged);
-}
-
-function toSyncJobCandidate(job: ExtractedJob): SyncJobCandidate {
-  return {
-    title: job.title,
-    company: job.company,
-    description: job.raw_description,
-    location: job.location || undefined,
-    salary: job.salary_text || undefined,
-    applyUrl: job.apply_url || undefined,
-    postedAt: job.posted_at ?? undefined,
-    sourceUrl: job.url,
-    hashKey: job.hash_key,
-    salaryMin: job.salary_min,
-    salaryMax: job.salary_max,
-    education: job.education || undefined,
-    experience: job.experience || undefined,
-    jobType: job.job_type || undefined,
-    companySize: job.company_size || undefined,
-    companyIndustry: job.company_industry || undefined,
-  };
-}
-
-async function updateBadge(total: number): Promise<void> {
-  await chrome.action.setBadgeText({ text: total > 0 ? String(total) : "" });
-  if (total > 0) {
-    await chrome.action.setBadgeBackgroundColor({ color: "#2563eb" });
-  }
-}
-
-// ---- 存储操作 ----
-async function getJobs(): Promise<ExtractedJob[]> {
-  const result = await chrome.storage.local.get(JOBS_STORAGE_KEY);
-  const raw = result[JOBS_STORAGE_KEY] as unknown;
-
-  // Legacy migration: older versions stored plain array in collectedJobs.
-  if (Array.isArray(raw)) {
-    const migrated: VersionedJobsStore = {
-      version: JOBS_SCHEMA_VERSION,
-      jobs: raw as ExtractedJob[],
-    };
-    await chrome.storage.local.set({ [JOBS_STORAGE_KEY]: migrated });
-    return migrated.jobs;
-  }
-
-  const parsed = sanitizeVersionedJobsStore(raw);
-  return parsed.jobs;
-}
-
-async function saveJobs(jobs: ExtractedJob[]): Promise<void> {
-  const payload: VersionedJobsStore = {
-    version: JOBS_SCHEMA_VERSION,
-    jobs,
-  };
-  await chrome.storage.local.set({ [JOBS_STORAGE_KEY]: payload });
-  await updateBadge(jobs.length);
 }
 
 async function getSettings(): Promise<ExtensionSettings> {
@@ -1202,260 +1055,10 @@ async function runAiMapWithFallback(
   }
 }
 
-// ---- 去重合并 ----
-async function mergeJobs(newJobs: ExtractedJob[]): Promise<MergeResponse> {
-  const existing = await getJobs();
-  const existingMap = new Map(existing.map((j) => [j.hash_key, j]));
-
-  let added = 0;
-  let upgraded = 0;
-  let skipped = 0;
-
-  for (const job of newJobs) {
-    const incoming = sanitizeJob(job);
-    const old = existingMap.get(incoming.hash_key);
-
-    if (!old) {
-      existing.push(incoming);
-      existingMap.set(incoming.hash_key, incoming);
-      added++;
-      continue;
-    }
-
-    const merged = mergeJob(old, incoming);
-    const oldReady = old.status === "ready_to_sync";
-    const newReady = merged.status === "ready_to_sync";
-    const improvedDescription =
-      Boolean(merged.raw_description) && merged.raw_description !== old.raw_description;
-
-    if (!oldReady && newReady) {
-      upgraded++;
-    } else if (improvedDescription) {
-      upgraded++;
-    } else {
-      skipped++;
-    }
-
-    const idx = existing.findIndex((j) => j.hash_key === merged.hash_key);
-    if (idx >= 0) {
-      existing[idx] = merged;
-    }
-  }
-
-  await saveJobs(existing);
-
-  return { added, upgraded, skipped };
-}
-
-async function getStatus(): Promise<StatusResponse> {
-  const jobs = await getJobs();
-  const ready = jobs.filter((j) => isJobReadyToSync(j)).length;
-  const draft = jobs.length - ready;
-  const settings = await getSettings();
-  return {
-    total: jobs.length,
-    ready,
-    draft,
-    serverUrl: settings.serverUrl,
-  };
-}
-
-async function removeOneJob(hashKey: string): Promise<RemoveResponse> {
-  if (!hashKey) {
-    const jobs = await getJobs();
-    return { ok: false, removed: 0, remaining: jobs.length };
-  }
-
-  const jobs = await getJobs();
-  const before = jobs.length;
-  const next = jobs.filter((job) => job.hash_key !== hashKey);
-  await saveJobs(next);
-
-  return {
-    ok: true,
-    removed: Math.max(0, before - next.length),
-    remaining: next.length,
-  };
-}
-
-async function removeManyJobs(hashKeys: string[]): Promise<RemoveResponse> {
-  if (!hashKeys || hashKeys.length === 0) {
-    const jobs = await getJobs();
-    return { ok: false, removed: 0, remaining: jobs.length };
-  }
-
-  const keySet = new Set(hashKeys.filter(Boolean));
-  const jobs = await getJobs();
-  const before = jobs.length;
-  const next = jobs.filter((job) => !keySet.has(job.hash_key));
-  await saveJobs(next);
-
-  return {
-    ok: true,
-    removed: Math.max(0, before - next.length),
-    remaining: next.length,
-  };
-}
-
-// ---- 同步到 OfferU 后端 ----
-async function syncToServer(): Promise<SyncResponse> {
-  const jobs = await getJobs();
-  if (jobs.length === 0) {
-    return { ok: true, synced: 0, skippedDraft: 0 };
-  }
-
-  const normalizedJobs = jobs.map(sanitizeJob);
-  const { jobsToSync, skippedDraft } = buildSyncPlan(normalizedJobs);
-
-  if (jobsToSync.length === 0) {
-    return { ok: true, synced: 0, skippedDraft };
-  }
-
-  const settings = await getSettings();
-  const control = new HttpOfferUControl(settings.serverUrl);
-  const candidates = jobsToSync.map(toSyncJobCandidate);
-
-  try {
-    const plan = await control.prepareJobImport(candidates);
-    const result = await control.confirmJobImport(plan.planId);
-
-    const confirmedHashKeys = result.perItem
-      .filter((item) => item.status !== "failed")
-      .map((item) => candidates[item.index]?.hashKey)
-      .filter((key): key is string => Boolean(key));
-
-    if (confirmedHashKeys.length === 0 && jobsToSync.length > 0) {
-      return {
-        ok: false,
-        synced: 0,
-        skippedDraft,
-        error: "后端未返回逐条同步确认，已保留插件本地队列",
-      };
-    }
-
-    const remainingJobs = retainUnsyncedJobsByHashKeys(normalizedJobs, confirmedHashKeys);
-    await saveJobs(remainingJobs);
-
-    return { ok: true, synced: confirmedHashKeys.length, skippedDraft };
-  } catch (err: unknown) {
-    if (err instanceof DOMException && err.name === "AbortError") {
-      return { ok: false, synced: 0, skippedDraft, error: "同步超时，请检查后端服务是否可访问" };
-    }
-    return { ok: false, synced: 0, skippedDraft, error: safeExtensionError(err, "同步失败") };
-  }
-}
-
-// ---- 规则包采集（Page Agent 显式注入） ----
-async function collectViaPageAgent(): Promise<PageAgentCollectViaResponse> {
-  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-  const tab = tabs[0];
-  if (!tab?.id || !tab.url) {
-    return { ok: false, message: "未找到当前标签页" };
-  }
-
-  let url: URL;
-  try {
-    url = new URL(tab.url);
-  } catch {
-    return { ok: false, message: "当前页面地址无效", fallback: true };
-  }
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    return { ok: false, message: "当前页面不支持采集", fallback: true };
-  }
-
-  try {
-    await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      files: ["page-agent.js"],
-    });
-  } catch (error: unknown) {
-    return {
-      ok: false,
-      message: `注入失败：${safeExtensionError(error, "页面注入失败")}`,
-      fallback: true,
-    };
-  }
-
-  let result: CollectResult;
-  try {
-    result = await new Promise<CollectResult>((resolve, reject) => {
-      chrome.tabs.sendMessage(
-        tab.id!,
-        { type: "PAGE_AGENT_COLLECT", url: tab.url! },
-        (response: CollectResult | undefined) => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(safeExtensionError(chrome.runtime.lastError.message, "采集无响应")));
-            return;
-          }
-          resolve(response as CollectResult);
-        },
-      );
-    });
-  } catch (error: unknown) {
-    return {
-      ok: false,
-      message: `采集无响应：${safeExtensionError(error, "页面没有响应")}`,
-      fallback: true,
-    };
-  }
-
-  switch (result.status) {
-    case "collected": {
-      const job = toExtractedJob(result, tab.url!);
-      if (!job) return { ok: false, message: "岗位信息不完整", status: "collected" };
-      await mergeJobs([job]);
-      const draft = job.status === "draft_pending_jd";
-      return {
-        ok: true,
-        message: draft ? "已加入购物车（信息不完整，可后续补全）" : "已加入购物车",
-        status: "collected",
-      };
-    }
-    case "unsupported":
-      return { ok: false, message: "当前页面不是受支持的岗位详情页", status: "unsupported", fallback: true };
-    case "ambiguous":
-      return { ok: false, message: "页面识别存在歧义，请稍后重试", status: "ambiguous" };
-    case "diagnostic":
-      return { ok: false, message: "页面规则异常，暂不支持采集", status: "diagnostic", fallback: true };
-    case "error":
-      return { ok: false, message: `采集失败：${result.reason ?? "未知错误"}`, status: "error", fallback: true };
-  }
-}
-
 // ---- 消息处理 ----
 chrome.runtime.onMessage.addListener(
   (message: Message, _sender, sendResponse: (response: unknown) => void) => {
     switch (message.type) {
-      case "JOBS_COLLECTED":
-        mergeJobs(message.jobs).then((result) => {
-          sendResponse(result);
-        });
-        return true; // 异步 sendResponse
-
-      case "COLLECT_VIA_PAGE_AGENT":
-        collectViaPageAgent().then((result) => {
-          sendResponse(result);
-        });
-        return true;
-
-      case "SYNC_TO_SERVER":
-        syncToServer().then((result) => {
-          sendResponse(result);
-        });
-        return true;
-
-      case "GET_STATUS":
-        getStatus().then((status) => {
-          sendResponse(status);
-        });
-        return true;
-
-      case "GET_JOBS":
-        getJobs().then((jobs) => {
-          sendResponse({ jobs });
-        });
-        return true;
-
       case "GET_SMART_FILL_PROFILE":
         fetchSmartFillProfilePayload().then(
           (profile) => {
@@ -1828,26 +1431,9 @@ chrome.runtime.onMessage.addListener(
         return true;
       }
 
-      case "REMOVE_JOB":
-        removeOneJob(message.hashKey).then((result) => {
-          sendResponse(result);
-        });
-        return true;
-
-      case "REMOVE_JOBS":
-        removeManyJobs(message.hashKeys).then((result) => {
-          sendResponse(result);
-        });
-        return true;
-
-      case "CLEAR_JOBS":
-        saveJobs([]).then(() => {
-          sendResponse({ ok: true });
-        });
-        return true;
-
       case "SAVE_PAGE_AS_JOB":
-        saveActiveTabAsJob().then(sendResponse);
+        // 带 page 的是页内 content script 已读好的快照（悬浮 dock 抽屉），直接用；否则走 activeTab 注入。
+        (message.page ? saveTabAsJob(_sender.tab?.id, message.page) : saveActiveTabAsJob()).then(sendResponse);
         return true;
 
       default:
@@ -1856,21 +1442,10 @@ chrome.runtime.onMessage.addListener(
   }
 );
 
-// ---- 初始化 badge ----
-chrome.runtime.onInstalled.addListener(async () => {
-  const jobs = await getJobs();
-  await updateBadge(jobs.length);
-});
-
-chrome.runtime.onStartup.addListener(async () => {
-  const jobs = await getJobs();
-  await updateBadge(jobs.length);
-});
-
 // ---- 存为岗位：popup 按钮和右键菜单共用，直接写进本机 OfferU ----
-async function saveTabAsJob(tabId: number): Promise<SavePageResult> {
+async function saveTabAsJob(tabId: number | undefined, page?: PageSnapshot): Promise<SavePageResult> {
   const settings = await getSettings();
-  return savePageAsJob(tabId, settings.serverUrl);
+  return savePageAsJob(tabId, settings.serverUrl, page);
 }
 
 async function saveActiveTabAsJob(): Promise<SavePageResult> {

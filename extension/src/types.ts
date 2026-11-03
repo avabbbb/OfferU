@@ -1,35 +1,7 @@
+import type { PageSnapshot } from "./background/save-page-job.js";
 // =============================================
 // OfferU Extension — 共享类型定义
 // =============================================
-
-export type JobSource = "boss" | "liepin" | "zhaopin" | "shixiseng" | "linkedin" | "unknown";
-
-export type JobStatus = "draft_pending_jd" | "ready_to_sync";
-
-/** 从 DOM 中提取的单个岗位数据（插件本地结构） */
-export interface ExtractedJob {
-  version?: number;
-  title: string;
-  company: string;
-  location: string;
-  salary_text: string;
-  salary_min: number | null;
-  salary_max: number | null;
-  raw_description: string;
-  posted_at?: string | null;
-  url: string;
-  apply_url: string;
-  source: JobSource;
-  source_page_meta: string; // JSON 字符串，记录页面来源与采集上下文
-  education: string;
-  experience: string;
-  job_type: string;
-  company_size: string;
-  company_industry: string;
-  hash_key: string;
-  status: JobStatus;
-  created_at: string;
-}
 
 /** 插件设置 */
 export interface ExtensionSettings {
@@ -150,32 +122,6 @@ export interface SmartFillRunLogEntry {
   ts: string;
 }
 
-export interface StatusResponse {
-  total: number;
-  ready: number;
-  draft: number;
-  serverUrl: string;
-}
-
-export interface MergeResponse {
-  added: number;
-  upgraded: number;
-  skipped: number;
-}
-
-export interface SyncResponse {
-  ok: boolean;
-  synced: number;
-  skippedDraft: number;
-  error?: string;
-}
-
-export interface RemoveResponse {
-  ok: boolean;
-  removed: number;
-  remaining: number;
-}
-
 export interface ClipboardCopyResponse {
   ok: boolean;
   error?: string;
@@ -211,10 +157,6 @@ export interface ResumeDetail {
 
 /** 消息类型：content script ↔ background */
 export type Message =
-  | { type: "JOBS_COLLECTED"; jobs: ExtractedJob[] }
-  | { type: "SYNC_TO_SERVER" }
-  | { type: "GET_STATUS" }
-  | { type: "GET_JOBS" }
   | { type: "GET_SMART_FILL_PROFILE"; scope?: "full" | "critical" }
   | { type: "GET_SMART_FILL_SETTINGS" }
   | { type: "SAVE_SMART_FILL_SETTINGS"; settings: SmartFillAiSettings }
@@ -229,56 +171,4 @@ export type Message =
   | { type: "OFFSCREEN_WRITE_IMAGE"; requestId: string; imageUrl: string }
   | { type: "OFFSCREEN_WRITE_IMAGE_RESULT"; requestId: string; ok: boolean; error?: string }
   | { type: "OPEN_DRAWER"; tab?: "cart" | "resumes" | "settings" }
-  | { type: "REMOVE_JOB"; hashKey: string }
-  | { type: "REMOVE_JOBS"; hashKeys: string[] }
-  | { type: "CLEAR_JOBS" }
-  | { type: "COLLECT_VIA_PAGE_AGENT" }
-  | { type: "SAVE_PAGE_AS_JOB" }
-  | { type: "PAGE_AGENT_COLLECT"; url: string };
-
-/** popup → background：规则包采集响应（fallback=true 表示可回退旧路径） */
-export interface PageAgentCollectViaResponse {
-  ok: boolean;
-  message: string;
-  status?: "collected" | "unsupported" | "ambiguous" | "diagnostic" | "error";
-  fallback?: boolean;
-}
-
-/** 后端 /api/jobs/ingest 单条岗位结构 */
-export interface IngestJobPayload {
-  title: string;
-  company: string;
-  location: string;
-  url: string;
-  apply_url: string;
-  source: string;
-  raw_description: string;
-  posted_at?: string | null;
-  hash_key: string;
-  salary_min: number | null;
-  salary_max: number | null;
-  salary_text: string;
-  education: string;
-  experience: string;
-  job_type: string;
-  company_size: string;
-  company_industry: string;
-}
-
-/** 后端 /api/jobs/ingest 请求体 */
-export interface IngestPayload {
-  jobs: IngestJobPayload[];
-  source: string;
-  batch_id: string;
-}
-
-/** 后端 /api/jobs/ingest 响应体 */
-export interface IngestResponse {
-  created?: number;
-  skipped?: number;
-  batch_id?: string;
-  accepted_hash_keys?: string[];
-  created_hash_keys?: string[];
-  skipped_hash_keys?: string[];
-  failed?: Array<{ hash_key?: string; error: string }>;
-}
+  | { type: "SAVE_PAGE_AS_JOB"; page?: PageSnapshot };

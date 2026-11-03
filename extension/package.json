@@ -2,7 +2,7 @@
   "name": "offeru-job-collector",
   "version": "0.1.0",
   "private": true,
-  "description": "OfferU 岗位采集插件（WXT）- 五平台手动采集 + 购物车同步",
+  "description": "一键存为岗位 + 智能填写网申表单",
   "scripts": {
     "dev": "wxt",
     "build": "wxt build && node scripts/sync-root-build.mjs",

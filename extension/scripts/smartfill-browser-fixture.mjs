@@ -286,10 +286,6 @@ async function startServer() {
       sendJson(res, { mappings: [], runId: "fixture-run" });
       return;
     }
-    if (url.pathname === "/api/jobs/ingest") {
-      sendJson(res, { created: 0, skipped: 0, accepted_hash_keys: [] });
-      return;
-    }
     res.writeHead(404);
     res.end("not found");
   });

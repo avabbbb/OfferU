@@ -31,33 +31,6 @@ export interface JobCandidate {
   sourceUrl: string;
 }
 
-/** 同步载荷：采集结果 + 本地幂等键（与后端 Job.hash_key 对应） */
-export interface SyncJobCandidate extends JobCandidate {
-  hashKey: string;
-  salaryMin?: number | null;
-  salaryMax?: number | null;
-  education?: string;
-  experience?: string;
-  jobType?: string;
-  companySize?: string;
-  companyIndustry?: string;
-}
-
-export interface JobImportPlan {
-  planId: string;
-  candidates: JobCandidate[];
-  packId: string;
-  packVersion: string;
-  createdAt: number;
-}
-
-export interface JobImportResult {
-  planId: string;
-  createdCount: number;
-  skippedCount: number;
-  perItem: Array<{ index: number; status: "created" | "skipped" | "failed"; reason?: string }>;
-}
-
 // ---------- 安全填表（Slice 2 充实） ----------
 
 export interface FillProjectionField {

@@ -1,14 +1,9 @@
 import type {
   ClipboardCopyResponse,
-  ExtractedJob,
   Message,
-  PageAgentCollectViaResponse,
-  RemoveResponse,
   ResumeDetail,
   ResumeListItem,
   SmartFillAiSettings,
-  StatusResponse,
-  SyncResponse,
 } from "./types.js";
 import {
   DEFAULT_OFFERU_FRONTEND_PORT,
@@ -25,17 +20,6 @@ type ResumeSortMode = "updated" | "title";
 type UiTheme = "light" | "dark" | "system";
 type DesktopOpenMode = "docker" | "app";
 type TimeRangeFilter = "all" | "7d" | "30d" | "90d" | "custom";
-type JobPlatformFilter = "all" | ExtractedJob["source"] | "other";
-type JobSalaryFilter =
-  | "all"
-  | "day_lt_100"
-  | "day_100_200"
-  | "day_200_300"
-  | "day_gt_300"
-  | "month_lt_8k"
-  | "month_8k_15k"
-  | "month_15k_25k"
-  | "month_gt_25k";
 
 const queryParams = new URLSearchParams(window.location.search);
 const EMBED_MODE = queryParams.get("embed") === "drawer";
@@ -51,24 +35,12 @@ interface ResumeFilterState {
   endDate: string;
 }
 
-interface JobFilterState {
-  time: TimeRangeFilter;
-  startDate: string;
-  endDate: string;
-  platform: JobPlatformFilter;
-  salary: JobSalaryFilter;
-  city: string;
-}
-
 interface PopupUiSettings {
-  autoSync: boolean;
   copyAndDownloadPng: boolean;
   theme: UiTheme;
 }
 
 interface ShortcutSettings {
-  collect: string;
-  sync: string;
   settings: string;
 }
 
@@ -78,33 +50,21 @@ interface DesktopOpenSettings {
   appPath: string;
 }
 
-interface CollectFromPageResponse {
-  ok: boolean;
-  message: string;
-  added: number;
-  upgraded: number;
-  skipped: number;
-}
-
 const DEFAULT_SERVER_URL = DEFAULT_OFFERU_SERVER_URL;
 const RESUME_IMAGE_EXPORT_SCALE = 1.2;
 const RESUME_THUMB_PREFETCH_LIMIT = 1;
 const SETTINGS_KEY = "settings";
-const JOBS_KEY = "collectedJobs";
 const UI_SETTINGS_KEY = "popupUiSettings";
 const SHORTCUT_SETTINGS_KEY = "shortcutSettingsV1";
 const DESKTOP_OPEN_SETTINGS_KEY = "desktopOpenSettingsV1";
 const DEFAULT_DOCKER_PORT = DEFAULT_OFFERU_FRONTEND_PORT;
 
 const DEFAULT_UI_SETTINGS: PopupUiSettings = {
-  autoSync: true,
   copyAndDownloadPng: false,
   theme: "light",
 };
 
 const DEFAULT_SHORTCUT_SETTINGS: ShortcutSettings = {
-  collect: "Alt+J",
-  sync: "Alt+S",
   settings: "Alt+O",
 };
 
@@ -123,29 +83,13 @@ const DEFAULT_SMART_FILL_SETTINGS: SmartFillAiSettings = {
   enableFallback: true,
 };
 
-const SOURCE_LABELS: Record<ExtractedJob["source"], string> = {
-  boss: "Boss",
-  liepin: "猎聘",
-  zhaopin: "智联",
-  shixiseng: "实习僧",
-  linkedin: "LinkedIn",
-  unknown: "平台",
-};
-
 const tabButtons = Array.from(document.querySelectorAll<HTMLButtonElement>(".tab-btn"));
 const tabPanels = Array.from(document.querySelectorAll<HTMLElement>(".tab-panel"));
 const topbarEl = document.querySelector(".topbar") as HTMLElement | null;
 
 const messageEl = document.getElementById("message") as HTMLDivElement;
 
-const cartTotalBadgeEl = document.getElementById("cartTotalBadge") as HTMLSpanElement;
-const readyCountInlineEl = document.getElementById("readyCountInline") as HTMLSpanElement;
-const draftCountInlineEl = document.getElementById("draftCountInline") as HTMLSpanElement;
-const cartFilterBtn = document.getElementById("cartFilterBtn") as HTMLButtonElement;
-const clearBtn = document.getElementById("clearBtn") as HTMLButtonElement;
 const addCurrentBtn = document.getElementById("addCurrentBtn") as HTMLButtonElement;
-const syncBtn = document.getElementById("syncBtn") as HTMLButtonElement;
-const jobListEl = document.getElementById("jobList") as HTMLDivElement;
 
 const resumeTotalBadgeEl = document.getElementById("resumeTotalBadge") as HTMLSpanElement;
 const resumeSearchToggleBtn = document.getElementById("resumeSearchToggleBtn") as HTMLButtonElement;
@@ -164,18 +108,6 @@ const previewResumeBtn = document.getElementById("previewResumeBtn") as HTMLButt
 const copySelectedResumeBtn = document.getElementById("copySelectedResumeBtn") as HTMLButtonElement;
 const openDesktopResumeBtn = document.getElementById("openDesktopResumeBtn") as HTMLButtonElement;
 
-const jobTimeFilter = document.getElementById("jobTimeFilter") as HTMLSelectElement;
-const jobFilterWrap = document.getElementById("jobFilterWrap") as HTMLDivElement;
-const jobCustomRange = document.getElementById("jobCustomRange") as HTMLDivElement;
-const jobDateStartInput = document.getElementById("jobDateStart") as HTMLInputElement;
-const jobDateEndInput = document.getElementById("jobDateEnd") as HTMLInputElement;
-const jobPlatformFilter = document.getElementById("jobPlatformFilter") as HTMLSelectElement;
-const jobSalaryFilter = document.getElementById("jobSalaryFilter") as HTMLSelectElement;
-const jobCityFilter = document.getElementById("jobCityFilter") as HTMLInputElement;
-const jobHotCityRow = document.getElementById("jobHotCityRow") as HTMLDivElement;
-const jobResetFilterBtn = document.getElementById("jobResetFilterBtn") as HTMLButtonElement;
-
-const autoSyncToggle = document.getElementById("autoSyncToggle") as HTMLInputElement;
 const copyAndDownloadPngToggle = document.getElementById("copyAndDownloadPngToggle") as HTMLInputElement;
 const shortcutButtons = Array.from(
   document.querySelectorAll<HTMLButtonElement>(".shortcut-btn[data-shortcut-action]"),
@@ -237,21 +169,16 @@ const supportedPlatformsModal = document.getElementById("supportedPlatformsModal
 const closeSupportedPlatformsBtn = document.getElementById("closeSupportedPlatformsBtn") as HTMLButtonElement;
 const closeSupportedPlatformsBtn2 = document.getElementById("closeSupportedPlatformsBtn2") as HTMLButtonElement;
 
-let currentTab: TabKey = "cart";
-let currentJobs: ExtractedJob[] = [];
 let currentResumes: ResumeListItem[] = [];
 let selectedResumeId: number | null = null;
 let resumeSortMode: ResumeSortMode = "updated";
-let currentReadyCount = 0;
 let uiSettings: PopupUiSettings = { ...DEFAULT_UI_SETTINGS };
 let shortcutSettings: ShortcutSettings = { ...DEFAULT_SHORTCUT_SETTINGS };
 let desktopOpenSettings: DesktopOpenSettings = { ...DEFAULT_DESKTOP_OPEN_SETTINGS };
 let smartFillSettings: SmartFillAiSettings = { ...DEFAULT_SMART_FILL_SETTINGS };
 let shortcutCaptureAction: keyof ShortcutSettings | null = null;
 let resumeFilterVisible = false;
-let cartFilterVisible = false;
 let openingOfferUFrontend = false;
-let statusRefreshTimer: number | null = null;
 
 const resumeFilters: ResumeFilterState = {
   time: "all",
@@ -259,16 +186,6 @@ const resumeFilters: ResumeFilterState = {
   endDate: "",
 };
 
-const jobFilters: JobFilterState = {
-  time: "all",
-  startDate: "",
-  endDate: "",
-  platform: "all",
-  salary: "all",
-  city: "",
-};
-
-const selectedJobHashKeys = new Set<string>();
 const resumeDetailCache = new Map<number, ResumeDetail>();
 const resumeThumbUrlCache = new Map<number, string>();
 const resumeImageBlobCache = new Map<number, Blob>();
@@ -414,78 +331,6 @@ function compareSemver(a: string, b: string): number {
     if (lv < rv) return -1;
   }
   return 0;
-}
-
-function normalizeSalaryValue(raw: string): number | null {
-  const text = (raw || "").trim();
-  if (!text) return null;
-
-  const values: number[] = [];
-  const matches = text.matchAll(/(\d+(?:\.\d+)?)(\s*[kK万]?)/g);
-  for (const match of matches) {
-    const base = Number.parseFloat(match[1]);
-    if (!Number.isFinite(base)) continue;
-    const unit = (match[2] || "").trim().toLowerCase();
-    if (unit === "k") {
-      values.push(base * 1000);
-      continue;
-    }
-    if (unit === "万") {
-      values.push(base * 10000);
-      continue;
-    }
-    values.push(base);
-  }
-
-  if (values.length === 0) return null;
-  return Math.max(...values);
-}
-
-function inferSalaryMode(jobs: ExtractedJob[]): "day" | "month" {
-  const hasDaySalary = jobs.some((job) => /日薪|\/天|天|\/day/i.test(job.salary_text || ""));
-  return hasDaySalary ? "day" : "month";
-}
-
-function getSalaryOptionLabels(mode: "day" | "month"): Array<{ value: JobSalaryFilter; label: string }> {
-  if (mode === "day") {
-    return [
-      { value: "all", label: "全部" },
-      { value: "day_lt_100", label: "100/天以下" },
-      { value: "day_100_200", label: "100-200/天" },
-      { value: "day_200_300", label: "200-300/天" },
-      { value: "day_gt_300", label: "300/天以上" },
-    ];
-  }
-
-  return [
-    { value: "all", label: "全部" },
-    { value: "month_lt_8k", label: "8K以下" },
-    { value: "month_8k_15k", label: "8K-15K" },
-    { value: "month_15k_25k", label: "15K-25K" },
-    { value: "month_gt_25k", label: "25K以上" },
-  ];
-}
-
-function matchSalaryFilter(job: ExtractedJob, filter: JobSalaryFilter, mode: "day" | "month"): boolean {
-  if (filter === "all") return true;
-
-  const fallback = normalizeSalaryValue(job.salary_text || "");
-  const numeric = typeof job.salary_max === "number" && job.salary_max > 0 ? job.salary_max : fallback;
-  if (numeric === null || !Number.isFinite(numeric)) return false;
-
-  if (mode === "day") {
-    if (filter === "day_lt_100") return numeric < 100;
-    if (filter === "day_100_200") return numeric >= 100 && numeric <= 200;
-    if (filter === "day_200_300") return numeric > 200 && numeric <= 300;
-    if (filter === "day_gt_300") return numeric > 300;
-    return true;
-  }
-
-  if (filter === "month_lt_8k") return numeric < 8000;
-  if (filter === "month_8k_15k") return numeric >= 8000 && numeric <= 15000;
-  if (filter === "month_15k_25k") return numeric > 15000 && numeric <= 25000;
-  if (filter === "month_gt_25k") return numeric > 25000;
-  return true;
 }
 
 function normalizeShortcutKey(rawKey: string): string {
@@ -850,7 +695,6 @@ function showMessage(text: string, type: MessageType): void {
 }
 
 function activateTab(tab: TabKey): void {
-  currentTab = tab;
   tabButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.tab === tab);
   });
@@ -860,10 +704,6 @@ function activateTab(tab: TabKey): void {
 
   if (tab === "resumes") {
     void refreshResumes();
-  }
-
-  if (tab === "cart") {
-    void refreshStatus();
   }
 }
 
@@ -875,267 +715,18 @@ function resolveInitialTab(): TabKey {
   return "cart";
 }
 
-function isReadyJob(job: ExtractedJob): boolean {
-  return Boolean(job.raw_description?.trim());
-}
-
-function hasActiveJobFilters(): boolean {
-  return (
-    jobFilters.time !== "all"
-    || Boolean(jobFilters.startDate)
-    || Boolean(jobFilters.endDate)
-    || jobFilters.platform !== "all"
-    || jobFilters.salary !== "all"
-    || Boolean(jobFilters.city.trim())
-  );
-}
-
-function refreshJobSalaryOptions(): void {
-  const salaryMode = inferSalaryMode(currentJobs);
-  const options = getSalaryOptionLabels(salaryMode);
-  const previousValue = jobFilters.salary;
-
-  jobSalaryFilter.innerHTML = options
-    .map((option) => `<option value="${option.value}">${option.label}</option>`)
-    .join("");
-
-  const valid = options.some((item) => item.value === previousValue);
-  jobFilters.salary = valid ? previousValue : "all";
-  jobSalaryFilter.value = jobFilters.salary;
-}
-
-function syncJobFilterControls(): void {
-  jobTimeFilter.value = jobFilters.time;
-  jobDateStartInput.value = jobFilters.startDate;
-  jobDateEndInput.value = jobFilters.endDate;
-  jobPlatformFilter.value = jobFilters.platform;
-  jobCityFilter.value = jobFilters.city;
-  jobCustomRange.classList.toggle("hidden", jobFilters.time !== "custom");
-  refreshJobSalaryOptions();
-}
-
-function syncCartFilterControls(): void {
-  jobFilterWrap.classList.toggle("hidden", !cartFilterVisible);
-  cartFilterBtn.textContent = cartFilterVisible ? "收起筛选" : "展开筛选";
-}
-
-function resetJobFilters(): void {
-  jobFilters.time = "all";
-  jobFilters.startDate = "";
-  jobFilters.endDate = "";
-  jobFilters.platform = "all";
-  jobFilters.salary = "all";
-  jobFilters.city = "";
-  cartFilterVisible = false;
-  syncCartFilterControls();
-  syncJobFilterControls();
-  renderJobs();
-  showMessage("岗位筛选已重置并收起", "info");
-}
-
-function getDisplayedJobs(): ExtractedJob[] {
-  const salaryMode = inferSalaryMode(currentJobs);
-  return currentJobs.filter((job) => {
-    if (!matchTimeRange(job.created_at, jobFilters.time, jobFilters.startDate, jobFilters.endDate)) {
-      return false;
-    }
-
-    if (jobFilters.platform !== "all") {
-      if (jobFilters.platform === "other") {
-        const mainstream: Array<ExtractedJob["source"]> = ["boss", "liepin", "zhaopin", "shixiseng"];
-        if (mainstream.includes(job.source)) return false;
-      } else if (job.source !== jobFilters.platform) {
-        return false;
-      }
-    }
-
-    if (!matchSalaryFilter(job, jobFilters.salary, salaryMode)) {
-      return false;
-    }
-
-    const cityKeyword = jobFilters.city.trim().toLowerCase();
-    if (cityKeyword) {
-      const location = (job.location || "").toLowerCase();
-      if (!location.includes(cityKeyword)) {
-        return false;
-      }
-    }
-
-    return true;
-  });
-}
-
-function sourceLabel(source: ExtractedJob["source"]): string {
-  return SOURCE_LABELS[source] || SOURCE_LABELS.unknown;
-}
-
-function renderJobs(): void {
-  const jobs = getDisplayedJobs();
-
-  if (jobs.length === 0) {
-    const emptyText = hasActiveJobFilters()
-      ? "当前筛选条件下暂无岗位"
-      : "购物车为空，先在招聘网站手动加入岗位";
-    jobListEl.innerHTML = `<div class="empty-state">${emptyText}</div>`;
-    return;
-  }
-
-  jobListEl.innerHTML = jobs
-    .map((job) => {
-      const selected = selectedJobHashKeys.has(job.hash_key);
-      const ready = isReadyJob(job);
-      const salaryText = job.salary_text || "薪资未标注";
-      const locationText = job.location || "地点待补充";
-      const metaText = `${job.company || "公司未知"}  |  ${salaryText}  |  ${locationText}`;
-
-      return `
-        <article class="job-card ${selected ? "is-selected" : ""}" data-job-hash="${escapeHtml(job.hash_key)}">
-          <button
-            class="pick-button ${selected ? "is-picked" : ""}"
-            type="button"
-            data-job-pick="${escapeHtml(job.hash_key)}"
-            aria-label="选择岗位"
-          >✓</button>
-          <div class="card-main">
-            <div class="card-title-row">
-              <div class="card-title" title="${escapeHtml(job.title)}">${escapeHtml(job.title)}</div>
-              <span class="status-pill ${ready ? "ready" : "draft"}">${ready ? "可同步" : "草稿"}</span>
-            </div>
-            <div class="card-meta" title="${escapeHtml(metaText)}">${escapeHtml(metaText)}</div>
-            <div class="chip-row">
-              <span class="meta-chip">${escapeHtml(sourceLabel(job.source))}</span>
-              <span class="meta-chip">${escapeHtml(locationText)}</span>
-            </div>
-          </div>
-        </article>
-      `;
-    })
-    .join("");
-}
-
-async function refreshJobs(): Promise<void> {
-  try {
-    const resp = await sendBackgroundMessage<{ jobs: ExtractedJob[] }>({ type: "GET_JOBS" });
-    currentJobs = [...(resp?.jobs || [])].sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
-    syncJobFilterControls();
-
-    const availableKeys = new Set(currentJobs.map((job) => job.hash_key));
-    for (const key of Array.from(selectedJobHashKeys)) {
-      if (!availableKeys.has(key)) {
-        selectedJobHashKeys.delete(key);
-      }
-    }
-
-    renderJobs();
-  } catch {
-    jobListEl.innerHTML = '<div class="empty-state">读取岗位失败，请稍后重试</div>';
-  }
-}
-
-function updateStatusSummary(status: StatusResponse): void {
-  cartTotalBadgeEl.textContent = String(status.total);
-  readyCountInlineEl.textContent = String(status.ready);
-  draftCountInlineEl.textContent = String(status.draft);
-  currentReadyCount = status.total;
-  syncBtn.textContent = `一键同步 (${status.total})`;
-  syncBtn.disabled = status.total <= 0;
-}
-
-async function refreshStatus(): Promise<void> {
-  try {
-    const status = await sendBackgroundMessage<StatusResponse>({ type: "GET_STATUS" });
-    updateStatusSummary(status);
-
-    if (!serverUrlInput.value.trim()) {
-      serverUrlInput.value = status.serverUrl;
-    }
-
-    await refreshJobs();
-  } catch {
-    showMessage("读取状态失败，请稍后重试", "error");
-  }
-}
-
-function scheduleStatusRefresh(): void {
-  if (statusRefreshTimer !== null) {
-    window.clearTimeout(statusRefreshTimer);
-  }
-
-  statusRefreshTimer = window.setTimeout(() => {
-    statusRefreshTimer = null;
-    void refreshStatus();
-  }, 120);
-}
-
-function toggleJobSelection(hashKey: string): void {
-  if (!hashKey) return;
-  if (selectedJobHashKeys.has(hashKey)) {
-    selectedJobHashKeys.delete(hashKey);
-  } else {
-    selectedJobHashKeys.add(hashKey);
-  }
-  renderJobs();
-}
-
-async function syncJobs(): Promise<void> {
-  syncBtn.disabled = true;
-  const previousText = syncBtn.textContent;
-  syncBtn.textContent = "同步中...";
-
-  try {
-    const resp = await sendBackgroundMessage<SyncResponse>({ type: "SYNC_TO_SERVER" });
-    if (resp.ok) {
-      const tips = resp.skippedDraft > 0 ? `，${resp.skippedDraft} 条草稿待补全` : "";
-      showMessage(`已同步 ${resp.synced} 条岗位${tips}`, "success");
-    } else {
-      const base = resp.error || "未知错误";
-      const tips = resp.skippedDraft > 0 ? `（草稿 ${resp.skippedDraft} 条）` : "";
-      showMessage(`同步失败：${base}${tips}`, "error");
-    }
-  } catch (error: unknown) {
-    const text = safeExtensionError(error, "请求失败");
-    showMessage(`同步失败：${text}`, "error");
-  } finally {
-    syncBtn.textContent = previousText || `一键同步 (${currentReadyCount})`;
-    await refreshStatus();
-  }
-}
-
-async function clearJobs(): Promise<void> {
-  if (selectedJobHashKeys.size > 0) {
-    if (!window.confirm(`确认移除 ${selectedJobHashKeys.size} 条已选岗位吗？`)) return;
-    try {
-      const resp = await sendBackgroundMessage<RemoveResponse>({
-        type: "REMOVE_JOBS",
-        hashKeys: Array.from(selectedJobHashKeys),
-      });
-      selectedJobHashKeys.clear();
-      showMessage(`已移除 ${resp.removed} 条岗位`, "info");
-      await refreshStatus();
-    } catch (error: unknown) {
-      const text = safeExtensionError(error, "请求失败");
-      showMessage(`移除失败：${text}`, "error");
-    }
-    return;
-  }
-
-  if (!window.confirm("确认清空购物车中的岗位吗？")) return;
-  try {
-    await sendBackgroundMessage<{ ok: boolean }>({ type: "CLEAR_JOBS" });
-    showMessage("购物车已清空", "info");
-    await refreshStatus();
-  } catch (error: unknown) {
-    const text = safeExtensionError(error, "请求失败");
-    showMessage(`清空失败：${text}`, "error");
-  }
-}
-
-async function collectCurrentPageJob(): Promise<void> {
+async function saveCurrentPageAsJob(): Promise<void> {
   addCurrentBtn.disabled = true;
   const previousText = addCurrentBtn.textContent;
   addCurrentBtn.textContent = "处理中...";
 
   try {
+    if (EMBED_MODE) {
+      const embedded = await requestSaveFromHostPage();
+      showMessage(embedded.message, embedded.ok ? "success" : "error");
+      return;
+    }
+
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     const activeTab = tabs[0];
 
@@ -1146,8 +737,6 @@ async function collectCurrentPageJob(): Promise<void> {
 
     const resp = await sendBackgroundMessage<{ ok: boolean; message: string }>({ type: "SAVE_PAGE_AS_JOB" });
     showMessage(resp.message, resp.ok ? "success" : "error");
-
-    await refreshStatus();
   } catch (error: unknown) {
     const text = safeExtensionError(error, "发送失败");
     showMessage(`加入失败：${text}`, "error");
@@ -1155,6 +744,31 @@ async function collectCurrentPageJob(): Promise<void> {
     addCurrentBtn.disabled = false;
     addCurrentBtn.textContent = previousText || "存为岗位";
   }
+}
+
+// 嵌在页面抽屉里（悬浮 dock 打开）时，点击是页内点击，后台拿不到 activeTab；
+// 改由宿主页的 content script 读页面快照再交给后台保存。
+function requestSaveFromHostPage(): Promise<{ ok: boolean; message: string }> {
+  return new Promise((resolve) => {
+    const requestId = "save-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+    const cleanup = (): void => {
+      window.removeEventListener("message", onMessage);
+      window.clearTimeout(timer);
+    };
+    const onMessage = (event: MessageEvent): void => {
+      const payload = event.data as { type?: string; requestId?: string; ok?: boolean; message?: string } | null;
+      if (event.source !== window.parent) return;
+      if (payload?.type !== "offeru:save-page-result" || payload.requestId !== requestId) return;
+      cleanup();
+      resolve({ ok: payload.ok === true, message: payload.message || "存为岗位失败" });
+    };
+    const timer = window.setTimeout(() => {
+      cleanup();
+      resolve({ ok: false, message: "页面没有响应，请刷新后重试" });
+    }, 20000);
+    window.addEventListener("message", onMessage);
+    window.parent.postMessage({ type: "offeru:save-page-request", requestId }, "*");
+  });
 }
 
 function inferResumeFormat(resume: ResumeListItem): string {
@@ -2048,7 +1662,6 @@ function updateSegmentSelection(buttons: HTMLButtonElement[], selectedValue: str
 }
 
 function applyUiSettings(): void {
-  autoSyncToggle.checked = uiSettings.autoSync;
   copyAndDownloadPngToggle.checked = uiSettings.copyAndDownloadPng;
   updateSegmentSelection(themeButtons, uiSettings.theme, "theme");
   applyThemeToDocument();
@@ -2079,7 +1692,6 @@ function loadSettings(): Promise<{
       resolve({
         serverUrl: normalizeServerUrl(settings.serverUrl || DEFAULT_SERVER_URL),
         ui: {
-          autoSync: typeof ui.autoSync === "boolean" ? ui.autoSync : DEFAULT_UI_SETTINGS.autoSync,
           copyAndDownloadPng:
             typeof ui.copyAndDownloadPng === "boolean"
               ? ui.copyAndDownloadPng
@@ -2090,8 +1702,6 @@ function loadSettings(): Promise<{
               : DEFAULT_UI_SETTINGS.theme,
         },
         shortcuts: {
-          collect: normalizeShortcutString(shortcuts.collect || DEFAULT_SHORTCUT_SETTINGS.collect),
-          sync: normalizeShortcutString(shortcuts.sync || DEFAULT_SHORTCUT_SETTINGS.sync),
           settings: normalizeShortcutString(shortcuts.settings || DEFAULT_SHORTCUT_SETTINGS.settings),
         },
         desktop: normalizeDesktopOpenSettings(desktop),
@@ -2119,85 +1729,8 @@ function bindTabEvents(): void {
 }
 
 function bindCartEvents(): void {
-  cartFilterBtn.addEventListener("click", () => {
-    cartFilterVisible = !cartFilterVisible;
-    syncCartFilterControls();
-    showMessage(cartFilterVisible ? "已展开岗位筛选" : "已收起岗位筛选", "info");
-  });
-
-  jobResetFilterBtn.addEventListener("click", () => {
-    resetJobFilters();
-  });
-
-  jobTimeFilter.addEventListener("change", () => {
-    const next = jobTimeFilter.value as TimeRangeFilter;
-    jobFilters.time = next;
-    jobCustomRange.classList.toggle("hidden", next !== "custom");
-    renderJobs();
-  });
-
-  jobDateStartInput.addEventListener("change", () => {
-    jobFilters.startDate = jobDateStartInput.value;
-    renderJobs();
-  });
-
-  jobDateEndInput.addEventListener("change", () => {
-    jobFilters.endDate = jobDateEndInput.value;
-    renderJobs();
-  });
-
-  jobPlatformFilter.addEventListener("change", () => {
-    const next = jobPlatformFilter.value as JobPlatformFilter;
-    jobFilters.platform = next;
-    renderJobs();
-  });
-
-  jobSalaryFilter.addEventListener("change", () => {
-    const next = jobSalaryFilter.value as JobSalaryFilter;
-    jobFilters.salary = next;
-    renderJobs();
-  });
-
-  jobCityFilter.addEventListener("input", () => {
-    jobFilters.city = jobCityFilter.value;
-    renderJobs();
-  });
-
-  jobHotCityRow.addEventListener("click", (event) => {
-    const target = event.target as HTMLElement;
-    const chip = target.closest<HTMLButtonElement>("button[data-city]");
-    if (!chip) return;
-    jobFilters.city = chip.dataset.city || "";
-    jobCityFilter.value = jobFilters.city;
-    renderJobs();
-  });
-
-  clearBtn.addEventListener("click", () => {
-    void clearJobs();
-  });
-
   addCurrentBtn.addEventListener("click", () => {
-    void collectCurrentPageJob();
-  });
-
-  syncBtn.addEventListener("click", () => {
-    void syncJobs();
-  });
-
-  jobListEl.addEventListener("click", (event) => {
-    const target = event.target as HTMLElement;
-
-    const pickButton = target.closest<HTMLButtonElement>("button[data-job-pick]");
-    if (pickButton) {
-      const hash = pickButton.dataset.jobPick || "";
-      toggleJobSelection(hash);
-      return;
-    }
-
-    const card = target.closest<HTMLElement>("[data-job-hash]");
-    if (!card) return;
-    const hash = card.dataset.jobHash || "";
-    toggleJobSelection(hash);
+    void saveCurrentPageAsJob();
   });
 }
 
@@ -2339,11 +1872,6 @@ function bindModalEvents(): void {
 }
 
 function bindSettingsEvents(): void {
-  autoSyncToggle.addEventListener("change", () => {
-    uiSettings.autoSync = autoSyncToggle.checked;
-    saveUiSettings();
-  });
-
   copyAndDownloadPngToggle.addEventListener("change", () => {
     uiSettings.copyAndDownloadPng = copyAndDownloadPngToggle.checked;
     saveUiSettings();
@@ -2594,15 +2122,6 @@ function bindGlobalEvents(): void {
   });
 }
 
-function bindStorageSyncEvents(): void {
-  chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName !== "local") return;
-    if (!changes[JOBS_KEY]) return;
-
-    scheduleStatusRefresh();
-  });
-}
-
 async function bootstrap(): Promise<void> {
   bindTabEvents();
   bindCartEvents();
@@ -2611,11 +2130,8 @@ async function bootstrap(): Promise<void> {
   ensureThemeControls();
   bindSettingsEvents();
   bindGlobalEvents();
-  bindStorageSyncEvents();
 
   syncResumeFilterControls();
-  syncCartFilterControls();
-  syncJobFilterControls();
   updateStatusTextEl.textContent = `当前版本：v${chrome.runtime.getManifest().version}`;
 
   const loaded = await loadSettings();
@@ -2629,7 +2145,6 @@ async function bootstrap(): Promise<void> {
   setDesktopDockerStatus("未检测", "pending");
 
   activateTab(resolveInitialTab());
-  await refreshStatus();
   void checkServerConnection();
 }
 

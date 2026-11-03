@@ -22,7 +22,7 @@ export default defineConfig({
   },
   manifest: {
     name: "OfferU 简历购物车助手",
-    description: "在招聘站列表页/详情页手动采集岗位并同步到 OfferU",
+    description: "一键存为岗位 + 智能填写网申表单",
     permissions: ["storage", "activeTab", "tabs", "scripting", "contextMenus", "clipboardWrite", "offscreen"],
     host_permissions: ["http://127.0.0.1/*", "http://localhost/*"],
     // 招聘站点权限按需申请（见 docs/04-module-job-workspace.md），

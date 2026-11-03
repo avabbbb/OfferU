@@ -75,9 +75,7 @@ if (missingPopupMarkers.length > 0) {
 
 const requiredBackgroundMarkers = [
   "127.0.0.1:8766",
-  "/api/health",
   "OfferU",
-  "python",
   "redirect",
 ];
 const missingBackgroundMarkers = requiredBackgroundMarkers.filter(
@@ -85,11 +83,11 @@ const missingBackgroundMarkers = requiredBackgroundMarkers.filter(
 );
 if (missingBackgroundMarkers.length > 0) {
   console.error(
-    "[sync-root-build] Background output is missing the fixed backend health guard:",
+    "[sync-root-build] Background output is missing the fixed local backend guard:",
     missingBackgroundMarkers.join(", "),
   );
   console.error(
-    "[sync-root-build] Refusing to sync a stale background that could accept the wrong local service.",
+    "[sync-root-build] Refusing to sync a stale background that could target the wrong local service.",
   );
   process.exit(1);
 }

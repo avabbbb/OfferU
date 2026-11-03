@@ -12,7 +12,7 @@
 
 ## 选择器理由
 
-选择器迁移自 OfferU 自有 `src/content/platforms/boss.ts`（first-party 配置），
+选择器迁移自 OfferU 早期自有的 BOSS 直聘采集配置（first-party 配置），
 未参考或复制任何第三方插件规则数据。稳定性标注：长期公开结构标
 `vendor-stable`，其余为 `fragile`；规则包当前为 `experimental`，未经真实浏览器验收。
 

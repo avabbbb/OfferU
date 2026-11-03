@@ -103,13 +103,22 @@ export function toJobData(page: PageSnapshot): Record<string, unknown> {
   return Object.fromEntries(Object.entries(data).filter(([, value]) => value !== null && value !== ""));
 }
 
-export async function savePageAsJob(tabId: number, serverUrl: string): Promise<SavePageResult> {
-  let page: PageSnapshot | undefined;
-  try {
-    const [injection] = await chrome.scripting.executeScript({ target: { tabId }, func: snapshotPage });
-    page = injection?.result as PageSnapshot | undefined;
-  } catch (error) {
-    return { ok: false, message: "这个页面读不了：" + (error instanceof Error ? error.message : String(error)) };
+// snapshot 由 content script 直接读好传进来时（悬浮 dock 抽屉里点「存为岗位」是页内点击，拿不到 activeTab）就不再注入；
+// 只有没带快照时才用 executeScript 读 tabId 对应的页面。
+export async function savePageAsJob(
+  tabId: number | undefined,
+  serverUrl: string,
+  snapshot?: PageSnapshot,
+): Promise<SavePageResult> {
+  let page: PageSnapshot | undefined = snapshot;
+  if (!page) {
+    if (tabId === undefined) return { ok: false, message: "未找到当前标签页" };
+    try {
+      const [injection] = await chrome.scripting.executeScript({ target: { tabId }, func: snapshotPage });
+      page = injection?.result as PageSnapshot | undefined;
+    } catch (error) {
+      return { ok: false, message: "这个页面读不了：" + (error instanceof Error ? error.message : String(error)) };
+    }
   }
   if (!page) return { ok: false, message: "这个页面读不了" };
   const headers = { "content-type": "application/json", "x-offeru-actor": encodeURIComponent(ACTOR) };
