@@ -26,6 +26,7 @@ function LongText({ job, field, label, placeholder }: { job: Job; field: "jd" | 
 export default function JobDetailPage() {
   const id = Number(useParams().id);
   const router = useRouter();
+  const [tailoring, setTailoring] = useState("");
   const { data, error } = useTool<{ record: Job; events: Event[]; docs: Doc[] }>("get", { type: "job", id }, 5000);
   if (error) return <p className="px-6 py-10 text-[13.5px] text-[var(--foreground-muted)]">这个岗位不存在了。<Link href="/jobs" className="underline">回到岗位</Link></p>;
   if (!data) return null;
@@ -52,14 +53,21 @@ export default function JobDetailPage() {
       <section>
         <div className="flex items-baseline justify-between">
           <h2 className="text-[13px] font-medium text-[var(--foreground-muted)]">材料</h2>
-          <button type="button" className="text-[12.5px] text-[var(--foreground-muted)] hover:text-[var(--foreground)]" onClick={async () => {
-            // 复制主简历（没挂岗位的那份），挂到这个岗位下面再改。
+          <button type="button" disabled={Boolean(tailoring) && tailoring !== "定制失败，再试一次"} className="text-[12.5px] text-[var(--foreground-muted)] hover:text-[var(--foreground)] disabled:opacity-60" onClick={async () => {
+            // 复制主简历（没挂岗位的那份），挂到这个岗位下面，再按 JD 改写。复制和改写各是一条改动，都能撤销。
             const { items } = await tool<{ items: Doc[] }>("list", { type: "doc", kind: "resume", full: true, limit: 200 });
             const base = items.filter((d) => !d.job_id).sort((a, b) => a.id - b.id)[0];
             if (!base) { router.push("/resume"); return; }
             const { record } = await write<{ record: Doc }>("save", { type: "doc", data: { kind: "resume", job_id: job.id, title: "简历 · " + (job.company ?? job.title), resume: base.resume, style: base.style, template: base.template } });
-            router.push(`/resume/${record.id}`);
-          }}>为这个岗位复制一份简历</button>
+            if (!job.jd?.trim()) { router.push(`/resume/${record.id}`); return; }
+            setTailoring("正在按 JD 定制，要一两分钟…");
+            try {
+              await write("tailor_resume", { id: record.id, job_id: job.id });
+              router.push(`/resume/${record.id}`);
+            } catch {
+              setTailoring("定制失败，再试一次");
+            }
+          }}>{tailoring || (job.jd?.trim() ? "按 JD 定制一份简历" : "复制一份简历（贴了 JD 才能定制）")}</button>
         </div>
         {data.docs.length ? (
           <ul className="divide-y divide-[var(--border)]">
