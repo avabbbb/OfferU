@@ -40,7 +40,7 @@ tailor_resume 工具和 SSE 事件：新增 review 事件（每轮开始，带�
 
 | 范围 | 结果 |
 | --- | --- |
-| 后端 pytest tests（不含真模型） | 198 通过，1 跳过（删掉了 fact_check 和 tailor_report 的测试，按新流程重写了 test_resume_tailor.py） |
+| 后端 pytest tests（不含真模型） | 205 通过，1 跳过（11:40 后追加岗位闸门和审稿重试的测试；此前为 198 通过）（删掉了 fact_check 和 tailor_report 的测试，按新流程重写了 test_resume_tailor.py） |
 | 前端 npx tsc --noEmit | 无错误 |
 | 插件 npx vitest run | 195 通过，7 跳过（28 个文件通过，1 个跳过） |
 
@@ -52,9 +52,31 @@ test_resume_tailor.py 用审稿替身（按轮返回预设 JSON）覆盖：精�
 - 直接跑 pytest（不带 tests）会收集 backend/scripts/ 下的旧手工脚本并报错，不属于测试集，本轮没动；建议在 pytest.ini 里设 testpaths = tests。
 - .claude 在 .gitignore 里但有已跟踪文件，提交时要用 git add -u -- .claude；docs 也被忽略，要 git add -f。
 
+## 真模型实测
+
+自定义 OpenAI 兼容端点、model hark。探针复制本机 ~/.offeru/offeru.db 和 config.json 到临时目录，用 scripts/smoke 的样例 JD（后端实习）建岗位，跑 tailor.run，不动真实数据。
+
+| 指标 | 第 1 次 | 第 2 次（加重试后） |
+|---|---|---|
+| 第 1 轮审稿 | 1 条修改，命中 1/1，无跳过 | 同左 |
+| 第 2 轮审稿 | 出错：chat_completion 返回 None（约 33 秒，未到 60 秒超时，网关报错或空回复） | 正常完成，无修改 |
+| 页数 | 1.0（Chromium 可用） | 1.0 |
+| 总耗时 | 122.8 秒 | 38.0 秒 |
+
+- 唯一的修改是 grounding：起草去掉了「曾」，审稿按档案改回。
+- notes 有用：列出 JD 要求但档案无依据、因而没补的关键词（Python/Go、MySQL、Redis、RESTful），指出届别不符（2025-07 毕业 vs 2026 届）和实习时长未提及。
+- 据此加了审稿重试（25618df）：没返回或不是 JSON 时带原回复再要一次，两种原因分开写。探针看不出第 2 次是否触发了重试。
+
+## 本轮追加：借鉴 ai-job-search
+
+- 70e50c6 岗位入库闸门 backend/app/core/posting_guard.py，借鉴 MadsLorentzen/ai-job-search tools/posting_guard.py（MIT）。fetch_page / add_job 入库前去掉隐藏 HTML 和不可见字符（含 Unicode tag 走私），扫描中英文像指令的行；只提醒不拦截，只存计数，提醒写进岗位 notes。原来 fetch_page 只用正则剥标签，display:none 等隐藏文字会原样进 JD，再进评估和改写 prompt。
+- 已对齐、不用再做：审稿人不写文件只返回 old/new；岗位按不可信数据声明（services 下已普遍有）。
+- 待选：导出 PDF 文本层检查（verify_pdf.py）、新确认事实当轮写回档案、公司调研缓存 TTL。
+
 ## 已知局限
 
-- 没跑真模型端到端（需要 API Key），审稿 prompt 的实际效果、模型给出的 old 能否一字不差命中，都还没验过。scripts/smoke/tailor_mainline.py 可以手动跑。
+- 真模型只跑了两次、一个样例岗位（见「真模型实测」）：每次只有 1 条修改，命中率 1/1 说明不了 old 精确匹配在修改多时是否可靠。
+- 起草和审稿是同一个模型：两次起草都把「曾获月度最高档绩效」写成「获…」，都被审稿改回；这次抓到了，但同源盲点仍是主要风险。
 - 没用 Playwright 在真界面上点一遍改写主线（DESIGN.md 要求每个 PR 做），这是欠的。
 - 审稿和起草是同一个模型，独立的只是上下文和角色；同一模型的盲点可能两边都有。
 - 「存进档案」存的是被改掉的原句，没有拆成结构化的经历字段；kind 用的是 note。
