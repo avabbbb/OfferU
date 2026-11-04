@@ -1,4 +1,4 @@
-"""追问成果：用户回答 → 记忆草稿。一次模型调用；原话里没有的数字、弄丢的「大概」整条作废；只出草稿不写库。"""
+"""追问成果：用户回答 → 记忆草稿。一次模型调用；原话里没有的数字、弄丢或叠用的约数词、拔高的程度词只标出来提醒，不作废；只出草稿不写库。"""
 
 import asyncio
 import json
@@ -55,6 +55,7 @@ def test_capture_drafts_with_quote_and_date(tmp_path, monkeypatch):
     assert fans["data"] == {"body": "- 负责公众号运营\n- 运营期间粉丝约从 2,000 增至 8000",
                             "quote": FANS["answer"], "said_at": TODAY}
     assert fans["answers"][0]["index"] == 0 and fans["answers"][0]["old"] == FANS["old"]
+    assert fans["answers"][0]["flags"] == [] and promo["answers"][0]["flags"] == []
     assert promo["memory_id"] is None
     assert promo["data"] == {"kind": "note", "title": "活动策划", "body": "- 活动方案被推广到其他小组复用",
                              "quote": PROMO["answer"], "said_at": TODAY}
@@ -62,7 +63,7 @@ def test_capture_drafts_with_quote_and_date(tmp_path, monkeypatch):
     assert len(store.changes(100)) == before  # 只出草稿，不写库
 
 
-def test_capture_drops_made_up_numbers_and_lost_hedge(tmp_path, monkeypatch):
+def test_capture_flags_instead_of_dropping(tmp_path, monkeypatch):
     memory_id = _setup(tmp_path, monkeypatch)
     out = _capture([FANS, PROMO, PRAISE], _model({"drafts": [
         {"index": 0, "memory_id": memory_id, "add": "粉丝从 2000 增至 8000"},
@@ -71,12 +72,24 @@ def test_capture_drops_made_up_numbers_and_lost_hedge(tmp_path, monkeypatch):
         {"index": 7, "add": "越界的序号不要"},
     ]}))
 
-    assert [(d["index"], d["why"]) for d in out["dropped"]] == [
-        (0, "回答说的是大概，草稿把约数词弄丢了"), (1, "回答里没有这个数字：3、30")]
-    [praise] = out["drafts"]  # 对不上的 memory_id 当新建
+    assert out["dropped"] == []  # 有问题也留着，交给用户确认
+    flagged = {a["index"]: a["flags"] for d in out["drafts"] for a in d["answers"]}
+    assert flagged == {0: ["原话是「大概」，草稿没带约数词"], 1: ["原话里没有这个数字：3、30"], 2: []}
+    praise = out["drafts"][-1]  # 对不上的 memory_id 当新建
     assert praise["memory_id"] is None
     assert praise["data"] == {"kind": "note", "title": "负责数据周报", "body": "- 获部门表扬",
                               "quote": PRAISE["answer"], "said_at": TODAY}
+
+
+def test_flags_chinese_numbers_stacked_hedges_and_intensity():
+    said = "大概让处理时间缩短了三成左右，没有精确统计"
+    assert impact.flags("处理时间缩短约三成", said) == []
+    assert impact.flags("处理时间缩短约三成左右", said) == ["约数词叠用了：约、左右"]
+    assert impact.flags("处理时间缩短约五成", said) == ["原话里没有这个数字：五成"]
+    assert impact.flags("找资料效率明显提升", "同事反馈说找资料快多了") == ["原话没有这个程度：明显"]
+    assert impact.flags("效率明显提升", "效率明显提高了") == []  # 原话自己说了「明显」
+    assert impact.flags("提升约两倍", "差不多快了两倍") == []
+    assert impact.flags("覆盖约百分之三十的同事", "大约百分之二十的人在用") == ["原话里没有这个数字：百分之三十"]
 
 
 def test_capture_merges_answers_for_one_memory(tmp_path, monkeypatch):
@@ -90,6 +103,17 @@ def test_capture_merges_answers_for_one_memory(tmp_path, monkeypatch):
     assert draft["data"]["body"] == "- 负责公众号运营\n- 粉丝约从 2000 增至 8000\n- 周报获部门表扬"
     assert draft["data"]["quote"] == FANS["answer"] + "；" + PRAISE["answer"]
     assert [a["index"] for a in draft["answers"]] == [0, 1]
+
+
+def test_capture_same_quote_saved_once(tmp_path, monkeypatch):
+    """同一句话答了两个问题（真模型走查里出过），档案里的原话只记一次。"""
+    memory_id = _setup(tmp_path, monkeypatch)
+    out = _capture([FANS, {**PRAISE, "answer": FANS["answer"]}], _model({"drafts": [
+        {"index": 0, "memory_id": memory_id, "add": "粉丝约从 2000 增至 8000"},
+        {"index": 1, "memory_id": memory_id, "add": "粉丝约从 2000 增至 8000"},
+    ]}))
+    [draft] = out["drafts"]
+    assert draft["data"]["quote"] == FANS["answer"]
 
 
 def test_capture_needs_answers_and_json(tmp_path, monkeypatch):

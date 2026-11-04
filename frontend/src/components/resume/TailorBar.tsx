@@ -8,7 +8,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { tool, type Job } from "@/lib/core";
-import { captureImpact, tailorNotes, tailorResume, type ImpactDraft, type ImpactDropped, type TailorAsk, type TailorEdit } from "@/lib/tailor";
+import { captureImpact, tailorNotes, tailorResume, type ImpactDraft, type ImpactDropped, type TailorAsk, type TailorChecks, type TailorEdit } from "@/lib/tailor";
 
 type Props = {
   docId: number; jobId: number | null; jobs: Job[]; disabled: boolean; onDone: (docId: number) => Promise<unknown>;
@@ -21,7 +21,7 @@ const action = "text-[12.5px] font-medium text-[var(--foreground)] disabled:text
 
 // 主简历改写完会跳到定制简历：Editor 按 doc id 重挂，TailorBar 跟着重挂，组件状态会丢。
 // 结果按写入的 doc id 暂存在模块里，新挂载的 TailorBar 取回。
-type Result = { message: string; grounding: TailorEdit[]; asks: TailorAsk[]; job: number | null };
+type Result = { message: string; grounding: TailorEdit[]; asks: TailorAsk[]; job: number | null; checks?: TailorChecks | null };
 const results = new Map<number, Result>();
 
 export function TailorBar({ docId, jobId, jobs, disabled, onDone, onRunning }: Props) {
@@ -33,6 +33,7 @@ export function TailorBar({ docId, jobId, jobs, disabled, onDone, onRunning }: P
   const [phase, setPhase] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(() => saved?.message ?? null);
   const [grounding, setGrounding] = useState<TailorEdit[]>(() => saved?.grounding ?? []);
+  const [checks, setChecks] = useState<TailorChecks | null>(() => saved?.checks ?? null);
   const [kept, setKept] = useState<Set<number>>(new Set());
   // 追问：asks → 你回答 → drafts（给你看）→ 存进档案 → 可以再改一下
   const [asks, setAsks] = useState<TailorAsk[]>(() => saved?.asks ?? []);
@@ -66,12 +67,14 @@ export function TailorBar({ docId, jobId, jobs, disabled, onDone, onRunning }: P
     setPhase(reviewOnly ? "用新成果再审一遍…" : null);
     setMessage(null);
     setGrounding([]);
+    setChecks(null);
     setKept(new Set());
     resetAsks([]);
     results.delete(docId);
     let outcome = null as string | null; // 在回调里赋值，别让 TS 收窄成 null
     let written = null as number | null;
     let edits: TailorEdit[] = [];
+    let verified = null as TailorChecks | null;
     let questions: TailorAsk[] = [];
     try {
       await tailorResume(docId, target, controller.signal, (event) => {
@@ -86,11 +89,13 @@ export function TailorBar({ docId, jobId, jobs, disabled, onDone, onRunning }: P
           edits = event.grounding ?? [];
           questions = reviewOnly ? [] : (event.asks ?? []).slice(0, 3);
           setGrounding(edits);
+          verified = event.checks ?? null;
+          setChecks(verified);
           resetAsks(questions);
         }
       }, { reviewOnly });
       if (written != null) {
-        results.set(written, { message: outcome ?? "", grounding: edits, asks: questions, job: target });
+        results.set(written, { message: outcome ?? "", grounding: edits, asks: questions, job: target, checks: verified });
         await onDone(written);
       }
       setMessage(outcome ?? "连接断了，简历没动");
@@ -185,6 +190,18 @@ export function TailorBar({ docId, jobId, jobs, disabled, onDone, onRunning }: P
           ))}
         </ul>
       )}
+      {checks && (checks.block.length > 0 || checks.warn.length > 0 || checks.unchecked) && (
+        <ul className={muted + " basis-full text-left"} aria-label="改写结果核对">
+          <li>程序把改好的简历逐行对了一遍档案和原简历，只提醒，简历没动：</li>
+          {checks.unchecked && <li>{checks.unchecked}</li>}
+          {checks.block.map((check, i) => (
+            <li key={"b" + i} className="text-red-600">「{check.line}」{check.detail}，投之前请改掉或补进档案</li>
+          ))}
+          {checks.warn.map((check, i) => (
+            <li key={"w" + i} className="text-amber-600">留意：「{check.line}」{check.detail}</li>
+          ))}
+        </ul>
+      )}
       {!running && asks.length > 0 && !drafts && (
         <div className="basis-full text-left" aria-label="追问成果">
           <p className={muted}>这几句只写了做了什么，补一句结果会更有说服力。记不清数字就写「大概……」或「没有数据，但结果是……」，不想答就空着。</p>
@@ -207,11 +224,15 @@ export function TailorBar({ docId, jobId, jobs, disabled, onDone, onRunning }: P
       )}
       {!running && drafts && !stored && (
         <div className="basis-full text-left" aria-label="记忆草稿">
-          {drafts.length > 0 && <p className={muted}>我会这样记进档案（带上你的原话和今天的日期）：</p>}
+          {drafts.length > 0 && <p className={muted}>我会这样记进档案（带上你的原话和今天的日期），标了「留意」的请看一眼再存：</p>}
           {drafts.map((draft, i) => (
             <div key={i} className="mt-1">
               <span className="text-[var(--foreground)]">{draft.title}{draft.memory_id ? "（补到已有经历）" : "（新建一条）"}</span>
-              {draft.answers.map((a, j) => <span key={j} className={muted + " block"}>+ {a.add}</span>)}
+              {draft.answers.map((a, j) => (
+                <span key={j} className={muted + " block"}>+ {a.add}
+                  {a.flags?.length ? <span className="ml-1 text-amber-600">（留意：{a.flags.join("；")}）</span> : null}
+                </span>
+              ))}
             </div>
           ))}
           {dropped.map((d, i) => (

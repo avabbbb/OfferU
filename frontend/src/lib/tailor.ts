@@ -8,6 +8,9 @@ export type TailorEdit = { old: string; new: string; reason: string; category: s
 export type TailorRound = { round: number; pages: number | null; applied: TailorEdit[]; skipped: TailorEdit[]; error?: string };
 // 只写了动作、没写结果的句子（最多 3 句），拿去问用户。
 export type TailorAsk = { old: string; why: string; question: string };
+// 改写结果核对：终稿逐行对照档案和原简历。block 是数字找不到出处，warn 是说法可能拔高；只提醒，简历没改。
+export type TailorCheck = { line: string; kind: string; detail: string };
+export type TailorChecks = { block: TailorCheck[]; warn: TailorCheck[]; unchecked: string };
 
 export type TailorEvent =
   | { type: "start"; job: string }
@@ -15,7 +18,7 @@ export type TailorEvent =
   | { type: "review"; round: number; pages: number | null }
   | {
     type: "done"; doc_id: number; body: string; resume: unknown; change_id: number; pages: number | null;
-    rounds: TailorRound[]; notes: Record<string, string>; grounding: TailorEdit[]; asks?: TailorAsk[];
+    rounds: TailorRound[]; notes: Record<string, string>; grounding: TailorEdit[]; asks?: TailorAsk[]; checks?: TailorChecks;
   }
   | { type: "error"; message: string };
 
@@ -53,7 +56,7 @@ export async function tailorResume(docId: number, jobId: number, signal: AbortSi
 
 // 追问成果：回答 → 记忆草稿（只出草稿不写库）。data 原样传给 save("memory", data, memory_id)。
 export type ImpactAnswer = { old: string; question: string; answer: string };
-export type ImpactDraft = { memory_id: number | null; title: string; data: Record<string, unknown>; answers: (ImpactAnswer & { add: string })[] };
+export type ImpactDraft = { memory_id: number | null; title: string; data: Record<string, unknown>; answers: (ImpactAnswer & { add: string; flags?: string[] })[] };
 export type ImpactDropped = { index: number; old: string; question: string; quote: string; add?: string; why: string };
 
 export async function captureImpact(answers: ImpactAnswer[], jobId: number | null): Promise<{ drafts: ImpactDraft[]; dropped: ImpactDropped[] }> {

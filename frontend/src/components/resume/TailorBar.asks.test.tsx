@@ -84,4 +84,29 @@ describe("TailorBar 追问成果", () => {
     expect(save).toHaveBeenCalledTimes(1);
     expect(save).toHaveBeenCalledWith("save", { type: "doc", id: 41, data: { pending_asks: null } });
   });
+
+  it("草稿带 flags 只提醒不拦：黄字显示「留意」，照样一次存进档案", async () => {
+    run.mockImplementation(async (_doc, _job, _signal, onEvent) => { onEvent(done(42)); });
+    save.mockResolvedValue({});
+    const flags = ["原话里没有「三成」", "原话说了大概，草稿丢了约数词"];
+    capture.mockResolvedValue({
+      drafts: [{ memory_id: 5, title: "公众号运营", data: { body: "三个月涨粉三成" },
+        answers: [{ old: asks[0].old, question: asks[0].question, answer: "涨了大概不少", add: "三个月涨粉三成", flags }] }],
+      dropped: [],
+    });
+    render(<TailorBar docId={42} jobId={3} jobs={jobs} disabled={false} onDone={vi.fn(async () => undefined)} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "按岗位改写" }));
+    await screen.findByText("粉丝运营带来了什么变化？");
+    fireEvent.change(screen.getByRole("textbox", { name: "粉丝运营带来了什么变化？" }), { target: { value: "涨了大概不少" } });
+    fireEvent.click(screen.getByRole("button", { name: "整理一下" }));
+    await screen.findByText(/标了「留意」的请看一眼再存/);
+    const note = screen.getByText("（留意：" + flags.join("；") + "）");
+    expect(note).toHaveClass("text-amber-600");
+    expect(save).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "存进档案" }));
+    await screen.findByText("已存进档案，可在最近改动里撤销。");
+    expect(save).toHaveBeenCalledWith("save", { type: "memory", id: 5, data: { body: "三个月涨粉三成" } });
+  });
 });
