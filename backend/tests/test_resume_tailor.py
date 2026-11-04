@@ -300,3 +300,15 @@ def test_tailor_review_only_skips_draft(tmp_path, monkeypatch):
     assert done["doc_id"] == first["doc_id"] and new_line in done["body"]
     assert store.get("doc", done["doc_id"])["body"] == done["body"]
     assert store.get("doc", doc_id)["body"] == to_markdown(from_markdown(OLD))  # 主简历不动（存的是规范化后的正文）
+
+
+def test_done_carries_fact_checks(tmp_path, monkeypatch):
+    """改完逐行对照档案和原简历：追不到的数字 block，来源里没有的拔高说法 warn；只提醒，稿子照存。"""
+    doc_id, job_id = _setup(tmp_path, monkeypatch)
+    events = _run(doc_id, job_id, _chunks(NEW + "- 全网首个日活 5 万的接口\n"))
+    done = events[-1]
+    assert done["type"] == "done" and "5 万" in store.get("doc", done["doc_id"])["body"]
+    blocked = " ".join(b["detail"] for b in done["checks"]["block"])
+    assert "5 万" in blocked and "2025" in blocked  # 字节的日期档案和原简历里都没有
+    assert "30%" not in blocked  # 档案里有
+    assert [w["kind"] for w in done["checks"]["warn"]] == ["claim"] and done["checks"]["unchecked"] == ""

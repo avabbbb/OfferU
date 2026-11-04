@@ -67,4 +67,20 @@ describe("TailorBar", () => {
     await screen.findByText("后端没连上");
     expect(screen.getByRole("button", { name: "是真的，存进档案" })).toBeInTheDocument();
   });
+
+  it("改完显示核对结果：数字找不到出处红字，拔高说法「留意」", async () => {
+    const checks = {
+      block: [{ line: "- 日活 5 万", kind: "number", detail: "档案和原简历里找不到：5 万" }],
+      warn: [{ line: "- 全网首个", kind: "claim", detail: "来源里没有这个说法：全网、首个" }],
+      unchecked: "",
+    };
+    run.mockImplementation(async (_doc, _job, _signal, onEvent) => { onEvent({ ...done(41), checks } as TailorEvent); });
+    const onDone = vi.fn(async () => undefined);
+    render(<TailorBar docId={41} jobId={3} jobs={jobs} disabled={false} onDone={onDone} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "按岗位改写" }));
+    expect(await screen.findByText(/「- 日活 5 万」档案和原简历里找不到：5 万，投之前请改掉或补进档案/)).toBeInTheDocument();
+    expect(screen.getByText(/留意：「- 全网首个」来源里没有这个说法/)).toBeInTheDocument();
+    expect(screen.getByText(/只提醒，简历没动/)).toBeInTheDocument();
+  });
 });

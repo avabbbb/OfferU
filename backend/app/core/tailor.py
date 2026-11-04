@@ -14,7 +14,7 @@ import re
 from pathlib import Path
 from typing import Any, AsyncIterator, Awaitable, Callable, Optional
 
-from app.core import store
+from app.core import store, verify
 from app.core.tools import FIELDS, MEMORY_KIND, label, save
 
 Stream = Callable[[list[dict[str, str]]], AsyncIterator[str]]
@@ -294,6 +294,8 @@ async def run(doc_id: int, job_id: Optional[int] = None, *, stream: Optional[Str
     _running.add(doc["id"])
     try:
         yield {"type": "start", "job": label(job)}
+        # 核对来源里的原简历；只审稿且审的就是这份时不算，免得拿自己对自己
+        origin = "" if review_only and base["id"] == doc["id"] else str(doc.get("body") or "")
         parts: list[str] = []
         try:
             async with asyncio.timeout(deadline):
@@ -340,12 +342,13 @@ async def run(doc_id: int, job_id: Optional[int] = None, *, stream: Optional[Str
             body = revised
 
         asks = pick_asks(asks, body)
+        checks = verify.check(body, (_facts() + "\n\n" + origin).strip())
         target_id, extra = _target(doc, job)
         result = await asyncio.to_thread(save, "doc", {**extra, "body": body, "pending_asks": asks}, target_id, actor=actor)
         record = result["record"]
         pages = await asyncio.to_thread(measure, record["body"], record)
         yield {"type": "done", "doc_id": record["id"], "body": record["body"], "resume": record["resume"],
-               "change_id": result["change_id"], "pages": pages, "rounds": rounds, "notes": notes, "asks": asks,
+               "change_id": result["change_id"], "pages": pages, "rounds": rounds, "notes": notes, "asks": asks, "checks": checks,
                "grounding": [edit for entry in rounds for edit in entry["applied"] if edit["category"] == "grounding"]}
     finally:
         _running.discard(doc["id"])
