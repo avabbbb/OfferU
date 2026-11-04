@@ -635,7 +635,7 @@ def tailor_resume(id: int, job_id: Optional[int] = None, actor: str = "") -> dic
     if event.get("type") != "done":
         raise ValueError(event.get("message") or "改写没完成，简历没动")
     out = {"doc_id": event["doc_id"], "change_id": event["change_id"], "body": event["body"]}
-    out.update({key: event.get(key) for key in ("unsupported", "coverage", "pages", "over_page", "review")})
+    out.update({key: event.get(key) for key in ("pages", "rounds", "notes", "grounding")})
     return out
 
 

@@ -94,7 +94,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 | handoff | 把长任务交给后台 Codex，返回任务 id | PR5 |
 | handoff_status | 看后台任务进度 | PR5 |
 | email_sync | 邮箱状态 / 同步：拉新邮件，识别回执和邀约，直接回写岗位状态和事项（可撤销） | ✓ |
-| tailor_resume | 按岗位 JD 改写简历（参考岗位评估）：岗位简历原地改；主简历写进该岗位的定制简历（没有就新建），主简历不动（一条 change，可撤销）。JD 先经 tailor_report.clean_jd 去掉公司介绍 / 福利 / 投递噪声再进 prompt；prompt 要求技术类经历写出方案、难点、量化结果（只用档案事实）。改写后返回只提醒不挡写库的确定性结果：unsupported（fact_check.py，找不到出处的数字、日期、机构、英文词）、coverage（JD 要求词命中 / 缺失，缺失不硬塞）、pages / over_page（Playwright 按导出 HTML 量页数，量不了为 null）、review（空泛动词、没结果、技术深度、过长） | ✓ |
+| tailor_resume | 按岗位 JD 改写简历（参考岗位评估）：岗位简历原地改；主简历写进该岗位的定制简历（没有就新建），主简历不动（一条 change，可撤销）。流程：起草（流式，JD 原文进 prompt，噪声由模型忽略）→ 审稿（独立一次模型调用，只读 JD、档案、原简历、初稿和 Playwright 按导出 HTML 量的页数，输出 {old, new, reason, category} 修改和四类意见）→ 按 old 精确替换（找不到 / 不唯一就跳过，改坏格式整轮作废），最多 2 轮，最后写一次库。判断都交给模型，代码只量页数、做替换。返回 pages、rounds、notes、grounding（因找不到出处被改掉的内容，前端可一键存进档案） | ✓ |
 | split_resume | 把旧简历原文拆成一条条 memory 写进档案（可整次撤销） | ✓ |
 | add_job | 贴岗位链接或 JD：抓正文、拆公司 / 岗位 / 城市 / JD，截止日另存 deadline 事项；抓不到正文就报错不存 | ✓ |
 | evaluate_jobs | 评估岗位：每个岗位出评估报告（岗位下的 evaluation 文档，重评覆盖），0–100 分和三句理由写回 job.score / reasons（每步一条 change） | ✓ |
