@@ -1,35 +1,41 @@
-// 按岗位改简历：POST /api/resume/{id}/tailor，SSE 推 start → delta… → done | error。abort 就是取消，后端没跑完不写库。
+// 按岗位改简历：POST /api/resume/{id}/tailor，SSE 推 start → delta…（起草）→ review…（每轮审稿）→ done | error。
+// abort 就是取消，后端没跑完不写库。
 import { apiUrl } from "@/lib/core";
 import { readSse } from "@/lib/sse";
 
-export type TailorIssue = { kind: string; text: string; line: string };
+// 审稿给的一条修改：old 按原文精确替换成 new；跳过的带 why。
+export type TailorEdit = { old: string; new: string; reason: string; category: string; why?: string };
+export type TailorRound = { round: number; pages: number | null; applied: TailorEdit[]; skipped: TailorEdit[]; error?: string };
 
-// done 里除了写好的简历，还有改写后的确定性提醒：找不到出处、JD 关键词覆盖、预计页数、审稿。都只提醒，不挡写库。
 export type TailorEvent =
   | { type: "start"; job: string }
   | { type: "delta"; text: string }
+  | { type: "review"; round: number; pages: number | null }
   | {
-    type: "done"; doc_id: number; body: string; resume: unknown; change_id: number; unsupported?: TailorIssue[];
-    coverage?: { hit: string[]; missing: string[] }; pages?: number | null; over_page?: boolean; review?: TailorIssue[];
+    type: "done"; doc_id: number; body: string; resume: unknown; change_id: number; pages: number | null;
+    rounds: TailorRound[]; notes: Record<string, string>; grounding: TailorEdit[];
   }
   | { type: "error"; message: string };
 
-// 把 done 的提醒拼成几行给人看；没问题的项不写。
+const CATEGORY: Record<string, string> = { grounding: "出处", keyword: "关键词", depth: "技术深度", length: "篇幅", tone: "语气" };
+
+// 把审稿过程拼成几行给人看：每轮改了什么、跳过了什么，最终页数，审稿人没法替你补的缺口。
 export function tailorNotes(event: Extract<TailorEvent, { type: "done" }>): string[] {
   const notes: string[] = [];
-  const cov = event.coverage;
-  if (cov && cov.hit.length + cov.missing.length) {
-    notes.push("JD 关键词命中 " + cov.hit.length + "/" + (cov.hit.length + cov.missing.length)
-      + (cov.missing.length ? "，没写进去：" + cov.missing.join("、") + "（档案里真有再手动补，没有别硬写）" : ""));
+  for (const round of event.rounds) {
+    if (round.error) {
+      notes.push("第 " + round.round + " 轮审稿没完成：" + round.error + "，停在这一轮");
+      continue;
+    }
+    const parts = ["第 " + round.round + " 轮审稿改了 " + round.applied.length + " 处"];
+    if (round.applied.length) {
+      parts.push(round.applied.map((e) => (CATEGORY[e.category] ?? e.category) + "：" + (e.reason || e.old.slice(0, 16))).join("；"));
+    }
+    if (round.skipped.length) parts.push("跳过 " + round.skipped.length + " 处（" + round.skipped.map((e) => e.why).filter(Boolean).join("、") + "）");
+    notes.push(parts.join("，"));
   }
-  if (event.over_page && event.pages) notes.push("预计 " + event.pages.toFixed(1) + " 页，超过一页，可以点「智能一页」或删减");
-  const review = event.review ?? [];
-  if (review.length) {
-    notes.push("审稿 " + review.length + " 条：" + review.slice(0, 4).map((r) => "「" + r.line.slice(0, 14) + "」" + r.text).join("；")
-      + (review.length > 4 ? "；…" : ""));
-  }
-  const miss = event.unsupported ?? [];
-  if (miss.length) notes.push("有 " + miss.length + " 处在档案里找不到出处，请核对：" + miss.map((m) => m.text).join("、"));
+  if (event.pages) notes.push("预计 " + event.pages.toFixed(1) + " 页");
+  for (const [key, value] of Object.entries(event.notes ?? {})) if (value && value !== "无") notes.push(key + "：" + value);
   return notes;
 }
 
