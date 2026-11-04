@@ -29,7 +29,7 @@ export function tailorNotes(event: Extract<TailorEvent, { type: "done" }>): stri
     }
     const parts = ["第 " + round.round + " 轮审稿改了 " + round.applied.length + " 处"];
     if (round.applied.length) {
-      parts.push(round.applied.map((e) => (CATEGORY[e.category] ?? e.category) + "：" + (e.reason || e.old.slice(0, 16))).join("；"));
+      parts.push(round.applied.map((e) => (CATEGORY[e.category] ?? e.category) + "：" + (e.reason || e.old.slice(0, 16)).trim().replace(/[。；;.]+$/, "")).join("；"));
     }
     if (round.skipped.length) parts.push("跳过 " + round.skipped.length + " 处（" + round.skipped.map((e) => e.why).filter(Boolean).join("、") + "）");
     notes.push(parts.join("，"));

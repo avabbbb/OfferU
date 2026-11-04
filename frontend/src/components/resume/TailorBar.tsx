@@ -17,14 +17,18 @@ type Props = {
 const muted = "text-[var(--foreground-muted)]";
 const action = "text-[12.5px] font-medium text-[var(--foreground)] disabled:text-[var(--foreground-muted)]";
 
+// 主简历改写完会跳到定制简历：Editor 按 doc id 重挂，TailorBar 跟着重挂，组件状态会丢。
+// 结果按写入的 doc id 暂存在模块里，新挂载的 TailorBar 取回。
+const results = new Map<number, { message: string; grounding: TailorEdit[] }>();
+
 export function TailorBar({ docId, jobId, jobs, disabled, onDone, onRunning }: Props) {
   const withJd = jobs.filter((job) => job.jd?.trim());
   const [picked, setPicked] = useState<number | null>(withJd[0]?.id ?? null);
   const [running, setRunning] = useState(false);
   const [chars, setChars] = useState(0);
   const [phase, setPhase] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [grounding, setGrounding] = useState<TailorEdit[]>([]);
+  const [message, setMessage] = useState<string | null>(() => results.get(docId)?.message ?? null);
+  const [grounding, setGrounding] = useState<TailorEdit[]>(() => results.get(docId)?.grounding ?? []);
   const [kept, setKept] = useState<Set<number>>(new Set());
   const abort = useRef<AbortController | null>(null);
   useEffect(() => () => abort.current?.abort(), []);
@@ -41,8 +45,10 @@ export function TailorBar({ docId, jobId, jobs, disabled, onDone, onRunning }: P
     setMessage(null);
     setGrounding([]);
     setKept(new Set());
+    results.delete(docId);
     let outcome = null as string | null; // 在回调里赋值，别让 TS 收窄成 null
     let written = null as number | null;
+    let edits: TailorEdit[] = [];
     try {
       await tailorResume(docId, target, controller.signal, (event) => {
         if (event.type === "delta") setChars((n) => n + event.text.length);
@@ -53,10 +59,14 @@ export function TailorBar({ docId, jobId, jobs, disabled, onDone, onRunning }: P
           written = event.doc_id;
           const head = event.doc_id === docId ? "已按岗位改好，可在最近改动里撤销" : "已存成这个岗位的定制简历，主简历没动";
           outcome = [head, ...tailorNotes(event)].join("\n");
-          setGrounding(event.grounding ?? []);
+          edits = event.grounding ?? [];
+          setGrounding(edits);
         }
       });
-      if (written != null) await onDone(written);
+      if (written != null) {
+        results.set(written, { message: outcome ?? "", grounding: edits });
+        await onDone(written);
+      }
       setMessage(outcome ?? "连接断了，简历没动");
     } catch (error) {
       setMessage(controller.signal.aborted ? "已取消，简历没动" : error instanceof Error ? error.message : "改写失败，简历没动");
