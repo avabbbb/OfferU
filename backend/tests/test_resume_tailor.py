@@ -202,8 +202,8 @@ def test_tailor_review_limits(tmp_path, monkeypatch):
     assert len(broken["rounds"]) == 1 and store.get("doc", broken["doc_id"])["body"].startswith("# 张三")
 
     # 审稿不是 JSON：停在这一轮并写明原因，初稿照常保存
-    bad = _run(doc_id, job_id, draft, complete=_review("好的，我看过了"))[-1]
-    assert bad["type"] == "done" and "JSON" in bad["rounds"][0]["error"]
+    bad = _run(doc_id, job_id, draft, complete=_review("好的，我看过了", "还是没有"))[-1]
+    assert bad["type"] == "done" and "JSON" in bad["rounds"][0]["error"] and "重试" in bad["rounds"][0]["error"]
 
     # 每轮都有修改：最多 ROUNDS 轮
     async def endless(messages):
@@ -215,3 +215,24 @@ def test_tailor_review_limits(tmp_path, monkeypatch):
     capped = _run(doc_id, job_id, draft, complete=endless)[-1]
     assert len(capped["rounds"]) == tailor.ROUNDS == len(endless.seen)
     assert f"版本{tailor.ROUNDS + 1}" in store.get("doc", capped["doc_id"])["body"]
+
+
+def test_tailor_review_retries_once(tmp_path, monkeypatch):
+    """真模型实测：第 2 轮审稿 chat_completion 返回 None。没返回 / 不是 JSON 都带原回复再要一次。"""
+    doc_id, job_id = _setup(tmp_path, monkeypatch)
+
+    async def draft(messages):
+        yield NEW
+
+    fixed = json.dumps({"edits": [_edit("30%", "三成")]}, ensure_ascii=False)
+    review = _review("好的，我看过了", fixed)
+    done = _run(doc_id, job_id, draft, complete=review)[-1]
+    assert [e["old"] for e in done["rounds"][0]["applied"]] == ["30%"] and "error" not in done["rounds"][0]
+    retry = review.calls[1]
+    assert retry[-2] == {"role": "assistant", "content": "好的，我看过了"}
+    assert retry[-1]["content"] == tailor.REVIEW_RETRY
+
+    silent = _review(None, None)
+    done = _run(doc_id, job_id, draft, complete=silent)[-1]
+    assert done["type"] == "done" and "没有返回内容" in done["rounds"][0]["error"]
+    assert silent.calls[1][-1]["content"] == tailor.REVIEW_RETRY and silent.calls[1][-2]["role"] != "assistant"

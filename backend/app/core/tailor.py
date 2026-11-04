@@ -149,6 +149,30 @@ def parse_review(raw: Optional[str]) -> dict[str, Any]:
     return {"edits": edits, "notes": {key: str(raw_notes.get(key) or "无") for key in NOTE_KEYS}}
 
 
+REVIEW_RETRY = ("上一条回复不是一个完整的 JSON 对象。按要求只返回一个 JSON 对象"
+                "（{\"edits\": [...], \"notes\": {...}}），不要别的文字。")
+
+
+async def review(complete: Complete, msgs: list[dict[str, str]]) -> dict[str, Any]:
+    """审稿一次：模型没返回、或回的不是 JSON，就带上它的原回复再要一次；第二次还不行才报 ValueError。
+    chat_completion 出错（网关报错、超时）时返回 None，这里和「回了但不是 JSON」分开写原因。"""
+    def parse(raw: Optional[str]) -> dict[str, Any]:
+        if raw is None or not raw.strip():
+            raise ValueError("审稿调用没有返回内容（网关报错或超时，详见后端日志）")
+        return parse_review(raw)
+
+    raw = await complete(msgs)
+    try:
+        return parse(raw)
+    except ValueError:
+        retry = [*msgs, *([{"role": "assistant", "content": raw}] if raw and raw.strip() else []),
+                 {"role": "user", "content": REVIEW_RETRY}]
+        try:
+            return parse(await complete(retry))
+        except ValueError as exc:
+            raise ValueError(f"{exc}（已重试一次）") from None
+
+
 def apply_edits(body: str, edits: list[dict[str, Any]]) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]]]:
     """按 old 精确替换，按顺序一条条来；old 找不到或出现不止一次就跳过并写明原因。"""
     applied: list[dict[str, Any]] = []
@@ -255,8 +279,7 @@ async def run(doc_id: int, job_id: Optional[int] = None, *, stream: Optional[Str
             rounds.append(entry)
             try:
                 async with asyncio.timeout(deadline):
-                    raw = await complete(review_messages(doc, job, body, pages))
-                verdict = parse_review(raw)
+                    verdict = await review(complete, review_messages(doc, job, body, pages))
             except TimeoutError:
                 entry["error"] = f"超过 {deadline:g} 秒没审完"
                 break
