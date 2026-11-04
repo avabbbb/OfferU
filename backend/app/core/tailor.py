@@ -23,6 +23,9 @@ Complete = Callable[[list[dict[str, str]]], Awaitable[Optional[str]]]
 ROUNDS = 2
 CATEGORIES = ("grounding", "keyword", "depth", "length", "tone")
 NOTE_KEYS = ("关键词", "岗位角度", "动作和结果", "语气")
+# 追问成果：第 1 轮审稿挑出只有动作、没有结果的句子问用户，一次最多 3 句。
+MAX_ASKS = 3
+ASK_KEYS = ("old", "why", "question")
 
 PROMPT = (
     "你是简历编辑。按岗位 JD 改写用户的简历。只用「档案和经历」里有的事实，不编造经历、数字、公司、技能。\n"
@@ -40,14 +43,16 @@ REVIEW_PROMPT = (
     "事实来源只有两份：「档案和经历」和「原简历」。对照它们和 JD 审「待审简历」，只输出严格 JSON：\n"
     '{"edits": [{"old": "待审简历里一字不差、只出现一次的原文", "new": "替换成的文字，删除写空串", '
     '"reason": "一句话说明", "category": "grounding / keyword / depth / length / tone 之一"}], '
-    '"notes": {"关键词": "…", "岗位角度": "…", "动作和结果": "…", "语气": "…"}}\n'
+    '"notes": {"关键词": "…", "岗位角度": "…", "动作和结果": "…", "语气": "…"}, '
+    '"asks": [{"old": "待审简历里只写了动作、没写结果的那一句，一字不差", "why": "和 JD 哪条要求有关，一句话", "question": "问用户的一个具体问题"}]}\n'
     "怎么审：\n"
     "1. grounding：每个公司、职位、日期、数字、技术名词都要在事实来源里找得到（换了写法但意思相同算有出处）。找不到的必须给 edit：改回有出处的写法，或者删掉。\n"
     "2. keyword：JD 的要求在事实来源里有依据、简历却没写的，给 edit 补上；没有依据的不要补，在 notes 的「关键词」里写明缺口。JD 里的公司介绍、福利、投递方式不是要求。\n"
     "3. depth：技术类经历看不出方案、难点、取舍、量化结果的，用事实来源里有的内容改写；事实来源里也没有，就在 notes 的「动作和结果」里提，不要编。\n"
     "4. length：给了页数时，超过 1 页就按和 JD 的相关度从低到高删整条要点，删到预计一页（删整条时 old 写整行，含开头的「- 」，new 写空串）；不到 1 页不要为了凑篇幅加内容。\n"
     "5. 不改第一行「# 名字」和联系方式那一行，不改 ## / ### 的格式结构。\n"
-    "6. old 从待审简历原样复制，带够上下文保证只出现一次；一条 edit 只改一处。没有问题就返回空的 edits，notes 里没意见的项写「无」。"
+    "6. old 从待审简历原样复制，带够上下文保证只出现一次；一条 edit 只改一处。没有问题就返回空的 edits，notes 里没意见的项写「无」。\n"
+    "7. asks：挑出和 JD 最相关、只写了动作没写结果、事实来源里也找不到结果的句子，最多 3 句；没有就返回空数组。question 要具体好答，比如「你接手前后，粉丝或阅读量大概变了多少？」「这件事帮团队省了时间或钱吗？」「有没有被表扬、被推广到别的组、拿奖？」，不要问「请量化你的成果」。不要替用户编结果。"
 )
 
 # 内置 tw93/Kami 的简历写作规范（app/assets/kami，MIT）。只取内容策略，版式由 doc.style 管。
@@ -76,7 +81,11 @@ def _facts() -> str:
     for memory in sorted(store.all_of("memory"), key=lambda record: record["id"]):
         span = " – ".join(filter(None, [memory.get("start"), memory.get("end")]))
         head = " ".join(filter(None, [f"[{MEMORY_KIND.get(memory.get('kind') or '', '其他')}]", memory.get("title"), span]))
-        lines.append(f"{head}\n{memory.get('body') or ''}".strip())
+        body = str(memory.get("body") or "")
+        if memory.get("quote"):  # 追问成果时用户亲口说的，审稿把它当有出处
+            said = f"用户 {memory['said_at']} 亲口说" if memory.get("said_at") else "用户亲口说"
+            body += f"\n（{said}：{memory['quote']}）"
+        lines.append(f"{head}\n{body}".strip())
     return "\n\n".join(lines) or "（空）"
 
 
@@ -146,7 +155,22 @@ def parse_review(raw: Optional[str]) -> dict[str, Any]:
              for item in data.get("edits") or []
              if isinstance(item, dict) and isinstance(item.get("old"), str) and item["old"].strip()]
     raw_notes = data.get("notes") if isinstance(data.get("notes"), dict) else {}
-    return {"edits": edits, "notes": {key: str(raw_notes.get(key) or "无") for key in NOTE_KEYS}}
+    asks = [{key: str(item.get(key) or "").strip() for key in ASK_KEYS}
+            for item in data.get("asks") or [] if isinstance(item, dict)]
+    return {"edits": edits, "notes": {key: str(raw_notes.get(key) or "无") for key in NOTE_KEYS},
+            "asks": [ask for ask in asks if ask["old"] and ask["question"]]}
+
+
+def pick_asks(asks: list[dict[str, str]], body: str) -> list[dict[str, str]]:
+    """只留终稿里一字不差、只出现一次的句子（修订可能已经改掉它），去重，最多 MAX_ASKS 条。"""
+    seen: set[str] = set()
+    out: list[dict[str, str]] = []
+    for ask in asks:
+        if ask["old"] in seen or body.count(ask["old"]) != 1:
+            continue
+        seen.add(ask["old"])
+        out.append(ask)
+    return out[:MAX_ASKS]
 
 
 REVIEW_RETRY = ("上一条回复不是一个完整的 JSON 对象。按要求只返回一个 JSON 对象"
@@ -217,11 +241,19 @@ def _default_complete() -> Complete:
     return lambda msgs: chat_completion(msgs, temperature=0.2, json_mode=True, max_tokens=4096)
 
 
+def _replay(body: str) -> Stream:
+    """review_only 用：把已有正文当作「起草结果」原样交出去。"""
+    async def stream(messages):
+        yield body
+    return stream
+
+
 async def run(doc_id: int, job_id: Optional[int] = None, *, stream: Optional[Stream] = None,
               complete: Optional[Complete] = None, deadline: Optional[float] = None,
-              actor: str = "Agent") -> AsyncIterator[dict[str, Any]]:
+              actor: str = "Agent", review_only: bool = False) -> AsyncIterator[dict[str, Any]]:
     """事件：start → delta…（起草）→ review…（每轮审稿开始）→ done（已保存，doc_id 是写入的那份简历）；
-    任何一步失败是 error，之后不再有事件。审稿某一轮出错或超时只停在那一轮，写进 done 的 rounds，初稿和已修订的部分照常保存。"""
+    任何一步失败是 error，之后不再有事件。审稿某一轮出错或超时只停在那一轮，写进 done 的 rounds，初稿和已修订的部分照常保存。
+    review_only：不重新起草，拿这个岗位已有的定制简历直接审稿（档案补了新成果后「用新信息再改一下」），没有 delta 事件。"""
     doc = store.get("doc", int(doc_id))
     if doc is None or doc.get("kind") != "resume":
         yield {"type": "error", "message": f"简历 #{doc_id} 不存在"}
@@ -237,6 +269,13 @@ async def run(doc_id: int, job_id: Optional[int] = None, *, stream: Optional[Str
     if doc["id"] in _running:
         yield {"type": "error", "message": "这份简历正在改写，等它写完或取消"}
         return
+    if review_only:
+        base_id, _ = _target(doc, job)
+        base = store.get("doc", base_id) if base_id else None
+        if base is None or not str(base.get("body") or "").strip():
+            yield {"type": "error", "message": "这个岗位还没有定制简历，先完整改写一次"}
+            return
+        stream = _replay(base["body"])
     try:
         stream = stream or _default_stream()
     except ValueError as exc:
@@ -260,7 +299,8 @@ async def run(doc_id: int, job_id: Optional[int] = None, *, stream: Optional[Str
             async with asyncio.timeout(deadline):
                 async for piece in stream(messages(doc, job)):
                     parts.append(piece)
-                    yield {"type": "delta", "text": piece}
+                    if not review_only:
+                        yield {"type": "delta", "text": piece}
         except TimeoutError:
             yield {"type": "error", "message": f"超过 {deadline:g} 秒没写完，已停下。简历没动"}
             return
@@ -272,6 +312,7 @@ async def run(doc_id: int, job_id: Optional[int] = None, *, stream: Optional[Str
 
         rounds: list[dict[str, Any]] = []
         notes = {key: "无" for key in NOTE_KEYS}
+        asks: list[dict[str, str]] = []
         for number in range(1, ROUNDS + 1):
             pages = await asyncio.to_thread(measure, body, doc)
             yield {"type": "review", "round": number, "pages": pages}
@@ -287,6 +328,8 @@ async def run(doc_id: int, job_id: Optional[int] = None, *, stream: Optional[Str
                 entry["error"] = str(exc)
                 break
             notes = verdict["notes"]
+            if number == 1:
+                asks = verdict["asks"]
             revised, applied, skipped = apply_edits(body, verdict["edits"])
             if applied and not _is_resume(revised):
                 skipped = [{**edit, "why": "改完不像简历了，这一轮整轮作废"} for edit in applied] + skipped
@@ -296,12 +339,13 @@ async def run(doc_id: int, job_id: Optional[int] = None, *, stream: Optional[Str
                 break
             body = revised
 
+        asks = pick_asks(asks, body)
         target_id, extra = _target(doc, job)
-        result = await asyncio.to_thread(save, "doc", {**extra, "body": body}, target_id, actor=actor)
+        result = await asyncio.to_thread(save, "doc", {**extra, "body": body, "pending_asks": asks}, target_id, actor=actor)
         record = result["record"]
         pages = await asyncio.to_thread(measure, record["body"], record)
         yield {"type": "done", "doc_id": record["id"], "body": record["body"], "resume": record["resume"],
-               "change_id": result["change_id"], "pages": pages, "rounds": rounds, "notes": notes,
+               "change_id": result["change_id"], "pages": pages, "rounds": rounds, "notes": notes, "asks": asks,
                "grounding": [edit for entry in rounds for edit in entry["applied"] if edit["category"] == "grounding"]}
     finally:
         _running.discard(doc["id"])

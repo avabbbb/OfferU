@@ -37,7 +37,7 @@ MAIL_ACTOR = "邮箱"
 
 FIELDS = {
     "profile": "唯一一份。name, school, major, degree, grad_year, phone, email, city, target（求职方向）, stage（用户自己说的阶段）, about, photo（证件照文件名）",
-    "memory": f"职业记忆，一条一件事。kind: {'/'.join(MEMORY_KIND)}; title; body（具体经历、数字、用户原话）; start, end; tags",
+    "memory": f"职业记忆，一条一件事。kind: {'/'.join(MEMORY_KIND)}; title; body（具体经历、数字、用户原话）; start, end; tags; quote（用户原话，原样）, said_at（用户说这话的日期 YYYY-MM-DD）",
     "job": f"岗位和投递状态。company, title, status: {'/'.join(JOB_STATUS)}; url, city, jd, notes, applied_at; source（来源站点：xhs / boss / feishu / moka / beisen / 域名）, images（页面图片链接，JD 可能在图里）；截止日期存 event kind=deadline",
     "event": f"待办和日程。title, kind: {'/'.join(EVENT_KIND)}; at（YYYY-MM-DD 或 YYYY-MM-DDTHH:MM，可空）, done, job_id, notes",
     "doc": f"文档。kind: {'/'.join(DOC_KIND)}; title, body（Markdown）, job_id, style（简历排版，对象，缺的键用模板默认值，更新时传完整对象：template classic 经典（默认）/ clear 清晰 / kami 留白 / compact 紧凑；font sans 黑体 / serif 宋体 / kai 楷体；bodySize 8–14（pt）；lineHeight 1–2；sectionGap 0–30（pt）；itemGap 0–20（pt）；margin {{top, right, bottom, left}} 3–30（mm）；accent #RRGGBB；photo true 用档案证件照；logo 校徽文件名）。简历以 resume 为准（对象：{{basics: {{name, target, contacts: [{{label（电话 / 邮箱 / 城市 / 微信…，可空）, value}}]}}, sections: [{{id, type, title, hidden, items: [{{id, title, subtitle, date, location, bullets: [文字], text}}]}}]}}），body 由它自动生成；也可以只传 body，写法：第一行 # 名字，下一段是联系方式，## 分节，### 学校或公司 | 专业或职位 | 时间（最后一段靠右），- 要点，保存时转成 resume",
@@ -112,6 +112,18 @@ def check_questions(questions: Any) -> None:
             raise ValueError(f"doc.questions[{index}] 的值要是字符串")
 
 
+ASK_FIELDS = ("old", "why", "question")
+
+
+def check_asks(asks: Any) -> None:
+    """doc.pending_asks（改写时追问成果、还没回答的句子）：最多 3 项，每项 {old, why, question} 都是字符串。"""
+    if not isinstance(asks, list) or len(asks) > 3:
+        raise ValueError("doc.pending_asks 要是数组，最多 3 项")
+    for index, item in enumerate(asks):
+        if not isinstance(item, dict) or set(item) - set(ASK_FIELDS) or not all(isinstance(v, str) for v in item.values()):
+            raise ValueError(f"doc.pending_asks[{index}] 只能有 {', '.join(ASK_FIELDS)}，值是字符串")
+
+
 def _check(type_: str, data: dict[str, Any], creating: bool) -> None:
     def one_of(field: str, allowed: dict) -> None:
         if data.get(field) is not None and data[field] not in allowed:
@@ -134,12 +146,16 @@ def _check(type_: str, data: dict[str, Any], creating: bool) -> None:
             check_style(data["style"])
         if data.get("questions") is not None:
             check_questions(data["questions"])
+        if data.get("pending_asks") is not None:
+            check_asks(data["pending_asks"])
         if creating and not data.get("kind"):
             raise ValueError("文档要有 kind")
     elif type_ == "memory":
         one_of("kind", MEMORY_KIND)
         if creating and not (data.get("title") or data.get("body")):
             raise ValueError("记忆要有 title 或 body")
+        if data.get("said_at") and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(data["said_at"])):
+            raise ValueError("memory.said_at 是 YYYY-MM-DD")
     if data.get("job_id") is not None and store.get("job", int(data["job_id"])) is None:
         raise ValueError(f"岗位 #{data['job_id']} 不存在")
 
@@ -622,14 +638,15 @@ def email_sync(action: str = "status", account: Optional[str] = None, actor: str
 class TailorIn(_In):
     id: int = Field(description="简历 doc 的 id（kind=resume）")
     job_id: Optional[int] = Field(None, description="按哪个岗位改；不传就用简历上关联的岗位（岗位要有 JD）")
+    review_only: bool = Field(False, description="true：不重新起草，拿这个岗位已有的定制简历只跑审稿（档案补了新成果后再改一下）")
 
 
-def tailor_resume(id: int, job_id: Optional[int] = None, actor: str = "") -> dict[str, Any]:
+def tailor_resume(id: int, job_id: Optional[int] = None, review_only: bool = False, actor: str = "") -> dict[str, Any]:
     from app.core import tailor
 
     async def collect() -> dict[str, Any]:
         last: dict[str, Any] = {}
-        async for event in tailor.run(id, job_id, actor=actor or "Agent"):
+        async for event in tailor.run(id, job_id, actor=actor or "Agent", review_only=review_only):
             if event["type"] in ("done", "error"):
                 last = event
         return last
@@ -638,8 +655,19 @@ def tailor_resume(id: int, job_id: Optional[int] = None, actor: str = "") -> dic
     if event.get("type") != "done":
         raise ValueError(event.get("message") or "改写没完成，简历没动")
     out = {"doc_id": event["doc_id"], "change_id": event["change_id"], "body": event["body"]}
-    out.update({key: event.get(key) for key in ("pages", "rounds", "notes", "grounding")})
+    out.update({key: event.get(key) for key in ("pages", "rounds", "notes", "grounding", "asks")})
     return out
+
+
+class ImpactAnswer(_In):
+    old: str = Field(description="被追问的简历原句（改写结果 asks 里的 old）")
+    question: str = Field("", description="问用户的问题")
+    answer: str = Field("", description="用户原话；空的就是先不答")
+
+
+class CaptureImpactIn(_In):
+    answers: list[ImpactAnswer] = Field(description="用户对追问的回答，最多 3 条")
+    job_id: Optional[int] = Field(None, description="这次改写针对的岗位")
 
 
 class SplitResumeIn(_In):
@@ -1017,7 +1045,8 @@ TOOLS: dict[str, Tool] = {t.name: t for t in [
                      "直接改岗位状态（只前进）并把笔试面试时间写成事项，返回写了哪些改动（都能撤销）。连邮箱和断开在设置页。"),
     Tool(name="tailor_resume", input=TailorIn, fn=tailor_resume,
          description="按岗位 JD 改写简历：只用档案和记忆里的事实，参考这个岗位的评估报告（有的话）。传岗位简历就原地改；传主简历（没挂岗位）"
-                     "就写进这个岗位的定制简历，没有就新建一份，主简历不动。一条改动，可撤销；返回写入的 doc_id 和新正文。会调模型，要一两分钟。"),
+                     "就写进这个岗位的定制简历，没有就新建一份，主简历不动。一条改动，可撤销；返回写入的 doc_id 和新正文。会调模型，要一两分钟。"
+                     "返回的 asks 是只写了动作、没写结果的句子（最多 3 句），可以拿去问用户；用户答完，把回答整理成记忆给用户看，用户确认后 save(memory)（带原话 quote 和日期 said_at，不加原话里没有的数字），再传 review_only=true 再改一下。"),
     Tool(name="split_resume", input=SplitResumeIn, fn=split_resume,
          description="把一份旧简历（原文 text 或文件 path）拆成一条条 memory 直接存进档案，只整理不编造；每条一条改动，返回 change_ids 可逐条撤销。"
                      "会调模型，要一两分钟。你自己能拆就用 read_file + save。"),

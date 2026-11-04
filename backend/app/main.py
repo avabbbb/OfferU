@@ -608,11 +608,32 @@ async def resume_tailor(doc_id: int, request: Request):
     payload = (await request.json()) if await request.body() else {}
 
     async def events():
-        async for event in tailor.run(doc_id, payload.get("job_id")):
+        async for event in tailor.run(doc_id, payload.get("job_id"), review_only=bool(payload.get("review_only"))):
             yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(events(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.post("/api/resume/impact")
+async def resume_impact(request: Request):
+    """追问成果：用户回答 → 记忆草稿，只出草稿不写库（工作台给用户看过、确认后逐条 save memory）。
+    不进工具清单：工具保持 20 个，外部 agent 自己整理回答再 save(memory)。Body: {answers: [{old, question, answer}], job_id?}."""
+    from pydantic import ValidationError
+
+    from app.core import impact, store
+    from app.core.tools import CaptureImpactIn
+
+    try:
+        body = CaptureImpactIn.model_validate((await request.json()) if await request.body() else {})
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    job = store.get("job", body.job_id) if body.job_id else None
+    title = " · ".join(filter(None, [job.get("company"), job.get("title")])) if job else ""
+    try:
+        return await impact.capture([answer.model_dump() for answer in body.answers], title)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/resume/logo")

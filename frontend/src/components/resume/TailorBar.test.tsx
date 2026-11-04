@@ -38,7 +38,7 @@ describe("TailorBar", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "按岗位改写" }));
     await waitFor(() => expect(onDone).toHaveBeenCalledWith(26));
-    expect(run).toHaveBeenCalledWith(7, 3, expect.any(AbortSignal), expect.any(Function));
+    expect(run).toHaveBeenCalledWith(7, 3, expect.any(AbortSignal), expect.any(Function), { reviewOnly: false });
 
     // 页面跳到 /resume/26：Editor 按 doc id 重挂，TailorBar 是新的实例
     cleanup();

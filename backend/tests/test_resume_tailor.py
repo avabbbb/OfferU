@@ -236,3 +236,67 @@ def test_tailor_review_retries_once(tmp_path, monkeypatch):
     done = _run(doc_id, job_id, draft, complete=silent)[-1]
     assert done["type"] == "done" and "没有返回内容" in done["rounds"][0]["error"]
     assert silent.calls[1][-1]["content"] == tailor.REVIEW_RETRY and silent.calls[1][-2]["role"] != "assistant"
+
+
+def test_tailor_review_asks_for_results(tmp_path, monkeypatch):
+    """第 1 轮审稿挑出只有动作、没有结果的句子：终稿里找不到或不唯一的丢掉，最多 3 条，第 2 轮的不要；
+    done 带 asks，同时存进定制简历的 pending_asks；下次改写没有就清空。"""
+    doc_id, job_id = _setup(tmp_path, monkeypatch)
+    body = NEW + "- 负责公众号运营\n- 负责社群维护\n- 负责活动策划\n- 负责数据周报\n"
+
+    async def draft(messages):
+        yield body
+
+    def ask(old, question="你接手前后，粉丝大概变了多少？"):
+        return {"old": old, "why": "JD 要运营结果", "question": question}
+
+    first = json.dumps({"edits": [_edit("- 负责数据周报", "")], "asks": [
+        ask("- 负责公众号运营"), ask("不存在的句子"), ask("负责数据周报"), ask("负责社群维护"),
+        {"old": "负责社群维护"}, ask("负责活动策划"), ask("接口 QPS 提升 30%"),
+    ]}, ensure_ascii=False)
+    second = json.dumps({"edits": [], "asks": [ask("接口 QPS 提升 30%", "第二轮")]}, ensure_ascii=False)
+    review = _review(first, second)
+    done = _run(doc_id, job_id, draft, complete=review)[-1]
+
+    assert "asks" in review.calls[0][0]["content"] and "请量化你的成果" in review.calls[0][0]["content"]
+    assert done["asks"] == [ask("- 负责公众号运营"), ask("负责社群维护"), ask("负责活动策划")]
+    saved = store.get("doc", done["doc_id"])
+    assert saved["pending_asks"] == done["asks"]
+    assert all(saved["body"].count(item["old"]) == 1 for item in done["asks"])
+
+    again = _run(doc_id, job_id, draft, complete=_review('{"edits": []}'))[-1]
+    assert again["doc_id"] == done["doc_id"] and again["asks"] == []
+    assert store.get("doc", again["doc_id"])["pending_asks"] == []
+
+
+def test_pending_asks_are_checked(tmp_path, monkeypatch):
+    doc_id, _ = _setup(tmp_path, monkeypatch)
+    with pytest.raises(ValueError, match="pending_asks"):
+        save("doc", {"pending_asks": [{"old": "x", "extra": "y"}]}, doc_id, actor="你")
+    with pytest.raises(ValueError, match="最多 3 项"):
+        save("doc", {"pending_asks": [{"old": str(i)} for i in range(4)]}, doc_id, actor="你")
+
+
+def test_tailor_review_only_skips_draft(tmp_path, monkeypatch):
+    """review_only：不起草，拿岗位定制简历直接审稿、原地保存，主简历不动；还没有定制简历就报错。"""
+    doc_id, job_id = _setup(tmp_path, monkeypatch)
+
+    async def never(messages):
+        raise AssertionError("review_only 不该起草")
+        yield ""
+
+    def go(complete):
+        async def run():
+            return [e async for e in tailor.run(doc_id, job_id, stream=never, complete=complete,
+                                                deadline=5.0, review_only=True)]
+        return asyncio.run(run())
+
+    assert go(_review())[-1] == {"type": "error", "message": "这个岗位还没有定制简历，先完整改写一次"}
+    first = _run(doc_id, job_id, _chunks(NEW))[-1]
+    new_line = "- 负责 Go 接口优化，QPS 提升 30%"
+    events = go(_review(json.dumps({"edits": [_edit("- 接口 QPS 提升 30%", new_line)]}, ensure_ascii=False)))
+    done = events[-1]
+    assert [e["type"] for e in events] == ["start", "review", "review", "done"]
+    assert done["doc_id"] == first["doc_id"] and new_line in done["body"]
+    assert store.get("doc", done["doc_id"])["body"] == done["body"]
+    assert store.get("doc", doc_id)["body"] == to_markdown(from_markdown(OLD))  # 主简历不动（存的是规范化后的正文）

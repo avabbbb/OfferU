@@ -1,11 +1,13 @@
 // 按岗位改简历：POST /api/resume/{id}/tailor，SSE 推 start → delta…（起草）→ review…（每轮审稿）→ done | error。
-// abort 就是取消，后端没跑完不写库。
+// abort 就是取消，后端没跑完不写库。review_only：不重新起草，拿已有的定制简历只跑审稿（档案补了新成果后再改一下）。
 import { apiUrl } from "@/lib/core";
 import { readSse } from "@/lib/sse";
 
 // 审稿给的一条修改：old 按原文精确替换成 new；跳过的带 why。
 export type TailorEdit = { old: string; new: string; reason: string; category: string; why?: string };
 export type TailorRound = { round: number; pages: number | null; applied: TailorEdit[]; skipped: TailorEdit[]; error?: string };
+// 只写了动作、没写结果的句子（最多 3 句），拿去问用户。
+export type TailorAsk = { old: string; why: string; question: string };
 
 export type TailorEvent =
   | { type: "start"; job: string }
@@ -13,7 +15,7 @@ export type TailorEvent =
   | { type: "review"; round: number; pages: number | null }
   | {
     type: "done"; doc_id: number; body: string; resume: unknown; change_id: number; pages: number | null;
-    rounds: TailorRound[]; notes: Record<string, string>; grounding: TailorEdit[];
+    rounds: TailorRound[]; notes: Record<string, string>; grounding: TailorEdit[]; asks?: TailorAsk[];
   }
   | { type: "error"; message: string };
 
@@ -39,10 +41,26 @@ export function tailorNotes(event: Extract<TailorEvent, { type: "done" }>): stri
   return notes;
 }
 
-export async function tailorResume(docId: number, jobId: number, signal: AbortSignal, onEvent: (event: TailorEvent) => void): Promise<void> {
-  const res = await fetch(apiUrl(`/api/resume/${docId}/tailor`), {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ job_id: jobId }), signal,
+export async function tailorResume(docId: number, jobId: number, signal: AbortSignal, onEvent: (event: TailorEvent) => void,
+  options: { reviewOnly?: boolean } = {}): Promise<void> {
+  const res = await fetch(apiUrl("/api/resume/" + docId + "/tailor"), {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ job_id: jobId, review_only: Boolean(options.reviewOnly) }), signal,
   });
-  if (!res.ok) throw new Error(`改写请求失败（${res.status}），简历没动`);
+  if (!res.ok) throw new Error("改写请求失败（" + res.status + "），简历没动");
   await readSse(res, onEvent);
+}
+
+// 追问成果：回答 → 记忆草稿（只出草稿不写库）。data 原样传给 save("memory", data, memory_id)。
+export type ImpactAnswer = { old: string; question: string; answer: string };
+export type ImpactDraft = { memory_id: number | null; title: string; data: Record<string, unknown>; answers: (ImpactAnswer & { add: string })[] };
+export type ImpactDropped = { index: number; old: string; question: string; quote: string; add?: string; why: string };
+
+export async function captureImpact(answers: ImpactAnswer[], jobId: number | null): Promise<{ drafts: ImpactDraft[]; dropped: ImpactDropped[] }> {
+  const res = await fetch(apiUrl("/api/resume/impact"), {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers, job_id: jobId }),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error((data && typeof data.detail === "string" ? data.detail : "整理失败（" + res.status + "）") + "，档案没动");
+  return data;
 }
