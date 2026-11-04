@@ -356,10 +356,13 @@ def fetch_page(url: str, *, actor: str = "") -> dict[str, Any]:
     with urllib.request.urlopen(request, timeout=15) as response:
         raw = response.read(3_000_000).decode(response.headers.get_content_charset() or "utf-8", "replace")
     title = html.unescape((re.search(r"<title[^>]*>(.*?)</title>", raw, re.S | re.I) or [None, ""])[1]).strip()
-    text = re.sub(r"<(script|style|noscript)[^>]*>.*?</\1>", " ", raw, flags=re.S | re.I)
-    text = html.unescape(re.sub(r"<[^>]+>", "\n", text))
-    text = "\n".join(line.strip() for line in text.splitlines() if line.strip())
-    return {"url": url, "title": title, "text": text[:20_000], "truncated": len(text) > 20_000}
+    from app.core import posting_guard
+
+    # 岗位页是第三方文本：隐藏内容和不可见字符不进正文，像指令的行只计数（posting_guard）。
+    title = posting_guard.clean_text(title)[0]
+    text, findings = posting_guard.guard(raw, is_html=True)
+    return {"url": url, "title": title, "text": text[:20_000], "truncated": len(text) > 20_000,
+            "guard": posting_guard.counts(findings), "warning": posting_guard.warning(findings)}
 
 
 class OverviewIn(_In):
@@ -746,7 +749,7 @@ def add_job(text: str, *, actor: str) -> dict[str, Any]:
     """贴链接、JD 或只写「公司 岗位」建岗位：只有名字时先联网找官方岗位页；链接抓正文（抓不到就报错，不存空壳），再由模型拆出公司、岗位、城市、截止、投递方式。"""
     from urllib.parse import urlparse
 
-    from app.core import job_intake
+    from app.core import job_intake, posting_guard
 
     text = text.strip()
     if not text:
@@ -761,15 +764,23 @@ def add_job(text: str, *, actor: str) -> dict[str, Any]:
         if len(page["text"]) < 200:
             raise ValueError("这个页面要登录或靠 JS 渲染，抓不到正文，没存。用插件「存为岗位」，或者把 JD 文字贴进来")
         source = f"{page['title']}\n{page['text']}"
+        guard, warn = page.get("guard"), page.get("warning")
+    else:
+        source, findings = posting_guard.guard(text, is_html=False)
+        guard, warn = posting_guard.counts(findings), posting_guard.warning(findings)
     fields = _await(lambda: job_intake.extract(source)) if job_intake.available() else job_intake.guess(source)
     deadline = fields.pop("deadline", None)
     how = fields.pop("apply", None)
     data = {**fields, "jd": fields.get("jd") or source, "url": url,
-            "source": urlparse(url).hostname if url else None, "notes": f"投递方式：{how}" if how else None}
+            "source": urlparse(url).hostname if url else None,
+            "notes": "\n".join(filter(None, [warn, f"投递方式：{how}" if how else None])) or None}
     if not (data.get("company") or data.get("title")):
         data["title"] = job_intake.guess(source)["title"]
     saved = save("job", {k: v for k, v in data.items() if v}, actor=actor)
-    out = {"record": saved["record"], "change_ids": [c for c in [saved["change_id"]] if c], "existed": saved.get("existed", False)}
+    out = {"record": saved["record"], "change_ids": [c for c in [saved["change_id"]] if c], "existed": saved.get("existed", False),
+           "guard": guard}
+    if warn:
+        out["warning"] = warn
     if deadline and not out["existed"]:
         event = save("event", {"title": f"截止：{label(saved['record'])}", "kind": "deadline", "at": deadline,
                                "job_id": saved["record"]["id"]}, actor=actor)
