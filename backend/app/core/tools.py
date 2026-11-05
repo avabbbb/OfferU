@@ -822,6 +822,48 @@ def add_job(text: str, *, actor: str) -> dict[str, Any]:
     return out
 
 
+class EnrichJobsIn(_In):
+    ids: Optional[list[int]] = Field(None, description="只补这些岗位；不传就补所有有 JD、还没有 posting 的岗位")
+    redo: bool = Field(False, description="true：已有 posting 的也重拆")
+
+
+def enrich_jobs(ids: Optional[list[int]] = None, redo: bool = False, actor: str = "") -> dict[str, Any]:
+    """给已存的岗位补 job.posting（JD 拆条、关键词、招聘类型、年限学历、本质一句话），插件存的岗位和改版前的岗位用。
+    只写 posting，顶层字段只补空的（company / title / city），不动 JD 和投递状态。"""
+    from app.core import job_intake
+
+    if not job_intake.available():
+        raise ValueError("没配模型，没法拆 JD")
+    if ids:
+        jobs = [store.get("job", int(i)) for i in ids]
+        missing = [str(i) for i, j in zip(ids, jobs) if j is None]
+        if missing:
+            raise ValueError("岗位不存在：#" + "、#".join(missing))
+    else:
+        jobs = [j for j in store.all_of("job") if redo or not j.get("posting")]
+    jobs = [j for j in jobs if str(j.get("jd") or "").strip()]
+    change_ids: list[int] = []
+    items: list[dict[str, Any]] = []
+    failed: list[str] = []
+    for job in jobs:
+        source = "\n".join(filter(None, [job.get("company"), job.get("title"), job.get("city"), str(job["jd"])]))
+        try:
+            fields = _await(lambda s=source: job_intake.extract(s))
+        except ValueError:
+            failed.append(label(job))
+            continue
+        data = {k: fields[k] for k in ("company", "title", "city") if fields.get(k) and not job.get(k)}
+        if fields.get("posting"):
+            data["posting"] = fields["posting"]
+        if not data:
+            failed.append(label(job))
+            continue
+        saved = save("job", data, id=job["id"], actor=actor)
+        change_ids.append(saved["change_id"])
+        items.append({"id": job["id"], "label": label(job), "keywords": (data.get("posting") or {}).get("keywords", [])})
+    return {"count": len(items), "change_ids": change_ids, "items": items, "failed": failed}
+
+
 class EvaluateJobsIn(_In):
     ids: Optional[list[int]] = Field(None, description="只评这些岗位；不传就评所有没评过、没结束、有 JD 的岗位")
     redo: bool = Field(False, description="不传 ids 时，true 表示评过的也重评")
@@ -851,6 +893,16 @@ def evaluate_jobs(ids: Optional[list[int]] = None, redo: bool = False, *, actor:
     change_ids: list[int] = []
     items: list[dict[str, Any]] = []
     failed: list[str] = []
+    # 插件存的和旧岗位没有 posting：评估前顺手补上（尽力而为，拆不出来不影响评估）。
+    from app.core import job_intake
+
+    bare = [j["id"] for j in jobs if not j.get("posting")]
+    if bare and job_intake.available():
+        try:
+            change_ids += [c for c in enrich_jobs(bare, actor=actor)["change_ids"] if c]
+            jobs = [store.get("job", j["id"]) or j for j in jobs]
+        except Exception:  # noqa: BLE001  补 posting 失败只跳过，评估照跑
+            pass
     for job in jobs:
         result = _await(lambda j=job: job_eval.evaluate(text, j))
         if not result:
