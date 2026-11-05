@@ -131,6 +131,7 @@ export default function JobsPage() {
                       <Link href={"/jobs/" + job.id} className="block hover:underline">
                         <span className="font-medium text-[var(--foreground)]">{job.company || "未填公司"}</span>
                         <span className="block truncate text-[12.5px] text-[var(--foreground-muted)]">{job.title}</span>
+                        {job.posting?.hire_type && <span className="text-[11.5px] text-[var(--foreground-muted)]">{job.posting.hire_type}</span>}
                       </Link>
                       {job.score != null && <span className="text-[12px] tabular-nums text-[var(--foreground-muted)]">{job.score} 分</span>}
                     </li>
@@ -160,6 +161,14 @@ export default function JobsPage() {
             <Link href={`/jobs/${job.id}`} className="min-w-0 flex-1 hover:underline">
               <span className="text-[14px] font-medium text-[var(--foreground)]">{job.company || "未填公司"}</span>
               <span className="ml-2 text-[13.5px] text-[var(--foreground-muted)]">{job.title}</span>
+              {(job.posting?.hire_type || job.posting?.essence) && (
+                <span className="mt-0.5 flex min-w-0 items-center gap-2 text-[12.5px] text-[var(--foreground-muted)]">
+                  {job.posting?.hire_type && <span className="shrink-0 rounded bg-[var(--surface)] px-1.5 py-0.5 text-[11.5px]">{job.posting.hire_type}</span>}
+                  {job.posting?.essence && (
+                    <span className="truncate" title="由 JD 概括，不是原文">{job.posting.essence}<span className="ml-1 text-[11px] opacity-70">推断</span></span>
+                  )}
+                </span>
+              )}
             </Link>
             {job.score != null && <span title={(job.reasons ?? []).join("\n")} aria-label={"评分 " + job.score}
               className={"rounded px-1.5 py-0.5 text-[12px] font-medium tabular-nums " + (job.score >= 80 ? "bg-green-100 text-green-800" : job.score >= 60 ? "bg-amber-100 text-amber-800" : "bg-[var(--surface)] text-[var(--foreground-muted)]")}>{job.score}</span>}

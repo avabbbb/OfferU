@@ -107,7 +107,14 @@ def evaluation_notes(job_id: int) -> str:
 
 
 def _jd(job: dict[str, Any]) -> str:
-    return f"## 岗位：{label(job)}\n{str(job.get('jd') or '')[:8000]}"
+    """有 posting 时先给拆好的要求和关键词（改写要覆盖的词），再给 JD 原文。"""
+    from app.core.job_eval import posting_block
+
+    jd = str(job.get("jd") or "")
+    block = posting_block(job)
+    if not block:
+        return f"## 岗位：{label(job)}\n{jd[:8000]}"
+    return f"## 岗位：{label(job)}\n### 拆好的要求和关键词\n{block}\n\n### JD 原文\n{jd[:4000]}"
 
 
 def messages(doc: dict[str, Any], job: dict[str, Any]) -> list[dict[str, str]]:

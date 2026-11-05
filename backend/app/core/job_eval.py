@@ -62,9 +62,39 @@ def candidate(profile: dict[str, Any] | None, memories: Iterable[dict[str, Any]]
     return "\n".join(lines)[:12_000]
 
 
+POSTING_META = (("hire_type", "招聘类型"), ("team", "部门"), ("years", "年限"), ("education", "学历"),
+                ("salary", "薪资"), ("job_code", "编号"), ("posted_at", "发布日"))
+POSTING_LISTS = (("responsibilities", "职责"), ("hard_reqs", "硬性要求"), ("soft_reqs", "加分项"))
+
+
+def posting_block(job: dict[str, Any]) -> str:
+    """job.posting 拆好的要求和关键词，给评估和改简历用；没拆过返回空串。"""
+    p = job.get("posting") or {}
+    if not isinstance(p, dict):
+        return ""
+    parts = []
+    meta = "；".join(f"{name}：{p[key]}" for key, name in POSTING_META if p.get(key))
+    if meta:
+        parts.append(meta)
+    for key, name in POSTING_LISTS:
+        items = [str(x) for x in p.get(key) or [] if str(x).strip()]
+        if items:
+            parts.append(f"{name}：\n" + "\n".join(f"{i}. {x}" for i, x in enumerate(items, 1)))
+    if p.get("keywords"):
+        parts.append("关键词：" + "、".join(str(k) for k in p["keywords"]))
+    if parts and p.get("essence"):
+        parts.append(f"岗位本质（推断，非原文）：{p['essence']}")
+    return "\n".join(parts)
+
+
 def job_text(job: dict[str, Any]) -> str:
+    """有 posting 就给拆条 + JD 原文节选；没有就照旧截 JD 前 3000 字。"""
     head = f"id={job['id']} 公司：{job.get('company') or ''} 岗位：{job.get('title') or ''} 城市：{job.get('city') or ''}"
-    return f"{head}\n{str(job.get('jd') or '')[:3000]}"
+    jd = str(job.get("jd") or "")
+    block = posting_block(job)
+    if not block:
+        return f"{head}\n{jd[:3000]}"
+    return f"{head}\n{block}\n\nJD 原文（节选，要求以上面拆条为准）：\n{jd[:1500]}"
 
 
 def source_fact(job: dict[str, Any]) -> tuple[str, str]:

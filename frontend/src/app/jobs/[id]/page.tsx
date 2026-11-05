@@ -129,6 +129,47 @@ function Evaluation({ job, docs }: { job: Job; docs: Doc[] }) {
   );
 }
 
+// 岗位（L0）：收集时从 JD 拆出来的结构化信息。一屏露本质、招聘类型等和关键词；要求拆条折叠，硬性要求默认展开。
+const POSTING_META = [["hire_type", "招聘类型"], ["team", "部门"], ["years", "年限"], ["education", "学历"], ["salary", "薪资"], ["job_code", "编号"], ["posted_at", "发布日"]] as const;
+const POSTING_LISTS = [["hard_reqs", "硬性要求"], ["responsibilities", "职责"], ["soft_reqs", "加分项"]] as const;
+
+function PostingSection({ job }: { job: Job }) {
+  const p = job.posting;
+  if (!p) return null;
+  const meta = POSTING_META.filter(([key]) => p[key]).map(([key, name]) => ({ key, name, value: String(p[key]) }));
+  const lists = POSTING_LISTS.map(([key, name]) => ({ key, name, items: p[key] ?? [] })).filter((l) => l.items.length);
+  const keywords = p.keywords ?? [];
+  if (!meta.length && !lists.length && !p.essence && !keywords.length) return null;
+  return (
+    <section className="space-y-3">
+      <h2 className="text-[13px] font-medium text-[var(--foreground-muted)]">岗位</h2>
+      {p.essence && (
+        <p className="text-[14px] leading-6 text-[var(--foreground)]">{p.essence}
+          <span title="由 JD 概括，不是原文" className="ml-2 rounded bg-[var(--surface)] px-1.5 py-0.5 text-[11.5px] text-[var(--foreground-muted)]">推断</span>
+        </p>
+      )}
+      {meta.length > 0 && (
+        <dl className="flex flex-wrap gap-x-5 gap-y-1 text-[12.5px]">
+          {meta.map((m) => (
+            <div key={m.key} className="flex gap-1"><dt className="text-[var(--foreground-muted)]">{m.name}</dt><dd className="text-[var(--foreground)]">{m.value}</dd></div>
+          ))}
+        </dl>
+      )}
+      {keywords.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {keywords.map((k) => <span key={k} className="rounded-full border border-[var(--border)] px-2 py-0.5 text-[12px] text-[var(--foreground)]">{k}</span>)}
+        </div>
+      )}
+      {lists.map((l) => (
+        <details key={l.key} open={l.key === "hard_reqs"} className="rounded-lg border border-[var(--border)] px-3 py-2">
+          <summary className="cursor-pointer select-none text-[13px] text-[var(--foreground)]">{l.name} <span className="text-[12px] text-[var(--foreground-muted)]">{l.items.length} 条</span></summary>
+          <ol className="mt-2 list-decimal space-y-1 pl-5 text-[13px] leading-6 text-[var(--foreground)]">{l.items.map((t, i) => <li key={i}>{t}</li>)}</ol>
+        </details>
+      ))}
+    </section>
+  );
+}
+
 export default function JobDetailPage() {
   const id = Number(useParams().id);
   const router = useRouter();
@@ -151,6 +192,7 @@ export default function JobDetailPage() {
       </div>
 
       <Evaluation job={job} docs={data.docs} />
+      <PostingSection job={job} />
       {data.docs.filter((d) => d.kind === "research").map((d) => <ResearchCard key={d.id} docId={d.id} />)}
 
       <section>

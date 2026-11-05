@@ -11,9 +11,9 @@ import { type Doc, useTool } from "@/lib/core";
 // 调研文档是 doc kind=research 的 Markdown，写法见 jd-research/reference/interview-research-bar.md。
 
 type Point = { text: string; label?: string; refs: string[] };
-type Section = { title: string; summary: string; points: Point[] };
+type Section = { title: string; summary: Point; points: Point[] };
 type Source = { id: string; text: string; url?: string };
-export type Research = { verdict: string; risk: string; highlights: Point[]; sections: Section[]; sources: Record<string, Source> };
+export type Research = { verdict: Point; risk: Point; highlights: Point[]; sections: Section[]; sources: Record<string, Source> };
 
 const LABELS: Record<string, { name: string; tone: string }> = {
   official: { name: "官方", tone: "text-emerald-700 bg-emerald-50" },
@@ -33,8 +33,10 @@ function toPoint(line: string): Point {
   return { text: line.slice(0, m.index).trim(), label: m[1], refs: m[2] ? m[2].trim().split(/\s+/) : [] };
 }
 
+const EMPTY: Point = { text: "", refs: [] };
+
 export function parseResearch(markdown: string): Research {
-  const out: Research = { verdict: "", risk: "", highlights: [], sections: [], sources: {} };
+  const out: Research = { verdict: EMPTY, risk: EMPTY, highlights: [], sections: [], sources: {} };
   let current: Section | null = null;
   let head = true;
   let inSources = false;
@@ -45,7 +47,7 @@ export function parseResearch(markdown: string): Research {
       const title = line.slice(3).trim();
       head = false;
       inSources = /^(来源|sources?)$/i.test(title);
-      current = inSources ? null : { title, summary: "", points: [] };
+      current = inSources ? null : { title, summary: EMPTY, points: [] };
       if (current) out.sections.push(current);
       continue;
     }
@@ -59,33 +61,32 @@ export function parseResearch(markdown: string): Research {
       continue;
     }
     if (head) {
-      if (line.startsWith(">")) out.risk = line.replace(/^>\s?(风险[:：])?\s?/, "");
+      if (line.startsWith(">")) out.risk = toPoint(line.replace(/^>\s?(风险[:：])?\s?/, ""));
       else if (bullet !== null) out.highlights.push(toPoint(bullet));
-      else if (!out.verdict) out.verdict = line;
+      else if (!out.verdict.text) out.verdict = toPoint(line);
       continue;
     }
     if (!current) continue;
     if (bullet !== null) current.points.push(toPoint(bullet));
-    else if (!current.summary) current.summary = line;
+    else if (!current.summary.text) current.summary = toPoint(line);
     else current.points.push(toPoint(line));
   }
   return out;
 }
 
-function PointRow({ point, sources }: { point: Point; sources: Record<string, Source> }) {
+// 口径徽标：点开列出这条引用的来源。still=true 时只显示（放在 <summary> 里，点击留给折叠）。
+function Tag({ point, sources, still = false }: { point: Point; sources: Record<string, Source>; still?: boolean }) {
   const [open, setOpen] = useState(false);
   const tag = point.label ? LABELS[point.label] : undefined;
+  if (!tag) return null;
+  const name = tag.name + (point.refs.length ? " · " + point.refs.length + " 个来源" : "");
+  const cls = "ml-1.5 rounded px-1.5 py-0.5 align-middle text-[11.5px] font-normal " + tag.tone;
+  if (still) return <span className={cls}>{name}</span>;
   return (
-    <li className="text-[13px] leading-relaxed text-[var(--foreground)]">
-      {point.text}
-      {tag && (
-        <button type="button" onClick={() => setOpen(!open)} title={point.refs.length ? "看来源" : undefined}
-          className={"ml-1.5 rounded px-1.5 py-0.5 align-middle text-[11.5px] " + tag.tone}>
-          {tag.name}{point.refs.length ? " · " + point.refs.length + " 个来源" : ""}
-        </button>
-      )}
+    <>
+      <button type="button" onClick={() => setOpen(!open)} title={point.refs.length ? "看来源" : undefined} className={cls}>{name}</button>
       {open && point.refs.length > 0 && (
-        <ul className="mt-1 space-y-0.5 pl-3 text-[12px] text-[var(--foreground-muted)]">
+        <ul className="mt-1 space-y-0.5 pl-3 text-[12px] font-normal text-[var(--foreground-muted)]">
           {point.refs.map((id) => {
             const source = sources[id];
             return (
@@ -99,6 +100,15 @@ function PointRow({ point, sources }: { point: Point; sources: Record<string, So
           })}
         </ul>
       )}
+    </>
+  );
+}
+
+function PointRow({ point, sources }: { point: Point; sources: Record<string, Source> }) {
+  return (
+    <li className="text-[13px] leading-relaxed text-[var(--foreground)]">
+      {point.text}
+      <Tag point={point} sources={sources} />
     </li>
   );
 }
@@ -114,8 +124,14 @@ export function ResearchCard({ docId }: { docId: number }) {
         <h2 className="text-[13px] font-medium text-[var(--foreground-muted)]">{doc.title || "岗位调研"}</h2>
         <span className="text-[12px] text-[var(--foreground-muted)]">{String(doc.updated_at || "").slice(0, 10)}</span>
       </div>
-      {research.verdict && <p className="mt-2 text-[15px] font-medium leading-relaxed text-[var(--foreground)]">{research.verdict}</p>}
-      {research.risk && <p className="mt-1 text-[13px] text-amber-700">风险：{research.risk}</p>}
+      {research.verdict.text && (
+        <div className="mt-2 text-[15px] font-medium leading-relaxed text-[var(--foreground)]">
+          {research.verdict.text}<Tag point={research.verdict} sources={research.sources} />
+        </div>
+      )}
+      {research.risk.text && (
+        <div className="mt-1 text-[13px] text-amber-700">风险：{research.risk.text}<Tag point={research.risk} sources={research.sources} /></div>
+      )}
       {research.highlights.length > 0 && (
         <ul className="mt-2 space-y-1">{research.highlights.map((p, i) => <PointRow key={i} point={p} sources={research.sources} />)}</ul>
       )}
@@ -125,7 +141,11 @@ export function ResearchCard({ docId }: { docId: number }) {
             <details key={i} className="py-2">
               <summary className="cursor-pointer select-none text-[13.5px]">
                 <span className="font-medium text-[var(--foreground)]">{section.title}</span>
-                {section.summary && <span className="ml-2 text-[13px] text-[var(--foreground-muted)]">{section.summary}</span>}
+                {section.summary.text && (
+                  <span className="ml-2 text-[13px] text-[var(--foreground-muted)]">
+                    {section.summary.text}<Tag point={section.summary} sources={research.sources} still />
+                  </span>
+                )}
               </summary>
               {section.points.length > 0 && (
                 <ul className="mt-2 space-y-1.5 pl-4">{section.points.map((p, j) => <PointRow key={j} point={p} sources={research.sources} />)}</ul>
@@ -133,7 +153,7 @@ export function ResearchCard({ docId }: { docId: number }) {
             </details>
           ))}
         </div>
-      ) : !research.verdict && (
+      ) : !research.verdict.text && (
         <p className="mt-2 whitespace-pre-wrap text-[13px] text-[var(--foreground)]">{doc.body}</p>
       )}
     </section>

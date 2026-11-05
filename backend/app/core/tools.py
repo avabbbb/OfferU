@@ -803,6 +803,8 @@ def add_job(text: str, *, actor: str) -> dict[str, Any]:
         source, findings = posting_guard.guard(text, is_html=False)
         guard, warn = posting_guard.counts(findings), posting_guard.warning(findings)
     fields = _await(lambda: job_intake.extract(source)) if job_intake.available() else job_intake.guess(source)
+    if url and not (fields.get("posting") or {}).get("hire_type") and (hire := job_intake.hire_from_url(url)):
+        fields["posting"] = {**(fields.get("posting") or {}), "hire_type": hire}
     deadline = fields.pop("deadline", None)
     how = fields.pop("apply", None)
     data = {**fields, "jd": fields.get("jd") or source, "url": url,
@@ -853,8 +855,11 @@ def enrich_jobs(ids: Optional[list[int]] = None, redo: bool = False, actor: str 
             failed.append(label(job))
             continue
         data = {k: fields[k] for k in ("company", "title", "city") if fields.get(k) and not job.get(k)}
-        if fields.get("posting"):
-            data["posting"] = fields["posting"]
+        detail = dict(fields.get("posting") or {})
+        if not detail.get("hire_type") and (hire := job_intake.hire_from_url(job.get("url"))):
+            detail["hire_type"] = hire
+        if detail:
+            data["posting"] = detail
         if not data:
             failed.append(label(job))
             continue

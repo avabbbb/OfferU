@@ -40,6 +40,22 @@ LIMITS = {"company": 80, "title": 120, "city": 40, "apply": 500, "jd": 20_000}
 TEXTS = {"team": 80, "years": 40, "education": 40, "salary": 60, "job_code": 40, "essence": 80}
 LISTS = {"responsibilities": 12, "hard_reqs": 12, "soft_reqs": 12, "keywords": 15}
 HIRE_TYPES = ("校招", "实习", "社招")
+# 招聘官网链接的路径段常带招聘类型（百度 /jobs/detail/SOCIAL/…，字节 /experienced/、/campus/）。只认整段，不做子串匹配。
+URL_HIRE = {"social": "社招", "experienced": "社招", "campus": "校招", "graduate": "校招", "intern": "实习", "internship": "实习"}
+
+
+def hire_from_url(url: Any) -> str:
+    """模型没拆出招聘类型时的兜底：按链接路径段定。实习优先（/campus/intern/ 算实习）。"""
+    from urllib.parse import urlparse
+
+    parts = {p.lower() for p in urlparse(str(url or "")).path.split("/") if p}
+    found = {URL_HIRE[p] for p in parts if p in URL_HIRE}
+    for name in ("实习", "校招", "社招"):
+        if name in found:
+            return name
+    return ""
+
+
 BULLET = re.compile(r"^\s{0,}(?:[-•·●]|\d{1,2}\s{0,}[.、)）])\s{0,}")
 
 
