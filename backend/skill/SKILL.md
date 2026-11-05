@@ -30,7 +30,7 @@ profile 档案（唯一一份）；memory 职业记忆（一条一件事：经�
 - 旧简历：find_files 找文件，read_file 读文字，split_resume 拆成 memory。
 - 用户贴岗位链接或 JD：add_job。同一链接再存会合并到原岗位。要登录的页面抓不到，请用户用浏览器插件存，或贴正文。
 - 值不值得投：evaluate_jobs。没配模型就自己评，用 save 写 job 的 score（0–100）和 reasons（三句）。
-- 改简历：tailor_resume。传主简历会写进这个岗位的定制简历（没有就新建），主简历不动；传岗位简历就原地改。流程是起草 → 独立审稿（对照档案、记忆、原简历和 JD，给出逐条精确替换）→ 修订，最多两轮，最后写一次库。返回的 doc_id 是写入的那份；rounds 是每轮应用和跳过的修改；grounding 是因为找不到出处被改掉的内容，逐条问用户是不是真的，是真的就用 save 存成 memory 再改写一次，别自己当成事实；notes 是审稿人在关键词、岗位角度、动作和结果、语气上的意见，档案里没有的缺口转告用户，不要硬塞；pages 是按导出版式量的页数（量不了是 null）。导出用 export_resume_pdf。
+- 改简历：tailor_resume。传主简历会写进这个岗位的定制简历（没有就新建），主简历不动；传岗位简历就原地改。流程是起草 → 独立审稿（对照档案、记忆、原简历和 JD，给出逐条精确替换）→ 修订，审一轮，最后写一次库。返回的 doc_id 是写入的那份；rounds 是每轮应用和跳过的修改；grounding 是因为找不到出处被改掉的内容，逐条问用户是不是真的，是真的就用 save 存成 memory 再改写一次，别自己当成事实；notes 是审稿人在关键词、岗位角度、动作和结果、语气上的意见，档案里没有的缺口转告用户，不要硬塞；pages 是按导出版式量的页数（量不了是 null）。导出用 export_resume_pdf。
 - 网申问答用 apply_answer；邮件投递用 draft_email（只存草稿）。
 - 公司或岗位调研：web_search 加 fetch_page，结论存成 doc（kind=research），写明来源链接和日期。
 - 邮箱：email_sync，status 看连接，sync 拉新邮件回写岗位状态和事项。

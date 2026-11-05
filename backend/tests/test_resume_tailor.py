@@ -166,24 +166,22 @@ def test_tailor_review_revises_then_saves_once(tmp_path, monkeypatch):
         _edit("接口 QPS 提升 50%", "接口 QPS 提升 30%", "grounding", "档案写的是 30%"),
         _edit("用 Go 重写服务", "x", "depth"),
         _edit("不存在的句子", "y"),
-    ]}, ensure_ascii=False)
+    ], "notes": {"关键词": "缺 Redis，档案里没有"}}, ensure_ascii=False)
     second = "好的：" + json.dumps({"edits": [], "notes": {"关键词": "缺 Redis，档案里没有"}}, ensure_ascii=False)
     review = _review(first, second)
     events = _run(doc_id, job_id, stream, complete=review)
     done = events[-1]
 
     assert "五险一金" in drafts[0]  # JD 原样交给模型，噪声由模型自己忽略
-    assert [e["type"] for e in events if e["type"] == "review"] == ["review", "review"]
+    assert [e["type"] for e in events if e["type"] == "review"] == ["review"] * tailor.ROUNDS
     system, user = review.calls[0]
     assert system["role"] == "system" and "审稿人" in system["content"]
     assert "## 原简历（事实来源）" in user["content"] and "某大学 | 计算机" in user["content"]
     assert "预计 1.00 页" in user["content"] and "接口 QPS 提升 50%" in user["content"]
-    assert "接口 QPS 提升 30%" in review.calls[1][1]["content"]  # 第二轮审的是修订后的稿子
 
-    first_round, second_round = done["rounds"]
+    (first_round,) = done["rounds"]
     assert [e["old"] for e in first_round["applied"]] == ["接口 QPS 提升 50%"]
     assert [e["why"] for e in first_round["skipped"]] == ["原文出现 2 次，不唯一", "原文里找不到"]
-    assert second_round["applied"] == [] and "error" not in second_round
     assert done["grounding"] == [_edit("接口 QPS 提升 50%", "接口 QPS 提升 30%", "grounding", "档案写的是 30%")]
     assert done["notes"]["关键词"] == "缺 Redis，档案里没有" and done["notes"]["语气"] == "无"
     saved = store.get("doc", done["doc_id"])["body"]
@@ -296,7 +294,7 @@ def test_tailor_review_only_skips_draft(tmp_path, monkeypatch):
     new_line = "- 负责 Go 接口优化，QPS 提升 30%"
     events = go(_review(json.dumps({"edits": [_edit("- 接口 QPS 提升 30%", new_line)]}, ensure_ascii=False)))
     done = events[-1]
-    assert [e["type"] for e in events] == ["start", "review", "review", "done"]
+    assert [e["type"] for e in events] == ["start"] + ["review"] * tailor.ROUNDS + ["done"]
     assert done["doc_id"] == first["doc_id"] and new_line in done["body"]
     assert store.get("doc", done["doc_id"])["body"] == done["body"]
     assert store.get("doc", doc_id)["body"] == to_markdown(from_markdown(OLD))  # 主简历不动（存的是规范化后的正文）

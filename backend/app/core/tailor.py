@@ -24,7 +24,7 @@ Complete = Callable[[list[dict[str, str]]], Awaitable[Optional[str]]]
 
 _log = logging.getLogger(__name__)
 
-ROUNDS = 2
+ROUNDS = 1  # 2026-11-05 由 2 轮砍到 1 轮：每轮多一次模型调用（约 60 秒），追问只在第 1 轮产生，不受影响
 CATEGORIES = ("grounding", "keyword", "depth", "length", "tone")
 NOTE_KEYS = ("关键词", "岗位角度", "动作和结果", "语气")
 # 追问成果：第 1 轮审稿挑出只有动作、没有结果的句子问用户，一次最多 3 句。
