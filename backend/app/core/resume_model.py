@@ -187,7 +187,7 @@ def from_markdown(body: str) -> dict[str, Any]:
         if line.strip() in ("", "&nbsp;"):
             flush()
             continue
-        if line.startswith("# ") and not seen_name and section is None:
+        if (line == "#" or line.startswith("# ")) and not seen_name and section is None:  # 没名字时 to_markdown 写的是光秃秃的 #
             flush()
             name, seen_name = line[2:].strip(), True
         elif line.startswith("## ") or line.startswith("# "):

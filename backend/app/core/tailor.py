@@ -126,7 +126,7 @@ def review_messages(doc: dict[str, Any], job: dict[str, Any], body: str, pages: 
 
 
 def _is_resume(body: str) -> bool:
-    return body.startswith("# ") and "\n## " in body
+    return (body.startswith("# ") or body.startswith("#\n")) and "\n## " in body  # 没名字的简历第一行是 #
 
 
 def clean(text: str) -> str:
