@@ -103,6 +103,7 @@ function EmailDraft({ job }: { job: Job }) {
 function Evaluation({ job, docs }: { job: Job; docs: Doc[] }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [copied, setCopied] = useState(false);
   const doc = docs.find((d) => d.kind === "evaluation");
   const hasJd = Boolean(job.jd?.trim());
   const run = async () => {
@@ -125,6 +126,15 @@ function Evaluation({ job, docs }: { job: Job; docs: Doc[] }) {
         </button>
         {err && <span className="text-red-700">{err}</span>}
       </div>
+      {job.greeting && (
+        <div className="rounded-lg border border-[var(--border)] px-3 py-2">
+          <div className="mb-1 flex items-center gap-2 text-[12.5px] text-[var(--foreground-muted)]">打招呼语
+            <button type="button" onClick={() => void navigator.clipboard.writeText(job.greeting ?? "").then(() => setCopied(true))}
+              className="hover:text-[var(--foreground)]">{copied ? "已复制" : "复制"}</button>
+          </div>
+          <p className="whitespace-pre-wrap text-[13px] leading-6 text-[var(--foreground)]">{job.greeting}</p>
+        </div>
+      )}
     </div>
   );
 }

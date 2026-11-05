@@ -16,10 +16,11 @@ from app.core.resume_split import available  # noqa: F401  同一套「配了模
 SECTIONS = ("岗位摘要", "逐条匹配", "来源与真假", "职级与薪资", "简历怎么改", "面试准备", "反问")
 
 PROMPT = """你是求职顾问。根据候选人的档案和职业记忆，评估一个岗位，只输出严格 JSON：
-{"score": 0, "reasons": ["", "", ""], "markdown": ""}
+{"score": 0, "reasons": ["", "", ""], "greeting": "", "markdown": ""}
 
 score：0–100 的整数。80 以上值得优先投，60–79 可以投，60 以下不建议。JD 信息太少或档案是空的就给保守分并在理由里说明。
 reasons：恰好三句，每句不超过 40 字：最匹配的点 / 最大的差距或风险 / 和偏好（城市、方向、公司类型）是否相符。
+greeting：投递时发给 HR 的打招呼语（BOSS 直聘、内推私信这类），第一人称，80–150 字：一句我是谁（学校专业或当前身份）+ 2 条和这个岗位最对口的经历（用档案里的数字，用 JD 的词）+ 一句希望进一步沟通。只用档案和记忆里的事实，不编数字，不写「待补充」，不带口径标签和联系方式，语气得体不夸张。档案是空的就留空。
 markdown：评估报告，严格按这个结构：
 # 结论
 一句话：这是什么岗位、建议优先投 / 可以投 / 不建议投，为什么。
@@ -142,7 +143,9 @@ def normalize(parsed: Any, job: dict[str, Any], where: str) -> Optional[dict[str
     # 模型自己写的来源不采用，由 sources() 重写。
     markdown = re.split(r"(?m)^##\s*(?:来源|sources?)\s*$", markdown, flags=re.IGNORECASE)[0].rstrip()
     reasons = [str(r).strip()[:80] for r in parsed.get("reasons") or [] if str(r).strip()][:3]
-    return {"score": max(0, min(100, score)), "reasons": reasons, "markdown": f"{markdown}\n\n{sources(job, where)}"}
+    greeting = str(parsed.get("greeting") or "").strip()[:300]
+    return {"score": max(0, min(100, score)), "reasons": reasons, "greeting": greeting,
+            "markdown": f"{markdown}\n\n{sources(job, where)}"}
 
 
 async def evaluate(profile_text: str, job: dict[str, Any]) -> Optional[dict[str, Any]]:

@@ -20,7 +20,7 @@ export type Posting = {
   responsibilities?: string[]; hard_reqs?: string[]; soft_reqs?: string[]; keywords?: string[]; essence?: string;
   collaborators?: string[]; evidence?: Array<{ req: string; need: string }>;
 };
-export type Job = Base & { company?: string; title?: string; status: JobStatus; url?: string; city?: string; jd?: string; notes?: string; applied_at?: string; score?: number; reasons?: string[]; posting?: Posting };
+export type Job = Base & { company?: string; title?: string; status: JobStatus; url?: string; city?: string; jd?: string; notes?: string; applied_at?: string; score?: number; reasons?: string[]; greeting?: string; posting?: Posting };
 export type Event = Base & { title: string; kind?: EventKind; at?: string; done?: boolean; notes?: string; job_label?: string };
 export type MemoryKind = "experience" | "project" | "education" | "skill" | "award" | "preference" | "note";
 export const MEMORY_KIND: Record<MemoryKind, string> = {

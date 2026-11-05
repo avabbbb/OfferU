@@ -916,10 +916,11 @@ def evaluate_jobs(ids: Optional[list[int]] = None, redo: bool = False, *, actor:
         old = next((d for d in store.all_of("doc", job_id=job["id"]) if d.get("kind") == "evaluation"), None)
         doc = save("doc", {"kind": "evaluation", "job_id": job["id"], "title": f"岗位评估 · {label(job)}",
                            "body": result["markdown"]}, id=old["id"] if old else None, actor=actor)
-        scored = save("job", {"score": result["score"], "reasons": result["reasons"]}, id=job["id"], actor=actor)
+        scored = save("job", {"score": result["score"], "reasons": result["reasons"],
+                              **({"greeting": result["greeting"]} if result.get("greeting") else {})}, id=job["id"], actor=actor)
         change_ids += [doc["change_id"], scored["change_id"]]
         items.append({"id": job["id"], "label": label(job), "score": result["score"],
-                      "reasons": result["reasons"], "doc_id": doc["record"]["id"]})
+                      "reasons": result["reasons"], "greeting": result.get("greeting") or "", "doc_id": doc["record"]["id"]})
     if not items:
         raise ValueError("模型没返回可用的评估，岗位没动：" + "、".join(failed))
     items.sort(key=lambda i: -i["score"])
