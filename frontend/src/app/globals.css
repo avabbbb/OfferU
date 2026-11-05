@@ -58,6 +58,48 @@
   }
 }
 
+/* Notion 风格口径标签：浅底色、4px 圆角、12px，按钮和 span 同尺寸。不放进 @layer，确保压过上面的 button 元素规则。 */
+.notion-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  margin-left: 6px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 20px;
+  white-space: nowrap;
+  vertical-align: 1px;
+  cursor: default;
+  transition: filter 120ms ease;
+}
+button.notion-tag { cursor: pointer; }
+button.notion-tag:hover,
+button.notion-tag[aria-expanded="true"] { filter: brightness(0.94); }
+.notion-tag-count { font-size: 11px; opacity: 0.6; font-variant-numeric: tabular-nums; }
+.notion-tag[data-tone="gray"] { background: rgba(227, 226, 224, 0.6); color: rgb(50, 48, 44); }
+.notion-tag[data-tone="green"] { background: rgb(219, 237, 219); color: rgb(28, 56, 41); }
+.notion-tag[data-tone="blue"] { background: rgb(211, 229, 239); color: rgb(24, 51, 71); }
+.notion-tag[data-tone="orange"] { background: rgb(250, 222, 201); color: rgb(73, 41, 14); }
+.notion-tag[data-tone="purple"] { background: rgb(232, 222, 238); color: rgb(65, 36, 84); }
+.notion-tag[data-tone="red"] { background: rgb(255, 226, 221); color: rgb(93, 23, 21); }
+.notion-sources {
+  margin: 4px 0 2px;
+  padding-left: 10px;
+  border-left: 2px solid var(--border);
+  list-style: none;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--foreground-muted);
+}
+.notion-sources a { color: inherit; text-decoration: underline; text-decoration-color: var(--border-strong); text-underline-offset: 2px; }
+.notion-sources a:hover { color: var(--foreground); }
+.notion-sources-id { margin-right: 6px; color: var(--foreground-faint); font-variant-numeric: tabular-nums; }
+
 html {
   background: var(--background);
 }

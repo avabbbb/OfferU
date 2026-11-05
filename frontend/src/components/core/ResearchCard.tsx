@@ -15,13 +15,15 @@ type Section = { title: string; summary: Point; points: Point[] };
 type Source = { id: string; text: string; url?: string };
 export type Research = { verdict: Point; risk: Point; highlights: Point[]; sections: Section[]; sources: Record<string, Source> };
 
-const LABELS: Record<string, { name: string; tone: string }> = {
-  official: { name: "官方", tone: "text-emerald-700 bg-emerald-50" },
-  media: { name: "媒体", tone: "text-sky-700 bg-sky-50" },
-  third_party_estimate: { name: "第三方估算", tone: "text-amber-700 bg-amber-50" },
-  community: { name: "社区信号", tone: "text-violet-700 bg-violet-50" },
-  inference: { name: "推断", tone: "text-[var(--foreground-muted)] bg-[var(--border)]" },
-  gap: { name: "缺口", tone: "text-red-700 bg-red-50" },
+type Tone = "gray" | "green" | "blue" | "orange" | "purple" | "red";
+// 口径 → Notion 标签色（样式在 globals.css .notion-tag[data-tone]）。
+const LABELS: Record<string, { name: string; tone: Tone }> = {
+  official: { name: "官方", tone: "green" },
+  media: { name: "媒体", tone: "blue" },
+  third_party_estimate: { name: "第三方估算", tone: "orange" },
+  community: { name: "社区信号", tone: "purple" },
+  inference: { name: "推断", tone: "gray" },
+  gap: { name: "缺口", tone: "red" },
 };
 const TAG = /\s?\[(official|media|third_party_estimate|community|inference|gap)((?:\s+S\d+)+)?\]\s?$/;
 const BULLET = /^[-\x2A•]\s+/;
@@ -74,26 +76,28 @@ export function parseResearch(markdown: string): Research {
   return out;
 }
 
-// 口径徽标：点开列出这条引用的来源。still=true 时只显示（放在 <summary> 里，点击留给折叠）。
+// 口径标签（Notion 风格）：名字 + 来源数小角标；有来源时点开列出来源。still=true 只显示（放在 <summary> 里，点击留给折叠）。
+// 用 .notion-tag 而不是 Tailwind 字号类：globals.css 的 button 元素规则不在 layer 里，会压过 utilities，按钮徽标因此被撑成正文字号。
 function Tag({ point, sources, still = false }: { point: Point; sources: Record<string, Source>; still?: boolean }) {
   const [open, setOpen] = useState(false);
   const tag = point.label ? LABELS[point.label] : undefined;
   if (!tag) return null;
-  const name = tag.name + (point.refs.length ? " · " + point.refs.length + " 个来源" : "");
-  const cls = "ml-1.5 rounded px-1.5 py-0.5 align-middle text-[11.5px] font-normal " + tag.tone;
-  if (still) return <span className={cls}>{name}</span>;
+  const n = point.refs.length;
+  const body = <>{tag.name}{n > 0 && <span className="notion-tag-count">{n}</span>}</>;
+  if (still || n === 0) return <span className="notion-tag" data-tone={tag.tone} title={n ? n + " 个来源" : undefined}>{body}</span>;
   return (
     <>
-      <button type="button" onClick={() => setOpen(!open)} title={point.refs.length ? "看来源" : undefined} className={cls}>{name}</button>
-      {open && point.refs.length > 0 && (
-        <ul className="mt-1 space-y-0.5 pl-3 text-[12px] font-normal text-[var(--foreground-muted)]">
+      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} title={n + " 个来源，点开看"}
+        className="notion-tag" data-tone={tag.tone}>{body}</button>
+      {open && (
+        <ul className="notion-sources">
           {point.refs.map((id) => {
             const source = sources[id];
             return (
               <li key={id}>
-                {id}{" "}
+                <span className="notion-sources-id">{id}</span>
                 {source?.url
-                  ? <a href={source.url} target="_blank" rel="noreferrer" className="underline">{source.text || source.url}</a>
+                  ? <a href={source.url} target="_blank" rel="noreferrer">{source.text || source.url}</a>
                   : (source?.text || "来源缺失")}
               </li>
             );
