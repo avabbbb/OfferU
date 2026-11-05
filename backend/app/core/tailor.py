@@ -9,6 +9,8 @@
 """
 
 import asyncio
+import time
+import logging
 import json
 import re
 from pathlib import Path
@@ -19,6 +21,8 @@ from app.core.tools import FIELDS, MEMORY_KIND, label, save
 
 Stream = Callable[[list[dict[str, str]]], AsyncIterator[str]]
 Complete = Callable[[list[dict[str, str]]], Awaitable[Optional[str]]]
+
+_log = logging.getLogger(__name__)
 
 ROUNDS = 2
 CATEGORIES = ("grounding", "keyword", "depth", "length", "tone")
@@ -241,6 +245,10 @@ def _default_complete() -> Complete:
     return lambda msgs: chat_completion(msgs, temperature=0.2, json_mode=True, max_tokens=4096)
 
 
+def _since(mark: float) -> float:
+    return round(time.perf_counter() - mark, 2)
+
+
 def _replay(body: str) -> Stream:
     """review_only 用：把已有正文当作「起草结果」原样交出去。"""
     async def stream(messages):
@@ -294,6 +302,9 @@ async def run(doc_id: int, job_id: Optional[int] = None, *, stream: Optional[Str
     _running.add(doc["id"])
     try:
         yield {"type": "start", "job": label(job)}
+        # 分段计时（秒）：定位改写变慢用，放进 done 事件并写日志
+        started = time.perf_counter()
+        timings: dict[str, Any] = {}
         # 核对来源里的原简历；只审稿且审的就是这份时不算，免得拿自己对自己
         origin = "" if review_only and base["id"] == doc["id"] else str(doc.get("body") or "")
         parts: list[str] = []
@@ -306,6 +317,7 @@ async def run(doc_id: int, job_id: Optional[int] = None, *, stream: Optional[Str
         except TimeoutError:
             yield {"type": "error", "message": f"超过 {deadline:g} 秒没写完，已停下。简历没动"}
             return
+        timings["draft"] = _since(started)
         try:
             body = clean("".join(parts))
         except ValueError as exc:
@@ -315,20 +327,31 @@ async def run(doc_id: int, job_id: Optional[int] = None, *, stream: Optional[Str
         rounds: list[dict[str, Any]] = []
         notes = {key: "无" for key in NOTE_KEYS}
         asks: list[dict[str, str]] = []
+        calls = [0]  # 每轮模型调用次数：2 说明审稿重试了
+
+        async def counted(msgs: list[dict[str, str]]) -> Optional[str]:
+            calls[0] += 1
+            return await complete(msgs)
+
         for number in range(1, ROUNDS + 1):
+            mark = time.perf_counter()
             pages = await asyncio.to_thread(measure, body, doc)
+            seconds: dict[str, Any] = {"measure": _since(mark)}
             yield {"type": "review", "round": number, "pages": pages}
-            entry: dict[str, Any] = {"round": number, "pages": pages, "applied": [], "skipped": []}
+            entry: dict[str, Any] = {"round": number, "pages": pages, "applied": [], "skipped": [], "seconds": seconds}
             rounds.append(entry)
+            mark, calls[0] = time.perf_counter(), 0
             try:
                 async with asyncio.timeout(deadline):
-                    verdict = await review(complete, review_messages(doc, job, body, pages))
+                    verdict = await review(counted, review_messages(doc, job, body, pages))
             except TimeoutError:
                 entry["error"] = f"超过 {deadline:g} 秒没审完"
                 break
             except ValueError as exc:  # json.JSONDecodeError 也是 ValueError
                 entry["error"] = str(exc)
                 break
+            finally:
+                seconds.update(review=_since(mark), calls=calls[0])
             notes = verdict["notes"]
             if number == 1:
                 asks = verdict["asks"]
@@ -342,13 +365,19 @@ async def run(doc_id: int, job_id: Optional[int] = None, *, stream: Optional[Str
             body = revised
 
         asks = pick_asks(asks, body)
+        mark = time.perf_counter()
         checks = verify.check(body, (_facts() + "\n\n" + origin).strip())
+        timings["verify"], mark = _since(mark), time.perf_counter()
         target_id, extra = _target(doc, job)
         result = await asyncio.to_thread(save, "doc", {**extra, "body": body, "pending_asks": asks}, target_id, actor=actor)
         record = result["record"]
+        timings["save"], mark = _since(mark), time.perf_counter()
         pages = await asyncio.to_thread(measure, record["body"], record)
+        timings.update(final_measure=_since(mark), total=_since(started))
+        _log.info("tailor doc=%s review_only=%s timings=%s rounds=%s", record["id"], review_only, timings,
+                  [entry["seconds"] for entry in rounds])
         yield {"type": "done", "doc_id": record["id"], "body": record["body"], "resume": record["resume"],
-               "change_id": result["change_id"], "pages": pages, "rounds": rounds, "notes": notes, "asks": asks, "checks": checks,
+               "change_id": result["change_id"], "pages": pages, "rounds": rounds, "notes": notes, "asks": asks, "checks": checks, "timings": timings,
                "grounding": [edit for entry in rounds for edit in entry["applied"] if edit["category"] == "grounding"]}
     finally:
         _running.discard(doc["id"])

@@ -312,3 +312,13 @@ def test_done_carries_fact_checks(tmp_path, monkeypatch):
     assert "5 万" in blocked and "2025" in blocked  # 字节的日期档案和原简历里都没有
     assert "30%" not in blocked  # 档案里有
     assert [w["kind"] for w in done["checks"]["warn"]] == ["claim"] and done["checks"]["unchecked"] == ""
+
+
+def test_done_carries_timings(tmp_path, monkeypatch):
+    """done 带分段计时：起草、每轮量页数/审稿/调用次数、核对、保存、最后量页数、总计。"""
+    doc_id, job_id = _setup(tmp_path, monkeypatch)
+    done = _run(doc_id, job_id, _chunks(NEW))[-1]
+    assert done["type"] == "done"
+    assert {"draft", "verify", "save", "final_measure", "total"} <= set(done["timings"])
+    for entry in done["rounds"]:
+        assert {"measure", "review"} <= set(entry["seconds"]) and entry["seconds"]["calls"] >= 1
