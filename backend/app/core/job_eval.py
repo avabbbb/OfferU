@@ -82,6 +82,11 @@ def posting_block(job: dict[str, Any]) -> str:
             parts.append(f"{name}：\n" + "\n".join(f"{i}. {x}" for i, x in enumerate(items, 1)))
     if p.get("keywords"):
         parts.append("关键词：" + "、".join(str(k) for k in p["keywords"]))
+    if parts and p.get("collaborators"):
+        parts.append("协作对象（推断，非原文）：" + "、".join(str(c) for c in p["collaborators"]))
+    evidence = [e for e in p.get("evidence") or [] if isinstance(e, dict) and e.get("req") and e.get("need")]
+    if parts and evidence:
+        parts.append("证明硬性要求要准备的经历（推断）：\n" + "\n".join(f"- {e['req']} → {e['need']}" for e in evidence))
     if parts and p.get("essence"):
         parts.append(f"岗位本质（推断，非原文）：{p['essence']}")
     return "\n".join(parts)

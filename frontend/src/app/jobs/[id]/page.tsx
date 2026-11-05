@@ -139,13 +139,15 @@ function PostingSection({ job }: { job: Job }) {
   const meta = POSTING_META.filter(([key]) => p[key]).map(([key, name]) => ({ key, name, value: String(p[key]) }));
   const lists = POSTING_LISTS.map(([key, name]) => ({ key, name, items: p[key] ?? [] })).filter((l) => l.items.length);
   const keywords = p.keywords ?? [];
-  if (!meta.length && !lists.length && !p.essence && !keywords.length) return null;
+  const collaborators = p.collaborators ?? [];
+  const needs = new Map((p.evidence ?? []).map((e) => [e.req, e.need]));
+  if (!meta.length && !lists.length && !p.essence && !keywords.length && !collaborators.length) return null;
   return (
     <section className="space-y-3">
       <h2 className="text-[13px] font-medium text-[var(--foreground-muted)]">岗位</h2>
       {p.essence && (
         <p className="text-[14px] leading-6 text-[var(--foreground)]">{p.essence}
-          <span title="由 JD 概括，不是原文" className="ml-2 rounded bg-[var(--surface)] px-1.5 py-0.5 text-[11.5px] text-[var(--foreground-muted)]">推断</span>
+          <span title="由 JD 概括，不是原文" className="notion-tag" data-tone="gray">推断</span>
         </p>
       )}
       {meta.length > 0 && (
@@ -160,10 +162,22 @@ function PostingSection({ job }: { job: Job }) {
           {keywords.map((k) => <span key={k} className="rounded-full border border-[var(--border)] px-2 py-0.5 text-[12px] text-[var(--foreground)]">{k}</span>)}
         </div>
       )}
+      {collaborators.length > 0 && (
+        <p className="text-[12.5px] leading-6 text-[var(--foreground)]"><span className="text-[var(--foreground-muted)]">协作对象 </span>{collaborators.join("、")}
+          <span title="由 JD 推断，不是原文" className="notion-tag" data-tone="gray">推断</span>
+        </p>
+      )}
       {lists.map((l) => (
         <details key={l.key} open={l.key === "hard_reqs"} className="rounded-lg border border-[var(--border)] px-3 py-2">
           <summary className="cursor-pointer select-none text-[13px] text-[var(--foreground)]">{l.name} <span className="text-[12px] text-[var(--foreground-muted)]">{l.items.length} 条</span></summary>
-          <ol className="mt-2 list-decimal space-y-1 pl-5 text-[13px] leading-6 text-[var(--foreground)]">{l.items.map((t, i) => <li key={i}>{t}</li>)}</ol>
+          <ol className="mt-2 list-decimal space-y-1 pl-5 text-[13px] leading-6 text-[var(--foreground)]">{l.items.map((t, i) => {
+            const need = l.key === "hard_reqs" ? needs.get(t) : undefined;
+            return (
+              <li key={i}>{t}
+                {need && <span className="block text-[12.5px] text-[var(--foreground-muted)]">准备：{need} <span title="由 JD 推断，不是原文" className="notion-tag" data-tone="gray">推断</span></span>}
+              </li>
+            );
+          })}</ol>
         </details>
       ))}
     </section>

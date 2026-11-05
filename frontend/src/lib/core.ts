@@ -18,6 +18,7 @@ type Base = { id: number; type: string; job_id: number | null; created_at: strin
 export type Posting = {
   team?: string; hire_type?: string; years?: string; education?: string; salary?: string; job_code?: string; posted_at?: string;
   responsibilities?: string[]; hard_reqs?: string[]; soft_reqs?: string[]; keywords?: string[]; essence?: string;
+  collaborators?: string[]; evidence?: Array<{ req: string; need: string }>;
 };
 export type Job = Base & { company?: string; title?: string; status: JobStatus; url?: string; city?: string; jd?: string; notes?: string; applied_at?: string; score?: number; reasons?: string[]; posting?: Posting };
 export type Event = Base & { title: string; kind?: EventKind; at?: string; done?: boolean; notes?: string; job_label?: string };

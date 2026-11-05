@@ -54,3 +54,31 @@ def test_enrich_jobs_fills_posting_only(tmp_path, monkeypatch):
     assert (got["company"], got["city"], got["status"]) == ("百度", "北京", "saved")
     assert got["posting"] == {"keywords": ["GTM"], "hire_type": "社招"}
     assert tools.enrich_jobs(actor="你")["count"] == 0
+
+
+def test_posting_evidence_and_collaborators():
+    """evidence 只留指向保留下来的 hard_reqs 的条目，按 hard_reqs 顺序、每条一条；collaborators 去重去空。"""
+    parsed = {
+        "title": "x",
+        "hard_reqs": ["1. 3 年以上 To B 营销经验", "本科及以上"],
+        "evidence": [
+            {"req": "本科及以上", "need": "学历证明"},
+            {"req": "- 3 年以上 To B 营销经验", "need": "一段完整的 To B 产品上市项目"},
+            {"req": "3 年以上 To B 营销经验", "need": "重复的只留第一条"},
+            {"req": "熟悉区块链", "need": "不在 hard_reqs 里，丢掉"},
+            {"req": "本科及以上", "need": ""},
+            "不是字典",
+        ],
+        "collaborators": ["产品经理", "产品经理", "销售团队", ""],
+    }
+    p = job_intake.normalize(parsed)["posting"]
+    assert p["evidence"] == [
+        {"req": "3 年以上 To B 营销经验", "need": "一段完整的 To B 产品上市项目"},
+        {"req": "本科及以上", "need": "学历证明"},
+    ]
+    assert p["collaborators"] == ["产品经理", "销售团队"]
+
+
+def test_posting_evidence_needs_hard_reqs():
+    out = job_intake.normalize({"title": "x", "evidence": [{"req": "a", "need": "b"}]})
+    assert "posting" not in out

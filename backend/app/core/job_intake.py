@@ -3,8 +3,9 @@
 只整理不编造：字段都来自原文，没有就留空。写库由调用方走 tools.save。
 
 除了顶层字段（company / title / city / jd），收集时还把 JD 拆成 job.posting（岗位调研的 L0 层）：
-team, hire_type, years, education, salary, job_code, posted_at, responsibilities[], hard_reqs[], soft_reqs[], keywords[], essence。
-关键词和编号必须在原文里出现；essence 是概括（口径 inference），展示时要标出来。
+team, hire_type, years, education, salary, job_code, posted_at, responsibilities[], hard_reqs[], soft_reqs[], keywords[], essence,
+collaborators[]（上下游协作对象）、evidence[{req, need}]（证明某条硬性要求要准备哪类经历）。
+关键词和编号必须在原文里出现；essence、collaborators、evidence 是推断（口径 inference），展示时要标出来。
 """
 
 from __future__ import annotations
@@ -18,7 +19,8 @@ from app.core.resume_split import available  # noqa: F401  同一套「配了模
 PROMPT = """你是岗位信息整理助手。从岗位页面文字或 JD 里拆字段，只输出严格 JSON：
 {"company": "", "title": "", "city": "", "deadline": "", "apply": "", "jd": "",
  "team": "", "hire_type": "", "years": "", "education": "", "salary": "", "job_code": "", "posted_at": "",
- "responsibilities": [], "hard_reqs": [], "soft_reqs": [], "keywords": [], "essence": ""}
+ "responsibilities": [], "hard_reqs": [], "soft_reqs": [], "keywords": [], "essence": "",
+ "collaborators": [], "evidence": [{"req": "", "need": ""}]}
 规则：
 1. 只用原文里有的信息，没有就留空，不猜。
 2. title 是岗位名称，不带公司名。
@@ -33,12 +35,15 @@ PROMPT = """你是岗位信息整理助手。从岗位页面文字或 JD 里拆�
 11. hard_reqs：必须满足的要求（年限、学历、专业、技能门槛）；soft_reqs：加分项、优先条件。一条一项，原文措辞，各最多 12 条。
 12. keywords：5–15 个技能、工具、领域词，必须是原文里出现过的词，按重要程度排。
 13. essence：一句话（不超过 60 字）说清这个岗位实际在做什么，可以概括，但不能加入原文没有的事实。
+14. collaborators：这个岗位日常要对接的上游、下游和协作方（如「产品经理」「销售团队」「外部 KOL」），按 JD 合理推断，最多 8 个，每个不超过 20 字；看不出就留空。
+15. evidence：给每条 hard_reqs 写一条，req 原样抄 hard_reqs 里那一句，need 写候选人要准备哪类真实经历或材料来证明（不超过 50 字，只说类型，不编具体经历）。
 """
 
 LIMITS = {"company": 80, "title": 120, "city": 40, "apply": 500, "jd": 20_000}
 # job.posting 里的字符串字段和列表字段（条数上限）。
 TEXTS = {"team": 80, "years": 40, "education": 40, "salary": 60, "job_code": 40, "essence": 80}
-LISTS = {"responsibilities": 12, "hard_reqs": 12, "soft_reqs": 12, "keywords": 15}
+LISTS = {"responsibilities": 12, "hard_reqs": 12, "soft_reqs": 12, "keywords": 15, "collaborators": 8}
+ITEM_SIZE = {"keywords": 40, "collaborators": 30}
 HIRE_TYPES = ("校招", "实习", "社招")
 # 招聘官网链接的路径段常带招聘类型（百度 /jobs/detail/SOCIAL/…，字节 /experienced/、/campus/）。只认整段，不做子串匹配。
 URL_HIRE = {"social": "社招", "experienced": "社招", "campus": "校招", "graduate": "校招", "intern": "实习", "internship": "实习"}
@@ -78,6 +83,21 @@ def _items(value: Any, cap: int, size: int) -> list[str]:
     return out[:cap]
 
 
+def _evidence(value: Any, reqs: list[str]) -> list[dict[str, str]]:
+    """hard_reqs 每条要准备的经历类型（推断）。req 去序号后必须等于保留下来的某条 hard_reqs，每条要求只留第一条，按 hard_reqs 顺序。"""
+    if not isinstance(value, list) or not reqs:
+        return []
+    found: dict[str, str] = {}
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        req = BULLET.sub("", str(item.get("req") or "").strip()).strip()[:200]
+        need = str(item.get("need") or "").strip()[:120]
+        if req in reqs and need and req not in found:
+            found[req] = need
+    return [{"req": r, "need": found[r]} for r in reqs if r in found]
+
+
 def posting(parsed: dict[str, Any], text: str = "") -> dict[str, Any]:
     """job.posting：不在取值范围内的丢掉；给了原文就只留原文里出现过的关键词和编号。"""
     out: dict[str, Any] = {key: str(parsed.get(key) or "").strip()[:size] for key, size in TEXTS.items()}
@@ -85,7 +105,8 @@ def posting(parsed: dict[str, Any], text: str = "") -> dict[str, Any]:
     out["hire_type"] = hire if hire in HIRE_TYPES else ""
     out["posted_at"] = _date(parsed.get("posted_at"))
     for key, cap in LISTS.items():
-        out[key] = _items(parsed.get(key), cap, 40 if key == "keywords" else 200)
+        out[key] = _items(parsed.get(key), cap, ITEM_SIZE.get(key, 200))
+    out["evidence"] = _evidence(parsed.get("evidence"), out["hard_reqs"])
     if text:
         low = text.lower()
         out["keywords"] = [k for k in out["keywords"] if k.lower() in low]
