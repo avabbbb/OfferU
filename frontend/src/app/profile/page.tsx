@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { apiUrl, MEMORY_KIND, type Memory, type MemoryKind, type Profile, tool, upload, useTool, write } from "@/lib/core";
+import { apiUrl, MEMORY_KIND, MEMORY_MODE, type Memory, type MemoryKind, type Profile, tool, upload, useTool, write } from "@/lib/core";
 
 const FIELDS: Array<[Exclude<keyof Profile, "id">, string, string]> = [
   ["name", "姓名", "张三"], ["phone", "电话", "138 0000 0000"], ["email", "邮箱", "you@example.com"], ["city", "城市", "上海"],
@@ -35,6 +35,13 @@ function MemoryItem({ memory }: { memory: Memory }) {
     <li className="group py-2">
       <div className="flex items-center gap-2">
         <Field value={memory.title} placeholder="标题，比如：字节跳动 | 后端开发实习生" aria-label="经历标题" className="font-medium" onSave={(title) => save({ title })} />
+        {MEMORY_MODE[memory.kind] && (
+          <select value={memory.mode ?? ""} aria-label="性质" onChange={(e) => save({ mode: e.target.value || null })}
+            className="shrink-0 rounded-md bg-transparent px-1 py-1 text-[12.5px] text-[var(--foreground-muted)] outline-none hover:bg-[var(--surface)] focus:bg-[var(--surface)]">
+            <option value="">性质未填</option>
+            {MEMORY_MODE[memory.kind]?.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
+        )}
         <Field value={memory.start} placeholder="开始" aria-label="开始时间" className="!w-20 text-right text-[12.5px] text-[var(--foreground-muted)]" onSave={(start) => save({ start })} />
         <span className="text-[var(--foreground-muted)]">–</span>
         <Field value={memory.end} placeholder="结束" aria-label="结束时间" className="!w-20 text-[12.5px] text-[var(--foreground-muted)]" onSave={(end) => save({ end })} />

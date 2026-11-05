@@ -22,7 +22,9 @@ export const MEMORY_KIND: Record<MemoryKind, string> = {
   education: "教育", experience: "实习 / 工作", project: "项目", award: "奖项", skill: "技能", preference: "偏好", note: "其他",
 };
 export type Profile = Partial<Record<"name" | "school" | "major" | "degree" | "grad_year" | "phone" | "email" | "city" | "target" | "about" | "photo", string>> & { id?: number };
-export type Memory = Base & { kind: MemoryKind; title?: string; body?: string; start?: string; end?: string };
+// 经历性质：和后端 tools.MEMORY_MODE 一致
+export const MEMORY_MODE: Partial<Record<MemoryKind, string[]>> = { experience: ["全职", "实习", "兼职"], education: ["全日制", "非全日制"] };
+export type Memory = Base & { kind: MemoryKind; title?: string; body?: string; start?: string; end?: string; mode?: string };
 export type Doc = Base & { kind: string; title?: string; body?: string; resume?: unknown; template?: string; style?: import("@/lib/resumeStyle").StyleInput };
 export type Change = { id: number; at: string; actor: string; summary: string; undone_at: string | null };
 export type Overview = {

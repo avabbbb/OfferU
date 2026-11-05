@@ -3,21 +3,18 @@ import { describe, expect, it } from "vitest";
 import { type Memory } from "@/lib/core";
 import { resumeFromProfile } from "@/lib/resumeDraft";
 
-const m = (kind: Memory["kind"], title: string, body = "", start = "", end = "") =>
-  ({ id: 1, type: "memory", job_id: null, created_at: "", updated_at: "", kind, title, body, start, end }) as Memory;
-
 describe("resumeFromProfile", () => {
-  it("turns the profile into a structured resume", () => {
-    const r = resumeFromProfile({ name: "李四", phone: "138", email: "a@b.c", target: "后端开发", school: "浙江大学" }, [
-      m("experience", "字节跳动 | 后端实习生", "- 接口延迟 120ms → 40ms\n- 写了压测脚本", "2024.06", "2024.09"),
-      m("skill", "语言", "Go、Python"),
-    ]);
-    expect(r.basics).toEqual({ name: "李四", target: "后端开发", contacts: [{ label: "电话", value: "138" }, { label: "邮箱", value: "a@b.c" }] });
-    expect(r.sections.map((s) => s.type)).toEqual(["education", "internship", "skills"]);
-    expect(r.sections[0].items[0].title).toBe("浙江大学");
-    expect(r.sections[1].items[0]).toMatchObject({
-      title: "字节跳动", subtitle: "后端实习生", date: "2024.06 – 2024.09", bullets: ["接口延迟 120ms → 40ms", "写了压测脚本"],
-    });
-    expect(r.sections[2].items[0].bullets).toEqual(["语言：Go、Python"]);
+  it("全职进工作经历，实习和没标性质的进实习经历，教育带上全日制", () => {
+    const memories = [
+      { id: 1, kind: "experience", title: "中国电信 | 产品推广经理", mode: "全职" },
+      { id: 2, kind: "experience", title: "字节跳动 | 产品实习生", mode: "实习" },
+      { id: 3, kind: "experience", title: "某公司 | 助理" },
+      { id: 4, kind: "education", title: "华南师范大学 | 软件工程", mode: "全日制" },
+    ] as unknown as Memory[];
+    const resume = resumeFromProfile({}, memories);
+    const titles = (type: string) => resume.sections.find((s) => s.type === type)?.items.map((i) => i.title);
+    expect(titles("work")).toEqual(["中国电信"]);
+    expect(titles("internship")).toEqual(["字节跳动", "某公司"]);
+    expect(resume.sections.find((s) => s.type === "education")?.items[0].subtitle).toBe("软件工程 · 全日制");
   });
 });

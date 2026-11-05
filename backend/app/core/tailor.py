@@ -84,7 +84,7 @@ def _facts() -> str:
     lines = [f"{key}: {profile[key]}" for key in keys if profile.get(key)]
     for memory in sorted(store.all_of("memory"), key=lambda record: record["id"]):
         span = " – ".join(filter(None, [memory.get("start"), memory.get("end")]))
-        head = " ".join(filter(None, [f"[{MEMORY_KIND.get(memory.get('kind') or '', '其他')}]", memory.get("title"), span]))
+        head = " ".join(filter(None, [f"[{MEMORY_KIND.get(memory.get('kind') or '', '其他')}]", memory.get("title"), memory.get("mode"), span]))
         body = str(memory.get("body") or "")
         if memory.get("quote"):  # 追问成果时用户亲口说的，审稿把它当有出处
             said = f"用户 {memory['said_at']} 亲口说" if memory.get("said_at") else "用户亲口说"
