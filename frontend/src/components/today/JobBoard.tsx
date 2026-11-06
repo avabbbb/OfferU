@@ -5,6 +5,7 @@ import { type DragEvent, useState } from "react";
 
 import { TagInput } from "@/components/core/TagInput";
 import { type Event, JOB_STATUS, type Job, type JobStatus, useTool, when, write } from "@/lib/core";
+import { tagPatch } from "@/lib/jobView";
 
 const OPEN: JobStatus[] = ["saved", "applied", "test", "interview", "offer"];
 const ENDED: JobStatus[] = ["rejected", "closed"];
@@ -12,7 +13,7 @@ const byScore = (a: Job, b: Job) => (b.score ?? -1) - (a.score ?? -1);
 
 // 今天页的投递看板：一列一个阶段，卡片拖到另一列就改状态（一条改动，可撤销）。
 // 未通过和不投了合成「已结束」，默认收起；顶上按标签筛，卡片上点 #标签 也是筛。
-export function JobBoard() {
+export function JobBoard({ embedded = false }: { embedded?: boolean } = {}) {
   const { data: jobs } = useTool<{ items: Job[] }>("list", { type: "job", limit: 500 }, 5000);
   const { data: events } = useTool<{ items: Event[] }>("list", { type: "event", done: false, limit: 500 }, 5000);
   const [tag, setTag] = useState<string | null>(null);
@@ -25,7 +26,7 @@ export function JobBoard() {
   if (!all.length) {
     return (
       <section data-testid="today-board">
-        <h2 className="text-[13px] font-medium text-[var(--foreground-muted)]">投递看板</h2>
+        {!embedded && <h2 className="text-[13px] font-medium text-[var(--foreground-muted)]">投递看板</h2>}
         <p className="mt-2 text-[13.5px] text-[var(--foreground-muted)]">
           还没有岗位。<Link href="/jobs" className="text-[var(--foreground)] hover:underline">去添加</Link>
         </p>
@@ -59,14 +60,7 @@ export function JobBoard() {
     onDragLeave: () => setOver((cur) => (cur === key ? null : cur)),
     onDrop: (e: DragEvent) => { e.preventDefault(); drop(key, e.dataTransfer.getData("text/plain")); },
   });
-  // 删掉的 Agent 标签记进 tags_muted，以后重拆 JD 不再自动加回；用户手动加回来的就从 tags_muted 里拿掉。
-  const saveTags = (job: Job, value: string[]) => {
-    const auto = job.auto_tags ?? [];
-    const kept = auto.filter((t) => value.includes(t));
-    const muted = [...new Set([...(job.tags_muted ?? []), ...auto.filter((t) => !value.includes(t))])].filter((t) => !value.includes(t));
-    void write("save", { type: "job", id: job.id, data: {
-      tags: value.length ? value : null, auto_tags: kept.length ? kept : null, tags_muted: muted.length ? muted : null } });
-  };
+  const saveTags = (job: Job, value: string[]) => void write("save", { type: "job", id: job.id, data: tagPatch(job, value) });
 
   const card = (job: Job) => {
     const event = upcoming.get(job.id);
@@ -105,7 +99,7 @@ export function JobBoard() {
   return (
     <section data-testid="today-board" className="job-board">
       <div className="job-board-head">
-        <h2 className="font-medium text-[var(--foreground-muted)]">投递看板</h2>
+        {!embedded && <h2 className="font-medium text-[var(--foreground-muted)]">投递看板</h2>}
         {tags.length > 0 && (
           <div className="job-tag-filter" role="group" aria-label="按标签筛选">
             <button type="button" aria-pressed={!tag} onClick={() => setTag(null)}>全部</button>

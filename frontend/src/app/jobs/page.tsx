@@ -1,42 +1,34 @@
 "use client";
 
-import Link from "next/link";
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { JOB_STATUS, type Job, type JobStatus, useTool, write } from "@/lib/core";
+import { JobsTable } from "@/components/jobs/JobsTable";
+import { RecordDrawer } from "@/components/jobs/RecordDrawer";
+import { ViewBar } from "@/components/jobs/ViewBar";
+import { JobBoard } from "@/components/today/JobBoard";
+import { JOB_STATUS, type Job, useTool, write } from "@/lib/core";
+import { applyView, defaultState, defaultView, loadViews, saveViews, type ViewConfig, type ViewKind, type ViewState } from "@/lib/jobView";
 
-const FILTERS: Array<[string, string, JobStatus[]]> = [
-  ["all", "全部", []], ["saved", "想投", ["saved"]], ["going", "进行中", ["applied", "test", "interview"]],
-  ["offer", "offer", ["offer"]], ["ended", "已结束", ["rejected", "closed"]],
-];
 const field = "rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-[13px] text-[var(--foreground)] outline-none focus:border-[var(--foreground-muted)]";
 
 export function StatusSelect({ job }: { job: Job }) {
   return (
-    <select value={job.status} aria-label="投递状态" style={{ fontSize: 13 }} className={`${field} py-1`}
+    <select value={job.status} aria-label="投递状态" style={{ fontSize: 13 }} className={field + " py-1"}
       onChange={(e) => void write("save", { type: "job", id: job.id, data: { status: e.target.value } })}>
       {Object.entries(JOB_STATUS).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
     </select>
   );
 }
 
-/** 岗位和投递是一回事：一个岗位一行，状态就在行里改。 */
-export default function JobsPage() {
-  const { data } = useTool<{ items: Job[] }>("list", { type: "job", limit: 500 }, 5000);
-  const [filter, setFilter] = useState("all");
+// 添加岗位：贴链接或 JD 让后端抓正文、拆字段（抓不到就报错，不存空壳）；也能手动填。
+function AddJob() {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [company, setCompany] = useState("");
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
-  const jobs = data?.items ?? [];
-  const statuses = FILTERS.find(([id]) => id === filter)![2];
-  const filtered = statuses.length ? jobs.filter((job) => statuses.includes(job.status)) : jobs;
-  const shown = [...filtered].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
-  const unscored = jobs.filter((job) => job.score == null && job.status !== "rejected" && job.status !== "closed").length;
-  const [ranking, setRanking] = useState(false);
-  /** 贴链接或 JD：后端抓正文、拆字段；抓不到就报错，不存空壳。 */
+
   const paste = async () => {
     setBusy(true); setError("");
     try {
@@ -57,7 +49,60 @@ export default function JobsPage() {
     setCompany(""); setTitle(""); setUrl("");
   };
 
-  // 给没评过的岗位逐个出评估报告（存在岗位下），分数写回岗位，列表按分排。
+  return (
+    <div className="space-y-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3">
+      <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); void paste(); }}>
+        <textarea autoFocus value={text} onChange={(e) => setText(e.target.value)} rows={3} aria-label="岗位链接或 JD"
+          placeholder="贴岗位链接、整段 JD，或只写「公司 岗位」（会去官网找）" style={{ fontSize: 13 }} className={field + " block w-full resize-y"}
+          onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && text.trim() && !busy) { e.preventDefault(); void paste(); } }} />
+        <div className="flex items-center gap-3">
+          <button type="submit" style={{ fontSize: 13 }} disabled={!text.trim() || busy} className="rounded-md bg-[var(--foreground)] px-3 py-1.5 text-[13px] font-medium text-[var(--background)] disabled:opacity-40">{busy ? "正在读…" : "添加"}</button>
+          {error && <span role="alert" className="text-[12.5px] text-[var(--foreground)]">{error}</span>}
+        </div>
+      </form>
+      <details className="text-[13px] text-[var(--foreground-muted)]">
+        <summary className="cursor-pointer select-none">手动填</summary>
+        <form className="mt-2 flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); void add(); }}>
+          <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="公司" aria-label="公司" style={{ fontSize: 13 }} className={field + " w-36"} />
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="岗位" aria-label="岗位" style={{ fontSize: 13 }} className={field + " w-48"} />
+          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="链接（可选）" aria-label="链接" style={{ fontSize: 13 }} className={field + " min-w-[180px] flex-1"} />
+          <button type="submit" style={{ fontSize: 13 }} disabled={!company.trim() || !title.trim()} className="rounded-md border border-[var(--border)] px-3 py-1.5 text-[13px] text-[var(--foreground)] disabled:opacity-40">添加</button>
+        </form>
+      </details>
+    </div>
+  );
+}
+
+// 岗位多维表：表格 / 看板 / 甘特三个视图，各自记住筛选、分组、排序、字段（存在本机浏览器）。
+export default function JobsPage() {
+  const { data } = useTool<{ items: Job[] }>("list", { type: "job", limit: 500 }, 5000);
+  const jobs = useMemo(() => data?.items ?? [], [data]);
+  const [state, setState] = useState<ViewState>(defaultState);
+  const [loaded, setLoaded] = useState(false);
+  const [search, setSearch] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [openId, setOpenId] = useState<number | null>(null);
+  const [ranking, setRanking] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => { setState(loadViews()); setLoaded(true); }, []);
+  useEffect(() => { if (loaded) saveViews(state); }, [state, loaded]);
+
+  const view = state.views.table;
+  const patch = useCallback((p: Partial<ViewConfig>) => {
+    setState((s) => ({ ...s, views: { ...s.views, [s.active]: { ...s.views[s.active], ...p } } }));
+  }, []);
+  const setActive = (active: ViewKind) => setState((s) => ({ ...s, active }));
+  const reset = () => setState((s) => ({ ...s, views: { ...s.views, [s.active]: defaultView(s.active) } }));
+
+  const shown = useMemo(() => applyView(jobs, view, search), [jobs, view, search]);
+  const tagOptions = useMemo(() => [...new Set(jobs.flatMap((j) => j.tags ?? []))].sort((a, b) => a.localeCompare(b, "zh")), [jobs]);
+  const unscored = jobs.filter((job) => job.score == null && job.status !== "rejected" && job.status !== "closed").length;
+  const index = openId == null ? -1 : shown.findIndex((j) => j.id === openId);
+  const open = openId == null ? undefined : index >= 0 ? shown[index] : jobs.find((j) => j.id === openId);
+  const close = useCallback(() => setOpenId(null), []);
+
+  // 给没评过的岗位逐个出评估报告（存在岗位下），分数写回岗位。
   const rank = async () => {
     setRanking(true); setError("");
     try {
@@ -70,68 +115,35 @@ export default function JobsPage() {
   };
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 px-6 py-10">
-      <h1 className="text-[24px] font-semibold tracking-tight text-[var(--foreground)]">岗位</h1>
-      <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); void paste(); }}>
-        <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} aria-label="岗位链接或 JD"
-          placeholder="贴岗位链接、整段 JD，或只写「公司 岗位」（会去官网找）" style={{ fontSize: 13 }} className={field + " block w-full resize-y"}
-          onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && text.trim() && !busy) { e.preventDefault(); void paste(); } }} />
-        <div className="flex items-center gap-3">
-          <button type="submit" style={{ fontSize: 13 }} disabled={!text.trim() || busy} className="rounded-md bg-[var(--foreground)] px-3 py-1.5 text-[13px] font-medium text-[var(--background)] disabled:opacity-40">{busy ? "正在读…" : "添加"}</button>
-          {error && <span role="alert" className="text-[12.5px] text-[var(--foreground)]">{error}</span>}
-        </div>
-      </form>
-      <details className="text-[13px] text-[var(--foreground-muted)]">
-        <summary className="cursor-pointer select-none">手动填</summary>
-        <form className="mt-2 flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); void add(); }}>
-          <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="公司" aria-label="公司" style={{ fontSize: 13 }} className={`${field} w-36`} />
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="岗位" aria-label="岗位" style={{ fontSize: 13 }} className={`${field} w-48`} />
-          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="链接（可选）" aria-label="链接" style={{ fontSize: 13 }} className={`${field} min-w-[180px] flex-1`} />
-          <button type="submit" style={{ fontSize: 13 }} disabled={!company.trim() || !title.trim()} className="rounded-md border border-[var(--border)] px-3 py-1.5 text-[13px] text-[var(--foreground)] disabled:opacity-40">添加</button>
-        </form>
-      </details>
-      {unscored > 0 && (
-        <div className="flex items-center gap-3 text-[13px] text-[var(--foreground-muted)]">
-          <span>{unscored} 个岗位还没评估</span>
-          <button type="button" onClick={() => void rank()} disabled={ranking} style={{ fontSize: 13 }} className="rounded-md border border-[var(--border)] px-3 py-1 text-[13px] text-[var(--foreground)] disabled:opacity-40">{ranking ? "正在评估…" : "评估未评估的"}</button>
-        </div>
-      )}
-
-      <div className="flex gap-4 border-b border-[var(--border)] text-[13px]">
-        {FILTERS.map(([id, name, match]) => {
-          const count = match.length ? jobs.filter((job) => match.includes(job.status)).length : jobs.length;
-          return (
-            <button key={id} type="button" onClick={() => setFilter(id)}
-              className={`-mb-px border-b-2 pb-2 ${filter === id ? "border-[var(--foreground)] text-[var(--foreground)]" : "border-transparent text-[var(--foreground-muted)] hover:text-[var(--foreground)]"}`}>
-              {name} <span className="text-[12px] text-[var(--foreground-muted)]">{count}</span>
-            </button>
-          );
-        })}
+    <div className="space-y-4 px-6 py-8">
+      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+        <h1 className="text-[24px] font-semibold tracking-tight text-[var(--foreground)]">岗位</h1>
+        {unscored > 0 && (
+          <span className="flex items-center gap-2 text-[13px] text-[var(--foreground-muted)]">
+            {unscored} 个岗位还没评估
+            <button type="button" onClick={() => void rank()} disabled={ranking} className="rounded-md border border-[var(--border)] px-2 py-0.5 text-[13px] text-[var(--foreground)] disabled:opacity-40">{ranking ? "正在评估…" : "评估未评估的"}</button>
+          </span>
+        )}
+        {error && <span role="alert" className="text-[12.5px] text-[var(--foreground)]">{error}</span>}
       </div>
 
-      {data && !shown.length && <p className="text-[13.5px] text-[var(--foreground-muted)]">{jobs.length ? "这一栏没有岗位。" : "还没有岗位。上面贴一个岗位链接或 JD。"}</p>}
-      <ul className="divide-y divide-[var(--border)]">
-        {shown.map((job) => (
-          <li key={job.id} className="flex items-center gap-4 py-3">
-            <Link href={`/jobs/${job.id}`} className="min-w-0 flex-1 hover:underline">
-              <span className="text-[14px] font-medium text-[var(--foreground)]">{job.company || "未填公司"}</span>
-              <span className="ml-2 text-[13.5px] text-[var(--foreground-muted)]">{job.title}</span>
-              {(job.posting?.hire_type || job.posting?.essence) && (
-                <span className="mt-0.5 flex min-w-0 items-center gap-2 text-[12.5px] text-[var(--foreground-muted)]">
-                  {job.posting?.hire_type && <span className="shrink-0 rounded bg-[var(--surface)] px-1.5 py-0.5 text-[11.5px]">{job.posting.hire_type}</span>}
-                  {job.posting?.essence && (
-                    <span className="truncate" title="由 JD 概括，不是原文">{job.posting.essence}<span className="ml-1 text-[11px] opacity-70">推断</span></span>
-                  )}
-                </span>
-              )}
-            </Link>
-            {job.score != null && <span title={(job.reasons ?? []).join("\n")} aria-label={"评分 " + job.score}
-              className="text-[12px] tabular-nums text-[var(--foreground-muted)]">{job.score}</span>}
-            {job.applied_at && <span className="text-[12px] text-[var(--foreground-muted)]">{job.applied_at.slice(5)} 投递</span>}
-            <StatusSelect job={job} />
-          </li>
-        ))}
-      </ul>
+      <ViewBar state={state} jobs={jobs} search={search} adding={adding} setActive={setActive} setSearch={setSearch}
+        patch={patch} reset={reset} onAdd={() => setAdding((a) => !a)} />
+      {adding && <AddJob />}
+
+      {state.active === "table" && (
+        data && !jobs.length
+          ? <p className="text-[13.5px] text-[var(--foreground-muted)]">还没有岗位。点「+ 添加岗位」贴一个链接或 JD。</p>
+          : <JobsTable jobs={shown} view={view} patch={patch} openId={openId} onOpen={setOpenId} onAdd={() => setAdding(true)} />
+      )}
+      {state.active === "board" && <JobBoard embedded />}
+      {state.active === "gantt" && <p className="text-[13.5px] text-[var(--foreground-muted)]">甘特视图还在做：每个岗位从收藏日画到最近的事项，节点标出笔试、面试和截止。</p>}
+
+      {open && (
+        <RecordDrawer job={open} index={index} total={shown.length} tagOptions={tagOptions} onClose={close}
+          onPrev={() => { if (index > 0) setOpenId(shown[index - 1].id); }}
+          onNext={() => { if (index >= 0 && index < shown.length - 1) setOpenId(shown[index + 1].id); }} />
+      )}
     </div>
   );
 }

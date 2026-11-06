@@ -59,7 +59,7 @@ def label(record: dict[str, Any]) -> str:
 
 
 def _brief(record: dict[str, Any]) -> dict[str, Any]:
-    out = {k: v for k, v in record.items() if k not in ("jd", "body", "resume", "messages", "created_at")}
+    out = {k: v for k, v in record.items() if k not in ("jd", "body", "resume", "messages")}
     for key in ("jd", "body"):
         if record.get(key):
             out[key] = str(record[key])[:160] + ("…" if len(str(record[key])) > 160 else "")

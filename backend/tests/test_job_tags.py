@@ -15,6 +15,8 @@ def test_job_tags_over_http(tmp_path, monkeypatch):
         tool("save", {"type": "job", "data": {"company": "米哈游", "title": "策划", "tags": ["游戏"]}})
         assert a["tags"] == ["大厂", "内推"]
         assert [j["id"] for j in tool("list", {"type": "job", "tag": "内推"}).json()["items"]] == [a["id"]]
+        # 多维表甘特用 created_at 当条的起点，list 结果得带上。
+        assert all(j.get("created_at") for j in tool("list", {"type": "job"}).json()["items"])
 
         for bad in ("内推", [" 内推"], ["a", "a"], [""], ["abcdefghijklmnopqrstu"], [1]):
             assert tool("save", {"type": "job", "id": a["id"], "data": {"tags": bad}}).status_code == 400, bad
