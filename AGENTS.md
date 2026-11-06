@@ -39,3 +39,4 @@ OfferU 是本地优先的求职工具，用户是国内校招生和实习生。�
 ## 文档
 
 - 时刻注意文档的时效性，过时文档移到 `docs/archive/<年-月>/`，并在 `docs/archive/README.md` 记一笔。
+- 辅助用户真实求职时，遇到工具 / agent runtime 卡点，或用户给出偏好、纠正，当轮在 docs/DOGFOOD.md 记一行；改提示词、工具和评测前先看它。真实数据先脱敏再进 Regression。
