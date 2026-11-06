@@ -184,11 +184,11 @@ export function JobsGantt({ jobs, events, view, openId, onOpen }: {
               const shut = collapsed.has(it.g.key);
               return (
                 <div key={"g" + it.g.key} className="flex border-b border-[var(--border)] bg-[var(--surface)]" style={{ height: ROW - 4 }}>
-                  <button type="button" onClick={() => toggle(it.g.key)} className={leftCell + " gap-1.5 bg-[var(--surface)] text-left font-medium"}
-                    style={{ width: left, paddingLeft: 8 + it.depth * 14 }} aria-expanded={!shut}>
+                  <button type="button" onClick={() => toggle(it.g.key)} className={leftCell + " gap-1.5 bg-[var(--surface)] text-left font-medium" + (fold ? " justify-center" : "")}
+                    style={{ width: left, paddingLeft: fold ? 0 : 8 + it.depth * 14 }} aria-expanded={!shut} title={fold ? it.g.label + " " + it.g.jobs.length : undefined}>
                     <span className="text-[11px] text-[var(--foreground-muted)]">{shut ? "▸" : "▾"}</span>
-                    <span className="truncate">{it.g.label}</span>
-                    <span className="text-[12px] font-normal text-[var(--foreground-muted)]">{it.g.jobs.length}</span>
+                    {!fold && <span className="truncate">{it.g.label}</span>}
+                    {!fold && <span className="text-[12px] font-normal text-[var(--foreground-muted)]">{it.g.jobs.length}</span>}
                   </button>
                   <div style={{ width }} />
                 </div>
@@ -207,10 +207,11 @@ export function JobsGantt({ jobs, events, view, openId, onOpen }: {
             const jump = vis <= 0 ? null : x1 < scrollX ? "←" : x0 > scrollX + vis ? "→" : null;
             return (
               <div key={it.key} className={"flex border-b border-[var(--border)] " + (active ? "bg-[var(--accent-bg)]" : "")} style={{ height: ROW }}>
-                <button type="button" onClick={() => onOpen(job.id)} className={leftCell + " min-w-0 gap-1.5 overflow-hidden text-left hover:text-[var(--foreground)]" + (active ? " bg-[var(--accent-bg)]" : "")}
+                <button type="button" onClick={() => onOpen(job.id)} className={leftCell + " min-w-0 gap-1.5 overflow-hidden text-left hover:text-[var(--foreground)]" + (fold ? " justify-center px-0" : "") + (active ? " bg-[var(--accent-bg)]" : "")}
                   style={{ width: left }} title={[job.company, job.title].filter(Boolean).join(" · ")}>
-                  <span className="shrink-0 font-medium">{job.company || "未填公司"}</span>
-                  <span className="truncate text-[var(--foreground-muted)]">{job.title}</span>
+                  {/* 折叠成窄边时只显示公司首字（Array.from 按字符取，不会切坏 emoji / 生僻字），全名看 title。 */}
+                  <span className="shrink-0 font-medium">{fold ? Array.from(job.company || "?")[0] : job.company || "未填公司"}</span>
+                  {!fold && <span className="truncate text-[var(--foreground-muted)]">{job.title}</span>}
                 </button>
                 <div className="relative cursor-cell" style={{ width, ...grid }} onClick={(e) => addAt(e, job.id)} title="点空白处在这天加事项">
                   <span aria-hidden className="absolute inset-y-0 w-px bg-rose-400" style={{ left: nowX + px / 2 }} />
