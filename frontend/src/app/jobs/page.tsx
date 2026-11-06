@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { JobsGantt } from "@/components/jobs/JobsGantt";
 import { JobsTable } from "@/components/jobs/JobsTable";
 import { RecordDrawer } from "@/components/jobs/RecordDrawer";
 import { ViewBar } from "@/components/jobs/ViewBar";
 import { JobBoard } from "@/components/today/JobBoard";
-import { JOB_STATUS, type Job, useTool, write } from "@/lib/core";
+import { type Event, JOB_STATUS, type Job, useTool, write } from "@/lib/core";
 import { applyView, defaultState, defaultView, loadViews, saveViews, type ViewConfig, type ViewKind, type ViewState } from "@/lib/jobView";
 
 const field = "rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-[13px] text-[var(--foreground)] outline-none focus:border-[var(--foreground-muted)]";
@@ -77,6 +78,9 @@ function AddJob() {
 export default function JobsPage() {
   const { data } = useTool<{ items: Job[] }>("list", { type: "job", limit: 500 }, 5000);
   const jobs = useMemo(() => data?.items ?? [], [data]);
+  // 甘特的节点：所有带日期的事项，含已完成（画淡）。
+  const { data: eventData } = useTool<{ items: Event[] }>("list", { type: "event", limit: 500 }, 5000);
+  const events = useMemo(() => eventData?.items ?? [], [eventData]);
   const [state, setState] = useState<ViewState>(defaultState);
   const [loaded, setLoaded] = useState(false);
   const [search, setSearch] = useState("");
@@ -88,7 +92,7 @@ export default function JobsPage() {
   useEffect(() => { setState(loadViews()); setLoaded(true); }, []);
   useEffect(() => { if (loaded) saveViews(state); }, [state, loaded]);
 
-  const view = state.views.table;
+  const view = state.views[state.active];
   const patch = useCallback((p: Partial<ViewConfig>) => {
     setState((s) => ({ ...s, views: { ...s.views, [s.active]: { ...s.views[s.active], ...p } } }));
   }, []);
@@ -137,7 +141,7 @@ export default function JobsPage() {
           : <JobsTable jobs={shown} view={view} patch={patch} openId={openId} onOpen={setOpenId} onAdd={() => setAdding(true)} />
       )}
       {state.active === "board" && <JobBoard embedded />}
-      {state.active === "gantt" && <p className="text-[13.5px] text-[var(--foreground-muted)]">甘特视图还在做：每个岗位从收藏日画到最近的事项，节点标出笔试、面试和截止。</p>}
+      {state.active === "gantt" && <JobsGantt jobs={shown} events={events} view={view} openId={openId} onOpen={setOpenId} />}
 
       {open && (
         <RecordDrawer job={open} index={index} total={shown.length} tagOptions={tagOptions} onClose={close}

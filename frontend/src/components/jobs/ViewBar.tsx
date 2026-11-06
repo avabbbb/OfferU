@@ -20,6 +20,8 @@ export function ViewBar({ state, jobs, search, adding, setActive, setSearch, pat
   const view = state.views[state.active];
   const n = activeCounts(view);
   const table = state.active === "table";
+  // 看板自带标签筛选，只有表格和甘特用这排工具；字段和行高只对表格有意义。
+  const listing = state.active !== "board";
   return (
     <div className="flex flex-wrap items-center gap-x-1 gap-y-2 border-b border-[var(--border)] pb-2">
       <div role="tablist" aria-label="视图" className="flex items-center gap-0.5">
@@ -33,14 +35,14 @@ export function ViewBar({ state, jobs, search, adding, setActive, setSearch, pat
         ))}
       </div>
       <div className="ml-auto flex flex-wrap items-center gap-1">
-        {table && (
+        {listing && (
           <>
             <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="搜索公司、岗位、标签" aria-label="搜索岗位" className={ctl + " w-44"} />
             <Popover label={n.filter ? n.filter + " 筛选" : "筛选"} active={n.filter > 0} width={480}><FilterPanel view={view} jobs={jobs} patch={patch} /></Popover>
             <Popover label={n.group ? n.group + " 分组" : "分组"} active={n.group > 0} width={300}><GroupPanel view={view} patch={patch} /></Popover>
             <Popover label={n.sort ? n.sort + " 排序" : "排序"} active={n.sort > 0} width={340}><SortPanel view={view} patch={patch} /></Popover>
-            <Popover label={n.hidden ? n.hidden + " 隐藏字段" : "字段"} active={n.hidden > 0} width={240}><FieldsPanel view={view} patch={patch} /></Popover>
-            <Popover label="行高" width={180}><RowHeightPanel view={view} patch={patch} /></Popover>
+            {table && <Popover label={n.hidden ? n.hidden + " 隐藏字段" : "字段"} active={n.hidden > 0} width={240}><FieldsPanel view={view} patch={patch} /></Popover>}
+            {table && <Popover label="行高" width={180}><RowHeightPanel view={view} patch={patch} /></Popover>}
             <button type="button" className={ghost} onClick={reset} title="恢复这个视图默认的筛选、分组、排序、字段和列宽">重置</button>
           </>
         )}

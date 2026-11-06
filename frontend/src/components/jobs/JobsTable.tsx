@@ -33,9 +33,10 @@ const LEAD = 72;
 const EDITABLE_TEXT: FieldKey[] = ["company", "title", "city"];
 
 type Editing = { id: number; field: FieldKey } | null;
-type Item = { kind: "group"; g: Group; depth: number } | { kind: "row"; job: Job; key: string };
+export type Item = { kind: "group"; g: Group; depth: number } | { kind: "row"; job: Job; key: string };
 
-function flatten(groups: Group[], collapsed: Set<string>, depth: number, out: Item[]) {
+// 分组展开成行；甘特也用。
+export function flatten(groups: Group[], collapsed: Set<string>, depth: number, out: Item[]) {
   for (const g of groups) {
     out.push({ kind: "group", g, depth });
     if (collapsed.has(g.key)) continue;

@@ -165,7 +165,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 - Vite + React + HashRouter，`lib/core.ts` 提供 `tool()`、`useTool()`（SWR）、`write()`（写完全局刷新）。页面只调工具，不调其他接口。
 - 页面：今天 `/`、岗位 `/jobs`、岗位详情 `/jobs/:id`、简历 `/resume/:id?`、档案 `/profile`（和简历同一个导航项，两个标签）、面试 `/interview`、设置 `/settings`。
 - 共用组件：EventList、RecentChanges、JobBoard（今天页投递看板，前端直接 list job 和未完成 event）、TagInput、ChatDoc（PR3）、CommandK（PR3）。简历编辑器：顶栏一行（简历名下拉切换 / 新建 / 改名 / 复制 / 删除 | 排版工具栏，数值是「输入 + 下拉常用值」 | 下载 PDF）；左侧结构化表单，正文是所见即所得编辑框（存轻量标记）；右侧深色画布上的 A4 预览，悬停模块显示虚线框，点击定位左侧。
-- 岗位页 /jobs 是多维表格（参考飞书多维表格，调研见 docs/design/jobs-table-research.md）：视图 tab 表格 / 看板 / 甘特（甘特待做）；顶栏有搜索、筛选、分组、排序、字段显隐、行高、重置和添加岗位。表格用 @tanstack/react-table，冻结序号列，勾选后出批量栏，单元格直接改；⤢ 打开右侧详情抽屉（∧∨ 按当前顺序切换，Esc 关闭，失焦即存）。看板 tab 复用 JobBoard（embedded，不显示标题）。筛选 / 分组 / 排序是 lib/jobView.ts 里的纯函数；视图配置存 localStorage，自动保存。list 结果保留 created_at，给甘特当起点。
+- 岗位页 /jobs 是多维表格（参考飞书多维表格，调研见 docs/design/jobs-table-research.md）：视图 tab 表格 / 看板 / 甘特；顶栏有搜索、筛选、分组、排序、字段显隐、行高、重置和添加岗位。表格用 @tanstack/react-table，冻结序号列，勾选后出批量栏，单元格直接改；⤢ 打开右侧详情抽屉（∧∨ 按当前顺序切换，Esc 关闭，失焦即存）。看板 tab 复用 JobBoard（embedded，不显示标题）。筛选 / 分组 / 排序是 lib/jobView.ts 里的纯函数；视图配置存 localStorage，自动保存。list 结果保留 created_at，给甘特当起点。甘特视图（components/jobs/JobsGantt.tsx，时间计算在 lib/jobGantt.ts，有单测）：左侧冻结岗位列、右侧时间轴，周 / 月两档缩放和「今天」按钮，竖红线标今天；条从收藏日画到最后一件事项（进行中的画到今天），颜色跟状态，已结束的变淡；条上菱形是截止 / 笔试 / 面试 / 待办；短条的文字画在条右边；网格按可视宽度往右补满；点条或岗位名打开详情抽屉；筛选 / 分组 / 排序用甘特视图自己的配置。看板列改为可伸缩（flex: 1 0 12rem），1440 宽下放得下 offer 列。
 - 视觉：黑白灰；字号和间距弹性适配不同设备（字号走 CSS 变量 + clamp()，正文约 13–15px，间距用 em / rem）；不用徽章、统计卡、彩色按钮、网格背景。
 
 ### 11.1 Agent 侧栏组件规范
