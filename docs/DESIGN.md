@@ -53,7 +53,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 | --- | --- | --- |
 | profile | 基本信息，只有一条 | name, school, major, degree, grad_year, phone, email, city, target, stage, about |
 | memory | 职业记忆，一条一件事 | kind（experience / project / education / skill / award / preference / note）, title, body, start, end, tags |
-| job | 岗位和投递状态 | company, title, status（saved / applied / test / interview / offer / rejected / closed）, url, city, jd, notes, applied_at, source（来源站点）, images（页面图片链接）；截止日期不放这里，存 event kind=deadline |
+| job | 岗位和投递状态 | company, title, status（saved / applied / test / interview / offer / rejected / closed）, url, city, jd, notes, applied_at, source（来源站点）, images（页面图片链接）, tags（最多 12 个，每个 1–20 字，不重复；list 可用 tag 参数筛）；截止日期不放这里，存 event kind=deadline |
 | event | 待办和日程 | title, kind（todo / deadline / test / interview）, at, done, job_id, notes |
 | doc | 长文本 | kind（resume / apply_chat / review / research / note）, title, body（Markdown）, job_id, template；kind=review 另有 questions 数组 |
 
@@ -164,7 +164,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 
 - Vite + React + HashRouter，`lib/core.ts` 提供 `tool()`、`useTool()`（SWR）、`write()`（写完全局刷新）。页面只调工具，不调其他接口。
 - 页面：今天 `/`、岗位 `/jobs`、岗位详情 `/jobs/:id`、简历 `/resume/:id?`、档案 `/profile`（和简历同一个导航项，两个标签）、面试 `/interview`、设置 `/settings`。
-- 共用组件：EventList、RecentChanges、ChatDoc（PR3）、CommandK（PR3）。简历编辑器：顶栏一行（简历名下拉切换 / 新建 / 改名 / 复制 / 删除 | 排版工具栏，数值是「输入 + 下拉常用值」 | 下载 PDF）；左侧结构化表单，正文是所见即所得编辑框（存轻量标记）；右侧深色画布上的 A4 预览，悬停模块显示虚线框，点击定位左侧。
+- 共用组件：EventList、RecentChanges、JobBoard（今天页投递看板，前端直接 list job 和未完成 event）、TagInput、ChatDoc（PR3）、CommandK（PR3）。简历编辑器：顶栏一行（简历名下拉切换 / 新建 / 改名 / 复制 / 删除 | 排版工具栏，数值是「输入 + 下拉常用值」 | 下载 PDF）；左侧结构化表单，正文是所见即所得编辑框（存轻量标记）；右侧深色画布上的 A4 预览，悬停模块显示虚线框，点击定位左侧。
 - 视觉：黑白灰；字号和间距弹性适配不同设备（字号走 CSS 变量 + clamp()，正文约 13–15px，间距用 em / rem）；不用徽章、统计卡、彩色按钮、网格背景。
 
 ### 11.1 Agent 侧栏组件规范

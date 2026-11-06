@@ -40,7 +40,7 @@ MAIL_ACTOR = "邮箱"
 FIELDS = {
     "profile": "唯一一份。name, school, major, degree, grad_year, phone, email, city, target（求职方向）, stage（用户自己说的阶段）, about, photo（证件照文件名）",
     "memory": f"职业记忆，一条一件事。kind: {'/'.join(MEMORY_KIND)}; title; body（具体经历、数字、用户原话）; start, end; mode（性质：experience 填 全职/实习/兼职，education 填 全日制/非全日制；不确定就问用户，别猜）; tags; quote（用户原话，原样）, said_at（用户说这话的日期 YYYY-MM-DD）",
-    "job": f"岗位和投递状态。company, title, status: {'/'.join(JOB_STATUS)}; url, city, jd, notes, applied_at; source（来源站点：xhs / boss / feishu / moka / beisen / 域名）, images（页面图片链接，JD 可能在图里）；截止日期存 event kind=deadline",
+    "job": f"岗位和投递状态。company, title, status: {'/'.join(JOB_STATUS)}; url, city, jd, notes, applied_at; source（来源站点：xhs / boss / feishu / moka / beisen / 域名）, images（页面图片链接，JD 可能在图里）；tags（用户自己的标签，短词数组，如 大厂 / 内推 / 秋招，整体替换）；截止日期存 event kind=deadline",
     "event": f"待办和日程。title, kind: {'/'.join(EVENT_KIND)}; at（YYYY-MM-DD 或 YYYY-MM-DDTHH:MM，可空）, done, job_id, notes",
     "doc": f"文档。kind: {'/'.join(DOC_KIND)}; title, body（Markdown）, job_id, style（简历排版，对象，缺的键用模板默认值，更新时传完整对象：template classic 经典（默认）/ clear 清晰 / kami 留白 / compact 紧凑；font sans 黑体 / serif 宋体 / kai 楷体；bodySize 8–14（pt）；lineHeight 1–2；sectionGap 0–30（pt）；itemGap 0–20（pt）；margin {{top, right, bottom, left}} 3–30（mm）；accent #RRGGBB；photo true 用档案证件照；logo 校徽文件名）。简历以 resume 为准（对象：{{basics: {{name, target, contacts: [{{label（电话 / 邮箱 / 城市 / 微信…，可空）, value}}]}}, sections: [{{id, type, title, hidden, items: [{{id, title, subtitle, date, location, bullets: [文字], text}}]}}]}}），body 由它自动生成；也可以只传 body，写法：第一行 # 名字，下一段是联系方式，## 分节，### 学校或公司 | 专业或职位 | 时间（最后一段靠右），- 要点，保存时转成 resume",
 }
@@ -114,6 +114,17 @@ def check_questions(questions: Any) -> None:
             raise ValueError(f"doc.questions[{index}] 的值要是字符串")
 
 
+def check_tags(tags: Any) -> None:
+    """job.tags：最多 12 个不重复的短词，每个 1–20 字，前后不带空格。"""
+    if not isinstance(tags, list) or len(tags) > 12:
+        raise ValueError("job.tags 要是数组，最多 12 个")
+    for tag in tags:
+        if not isinstance(tag, str) or not 1 <= len(tag) <= 20 or tag != tag.strip():
+            raise ValueError("job.tags 的每个标签是 1–20 字的字符串，前后不带空格")
+    if len(set(tags)) != len(tags):
+        raise ValueError("job.tags 有重复标签")
+
+
 ASK_FIELDS = ("old", "why", "question")
 
 
@@ -135,6 +146,8 @@ def _check(type_: str, data: dict[str, Any], creating: bool) -> None:
         one_of("status", JOB_STATUS)
         if creating and not (data.get("company") or data.get("title")):
             raise ValueError("岗位至少要有 company 或 title")
+        if data.get("tags") is not None:
+            check_tags(data["tags"])
     elif type_ == "event":
         one_of("kind", EVENT_KIND)
         if creating and not data.get("title"):
@@ -295,12 +308,14 @@ class ListIn(_In):
     kind: Optional[str] = None
     job_id: Optional[int] = None
     done: Optional[bool] = Field(None, description="事项是否完成")
+    tag: Optional[str] = Field(None, description="只列带这个标签的岗位")
     full: bool = Field(False, description="返回全文，不截断")
     limit: int = Field(50, ge=1, le=500)
 
 
 def list_(type: str, status: Optional[str] = None, kind: Optional[str] = None, job_id: Optional[int] = None,
-          done: Optional[bool] = None, full: bool = False, limit: int = 50, *, actor: str = "") -> dict[str, Any]:
+          done: Optional[bool] = None, tag: Optional[str] = None, full: bool = False, limit: int = 50, *,
+          actor: str = "") -> dict[str, Any]:
     items = store.all_of(type, job_id=job_id)
     if status:
         items = [i for i in items if i.get("status") == status]
@@ -308,6 +323,8 @@ def list_(type: str, status: Optional[str] = None, kind: Optional[str] = None, j
         items = [i for i in items if i.get("kind") == kind]
     if done is not None:
         items = [i for i in items if bool(i.get("done")) == done]
+    if tag:
+        items = [i for i in items if tag in (i.get("tags") or [])]
     if type == "event":
         items.sort(key=lambda e: (bool(e.get("done")), e.get("at") or "9999"))
     return {"total": len(items), "items": [{**i, "label": label(i)} if full else _brief(i) for i in items[:limit]]}

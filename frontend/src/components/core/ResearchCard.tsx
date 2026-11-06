@@ -15,15 +15,14 @@ type Section = { title: string; summary: Point; points: Point[] };
 type Source = { id: string; text: string; url?: string };
 export type Research = { verdict: Point; risk: Point; highlights: Point[]; sections: Section[]; sources: Record<string, Source> };
 
-type Tone = "gray" | "green" | "blue" | "orange" | "purple" | "red";
-// 口径 → Notion 标签色（样式在 globals.css .notion-tag[data-tone]）。
-const LABELS: Record<string, { name: string; tone: Tone }> = {
-  official: { name: "官方", tone: "green" },
-  media: { name: "媒体", tone: "blue" },
-  third_party_estimate: { name: "第三方估算", tone: "orange" },
-  community: { name: "社区信号", tone: "purple" },
-  inference: { name: "推断", tone: "gray" },
-  gap: { name: "缺口", tone: "red" },
+// 口径 → 标签文字，纯灰字不分颜色（样式在 globals.css .notion-tag）。
+const LABELS: Record<string, string> = {
+  official: "官方",
+  media: "媒体",
+  third_party_estimate: "第三方估算",
+  community: "社区信号",
+  inference: "推断",
+  gap: "缺口",
 };
 const TAG = /\s?\[(official|media|third_party_estimate|community|inference|gap)((?:\s+S\d+)+)?\]\s?$/;
 const BULLET = /^[-\x2A•]\s+/;
@@ -80,15 +79,15 @@ export function parseResearch(markdown: string): Research {
 // 用 .notion-tag 而不是 Tailwind 字号类：globals.css 的 button 元素规则不在 layer 里，会压过 utilities，按钮徽标因此被撑成正文字号。
 function Tag({ point, sources, still = false }: { point: Point; sources: Record<string, Source>; still?: boolean }) {
   const [open, setOpen] = useState(false);
-  const tag = point.label ? LABELS[point.label] : undefined;
-  if (!tag) return null;
+  const name = point.label ? LABELS[point.label] : undefined;
+  if (!name) return null;
   const n = point.refs.length;
-  const body = <>{tag.name}{n > 0 && <span className="notion-tag-count">{n}</span>}</>;
-  if (still || n === 0) return <span className="notion-tag" data-tone={tag.tone} title={n ? n + " 个来源" : undefined}>{body}</span>;
+  const body = <>{name}{n > 0 && <span className="notion-tag-count">{n}</span>}</>;
+  if (still || n === 0) return <span className="notion-tag" title={n ? n + " 个来源" : undefined}>{body}</span>;
   return (
     <>
       <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} title={n + " 个来源，点开看"}
-        className="notion-tag" data-tone={tag.tone}>{body}</button>
+        className="notion-tag">{body}</button>
       {open && (
         <ul className="notion-sources">
           {point.refs.map((id) => {

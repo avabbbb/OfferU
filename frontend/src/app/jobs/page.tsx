@@ -36,15 +36,6 @@ export default function JobsPage() {
   const shown = [...filtered].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
   const unscored = jobs.filter((job) => job.score == null && job.status !== "rejected" && job.status !== "closed").length;
   const [ranking, setRanking] = useState(false);
-  const [view, setView] = useState<"list" | "board">("list");
-  const [over, setOver] = useState<JobStatus | null>(null);
-  /** 看板：把卡片拖到另一列就改状态（一条改动，可撤销）。 */
-  const drop = (status: JobStatus, raw: string) => {
-    setOver(null);
-    const job = jobs.find((j) => String(j.id) === raw);
-    if (job && job.status !== status) void write("save", { type: "job", id: job.id, data: { status } });
-  };
-
   /** 贴链接或 JD：后端抓正文、拆字段；抓不到就报错，不存空壳。 */
   const paste = async () => {
     setBusy(true); setError("");
@@ -87,7 +78,7 @@ export default function JobsPage() {
           onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && text.trim() && !busy) { e.preventDefault(); void paste(); } }} />
         <div className="flex items-center gap-3">
           <button type="submit" style={{ fontSize: 13 }} disabled={!text.trim() || busy} className="rounded-md bg-[var(--foreground)] px-3 py-1.5 text-[13px] font-medium text-[var(--background)] disabled:opacity-40">{busy ? "正在读…" : "添加"}</button>
-          {error && <span role="alert" className="text-[12.5px] text-red-600">{error}</span>}
+          {error && <span role="alert" className="text-[12.5px] text-[var(--foreground)]">{error}</span>}
         </div>
       </form>
       <details className="text-[13px] text-[var(--foreground-muted)]">
@@ -106,42 +97,6 @@ export default function JobsPage() {
         </div>
       )}
 
-      <div className="flex gap-3 text-[13px]">
-        {([["list", "列表"], ["board", "看板"]] as const).map(([id, name]) => (
-          <button key={id} type="button" onClick={() => setView(id)} aria-pressed={view === id}
-            className={view === id ? "font-medium text-[var(--foreground)]" : "text-[var(--foreground-muted)] hover:text-[var(--foreground)]"}>{name}</button>
-        ))}
-      </div>
-
-      {view === "board" ? (
-        <div className="flex gap-3 overflow-x-auto pb-2">
-          {(Object.entries(JOB_STATUS) as Array<[JobStatus, string]>).map(([status, name]) => {
-            const column = jobs.filter((job) => job.status === status).sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
-            return (
-              <section key={status} aria-label={name}
-                onDragOver={(e) => { e.preventDefault(); setOver(status); }}
-                onDragLeave={() => setOver((cur) => (cur === status ? null : cur))}
-                onDrop={(e) => { e.preventDefault(); drop(status, e.dataTransfer.getData("text/plain")); }}
-                className={"w-48 shrink-0 rounded-lg border p-2 " + (over === status ? "border-[var(--foreground-muted)] bg-[var(--surface)]" : "border-[var(--border)]")}>
-                <h2 className="px-1 pb-2 text-[12.5px] font-medium text-[var(--foreground-muted)]">{name} <span className="tabular-nums">{column.length}</span></h2>
-                <ul className="min-h-[48px] space-y-2">
-                  {column.map((job) => (
-                    <li key={job.id} draggable onDragStart={(e) => { e.dataTransfer.setData("text/plain", String(job.id)); e.dataTransfer.effectAllowed = "move"; }}
-                      className="cursor-grab rounded-md border border-[var(--border)] bg-[var(--background)] p-2 text-[13px] active:cursor-grabbing">
-                      <Link href={"/jobs/" + job.id} className="block hover:underline">
-                        <span className="font-medium text-[var(--foreground)]">{job.company || "未填公司"}</span>
-                        <span className="block truncate text-[12.5px] text-[var(--foreground-muted)]">{job.title}</span>
-                        {job.posting?.hire_type && <span className="text-[11.5px] text-[var(--foreground-muted)]">{job.posting.hire_type}</span>}
-                      </Link>
-                      {job.score != null && <span className="text-[12px] tabular-nums text-[var(--foreground-muted)]">{job.score} 分</span>}
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            );
-          })}
-        </div>
-      ) : (<>
       <div className="flex gap-4 border-b border-[var(--border)] text-[13px]">
         {FILTERS.map(([id, name, match]) => {
           const count = match.length ? jobs.filter((job) => match.includes(job.status)).length : jobs.length;
@@ -171,13 +126,12 @@ export default function JobsPage() {
               )}
             </Link>
             {job.score != null && <span title={(job.reasons ?? []).join("\n")} aria-label={"评分 " + job.score}
-              className={"rounded px-1.5 py-0.5 text-[12px] font-medium tabular-nums " + (job.score >= 80 ? "bg-green-100 text-green-800" : job.score >= 60 ? "bg-amber-100 text-amber-800" : "bg-[var(--surface)] text-[var(--foreground-muted)]")}>{job.score}</span>}
+              className="text-[12px] tabular-nums text-[var(--foreground-muted)]">{job.score}</span>}
             {job.applied_at && <span className="text-[12px] text-[var(--foreground-muted)]">{job.applied_at.slice(5)} 投递</span>}
             <StatusSelect job={job} />
           </li>
         ))}
       </ul>
-      </>)}
     </div>
   );
 }

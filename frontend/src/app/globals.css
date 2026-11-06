@@ -3,39 +3,6 @@
 @source "../../node_modules/@heroui/theme/dist/**/*.{js,ts,jsx,tsx}";
 
 :root {
-  /* ── OfferU 工作台令牌：安静、清晰、可扫描 ── */
-  --background: #f4f6f7;
-  --foreground: #243039;
-  --foreground-soft: #5d6b73;
-  --foreground-muted: #617078;
-  --foreground-faint: #7d8b93;
-  --surface: #ffffff;
-  --surface-muted: #eef2f3;
-  --surface-hover: #e6ecee;
-  --status-blush: #fff0ed;
-  --status-sage: #e9f3ed;
-  --accent-clay: #c77867;
-  --fabric-base: #f0ebe5;
-  --fabric-thread: rgba(104, 88, 72, 0.045);
-  --fabric-highlight: rgba(255, 255, 255, 0.62);
-  --focus-ring: rgba(59, 95, 155, 0.38);
-
-  /* 语义色 — 仅用于关键状态提示, 去饱和 */
-  --primary-red: #b95146;
-  --primary-yellow: #966b12;
-  --primary-green: #3c765a;
-  --primary-blue: #3b5f9b;
-  --auxiliary-blue: var(--primary-blue);
-  --auxiliary-green: var(--primary-green);
-  --accent: var(--foreground);
-  --accent-bg: var(--surface-hover);
-
-  /* 细边框和轻层次，不用大块黑线制造层级 */
-  --border: rgba(36, 48, 57, 0.1);
-  --border-strong: rgba(36, 48, 57, 0.22);
-  --shadow-soft: rgba(24, 40, 48, 0.06);
-  --shadow-medium: rgba(24, 40, 48, 0.12);
-
   /* ── Animation Tokens ── */
   --dur-instant: 100ms;
   --dur-quick: 160ms;
@@ -71,21 +38,18 @@
   font-size: 12px;
   font-weight: 400;
   line-height: 20px;
+  color: var(--foreground-muted);
+  background: none;
   white-space: nowrap;
   vertical-align: 1px;
   cursor: default;
-  transition: filter 120ms ease;
+  transition: color 120ms ease;
 }
 button.notion-tag { cursor: pointer; }
 button.notion-tag:hover,
-button.notion-tag[aria-expanded="true"] { filter: brightness(0.94); }
+button.notion-tag[aria-expanded="true"] { color: var(--foreground); }
 .notion-tag-count { font-size: 11px; opacity: 0.6; font-variant-numeric: tabular-nums; }
 .notion-tag[data-tone="gray"] { background: rgba(227, 226, 224, 0.6); color: rgb(50, 48, 44); }
-.notion-tag[data-tone="green"] { background: rgb(219, 237, 219); color: rgb(28, 56, 41); }
-.notion-tag[data-tone="blue"] { background: rgb(211, 229, 239); color: rgb(24, 51, 71); }
-.notion-tag[data-tone="orange"] { background: rgb(250, 222, 201); color: rgb(73, 41, 14); }
-.notion-tag[data-tone="purple"] { background: rgb(232, 222, 238); color: rgb(65, 36, 84); }
-.notion-tag[data-tone="red"] { background: rgb(255, 226, 221); color: rgb(93, 23, 21); }
 .notion-sources {
   margin: 4px 0 2px;
   padding-left: 10px;
@@ -2196,3 +2160,134 @@ body {
 .resume-shell .rf-suggest li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .resume-shell .rf-suggest mark { background: none; color: var(--ink); font-weight: 600; }
 .resume-shell .rf-suggest .rf-suggest-empty { color: var(--foreground-muted); font-size: 0.75rem; cursor: default; }
+
+.job-board {
+  --board-fs: clamp(0.8125rem, 0.76rem + 0.15vw, 0.875rem);
+  --board-fs-sm: calc(var(--board-fs) / 1.1429);
+  font-size: var(--board-fs);
+}
+.job-board-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem 1rem; font-size: var(--board-fs-sm); }
+.job-tag-filter { display: flex; flex-wrap: wrap; gap: 0.25rem 0.75rem; }
+.job-tag-filter button,
+.job-meta button,
+.job-col-head button,
+.job-col-folded {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--foreground-muted);
+  font-size: inherit;
+  cursor: pointer;
+}
+.job-tag-filter button:hover,
+.job-tag-filter button[aria-pressed="true"],
+.job-meta button:hover,
+.job-col-head button:hover { color: var(--foreground); }
+.job-tag-filter button span { margin-left: 0.2em; opacity: 0.6; font-variant-numeric: tabular-nums; }
+.job-board-cols { display: flex; gap: 0.75rem; margin-top: 0.5rem; padding-bottom: 0.5rem; overflow-x: auto; }
+.job-col { flex: 0 0 15rem; min-height: 4rem; border-radius: 0.375rem; }
+.job-col[data-over] { background: var(--surface); }
+.job-col-head {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 2rem;
+  padding: 0 0.25rem;
+  font-size: var(--board-fs-sm);
+  font-weight: 500;
+  color: var(--foreground-muted);
+}
+.job-col-head span { font-weight: 400; opacity: 0.7; font-variant-numeric: tabular-nums; }
+.job-col-head button { margin-left: auto; font-weight: 400; }
+.job-col-list { display: flex; flex-direction: column; gap: 0.375rem; min-height: 2.5rem; list-style: none; }
+.job-card {
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  background: var(--background);
+  cursor: grab;
+  transition: border-color 120ms ease;
+}
+.job-card:hover { border-color: var(--foreground-muted); }
+.job-card:active { cursor: grabbing; }
+.job-card-title { display: block; overflow: hidden; color: var(--foreground); text-overflow: ellipsis; white-space: nowrap; }
+.job-card-title:hover { text-decoration: underline; }
+.job-card-sub { color: var(--foreground-muted); }
+.job-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.125rem 0.5rem;
+  margin-top: 0.125rem;
+  font-size: var(--board-fs-sm);
+  color: var(--foreground-muted);
+}
+.job-meta-add { opacity: 0; }
+.job-card:hover .job-meta-add,
+.job-meta-add:focus-visible { opacity: 1; }
+.job-col-folded {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  height: 2rem;
+  padding: 0 0.5rem;
+  border-radius: 0.375rem;
+  font-size: var(--board-fs-sm);
+  white-space: nowrap;
+}
+.job-col-folded:hover,
+.job-col-folded[data-over] { background: var(--surface); color: var(--foreground); }
+.tag-input { position: relative; margin-top: 0.375rem; }
+.tag-input-box {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  padding: 0.25rem 0.375rem;
+  border: 1px solid var(--foreground-muted);
+  border-radius: 0.375rem;
+  background: var(--background);
+}
+.tag-input-box input {
+  flex: 1;
+  min-width: 4em;
+  border: 0;
+  outline: 0;
+  background: none;
+  color: var(--foreground);
+  font-size: var(--board-fs-sm);
+}
+.tag-pill {
+  padding: 0 0.375rem;
+  border: 0;
+  border-radius: 0.25rem;
+  background: var(--surface);
+  color: var(--foreground);
+  font-size: var(--board-fs-sm);
+  line-height: 1.6;
+  cursor: pointer;
+}
+.tag-menu {
+  position: absolute;
+  z-index: 10;
+  left: 0;
+  right: 0;
+  margin-top: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  background: var(--background);
+  list-style: none;
+  box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.08);
+}
+.tag-menu button {
+  display: block;
+  width: 100%;
+  padding: 0.25rem 0.375rem;
+  border: 0;
+  border-radius: 0.25rem;
+  background: none;
+  color: var(--foreground);
+  font-size: var(--board-fs-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.tag-menu [aria-selected="true"] button,
+.tag-menu button:hover { background: var(--surface); }
