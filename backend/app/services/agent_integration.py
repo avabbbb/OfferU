@@ -17,7 +17,6 @@ from filelock import FileLock
 from app.runtime_paths import packaged_resource_dir, runtime_data_dir, runtime_data_path
 from app.services.agent_files import atomic_write_bytes, atomic_write_json
 from app.services.security_redaction import redact_sensitive_text
-from app.services.agent_methodology import methodology_assets
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -181,10 +180,8 @@ class AgentIntegrationAdapter:
     def _remove_old_methods(self) -> None:
         """Older Skills installed method files next to SKILL.md; the core Skill has none."""
         base = self.skill_path().parent.resolve()
-        try:
-            relatives = list(methodology_assets())
-        except ValueError:
-            relatives = []
+        # 旧版在 SKILL.md 旁边装过这三个方法文件，升级时清掉
+        relatives = ("skills/profile_onboarding/SKILL.md", "skills/research/SKILL.md", "skills/tailor_resume/SKILL.md")
         for relative in relatives:
             target = self.skill_path().parent / relative
             if target.is_symlink() or not target.is_file() or not target.resolve().is_relative_to(base):

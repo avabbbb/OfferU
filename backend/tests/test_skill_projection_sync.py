@@ -6,7 +6,6 @@ import re
 from pathlib import Path
 
 from app.ops import list_operations
-from app.services.agent_methodology import METHOD_SKILL_IDS, get_agent_methodology
 from app.services.agent_skill_projections import CORE_SKILL, projection_drift, render_skill_projections
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -33,9 +32,6 @@ _REMOVED_RULES = (
 
 def _sources() -> dict[str, str]:
     texts = {path.as_posix(): text for path, text in render_skill_projections().items() if path.name != "SKILL.md"}
-    for skill_id in sorted(METHOD_SKILL_IDS):
-        ref = get_agent_methodology(skill_id)["source_ref"]
-        texts[ref] = (REPO_ROOT / ref).read_text(encoding="utf-8")
     return texts
 
 
