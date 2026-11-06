@@ -40,7 +40,7 @@ def test_enrich_jobs_fills_posting_only(tmp_path, monkeypatch):
     monkeypatch.setenv("OFFERU_DATA_DIR", str(tmp_path))
     from app.core import store, tools
 
-    async def extract(text):
+    async def extract(text, known=None):
         assert "GTM" in text
         return {"company": "别的公司", "city": "北京", "posting": {"keywords": ["GTM"], "hire_type": "社招"}}
 
@@ -82,3 +82,20 @@ def test_posting_evidence_and_collaborators():
 def test_posting_evidence_needs_hard_reqs():
     out = job_intake.normalize({"title": "x", "evidence": [{"req": "a", "need": "b"}]})
     assert "posting" not in out
+
+
+def test_normalize_tags_and_auto_tags():
+    out = job_intake.normalize({"title": "产品实习", "city": "北京市、上海", "hire_type": "实习",
+                                "tags": ["#产品", "产品", "大厂", "  ", "一个特别特别长的标签名字"]})
+    assert out["tags"] == ["产品", "大厂", "一个特别特别长的"]
+    assert job_intake.auto_tags(out) == ["实习", "北京", "产品", "大厂", "一个特别特别长的"]
+    assert job_intake.auto_tags({"city": "Remote / 远程办公地点很长"}, "x.com/campus/intern/1") == ["实习", "Remote"]
+
+
+def test_merge_auto_tags_keeps_user_and_muted():
+    from app.core.tools import merge_auto_tags
+
+    assert merge_auto_tags(None, ["实习", "北京"]) == {"tags": ["实习", "北京"], "auto_tags": ["实习", "北京"]}
+    prev = {"tags": ["内推", "实习", "北京"], "auto_tags": ["实习", "北京"], "tags_muted": ["大厂"]}
+    assert merge_auto_tags(prev, ["实习", "上海", "大厂", "内推"]) == {"tags": ["内推", "实习", "上海"], "auto_tags": ["实习", "上海"]}
+    assert merge_auto_tags({"tags": ["内推"]}, []) == {"tags": ["内推"], "auto_tags": None}

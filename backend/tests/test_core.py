@@ -202,7 +202,7 @@ def test_add_job_from_text_or_link(tmp_path, monkeypatch):
 
     from app.core import job_intake, tools
 
-    async def extract(text):
+    async def extract(text, known=None):
         assert "Go" in text
         return {"company": "美团", "title": "后端开发实习生", "city": "北京", "deadline": "2026-11-20", "jd": "负责 Go 后端开发"}
 

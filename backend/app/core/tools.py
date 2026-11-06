@@ -40,7 +40,7 @@ MAIL_ACTOR = "邮箱"
 FIELDS = {
     "profile": "唯一一份。name, school, major, degree, grad_year, phone, email, city, target（求职方向）, stage（用户自己说的阶段）, about, photo（证件照文件名）",
     "memory": f"职业记忆，一条一件事。kind: {'/'.join(MEMORY_KIND)}; title; body（具体经历、数字、用户原话）; start, end; mode（性质：experience 填 全职/实习/兼职，education 填 全日制/非全日制；不确定就问用户，别猜）; tags; quote（用户原话，原样）, said_at（用户说这话的日期 YYYY-MM-DD）",
-    "job": f"岗位和投递状态。company, title, status: {'/'.join(JOB_STATUS)}; url, city, jd, notes, applied_at; source（来源站点：xhs / boss / feishu / moka / beisen / 域名）, images（页面图片链接，JD 可能在图里）；tags（用户自己的标签，短词数组，如 大厂 / 内推 / 秋招，整体替换）；截止日期存 event kind=deadline",
+    "job": f"岗位和投递状态。company, title, status: {'/'.join(JOB_STATUS)}; url, city, jd, notes, applied_at; source（来源站点：xhs / boss / feishu / moka / beisen / 域名）, images（页面图片链接，JD 可能在图里）；tags（标签，短词数组，整体替换；建岗和补 JD 时 Agent 会自动打招聘类型、城市、方向、公司属性，记在 auto_tags；用户删掉的 Agent 标签记在 tags_muted，以后不再自动加回；用户口头要加或去标签就直接改 tags）；截止日期存 event kind=deadline",
     "event": f"待办和日程。title, kind: {'/'.join(EVENT_KIND)}; at（YYYY-MM-DD 或 YYYY-MM-DDTHH:MM，可空）, done, job_id, notes",
     "doc": f"文档。kind: {'/'.join(DOC_KIND)}; title, body（Markdown）, job_id, style（简历排版，对象，缺的键用模板默认值，更新时传完整对象：template classic 经典（默认）/ clear 清晰 / kami 留白 / compact 紧凑；font sans 黑体 / serif 宋体 / kai 楷体；bodySize 8–14（pt）；lineHeight 1–2；sectionGap 0–30（pt）；itemGap 0–20（pt）；margin {{top, right, bottom, left}} 3–30（mm）；accent #RRGGBB；photo true 用档案证件照；logo 校徽文件名）。简历以 resume 为准（对象：{{basics: {{name, target, contacts: [{{label（电话 / 邮箱 / 城市 / 微信…，可空）, value}}]}}, sections: [{{id, type, title, hidden, items: [{{id, title, subtitle, date, location, bullets: [文字], text}}]}}]}}），body 由它自动生成；也可以只传 body，写法：第一行 # 名字，下一段是联系方式，## 分节，### 学校或公司 | 专业或职位 | 时间（最后一段靠右），- 要点，保存时转成 resume",
 }
@@ -125,6 +125,25 @@ def check_tags(tags: Any) -> None:
         raise ValueError("job.tags 有重复标签")
 
 
+def merge_auto_tags(prev: Optional[dict[str, Any]], auto: list[str]) -> dict[str, Any]:
+    """把 Agent 自动标签并进 job.tags：用户手打的（不在旧 auto_tags 里的）一个不动，用户删过的（tags_muted）不再加回。"""
+    prev = prev or {}
+    old_auto = prev.get("auto_tags") or []
+    mine = [t for t in prev.get("tags") or [] if t not in old_auto]
+    muted = set(prev.get("tags_muted") or [])
+    fresh = [t for t in dict.fromkeys(auto) if t not in muted and t not in mine][: max(0, 12 - len(mine))]
+    return {"tags": (mine + fresh) or None, "auto_tags": fresh or None}
+
+
+def known_tags() -> list[str]:
+    """库里已有的岗位标签，用得多的在前，给模型当词表。"""
+    counts: dict[str, int] = {}
+    for job in store.all_of("job"):
+        for tag in job.get("tags") or []:
+            counts[tag] = counts.get(tag, 0) + 1
+    return sorted(counts, key=lambda t: -counts[t])
+
+
 ASK_FIELDS = ("old", "why", "question")
 
 
@@ -148,6 +167,12 @@ def _check(type_: str, data: dict[str, Any], creating: bool) -> None:
             raise ValueError("岗位至少要有 company 或 title")
         if data.get("tags") is not None:
             check_tags(data["tags"])
+        if data.get("auto_tags") is not None:
+            check_tags(data["auto_tags"])
+        muted = data.get("tags_muted")
+        if muted is not None and (not isinstance(muted, list) or len(muted) > 100
+                                  or not all(isinstance(t, str) and t for t in muted)):
+            raise ValueError("job.tags_muted 要是非空字符串数组，最多 100 个")
     elif type_ == "event":
         one_of("kind", EVENT_KIND)
         if creating and not data.get("title"):
@@ -247,6 +272,8 @@ def merge_saved_job(existing: dict[str, Any], data: dict[str, Any]) -> dict[str,
             out[key] = value
         elif key == "jd" and len(str(value)) > len(str(old)):
             out[key] = value
+        elif key in ("tags", "auto_tags") and value != old:
+            out[key] = value  # 已由 merge_auto_tags 保住用户手打的标签，这里整对替换
     return out
 
 
@@ -819,9 +846,12 @@ def add_job(text: str, *, actor: str) -> dict[str, Any]:
     else:
         source, findings = posting_guard.guard(text, is_html=False)
         guard, warn = posting_guard.counts(findings), posting_guard.warning(findings)
-    fields = _await(lambda: job_intake.extract(source)) if job_intake.available() else job_intake.guess(source)
+    known = known_tags()
+    fields = _await(lambda: job_intake.extract(source, known)) if job_intake.available() else job_intake.guess(source)
     if url and not (fields.get("posting") or {}).get("hire_type") and (hire := job_intake.hire_from_url(url)):
         fields["posting"] = {**(fields.get("posting") or {}), "hire_type": hire}
+    auto = job_intake.auto_tags(fields, url)
+    fields.pop("tags", None)
     deadline = fields.pop("deadline", None)
     how = fields.pop("apply", None)
     data = {**fields, "jd": fields.get("jd") or source, "url": url,
@@ -829,6 +859,7 @@ def add_job(text: str, *, actor: str) -> dict[str, Any]:
             "notes": "\n".join(filter(None, [warn, f"投递方式：{how}" if how else None])) or None}
     if not (data.get("company") or data.get("title")):
         data["title"] = job_intake.guess(source)["title"]
+    data.update(merge_auto_tags(find_job_by_url(url) if url else None, auto))
     saved = save("job", {k: v for k, v in data.items() if v}, actor=actor)
     out = {"record": saved["record"], "change_ids": [c for c in [saved["change_id"]] if c], "existed": saved.get("existed", False),
            "guard": guard}
@@ -861,13 +892,14 @@ def enrich_jobs(ids: Optional[list[int]] = None, redo: bool = False, actor: str 
     else:
         jobs = [j for j in store.all_of("job") if redo or not j.get("posting")]
     jobs = [j for j in jobs if str(j.get("jd") or "").strip()]
+    known = known_tags()
     change_ids: list[int] = []
     items: list[dict[str, Any]] = []
     failed: list[str] = []
     for job in jobs:
         source = "\n".join(filter(None, [job.get("company"), job.get("title"), job.get("city"), str(job["jd"])]))
         try:
-            fields = _await(lambda s=source: job_intake.extract(s))
+            fields = _await(lambda s=source: job_intake.extract(s, known))
         except ValueError:
             failed.append(label(job))
             continue
@@ -877,6 +909,11 @@ def enrich_jobs(ids: Optional[list[int]] = None, redo: bool = False, actor: str 
             detail["hire_type"] = hire
         if detail:
             data["posting"] = detail
+        auto = job_intake.auto_tags({"city": job.get("city") or fields.get("city"), "posting": detail,
+                                     "tags": fields.get("tags")}, job.get("url"))
+        merged = merge_auto_tags(job, auto)
+        if (merged["tags"], merged["auto_tags"]) != (job.get("tags"), job.get("auto_tags")):
+            data.update(merged)
         if not data:
             failed.append(label(job))
             continue

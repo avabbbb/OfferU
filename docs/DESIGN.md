@@ -53,7 +53,7 @@ changes(id, at, actor, summary, type, record_id, before JSON, after JSON, undone
 | --- | --- | --- |
 | profile | 基本信息，只有一条 | name, school, major, degree, grad_year, phone, email, city, target, stage, about |
 | memory | 职业记忆，一条一件事 | kind（experience / project / education / skill / award / preference / note）, title, body, start, end, tags |
-| job | 岗位和投递状态 | company, title, status（saved / applied / test / interview / offer / rejected / closed）, url, city, jd, notes, applied_at, source（来源站点）, images（页面图片链接）, tags（最多 12 个，每个 1–20 字，不重复；list 可用 tag 参数筛）；截止日期不放这里，存 event kind=deadline |
+| job | 岗位和投递状态 | company, title, status（saved / applied / test / interview / offer / rejected / closed）, url, city, jd, notes, applied_at, source（来源站点）, images（页面图片链接）, tags（最多 12 个，每个 1–20 字，不重复；list 可用 tag 参数筛）, auto_tags（tags 里 Agent 自动打的：招聘类型、城市由代码定，方向和公司属性是模型推断；重拆 JD 只换这部分）, tags_muted（用户删掉的 Agent 标签，重拆不再加回）；截止日期不放这里，存 event kind=deadline |
 | event | 待办和日程 | title, kind（todo / deadline / test / interview）, at, done, job_id, notes |
 | doc | 长文本 | kind（resume / apply_chat / review / research / note）, title, body（Markdown）, job_id, template；kind=review 另有 questions 数组 |
 

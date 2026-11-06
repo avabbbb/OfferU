@@ -59,8 +59,14 @@ export function JobBoard() {
     onDragLeave: () => setOver((cur) => (cur === key ? null : cur)),
     onDrop: (e: DragEvent) => { e.preventDefault(); drop(key, e.dataTransfer.getData("text/plain")); },
   });
-  const saveTags = (job: Job, value: string[]) =>
-    void write("save", { type: "job", id: job.id, data: { tags: value.length ? value : null } });
+  // 删掉的 Agent 标签记进 tags_muted，以后重拆 JD 不再自动加回；用户手动加回来的就从 tags_muted 里拿掉。
+  const saveTags = (job: Job, value: string[]) => {
+    const auto = job.auto_tags ?? [];
+    const kept = auto.filter((t) => value.includes(t));
+    const muted = [...new Set([...(job.tags_muted ?? []), ...auto.filter((t) => !value.includes(t))])].filter((t) => !value.includes(t));
+    void write("save", { type: "job", id: job.id, data: {
+      tags: value.length ? value : null, auto_tags: kept.length ? kept : null, tags_muted: muted.length ? muted : null } });
+  };
 
   const card = (job: Job) => {
     const event = upcoming.get(job.id);
@@ -75,7 +81,7 @@ export function JobBoard() {
           {job.score != null && <span className="tabular-nums" title={(job.reasons ?? []).join("\n")}>{job.score} 分</span>}
           {event ? <span>{when(event.at)} {event.title}</span> : job.applied_at ? <span>{job.applied_at.slice(5)} 投递</span> : null}
           {(job.tags ?? []).map((t) => (
-            <button key={t} type="button" onClick={() => setTag(t)} title={"只看 #" + t}>#{t}</button>
+            <button key={t} type="button" onClick={() => setTag(t)} title={(job.auto_tags?.includes(t) ? "Agent 自动打的 · " : "") + "只看 #" + t}>#{t}</button>
           ))}
           <button type="button" className="job-meta-add" onClick={() => setEditing(job.id)}>{job.tags?.length ? "改标签" : "＋标签"}</button>
         </div>

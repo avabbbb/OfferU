@@ -20,7 +20,7 @@ profile 档案；memory 职业记忆（一条一件事）；job 岗位；event �
 
 1. 开场 overview。查经历和用户说过的话用 search；list 列表，get 看全文；save、delete 写删；改错用 changes + undo。
 2. 旧简历：find_files → read_file → split_resume。
-3. 用户贴链接、JD 或「公司 岗位」：add_job。抓不到（要登录、在图片里）就让用户贴正文或用插件存，不存空壳。
+3. 用户贴链接、JD 或「公司 岗位」：add_job。抓不到（要登录、在图片里）就让用户贴正文或用插件存，不存空壳。add_job 和 enrich_jobs 会自动打标签（招聘类型、城市、方向、公司属性），用户要加或去标签就 save 改 tags。
 4. 存完马上 evaluate_jobs：分数、三句理由、打招呼语。打招呼语里每个事实都要在档案里找得到。
 5. 改简历：tailor_resume。asks 逐句问用户；用户确认的回答 save 成 memory（带原话和日期），再 review_only=true 改一次。导出 export_resume_pdf。
 6. 网申 apply_answer；邮件 draft_email；邮箱回执 email_sync。

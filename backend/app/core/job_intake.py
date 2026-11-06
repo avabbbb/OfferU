@@ -20,7 +20,7 @@ PROMPT = """你是岗位信息整理助手。从岗位页面文字或 JD 里拆�
 {"company": "", "title": "", "city": "", "deadline": "", "apply": "", "jd": "",
  "team": "", "hire_type": "", "years": "", "education": "", "salary": "", "job_code": "", "posted_at": "",
  "responsibilities": [], "hard_reqs": [], "soft_reqs": [], "keywords": [], "essence": "",
- "collaborators": [], "evidence": [{"req": "", "need": ""}]}
+ "collaborators": [], "evidence": [{"req": "", "need": ""}], "tags": []}
 规则：
 1. 只用原文里有的信息，没有就留空，不猜。
 2. title 是岗位名称，不带公司名。
@@ -37,6 +37,7 @@ PROMPT = """你是岗位信息整理助手。从岗位页面文字或 JD 里拆�
 13. essence：一句话（不超过 60 字）说清这个岗位实际在做什么，可以概括，但不能加入原文没有的事实。
 14. collaborators：这个岗位日常要对接的上游、下游和协作方（如「产品经理」「销售团队」「外部 KOL」），按 JD 合理推断，最多 8 个，每个不超过 20 字；看不出就留空。
 15. evidence：给每条 hard_reqs 写一条，req 原样抄 hard_reqs 里那一句，need 写候选人要准备哪类真实经历或材料来证明（不超过 50 字，只说类型，不编具体经历）。
+16. tags：给岗位打 1–4 个短标签（每个不超过 8 字），属于推断：1–3 个岗位方向（如 产品、算法、前端、数据分析、运营），再加最多 1 个公司属性（大厂 / 外企 / 国企 / 央企 / 独角兽 / 初创，看不准就不打）。不要重复招聘类型和城市。用户消息开头给了「已有标签」时，意思相同就沿用已有的写法，不另造同义词。
 """
 
 LIMITS = {"company": 80, "title": 120, "city": 40, "apply": 500, "jd": 20_000}
@@ -59,6 +60,27 @@ def hire_from_url(url: Any) -> str:
         if name in found:
             return name
     return ""
+
+
+TAG_SIZE = 8
+MODEL_TAGS = 4
+AUTO_TAGS = 6
+
+
+def _city_tag(city: Any) -> str:
+    """城市标签：多个城市只取第一个，去掉「市」，太长的不要。"""
+    first = re.split(r"[、,，/／|\s]+", str(city or "").strip())[0].removesuffix("市")
+    return first if 1 <= len(first) <= 6 else ""
+
+
+def auto_tags(fields: dict[str, Any], url: Any = None) -> list[str]:
+    """Agent 自动标签：招聘类型、城市由代码定；方向、公司属性来自模型（推断）。去重，最多 AUTO_TAGS 个。"""
+    hire = (fields.get("posting") or {}).get("hire_type") or hire_from_url(url)
+    out = [t for t in (hire, _city_tag(fields.get("city"))) if t]
+    for tag in fields.get("tags") or []:
+        if tag not in out:
+            out.append(tag)
+    return out[:AUTO_TAGS]
 
 
 BULLET = re.compile(r"^\s{0,}(?:[-•·●]|\d{1,2}\s{0,}[.、)）])\s{0,}")
@@ -122,6 +144,10 @@ def normalize(parsed: dict[str, Any], text: str = "") -> dict[str, Any]:
     detail = posting(parsed, text)
     if detail:
         out["posting"] = detail
+    tags = [t for t in (x.lstrip("#").strip() for x in _items(parsed.get("tags"), MODEL_TAGS, TAG_SIZE + 1)) if t][:MODEL_TAGS]
+    tags = [t[:TAG_SIZE] for t in tags]
+    if tags:
+        out["tags"] = list(dict.fromkeys(tags))
     return out
 
 
@@ -146,11 +172,12 @@ def guess(text: str) -> dict[str, Any]:
     return out
 
 
-async def extract(text: str) -> dict[str, Any]:
+async def extract(text: str, known: list[str] | None = None) -> dict[str, Any]:
+    """known：库里已有的标签（按使用次数排），让模型沿用同一套写法。"""
     from app.agents.llm import chat_completion, extract_json
 
     raw = await chat_completion(
-        [{"role": "system", "content": PROMPT}, {"role": "user", "content": text[:20_000]}],
+        [{"role": "system", "content": PROMPT}, {"role": "user", "content": (f"已有标签：{'、'.join(known[:60])}\n\n" if known else "") + text[:20_000]}],
         temperature=0.1,
         json_mode=True,
         max_tokens=8000,
