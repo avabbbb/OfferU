@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Event, Job } from "@/lib/core";
-import { barLabel, barOf, fromDay, rangeOf, ticks, toDay } from "@/lib/jobGantt";
+import { barLabel, barOf, dragDays, fromDay, rangeOf, shiftAt, ticks, toDay } from "@/lib/jobGantt";
 
 const job = (over: Partial<Job> = {}): Job => ({
   id: 1, type: "job", job_id: null, created_at: "2026-11-01T09:00:00", updated_at: "", status: "saved", ...over,
@@ -79,5 +79,19 @@ describe("rangeOf / ticks", () => {
     expect(ticks(d("2026-10-23"), d("2026-10-24"))[0].monthStart).toBe(false);
     expect(t.find((x) => x.date === "2026-11-01")?.weekend).toBe(true);
     expect(t.find((x) => x.date === "2026-11-02")?.weekend).toBe(false);
+  });
+});
+
+describe("dragDays / shiftAt", () => {
+  it("拖动像素按整天四舍五入，不出 -0", () => {
+    expect(dragDays(47, 32)).toBe(1);
+    expect(dragDays(-90, 32)).toBe(-3);
+    expect(Object.is(dragDays(-10, 32), 0)).toBe(true);
+  });
+
+  it("挪日期保留时刻，跨月正常，坏格式原样返回", () => {
+    expect(shiftAt("2026-11-06T14:00:00", 2)).toBe("2026-11-08T14:00:00");
+    expect(shiftAt("2026-10-31", 1)).toBe("2026-11-01");
+    expect(shiftAt("坏日期", 3)).toBe("坏日期");
   });
 });

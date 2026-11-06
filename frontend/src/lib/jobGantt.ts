@@ -76,3 +76,14 @@ export function barLabel(bar: Bar, now: number): string {
   if (bar.applied != null) return "投递后 " + Math.max(0, until - bar.applied) + " 天";
   return "收藏 " + Math.max(0, until - bar.start) + " 天";
 }
+
+// 甘特里拖菱形：拖了 dx 像素 -> 挪几天（四舍五入到整天，不返回 -0）。
+export function dragDays(dx: number, px: number): number {
+  return Math.round(dx / px) || 0;
+}
+
+// 事项时间挪 days 天，保留时刻部分（"2026-11-06T14:00:00" -> "2026-11-08T14:00:00"）；格式不对原样返回。
+export function shiftAt(at: string, days: number): string {
+  const day = toDay(at);
+  return day == null ? at : fromDay(day + days) + at.slice(10);
+}

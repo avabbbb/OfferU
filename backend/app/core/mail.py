@@ -27,11 +27,10 @@ ORDER = ["saved", "applied", "test", "interview", "offer"]
 
 
 def seen(mail_id: str) -> bool:
-    c = store.conn()
-    if c.execute("SELECT 1 FROM records WHERE json_extract(data, '$.mail_id') = ? LIMIT 1", (mail_id,)).fetchone():
+    if store.fetch_one("SELECT 1 FROM records WHERE json_extract(data, '$.mail_id') = ? LIMIT 1", (mail_id,)):
         return True
-    return c.execute("SELECT 1 FROM changes WHERE json_extract(before, '$.mail_id') = ? "
-                     "OR json_extract(after, '$.mail_id') = ? LIMIT 1", (mail_id, mail_id)).fetchone() is not None
+    return store.fetch_one("SELECT 1 FROM changes WHERE json_extract(before, '$.mail_id') = ? "
+                           "OR json_extract(after, '$.mail_id') = ? LIMIT 1", (mail_id, mail_id)) is not None
 
 
 def _norm(value: Any) -> str:

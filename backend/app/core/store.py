@@ -42,15 +42,17 @@ def db_path() -> str:
 
 
 def conn() -> sqlite3.Connection:
+    # One connection shared by every thread: all use of it (reads included) must hold _lock.
     global _conn, _path
-    path = db_path()
-    if _conn is None or _path != path:
-        _conn = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
-        _conn.row_factory = sqlite3.Row
-        _conn.execute("PRAGMA journal_mode=WAL")
-        _conn.executescript(SCHEMA)
-        _path = path
-    return _conn
+    with _lock:
+        path = db_path()
+        if _conn is None or _path != path:
+            _conn = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
+            _conn.row_factory = sqlite3.Row
+            _conn.execute("PRAGMA journal_mode=WAL")
+            _conn.executescript(SCHEMA)
+            _path = path
+        return _conn
 
 
 def now() -> str:
@@ -69,18 +71,22 @@ def _plain(record: dict[str, Any]) -> dict[str, Any]:
 
 
 def get(type_: str, id_: int) -> Optional[dict[str, Any]]:
-    return _row(conn().execute("SELECT * FROM records WHERE id=? AND type=?", (id_, type_)).fetchone())
+    with _lock:
+        return _row(conn().execute("SELECT * FROM records WHERE id=? AND type=?", (id_, type_)).fetchone())
 
 
 def first(type_: str) -> Optional[dict[str, Any]]:
-    return _row(conn().execute("SELECT * FROM records WHERE type=? ORDER BY id LIMIT 1", (type_,)).fetchone())
+    with _lock:
+        return _row(conn().execute("SELECT * FROM records WHERE type=? ORDER BY id LIMIT 1", (type_,)).fetchone())
 
 
 def all_of(type_: str, job_id: Optional[int] = None) -> list[dict[str, Any]]:
     sql, args = "SELECT * FROM records WHERE type=?", [type_]
     if job_id is not None:
         sql, args = sql + " AND job_id=?", [*args, job_id]
-    return [_row(r) for r in conn().execute(sql + " ORDER BY updated_at DESC, id DESC", args)]
+    with _lock:
+        rows = conn().execute(sql + " ORDER BY updated_at DESC, id DESC", args).fetchall()
+    return [_row(r) for r in rows]
 
 
 MERGE_WINDOW = 600  # seconds
@@ -146,9 +152,20 @@ def delete(type_: str, id_: int, *, actor: str, summary: str) -> int:
     return change
 
 
+def fetch(sql: str, args: tuple | list = ()) -> list[sqlite3.Row]:
+    """Read-only query for callers outside this module: runs under _lock and returns every row."""
+    with _lock:
+        return conn().execute(sql, args).fetchall()
+
+
+def fetch_one(sql: str, args: tuple | list = ()) -> Optional[sqlite3.Row]:
+    with _lock:
+        return conn().execute(sql, args).fetchone()
+
+
 def changes(limit: int = 20) -> list[dict[str, Any]]:
-    rows = conn().execute("SELECT id, at, actor, summary, type, record_id, before IS NULL AS created, "
-                          "after IS NULL AS deleted, undone_at FROM changes ORDER BY id DESC LIMIT ?", (limit,))
+    rows = fetch("SELECT id, at, actor, summary, type, record_id, before IS NULL AS created, "
+                 "after IS NULL AS deleted, undone_at FROM changes ORDER BY id DESC LIMIT ?", (limit,))
     return [dict(r) for r in rows]
 
 

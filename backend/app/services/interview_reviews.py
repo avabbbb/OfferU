@@ -108,7 +108,7 @@ def _review_docs() -> list[dict[str, Any]]:
 
 
 def _migrated_ids() -> set[int]:
-    rows = core_store.conn().execute(
+    rows = core_store.fetch(
         "SELECT json_extract(after, '$.legacy_review_id') FROM changes WHERE actor=? AND type='doc'", (MIGRATION_ACTOR,))
     return {int(r[0]) for r in rows if r[0] is not None}
 

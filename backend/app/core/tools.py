@@ -437,8 +437,8 @@ class OverviewIn(_In):
 
 def _mail_today(today: date) -> dict[str, Any]:
     """邮箱同步的每日进度：今天邮箱写了几条改动、最后一条是什么时候。"""
-    count, last = store.conn().execute(
-        "SELECT COUNT(id), MAX(at) FROM changes WHERE actor = ? AND at >= ?", (MAIL_ACTOR, today.isoformat())).fetchone()
+    count, last = store.fetch_one(
+        "SELECT COUNT(id), MAX(at) FROM changes WHERE actor = ? AND at >= ?", (MAIL_ACTOR, today.isoformat()))
     return {"today_changes": count, "last_change_at": last}
 
 
