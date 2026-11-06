@@ -8,7 +8,7 @@ import { type Doc, useTool } from "@/lib/core";
 // 1. 一屏：一句话结论、最大风险、关键观察，各板块只露一句摘要；
 // 2. 点开板块：要点，每条带口径标签（官方 / 媒体 / 第三方估算 / 社区信号 / 推断 / 缺口）；
 // 3. 点标签：这条要点引用的来源。
-// 调研文档是 doc kind=research 的 Markdown，写法见 jd-research/reference/interview-research-bar.md。
+// 调研文档是 doc kind=research 的 Markdown，写法见 docs/RESEARCH_FORMAT.md。
 
 type Point = { text: string; label?: string; refs: string[] };
 type Section = { title: string; summary: Point; points: Point[] };
