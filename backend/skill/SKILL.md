@@ -1,53 +1,43 @@
 ---
 name: offeru
-description: OfferU 本机求职工作台：岗位、简历、档案、日程、网申和邮件草稿都存在用户电脑上。用户谈求职、实习、秋招春招、简历、JD、网申、笔试面试、offer 时用。
-version: 2026-11-03
+description: OfferU 本机求职工作台：岗位、简历、档案、日程、网申和邮件草稿都存在用户电脑上。用户谈求职、实习、JD、简历、网申、笔试面试、offer 时用。
+version: 2026-11-06
 ---
 
 # OfferU
 
-OfferU 把求职数据存在本机，提供 20 个工具；网页、内置助手和你用的是同一套。每次写入都记下是谁改的，用户能在「最近改动」撤销，所以直接写，不用先问。对外的事（发邮件、提交网申、联系 HR）只写草稿，由用户自己发。
+20 个工具，网页和内置助手用的是同一套。写入直接生效，用户可在「最近改动」撤销，不用先问。对外的事（网申、邮件、联系 HR）只写草稿，用户自己发。
 
-## 怎么调用
+## 调用
 
-1. 优先 MCP：工具列表里有 offeru 的 overview、save 等就直接调。
-2. 没有 MCP 就用命令行，输出 JSON：
-   <offeru> tool overview
-   <offeru> tool get '{"type":"job","id":3}'
-   参数含中文或在 Windows PowerShell 里，先写进 UTF-8 的 JSON 文件，再传 @路径：<offeru> tool save @args.json
-3. 返回 error 时按提示改参数再试。字段和枚举以每个工具的说明为准。
-4. 都不通：OfferU 没装或 <offeru> 还是占位符，看文末「首次使用」。
+优先 MCP。没有就用命令行（输出 JSON）：`<offeru> tool overview`、`<offeru> tool get '{"type":"job","id":3}'`。参数含中文或在 PowerShell 里，先写成 UTF-8 的 JSON 文件，再 `<offeru> tool save @args.json`。报错就按提示改参数；命令不通看文末。
 
-## 五种数据
+## 数据
 
-profile 档案（唯一一份）；memory 职业记忆（一条一件事：经历、技能、偏好）；job 岗位（status、score、reasons）；event 事项（截止、笔试、面试）；doc 文档（简历、评估报告、网申问答、邮件草稿、调研，按 kind 区分）。
+profile 档案；memory 职业记忆（一条一件事）；job 岗位；event 截止、笔试、面试；doc 文档（kind：resume、evaluation、research、apply_chat、email、review、note）。
 
-## 什么时候用哪个
+## 主线：岗位收集到投递
 
-- 开场先 overview：阶段、待办、各状态岗位数、最近改动。
-- 找用户的经历和说过的话用 search；按类列用 list；看全文用 get。
-- 写数据用 save，删用 delete；改错了用 changes 找到再 undo。
-- 旧简历：find_files 找文件，read_file 读文字，split_resume 拆成 memory。
-- 用户贴岗位链接或 JD：add_job。同一链接再存会合并到原岗位。要登录的页面抓不到，请用户用浏览器插件存，或贴正文。
-- 值不值得投：evaluate_jobs。没配模型就自己评，用 save 写 job 的 score（0–100）和 reasons（三句）。
-- 改简历：tailor_resume。传主简历会写进这个岗位的定制简历（没有就新建），主简历不动；传岗位简历就原地改。流程是起草 → 独立审稿（对照档案、记忆、原简历和 JD，给出逐条精确替换）→ 修订，审一轮，最后写一次库。返回的 doc_id 是写入的那份；rounds 是每轮应用和跳过的修改；grounding 是因为找不到出处被改掉的内容，逐条问用户是不是真的，是真的就用 save 存成 memory 再改写一次，别自己当成事实；notes 是审稿人在关键词、岗位角度、动作和结果、语气上的意见，档案里没有的缺口转告用户，不要硬塞；pages 是按导出版式量的页数（量不了是 null）。导出用 export_resume_pdf。
-- 网申问答用 apply_answer；邮件投递用 draft_email（只存草稿）。
-- 公司或岗位调研：web_search 加 fetch_page，结论存成 doc（kind=research），写明来源链接和日期。
-- 邮箱：email_sync，status 看连接，sync 拉新邮件回写岗位状态和事项。
+1. 开场 overview。查经历和用户说过的话用 search；list 列表，get 看全文；save、delete 写删；改错用 changes + undo。
+2. 旧简历：find_files → read_file → split_resume。
+3. 用户贴链接、JD 或「公司 岗位」：add_job。抓不到（要登录、在图片里）就让用户贴正文或用插件存，不存空壳。
+4. 存完马上 evaluate_jobs：分数、三句理由、打招呼语。打招呼语里每个事实都要在档案里找得到。
+5. 改简历：tailor_resume。asks 逐句问用户；用户确认的回答 save 成 memory（带原话和日期），再 review_only=true 改一次。导出 export_resume_pdf。
+6. 网申 apply_answer；邮件 draft_email；邮箱回执 email_sync。
+
+## 面试准备（每步存 doc，挂到岗位）
+
+- JD 拆解：职责、能力、上下游协作方、要准备的经历类型；分「JD 原文」和「推测」两栏，每条引原文。
+- 公司调研：web_search + fetch_page，官网和一手来源优先，每条写链接和日期；不用旧信息当现状，来源矛盾就并列写；查不到写「无法确认」。按 A 已确认 / B 待用户核查 / C 对岗位的启示 输出，推测不写成公司内部事实。存 research。
+- 自我介绍：先审材料，标出哪些有事实支撑、哪些只是评价、缺背景 / 行动 / 结果 / 本人贡献的地方；一次只问一个最关键的问题，问够了再写。口语化，只挑最相关的经历；缺的标【待补：…】，附事实核对清单。存 note。
+- 押题和模拟：每题写由哪条材料触发、在考什么，不写「必问」。模拟时一次一问，不先给答案；答得含糊就追问，追问完再基于原话整理参考表达。复盘存 review。
 
 ## 规则
 
-- 不编造经历、数字和项目；档案和 memory 里没有的先问用户。
-- memory 写明 mode：教育全日制/非全日制，工作全职/实习/兼职；没说就问。
-- 不自动提交网申，不发邮件，不联系 HR。
-- 只通过工具读写，不直接改数据库或数据目录。
-- 写完告诉用户改了什么，并说明可以在「最近改动」撤销。
+- 不编造经历、数字、项目、奖项，不夸大职责；没有就问，或标【待补】。
+- memory 写明 mode（全日制 / 非全日制，全职 / 实习 / 兼职），没说就问。
+- 只通过工具读写，不直接动数据库。写完一句话说改了什么、可撤销。
 
-## 首次使用（还没装 OfferU）
+## 首次使用
 
-征得用户同意后逐条执行，先给用户看命令：
-1. 没有 uv 先装（https://docs.astral.sh/uv/getting-started/installation/）。
-2. uv tool install https://github.com/avabbbb/OfferU/releases/download/v0.2.0-lite/offeru-0.2.0-py3-none-any.whl
-3. offeru connect：把本 Skill 装进本机的 Agent，并给 Codex、Claude Code 注册 MCP。
-4. offeru start：打开本机工作台 http://127.0.0.1:8766，保持运行。
-然后请用户开一个新会话。
+先征得用户同意，给用户看命令：装 uv（https://docs.astral.sh/uv/getting-started/installation/）→ `uv tool install https://github.com/avabbbb/OfferU/releases/download/v0.2.0-lite/offeru-0.2.0-py3-none-any.whl` → `offeru connect`（装 Skill、注册 MCP）→ `offeru start`（工作台 http://127.0.0.1:8766，保持运行），然后开新会话。
