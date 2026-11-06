@@ -581,12 +581,7 @@ export interface AgentSkill {
   missing_capabilities: string[];
   /** Present when the runtime selected this Skill; display-only provenance. */
   routing?: { via?: string; routed_from?: string; reason?: string };
-  // "local:agents" / "local:claude" / "local": read-only Skill imported from the user's machine.
-  source?: string;
 }
-
-/** Natural-language turns send this sentinel; the runtime resolves one business Skill once per Run. */
-export const AUTO_SKILL_ID = "auto";
 
 export interface AgentCareerPath {
   title: string;
@@ -1184,8 +1179,6 @@ export const agentRuntimeApi = {
   syncContext: (data: Schemas["AgentContextRequest"], signal: AbortSignal) => request<{
     ok: boolean; outputs?: AgentViewSnapshot; errors?: string[];
   }>("/api/agent/context", { method: "PUT", body: JSON.stringify(data), signal }),
-  skills: () =>
-    request<{ skills: AgentSkill[] }>("/api/agent/skills"),
   runtime: () =>
     request<Record<string, any> & { available: boolean; runtime: string }>("/api/agent/runtime"),
   providerHealth: () =>
@@ -1214,7 +1207,6 @@ export const agentRuntimeApi = {
   attachmentUrl: (id: string) => API_BASE + "/api/agent/runtime/attachments/" + encodeURIComponent(id),
   start: async (data: {
     message: string;
-    skill_id?: string;
     conversation_id?: string | null;
     task_id?: string | null;
     runtime_provider?: string;
@@ -1224,7 +1216,7 @@ export const agentRuntimeApi = {
     attachments?: string[];
   }, onEvent?: (event: string, data: any) => void, signal?: AbortSignal) => {
     const runId = createAgentRunId();
-    const requestData = { ...data, skill_id: data.skill_id || AUTO_SKILL_ID, run_id: runId };
+    const requestData = { ...data, run_id: runId };
     let lastSequence = 0;
     let nextDeltaIndex = 0;
 
@@ -1573,8 +1565,6 @@ export const agentSupportApi = {
       method: "POST",
       body: JSON.stringify({ content }),
     }),
-  skills: () =>
-    request<{ skills: AgentSkill[] }>("/api/agent/skills"),
 };
 
 export interface UserDataExport {

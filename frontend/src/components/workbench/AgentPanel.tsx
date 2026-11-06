@@ -33,13 +33,11 @@ import {
   agentSupportApi,
   hostedExecutorApi,
   agentRuntimeApi,
-  AUTO_SKILL_ID,
   type AgentCareerPath,
   type AgentConversationSummary,
   type AgentJobCard,
   type AgentResponse,
   type AgentRunRecord,
-  type AgentSkill,
   type AgentToolCall,
   type HostedExecutorEvent,
   type HostedExecutorSession,
@@ -239,7 +237,6 @@ function progressForEvent(event: string, operation: unknown): string | null {
 }
 
 export function AgentPanel() {
-  const [slashIndex, setSlashIndex] = useState(0);
   const [messages, setMessages] = useState<PanelMessage[]>([
     {
       id: "welcome",
@@ -263,9 +260,7 @@ export function AgentPanel() {
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [activeRun, setActiveRun] = useState<AgentRunRecord | null>(null);
   const [interruptedRunId, setInterruptedRunId] = useState<string | null>(null);
-  const [selectedSkillId, setSelectedSkillId] = useState<string>(AUTO_SKILL_ID);
   const [composerOptions, setComposerOptions] = useComposerOptions();
-  const [skills, setSkills] = useState<AgentSkill[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [conversations, setConversations] = useState<AgentConversationSummary[]>([]);
   const [hostedOpen, setHostedOpen] = useState(false);
@@ -302,22 +297,9 @@ export function AgentPanel() {
     return [...messages].reverse().find((message) => message.response)?.response;
   }, [messages]);
 
-  const latestMode = latestResponse?.active_skill?.name || latestResponse?.mode || "ready";
+  const latestMode = latestResponse?.mode || "ready";
   const latestStage = latestResponse?.user_stage || importedStage || "unknown";
 
-  // The last Run's frozen Skill is display-only; it never changes the user's auto/manual choice.
-  const resolvedSkillId =
-    activeRun?.skill_id && activeRun.skill_id !== AUTO_SKILL_ID ? activeRun.skill_id : "";
-  const resolvedSkill = skills.find((skill) => skill.id === resolvedSkillId);
-  const resolvedSkillName = resolvedSkillId
-    ? (latestResponse?.active_skill?.id === resolvedSkillId && latestResponse.active_skill.name)
-      || resolvedSkill?.name
-      || activeRun?.skill_snapshot?.name
-      || resolvedSkillId
-    : "";
-  const resolvedRoutingReason = latestResponse?.active_skill?.id === resolvedSkillId
-    ? latestResponse.active_skill.routing?.reason
-    : undefined;
 
   const refreshConversations = async () => {
     try {
@@ -351,7 +333,6 @@ export function AgentPanel() {
       setConversationTitle("新对话");
       setResumeCandidate(null);
       setConversations([]);
-      setSelectedSkillId(AUTO_SKILL_ID);
       setImportedStage("unknown");
       setHostedSessions([]);
       setHostedDetail(null);
@@ -371,10 +352,6 @@ export function AgentPanel() {
 
   useEffect(() => {
     refreshConversations();
-    agentRuntimeApi
-      .skills()
-      .then((result) => setSkills(result.skills || []))
-      .catch(() => setSkills([]));
     hostedExecutorApi
       .sessions({ limit: 20 })
       .then((result) => setHostedSessions(result.items || []))
@@ -441,7 +418,7 @@ export function AgentPanel() {
     setInterruptedRunId(null);
   };
 
-  const sendMessage = async (text?: string, explicitSkillId?: string) => {
+  const sendMessage = async (text?: string) => {
     const typed = (text ?? input).trim();
     const fromComposer = text === undefined;
     // 附件还在上传时不发，免得模型看不到它们
@@ -450,7 +427,7 @@ export function AgentPanel() {
     if (!typed && !withAttachments) return;
     const attachments = withAttachments ? composerAttachments.takeForSend() : [];
     if (fromComposer) setInput("");
-    await startTurn(typed || ATTACHMENT_ONLY_MESSAGE, explicitSkillId, attachments);
+    await startTurn(typed || ATTACHMENT_ONLY_MESSAGE, attachments);
   };
 
   const patchTurn = (turnId: string, patch: (turn: InFlightTurn) => InFlightTurn) => {
@@ -459,7 +436,6 @@ export function AgentPanel() {
 
   const startTurn = async (
     content: string,
-    explicitSkillId?: string,
     attachments: ComposerAttachment[] = [],
   ) => {
     if (!content) return;
@@ -472,7 +448,6 @@ export function AgentPanel() {
     }
     lastSendRef.current = { content, at: now };
     parkActiveRun();
-    const requestSkillId = explicitSkillId || selectedSkillId;
     const currentConversationId = conversationId;
     suppressResumePromptRef.current = true;
     setResumeCandidate(null);
@@ -503,7 +478,6 @@ export function AgentPanel() {
       const runtimeResponse = await agentRuntimeApi.start(
         {
           message: content,
-          skill_id: requestSkillId,
           conversation_id: currentConversationId,
           llm_config_id: composerOptions.llmConfigId,
           reasoning_effort: composerOptions.reasoningEffort,
@@ -576,7 +550,7 @@ export function AgentPanel() {
   useEffect(() => {
     const take = () => {
       for (const request of drainAgentCompose()) {
-        void startTurnRef.current(request.message, request.skillId);
+        void startTurnRef.current(request.message);
       }
     };
     take();
@@ -625,7 +599,6 @@ export function AgentPanel() {
     setActiveRunId(null);
     setActiveRun(null);
     setInterruptedRunId(null);
-    setSelectedSkillId(AUTO_SKILL_ID);
     setPendingActionCount(0);
     setReviewPending(0);
     setHistoryOpen(false);
@@ -633,7 +606,7 @@ export function AgentPanel() {
       {
         id: `welcome-${Date.now()}`,
         role: "assistant",
-        content: "新对话已开始。直接描述你的求职任务，助手会自动选择合适的 Skill；也可以在上方手动指定。",
+        content: "新对话已开始。直接描述你的求职任务。",
       },
     ]);
   };
@@ -940,16 +913,6 @@ export function AgentPanel() {
     }
   };
 
-  const slashQuery = input.startsWith("/") && !/\s/.test(input) ? input.slice(1).toLowerCase() : null;
-  const slashMatches = slashQuery === null
-    ? []
-    : skills
-        .filter((skill) => skill.id.toLowerCase().includes(slashQuery) || skill.name.toLowerCase().includes(slashQuery))
-        .slice(0, 8);
-  const pickSlashSkill = (skillId: string) => {
-    setInput(`/${skillId} `);
-    setSlashIndex(0);
-  };
 
   // 提醒和「接下来可以」每轮都会重算，只跟在最新一条回复下面，旧回复不重复贴。
   const guidanceMessageId = messages.reduce<string | undefined>((last, item) => (item.response ? item.id : last), undefined);
@@ -1395,31 +1358,6 @@ export function AgentPanel() {
 
       {/* 输入区 */}
       <footer className="agent-bar px-3 pb-3 pt-1.5">
-        {slashMatches.length > 0 && (
-          <div role="listbox" aria-label="技能" className="custom-scrollbar mb-1.5 max-h-56 overflow-y-auto rounded-md border border-[var(--border)] bg-[var(--surface)] py-1">
-            {slashMatches.map((skill, index) => (
-              <button
-                key={skill.id}
-                type="button"
-                role="option"
-                aria-selected={index === slashIndex}
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  pickSlashSkill(skill.id);
-                }}
-                className={`flex w-full items-baseline gap-2 px-2.5 py-1.5 text-left text-[12px] ${
-                  index === slashIndex ? "bg-[var(--surface-muted)]" : "hover:bg-[var(--surface-hover)]"
-                }`}
-              >
-                <span className="shrink-0 font-mono text-[var(--foreground)]">/{skill.id}</span>
-                <span className="truncate text-[var(--foreground-muted)]">{skill.name}</span>
-                {skill.source?.startsWith("local") && (
-                  <span className="ml-auto shrink-0 rounded border border-[var(--border)] px-1 text-[10px] leading-4 text-[var(--foreground-muted)]">本机</span>
-                )}
-              </button>
-            ))}
-          </div>
-        )}
         <div
           className={dragActive ? "agent-composer is-drag-active" : "agent-composer"}
           data-testid="agent-composer"
@@ -1456,7 +1394,7 @@ export function AgentPanel() {
             placeholder={
               runNeedsUser
                 ? "继续对话或说明如何调整；当前待处理的任务会先保存，随时可回来"
-                : "问 OfferU，输入 / 选择技能..."
+                : "问 OfferU..."
             }
             variant="flat"
             className="w-full"
@@ -1468,24 +1406,6 @@ export function AgentPanel() {
               composerAttachments.addFiles(files);
             }}
             onKeyDown={(event) => {
-              if (slashMatches.length > 0) {
-                const count = slashMatches.length;
-                if (event.key === "ArrowDown") {
-                  event.preventDefault();
-                  setSlashIndex((value) => (value + 1) % count);
-                  return;
-                }
-                if (event.key === "ArrowUp") {
-                  event.preventDefault();
-                  setSlashIndex((value) => (value + count - 1) % count);
-                  return;
-                }
-                if (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) {
-                  event.preventDefault();
-                  pickSlashSkill(slashMatches[Math.min(slashIndex, count - 1)].id);
-                  return;
-                }
-              }
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
                 sendMessage();

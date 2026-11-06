@@ -8,7 +8,6 @@
 
 export interface AgentComposeRequest {
   message: string;
-  skillId?: string;
 }
 
 export const AGENT_COMPOSE_EVENT = "offeru-agent-compose";
