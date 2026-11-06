@@ -158,58 +158,8 @@ _SKILLS = (
 )
 
 
-def _directory_skills() -> tuple[AgentSkill, ...]:
-    """延迟加载用户目录技能（backend/skills/<name>/SKILL.md），避免循环 import。"""
-    from app.services.directory_skills import scan_directory_skills
-
-    return tuple(scan_directory_skills())
-
-
-def _plugin_skills() -> tuple[AgentSkill, ...]:
-    """Load skills from installed capability plugins without importing them at startup."""
-    try:
-        from app.services.capability_plugins import plugin_skill_catalog
-
-        return tuple(plugin_skill_catalog())
-    except Exception:
-        return ()
-
-
-def _local_skills() -> tuple[AgentSkill, ...]:
-    """Read-only Skills imported from the user's local shared skill dirs.
-
-    Explicit selection only: never part of catalog(), registry_snapshot(),
-    projections or auto routing, so the registry sha256 stays machine-independent.
-    """
-    from app.services.directory_skills import scan_local_skills
-
-    return tuple(scan_local_skills())
-
-
-def local_skill_summaries(operation_schemas: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Summaries of read-only local Skills for the slash picker (GET /skills).
-
-    Kept outside registry_snapshot() so its sha256 never depends on the user's machine.
-    """
-    available = {str(operation.get("name") or "") for operation in operation_schemas}
-    confirmed = {
-        str(operation.get("name") or "")
-        for operation in operation_schemas
-        if operation.get("requires_confirmation")
-    }
-    rows: list[dict[str, Any]] = []
-    for skill in sorted(_local_skills(), key=lambda item: (item.order, item.id)):
-        tools = sorted(skill.allowed_tools.intersection(available))
-        rows.append({
-            **skill.summary(),
-            "allowed_tools": tools,
-            "confirmation_required_operations": sorted(confirmed.intersection(tools)),
-        })
-    return rows
-
-
 def catalog() -> list[dict[str, Any]]:
-    skills = [*_SKILLS, *_directory_skills(), *_plugin_skills()]
+    skills = list(_SKILLS)
     return [skill.summary() for skill in sorted(skills, key=lambda item: (item.order, item.id))]
 
 
@@ -297,7 +247,7 @@ def resolve_skill(value: str | None) -> AgentSkill | None:
         return None
     if normalized == "offeru":
         normalized = "discovery"
-    for skill in (*_SKILLS, *_directory_skills(), *_plugin_skills(), *_local_skills()):
+    for skill in _SKILLS:
         if normalized == skill.id or normalized in skill.aliases:
             return skill
     return None
@@ -344,7 +294,7 @@ def _routable_skills() -> list[AgentSkill]:
 
     return [
         skill
-        for skill in (*_SKILLS, *_directory_skills(), *_plugin_skills())
+        for skill in _SKILLS
         if _is_routable_skill(skill)
         and any(name in OPERATIONS for name in skill.allowed_tools)
     ]

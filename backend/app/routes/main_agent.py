@@ -19,7 +19,7 @@ from app.services.harness_memory import (
     export_agent_memory_markdown,
     load_agent_memory,
 )
-from app.services.agent_skill_registry import local_skill_summaries, registry_snapshot
+from app.services.agent_skill_registry import registry_snapshot
 from app.services.agent_runtime import (
     canonical_agent_run_event,
     get_agent_run_provider,
@@ -232,9 +232,7 @@ def _runtime_stream_error_payload(
 @router.get("/skills")
 async def skills() -> dict[str, Any]:
     operations = list_operations()
-    snapshot = registry_snapshot(operations)
-    # 本机只读技能只追加到 picker 列表；sha256 仍是与机器无关的 Registry 指纹。
-    return dict(snapshot, skills=list(snapshot["skills"]) + local_skill_summaries(operations))
+    return registry_snapshot(operations)
 
 
 @runtime_router.get("/runs")
@@ -290,21 +288,16 @@ async def agent_run_events(
 
 
 def _runtime_response_from_run(run: dict[str, Any]) -> dict[str, Any]:
-    from app.services.agent_skill_registry import resolve_skill
-
     final_result = (
         run.get("final_result")
         if isinstance(run.get("final_result"), dict)
         else {}
     )
-    skill = resolve_skill(str(run.get("skill_id") or ""))
     active_skill = (
         final_result.get("active_skill")
         if isinstance(final_result.get("active_skill"), dict)
         else (
-            skill.summary()
-            if skill is not None
-            else {
+            {
                 **(
                     run.get("skill_snapshot")
                     if isinstance(run.get("skill_snapshot"), dict)

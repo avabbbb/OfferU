@@ -324,29 +324,16 @@ class ReplayAgentRunProvider:
             list_agent_run_events,
             save_agent_run,
         )
-        from app.services.agent_skill_registry import (
-            SkillRoutingError,
-            resolve_declared_skill,
-        )
 
         goal = str(message or "").strip()
-        # Replay stays deterministic: declared Skills resolve locally, while
-        # "auto" would require the model router and fails visibly instead of
-        # silently degrading.
-        declared = resolve_declared_skill(goal, skill_id)
-        if declared is None:
-            raise SkillRoutingError(
-                "Replay provider 不支持 Skill 自动路由；请显式指定 skill_id。"
-            )
-        skill, routing = declared
         run = await create_agent_run(
             conversation_id=conversation_id,
             task_id=task_id,
             goal=goal,
-            mode=skill.mode,
-            skill_id=skill.id,
-            skill_version=skill.version,
-            skill_snapshot={**skill.summary(), "routing": routing.provenance()},
+            mode="core",
+            skill_id="offeru",
+            skill_version="core",
+            skill_snapshot={"id": "offeru", "name": "OfferU"},
             actions=[],
             exit_criteria=["the replay response is persisted"],
             llm_runtime={
@@ -402,7 +389,7 @@ class ReplayAgentRunProvider:
         run["final_result"] = {
             "assistant_message": response_text,
             "turn_finished": True,
-            "active_skill": {**skill.summary(), "routing": routing.provenance()},
+            "active_skill": {"id": "offeru", "name": "OfferU"},
         }
         saved = await save_agent_run(run)
         for event in await list_agent_run_events(run_id, after_sequence=cursor):
@@ -422,14 +409,12 @@ class ReplayAgentRunProvider:
             load_agent_run,
             save_agent_run,
         )
-        from app.services.agent_skill_registry import resolve_skill
 
         run = await load_agent_run(run_id)
         if run is None:
             raise ValueError(f"Agent Run {run_id} 不存在。")
         if run.get("status") != "interrupted":
             raise ValueError(f"Agent Run {run_id} 不能恢复（status={run.get('status')}）。")
-        skill = resolve_skill(str(run.get("skill_id") or ""))
         response_text = f"Replay Agent 已从持久化 Run 恢复任务：{str(run.get('goal') or '').strip()}"
         await append_agent_run_event(
             run_id,
@@ -461,7 +446,6 @@ class ReplayAgentRunProvider:
         run["final_result"] = {
             "assistant_message": response_text,
             "turn_finished": True,
-            "active_skill": skill.summary() if skill is not None else {},
         }
         saved = await save_agent_run(run)
         return {

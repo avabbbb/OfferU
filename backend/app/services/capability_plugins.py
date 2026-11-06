@@ -338,57 +338,6 @@ async def invoke_plugin_capability(
     }
 
 
-def plugin_skill_catalog(*, root: Path | None = None, state_path: Path | None = None) -> list[Any]:
-    """Load installed plugin SKILL.md files as discovery-only AgentSkills."""
-
-    from app.services.agent_skill_registry import AgentSkill
-
-    discovered = discover_plugins(root=root, state_path=state_path)
-    skills: list[AgentSkill] = []
-    for plugin in discovered["plugins"]:
-        if not plugin.get("installed"):
-            continue
-        skill_root = (Path(plugin["root"]) / str(plugin.get("skills") or "skills")).resolve()
-        try:
-            skill_root.relative_to(Path(plugin["root"]).resolve())
-        except ValueError:
-            continue
-        if not skill_root.is_dir():
-            continue
-        for skill_file in sorted(skill_root.glob("*/SKILL.md")):
-            text = skill_file.read_text(encoding="utf-8")
-            if not text.startswith("---") or "\n---" not in text[3:]:
-                continue
-            end = text.find("\n---", 3)
-            try:
-                import yaml
-
-                meta = yaml.safe_load(text[3:end]) or {}
-            except Exception:
-                continue
-            if not isinstance(meta, dict) or not str(meta.get("description") or "").strip():
-                continue
-            skill_id = f"plugin_{plugin['name']}_{skill_file.parent.name}".replace("-", "_")
-            skills.append(
-                AgentSkill(
-                    id=skill_id,
-                    name=str(meta.get("display_name") or skill_file.parent.name),
-                    group="plugin",
-                    status="plugin",
-                    description=(
-                        f"[{plugin['name']}] {str(meta.get('description') or '').strip()}"
-                    ),
-                    mode="skill_assistant",
-                    allowed_tools=frozenset({"invoke_plugin_capability"}),
-                    featured=False,
-                    order=700,
-                    version=f"{plugin['version']}:{skill_file.parent.name}",
-                    aliases=(),
-                )
-            )
-    return skills
-
-
 __all__ = [
     "PLUGIN_ROOT",
     "PLUGIN_STATE_PATH",
@@ -396,6 +345,5 @@ __all__ = [
     "install_plugin",
     "invoke_plugin_capability",
     "list_plugin_capabilities",
-    "plugin_skill_catalog",
     "uninstall_plugin",
 ]
