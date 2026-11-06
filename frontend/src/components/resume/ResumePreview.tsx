@@ -10,14 +10,14 @@ import type { Resume } from "@/lib/resumeModel";
 
 const A4_W = 794; // 210mm @ 96dpi
 
-// 只注入预览 iframe（导出的 PDF 不带）：悬停的块画橙色虚线框，左上角标「点击编辑此模块」。
+// 只注入预览 iframe（导出的 PDF 不带）：悬停的块画蓝色虚线框（和主按钮同色），左上角标「点击编辑此模块」。
 const HOVER_CSS = `
 .resume .item, .resume h1, .resume p.contact, .resume section > h2 { position: relative; cursor: pointer; border-radius: 2px; }
 .resume .item:hover, .resume h1:hover, .resume p.contact:hover, .resume section > h2:hover {
-  outline: 1px dashed #f97316; outline-offset: 2px; background: rgba(249, 115, 22, 0.04); }
+  outline: 1px dashed #2383e2; outline-offset: 2px; background: rgba(35, 131, 226, 0.05); }
 .resume .item:hover::before, .resume section > h2:hover::before {
   content: "点击编辑此模块"; position: absolute; left: -3px; bottom: 100%; margin-bottom: 2px; padding: 1px 6px; border-radius: 3px 3px 0 0;
-  background: #f97316; color: #fff; font: 500 9px/1.6 system-ui, sans-serif; letter-spacing: 0; white-space: nowrap; z-index: 1; }`;
+  background: #2383e2; color: #fff; font: 500 9px/1.6 system-ui, sans-serif; letter-spacing: 0; white-space: nowrap; z-index: 1; }`;
 
 export type PreviewHandle = { measure: (style: ResumeStyle) => number };
 
@@ -107,14 +107,14 @@ export const ResumePreview = forwardRef<PreviewHandle, Props>(function ResumePre
   return (
     <div ref={box} className="rp-canvas min-w-0 flex-1 overflow-auto px-4 pb-6 pt-3">
       {toolbar && <div className="rp-toolbar">{toolbar}</div>}
-      {error && <p role="alert" className="mx-auto mb-3 max-w-[794px] text-[12.5px] text-red-600">{error}</p>}
+      {error && <p role="alert" className="mx-auto mb-3 max-w-[794px] text-[12.5px] text-[var(--primary-red)]">{error}</p>}
       <div className="relative mx-auto" style={{ width: A4_W * scale, height: height * scale }}>
         <iframe ref={frame} title="简历预览（和导出的 PDF 一致）" srcDoc={html} sandbox="allow-same-origin" onLoad={loaded}
           style={{ width: A4_W, height, transform: "scale(" + scale + ")", transformOrigin: "0 0", border: 0, background: "#fff" }}
           className="rp-paper absolute left-0 top-0" />
         {height > PAGE_PX && (
-          <div className="pointer-events-none absolute inset-x-0 border-t border-dashed border-red-400" style={{ top: PAGE_PX * scale }}>
-            <span className="absolute -top-5 right-0 text-[11px] text-red-500">第一页到这</span>
+          <div className="pointer-events-none absolute inset-x-0 border-t border-dashed border-[var(--border-strong)]" style={{ top: PAGE_PX * scale }}>
+            <span className="absolute -top-5 right-0 text-[11px] text-[var(--foreground-muted)]">第一页到这</span>
           </div>
         )}
       </div>

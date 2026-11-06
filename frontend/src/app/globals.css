@@ -1877,30 +1877,22 @@ body {
   white-space: nowrap;
 }
 
-/* 简历编辑器外壳（Kami）：暖纸底、暖灰细线、墨色文字；只换中性色，不加彩色、不加重阴影。 */
+/* 简历编辑器外壳：和岗位页同一套 Notion 式中性色。底色、文字、细线继承全局；卡片纯白、输入框浅灰、标题无衬线；彩色只留给蓝色主操作和聚焦。 */
 .resume-shell {
-  --background: #eeede5;
-  --surface: #e5e2d6;
-  --border: #e3e0d4;
-  --foreground: #141413;
-  --foreground-muted: #6b6a64;
+  --surface: rgba(31, 31, 29, 0.07);
+  --card: #ffffff;
+  --field: rgba(31, 31, 29, 0.045);
+  --ink: #2383e2;
+  --shadow-card: 0 1px 2px rgba(31, 31, 29, 0.04);
+  --shadow-raised: 0 0 0 1px rgba(31, 31, 29, 0.05), 0 3px 6px rgba(31, 31, 29, 0.08), 0 9px 24px rgba(31, 31, 29, 0.14);
+  --serif: var(--font-sans);
 }
-.resume-shell h2 { font-family: "Source Han Serif SC", "Noto Serif SC", "Songti SC", Georgia, serif; font-weight: 500; }
-
-
-.resume-shell {
-  --card: #fffefa;
-  --field: #f3f1e9;
-  --ink: #1f3a5f;
-  --shadow-card: 0 1px 2px rgba(20, 20, 19, 0.04), 0 4px 14px rgba(20, 20, 19, 0.05);
-  --shadow-raised: 0 1px 3px rgba(20, 20, 19, 0.06), 0 14px 36px rgba(20, 20, 19, 0.10);
-  --serif: "Source Han Serif SC", "Noto Serif SC", "Songti SC", Georgia, serif;
-}
+.resume-shell h2 { font-family: var(--font-sans); font-weight: 600; }
 
 
 /* 顶栏一行（对齐超级简历）：简历名下拉 | 保存状态 | 排版工具栏 | 下载。 */
 .resume-shell .rs-head {
-  display: flex; align-items: center; gap: 0.75rem; min-width: 0; padding: 0.625rem 1.25rem;
+  display: flex; align-items: center; gap: 0.75rem; min-width: 0; padding: 0.625rem 0.75rem;
   border-bottom: 1px solid var(--border); background: var(--card);
 }
 .resume-shell .rs-saved { flex: none; color: var(--foreground-muted); font-size: 0.75rem; }
@@ -1910,21 +1902,21 @@ body {
 }
 .resume-shell .rs-sep { flex: none; width: 1px; height: 1rem; margin: 0 0.375rem; background: var(--border); }
 .resume-shell .rs-btn {
-  flex: none; height: 1.875rem; padding: 0 0.75rem; border: 1px solid var(--border); border-radius: 0.5rem;
+  flex: none; height: 1.75rem; padding: 0 0.75rem; border: 1px solid var(--border); border-radius: 0.375rem;
   background: var(--card); color: var(--foreground); font-size: 0.8125rem;
 }
 .resume-shell .rs-btn:hover { background: var(--field); }
 .resume-shell .rs-btn:disabled { opacity: 0.5; }
 .resume-shell .rs-pop, .resume-shell .rs-combo { position: relative; flex: none; }
 .resume-shell .rs-trigger {
-  display: inline-flex; align-items: center; gap: 0.3rem; height: 1.875rem; padding: 0 0.5rem; border-radius: 0.5rem;
+  display: inline-flex; align-items: center; gap: 0.3rem; height: 1.75rem; padding: 0 0.5rem; border-radius: 0.375rem;
   color: var(--foreground); font-size: 0.8125rem;
 }
 .resume-shell .rs-trigger:hover, .resume-shell .rs-trigger[aria-expanded="true"] { background: var(--field); }
 .resume-shell .rs-caret-icon { width: 0.75rem; height: 0.75rem; flex: none; color: var(--foreground-muted); }
 .resume-shell .rs-dot { width: 0.625rem; height: 0.625rem; border-radius: 999px; }
 .resume-shell .rs-combo {
-  display: inline-flex; align-items: center; gap: 0.2rem; height: 1.875rem; padding: 0 0.125rem 0 0.5rem; border-radius: 0.5rem;
+  display: inline-flex; align-items: center; gap: 0.2rem; height: 1.75rem; padding: 0 0.125rem 0 0.5rem; border-radius: 0.375rem;
 }
 .resume-shell .rs-combo:hover, .resume-shell .rs-combo:focus-within { background: var(--field); }
 .resume-shell .rs-combo input {
@@ -1948,21 +1940,20 @@ body {
 }
 .resume-shell .rs-option:hover { background: var(--field); }
 .resume-shell .rs-option[aria-checked="true"], .resume-shell .rs-option[aria-selected="true"] { color: var(--ink); font-weight: 600; }
-.resume-shell .rs-row { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; min-height: 1.875rem; padding: 0 0.5rem; }
+.resume-shell .rs-row { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; min-height: 1.75rem; padding: 0 0.5rem; }
 .resume-shell .rs-row[data-disabled] { opacity: 0.45; }
 .resume-shell .rs-link { color: var(--foreground); font-size: 0.8125rem; }
 .resume-shell .rs-link:hover { color: var(--ink); }
 .resume-shell .rs-swatch { width: 0.875rem; height: 0.875rem; border-radius: 999px; }
 .resume-shell .rs-swatch[aria-checked="true"] { box-shadow: 0 0 0 2px var(--card), 0 0 0 3.5px var(--foreground); }
 .resume-shell .rs-download {
-  flex-shrink: 0; height: 1.875rem; display: inline-flex; align-items: center; padding: 0 0.875rem;
-  border-radius: 0.5rem; background: var(--foreground); color: var(--background); font-size: 0.8125rem; font-weight: 500;
-  box-shadow: 0 1px 2px rgba(20, 20, 19, 0.12), 0 4px 10px rgba(20, 20, 19, 0.12);
+  flex-shrink: 0; height: 1.75rem; display: inline-flex; align-items: center; padding: 0 0.875rem;
+  border-radius: 0.375rem; background: #2383e2; color: #fff; font-size: 0.8125rem; font-weight: 500;
 }
-.resume-shell .rs-download:hover { opacity: 0.9; }
+.resume-shell .rs-download:hover { background: #0077d4; }
 .resume-shell .rs-download-group { position: relative; display: inline-flex; flex: none; }
-.resume-shell .rs-download-main { border-radius: 0.5rem 0 0 0.5rem; }
-.resume-shell .rs-download-caret { padding: 0 0.5rem; border-radius: 0 0.5rem 0.5rem 0; border-left: 1px solid rgba(255, 255, 255, 0.2); }
+.resume-shell .rs-download-main { border-radius: 0.375rem 0 0 0.375rem; }
+.resume-shell .rs-download-caret { padding: 0 0.5rem; border-radius: 0 0.375rem 0.375rem 0; border-left: 1px solid rgba(255, 255, 255, 0.25); }
 .resume-shell .rs-download-caret .rs-caret-icon { color: inherit; transition: transform 0.15s ease; }
 .resume-shell .rs-download-caret .rs-caret-icon[data-open] { transform: rotate(180deg); }
 .resume-shell .rs-download-menu {
@@ -1983,7 +1974,7 @@ body {
   position: absolute; top: calc(100% + 0.375rem); left: 0; z-index: 30; padding: 0.25rem 0.5rem; border-radius: 0.375rem;
   background: var(--foreground); color: var(--background); font-size: 0.75rem;
 }
-.resume-shell .rs-status[data-error] { background: #b42318; color: #fff; }
+.resume-shell .rs-status[data-error] { background: var(--primary-red); color: #fff; }
 
 /* 简历名切换器：点名字下拉切换 / 新建 / 改名 / 复制 / 删除。 */
 .resume-shell .rw { position: relative; display: flex; flex: 0 1 auto; align-items: center; gap: 0.125rem; min-width: 8.5rem; }
@@ -1999,7 +1990,7 @@ body {
   border-radius: 0.375rem; color: var(--foreground-muted);
 }
 .resume-shell .rw-icon:hover { background: var(--surface); color: var(--foreground); }
-.resume-shell .rw-icon[data-danger]:hover { color: #b42318; }
+.resume-shell .rw-icon[data-danger]:hover { color: var(--primary-red); }
 .resume-shell .rw-input {
   width: 14rem; height: 2rem; padding: 0 0.5rem; border: 1px solid var(--ink); border-radius: 0.5rem; background: var(--card);
   color: var(--foreground); font-family: var(--serif); font-size: 1.0625rem; font-weight: 600; outline: none;
@@ -2028,9 +2019,9 @@ body {
 .resume-shell .rw-new:hover { background: var(--field); color: var(--ink); }
 
 
-.resume-shell .rf-scroll { min-width: 0; flex: 1; overflow: auto; padding: 0.25rem 1.5rem 2rem; display: flex; flex-direction: column; gap: 1rem; }
+.resume-shell .rf-scroll { min-width: 0; flex: 1; overflow: auto; padding: 0.75rem 0.75rem 2rem; display: flex; flex-direction: column; gap: 0.75rem; }
 .resume-shell .rf-card {
-  border: 1px solid var(--border); border-radius: 1rem; background: var(--card); box-shadow: var(--shadow-card);
+  border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--card); box-shadow: var(--shadow-card);
   padding: 1rem 1.25rem; scroll-margin-top: 0.75rem;
 }
 .resume-shell .rf-card[data-hidden] { opacity: 0.6; }
@@ -2039,15 +2030,15 @@ body {
 .resume-shell .rf-card-head > * { flex: none; }
 .resume-shell .rf-card-title {
   min-width: 2em; max-width: 60%; flex: none; padding: 0 0.125rem; border: 0; border-radius: 0.375rem; background: transparent; outline: none;
-  font-family: var(--serif); font-size: 1.1875rem; font-weight: 600; color: var(--foreground);
+  font-family: var(--serif); font-size: 1.0625rem; font-weight: 600; color: var(--foreground);
 }
 .resume-shell h2.rf-card-title { flex: 1; max-width: none; }
-.resume-shell input.rf-card-title:focus { box-shadow: 0 0 0 2px rgba(31, 58, 95, 0.15); }
+.resume-shell input.rf-card-title:focus { box-shadow: 0 0 0 2px rgba(35, 131, 226, 0.2); }
 .resume-shell .rf-card-body { margin-top: 0.875rem; display: flex; flex-direction: column; gap: 0.625rem; }
 .resume-shell .rf-card-body.grid { display: grid; }
 .resume-shell .rf-icon {
-  display: inline-flex; width: 2rem; height: 2rem; flex-shrink: 0; align-items: center; justify-content: center;
-  border-radius: 999px; background: var(--ink); color: #fff; box-shadow: 0 2px 6px rgba(31, 58, 95, 0.25);
+  display: inline-flex; width: 1.75rem; height: 1.75rem; flex-shrink: 0; align-items: center; justify-content: center;
+  border-radius: 0.375rem; background: var(--field); color: var(--foreground-muted);
 }
 .resume-shell .rf-icon svg { width: 1rem; height: 1rem; }
 .resume-shell .rf-actions { display: flex; flex-shrink: 0; align-items: center; gap: 0.125rem; margin-left: auto; }
@@ -2056,7 +2047,7 @@ body {
   border-radius: 0.375rem; color: var(--foreground-muted); font-size: 0.75rem; line-height: 1;
 }
 .resume-shell .rf-btn:hover:not(:disabled) { background: var(--field); color: var(--foreground); }
-.resume-shell .rf-btn[data-danger]:hover:not(:disabled) { background: #fbeae8; color: #b42318; }
+.resume-shell .rf-btn[data-danger]:hover:not(:disabled) { background: var(--status-blush); color: var(--primary-red); }
 .resume-shell .rf-btn:disabled { opacity: 0.3; }
 .resume-shell .rf-glyph { width: 1rem; height: 1rem; }
 .resume-shell .rf-chevron { display: inline-flex; transition: transform 0.15s; }
@@ -2083,7 +2074,7 @@ body {
   transition: border-color 0.15s, background 0.15s;
 }
 .resume-shell .rf-item[data-open] .rf-input { background: var(--background); }
-.resume-shell .rf-input:focus { border-color: var(--ink); background: var(--card); box-shadow: 0 0 0 3px rgba(31, 58, 95, 0.08); }
+.resume-shell .rf-input:focus { border-color: var(--ink); background: var(--card); box-shadow: 0 0 0 3px rgba(35, 131, 226, 0.12); }
 .resume-shell .rf-bullet { display: flex; align-items: flex-start; gap: 0.5rem; }
 .resume-shell .rf-dot { margin-top: 0.85rem; width: 0.3rem; height: 0.3rem; flex-shrink: 0; border-radius: 999px; background: var(--foreground-muted); }
 .resume-shell .rf-bullet .rf-actions { padding-top: 0.25rem; }
@@ -2128,9 +2119,9 @@ body {
 .resume-shell .rt-edit a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
 
 
-/* 预览：和左侧编辑栏同色的暖灰底（--background）上放一张 A4，只用一层浅阴影托出纸面，不要深色边框。 */
+/* 预览：和左侧编辑栏同色的中性底（--background）上放一张 A4，只用一层浅阴影托出纸面，不要深色边框。 */
 .resume-shell .rp-canvas { background: var(--background); }
-.resume-shell .rp-canvas [role="alert"] { color: #b91c1c; }
+.resume-shell .rp-canvas [role="alert"] { color: var(--primary-red); }
 .resume-shell .rp-paper { border-radius: 2px; box-shadow: 0 1px 2px rgba(20, 20, 19, 0.08), 0 8px 24px rgba(20, 20, 19, 0.10); }
 
 
