@@ -1,5 +1,6 @@
 "use client";
 
+import { CalendarCheck, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { type MouseEvent, type PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { EVENT_KIND, type Event, type EventKind, type Job, write } from "@/lib/core";
@@ -13,15 +14,10 @@ import { ghost } from "./ViewPanels";
 // 条上的菱形是事项（截止 / 笔试 / 面试 / 待办），悬停看标题和日期，已完成的变淡。点条或岗位名打开右侧详情。
 // 筛选、排序、分组用甘特视图自己的配置；缩放只有周 / 月两档。
 
-// [填充, 左边框]，和状态胶囊同一套色。
-const BAR: Record<string, [string, string]> = {
-  slate: ["rgba(100, 116, 139, 0.16)", "rgb(100, 116, 139)"],
-  blue: ["rgba(59, 130, 246, 0.16)", "rgb(37, 99, 235)"],
-  yellow: ["rgba(245, 158, 11, 0.18)", "rgb(217, 119, 6)"],
-  orange: ["rgba(249, 115, 22, 0.18)", "rgb(234, 88, 12)"],
-  green: ["rgba(16, 185, 129, 0.18)", "rgb(5, 150, 105)"],
-  red: ["rgba(244, 63, 94, 0.14)", "rgb(225, 29, 72)"],
-  gray: ["rgba(163, 163, 163, 0.18)", "rgb(115, 115, 115)"],
+// 低饱和填充色（和状态胶囊同一套色），圆角色块、不加左边框，照 Notion 时间线。
+const BAR: Record<string, string> = {
+  slate: "rgba(100, 116, 139, 0.18)", blue: "rgba(59, 130, 246, 0.18)", yellow: "rgba(245, 158, 11, 0.22)",
+  orange: "rgba(249, 115, 22, 0.2)", green: "rgba(16, 185, 129, 0.2)", red: "rgba(244, 63, 94, 0.16)", gray: "rgba(163, 163, 163, 0.22)",
 };
 const DOT: Record<string, string> = { deadline: "rgb(225, 29, 72)", test: "rgb(217, 119, 6)", interview: "rgb(234, 88, 12)", todo: "rgb(100, 116, 139)" };
 const LEFT = 240;
@@ -76,8 +72,8 @@ export function JobsGantt({ jobs, events, view, openId, onOpen }: {
   // 周末底色（firstSat：第一个周六）和日分隔线用重复渐变画在每行背景上，不必每天一个元素。
   const firstSat = days.findIndex((t, i) => t.weekend && days[i + 1]?.weekend);
   const grid = {
-    backgroundImage: "linear-gradient(90deg, var(--surface-hover) " + 2 * px + "px, transparent 0)"
-      + (scale === "week" ? ", linear-gradient(90deg, var(--border) 1px, transparent 0)" : ""),
+    backgroundImage: "linear-gradient(90deg, color-mix(in srgb, var(--surface-hover) 55%, transparent) " + 2 * px + "px, transparent 0)"
+      + (scale === "week" ? ", linear-gradient(90deg, color-mix(in srgb, var(--border) 40%, transparent) 1px, transparent 0)" : ""),
     backgroundSize: 7 * px + "px 100%" + (scale === "week" ? ", " + px + "px 100%" : ""),
     backgroundPosition: firstSat * px + "px 0" + (scale === "week" ? ", 0 0" : ""),
   };
@@ -92,7 +88,7 @@ export function JobsGantt({ jobs, events, view, openId, onOpen }: {
   if (!jobs.length) return <p className="text-[13.5px] text-[var(--foreground-muted)]">没有符合条件的岗位。</p>;
 
   const toggle = (key: string) => setCollapsed((s) => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; });
-  const leftCell = "sticky left-0 z-10 flex shrink-0 items-center border-r border-[var(--border)] bg-[var(--surface-opaque)] px-2";
+  const leftCell = "sticky left-0 z-10 flex shrink-0 items-center bg-[var(--surface-opaque)] px-2";
 
   const moveEvent = (id: number, at: string) => write("save", { type: "event", id, data: { at } });
   const startDrag = (e: PointerEvent<HTMLElement>, id: number) => {
@@ -139,7 +135,7 @@ export function JobsGantt({ jobs, events, view, openId, onOpen }: {
               className={ghost + (scale === s ? " bg-[var(--accent-bg)] text-[var(--foreground)]" : "")}>{SCALE_NAME[s]}</button>
           ))}
         </div>
-        <button type="button" className={ghost} onClick={toToday}>今天</button>
+        <button type="button" className={ghost + " inline-flex items-center gap-1"} onClick={toToday} title="滚到今天"><CalendarCheck size={14} strokeWidth={1.75} />今天</button>
         {undo && (
           <span role="status" className="flex items-center gap-1">
             已把「{undo.title}」改到 {undo.to.slice(5, 10)}
@@ -155,13 +151,13 @@ export function JobsGantt({ jobs, events, view, openId, onOpen }: {
         </span>
       </div>
 
-      <div ref={scroller} data-testid="jobs-gantt" onScroll={(e) => setScrollX(e.currentTarget.scrollLeft)} className="max-h-[70vh] overflow-auto rounded-lg border border-[var(--border)] text-[13px]">
+      <div ref={scroller} data-testid="jobs-gantt" onScroll={(e) => setScrollX(e.currentTarget.scrollLeft)} className="max-h-[70vh] overflow-auto border-t border-[var(--border)] text-[13px]">
         <div style={{ width: left + width }}>
           <div className="sticky top-0 z-20 flex border-b border-[var(--border)] bg-[var(--surface-opaque)]">
             <div className={leftCell + " z-30 justify-between gap-1 px-1.5 text-[var(--foreground-muted)]"} style={{ width: left, height: HEAD * 2 }}>
               {!fold && <span className="pl-0.5">岗位</span>}
               <button type="button" onClick={() => setFold(!fold)} aria-label={fold ? "展开岗位列" : "折叠岗位列"} title={fold ? "展开岗位列" : "折叠岗位列"}
-                className="rounded px-1 leading-5 hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)]">{fold ? "»" : "«"}</button>
+                className="rounded p-1 hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)]">{fold ? <PanelLeftOpen size={14} strokeWidth={1.75} /> : <PanelLeftClose size={14} strokeWidth={1.75} />}</button>
             </div>
             <div className="relative" style={{ width, height: HEAD * 2 }}>
               {days.map((t) => (
@@ -176,6 +172,7 @@ export function JobsGantt({ jobs, events, view, openId, onOpen }: {
                   {t.date.slice(0, 4)}年{Number(t.date.slice(5, 7))}月
                 </span>
               ))}
+              <span aria-hidden className="absolute bottom-0 h-1.5 w-1.5 -translate-x-1/2 translate-y-1/2 rounded-full bg-rose-500" style={{ left: nowX + px / 2 }} />
             </div>
           </div>
 
@@ -197,7 +194,7 @@ export function JobsGantt({ jobs, events, view, openId, onOpen }: {
             const { job } = it;
             const bar = bars.get(job.id);
             if (!bar) return null;
-            const [fill, edge] = BAR[STATUS_TONE[job.status]];
+            const fill = BAR[STATUS_TONE[job.status]];
             const active = job.id === openId;
             const wide = (bar.end - bar.start + 1) * px > 64;
             // 条整个在可视区左边或右边时，行内贴边出 ← / →，点了滚到条的起点。
@@ -214,7 +211,7 @@ export function JobsGantt({ jobs, events, view, openId, onOpen }: {
                   {!fold && <span className="truncate text-[var(--foreground-muted)]">{job.title}</span>}
                 </button>
                 <div className="relative cursor-cell" style={{ width, ...grid }} onClick={(e) => addAt(e, job.id)} title="点空白处在这天加事项">
-                  <span aria-hidden className="absolute inset-y-0 w-px bg-rose-400" style={{ left: nowX + px / 2 }} />
+                  <span aria-hidden className="absolute inset-y-0 w-px bg-rose-500/60" style={{ left: nowX + px / 2 }} />
                   {jump && (
                     <button type="button" data-testid="gantt-jump" aria-label={(jump === "←" ? "往左" : "往右") + "滚到这条"}
                       onClick={() => scroller.current?.scrollTo({ left: Math.max(0, x0 - 24), behavior: "smooth" })}
@@ -223,8 +220,8 @@ export function JobsGantt({ jobs, events, view, openId, onOpen }: {
                   )}
                   <button type="button" onClick={() => onOpen(job.id)} data-testid="gantt-bar"
                     title={fromDay(bar.start) + " → " + fromDay(bar.end)}
-                    className={"absolute flex items-center overflow-hidden whitespace-nowrap rounded px-1.5 text-[12px] text-[var(--foreground)]" + (bar.ended ? " opacity-60" : "")}
-                    style={{ left: (bar.start - from) * px + 1, width: Math.max(px - 2, (bar.end - bar.start + 1) * px - 2), top: 7, height: ROW - 14, background: fill, borderLeft: "3px solid " + edge }}>
+                    className={"absolute flex items-center overflow-hidden whitespace-nowrap rounded-md px-2 text-[12px] text-[var(--foreground)]" + (bar.ended ? " opacity-60" : "")}
+                    style={{ left: (bar.start - from) * px + 1, width: Math.max(px - 2, (bar.end - bar.start + 1) * px - 2), top: 7, height: ROW - 14, background: fill }}>
                     {wide && barLabel(bar, now)}
                   </button>
                   {!wide && (

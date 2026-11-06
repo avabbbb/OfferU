@@ -137,7 +137,7 @@ export default function JobsPage() {
 
       {state.active === "table" && (
         data && !jobs.length
-          ? <p className="text-[13.5px] text-[var(--foreground-muted)]">还没有岗位。点「+ 添加岗位」贴一个链接或 JD。</p>
+          ? <p className="text-[13.5px] text-[var(--foreground-muted)]">还没有岗位。点右上角「添加岗位」贴一个链接或 JD。</p>
           : <JobsTable jobs={shown} view={view} patch={patch} openId={openId} onOpen={setOpenId} onAdd={() => setAdding(true)} />
       )}
       {state.active === "board" && <JobBoard embedded />}

@@ -1,11 +1,22 @@
 "use client";
 
+import { AlignJustify, ArrowUpDown, Layers, ListFilter, RotateCcw, Search, SlidersHorizontal } from "lucide-react";
+import { type ReactNode, useState } from "react";
+
 import type { Job } from "@/lib/core";
 import { VIEW_KINDS, VIEW_NAME, activeCounts, type ViewKind, type ViewState } from "@/lib/jobView";
 
 import { FieldsPanel, FilterPanel, GroupPanel, Popover, RowHeightPanel, SortPanel, ctl, ghost, type Patch } from "./ViewPanels";
 
-// 顶栏：左边切视图，右边搜索、筛选、分组、排序、字段、行高、添加岗位。生效的项带计数（如「2 筛选」）。
+// 顶栏（Notion 式）：左边视图 tab，选中的是浅灰圆角底；右边一排灰色图标（筛选、分组、排序、搜索、字段、行高、重置），
+// 生效的图标变深并带计数；搜索点了才展开输入框；最右蓝色「添加岗位」。
+const icon = (Icon: typeof Search, name: string, count = 0): ReactNode => (
+  <span title={name} aria-label={count ? count + " " + name : name} className="flex items-center gap-1">
+    <Icon size={16} strokeWidth={1.75} aria-hidden />
+    {count > 0 && <span className="text-[12px] tabular-nums">{count}</span>}
+  </span>
+);
+
 export function ViewBar({ state, jobs, search, adding, setActive, setSearch, patch, reset, onAdd }: {
   state: ViewState;
   jobs: Job[];
@@ -22,32 +33,38 @@ export function ViewBar({ state, jobs, search, adding, setActive, setSearch, pat
   const table = state.active === "table";
   // 看板自带标签筛选，只有表格和甘特用这排工具；字段和行高只对表格有意义。
   const listing = state.active !== "board";
+  const [searching, setSearching] = useState(false);
+  const showSearch = searching || search.length > 0;
   return (
-    <div className="flex flex-wrap items-center gap-x-1 gap-y-2 border-b border-[var(--border)] pb-2">
-      <div role="tablist" aria-label="视图" className="flex items-center gap-0.5">
+    <div className="flex flex-wrap items-center gap-x-1 gap-y-2 pb-1">
+      <div role="tablist" aria-label="视图" className="flex items-center gap-1">
         {VIEW_KINDS.map((k) => (
           <button key={k} type="button" role="tab" aria-selected={state.active === k} onClick={() => setActive(k)}
-            className={"rounded-md px-2.5 py-1 text-[13px] " + (state.active === k
-              ? "bg-[var(--accent-bg)] font-medium text-[var(--foreground)]"
+            className={"rounded-full px-3 py-1 text-[13.5px] " + (state.active === k
+              ? "bg-[var(--surface-hover)] font-medium text-[var(--foreground)]"
               : "text-[var(--foreground-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)]")}>
             {VIEW_NAME[k]}
           </button>
         ))}
       </div>
-      <div className="ml-auto flex flex-wrap items-center gap-1">
+      <div className="ml-auto flex flex-wrap items-center gap-0.5">
         {listing && (
           <>
-            <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="搜索公司、岗位、标签" aria-label="搜索岗位" className={ctl + " w-44"} />
-            <Popover label={n.filter ? n.filter + " 筛选" : "筛选"} active={n.filter > 0} width={480}><FilterPanel view={view} jobs={jobs} patch={patch} /></Popover>
-            <Popover label={n.group ? n.group + " 分组" : "分组"} active={n.group > 0} width={300}><GroupPanel view={view} patch={patch} /></Popover>
-            <Popover label={n.sort ? n.sort + " 排序" : "排序"} active={n.sort > 0} width={340}><SortPanel view={view} patch={patch} /></Popover>
-            {table && <Popover label={n.hidden ? n.hidden + " 隐藏字段" : "字段"} active={n.hidden > 0} width={240}><FieldsPanel view={view} patch={patch} /></Popover>}
-            {table && <Popover label="行高" width={180}><RowHeightPanel view={view} patch={patch} /></Popover>}
-            <button type="button" className={ghost} onClick={reset} title="恢复这个视图默认的筛选、分组、排序、字段和列宽">重置</button>
+            <Popover label={icon(ListFilter, "筛选", n.filter)} active={n.filter > 0} width={480}><FilterPanel view={view} jobs={jobs} patch={patch} /></Popover>
+            <Popover label={icon(Layers, "分组", n.group)} active={n.group > 0} width={300}><GroupPanel view={view} patch={patch} /></Popover>
+            <Popover label={icon(ArrowUpDown, "排序", n.sort)} active={n.sort > 0} width={340}><SortPanel view={view} patch={patch} /></Popover>
+            {showSearch
+              ? <input type="search" autoFocus value={search} onChange={(e) => setSearch(e.target.value)} onBlur={() => setSearching(false)}
+                  onKeyDown={(e) => { if (e.key === "Escape") { setSearch(""); setSearching(false); } }}
+                  placeholder="搜索公司、岗位、标签" aria-label="搜索岗位" className={ctl + " w-44"} />
+              : <button type="button" className={ghost} onClick={() => setSearching(true)}>{icon(Search, "搜索")}</button>}
+            {table && <Popover label={icon(SlidersHorizontal, n.hidden ? "隐藏字段" : "字段", n.hidden)} active={n.hidden > 0} width={240}><FieldsPanel view={view} patch={patch} /></Popover>}
+            {table && <Popover label={icon(AlignJustify, "行高")} width={180}><RowHeightPanel view={view} patch={patch} /></Popover>}
+            <button type="button" className={ghost} onClick={reset} title="恢复这个视图默认的筛选、分组、排序、字段和列宽">{icon(RotateCcw, "重置")}</button>
           </>
         )}
-        <button type="button" onClick={onAdd} className="ml-1 rounded-md bg-[var(--foreground)] px-3 py-1 text-[13px] font-medium text-[var(--background)]">
-          {adding ? "收起" : "+ 添加岗位"}
+        <button type="button" onClick={onAdd} className="ml-2 rounded-md bg-[#2383e2] px-3 py-1 text-[13.5px] font-medium text-white hover:bg-[#0077d4]">
+          {adding ? "收起" : "添加岗位"}
         </button>
       </div>
     </div>
