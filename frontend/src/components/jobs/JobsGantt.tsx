@@ -16,10 +16,10 @@ import { ghost } from "./ViewPanels";
 
 // 低饱和填充色（和状态胶囊同一套色），圆角色块、不加左边框，照 Notion 时间线。
 const BAR: Record<string, string> = {
-  slate: "rgba(100, 116, 139, 0.18)", blue: "rgba(59, 130, 246, 0.18)", yellow: "rgba(245, 158, 11, 0.22)",
-  orange: "rgba(249, 115, 22, 0.2)", green: "rgba(16, 185, 129, 0.2)", red: "rgba(244, 63, 94, 0.16)", gray: "rgba(163, 163, 163, 0.22)",
+  gray: "rgba(163, 163, 163, 0.22)", blue: "rgba(59, 130, 246, 0.18)", yellow: "rgba(245, 158, 11, 0.22)", orange: "rgba(234, 88, 12, 0.18)",
+  green: "rgba(16, 185, 129, 0.2)", red: "rgba(244, 63, 94, 0.16)",
 };
-const DOT: Record<string, string> = { deadline: "rgb(225, 29, 72)", test: "rgb(217, 119, 6)", interview: "rgb(234, 88, 12)", todo: "rgb(100, 116, 139)" };
+const DOT: Record<string, string> = { deadline: "rgb(225, 29, 72)", test: "rgb(217, 119, 6)", interview: "rgb(234, 88, 12)", todo: "rgb(115, 115, 115)" };
 const LEFT = 240;
 const ROW = 36;
 const HEAD = 22;

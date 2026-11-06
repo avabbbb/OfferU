@@ -7,25 +7,16 @@ import { type DragEvent, type ReactNode, useState } from "react";
 import { TagInput } from "@/components/core/TagInput";
 import { StatusPill } from "@/components/jobs/JobsTable";
 import { type Event, JOB_STATUS, type Job, type JobStatus, useTool, when, write } from "@/lib/core";
-import { STATUS_TONE, tagPatch } from "@/lib/jobView";
+import { tagPatch } from "@/lib/jobView";
 
 const OPEN: JobStatus[] = ["saved", "applied", "test", "interview", "offer"];
 const ENDED: JobStatus[] = ["rejected", "closed"];
 const byScore = (a: Job, b: Job) => (b.score ?? -1) - (a.score ?? -1);
 
-// 照 Notion 看板：列和卡片都染组的颜色。列底极淡；卡片白底 + 同色 1px 细边 + 小阴影；列底「+ 新建」是同色字 + 同色细边。
-const COL_TINT: Record<string, string> = {
-  slate: "bg-slate-100/60", blue: "bg-blue-50/70", yellow: "bg-amber-50/70", orange: "bg-orange-50/70",
-  green: "bg-emerald-50/70", red: "bg-rose-50/70", gray: "bg-neutral-100/60",
-};
-const RING: Record<string, string> = {
-  slate: "ring-slate-200", blue: "ring-blue-100", yellow: "ring-amber-100", orange: "ring-orange-100",
-  green: "ring-emerald-100", red: "ring-rose-100", gray: "ring-neutral-200",
-};
-const ADD_TEXT: Record<string, string> = {
-  slate: "text-slate-500", blue: "text-blue-600", yellow: "text-amber-600", orange: "text-orange-600",
-  green: "text-emerald-600", red: "text-rose-600", gray: "text-neutral-500",
-};
+// 照 Notion 看板（浅色主题）：列底统一中性浅灰，颜色只留给列头的深色胶囊；卡片白底 + 浅灰 1px 细边 + 小阴影；列底「+ 新建」灰字 + 浅灰细边。
+const COL = "bg-neutral-100/70";
+const RING = "ring-neutral-200";
+const ADD_TEXT = "text-neutral-500";
 const muted = "text-[var(--foreground-muted)]";
 const faint = "text-[var(--foreground-faint)]";
 const ghostBtn = "rounded px-1.5 py-0.5 hover:bg-[var(--surface-hover)]";
@@ -91,12 +82,12 @@ export function JobBoard({ embedded = false }: { embedded?: boolean } = {}) {
     }
   };
 
-  const card = (tone: string) => (job: Job) => {
+  const card = (job: Job) => {
     const event = upcoming.get(job.id);
     return (
       <li key={job.id} data-testid="job-card" draggable={editing !== job.id}
         onDragStart={(e) => { e.dataTransfer.setData("text/plain", String(job.id)); e.dataTransfer.effectAllowed = "move"; }}
-        className={"group min-h-10 cursor-grab rounded-[10px] bg-[var(--surface-opaque)] px-2.5 py-2 shadow-sm ring-1 hover:bg-[var(--surface-hover)] active:cursor-grabbing " + (RING[tone] ?? RING.gray)}>
+        className={"group min-h-10 cursor-grab rounded-[10px] bg-[var(--surface-opaque)] px-2.5 py-2 shadow-sm ring-1 hover:bg-[var(--surface-hover)] active:cursor-grabbing " + RING}>
         <Link href={"/jobs/" + job.id} title={[job.company, job.title].filter(Boolean).join(" · ")}
           className="block truncate text-[15px] font-medium leading-[22px] text-[var(--foreground)]">
           {job.company || <span className={faint}>未填公司</span>}
@@ -121,17 +112,17 @@ export function JobBoard({ embedded = false }: { embedded?: boolean } = {}) {
     );
   };
 
-  const column = (key: string, list: Job[], head: ReactNode, tone: string, add?: JobStatus) => (
+  const column = (key: string, list: Job[], head: ReactNode, add?: JobStatus) => (
     <section key={key} aria-label={key === "ended" ? "已结束" : JOB_STATUS[key as JobStatus]} {...dropZone(key)}
-      className={"flex w-[276px] shrink-0 flex-col rounded-[10px] px-2 pb-2 pt-1.5 transition-shadow data-[over]:shadow-[inset_0_0_0_2px_rgba(35,131,226,0.35)] " + (COL_TINT[tone] ?? COL_TINT.gray)}>
+      className={"flex w-[276px] shrink-0 flex-col rounded-[10px] px-2 pb-2 pt-1.5 transition-shadow data-[over]:shadow-[inset_0_0_0_2px_rgba(35,131,226,0.35)] " + COL}>
       <h3 className="flex h-7 items-center gap-2 px-1 text-[13px] font-normal">
         {head}<span className={"tabular-nums " + faint}>{list.length}</span>
         {key === "ended" && <button type="button" onClick={() => setShowEnded(false)} className={"ml-auto " + ghostBtn + " " + muted}>收起</button>}
       </h3>
-      <ul className="mt-1 flex min-h-10 list-none flex-col gap-2">{list.map(card(tone))}</ul>
+      <ul className="mt-1 flex min-h-10 list-none flex-col gap-2">{list.map(card)}</ul>
       {add && (
         <button type="button" onClick={() => void addIn(add)} aria-label={"在「" + JOB_STATUS[add] + "」新建"}
-          className={"mt-2 flex min-h-10 items-center gap-2 rounded-[10px] px-2.5 text-[15px] ring-1 hover:bg-[var(--background)] " + (ADD_TEXT[tone] ?? ADD_TEXT.gray) + " " + (RING[tone] ?? RING.gray)}>
+          className={"mt-2 flex min-h-10 items-center gap-2 rounded-[10px] px-2.5 text-[15px] ring-1 hover:bg-[var(--background)] " + ADD_TEXT + " " + RING}>
           <Plus size={16} strokeWidth={1.75} /> 新建
         </button>
       )}
@@ -157,8 +148,8 @@ export function JobBoard({ embedded = false }: { embedded?: boolean } = {}) {
         {error && <span className="text-[13px] text-red-600">{error}</span>}
       </div>
       <div className="mt-2 flex items-start gap-3 overflow-x-auto pb-4">
-        {OPEN.map((s) => column(s, shown.filter((job) => job.status === s).sort(byScore), <StatusPill status={s} />, STATUS_TONE[s], s))}
-        {showEnded ? column("ended", ended, <span className={muted}>已结束</span>, "gray") : (
+        {OPEN.map((s) => column(s, shown.filter((job) => job.status === s).sort(byScore), <StatusPill status={s} />, s))}
+        {showEnded ? column("ended", ended, <span className={muted}>已结束</span>) : (
           <button type="button" onClick={() => setShowEnded(true)} {...dropZone("ended")}
             className={"flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 hover:bg-[var(--surface-hover)] data-[over]:bg-[var(--surface-hover)] " + muted}>
             已结束<span className={"tabular-nums " + faint}>{ended.length}</span>

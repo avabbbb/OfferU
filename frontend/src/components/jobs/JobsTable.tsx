@@ -2,12 +2,12 @@
 
 import { type ColumnDef, type ColumnSizingState, type Updater, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 import { AlignLeft, Calendar, ChevronRight, CircleChevronDown, Hash, List, Plus } from "lucide-react";
-import { type ReactNode, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { TagInput } from "@/components/core/TagInput";
 import { JOB_STATUS, type Job, type JobStatus, write } from "@/lib/core";
 import {
-  FIELDS, MAX_WIDTH, MIN_WIDTH, PRIMARY, ROW_HEIGHT, STATUS_ORDER, STATUS_TONE, groupJobs, tagPatch,
+  FIELDS, MAX_WIDTH, MIN_WIDTH, PRIMARY, ROW_HEIGHT, STATUS_GROUPS, STATUS_ORDER, STATUS_TONE, groupJobs, tagPatch,
   type FieldKey, type FieldType, type Group, type ViewConfig,
 } from "@/lib/jobView";
 
@@ -17,30 +17,81 @@ import { FieldsPanel, Popover, ghost, type Patch } from "./ViewPanels";
 // 分组时组头是「▸ 胶囊 数量」，组间留白；每组末尾一行灰色「+ 新建」在该组加一条（预填组的值），按状态分组时最下面「+ 新建分组」。
 // 勾选框悬停才出现；主字段悬停出「打开」；勾选列 + 主字段冻结在左；拖表头右缘改列宽；双击（状态、标签单击）改单元格；勾选后底部出批量栏。
 
+// 标签照 Notion 深色系：深底 + 浅字 + 左侧亮色小圆点的圆角胶囊。
+// 状态只用灰蓝黄绿红五色；单选 / 标签按文字哈希取九色之一，同一个值永远同一个色。
 const TONE: Record<string, string> = {
-  slate: "bg-slate-100 text-slate-700", blue: "bg-blue-50 text-blue-700", yellow: "bg-amber-50 text-amber-700",
-  orange: "bg-orange-50 text-orange-700", green: "bg-emerald-50 text-emerald-700", red: "bg-rose-50 text-rose-700", gray: "bg-neutral-100 text-neutral-500",
+  gray: "bg-[#3a3a3a] text-[#e3e3e3] before:bg-[#9b9b9b]",
+  brown: "bg-[#4a3228] text-[#ecd9cf] before:bg-[#ba856f]",
+  orange: "bg-[#5a3a22] text-[#f6d5b8] before:bg-[#e07b2a]",
+  yellow: "bg-[#56452a] text-[#f5e3ae] before:bg-[#d4a12a]",
+  green: "bg-[#25402f] text-[#cbe8d6] before:bg-[#3aa36f]",
+  blue: "bg-[#1f3c5a] text-[#cfe2f7] before:bg-[#3b8de0]",
+  purple: "bg-[#3d2e4d] text-[#e4d5f3] before:bg-[#a274d9]",
+  pink: "bg-[#4f2d3e] text-[#f4d3e3] before:bg-[#dc6aa6]",
+  red: "bg-[#55302b] text-[#f7d2cc] before:bg-[#e8675a]",
 };
-// 单选 / 标签的选项没有固定颜色：按文字哈希挑一个很浅的底色，同一个值永远同一个色（同 Notion）。
-const OPTION_TONES = [
-  "bg-sky-50 text-sky-800", "bg-teal-50 text-teal-800", "bg-violet-50 text-violet-800", "bg-pink-50 text-pink-800",
-  "bg-amber-50 text-amber-800", "bg-lime-50 text-lime-800", "bg-indigo-50 text-indigo-800", "bg-orange-50 text-orange-800",
-];
-// Notion 的 select：小圆角色块，不是胶囊。
-const PILL = "inline-block max-w-full truncate whitespace-nowrap rounded px-1.5 text-[12.5px] leading-5 ";
+const OPTION_TONES = ["gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red"];
+const PILL = "inline-flex min-w-0 max-w-full items-center gap-1.5 overflow-hidden whitespace-nowrap rounded-full px-2 text-[12.5px] leading-5 before:h-1.5 before:w-1.5 before:shrink-0 before:rounded-full before:content-[''] ";
 
-export function optionTone(s: string): string {
+export function optionTone(text: string): string {
   let h = 0;
-  for (const ch of s) h = (h * 31 + (ch.codePointAt(0) ?? 0)) >>> 0;
-  return OPTION_TONES[h % OPTION_TONES.length];
+  for (const ch of text) h = ((h << 5) - h + (ch.codePointAt(0) ?? 0)) >>> 0;
+  return TONE[OPTION_TONES[h % OPTION_TONES.length]];
 }
 
 export function StatusPill({ status }: { status: JobStatus }) {
-  return <span className={PILL + TONE[STATUS_TONE[status]]}>{JOB_STATUS[status]}</span>;
+  return <span className={PILL + TONE[STATUS_TONE[status]]}><span className="truncate">{JOB_STATUS[status]}</span></span>;
 }
 
 function OptionPill({ text }: { text: string }) {
-  return <span className={PILL + optionTone(text)} title={text}>{text}</span>;
+  return <span className={PILL + optionTone(text)} title={text}><span className="truncate">{text}</span></span>;
+}
+
+// 状态下拉照 Notion：顶部是当前值，下面按 待办 / 进行中 / 已完成 分组列出胶囊，悬停整行变灰。
+// 用 fixed 定位贴在单元格下方，避免被表格滚动容器裁掉；点别处、滚动或按 Esc 关闭。
+export function StatusMenu({ value, onPick, onClose }: { value: JobStatus; onPick: (s: JobStatus) => void; onClose: () => void }) {
+  const anchor = useRef<HTMLSpanElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  useLayoutEffect(() => {
+    const r = anchor.current?.getBoundingClientRect();
+    if (r) setPos({ left: Math.min(r.left, window.innerWidth - 240), top: Math.min(r.bottom + 4, window.innerHeight - 340) });
+  }, []);
+  useEffect(() => {
+    const down = (e: Event) => { if (!menu.current?.contains(e.target as Node)) onClose(); };
+    const key = (e: Event) => { if ((e as globalThis.KeyboardEvent).key === "Escape") onClose(); };
+    const scroll = (e: Event) => { if (!menu.current?.contains(e.target as Node)) onClose(); };
+    document.addEventListener("mousedown", down);
+    document.addEventListener("keydown", key);
+    document.addEventListener("scroll", scroll, true);
+    return () => {
+      document.removeEventListener("mousedown", down);
+      document.removeEventListener("keydown", key);
+      document.removeEventListener("scroll", scroll, true);
+    };
+  }, [onClose]);
+  return (
+    <span ref={anchor} className="flex max-w-full">
+      <StatusPill status={value} />
+      {pos && (
+        <div ref={menu} role="listbox" aria-label="投递状态" style={pos}
+          className="fixed z-50 w-56 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-opaque)] text-[13px] shadow-[0_8px_24px_rgba(15,15,15,0.14)]">
+          <div className="border-b border-[var(--border)] px-2.5 py-2"><StatusPill status={value} /></div>
+          {STATUS_GROUPS.map(([name, list], i) => (
+            <div key={name} className={"px-1 py-1" + (i ? " border-t border-[var(--border)]" : "")}>
+              <div className="px-2 pb-1 pt-0.5 text-[12px] text-[var(--foreground-muted)]">{name}</div>
+              {list.map((s) => (
+                <button key={s} type="button" role="option" aria-selected={s === value} onClick={() => onPick(s)}
+                  className={"flex w-full items-center rounded-md px-2 py-1 hover:bg-[var(--surface-hover)]" + (s === value ? " bg-[var(--surface-hover)]" : "")}>
+                  <StatusPill status={s} />
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </span>
+  );
 }
 
 const TYPE_ICON: Record<FieldType, typeof AlignLeft> = {
@@ -123,15 +174,7 @@ function CellView({ job, field, editing, setEditing, tagOptions, wrap }: {
   }
   switch (field) {
     case "status":
-      if (on) {
-        return (
-          <select autoFocus value={job.status} aria-label="投递状态" onBlur={close}
-            onChange={(e) => { close(); void saveJob(job, { status: e.target.value }); }}
-            className="w-full rounded border border-[var(--foreground-muted)] bg-[var(--surface)] px-1 py-0.5 text-[13px] outline-none">
-            {STATUS_ORDER.map((s) => <option key={s} value={s}>{JOB_STATUS[s]}</option>)}
-          </select>
-        );
-      }
+      if (on) return <StatusMenu value={job.status} onClose={close} onPick={(s) => { close(); if (s !== job.status) void saveJob(job, { status: s }); }} />;
       return <button type="button" title="改状态" onClick={start} className="flex max-w-full"><StatusPill status={job.status} /></button>;
     case "tags":
       if (on) return <TagInput value={job.tags ?? []} options={tagOptions} onClose={close} onChange={(tags) => void saveTags(job, tags)} />;
@@ -160,7 +203,7 @@ function CellView({ job, field, editing, setEditing, tagOptions, wrap }: {
 
 function GroupLabel({ g }: { g: Group }) {
   if (g.field === "status" && g.value) return <StatusPill status={g.value as JobStatus} />;
-  if (g.value == null) return <span className={PILL + "bg-neutral-100 text-neutral-500"}>{g.label}</span>;
+  if (g.value == null) return <span className={PILL + TONE.gray + " opacity-70"}>{g.label}</span>;
   return <OptionPill text={g.label} />;
 }
 
