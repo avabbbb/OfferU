@@ -36,7 +36,6 @@ KNOWN_MESSAGE_TYPES = (
     "run.attach",
     "run.lease.renew",
     "context.snapshot",
-    "skill.snapshot",
     "operation.list",
     "operation.schema",
     "operation.invoke",
@@ -103,7 +102,6 @@ RequestMessageType: TypeAlias = Literal[
     "run.attach",
     "run.lease.renew",
     "context.snapshot",
-    "skill.snapshot",
     "operation.list",
     "operation.schema",
     "operation.invoke",
@@ -309,11 +307,6 @@ class ContextSnapshotRequest(_RunRequest):
     payload: ContextSnapshotPayload
 
 
-class SkillSnapshotRequest(_RunRequest):
-    type: Literal["skill.snapshot"]
-    payload: EmptyPayload
-
-
 class OperationListRequest(_RunRequest):
     type: Literal["operation.list"]
     payload: EmptyPayload
@@ -398,7 +391,6 @@ BridgeRequest: TypeAlias = Annotated[
         RunAttachRequest,
         RunLeaseRenewRequest,
         ContextSnapshotRequest,
-        SkillSnapshotRequest,
         OperationListRequest,
         OperationSchemaRequest,
         OperationInvokeRequest,
@@ -738,7 +730,6 @@ __all__ = [
     "RunLeaseRenewRequest",
     "STANDARD_EVENT_TYPES",
     "ServerEvent",
-    "SkillSnapshotRequest",
     "SuccessResponse",
     "bridge_schema_bundle",
     "error_response",

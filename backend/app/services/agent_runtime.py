@@ -156,8 +156,6 @@ class AgentRuntimeProvider(Protocol):
 
     async def reject(self, **kwargs: Any) -> dict[str, Any]: ...
 
-    async def list_skills(self) -> dict[str, Any]: ...
-
     async def list_plugins(self) -> dict[str, Any]: ...
 
 
@@ -581,15 +579,6 @@ class ReplayAgentRuntimeProvider:
 
     async def reject(self, **_: Any) -> dict[str, Any]:
         return {"rejected": True}
-
-    async def list_skills(self) -> dict[str, Any]:
-        from app.services.agent_skill_registry import registry_snapshot
-
-        return {
-            "provider_id": self.provider_id,
-            "skills": registry_snapshot().get("skills", []),
-            "source": "offeru_registry",
-        }
 
     async def list_plugins(self) -> dict[str, Any]:
         from app.services.capability_plugins import discover_plugins

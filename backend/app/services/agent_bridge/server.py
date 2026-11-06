@@ -113,8 +113,6 @@ class BridgeSession:
             return await self._renew_lease(request_id, payload)
         if message_type == "context.snapshot":
             return await self._context_snapshot(request_id, payload)
-        if message_type == "skill.snapshot":
-            return success_response(request_id, await self._skill_snapshot(request_id))
         if message_type == "operation.list":
             return success_response(request_id, {"operations": await self._granted_operations(request_id)})
         if message_type == "operation.schema":
@@ -442,21 +440,6 @@ class BridgeSession:
     async def _granted_operations(self, request_id: str) -> list[dict[str, Any]]:
         _, allowed = await self._run_allowed_tools(request_id)
         return [item for item in granted_operations() if item.get("name") in allowed]
-
-    async def _skill_snapshot(self, request_id: str) -> dict[str, Any]:
-        from app.services.agent_skill_registry import registry_snapshot
-
-        run, allowed = await self._run_allowed_tools(request_id)
-        snapshot = registry_snapshot()
-        skills = [
-            {**skill, "allowed_tools": sorted(set(skill.get("allowed_tools") or []) & allowed)}
-            for skill in snapshot.get("skills", [])
-            if str(skill.get("id") or "") == str(run.get("skill_id") or "")
-        ]
-        return {
-            "skills": skills,
-            "grantedOperations": sorted(item["name"] for item in granted_operations() if item.get("name") in allowed),
-        }
 
     async def _invoke(self, request_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         await self._require_lease(request_id)

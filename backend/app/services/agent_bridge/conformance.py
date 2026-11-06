@@ -23,7 +23,6 @@ from app.services.agent_bridge.run_coordinator import (
 )
 from app.services.agent_bridge.server import BridgeSession
 from app.services.agent_run_state import create_agent_run
-from app.services.agent_skill_registry import registry_snapshot
 from app.services.security_redaction import redact_sensitive_value, safe_error_message
 
 
@@ -256,11 +255,15 @@ async def run_codex_offeru_conformance(*, timeout_seconds: int = 420) -> dict[st
                     "read_only_run": True,
                 }
             if clean_name == "offeru_manifest":
-                snapshot = registry_snapshot(list_operations())
+                registry = list_operations()
+                catalog: dict[str, list[str]] = {}
+                for item in registry:
+                    catalog.setdefault(str(item.get("group") or "ungrouped"), []).append(
+                        str(item.get("name") or "")
+                    )
                 return {
-                    "schema": snapshot.get("schema"),
-                    "operation_count": len(list_operations()),
-                    "skills": len(snapshot.get("skills") or []),
+                    "operation_count": len(registry),
+                    "operations": dict(sorted(catalog.items())),
                     "control_plane": "Operation Registry",
                 }
             if clean_name == "offeru_agent_playbook":

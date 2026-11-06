@@ -30,7 +30,6 @@ from datetime import datetime, timezone
 from typing import Any, Iterable, Literal
 
 from app.ops import OPERATIONS
-from app.services.agent_skill_registry import resolve_skill
 
 POLICY_SCHEMA = "offeru.director_policy.v1"
 POLICY_VERSION = "2026-09-27.1"
@@ -1203,12 +1202,6 @@ async def validate_director_briefing(
                 raise DirectorPolicyError(
                     "skill_not_allowed",
                     f"行动 #{index} 的 skill '{skill}' 不在该动作允许列表 {sorted(spec_skills)}",
-                )
-            resolved = resolve_skill(skill)
-            if resolved is None:
-                raise DirectorPolicyError(
-                    "skill_unknown",
-                    f"行动 #{index} 的 skill '{skill}' 不在实时 Skill Registry 中",
                 )
         spec_ops = set(spec.get("operations") or [])
         for op_name in _list(raw.get("suggested_operations")):

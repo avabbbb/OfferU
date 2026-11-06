@@ -31,11 +31,6 @@ HOST_KIND_SKILL_HOST = "skill_host"
 HOST_KIND_HOSTED_RUNTIME = "hosted_runtime"
 HOST_KIND_BOTH = "both"
 
-# Skill support tiers for the Host × Skill matrix (Phase B6).
-SUPPORT_FULL = "full"
-SUPPORT_LIMITED = "limited"
-SUPPORT_UNSUPPORTED = "unsupported"
-
 
 @dataclass(frozen=True)
 class AgentHost:
@@ -60,20 +55,8 @@ class AgentHost:
     # Projection key in agent_skill_projections.PROJECTION_PATHS that renders
     # this host's installable manifest, if any.
     projection_key: str | None = None
-    # Capabilities this host cannot honour (host capability exclusion).
-    # Skill ids listed here are projected as LIMITED/UNSUPPORTED for the host.
-    unsupported_skills: tuple[str, ...] = ()
-    limited_skills: tuple[str, ...] = ()
     docs_url: str = ""
     extra: dict[str, Any] = field(default_factory=dict)
-
-    def skill_support(self, skill_id: str) -> str:
-        """Return this host's support tier for a Skill."""
-        if skill_id in self.unsupported_skills:
-            return SUPPORT_UNSUPPORTED
-        if skill_id in self.limited_skills:
-            return SUPPORT_LIMITED
-        return SUPPORT_FULL
 
     def summary(self) -> dict[str, Any]:
         return {
@@ -87,8 +70,6 @@ class AgentHost:
             "can_verify_login": self.can_verify_login,
             "runtime_id": self.runtime_id,
             "projection_key": self.projection_key,
-            "unsupported_skills": list(self.unsupported_skills),
-            "limited_skills": list(self.limited_skills),
             "docs_url": self.docs_url,
         }
 
@@ -216,25 +197,13 @@ def host_summaries() -> list[dict[str, Any]]:
     return [host.summary() for host in _HOSTS]
 
 
-def host_capability_matrix(skill_ids: list[str]) -> dict[str, dict[str, str]]:
-    """Host × Skill support matrix: {host_id: {skill_id: full|limited|unsupported}}."""
-    return {
-        host.id: {skill_id: host.skill_support(skill_id) for skill_id in skill_ids}
-        for host in _HOSTS
-    }
-
-
 __all__ = [
     "AgentHost",
     "HOST_KIND_BOTH",
     "HOST_KIND_HOSTED_RUNTIME",
     "HOST_KIND_SKILL_HOST",
-    "SUPPORT_FULL",
-    "SUPPORT_LIMITED",
-    "SUPPORT_UNSUPPORTED",
     "beginner_host_ids",
     "get_host",
-    "host_capability_matrix",
     "host_summaries",
     "hosted_runtime_ids",
     "list_hosts",

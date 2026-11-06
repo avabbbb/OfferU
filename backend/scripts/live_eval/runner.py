@@ -222,7 +222,6 @@ def _mutable_hashes() -> dict[str, str]:
         "human_grading": _sha16(base / "human_grading.py"),
         "agent_executor": _sha16(base / "agent_executor.py"),
         "scripted_cli_executor": _sha16(base / "scripted_cli_executor.py"),
-        "skill_registry": _sha16(BACKEND_DIR / "app" / "services" / "agent_skill_registry.py"),
         "offeru_skill": _sha16(PROJECT_ROOT / ".agents" / "skills" / "offeru" / "SKILL.md"),
     }
 

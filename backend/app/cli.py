@@ -16,13 +16,6 @@ from app.database import init_db
 from app.ops import get_operation_schema, list_operations
 from app.bridge_cli import main as bridge_main
 from app.runtime_paths import runtime_data_dir, runtime_uploads_dir
-from app.services.agent_skill_registry import (
-    agent_operation_names,
-    catalog,
-    registry_snapshot,
-    resolve_skill,
-)
-from app.services.agent_host_registry import host_capability_matrix
 from app.services.resume_parser import get_resume_ocr_capabilities
 from app.services.security_redaction import safe_error_message
 
@@ -90,17 +83,15 @@ def main(argv: Optional[list[str]] = None) -> int:
             return _print(payload, args.pretty)
         if args.command == "manifest":
             try:
-                payload = _manifest(skill=args.skill, group=args.group, all_operations=args.all_operations)
+                payload = _manifest(group=args.group, all_operations=args.all_operations)
             except ValueError as exc:
                 return _print({"ok": False, "errors": [str(exc)]}, args.pretty, exit_code=1)
             return _print(payload, args.pretty)
         if args.command == "ops":
             try:
                 operations, selector = _select_operations(
-                    skill=args.skill,
                     group=args.group,
                     all_operations=args.all_operations,
-                    default_featured=True,
                 )
             except ValueError as exc:
                 return _print({"ok": False, "errors": [str(exc)]}, args.pretty, exit_code=1)
@@ -108,12 +99,6 @@ def main(argv: Optional[list[str]] = None) -> int:
                 {
                     "ok": True,
                     "operation_count": len(list_operations()),
-                    "operation_registry_count": len(list_operations()),
-                    "agent_tool_count": len(agent_operation_names()),
-                    "featured_tool_count": len(agent_operation_names(featured_only=True)),
-                    "internal_operation_count": (
-                        len(list_operations()) - len(agent_operation_names())
-                    ),
                     "returned_count": len(operations),
                     "selector": selector,
                     "operations": operations,
@@ -194,22 +179,20 @@ def _build_parser() -> JsonArgumentParser:
     manifest = sub.add_parser("manifest", help="Print the agent control contract for Claude Code and other CLIs.", add_help=False)
     manifest.add_argument("--pretty", action="store_true", help="Pretty-print JSON.")
     manifest_selector = manifest.add_mutually_exclusive_group()
-    manifest_selector.add_argument("--skill", default="", help="Show one Skill and its compact Operation summaries.")
     manifest_selector.add_argument("--group", default="", help="Show compact Operation summaries for one group.")
     manifest_selector.add_argument("--all", dest="all_operations", action="store_true", help="Show the full developer audit manifest.")
 
     ops = sub.add_parser(
         "ops",
-        help="Discover Agent-facing OfferU tools; --all is the raw Operation Registry audit.",
+        help="List compact summaries of every Operation; --group narrows to one group, --all prints full schemas.",
         add_help=False,
     )
     ops.add_argument("--pretty", action="store_true", help="Pretty-print JSON.")
     ops_selector = ops.add_mutually_exclusive_group()
-    ops_selector.add_argument("--skill", default="", help="List compact Operations for one Skill.")
     ops_selector.add_argument(
         "--group",
         default="",
-        help="List Agent-exposed Operations for one group; internal/legacy entries stay hidden.",
+        help="List detailed Operation summaries for one group.",
     )
     ops_selector.add_argument("--all", dest="all_operations", action="store_true", help="List every full Operation schema for auditing.")
 
@@ -688,67 +671,27 @@ def _summarize_operation(operation: dict[str, Any], *, detailed: bool) -> dict[s
     return summary
 
 
-def _summarize_skill(skill: dict[str, Any]) -> dict[str, Any]:
-    """Skill 目录摘要：保留选择 Skill 所需字段，去掉 allowlist 明细。"""
-
-    return {
-        "id": skill.get("id", ""),
-        "name": skill.get("name", ""),
-        "group": skill.get("group", ""),
-        "status": skill.get("status", ""),
-        "description": skill.get("description", ""),
-        "aliases": skill.get("aliases", []),
-        "featured": bool(skill.get("featured")),
-        "order": skill.get("order", 0),
-        "version": skill.get("version", ""),
-        "missing_capabilities": skill.get("missing_capabilities", []),
-    }
-
-
 def _select_operations(
     *,
-    skill: str = "",
     group: str = "",
     all_operations: bool = False,
-    default_featured: bool = False,
 ) -> tuple[list[dict[str, Any]], str]:
+    """Default: compact summary of every Operation; --group: detailed summaries; --all: full schemas."""
+
     operations = list_operations()
-    selected_names: set[str] | None = None
-    selector = "all" if all_operations else "catalog"
-    clean_skill = str(skill or "").strip()
+    if all_operations:
+        return operations, "all"
     clean_group = str(group or "").strip()
-    if clean_skill:
-        selected = resolve_skill(clean_skill)
-        if selected is None:
-            raise ValueError(f"未知 Skill: {clean_skill}")
-        selected_names = set(selected.allowed_tools)
-        selector = f"skill:{selected.id}"
-    elif clean_group:
-        known_groups = {str(operation.get("group") or "ungrouped") for operation in operations}
-        if clean_group not in known_groups:
-            raise ValueError(f"未知能力组: {clean_group}")
-        # Group discovery is an Agent surface, not a raw Registry dump.  UI-only,
-        # migration, diagnostic and compatibility Operations stay reachable by
-        # exact schema/run name and by the explicit --all developer audit path.
-        selected_names = agent_operation_names()
-        selector = f"group:{clean_group}"
-    elif default_featured and not all_operations:
-        selected_names = agent_operation_names(featured_only=True)
-        selector = "featured_skills"
-    if selected_names is not None:
-        operations = [operation for operation in operations if operation.get("name") in selected_names]
-    if clean_group:
-        operations = [
-            operation
-            for operation in operations
-            if str(operation.get("group") or "") == clean_group
-        ]
-    if not all_operations:
-        operations = [
-            _summarize_operation(operation, detailed=True)
-            for operation in operations
-        ]
-    return operations, selector
+    if not clean_group:
+        return [_summarize_operation(operation, detailed=False) for operation in operations], "catalog"
+    known_groups = {str(operation.get("group") or "ungrouped") for operation in operations}
+    if clean_group not in known_groups:
+        raise ValueError(f"未知能力组: {clean_group}")
+    return [
+        _summarize_operation(operation, detailed=True)
+        for operation in operations
+        if str(operation.get("group") or "ungrouped") == clean_group
+    ], f"group:{clean_group}"
 
 
 def _groups(operations: list[dict[str, Any]]) -> dict[str, int]:
@@ -759,41 +702,35 @@ def _groups(operations: list[dict[str, Any]]) -> dict[str, int]:
     return dict(sorted(counts.items()))
 
 
-def _manifest(*, skill: str = "", group: str = "", all_operations: bool = False) -> dict[str, Any]:
-    from app.services.agent_integration import runtime_cli_command
-    from app.services.agent_skill_registry import skill_tool_catalog, tool_contract_snapshot
+def _operation_catalog(operations: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """Compact Operation directory keyed by group."""
+
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for operation in operations:
+        grouped.setdefault(str(operation.get("group") or "ungrouped"), []).append(
+            _summarize_operation(operation, detailed=False)
+        )
+    return dict(sorted(grouped.items()))
+
+
+def _manifest(*, group: str = "", all_operations: bool = False) -> dict[str, Any]:
+    from app.services.agent_integration import runtime_cli_command, tool_contract_snapshot
 
     command = runtime_cli_command()
     operation_schemas = list_operations()
-    full_registry = registry_snapshot(operation_schemas)
+    listing: dict[str, Any]
     if all_operations:
-        operations = operation_schemas
         selector = "all"
-        skills = full_registry
-    elif skill:
-        operations, selector = _select_operations(skill=skill)
-        selected_id = selector.removeprefix("skill:")
-        selected_skill = next(item for item in full_registry["skills"] if item["id"] == selected_id)
-        skills = {"version": full_registry["version"], "sha256": full_registry["sha256"], "skills": [selected_skill]}
+        listing = {"operations": operation_schemas}
+        returned_count = len(operation_schemas)
     elif group:
         operations, selector = _select_operations(group=group)
-        skills = {
-            "version": full_registry["version"],
-            "sha256": full_registry["sha256"],
-            "skills": [_summarize_skill(item) for item in full_registry["skills"] if item.get("group") == group],
-        }
+        listing = {"operations": operations}
+        returned_count = len(operations)
     else:
-        catalog = skill_tool_catalog(operation_schemas)
-        operations = catalog["operations"]
         selector = "catalog"
-        skills = catalog["skill_registry"]
-    agent_names = agent_operation_names()
-    featured_names = agent_operation_names(featured_only=True)
-    agent_schemas = [
-        operation
-        for operation in operation_schemas
-        if str(operation.get("name") or "") in agent_names
-    ]
+        listing = {"catalog": _operation_catalog(operation_schemas)}
+        returned_count = len(operation_schemas)
     return {
         "ok": True,
         "service": "OfferU CLI",
@@ -804,7 +741,6 @@ def _manifest(*, skill: str = "", group: str = "", all_operations: bool = False)
             "health": f"{command} doctor --pretty",
             "release_health": f"{command} doctor --require-ready --pretty",
             "manifest": f"{command} manifest --pretty",
-            "manifest_skill": f"{command} manifest --skill <skill> --pretty",
             "manifest_group": f"{command} manifest --group <group> --pretty",
             "manifest_all": f"{command} manifest --all --pretty",
             "list_operations": f"{command} ops --pretty",
@@ -830,26 +766,11 @@ def _manifest(*, skill: str = "", group: str = "", all_operations: bool = False)
             "raw_api_capability": False,
             "side_effect_labels": sorted({effect for op in operation_schemas for effect in op.get("side_effects", [])}),
         },
-        # operation_count is retained for backwards compatibility.  New callers
-        # should distinguish the governed Registry from the model-facing Tool
-        # surface instead of treating every Operation as an Agent tool.
         "operation_count": len(operation_schemas),
-        "operation_registry_count": len(operation_schemas),
-        "agent_tool_count": len(agent_names),
-        "featured_tool_count": len(featured_names),
-        "internal_operation_count": len(operation_schemas) - len(agent_names),
-        "returned_count": len(operations),
+        "returned_count": returned_count,
         "selector": selector,
         "groups": _groups(operation_schemas),
-        "agent_groups": _groups(agent_schemas),
-        "operations": operations,
-        "skill_registry": skills,
-        # Host × Skill support matrix (full/limited/unsupported) so an external
-        # agent can self-check which Skills its host can actually honour rather
-        # than assuming feature parity across every host.
-        "host_capability_matrix": host_capability_matrix(
-            [item["id"] for item in skills.get("skills", full_registry["skills"])]
-        ),
+        **listing,
     }
 
 

@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
-from app.ops import execute_operation, list_operations
+from app.ops import execute_operation
 from app.services.harness_history import (
     get_conversation,
     list_conversations,
@@ -19,7 +19,6 @@ from app.services.harness_memory import (
     export_agent_memory_markdown,
     load_agent_memory,
 )
-from app.services.agent_skill_registry import registry_snapshot
 from app.services.agent_runtime import (
     canonical_agent_run_event,
     get_agent_run_provider,
@@ -227,12 +226,6 @@ def _runtime_stream_error_payload(
         **({"task_id": str(task_id)} if task_id else {}),
         **({"provider_id": str(provider_id)} if provider_id else {}),
     }
-
-
-@router.get("/skills")
-async def skills() -> dict[str, Any]:
-    operations = list_operations()
-    return registry_snapshot(operations)
 
 
 @runtime_router.get("/runs")

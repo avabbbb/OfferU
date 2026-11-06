@@ -525,6 +525,20 @@ def pending_connection_challenges() -> list[dict[str, str]]:
     ]
 
 
+def tool_contract_snapshot() -> dict[str, Any]:
+    """Wire metadata shared by CLI/Bridge adapters; schemas and execution stay in the Operation Registry."""
+    return {
+        "version": "offeru.tool-contract.v1",
+        "schema_authority": "operation_registry",
+        "truth_authority": "career_runtime",
+        "approval_authority": "independent_user",
+        "mutation_path": "action_gate.run_gated_operation",
+        "bootstrap_operations": ["get_current_view"],
+        "connection_verification": pending_connection_challenges(),
+        "interaction_authority": "active_host_native_input",
+    }
+
+
 integration_manager = AgentIntegrationManager()
 
 
@@ -536,4 +550,5 @@ __all__ = [
     "create_connection_challenge",
     "get_connection_nonce",
     "integration_manager",
+    "tool_contract_snapshot",
 ]
