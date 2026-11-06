@@ -14,6 +14,8 @@ CONFIRMATION_POLICY = "operation_registry"
 
 # skill_id sentinel: request-level "let the router pick once"; never a registered Skill.
 AUTO_SKILL_ID = "auto"
+# auto 不再调 LLM 路由，直接落到这个通用技能；内置 Agent 的工具表本来就是 core_agent.loop_tools()。
+DEFAULT_AUTO_SKILL_ID = "discovery"
 
 # Auto routing MUST NEVER land on integration/privileged Skills; they stay
 # reachable only through explicit slash commands or explicit skill_id.
@@ -479,19 +481,18 @@ async def resolve_run_skill(
     *,
     routing_context: dict[str, Any] | None = None,
 ) -> tuple[AgentSkill, SkillRouting]:
-    """Resolve the Skill for one new Run: declared inputs first, auto routing second.
+    """Resolve the Skill for one new Run without model routing.
 
     - Explicit skill_id and slash commands resolve deterministically; unknown
       ids raise ValueError and never fall back.
-    - skill_id="auto" (or empty) runs exactly one bounded classification through
-      the canonical configured LLM and may only return a routable Skill.
+    - skill_id="auto" (or empty) lands on DEFAULT_AUTO_SKILL_ID. The LLM router
+      exceeded its 30s budget on slow providers and failed every first message.
     """
     declared = resolve_declared_skill(user_message, selected_skill_id)
     if declared is not None:
         return declared
-    return await _auto_route_skill(
-        user_message=str(user_message or "").strip(),
-        context_messages=context_messages,
-        requested=str(selected_skill_id or "").strip(),
-        routing_context=routing_context,
-    )
+    skill = resolve_skill(DEFAULT_AUTO_SKILL_ID)
+    if skill is None:
+        raise SkillRoutingError(f"默认技能 {DEFAULT_AUTO_SKILL_ID} 不存在。")
+    requested = str(selected_skill_id or "").strip() or AUTO_SKILL_ID
+    return skill, SkillRouting(via="auto", requested=requested, reason="default")

@@ -52,9 +52,9 @@ class Settings(BaseSettings):
     llm_timeout: int = 60
     # 内置 Agent 同时运行的 Run 上限（1-10），由 config.json 同步，每次启动 Run 时现读。
     max_concurrent_agent_runs: int = 3
-    # MCP is optional for external coding-agent clients. Keeping it off avoids
-    # importing the MCP protocol stack on every desktop cold start.
-    offeru_enable_mcp: bool = False
+    # DESIGN 要求 /mcp 和 offeru mcp 同时可用，默认打开。
+    # 设为 False 可省掉冷启动时导入 MCP 协议栈，但外置 Agent 就只能走 stdio。
+    offeru_enable_mcp: bool = True
 
     # ---- 安全 ----
     # 本地单人应用：无登录/会话体系，不设服务端对称密钥。
