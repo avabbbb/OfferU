@@ -11,7 +11,7 @@ SEED_ACTOR = "测试种子"
 REAL_DATA = Path("H:/OfferU/data").resolve()
 
 PROFILE = {
-    "name": "林知远（测试用户）", "school": "示例大学", "major": "统计学", "degree": "本科",
+    "name": "林知远", "school": "示例大学", "major": "统计学", "degree": "本科",
     "grad_year": 2026, "city": "上海", "email": "linzhiyuan.test@example.com", "phone": "13800000000",
     "target": "数据分析 / 用户增长分析", "about": "测试数据：隔离评测用的虚构候选人，不是真实用户。",
 }
