@@ -55,7 +55,8 @@ def material(transcript: list[dict], store) -> str:
     parts.append("## 运行前已有的种子数据（不是助手写的；助手复述或整理这些不算编造）")
     parts.append("主简历：" + cut(seed_data.RESUME_BODY, 1200))
     for m in seed_data.MEMORIES:
-        parts.append(f"种子记忆 [{m.get('kind')}] {m.get('title')}：{cut(m.get('body'), 300)}")
+        extra = "，".join(f"{k}={v}" for k, v in m.items() if k not in ("kind", "title", "body", "tags") and v)
+        parts.append(f"种子记忆（{m.get('kind')}）{m.get('title')}：{cut(m.get('body'), 300)}" + (f"；{extra}" if extra else ""))
     parts.append("## 落盘数据（运行结束时）")
     profile = store.first("profile") or {}
     parts.append("档案：" + cut(json.dumps({k: profile.get(k) for k in ("name", "school", "major", "degree", "target")},
