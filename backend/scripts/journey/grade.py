@@ -178,6 +178,13 @@ def main() -> None:
              for n in re.findall(rf"(?m)^\W{{0,4}}第\s*({num})\s*题\s*[：:]", labels[k].get("reply", "") or "")}
     check("C11c", "模拟面试至少推进到两道不同的题（追问不卡死）", len(asked) >= 2,
           {"questions": sorted(asked), "turns": interview_turns}, "面试回答 4" in labels)
+    # 面试官回合里不该夹关于档案 / 存储的说明（full-a10、a11、a13：「这次补充的细节我没写进档案」）。
+    # 「面试开始」里预告「练习回答不会写进档案」是合理的，只查用户作答后的回合。
+    meta_talk = re.compile(r"(没|未|不会|不)(有)?(写|存|记|保存)(进|入|到)?(档案|简历)|档案.{0,8}(没|未)(有)?(写|存|更新|改)|说明[：:].{0,20}档案")
+    meta_hits = {k: m.group(0) for k in interview_turns if k != "面试开始"
+                 if (m := meta_talk.search(labels[k].get("reply", "") or ""))}
+    check("C11d", "面试官回合不夹档案 / 存储说明", not meta_hits,
+          {"hits": meta_hits}, "面试回答 2（含糊）" in labels)
 
     fresh = labels.get("新会话用新证据", {})
     evidence = {"memory_has_2.1": any("2.1" in text_of(m) for m in memories),
