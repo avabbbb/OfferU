@@ -123,6 +123,19 @@ def _announces_next_step(text: str) -> bool:
         return False
     return re.search(r"(接下来|下一步|然后|稍后|随后)[^。？?]{0,30}(会|再|就|先|去|开始|评估|写|生成|准备)", tail) is not None
 
+def _dangling_reference(text: str) -> bool:
+    """回复最后一段只指向「下面的正文」就结束了（full-a7：「The reply for your client is below.」后面没有内容）：正文缺失，不算 completed。
+
+    只看最后一段：「如下 / 见下 / 以下…：/ is below」之后有内容就不是最后一段，不会误判。
+    """
+    import re
+
+    tail = text.strip().rsplit("\n", 1)[-1].strip()
+    return re.search(
+        r"(\b(is|are)\s+(as\s+follows|below)|\bbelow\s*:|如下|见下[文方]?|以下[^。？?]{0,20}[：:])\s*[。.：:]?\s*$",
+        tail, re.IGNORECASE) is not None
+
+
 
 def _finish_trace(trace_obj, run, terminal_state, stop_reason, turns=None, error=""):
     """把本次 Run 的终态、模型、实际轮数写进 trace 文件（隔离目录，见 core.trace）。"""
@@ -592,8 +605,11 @@ async def start_embedded_agent_run(
         if (stop_reason == "stop" and input_request is None and not pending_actions
                 and _announces_next_step(assistant_message)):
             stop_reason = "announced_next_step"
+        if (stop_reason == "stop" and input_request is None and not pending_actions
+                and _dangling_reference(assistant_message)):
+            stop_reason = "missing_body"
         terminal_state = (
-            "partial" if stop_reason in {"hard_loop_limit", "announced_next_step"}
+            "partial" if stop_reason in {"hard_loop_limit", "announced_next_step", "missing_body"}
             else "waiting_user" if input_request is not None or pending_actions or asked_user
             else "completed"
         )
