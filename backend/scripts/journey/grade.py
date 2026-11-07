@@ -154,7 +154,14 @@ def main() -> None:
     probe_tail = [p for p in probe.strip().split("\n") if p.strip()][-1:] or [""]
     asks_again = "？" in probe_tail[0] or "?" in probe_tail[0]
     q_nums = set(re.findall(r"第\s*([0-9一二三四五六七八九十]+)\s*题", probe))
-    moved_on = len(q_nums) > 1 or re.search(r"下一题|下一道", probe) is not None
+    # 只看最后一段（真正向用户发问的那句）：含「再答 / 重答」等是追问同一题；
+    # 否则若最后一段是「第 N 题：…」，或正文写「再进第 N 题」「下一题」，算换题（full-a8 曾因此误判 pass）。
+    num = r"[0-9一二三四五六七八九十]+"
+    retry = re.search(r"再答|重答|再回答|重新回答|再讲|再说一次|再试", probe_tail[0]) is not None
+    new_q = (len(q_nums) > 1 or re.search(r"下一题|下一道", probe) is not None
+             or re.search(rf"第\s*{num}\s*题\s*[：:]", probe_tail[0]) is not None
+             or re.search(rf"(进|进入|开始|换到|接下来)\s*第\s*{num}\s*题", probe) is not None)
+    moved_on = new_q and not retry
     check("C11b", "含糊回答后有追问", asks_again and not moved_on,
           {"asks_again": asks_again, "moved_on": moved_on, "reply": probe[:300]}, "面试回答 2（含糊）" in labels)
 
