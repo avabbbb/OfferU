@@ -54,6 +54,8 @@ class AgentContextRequest(BaseModel):
 
 class PiAgentRunRequest(BaseModel):
     message: str = Field(min_length=1, max_length=20_000)
+    max_steps: int = Field(default=0, ge=0, le=40)
+    journey_id: str = Field(default="", max_length=120)
     skill_id: str = Field(default="auto", min_length=1, max_length=120)
     conversation_id: str | None = None
     task_id: str | None = None
@@ -81,6 +83,8 @@ def _run_options(body: PiAgentRunRequest, image_ids: tuple[str, ...] = ()):
         llm_config_id=body.llm_config_id,
         reasoning_effort=body.reasoning_effort,
         approval_mode=body.approval_mode,
+        max_steps=body.max_steps,
+        journey_id=body.journey_id,
         image_attachments=image_ids,
     )
 

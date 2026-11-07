@@ -15,6 +15,13 @@ ACTOR = "助手"
 MAX_STEPS = 6  # 工具调用轮数上限；之后还有一轮写回复
 
 
+def step_budget() -> int:
+    """本次 Run 的工具轮数预算：run 选项 max_steps 优先，没给就用 MAX_STEPS。"""
+    from app.run_options import current_run_options
+
+    return current_run_options().max_steps or MAX_STEPS
+
+
 async def execute(name: str, args: Any, *, actor: str = ACTOR) -> tuple[str, bool]:
     """返回 (JSON 文本, 是否出错)。参数不对、业务校验失败都作为错误文本还给模型，不抛出。"""
     try:
@@ -63,5 +70,5 @@ def system_prompt(today: Optional[date] = None) -> str:
         "  每条要点末尾标口径和来源：[official S1] / [media S2] / [third_party_estimate S3] / [community S4] / [inference] / [gap]；"
         "最后 ## 来源 每行「- S1 标题 · 发布方 · 日期 · 链接」。\n"
         "  没有可靠来源就写 [gap]，不编数字，不把估算写成事实，不把相近岗位、镜像站、招聘转载当成这个岗位；经历包装只用档案里的事实。\n"
-        f"- 最多调用 {MAX_STEPS} 轮工具，先用 overview / search / get 查清楚再写。"
+        f"- 最多调用 {step_budget()} 轮工具，先用 overview / search / get 查清楚再写。"
     )

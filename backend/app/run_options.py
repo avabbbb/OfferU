@@ -21,6 +21,10 @@ class RunOptions:
     approval_mode: str = "auto"
     # ids of image attachments the user sent with this message
     image_attachments: tuple[str, ...] = ()
+    # 工具调用轮数预算；0 表示用默认（core.agent.MAX_STEPS）
+    max_steps: int = 0
+    # 评测旅程 id，只写进 trace
+    journey_id: str = ""
 
 
 _RUN_OPTIONS: ContextVar[RunOptions] = ContextVar("offeru_run_options", default=RunOptions())

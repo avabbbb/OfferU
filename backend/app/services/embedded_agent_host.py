@@ -111,6 +111,15 @@ def _prompt_with_context(
     )
 
 
+def _finish_trace(trace_obj, run, terminal_state, stop_reason, turns=None, error=""):
+    """把本次 Run 的终态、模型、实际轮数写进 trace 文件（隔离目录，见 core.trace）。"""
+    runtime = (run or {}).get("llm_runtime") or {}
+    trace_obj.update(model=str(runtime.get("model") or ""),
+                     provider=str(runtime.get("provider") or runtime.get("service_name") or ""),
+                     steps_used=turns)
+    trace_obj.finish(terminal_state, stop_reason=stop_reason, error=error)
+
+
 async def _fail_run(run_id: str, error: Exception) -> dict[str, Any]:
     run = await load_agent_run(run_id)
     if run is None:
@@ -197,6 +206,15 @@ async def start_embedded_agent_run(
             run_id=requested_run_id,
         )
     run_id = run["id"]
+    from app.core import trace as run_trace
+    from app.core.agent import step_budget
+    from app.run_options import current_run_options
+
+    tr = run_trace.start(run_id, journey_id=current_run_options().journey_id,
+                         meta={"conversation_id": str(run.get("conversation_id") or conversation_id),
+                               "continuation": bool(resume_run_id)})
+    tr.update(prompt_version=run_trace.text_version(_system_prompt()), skill_version="core",
+              step_budget=step_budget())
     if worker is not None:
         active_worker = worker
     else:
@@ -525,6 +543,12 @@ async def start_embedded_agent_run(
         )
         await flush_delta_buffer()
         assistant_message = str(response.get("assistant_message") or "").strip()
+        stop_reason = str(response.get("stop_reason") or "stop")
+        if stop_reason == "hard_loop_limit" and not assistant_message:
+            assistant_message = (
+                f"步数预算用完（{step_budget()} 轮工具），任务只完成了一部分；"
+                "已做的改动在「最近改动」里，可以说「继续」接着做。"
+            )
         current = await load_agent_run(run_id)
         assert current is not None
         pending_actions = await list_actions(run_id=run_id, status="pending")
@@ -547,8 +571,21 @@ async def start_embedded_agent_run(
             "input_request": input_request,
             "turn_finished": False,
         }
+        # 助手常在回复里直接发问（不走 Ask 工具）：最后一段以问号结尾也算在等用户。
+        tail = assistant_message.rstrip().rsplit("\n", 1)[-1]
+        asked_user = tail.rstrip(" \u3002.").endswith(("\uff1f", "?"))
+        if stop_reason == "stop" and asked_user and input_request is None and not pending_actions:
+            stop_reason = "asked_user"
+        terminal_state = (
+            "partial" if stop_reason == "hard_loop_limit"
+            else "waiting_user" if input_request is not None or pending_actions or asked_user
+            else "completed"
+        )
+        current["final_result"]["terminal_state"] = terminal_state
+        current["final_result"]["stop_reason"] = stop_reason
         current["status"] = "completed"
         current = await save_agent_run(current)
+        _finish_trace(tr, current, terminal_state, stop_reason, response.get("turns"))
         if input_request is not None:
             await publish("run.waiting_input", {"input_request": input_request})
         await publish("run.completed", {"status": "completed"})
@@ -578,6 +615,7 @@ async def start_embedded_agent_run(
                 pass
         cancelled = await load_agent_run(run_id)
         if cancelled is not None and cancelled.get("status") == "cancelled":
+            _finish_trace(tr, cancelled, "cancelled", "aborted")
             if (cancelled.get("final_result") or {}).get("turn_finished") is not True:
                 await persist_and_publish(
                     "run.turn_finished",
@@ -602,6 +640,8 @@ async def start_embedded_agent_run(
                 "errors": ["Run 已由使用者取消。"],
             }
         failed = await _fail_run(run_id, exc)
+        failed["final_result"] = {**(failed.get("final_result") or {}), "terminal_state": "failed", "stop_reason": "error"}
+        _finish_trace(tr, failed, "failed", "error", error=safe_error_message(exc))
         failed["final_result"] = {
             **(failed.get("final_result") or {}),
             "turn_finished": False,

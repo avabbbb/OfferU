@@ -1187,5 +1187,16 @@ def call(name: str, args: Optional[dict[str, Any]], *, actor: str) -> dict[str, 
     tool = TOOLS.get(name)
     if tool is None:
         raise ValueError(f"没有工具 {name}，可用：{', '.join(TOOLS)}")
-    parsed = tool.input.model_validate(args or {})
-    return tool.fn(**parsed.model_dump(exclude_unset=True), actor=actor)
+    import time
+
+    from app.core import trace
+
+    started = time.perf_counter()
+    try:
+        parsed = tool.input.model_validate(args or {})
+        result = tool.fn(**parsed.model_dump(exclude_unset=True), actor=actor)
+    except Exception as exc:
+        trace.record_tool(name, args, seconds=time.perf_counter() - started, error=exc)
+        raise
+    trace.record_tool(name, args, seconds=time.perf_counter() - started, result=result)
+    return result

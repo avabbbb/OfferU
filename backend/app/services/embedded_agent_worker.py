@@ -22,7 +22,7 @@ from app.agent.messages import convert_to_llm, create_text_message
 from app.agent.provider import LlmStreamProvider
 from app.agent.types import AgentMessage, AssistantMessage, CancelToken, CompactionSummaryMessage, TextContent, ToolResultMessage
 from app.services.agent_files import atomic_write_bytes
-from app.core.agent import MAX_STEPS
+from app.core.agent import step_budget
 from app.services.security_redaction import redact_secret_value, safe_error_message
 
 PROTOCOL_VERSION = "offeru.python-agent.v1"
@@ -216,7 +216,7 @@ class EmbeddedAgentWorker:
             context = await self._compact(context)
         return {"context": context}
 
-    async def prompt(self, *, run_id: str, message: str, timeout: float = 180) -> dict[str, Any]:
+    async def prompt(self, *, run_id: str, message: str, timeout: float = 0) -> dict[str, Any]:
         self._check_run(run_id)
         if self._prompt_lock.locked():
             raise EmbeddedAgentWorkerError("A model turn is already running")
@@ -246,14 +246,14 @@ class EmbeddedAgentWorker:
             context = AgentContext(system_prompt=self._system_prompt, messages=list(self._messages), tools=tools)
             config = AgentLoopConfig(stream_fn=self._provider.stream, convert_to_llm=convert_to_llm,
                 tools=tools, hooks=self._hooks, cancel=self._cancel,
-                soft_loop_limit=MAX_STEPS, hard_loop_limit=MAX_STEPS + 1,
+                soft_loop_limit=step_budget(), hard_loop_limit=step_budget() + 1,
                 get_steering_messages=lambda: self._drain(self._steering),
                 get_follow_up_messages=lambda: self._drain(self._follow_up),
                 prepare_next_turn=self._prepare_next_turn)
             self._task = asyncio.create_task(run_agent_loop(context, config, self._on_loop_event))
             try:
-                result = await asyncio.wait_for(self._task, timeout=timeout)
-                if result.stop_reason in {"error", "hard_loop_limit", "aborted"}:
+                result = await asyncio.wait_for(self._task, timeout=timeout or step_budget() * 120 + 60)
+                if result.stop_reason in {"error", "aborted"}:
                     errors = [m.error_message for m in result.messages if isinstance(m, AssistantMessage) and m.error_message]
                     detail = safe_error_message(errors[-1] if errors else result.stop_reason)
                     if image_ids and result.stop_reason == "error":
@@ -264,7 +264,8 @@ class EmbeddedAgentWorker:
                     raise EmbeddedAgentWorkerError(detail)
                 assistant = next((m for m in reversed(result.messages) if isinstance(m, AssistantMessage)), None)
                 text = "".join(block.text for block in assistant.content if isinstance(block, TextContent)) if assistant else ""
-                return {"assistant_message": text, "stop_reason": result.stop_reason}
+                return {"assistant_message": text, "stop_reason": result.stop_reason,
+                        "turns": sum(isinstance(m, AssistantMessage) for m in result.messages)}
             finally:
                 self._task = None
 

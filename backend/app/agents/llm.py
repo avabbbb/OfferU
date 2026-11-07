@@ -357,7 +357,7 @@ def _raise_if_auth(exc: BaseException, provider: str, model: str) -> None:
         ) from exc
 
 
-async def chat_completion(
+async def _chat_completion_raw(
     messages: list[dict],
     temperature: float = 0.3,
     json_mode: bool = False,
@@ -496,6 +496,39 @@ async def chat_completion(
         return None
     finally:
         await client.close()
+
+
+async def chat_completion(
+    messages: list[dict],
+    temperature: float = 0.3,
+    json_mode: bool = False,
+    max_tokens: int = 4096,
+    tier: str = "standard",
+) -> Optional[str]:
+    # 统一入口：调 _chat_completion_raw，并把耗时、成败记进当前 trace（没有 trace 时不记）。失败返回 None。
+    import time
+
+    from app.core import trace
+
+    started = time.perf_counter()
+    try:
+        text = await _chat_completion_raw(messages, temperature=temperature, json_mode=json_mode,
+                                          max_tokens=max_tokens, tier=tier)
+    except Exception as exc:
+        trace.record_llm(purpose=tier, model=_trace_model(tier), seconds=time.perf_counter() - started,
+                         ok=False, error=redact_sensitive_text(exc, max_length=300))
+        raise
+    trace.record_llm(purpose=tier, model=_trace_model(tier), seconds=time.perf_counter() - started,
+                     ok=text is not None,
+                     error="" if text is not None else "模型没有返回内容（超时或调用失败，详见后端日志）")
+    return text
+
+
+def _trace_model(tier: str) -> str:
+    try:
+        return resolve_model_for_tier(tier)
+    except ValueError:
+        return ""
 
 
 async def chat_completion_stream(
