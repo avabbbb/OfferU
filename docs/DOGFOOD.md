@@ -18,6 +18,7 @@
 | 2026-11-07 | Agent Runtime / 取消 | 运行中点停止（/abort），进行中的 POST 返回 500「No response returned」，Run 记成 failed、没有 trace（评测 s6 C1 fail） | 前台只看到报错，取消与失败分不开 | 根因：abort 取消内部 task，wait_for 把 CancelledError 抛给请求协程，穿过 except Exception；abort 又在停 worker 后才写 cancelled。worker 把 abort 引起的取消转普通异常、abort 先落盘 cancelled；待 s6 重跑确认 | → 已修 a3efc04
 | 2026-11-07 | Agent 提示词 / 模拟面试 | 含糊回答「就是用 SQL 查了一些数据…」后，助手点评并给了五步框架和示范开头，没有追问用户自己做了什么（s5-a3 C11b fail；Judge R5 却给了「追问做得好」） | 模拟面试变成讲课，用户没练到把含糊经历讲具体 | 提示词改为含糊时这条回复只追问一个问题，点评与示范放复盘；s5-a4 C11b pass（提示词 v1 的 full-a5/a6 仍 fail，佐证是提示词问题） | → 已修（提示词 v2）
 | 2026-11-07 | Agent 提示词 / 新会话 | 新会话把 2.1 个百分点写进了档案和第二岗位简历，但回复没点名用了哪条新证据（s5-a3 C12 fail）；另有一回合把模拟面试里说的细节顺手写进了档案 | 用户不知道材料依据什么更新；练习回答可能被当成事实 | 提示词加「用新证据时点名并写出关键数字」「练习回答用户确认是真实经历才 save」；s5-a4 C12 pass、Judge R6=2 | → 已修（提示词 v2）
+| 2026-11-07 | Agent 回复 / 模型输出 | 比较三个岗位时回复只有 157 字的英文「Ranked: 示例科技 first … The reply for your client is below.」，后面没有正文，j3 没打分（full-a7 C9 fail，Judge R3=1） | 用户收到半截英文、缺逐岗证据和下一步 | 单次出现（a5/a6 同版本正常），疑为上游模型偶发输出元话术；暂不改代码，看 a8–a10 是否复现，可考虑在终态前检测空正文/非中文回复并重试 | 待定 |
 
 ## 用户偏好（人工信号）
 
