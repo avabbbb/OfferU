@@ -111,6 +111,19 @@ def _prompt_with_context(
     )
 
 
+def _announces_next_step(text: str) -> bool:
+    """回复最后一段只宣告助手自己下一步要做什么（「接下来评估这个岗位」）就停了：任务没做完，不算 completed。
+
+    给用户的建议（含「你」「建议」）不算。
+    """
+    import re
+
+    tail = text.strip().rsplit("\n", 1)[-1]
+    if "你" in tail or "建议" in tail:
+        return False
+    return re.search(r"(接下来|下一步|然后|稍后|随后)[^。？?]{0,30}(会|再|就|先|去|开始|评估|写|生成|准备)", tail) is not None
+
+
 def _finish_trace(trace_obj, run, terminal_state, stop_reason, turns=None, error=""):
     """把本次 Run 的终态、模型、实际轮数写进 trace 文件（隔离目录，见 core.trace）。"""
     runtime = (run or {}).get("llm_runtime") or {}
@@ -576,8 +589,11 @@ async def start_embedded_agent_run(
         asked_user = tail.rstrip(" \u3002.").endswith(("\uff1f", "?"))
         if stop_reason == "stop" and asked_user and input_request is None and not pending_actions:
             stop_reason = "asked_user"
+        if (stop_reason == "stop" and input_request is None and not pending_actions
+                and _announces_next_step(assistant_message)):
+            stop_reason = "announced_next_step"
         terminal_state = (
-            "partial" if stop_reason == "hard_loop_limit"
+            "partial" if stop_reason in {"hard_loop_limit", "announced_next_step"}
             else "waiting_user" if input_request is not None or pending_actions or asked_user
             else "completed"
         )
@@ -616,17 +632,8 @@ async def start_embedded_agent_run(
         cancelled = await load_agent_run(run_id)
         if cancelled is not None and cancelled.get("status") == "cancelled":
             _finish_trace(tr, cancelled, "cancelled", "aborted")
-            if (cancelled.get("final_result") or {}).get("turn_finished") is not True:
-                await persist_and_publish(
-                    "run.turn_finished",
-                    {"status": "cancelled"},
-                )
-                cancelled = await load_agent_run(run_id) or cancelled
-                cancelled["final_result"] = {
-                    **(cancelled.get("final_result") or {}),
-                    "turn_finished": True,
-                }
-                cancelled = await save_agent_run(cancelled)
+            # run.turn_finished 由 abort_embedded_agent_run 独写：这里与它并发追加会撞
+            # agent_run_events (run_id, sequence) 唯一约束，使进行中的 POST 返回 500。
             return {
                 "ok": False,
                 "run": cancelled,
@@ -884,10 +891,17 @@ async def abort_embedded_agent_run(
     if run.get("status") in {"completed", "failed", "cancelled"}:
         return {"ok": True, "run": run, "warnings": ["Run 已经结束。"]}
 
+    # 先落盘 cancelled 再停 worker：请求协程的 except 分支据此走「取消」收尾（trace 终态 cancelled），
+    # 否则它会在这里写状态之前读到 running，把 Run 记成 failed。
+    run["status"] = "cancelled"
+    run["failure_reason"] = "cancelled_by_user"
+    run = await save_agent_run(run)
     active_worker = worker or find_embedded_agent_worker(run_id)
     if active_worker is not None and active_worker.active_run_id == run_id:
         await active_worker.abort_run(run_id)
-        await active_worker.dispose_run(run_id)
+        # 请求协程的 except/finally 可能已经 dispose；重复 dispose 会在 _check_run 抛错。
+        if active_worker.active_run_id == run_id:
+            await active_worker.dispose_run(run_id)
     run = await load_agent_run(run_id) or run
     try:
         await expire_pending_agent_input_requests(run_id, reason="run_cancelled")

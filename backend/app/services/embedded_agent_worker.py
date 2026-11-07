@@ -266,6 +266,14 @@ class EmbeddedAgentWorker:
                 text = "".join(block.text for block in assistant.content if isinstance(block, TextContent)) if assistant else ""
                 return {"assistant_message": text, "stop_reason": result.stop_reason,
                         "turns": sum(isinstance(m, AssistantMessage) for m in result.messages)}
+            except asyncio.CancelledError:
+                # abort_run 取消的是内部 _task，但 wait_for 会把 CancelledError 传给这里的等待方（请求协程）。
+                # 它是 BaseException，会穿过 host 的 except Exception：请求无响应、Run 不收尾。
+                # 只有「由 abort 引起」时转成普通异常；请求自身被取消（断开、关停）时 cancelling()>0，照常上抛。
+                current = asyncio.current_task()
+                if self._cancel.cancelled and (current is None or current.cancelling() == 0):
+                    raise EmbeddedAgentWorkerError("aborted") from None
+                raise
             finally:
                 self._task = None
 

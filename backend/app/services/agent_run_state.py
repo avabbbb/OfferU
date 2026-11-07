@@ -564,19 +564,24 @@ async def append_agent_run_event(
     payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     async with async_session() as db:
-        row = (
+        # 原子分配序号：host 发事件、abort 路由、worker dispose 可能并发追加同一 Run 的事件，
+        # 读行后在内存 +1 会让两个会话拿到同一 sequence（UNIQUE(run_id, sequence) 冲突）。
+        new_sequence = (
             await db.execute(
-                select(AgentRunRecord).where(
-                    AgentRunRecord.run_id == str(run_id)
-                )
+                sql_update(AgentRunRecord)
+                .where(AgentRunRecord.run_id == str(run_id))
+                .values(event_sequence=AgentRunRecord.event_sequence + 1)
+                .returning(AgentRunRecord.event_sequence)
             )
         ).scalar_one_or_none()
-        if row is None:
+        if new_sequence is None:
             raise ValueError(f"Agent Run {run_id} does not exist")
-        event = _append_event_row(
-            row,
+        event = AgentRunEvent(
+            event_id=f"evt_{uuid.uuid4().hex}",
+            run_id=str(run_id),
+            sequence=int(new_sequence),
             event_type=event_type,
-            payload=payload or {},
+            payload_json=safe_result_preview(payload or {}),
         )
         db.add(event)
         await db.commit()

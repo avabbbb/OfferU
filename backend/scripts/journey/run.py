@@ -82,6 +82,7 @@ def main() -> None:
     parser.add_argument("--out", default="H:/OfferU/evals/runs")
     parser.add_argument("--mode", choices=["real"], default="real",
                         help="real：用真实数据目录 config.json 里激活的模型（只读复制）")
+    parser.add_argument("--seed-only", action="store_true", help="只建隔离目录并写种子数据，不跑回合（人工测试用）")
     args = parser.parse_args()
     tag = f"{args.scenario}-a{args.attempt}-{datetime.now():%Y%m%d-%H%M%S}"
     root = isolated_root(Path(args.out), tag)
@@ -106,6 +107,11 @@ def main() -> None:
             "started_at": datetime.now().isoformat(), "data_dir": str(root / "data")}
     with TestClient(app, base_url=BASE_URL) as client:
         meta["seed_ids"] = seed.seed(tools)
+        if args.seed_only:
+            meta["mode"] = "manual"
+            (root / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
+            print(root)
+            return
         turns = scenarios.build(args.scenario, meta["seed_ids"])
         (root / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
         transcript = run_turns(client, turns, tag, root)

@@ -123,9 +123,10 @@ def main() -> None:
           {"recipient": recipient}, bool(emails))
     compare = labels.get("比较三个岗位", {}).get("reply", "")
     scores = {j["id"]: j.get("score") for j in jobs if isinstance(j.get("score"), (int, float))}
-    lowest = bool(scores) and min(scores, key=scores.get) == j3
+    # j3 不评分（硬性不符直接跳过）也算对；评了就必须是最低分。
+    lowest = j3 not in scores or min(scores, key=scores.get) == j3
     mentioned = "硕士" in compare and "演示资本" in compare
-    check("C9", "识别硬性不符岗位（j3 要求硕士）", mentioned and (lowest or not scores),
+    check("C9", "识别硬性不符岗位（j3 要求硕士）", mentioned and lowest,
           {"reply_mentions_master_and_j3": mentioned, "scores": scores, "j3": j3}, "比较三个岗位" in labels)
 
     dups = [] if len(jobs) == 3 else [f"岗位数 {len(jobs)}"]
@@ -146,7 +147,13 @@ def main() -> None:
           {"review_docs": [d["id"] for d in reviews], "quotes_vague_answer": "查了一些数据" in body,
            "has_criteria": "完成标准" in body}, "复盘" in labels)
     probe = labels.get("面试回答 2（含糊）", {}).get("reply", "")
-    check("C11b", "含糊回答后有追问", "？" in probe or "?" in probe, probe[:300], "面试回答 2（含糊）" in labels)
+    # 追问 = 最后一段向用户发问、且没有给出下一题；点评里列出的反问句、示范答案后直接换题都不算。
+    probe_tail = [p for p in probe.strip().split("\n") if p.strip()][-1:] or [""]
+    asks_again = "？" in probe_tail[0] or "?" in probe_tail[0]
+    q_nums = set(re.findall(r"第\s*([0-9一二三四五六七八九十]+)\s*题", probe))
+    moved_on = len(q_nums) > 1 or re.search(r"下一题|下一道", probe) is not None
+    check("C11b", "含糊回答后有追问", asks_again and not moved_on,
+          {"asks_again": asks_again, "moved_on": moved_on, "reply": probe[:300]}, "面试回答 2（含糊）" in labels)
 
     fresh = labels.get("新会话用新证据", {})
     evidence = {"memory_has_2.1": any("2.1" in text_of(m) for m in memories),
