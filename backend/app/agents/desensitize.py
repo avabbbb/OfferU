@@ -67,15 +67,28 @@ def desensitize(text: str) -> Tuple[str, dict]:
     return result, mapping
 
 
-def restore(text: str, mapping: dict) -> str:
-    """将脱敏占位符还原为原始值
+# 模型常把占位符改写：丢掉两侧下划线或方括号。按「类型 + 序号 + nonce」宽松识别。
+_LOOSE = re.compile(r"\[?_{0,3}PII_([A-Z]+)_(\d+)_([0-9a-f]{8})_{0,3}\]?")
 
-    使用精确的占位符字符串替换。由于占位符包含每调用唯一的随机
-    nonce（如 ``[__PII_PHONE_1_a3f2b1c7__]``），LLM 输出中不太可能
-    意外产生相同的字符串，因此 ``str.replace`` 是安全的。
+
+def restore(text: str, mapping: dict) -> str:
+    """将脱敏占位符还原为原始值。
+
+    先按完整占位符精确替换；再按「类型 + 序号 + nonce」宽松匹配一次，
+    处理模型改写过的占位符（实测：工具参数里的邮箱占位符丢了结尾下划线，
+    精确替换漏掉，占位符被存进了邮件草稿）。nonce 每次调用随机，不会误伤正常文本。
     """
     result = text
     for placeholder, original in mapping.items():
         if placeholder in result:
             result = result.replace(placeholder, original)
-    return result
+    if "PII_" not in result:
+        return result
+    keys = {}
+    for placeholder, original in mapping.items():
+        m = _LOOSE.fullmatch(placeholder)
+        if m:
+            keys[m.groups()] = original
+    if not keys:
+        return result
+    return _LOOSE.sub(lambda m: keys.get(m.groups(), m.group(0)), result)
