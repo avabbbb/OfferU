@@ -51,6 +51,11 @@ def material(transcript: list[dict], store) -> str:
         parts.append(f"### 回合 {t['index']} [{t['label']}] session={t['session']} 终态={t['terminal_state']}")
         parts.append("用户：" + cut(t["message"], 800))
         parts.append("助手：" + cut(t["reply"], 2500))
+    import seed as seed_data  # main() 已把 HERE 放进 sys.path
+    parts.append("## 运行前已有的种子数据（不是助手写的；助手复述或整理这些不算编造）")
+    parts.append("主简历：" + cut(seed_data.RESUME_BODY, 1200))
+    for m in seed_data.MEMORIES:
+        parts.append(f"种子记忆 [{m.get('kind')}] {m.get('title')}：{cut(m.get('body'), 300)}")
     parts.append("## 落盘数据（运行结束时）")
     profile = store.first("profile") or {}
     parts.append("档案：" + cut(json.dumps({k: profile.get(k) for k in ("name", "school", "major", "degree", "target")},
@@ -90,9 +95,20 @@ def main() -> None:
     agent_model = next((json.loads(Path(t["trace"]).read_text(encoding="utf-8")).get("model") for t in transcript
                         if Path(t["trace"]).exists()), "")
     started = time.perf_counter()
-    raw = asyncio.run(chat_completion([{"role": "user", "content": PROMPT.format(rubric=rubric, material=text)}],
+    prompt = PROMPT.format(rubric=rubric, material=text)
+    raw = asyncio.run(chat_completion([{"role": "user", "content": prompt}],
                                       temperature=0, json_mode=True, max_tokens=4096))
     parsed = extract_json(raw or "") or {}
+    if not isinstance(parsed, dict) or not parsed.get("items"):
+        # 模型偶尔不理 json_mode 回散文（s1-a1）；带上它的回复要求只输出 JSON，重试一次。
+        raw = asyncio.run(chat_completion(
+            [{"role": "user", "content": prompt},
+             {"role": "assistant", "content": str(raw or "")},
+             {"role": "user", "content": "上面不是要求的 JSON。只输出 JSON 对象，格式同上，不要其他文字。"}],
+            temperature=0, json_mode=True, max_tokens=4096))
+        parsed = extract_json(raw or "") or {}
+    if not isinstance(parsed, dict):
+        parsed = {}
     items = {i.get("id"): i for i in parsed.get("items") or [] if isinstance(i, dict)}
     scored = []
     for rid, name, _ in RUBRIC:

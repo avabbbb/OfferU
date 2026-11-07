@@ -15,7 +15,7 @@
 | 2026-11-06 | 开发环境 | vite dev（7410）会自己退出，截图时 ERR_CONNECTION_REFUSED | 多一轮 | 截图脚本先探活再起服务 |
 | 2026-11-06 | Agent harness | todo append 任务名重复（「提交」）直接报错 | 进度对用户不可见 | 任务名带阶段前缀 |
 | 2026-11-06 | 开发环境 | 前端是 HashRouter，截图脚本用 /jobs/26 落到了今天页 | 多一轮 | 截图和文档里的页面地址写成 #/jobs/<id> |
-| 2026-11-07 | Agent Runtime / 取消 | 运行中点停止（/abort），进行中的 POST 返回 500「No response returned」，Run 记成 failed、没有 trace（评测 s6 C1 fail） | 前台只看到报错，取消与失败分不开 | 根因：abort 取消内部 task，wait_for 把 CancelledError 抛给请求协程，穿过 except Exception；abort 又在停 worker 后才写 cancelled。worker 把 abort 引起的取消转普通异常、abort 先落盘 cancelled；待 s6 重跑确认 |
+| 2026-11-07 | Agent Runtime / 取消 | 运行中点停止（/abort），进行中的 POST 返回 500「No response returned」，Run 记成 failed、没有 trace（评测 s6 C1 fail） | 前台只看到报错，取消与失败分不开 | 根因：abort 取消内部 task，wait_for 把 CancelledError 抛给请求协程，穿过 except Exception；abort 又在停 worker 后才写 cancelled。worker 把 abort 引起的取消转普通异常、abort 先落盘 cancelled；待 s6 重跑确认 | → 已修 a3efc04
 
 ## 用户偏好（人工信号）
 
