@@ -162,8 +162,16 @@ def main() -> None:
              or re.search(rf"第\s*{num}\s*题\s*[：:]", probe_tail[0]) is not None
              or re.search(rf"(进|进入|开始|换到|接下来)\s*第\s*{num}\s*题", probe) is not None)
     moved_on = new_q and not retry
-    check("C11b", "含糊回答后有追问", asks_again and not moved_on,
+    check("C11b", "含糊回答后有追问", (asks_again or retry) and not moved_on,
           {"asks_again": asks_again, "moved_on": moved_on, "reply": probe[:300]}, "面试回答 2（含糊）" in labels)
+    # 面试要推进：含糊追问不能变成整场卡在一题（full-a13 四次回答都被拉回第 1 题）。
+    # 只认行首的「第 N 题：」题头，「我们进第 2 题」这类条件句不算出题。
+    cn = {"一": "1", "二": "2", "三": "3", "四": "4", "五": "5", "六": "6", "七": "7", "八": "8", "九": "9", "十": "10"}
+    interview_turns = [k for k in labels if k == "面试开始" or k.startswith("面试回答")]
+    asked = {cn.get(n, n) for k in interview_turns
+             for n in re.findall(rf"(?m)^\W{{0,4}}第\s*({num})\s*题\s*[：:]", labels[k].get("reply", "") or "")}
+    check("C11c", "模拟面试至少推进到两道不同的题（追问不卡死）", len(asked) >= 2,
+          {"questions": sorted(asked), "turns": interview_turns}, "面试回答 4" in labels)
 
     fresh = labels.get("新会话用新证据", {})
     evidence = {"memory_has_2.1": any("2.1" in text_of(m) for m in memories),
