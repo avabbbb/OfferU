@@ -631,13 +631,15 @@ class ExportIn(_In):
     id: int = Field(description="简历 doc 的 id")
 
 
-def export_resume_pdf(id: int, *, actor: str = "") -> dict[str, Any]:
+def export_resume_pdf(id: int, *, actor: str = "", name: str = "") -> dict[str, Any]:
     from app.core import resume
 
     doc = store.get("doc", id)
     if doc is None or doc.get("kind") != "resume":
         raise ValueError(f"简历 #{id} 不存在")
-    out = store.data_dir("exports") / resume.file_name(doc)
+    # name：JD 指定的附件文件名（不含 .pdf）；不给就用「姓名-简历标题」。
+    stem = re.sub(r"[\\/:*?\"<>|\s]+", "_", name).strip("_") if name else ""
+    out = store.data_dir("exports") / (f"{stem}.pdf" if stem else resume.file_name(doc))
     out.write_bytes(resume.pdf_bytes(resume.doc_html(doc)))
     return {"path": str(out)}
 
@@ -1057,31 +1059,50 @@ SUBJECT_FIELDS: tuple[tuple[tuple[str, ...], Any], ...] = (
 )
 
 
+def _fill_format(fmt: str, profile: dict[str, Any], job: dict[str, Any]) -> Optional[tuple[str, list[str]]]:
+    """把「姓名-学校-岗位」这类分段格式按档案和岗位逐段填；档案里没有的段留 [段名] 占位并列进待补。不是分段格式返回 None。"""
+    pieces = SUBJECT_SEP_RE.split(fmt.strip())
+    if len(pieces) < 3:
+        return None
+    out: list[str] = []
+    todo: list[str] = []
+    for i, piece in enumerate(pieces):
+        if i % 2:
+            out.append(piece.strip())
+            continue
+        token = piece.strip()
+        value = next((get(profile, job) for names, get in SUBJECT_FIELDS if token in names), None)
+        value = value or profile.get(token)  # 档案里有同名字段（如「到岗时间」）也认
+        if value:
+            out.append(str(value))
+        elif token:
+            out.append(f"[{token}]")
+            todo.append(token)
+    return "".join(out), todo
+
+
 def mail_subject(text: str, profile: dict[str, Any], job: dict[str, Any]) -> tuple[str, list[str]]:
     """按 JD 写的标题格式（如「姓名-学校-岗位-到岗时间」）逐段填；档案里没有的段留 [到岗时间] 占位并列进待补。
     JD 没给格式就用「姓名-学校-岗位」。返回 (标题, 待补字段)。"""
     title = job.get("title") or "岗位"
     default = "-".join(x for x in (profile.get("name"), profile.get("school"), title) if x) or f"应聘{title}"
     for match in SUBJECT_FORMAT_RE.finditer(text):
-        pieces = SUBJECT_SEP_RE.split(match.group(1).strip())
-        if len(pieces) < 3:  # 不是「A-B-C」这种分段格式，看下一处
-            continue
-        out: list[str] = []
-        todo: list[str] = []
-        for i, piece in enumerate(pieces):
-            if i % 2:
-                out.append(piece.strip())
-                continue
-            token = piece.strip()
-            value = next((get(profile, job) for names, get in SUBJECT_FIELDS if token in names), None)
-            value = value or profile.get(token)  # 档案里有同名字段（如「到岗时间」）也认
-            if value:
-                out.append(str(value))
-            elif token:
-                out.append(f"[{token}]")
-                todo.append(token)
-        return "".join(out), todo
+        filled = _fill_format(match.group(1), profile, job)
+        if filled:
+            return filled
     return default, []
+
+
+ATTACH_FORMAT_RE = re.compile(r"(?:附件|简历)[^。；;\n]{0,12}?命名(?:为|格式为?)?\s*[：:]?\s*[「“\"'【]([^」”\"'】\n]+)")
+
+
+def attachment_name(text: str, profile: dict[str, Any], job: dict[str, Any]) -> tuple[str, list[str]]:
+    """JD 要求的附件文件名（如「附件命名「姓名-岗位」」），不含扩展名；JD 没写返回 ("", [])。"""
+    for match in ATTACH_FORMAT_RE.finditer(text):
+        filled = _fill_format(match.group(1), profile, job)
+        if filled:
+            return filled
+    return "", []
 
 
 def draft_email(job_id: int, resume_id: Optional[int] = None, *, actor: str) -> dict[str, Any]:
@@ -1107,9 +1128,11 @@ def draft_email(job_id: int, resume_id: Optional[int] = None, *, actor: str) -> 
         resume = (next((d for d in docs if d.get("kind") == "resume" and d.get("job_id") == job["id"]), None)
                   or next((d for d in reversed(docs) if d.get("kind") == "resume" and not d.get("job_id")), None))
     attachment = attach_error = None
+    attach_stem, attach_todo = attachment_name(text, profile, job)
     if resume:
         try:
-            attachment = export_resume_pdf(resume["id"], actor=actor)["path"]
+            # JD 指定了命名就按它；有档案里没有的段（占位）就不拿占位当文件名，用默认名并列进待补。
+            attachment = export_resume_pdf(resume["id"], actor=actor, name="" if attach_todo else attach_stem)["path"]
         except Exception as exc:  # noqa: BLE001 - 没装浏览器也要把草稿存下来
             attach_error = f"简历 PDF 没导出来：{exc}"
     intro = "".join(str(profile.get(k) or "") for k in ("school", "major", "degree"))
@@ -1121,7 +1144,8 @@ def draft_email(job_id: int, resume_id: Optional[int] = None, *, actor: str) -> 
                          "subject": subject, "body": body, "attachment": attachment, "rules": rules or None},
                  id=existing["id"] if existing else None, actor=actor)
     return {"to": emails[0], "cc": emails[1:], "subject": subject, "body": body, "attachment": attachment,
-            "attach_error": attach_error, "subject_todo": subject_todo or None, "rules": rules, "doc_id": saved["record"]["id"], "change_id": saved["change_id"]}
+            "attach_error": attach_error, "subject_todo": subject_todo or None, "attach_todo": attach_todo or None,
+            "rules": rules, "doc_id": saved["record"]["id"], "change_id": saved["change_id"]}
 
 
 # ---------- registry ----------

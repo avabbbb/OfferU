@@ -114,7 +114,10 @@ def main() -> None:
     attachment = str(email0.get("attachment") or body_field("附件", r"[^\n]{1,80}?\.pdf"))
     recipient = str(email0.get("to") or body_field("收件人"))
     subject_ok = "林知远" in subject and "示例大学" in subject and subject.count("-") >= 3
-    attach_ok = attachment.lower().endswith(".pdf") and "林知远" in attachment
+    stem = Path(attachment).stem if attachment else ""
+    # JD：附件 PDF 命名「姓名-岗位」。直接拿简历标题当文件名（含「主简历」、公司名）不算。
+    attach_ok = (attachment.lower().endswith(".pdf") and "林知远" in stem and "数据分析师" in stem
+                 and "主简历" not in stem and "示例科技" not in stem)
     check("C8", "邮件标题和附件遵守 JD 要求", subject_ok and attach_ok,
           {"subject": subject, "attachment": Path(attachment).name if attachment else "", "subject_ok": subject_ok,
            "attach_ok": attach_ok}, any(k.startswith("投递包") for k in labels) or "同岗三渠道话术" in labels)
