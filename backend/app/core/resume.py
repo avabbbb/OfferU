@@ -255,7 +255,13 @@ def doc_html(doc: dict) -> str:
     return render_html(resume_of(doc), style, profile.get("photo"), file_name(doc)[:-4])
 
 
+def safe_stem(name: str) -> str:
+    """文件名只替换 Windows 不允许的字符；空白压成一个空格，不改成下划线（JD 里的岗位名常带空格）。"""
+    stem = re.sub(r"[\\/:*?\"<>|]+", "_", name or "")
+    return re.sub(r"\s+", " ", stem).strip(" _.")
+
+
 def file_name(doc: dict) -> str:
     profile = store.first("profile") or {}
     name = "-".join(x for x in (profile.get("name"), doc.get("title") or "简历") if x)
-    return re.sub(r"[\\/:*?\"<>|\s]+", "_", name) + ".pdf"
+    return (safe_stem(name) or "简历") + ".pdf"

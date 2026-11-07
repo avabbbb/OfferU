@@ -638,7 +638,7 @@ def export_resume_pdf(id: int, *, actor: str = "", name: str = "") -> dict[str, 
     if doc is None or doc.get("kind") != "resume":
         raise ValueError(f"简历 #{id} 不存在")
     # name：JD 指定的附件文件名（不含 .pdf）；不给就用「姓名-简历标题」。
-    stem = re.sub(r"[\\/:*?\"<>|\s]+", "_", name).strip("_") if name else ""
+    stem = resume.safe_stem(name) if name else ""
     out = store.data_dir("exports") / (f"{stem}.pdf" if stem else resume.file_name(doc))
     out.write_bytes(resume.pdf_bytes(resume.doc_html(doc)))
     return {"path": str(out)}

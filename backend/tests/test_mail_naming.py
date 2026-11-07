@@ -20,3 +20,10 @@ def test_mail_subject_keeps_unknown_fields_as_todo():
     assert subject.startswith("林知远-")
     assert "数据分析师" in subject
     assert set(todo) == {"学校", "最快到岗时间"}
+
+
+def test_export_stem_keeps_spaces_and_drops_illegal_chars():
+    from app.core.resume import safe_stem
+    assert safe_stem("林知远-数据分析师（2026 届校招）") == "林知远-数据分析师（2026 届校招）"
+    assert safe_stem("林知远-A/B 测试:岗\t位") == "林知远-A_B 测试_岗 位"
+    assert safe_stem("  ??  ") == ""
