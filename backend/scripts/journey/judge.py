@@ -59,13 +59,13 @@ def material(transcript: list[dict], store) -> str:
         parts.append(f"种子记忆（{m.get('kind')}）{m.get('title')}：{cut(m.get('body'), 300)}" + (f"；{extra}" if extra else ""))
     parts.append("## 落盘数据（运行结束时）")
     profile = store.first("profile") or {}
-    parts.append("档案：" + cut(json.dumps({k: profile.get(k) for k in ("name", "school", "major", "degree", "target")},
+    parts.append("档案：" + cut(json.dumps({k: profile.get(k) for k in ("name", "school", "major", "degree", "city", "target")},
                                      ensure_ascii=False), 400))
     for m in store.all_of("memory"):
         parts.append(f"记忆 #{m['id']} [{m.get('kind')}] {m.get('title')}：{cut(m.get('body'), 400)}"
                      f" | 原话：{cut(m.get('quote'), 300)} | 日期：{m.get('said_at') or ''}")
     for j in store.all_of("job"):
-        parts.append(f"岗位 #{j['id']} {j.get('company')} · {j.get('title')} 状态={j.get('status')} 分={j.get('score')}"
+        parts.append(f"岗位 #{j['id']} {j.get('company')} · {j.get('title')} 地点={j.get('city') or ''} 状态={j.get('status')} 分={j.get('score')}"
                      f" 理由={cut(j.get('reasons'), 300)} 招呼语={cut(j.get('greeting'), 300)}\nJD：{cut(j.get('jd'), 600)}")
     for d in store.all_of("doc"):
         extra = f" 标题行={d.get('subject')} 附件={Path(str(d.get('attachment') or '')).name}" if d.get("kind") == "email" else ""
