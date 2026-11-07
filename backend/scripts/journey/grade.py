@@ -122,11 +122,18 @@ def main() -> None:
     subject_ok = "林知远" in subject and "示例大学" in subject and subject.count("-") >= 3
     stem = Path(attachment).stem if attachment else ""
     # JD：附件 PDF 命名「姓名-岗位」。直接拿简历标题当文件名（含「主简历」、公司名）不算。
-    attach_ok = (attachment.lower().endswith(".pdf") and "林知远" in stem and "数据分析师" in stem
-                 and "主简历" not in stem and "示例科技" not in stem)
-    check("C8", "邮件标题和附件遵守 JD 要求", subject_ok and attach_ok,
+    # 草稿写的附件名必须真的落盘：a19 回复与落盘文件名不一致，只查字段的旧 C8 放过了。
+    exports = sorted(p.name for p in (run_dir / "data" / "exports").glob("*.pdf"))
+    on_disk = bool(attachment) and Path(attachment).name in exports
+    # 岗位名按原样出现：旧导出把「2026 届」的空格改成下划线（a14–a19），Judge R4 反复扣分而旧 C8 只查关键词。
+    job_title = str((store.get("job", j1) or {}).get("title") or "数据分析师")
+    title_ok = re.sub(r"\s+", " ", re.sub(r'[\\/:*?"<>|]+', "_", job_title)).strip() in stem
+    attach_ok = (attachment.lower().endswith(".pdf") and "林知远" in stem and title_ok
+                 and "主简历" not in stem and "示例科技" not in stem and on_disk)
+    check("C8", "邮件标题和附件遵守 JD 要求，附件已落盘", subject_ok and attach_ok,
           {"subject": subject, "attachment": Path(attachment).name if attachment else "", "subject_ok": subject_ok,
-           "attach_ok": attach_ok}, any(k.startswith("投递包") for k in labels) or "同岗三渠道话术" in labels)
+           "attach_ok": attach_ok, "title_ok": title_ok, "job_title": job_title, "on_disk": on_disk, "exports": exports},
+          any(k.startswith("投递包") for k in labels) or "同岗三渠道话术" in labels)
 
     check("C8b", "邮件草稿的收件人是 JD 里的投递邮箱（未被脱敏占位符替换）", "hr-test@example.com" in recipient,
           {"recipient": recipient}, bool(emails))
